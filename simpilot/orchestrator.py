@@ -44,6 +44,7 @@ class StepOutcome:
     action: str
     ok: bool = True
     reason: str = ""
+    duration_s: float = 0.0
     assertion_results: list[AssertionResult] = field(default_factory=list)
 
 
@@ -153,6 +154,7 @@ def run_scenario(
     for i, step in enumerate(scenario.steps):
         kind = _action_of(step)
         outcome = StepOutcome(index=i, action=kind)
+        start = clock.now()
         try:
             if kind == "wait":
                 assert step.wait is not None
@@ -167,6 +169,7 @@ def run_scenario(
         except (base.SelectorError, NotImplementedError) as e:
             outcome.ok = False
             outcome.reason = str(e)
+        outcome.duration_s = clock.now() - start
         outcomes.append(outcome)
         if not outcome.ok:
             failure = f"step {i} ({kind}): {outcome.reason}"
