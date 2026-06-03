@@ -1,6 +1,6 @@
-"""アサーション評価（DESIGN.md §6.4）のテスト。
+"""Tests for assertion evaluation.
 
-シナリオ（§6）→ 解決（§5）→ 判定（§6.4）が純ロジックで閉じることを担保する。
+Verify that scenario -> resolve -> assert closes as pure logic.
 """
 
 from __future__ import annotations
@@ -50,8 +50,8 @@ def test_exists() -> None:
 
 
 def test_exists_negate() -> None:
-    assert _ok({"exists": {"id": "spinner", "negate": True}})       # 不在を検証 → 不在なので pass
-    assert not _ok({"exists": {"id": "home.title", "negate": True}})  # 存在するので fail
+    assert _ok({"exists": {"id": "spinner", "negate": True}})        # absent, so passes
+    assert not _ok({"exists": {"id": "home.title", "negate": True}})  # present, so fails
 
 
 def test_value() -> None:
@@ -86,11 +86,11 @@ def test_selected() -> None:
 def test_not_found_fails_with_reason() -> None:
     r = evaluate_one(SCREEN, _a({"value": {"sel": {"id": "nope"}, "equals": "x"}}))
     assert not r.ok
-    assert r.reason  # 失敗理由が入る
+    assert r.reason  # a failure reason is set
 
 
 def test_ambiguous_state_fails() -> None:
-    # 複数一致するセレクタで状態判定 → 一意解決できず失敗（§5 ambiguous）。
+    # State assertion on a selector that matches multiple -> cannot resolve uniquely.
     r = evaluate_one(SCREEN, _a({"enabled": {"idMatches": "result.row.*"}}))
     assert not r.ok
     assert "件一致" in r.reason
@@ -110,7 +110,7 @@ def test_evaluate_and_passed() -> None:
         SCREEN,
         [
             _a({"exists": {"id": "home.title"}}),
-            _a({"exists": {"id": "spinner"}}),  # これが失敗
+            _a({"exists": {"id": "spinner"}}),  # this one fails
         ],
     )
     assert not passed(results)

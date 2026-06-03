@@ -1,10 +1,11 @@
-"""ドライバ抽象 — 両バックエンド（RocketSim / idb）の要（DESIGN.md §5）。
+"""Driver abstraction — the linchpin shared by both backends (RocketSim / idb).
 
-ここが崩れると全体に波及するため、最初に凍結する契約:
-- 共通型 `Point` / `Element` / `Selector`
-- `Driver` Protocol（操作は actuator のみが行う。§9）
-- セレクタ解決のセマンティクス（§5「決定性の要」）= 単一アクションは一意解決を要求し、
-  曖昧（2 件以上）なら `AmbiguousSelector` を送出して非決定性を構造で排除する。
+Frozen first because everything else depends on it:
+- common types Point / Element / Selector
+- the Driver Protocol (only the actuator performs actions)
+- selector resolution (the determinism core): a single action requires a unique
+  match, and an ambiguous match (2+) raises AmbiguousSelector to rule out
+  nondeterminism structurally.
 """
 
 from __future__ import annotations
@@ -13,28 +14,29 @@ import fnmatch
 import re
 from typing import Protocol, TypedDict, runtime_checkable
 
-# 座標（points）。x, y。
+# Coordinates in points: x, y.
 Point = tuple[float, float]
-# frame: x, y, w, h（points）。
+# frame: x, y, w, h in points.
 Frame = tuple[float, float, float, float]
 
 
 class Capability:
-    """`Driver.capabilities()` が返す能力名（§9 actuator + フォールバック解決に使う）。
+    """Capability names returned by Driver.capabilities().
 
-    操作の安定度順（§5 stability ladder）では `SEMANTIC_TAP` を持つ backend ほど安定。
+    Used to pick the actuator and resolve fallbacks. A backend with SEMANTIC_TAP
+    actuates more stably (no coordinates involved).
     """
 
     QUERY = "query"
-    SEMANTIC_TAP = "semanticTap"      # id/label で直接 tap（座標を介さない＝最安定）
-    CONDITION_WAIT = "conditionWait"  # ネイティブ条件待機
-    NETWORK = "network"               # ネイティブネットワーク監視
+    SEMANTIC_TAP = "semanticTap"      # tap directly by id/label (no coordinates; most stable)
+    CONDITION_WAIT = "conditionWait"  # native condition waiting
+    NETWORK = "network"               # native network monitoring
     SCREENSHOT = "screenshot"
     ELEMENTS = "elements"
 
 
 class Element(TypedDict):
-    """画面上の 1 要素。RocketSim / idb の出力を共通形へ正規化したもの（§5）。"""
+    """A single on-screen element, normalized from RocketSim / idb output."""
 
     identifier: str | None
     label: str | None
@@ -44,41 +46,41 @@ class Element(TypedDict):
 
 
 class Trait:
-    """正規化済みアクセシビリティトレイト（§5 の状態露出。§6.4 の判定に使う）。
+    """Normalized accessibility traits used by state assertions.
 
-    ドライバは少なくとも以下を共通トークンへ正規化する（必要に応じ拡張）。
+    Drivers normalize at least the following to these common tokens.
     """
 
     BUTTON = "button"
     LINK = "link"
-    NOT_ENABLED = "notEnabled"  # 無効状態（§6.4 enabled / disabled）
-    SELECTED = "selected"       # 選択 / トグル状態（§6.4 selected）
+    NOT_ENABLED = "notEnabled"  # disabled state (enabled / disabled assertions)
+    SELECTED = "selected"       # selected / toggled state (selected assertion)
 
 
 class Selector(TypedDict, total=False):
-    """要素の指定（§5）。指定した全フィールドが AND で適用される。
+    """How to address an element. Provided fields are combined with AND.
 
-    安定セレクタは `id`（非ローカライズ・データ由来）。`label`/`labelMatches` は補助、
-    `index` は最終手段（フレーキー注意）。命名規約は §7.3。
+    The stable selector is `id` (non-localized, data-derived). `label` /
+    `labelMatches` are auxiliary; `index` is a last resort (flaky).
     """
 
-    id: str            # accessibilityIdentifier 完全一致（第一候補）
-    idMatches: str     # glob パターン（複数マッチ前提。例 "*.submit"）
-    label: str         # accessibilityLabel 完全一致（補助・曖昧解消のみ）
-    labelMatches: str  # label の部分一致 / 正規表現
-    traits: list[str]  # 型で絞る（例 ["button"]）
-    value: str         # accessibility value 一致
-    within: "Selector"  # 親要素でスコープ限定（階層クエリが必要・未実装）
-    index: int         # 複数マッチ時の n 番目（最終手段・フレーキー注意）
+    id: str            # exact accessibilityIdentifier (first choice)
+    idMatches: str     # glob pattern (assumes multiple matches, e.g. "*.submit")
+    label: str         # exact accessibilityLabel (auxiliary / disambiguation only)
+    labelMatches: str  # substring / regex over label
+    traits: list[str]  # narrow by type (e.g. ["button"])
+    value: str         # accessibility value match
+    within: "Selector"  # scope to a parent (needs a hierarchical query; not implemented)
+    index: int         # nth of multiple matches (last resort; flaky)
 
 
 @runtime_checkable
 class Driver(Protocol):
-    """両バックエンド共通インターフェース（§5）。
+    """Common interface for both backends.
 
-    操作（tap/type/swipe/wait/query）は actuator のみが行う（§9）。idb のように
-    semantic tap を持たない backend では、抽象側が `query()` → `resolve_unique()` で
-    frame 中心を引き当ててから座標 tap する（§5 stability ladder 順 2）。
+    Actions (tap/type/swipe/wait/query) are performed by the actuator only. On a
+    backend without semantic tap (e.g. idb), the abstraction resolves the frame
+    center via query() / resolve_unique() and taps by coordinates.
     """
 
     def query(self) -> list[Element]: ...
@@ -91,25 +93,26 @@ class Driver(Protocol):
     def capabilities(self) -> set[str]: ...
 
 
-# --- セレクタ解決（§5「決定性の要」）---------------------------------------------
+# --- Selector resolution (the determinism core) ---
 
 
 class SelectorError(Exception):
-    """セレクタ解決の失敗（§5）。"""
+    """Selector resolution failed."""
 
 
 class ElementNotFound(SelectorError):
-    """候補 0 件。`wait_for` 経由ならタイムアウト、即時アクションなら失敗。"""
+    """No candidate matched. A wait times out; an immediate action fails."""
 
 
 class AmbiguousSelector(SelectorError):
-    """候補 2 件以上で一意化できない。`within` か `index` で一意化が必要。"""
+    """2+ candidates with no way to disambiguate; needs `within` or `index`."""
 
 
 def matches(el: Element, sel: Selector) -> bool:
-    """Element が Selector の全条件（AND）を満たすか。
+    """Whether an element satisfies all selector conditions (AND).
 
-    `within` は要素ツリーの親子関係が必要なため、現状の平坦な `Element` では未対応。
+    `within` needs parent/child structure, so it is unsupported on the current
+    flat Element.
     """
     if "within" in sel:
         raise NotImplementedError("`within` は階層クエリが必要（将来対応）")
@@ -133,16 +136,16 @@ def matches(el: Element, sel: Selector) -> bool:
 
 
 def find_all(elements: list[Element], sel: Selector) -> list[Element]:
-    """条件に一致する全要素（`idMatches` トリガーや `count` アサーション用。§5 / §6.4）。"""
+    """All matching elements (for idMatches triggers and count assertions)."""
     return [el for el in elements if matches(el, sel)]
 
 
 def resolve_unique(elements: list[Element], sel: Selector) -> Element:
-    """単一アクション（tap 等）向けに一意解決する（§5）。
+    """Resolve to exactly one element for a single action.
 
-    - 0 件 → ``ElementNotFound``
-    - 2 件以上 → ``AmbiguousSelector``（「たまたま最初の一致を叩く」非決定性を排除）
-    - ``index`` 指定時のみ複数候補から n 番目を選ぶ（最終手段・フレーキー注意）
+    - 0 matches -> ElementNotFound
+    - 2+ matches -> AmbiguousSelector (rules out "tap whatever matched first")
+    - only with `index` do we pick the nth of multiple candidates (last resort)
     """
     candidates = find_all(elements, sel)
     if "index" in sel:

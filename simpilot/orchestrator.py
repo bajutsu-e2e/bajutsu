@@ -1,10 +1,11 @@
-"""オーケストレータ — Tier2 の決定的 run ループ（DESIGN.md §3.1 / §6）。
+"""Orchestrator — the deterministic Tier2 run loop.
 
-各ステップを act → (wait) → verify で実行する。合否は機械アサーションのみで決まり、
-AI は一切関与しない（§3.1）。最初の失敗でステップ実行を止める。
+Each step runs as act -> (wait) -> verify. Pass/fail comes from machine
+assertions only; no AI is involved. Execution stops at the first failure.
 
-このモジュールはバックエンド非依存（`base.Driver` 越し）。実 driver でも FakeDriver でも動く。
-証跡（§9）と preconditions / relaunch（env 統合）は M1 後半で接続する。
+This module is backend-agnostic (via base.Driver): it works with a real driver
+or the FakeDriver. Evidence and preconditions / relaunch (env integration) are
+wired in later.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ _POLL = 0.05
 
 
 class Clock(Protocol):
-    """時刻と待機（テストで差し替え可能にして wait を決定的にする）。"""
+    """Time and sleep (swappable in tests to make waits deterministic)."""
 
     def now(self) -> float: ...
     def sleep(self, seconds: float) -> None: ...
@@ -83,7 +84,7 @@ def _exists(elements: list[base.Element], sel: base.Selector) -> bool:
 
 
 def _wait(driver: base.Driver, w: Wait, clock: Clock) -> tuple[bool, str]:
-    """条件待機（§6.3）。固定 sleep ではなく query() を条件成立までポーリングする。"""
+    """Condition wait. Polls query() until satisfied instead of a fixed sleep."""
     deadline = clock.now() + w.timeout
     if w.for_ is not None:
         target = w.for_.as_selector()
@@ -109,7 +110,7 @@ def _wait(driver: base.Driver, w: Wait, clock: Clock) -> tuple[bool, str]:
 
 
 def _do_action(driver: base.Driver, step: Step) -> None:
-    """tap / longPress / type / swipe / relaunch を実行（wait と assert は run ループ側）。"""
+    """Run tap / longPress / type / swipe / relaunch (wait and assert live in the run loop)."""
     if step.tap is not None:
         driver.tap(step.tap.as_selector())
         return
@@ -144,7 +145,7 @@ def run_scenario(
     scenario: Scenario,
     clock: Clock | None = None,
 ) -> RunResult:
-    """1 シナリオを決定的に実行する（§3.1 の `run`）。"""
+    """Run one scenario deterministically."""
     clock = clock or RealClock()
     outcomes: list[StepOutcome] = []
     failure: str | None = None

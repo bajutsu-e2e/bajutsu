@@ -1,9 +1,11 @@
-"""アサーション評価（DESIGN.md §6.4）。
+"""Assertion evaluation.
 
-`expect` / `assert` のリストを `query()` 結果（list[Element]）に対して機械評価する。
-リスト内は AND、1 つでも失敗ならステップ失敗。AI は関与しない（機械チェックのみ。§3.1）。
+Evaluate a list of expect/assert against query() results (list[Element]). The
+list is AND-ed; one failure fails the step. No AI is involved (machine checks
+only).
 
-評価は総関数（例外を投げず結果を返す）にしてレポート（manifest）へそのまま載せる。
+Evaluation is total (returns results instead of raising) so it can be placed
+straight into the report (manifest).
 """
 
 from __future__ import annotations
@@ -19,8 +21,8 @@ from simpilot.scenario import Assertion, CountMatch, Exists, Selector, TextMatch
 class AssertionResult:
     ok: bool
     kind: str
-    detail: str       # 何を検証したか（レポート向け）
-    reason: str = ""  # 失敗理由（ok のとき空）
+    detail: str       # what was checked (for the report)
+    reason: str = ""  # failure reason (empty when ok)
 
 
 def _sel_str(sel: Selector) -> str:
@@ -28,7 +30,10 @@ def _sel_str(sel: Selector) -> str:
 
 
 def _resolve_one(elements: list[base.Element], sel: Selector) -> tuple[base.Element | None, str]:
-    """単一要素を解決。失敗時は (None, 理由)。曖昧・不在はアサーション失敗として扱う。"""
+    """Resolve a single element. On failure returns (None, reason).
+
+    Ambiguous / not-found are treated as assertion failures.
+    """
     try:
         return base.resolve_unique(elements, sel.as_selector()), ""
     except base.SelectorError as e:
@@ -60,7 +65,7 @@ def _text_op(a: TextMatch) -> tuple[str, str]:
         return "equals", a.equals
     if a.contains is not None:
         return "contains", a.contains
-    assert a.matches is not None  # scenario 検証で 1 つ保証済み（§6.4）
+    assert a.matches is not None  # exactly one is guaranteed by scenario validation
     return "matches", a.matches
 
 
@@ -87,7 +92,7 @@ def _count_op(a: CountMatch) -> tuple[str, int]:
         return "equals", a.equals
     if a.at_least is not None:
         return "atLeast", a.at_least
-    assert a.at_most is not None  # scenario 検証で 1 つ保証済み（§6.4）
+    assert a.at_most is not None  # exactly one is guaranteed by scenario validation
     return "atMost", a.at_most
 
 
@@ -108,7 +113,7 @@ def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> Asser
 
 
 def evaluate_one(elements: list[base.Element], a: Assertion) -> AssertionResult:
-    """1 アサーションを評価（種別は scenario 検証で 1 つに保証済み。§6.4）。"""
+    """Evaluate one assertion (the kind is guaranteed unique by scenario validation)."""
     if a.exists is not None:
         return _eval_exists(elements, a.exists)
     if a.value is not None:
@@ -127,10 +132,10 @@ def evaluate_one(elements: list[base.Element], a: Assertion) -> AssertionResult:
 
 
 def evaluate(elements: list[base.Element], assertions: list[Assertion]) -> list[AssertionResult]:
-    """`expect` / `assert` 全件を評価する（AND は呼び出し側が `passed()` で判定）。"""
+    """Evaluate all of expect/assert (the caller decides AND via passed())."""
     return [evaluate_one(elements, a) for a in assertions]
 
 
 def passed(results: list[AssertionResult]) -> bool:
-    """全アサーションが ok なら True（AND。1 つでも失敗ならステップ失敗。§6.4）。"""
+    """True iff every assertion is ok (AND; one failure fails the step)."""
     return all(r.ok for r in results)

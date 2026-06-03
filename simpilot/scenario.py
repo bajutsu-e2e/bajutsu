@@ -1,8 +1,8 @@
-"""シナリオ仕様 — 自然言語から正規化された構造（DESIGN.md §6）。
+"""Scenario spec — the structure normalized from natural language.
 
-pydantic で厳格にスキーマ検証する（`extra="forbid"` で未知キーを弾く）。
-`run`（Tier2）はこの構造を AI 非依存で実行する（§3.1）。
-セレクタ実体は `simpilot.drivers.base.Selector`（TypedDict）へ変換して §5 の解決へ渡す。
+Validated strictly with pydantic (extra="forbid" rejects unknown keys). The
+deterministic runner executes this structure with no AI. Selector instances are
+converted to drivers.base.Selector (a TypedDict) and passed to resolution.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from simpilot.drivers import base
 
 Point = tuple[float, float]
 
-# capture トークン文法（§9）。
+# capture token grammar.
 _CAPTURE_KINDS = {
     "screenshot",
     "elements",
@@ -47,7 +47,7 @@ def _validate_capture(tokens: list[str]) -> list[str]:
 
 
 class Selector(_Model):
-    """要素の指定（§5）。指定したフィールドは AND で適用される。"""
+    """How to address an element. Provided fields are combined with AND."""
 
     id: str | None = None
     id_matches: str | None = Field(default=None, alias="idMatches")
@@ -65,12 +65,12 @@ class Selector(_Model):
         return self
 
     def as_selector(self) -> base.Selector:
-        """§5 の解決（`base.resolve_unique`）に渡せる TypedDict へ変換する。"""
+        """Convert to the TypedDict consumed by base.resolve_unique."""
         return cast("base.Selector", self.model_dump(exclude_none=True, by_alias=True))
 
 
 class Preconditions(_Model):
-    """各テスト前の環境構築（§6.1）。"""
+    """Per-test environment setup."""
 
     erase: bool = True
     launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
@@ -80,7 +80,7 @@ class Preconditions(_Model):
     setup: str | None = None
 
 
-# --- アクション（§6.2 / §6.3）-------------------------------------------------
+# --- Actions ---
 
 
 class LongPress(_Model):
@@ -134,11 +134,11 @@ class Relaunch(_Model):
     args: list[str] | None = None
 
 
-# --- アサーション（§6.4）-----------------------------------------------------
+# --- Assertions ---
 
 
 class Exists(_Model):
-    """`exists: { <selector>, negate? }`（セレクタ inline + 任意 negate。§6.4）。"""
+    """`exists: { <selector>, negate? }` (selector inline, optional negate)."""
 
     sel: Selector
     negate: bool = False
@@ -154,7 +154,7 @@ class Exists(_Model):
 
 
 class TextMatch(_Model):
-    """`value` / `label`（§6.4）。equals / contains / matches のいずれか 1 つ。"""
+    """`value` / `label`: exactly one of equals / contains / matches."""
 
     sel: Selector
     equals: str | None = None
@@ -169,7 +169,7 @@ class TextMatch(_Model):
 
 
 class CountMatch(_Model):
-    """`count`（§6.4）。equals / atLeast / atMost のいずれか 1 つ。"""
+    """`count`: exactly one of equals / atLeast / atMost."""
 
     sel: Selector
     equals: int | None = None
@@ -184,7 +184,7 @@ class CountMatch(_Model):
 
 
 class Assertion(_Model):
-    """機械チェック 1 件（§6.4）。同時に指定できる種別は 1 つのみ。"""
+    """One machine check. Exactly one kind may be set."""
 
     exists: Exists | None = None
     value: TextMatch | None = None
@@ -202,11 +202,11 @@ class Assertion(_Model):
         return self
 
 
-# --- ステップ（§6.2）---------------------------------------------------------
+# --- Steps ---
 
 
 class Step(_Model):
-    """1 アクション + 任意の修飾子（capture / name）。§6.2。"""
+    """One action plus optional modifiers (capture / name)."""
 
     tap: Selector | None = None
     long_press: LongPress | None = Field(default=None, alias="longPress")
@@ -231,7 +231,7 @@ class Step(_Model):
         return self
 
 
-# --- 証跡ルール（§9 A）-------------------------------------------------------
+# --- Evidence rules ---
 
 
 class Trigger(_Model):
@@ -267,7 +267,7 @@ class Redact(_Model):
 
 
 class Scenario(_Model):
-    """1 シナリオ（§6.1）。"""
+    """One scenario."""
 
     name: str
     preconditions: Preconditions = Field(default_factory=Preconditions)
@@ -281,7 +281,7 @@ Selector.model_rebuild()
 
 
 def load_scenarios(text: str) -> list[Scenario]:
-    """YAML 文字列（シナリオの配列）を検証済み `Scenario` のリストへ（§6.1）。"""
+    """Parse a YAML string (a list of scenarios) into validated Scenario objects."""
     data = yaml.safe_load(text)
     if not isinstance(data, list):
         raise ValueError("シナリオファイルはシナリオの配列（§6.1）")

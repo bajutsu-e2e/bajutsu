@@ -1,7 +1,7 @@
-"""インメモリの Fake ドライバ（DESIGN.md §5 の Driver を実装）。
+"""In-memory fake driver implementing the Driver Protocol.
 
-Simulator 無しで orchestrator（§3.1 の Tier2 ランナー）をテストするための backend。
-`react` コールバックで「操作に応じて画面が変わる」挙動をスクリプトできる。
+Lets the orchestrator (the Tier2 runner) be tested without a Simulator. The
+`react` callback scripts "the screen changes in response to an action".
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from collections.abc import Callable, Sequence
 
 from simpilot.drivers import base
 
-# 操作に応じて状態を変えるフック: react(driver, kind, arg)
+# Hook that mutates state in response to an action: react(driver, kind, arg)
 React = Callable[["FakeDriver", str, object], None]
 
 
@@ -22,15 +22,15 @@ class FakeDriver:
     ) -> None:
         self.screen: list[base.Element] = list(screen) if screen is not None else []
         self._react = react
-        self.actions: list[tuple[str, object]] = []  # 実行された操作のログ
+        self.actions: list[tuple[str, object]] = []  # log of performed actions
 
-    # --- Driver Protocol（§5）---
+    # --- Driver Protocol ---
 
     def query(self) -> list[base.Element]:
         return list(self.screen)
 
     def tap(self, sel: base.Selector) -> None:
-        # 実 backend の semantic tap と同じく一意解決を要求（曖昧/不在は SelectorError）。
+        # Like a real semantic tap, require a unique match (ambiguous/not-found -> SelectorError).
         base.resolve_unique(self.screen, sel)
         self._record("tap", sel)
 
@@ -59,7 +59,7 @@ class FakeDriver:
             base.Capability.ELEMENTS,
         }
 
-    # --- 内部 ---
+    # --- internals ---
 
     def _record(self, kind: str, arg: object) -> None:
         self.actions.append((kind, arg))

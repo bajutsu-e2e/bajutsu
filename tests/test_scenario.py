@@ -1,7 +1,7 @@
-"""シナリオスキーマ（DESIGN.md §6）の検証テスト。
+"""Tests for the scenario schema.
 
-§6 の各形式が受理され、不正形式は弾かれること、`Selector` が §5 の解決へ
-変換できることを担保する。
+Verify that each documented form is accepted, malformed forms are rejected, and a
+Selector can be converted for resolution.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from simpilot.scenario import (
     load_scenarios,
 )
 
-# DESIGN.md §6.1 のトップレベル例。
+# Top-level example.
 SCENARIO_YAML = """
 - name: 設定を開いて再生成する
   preconditions:
@@ -53,7 +53,7 @@ def test_load_scenario_example() -> None:
 
 def test_preconditions_default() -> None:
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.preconditions.erase is True  # 既定でクリーン化（§2）
+    assert s.preconditions.erase is True  # clean by default
 
 
 def test_selector_alias_and_as_selector() -> None:
@@ -63,7 +63,7 @@ def test_selector_alias_and_as_selector() -> None:
 
 
 def test_selector_resolves_via_base() -> None:
-    # §6 の Selector → §5 の解決 へ橋渡しできる（決定性の核との接続）。
+    # Bridge a scenario Selector into base resolution (the determinism core).
     elements: list[base.Element] = [
         {"identifier": "settings.open", "label": "設定", "traits": ["button"],
          "value": None, "frame": (0.0, 0.0, 10.0, 10.0)},
@@ -81,12 +81,12 @@ def test_step_requires_exactly_one_action() -> None:
     with pytest.raises(ValidationError):
         Step.model_validate({"tap": {"id": "a"}, "wait": {"for": {"id": "b"}, "timeout": 1}})
     with pytest.raises(ValidationError):
-        Step.model_validate({"capture": ["screenshot"]})  # アクション無し
+        Step.model_validate({"capture": ["screenshot"]})  # no action
 
 
 def test_unknown_key_rejected() -> None:
     with pytest.raises(ValidationError):
-        Step.model_validate({"tapp": {"id": "a"}})  # typo は extra=forbid で弾く
+        Step.model_validate({"tapp": {"id": "a"}})  # typo rejected by extra=forbid
 
 
 def test_wait_forms() -> None:
@@ -94,16 +94,16 @@ def test_wait_forms() -> None:
     assert Wait.model_validate({"until": "screenChanged", "timeout": 5}).until == "screenChanged"
     gone = Wait.model_validate({"until": {"gone": {"id": "spinner"}}, "timeout": 15})
     assert gone.until is not None
-    with pytest.raises(ValidationError):  # timeout 必須
+    with pytest.raises(ValidationError):  # timeout required
         Wait.model_validate({"for": {"id": "x"}})
-    with pytest.raises(ValidationError):  # for と until 両方は不可
+    with pytest.raises(ValidationError):  # both for and until not allowed
         Wait.model_validate({"for": {"id": "x"}, "until": "screenChanged", "timeout": 1})
 
 
 def test_swipe_forms() -> None:
     assert Swipe.model_validate({"on": {"id": "list"}, "direction": "up"}).direction == "up"
     assert Swipe.model_validate({"from": [1, 2], "to": [3, 4]}).to == (3, 4)
-    with pytest.raises(ValidationError):  # 混在は不可
+    with pytest.raises(ValidationError):  # mixing not allowed
         Swipe.model_validate({"on": {"id": "list"}, "from": [1, 2], "to": [3, 4]})
 
 

@@ -1,7 +1,7 @@
-"""セレクタ解決のセマンティクス（DESIGN.md §5「決定性の要」）のテスト。
+"""Tests for selector resolution semantics (the determinism core).
 
-方針「決定性をテストで担保」に従い、抽象の最初の凍結と同時に固定する。
-依存なしで動くよう pytest / 直接実行の両対応。
+Frozen together with the abstraction, per "cover determinism with tests".
+Runs under pytest or directly (no dependencies).
 """
 
 from __future__ import annotations

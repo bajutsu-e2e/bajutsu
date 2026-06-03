@@ -1,7 +1,7 @@
-"""オーケストレータ run ループ（DESIGN.md §3.1 / §6）のテスト。
+"""Tests for the orchestrator run loop.
 
-FakeDriver（インメモリ backend）と FakeClock（sleep で時刻を進める）で、実機なしに
-act → wait → verify を決定的にテストする。
+Use FakeDriver (in-memory backend) and FakeClock (sleep advances time) to test
+act -> wait -> verify deterministically without a Simulator.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from simpilot.scenario import Scenario
 
 
 class FakeClock:
-    """sleep で論理時刻を進める。`on_sleep` で「時間経過に応じて世界を変える」。"""
+    """Advance logical time on sleep; `on_sleep` mutates the world over time."""
 
     def __init__(self, on_sleep: Callable[[float], None] | None = None) -> None:
         self._t = 0.0
@@ -94,7 +94,7 @@ def test_tap_not_found_fails_and_stops() -> None:
     )
     assert not result.ok
     assert result.failure is not None and "step 0" in result.failure
-    assert len(result.steps) == 1  # 失敗で以降のステップは実行しない
+    assert len(result.steps) == 1  # stops after the failing step
 
 
 def test_tap_ambiguous_fails() -> None:
@@ -105,7 +105,7 @@ def test_tap_ambiguous_fails() -> None:
         clock=FakeClock(),
     )
     assert not result.ok
-    assert "件一致" in result.steps[0].reason  # §5 ambiguous
+    assert "件一致" in result.steps[0].reason  # ambiguous
 
 
 def test_assert_step_intermediate() -> None:

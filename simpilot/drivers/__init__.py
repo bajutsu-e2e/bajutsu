@@ -1,1 +1,1 @@
-"""ドライバ層 — RocketSim / idb を共通インターフェースへ吸収する（DESIGN.md §5）。"""
+"""Driver layer — unify RocketSim / idb behind a common interface."""
