@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any, Literal, Self, cast
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from simpilot import _yaml
 from simpilot.drivers import base
 
 Point = tuple[float, float]
@@ -282,7 +282,7 @@ Selector.model_rebuild()
 
 def load_scenarios(text: str) -> list[Scenario]:
     """Parse a YAML string (a list of scenarios) into validated Scenario objects."""
-    data = yaml.safe_load(text)
+    data = _yaml.safe_load(text)
     if not isinstance(data, list):
         raise ValueError("シナリオファイルはシナリオの配列（§6.1）")
     return [Scenario.model_validate(item) for item in data]

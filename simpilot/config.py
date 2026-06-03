@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from simpilot import _yaml
 from simpilot.scenario import Redact
 
 
@@ -128,5 +128,5 @@ def resolve(config: Config, app: str) -> Effective:
 
 def load_config(text: str) -> Config:
     """Parse a YAML config string."""
-    data = yaml.safe_load(text) or {}
+    data = _yaml.safe_load(text) or {}
     return Config.model_validate(data)

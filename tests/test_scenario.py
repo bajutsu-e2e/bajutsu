@@ -149,6 +149,20 @@ def test_capture_policy_and_redact() -> None:
     assert s.redact.headers == ["Authorization"]
 
 
+def test_capture_policy_on_key_is_not_yaml_bool() -> None:
+    # `on` must stay a string key, not YAML 1.1 boolean True.
+    yaml_text = """
+- name: rules
+  steps:
+    - tap: { id: home.title }
+  capturePolicy:
+    - on: { action: tap, idMatches: "*.submit" }
+      capture: [network]
+"""
+    s = load_scenarios(yaml_text)[0]
+    assert s.capture_policy[0].on.action == "tap"
+
+
 def test_trigger_idmatches_requires_action() -> None:
     with pytest.raises(ValidationError):
         Scenario.model_validate({
