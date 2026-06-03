@@ -58,13 +58,19 @@ Implemented and covered by tests (runs without a Simulator):
 - **Scenario schema** (steps, waits, assertions) with strict validation + YAML loading
 - **Assertion evaluation** (exists / value / label / count / enabled / disabled / selected)
 - **Tier 2 run loop** (act → wait → verify), tested via an in-memory fake driver
-- **Reporting** (`manifest.json` + JUnit XML)
-- **Config resolution** (team defaults × per-app)
+- **Reporting** (`manifest.json` + JUnit XML) and lightweight **evidence** primitives
+- **Config resolution** (team defaults × per-app) and **backend selection** (stability order)
+- **simctl command layer**, **idb / RocketSim output parsers**, the **doctor** convention
+  score, and the wired CLI `run` / `doctor`
 
-In progress (needs Xcode + a Simulator):
+Implemented but not yet validated on a real device (needs Xcode + a Simulator):
 
-- `env.py` (simctl wrapper), real `rocketsim` / `idb` backends, evidence capture,
-  `doctor --app`, and wiring the CLI `run` to real backends.
+- The idb / RocketSim backends' subprocess execution. Their output parsers are tested,
+  but the external CLI surfaces and JSON schemas are **assumed** and must be confirmed
+  against the installed tools; the simctl launch sequencing is best-effort.
+
+Not started (M2–M4): the AI loop (record / normalization), evidence rules + video /
+device logs / network, XCUITest codegen, and self-healing triage.
 
 ## Requirements
 
@@ -115,14 +121,21 @@ uv run mypy simpilot      # type check (strict)
 
 ```
 simpilot/
-├── drivers/base.py   # Driver protocol + selector resolution (determinism core)
-├── drivers/fake.py   # in-memory fake driver for tests
-├── scenario.py       # scenario schema + YAML loading
-├── assertions.py     # machine-checkable assertion evaluation
-├── orchestrator.py   # deterministic Tier 2 run loop
-├── report.py         # manifest.json + JUnit
-├── config.py         # team defaults × per-app resolution
-└── cli.py            # CLI (typer)
+├── drivers/base.py        # Driver protocol + selector resolution (determinism core)
+├── drivers/fake.py        # in-memory fake driver for tests
+├── drivers/idb.py         # idb backend (headless, coordinate tap)
+├── drivers/rocketsim.py   # RocketSim backend (semantic tap)
+├── scenario.py            # scenario schema + YAML loading
+├── assertions.py          # machine-checkable assertion evaluation
+├── orchestrator.py        # deterministic Tier 2 run loop
+├── runner.py              # config + scenarios -> report; device factory
+├── report.py              # manifest.json + JUnit
+├── evidence.py            # lightweight capture (elements / screenshot)
+├── config.py              # team defaults × per-app resolution
+├── backends.py            # backend selection + driver construction
+├── env.py                 # simctl command layer
+├── doctor.py              # convention score
+└── cli.py                 # CLI (typer)
 ```
 
 ## Roadmap
