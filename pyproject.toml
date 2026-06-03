@@ -8,10 +8,11 @@ dependencies = [
     "typer>=0.12",
     "pydantic>=2.7",
     "anthropic>=0.40",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "types-pyyaml>=6.0"]
 
 [project.scripts]
 simpilot = "simpilot.cli:app"
