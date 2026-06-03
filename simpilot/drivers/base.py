@@ -43,6 +43,18 @@ class Element(TypedDict):
     frame: Frame
 
 
+class Trait:
+    """正規化済みアクセシビリティトレイト（§5 の状態露出。§6.4 の判定に使う）。
+
+    ドライバは少なくとも以下を共通トークンへ正規化する（必要に応じ拡張）。
+    """
+
+    BUTTON = "button"
+    LINK = "link"
+    NOT_ENABLED = "notEnabled"  # 無効状態（§6.4 enabled / disabled）
+    SELECTED = "selected"       # 選択 / トグル状態（§6.4 selected）
+
+
 class Selector(TypedDict, total=False):
     """要素の指定（§5）。指定した全フィールドが AND で適用される。
 
