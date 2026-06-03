@@ -1,0 +1,41 @@
+"""Backend selection and driver construction.
+
+The backend list is ordered most-stable-first; the actuator is the first one that
+is available in this environment (e.g. RocketSim needs a GUI, idb is headless).
+"""
+
+from __future__ import annotations
+
+import shutil
+from collections.abc import Callable
+
+from simpilot.drivers import base
+from simpilot.drivers.idb import IdbDriver
+from simpilot.drivers.rocketsim import RocketSimDriver
+
+KNOWN = ("rocketsim", "idb")
+
+# Which executable backs each backend (used by the default availability check).
+_EXECUTABLE = {"rocketsim": "rocketsim", "idb": "idb"}
+
+
+def default_available(backend: str) -> bool:
+    """Available if the backend's executable is on PATH (a coarse first check)."""
+    exe = _EXECUTABLE.get(backend)
+    return exe is not None and shutil.which(exe) is not None
+
+
+def select_actuator(backends: list[str], available: Callable[[str], bool] = default_available) -> str:
+    """First available backend in stability order."""
+    for b in backends:
+        if b in KNOWN and available(b):
+            return b
+    raise RuntimeError(f"no available actuator among {backends}")
+
+
+def make_driver(backend: str, udid: str) -> base.Driver:
+    if backend == "rocketsim":
+        return RocketSimDriver(udid)
+    if backend == "idb":
+        return IdbDriver(udid)
+    raise ValueError(f"unknown backend: {backend!r}")

@@ -1,0 +1,34 @@
+"""Tests for backend selection and driver construction."""
+
+from __future__ import annotations
+
+import pytest
+
+from simpilot.backends import make_driver, select_actuator
+from simpilot.drivers import base
+
+
+def test_select_first_available() -> None:
+    assert select_actuator(["rocketsim", "idb"], available=lambda b: True) == "rocketsim"
+
+
+def test_select_falls_through_to_available() -> None:
+    # RocketSim unavailable (e.g. headless CI) -> idb.
+    assert select_actuator(["rocketsim", "idb"], available=lambda b: b == "idb") == "idb"
+
+
+def test_select_none_available_raises() -> None:
+    with pytest.raises(RuntimeError):
+        select_actuator(["rocketsim", "idb"], available=lambda b: False)
+
+
+def test_make_driver() -> None:
+    idb = make_driver("idb", "U")
+    assert base.Capability.SEMANTIC_TAP not in idb.capabilities()
+    rs = make_driver("rocketsim", "U")
+    assert base.Capability.SEMANTIC_TAP in rs.capabilities()
+
+
+def test_make_driver_unknown() -> None:
+    with pytest.raises(ValueError):
+        make_driver("bogus", "U")
