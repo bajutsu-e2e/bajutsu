@@ -1,0 +1,25 @@
+# SimPilot config — team defaults overlaid by per-app entries.
+defaults:
+  backend: [rocketsim, idb]   # UI-stability order; first available is the actuator
+  device: "iPhone 15"
+  locale: en_US
+  capture: [screenshot.after, elements, actionLog]
+  redact:
+    headers: [Authorization, Cookie]
+    fields: [token, password]
+  reservedNamespaces: [auth, nav]
+
+apps:
+  # The bundled fixture app (sample/). Instrumented for every SimPilot primitive.
+  sample:
+    bundleId: com.simpilot.sample
+    deeplinkScheme: simpilotsample
+    idNamespaces: [home, list, counter, settings, onboarding, auth, nav]
+    launchEnv: { SAMPLE_UITEST: "1" }
+
+  # unfydqry's SearchSample (separate repo; needs accessibilityIdentifiers added).
+  searchsample:
+    bundleId: com.unfydqry.searchsample
+    deeplinkScheme: searchsample
+    idNamespaces: [search, result, settings]
+    launchEnv: { SEARCH_SHOW_SETTINGS: "1" }

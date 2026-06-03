@@ -1,0 +1,15 @@
+# End-to-end smoke: onboarding -> login -> home -> counter.
+- name: onboard, log in, and increment the counter
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1" }
+  steps:
+    - tap: { id: onboarding.start }
+    - type: { text: "a@b.com", into: { id: auth.email } }
+    - type: { text: "pw", into: { id: auth.password } }
+    - tap: { id: auth.submit }
+    - wait: { for: { id: home.title }, timeout: 5 }
+    - tap: { id: counter.increment }
+    - tap: { id: counter.increment }
+  expect:
+    - exists: { id: home.title }
+    - value: { sel: { id: counter.value }, equals: "2" }

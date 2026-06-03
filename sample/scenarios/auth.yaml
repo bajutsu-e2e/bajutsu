@@ -1,0 +1,11 @@
+# enabled/disabled: the login button enables only when both fields are filled.
+- name: login button enables when fields are filled
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_SKIP_ONBOARDING: "1" }
+  steps:
+    - assert:
+        - disabled: { id: auth.submit }
+    - type: { text: "a@b.com", into: { id: auth.email } }
+    - type: { text: "pw", into: { id: auth.password } }
+  expect:
+    - enabled: { id: auth.submit }

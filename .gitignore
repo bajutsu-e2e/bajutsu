@@ -10,5 +10,11 @@ dist/
 .ruff_cache/
 .pytest_cache/
 
-# SimPilot 実行成果物（証跡・レポート。§9）
+# SimPilot run artifacts (evidence / reports)
 runs/
+
+# iOS sample (XcodeGen-generated project + build output)
+sample/*.xcodeproj/
+sample/build/
+DerivedData/
+*.xcuserstate

@@ -1,0 +1,17 @@
+# count: seed N rows via launch env, then count them; plus a search filter.
+- name: seed and count list rows
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_SEED: "5" }
+  steps:
+    - wait: { for: { id: home.title }, timeout: 5 }
+  expect:
+    - count: { sel: { idMatches: "list.row.*" }, equals: 5 }
+
+- name: search filters the list to one row
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_SEED: "5" }
+  steps:
+    - type: { text: "Item 3", into: { id: home.search } }
+  expect:
+    - count: { sel: { idMatches: "list.row.*" }, equals: 1 }
+    - exists: { id: list.row.3 }
