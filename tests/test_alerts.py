@@ -158,3 +158,33 @@ def test_failure_stands_without_handler() -> None:
     driver = FakeDriver([])
     result = run_scenario(driver, load_scenarios(_TAP_GO)[0])
     assert result.ok is False
+
+
+def _el(identifier: str) -> base.Element:
+    return {
+        "identifier": identifier,
+        "label": identifier,
+        "traits": ["staticText"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+
+
+def test_on_blocked_retries_expect_after_recovery() -> None:
+    # A system alert can cover the screen exactly when expect runs; the guard must
+    # clear it there too, not only during steps.
+    here, later = _el("here"), _el("later")
+    driver = FakeDriver([here])  # 'later' is missing until the alert is dismissed
+
+    def on_blocked(d: base.Driver) -> bool:
+        assert isinstance(d, FakeDriver)
+        d.screen = [here, later]
+        return True
+
+    yaml = (
+        "- name: e\n"
+        "  steps:\n    - wait: { for: { id: here }, timeout: 1 }\n"
+        "  expect:\n    - exists: { id: later }\n"
+    )
+    result = run_scenario(driver, load_scenarios(yaml)[0], on_blocked=on_blocked)
+    assert result.ok is True

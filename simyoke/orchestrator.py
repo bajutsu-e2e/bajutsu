@@ -264,6 +264,8 @@ def run_scenario(
     expect_results: list[AssertionResult] = []
     if failure is None and scenario.expect:
         expect_results = assertions.evaluate(driver.query(), scenario.expect)
+        if not assertions.passed(expect_results) and on_blocked is not None and on_blocked(driver):
+            expect_results = assertions.evaluate(driver.query(), scenario.expect)  # retry once
         if not assertions.passed(expect_results):
             failure = "expect: " + _fail_reason(expect_results)
 
