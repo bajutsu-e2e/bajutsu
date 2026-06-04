@@ -14,7 +14,7 @@ from simyoke.doctor import render, score
 from simyoke.dotenv import load_dotenv
 from simyoke.record import record as record_loop
 from simyoke.runner import device_factory, launch_driver, run_and_report
-from simyoke.scenario import dump_scenarios, load_scenarios
+from simyoke.scenario import Preconditions, dump_scenarios, load_scenarios
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
 
@@ -97,6 +97,9 @@ def record(
     goal: str = typer.Option(..., "--goal", help="natural-language goal to author"),
     udid: str = typer.Option("booted"),
     backend: str = typer.Option(""),
+    erase: bool = typer.Option(
+        True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario to OUT."""
@@ -106,7 +109,7 @@ def record(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    driver = launch_driver(udid, eff, actuator)
+    driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
     scenario = record_loop(driver, goal, ClaudeAgent(), name=goal)
     Path(out).write_text(dump_scenarios([scenario]), encoding="utf-8")
     typer.echo(f"recorded {len(scenario.steps)} steps -> {out}")
