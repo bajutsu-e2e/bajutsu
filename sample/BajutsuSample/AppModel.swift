@@ -61,6 +61,8 @@ final class AppModel: ObservableObject {
         case "text": return 3
         case "lists": return 4
         case "gestures": return 5
+        case "presentation": return 6
+        case "async": return 7
         default: return 0
         }
     }
@@ -125,7 +127,7 @@ final class AppModel: ObservableObject {
         switch url.host {
         case "settings": showSettings = true
         case "home": screen = .home
-        case "components", "controls", "text", "lists", "gestures":
+        case "components", "controls", "text", "lists", "gestures", "presentation", "async":
             screen = .home
             selectedTab = Self.tabIndex(url.host)
         default: break

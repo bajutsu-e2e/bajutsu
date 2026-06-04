@@ -1,0 +1,51 @@
+# Asynchronous state: determinate progress, fail -> retry -> success, a debounced
+# search, and button-driven pagination. Delays are real (Task.sleep), so condition
+# waits bridge them deterministically.
+
+# A determinate progress bar runs to completion.
+- name: progress runs to complete
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "async" }
+  steps:
+    - tap: { id: async.startProgress }
+    - wait: { for: { id: async.progress.done }, timeout: 5 }
+  expect:
+    - value: { sel: { id: async.progress.value }, equals: "100" }
+
+# A load fails, then a retry succeeds.
+- name: load fails then retry succeeds
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "async" }
+  steps:
+    - tap: { id: async.loadFail }
+    - wait: { for: { id: async.error }, timeout: 3 }
+    - assert:
+        - exists: { id: async.retry }
+        - exists: { id: async.loaded, negate: true }
+    - tap: { id: async.retry }
+    - wait: { for: { id: async.loaded }, timeout: 3 }
+  expect:
+    - exists: { id: async.loaded }
+
+# A debounced search updates only after typing settles.
+- name: search debounces
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "async" }
+  steps:
+    - assert:
+        - exists: { id: async.debounced.value, negate: true }
+    - type: { text: "hi", into: { id: async.search } }
+    - wait: { for: { id: async.debounced.value }, timeout: 3 }
+  expect:
+    - value: { sel: { id: async.debounced.value }, equals: "hi" }
+
+# Pagination appends rows.
+- name: load more appends rows
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "async" }
+  steps:
+    - assert:
+        - value: { sel: { id: async.count }, equals: "3" }
+    - tap: { id: async.loadMore }
+  expect:
+    - value: { sel: { id: async.count }, equals: "6" }

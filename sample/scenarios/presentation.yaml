@@ -1,0 +1,47 @@
+# Modal presentation: a detented sheet, a full-screen cover, an action sheet
+# (confirmationDialog), and an auto-dismissing toast (exercises `wait until gone`).
+
+# A sheet opens, then closes.
+- name: sheet opens and closes
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "presentation" }
+  steps:
+    - tap: { id: pres.openSheet }
+    - wait: { for: { id: pres.sheet.title }, timeout: 3 }
+    - tap: { id: pres.sheet.close }
+    - wait: { until: { gone: { id: pres.sheet.title } }, timeout: 3 }
+  expect:
+    - exists: { id: pres.sheet.title, negate: true }
+
+# A full-screen cover opens, then closes.
+- name: full-screen cover opens and closes
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "presentation" }
+  steps:
+    - tap: { id: pres.openCover }
+    - wait: { for: { id: pres.cover.title }, timeout: 3 }
+    - tap: { id: pres.cover.close }
+    - wait: { until: { gone: { id: pres.cover.title } }, timeout: 3 }
+  expect:
+    - exists: { id: pres.cover.title, negate: true }
+
+# An action sheet (confirmationDialog) records the chosen option.
+- name: dialog selects archive
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "presentation" }
+  steps:
+    - tap: { id: pres.openDialog }
+    - tap: { label: "Archive" }
+  expect:
+    - value: { sel: { id: pres.dialog.value }, equals: "archive" }
+
+# A toast appears and auto-dismisses.
+- name: toast appears then dismisses
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "presentation" }
+  steps:
+    - tap: { id: pres.showToast }
+    - wait: { for: { id: pres.toast }, timeout: 2 }
+    - wait: { until: { gone: { id: pres.toast } }, timeout: 3 }
+  expect:
+    - exists: { id: pres.toast, negate: true }

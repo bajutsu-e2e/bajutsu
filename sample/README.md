@@ -31,12 +31,13 @@ Set as `SIMCTL_CHILD_<NAME>` (Bajutsu does this from `launchEnv`).
 | `SAMPLE_SKIP_ONBOARDING=1` | Start at the login screen |
 | `SAMPLE_LOGGED_IN=1` | Start at the home screen (skip onboarding + login) |
 | `SAMPLE_SCREEN=settings` | Open the settings sheet on launch (use with `SAMPLE_LOGGED_IN`) |
-| `SAMPLE_TAB=<name>` | Select a tab on launch: `home` (default), `components`, `controls`, `text`, `lists`, `gestures` |
+| `SAMPLE_TAB=<name>` | Select a tab on launch: `home` (default), `components`, `controls`, `text`, `lists`, `gestures`, `presentation`, `async` |
 | `SAMPLE_SEED=<n>` | Seed `n` home list rows (default 3) |
 
 Deeplinks: `bajutsusample://settings`, `bajutsusample://home`, and one per tab —
 `bajutsusample://components`, `bajutsusample://controls`, `bajutsusample://text`,
-`bajutsusample://lists`, `bajutsusample://gestures` (each also logs in).
+`bajutsusample://lists`, `bajutsusample://gestures`, `bajutsusample://presentation`,
+`bajutsusample://async` (each also logs in).
 
 ## accessibilityIdentifier catalog
 
@@ -54,6 +55,8 @@ Identifiers follow the namespaced, data-derived convention (`<namespace>.<elemen
 | Text (`SAMPLE_TAB=text`) | `text.basic` + `text.basic.value` + `text.count`, `text.clear`, `text.email`, `text.editor` + `text.editor.value`, `text.required`, `text.error` (too short), `text.submit` (disabled until valid), `text.submitted` (value) |
 | Lists & Nav (`SAMPLE_TAB=lists`) | `lists.search`, `lists.list`, `lists.row.<id>` (data-derived, swipe-to-delete), `lists.empty` (no match), `lists.count` (value), `lists.edit` (EditButton, reorder/delete), `lists.refreshed` (after pull-to-refresh), `lists.detail.title` + `lists.detail.value` (pushed detail) |
 | Gestures (`SAMPLE_TAB=gestures`) | `gest.doubletap` + `gest.doubletap.value` (tap count), `gest.pinch` + `gest.pinch.value` (`in`/`out`), `gest.rotate` + `gest.rotate.value` (`cw`/`ccw`). double-tap drives on idb; pinch/rotate need multi-touch (XCUITest). |
+| Presentation (`SAMPLE_TAB=presentation`) | `pres.openSheet` -> `pres.sheet.title` + `pres.sheet.close` (detents), `pres.openCover` -> `pres.cover.title` + `pres.cover.close`, `pres.openDialog` -> action sheet -> `pres.dialog.value` (`archive`/`delete`), `pres.showToast` -> `pres.toast` (auto-dismisses) |
+| Async (`SAMPLE_TAB=async`) | `async.startProgress` -> `async.progress.value` + `async.progress.done`, `async.loadFail` -> `async.error` + `async.retry` -> `async.loaded`, `async.search` -> `async.debounced.value` (after debounce), `async.loadMore` -> `async.count` |
 
 ## Primitive coverage
 
@@ -78,6 +81,8 @@ backends can assert outcomes by value. Scenarios: `scenarios/controls.yaml`,
 | Text | TextField (default/email), TextEditor, clear, character count, inline validation gating submit |
 | Lists & Nav | List + search filter, swipe-to-delete, EditButton reorder/delete, pull-to-refresh, push navigation, empty state |
 | Gestures | double-tap (idb: two taps), pinch / rotate (multi-touch). `scenarios/gestures.yaml` |
+| Presentation | sheet (detents), fullScreenCover, confirmationDialog, auto-dismissing toast. `scenarios/presentation.yaml` |
+| Async | determinate ProgressView, fail -> retry -> success, debounced search, pagination. `scenarios/async.yaml` |
 
 **Gesture DSL note:** `doubleTap` / `pinch` / `rotate` are scenario primitives. idb is
 single-touch, so `pinch` / `rotate` fail a `bajutsu run` with a clear "needs multiTouch"
