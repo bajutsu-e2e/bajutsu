@@ -31,16 +31,6 @@ struct OnboardingView: View {
 struct AuthView: View {
     @EnvironmentObject var model: AppModel
 
-    // Under UITEST a plain field is used so iOS never offers to save the password
-    // (the system "Save Password?" alert lives in SpringBoard and would block tests).
-    @ViewBuilder private var passwordField: some View {
-        if model.animationsDisabled {
-            TextField("Password", text: $model.password)
-        } else {
-            SecureField("Password", text: $model.password)
-        }
-    }
-
     var body: some View {
         VStack(spacing: 16) {
             Text("Sign in")
@@ -52,7 +42,10 @@ struct AuthView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("auth.email")
-            passwordField
+            // A real SecureField: iOS offers to save the password on submit. That
+            // system "Save Password?" alert lives in SpringBoard (invisible to the
+            // idb query) and the tool's alert guard is expected to dismiss it.
+            SecureField("Password", text: $model.password)
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.asciiCapable)
                 .textInputAutocapitalization(.never)
