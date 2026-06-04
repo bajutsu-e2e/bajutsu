@@ -6,11 +6,13 @@ import struct
 from pathlib import Path
 from typing import Any
 
+from simyoke.agent import Proposal
 from simyoke.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from simyoke.drivers import base
 from simyoke.drivers.fake import FakeDriver
 from simyoke.orchestrator import run_scenario
-from simyoke.scenario import load_scenarios
+from simyoke.record import record as record_loop
+from simyoke.scenario import Step, load_scenarios
 
 
 def _window(w: float = 402.0, h: float = 874.0) -> base.Element:
@@ -188,3 +190,65 @@ def test_on_blocked_retries_expect_after_recovery() -> None:
     )
     result = run_scenario(driver, load_scenarios(yaml)[0], on_blocked=on_blocked)
     assert result.ok is True
+
+
+# --- record loop + alert guard ---
+
+
+class _FastClock:
+    def now(self) -> float:
+        return 0.0
+
+    def sleep(self, seconds: float) -> None:
+        pass
+
+
+class _ScriptAgent:
+    def __init__(self, *proposals: Proposal) -> None:
+        self._proposals = proposals
+        self._i = 0
+
+    def next_action(self, observation: object) -> Proposal:
+        proposal = self._proposals[min(self._i, len(self._proposals) - 1)]
+        self._i += 1
+        return proposal
+
+
+def test_record_guard_clears_blocking_before_agent_acts() -> None:
+    driver = FakeDriver([_window()])  # blocked: a prompt collapsed the tree
+    calls = {"n": 0}
+
+    def guard(d: base.Driver) -> bool:
+        calls["n"] += 1
+        assert isinstance(d, FakeDriver)
+        d.screen = [_el("go")]  # dismissing the prompt reveals the app
+        return True
+
+    agent = _ScriptAgent(
+        Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+        Proposal(done=True, expect=[]),
+    )
+    scenario = record_loop(
+        driver, "reach go", agent, clock=_FastClock(), with_screenshot=False, alert_guard=guard
+    )
+    assert calls["n"] >= 1
+    assert scenario.steps and scenario.steps[0].tap is not None
+    assert scenario.steps[0].tap.id == "go"
+
+
+def test_record_guard_not_called_when_app_is_visible() -> None:
+    driver = FakeDriver([_el("go")])  # actionable already; nothing blocking
+    calls = {"n": 0}
+
+    def guard(d: base.Driver) -> bool:
+        calls["n"] += 1
+        return False
+
+    agent = _ScriptAgent(
+        Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+        Proposal(done=True, expect=[]),
+    )
+    record_loop(
+        driver, "reach go", agent, clock=_FastClock(), with_screenshot=False, alert_guard=guard
+    )
+    assert calls["n"] == 0

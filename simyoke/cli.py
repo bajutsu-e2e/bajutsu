@@ -100,6 +100,12 @@ def record(
     erase: bool = typer.Option(
         True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
     ),
+    dismiss_alerts: bool = typer.Option(
+        False, "--dismiss-alerts", help="dismiss unexpected OS prompts while authoring (needs API key)"
+    ),
+    alert_instruction: str = typer.Option(
+        "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario to OUT."""
@@ -109,8 +115,13 @@ def record(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    alert_guard = None
+    if dismiss_alerts:
+        from simyoke.alerts import ClaudeAlertLocator, SystemAlertGuard
+
+        alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
     driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
-    scenario = record_loop(driver, goal, ClaudeAgent(), name=goal)
+    scenario = record_loop(driver, goal, ClaudeAgent(), name=goal, alert_guard=alert_guard)
     Path(out).write_text(dump_scenarios([scenario]), encoding="utf-8")
     typer.echo(f"recorded {len(scenario.steps)} steps -> {out}")
 
