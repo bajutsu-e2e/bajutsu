@@ -181,6 +181,35 @@ def test_wait_screen_changed() -> None:
     assert result.ok
 
 
+def test_wait_settled_waits_for_a_stable_screen() -> None:
+    driver = FakeDriver([_el("home", "Home", ["button"])])
+
+    def on_sleep(t: float) -> None:
+        if t < 0.15:  # a transition still in progress: the frame keeps moving
+            driver.screen = [{
+                "identifier": "home", "label": "Home", "traits": ["button"],
+                "value": None, "frame": (t, 0.0, 10.0, 10.0),
+            }]
+
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"until": "settled", "timeout": 2.0}}]}),
+        clock=FakeClock(on_sleep),
+    )
+    assert result.ok and result.steps[0].ok
+
+
+def test_wait_settled_proceeds_on_blank_screen() -> None:
+    driver = FakeDriver([])  # collapsed / covered: never settles, but must not fail the step
+
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"until": "settled", "timeout": 0.3}}]}),
+        clock=FakeClock(),
+    )
+    assert result.ok and result.steps[0].ok
+
+
 def test_type_and_swipe_actions() -> None:
     driver = FakeDriver([_el("search.field", "検索", ["textField"]), _el("list", "", ["table"])])
     result = run_scenario(

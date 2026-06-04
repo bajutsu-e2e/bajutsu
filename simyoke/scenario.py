@@ -119,7 +119,8 @@ class Gone(_Model):
 
 class Wait(_Model):
     for_: Selector | None = Field(default=None, alias="for")
-    until: Literal["screenChanged"] | Gone | None = None
+    # settled = wait until the screen stops changing (best-effort; for transition settle)
+    until: Literal["screenChanged", "settled"] | Gone | None = None
     timeout: float
 
     @model_validator(mode="after")

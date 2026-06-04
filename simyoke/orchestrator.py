@@ -105,12 +105,39 @@ def _wait(driver: base.Driver, w: Wait, clock: Clock) -> tuple[bool, str]:
                 return False, f"wait timeout: gone {target} ({w.timeout}s)"
             clock.sleep(_POLL)
         return True, ""
+    if w.until == "settled":
+        return _wait_settled(driver, deadline, clock)
     # until == "screenChanged"
     before = driver.query()
     while driver.query() == before:
         if clock.now() >= deadline:
             return False, f"wait timeout: screenChanged ({w.timeout}s)"
         clock.sleep(_POLL)
+    return True, ""
+
+
+_SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled"
+
+
+def _wait_settled(driver: base.Driver, deadline: float, clock: Clock) -> tuple[bool, str]:
+    """Wait until a non-empty screen stops changing (transition/animation finished).
+
+    A blank/collapsed tree (e.g. a screen mid-render, or one covered by a system
+    alert) is never treated as settled. Best-effort: timing out just proceeds with the
+    current screen — a settle is a stabilization hint, not a correctness assertion, so
+    it never fails the step.
+    """
+    previous = driver.query()
+    stable = 0
+    while stable < _SETTLE_POLLS:
+        if clock.now() >= deadline:
+            return True, ""
+        clock.sleep(_POLL)
+        current = driver.query()
+        if current == previous and any(el["identifier"] for el in current):
+            stable += 1
+        else:
+            stable, previous = 0, current
     return True, ""
 
 
