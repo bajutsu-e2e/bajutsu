@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 from typing import Any
 
@@ -103,21 +104,28 @@ class FakeClient:
         self.messages = _Messages(_Message(_Block(inp)), self.calls)
 
 
-def test_locator_parses_present_decision() -> None:
-    client = FakeClient({"present": True, "x": 0.31, "y": 0.62, "label": "Not Now"})
-    decision = ClaudeAlertLocator(client=client).locate(b"\x89PNG", "tap Save")
-    assert decision.present is True
-    assert decision.label == "Not Now"
-    assert abs(decision.x - 0.31) < 1e-9 and abs(decision.y - 0.62) < 1e-9
+def _png(width: int, height: int) -> bytes:
+    """A minimal PNG whose IHDR advertises the given pixel size (enough for _png_size)."""
+    ihdr = struct.pack(">II", width, height) + b"\x08\x06\x00\x00\x00"
+    return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + ihdr
+
+
+def test_locator_normalizes_pixel_coordinates() -> None:
+    client = FakeClient({"present": True, "x": 374, "y": 1611, "label": "Not Now"})
+    decision = ClaudeAlertLocator(client=client).locate(_png(1206, 2622), "tap Save")
+    assert decision.present is True and decision.label == "Not Now"
+    assert abs(decision.x - 374 / 1206) < 1e-6
+    assert abs(decision.y - 1611 / 2622) < 1e-6
     call = client.calls[0]
     assert call["tool_choice"] == {"type": "any"}
     content = call["messages"][0]["content"]
     assert any(c["type"] == "image" for c in content)
-    assert "tap Save" in next(c["text"] for c in content if c["type"] == "text")
+    text = next(c["text"] for c in content if c["type"] == "text")
+    assert "1206x2622" in text and "tap Save" in text
 
 
 def test_locator_absent_decision() -> None:
-    decision = ClaudeAlertLocator(client=FakeClient({"present": False})).locate(b"x", None)
+    decision = ClaudeAlertLocator(client=FakeClient({"present": False})).locate(_png(10, 10), None)
     assert decision.present is False
 
 
