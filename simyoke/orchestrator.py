@@ -16,10 +16,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from simyoke import assertions
+from simyoke import assertions, intervals
 from simyoke.assertions import AssertionResult
 from simyoke.drivers import base
-from simyoke.evidence import EvidenceSink, NullSink
+from simyoke.evidence import Artifact, EvidenceSink, NullSink
 from simyoke.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait
 
 _SWIPE_DIST = 100.0
@@ -49,6 +49,7 @@ class StepOutcome:
     reason: str = ""
     duration_s: float = 0.0
     assertion_results: list[AssertionResult] = field(default_factory=list)
+    artifacts: list[Artifact] = field(default_factory=list)
 
 
 @dataclass
@@ -203,6 +204,20 @@ def _rule_fires(
     return False
 
 
+def _dedupe(tokens: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for token in tokens:
+        if token not in seen:
+            seen.add(token)
+            out.append(token)
+    return out
+
+
+def _kind_of(token: str) -> str:
+    return token.partition(".")[0]
+
+
 def _collect_captures(
     scenario: Scenario, step: Step, kind: str, ok: bool, screen_changed: bool
 ) -> list[str]:
@@ -213,13 +228,26 @@ def _collect_captures(
     for rule in scenario.capture_policy:
         if _rule_fires(rule, kind, primary_id, screen_changed, ok):
             fired.extend(rule.capture)
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for kind_token in fired:
-        if kind_token not in seen:
-            seen.add(kind_token)
-            deduped.append(kind_token)
-    return deduped
+    return _dedupe(fired)
+
+
+def _pre_intervals(scenario: Scenario, step: Step, kind: str) -> list[str]:
+    """Interval capture tokens knowable before the step runs (inline + action rules).
+
+    Interval kinds (video / deviceLog) must start before the action, so only triggers
+    determinable from the step itself qualify — screenChanged / error fire too late.
+    """
+    tokens: list[str] = list(step.capture or [])
+    primary = _primary_selector(step)
+    primary_id = primary.id if primary is not None else None
+    for rule in scenario.capture_policy:
+        trigger = rule.on
+        if trigger.action is not None and trigger.action == _DSL_ACTION.get(kind, kind):
+            if trigger.id_matches is None or (
+                primary_id is not None and fnmatch.fnmatchcase(primary_id, trigger.id_matches)
+            ):
+                tokens.extend(rule.capture)
+    return [t for t in _dedupe(tokens) if _kind_of(t) in intervals.INTERVAL_KINDS]
 
 
 def run_scenario(
@@ -243,7 +271,9 @@ def run_scenario(
     for i, step in enumerate(scenario.steps):
         kind = _action_of(step)
         outcome = StepOutcome(index=i, action=kind)
+        step_id = step.name or f"step{i}"
         before = driver.query() if wants_screen_changed else None
+        running = sink.start_intervals(step_id, _pre_intervals(scenario, step, kind))
         start = clock.now()
         ok, reason, results = _run_step_body(driver, step, kind, clock)
         if not ok and on_blocked is not None and on_blocked(driver):
@@ -251,10 +281,12 @@ def run_scenario(
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 
+        for interval in running:  # stop interval captures now that the step has settled
+            outcome.artifacts.append(Artifact(interval.stop().name, interval.kind, interval.provider))
         screen_changed = before is not None and driver.query() != before
         fired = _collect_captures(scenario, step, kind, outcome.ok, screen_changed)
-        if fired:
-            sink.capture(driver, step.name or f"step{i}", fired)
+        instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
+        outcome.artifacts.extend(sink.capture(driver, step_id, instant))
 
         outcomes.append(outcome)
         if not outcome.ok:

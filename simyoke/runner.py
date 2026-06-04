@@ -15,6 +15,7 @@ from simyoke import env
 from simyoke.backends import default_available, make_driver, select_actuator
 from simyoke.config import Effective
 from simyoke.drivers import base
+from simyoke.evidence import EvidenceSink
 from simyoke.orchestrator import BlockedHandler, Clock, RunResult, run_scenario
 from simyoke.report import write_report
 from simyoke.scenario import Preconditions, Scenario
@@ -66,9 +67,13 @@ def run_all(
     factory: DriverFactory,
     clock: Clock | None = None,
     on_blocked: BlockedHandler | None = None,
+    sink: EvidenceSink | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each with a freshly built driver."""
-    return [run_scenario(factory(eff, s), s, clock, on_blocked=on_blocked) for s in scenarios]
+    return [
+        run_scenario(factory(eff, s), s, clock, sink=sink, on_blocked=on_blocked)
+        for s in scenarios
+    ]
 
 
 def run_and_report(
@@ -79,9 +84,10 @@ def run_and_report(
     run_id: str,
     clock: Clock | None = None,
     on_blocked: BlockedHandler | None = None,
+    sink: EvidenceSink | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit under runs_dir/run_id."""
-    results = run_all(eff, scenarios, factory, clock, on_blocked=on_blocked)
+    results = run_all(eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink)
     manifest = write_report(runs_dir / run_id, run_id, results)
     return results, manifest
 

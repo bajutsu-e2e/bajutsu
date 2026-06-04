@@ -31,7 +31,10 @@ def test_write_elements(tmp_path: Path) -> None:
 def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A")])
     written = capture(driver, tmp_path / "step0", ["elements", "screenshot.after"])
-    assert written == ["elements.json", "after.png"]
+    assert [(a.name, a.kind, a.provider) for a in written] == [
+        ("elements.json", "elements", "driver"),
+        ("after.png", "screenshot", "driver"),
+    ]
     assert (tmp_path / "step0" / "elements.json").exists()
     # FakeDriver records the screenshot call with the path it was given.
     assert ("screenshot", str(tmp_path / "step0" / "after.png")) in driver.actions

@@ -12,6 +12,7 @@ from simyoke.claude_agent import ClaudeAgent
 from simyoke.config import Effective, load_config, resolve
 from simyoke.doctor import render, score
 from simyoke.dotenv import load_dotenv
+from simyoke.evidence import FileSink
 from simyoke.record import record as record_loop
 from simyoke.runner import device_factory, launch_driver, run_and_report
 from simyoke.scenario import Preconditions, dump_scenarios, load_scenarios
@@ -58,6 +59,9 @@ def run(
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
     ),
+    log_predicate: str = typer.Option(
+        "", "--log-predicate", help="NSPredicate narrowing the deviceLog stream (e.g. subsystem)"
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Run a scenario deterministically (no AI, unless --dismiss-alerts)."""
@@ -82,8 +86,9 @@ def run(
         guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None)
         on_blocked = guard.dismiss
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    sink = FileSink(Path("runs") / run_id, udid=udid, log_predicate=log_predicate or None)
     results, manifest = run_and_report(
-        eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked
+        eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink
     )
     ok = all(r.ok for r in results)
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")

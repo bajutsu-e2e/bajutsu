@@ -4,19 +4,28 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from simyoke import intervals
 from simyoke.drivers import base
 from simyoke.drivers.fake import FakeDriver
-from simyoke.evidence import FileSink
+from simyoke.evidence import Artifact, FileSink
 from simyoke.orchestrator import run_scenario
 from simyoke.scenario import Scenario
 
 
 class RecordingSink:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, list[str]]] = []
+        self.calls: list[tuple[str, list[str]]] = []  # instant capture calls
+        self.interval_calls: list[tuple[str, list[str]]] = []
 
-    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> None:
-        self.calls.append((step_id, kinds))
+    def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]:
+        if kinds:
+            self.interval_calls.append((step_id, kinds))
+        return []
+
+    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
+        if kinds:
+            self.calls.append((step_id, kinds))
+        return []
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:
@@ -112,7 +121,9 @@ def test_inline_capture_fires() -> None:
         _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["deviceLog"]}]}),
         sink=sink,
     )
-    assert sink.calls == [("step0", ["deviceLog"])]
+    # deviceLog is an interval: started before the step, not an instant capture
+    assert sink.interval_calls == [("step0", ["deviceLog"])]
+    assert sink.calls == []
 
 
 def test_no_capture_no_fire() -> None:
