@@ -85,11 +85,13 @@ final class AppModel: ObservableObject {
     func reindex() {
         reindexStatus = "reindexing"
         settingsChanged = false
-        logger.notice("reindex started")
         let interval = signposter.beginInterval("reindex")
         Task { @MainActor in
-            // ~1.2s so an evidence capture window is long enough for the log stream
-            // (which has startup latency) to record the completion line.
+            // Emit the start/finish markers from inside the task so both land inside an
+            // appTrace capture window after the log stream has warmed up (it has startup
+            // latency, so a marker logged synchronously at the tap would be missed).
+            try? await Task.sleep(for: .milliseconds(800))
+            self.logger.notice("reindex started")
             try? await Task.sleep(for: .milliseconds(1200))
             self.reindexStatus = "done"
             self.signposter.endInterval("reindex", interval)

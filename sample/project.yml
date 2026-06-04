@@ -46,6 +46,10 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
 schemes:
+  BajutsuSample:
+    build:
+      targets:
+        BajutsuSample: all
   UITests:
     build:
       targets:

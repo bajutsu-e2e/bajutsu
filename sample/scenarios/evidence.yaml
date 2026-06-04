@@ -1,11 +1,12 @@
-# Interval evidence: capture a video segment and the device log around the
-# reindex (which emits an os_signpost interval on subsystem com.bajutsu.sample).
-- name: capture video and device log around reindex
+# Interval evidence: video + device log + appTrace captured around reindex.
+# reindex logs "reindex started/finished" markers; appTrace pairs them into a
+# timed interval, correlating the UI wait with the app's internal work.
+- name: capture video, device log, and app trace around reindex
   preconditions:
     launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_SCREEN: "settings" }
   steps:
     - tap: { id: settings.reindex }
-    - wait: { for: { id: settings.reindexComplete }, timeout: 5 }
-      capture: [video, deviceLog]
+    - wait: { for: { id: settings.reindexComplete }, timeout: 8 }
+      capture: [video, deviceLog, appTrace]
   expect:
     - value: { sel: { id: settings.status }, equals: "done" }
