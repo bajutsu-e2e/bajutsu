@@ -7,6 +7,7 @@ driver.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -37,11 +38,26 @@ def launch_driver(
     if pre.erase:
         e.erase()
     e.boot()
+    e.terminate(eff.bundle_id)  # clean start so readiness reflects the new launch
     launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env}
     e.launch(eff.bundle_id, [*eff.launch_args, *pre.launch_args], launch_env)
     if pre.deeplink is not None:
         e.openurl(pre.deeplink)
-    return make_driver(actuator, udid)
+    driver = make_driver(actuator, udid)
+    _await_ready(driver)
+    return driver
+
+
+def _await_ready(driver: base.Driver, timeout: float = 10.0, poll: float = 0.2) -> None:
+    """Poll until the launched app has rendered a UI (more than the app root element)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if len(driver.query()) >= 2:
+                return
+        except Exception:  # noqa: BLE001 — app may not be answerable yet
+            pass
+        time.sleep(poll)
 
 
 def run_all(

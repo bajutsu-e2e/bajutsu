@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -46,7 +47,7 @@ def screenshot_cmd(udid: str, path: str) -> list[str]:
 
 
 def _num(v: float) -> str:
-    return str(int(v)) if v == int(v) else str(v)
+    return str(round(v))  # idb ui tap/swipe require integer coordinates
 
 
 # --- describe-all parsing ---
@@ -118,8 +119,20 @@ class IdbDriver:
     def query(self) -> list[base.Element]:
         return parse_describe_all(self._run(describe_all_cmd(self.udid)))
 
+    def _resolve(self, sel: base.Selector, timeout: float = 3.0, poll: float = 0.2) -> base.Element:
+        # Real-device trees can be transiently empty during transitions; retry
+        # not-found while keeping ambiguity fail-fast.
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                return base.resolve_unique(self.query(), sel)
+            except base.ElementNotFound:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(poll)
+
     def _center(self, sel: base.Selector) -> base.Point:
-        el = base.resolve_unique(self.query(), sel)
+        el = self._resolve(sel)
         x, y, w, h = el["frame"]
         return (x + w / 2, y + h / 2)
 

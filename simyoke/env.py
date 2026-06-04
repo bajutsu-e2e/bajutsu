@@ -69,7 +69,10 @@ class Env:
         self._run(erase_cmd(self.udid), None)
 
     def boot(self) -> None:
-        self._run(boot_cmd(self.udid), None)
+        try:
+            self._run(boot_cmd(self.udid), None)
+        except subprocess.CalledProcessError:
+            pass  # already booted; boot is idempotent
 
     def launch(
         self,
@@ -80,7 +83,10 @@ class Env:
         self._run(launch_cmd(self.udid, bundle_id, args), child_env(env or {}))
 
     def terminate(self, bundle_id: str) -> None:
-        self._run(terminate_cmd(self.udid, bundle_id), None)
+        try:
+            self._run(terminate_cmd(self.udid, bundle_id), None)
+        except subprocess.CalledProcessError:
+            pass  # not running
 
     def openurl(self, url: str) -> None:
         self._run(openurl_cmd(self.udid, url), None)

@@ -44,6 +44,7 @@ def run(
     backend: str = typer.Option("", help="comma list; first available is the actuator"),
     udid: str = typer.Option("booted"),
     workers: int = typer.Option(1),
+    erase: bool = typer.Option(True, "--erase/--no-erase", help="erase the device before each test"),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Run a scenario deterministically (no AI)."""
@@ -53,6 +54,9 @@ def run(
         typer.echo(f"scenario not found: {scenario}")
         raise typer.Exit(2)
     scenarios = load_scenarios(scenario_path.read_text(encoding="utf-8"))
+    if not erase:
+        for s in scenarios:
+            s.preconditions.erase = False
     try:
         factory = device_factory(udid, _backends(backend, eff.backend))
     except RuntimeError as e:
