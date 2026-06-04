@@ -96,6 +96,9 @@ struct HomeView: View {
 
                 TextField("Search", text: $model.query)
                     .textFieldStyle(.roundedBorder)
+                    .keyboardType(.asciiCapable)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .accessibilityIdentifier("home.search")
 
                 List(model.filteredItems) { item in
