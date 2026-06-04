@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Protocol
 
 from simyoke.drivers import base
 
@@ -46,3 +47,26 @@ def capture(driver: base.Driver, step_dir: Path, kinds: list[str]) -> list[str]:
             written.append(write_screenshot(driver, step_dir, name).name)
         # actionLog is in the manifest; video / network / appTrace come later.
     return written
+
+
+class EvidenceSink(Protocol):
+    """Where fired captures go. The orchestrator calls this when a rule fires."""
+
+    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> None: ...
+
+
+class NullSink:
+    """Default sink: capture nothing (keeps runs side-effect free unless asked)."""
+
+    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> None:
+        return None
+
+
+class FileSink:
+    """Write captured artifacts under run_dir/<step_id>/."""
+
+    def __init__(self, run_dir: Path) -> None:
+        self.run_dir = run_dir
+
+    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> None:
+        capture(driver, self.run_dir / step_id, kinds)

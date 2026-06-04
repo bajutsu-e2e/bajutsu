@@ -10,6 +10,7 @@ wired in later.
 
 from __future__ import annotations
 
+import fnmatch
 import time
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -17,7 +18,8 @@ from typing import Protocol
 from simyoke import assertions
 from simyoke.assertions import AssertionResult
 from simyoke.drivers import base
-from simyoke.scenario import Gone, Scenario, Step, Wait
+from simyoke.evidence import EvidenceSink, NullSink
+from simyoke.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait
 
 _SWIPE_DIST = 100.0
 _POLL = 0.05
@@ -141,19 +143,76 @@ def _fail_reason(results: list[AssertionResult]) -> str:
     return "; ".join(r.reason for r in results if not r.ok)
 
 
+# --- capturePolicy firing (evidence rules) ---
+
+_DSL_ACTION = {"long_press": "longPress", "assert_": "assert"}
+
+
+def _primary_selector(step: Step) -> Selector | None:
+    if step.tap is not None:
+        return step.tap
+    if step.long_press is not None:
+        return step.long_press.sel
+    if step.type is not None:
+        return step.type.into
+    if step.swipe is not None:
+        return step.swipe.on
+    return None
+
+
+def _rule_fires(
+    rule: CaptureRule, kind: str, primary_id: str | None, screen_changed: bool, ok: bool
+) -> bool:
+    trigger = rule.on
+    if trigger.action is not None:
+        if trigger.action != _DSL_ACTION.get(kind, kind):
+            return False
+        if trigger.id_matches is not None:
+            return primary_id is not None and fnmatch.fnmatchcase(primary_id, trigger.id_matches)
+        return True
+    if trigger.event == "screenChanged":
+        return screen_changed
+    if trigger.result == "error":
+        return not ok
+    return False
+
+
+def _collect_captures(
+    scenario: Scenario, step: Step, kind: str, ok: bool, screen_changed: bool
+) -> list[str]:
+    """Capture kinds fired for this step: inline `capture` plus matching policy rules."""
+    fired: list[str] = list(step.capture or [])
+    primary = _primary_selector(step)
+    primary_id = primary.id if primary is not None else None
+    for rule in scenario.capture_policy:
+        if _rule_fires(rule, kind, primary_id, screen_changed, ok):
+            fired.extend(rule.capture)
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for kind_token in fired:
+        if kind_token not in seen:
+            seen.add(kind_token)
+            deduped.append(kind_token)
+    return deduped
+
+
 def run_scenario(
     driver: base.Driver,
     scenario: Scenario,
     clock: Clock | None = None,
+    sink: EvidenceSink | None = None,
 ) -> RunResult:
-    """Run one scenario deterministically."""
+    """Run one scenario deterministically, firing capturePolicy rules into `sink`."""
     clock = clock or RealClock()
+    sink = sink or NullSink()
+    wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
     failure: str | None = None
 
     for i, step in enumerate(scenario.steps):
         kind = _action_of(step)
         outcome = StepOutcome(index=i, action=kind)
+        before = driver.query() if wants_screen_changed else None
         start = clock.now()
         try:
             if kind == "wait":
@@ -170,6 +229,12 @@ def run_scenario(
             outcome.ok = False
             outcome.reason = str(e)
         outcome.duration_s = clock.now() - start
+
+        screen_changed = before is not None and driver.query() != before
+        fired = _collect_captures(scenario, step, kind, outcome.ok, screen_changed)
+        if fired:
+            sink.capture(driver, step.name or f"step{i}", fired)
+
         outcomes.append(outcome)
         if not outcome.ok:
             failure = f"step {i} ({kind}): {outcome.reason}"
