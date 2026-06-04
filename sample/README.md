@@ -31,9 +31,12 @@ Set as `SIMCTL_CHILD_<NAME>` (Bajutsu does this from `launchEnv`).
 | `SAMPLE_SKIP_ONBOARDING=1` | Start at the login screen |
 | `SAMPLE_LOGGED_IN=1` | Start at the home screen (skip onboarding + login) |
 | `SAMPLE_SCREEN=settings` | Open the settings sheet on launch (use with `SAMPLE_LOGGED_IN`) |
-| `SAMPLE_SEED=<n>` | Seed `n` list rows (default 3) |
+| `SAMPLE_TAB=<name>` | Select a tab on launch: `home` (default), `components`, `controls`, `text`, `lists`, `gestures` |
+| `SAMPLE_SEED=<n>` | Seed `n` home list rows (default 3) |
 
-Deeplinks: `bajutsusample://settings`, `bajutsusample://home`.
+Deeplinks: `bajutsusample://settings`, `bajutsusample://home`, and one per tab —
+`bajutsusample://components`, `bajutsusample://controls`, `bajutsusample://text`,
+`bajutsusample://lists`, `bajutsusample://gestures` (each also logs in).
 
 ## accessibilityIdentifier catalog
 
@@ -47,6 +50,10 @@ Identifiers follow the namespaced, data-derived convention (`<namespace>.<elemen
 | Counter | `counter.value` (exposes accessibilityValue), `counter.increment` |
 | List rows | `list.row.<id>` (data-derived; `<id>` is the row's stable id) |
 | Settings | `settings.title`, `settings.normalizeToggle` (isSelected trait when on), `settings.banner` (appears after a change), `settings.reindex`, `settings.status` (value), `settings.reindexComplete` (appears when done), `settings.close` |
+| Controls (`SAMPLE_TAB=controls`) | `ctrl.toggle` (label hidden so the element is just the switch) + `ctrl.toggle.value`, `ctrl.stepper` + `ctrl.stepper.value`, `ctrl.slider` + `ctrl.slider.value`, `ctrl.segment.{one,two,three}` (id'd buttons) + `ctrl.segment.value`, `ctrl.menu` + `ctrl.menu.value`, `ctrl.button` + `ctrl.button.value`, `ctrl.buttonDisabled` (always disabled). State mirrors to each `*.value` label. |
+| Text (`SAMPLE_TAB=text`) | `text.basic` + `text.basic.value` + `text.count`, `text.clear`, `text.email`, `text.editor` + `text.editor.value`, `text.required`, `text.error` (too short), `text.submit` (disabled until valid), `text.submitted` (value) |
+| Lists & Nav (`SAMPLE_TAB=lists`) | `lists.search`, `lists.list`, `lists.row.<id>` (data-derived, swipe-to-delete), `lists.empty` (no match), `lists.count` (value), `lists.edit` (EditButton, reorder/delete), `lists.refreshed` (after pull-to-refresh), `lists.detail.title` + `lists.detail.value` (pushed detail) |
+| Gestures (`SAMPLE_TAB=gestures`) | `gest.doubletap` + `gest.doubletap.value` (tap count), `gest.pinch` + `gest.pinch.value` (`in`/`out`), `gest.rotate` + `gest.rotate.value` (`cw`/`ccw`). double-tap drives on idb; pinch/rotate need multi-touch (XCUITest). |
 
 ## Primitive coverage
 
@@ -55,5 +62,24 @@ Identifiers follow the namespaced, data-derived convention (`<namespace>.<elemen
 | tap / type(into) / wait(for) | `scenarios/smoke.yaml` |
 | enabled / disabled | `scenarios/auth.yaml` |
 | selected / exists(+negate) / value / capturePolicy | `scenarios/settings.yaml` |
-| count / search filter | `scenarios/list.yaml` |
+| count / search filter | `scenarios/list.yaml`, `scenarios/lists.yaml` |
 | os_signpost interval | emitted by the settings reindex (`com.bajutsu.sample` subsystem) |
+
+## P1 UI gallery (Controls / Text / Lists)
+
+Three extra tabs broaden the fixture beyond the smoke flow into a small UI gallery.
+Every interactive control mirrors its state into a `*.value` result label so headless
+backends can assert outcomes by value. Scenarios: `scenarios/controls.yaml`,
+`scenarios/text.yaml`, `scenarios/lists.yaml`.
+
+| Tab | Exercises |
+|---|---|
+| Controls | Toggle, Stepper, Slider, single-select segment (id'd buttons), Menu, enabled/disabled Button |
+| Text | TextField (default/email), TextEditor, clear, character count, inline validation gating submit |
+| Lists & Nav | List + search filter, swipe-to-delete, EditButton reorder/delete, pull-to-refresh, push navigation, empty state |
+| Gestures | double-tap (idb: two taps), pinch / rotate (multi-touch). `scenarios/gestures.yaml` |
+
+**Gesture DSL note:** `doubleTap` / `pinch` / `rotate` are scenario primitives. idb is
+single-touch, so `pinch` / `rotate` fail a `bajutsu run` with a clear "needs multiTouch"
+reason; `bajutsu codegen` emits them as `doubleTap()` / `pinch(withScale:)` / `rotate(_:)`,
+so their on-device verification path is the generated XCUITest.

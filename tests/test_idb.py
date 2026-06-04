@@ -54,7 +54,8 @@ def test_tap_resolves_frame_center() -> None:
     driver.tap({"id": "settings.open"})
     # center of (0,0,100,40) -> (50, 20)
     assert calls == [tap_cmd("U", 50, 20)]
-    assert calls[0] == ["idb", "ui", "tap", "--udid", "U", "50", "20"]
+    # A short dwell is always included so the tap actuates a UISwitch (see idb.py).
+    assert calls[0] == ["idb", "ui", "tap", "--udid", "U", "50", "20", "--duration", "0.1"]
 
 
 def test_capabilities_has_no_semantic_tap() -> None:

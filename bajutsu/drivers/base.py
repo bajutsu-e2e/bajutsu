@@ -33,6 +33,7 @@ class Capability:
     NETWORK = "network"               # native network monitoring
     SCREENSHOT = "screenshot"
     ELEMENTS = "elements"
+    MULTI_TOUCH = "multiTouch"        # two-finger gestures (pinch / rotate); idb is single-touch
 
 
 class Element(TypedDict):
@@ -86,8 +87,13 @@ class Driver(Protocol):
     def query(self) -> list[Element]: ...
     def tap(self, sel: Selector) -> None: ...
     def tap_point(self, p: Point) -> None: ...  # raw coordinate tap (system alerts, etc.)
+    def double_tap(self, sel: Selector) -> None: ...
     def long_press(self, sel: Selector, duration: float) -> None: ...
     def swipe(self, frm: Point, to: Point) -> None: ...
+    # Two-finger gestures. scale > 1 zooms in, < 1 zooms out; radians > 0 rotates
+    # clockwise. Only backends advertising MULTI_TOUCH support these.
+    def pinch(self, sel: Selector, scale: float) -> None: ...
+    def rotate(self, sel: Selector, radians: float) -> None: ...
     def type_text(self, text: str) -> None: ...
     def wait_for(self, sel: Selector, timeout: float) -> bool: ...
     def screenshot(self, path: str) -> None: ...
@@ -99,6 +105,12 @@ class Driver(Protocol):
 
 class SelectorError(Exception):
     """Selector resolution failed."""
+
+
+class UnsupportedAction(Exception):
+    """The actuator backend cannot perform this action (e.g. a multi-touch gesture
+    on idb, which is single-touch). Surfaced as a step failure with a clear reason
+    rather than silently passing."""
 
 
 class ElementNotFound(SelectorError):

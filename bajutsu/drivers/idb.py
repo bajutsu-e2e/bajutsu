@@ -18,6 +18,13 @@ from bajutsu.drivers import base
 
 RunFn = Callable[[list[str]], str]
 
+# A short dwell on every tap. A zero-duration `idb ui tap` presses and releases in
+# the same instant, which a UISwitch's gesture recognizer does not register — so a
+# coordinate tap on a real Toggle never flips it. A brief hold actuates the switch
+# while staying far below any long-press threshold, so plain buttons/rows behave
+# identically. (Surfaced by the sample app's ctrl.toggle.)
+_TAP_DURATION_S = 0.1
+
 
 def _real_run(args: list[str]) -> str:
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
@@ -31,7 +38,7 @@ def describe_all_cmd(udid: str) -> list[str]:
 
 
 def tap_cmd(udid: str, x: float, y: float) -> list[str]:
-    return ["idb", "ui", "tap", "--udid", udid, _num(x), _num(y)]
+    return ["idb", "ui", "tap", "--udid", udid, _num(x), _num(y), "--duration", str(_TAP_DURATION_S)]
 
 
 def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str]:
@@ -147,6 +154,22 @@ class IdbDriver:
 
     def tap_point(self, p: base.Point) -> None:
         self._run(tap_cmd(self.udid, p[0], p[1]))
+
+    def double_tap(self, sel: base.Selector) -> None:
+        # idb has no double-tap; two quick taps at the same point register as one.
+        x, y = self._center(sel)
+        self._run(tap_cmd(self.udid, x, y))
+        self._run(tap_cmd(self.udid, x, y))
+
+    def pinch(self, sel: base.Selector, scale: float) -> None:
+        raise base.UnsupportedAction(
+            "pinch は multiTouch が必要; idb は単一タッチ（HID に複数指イベントがない）"
+        )
+
+    def rotate(self, sel: base.Selector, radians: float) -> None:
+        raise base.UnsupportedAction(
+            "rotate は multiTouch が必要; idb は単一タッチ（HID に複数指イベントがない）"
+        )
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
         x, y = self._center(sel)

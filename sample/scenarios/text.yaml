@@ -1,0 +1,41 @@
+# Text entry: value + character-count mirroring, clear, and inline validation
+# that gates the submit button.
+
+# Typing updates both the mirrored value and the live character count.
+- name: typing updates value and count
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "text" }
+  steps:
+    - type: { text: "hello", into: { id: text.basic } }
+  expect:
+    - value: { sel: { id: text.basic.value }, equals: "hello" }
+    - value: { sel: { id: text.count }, equals: "5" }
+
+# Clear empties the field and resets the count.
+- name: clear empties the field
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "text" }
+  steps:
+    - type: { text: "abc", into: { id: text.basic } }
+    - tap: { id: text.clear }
+  expect:
+    - value: { sel: { id: text.count }, equals: "0" }
+
+# Validation: submit is disabled and no error until the field has content; an
+# error shows while it is too short; submitting a valid value records it.
+- name: validation gates submit
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "text" }
+  steps:
+    - assert:
+        - disabled: { id: text.submit }
+        - exists: { id: text.error, negate: true }
+    - type: { text: "ab", into: { id: text.required } }
+    - assert:
+        - exists: { id: text.error }
+        - disabled: { id: text.submit }
+    - type: { text: "c", into: { id: text.required } }
+    - tap: { id: text.submit }
+  expect:
+    - exists: { id: text.error, negate: true }
+    - value: { sel: { id: text.submitted }, equals: "abc" }

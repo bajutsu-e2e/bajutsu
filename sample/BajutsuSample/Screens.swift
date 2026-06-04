@@ -30,6 +30,18 @@ struct MainTabView: View {
             ComponentsView()
                 .tabItem { Label("Components", systemImage: "square.grid.2x2") }
                 .tag(1)
+            ControlsView()
+                .tabItem { Label("Controls", systemImage: "slider.horizontal.3") }
+                .tag(2)
+            TextInputView()
+                .tabItem { Label("Text", systemImage: "textformat") }
+                .tag(3)
+            ListsNavView()
+                .tabItem { Label("Lists", systemImage: "list.bullet") }
+                .tag(4)
+            GesturesView()
+                .tabItem { Label("Gestures", systemImage: "hand.draw") }
+                .tag(5)
         }
     }
 }
@@ -266,6 +278,352 @@ struct SettingsView: View {
                 Button("Close") { dismiss() }
                     .accessibilityIdentifier("settings.close")
                 Spacer()
+            }
+            .padding()
+        }
+    }
+}
+
+// MARK: - P1 UI gallery
+
+// A gallery of the standard value controls. Each control mirrors its current
+// state into a sibling result label's accessibilityValue, so headless backends
+// (e.g. idb) that don't surface a control's own value can still assert the
+// outcome — the same trick settings.normalizeToggle uses.
+struct ControlsView: View {
+    @State private var toggleOn = false
+    @State private var stepperValue = 0
+    @State private var sliderValue = 0.0
+    @State private var segment = 0
+    @State private var menuChoice = "None"
+    @State private var tapCount = 0
+
+    private let segments = ["One", "Two", "Three"]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Controls")
+                    .font(.title)
+                    .accessibilityIdentifier("ctrl.title")
+
+                // The label is hidden so the Toggle's accessibility element is just
+                // the switch — a coordinate backend (idb) taps its center and flips it,
+                // rather than landing on a full-width row whose center is the label.
+                VStack(alignment: .leading) {
+                    HStack {
+                        Text("Toggle")
+                        Spacer()
+                        Toggle("Toggle", isOn: $toggleOn)
+                            .labelsHidden()
+                            .accessibilityIdentifier("ctrl.toggle")
+                    }
+                    Text("Toggle: \(toggleOn ? "on" : "off")")
+                        .accessibilityIdentifier("ctrl.toggle.value")
+                        .accessibilityValue(toggleOn ? "on" : "off")
+                }
+
+                VStack(alignment: .leading) {
+                    Stepper("Stepper", value: $stepperValue, in: 0 ... 10)
+                        .accessibilityIdentifier("ctrl.stepper")
+                    Text("Stepper: \(stepperValue)")
+                        .accessibilityIdentifier("ctrl.stepper.value")
+                        .accessibilityValue("\(stepperValue)")
+                }
+
+                // Stepped so the mirrored value is deterministic regardless of the
+                // exact drag distance a backend produces.
+                VStack(alignment: .leading) {
+                    Slider(value: $sliderValue, in: 0 ... 10, step: 1)
+                        .accessibilityIdentifier("ctrl.slider")
+                    Text("Slider: \(Int(sliderValue))")
+                        .accessibilityIdentifier("ctrl.slider.value")
+                        .accessibilityValue("\(Int(sliderValue))")
+                }
+
+                // A single-select segment built from id'd buttons. A native
+                // Picker(.segmented) renders as one TabGroup whose individual segments
+                // idb does not surface as elements — so it can't be driven by id or
+                // label headlessly. Per-segment buttons keep "pick one of N" drivable
+                // by both backends (semantic on rocketsim, coordinate on idb).
+                VStack(alignment: .leading) {
+                    Text("Segment")
+                    HStack(spacing: 8) {
+                        ForEach(segments.indices, id: \.self) { i in
+                            Button(segments[i]) { segment = i }
+                                .buttonStyle(.bordered)
+                                .tint(segment == i ? .accentColor : .gray)
+                                .accessibilityIdentifier("ctrl.segment.\(segments[i].lowercased())")
+                        }
+                    }
+                    Text("Segment: \(segments[segment])")
+                        .accessibilityIdentifier("ctrl.segment.value")
+                        .accessibilityValue(segments[segment])
+                }
+
+                // A Menu renders its items in a system popover; they are addressed by
+                // label (like an alert button), not by identifier.
+                VStack(alignment: .leading) {
+                    Menu("Menu") {
+                        Button("Apple") { menuChoice = "Apple" }
+                        Button("Banana") { menuChoice = "Banana" }
+                    }
+                    .accessibilityIdentifier("ctrl.menu")
+                    Text("Menu: \(menuChoice)")
+                        .accessibilityIdentifier("ctrl.menu.value")
+                        .accessibilityValue(menuChoice)
+                }
+
+                // One enabled button (counts taps) and one permanently disabled, to
+                // exercise the enabled / disabled assertions.
+                VStack(alignment: .leading) {
+                    Button("Tap") { tapCount += 1 }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("ctrl.button")
+                    Button("Disabled") {}
+                        .buttonStyle(.bordered)
+                        .disabled(true)
+                        .accessibilityIdentifier("ctrl.buttonDisabled")
+                    Text("Taps: \(tapCount)")
+                        .accessibilityIdentifier("ctrl.button.value")
+                        .accessibilityValue("\(tapCount)")
+                }
+            }
+            .padding()
+        }
+    }
+}
+
+// Text-entry variants plus inline validation. The entered text and a live
+// character count are mirrored to result labels so a backend can assert exactly
+// what was typed without reading the field's own (sometimes redacted) value.
+struct TextInputView: View {
+    @State private var basic = ""
+    @State private var email = ""
+    @State private var multiline = ""
+    @State private var required = ""
+    @State private var submitted = ""
+
+    private var requiredValid: Bool { required.count >= 3 }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Text")
+                    .font(.title)
+                    .accessibilityIdentifier("text.title")
+
+                TextField("Basic", text: $basic)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.asciiCapable)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("text.basic")
+                Text("Value: \(basic)")
+                    .accessibilityIdentifier("text.basic.value")
+                    .accessibilityValue(basic)
+                Text("Count: \(basic.count)")
+                    .accessibilityIdentifier("text.count")
+                    .accessibilityValue("\(basic.count)")
+                Button("Clear") { basic = "" }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("text.clear")
+
+                TextField("Email", text: $email)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.emailAddress)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("text.email")
+
+                TextEditor(text: $multiline)
+                    .frame(height: 80)
+                    .border(.gray.opacity(0.3))
+                    .accessibilityIdentifier("text.editor")
+                Text("Editor: \(multiline)")
+                    .accessibilityIdentifier("text.editor.value")
+                    .accessibilityValue(multiline)
+
+                // Needs >= 3 chars: submit stays disabled until valid, and an error
+                // label shows once the field has content but is still too short.
+                TextField("Required (min 3)", text: $required)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.asciiCapable)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("text.required")
+                if !required.isEmpty && !requiredValid {
+                    Text("Too short")
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("text.error")
+                }
+                Button("Submit") { submitted = required }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!requiredValid)
+                    .accessibilityIdentifier("text.submit")
+                if !submitted.isEmpty {
+                    Text("Submitted: \(submitted)")
+                        .accessibilityIdentifier("text.submitted")
+                        .accessibilityValue(submitted)
+                }
+            }
+            .padding()
+        }
+    }
+}
+
+// A List exercising search filtering, swipe-to-delete, edit-mode reorder,
+// pull-to-refresh, push navigation, and an empty state. Row ids are data-derived
+// (`lists.row.<id>`) so a backend can address any row and count them by glob.
+struct ListsNavView: View {
+    @State private var items: [Item] = ListsNavView.seed
+    @State private var query = ""
+    @State private var refreshed = false
+
+    static let seed = (1 ... 5).map { Item(id: $0, name: "Row \($0)") }
+
+    private var filtered: [Item] {
+        query.isEmpty ? items : items.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                TextField("Search", text: $query)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.asciiCapable)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("lists.search")
+                    .padding(.horizontal)
+
+                if filtered.isEmpty {
+                    Text("No items")
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("lists.empty")
+                }
+
+                List {
+                    ForEach(filtered) { item in
+                        NavigationLink(value: item.id) {
+                            Text(item.name)
+                                .accessibilityIdentifier("lists.row.\(item.id)")
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                items.removeAll { $0.id == item.id }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                    .onDelete { offsets in
+                        // EditButton path: map the filtered offsets back to `items`.
+                        let ids = offsets.map { filtered[$0].id }
+                        items.removeAll { ids.contains($0.id) }
+                    }
+                    .onMove { source, dest in
+                        items.move(fromOffsets: source, toOffset: dest)
+                    }
+                }
+                .accessibilityIdentifier("lists.list")
+                .refreshable {
+                    // Pull-to-refresh restores the seed set and reveals a banner.
+                    items = ListsNavView.seed
+                    refreshed = true
+                }
+
+                Text("Count: \(filtered.count)")
+                    .accessibilityIdentifier("lists.count")
+                    .accessibilityValue("\(filtered.count)")
+                if refreshed {
+                    Text("Refreshed")
+                        .accessibilityIdentifier("lists.refreshed")
+                }
+            }
+            .navigationTitle("Lists")
+            .navigationDestination(for: Int.self) { id in
+                ListDetailView(name: items.first { $0.id == id }?.name ?? "Row \(id)")
+            }
+            .toolbar {
+                EditButton()
+                    .accessibilityIdentifier("lists.edit")
+            }
+        }
+    }
+}
+
+struct ListDetailView: View {
+    let name: String
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Detail")
+                .font(.title)
+                .accessibilityIdentifier("lists.detail.title")
+            Text(name)
+                .accessibilityIdentifier("lists.detail.value")
+                .accessibilityValue(name)
+        }
+        .padding()
+    }
+}
+
+// Multi-touch + double-tap gestures. Each records a coarse, deterministic result
+// (a count or a direction) into a `*.value` label. double-tap is drivable by idb
+// (two taps); pinch / rotate need real multi-touch, so their on-device path is the
+// generated XCUITest (pinch(withScale:) / rotate(_:)).
+struct GesturesView: View {
+    @State private var doubled = 0
+    @State private var pinchDir = "none"
+    @State private var rotateDir = "none"
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Gestures")
+                    .font(.title)
+                    .accessibilityIdentifier("gest.title")
+
+                VStack(alignment: .leading) {
+                    Text("Double-tap me")
+                        .padding()
+                        .frame(maxWidth: .infinity, minHeight: 60)
+                        .background(.blue.opacity(0.15))
+                        .accessibilityIdentifier("gest.doubletap")
+                        .onTapGesture(count: 2) { doubled += 1 }
+                    Text("Double taps: \(doubled)")
+                        .accessibilityIdentifier("gest.doubletap.value")
+                        .accessibilityValue("\(doubled)")
+                }
+
+                VStack(alignment: .leading) {
+                    Text("Pinch me")
+                        .padding()
+                        .frame(maxWidth: .infinity, minHeight: 80)
+                        .background(.green.opacity(0.15))
+                        .accessibilityIdentifier("gest.pinch")
+                        .gesture(MagnifyGesture().onEnded { value in
+                            pinchDir = value.magnification > 1 ? "in" : "out"
+                        })
+                    Text("Pinch: \(pinchDir)")
+                        .accessibilityIdentifier("gest.pinch.value")
+                        .accessibilityValue(pinchDir)
+                }
+
+                VStack(alignment: .leading) {
+                    Text("Rotate me")
+                        .padding()
+                        .frame(maxWidth: .infinity, minHeight: 80)
+                        .background(.orange.opacity(0.15))
+                        .accessibilityIdentifier("gest.rotate")
+                        .gesture(RotateGesture().onEnded { value in
+                            rotateDir = value.rotation.radians >= 0 ? "cw" : "ccw"
+                        })
+                    Text("Rotate: \(rotateDir)")
+                        .accessibilityIdentifier("gest.rotate.value")
+                        .accessibilityValue(rotateDir)
+                }
             }
             .padding()
         }

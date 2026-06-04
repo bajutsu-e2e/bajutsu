@@ -1,0 +1,48 @@
+# Standard value controls. Each control mirrors its state into a result label, so
+# the assertions read `ctrl.<name>.value` rather than the control's own value.
+
+# Toggle flips and the mirrored value follows.
+- name: toggle flips on
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "controls" }
+  steps:
+    - assert:
+        - value: { sel: { id: ctrl.toggle.value }, equals: "off" }
+    - tap: { id: ctrl.toggle }
+  expect:
+    - value: { sel: { id: ctrl.toggle.value }, equals: "on" }
+
+# Single-select segment: tap a segment button by id; the selection mirrors to value.
+- name: segment selects Two
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "controls" }
+  steps:
+    - assert:
+        - value: { sel: { id: ctrl.segment.value }, equals: "One" }
+    - tap: { id: ctrl.segment.two }
+  expect:
+    - value: { sel: { id: ctrl.segment.value }, equals: "Two" }
+
+# Menu: open it, then pick an item by label from the system popover.
+- name: menu selects Banana
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "controls" }
+  steps:
+    - tap: { id: ctrl.menu }
+    - tap: { label: "Banana" }
+  expect:
+    - value: { sel: { id: ctrl.menu.value }, equals: "Banana" }
+
+# An enabled button counts taps; a sibling button is permanently disabled.
+- name: button taps and a disabled button
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "controls" }
+  steps:
+    - assert:
+        - value: { sel: { id: ctrl.button.value }, equals: "0" }
+        - enabled: { id: ctrl.button }
+        - disabled: { id: ctrl.buttonDisabled }
+    - tap: { id: ctrl.button }
+    - tap: { id: ctrl.button }
+  expect:
+    - value: { sel: { id: ctrl.button.value }, equals: "2" }

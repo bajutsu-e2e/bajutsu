@@ -1,0 +1,32 @@
+# Gesture primitives. double-tap runs on idb (two taps); pinch / rotate need
+# multi-touch — on idb they fail with a clear "needs multiTouch" reason, and their
+# on-device home is the generated XCUITest (pinch(withScale:) / rotate(_:)).
+
+# Double-tap increments a counter.
+- name: double tap increments
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "gestures" }
+  steps:
+    - assert:
+        - value: { sel: { id: gest.doubletap.value }, equals: "0" }
+    - doubleTap: { id: gest.doubletap }
+  expect:
+    - value: { sel: { id: gest.doubletap.value }, equals: "1" }
+
+# Pinch out (scale > 1) zooms in. Multi-touch: verified via codegen -> XCUITest.
+- name: pinch zooms in
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "gestures" }
+  steps:
+    - pinch: { sel: { id: gest.pinch }, scale: 2.0 }
+  expect:
+    - value: { sel: { id: gest.pinch.value }, equals: "in" }
+
+# Rotation by a positive angle is clockwise. Multi-touch: verified via XCUITest.
+- name: rotate clockwise
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "gestures" }
+  steps:
+    - rotate: { sel: { id: gest.rotate }, radians: 1.57 }
+  expect:
+    - value: { sel: { id: gest.rotate.value }, equals: "cw" }

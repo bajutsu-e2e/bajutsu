@@ -5,10 +5,12 @@ team run the same flow in their existing Xcode / XCTest CI — no bajutsu runtim
 idb, or AI at test time, and XCUITest waits for hittability itself. The mapping is
 purely structural (no AI).
 
-Coverage: tap (by id or label) / type / longPress / swipe (on+direction) /
-wait (for, until gone) / assertions (exists, notExists, value, label, enabled,
-disabled, selected, count). Unsupported constructs emit a `// TODO` line rather
-than failing, so the output is always reviewable.
+Coverage: tap (by id or label) / doubleTap / type / longPress / swipe
+(on+direction) / pinch (withScale) / rotate (radians) / wait (for, until gone) /
+assertions (exists, notExists, value, label, enabled, disabled, selected, count).
+Unsupported constructs emit a `// TODO` line rather than failing, so the output is
+always reviewable. (pinch / rotate need multi-touch, which idb cannot drive at run
+time — XCUITest is their on-device home.)
 """
 
 from __future__ import annotations
@@ -78,6 +80,16 @@ def _selector_of_step(step: Step) -> base.Selector | None:
 def _emit_step(step: Step) -> list[str]:  # noqa: C901 — a flat dispatch over step kinds
     if step.tap is not None:
         return [f"{_element(step.tap.as_selector())}.tap()"]
+    if step.double_tap is not None:
+        return [f"{_element(step.double_tap.as_selector())}.doubleTap()"]
+    if step.pinch is not None:
+        # velocity sign must match the scale: positive zooms in, negative zooms out.
+        velocity = 1.0 if step.pinch.scale >= 1 else -1.0
+        return [f"{_element(step.pinch.sel.as_selector())}.pinch(withScale: {step.pinch.scale}, "
+                f"velocity: {velocity})"]
+    if step.rotate is not None:
+        return [f"{_element(step.rotate.sel.as_selector())}.rotate({step.rotate.radians}, "
+                f"withVelocity: 1.0)"]
     if step.long_press is not None:
         return [f"{_element(step.long_press.sel.as_selector())}.press(forDuration: {step.long_press.duration})"]
     if step.type is not None:

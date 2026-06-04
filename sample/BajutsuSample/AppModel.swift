@@ -29,7 +29,7 @@ final class AppModel: ObservableObject {
     @Published var email = ""
     @Published var password = ""
     @Published var loginError = false
-    @Published var selectedTab = 0  // 0 = Home, 1 = Components
+    @Published var selectedTab = 0  // 0=Home 1=Components 2=Controls 3=Text 4=Lists
 
     let animationsDisabled: Bool
     private let signposter = OSSignposter(subsystem: "com.bajutsu.sample", category: "actions")
@@ -50,7 +50,19 @@ final class AppModel: ObservableObject {
             screen = .onboarding
         }
         showSettings = env["SAMPLE_SCREEN"] == "settings"
-        selectedTab = env["SAMPLE_TAB"] == "components" ? 1 : 0
+        selectedTab = Self.tabIndex(env["SAMPLE_TAB"])
+    }
+
+    /// Map a `SAMPLE_TAB` value (and deep-link host) to a tab index.
+    private static func tabIndex(_ name: String?) -> Int {
+        switch name {
+        case "components": return 1
+        case "controls": return 2
+        case "text": return 3
+        case "lists": return 4
+        case "gestures": return 5
+        default: return 0
+        }
     }
 
     var filteredItems: [Item] {
@@ -113,6 +125,9 @@ final class AppModel: ObservableObject {
         switch url.host {
         case "settings": showSettings = true
         case "home": screen = .home
+        case "components", "controls", "text", "lists", "gestures":
+            screen = .home
+            selectedTab = Self.tabIndex(url.host)
         default: break
         }
     }

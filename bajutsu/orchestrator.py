@@ -62,7 +62,10 @@ class RunResult:
 
 
 def _action_of(step: Step) -> str:
-    for a in ("tap", "long_press", "type", "swipe", "wait", "assert_", "relaunch"):
+    for a in (
+        "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
+        "wait", "assert_", "relaunch",
+    ):
         if getattr(step, a) is not None:
             return a
     raise AssertionError("step に有効なアクションがない（scenario 検証で保証済み）")
@@ -146,6 +149,9 @@ def _do_action(driver: base.Driver, step: Step) -> None:
     if step.tap is not None:
         driver.tap(step.tap.as_selector())
         return
+    if step.double_tap is not None:
+        driver.double_tap(step.double_tap.as_selector())
+        return
     if step.long_press is not None:
         driver.long_press(step.long_press.sel.as_selector(), step.long_press.duration)
         return
@@ -163,9 +169,26 @@ def _do_action(driver: base.Driver, step: Step) -> None:
             center = _center(el["frame"])
             driver.swipe(center, _target(center, sw.direction))
         return
+    if step.pinch is not None:
+        _require_multi_touch(driver, "pinch")
+        driver.pinch(step.pinch.sel.as_selector(), step.pinch.scale)
+        return
+    if step.rotate is not None:
+        _require_multi_touch(driver, "rotate")
+        driver.rotate(step.rotate.sel.as_selector(), step.rotate.radians)
+        return
     if step.relaunch is not None:
         raise NotImplementedError("relaunch は env 統合後（M1 後半）")
     raise AssertionError("未対応アクション")
+
+
+def _require_multi_touch(driver: base.Driver, action: str) -> None:
+    """Fail clearly before a two-finger gesture if the actuator can't do multi-touch
+    (e.g. idb), rather than emitting a single-touch approximation that silently passes."""
+    if base.Capability.MULTI_TOUCH not in driver.capabilities():
+        raise base.UnsupportedAction(
+            f"{action} は multiTouch 対応 backend が必要（idb は単一タッチ; codegen→XCUITest で実行可）"
+        )
 
 
 # on_blocked(driver) -> True if it cleared a blocking condition (e.g. a system
@@ -189,7 +212,7 @@ def _run_step_body(
             return ok, "" if ok else _fail_reason(results), results
         _do_action(driver, step)
         return True, "", []
-    except (base.SelectorError, NotImplementedError) as e:
+    except (base.SelectorError, base.UnsupportedAction, NotImplementedError) as e:
         return False, str(e), []
 
 
@@ -199,18 +222,24 @@ def _fail_reason(results: list[AssertionResult]) -> str:
 
 # --- capturePolicy firing (evidence rules) ---
 
-_DSL_ACTION = {"long_press": "longPress", "assert_": "assert"}
+_DSL_ACTION = {"long_press": "longPress", "double_tap": "doubleTap", "assert_": "assert"}
 
 
 def _primary_selector(step: Step) -> Selector | None:
     if step.tap is not None:
         return step.tap
+    if step.double_tap is not None:
+        return step.double_tap
     if step.long_press is not None:
         return step.long_press.sel
     if step.type is not None:
         return step.type.into
     if step.swipe is not None:
         return step.swipe.on
+    if step.pinch is not None:
+        return step.pinch.sel
+    if step.rotate is not None:
+        return step.rotate.sel
     return None
 
 

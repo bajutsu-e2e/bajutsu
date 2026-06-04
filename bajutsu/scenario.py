@@ -28,7 +28,10 @@ _CAPTURE_KINDS = {
 }
 _CAPTURE_MODS = {"before", "after", "around", "onError"}
 
-_STEP_ACTIONS = ("tap", "long_press", "type", "swipe", "wait", "assert_", "relaunch")
+_STEP_ACTIONS = (
+    "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
+    "wait", "assert_", "relaunch",
+)
 _ASSERTION_KINDS = ("exists", "value", "label", "count", "enabled", "disabled", "selected")
 
 
@@ -86,6 +89,26 @@ class Preconditions(_Model):
 class LongPress(_Model):
     sel: Selector
     duration: float
+
+
+class Pinch(_Model):
+    """Two-finger magnify. scale > 1 zooms in, 0 < scale < 1 zooms out."""
+
+    sel: Selector
+    scale: float
+
+    @model_validator(mode="after")
+    def _positive(self) -> Self:
+        if self.scale <= 0:
+            raise ValueError("pinch の scale は正の値（>1 で拡大, <1 で縮小）（§6.2）")
+        return self
+
+
+class Rotate(_Model):
+    """Two-finger rotation. radians > 0 rotates clockwise."""
+
+    sel: Selector
+    radians: float
 
 
 class TypeText(_Model):
@@ -210,9 +233,12 @@ class Step(_Model):
     """One action plus optional modifiers (capture / name)."""
 
     tap: Selector | None = None
+    double_tap: Selector | None = Field(default=None, alias="doubleTap")
     long_press: LongPress | None = Field(default=None, alias="longPress")
     type: TypeText | None = None
     swipe: Swipe | None = None
+    pinch: Pinch | None = None
+    rotate: Rotate | None = None
     wait: Wait | None = None
     assert_: list[Assertion] | None = Field(default=None, alias="assert")
     relaunch: Relaunch | None = None

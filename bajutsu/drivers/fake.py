@@ -37,12 +37,24 @@ class FakeDriver:
     def tap_point(self, p: base.Point) -> None:
         self._record("tap_point", p)
 
+    def double_tap(self, sel: base.Selector) -> None:
+        base.resolve_unique(self.screen, sel)
+        self._record("double_tap", sel)
+
     def long_press(self, sel: base.Selector, duration: float) -> None:
         base.resolve_unique(self.screen, sel)
         self._record("long_press", (sel, duration))
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._record("swipe", (frm, to))
+
+    def pinch(self, sel: base.Selector, scale: float) -> None:
+        base.resolve_unique(self.screen, sel)
+        self._record("pinch", (sel, scale))
+
+    def rotate(self, sel: base.Selector, radians: float) -> None:
+        base.resolve_unique(self.screen, sel)
+        self._record("rotate", (sel, radians))
 
     def type_text(self, text: str) -> None:
         self._record("type", text)
@@ -60,6 +72,7 @@ class FakeDriver:
             base.Capability.CONDITION_WAIT,
             base.Capability.SCREENSHOT,
             base.Capability.ELEMENTS,
+            base.Capability.MULTI_TOUCH,
         }
 
     # --- internals ---

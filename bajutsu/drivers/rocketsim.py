@@ -45,6 +45,19 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
     return ["rocketsim", "swipe", "--udid", udid, _num(x1), _num(y1), _num(x2), _num(y2)]
 
 
+def doubletap_id_cmd(udid: str, identifier: str) -> list[str]:
+    return ["rocketsim", "doubletap", "--udid", udid, "--id", identifier]
+
+
+def pinch_cmd(udid: str, x: float, y: float, scale: float) -> list[str]:
+    return ["rocketsim", "pinch", "--udid", udid, "--x", _num(x), "--y", _num(y), "--scale", str(scale)]
+
+
+def rotate_cmd(udid: str, x: float, y: float, radians: float) -> list[str]:
+    return ["rocketsim", "rotate", "--udid", udid, "--x", _num(x), "--y", _num(y),
+            "--radians", str(radians)]
+
+
 def type_cmd(udid: str, text: str) -> list[str]:
     return ["rocketsim", "type", "--udid", udid, text]
 
@@ -112,6 +125,29 @@ class RocketSimDriver:
     def tap_point(self, p: base.Point) -> None:
         self._run(tap_xy_cmd(self.udid, p[0], p[1]))
 
+    def double_tap(self, sel: base.Selector) -> None:
+        el = base.resolve_unique(self.query(), sel)
+        identifier = el["identifier"]
+        if identifier is not None:
+            self._run(doubletap_id_cmd(self.udid, identifier))  # semantic double tap
+        else:
+            x, y, w, h = el["frame"]
+            cx, cy = x + w / 2, y + h / 2
+            self._run(tap_xy_cmd(self.udid, cx, cy))
+            self._run(tap_xy_cmd(self.udid, cx, cy))
+
+    def pinch(self, sel: base.Selector, scale: float) -> None:
+        x, y = self._center(sel)
+        self._run(pinch_cmd(self.udid, x, y, scale))
+
+    def rotate(self, sel: base.Selector, radians: float) -> None:
+        x, y = self._center(sel)
+        self._run(rotate_cmd(self.udid, x, y, radians))
+
+    def _center(self, sel: base.Selector) -> base.Point:
+        x, y, w, h = base.resolve_unique(self.query(), sel)["frame"]
+        return (x + w / 2, y + h / 2)
+
     def long_press(self, sel: base.Selector, duration: float) -> None:
         el = base.resolve_unique(self.query(), sel)
         x, y, w, h = el["frame"]
@@ -138,4 +174,5 @@ class RocketSimDriver:
             base.Capability.CONDITION_WAIT,
             base.Capability.NETWORK,
             base.Capability.SCREENSHOT,
+            base.Capability.MULTI_TOUCH,
         }
