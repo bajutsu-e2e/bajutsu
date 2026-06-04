@@ -54,10 +54,3 @@ apps:
     #   setup: "<shell cmd run before the app launches>"
     #   redact: { headers: [...], fields: [...], labels: [...] }
     #   mockServer: { cmd: "<start cmd>", port: 8080, stubs: "<stubs dir>" }
-
-  # unfydqry's SearchSample (separate repo; needs accessibilityIdentifiers added).
-  searchsample:
-    bundleId: com.unfydqry.searchsample
-    deeplinkScheme: searchsample
-    idNamespaces: [search, result, settings]
-    launchEnv: { SEARCH_SHOW_SETTINGS: "1" }
