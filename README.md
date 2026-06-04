@@ -9,8 +9,10 @@ them against an app on the iOS Simulator: it performs taps / typing / swipes / w
 verifies the result with **machine-checkable assertions**.
 
 > **The name.** *Bajutsu* (馬術) is Japanese for *horsemanship / equestrianism* — the
-> discipline of skillfully riding and guiding a horse. The tool likewise "rides" an app,
-> steering it through a scenario with a steady, deterministic hand.
+> art of mastering a horse. Here the unruly horse is the **iOS Simulator**: flaky timing,
+> async transitions, and surprise system alerts that buck a test off course. Bajutsu is
+> about taming that — riding the Simulator through a scenario with a steady, deterministic
+> hand so it goes exactly where you point it, every time.
 
 The guiding idea is to keep the LLM out of the CI gate:
 
