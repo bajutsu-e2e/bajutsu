@@ -20,6 +20,7 @@ class Observation:
     goal: str
     screen: list[base.Element]
     history: list[Step]
+    screenshot: bytes | None = None  # PNG bytes of the current screen, for vision
 
 
 @dataclass

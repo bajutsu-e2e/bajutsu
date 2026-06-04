@@ -11,6 +11,7 @@ client is injectable for testing.
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 from simyoke.agent import Observation, Proposal
@@ -21,8 +22,10 @@ MODEL = "claude-opus-4-8"
 SYSTEM_PROMPT = """You are an iOS end-to-end test author. You drive an app on the \
 iOS Simulator to accomplish a goal, then record the steps as a deterministic test.
 
-Each turn you receive the goal and the current screen's accessibility elements \
-(each with a stable `id`). You must call exactly one tool:
+Each turn you receive the goal, a screenshot of the current screen, and the \
+screen's accessibility elements (each with a stable `id`). Use the screenshot to \
+read the visual layout and any state the element list does not capture; always act \
+by the `id` from the element list. You must call exactly one tool:
 
 - tap(id): tap the element with that identifier.
 - type_text(id, text): focus the field and type text into it.
@@ -189,6 +192,22 @@ class ClaudeAgent:
             ],
             tools=TOOLS,
             tool_choice={"type": "any"},  # force one tool call; no thinking with forced choice
-            messages=[{"role": "user", "content": _render(observation)}],
+            messages=[{"role": "user", "content": _user_content(observation)}],
         )
         return _to_proposal(message)
+
+
+def _user_content(observation: Observation) -> list[dict[str, Any]]:
+    """The per-turn user message: the screenshot (if any) followed by the text."""
+    content: list[dict[str, Any]] = []
+    if observation.screenshot is not None:
+        content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": base64.standard_b64encode(observation.screenshot).decode("ascii"),
+            },
+        })
+    content.append({"type": "text", "text": _render(observation)})
+    return content

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 from simyoke.agent import Observation
@@ -103,6 +104,25 @@ def test_request_uses_forced_tool_choice_and_cache() -> None:
     assert call["tool_choice"] == {"type": "any"}
     assert call["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert {t["name"] for t in call["tools"]} == {"tap", "type_text", "wait_for", "finish"}
+
+
+def test_screenshot_sent_as_image_block() -> None:
+    client = FakeClient(_Block("tap", {"id": "a"}))
+    png = b"\x89PNG\r\n\x1a\n fake-bytes"
+    obs = Observation(goal="g", screen=[_el("a", "A")], history=[], screenshot=png)
+    ClaudeAgent(client=client).next_action(obs)
+    content = client.calls[0]["messages"][0]["content"]
+    image = next(c for c in content if c["type"] == "image")
+    assert image["source"]["media_type"] == "image/png"
+    assert base64.standard_b64decode(image["source"]["data"]) == png
+    assert any(c["type"] == "text" for c in content)
+
+
+def test_no_screenshot_is_text_only() -> None:
+    client = FakeClient(_Block("tap", {"id": "a"}))
+    ClaudeAgent(client=client).next_action(_obs())  # no screenshot
+    content = client.calls[0]["messages"][0]["content"]
+    assert [c["type"] for c in content] == ["text"]
 
 
 def test_claude_agent_drives_record() -> None:
