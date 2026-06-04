@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from simyoke import intervals
-from simyoke.drivers import base
-from simyoke.drivers.fake import FakeDriver
-from simyoke.evidence import Artifact, FileSink
-from simyoke.orchestrator import run_scenario
-from simyoke.scenario import Scenario
+from bajutsu import intervals
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+from bajutsu.evidence import Artifact, FileSink
+from bajutsu.orchestrator import run_scenario
+from bajutsu.scenario import Scenario
 
 
 class RecordingSink:

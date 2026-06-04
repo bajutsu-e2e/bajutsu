@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from simyoke.backends import make_driver, select_actuator
-from simyoke.drivers import base
+from bajutsu.backends import make_driver, select_actuator
+from bajutsu.drivers import base
 
 
 def test_select_first_available() -> None:

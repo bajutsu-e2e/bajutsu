@@ -13,8 +13,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from simyoke.drivers import base
-from simyoke.scenario import Assertion, CountMatch, Exists, Selector, TextMatch
+from bajutsu.drivers import base
+from bajutsu.scenario import Assertion, CountMatch, Exists, Selector, TextMatch
 
 
 @dataclass(frozen=True)

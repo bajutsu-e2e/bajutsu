@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from simyoke.drivers import base
+from bajutsu.drivers import base
 
 LOCATOR_MODEL = "claude-opus-4-8"
 

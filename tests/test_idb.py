@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from simyoke.drivers import base
-from simyoke.drivers.idb import (
+from bajutsu.drivers import base
+from bajutsu.drivers.idb import (
     IdbDriver,
     parse_describe_all,
     tap_cmd,

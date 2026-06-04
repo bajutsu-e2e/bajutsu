@@ -7,7 +7,7 @@ struct Item: Identifiable {
     let name: String
 }
 
-/// App state plus the launch-env hooks Simyoke drives. Plain ObservableObject;
+/// App state plus the launch-env hooks Bajutsu drives. Plain ObservableObject;
 /// delayed mutations hop to the main actor.
 final class AppModel: ObservableObject {
     enum Screen {
@@ -32,8 +32,8 @@ final class AppModel: ObservableObject {
     @Published var selectedTab = 0  // 0 = Home, 1 = Components
 
     let animationsDisabled: Bool
-    private let signposter = OSSignposter(subsystem: "com.simyoke.sample", category: "actions")
-    private let logger = Logger(subsystem: "com.simyoke.sample", category: "actions")
+    private let signposter = OSSignposter(subsystem: "com.bajutsu.sample", category: "actions")
+    private let logger = Logger(subsystem: "com.bajutsu.sample", category: "actions")
 
     init(env: [String: String]) {
         animationsDisabled = env["SAMPLE_UITEST"] != nil

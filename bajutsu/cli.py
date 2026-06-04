@@ -1,4 +1,4 @@
-"""Simyoke CLI. Per-app differences come from config; the runner is shared."""
+"""Bajutsu CLI. Per-app differences come from config; the runner is shared."""
 
 from __future__ import annotations
 
@@ -7,19 +7,19 @@ from pathlib import Path
 
 import typer
 
-from simyoke.backends import make_driver, select_actuator
-from simyoke.claude_agent import ClaudeAgent
-from simyoke.config import Effective, load_config, resolve
-from simyoke.doctor import render, score
-from simyoke.dotenv import load_dotenv
-from simyoke.evidence import FileSink
-from simyoke.record import record as record_loop
-from simyoke.runner import device_factory, launch_driver, run_and_report
-from simyoke.scenario import Preconditions, dump_scenarios, load_scenarios
+from bajutsu.backends import make_driver, select_actuator
+from bajutsu.claude_agent import ClaudeAgent
+from bajutsu.config import Effective, load_config, resolve
+from bajutsu.doctor import render, score
+from bajutsu.dotenv import load_dotenv
+from bajutsu.evidence import FileSink
+from bajutsu.record import record as record_loop
+from bajutsu.runner import device_factory, launch_driver, run_and_report
+from bajutsu.scenario import Preconditions, dump_scenarios, load_scenarios
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
 
-DEFAULT_CONFIG = "simyoke.config.yaml"
+DEFAULT_CONFIG = "bajutsu.config.yaml"
 
 
 @app.callback()
@@ -81,7 +81,7 @@ def run(
         raise typer.Exit(2) from None
     on_blocked = None
     if dismiss_alerts:
-        from simyoke.alerts import ClaudeAlertLocator, SystemAlertGuard
+        from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
 
         guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None)
         on_blocked = guard.dismiss
@@ -122,7 +122,7 @@ def record(
         raise typer.Exit(2) from None
     alert_guard = None
     if dismiss_alerts:
-        from simyoke.alerts import ClaudeAlertLocator, SystemAlertGuard
+        from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
 
         alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
     driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))

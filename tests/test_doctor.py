@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from simyoke.doctor import render, score
-from simyoke.drivers import base
+from bajutsu.doctor import render, score
+from bajutsu.drivers import base
 
 
 def _el(identifier: str | None, traits: list[str], label: str = "x") -> base.Element:

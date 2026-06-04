@@ -1,6 +1,6 @@
-# Simyoke config — team-wide defaults, overlaid by per-app entries.
+# Bajutsu config — team-wide defaults, overlaid by per-app entries.
 #
-# `simyoke run|doctor|record --app <name>` resolves apps.<name>: the app entry
+# `bajutsu run|doctor|record --app <name>` resolves apps.<name>: the app entry
 # overrides defaults (backend/device/locale), redact is merged (union), and
 # capture/reservedNamespaces come from defaults. A scenario's preconditions add to
 # launchEnv/launchArgs at run time.
@@ -36,10 +36,10 @@ defaults:
 
 # ── Per-app entries. `--app <name>` selects one of these ──
 apps:
-  # The bundled fixture app (sample/). Instrumented for every Simyoke primitive.
+  # The bundled fixture app (sample/). Instrumented for every Bajutsu primitive.
   sample:
-    bundleId: com.simyoke.sample      # required — the app's bundle identifier
-    deeplinkScheme: simyokesample     # URL scheme for deep-link preconditions
+    bundleId: com.bajutsu.sample      # required — the app's bundle identifier
+    deeplinkScheme: bajutsusample     # URL scheme for deep-link preconditions
     # accessibilityIdentifier namespaces this app is allowed to use (first segment
     # of each id). `doctor` scores how well on-screen ids conform to this list.
     idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp]

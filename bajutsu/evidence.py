@@ -2,7 +2,7 @@
 artifacts (video / deviceLog) captured around a step.
 
 Instant captures are written after a step; interval captures are started before
-the action and stopped after the step settles (see `simyoke.intervals`). Every
+the action and stopped after the step settles (see `bajutsu.intervals`). Every
 artifact records its provider so the manifest shows where it came from.
 """
 
@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from simyoke import intervals
-from simyoke.drivers import base
+from bajutsu import intervals
+from bajutsu.drivers import base
 
 # step-dir file names for interval kinds
 _INTERVAL_FILE = {"video": "segment.mp4", "deviceLog": "device.log"}

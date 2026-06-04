@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from simyoke.config import load_config, resolve
-from simyoke.scenario import load_scenarios
+from bajutsu.config import load_config, resolve
+from bajutsu.scenario import load_scenarios
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "sample" / "scenarios"
-CONFIG = ROOT / "simyoke.config.yaml"
+CONFIG = ROOT / "bajutsu.config.yaml"
 
 
 def test_sample_scenarios_parse() -> None:
@@ -27,8 +27,8 @@ def test_sample_scenarios_parse() -> None:
 def test_sample_config_resolves() -> None:
     cfg = load_config(CONFIG.read_text(encoding="utf-8"))
     eff = resolve(cfg, "sample")
-    assert eff.bundle_id == "com.simyoke.sample"
-    assert eff.deeplink_scheme == "simyokesample"
+    assert eff.bundle_id == "com.bajutsu.sample"
+    assert eff.deeplink_scheme == "bajutsusample"
     assert "auth" in eff.id_namespaces          # reserved namespace, used by the app
     assert eff.launch_env == {"SAMPLE_UITEST": "1"}
 
@@ -44,7 +44,7 @@ def test_scenario_ids_use_declared_namespaces() -> None:
 
 
 def _collect_ids() -> set[str]:
-    from simyoke import _yaml
+    from bajutsu import _yaml
 
     ids: set[str] = set()
 

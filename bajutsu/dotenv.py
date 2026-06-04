@@ -13,7 +13,7 @@ from collections.abc import MutableMapping
 from pathlib import Path
 
 # Overridable so a project can point elsewhere without a CLI flag.
-DEFAULT_PATH = os.environ.get("SIMYOKE_DOTENV", ".env")
+DEFAULT_PATH = os.environ.get("BAJUTSU_DOTENV", ".env")
 
 
 def _unquote(value: str) -> str:

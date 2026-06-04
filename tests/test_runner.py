@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from simyoke.config import Effective
-from simyoke.drivers import base
-from simyoke.drivers.fake import FakeDriver
-from simyoke.runner import run_all, run_and_report
-from simyoke.scenario import Redact, Scenario
+from bajutsu.config import Effective
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+from bajutsu.runner import run_all, run_and_report
+from bajutsu.scenario import Redact, Scenario
 
 
 def _eff() -> Effective:

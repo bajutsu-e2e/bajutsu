@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from simyoke.drivers import base
+from bajutsu.drivers import base
 
 # Traits that count as "actionable" (the denominator for id coverage).
 ACTIONABLE_TRAITS = {

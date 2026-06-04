@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from simyoke.drivers import base
-from simyoke.scenario import Assertion, Step
+from bajutsu.drivers import base
+from bajutsu.scenario import Assertion, Step
 
 
 @dataclass

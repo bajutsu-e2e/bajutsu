@@ -5,9 +5,9 @@ Verify that scenario -> resolve -> assert closes as pure logic.
 
 from __future__ import annotations
 
-from simyoke.assertions import evaluate, evaluate_one, passed
-from simyoke.drivers import base
-from simyoke.scenario import Assertion
+from bajutsu.assertions import evaluate, evaluate_one, passed
+from bajutsu.drivers import base
+from bajutsu.scenario import Assertion
 
 
 def _el(

@@ -10,10 +10,10 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from simyoke.agent import Agent, Observation
-from simyoke.drivers import base
-from simyoke.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
-from simyoke.scenario import Assertion, Scenario, Step
+from bajutsu.agent import Agent, Observation
+from bajutsu.drivers import base
+from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
+from bajutsu.scenario import Assertion, Scenario, Step
 
 
 def _screenshot_bytes(driver: base.Driver) -> bytes | None:

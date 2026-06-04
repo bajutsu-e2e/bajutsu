@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from simyoke import env
+from bajutsu import env
 
 
 def test_command_builders() -> None:

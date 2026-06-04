@@ -1,29 +1,29 @@
-# SimyokeSample
+# BajutsuSample
 
-A small, self-contained SwiftUI app used as Simyoke's fixture. It is instrumented
-to exercise **every** Simyoke primitive: all step types, all assertion kinds,
+A small, self-contained SwiftUI app used as Bajutsu's fixture. It is instrumented
+to exercise **every** Bajutsu primitive: all step types, all assertion kinds,
 launch-env hooks, a deeplink, and an `os_signpost` interval. Example scenarios live
 in [`scenarios/`](scenarios) and the app is wired in the repo-root
-[`simyoke.config.yaml`](../simyoke.config.yaml) as the `sample` app.
+[`bajutsu.config.yaml`](../bajutsu.config.yaml) as the `sample` app.
 
 ## Build & run
 
 Requires Xcode and [XcodeGen](https://github.com/yonyz/XcodeGen) (`brew install xcodegen`).
 
 ```bash
-make sample-gen      # xcodegen generate  -> SimyokeSample.xcodeproj
+make sample-gen      # xcodegen generate  -> BajutsuSample.xcodeproj
 make sample-build    # compile for the iOS Simulator
-# or: cd sample && xcodegen generate && open SimyokeSample.xcodeproj
+# or: cd sample && xcodegen generate && open BajutsuSample.xcodeproj
 ```
 
 The generated `.xcodeproj` and `build/` are gitignored; `project.yml` is the source
 of truth.
 
-Bundle id: `com.simyoke.sample` · deeplink scheme: `simyokesample`.
+Bundle id: `com.bajutsu.sample` · deeplink scheme: `bajutsusample`.
 
 ## Launch-env hooks
 
-Set as `SIMCTL_CHILD_<NAME>` (Simyoke does this from `launchEnv`).
+Set as `SIMCTL_CHILD_<NAME>` (Bajutsu does this from `launchEnv`).
 
 | Variable | Effect |
 |---|---|
@@ -33,7 +33,7 @@ Set as `SIMCTL_CHILD_<NAME>` (Simyoke does this from `launchEnv`).
 | `SAMPLE_SCREEN=settings` | Open the settings sheet on launch (use with `SAMPLE_LOGGED_IN`) |
 | `SAMPLE_SEED=<n>` | Seed `n` list rows (default 3) |
 
-Deeplinks: `simyokesample://settings`, `simyokesample://home`.
+Deeplinks: `bajutsusample://settings`, `bajutsusample://home`.
 
 ## accessibilityIdentifier catalog
 
@@ -56,4 +56,4 @@ Identifiers follow the namespaced, data-derived convention (`<namespace>.<elemen
 | enabled / disabled | `scenarios/auth.yaml` |
 | selected / exists(+negate) / value / capturePolicy | `scenarios/settings.yaml` |
 | count / search filter | `scenarios/list.yaml` |
-| os_signpost interval | emitted by the settings reindex (`com.simyoke.sample` subsystem) |
+| os_signpost interval | emitted by the settings reindex (`com.bajutsu.sample` subsystem) |

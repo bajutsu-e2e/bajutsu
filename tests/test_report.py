@@ -8,11 +8,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from simyoke.drivers import base
-from simyoke.drivers.fake import FakeDriver
-from simyoke.orchestrator import RunResult, run_scenario
-from simyoke.report import html_report, junit_xml, manifest_dict, write_report
-from simyoke.scenario import Scenario
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+from bajutsu.orchestrator import RunResult, run_scenario
+from bajutsu.report import html_report, junit_xml, manifest_dict, write_report
+from bajutsu.scenario import Scenario
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:

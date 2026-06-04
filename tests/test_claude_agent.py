@@ -5,12 +5,12 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from simyoke.agent import Observation
-from simyoke.claude_agent import ClaudeAgent
-from simyoke.drivers import base
-from simyoke.drivers.fake import FakeDriver
-from simyoke.record import record
-from simyoke.scenario import dump_scenarios, load_scenarios
+from bajutsu.agent import Observation
+from bajutsu.claude_agent import ClaudeAgent
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+from bajutsu.record import record
+from bajutsu.scenario import dump_scenarios, load_scenarios
 
 
 class _Block:

@@ -14,8 +14,8 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from simyoke.agent import Observation, Proposal
-from simyoke.scenario import Assertion, Step
+from bajutsu.agent import Observation, Proposal
+from bajutsu.scenario import Assertion, Step
 
 MODEL = "claude-opus-4-8"
 

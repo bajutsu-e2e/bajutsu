@@ -6,7 +6,7 @@ Runs under pytest or directly (no dependencies).
 
 from __future__ import annotations
 
-from simyoke.drivers.base import (
+from bajutsu.drivers.base import (
     AmbiguousSelector,
     Element,
     ElementNotFound,

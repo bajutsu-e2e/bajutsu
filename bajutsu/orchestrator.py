@@ -16,11 +16,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from simyoke import assertions, intervals
-from simyoke.assertions import AssertionResult
-from simyoke.drivers import base
-from simyoke.evidence import Artifact, EvidenceSink, NullSink
-from simyoke.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait
+from bajutsu import assertions, intervals
+from bajutsu.assertions import AssertionResult
+from bajutsu.drivers import base
+from bajutsu.evidence import Artifact, EvidenceSink, NullSink
+from bajutsu.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait
 
 _SWIPE_DIST = 100.0
 _POLL = 0.05

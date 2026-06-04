@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from simyoke.drivers import base
-from simyoke.scenario import (
+from bajutsu.drivers import base
+from bajutsu.scenario import (
     Assertion,
     Scenario,
     Selector,

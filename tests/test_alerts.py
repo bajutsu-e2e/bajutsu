@@ -6,13 +6,13 @@ import struct
 from pathlib import Path
 from typing import Any
 
-from simyoke.agent import Proposal
-from simyoke.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
-from simyoke.drivers import base
-from simyoke.drivers.fake import FakeDriver
-from simyoke.orchestrator import run_scenario
-from simyoke.record import record as record_loop
-from simyoke.scenario import Step, load_scenarios
+from bajutsu.agent import Proposal
+from bajutsu.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+from bajutsu.orchestrator import run_scenario
+from bajutsu.record import record as record_loop
+from bajutsu.scenario import Step, load_scenarios
 
 
 def _window(w: float = 402.0, h: float = 874.0) -> base.Element:

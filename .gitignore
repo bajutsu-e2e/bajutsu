@@ -13,10 +13,10 @@ dist/
 .ruff_cache/
 .pytest_cache/
 
-# Secrets (loaded by simyoke at startup; .env.example is the tracked template)
+# Secrets (loaded by bajutsu at startup; .env.example is the tracked template)
 .env
 
-# Simyoke run artifacts (evidence / reports)
+# Bajutsu run artifacts (evidence / reports)
 runs/
 
 # iOS sample (XcodeGen-generated project + build output)

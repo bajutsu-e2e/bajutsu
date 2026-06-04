@@ -11,14 +11,14 @@ import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from simyoke import env
-from simyoke.backends import default_available, make_driver, select_actuator
-from simyoke.config import Effective
-from simyoke.drivers import base
-from simyoke.evidence import EvidenceSink
-from simyoke.orchestrator import BlockedHandler, Clock, RunResult, run_scenario
-from simyoke.report import write_report
-from simyoke.scenario import Preconditions, Scenario
+from bajutsu import env
+from bajutsu.backends import default_available, make_driver, select_actuator
+from bajutsu.config import Effective
+from bajutsu.drivers import base
+from bajutsu.evidence import EvidenceSink
+from bajutsu.orchestrator import BlockedHandler, Clock, RunResult, run_scenario
+from bajutsu.report import write_report
+from bajutsu.scenario import Preconditions, Scenario
 
 DriverFactory = Callable[[Effective, Scenario], base.Driver]
 

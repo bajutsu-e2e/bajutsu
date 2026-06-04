@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 @main
-struct SimyokeSampleApp: App {
+struct BajutsuSampleApp: App {
     @StateObject private var model = AppModel(env: ProcessInfo.processInfo.environment)
 
     init() {

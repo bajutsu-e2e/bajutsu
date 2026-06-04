@@ -5,7 +5,7 @@ from __future__ import annotations
 import signal
 from pathlib import Path
 
-from simyoke import intervals
+from bajutsu import intervals
 
 
 class FakeProc:

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from simyoke.agent import Observation, Proposal
-from simyoke.drivers import base
-from simyoke.drivers.fake import FakeDriver
-from simyoke.record import record
-from simyoke.scenario import Assertion, Step, dump_scenarios, load_scenarios
+from bajutsu.agent import Observation, Proposal
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
+from bajutsu.record import record
+from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 
 class FakeAgent:

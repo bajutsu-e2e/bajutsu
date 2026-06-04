@@ -1,12 +1,16 @@
-# Simyoke
+# Bajutsu
 
 > Natural-language-driven E2E testing for iOS Simulators.
 > **Status: pre-alpha** — the deterministic core (M1) is implemented and tested; the
 > device-facing backends are in progress. The tool cannot drive a real Simulator yet.
 
-Simyoke takes test scenarios written in (or recorded from) natural language and runs
+Bajutsu takes test scenarios written in (or recorded from) natural language and runs
 them against an app on the iOS Simulator: it performs taps / typing / swipes / waits and
 verifies the result with **machine-checkable assertions**.
+
+> **The name.** *Bajutsu* (馬術) is Japanese for *horsemanship / equestrianism* — the
+> discipline of skillfully riding and guiding a horse. The tool likewise "rides" an app,
+> steering it through a scenario with a steady, deterministic hand.
 
 The guiding idea is to keep the LLM out of the CI gate:
 
@@ -88,12 +92,12 @@ uv sync --extra dev      # creates .venv (Python 3.13) and installs deps + dev t
 The CLI surface (commands are being implemented incrementally):
 
 ```bash
-simyoke run <scenario.yaml> --app <name> [--backend rocketsim[,idb]] [--udid booted]
-simyoke record <scenario.yaml> --app <name>   # explore + record (planned)
-simyoke doctor --app <name>                   # environment gates + convention score
+bajutsu run <scenario.yaml> --app <name> [--backend rocketsim[,idb]] [--udid booted]
+bajutsu record <scenario.yaml> --app <name>   # explore + record (planned)
+bajutsu doctor --app <name>                   # environment gates + convention score
 ```
 
-Per-app settings live in `simyoke.config.yaml`:
+Per-app settings live in `bajutsu.config.yaml`:
 
 ```yaml
 defaults:
@@ -114,13 +118,13 @@ apps:
 ```bash
 uv run pytest -q          # tests
 uv run ruff check .       # lint
-uv run mypy simyoke      # type check (strict)
+uv run mypy bajutsu      # type check (strict)
 ```
 
 ## Project layout
 
 ```
-simyoke/
+bajutsu/
 ├── drivers/base.py        # Driver protocol + selector resolution (determinism core)
 ├── drivers/fake.py        # in-memory fake driver for tests
 ├── drivers/idb.py         # idb backend (headless, coordinate tap)

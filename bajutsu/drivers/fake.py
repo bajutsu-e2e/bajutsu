@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from simyoke.drivers import base
+from bajutsu.drivers import base
 
 # Hook that mutates state in response to an action: react(driver, kind, arg)
 React = Callable[["FakeDriver", str, object], None]
