@@ -35,7 +35,10 @@ def tap_cmd(udid: str, x: float, y: float) -> list[str]:
 
 
 def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str]:
-    return ["idb", "ui", "swipe", "--udid", udid, _num(x1), _num(y1), _num(x2), _num(y2)]
+    # A finite duration makes it a real drag; an instantaneous swipe isn't recognized
+    # as a pan/drag gesture by SwiftUI.
+    return ["idb", "ui", "swipe", "--udid", udid,
+            _num(x1), _num(y1), _num(x2), _num(y2), "--duration", "0.2"]
 
 
 def text_cmd(udid: str, text: str) -> list[str]:
