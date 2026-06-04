@@ -6,7 +6,7 @@ Runs under pytest or directly (no dependencies).
 
 from __future__ import annotations
 
-from simpilot.drivers.base import (
+from simyoke.drivers.base import (
     AmbiguousSelector,
     Element,
     ElementNotFound,

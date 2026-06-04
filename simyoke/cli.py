@@ -1,4 +1,4 @@
-"""SimPilot CLI. Per-app differences come from config; the runner is shared."""
+"""Simyoke CLI. Per-app differences come from config; the runner is shared."""
 
 from __future__ import annotations
 
@@ -7,15 +7,15 @@ from pathlib import Path
 
 import typer
 
-from simpilot.backends import make_driver, select_actuator
-from simpilot.config import Effective, load_config, resolve
-from simpilot.doctor import render, score
-from simpilot.runner import device_factory, run_and_report
-from simpilot.scenario import load_scenarios
+from simyoke.backends import make_driver, select_actuator
+from simyoke.config import Effective, load_config, resolve
+from simyoke.doctor import render, score
+from simyoke.runner import device_factory, run_and_report
+from simyoke.scenario import load_scenarios
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
 
-DEFAULT_CONFIG = "simpilot.config.yaml"
+DEFAULT_CONFIG = "simyoke.config.yaml"
 
 
 def _load_effective(config: str, app_name: str) -> Effective:

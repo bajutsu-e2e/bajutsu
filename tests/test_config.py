@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from simpilot.config import load_config, resolve
+from simyoke.config import load_config, resolve
 
 CONFIG_YAML = """
 defaults:

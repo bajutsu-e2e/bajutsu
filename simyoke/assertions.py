@@ -13,8 +13,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from simpilot.drivers import base
-from simpilot.scenario import Assertion, CountMatch, Exists, Selector, TextMatch
+from simyoke.drivers import base
+from simyoke.scenario import Assertion, CountMatch, Exists, Selector, TextMatch
 
 
 @dataclass(frozen=True)

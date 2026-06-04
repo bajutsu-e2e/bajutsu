@@ -9,9 +9,9 @@ from __future__ import annotations
 import shutil
 from collections.abc import Callable
 
-from simpilot.drivers import base
-from simpilot.drivers.idb import IdbDriver
-from simpilot.drivers.rocketsim import RocketSimDriver
+from simyoke.drivers import base
+from simyoke.drivers.idb import IdbDriver
+from simyoke.drivers.rocketsim import RocketSimDriver
 
 KNOWN = ("rocketsim", "idb")
 

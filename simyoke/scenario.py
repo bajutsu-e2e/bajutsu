@@ -11,8 +11,8 @@ from typing import Any, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from simpilot import _yaml
-from simpilot.drivers import base
+from simyoke import _yaml
+from simyoke.drivers import base
 
 Point = tuple[float, float]
 

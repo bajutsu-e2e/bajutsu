@@ -6,7 +6,7 @@ struct Item: Identifiable {
     let name: String
 }
 
-/// App state plus the launch-env hooks SimPilot drives. Plain ObservableObject;
+/// App state plus the launch-env hooks Simyoke drives. Plain ObservableObject;
 /// delayed mutations hop to the main actor.
 final class AppModel: ObservableObject {
     enum Screen {
@@ -30,7 +30,7 @@ final class AppModel: ObservableObject {
     @Published var loginError = false
 
     let animationsDisabled: Bool
-    private let signposter = OSSignposter(subsystem: "com.simpilot.sample", category: "actions")
+    private let signposter = OSSignposter(subsystem: "com.simyoke.sample", category: "actions")
 
     init(env: [String: String]) {
         animationsDisabled = env["SAMPLE_UITEST"] != nil

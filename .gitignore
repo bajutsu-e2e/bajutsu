@@ -10,7 +10,7 @@ dist/
 .ruff_cache/
 .pytest_cache/
 
-# SimPilot run artifacts (evidence / reports)
+# Simyoke run artifacts (evidence / reports)
 runs/
 
 # iOS sample (XcodeGen-generated project + build output)

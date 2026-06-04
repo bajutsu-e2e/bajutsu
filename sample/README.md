@@ -1,29 +1,29 @@
-# SimPilotSample
+# SimyokeSample
 
-A small, self-contained SwiftUI app used as SimPilot's fixture. It is instrumented
-to exercise **every** SimPilot primitive: all step types, all assertion kinds,
+A small, self-contained SwiftUI app used as Simyoke's fixture. It is instrumented
+to exercise **every** Simyoke primitive: all step types, all assertion kinds,
 launch-env hooks, a deeplink, and an `os_signpost` interval. Example scenarios live
 in [`scenarios/`](scenarios) and the app is wired in the repo-root
-[`simpilot.config.yaml`](../simpilot.config.yaml) as the `sample` app.
+[`simyoke.config.yaml`](../simyoke.config.yaml) as the `sample` app.
 
 ## Build & run
 
 Requires Xcode and [XcodeGen](https://github.com/yonyz/XcodeGen) (`brew install xcodegen`).
 
 ```bash
-make sample-gen      # xcodegen generate  -> SimPilotSample.xcodeproj
+make sample-gen      # xcodegen generate  -> SimyokeSample.xcodeproj
 make sample-build    # compile for the iOS Simulator
-# or: cd sample && xcodegen generate && open SimPilotSample.xcodeproj
+# or: cd sample && xcodegen generate && open SimyokeSample.xcodeproj
 ```
 
 The generated `.xcodeproj` and `build/` are gitignored; `project.yml` is the source
 of truth.
 
-Bundle id: `com.simpilot.sample` · deeplink scheme: `simpilotsample`.
+Bundle id: `com.simyoke.sample` · deeplink scheme: `simyokesample`.
 
 ## Launch-env hooks
 
-Set as `SIMCTL_CHILD_<NAME>` (SimPilot does this from `launchEnv`).
+Set as `SIMCTL_CHILD_<NAME>` (Simyoke does this from `launchEnv`).
 
 | Variable | Effect |
 |---|---|
@@ -33,7 +33,7 @@ Set as `SIMCTL_CHILD_<NAME>` (SimPilot does this from `launchEnv`).
 | `SAMPLE_SCREEN=settings` | Open the settings sheet on launch (use with `SAMPLE_LOGGED_IN`) |
 | `SAMPLE_SEED=<n>` | Seed `n` list rows (default 3) |
 
-Deeplinks: `simpilotsample://settings`, `simpilotsample://home`.
+Deeplinks: `simyokesample://settings`, `simyokesample://home`.
 
 ## accessibilityIdentifier catalog
 
@@ -56,4 +56,4 @@ Identifiers follow the namespaced, data-derived convention (`<namespace>.<elemen
 | enabled / disabled | `scenarios/auth.yaml` |
 | selected / exists(+negate) / value / capturePolicy | `scenarios/settings.yaml` |
 | count / search filter | `scenarios/list.yaml` |
-| os_signpost interval | emitted by the settings reindex (`com.simpilot.sample` subsystem) |
+| os_signpost interval | emitted by the settings reindex (`com.simyoke.sample` subsystem) |

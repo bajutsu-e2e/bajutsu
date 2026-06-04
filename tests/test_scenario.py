@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from simpilot.drivers import base
-from simpilot.scenario import (
+from simyoke.drivers import base
+from simyoke.scenario import (
     Assertion,
     Scenario,
     Selector,

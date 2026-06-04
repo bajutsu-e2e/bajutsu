@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from simpilot.drivers import base
-from simpilot.drivers.fake import FakeDriver
-from simpilot.orchestrator import run_scenario
-from simpilot.scenario import Scenario
+from simyoke.drivers import base
+from simyoke.drivers.fake import FakeDriver
+from simyoke.orchestrator import run_scenario
+from simyoke.scenario import Scenario
 
 
 class FakeClock:

@@ -14,10 +14,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from simpilot import assertions
-from simpilot.assertions import AssertionResult
-from simpilot.drivers import base
-from simpilot.scenario import Gone, Scenario, Step, Wait
+from simyoke import assertions
+from simyoke.assertions import AssertionResult
+from simyoke.drivers import base
+from simyoke.scenario import Gone, Scenario, Step, Wait
 
 _SWIPE_DIST = 100.0
 _POLL = 0.05

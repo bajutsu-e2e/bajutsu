@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from simpilot.config import Effective
-from simpilot.drivers import base
-from simpilot.drivers.fake import FakeDriver
-from simpilot.runner import run_all, run_and_report
-from simpilot.scenario import Redact, Scenario
+from simyoke.config import Effective
+from simyoke.drivers import base
+from simyoke.drivers.fake import FakeDriver
+from simyoke.runner import run_all, run_and_report
+from simyoke.scenario import Redact, Scenario
 
 
 def _eff() -> Effective:

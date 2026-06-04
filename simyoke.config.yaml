@@ -1,4 +1,4 @@
-# SimPilot config — team defaults overlaid by per-app entries.
+# Simyoke config — team defaults overlaid by per-app entries.
 defaults:
   backend: [rocketsim, idb]   # UI-stability order; first available is the actuator
   device: "iPhone 15"
@@ -10,10 +10,10 @@ defaults:
   reservedNamespaces: [auth, nav]
 
 apps:
-  # The bundled fixture app (sample/). Instrumented for every SimPilot primitive.
+  # The bundled fixture app (sample/). Instrumented for every Simyoke primitive.
   sample:
-    bundleId: com.simpilot.sample
-    deeplinkScheme: simpilotsample
+    bundleId: com.simyoke.sample
+    deeplinkScheme: simyokesample
     idNamespaces: [home, list, counter, settings, onboarding, auth, nav]
     launchEnv: { SAMPLE_UITEST: "1" }
 

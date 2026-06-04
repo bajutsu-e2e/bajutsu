@@ -5,8 +5,8 @@ The assumed schema is exercised here; on a real machine it may need adjustment.
 
 from __future__ import annotations
 
-from simpilot.drivers import base
-from simpilot.drivers.rocketsim import RocketSimDriver, parse_elements, tap_id_cmd, tap_xy_cmd
+from simyoke.drivers import base
+from simyoke.drivers.rocketsim import RocketSimDriver, parse_elements, tap_id_cmd, tap_xy_cmd
 
 WRAPPED = """
 {"rs":"1","elements":[

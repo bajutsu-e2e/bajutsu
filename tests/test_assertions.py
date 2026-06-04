@@ -5,9 +5,9 @@ Verify that scenario -> resolve -> assert closes as pure logic.
 
 from __future__ import annotations
 
-from simpilot.assertions import evaluate, evaluate_one, passed
-from simpilot.drivers import base
-from simpilot.scenario import Assertion
+from simyoke.assertions import evaluate, evaluate_one, passed
+from simyoke.drivers import base
+from simyoke.scenario import Assertion
 
 
 def _el(

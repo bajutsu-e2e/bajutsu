@@ -13,8 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from simpilot import _yaml
-from simpilot.scenario import Redact
+from simyoke import _yaml
+from simyoke.scenario import Redact
 
 
 class _Model(BaseModel):

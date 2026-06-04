@@ -1,6 +1,6 @@
-name: SimPilotSample
+name: SimyokeSample
 options:
-  bundleIdPrefix: com.simpilot
+  bundleIdPrefix: com.simyoke
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -12,24 +12,24 @@ settings:
     SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
     SUPPORTS_MACCATALYST: NO
 targets:
-  SimPilotSample:
+  SimyokeSample:
     type: application
     platform: iOS
     sources:
-      - path: SimPilotSample
+      - path: SimyokeSample
     info:
-      path: SimPilotSample/Info.plist
+      path: SimyokeSample/Info.plist
       properties:
         UILaunchScreen:
           UIColorName: ""
-        CFBundleDisplayName: SimPilotSample
+        CFBundleDisplayName: SimyokeSample
         UIRequiredDeviceCapabilities: [arm64]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
-          - CFBundleURLName: com.simpilot.sample
-            CFBundleURLSchemes: [simpilotsample]
+          - CFBundleURLName: com.simyoke.sample
+            CFBundleURLSchemes: [simyokesample]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.simpilot.sample
+        PRODUCT_BUNDLE_IDENTIFIER: com.simyoke.sample
         TARGETED_DEVICE_FAMILY: "1,2"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from simpilot import env
+from simyoke import env
 
 
 def test_command_builders() -> None:

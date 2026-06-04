@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from simpilot.doctor import render, score
-from simpilot.drivers import base
+from simyoke.doctor import render, score
+from simyoke.drivers import base
 
 
 def _el(identifier: str | None, traits: list[str], label: str = "x") -> base.Element:

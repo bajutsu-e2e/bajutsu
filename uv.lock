@@ -703,7 +703,7 @@ wheels = [
 ]
 
 [[package]]
-name = "simpilot"
+name = "simyoke"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [

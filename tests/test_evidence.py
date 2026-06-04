@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from simpilot.drivers import base
-from simpilot.drivers.fake import FakeDriver
-from simpilot.evidence import capture, write_elements
+from simyoke.drivers import base
+from simyoke.drivers.fake import FakeDriver
+from simyoke.evidence import capture, write_elements
 
 
 def _el(identifier: str, label: str) -> base.Element:

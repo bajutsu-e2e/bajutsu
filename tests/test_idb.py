@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from simpilot.drivers import base
-from simpilot.drivers.idb import (
+from simyoke.drivers import base
+from simyoke.drivers.idb import (
     IdbDriver,
     parse_describe_all,
     tap_cmd,

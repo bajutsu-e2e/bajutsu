@@ -10,7 +10,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from simpilot.cli import app
+from simyoke.cli import app
 
 runner = CliRunner()
 
@@ -28,7 +28,7 @@ SCENARIO = """
 
 
 def _write(tmp_path: Path) -> tuple[Path, Path]:
-    cfg = tmp_path / "simpilot.config.yaml"
+    cfg = tmp_path / "simyoke.config.yaml"
     cfg.write_text(CONFIG, encoding="utf-8")
     scn = tmp_path / "s.yaml"
     scn.write_text(SCENARIO, encoding="utf-8")

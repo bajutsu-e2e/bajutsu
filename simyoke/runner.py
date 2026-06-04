@@ -10,13 +10,13 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from simpilot import env
-from simpilot.backends import default_available, make_driver, select_actuator
-from simpilot.config import Effective
-from simpilot.drivers import base
-from simpilot.orchestrator import Clock, RunResult, run_scenario
-from simpilot.report import write_report
-from simpilot.scenario import Scenario
+from simyoke import env
+from simyoke.backends import default_available, make_driver, select_actuator
+from simyoke.config import Effective
+from simyoke.drivers import base
+from simyoke.orchestrator import Clock, RunResult, run_scenario
+from simyoke.report import write_report
+from simyoke.scenario import Scenario
 
 DriverFactory = Callable[[Effective, Scenario], base.Driver]
 

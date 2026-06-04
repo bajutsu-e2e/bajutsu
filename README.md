@@ -1,10 +1,10 @@
-# SimPilot
+# Simyoke
 
 > Natural-language-driven E2E testing for iOS Simulators.
 > **Status: pre-alpha** — the deterministic core (M1) is implemented and tested; the
 > device-facing backends are in progress. The tool cannot drive a real Simulator yet.
 
-SimPilot takes test scenarios written in (or recorded from) natural language and runs
+Simyoke takes test scenarios written in (or recorded from) natural language and runs
 them against an app on the iOS Simulator: it performs taps / typing / swipes / waits and
 verifies the result with **machine-checkable assertions**.
 
@@ -88,12 +88,12 @@ uv sync --extra dev      # creates .venv (Python 3.13) and installs deps + dev t
 The CLI surface (commands are being implemented incrementally):
 
 ```bash
-simpilot run <scenario.yaml> --app <name> [--backend rocketsim[,idb]] [--udid booted]
-simpilot record <scenario.yaml> --app <name>   # explore + record (planned)
-simpilot doctor --app <name>                   # environment gates + convention score
+simyoke run <scenario.yaml> --app <name> [--backend rocketsim[,idb]] [--udid booted]
+simyoke record <scenario.yaml> --app <name>   # explore + record (planned)
+simyoke doctor --app <name>                   # environment gates + convention score
 ```
 
-Per-app settings live in `simpilot.config.yaml`:
+Per-app settings live in `simyoke.config.yaml`:
 
 ```yaml
 defaults:
@@ -114,13 +114,13 @@ apps:
 ```bash
 uv run pytest -q          # tests
 uv run ruff check .       # lint
-uv run mypy simpilot      # type check (strict)
+uv run mypy simyoke      # type check (strict)
 ```
 
 ## Project layout
 
 ```
-simpilot/
+simyoke/
 ├── drivers/base.py        # Driver protocol + selector resolution (determinism core)
 ├── drivers/fake.py        # in-memory fake driver for tests
 ├── drivers/idb.py         # idb backend (headless, coordinate tap)

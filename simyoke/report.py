@@ -12,7 +12,7 @@ from dataclasses import asdict
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from simpilot.orchestrator import RunResult
+from simyoke.orchestrator import RunResult
 
 
 def manifest_dict(run_id: str, results: list[RunResult]) -> dict[str, object]:
@@ -41,12 +41,12 @@ def junit_xml(results: list[RunResult]) -> str:
     failures = sum(0 if r.ok else 1 for r in results)
     suite = ET.Element(
         "testsuite",
-        name="simpilot",
+        name="simyoke",
         tests=str(len(results)),
         failures=str(failures),
     )
     for r in results:
-        case = ET.SubElement(suite, "testcase", name=r.scenario, classname="simpilot")
+        case = ET.SubElement(suite, "testcase", name=r.scenario, classname="simyoke")
         if not r.ok:
             failure = ET.SubElement(case, "failure", message=r.failure or "failed")
             failure.text = _details(r)
