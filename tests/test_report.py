@@ -107,3 +107,31 @@ def test_html_embeds_scenario_video() -> None:
     assert 'src="00-s1/scenario.mp4"' in out
     # A scenario with no video artifact embeds no player.
     assert "<video" not in html_report("run9", [_passing()])
+
+
+def test_html_interactive_structure(tmp_path: Path) -> None:
+    from bajutsu.evidence import Artifact
+
+    sid = "00-s1"
+    (tmp_path / sid).mkdir(parents=True)
+    (tmp_path / sid / "device.log").write_text("line one\nERROR boom\nline three\n", encoding="utf-8")
+    (tmp_path / sid / "appTrace.json").write_text(
+        '[{"name":"reindex","begin":"t0","end":"t1","durationMs":12.3}]', encoding="utf-8"
+    )
+    r = RunResult(
+        scenario="s1", ok=True, steps=[], expect_results=[],
+        artifacts=[
+            Artifact(f"{sid}/scenario.mp4", "video", "simctl"),
+            Artifact(f"{sid}/device.log", "deviceLog", "simctl"),
+            Artifact(f"{sid}/appTrace.json", "appTrace", "simctl"),
+        ],
+    )
+    out = html_report("run1", [r], tmp_path)
+    # collapsible section, tab switching, and the failure filter
+    assert '<details class="scn"' in out
+    assert 'data-tab="log"' in out and 'data-tab="trace"' in out
+    assert 'class="logfilter"' in out
+    assert 'onlyFailures(this)' in out
+    # log embedded inline (filterable without a server) and trace rendered as a table
+    assert "ERROR boom" in out
+    assert "reindex" in out and "12.3" in out
