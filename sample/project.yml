@@ -33,3 +33,25 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.sample
         TARGETED_DEVICE_FAMILY: "1,2"
+  BajutsuSampleUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: BajutsuSampleUITests
+    dependencies:
+      - target: BajutsuSample
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.sample.uitests
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  UITests:
+    build:
+      targets:
+        BajutsuSample: all
+        BajutsuSampleUITests: [test]
+    test:
+      targets:
+        - BajutsuSampleUITests
+      gatherCoverageData: false
