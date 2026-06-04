@@ -43,7 +43,9 @@ def text_cmd(udid: str, text: str) -> list[str]:
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
-    return ["idb", "screenshot", "--udid", udid, path]
+    # idb's own frame capture is unreliable ("No Image available to encode"),
+    # so screenshot via simctl, which is always available on the Simulator.
+    return ["xcrun", "simctl", "io", udid, "screenshot", path]
 
 
 def _num(v: float) -> str:
