@@ -1,13 +1,38 @@
 import SwiftUI
 
+enum AuthStep: Hashable { case signIn }
+
 struct RootView: View {
     @EnvironmentObject var model: AppModel
 
+    // The auth flow (onboarding -> login) is a modal over the always-present Home, so
+    // Home's NavigationStack and toolbar are built once at launch and stay live. Tapping
+    // the toolbar right after logging in no longer races a rebuilt-from-scratch view
+    // (the old RootView switch replaced the whole subtree on every screen change).
+    private var authPresented: Binding<Bool> {
+        Binding(get: { model.screen != .home }, set: { _ in })
+    }
+
     var body: some View {
-        switch model.screen {
-        case .onboarding: OnboardingView()
-        case .login: AuthView()
-        case .home: HomeView()
+        HomeView()
+            .fullScreenCover(isPresented: authPresented) { AuthFlowView() }
+    }
+}
+
+struct AuthFlowView: View {
+    @EnvironmentObject var model: AppModel
+
+    // Onboarding is the root; signing in is a NavigationStack push onto it.
+    private var path: Binding<[AuthStep]> {
+        Binding(get: { model.screen == .login ? [.signIn] : [] }, set: { _ in })
+    }
+
+    var body: some View {
+        NavigationStack(path: path) {
+            OnboardingView()
+                .navigationDestination(for: AuthStep.self) { _ in
+                    AuthView().navigationBarBackButtonHidden()
+                }
         }
     }
 }
@@ -25,6 +50,7 @@ struct OnboardingView: View {
                 .accessibilityIdentifier("onboarding.start")
         }
         .padding()
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
@@ -62,6 +88,7 @@ struct AuthView: View {
                 .accessibilityIdentifier("auth.submit")
         }
         .padding()
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
