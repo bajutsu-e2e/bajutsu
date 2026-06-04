@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published var email = ""
     @Published var password = ""
     @Published var loginError = false
+    @Published var selectedTab = 0  // 0 = Home, 1 = Components
 
     let animationsDisabled: Bool
     private let signposter = OSSignposter(subsystem: "com.simyoke.sample", category: "actions")
@@ -49,6 +50,7 @@ final class AppModel: ObservableObject {
             screen = .onboarding
         }
         showSettings = env["SAMPLE_SCREEN"] == "settings"
+        selectedTab = env["SAMPLE_TAB"] == "components" ? 1 : 0
     }
 
     var filteredItems: [Item] {

@@ -14,7 +14,7 @@ apps:
   sample:
     bundleId: com.simyoke.sample
     deeplinkScheme: simyokesample
-    idNamespaces: [home, list, counter, settings, onboarding, auth, nav]
+    idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp]
     launchEnv: { SAMPLE_UITEST: "1" }
 
   # unfydqry's SearchSample (separate repo; needs accessibilityIdentifiers added).

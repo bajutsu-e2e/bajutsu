@@ -1,0 +1,31 @@
+# Long press reveals a hidden label.
+- name: long press reveals a label
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "components" }
+  steps:
+    - assert:
+        - exists: { id: comp.secret, negate: true }
+    - longPress: { sel: { id: comp.longpress }, duration: 0.6 }
+  expect:
+    - exists: { id: comp.secret }
+
+# In-app confirmation alert (a SwiftUI .alert is visible to idb; tap by label).
+- name: in-app alert confirm
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "components" }
+  steps:
+    - tap: { id: comp.remove }
+    - tap: { label: "Delete" }
+  expect:
+    - exists: { id: comp.deleted }
+
+# Swipe in a direction; a DragGesture records it.
+- name: swipe records left
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "components" }
+  steps:
+    - assert:
+        - value: { sel: { id: comp.swipeResult }, equals: "none" }
+    - swipe: { on: { id: comp.swipearea }, direction: left }
+  expect:
+    - value: { sel: { id: comp.swipeResult }, equals: "left" }
