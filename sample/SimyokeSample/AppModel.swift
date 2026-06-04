@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
 
     let animationsDisabled: Bool
     private let signposter = OSSignposter(subsystem: "com.simyoke.sample", category: "actions")
+    private let logger = Logger(subsystem: "com.simyoke.sample", category: "actions")
 
     init(env: [String: String]) {
         animationsDisabled = env["SAMPLE_UITEST"] != nil
@@ -82,11 +83,15 @@ final class AppModel: ObservableObject {
     func reindex() {
         reindexStatus = "reindexing"
         settingsChanged = false
+        logger.notice("reindex started")
         let interval = signposter.beginInterval("reindex")
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(300))
+            // ~1.2s so an evidence capture window is long enough for the log stream
+            // (which has startup latency) to record the completion line.
+            try? await Task.sleep(for: .milliseconds(1200))
             self.reindexStatus = "done"
             self.signposter.endInterval("reindex", interval)
+            self.logger.notice("reindex finished")
         }
     }
 
