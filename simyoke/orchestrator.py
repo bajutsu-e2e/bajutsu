@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import fnmatch
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -139,6 +140,31 @@ def _do_action(driver: base.Driver, step: Step) -> None:
     raise AssertionError("未対応アクション")
 
 
+# on_blocked(driver) -> True if it cleared a blocking condition (e.g. a system
+# alert) and the step is worth retrying.
+BlockedHandler = Callable[[base.Driver], bool]
+
+
+def _run_step_body(
+    driver: base.Driver, step: Step, kind: str, clock: Clock
+) -> tuple[bool, str, list[AssertionResult]]:
+    """Execute one step's effect, returning (ok, reason, assertion_results)."""
+    try:
+        if kind == "wait":
+            assert step.wait is not None
+            ok, reason = _wait(driver, step.wait, clock)
+            return ok, reason, []
+        if kind == "assert_":
+            assert step.assert_ is not None
+            results = assertions.evaluate(driver.query(), step.assert_)
+            ok = assertions.passed(results)
+            return ok, "" if ok else _fail_reason(results), results
+        _do_action(driver, step)
+        return True, "", []
+    except (base.SelectorError, NotImplementedError) as e:
+        return False, str(e), []
+
+
 def _fail_reason(results: list[AssertionResult]) -> str:
     return "; ".join(r.reason for r in results if not r.ok)
 
@@ -201,8 +227,13 @@ def run_scenario(
     scenario: Scenario,
     clock: Clock | None = None,
     sink: EvidenceSink | None = None,
+    on_blocked: BlockedHandler | None = None,
 ) -> RunResult:
-    """Run one scenario deterministically, firing capturePolicy rules into `sink`."""
+    """Run one scenario deterministically, firing capturePolicy rules into `sink`.
+
+    If a step fails and `on_blocked` clears a blocking condition (e.g. dismisses a
+    system alert), the step is retried once before being recorded as a failure.
+    """
     clock = clock or RealClock()
     sink = sink or NullSink()
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
@@ -214,20 +245,10 @@ def run_scenario(
         outcome = StepOutcome(index=i, action=kind)
         before = driver.query() if wants_screen_changed else None
         start = clock.now()
-        try:
-            if kind == "wait":
-                assert step.wait is not None
-                outcome.ok, outcome.reason = _wait(driver, step.wait, clock)
-            elif kind == "assert_":
-                assert step.assert_ is not None
-                outcome.assertion_results = assertions.evaluate(driver.query(), step.assert_)
-                outcome.ok = assertions.passed(outcome.assertion_results)
-                outcome.reason = "" if outcome.ok else _fail_reason(outcome.assertion_results)
-            else:
-                _do_action(driver, step)
-        except (base.SelectorError, NotImplementedError) as e:
-            outcome.ok = False
-            outcome.reason = str(e)
+        ok, reason, results = _run_step_body(driver, step, kind, clock)
+        if not ok and on_blocked is not None and on_blocked(driver):
+            ok, reason, results = _run_step_body(driver, step, kind, clock)  # retry once
+        outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 
         screen_changed = before is not None and driver.query() != before

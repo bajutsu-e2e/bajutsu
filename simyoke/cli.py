@@ -45,9 +45,15 @@ def run(
     udid: str = typer.Option("booted"),
     workers: int = typer.Option(1),
     erase: bool = typer.Option(True, "--erase/--no-erase", help="erase the device before each test"),
+    dismiss_alerts: bool = typer.Option(
+        False, "--dismiss-alerts", help="use vision to dismiss unexpected OS prompts (needs API key)"
+    ),
+    alert_instruction: str = typer.Option(
+        "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Run a scenario deterministically (no AI)."""
+    """Run a scenario deterministically (no AI, unless --dismiss-alerts)."""
     eff = _load_effective(config, app_name)
     scenario_path = Path(scenario)
     if not scenario_path.exists():
@@ -62,8 +68,16 @@ def run(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    on_blocked = None
+    if dismiss_alerts:
+        from simyoke.alerts import ClaudeAlertLocator, SystemAlertGuard
+
+        guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None)
+        on_blocked = guard.dismiss
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    results, manifest = run_and_report(eff, scenarios, factory, Path("runs"), run_id)
+    results, manifest = run_and_report(
+        eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked
+    )
     ok = all(r.ok for r in results)
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
     raise typer.Exit(0 if ok else 1)
