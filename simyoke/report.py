@@ -7,6 +7,7 @@ later (the evidence subsystem); the manifest already has a place for them.
 
 from __future__ import annotations
 
+import html as _html
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -53,8 +54,52 @@ def junit_xml(results: list[RunResult]) -> str:
     return ET.tostring(suite, encoding="unicode")
 
 
+def _badge(ok: bool) -> str:
+    return '<span class="pass">PASS</span>' if ok else '<span class="fail">FAIL</span>'
+
+
+def _row(cells: list[str], ok: bool) -> str:
+    tds = "".join(f"<td>{c}</td>" for c in cells)
+    return f"<tr class='{'ok' if ok else 'ng'}'>{tds}</tr>"
+
+
+def html_report(run_id: str, results: list[RunResult]) -> str:
+    """A self-contained HTML report (inline CSS, no external assets)."""
+    e = _html.escape
+    blocks: list[str] = []
+    for r in results:
+        rows = [
+            _row([str(s.index), e(s.action), "ok" if s.ok else "FAIL",
+                  f"{s.duration_s:.3f}s", e(s.reason)], s.ok)
+            for s in r.steps
+        ]
+        rows += [
+            _row(["expect", e(a.kind), "ok" if a.ok else "FAIL", "", e(a.reason)], a.ok)
+            for a in r.expect_results
+        ]
+        blocks.append(
+            f"<section><h2>{e(r.scenario)} {_badge(r.ok)}</h2>"
+            f"<table><thead><tr><th>#</th><th>action</th><th>result</th>"
+            f"<th>time</th><th>reason</th></tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table></section>"
+        )
+    style = (
+        "body{font-family:-apple-system,system-ui,sans-serif;margin:2rem;color:#222}"
+        "table{border-collapse:collapse;width:100%;margin:.5rem 0}"
+        "th,td{border:1px solid #ddd;padding:.3rem .5rem;text-align:left;font-size:.9rem}"
+        "tr.ng{background:#fff0f0}.pass{color:#0a0;font-weight:700}.fail{color:#c00;font-weight:700}"
+    )
+    overall = all(r.ok for r in results)
+    return (
+        f"<!doctype html><html><head><meta charset='utf-8'>"
+        f"<title>Simyoke run {e(run_id)}</title><style>{style}</style></head>"
+        f"<body><h1>Simyoke run {e(run_id)} {_badge(overall)}</h1>"
+        f"{''.join(blocks)}</body></html>"
+    )
+
+
 def write_report(run_dir: Path, run_id: str, results: list[RunResult]) -> Path:
-    """Write manifest.json and junit.xml under run_dir; return the manifest path."""
+    """Write manifest.json, junit.xml, and report.html under run_dir; return the manifest path."""
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "manifest.json"
     manifest_path.write_text(
@@ -62,4 +107,5 @@ def write_report(run_dir: Path, run_id: str, results: list[RunResult]) -> Path:
         encoding="utf-8",
     )
     (run_dir / "junit.xml").write_text(junit_xml(results), encoding="utf-8")
+    (run_dir / "report.html").write_text(html_report(run_id, results), encoding="utf-8")
     return manifest_path

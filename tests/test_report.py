@@ -11,7 +11,7 @@ from pathlib import Path
 from simyoke.drivers import base
 from simyoke.drivers.fake import FakeDriver
 from simyoke.orchestrator import RunResult, run_scenario
-from simyoke.report import junit_xml, manifest_dict, write_report
+from simyoke.report import html_report, junit_xml, manifest_dict, write_report
 from simyoke.scenario import Scenario
 
 
@@ -80,7 +80,16 @@ def test_write_report(tmp_path: Path) -> None:
     manifest_path = write_report(run_dir, "run3", [_passing(), _failing()])
     assert manifest_path.exists()
     assert (run_dir / "junit.xml").exists()
+    assert (run_dir / "report.html").exists()
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["runId"] == "run3"
     assert data["ok"] is False
     assert len(data["scenarios"]) == 2
+
+
+def test_html_report() -> None:
+    out = html_report("run9", [_passing(), _failing()])
+    assert "<!doctype html>" in out
+    assert "run9" in out
+    assert "s1" in out and "s2" in out
+    assert "PASS" in out and "FAIL" in out
