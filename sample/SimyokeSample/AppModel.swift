@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import os
 
 struct Item: Identifiable {
@@ -62,6 +63,9 @@ final class AppModel: ObservableObject {
             loginError = true
         } else {
             loginError = false
+            // Dismiss the keyboard so the home screen's accessibility tree is clean.
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             screen = .home
         }
     }

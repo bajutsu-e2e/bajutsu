@@ -31,6 +31,16 @@ struct OnboardingView: View {
 struct AuthView: View {
     @EnvironmentObject var model: AppModel
 
+    // Under UITEST a plain field is used so iOS never offers to save the password
+    // (the system "Save Password?" alert lives in SpringBoard and would block tests).
+    @ViewBuilder private var passwordField: some View {
+        if model.animationsDisabled {
+            TextField("Password", text: $model.password)
+        } else {
+            SecureField("Password", text: $model.password)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             Text("Sign in")
@@ -38,10 +48,15 @@ struct AuthView: View {
                 .accessibilityIdentifier("auth.title")
             TextField("Email", text: $model.email)
                 .textFieldStyle(.roundedBorder)
+                .keyboardType(.asciiCapable)
                 .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
                 .accessibilityIdentifier("auth.email")
-            SecureField("Password", text: $model.password)
+            passwordField
                 .textFieldStyle(.roundedBorder)
+                .keyboardType(.asciiCapable)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
                 .accessibilityIdentifier("auth.password")
             if model.loginError {
                 Text("Invalid credentials")
@@ -129,6 +144,9 @@ struct SettingsView: View {
                 }
                 .accessibilityIdentifier("settings.normalizeToggle")
                 .accessibilityAddTraits(model.normalize ? .isSelected : [])
+                // Mirror the selected state into the value so headless backends that
+                // do not surface the isSelected trait (e.g. idb) can still read it.
+                .accessibilityValue(model.normalize ? "on" : "off")
 
                 if model.settingsChanged {
                     Text("Settings changed — reindex needed")
