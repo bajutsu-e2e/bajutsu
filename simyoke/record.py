@@ -29,6 +29,35 @@ def _screenshot_bytes(driver: base.Driver) -> bytes | None:
         return None
 
 
+def _settle_target(assertion: Assertion) -> base.Selector | None:
+    """The selector of a positive-existence assertion (something that must be present)."""
+    if assertion.exists is not None and not assertion.exists.negate:
+        return assertion.exists.sel.as_selector()
+    if assertion.value is not None:
+        return assertion.value.sel.as_selector()
+    if assertion.label is not None:
+        return assertion.label.sel.as_selector()
+    for state in (assertion.enabled, assertion.disabled, assertion.selected):
+        if state is not None:
+            return state.as_selector()
+    return None  # notExists / count: no single element to wait for
+
+
+def _settle_step(expect: list[Assertion], timeout: float = 5.0) -> Step | None:
+    """A wait for the first asserted element, recorded before the assertions.
+
+    The agent observes a settled screen between turns, but deterministic replay runs
+    fast and can verify before an async transition (e.g. a sheet) has rendered. A wait
+    for an asserted element makes the recorded scenario self-sufficient without adding
+    implicit timing to `run`.
+    """
+    for assertion in expect:
+        target = _settle_target(assertion)
+        if target is not None:
+            return Step.model_validate({"wait": {"for": target, "timeout": timeout}})
+    return None
+
+
 def _execute(driver: base.Driver, step: Step, clock: Clock) -> None:
     kind = _action_of(step)
     if kind == "wait":
@@ -112,6 +141,9 @@ def record(
         )
         if proposal.done:
             expect = proposal.expect
+            settle = _settle_step(expect)
+            if settle is not None:
+                steps.append(settle)  # let an async screen render before replay verifies
             break
         if proposal.step is None:
             break
