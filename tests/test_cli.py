@@ -56,16 +56,17 @@ def test_run_missing_scenario(tmp_path: Path) -> None:
 
 
 def test_run_no_backend_available(tmp_path: Path) -> None:
-    # Valid config + app + scenario, but no rocketsim/idb on PATH -> clean exit 2.
+    # An unknown backend is never available -> clean exit 2 (independent of PATH).
     cfg, scn = _write(tmp_path)
-    r = runner.invoke(app, ["run", str(scn), "--app", "demo", "--config", str(cfg)])
+    r = runner.invoke(app, ["run", str(scn), "--app", "demo", "--backend", "nope",
+                            "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no available actuator" in r.output
 
 
 def test_doctor_no_backend_available(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["doctor", "--app", "demo", "--config", str(cfg)])
+    r = runner.invoke(app, ["doctor", "--app", "demo", "--backend", "nope", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no available actuator" in r.output
 
@@ -74,7 +75,7 @@ def test_record_no_backend_available(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     out = tmp_path / "rec.yaml"
     r = runner.invoke(app, ["record", str(out), "--app", "demo", "--goal", "open settings",
-                            "--config", str(cfg)])
+                            "--backend", "nope", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no available actuator" in r.output
 

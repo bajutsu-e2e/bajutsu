@@ -13,6 +13,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "types-pyyaml>=6.0"]
+# The idb backend shells out to the `idb` client; idb_companion is a separate
+# `brew install facebook/fb/idb-companion`.
+idb = ["fb-idb>=1.1.0"]
 
 [project.scripts]
 simyoke = "simyoke.cli:app"
