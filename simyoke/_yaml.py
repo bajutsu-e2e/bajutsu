@@ -36,3 +36,7 @@ _restrict_bool_to_true_false()
 
 def safe_load(text: str) -> Any:
     return yaml.load(text, Loader=_Loader)
+
+
+def safe_dump(data: Any) -> str:
+    return yaml.safe_dump(data, allow_unicode=True, sort_keys=False)

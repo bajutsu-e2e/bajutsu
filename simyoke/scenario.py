@@ -286,3 +286,24 @@ def load_scenarios(text: str) -> list[Scenario]:
     if not isinstance(data, list):
         raise ValueError("シナリオファイルはシナリオの配列（§6.1）")
     return [Scenario.model_validate(item) for item in data]
+
+
+def _prune(obj: Any) -> Any:
+    """Drop None / empty-list / empty-dict entries for readable output."""
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for key, value in obj.items():
+            pruned = _prune(value)
+            if pruned is None or pruned == [] or pruned == {}:
+                continue
+            out[key] = pruned
+        return out
+    if isinstance(obj, list):
+        return [_prune(v) for v in obj]
+    return obj
+
+
+def dump_scenarios(scenarios: list[Scenario]) -> str:
+    """Serialize scenarios back to YAML (round-trips through load_scenarios)."""
+    data = [_prune(s.model_dump(mode="json", by_alias=True, exclude_none=True)) for s in scenarios]
+    return _yaml.safe_dump(data)

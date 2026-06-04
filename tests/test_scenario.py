@@ -17,6 +17,7 @@ from simyoke.scenario import (
     Step,
     Swipe,
     Wait,
+    dump_scenarios,
     load_scenarios,
 )
 
@@ -160,6 +161,35 @@ def test_capture_policy_on_key_is_not_yaml_bool() -> None:
       capture: [network]
 """
     s = load_scenarios(yaml_text)[0]
+    assert s.capture_policy[0].on.action == "tap"
+
+
+def test_dump_round_trip() -> None:
+    text = """
+- name: round trip
+  preconditions:
+    launchEnv: { K: "1" }
+  steps:
+    - tap: { id: home.go }
+    - type: { text: "hi", into: { id: home.field } }
+    - wait: { for: { id: home.done }, timeout: 5 }
+    - assert:
+        - exists: { id: home.done }
+  expect:
+    - value: { sel: { id: counter }, equals: "3" }
+    - exists: { id: spinner, negate: true }
+  capturePolicy:
+    - on: { action: tap, idMatches: "*.go" }
+      capture: [elements]
+"""
+    reloaded = load_scenarios(dump_scenarios(load_scenarios(text)))
+    assert len(reloaded) == 1
+    s = reloaded[0]
+    assert s.name == "round trip"
+    assert s.steps[0].tap is not None and s.steps[0].tap.id == "home.go"
+    assert s.steps[1].type is not None and s.steps[1].type.into is not None
+    assert s.expect[0].value is not None and s.expect[0].value.equals == "3"
+    assert s.expect[1].exists is not None and s.expect[1].exists.negate is True
     assert s.capture_policy[0].on.action == "tap"
 
 
