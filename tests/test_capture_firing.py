@@ -1,4 +1,9 @@
-"""Tests for capturePolicy firing in the run loop."""
+"""Tests for evidence firing in the run loop.
+
+Every step always captures an instant baseline (screenshot.after + elements);
+capturePolicy / inline `capture` add extra instant captures on top. Interval kinds
+(video / deviceLog / appTrace) are recorded once for the whole scenario.
+"""
 
 from __future__ import annotations
 
@@ -11,29 +16,29 @@ from bajutsu.evidence import Artifact, FileSink
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import Scenario
 
+BASELINE = ["screenshot.after", "elements"]
+
 
 class RecordingSink:
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[str]]] = []  # instant capture calls
-        self.interval_calls: list[tuple[str, list[str]]] = []
-
-    def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]:
-        if kinds:
-            self.interval_calls.append((step_id, kinds))
-        return []
+        self.scenario_intervals: list[tuple[str, list[str]]] = []
 
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
         return []
 
-    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None:
-        return None
+    def start_scenario_intervals(
+        self, scenario_id: str, kinds: list[str]
+    ) -> list[intervals.Interval]:
+        self.scenario_intervals.append((scenario_id, kinds))
+        return []
 
-    def finish_scenario_video(
-        self, scenario_id: str, interval: intervals.Interval
-    ) -> Artifact | None:
-        return None
+    def finish_scenario_intervals(
+        self, scenario_id: str, started: list[intervals.Interval]
+    ) -> list[Artifact]:
+        return []
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:
@@ -50,7 +55,15 @@ def _scn(data: dict[str, object]) -> Scenario:
     return Scenario.model_validate(data)
 
 
-def test_action_trigger_fires_on_id_match() -> None:
+def test_baseline_always_fires() -> None:
+    # No capturePolicy / inline capture at all: the instant baseline still fires.
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
+    assert sink.calls == [("step0", BASELINE)]
+
+
+def test_action_trigger_adds_to_baseline() -> None:
     driver = FakeDriver([_el("home.submit", "Submit")])
     sink = RecordingSink()
     run_scenario(
@@ -60,12 +73,12 @@ def test_action_trigger_fires_on_id_match() -> None:
             "steps": [{"tap": {"id": "home.submit"}}],
             "capturePolicy": [
                 {"on": {"action": "tap", "idMatches": "*.submit"},
-                 "capture": ["screenshot.after", "elements"]},
+                 "capture": ["screenshot.before"]},
             ],
         }),
         sink=sink,
     )
-    assert sink.calls == [("step0", ["screenshot.after", "elements"])]
+    assert sink.calls == [("step0", [*BASELINE, "screenshot.before"])]
 
 
 def test_action_trigger_skips_on_id_mismatch() -> None:
@@ -77,15 +90,15 @@ def test_action_trigger_skips_on_id_mismatch() -> None:
             "name": "x",
             "steps": [{"tap": {"id": "home.cancel"}}],
             "capturePolicy": [
-                {"on": {"action": "tap", "idMatches": "*.submit"}, "capture": ["elements"]},
+                {"on": {"action": "tap", "idMatches": "*.submit"}, "capture": ["screenshot.before"]},
             ],
         }),
         sink=sink,
     )
-    assert sink.calls == []
+    assert sink.calls == [("step0", BASELINE)]  # only the baseline, policy did not fire
 
 
-def test_screen_changed_trigger() -> None:
+def test_screen_changed_trigger_adds_to_baseline() -> None:
     nxt = [_el("done", "Done", ["staticText"])]
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
@@ -99,11 +112,11 @@ def test_screen_changed_trigger() -> None:
         _scn({
             "name": "x",
             "steps": [{"tap": {"id": "go"}}],
-            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["elements"]}],
+            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}],
         }),
         sink=sink,
     )
-    assert sink.calls == [("step0", ["elements"])]
+    assert sink.calls == [("step0", [*BASELINE, "screenshot.before"])]
 
 
 def test_error_trigger_is_the_safety_net() -> None:
@@ -114,14 +127,16 @@ def test_error_trigger_is_the_safety_net() -> None:
         _scn({
             "name": "x",
             "steps": [{"tap": {"id": "missing"}}],
-            "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot", "elements"]}],
+            "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot.before"]}],
         }),
         sink=sink,
     )
-    assert sink.calls == [("step0", ["screenshot", "elements"])]
+    assert sink.calls == [("step0", [*BASELINE, "screenshot.before"])]
 
 
-def test_inline_capture_fires() -> None:
+def test_inline_interval_token_is_recorded_scenario_wide_not_per_step() -> None:
+    # deviceLog is an interval kind: it is recorded for the whole scenario, so it
+    # does not appear as a per-step instant capture (only the baseline does).
     driver = FakeDriver([_el("a", "A")])
     sink = RecordingSink()
     run_scenario(
@@ -129,72 +144,60 @@ def test_inline_capture_fires() -> None:
         _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["deviceLog"]}]}),
         sink=sink,
     )
-    # deviceLog is an interval: started before the step, not an instant capture
-    assert sink.interval_calls == [("step0", ["deviceLog"])]
-    assert sink.calls == []
+    assert sink.calls == [("step0", BASELINE)]
+    assert sink.scenario_intervals == [("x", ["video", "deviceLog", "appTrace"])]
 
 
-def test_no_capture_no_fire() -> None:
-    driver = FakeDriver([_el("a", "A")])
-    sink = RecordingSink()
-    run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
-    assert sink.calls == []
-
-
-class VideoSink:
-    """A sink that records a scenario-level video (no per-step captures)."""
+class IntervalSink:
+    """Records scenario-level interval recordings and returns artifacts for them."""
 
     def __init__(self) -> None:
-        self.started: list[str] = []
+        self.started: list[tuple[str, list[str]]] = []
         self.finished: list[str] = []
-
-    def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]:
-        return []
 
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
         return []
 
-    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None:
-        self.started.append(scenario_id)
-        return intervals.Interval(kind="video", path=Path(f"{scenario_id}/scenario.mp4"))
+    def start_scenario_intervals(
+        self, scenario_id: str, kinds: list[str]
+    ) -> list[intervals.Interval]:
+        self.started.append((scenario_id, kinds))
+        return [
+            intervals.Interval(kind=k.partition(".")[0], path=Path(f"{scenario_id}/{k}.bin"))
+            for k in kinds
+        ]
 
-    def finish_scenario_video(
-        self, scenario_id: str, interval: intervals.Interval
-    ) -> Artifact | None:
+    def finish_scenario_intervals(
+        self, scenario_id: str, started: list[intervals.Interval]
+    ) -> list[Artifact]:
         self.finished.append(scenario_id)
-        return Artifact(name=str(interval.path), kind="video", provider="simctl")
+        return [Artifact(name=str(i.path), kind=i.kind, provider="simctl") for i in started]
 
 
-def test_scenario_video_is_always_recorded() -> None:
-    # No capturePolicy / inline capture at all — video is recorded regardless.
+def test_scenario_intervals_always_recorded() -> None:
     driver = FakeDriver([_el("a", "A")])
-    sink = VideoSink()
+    sink = IntervalSink()
     result = run_scenario(driver, _scn({"name": "My Scn", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
-    assert sink.started == ["my-scn"]  # default id is the slugged name
+    assert sink.started == [("my-scn", ["video", "deviceLog", "appTrace"])]
     assert sink.finished == ["my-scn"]
-    videos = [a for a in result.artifacts if a.kind == "video"]
-    assert len(videos) == 1
-    assert videos[0].name == "my-scn/scenario.mp4"
+    assert sorted(a.kind for a in result.artifacts) == ["appTrace", "deviceLog", "video"]
 
 
-def test_scenario_video_recorded_even_when_a_step_fails() -> None:
+def test_scenario_intervals_recorded_even_when_a_step_fails() -> None:
     driver = FakeDriver([_el("a", "A")])
-    sink = VideoSink()
+    sink = IntervalSink()
     result = run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "missing"}}]}), sink=sink)
     assert not result.ok
     assert sink.finished == ["x"]  # finalized in the finally block despite the failure
-    assert [a.kind for a in result.artifacts] == ["video"]
+    assert [a.kind for a in result.artifacts] == ["video", "deviceLog", "appTrace"]
 
 
-def test_file_sink_writes_elements(tmp_path: Path) -> None:
+def test_file_sink_writes_baseline_elements(tmp_path: Path) -> None:
     driver = FakeDriver([_el("a", "A")])
     run_scenario(
         driver,
-        _scn({
-            "name": "x",
-            "steps": [{"tap": {"id": "a"}}],
-            "capturePolicy": [{"on": {"action": "tap"}, "capture": ["elements"]}],
-        }),
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}),
         sink=FileSink(tmp_path / "run1"),
     )
+    # The baseline writes the element tree for the step even with no capturePolicy.
     assert (tmp_path / "run1" / "step0" / "elements.json").exists()

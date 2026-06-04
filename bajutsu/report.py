@@ -58,13 +58,22 @@ def _badge(ok: bool) -> str:
     return '<span class="pass">PASS</span>' if ok else '<span class="fail">FAIL</span>'
 
 
-def _video(r: RunResult) -> str:
-    """Embed the scenario's screen recording (path relative to the run dir)."""
-    art = next((a for a in r.artifacts if a.kind == "video"), None)
-    if art is None:
-        return ""
-    src = _html.escape(art.name, quote=True)
-    return f'<video controls preload="metadata" src="{src}"></video>'
+def _evidence(r: RunResult) -> str:
+    """Embed the scenario's screen recording and link its other log artifacts
+    (paths are relative to the run dir, where the report is written)."""
+    parts: list[str] = []
+    for a in r.artifacts:
+        if a.kind == "video":
+            parts.append(f'<video controls preload="metadata" src="{_html.escape(a.name, quote=True)}"></video>')
+    links = [a for a in r.artifacts if a.kind != "video"]
+    if links:
+        items = "".join(
+            f'<li><a href="{_html.escape(a.name, quote=True)}">{_html.escape(a.name)}</a>'
+            f' <span class="kind">{_html.escape(a.kind)}</span></li>'
+            for a in links
+        )
+        parts.append(f"<ul class='evidence'>{items}</ul>")
+    return "".join(parts)
 
 
 def _row(cells: list[str], ok: bool) -> str:
@@ -88,7 +97,7 @@ def html_report(run_id: str, results: list[RunResult]) -> str:
         ]
         blocks.append(
             f"<section><h2>{e(r.scenario)} {_badge(r.ok)}</h2>"
-            f"{_video(r)}"
+            f"{_evidence(r)}"
             f"<table><thead><tr><th>#</th><th>action</th><th>result</th>"
             f"<th>time</th><th>reason</th></tr></thead>"
             f"<tbody>{''.join(rows)}</tbody></table></section>"
@@ -99,6 +108,8 @@ def html_report(run_id: str, results: list[RunResult]) -> str:
         "th,td{border:1px solid #ddd;padding:.3rem .5rem;text-align:left;font-size:.9rem}"
         "tr.ng{background:#fff0f0}.pass{color:#0a0;font-weight:700}.fail{color:#c00;font-weight:700}"
         "video{max-width:320px;display:block;margin:.5rem 0;border:1px solid #ddd;border-radius:6px}"
+        "ul.evidence{margin:.25rem 0;padding-left:1.2rem;font-size:.85rem}"
+        ".kind{color:#888;font-size:.8rem}"
     )
     overall = all(r.ok for r in results)
     return (

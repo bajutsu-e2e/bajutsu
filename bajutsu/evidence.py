@@ -1,9 +1,10 @@
-"""Evidence capture: instant artifacts (screenshot / elements) plus interval
-artifacts (video / deviceLog) captured around a step.
+"""Evidence capture: instant artifacts (screenshot / elements) written after each
+step, plus interval artifacts (video / deviceLog / appTrace) recorded for the whole
+scenario.
 
-Instant captures are written after a step; interval captures are started before
-the action and stopped after the step settles (see `bajutsu.intervals`). Every
-artifact records its provider so the manifest shows where it came from.
+Instant captures land in run_dir/<step_id>/; interval captures run for the whole
+scenario and land in run_dir/<scenario_id>/. Every artifact records its provider so
+the manifest shows where it came from.
 """
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ from typing import Protocol
 from bajutsu import intervals
 from bajutsu.drivers import base
 
-# step-dir file names for interval kinds
-_INTERVAL_FILE = {"video": "segment.mp4", "deviceLog": "device.log"}
+# scenario-dir file names for interval kinds
+_INTERVAL_FILE = {"video": "scenario.mp4", "deviceLog": "device.log"}
 
 
 @dataclass
@@ -56,45 +57,48 @@ def capture(driver: base.Driver, step_dir: Path, kinds: list[str]) -> list[Artif
         elif kind == "screenshot":
             name = f"{modifier or 'after'}.png"
             out.append(Artifact(write_screenshot(driver, step_dir, name).name, "screenshot", "driver"))
-        # actionLog lives in the manifest; video / deviceLog are intervals (start_intervals).
+        # actionLog lives in the manifest; video / deviceLog / appTrace are intervals.
     return out
 
 
 class EvidenceSink(Protocol):
-    """Where fired captures go. The orchestrator starts intervals before a step and
-    captures instant artifacts after it, and records one video for the whole scenario."""
+    """Where evidence goes. The orchestrator captures instant artifacts after each
+    step, and records the interval artifacts (video / deviceLog / appTrace) for the
+    whole scenario."""
 
-    def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]: ...
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]: ...
-    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None: ...
-    def finish_scenario_video(
-        self, scenario_id: str, interval: intervals.Interval
-    ) -> Artifact | None: ...
+    def start_scenario_intervals(
+        self, scenario_id: str, kinds: list[str]
+    ) -> list[intervals.Interval]: ...
+    def finish_scenario_intervals(
+        self, scenario_id: str, started: list[intervals.Interval]
+    ) -> list[Artifact]: ...
 
 
 class NullSink:
     """Default sink: capture nothing (keeps runs side-effect free unless asked)."""
 
-    def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]:
-        return []
-
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
         return []
 
-    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None:
-        return None
+    def start_scenario_intervals(
+        self, scenario_id: str, kinds: list[str]
+    ) -> list[intervals.Interval]:
+        return []
 
-    def finish_scenario_video(
-        self, scenario_id: str, interval: intervals.Interval
-    ) -> Artifact | None:
-        return None
+    def finish_scenario_intervals(
+        self, scenario_id: str, started: list[intervals.Interval]
+    ) -> list[Artifact]:
+        return []
 
 
 class FileSink:
-    """Write captured artifacts under run_dir/<step_id>/.
+    """Write instant artifacts under run_dir/<step_id>/ and the scenario's interval
+    recordings under run_dir/<scenario_id>/.
 
     `udid` is needed for interval captures (simctl video / log); without it they are
-    skipped. `log_predicate` narrows the device-log stream (e.g. by subsystem).
+    skipped. `log_predicate` narrows the device-log stream (e.g. by subsystem);
+    `log_subsystem` is the app's os_log subsystem for appTrace.
     """
 
     def __init__(
@@ -109,45 +113,43 @@ class FileSink:
         self.log_predicate = log_predicate
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
 
-    def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]:
+    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
+        return capture(driver, self.run_dir / step_id, kinds)
+
+    def start_scenario_intervals(
+        self, scenario_id: str, kinds: list[str]
+    ) -> list[intervals.Interval]:
+        """Start the whole-scenario recordings under <scenario_id>/ (needs a udid)."""
         if self.udid is None or not kinds:
             return []
-        step_dir = self.run_dir / step_id
-        step_dir.mkdir(parents=True, exist_ok=True)
+        scenario_dir = self.run_dir / scenario_id
+        scenario_dir.mkdir(parents=True, exist_ok=True)
         started: list[intervals.Interval] = []
         for token in kinds:
             kind = token.partition(".")[0]
-            path = step_dir / _INTERVAL_FILE.get(kind, f"{kind}.bin")
             if kind == "video":
-                started.append(intervals.start_video(self.udid, path))
+                started.append(intervals.start_video(self.udid, scenario_dir / "scenario.mp4"))
             elif kind == "deviceLog":
-                started.append(intervals.start_device_log(self.udid, path, self.log_predicate))
+                started.append(intervals.start_device_log(
+                    self.udid, scenario_dir / "device.log", self.log_predicate))
             elif kind == "appTrace" and self.log_subsystem:
                 started.append(intervals.start_app_trace(
-                    self.udid, step_dir / "appTrace.raw", step_dir / "appTrace.json",
+                    self.udid, scenario_dir / "appTrace.raw", scenario_dir / "appTrace.json",
                     self.log_subsystem,
                 ))
         return started
 
-    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
-        return capture(driver, self.run_dir / step_id, kinds)
-
-    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None:
-        """Begin recording the whole scenario to <scenario_id>/scenario.mp4 (needs a udid)."""
-        if self.udid is None:
-            return None
-        scenario_dir = self.run_dir / scenario_id
-        scenario_dir.mkdir(parents=True, exist_ok=True)
-        return intervals.start_video(self.udid, scenario_dir / "scenario.mp4")
-
-    def finish_scenario_video(
-        self, scenario_id: str, interval: intervals.Interval
-    ) -> Artifact | None:
-        """Finalize the recording; the artifact name is relative to the run dir so the
-        HTML report (written there) can embed it directly."""
-        path = interval.stop()
-        try:
-            name = str(path.relative_to(self.run_dir))
-        except ValueError:
-            name = path.name
-        return Artifact(name=name, kind="video", provider=intervals.PROVIDER)
+    def finish_scenario_intervals(
+        self, scenario_id: str, started: list[intervals.Interval]
+    ) -> list[Artifact]:
+        """Finalize each recording; artifact names are relative to the run dir so the
+        HTML report (written there) can link/embed them directly."""
+        out: list[Artifact] = []
+        for interval in started:
+            path = interval.stop()
+            try:
+                name = str(path.relative_to(self.run_dir))
+            except ValueError:
+                name = path.name
+            out.append(Artifact(name=name, kind=interval.kind, provider=interval.provider))
+        return out

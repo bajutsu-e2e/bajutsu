@@ -26,6 +26,11 @@ from bajutsu.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait
 _SWIPE_DIST = 100.0
 _POLL = 0.05
 
+# Always captured, regardless of capturePolicy: an after-screenshot and the element
+# tree per step (instant), and these interval recordings for the whole scenario.
+_BASELINE_INSTANT = ("screenshot.after", "elements")
+_SCENARIO_INTERVALS = ("video", "deviceLog", "appTrace")
+
 
 class Clock(Protocol):
     """Time and sleep (swappable in tests to make waits deterministic)."""
@@ -286,38 +291,15 @@ def _kind_of(token: str) -> str:
 def _collect_captures(
     scenario: Scenario, step: Step, kind: str, ok: bool, screen_changed: bool
 ) -> list[str]:
-    """Capture kinds fired for this step: inline `capture` plus matching policy rules."""
-    fired: list[str] = list(step.capture or [])
+    """Capture kinds for this step: the always-on instant baseline, plus inline
+    `capture` and any matching capturePolicy rules."""
+    fired: list[str] = [*_BASELINE_INSTANT, *(step.capture or [])]
     primary = _primary_selector(step)
     primary_id = primary.id if primary is not None else None
     for rule in scenario.capture_policy:
         if _rule_fires(rule, kind, primary_id, screen_changed, ok):
             fired.extend(rule.capture)
     return _dedupe(fired)
-
-
-def _pre_intervals(scenario: Scenario, step: Step, kind: str) -> list[str]:
-    """Interval capture tokens knowable before the step runs (inline + action rules).
-
-    Interval kinds (video / deviceLog) must start before the action, so only triggers
-    determinable from the step itself qualify — screenChanged / error fire too late.
-    """
-    tokens: list[str] = list(step.capture or [])
-    primary = _primary_selector(step)
-    primary_id = primary.id if primary is not None else None
-    for rule in scenario.capture_policy:
-        trigger = rule.on
-        if trigger.action is not None and trigger.action == _DSL_ACTION.get(kind, kind):
-            if trigger.id_matches is None or (
-                primary_id is not None and fnmatch.fnmatchcase(primary_id, trigger.id_matches)
-            ):
-                tokens.extend(rule.capture)
-    # `video` is recorded once for the whole scenario (see run_scenario), so it is
-    # not started per-step here — that would spawn a second concurrent recorder.
-    return [
-        t for t in _dedupe(tokens)
-        if _kind_of(t) in intervals.INTERVAL_KINDS and _kind_of(t) != "video"
-    ]
 
 
 def run_scenario(
@@ -339,11 +321,12 @@ def run_scenario(
     clock = clock or RealClock()
     sink = sink or NullSink()
     sid = scenario_id or scenario_slug(scenario.name)
-    video = sink.start_scenario_video(sid)
+    recordings = sink.start_scenario_intervals(sid, list(_SCENARIO_INTERVALS))
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
     expect_results: list[AssertionResult] = []
     failure: str | None = None
+    artifacts: list[Artifact] = []
 
     try:
         failure = _run_steps(
@@ -356,11 +339,7 @@ def run_scenario(
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
     finally:
-        artifacts: list[Artifact] = []
-        if video is not None:
-            art = sink.finish_scenario_video(sid, video)
-            if art is not None:
-                artifacts.append(art)
+        artifacts = sink.finish_scenario_intervals(sid, recordings)
 
     return RunResult(
         scenario=scenario.name,
@@ -388,7 +367,6 @@ def _run_steps(
         outcome = StepOutcome(index=i, action=kind)
         step_id = step.name or f"step{i}"
         before = driver.query() if wants_screen_changed else None
-        running = sink.start_intervals(step_id, _pre_intervals(scenario, step, kind))
         start = clock.now()
         ok, reason, results = _run_step_body(driver, step, kind, clock)
         if not ok and on_blocked is not None and on_blocked(driver):
@@ -396,10 +374,10 @@ def _run_steps(
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 
-        for interval in running:  # stop interval captures now that the step has settled
-            outcome.artifacts.append(Artifact(interval.stop().name, interval.kind, interval.provider))
         screen_changed = before is not None and driver.query() != before
         fired = _collect_captures(scenario, step, kind, outcome.ok, screen_changed)
+        # Interval kinds are recorded scenario-wide (run_scenario), so only the
+        # instant kinds are captured per step here.
         instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
         outcome.artifacts.extend(sink.capture(driver, step_id, instant))
 
