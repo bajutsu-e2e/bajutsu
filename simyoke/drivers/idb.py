@@ -140,6 +140,9 @@ class IdbDriver:
         x, y = self._center(sel)
         self._run(tap_cmd(self.udid, x, y))
 
+    def tap_point(self, p: base.Point) -> None:
+        self._run(tap_cmd(self.udid, p[0], p[1]))
+
     def long_press(self, sel: base.Selector, duration: float) -> None:
         x, y = self._center(sel)
         self._run(["idb", "ui", "tap", "--udid", self.udid, _num(x), _num(y), "--duration", str(duration)])

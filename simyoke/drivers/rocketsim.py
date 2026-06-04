@@ -109,6 +109,9 @@ class RocketSimDriver:
             x, y, w, h = el["frame"]
             self._run(tap_xy_cmd(self.udid, x + w / 2, y + h / 2))
 
+    def tap_point(self, p: base.Point) -> None:
+        self._run(tap_xy_cmd(self.udid, p[0], p[1]))
+
     def long_press(self, sel: base.Selector, duration: float) -> None:
         el = base.resolve_unique(self.query(), sel)
         x, y, w, h = el["frame"]

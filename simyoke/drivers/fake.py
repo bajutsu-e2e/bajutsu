@@ -34,6 +34,9 @@ class FakeDriver:
         base.resolve_unique(self.screen, sel)
         self._record("tap", sel)
 
+    def tap_point(self, p: base.Point) -> None:
+        self._record("tap_point", p)
+
     def long_press(self, sel: base.Selector, duration: float) -> None:
         base.resolve_unique(self.screen, sel)
         self._record("long_press", (sel, duration))
