@@ -11,6 +11,7 @@ wired in later.
 from __future__ import annotations
 
 import fnmatch
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -59,6 +60,14 @@ class RunResult:
     steps: list[StepOutcome]
     expect_results: list[AssertionResult] = field(default_factory=list)
     failure: str | None = None
+    # Scenario-level artifacts (the always-on screen recording, etc.).
+    artifacts: list[Artifact] = field(default_factory=list)
+
+
+def scenario_slug(name: str) -> str:
+    """A filesystem-safe id derived from a scenario name (for its evidence dir)."""
+    slug = re.sub(r"[^0-9a-zA-Z]+", "-", name).strip("-").lower()
+    return slug or "scenario"
 
 
 def _action_of(step: Step) -> str:
@@ -303,7 +312,12 @@ def _pre_intervals(scenario: Scenario, step: Step, kind: str) -> list[str]:
                 primary_id is not None and fnmatch.fnmatchcase(primary_id, trigger.id_matches)
             ):
                 tokens.extend(rule.capture)
-    return [t for t in _dedupe(tokens) if _kind_of(t) in intervals.INTERVAL_KINDS]
+    # `video` is recorded once for the whole scenario (see run_scenario), so it is
+    # not started per-step here — that would spawn a second concurrent recorder.
+    return [
+        t for t in _dedupe(tokens)
+        if _kind_of(t) in intervals.INTERVAL_KINDS and _kind_of(t) != "video"
+    ]
 
 
 def run_scenario(
@@ -312,18 +326,63 @@ def run_scenario(
     clock: Clock | None = None,
     sink: EvidenceSink | None = None,
     on_blocked: BlockedHandler | None = None,
+    scenario_id: str | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
+
+    The whole scenario is screen-recorded (always on): the sink starts a video before
+    the first step and finalizes it after verification, attaching it to the result.
 
     If a step fails and `on_blocked` clears a blocking condition (e.g. dismisses a
     system alert), the step is retried once before being recorded as a failure.
     """
     clock = clock or RealClock()
     sink = sink or NullSink()
+    sid = scenario_id or scenario_slug(scenario.name)
+    video = sink.start_scenario_video(sid)
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
+    expect_results: list[AssertionResult] = []
     failure: str | None = None
 
+    try:
+        failure = _run_steps(
+            driver, scenario, clock, sink, on_blocked, wants_screen_changed, outcomes
+        )
+        if failure is None and scenario.expect:
+            expect_results = assertions.evaluate(driver.query(), scenario.expect)
+            if not assertions.passed(expect_results) and on_blocked is not None and on_blocked(driver):
+                expect_results = assertions.evaluate(driver.query(), scenario.expect)  # retry once
+            if not assertions.passed(expect_results):
+                failure = "expect: " + _fail_reason(expect_results)
+    finally:
+        artifacts: list[Artifact] = []
+        if video is not None:
+            art = sink.finish_scenario_video(sid, video)
+            if art is not None:
+                artifacts.append(art)
+
+    return RunResult(
+        scenario=scenario.name,
+        ok=failure is None,
+        steps=outcomes,
+        expect_results=expect_results,
+        failure=failure,
+        artifacts=artifacts,
+    )
+
+
+def _run_steps(
+    driver: base.Driver,
+    scenario: Scenario,
+    clock: Clock,
+    sink: EvidenceSink,
+    on_blocked: BlockedHandler | None,
+    wants_screen_changed: bool,
+    outcomes: list[StepOutcome],
+) -> str | None:
+    """Run the step loop, appending outcomes; return the failure string or None."""
+    failure: str | None = None
     for i, step in enumerate(scenario.steps):
         kind = _action_of(step)
         outcome = StepOutcome(index=i, action=kind)
@@ -348,19 +407,4 @@ def run_scenario(
         if not outcome.ok:
             failure = f"step {i} ({kind}): {outcome.reason}"
             break
-
-    expect_results: list[AssertionResult] = []
-    if failure is None and scenario.expect:
-        expect_results = assertions.evaluate(driver.query(), scenario.expect)
-        if not assertions.passed(expect_results) and on_blocked is not None and on_blocked(driver):
-            expect_results = assertions.evaluate(driver.query(), scenario.expect)  # retry once
-        if not assertions.passed(expect_results):
-            failure = "expect: " + _fail_reason(expect_results)
-
-    return RunResult(
-        scenario=scenario.name,
-        ok=failure is None,
-        steps=outcomes,
-        expect_results=expect_results,
-        failure=failure,
-    )
+    return failure

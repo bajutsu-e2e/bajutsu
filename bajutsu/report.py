@@ -58,6 +58,15 @@ def _badge(ok: bool) -> str:
     return '<span class="pass">PASS</span>' if ok else '<span class="fail">FAIL</span>'
 
 
+def _video(r: RunResult) -> str:
+    """Embed the scenario's screen recording (path relative to the run dir)."""
+    art = next((a for a in r.artifacts if a.kind == "video"), None)
+    if art is None:
+        return ""
+    src = _html.escape(art.name, quote=True)
+    return f'<video controls preload="metadata" src="{src}"></video>'
+
+
 def _row(cells: list[str], ok: bool) -> str:
     tds = "".join(f"<td>{c}</td>" for c in cells)
     return f"<tr class='{'ok' if ok else 'ng'}'>{tds}</tr>"
@@ -79,6 +88,7 @@ def html_report(run_id: str, results: list[RunResult]) -> str:
         ]
         blocks.append(
             f"<section><h2>{e(r.scenario)} {_badge(r.ok)}</h2>"
+            f"{_video(r)}"
             f"<table><thead><tr><th>#</th><th>action</th><th>result</th>"
             f"<th>time</th><th>reason</th></tr></thead>"
             f"<tbody>{''.join(rows)}</tbody></table></section>"
@@ -88,6 +98,7 @@ def html_report(run_id: str, results: list[RunResult]) -> str:
         "table{border-collapse:collapse;width:100%;margin:.5rem 0}"
         "th,td{border:1px solid #ddd;padding:.3rem .5rem;text-align:left;font-size:.9rem}"
         "tr.ng{background:#fff0f0}.pass{color:#0a0;font-weight:700}.fail{color:#c00;font-weight:700}"
+        "video{max-width:320px;display:block;margin:.5rem 0;border:1px solid #ddd;border-radius:6px}"
     )
     overall = all(r.ok for r in results)
     return (

@@ -93,3 +93,17 @@ def test_html_report() -> None:
     assert "run9" in out
     assert "s1" in out and "s2" in out
     assert "PASS" in out and "FAIL" in out
+
+
+def test_html_embeds_scenario_video() -> None:
+    from bajutsu.evidence import Artifact
+
+    r = RunResult(
+        scenario="s1", ok=True, steps=[], expect_results=[],
+        artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
+    )
+    out = html_report("run9", [r])
+    assert "<video" in out
+    assert 'src="00-s1/scenario.mp4"' in out
+    # A scenario with no video artifact embeds no player.
+    assert "<video" not in html_report("run9", [_passing()])

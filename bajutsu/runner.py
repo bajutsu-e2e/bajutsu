@@ -16,7 +16,7 @@ from bajutsu.backends import default_available, make_driver, select_actuator
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import EvidenceSink
-from bajutsu.orchestrator import BlockedHandler, Clock, RunResult, run_scenario
+from bajutsu.orchestrator import BlockedHandler, Clock, RunResult, run_scenario, scenario_slug
 from bajutsu.report import write_report
 from bajutsu.scenario import Preconditions, Scenario
 
@@ -71,8 +71,11 @@ def run_all(
 ) -> list[RunResult]:
     """Run every scenario, each with a freshly built driver."""
     return [
-        run_scenario(factory(eff, s), s, clock, sink=sink, on_blocked=on_blocked)
-        for s in scenarios
+        run_scenario(
+            factory(eff, s), s, clock, sink=sink, on_blocked=on_blocked,
+            scenario_id=f"{i:02d}-{scenario_slug(s.name)}",
+        )
+        for i, s in enumerate(scenarios)
     ]
 
 

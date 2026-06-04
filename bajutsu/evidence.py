@@ -62,10 +62,14 @@ def capture(driver: base.Driver, step_dir: Path, kinds: list[str]) -> list[Artif
 
 class EvidenceSink(Protocol):
     """Where fired captures go. The orchestrator starts intervals before a step and
-    captures instant artifacts after it."""
+    captures instant artifacts after it, and records one video for the whole scenario."""
 
     def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]: ...
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]: ...
+    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None: ...
+    def finish_scenario_video(
+        self, scenario_id: str, interval: intervals.Interval
+    ) -> Artifact | None: ...
 
 
 class NullSink:
@@ -76,6 +80,14 @@ class NullSink:
 
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
         return []
+
+    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None:
+        return None
+
+    def finish_scenario_video(
+        self, scenario_id: str, interval: intervals.Interval
+    ) -> Artifact | None:
+        return None
 
 
 class FileSink:
@@ -119,3 +131,23 @@ class FileSink:
 
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
         return capture(driver, self.run_dir / step_id, kinds)
+
+    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None:
+        """Begin recording the whole scenario to <scenario_id>/scenario.mp4 (needs a udid)."""
+        if self.udid is None:
+            return None
+        scenario_dir = self.run_dir / scenario_id
+        scenario_dir.mkdir(parents=True, exist_ok=True)
+        return intervals.start_video(self.udid, scenario_dir / "scenario.mp4")
+
+    def finish_scenario_video(
+        self, scenario_id: str, interval: intervals.Interval
+    ) -> Artifact | None:
+        """Finalize the recording; the artifact name is relative to the run dir so the
+        HTML report (written there) can embed it directly."""
+        path = interval.stop()
+        try:
+            name = str(path.relative_to(self.run_dir))
+        except ValueError:
+            name = path.name
+        return Artifact(name=name, kind="video", provider=intervals.PROVIDER)

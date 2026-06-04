@@ -27,6 +27,14 @@ class RecordingSink:
             self.calls.append((step_id, kinds))
         return []
 
+    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None:
+        return None
+
+    def finish_scenario_video(
+        self, scenario_id: str, interval: intervals.Interval
+    ) -> Artifact | None:
+        return None
+
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:
     return {
@@ -131,6 +139,51 @@ def test_no_capture_no_fire() -> None:
     sink = RecordingSink()
     run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
     assert sink.calls == []
+
+
+class VideoSink:
+    """A sink that records a scenario-level video (no per-step captures)."""
+
+    def __init__(self) -> None:
+        self.started: list[str] = []
+        self.finished: list[str] = []
+
+    def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]:
+        return []
+
+    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
+        return []
+
+    def start_scenario_video(self, scenario_id: str) -> intervals.Interval | None:
+        self.started.append(scenario_id)
+        return intervals.Interval(kind="video", path=Path(f"{scenario_id}/scenario.mp4"))
+
+    def finish_scenario_video(
+        self, scenario_id: str, interval: intervals.Interval
+    ) -> Artifact | None:
+        self.finished.append(scenario_id)
+        return Artifact(name=str(interval.path), kind="video", provider="simctl")
+
+
+def test_scenario_video_is_always_recorded() -> None:
+    # No capturePolicy / inline capture at all — video is recorded regardless.
+    driver = FakeDriver([_el("a", "A")])
+    sink = VideoSink()
+    result = run_scenario(driver, _scn({"name": "My Scn", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
+    assert sink.started == ["my-scn"]  # default id is the slugged name
+    assert sink.finished == ["my-scn"]
+    videos = [a for a in result.artifacts if a.kind == "video"]
+    assert len(videos) == 1
+    assert videos[0].name == "my-scn/scenario.mp4"
+
+
+def test_scenario_video_recorded_even_when_a_step_fails() -> None:
+    driver = FakeDriver([_el("a", "A")])
+    sink = VideoSink()
+    result = run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "missing"}}]}), sink=sink)
+    assert not result.ok
+    assert sink.finished == ["x"]  # finalized in the finally block despite the failure
+    assert [a.kind for a in result.artifacts] == ["video"]
 
 
 def test_file_sink_writes_elements(tmp_path: Path) -> None:
