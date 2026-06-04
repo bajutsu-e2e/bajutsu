@@ -1,0 +1,127 @@
+**English** · [日本語](ja/recording.md)
+
+# AI authoring (record / Tier 1)
+
+> Tier 1 = AI live operation. From a natural-language goal, the AI explores and operates the app,
+> then writes out a **deterministic scenario**. AI is involved only here (at record time). The
+> resulting YAML is AI-independent, and from then on humans own it.
+>
+> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent.py` (the abstraction) ·
+> `bajutsu/claude_agent.py` (Claude) · `bajutsu/alerts.py` (system-alert handling).
+
+Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · [scenarios](scenarios.md) · [run-loop](run-loop.md)
+
+---
+
+## The Agent abstraction
+
+A thin Protocol that separates the loop from the model (`agent.py`). Tests use a scripted fake;
+production plugs in Claude.
+
+```python
+@dataclass
+class Observation:
+    goal: str                       # the natural-language goal
+    screen: list[Element]           # the current screen's elements
+    history: list[Step]             # the steps recorded so far
+    screenshot: bytes | None        # a PNG of the current screen (for vision)
+
+@dataclass
+class Proposal:
+    step: Step | None = None        # the next move (None = done or stuck)
+    done: bool = False              # the goal is reached
+    expect: list[Assertion] = []    # on done, the assertions that verify the goal
+    note: str = ""
+
+class Agent(Protocol):
+    def next_action(self, observation: Observation) -> Proposal: ...
+```
+
+## The record loop
+
+`record(driver, goal, agent, *, name, max_steps=30, alert_guard=None, ...) -> Scenario`
+(`record.py`). Repeats observe → propose → execute up to `max_steps`.
+
+```
+1. (If alert_guard is set) clear anything covering the app (a system alert, etc.)
+2. elements = driver.query()
+   - Under alert_guard, if no element has an id, don't show the agent a dead screen (it would
+     hallucinate ids); loop again to re-clear
+3. Take a screenshot, build an Observation, and call agent.next_action()
+4. If proposal.done:
+     - insert a settle step (below) if needed, finalize expect, and finish
+   If proposal.step:
+     - execute via _execute_with_recovery (on failure with alert_guard, clear and retry once)
+     - on success, push to steps. If it does not resolve, break
+5. Return Scenario(name, steps, expect)
+```
+
+The output is serialized to YAML via `dump_scenarios`
+([scenarios](scenarios.md#round-trip-load--dump)).
+
+### Automatic settle-step insertion
+
+`_settle_step`: the agent sees a "settled screen" between turns, but deterministic replay is fast
+and may verify before an async transition (e.g. a sheet) has rendered. So it records a **`wait` for
+the first "must-be-present" element in expect**, just before the assertions. This makes the recorded
+scenario self-sufficient without adding implicit timing to `run`.
+
+## ClaudeAgent
+
+Implements `agent.Agent` with Claude (the Anthropic SDK) (`claude_agent.py`).
+
+- **Forced tool use**: `tool_choice={"type": "any"}` forces **exactly one** tool call per turn.
+  - `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`.
+  - `finish`'s `assertions` (`exists` / `notExists` / `valueEquals` / `labelContains`) convert to
+    `Assertion` (`_to_assertion`).
+- **prompt cache**: the system prompt and tool definitions are static and marked
+  `cache_control: ephemeral`. What changes per turn is only the observation (elements + screenshot)
+  user message.
+- **Vision + elements together**: it reads appearance / state from the screenshot, but **acts only
+  by the `id` from the element list** (never invents ids). The element list surfaces only elements
+  that have an id.
+- The model is `claude-opus-4-8`. `anthropic` is lazy-imported (the module loads without an API
+  key). The client is injectable (for tests).
+
+```python
+ClaudeAgent()                      # production (uses ANTHROPIC_API_KEY from the environment)
+ClaudeAgent(client=fake_client)    # tests
+```
+
+## Dismissing system alerts automatically
+
+idb's accessibility query is scoped to the foreground app, so **SpringBoard-level prompts** (e.g.
+iOS "Save Password?") are invisible to it; the app's element tree collapses to a single window node
+and the run is silently blocked. The safety net that clears these is `alerts.py`.
+
+```python
+class AlertLocator(Protocol):
+    def locate(self, screenshot_png, instruction) -> AlertDecision: ...
+
+class SystemAlertGuard:
+    def dismiss(self, driver) -> bool: ...   # if a prompt is present, coordinate-tap it and return True
+```
+
+- `SystemAlertGuard.dismiss`: takes a screenshot, asks the locator "is a prompt present, and where
+  to tap," and multiplies the **normalized coordinates [0,1]** by the screen point size (the largest
+  element frame = the app window) to tap via `driver.tap_point`. The point size is derived from the
+  app-window node spanning the whole screen even when the tree has collapsed.
+- `ClaudeAlertLocator`: the production "eyes." It passes the PNG to Claude vision and forces the tool
+  `resolve_alert`. By default it picks the **least-destructive (dismissive) button** ("Not Now" /
+  "Don't Allow" / "Cancel", etc.). Given an `instruction`, it taps that button instead. Coordinates
+  are returned in pixels and normalized to [0,1] using the image size obtained from the PNG IHDR.
+- The locator is injectable. Tests / offline runs plug in a deterministic one.
+
+### Usage in run / record
+
+- `run --dismiss-alerts`: passes `SystemAlertGuard(...).dismiss` as `on_blocked`. On step failure it
+  clears the prompt and **retries that step exactly once**
+  ([run-loop](run-loop.md#run_scenario-running-one-scenario)). `--alert-instruction "..."` specifies
+  which button to press.
+- `record --dismiss-alerts`: clears prompts that interrupt authoring so the agent always sees a clean
+  screen. **A dismissal is an environment operation, not a recorded step** (replay handles it with
+  `run --dismiss-alerts`).
+
+> Both use a vision model, so they need `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env)).
+> Unless you pass `--dismiss-alerts`, `run` is fully AI-independent
+> ([concepts](concepts.md#1-ai-is-the-author-and-the-investigator-never-the-judge)).

@@ -1,0 +1,146 @@
+**English** · [日本語](ja/configuration.md)
+
+# Configuration, onboarding an app, and doctor
+
+> The tool core is app-agnostic. **Push all app-specific differences into config** and run
+> multiple apps with the same binary and the same drivers. Adding an app = adding one
+> `apps.<name>` entry.
+>
+> Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score) · the
+> root [`bajutsu.config.yaml`](../bajutsu.config.yaml).
+
+Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-into-config) · [drivers](drivers.md) · [scenarios](scenarios.md)
+
+---
+
+## Config layering (defaults × apps)
+
+`bajutsu.config.yaml` has two layers. The resolution order is **defaults < app < scenario** (the
+one closer to the test wins).
+
+```yaml
+defaults:                       # shared across all apps
+  backend: [rocketsim, idb]     # UI-stability order (first = most stable). A single string is also OK
+  device:  "iPhone 15"
+  locale:  en_US
+  capture: [screenshot.after, elements, actionLog]
+  redact:  { headers: [Authorization, Cookie], fields: [token, password] }
+  reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
+
+apps:
+  sample:                       # ← selected by --app sample
+    bundleId:       com.bajutsu.sample     # required
+    deeplinkScheme: bajutsusample
+    idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
+    launchEnv:      { SAMPLE_UITEST: "1" }
+    # optional: backend / device / locale / launchArgs / setup / redact / mockServer
+```
+
+### Resolution (`resolve` → `Effective`)
+
+`resolve(config, app)` builds the effective values `Effective` (a frozen dataclass) for one app.
+An undefined app raises `KeyError` (the CLI exits with code 2).
+
+| `Effective` field | Source | Notes |
+|---|---|---|
+| `bundle_id` | app | required |
+| `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
+| `backend` | app ?? defaults | stability-ordered list (a single string is listified) |
+| `device` / `locale` | app ?? defaults | ⚠️ `locale` is currently not applied at launch |
+| `launch_env` / `launch_args` | app | merged/appended by preconditions at run time |
+| `id_namespaces` | app | referenced by doctor |
+| `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |
+| `mock_server` | app | ⚠️ schema only · not wired |
+| `setup` | app | ⚠️ schema only · not wired |
+| `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
+| `redact` | defaults ∪ app | merged (below) |
+
+The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
+defaults / app).
+
+### Merging redact
+
+Config's `defaults.redact` and `apps.<name>.redact` are **union**ed (`_merge_redact`, unioning
+`labels`/`headers`/`fields` individually). The scenario's `redact`
+([evidence](evidence.md#masking-redact)) layers on top.
+
+## Selecting from the CLI
+
+Every command selects one app with `--app <name>` and points at config with `--config` (default
+`bajutsu.config.yaml`). `--backend rocketsim,idb` overrides the actuator order ([cli](cli.md)).
+
+## Onboarding a new app
+
+The unit of generalization is "the app." You add **app-side preparation + one config entry**, not
+tool changes.
+
+1. **Apply the implementation convention** — `accessibilityIdentifier` on key elements (in the
+   app's namespace), expose state in label / traits / value, launch hooks, disable animations.
+2. **Add `apps.<name>`** — `bundleId` (required) / `deeplinkScheme` / default `launchEnv` /
+   `idNamespaces`, etc.
+3. **(Optional) a reusable prelude** — factor login etc. into a `setup:` scenario (note: `setup` is
+   currently not wired).
+4. **Verify with `bajutsu doctor --app <name>`** — look at the convention score (below).
+5. **Place scenarios** — write identifiers in the app's namespace.
+
+## Identifier naming convention
+
+`accessibilityIdentifier` is **dot-separated `<namespace>.<element>`**. All lowercase, each segment
+`[a-z0-9-]`. The first segment is the namespace, one of the set declared in `idNamespaces`.
+
+```
+settings.reindex            # <namespace=settings>.<element=reindex>
+home.search
+list.row.<id>               # dynamic rows: the suffix is a "data-derived stable key" (index-based is forbidden)
+```
+
+Three invariants:
+
+1. **Unique within a screen** — never put the same id twice on one screen
+   ([ambiguity detection in selectors](selectors.md#resolution-semantics)). Repeated elements are
+   disambiguated by a data-derived key (`list.row.3`). Set operations use `idMatches` + `count`.
+2. **Non-localized, data-derived** — don't use display text in an id (it breaks under translation).
+3. **Namespace-prefixed** — every id starts with a declared namespace.
+
+The sample app's id catalog is in [sample-app](sample-app.md#accessibilityidentifier-catalog).
+
+## doctor (the convention score)
+
+Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It analyzes one screen's
+`query()` (the CLI uses the screen obtained via the actuator) and produces a score.
+
+> ⚠️ The "runnability gates" from DESIGN (backend / simctl / app / deeplink / mock existence checks)
+> are **not implemented** in the code's `doctor`. Today it is **score only**, computed against the
+> currently displayed screen. It also does not cover all screens (entry / current screen only).
+
+### Metrics (`Score`)
+
+Measured over actionable elements (trait ∈ `ACTIONABLE_TRAITS` = button / link / textField /
+searchField / textView / switch / slider / tab / cell).
+
+| Metric | Definition | Threshold |
+|---|---|---|
+| `idCoverage` | fraction of actionable elements with an id | ✓ ≥ 0.9 / warn 0.7–0.9 / fail < 0.7 |
+| `namespaceConformance` | fraction of ids whose first segment is in `idNamespaces` | off-convention ids listed in `off_namespace` |
+| `duplicateIds` | number of duplicate ids on one screen | Blocked if any |
+
+### Grading
+
+- **Blocked**: any duplicate id **or** `idCoverage` < 0.7.
+- **Ready**: `idCoverage` ≥ 0.9 **and** `namespaceConformance` == 1.0.
+- **Partial**: otherwise (runnable, but a forecast of coordinate fallback / flakiness).
+
+### Output
+
+`render(score)` returns a human-readable summary. Missing elements are **listed concretely** so you
+can see exactly where to add an id:
+
+```
+grade: Partial
+idCoverage: 0.83 (5/6)
+namespaceConformance: 1.00
+duplicateIds: 0
+  missing id: label='Close' traits=['button'] frame=(...)
+```
+
+The CLI's `doctor` exits with code 1 when the grade is Blocked ([cli](cli.md#doctor)).
