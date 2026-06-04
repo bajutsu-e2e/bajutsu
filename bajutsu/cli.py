@@ -63,6 +63,9 @@ def run(
     log_predicate: str = typer.Option(
         "", "--log-predicate", help="NSPredicate narrowing the deviceLog stream (e.g. subsystem)"
     ),
+    log_subsystem: str = typer.Option(
+        "", "--log-subsystem", help="os_log subsystem for appTrace (defaults to the app's bundleId)"
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Run a scenario deterministically (no AI, unless --dismiss-alerts)."""
@@ -87,7 +90,10 @@ def run(
         guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None)
         on_blocked = guard.dismiss
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    sink = FileSink(Path("runs") / run_id, udid=udid, log_predicate=log_predicate or None)
+    sink = FileSink(
+        Path("runs") / run_id, udid=udid, log_predicate=log_predicate or None,
+        log_subsystem=log_subsystem or eff.bundle_id,
+    )
     results, manifest = run_and_report(
         eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink
     )

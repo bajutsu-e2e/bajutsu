@@ -86,11 +86,16 @@ class FileSink:
     """
 
     def __init__(
-        self, run_dir: Path, udid: str | None = None, log_predicate: str | None = None
+        self,
+        run_dir: Path,
+        udid: str | None = None,
+        log_predicate: str | None = None,
+        log_subsystem: str | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.udid = udid
         self.log_predicate = log_predicate
+        self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
 
     def start_intervals(self, step_id: str, kinds: list[str]) -> list[intervals.Interval]:
         if self.udid is None or not kinds:
@@ -105,6 +110,11 @@ class FileSink:
                 started.append(intervals.start_video(self.udid, path))
             elif kind == "deviceLog":
                 started.append(intervals.start_device_log(self.udid, path, self.log_predicate))
+            elif kind == "appTrace" and self.log_subsystem:
+                started.append(intervals.start_app_trace(
+                    self.udid, step_dir / "appTrace.raw", step_dir / "appTrace.json",
+                    self.log_subsystem,
+                ))
         return started
 
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:

@@ -65,4 +65,57 @@ def test_start_device_log_lifecycle() -> None:
 
 
 def test_interval_kinds_registry() -> None:
-    assert intervals.INTERVAL_KINDS == frozenset({"video", "deviceLog"})
+    assert intervals.INTERVAL_KINDS == frozenset({"video", "deviceLog", "appTrace"})
+
+
+# --- appTrace: log-marker interval parsing ---
+
+_NDJSON = "\n".join([
+    '{"eventType": "logEvent", "eventMessage": "reindex started",'
+    ' "timestamp": "2026-06-05 01:01:11.681183+0900"}',
+    '{"eventType": "logEvent", "eventMessage": "noise here",'
+    ' "timestamp": "2026-06-05 01:01:11.900000+0900"}',
+    "not json — should be skipped",
+    '{"eventType": "logEvent", "eventMessage": "reindex finished",'
+    ' "timestamp": "2026-06-05 01:01:12.881183+0900"}',
+])
+
+
+def test_parse_app_trace_pairs_markers() -> None:
+    trace = intervals.parse_app_trace(_NDJSON)
+    assert len(trace) == 1
+    interval = trace[0]
+    assert interval["name"] == "reindex"
+    assert interval["durationMs"] == 1200.0  # 12.881 - 11.681 = 1.2s
+    assert interval["begin"].startswith("2026-06-05T01:01:11")
+
+
+def test_parse_app_trace_ignores_unpaired() -> None:
+    text = '{"eventType": "logEvent", "eventMessage": "load started",' \
+        ' "timestamp": "2026-06-05 01:01:11.000000+0900"}'
+    assert intervals.parse_app_trace(text) == []
+
+
+def test_app_trace_cmd() -> None:
+    cmd = intervals.app_trace_cmd("UDID", "com.x.app")
+    assert cmd[:6] == ["xcrun", "simctl", "spawn", "UDID", "log", "stream"]
+    assert "--predicate" in cmd and 'subsystem == "com.x.app"' in cmd
+    assert "ndjson" in cmd
+
+
+def test_start_app_trace_writes_parsed_json(tmp_path: Path) -> None:
+    raw = tmp_path / "appTrace.raw"
+    out = tmp_path / "appTrace.json"
+    proc = FakeProc()
+
+    def spawn(argv: list[str], stdout_path: Path | None) -> FakeProc:
+        assert stdout_path == raw
+        raw.write_text(_NDJSON, encoding="utf-8")  # the "stream" writes raw ndjson
+        return proc
+
+    interval = intervals.start_app_trace("UDID", raw, out, "com.x.app", spawn=spawn)
+    assert interval.kind == "appTrace"
+    assert interval.stop() == out  # transform turns raw -> parsed json
+    import json as _json
+    parsed = _json.loads(out.read_text())
+    assert parsed[0]["name"] == "reindex" and parsed[0]["durationMs"] == 1200.0
