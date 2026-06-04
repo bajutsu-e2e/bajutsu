@@ -90,9 +90,13 @@ def _read_json(run_dir: Path, name: str) -> Any:
 
 
 def _steps_panel(r: RunResult, e: Any) -> str:
+    # Step rows are clickable: `data-t` is the step's offset into the scenario video,
+    # so clicking seeks there and the playing step highlights as the video plays.
     rows = [
-        f"<tr class='{'ok' if s.ok else 'ng'}'><td>{s.index}</td><td>{e(s.action)}</td>"
-        f"<td>{'ok' if s.ok else 'FAIL'}</td><td>{s.duration_s:.3f}s</td><td>{e(s.reason)}</td></tr>"
+        f"<tr class='srow {'ok' if s.ok else 'ng'}' data-t='{s.started_at:.3f}'"
+        f" title='jump to {s.started_at:.1f}s in the recording'>"
+        f"<td>{s.index}</td><td>{e(s.action)}</td>"
+        f"<td>{'ok' if s.ok else 'FAIL'}</td><td>{s.started_at:.1f}s</td><td>{e(s.reason)}</td></tr>"
         for s in r.steps
     ]
     rows += [
@@ -102,7 +106,7 @@ def _steps_panel(r: RunResult, e: Any) -> str:
     ]
     return (
         "<table><thead><tr><th>#</th><th>action</th><th>result</th>"
-        "<th>time</th><th>reason</th></tr></thead>"
+        "<th>at</th><th>reason</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
@@ -206,6 +210,10 @@ table{border-collapse:collapse;width:100%;font-size:.84rem}
 th,td{border-bottom:1px solid var(--line);padding:.32rem .5rem;text-align:left}
 th{color:var(--mut);font-weight:600}
 tr.ng{background:#fff4f3}
+tr.srow{cursor:pointer}
+tr.srow:hover td{background:#eef4ff}
+tr.srow.playing td{background:#fff3c4;box-shadow:inset 3px 0 0 #f0a500}
+.media{position:sticky;top:3.4rem}
 .pass{color:var(--ok);font-weight:700} .fail{color:var(--ng);font-weight:700}
 .logbar{display:flex;gap:.5rem;align-items:center;margin:.1rem 0 .35rem}
 .logbar input{flex:1;padding:.32rem .55rem;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:.84rem}
@@ -244,6 +252,27 @@ _SCRIPT = """
   window.toggleAll = function(open){
     document.querySelectorAll('details.scn').forEach(function(d){ d.open = open; });
   };
+  // Sync each scenario's recording with its step rows: click a step to seek there,
+  // and highlight the step whose time window the playhead is in.
+  document.querySelectorAll('.scn').forEach(function(scn){
+    var v = scn.querySelector('video'); if(!v) return;
+    var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow'));
+    if(!rows.length) return;
+    rows.forEach(function(r){
+      r.addEventListener('click', function(){
+        var t = parseFloat(r.getAttribute('data-t'));
+        if(!isNaN(t)){ v.currentTime = t; v.play().catch(function(){}); }
+      });
+    });
+    v.addEventListener('timeupdate', function(){
+      var ct = v.currentTime + 0.001, cur = null;
+      for(var i=0;i<rows.length;i++){
+        var t = parseFloat(rows[i].getAttribute('data-t'));
+        if(!isNaN(t) && t <= ct) cur = rows[i];
+      }
+      rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
+    });
+  });
 })();
 """
 

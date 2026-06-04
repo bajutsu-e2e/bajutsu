@@ -10,7 +10,8 @@ from pathlib import Path
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import RunResult, run_scenario
+from bajutsu.evidence import Artifact
+from bajutsu.orchestrator import RunResult, StepOutcome, run_scenario
 from bajutsu.report import html_report, junit_xml, manifest_dict, write_report
 from bajutsu.scenario import Scenario
 
@@ -96,8 +97,6 @@ def test_html_report() -> None:
 
 
 def test_html_embeds_scenario_video() -> None:
-    from bajutsu.evidence import Artifact
-
     r = RunResult(
         scenario="s1", ok=True, steps=[], expect_results=[],
         artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
@@ -110,8 +109,6 @@ def test_html_embeds_scenario_video() -> None:
 
 
 def test_html_interactive_structure(tmp_path: Path) -> None:
-    from bajutsu.evidence import Artifact
-
     sid = "00-s1"
     (tmp_path / sid).mkdir(parents=True)
     (tmp_path / sid / "device.log").write_text("line one\nERROR boom\nline three\n", encoding="utf-8")
@@ -135,3 +132,22 @@ def test_html_interactive_structure(tmp_path: Path) -> None:
     # log embedded inline (filterable without a server) and trace rendered as a table
     assert "ERROR boom" in out
     assert "reindex" in out and "12.3" in out
+
+
+def test_html_step_rows_carry_video_offset() -> None:
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, duration_s=0.2, started_at=0.0),
+            StepOutcome(index=1, action="wait", ok=True, duration_s=1.1, started_at=1.5),
+        ],
+        expect_results=[],
+        artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
+    )
+    out = html_report("run1", [r])
+    # Each step row is clickable and tagged with its offset into the recording…
+    assert "class='srow ok' data-t='0.000'" in out
+    assert "data-t='1.500'" in out
+    # …and the JS seeks the video and highlights the playing step.
+    assert "v.currentTime = t" in out
+    assert "timeupdate" in out and "playing" in out

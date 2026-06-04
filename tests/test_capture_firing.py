@@ -60,7 +60,7 @@ def test_baseline_always_fires() -> None:
     driver = FakeDriver([_el("a", "A")])
     sink = RecordingSink()
     run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
-    assert sink.calls == [("step0", BASELINE)]
+    assert sink.calls == [("x/step0", BASELINE)]
 
 
 def test_action_trigger_adds_to_baseline() -> None:
@@ -78,7 +78,7 @@ def test_action_trigger_adds_to_baseline() -> None:
         }),
         sink=sink,
     )
-    assert sink.calls == [("step0", [*BASELINE, "screenshot.before"])]
+    assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
 
 
 def test_action_trigger_skips_on_id_mismatch() -> None:
@@ -95,7 +95,7 @@ def test_action_trigger_skips_on_id_mismatch() -> None:
         }),
         sink=sink,
     )
-    assert sink.calls == [("step0", BASELINE)]  # only the baseline, policy did not fire
+    assert sink.calls == [("x/step0", BASELINE)]  # only the baseline, policy did not fire
 
 
 def test_screen_changed_trigger_adds_to_baseline() -> None:
@@ -116,7 +116,7 @@ def test_screen_changed_trigger_adds_to_baseline() -> None:
         }),
         sink=sink,
     )
-    assert sink.calls == [("step0", [*BASELINE, "screenshot.before"])]
+    assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
 
 
 def test_error_trigger_is_the_safety_net() -> None:
@@ -131,7 +131,7 @@ def test_error_trigger_is_the_safety_net() -> None:
         }),
         sink=sink,
     )
-    assert sink.calls == [("step0", [*BASELINE, "screenshot.before"])]
+    assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
 
 
 def test_inline_interval_token_is_recorded_scenario_wide_not_per_step() -> None:
@@ -144,7 +144,7 @@ def test_inline_interval_token_is_recorded_scenario_wide_not_per_step() -> None:
         _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["deviceLog"]}]}),
         sink=sink,
     )
-    assert sink.calls == [("step0", BASELINE)]
+    assert sink.calls == [("x/step0", BASELINE)]
     assert sink.scenario_intervals == [("x", ["video", "deviceLog", "appTrace"])]
 
 
@@ -199,5 +199,6 @@ def test_file_sink_writes_baseline_elements(tmp_path: Path) -> None:
         _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}),
         sink=FileSink(tmp_path / "run1"),
     )
-    # The baseline writes the element tree for the step even with no capturePolicy.
-    assert (tmp_path / "run1" / "step0" / "elements.json").exists()
+    # The baseline writes the element tree for the step even with no capturePolicy,
+    # nested under the scenario's dir (slug of "x").
+    assert (tmp_path / "run1" / "x" / "step0" / "elements.json").exists()

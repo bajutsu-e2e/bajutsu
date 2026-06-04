@@ -54,6 +54,7 @@ class StepOutcome:
     ok: bool = True
     reason: str = ""
     duration_s: float = 0.0
+    started_at: float = 0.0  # offset (s) from the scenario video's start, for video sync
     assertion_results: list[AssertionResult] = field(default_factory=list)
     artifacts: list[Artifact] = field(default_factory=list)
 
@@ -327,10 +328,12 @@ def run_scenario(
     expect_results: list[AssertionResult] = []
     failure: str | None = None
     artifacts: list[Artifact] = []
+    scenario_start = clock.now()  # ~video start; step offsets are measured from here
 
     try:
         failure = _run_steps(
-            driver, scenario, clock, sink, on_blocked, wants_screen_changed, outcomes
+            driver, scenario, clock, sink, on_blocked, wants_screen_changed,
+            outcomes, scenario_start, sid,
         )
         if failure is None and scenario.expect:
             expect_results = assertions.evaluate(driver.query(), scenario.expect)
@@ -359,15 +362,20 @@ def _run_steps(
     on_blocked: BlockedHandler | None,
     wants_screen_changed: bool,
     outcomes: list[StepOutcome],
+    scenario_start: float,
+    sid: str,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None."""
     failure: str | None = None
     for i, step in enumerate(scenario.steps):
         kind = _action_of(step)
         outcome = StepOutcome(index=i, action=kind)
-        step_id = step.name or f"step{i}"
+        # Per-step instant evidence lives under the scenario's dir so multi-scenario
+        # runs don't share (and overwrite) a flat step0/ at the run root.
+        step_id = f"{sid}/{step.name or f'step{i}'}"
         before = driver.query() if wants_screen_changed else None
         start = clock.now()
+        outcome.started_at = max(0.0, start - scenario_start)
         ok, reason, results = _run_step_body(driver, step, kind, clock)
         if not ok and on_blocked is not None and on_blocked(driver):
             ok, reason, results = _run_step_body(driver, step, kind, clock)  # retry once
