@@ -8,7 +8,7 @@ from pathlib import Path
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.runner import run_all, run_and_report
+from bajutsu.runner import device_teardown, run_all, run_and_report
 from bajutsu.scenario import Redact, Scenario
 
 
@@ -53,6 +53,28 @@ def test_run_all() -> None:
     ]
     results = run_all(_eff(), scenarios, _factory)
     assert [r.ok for r in results] == [True, False]
+
+
+def test_run_all_tears_down_after_each_scenario() -> None:
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+    torn: list[str] = []
+    run_all(_eff(), scenarios, _factory, teardown=lambda eff, s: torn.append(s.name))
+    assert torn == ["a", "b"]  # teardown runs after every scenario, including the last
+
+
+def test_device_teardown_terminates_the_app() -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], env: object = None) -> str:
+        calls.append(args)
+        return ""
+
+    teardown = device_teardown("UDID-1", env_run=fake_run)
+    teardown(_eff(), Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}))
+    assert calls == [["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"]]
 
 
 def test_run_and_report(tmp_path: Path) -> None:

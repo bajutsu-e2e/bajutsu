@@ -21,6 +21,8 @@ from bajutsu.report import write_report
 from bajutsu.scenario import Preconditions, Scenario
 
 DriverFactory = Callable[[Effective, Scenario], base.Driver]
+# Run after each scenario finishes (e.g. terminate the app -> back to SpringBoard).
+Teardown = Callable[[Effective, Scenario], None]
 
 
 def launch_driver(
@@ -68,15 +70,23 @@ def run_all(
     clock: Clock | None = None,
     on_blocked: BlockedHandler | None = None,
     sink: EvidenceSink | None = None,
+    teardown: Teardown | None = None,
 ) -> list[RunResult]:
-    """Run every scenario, each with a freshly built driver."""
-    return [
-        run_scenario(
+    """Run every scenario, each with a freshly built driver.
+
+    After each scenario finishes, `teardown` runs (e.g. terminate the app so the
+    Simulator returns to SpringBoard between scenarios and after the last one).
+    """
+    results: list[RunResult] = []
+    for i, s in enumerate(scenarios):
+        result = run_scenario(
             factory(eff, s), s, clock, sink=sink, on_blocked=on_blocked,
             scenario_id=f"{i:02d}-{scenario_slug(s.name)}",
         )
-        for i, s in enumerate(scenarios)
-    ]
+        if teardown is not None:
+            teardown(eff, s)
+        results.append(result)
+    return results
 
 
 def run_and_report(
@@ -88,9 +98,10 @@ def run_and_report(
     clock: Clock | None = None,
     on_blocked: BlockedHandler | None = None,
     sink: EvidenceSink | None = None,
+    teardown: Teardown | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit under runs_dir/run_id."""
-    results = run_all(eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink)
+    results = run_all(eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown)
     manifest = write_report(runs_dir / run_id, run_id, results)
     return results, manifest
 
@@ -112,3 +123,14 @@ def device_factory(
         return launch_driver(udid, eff, actuator, scenario.preconditions, env_run)
 
     return factory
+
+
+def device_teardown(udid: str, env_run: env.RunFn = env._real_run) -> Teardown:
+    """A teardown that terminates the app after each scenario, returning the
+    Simulator to SpringBoard."""
+    e = env.Env(udid, run=env_run)
+
+    def teardown(eff: Effective, scenario: Scenario) -> None:
+        e.terminate(eff.bundle_id)
+
+    return teardown
