@@ -37,7 +37,9 @@ Rules:
 - Act only on elements by the `id` shown in the screen. Never invent ids.
 - Take the most direct path to the goal. Do not repeat an action that did not \
 change the screen.
-- Call finish as soon as the goal is verifiably reached, with assertions that \
+- Call finish only once the goal is FULLY reached. If the goal names a target \
+value or count (e.g. "the count shows 2"), confirm the current screen already \
+shows it before finishing; if not, keep acting. Then provide assertions that \
 prove it (a result element exists, a value equals an expected string, etc.)."""
 
 # Static tool definitions (cached together with the system prompt).
