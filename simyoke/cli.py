@@ -8,10 +8,12 @@ from pathlib import Path
 import typer
 
 from simyoke.backends import make_driver, select_actuator
+from simyoke.claude_agent import ClaudeAgent
 from simyoke.config import Effective, load_config, resolve
 from simyoke.doctor import render, score
-from simyoke.runner import device_factory, run_and_report
-from simyoke.scenario import load_scenarios
+from simyoke.record import record as record_loop
+from simyoke.runner import device_factory, launch_driver, run_and_report
+from simyoke.scenario import dump_scenarios, load_scenarios
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
 
@@ -64,10 +66,25 @@ def run(
 
 
 @app.command()
-def record(scenario: str, app_name: str = typer.Option(..., "--app")) -> None:
-    """Explore with AI and record actions and evidence rules (planned)."""
-    typer.echo("record: not implemented")
-    raise typer.Exit(1)
+def record(
+    out: str,
+    app_name: str = typer.Option(..., "--app"),
+    goal: str = typer.Option(..., "--goal", help="natural-language goal to author"),
+    udid: str = typer.Option("booted"),
+    backend: str = typer.Option(""),
+    config: str = typer.Option(DEFAULT_CONFIG),
+) -> None:
+    """Explore the app with AI toward a goal and write the recorded scenario to OUT."""
+    eff = _load_effective(config, app_name)
+    try:
+        actuator = select_actuator(_backends(backend, eff.backend))
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    driver = launch_driver(udid, eff, actuator)
+    scenario = record_loop(driver, goal, ClaudeAgent(), name=goal)
+    Path(out).write_text(dump_scenarios([scenario]), encoding="utf-8")
+    typer.echo(f"recorded {len(scenario.steps)} steps -> {out}")
 
 
 @app.command()

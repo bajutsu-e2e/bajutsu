@@ -70,6 +70,22 @@ def test_doctor_no_backend_available(tmp_path: Path) -> None:
     assert "no available actuator" in r.output
 
 
+def test_record_no_backend_available(tmp_path: Path) -> None:
+    cfg, _ = _write(tmp_path)
+    out = tmp_path / "rec.yaml"
+    r = runner.invoke(app, ["record", str(out), "--app", "demo", "--goal", "open settings",
+                            "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "no available actuator" in r.output
+
+
+def test_record_unknown_app(tmp_path: Path) -> None:
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(app, ["record", str(tmp_path / "rec.yaml"), "--app", "ghost",
+                            "--goal", "x", "--config", str(cfg)])
+    assert r.exit_code == 2
+
+
 def test_doctor_unknown_app(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     r = runner.invoke(app, ["doctor", "--app", "ghost", "--config", str(cfg)])

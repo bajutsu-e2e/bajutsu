@@ -16,9 +16,32 @@ from simyoke.config import Effective
 from simyoke.drivers import base
 from simyoke.orchestrator import Clock, RunResult, run_scenario
 from simyoke.report import write_report
-from simyoke.scenario import Scenario
+from simyoke.scenario import Preconditions, Scenario
 
 DriverFactory = Callable[[Effective, Scenario], base.Driver]
+
+
+def launch_driver(
+    udid: str,
+    eff: Effective,
+    actuator: str,
+    preconditions: Preconditions | None = None,
+    env_run: env.RunFn = env._real_run,
+) -> base.Driver:
+    """Erase/boot/launch the app (with config + scenario env) and return a driver.
+
+    The simctl sequencing is best-effort and should be confirmed on a real device.
+    """
+    pre = preconditions or Preconditions()
+    e = env.Env(udid, run=env_run)
+    if pre.erase:
+        e.erase()
+    e.boot()
+    launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env}
+    e.launch(eff.bundle_id, [*eff.launch_args, *pre.launch_args], launch_env)
+    if pre.deeplink is not None:
+        e.openurl(pre.deeplink)
+    return make_driver(actuator, udid)
 
 
 def run_all(
@@ -59,15 +82,6 @@ def device_factory(
     actuator = select_actuator(backends, available)
 
     def factory(eff: Effective, scenario: Scenario) -> base.Driver:
-        e = env.Env(udid, run=env_run)
-        pre = scenario.preconditions
-        if pre.erase:
-            e.erase()
-        e.boot()
-        launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env}
-        e.launch(eff.bundle_id, [*eff.launch_args, *pre.launch_args], launch_env)
-        if pre.deeplink is not None:
-            e.openurl(pre.deeplink)
-        return make_driver(actuator, udid)
+        return launch_driver(udid, eff, actuator, scenario.preconditions, env_run)
 
     return factory
