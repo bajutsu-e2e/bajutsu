@@ -1,0 +1,11 @@
+# In-app system integration that idb can drive without a SpringBoard prompt.
+
+# Pasteboard round-trip: copy a known string, then paste it back in-app.
+- name: paste reads the copied text
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "system" }
+  steps:
+    - tap: { id: sys.copy }
+    - tap: { id: sys.paste }
+  expect:
+    - value: { sel: { id: sys.paste.value }, equals: "bajutsu-clip" }

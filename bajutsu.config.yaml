@@ -42,7 +42,7 @@ apps:
     deeplinkScheme: bajutsusample     # URL scheme for deep-link preconditions
     # accessibilityIdentifier namespaces this app is allowed to use (first segment
     # of each id). `doctor` scores how well on-screen ids conform to this list.
-    idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists, gest, pres, async]
+    idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists, gest, pres, async, sys]
     # Env vars passed to the app on launch (as SIMCTL_CHILD_*). Scenarios can add
     # more via preconditions.launchEnv.
     launchEnv: { SAMPLE_UITEST: "1" }

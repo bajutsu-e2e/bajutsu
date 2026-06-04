@@ -31,13 +31,13 @@ Set as `SIMCTL_CHILD_<NAME>` (Bajutsu does this from `launchEnv`).
 | `SAMPLE_SKIP_ONBOARDING=1` | Start at the login screen |
 | `SAMPLE_LOGGED_IN=1` | Start at the home screen (skip onboarding + login) |
 | `SAMPLE_SCREEN=settings` | Open the settings sheet on launch (use with `SAMPLE_LOGGED_IN`) |
-| `SAMPLE_TAB=<name>` | Select a tab on launch: `home` (default), `components`, `controls`, `text`, `lists`, `gestures`, `presentation`, `async` |
+| `SAMPLE_TAB=<name>` | Select a tab on launch: `home` (default), `components`, `controls`, `text`, `lists`, `gestures`, `presentation`, `async`, `system` |
 | `SAMPLE_SEED=<n>` | Seed `n` home list rows (default 3) |
 
 Deeplinks: `bajutsusample://settings`, `bajutsusample://home`, and one per tab —
 `bajutsusample://components`, `bajutsusample://controls`, `bajutsusample://text`,
 `bajutsusample://lists`, `bajutsusample://gestures`, `bajutsusample://presentation`,
-`bajutsusample://async` (each also logs in).
+`bajutsusample://async`, `bajutsusample://system` (each also logs in).
 
 ## accessibilityIdentifier catalog
 
@@ -57,6 +57,7 @@ Identifiers follow the namespaced, data-derived convention (`<namespace>.<elemen
 | Gestures (`SAMPLE_TAB=gestures`) | `gest.doubletap` + `gest.doubletap.value` (tap count), `gest.pinch` + `gest.pinch.value` (`in`/`out`), `gest.rotate` + `gest.rotate.value` (`cw`/`ccw`). double-tap drives on idb; pinch/rotate need multi-touch (XCUITest). |
 | Presentation (`SAMPLE_TAB=presentation`) | `pres.openSheet` -> `pres.sheet.title` + `pres.sheet.close` (detents), `pres.openCover` -> `pres.cover.title` + `pres.cover.close`, `pres.openDialog` -> action sheet -> `pres.dialog.value` (`archive`/`delete`), `pres.showToast` -> `pres.toast` (auto-dismisses) |
 | Async (`SAMPLE_TAB=async`) | `async.startProgress` -> `async.progress.value` + `async.progress.done`, `async.loadFail` -> `async.error` + `async.retry` -> `async.loaded`, `async.search` -> `async.debounced.value` (after debounce), `async.loadMore` -> `async.count` |
+| System (`SAMPLE_TAB=system`) | `sys.requestNotif` -> SpringBoard prompt -> `sys.notif.value` + `sys.notif.authorized` (vision guard), `sys.copy` / `sys.paste` -> `sys.paste.value` (pasteboard), `sys.share` (ShareLink, out-of-process) |
 
 ## Primitive coverage
 
@@ -83,6 +84,14 @@ backends can assert outcomes by value. Scenarios: `scenarios/controls.yaml`,
 | Gestures | double-tap (idb: two taps), pinch / rotate (multi-touch). `scenarios/gestures.yaml` |
 | Presentation | sheet (detents), fullScreenCover, confirmationDialog, auto-dismissing toast. `scenarios/presentation.yaml` |
 | Async | determinate ProgressView, fail -> retry -> success, debounced search, pagination. `scenarios/async.yaml` |
+| System | notification permission (SpringBoard prompt), pasteboard, share sheet. `scenarios/system.yaml` (pasteboard, plain idb) + `scenarios/permission.yaml` (notification, run with `--dismiss-alerts --alert-instruction "tap Allow"`) |
+
+**System / out-of-process note:** idb's accessibility query is scoped to the foreground
+app, so SpringBoard prompts (permissions, "Save Password?") and the share sheet are
+invisible to it. The notification prompt is cleared by the run's vision alert guard
+(`--dismiss-alerts`); pasteboard is in-app and drives on plain idb. Reinstall the app
+before `permission.yaml` — uninstall+install resets notification authorization (there is
+no `simctl privacy` service for notifications).
 
 **Gesture DSL note:** `doubleTap` / `pinch` / `rotate` are scenario primitives. idb is
 single-touch, so `pinch` / `rotate` fail a `bajutsu run` with a clear "needs multiTouch"
