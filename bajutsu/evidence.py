@@ -114,7 +114,10 @@ class FileSink:
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
 
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
-        return capture(driver, self.run_dir / step_id, kinds)
+        # Re-root each artifact name under step_id so it is relative to the run dir
+        # (e.g. "00-slug/step0/after.png") and the HTML report can reference it.
+        arts = capture(driver, self.run_dir / step_id, kinds)
+        return [Artifact(f"{step_id}/{a.name}", a.kind, a.provider) for a in arts]
 
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]

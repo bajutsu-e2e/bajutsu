@@ -151,3 +151,22 @@ def test_html_step_rows_carry_video_offset() -> None:
     # …and the JS seeks the video and highlights the playing step.
     assert "v.currentTime = t" in out
     assert "timeupdate" in out and "playing" in out
+
+
+def test_html_shows_step_screenshot_and_tree() -> None:
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, started_at=0.0, artifacts=[
+                Artifact("00-s1/step0/after.png", "screenshot", "driver"),
+                Artifact("00-s1/step0/elements.json", "elements", "driver"),
+            ]),
+        ],
+        expect_results=[], artifacts=[],
+    )
+    out = html_report("run1", [r])
+    # the step's screenshot (lightbox thumbnail) and its element-tree link are shown
+    assert 'class="shot"' in out and 'src="00-s1/step0/after.png"' in out
+    assert 'href="00-s1/step0/elements.json"' in out
+    # the lightbox overlay + opener are present
+    assert 'id="lb"' in out and "openLightbox" in out

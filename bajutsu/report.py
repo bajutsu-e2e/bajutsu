@@ -89,24 +89,41 @@ def _read_json(run_dir: Path, name: str) -> Any:
         return None
 
 
+def _step_evidence(s: Any, e: Any) -> str:
+    """The per-step result artifacts: a screenshot thumbnail (opens a lightbox) and
+    a link to the element tree captured after the step."""
+    parts: list[str] = []
+    shot = next((a for a in s.artifacts if a.kind == "screenshot"), None)
+    if shot is not None:
+        parts.append(
+            f'<img class="shot" loading="lazy" src="{e(shot.name)}" alt="step {s.index} result">'
+        )
+    tree = next((a for a in s.artifacts if a.kind == "elements"), None)
+    if tree is not None:
+        parts.append(f'<a class="elnk" href="{e(tree.name)}" target="_blank" rel="noopener">tree</a>')
+    return "".join(parts) or "—"
+
+
 def _steps_panel(r: RunResult, e: Any) -> str:
     # Step rows are clickable: `data-t` is the step's offset into the scenario video,
     # so clicking seeks there and the playing step highlights as the video plays.
+    # The "result" column shows each step's screenshot + element tree.
     rows = [
         f"<tr class='srow {'ok' if s.ok else 'ng'}' data-t='{s.started_at:.3f}'"
         f" title='jump to {s.started_at:.1f}s in the recording'>"
         f"<td>{s.index}</td><td>{e(s.action)}</td>"
-        f"<td>{'ok' if s.ok else 'FAIL'}</td><td>{s.started_at:.1f}s</td><td>{e(s.reason)}</td></tr>"
+        f"<td>{'ok' if s.ok else 'FAIL'}</td><td>{s.started_at:.1f}s</td>"
+        f"<td class='ev'>{_step_evidence(s, e)}</td><td>{e(s.reason)}</td></tr>"
         for s in r.steps
     ]
     rows += [
         f"<tr class='{'ok' if a.ok else 'ng'}'><td>expect</td><td>{e(a.kind)}</td>"
-        f"<td>{'ok' if a.ok else 'FAIL'}</td><td></td><td>{e(a.reason)}</td></tr>"
+        f"<td>{'ok' if a.ok else 'FAIL'}</td><td></td><td></td><td>{e(a.reason)}</td></tr>"
         for a in r.expect_results
     ]
     return (
         "<table><thead><tr><th>#</th><th>action</th><th>result</th>"
-        "<th>at</th><th>reason</th></tr></thead>"
+        "<th>at</th><th>view</th><th>reason</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
@@ -213,6 +230,14 @@ tr.ng{background:#fff4f3}
 tr.srow{cursor:pointer}
 tr.srow:hover td{background:#eef4ff}
 tr.srow.playing td{background:#fff3c4;box-shadow:inset 3px 0 0 #f0a500}
+td.ev{white-space:nowrap}
+img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-align:middle;
+ cursor:zoom-in;background:#fafafa}
+.elnk{font-size:.78rem;margin-left:.4rem}
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;
+ justify-content:center;z-index:50;cursor:zoom-out}
+.lb.open{display:flex}
+.lb img{max-width:92vw;max-height:92vh;border-radius:8px;box-shadow:0 10px 50px rgba(0,0,0,.6)}
 .media{position:sticky;top:3.4rem}
 .pass{color:var(--ok);font-weight:700} .fail{color:var(--ng);font-weight:700}
 .logbar{display:flex;gap:.5rem;align-items:center;margin:.1rem 0 .35rem}
@@ -252,6 +277,19 @@ _SCRIPT = """
   window.toggleAll = function(open){
     document.querySelectorAll('details.scn').forEach(function(d){ d.open = open; });
   };
+  // Lightbox for step screenshots: click a thumbnail to view it full-size.
+  var lb = document.getElementById('lb');
+  window.openLightbox = function(src){
+    if(!lb) return; lb.querySelector('img').src = src; lb.classList.add('open');
+  };
+  if(lb) lb.addEventListener('click', function(){
+    lb.classList.remove('open'); lb.querySelector('img').removeAttribute('src');
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && lb && lb.classList.contains('open')){
+      lb.classList.remove('open'); lb.querySelector('img').removeAttribute('src');
+    }
+  });
   // Sync each scenario's recording with its step rows: click a step to seek there,
   // and highlight the step whose time window the playhead is in.
   document.querySelectorAll('.scn').forEach(function(scn){
@@ -259,7 +297,10 @@ _SCRIPT = """
     var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow'));
     if(!rows.length) return;
     rows.forEach(function(r){
-      r.addEventListener('click', function(){
+      r.addEventListener('click', function(e){
+        if(e.target.closest('a')) return;                 // links (element tree) work normally
+        var shot = e.target.closest('.shot');
+        if(shot){ openLightbox(shot.getAttribute('src')); return; }
         var t = parseFloat(r.getAttribute('data-t'));
         if(!isNaN(t)){ v.currentTime = t; v.play().catch(function(){}); }
       });
@@ -300,7 +341,9 @@ def html_report(run_id: str, results: list[RunResult], run_dir: Path | None = No
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>Bajutsu run {e(run_id)}</title><style>{_STYLE}</style></head>"
-        f"<body>{header}<main>{sections}</main><script>{_SCRIPT}</script></body></html>"
+        f"<body>{header}<main>{sections}</main>"
+        '<div class="lb" id="lb"><img alt="step screenshot"></div>'
+        f"<script>{_SCRIPT}</script></body></html>"
     )
 
 
