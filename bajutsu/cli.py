@@ -92,7 +92,7 @@ def run(
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
     sink = FileSink(
         Path("runs") / run_id, udid=udid, log_predicate=log_predicate or None,
-        log_subsystem=log_subsystem or eff.bundle_id,
+        log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact,
     )
     results, manifest = run_and_report(
         eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink
