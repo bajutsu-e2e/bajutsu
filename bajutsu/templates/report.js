@@ -1,0 +1,97 @@
+(function(){
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('.tab'); if(!t) return;
+    var scn = t.closest('.scn'), name = t.getAttribute('data-tab');
+    scn.querySelectorAll('.tab').forEach(function(b){ b.classList.toggle('active', b===t); });
+    scn.querySelectorAll('.panel').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-panel')===name); });
+  });
+  // Rich / YAML toggle within the merged Result tab.
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('.vt'); if(!t) return;
+    var panel = t.closest('.panel'), view = t.getAttribute('data-view');
+    panel.querySelectorAll('.vt').forEach(function(b){ b.classList.toggle('active', b===t); });
+    panel.querySelectorAll('.view').forEach(function(v){
+      v.classList.toggle('active', v.classList.contains('view-'+view));
+    });
+  });
+  document.addEventListener('input', function(e){
+    if(!e.target.classList.contains('logfilter')) return;
+    var panel = e.target.closest('.panel'), q = e.target.value.toLowerCase(), n = 0;
+    panel.querySelectorAll('.log .ln').forEach(function(l){
+      var hit = !q || l.textContent.toLowerCase().indexOf(q) !== -1;
+      l.classList.toggle('hide', !hit); if(hit) n++;
+    });
+    var cnt = panel.querySelector('.logcount'); if(cnt) cnt.textContent = n + ' lines';
+  });
+  window.onlyFailures = function(cb){
+    document.querySelectorAll('details.scn').forEach(function(d){
+      d.style.display = (cb.checked && d.getAttribute('data-ok')==='true') ? 'none' : '';
+    });
+  };
+  window.toggleAll = function(open){
+    document.querySelectorAll('details.scn').forEach(function(d){ d.open = open; });
+  };
+  // Lightbox: click a step thumbnail to view it full-size, then ← / → walk through
+  // every screenshot in the run (across scenarios). Esc or a backdrop click closes.
+  var lb = document.getElementById('lb');
+  var lbImg = lb && lb.querySelector('img');
+  var lbCap = lb && lb.querySelector('.lb-cap');
+  var lbIndex = -1;
+  function lbShots(){ return Array.prototype.slice.call(document.querySelectorAll('img.shot')); }
+  function lbShow(i){
+    var arr = lbShots(); if(!arr.length || !lbImg) return;
+    lbIndex = (i % arr.length + arr.length) % arr.length;   // wrap around
+    var s = arr[lbIndex];
+    lbImg.src = s.getAttribute('src');
+    if(lbCap){
+      var scn = s.closest('.scn'), row = s.closest('tr');
+      var name = scn && scn.querySelector('.sname') ? scn.querySelector('.sname').textContent : '';
+      var step = row && row.querySelector('td') ? row.querySelector('td').textContent : '';
+      lbCap.textContent = name + (step !== '' ? '  ·  step ' + step : '') + '   ' + (lbIndex+1) + ' / ' + arr.length;
+    }
+    lb.classList.add('open');
+  }
+  function lbClose(){ if(!lb) return; lb.classList.remove('open'); if(lbImg) lbImg.removeAttribute('src'); lbIndex = -1; }
+  window.openLightbox = function(src){
+    var arr = lbShots(), i = 0;
+    for(var k=0;k<arr.length;k++){ if(arr[k].getAttribute('src') === src){ i = k; break; } }
+    lbShow(i);
+  };
+  if(lb){
+    lb.addEventListener('click', function(e){ if(e.target === lb) lbClose(); });  // backdrop only
+    var prev = lb.querySelector('.lb-prev'), next = lb.querySelector('.lb-next');
+    if(prev) prev.addEventListener('click', function(){ lbShow(lbIndex - 1); });
+    if(next) next.addEventListener('click', function(){ lbShow(lbIndex + 1); });
+  }
+  document.addEventListener('keydown', function(e){
+    if(!lb || !lb.classList.contains('open')) return;
+    if(e.key === 'Escape') lbClose();
+    else if(e.key === 'ArrowLeft') lbShow(lbIndex - 1);
+    else if(e.key === 'ArrowRight') lbShow(lbIndex + 1);
+  });
+  // Sync each scenario's recording with its step rows: click a step to seek there,
+  // and highlight the step whose time window the playhead is in.
+  document.querySelectorAll('.scn').forEach(function(scn){
+    var v = scn.querySelector('video'); if(!v) return;
+    var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow'));
+    if(!rows.length) return;
+    rows.forEach(function(r){
+      r.addEventListener('click', function(e){
+        if(e.target.closest('a')) return;                 // links (element tree) work normally
+        var shot = e.target.closest('.shot');
+        if(shot){ openLightbox(shot.getAttribute('src')); return; }
+        var t = parseFloat(r.getAttribute('data-t'));
+        // Seek only: keep playing if already playing, stay paused if paused.
+        if(!isNaN(t)){ v.currentTime = t; }
+      });
+    });
+    v.addEventListener('timeupdate', function(){
+      var ct = v.currentTime + 0.001, cur = null;
+      for(var i=0;i<rows.length;i++){
+        var t = parseFloat(rows[i].getAttribute('data-t'));
+        if(!isNaN(t) && t <= ct) cur = rows[i];
+      }
+      rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
+    });
+  });
+})();

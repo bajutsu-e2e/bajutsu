@@ -320,7 +320,7 @@ def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
     (tmp_path / sid).mkdir(parents=True)
     (tmp_path / sid / "network.json").write_text(
         '[{"method":"GET","url":"https://api.example.com/items","status":200,"durationMs":50,'
-        '"responseHeaders":{"Content-Type":"application/json"},"startedAt":0.5},'
+        '"responseHeaders":{"Content-Type":"application/json"},"responseBody":"hello-body","startedAt":0.5},'
         '{"method":"POST","url":"https://other.com/log","status":204,"startedAt":1.2}]',
         encoding="utf-8",
     )
@@ -335,11 +335,15 @@ def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
     out = html_report("run1", [r], tmp_path, definitions=[definition])
-    # Each exchange is an interleaved row whose detail is a nested settings table.
-    assert 'class="act act-net">GET' in out and 'class="nxtbl"' in out
+    # Each exchange splits into a request row (method badge) and a response row, each a
+    # click-to-expand summary over a nested settings table.
+    assert 'class="act act-net">GET' in out and 'act-net">resp' in out
+    assert '<details class="nxrow"><summary>' in out
     assert 'class="nxk">endpoint' in out and "https://api.example.com/items" in out
-    assert 'class="nxk">response headers' in out and "Content-Type" in out
-    # Time order: tap(0.0) -> GET(0.5) -> wait(1.0) -> POST(1.2).
+    # The response row carries the response headers and (viewable) body.
+    assert 'class="nxk">headers' in out and "Content-Type" in out
+    assert 'class="nxk">body' in out and "hello-body" in out
+    # Time order: tap(0.0) -> GET request(0.5) -> wait(1.0) -> POST request(1.2).
     assert out.index(">#a<") < out.index('act-net">GET') < out.index('act-wait">wait') < out.index('act-net">POST')
 
 
@@ -359,8 +363,9 @@ def test_html_exchanges_filtered_by_domain(tmp_path: Path) -> None:
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
     out = html_report("run1", [r], tmp_path, definitions=[definition])
-    # Only the example.com request is interleaved into Steps (one act-net row)...
-    assert out.count('class="act act-net"') == 1 and "https://api.example.com/x" in out
+    # Only the example.com exchange is interleaved into the result timeline (its request
+    # + response rows = two act-net badges)...
+    assert out.count('class="act act-net"') == 2 and "https://api.example.com/x" in out
     # ...but the filtered-out request still appears in the (unfiltered) Network tab.
     assert "tracker.io" in out
 
