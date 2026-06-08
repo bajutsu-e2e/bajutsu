@@ -22,9 +22,9 @@ from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.network import NetworkExchange
-from bajutsu.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait
+from bajutsu.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait, WaitRequest
 
-# Returns the network exchanges observed so far (for `request` assertions).
+# Returns the network exchanges observed so far (for `request` assertions / waits).
 NetworkSource = Callable[[], list[NetworkExchange]]
 
 
@@ -117,8 +117,11 @@ def _exists(elements: list[base.Element], sel: base.Selector) -> bool:
     return len(base.find_all(elements, sel)) >= 1
 
 
-def _wait(driver: base.Driver, w: Wait, clock: Clock) -> tuple[bool, str]:
-    """Condition wait. Polls query() until satisfied instead of a fixed sleep."""
+def _wait(
+    driver: base.Driver, w: Wait, clock: Clock, network: NetworkSource = _no_network
+) -> tuple[bool, str]:
+    """Condition wait. Polls query() (or the observed network) until satisfied instead
+    of a fixed sleep."""
     deadline = clock.now() + w.timeout
     if w.for_ is not None:
         target = w.for_.as_selector()
@@ -132,6 +135,15 @@ def _wait(driver: base.Driver, w: Wait, clock: Clock) -> tuple[bool, str]:
         while _exists(driver.query(), target):
             if clock.now() >= deadline:
                 return False, f"wait timeout: gone {target} ({w.timeout}s)"
+            clock.sleep(_POLL)
+        return True, ""
+    if isinstance(w.until, WaitRequest):
+        req = w.until.request
+        need = req.count if req.count is not None else 1
+        while assertions.count_matching(network(), req) < need:
+            if clock.now() >= deadline:
+                label = assertions.request_label(req)
+                return False, f"wait timeout: request {label} ({w.timeout}s)"
             clock.sleep(_POLL)
         return True, ""
     if w.until == "settled":
@@ -229,7 +241,7 @@ def _run_step_body(
     try:
         if kind == "wait":
             assert step.wait is not None
-            ok, reason = _wait(driver, step.wait, clock)
+            ok, reason = _wait(driver, step.wait, clock, network)
             return ok, reason, []
         if kind == "assert_":
             assert step.assert_ is not None

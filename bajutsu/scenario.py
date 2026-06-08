@@ -138,14 +138,47 @@ class Swipe(_Model):
         raise ValueError("swipe は {on,direction} か {from,to} を完全に指定する（§6.2）")
 
 
+class RequestMatch(_Model):
+    """Network-traffic matcher, shared by the `request` assertion and the
+    `until: { request: ... }` wait. The fields (method / url / urlMatches / path /
+    pathMatches / status) are AND-ed; `count` is how many exchanges matched — exact for
+    the assertion, a lower bound for the wait. The endpoint can be pinned by `url`
+    (exact full URL) or `urlMatches` (regex/substring), or just the `path`. At least one
+    match field is required."""
+
+    method: str | None = None
+    url: str | None = None  # exact full URL (the endpoint)
+    url_matches: str | None = Field(default=None, alias="urlMatches")  # regex/substring over the URL
+    path: str | None = None  # exact path (query ignored)
+    path_matches: str | None = Field(default=None, alias="pathMatches")  # regex over path
+    status: int | None = None
+    count: int | None = None
+
+    @model_validator(mode="after")
+    def _has_criterion(self) -> Self:
+        if all(
+            v is None
+            for v in (self.method, self.url, self.url_matches, self.path, self.path_matches, self.status)
+        ):
+            raise ValueError("request は method/url/urlMatches/path/pathMatches/status のいずれかが必要")
+        return self
+
+
 class Gone(_Model):
     gone: Selector
+
+
+class WaitRequest(_Model):
+    """`until: { request: <RequestMatch> }` — wait until a matching network exchange has
+    been observed by the collector (needs the run's network collector active)."""
+
+    request: RequestMatch
 
 
 class Wait(_Model):
     for_: Selector | None = Field(default=None, alias="for")
     # settled = wait until the screen stops changing (best-effort; for transition settle)
-    until: Literal["screenChanged", "settled"] | Gone | None = None
+    until: Literal["screenChanged", "settled"] | Gone | WaitRequest | None = None
     timeout: float
 
     @model_validator(mode="after")
@@ -206,24 +239,6 @@ class CountMatch(_Model):
     def _one_op(self) -> Self:
         if sum(o is not None for o in (self.equals, self.at_least, self.at_most)) != 1:
             raise ValueError("count は equals/atLeast/atMost のいずれか 1 つ（§6.4）")
-        return self
-
-
-class RequestMatch(_Model):
-    """`request`: assert on observed network traffic. The match fields (method / path
-    / pathMatches / status) are AND-ed; `count` checks how many exchanges matched
-    (exact when set, otherwise at least one). At least one match field is required."""
-
-    method: str | None = None
-    path: str | None = None  # exact path (query ignored)
-    path_matches: str | None = Field(default=None, alias="pathMatches")  # regex over path
-    status: int | None = None
-    count: int | None = None  # exact count; None -> at least 1
-
-    @model_validator(mode="after")
-    def _has_criterion(self) -> Self:
-        if self.method is None and self.path is None and self.path_matches is None and self.status is None:
-            raise ValueError("request は method/path/pathMatches/status のいずれかが必要")
         return self
 
 

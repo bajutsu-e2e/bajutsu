@@ -43,6 +43,13 @@ def test_request_pathmatches_and_count() -> None:
     assert not evaluate_one([], _req(path_matches="^/items/", count=1), exs).ok
 
 
+def test_request_matches_url_endpoint() -> None:
+    exs = [_ex("GET", "/items", 200, url="https://api.example.com/items")]
+    assert evaluate_one([], _req(url="https://api.example.com/items"), exs).ok   # exact endpoint
+    assert evaluate_one([], _req(url_matches="example.com"), exs).ok             # substring/regex
+    assert not evaluate_one([], _req(url="https://other.com/items"), exs).ok
+
+
 def test_request_no_match_fails_with_reason() -> None:
     r = evaluate_one([], _req(method="DELETE"), [_ex("GET", "/x")])
     assert not r.ok and "通信" in r.reason
@@ -74,3 +81,28 @@ def test_orchestrator_request_assertion_step() -> None:
     assert ok.ok, ok.failure
     miss = run_scenario(FakeDriver(), scn, network=list)  # no exchanges
     assert not miss.ok and "通信" in (miss.failure or "")
+
+
+def test_wait_for_request_satisfied() -> None:
+    # `wait: { until: { request } }` succeeds as soon as a matching exchange (pinned to
+    # an endpoint url) is observed.
+    scn = load_scenarios(
+        "- name: w\n"
+        "  steps:\n"
+        '    - wait: { until: { request: { method: GET, url: "https://ex.com/items", status: 200 } }, timeout: 1 }\n'
+    )[0]
+    res = run_scenario(
+        FakeDriver(), scn, network=lambda: [_ex("GET", "/items", 200, url="https://ex.com/items")]
+    )
+    assert res.ok, res.failure
+
+
+def test_wait_for_request_times_out() -> None:
+    # No matching exchange -> the wait times out and the step (scenario) fails.
+    scn = load_scenarios(
+        "- name: w\n"
+        "  steps:\n"
+        "    - wait: { until: { request: { path: /nope } }, timeout: 0 }\n"
+    )[0]
+    res = run_scenario(FakeDriver(), scn, network=list)  # nothing observed
+    assert not res.ok and "request" in (res.failure or "")

@@ -116,6 +116,10 @@ def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> Asser
 def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
     if req.method is not None and ex.method.upper() != req.method.upper():
         return False
+    if req.url is not None and ex.url != req.url:
+        return False
+    if req.url_matches is not None and re.search(req.url_matches, ex.url) is None:
+        return False
     if req.path is not None and ex.path != req.path:
         return False
     if req.path_matches is not None and re.search(req.path_matches, ex.path) is None:
@@ -125,10 +129,21 @@ def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
     return True
 
 
-def _req_str(req: RequestMatch) -> str:
+def count_matching(exchanges: list[NetworkExchange], req: RequestMatch) -> int:
+    """How many observed exchanges satisfy the request matcher (shared by the `request`
+    assertion and the `until: { request }` wait)."""
+    return sum(1 for ex in exchanges if _match_request(ex, req))
+
+
+def request_label(req: RequestMatch) -> str:
+    """Compact human description of a request matcher (e.g. "GET /items status=200")."""
     parts: list[str] = []
     if req.method is not None:
         parts.append(req.method.upper())
+    if req.url is not None:
+        parts.append(req.url)
+    if req.url_matches is not None:
+        parts.append(f"url~{req.url_matches}")
     if req.path is not None:
         parts.append(req.path)
     if req.path_matches is not None:
@@ -141,9 +156,9 @@ def _req_str(req: RequestMatch) -> str:
 
 
 def _eval_request(exchanges: list[NetworkExchange], req: RequestMatch) -> AssertionResult:
-    n = sum(1 for ex in exchanges if _match_request(ex, req))
+    n = count_matching(exchanges, req)
     ok = (n == req.count) if req.count is not None else (n >= 1)
-    detail = f"request {_req_str(req)}"
+    detail = f"request {request_label(req)}"
     if ok:
         return AssertionResult(True, "request", detail)
     reason = (

@@ -126,12 +126,18 @@ There is no fixed-sleep grammar. **`timeout` is mandatory** (no infinite waits).
 - wait: { until: { gone: { id: home.spinner } }, timeout: 15 }  # until an element disappears
 - wait: { until: screenChanged, timeout: 5 }              # until query() changes
 - wait: { until: settled, timeout: 3 }                    # until the screen stops changing
+- wait: { until: { request: { method: GET, path: /items, status: 200 } }, timeout: 8 }  # until a matching request is observed
 ```
 
-`for` and `until` are exclusive (only one). `until` is `screenChanged` / `settled` / `{ gone: <Selector> }`.
-Timeout handling differs by kind ([run-loop](run-loop.md#waits-condition-waits-only)): `for` /
-`gone` / `screenChanged` time out = step failure; `settled` is a stabilization hint, so a timeout
-just proceeds with the current screen (it does not fail).
+`for` and `until` are exclusive (only one). `until` is `screenChanged` / `settled` /
+`{ gone: <Selector> }` / `{ request: <RequestMatch> }`. The `request` form polls the network
+collector ([evidence](evidence.md), the `--network` run flag) until at least one observed exchange
+matches (same matcher as the `request` assertion: `method` / `url` / `urlMatches` / `path` /
+`pathMatches` / `status`, all AND-ed; `count` raises the threshold). The endpoint is pinned by `url`
+(exact full URL) or `urlMatches` (regex/substring), or just `path`. Timeout handling differs by kind
+([run-loop](run-loop.md#waits-condition-waits-only)): `for` / `gone` / `screenChanged` / `request`
+time out = step failure; `settled` is a stabilization hint, so a timeout just proceeds with the
+current screen (it does not fail).
 
 ### `assert` (mid-step verification)
 

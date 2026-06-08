@@ -124,12 +124,17 @@
 - wait: { until: { gone: { id: home.spinner } }, timeout: 15 }  # 要素が消えるまで
 - wait: { until: screenChanged, timeout: 5 }              # query() が変化するまで
 - wait: { until: settled, timeout: 3 }                    # 画面が安定する（変化が止まる）まで
+- wait: { until: { request: { method: GET, path: /items, status: 200 } }, timeout: 8 }  # 一致する通信が観測されるまで
 ```
 
-`for` と `until` は排他（片方のみ）。`until` の値は `screenChanged` / `settled` / `{ gone: <Selector> }`。
-タイムアウトの扱いは種別で異なる（[run-loop](run-loop.md#待機条件待機)）:
-`for` / `gone` / `screenChanged` はタイムアウト = ステップ失敗。`settled` は安定化ヒントなので
-タイムアウトしても現在画面で続行（失敗にしない）。
+`for` と `until` は排他（片方のみ）。`until` の値は `screenChanged` / `settled` /
+`{ gone: <Selector> }` / `{ request: <RequestMatch> }`。`request` 形式はネットワーク collector
+（[evidence](evidence.md)、`--network` 実行フラグ）をポーリングし、観測した通信が 1 件でも一致する
+まで待つ（マッチャは `request` アサーションと同じ: `method` / `url` / `urlMatches` / `path` /
+`pathMatches` / `status` を AND、`count` で閾値を上げられる）。エンドポイントは `url`（完全一致）か
+`urlMatches`（正規表現/部分一致）、または `path` で指定する。タイムアウトの扱いは種別で異なる（[run-loop](run-loop.md#待機条件待機)）:
+`for` / `gone` / `screenChanged` / `request` はタイムアウト = ステップ失敗。`settled` は安定化
+ヒントなのでタイムアウトしても現在画面で続行（失敗にしない）。
 
 ### `assert`（中間検証）
 

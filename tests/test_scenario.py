@@ -17,6 +17,7 @@ from bajutsu.scenario import (
     Step,
     Swipe,
     Wait,
+    WaitRequest,
     dump_scenarios,
     load_scenarios,
 )
@@ -95,6 +96,12 @@ def test_wait_forms() -> None:
     assert Wait.model_validate({"until": "screenChanged", "timeout": 5}).until == "screenChanged"
     gone = Wait.model_validate({"until": {"gone": {"id": "spinner"}}, "timeout": 15})
     assert gone.until is not None
+    req = Wait.model_validate({"until": {"request": {"method": "GET", "status": 200}}, "timeout": 8})
+    assert isinstance(req.until, WaitRequest) and req.until.request.method == "GET"
+    url_req = Wait.model_validate({"until": {"request": {"url": "https://x.com/items"}}, "timeout": 8})
+    assert isinstance(url_req.until, WaitRequest) and url_req.until.request.url == "https://x.com/items"
+    with pytest.raises(ValidationError):  # an empty request matcher is rejected
+        Wait.model_validate({"until": {"request": {}}, "timeout": 8})
     with pytest.raises(ValidationError):  # timeout required
         Wait.model_validate({"for": {"id": "x"}})
     with pytest.raises(ValidationError):  # both for and until not allowed
