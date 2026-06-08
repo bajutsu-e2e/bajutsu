@@ -2,10 +2,11 @@
 
 # ドライバ抽象・バックエンド・環境管理
 
-> ひとつの `Driver` インターフェースの裏に複数のバックエンド（RocketSim / idb / fake）を置き、
-> 能力差を抽象側で吸収する。アプリの起動（boot/launch）は `simctl` ラッパが担う。
+> ひとつの `Driver` インターフェースの裏にバックエンド（idb、それにテスト用のインメモリ `fake`）を
+> 置き、能力差を抽象側で吸収する。現状の実バックエンドは idb のみだが、インターフェースは他の
+> バックエンドを追加する余地を残している。アプリの起動（boot/launch）は `simctl` ラッパが担う。
 >
-> 実装: `bajutsu/drivers/`（`base.py` / `rocketsim.py` / `idb.py` / `fake.py`）・
+> 実装: `bajutsu/drivers/`（`base.py` / `idb.py` / `fake.py`）・
 > `bajutsu/backends.py` ・ `bajutsu/env.py`。
 
 関連: [selectors](selectors.md)（解決） ・ [concepts の安定度順ラダー](concepts.md#5-安定度順ラダーstability-ladder) ・ [run-loop](run-loop.md)
@@ -38,42 +39,20 @@ class Driver(Protocol):
 
 `capabilities()` が返すトークン集合で、actuator 選択と証跡のフォールバック解決に使う。
 
-| 能力 | 意味 | RocketSim | idb | fake |
-|---|---|:--:|:--:|:--:|
-| `query` | 要素ツリー取得 | ✅ | ✅ | ✅ |
-| `elements` | 要素ダンプ証跡 | ✅ | ✅ | ✅ |
-| `screenshot` | スクショ | ✅ | ✅ | ✅ |
-| `semanticTap` | id/label で直接タップ（座標不要） | — | — | ✅ |
-| `conditionWait` | ネイティブ条件待機 | — | — | ✅ |
-| `network` | ネイティブネットワーク監視 | — | — | — |
-| `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | — | ✅ |
+| 能力 | 意味 | idb | fake |
+|---|---|:--:|:--:|
+| `query` | 要素ツリー取得 | ✅ | ✅ |
+| `elements` | 要素ダンプ証跡 | ✅ | ✅ |
+| `screenshot` | スクショ | ✅ | ✅ |
+| `semanticTap` | id/label で直接タップ（座標不要） | — | ✅ |
+| `conditionWait` | ネイティブ条件待機 | — | ✅ |
+| `network` | ネイティブネットワーク監視 | — | — |
+| `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | ✅ |
 
-> 実機のバックエンドはどちらも **frame 中心の座標**で操作する。実機で使える semantic tap を
-> どちらも公開していない（下の RocketSim 参照）ため、run ループは `query()` で要素を一意に確定し
-> その中心をタップする。`pinch` / `rotate` は両者とも `UnsupportedAction`（単一タッチ）で、これらは
-> codegen → XCUITest 経由で扱う。
-
-## RocketSim
-
-手元向けのバックエンド（RocketSim の GUI アプリが常駐している必要がある）。
-実装: `drivers/rocketsim.py`。
-
-**実機で確認（2026-06）**: RocketSim の `rs/1` agent プロトコルは role / label / value / frame と
-*一時的（ephemeral）な* 要素 id を公開するが、**accessibilityIdentifier は持たない**。このため idb と
-違い、RocketSim は bajutsu の id 優先セレクタを自力で解決できない。帰結は 2 つ:
-
-1. 識別子は `query()` 内で適用する **[idmap](#識別子の復元idmap)** で復元する。
-2. 操作は **frame 中心の座標**（`rocketsim interact tap <x> <y>`）で行い、`--id` の semantic tap は
-   使わない（その `--id` は ephemeral id で、スナップショットをまたぐと無意味）。
-
-- `query()`: `rocketsim elements --agent-mode debug --udid <udid>` の出力
-  （`{ data: { elements: [...] } }`、frame は `[[x,y],[w,h]]`）を `parse_elements` で正規化し、
-  続けてアプリの idmap を適用して識別子を埋める。
-- `tap(sel)`: `resolve_unique` → `rocketsim interact tap` で frame 中心をタップ。
-- `type_text` / `swipe` / `long_press` → `rocketsim interact type|swipe|long-press`、`screenshot` は
-  `simctl io` を使う（idb と同じく信頼できる）。
-- 具体的な UDID が必要（`booted` は simctl 専用のエイリアスで、run パイプラインが `env.resolve_udid`
-  で解決する）。
+> idb は **frame 中心の座標**で操作する。semantic tap を公開しないため、run ループは `query()` で
+> 要素を一意に確定しその中心をタップする。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を
+> 投げ、これらは codegen → XCUITest 経由で扱う。`fake` ドライバはテストでそれらのコードパスを
+> 動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開する。
 
 ## idb
 
@@ -90,29 +69,6 @@ class Driver(Protocol):
 > ⚠️ describe-all の JSON キー名は fb-idb の出力に合わせた **想定**で、インストール済み idb で
 > 要確認（`idb.py` 冒頭の注記）。idb クライアントは `uv sync --extra idb`、`idb_companion` は
 > `brew install facebook/fb/idb-companion`。
-
-## 識別子の復元（idmap）
-
-実装: `bajutsu/idmap.py`。アプリ単位・任意（config の `apps.<name>.idMap`、config ファイルからの相対パス）。
-
-idb の `describe-all` は `AXUniqueId`（= accessibilityIdentifier）を持つので、id 優先セレクタは
-そのまま解決できる。RocketSim のプロトコルは識別子を一切持たず、role / label / value だけ。**idmap**
-がこの差を埋める: 各 accessibilityIdentifier を、RocketSim が *実際に* 報告する内容へのマッチャに
-対応づけるテーブル。
-
-```yaml
-# sample/sample.idmap.yaml
-home.title:        { role: staticText, label: "Home" }      # role でタイトルと「Home」タブを分ける
-counter.value:     { role: staticText, labelMatches: "^Count:" }  # 動的テキストは正規表現で
-counter.increment: { role: button, label: "+" }
-home.search:       { role: textField }                       # 画面で唯一のテキストフィールド
-list.row.3:        { role: staticText, label: "Item 3" }
-```
-
-`apply(elements, idmap)` は識別子が未設定の各要素に識別子を埋めるが、**マッチャがちょうど 1 件に
-解決したときだけ**行う — 曖昧または不在のマッチは未解決のまま残し、セレクタ層が当て推量せず
-「一致なし / 曖昧」と報告できるようにする。すでに識別子を提供するバックエンド（idb）は影響を受けない。
-こうして同じ id 優先シナリオが両バックエンドで動く。
 
 ## FakeDriver
 
@@ -136,14 +92,16 @@ FakeDriver(screen=[...], react=react)
 実装: `bajutsu/backends.py`。
 
 ```python
-KNOWN = ("rocketsim", "idb")               # fake はテスト専用、ここには含めない
+KNOWN = ("idb",)                           # fake はテスト専用、ここには含めない
 
 def default_available(backend) -> bool:    # 実行ファイルが PATH にあるか（粗い一次判定）
 def select_actuator(backends, available) -> str:  # 安定度順で最初に利用可能なもの
-def make_driver(backend, udid, idmap=None) -> Driver:  # "rocketsim" → RocketSimDriver（idmap を使う）, "idb" → IdbDriver
+def make_driver(backend, udid) -> Driver:  # "idb" → IdbDriver
 ```
 
 - `backend` は **安定度順のリスト**（先頭ほど安定。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）。
+  現状の登録バックエンドは idb のみなのでリストは 1 要素だが、シナリオに触れずに別のバックエンドを
+  追加できるよう選択の仕組みは残してある。
 - **actuator = リストで最初に利用可能なバックエンド**。利用可能なものが無ければ `RuntimeError`
   （CLI は終了コード 2）。
 - 可用性判定 `available` は注入可能（テストで差し替え）。既定は `shutil.which`。

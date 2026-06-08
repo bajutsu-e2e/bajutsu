@@ -69,9 +69,8 @@ convention (`<namespace>.<element>`) is in
 ## 5. The stability ladder
 
 UI actions are attempted **most-stable-first** — but "most stable" is about **selection** (which
-element), not actuation. Both real backends actuate the same way (a coordinate tap at the frame
-center), so what changes between rungs is how the element is chosen. The lower the rung, the more
-fragile.
+element), not actuation. idb actuates by coordinate tap at the frame center regardless, so what
+changes between rungs is how the element is chosen. The lower the rung, the more fragile.
 
 | Rung | Selection (which element) | Stability |
 |---|---|---|
@@ -79,17 +78,15 @@ fragile.
 | 2 | resolve by `label` / `traits` | weak to localization |
 | 3 | `index` / raw coordinates | breaks on layout changes. Last resort |
 
-> Actuation is always a frame-center coordinate tap. RocketSim originally sat above idb on the
-> assumption that it offered a native semantic tap; verified on-device, that assumption proved
-> false — its `rs/1` protocol exposes no accessibilityIdentifier, so it too actuates by coordinates
-> and recovers identifiers via the [idmap](drivers.md#identifier-recovery-idmap).
+> Actuation is always a frame-center coordinate tap: idb exposes no semantic tap, so the run loop
+> resolves the unique element and taps its frame center.
 
-This still shows up in the **ordering of the backend list**: `backend: [rocketsim, idb]` lists
-actuators with the locally-preferred one first. The backend that actually performs actions, the
-**actuator, is the first available backend in the list**; it is fixed once at the start of a run and
-held for the whole run (to avoid the non-determinism of two drivers operating one device). Locally
-you get RocketSim; a headless CI auto-degrades to idb. Selection is always by `id`, so the scenario
-does not change ([drivers](drivers.md#backend-selection-and-the-actuator)).
+The **actuator (the backend that performs actions) is the first available backend in the list**; it
+is fixed once at the start of a run and held for the whole run (to avoid the non-determinism of two
+drivers operating one device). The `backend` list is still written most-stable-first, but idb is the
+only registered backend today, so it is always the actuator — the list is kept so another backend can
+be added later. Selection is always by `id`, so scenarios do not change
+([drivers](drivers.md#backend-selection-and-the-actuator)).
 
 ## 6. App-agnostic (push differences into config)
 

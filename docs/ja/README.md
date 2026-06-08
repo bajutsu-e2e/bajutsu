@@ -22,7 +22,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
               ┌───────────────────────────────┼───────────────────────────────┐
               ▼                               ▼                               ▼
         Orchestrator                    Driver 抽象                     Evidence Sink
-   observe → act → verify   ──tap/type/swipe/wait/query──▶  RocketSim / idb / fake
+   observe → act → verify   ──tap/type/swipe/wait/query──▶  idb / fake
               │                          (simctl で boot/launch)            │
               ▼                                                             ▼
         Reporter ──────────────▶ runs/<runId>/{manifest.json, junit.xml, report.html}
@@ -41,7 +41,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 | 2 | [architecture](architecture.md) | モジュール構成・依存関係・**実装状況（実装済み / 未配線）** |
 | 3 | [scenarios](scenarios.md) | シナリオ YAML の文法（ステップ / 待機 / アサーション / 証跡トークン）= オーサリングリファレンス |
 | 4 | [selectors](selectors.md) | セレクタモデルと決定的解決（0/1/2+ 件）・アサーション評価の仕組み = 決定性の核 |
-| 5 | [drivers](drivers.md) | Driver 抽象・RocketSim / idb / fake・能力差の吸収・simctl 環境 |
+| 5 | [drivers](drivers.md) | Driver 抽象・idb / fake・能力差の吸収・simctl 環境 |
 | 6 | [run-loop](run-loop.md) | Orchestrator（observe → act → verify）・待機・リトライ・実行結果 |
 | 7 | [evidence](evidence.md) | 証跡サブシステム（瞬時 / 区間・capturePolicy・provider・redact） |
 | 8 | [reporting](reporting.md) | レポート（manifest.json / JUnit / HTML）と `runs/` レイアウト |
@@ -65,7 +65,7 @@ make e2e                             # idb バックエンドで smoke シナリ
 CLI の最小形:
 
 ```bash
-bajutsu run    <scenario.yaml> --app <name> [--backend rocketsim,idb] [--udid booted]
+bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
 bajutsu doctor               --app <name>            # 規約充足度スコア
 bajutsu record <out.yaml>    --app <name> --goal "..."  # AI で探索・記録（要 API キー）
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift

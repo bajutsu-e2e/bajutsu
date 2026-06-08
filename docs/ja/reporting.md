@@ -59,7 +59,7 @@ runs/<runId>/
 ```
 
 - `ok` (トップ): 全シナリオが ok なら true。
-- `backend`: その run を操作したアクチュエータ（`rocketsim` / `idb` / `fake`）。アクチュエータは
+- `backend`: その run を操作したアクチュエータ（`idb`、テストでは `fake`）。アクチュエータは
   run ごとに 1 つ固定なので、トップレベルは通常 1 つの名前。各シナリオも自分の `backend` を持つ
   （[drivers](drivers.md#バックエンド選択と-actuator)）。
 - `steps[].duration_s`: 各ステップの計時（`actionLog` 相当の情報）。

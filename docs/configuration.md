@@ -20,7 +20,7 @@ one closer to the test wins).
 
 ```yaml
 defaults:                       # shared across all apps
-  backend: [rocketsim, idb]     # UI-stability order (first = most stable). A single string is also OK
+  backend: [idb]                # ordered list; idb is the only backend today. A single string is also OK
   device:  "iPhone 15"
   locale:  en_US
   capture: [screenshot.after, elements, actionLog]
@@ -67,7 +67,7 @@ Config's `defaults.redact` and `apps.<name>.redact` are **union**ed (`_merge_red
 ## Selecting from the CLI
 
 Every command selects one app with `--app <name>` and points at config with `--config` (default
-`bajutsu.config.yaml`). `--backend rocketsim,idb` overrides the actuator order ([cli](cli.md)).
+`bajutsu.config.yaml`). `--backend idb` overrides the actuator order ([cli](cli.md)).
 
 ## Onboarding a new app
 

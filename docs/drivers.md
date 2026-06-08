@@ -2,11 +2,12 @@
 
 # Driver abstraction, backends, and environment management
 
-> One `Driver` interface, behind which sit several backends (RocketSim / idb / fake), with
-> capability differences absorbed on the abstraction side. Launching the app (boot/launch) is
-> handled by a `simctl` wrapper.
+> One `Driver` interface, behind which sit the backends (idb, plus the in-memory `fake` for
+> tests), with capability differences absorbed on the abstraction side. idb is the only real
+> backend today, but the interface keeps the door open for others. Launching the app
+> (boot/launch) is handled by a `simctl` wrapper.
 >
-> Implementation: `bajutsu/drivers/` (`base.py` / `rocketsim.py` / `idb.py` / `fake.py`) ·
+> Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `fake.py`) ·
 > `bajutsu/backends.py` · `bajutsu/env.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
@@ -41,41 +42,21 @@ class Driver(Protocol):
 The set of tokens returned by `capabilities()`, used for actuator selection and evidence fallback
 resolution.
 
-| Capability | Meaning | RocketSim | idb | fake |
-|---|---|:--:|:--:|:--:|
-| `query` | element-tree query | ✅ | ✅ | ✅ |
-| `elements` | element-dump evidence | ✅ | ✅ | ✅ |
-| `screenshot` | screenshot | ✅ | ✅ | ✅ |
-| `semanticTap` | tap directly by id/label (no coordinates) | — | — | ✅ |
-| `conditionWait` | native condition waiting | — | — | ✅ |
-| `network` | native network monitoring | — | — | — |
-| `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ |
+| Capability | Meaning | idb | fake |
+|---|---|:--:|:--:|
+| `query` | element-tree query | ✅ | ✅ |
+| `elements` | element-dump evidence | ✅ | ✅ |
+| `screenshot` | screenshot | ✅ | ✅ |
+| `semanticTap` | tap directly by id/label (no coordinates) | — | ✅ |
+| `conditionWait` | native condition waiting | — | ✅ |
+| `network` | native network monitoring | — | — |
+| `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ |
 
-> Both real backends actuate by **frame-center coordinates** — neither exposes a usable semantic tap
-> on a real device (see RocketSim below), so the run loop resolves a unique element via `query()` and
-> taps its center. `pinch` / `rotate` raise `UnsupportedAction` on both (single-touch); those go
-> through codegen → XCUITest.
-
-## RocketSim
-
-Local backend (the RocketSim GUI app must be running). Implementation: `drivers/rocketsim.py`.
-
-**Verified on-device (2026-06):** RocketSim's `rs/1` agent protocol exposes role / label / value /
-frame and an *ephemeral* element id — but **no accessibilityIdentifier**. So, unlike idb, RocketSim
-cannot resolve bajutsu's id-first selectors on its own. Two consequences:
-
-1. Identifiers are recovered by an **[idmap](#identifier-recovery-idmap)** applied in `query()`.
-2. Actuation is by **frame-center coordinates** (`rocketsim interact tap <x> <y>`), not the `--id`
-   semantic tap (that `--id` is the ephemeral id, useless across snapshots).
-
-- `query()`: parses `rocketsim elements --agent-mode debug --udid <udid>`
-  (`{ data: { elements: [...] } }`, frames as `[[x,y],[w,h]]`) via `parse_elements`, then applies the
-  app's idmap to fill identifiers.
-- `tap(sel)`: `resolve_unique` → tap the frame center via `rocketsim interact tap`.
-- `type_text` / `swipe` / `long_press` → `rocketsim interact type|swipe|long-press`; `screenshot`
-  uses `simctl io` (reliable, same as idb).
-- A concrete UDID is required (`booted` is a simctl-only alias; the run pipeline resolves it via
-  `env.resolve_udid`).
+> idb actuates by **frame-center coordinates** — it exposes no semantic tap, so the run loop resolves
+> a unique element via `query()` and taps its center. `pinch` / `rotate` raise `UnsupportedAction`
+> (single-touch); those go through codegen → XCUITest. The `fake` driver advertises a richer
+> capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
+> tests.
 
 ## idb
 
@@ -94,31 +75,6 @@ Headless, coordinate-based. For CI. With no semantic tap, the abstraction resolv
 > ⚠️ The describe-all JSON key names are **assumed** to match fb-idb's output and need confirmation
 > against the installed idb (the note atop `idb.py`). The idb client is `uv sync --extra idb`;
 > `idb_companion` is `brew install facebook/fb/idb-companion`.
-
-## Identifier recovery (idmap)
-
-Implementation: `bajutsu/idmap.py`. Per-app, optional (`apps.<name>.idMap` in config, a path relative
-to the config file).
-
-idb's `describe-all` carries `AXUniqueId` (= accessibilityIdentifier), so id-first selectors resolve
-directly. RocketSim's protocol has no identifier at all — only role / label / value. An **idmap**
-bridges the gap: a table mapping each accessibilityIdentifier to a matcher against what RocketSim
-*does* report.
-
-```yaml
-# sample/sample.idmap.yaml
-home.title:        { role: staticText, label: "Home" }      # role splits title vs the "Home" tab
-counter.value:     { role: staticText, labelMatches: "^Count:" }  # regex for dynamic text
-counter.increment: { role: button, label: "+" }
-home.search:       { role: textField }                       # the only text field on the screen
-list.row.3:        { role: staticText, label: "Item 3" }
-```
-
-`apply(elements, idmap)` fills the identifier on each element whose identifier is unset, but **only
-when a matcher resolves to exactly one** such element — ambiguous or absent matches are left
-unresolved so the selector layer reports "no match / ambiguous" instead of guessing. A backend that
-already provides identifiers (idb) is therefore unaffected. The same id-first scenario then runs on
-both backends.
 
 ## FakeDriver
 
@@ -143,14 +99,16 @@ FakeDriver(screen=[...], react=react)
 Implementation: `bajutsu/backends.py`.
 
 ```python
-KNOWN = ("rocketsim", "idb")               # fake is test-only; not listed here
+KNOWN = ("idb",)                           # fake is test-only; not listed here
 
 def default_available(backend) -> bool:    # is the executable on PATH (a coarse first check)
 def select_actuator(backends, available) -> str:  # the first available in stability order
-def make_driver(backend, udid, idmap=None) -> Driver:  # "rocketsim" → RocketSimDriver (uses idmap), "idb" → IdbDriver
+def make_driver(backend, udid) -> Driver:  # "idb" → IdbDriver
 ```
 
-- `backend` is a **stability-ordered list** (more stable first; [concepts](concepts.md#5-the-stability-ladder)).
+- `backend` is an **ordered list** (most-stable-first; [concepts](concepts.md#5-the-stability-ladder)).
+  idb is the only registered backend today, so the list has one element, but selection is kept so
+  another backend can be added without touching scenarios.
 - The **actuator = the first available backend in the list**. If none is available, `RuntimeError`
   (the CLI exits with code 2).
 - The availability check `available` is injectable (swappable in tests). The default is `shutil.which`.

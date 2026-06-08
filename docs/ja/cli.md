@@ -14,7 +14,7 @@
 
 - 全コマンドの前に `.env` を読み込む（`_bootstrap`、下記）。
 - config が無い / アプリ未定義 / actuator 無し → メッセージを出して **終了コード 2**。
-- `--backend` はカンマ区切り（例 `rocketsim,idb`）。空なら config の `backend` を使う。先頭から
+- `--backend` はカンマ区切り（例 `idb`）。空なら config の `backend` を使う。先頭から
   順に可用性を見て **最初に使えるものが actuator**（[drivers](drivers.md#バックエンド選択と-actuator)）。
 
 ## `run`

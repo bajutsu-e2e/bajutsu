@@ -35,7 +35,7 @@
 | `actionLog` | orchestrator 内部（操作・所要時間） | — | ✅ manifest に内在 |
 | `video` | `simctl io recordVideo` | 区間 | ✅ 取得（要 udid） |
 | `deviceLog` | `simctl spawn log stream` | 区間 | ✅ 取得（要 udid） |
-| `network` | （RocketSim 監視 / モックサーバ） | 区間 | ⚠️ **未実装**（取得元が無い） |
+| `network` | （モックサーバ） | 区間 | ⚠️ **未実装**（取得元が無い） |
 | `appTrace` | （os_signpost / OSLog） | 区間 | ⚠️ **未実装** |
 
 > `network` / `appTrace` は capture トークンとして **検証は通る**（スキーマ上は有効）が、`evidence.py` /

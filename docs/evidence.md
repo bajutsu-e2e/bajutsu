@@ -37,7 +37,7 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 | `actionLog` | orchestrator internals (action · duration) | — | ✅ inherent in the manifest |
 | `video` | `simctl io recordVideo` | interval | ✅ captured (needs udid) |
 | `deviceLog` | `simctl spawn log stream` | interval | ✅ captured (needs udid) |
-| `network` | (RocketSim monitoring / the mock server) | interval | ⚠️ **not implemented** (no source) |
+| `network` | (the mock server) | interval | ⚠️ **not implemented** (no source) |
 | `appTrace` | (os_signpost / OSLog) | interval | ⚠️ **not implemented** |
 
 > `network` / `appTrace` **validate** as capture tokens (valid in the schema), but there is no

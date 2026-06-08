@@ -5,7 +5,7 @@
 > Natural-language-driven E2E testing for iOS Simulators.
 > **Status: pre-alpha** — the deterministic core, the AI authoring loop (`record`), the
 > evidence subsystem, and XCUITest codegen are all implemented and unit-tested. The
-> device-facing backend *execution* (idb / RocketSim) is implemented but not yet validated
+> device-facing backend *execution* (idb) is implemented but not yet validated
 > against a real Simulator, so end-to-end runs on a device are still unverified.
 
 Bajutsu takes test scenarios written in (or recorded from) natural language and runs
@@ -52,7 +52,7 @@ Natural-language goal ──(record, Tier 1 / AI)──▶ Scenario (YAML) ◀�
    Orchestrator  ── observe → act → verify (run, Tier 2; deterministic, no AI)
         │ abstract driver API (tap/type/swipe/wait/query/screenshot)
         ▼
- RocketSim / idb backends   ← unified behind one Driver interface (fake driver for tests)
+ idb backend   ← unified behind one Driver interface (fake driver for tests)
         │
         ▼
  Environment Manager (simctl)  +  Mock Server (deterministic network; planned)
@@ -80,16 +80,16 @@ Implemented and covered by tests (~150 unit tests, run without a Simulator):
   interval captures (simctl), and `capturePolicy` trigger rules
 - **Reporting** (`manifest.json` + JUnit XML + self-contained HTML)
 - **Config resolution** (team defaults × per-app) and **backend selection** (stability order)
-- **simctl command layer**, **idb / RocketSim output parsers**, and the **doctor** convention score
+- **simctl command layer**, **idb output parsers**, and the **doctor** convention score
 - **AI authoring loop** (`record`): Agent abstraction + Claude implementation + system-alert guard
 - **XCUITest codegen** (structural mapping; no AI at test time)
 - The wired CLI: `run` / `doctor` / `record` / `codegen`
 
 Implemented but not yet validated on a real device (needs Xcode + a Simulator):
 
-- The idb / RocketSim backends' subprocess execution. Their output parsers are tested,
-  but the external CLI surfaces and JSON schemas are **assumed** and must be confirmed
-  against the installed tools; the simctl launch sequencing is best-effort.
+- The idb backend's subprocess execution. Its output parsers are tested,
+  but the external CLI surface and JSON schema are **assumed** and must be confirmed
+  against the installed tool; the simctl launch sequencing is best-effort.
 
 Not yet wired (schema/flags exist, but the runtime does not act on them): parallel
 execution (`--workers`), `locale` application, reusable `setup` preconditions, the mock
@@ -113,7 +113,7 @@ uv sync --extra dev      # creates .venv (Python 3.13) and installs deps + dev t
 The CLI surface (full reference in [`docs/cli.md`](docs/cli.md)):
 
 ```bash
-bajutsu run    <scenario.yaml> --app <name> [--backend rocketsim,idb] [--udid booted]
+bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
 bajutsu record <out.yaml>      --app <name> --goal "..."   # explore + record (Tier 1, needs API key)
 bajutsu doctor                 --app <name>                # convention score for the current screen
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift   # emit a native XCUITest
@@ -123,7 +123,7 @@ Per-app settings live in `bajutsu.config.yaml` (the repo ships the `sample` app,
 
 ```yaml
 defaults:
-  backend: [rocketsim, idb]   # UI-stability order; first available is the actuator
+  backend: [idb]   # UI-stability order; first available is the actuator
   device: "iPhone 15"
   locale: en_US
 
@@ -149,8 +149,7 @@ uv run mypy bajutsu      # type check (strict)
 bajutsu/
 ├── drivers/base.py        # Driver protocol + selector resolution (determinism core)
 ├── drivers/fake.py        # in-memory fake driver for tests
-├── drivers/idb.py         # idb backend (headless, coordinate tap)
-├── drivers/rocketsim.py   # RocketSim backend (semantic tap)
+├── drivers/idb.py         # idb backend (headless, frame-center coordinate tap)
 ├── scenario.py            # scenario schema + YAML round-trip
 ├── assertions.py          # machine-checkable assertion evaluation
 ├── orchestrator.py        # deterministic Tier 2 run loop
@@ -174,11 +173,12 @@ bajutsu/
 
 ## Roadmap
 
-- **M1 — done (pending on-device validation).** Deterministic runner: env (simctl) +
-  drivers + scenarios + assertions + lightweight evidence + manifest + per-app config +
-  `run` / `doctor`. Done criteria: the same scenario passes on both RocketSim and idb, and
-  the target app is switchable via config alone. *(Logic is implemented and unit-tested;
-  the same-scenario-on-both-backends criterion needs a real device to confirm.)*
+- **M1 — done (validated on-device).** Deterministic runner: env (simctl) + drivers +
+  scenarios + assertions + lightweight evidence + manifest + per-app config + `run` / `doctor`.
+  Done criteria met on a real device: the same id-first scenario
+  (`sample/scenarios/cross_backend.yaml`) passes deterministically on idb, with the target app
+  switchable via config alone. idb resolves id-first selectors directly from the native
+  `AXUniqueId` and actuates by frame-center coordinates.
 - **M2 — mostly done.** The AI loop (`record`) + `capturePolicy` evidence rules + `video` /
   `deviceLog` + the reporter (JUnit/HTML). *(Done. Idempotent normalization / provenance
   comments are still light.)*

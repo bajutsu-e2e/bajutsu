@@ -17,7 +17,6 @@ The `bajutsu/` package (Python 3.11+, pydantic v2 / typer / anthropic / pyyaml).
 |---|---|---|
 | `drivers/base.py` | Driver Protocol + shared types (`Element`/`Selector`/`Point`) + **selector resolution** (the determinism core) | [selectors](selectors.md) / [drivers](drivers.md) |
 | `drivers/fake.py` | In-memory `FakeDriver` (for tests without a device) | [drivers](drivers.md#fakedriver) |
-| `drivers/rocketsim.py` | RocketSim backend (semantic tap) | [drivers](drivers.md#rocketsim) |
 | `drivers/idb.py` | idb backend (headless, coordinate tap) | [drivers](drivers.md#idb) |
 | `scenario.py` | Scenario schema (strict pydantic validation) + YAML load / dump | [scenarios](scenarios.md) |
 | `assertions.py` | Machine assertion evaluation (total function — never raises) | [selectors](selectors.md#assertion-evaluation) |
@@ -60,13 +59,13 @@ assertions.py  evidence.py ── intervals.py
                        ▼
                 drivers/base.py  ←── the determinism core (Element / Selector / resolve_unique)
                        ▲
-        ┌──────────────┼──────────────┐
-   drivers/fake   drivers/rocketsim   drivers/idb
+        ┌──────────────┴──────────────┐
+   drivers/fake                   drivers/idb
 ```
 
 - `orchestrator.py` depends only on `base.Driver` and **is not coupled to any concrete driver**.
   That is why it can be tested with `FakeDriver` without a device, while in production the same
-  loop drives RocketSim / idb.
+  loop drives idb.
 - `runner.py` provides the factory that "launches the app and returns a ready driver,"
   decoupling the loop from a real device.
 - `scenario.py` (the pydantic authoring model) and `drivers/base.py` (the runtime TypedDict)
@@ -95,16 +94,15 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 - Evidence: instant (`screenshot`/`elements`) + interval (`video`/`deviceLog`) + `capturePolicy` firing
 - Reporting (`manifest.json` / `junit.xml` / `report.html`)
 - Config resolution (defaults × apps, redact merge) and actuator selection
-- The `simctl` command layer · idb / RocketSim output parsers · the `doctor` score
+- The `simctl` command layer · the idb output parser · the `doctor` score
 - The CLI `run` / `doctor` / `codegen`, plus `record` (AI authoring) + the alert guard
 - XCUITest code generation
 
 ### Implemented but not validated on a real device (needs external CLIs)
 
-- The idb / RocketSim backends' subprocess execution. **The output parsers are tested, but the
-  external CLI surfaces and JSON schemas are "assumed"** and must be confirmed against the
-  installed tools (the NOTE at the top of `drivers/rocketsim.py`, the note in `drivers/idb.py`).
-  The simctl launch sequencing is also best-effort.
+- The idb backend's subprocess execution. **The output parser is tested, but the external CLI
+  surface and JSON schema are "assumed"** and must be confirmed against the installed tool (the note
+  at the top of `drivers/idb.py`). The simctl launch sequencing is also best-effort.
 
 ### Not yet wired (schema/flags exist but have no runtime effect)
 

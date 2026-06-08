@@ -60,7 +60,7 @@ verbatim.
 ```
 
 - `ok` (top): true if every scenario is ok.
-- `backend`: the actuator that drove the run (`rocketsim` / `idb` / `fake`). One actuator is fixed
+- `backend`: the actuator that drove the run (`idb`, or `fake` in tests). One actuator is fixed
   per run, so the top-level value is normally a single name; each scenario also carries its own
   `backend` ([drivers](drivers.md#backend-selection-and-the-actuator)).
 - `steps[].duration_s`: each step's timing (the `actionLog`-equivalent information).

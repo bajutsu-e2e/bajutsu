@@ -14,9 +14,8 @@ Related: [the determinism principles](concepts.md#3-determinism-first-four-concr
 
 ## The normalized element (`Element`)
 
-Whichever backend produces the output (RocketSim / idb), the driver normalizes it into a common
-`Element` (TypedDict). Resolution and assertions only ever look at this normalized form (backend
-differences are absorbed in the driver).
+The driver normalizes the backend's output into a common `Element` (TypedDict). Resolution and
+assertions only ever look at this normalized form (backend differences are absorbed in the driver).
 
 ```python
 class Element(TypedDict):
@@ -113,15 +112,13 @@ failure" (they do not propagate the exception upward).
 
 ### Centralized regardless of backend
 
-Neither real backend exposes a usable semantic tap, so the abstraction **always verifies the
-candidate count via `query()` before** acting, then taps the resolved element's frame center. This
-makes the "ambiguous = fail" behavior identical across RocketSim / idb / fake (each driver's `tap`
-implementation is in [drivers](drivers.md)).
+idb exposes no usable semantic tap, so the abstraction **always verifies the candidate count via
+`query()` before** acting, then taps the resolved element's frame center. This makes the "ambiguous =
+fail" behavior identical across idb / fake (each driver's `tap` implementation is in
+[drivers](drivers.md)).
 
-On idb the `id` comes straight from the element tree (`AXUniqueId`); on RocketSim — whose protocol
-reports no accessibilityIdentifier — the `identifier` is **recovered by the per-app idmap** during
-`query()` ([drivers](drivers.md#identifier-recovery-idmap)). Either way resolution sees a normalized
-`identifier`, so the same `id` selector works on both backends.
+The `id` comes straight from idb's element tree (`AXUniqueId`), normalized into `Element.identifier`,
+so the `id` selector resolves directly against the normalized form.
 
 ## Assertion evaluation
 

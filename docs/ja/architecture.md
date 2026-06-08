@@ -17,7 +17,6 @@
 |---|---|---|
 | `drivers/base.py` | Driver Protocol + 共通型（`Element`/`Selector`/`Point`）+ **セレクタ解決**（決定性の核） | [selectors](selectors.md) / [drivers](drivers.md) |
 | `drivers/fake.py` | インメモリの `FakeDriver`（実機不要テスト用） | [drivers](drivers.md#fakedriver) |
-| `drivers/rocketsim.py` | RocketSim バックエンド（semantic tap） | [drivers](drivers.md#rocketsim) |
 | `drivers/idb.py` | idb バックエンド（ヘッドレス・座標 tap） | [drivers](drivers.md#idb) |
 | `scenario.py` | シナリオスキーマ（pydantic 厳格検証）+ YAML 読込 / 書出 | [scenarios](scenarios.md) |
 | `assertions.py` | 機械アサーション評価（総関数・例外を投げない） | [selectors](selectors.md#アサーション評価) |
@@ -60,12 +59,12 @@ assertions.py  evidence.py ── intervals.py
                        ▼
                 drivers/base.py  ←── 決定性の核（Element / Selector / resolve_unique）
                        ▲
-        ┌──────────────┼──────────────┐
-   drivers/fake   drivers/rocketsim   drivers/idb
+        ┌──────────────┴──────────────┐
+   drivers/fake                   drivers/idb
 ```
 
 - `orchestrator.py` は `base.Driver` にのみ依存し、**どの具象ドライバとも結合しない**。だから
-  `FakeDriver` で実機なしにテストでき、本番では同じループが RocketSim / idb を駆動する。
+  `FakeDriver` で実機なしにテストでき、本番では同じループが idb を駆動する。
 - `runner.py` が「アプリを起動して準備済みドライバを返す」factory を担い、ループを実機から分離する。
 - `scenario.py`（オーサリング表現の pydantic モデル）と `drivers/base.py`（実行時の TypedDict）は
   別物。`Selector.as_selector()` が前者を後者へ変換する。
@@ -92,16 +91,15 @@ assertions.py  evidence.py ── intervals.py
 - 証跡: 瞬時（`screenshot`/`elements`）+ 区間（`video`/`deviceLog`）+ `capturePolicy` 発火
 - レポート（`manifest.json` / `junit.xml` / `report.html`）
 - config 解決（defaults × apps、redact マージ）と actuator 選択
-- `simctl` コマンド層・idb / RocketSim の出力パーサ・`doctor` スコア
+- `simctl` コマンド層・idb の出力パーサ・`doctor` スコア
 - CLI `run` / `doctor` / `codegen`、および `record`（AI オーサリング）+ alert guard
 - XCUITest コード生成
 
 ### 実機未検証（実装はあるが外部 CLI に対する検証が必要）
 
-- idb / RocketSim バックエンドの subprocess 実行。**出力パーサはテスト済みだが、外部 CLI の
+- idb バックエンドの subprocess 実行。**出力パーサはテスト済みだが、外部 CLI の
   サーフェスと JSON スキーマは「想定」**で、インストール済みツールに対する確認が要る
-  （`drivers/rocketsim.py` 冒頭 NOTE、`drivers/idb.py` 冒頭の注記）。`simctl` の launch 手順も
-  best-effort。
+  （`drivers/idb.py` 冒頭の注記）。`simctl` の launch 手順も best-effort。
 
 ### 未配線（スキーマ/フラグはあるが実行時に効かない）
 

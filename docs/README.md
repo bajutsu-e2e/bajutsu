@@ -24,7 +24,7 @@ Natural-language goal ──(record / Tier 1, AI)──▶ Scenario YAML ◀─�
               ┌───────────────────────────────────────┼───────────────────────────────┐
               ▼                                        ▼                                ▼
         Orchestrator                            Driver abstraction              Evidence Sink
-   observe → act → verify   ──tap/type/swipe/wait/query──▶  RocketSim / idb / fake
+   observe → act → verify   ──tap/type/swipe/wait/query──▶  idb / fake
               │                          (simctl boots/launches)                        │
               ▼                                                                         ▼
         Reporter ──────────────▶ runs/<runId>/{manifest.json, junit.xml, report.html}
@@ -43,7 +43,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 2 | [architecture](architecture.md) | Module layout, dependencies, and the **implementation status** (implemented / unwired) |
 | 3 | [scenarios](scenarios.md) | Scenario YAML grammar (steps / waits / assertions / capture tokens) = the authoring reference |
 | 4 | [selectors](selectors.md) | Selector model and deterministic resolution (0/1/2+ matches); how assertions evaluate = the determinism core |
-| 5 | [drivers](drivers.md) | Driver abstraction · RocketSim / idb / fake · capability differences · the simctl environment |
+| 5 | [drivers](drivers.md) | Driver abstraction · idb / fake · capability differences · the simctl environment |
 | 6 | [run-loop](run-loop.md) | Orchestrator (observe → act → verify) · waits · retries · run results |
 | 7 | [evidence](evidence.md) | Evidence subsystem (instant / interval · capturePolicy · provider · redact) |
 | 8 | [reporting](reporting.md) | Reports (manifest.json / JUnit / HTML) and the `runs/` layout |
@@ -67,7 +67,7 @@ make e2e                             # run the smoke scenario on the idb backend
 Minimal CLI:
 
 ```bash
-bajutsu run    <scenario.yaml> --app <name> [--backend rocketsim,idb] [--udid booted]
+bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
 bajutsu doctor               --app <name>                # convention score
 bajutsu record <out.yaml>    --app <name> --goal "..."   # AI explore + record (needs API key)
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift

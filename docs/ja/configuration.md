@@ -18,7 +18,7 @@
 
 ```yaml
 defaults:                       # 全アプリ共通の既定
-  backend: [rocketsim, idb]     # UI 安定度順（先頭=最安定）。単一文字列も可
+  backend: [idb]                # 順序付きリスト。現状 idb が唯一のバックエンド。単一文字列も可
   device:  "iPhone 15"
   locale:  en_US
   capture: [screenshot.after, elements, actionLog]
@@ -64,7 +64,7 @@ config の `defaults.redact` と `apps.<name>.redact` は **union** される（
 ## CLI からの選択
 
 すべてのコマンドが `--app <name>` で 1 アプリを選び、`--config`（既定 `bajutsu.config.yaml`）で
-config を指す。`--backend rocketsim,idb` で actuator 順を上書きできる（[cli](cli.md)）。
+config を指す。`--backend idb` で actuator 順を上書きできる（[cli](cli.md)）。
 
 ## 新しいアプリのオンボーディング
 

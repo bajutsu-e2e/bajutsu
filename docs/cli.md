@@ -15,7 +15,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 - Every command loads `.env` first (`_bootstrap`, below).
 - Missing config / undefined app / no actuator → prints a message and exits with **code 2**.
-- `--backend` is comma-separated (e.g. `rocketsim,idb`). Empty uses config's `backend`. It checks
+- `--backend` is a comma-separated list (e.g. `idb`). Empty uses config's `backend`. It checks
   availability in order and the **first usable one is the actuator**
   ([drivers](drivers.md#backend-selection-and-the-actuator)).
 
