@@ -1,9 +1,19 @@
 (function(){
+  function esc(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
   document.addEventListener('click', function(e){
     var t = e.target.closest('.tab'); if(!t) return;
     var scn = t.closest('.scn'), name = t.getAttribute('data-tab');
     scn.querySelectorAll('.tab').forEach(function(b){ b.classList.toggle('active', b===t); });
     scn.querySelectorAll('.panel').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-panel')===name); });
+  });
+  // A network request/response row expands its full settings table in the row below.
+  document.addEventListener('click', function(e){
+    var row = e.target.closest('tr.xrow'); if(!row) return;
+    var det = row.nextElementSibling;
+    if(det && det.classList.contains('nxdetail')){
+      if(det.hasAttribute('hidden')){ det.removeAttribute('hidden'); row.classList.add('open'); }
+      else { det.setAttribute('hidden',''); row.classList.remove('open'); }
+    }
   });
   // Rich / YAML toggle within the merged Result tab.
   document.addEventListener('click', function(e){
@@ -16,10 +26,20 @@
   });
   document.addEventListener('input', function(e){
     if(!e.target.classList.contains('logfilter')) return;
-    var panel = e.target.closest('.panel'), q = e.target.value.toLowerCase(), n = 0;
+    var panel = e.target.closest('.panel'), ql = e.target.value.toLowerCase(), n = 0;
     panel.querySelectorAll('.log .ln').forEach(function(l){
-      var hit = !q || l.textContent.toLowerCase().indexOf(q) !== -1;
-      l.classList.toggle('hide', !hit); if(hit) n++;
+      var raw = l.getAttribute('data-raw');
+      if(raw === null){ raw = l.textContent; l.setAttribute('data-raw', raw); }
+      if(!ql){ l.textContent = raw; l.classList.remove('hide'); n++; return; }
+      if(raw.toLowerCase().indexOf(ql) === -1){ l.classList.add('hide'); l.textContent = raw; return; }
+      l.classList.remove('hide'); n++;
+      // Rebuild the line with each match wrapped in <mark> (highlight).
+      var html = '', low = raw.toLowerCase(), i = 0, j;
+      while((j = low.indexOf(ql, i)) !== -1){
+        html += esc(raw.slice(i, j)) + '<mark>' + esc(raw.slice(j, j + ql.length)) + '</mark>';
+        i = j + ql.length;
+      }
+      l.innerHTML = html + esc(raw.slice(i));
     });
     var cnt = panel.querySelector('.logcount'); if(cnt) cnt.textContent = n + ' lines';
   });

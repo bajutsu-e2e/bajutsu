@@ -295,7 +295,7 @@ def test_html_network_tab(tmp_path: Path) -> None:
     (tmp_path / sid).mkdir(parents=True)
     (tmp_path / sid / "network.json").write_text(
         '[{"method":"GET","url":"https://example.com/items","path":"/items","status":200,'
-        '"durationMs":75.4,"responseHeaders":{"Content-Type":"text/html"},'
+        '"durationMs":75.4,"startedAt":0.8,"responseHeaders":{"Content-Type":"text/html"},'
         '"responseBody":"<html>hi</html>"}]',
         encoding="utf-8",
     )
@@ -304,15 +304,23 @@ def test_html_network_tab(tmp_path: Path) -> None:
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
     out = html_report("run1", [r], tmp_path)
-    # A Network tab appears and renders the captured exchange: method / path / status,
-    # plus the headers and (HTML-escaped) body when expanded.
+    # A Network tab appears and renders the captured exchange: request time / method /
+    # path / status, plus the headers and (HTML-escaped) body when expanded.
     assert 'data-tab="net"' in out
     assert "captured by BajutsuKit" in out
+    assert 'class="nxat muted"' in out and ">0.8s</span>" in out   # the request time on the row
     assert 'class="nxm">GET' in out
     assert "/items" in out and 'nxs ok">200' in out
     assert "Content-Type" in out and "&lt;html&gt;hi&lt;/html&gt;" in out
     # No network artifact -> no Network tab.
     assert 'data-tab="net"' not in html_report("run1", [_passing()])
+
+
+def test_html_dark_mode_and_log_highlight() -> None:
+    out = html_report("run9", [_passing()])
+    assert "@media (prefers-color-scheme: dark)" in out  # dark-mode CSS is bundled
+    assert ".log mark{" in out                           # highlight style for log matches
+    assert "'<mark>'" in out                              # the log filter wraps matches in <mark>
 
 
 def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
@@ -335,10 +343,10 @@ def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
     out = html_report("run1", [r], tmp_path, definitions=[definition])
-    # Each exchange splits into a request row (method badge) and a response row, each a
-    # click-to-expand summary over a nested settings table.
-    assert 'class="act act-net">GET' in out and 'act-net">resp' in out
-    assert '<details class="nxrow"><summary>' in out
+    # Each exchange splits into a request row (method badge) and a response row.
+    assert 'class="act act-net">GET' in out and 'act-net">response' in out
+    # The row is a click target; its settings expand into a full-width row below.
+    assert 'class="xmark">▸' in out and "class='nxdetail' hidden" in out
     assert 'class="nxk">endpoint' in out and "https://api.example.com/items" in out
     # The response row carries the response headers and (viewable) body.
     assert 'class="nxk">headers' in out and "Content-Type" in out

@@ -145,18 +145,40 @@ details.nx>summary::-webkit-details-marker{display:none}
 .nxhk{color:#3a4ba0;min-width:9rem;flex:none} .nxhv{color:var(--ink);word-break:break-all}
 .nxpre{background:#1c1c1e;color:#e6e6e6;border-radius:7px;padding:.45rem .6rem;max-height:240px;overflow:auto;
  font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:0}
-/* Network exchanges interleaved into the Steps table. */
+.nxat{flex:none;font:600 .7rem/1.4 ui-monospace,Menlo,Consolas,monospace}
+/* Network exchanges interleaved into the result timeline. The request/response row is a
+   click target; its full settings table expands into a separate full-width row below
+   (so it gets the whole width, not the cramped detail column). */
 .act-net{background:#4a5568}
 tr.nrow td{background:#f4f6fb;border-top:1px dashed var(--line)}
 td.nix{color:var(--mut);text-align:center}
-.nxtbl{border-collapse:collapse;width:100%;table-layout:fixed;margin:.1rem 0}
+tr.xrow{cursor:pointer}
+tr.xrow:hover td{background:#eef4ff}
+.xmark{display:inline-block;color:var(--mut);transition:transform .15s}
+tr.xrow.open .xmark{transform:rotate(90deg)}
+tr.nxdetail>td{background:#fafafb;padding:.15rem .7rem .5rem}
+.nxtbl{border-collapse:collapse;width:100%;table-layout:fixed;margin:0}
 .nxtbl td{border:0;padding:.05rem .6rem .05rem 0;vertical-align:top}
-.nxtbl td.nxk{color:var(--mut);font:600 .76rem -apple-system,system-ui,sans-serif;white-space:nowrap;width:4.5rem}
+.nxtbl td.nxk{color:var(--mut);font:600 .76rem -apple-system,system-ui,sans-serif;white-space:nowrap;width:6rem}
 .nxtbl td.nxv{font:.82rem/1.5 ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
-details.nxrow>summary{list-style:none;cursor:pointer;word-break:break-all;
- font:.84rem/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--ink)}
-details.nxrow>summary::-webkit-details-marker{display:none}
-details.nxrow>summary::before{content:"▸";display:inline-block;margin-right:.35rem;color:var(--mut);transition:transform .15s}
-details.nxrow[open]>summary::before{transform:rotate(90deg)}
-details.nxrow .nxtbl{margin-top:.3rem}
+.log mark{background:#ffd54a;color:#1c1c1e;border-radius:2px;padding:0 .05rem}
 a{color:#0a6cff}
+/* Dark mode — flip the palette variables, then the hardcoded light backgrounds and the
+   token text colors that need lightening on a dark surface. */
+@media (prefers-color-scheme: dark){
+ :root{--bg:#17181a;--card:#202124;--line:#34353a;--mut:#9aa0a6;--ink:#e8eaed;--ok:#2ea043;--ng:#e5534b}
+ header{background:#0d0e10}
+ .drv{color:#9db8f0;background:#1b2433;border-color:#2c3a52}
+ .cap{color:#9db8f0;background:#1b2433;border-color:#2c3a52}
+ .tk.id{color:#aab8f5;background:#222a3f} .tk.str{color:#e0a458} .tk.num{color:#5fd0d0} .tk.re{color:#c79bea}
+ .nxhk{color:#aab8f5}
+ details.pre>summary{background:#2a2b2f}
+ tr.ng{background:#3a2422}
+ tr.srow:hover td,tr.xrow:hover td{background:#2a2f3a}
+ tr.srow.playing td{background:#3a3520}
+ tr.nrow td{background:#1d2230}
+ .nxbody,tr.nxdetail>td{background:#1b1c1f}
+ img.shot{background:#2a2b2f}
+ .vt.active{background:#4a4d52}
+ a{color:#5b9cff}
+}

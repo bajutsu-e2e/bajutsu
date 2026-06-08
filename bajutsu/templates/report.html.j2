@@ -19,7 +19,7 @@
 {%- macro detail(d) -%}
 {%- if d.kind == 'parts' -%}{{ parts(d.parts) }}
 {%- elif d.kind == 'asserts' -%}<table class="atbl"><tbody>{% for kind, target, comp in d.rows %}<tr><td><span class="act act-assert">{{ kind }}</span></td><td class="adesc">{{ parts(target) }}</td><td class="adesc">{{ parts(comp) }}</td></tr>{% endfor %}</tbody></table>
-{%- elif d.kind == 'nx' -%}<details class="nxrow"><summary>{{ parts(d.summary) }}</summary><table class="nxtbl"><tbody>{% for label, val in d.pairs %}<tr><td class="nxk">{{ label }}</td><td class="nxv">{{ nxvalue(val) }}</td></tr>{% endfor %}</tbody></table></details>
+{%- elif d.kind == 'nxsummary' -%}<span class="xmark">▸</span> {{ parts(d.summary) }}
 {%- endif -%}
 {%- if d.name %} <span class="stepname">{{ d.name }}</span>{% endif %}{% for c in d.caps %} <span class="cap">{{ c }}</span>{% endfor %}
 {%- endmacro -%}
@@ -29,7 +29,7 @@
 {%- endmacro -%}
 
 {%- macro steprow(row) -%}
-<tr class='{{ row.rowcls }}'{% if row.data_t %} data-t='{{ row.data_t }}'{% endif %}{% if row.title %} title='{{ row.title }}'{% endif %}><td{% if row.numcls %} class='{{ row.numcls }}'{% endif %}>{{ row.num }}</td><td>{% if row.result is not none %}<span class="exst{% if row.result.cls %} {{ row.result.cls }}{% endif %}">{{ row.result.text }}</span>{% endif %}</td><td>{{ actbadge(row.action) }}</td><td class='adesc'>{{ detail(row.detail) }}</td><td>{{ row.at }}</td><td class='ev'>{{ stepview(row.view) }}</td><td>{% if row.reason %}<span class="exreason">{{ row.reason }}</span>{% endif %}</td></tr>
+<tr class='{{ row.rowcls }}'{% if row.data_t %} data-t='{{ row.data_t }}'{% endif %}{% if row.title %} title='{{ row.title }}'{% endif %}><td{% if row.numcls %} class='{{ row.numcls }}'{% endif %}>{{ row.num }}</td><td>{% if row.result is not none %}<span class="exst{% if row.result.cls %} {{ row.result.cls }}{% endif %}">{{ row.result.text }}</span>{% endif %}</td><td>{{ actbadge(row.action) }}</td><td class='adesc'>{{ detail(row.detail) }}</td><td>{{ row.at }}</td><td class='ev'>{{ stepview(row.view) }}</td><td>{% if row.reason %}<span class="exreason">{{ row.reason }}</span>{% endif %}</td></tr>{% if row.expand %}<tr class='nxdetail' hidden><td colspan='7'><table class="nxtbl"><tbody>{% for label, val in row.expand.pairs %}<tr><td class="nxk">{{ label }}</td><td class="nxv">{{ nxvalue(val) }}</td></tr>{% endfor %}</tbody></table></td></tr>{% endif %}
 {%- endmacro -%}
 
 {%- macro exrow(row) -%}
@@ -53,7 +53,7 @@
 {%- endmacro -%}
 
 {%- macro nxitem(it) -%}
-<details class="nx"><summary><span class="nxm">{{ it.method }}</span><span class="nxp">{{ it.target }}</span><span class="nxs{% if it.status_cls %} {{ it.status_cls }}{% endif %}">{{ it.status }}</span><span class="nxd muted">{{ it.dur }}</span></summary><div class="nxbody">
+<details class="nx"><summary><span class="nxat muted" title="request time (offset from scenario start)">{{ it.at }}</span><span class="nxm">{{ it.method }}</span><span class="nxp">{{ it.target }}</span><span class="nxs{% if it.status_cls %} {{ it.status_cls }}{% endif %}">{{ it.status }}</span><span class="nxd muted">{{ it.dur }}</span></summary><div class="nxbody">
 {%- if it.sections -%}
 {%- for s in it.sections -%}
 {%- if s.kind == 'line' %}<div class="nxsec"><span class="nxlbl">{{ s.label }}</span><div class="nxh{% if s.cls %} {{ s.cls }}{% endif %}">{{ s.text }}</div></div>

@@ -342,6 +342,7 @@ def _step_run_row(i: int, step_def: dict[str, Any] | None, out: Any) -> dict[str
         "at": f"{out.started_at:.1f}s",
         "view": _view_data(out),
         "reason": out.reason if (not out.ok and out.reason) else None,
+        "expand": None,
     }
 
 
@@ -352,7 +353,7 @@ def _step_skip_row(i: int, step_def: dict[str, Any] | None) -> dict[str, Any]:
         "result": {"cls": "", "text": "—"},
         "action": _action_data(step_def, None),
         "detail": _step_detail(step_def),
-        "at": "", "view": None, "reason": None,
+        "at": "", "view": None, "reason": None, "expand": None,
     }
 
 
@@ -379,36 +380,40 @@ def _nx_pairs(d: dict[str, Any], fields: list[tuple[str, str]]) -> list[tuple[st
     return pairs
 
 
-def _exchange_detail(d: dict[str, Any], fields: list[tuple[str, str]], fallback: str) -> dict[str, Any]:
+def _exchange_summary(d: dict[str, Any], fallback: str) -> list[Part]:
     endpoint = str(d.get("url") or d.get("path") or "")
-    summary = [("str", endpoint)] if endpoint else [("kw", fallback)]
-    return {"kind": "nx", "summary": summary, "pairs": _nx_pairs(d, fields), "name": None, "caps": []}
+    return [("str", endpoint)] if endpoint else [("kw", fallback)]
 
 
 def _request_row(d: dict[str, Any], at: float) -> dict[str, Any]:
+    """A request row. Its detail cell is just the endpoint (a click target); the full
+    settings table renders in a separate full-width row below (so it gets the whole
+    width instead of the cramped detail column)."""
     method = str(d.get("method") or "req")
-    detail = _exchange_detail(
-        d, [("method", "method"), ("endpoint", "endpoint"),
-            ("headers", "requestHeaders"), ("body", "requestBody")], method)
+    pairs = _nx_pairs(d, [("method", "method"), ("endpoint", "endpoint"),
+                          ("headers", "requestHeaders"), ("body", "requestBody")])
     return {
-        "rowcls": "nrow", "data_t": None, "title": None,
+        "rowcls": "nrow xrow", "data_t": None, "title": None,
         "num": "→", "numcls": "nix", "result": None,
         "action": {"label": method, "cls": "act-net"},
-        "detail": detail, "at": f"{at:.1f}s", "view": None, "reason": None,
+        "detail": {"kind": "nxsummary", "summary": _exchange_summary(d, method), "name": None, "caps": []},
+        "expand": {"pairs": pairs},
+        "at": f"{at:.1f}s", "view": None, "reason": None,
     }
 
 
 def _response_row(d: dict[str, Any], at: float) -> dict[str, Any]:
     status = d.get("status")
-    detail = _exchange_detail(
-        d, [("status", "status"), ("duration", "durationMs"),
-            ("headers", "responseHeaders"), ("body", "responseBody")], "resp")
+    pairs = _nx_pairs(d, [("status", "status"), ("duration", "durationMs"),
+                          ("headers", "responseHeaders"), ("body", "responseBody")])
     return {
-        "rowcls": "nrow", "data_t": None, "title": None,
+        "rowcls": "nrow xrow", "data_t": None, "title": None,
         "num": "←", "numcls": "nix",
         "result": {"cls": _status_class(status), "text": str(status) if status is not None else "—"},
-        "action": {"label": "resp", "cls": "act-net"},
-        "detail": detail, "at": f"{at:.1f}s", "view": None, "reason": None,
+        "action": {"label": "response", "cls": "act-net"},
+        "detail": {"kind": "nxsummary", "summary": _exchange_summary(d, "response"), "name": None, "caps": []},
+        "expand": {"pairs": pairs},
+        "at": f"{at:.1f}s", "view": None, "reason": None,
     }
 
 
@@ -517,6 +522,7 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
     status = d.get("status")
     target = str(d.get("path") or d.get("url") or "")
     dur = d.get("durationMs")
+    started = d.get("startedAt")
     sections: list[dict[str, Any]] = []
     url = str(d.get("url") or "")
     if url and url != target:
@@ -538,6 +544,7 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
         sections.append({"kind": "line", "label": "error", "text": str(err), "cls": "err"})
     return {
         "method": method, "target": target,
+        "at": f"{float(started):.1f}s" if isinstance(started, (int, float)) and not isinstance(started, bool) else "",
         "status": str(status) if status is not None else "—",
         "status_cls": _status_class(status),
         "dur": f"{float(dur):.0f} ms" if isinstance(dur, (int, float)) and not isinstance(dur, bool) else "",
