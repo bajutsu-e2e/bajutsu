@@ -6,6 +6,7 @@ runner so the device-touching part stays thin and swappable in tests.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
@@ -51,11 +52,36 @@ def child_env(env: Mapping[str, str]) -> dict[str, str]:
     return {f"SIMCTL_CHILD_{k}": v for k, v in env.items()}
 
 
+def list_booted_cmd() -> list[str]:
+    return ["xcrun", "simctl", "list", "devices", "booted", "-j"]
+
+
 def _real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
     full_env = {**os.environ, **(extra_env or {})}
     return subprocess.run(
         args, capture_output=True, text=True, check=True, env=full_env
     ).stdout
+
+
+def resolve_udid(udid: str, run: RunFn = _real_run) -> str:
+    """Resolve the simctl alias "booted" to a concrete UDID.
+
+    simctl accepts "booted", but the backend CLIs (rocketsim / idb) require a real
+    UDID, so the run pipeline resolves it once up front. A concrete UDID passes
+    through unchanged; "booted" picks the single booted device (the first if
+    several). Falls back to "booted" if resolution fails (no booted device).
+    """
+    if udid != "booted":
+        return udid
+    try:
+        data = json.loads(run(list_booted_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        return udid
+    for devices in (data.get("devices") or {}).values():
+        for dev in devices:
+            if dev.get("state") == "Booted" and dev.get("udid"):
+                return str(dev["udid"])
+    return udid
 
 
 class Env:

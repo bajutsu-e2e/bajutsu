@@ -23,10 +23,15 @@ def test_select_none_available_raises() -> None:
 
 
 def test_make_driver() -> None:
+    # Both backends actuate by coordinates (rocketsim's protocol has no usable
+    # identifier), so neither advertises a semantic tap.
     idb = make_driver("idb", "U")
+    assert idb.name == "idb"
     assert base.Capability.SEMANTIC_TAP not in idb.capabilities()
     rs = make_driver("rocketsim", "U")
-    assert base.Capability.SEMANTIC_TAP in rs.capabilities()
+    assert rs.name == "rocketsim"
+    assert base.Capability.SEMANTIC_TAP not in rs.capabilities()
+    assert base.Capability.QUERY in rs.capabilities()
 
 
 def test_make_driver_unknown() -> None:

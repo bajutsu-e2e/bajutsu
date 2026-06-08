@@ -12,6 +12,7 @@ from collections.abc import Callable
 from bajutsu.drivers import base
 from bajutsu.drivers.idb import IdbDriver
 from bajutsu.drivers.rocketsim import RocketSimDriver
+from bajutsu.idmap import IdMap
 
 KNOWN = ("rocketsim", "idb")
 
@@ -33,9 +34,11 @@ def select_actuator(backends: list[str], available: Callable[[str], bool] = defa
     raise RuntimeError(f"no available actuator among {backends}")
 
 
-def make_driver(backend: str, udid: str) -> base.Driver:
+def make_driver(backend: str, udid: str, idmap: IdMap | None = None) -> base.Driver:
     if backend == "rocketsim":
-        return RocketSimDriver(udid)
+        # rocketsim has no accessibilityIdentifier in its protocol; the idmap
+        # recovers them. idb gets identifiers natively, so it ignores the idmap.
+        return RocketSimDriver(udid, idmap=idmap)
     if backend == "idb":
         return IdbDriver(udid)
     raise ValueError(f"unknown backend: {backend!r}")

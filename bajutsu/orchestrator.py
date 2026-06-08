@@ -68,6 +68,8 @@ class RunResult:
     failure: str | None = None
     # Scenario-level artifacts (the always-on screen recording, etc.).
     artifacts: list[Artifact] = field(default_factory=list)
+    # Which backend (actuator) drove this scenario: "rocketsim" / "idb" / "fake".
+    backend: str = ""
 
 
 def scenario_slug(name: str) -> str:
@@ -351,6 +353,7 @@ def run_scenario(
         expect_results=expect_results,
         failure=failure,
         artifacts=artifacts,
+        backend=getattr(driver, "name", ""),
     )
 
 

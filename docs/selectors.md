@@ -113,9 +113,15 @@ failure" (they do not propagate the exception upward).
 
 ### Centralized regardless of backend
 
-RocketSim has a native semantic tap, but the abstraction **always verifies the candidate count
-via `query()` before** passing along the tap. This makes the "ambiguous = fail" behavior identical
-across RocketSim / idb / fake (each driver's `tap` implementation is in [drivers](drivers.md)).
+Neither real backend exposes a usable semantic tap, so the abstraction **always verifies the
+candidate count via `query()` before** acting, then taps the resolved element's frame center. This
+makes the "ambiguous = fail" behavior identical across RocketSim / idb / fake (each driver's `tap`
+implementation is in [drivers](drivers.md)).
+
+On idb the `id` comes straight from the element tree (`AXUniqueId`); on RocketSim — whose protocol
+reports no accessibilityIdentifier — the `identifier` is **recovered by the per-app idmap** during
+`query()` ([drivers](drivers.md#identifier-recovery-idmap)). Either way resolution sees a normalized
+`identifier`, so the same `id` selector works on both backends.
 
 ## Assertion evaluation
 

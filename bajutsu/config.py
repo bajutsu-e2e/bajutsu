@@ -56,6 +56,9 @@ class AppConfig(_Model):
     launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
     launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
     id_namespaces: list[str] = Field(default_factory=list, alias="idNamespaces")
+    # Path (relative to the config file) to an idmap that recovers
+    # accessibilityIdentifiers for no-identifier backends (rocketsim). See idmap.py.
+    id_map: str | None = Field(default=None, alias="idMap")
     mock_server: MockServer | None = Field(default=None, alias="mockServer")
     setup: str | None = None
     redact: Redact = Field(default_factory=Redact)
@@ -85,6 +88,7 @@ class Effective:
     launch_args: list[str]
     id_namespaces: list[str]
     reserved_namespaces: list[str]
+    id_map: str | None
     mock_server: MockServer | None
     setup: str | None
     capture: list[str]
@@ -119,6 +123,7 @@ def resolve(config: Config, app: str) -> Effective:
         launch_args=list(a.launch_args),
         id_namespaces=list(a.id_namespaces),
         reserved_namespaces=list(d.reserved_namespaces),
+        id_map=a.id_map,
         mock_server=a.mock_server,
         setup=a.setup,
         capture=list(d.capture),

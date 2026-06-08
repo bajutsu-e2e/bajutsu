@@ -43,23 +43,37 @@ class Driver(Protocol):
 | `query` | 要素ツリー取得 | ✅ | ✅ | ✅ |
 | `elements` | 要素ダンプ証跡 | ✅ | ✅ | ✅ |
 | `screenshot` | スクショ | ✅ | ✅ | ✅ |
-| `semanticTap` | id/label で直接タップ（座標不要・最安定） | ✅ | — | ✅ |
-| `conditionWait` | ネイティブ条件待機 | ✅ | — | ✅ |
-| `network` | ネイティブネットワーク監視 | ✅ | — | — |
+| `semanticTap` | id/label で直接タップ（座標不要） | — | — | ✅ |
+| `conditionWait` | ネイティブ条件待機 | — | — | ✅ |
+| `network` | ネイティブネットワーク監視 | — | — | — |
+| `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | — | ✅ |
+
+> 実機のバックエンドはどちらも **frame 中心の座標**で操作する。実機で使える semantic tap を
+> どちらも公開していない（下の RocketSim 参照）ため、run ループは `query()` で要素を一意に確定し
+> その中心をタップする。`pinch` / `rotate` は両者とも `UnsupportedAction`（単一タッチ）で、これらは
+> codegen → XCUITest 経由で扱う。
 
 ## RocketSim
 
-semantic tap を持つ、安定度順ラダーの最上位。手元（GUI 常駐）向け。
+手元向けのバックエンド（RocketSim の GUI アプリが常駐している必要がある）。
 実装: `drivers/rocketsim.py`。
 
-- `query()`: `rocketsim elements --agent --udid <udid>` の出力（配列または `{ elements: [...] }`）を
-  `parse_elements` で正規化。
-- `tap(sel)`: まず `resolve_unique` で一意確定 → 要素に `identifier` があれば
-  `rocketsim tap --id <identifier>`（**semantic tap = 最安定**）、無ければ frame 中心へ座標 tap。
-- `long_press` / `swipe` / `type_text` / `screenshot` も対応コマンドへ。
+**実機で確認（2026-06）**: RocketSim の `rs/1` agent プロトコルは role / label / value / frame と
+*一時的（ephemeral）な* 要素 id を公開するが、**accessibilityIdentifier は持たない**。このため idb と
+違い、RocketSim は bajutsu の id 優先セレクタを自力で解決できない。帰結は 2 つ:
 
-> ⚠️ **CLI サーフェスは「想定」**: RocketSim の実際の CLI と `rs/1` JSON スキーマは未確認で、
-> パーサ・コマンドビルダは実機で確認・調整する前提（`rocketsim.py` 冒頭 NOTE）。
+1. 識別子は `query()` 内で適用する **[idmap](#識別子の復元idmap)** で復元する。
+2. 操作は **frame 中心の座標**（`rocketsim interact tap <x> <y>`）で行い、`--id` の semantic tap は
+   使わない（その `--id` は ephemeral id で、スナップショットをまたぐと無意味）。
+
+- `query()`: `rocketsim elements --agent-mode debug --udid <udid>` の出力
+  （`{ data: { elements: [...] } }`、frame は `[[x,y],[w,h]]`）を `parse_elements` で正規化し、
+  続けてアプリの idmap を適用して識別子を埋める。
+- `tap(sel)`: `resolve_unique` → `rocketsim interact tap` で frame 中心をタップ。
+- `type_text` / `swipe` / `long_press` → `rocketsim interact type|swipe|long-press`、`screenshot` は
+  `simctl io` を使う（idb と同じく信頼できる）。
+- 具体的な UDID が必要（`booted` は simctl 専用のエイリアスで、run パイプラインが `env.resolve_udid`
+  で解決する）。
 
 ## idb
 
@@ -76,6 +90,29 @@ semantic tap を持つ、安定度順ラダーの最上位。手元（GUI 常駐
 > ⚠️ describe-all の JSON キー名は fb-idb の出力に合わせた **想定**で、インストール済み idb で
 > 要確認（`idb.py` 冒頭の注記）。idb クライアントは `uv sync --extra idb`、`idb_companion` は
 > `brew install facebook/fb/idb-companion`。
+
+## 識別子の復元（idmap）
+
+実装: `bajutsu/idmap.py`。アプリ単位・任意（config の `apps.<name>.idMap`、config ファイルからの相対パス）。
+
+idb の `describe-all` は `AXUniqueId`（= accessibilityIdentifier）を持つので、id 優先セレクタは
+そのまま解決できる。RocketSim のプロトコルは識別子を一切持たず、role / label / value だけ。**idmap**
+がこの差を埋める: 各 accessibilityIdentifier を、RocketSim が *実際に* 報告する内容へのマッチャに
+対応づけるテーブル。
+
+```yaml
+# sample/sample.idmap.yaml
+home.title:        { role: staticText, label: "Home" }      # role でタイトルと「Home」タブを分ける
+counter.value:     { role: staticText, labelMatches: "^Count:" }  # 動的テキストは正規表現で
+counter.increment: { role: button, label: "+" }
+home.search:       { role: textField }                       # 画面で唯一のテキストフィールド
+list.row.3:        { role: staticText, label: "Item 3" }
+```
+
+`apply(elements, idmap)` は識別子が未設定の各要素に識別子を埋めるが、**マッチャがちょうど 1 件に
+解決したときだけ**行う — 曖昧または不在のマッチは未解決のまま残し、セレクタ層が当て推量せず
+「一致なし / 曖昧」と報告できるようにする。すでに識別子を提供するバックエンド（idb）は影響を受けない。
+こうして同じ id 優先シナリオが両バックエンドで動く。
 
 ## FakeDriver
 
@@ -103,7 +140,7 @@ KNOWN = ("rocketsim", "idb")               # fake はテスト専用、ここに
 
 def default_available(backend) -> bool:    # 実行ファイルが PATH にあるか（粗い一次判定）
 def select_actuator(backends, available) -> str:  # 安定度順で最初に利用可能なもの
-def make_driver(backend, udid) -> Driver:  # "rocketsim" → RocketSimDriver, "idb" → IdbDriver
+def make_driver(backend, udid, idmap=None) -> Driver:  # "rocketsim" → RocketSimDriver（idmap を使う）, "idb" → IdbDriver
 ```
 
 - `backend` は **安定度順のリスト**（先頭ほど安定。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）。

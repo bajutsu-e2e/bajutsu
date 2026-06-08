@@ -16,9 +16,10 @@ from bajutsu.backends import default_available, make_driver, select_actuator
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import EvidenceSink
+from bajutsu.idmap import IdMap
 from bajutsu.orchestrator import BlockedHandler, Clock, RunResult, run_scenario, scenario_slug
 from bajutsu.report import write_report
-from bajutsu.scenario import Preconditions, Scenario
+from bajutsu.scenario import Preconditions, Scenario, dump_scenarios, scenario_dict
 
 DriverFactory = Callable[[Effective, Scenario], base.Driver]
 # Run after each scenario finishes (e.g. terminate the app -> back to SpringBoard).
@@ -31,6 +32,7 @@ def launch_driver(
     actuator: str,
     preconditions: Preconditions | None = None,
     env_run: env.RunFn = env._real_run,
+    idmap: IdMap | None = None,
 ) -> base.Driver:
     """Erase/boot/launch the app (with config + scenario env) and return a driver.
 
@@ -46,7 +48,7 @@ def launch_driver(
     e.launch(eff.bundle_id, [*eff.launch_args, *pre.launch_args], launch_env)
     if pre.deeplink is not None:
         e.openurl(pre.deeplink)
-    driver = make_driver(actuator, udid)
+    driver = make_driver(actuator, udid, idmap=idmap)
     _await_ready(driver)
     return driver
 
@@ -102,7 +104,11 @@ def run_and_report(
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit under runs_dir/run_id."""
     results = run_all(eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown)
-    manifest = write_report(runs_dir / run_id, run_id, results)
+    # The merged Steps tab renders each scenario as a structured view (definitions)
+    # with a toggle to the raw YAML (sources).
+    definitions = [scenario_dict(s) for s in scenarios]
+    sources = [dump_scenarios([s]) for s in scenarios]
+    manifest = write_report(runs_dir / run_id, run_id, results, definitions, sources)
     return results, manifest
 
 
@@ -111,16 +117,17 @@ def device_factory(
     backends: list[str],
     available: Callable[[str], bool] = default_available,
     env_run: env.RunFn = env._real_run,
+    idmap: IdMap | None = None,
 ) -> DriverFactory:
     """A real driver factory: pick the actuator, then launch the app per scenario.
 
     The simctl sequencing (erase/boot) is best-effort and should be confirmed on a
-    real device.
+    real device. `idmap` recovers identifiers for no-identifier backends (rocketsim).
     """
     actuator = select_actuator(backends, available)
 
     def factory(eff: Effective, scenario: Scenario) -> base.Driver:
-        return launch_driver(udid, eff, actuator, scenario.preconditions, env_run)
+        return launch_driver(udid, eff, actuator, scenario.preconditions, env_run, idmap=idmap)
 
     return factory
 

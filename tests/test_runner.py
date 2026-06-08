@@ -24,6 +24,7 @@ def _eff() -> Effective:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
+        id_map=None,
         mock_server=None,
         setup=None,
         capture=["screenshot.after"],

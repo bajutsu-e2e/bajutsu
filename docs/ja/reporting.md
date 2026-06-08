@@ -35,10 +35,12 @@ runs/<runId>/
 {
   "runId": "20260605-101530",
   "ok": true,
+  "backend": "idb",
   "scenarios": [
     {
       "scenario": "onboard, log in, and increment the counter",
       "ok": true,
+      "backend": "idb",
       "steps": [
         {
           "index": 5, "action": "tap", "ok": true, "reason": "",
@@ -57,6 +59,9 @@ runs/<runId>/
 ```
 
 - `ok` (トップ): 全シナリオが ok なら true。
+- `backend`: その run を操作したアクチュエータ（`rocketsim` / `idb` / `fake`）。アクチュエータは
+  run ごとに 1 つ固定なので、トップレベルは通常 1 つの名前。各シナリオも自分の `backend` を持つ
+  （[drivers](drivers.md#バックエンド選択と-actuator)）。
 - `steps[].duration_s`: 各ステップの計時（`actionLog` 相当の情報）。
 - `steps[].artifacts`: そのステップで取れた証跡の来歴（[evidence](evidence.md#アーティファクトの来歴provider)）。
 - `failure`: 失敗時の要約（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null。
@@ -78,16 +83,32 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 
 ## report.html
 
-人間が見る自己完結 HTML（インライン CSS、外部アセット無し）。シナリオごとに PASS/FAIL バッジと、
-ステップ表（`#` / action / result / time / reason）を出す。失敗行は赤背景。
+人間が見る自己完結 HTML（インライン CSS、外部アセット無し）。シナリオ定義とその実行結果は
+**1 つの Steps タブに統合**され、ラベル付きセクション（preconditions / **steps** / **expectations**）
+ごとにテーブルで描画する。**steps** テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
+`action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクショ＋element tree）/ `reason`。
+detail 中の識別子（`#home.title`）と定数リテラル（`“text”`・数値）は控えめなインライントークンで
+描画し、ソリッドな action/assert バッジとは**異なるトンマナ**にして、変数と定数を一目で識別できる
+ようにしている。`assert` ステップの複数チェックは**ネストしたテーブル**になり、1 アサーション 1 行で
+`kind` / `target` / `comparison` のセルに分割する（読みにくい `a; b; c` を解消）。実行されなかった
+ステップ（失敗で停止）も skipped として残る。**preconditions** テーブルは折りたたみ可（key / value）。
+**expectations** テーブルは並行カラム `result` / `kind`（バッジ）/ `target`（検査対象セレクタ＝例
+`#counter.value`）/ `comparison`（例 `== “2”`）/ `reason`（同じ id/定数トークン）。**Rich / YAML
+トグル**で同じタブを構造化ビューと生のシナリオ YAML に切り替えられる。
+
+失敗行は赤背景。ステップをクリックすると録画をその時刻にシークするが**自動再生はしない**
+（停止中なら停止のまま・再生中なら再生継続）。ステップのスクショをクリックすると原寸ライトボックスが
+開き、**← / →**（または画面上の矢印）で run 内の全スクショを**シナリオをまたいで**順送りできる
+（キャプションにシナリオ・ステップ・位置を表示）。run のアクチュエータはヘッダの `driver: <backend>`
+チップと各シナリオ行の小バッジで表示する。Device Log / App Trace は別タブのまま。
 
 ## 書き出し API
 
 ```python
-def write_report(run_dir, run_id, results) -> Path   # 3 形式を書き、manifest のパスを返す
+def write_report(run_dir, run_id, results, definitions=None) -> Path  # 3 形式を書く。definitions=シナリオ毎の dict
 def manifest_dict(run_id, results) -> dict            # manifest の素（テスト・検査用）
 def junit_xml(results) -> str
-def html_report(run_id, results) -> str
+def html_report(run_id, results, run_dir=None, definitions=None) -> str
 ```
 
 `runner.run_and_report` がこの `write_report` を呼び、CLI に `(results, manifest_path)` を返す

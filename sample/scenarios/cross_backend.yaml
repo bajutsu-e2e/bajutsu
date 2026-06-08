@@ -1,0 +1,21 @@
+# Cross-backend parity check: the exact same id-driven steps must pass on both
+# rocketsim (semantic tap) and idb (coordinate tap). One run uses one actuator, so
+# prove parity by running this file twice and comparing the two reports:
+#   bajutsu run sample/scenarios/cross_backend.yaml --app sample --backend rocketsim --no-erase
+#   bajutsu run sample/scenarios/cross_backend.yaml --app sample --backend idb       --no-erase
+# Every step addresses elements by id and uses single-touch actions only (idb is
+# single-touch), so the run loop never diverges between the two backends.
+- name: increment the counter and filter the list
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_SEED: "5" }
+  steps:
+    - wait: { for: { id: home.title }, timeout: 5 }
+    - tap: { id: counter.increment }
+    - tap: { id: counter.increment }
+    - type: { text: "Item 3", into: { id: home.search } }
+    - wait: { until: settled, timeout: 3 }
+  expect:
+    - exists: { id: home.title }
+    - value: { sel: { id: counter.value }, equals: "2" }
+    - count: { sel: { idMatches: "list.row.*" }, equals: 1 }
+    - exists: { id: list.row.3 }

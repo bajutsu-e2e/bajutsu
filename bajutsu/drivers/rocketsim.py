@@ -1,13 +1,20 @@
-"""RocketSim backend (semantic tap; preferred actuator for stability).
+"""RocketSim backend (coordinate actuation over the real `rs/1` agent CLI).
 
-RocketSim can tap by identifier/label directly (no coordinates), so it sits at the
-top of the stability ladder. We still resolve uniqueness ourselves first, then
-hand the identifier to RocketSim's semantic tap (coordinate fall-back if the
-element has no id).
+RocketSim's agent protocol exposes role / label / value / frame and an *ephemeral*
+element id — but **no accessibilityIdentifier** (verified on-device, 2026-06). So,
+unlike idb (whose `describe-all` carries `AXUniqueId`), RocketSim cannot resolve
+bajutsu's id-first selectors on its own. Two consequences shape this driver:
 
-NOTE: RocketSim's CLI surface and its `rs/1` JSON schema are assumed here and must
-be confirmed against the actual tool; the parser and command builders are the
-likely points to adjust.
+1. Identifiers are recovered by an `IdMap` applied in `query()` (role/label/value
+   matchers per app; see `bajutsu/idmap.py`). The rest of the stack then resolves
+   `{id: ...}` selectors exactly as it does for idb.
+2. Actuation is by **frame-center coordinates** (`rocketsim interact tap <x> <y>`),
+   not RocketSim's `--id` semantic tap (that `--id` means the ephemeral id, which
+   is useless across snapshots). This puts RocketSim on the same rung as idb.
+
+Real CLI shape (confirmed on-device): `rocketsim elements --agent-mode debug`,
+`rocketsim interact tap|type|swipe|long-press`, `rocketsim screenshot`. A concrete
+UDID is required (`booted` is a simctl-only alias; resolve it before constructing).
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ import subprocess
 from collections.abc import Callable
 from typing import Any
 
+from bajutsu import idmap as idmap_mod
 from bajutsu.drivers import base
 
 RunFn = Callable[[list[str]], str]
@@ -26,54 +34,51 @@ def _real_run(args: list[str]) -> str:
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
 
 
-# --- command builders (assumed; confirm against the real CLI) ---
+# --- command builders (confirmed against the real rocketsim CLI) ---
 
 
 def elements_cmd(udid: str) -> list[str]:
-    return ["rocketsim", "elements", "--agent", "--udid", udid]
+    # debug mode carries frames + role + value (nav/act are label-only summaries).
+    return ["rocketsim", "elements", "--agent-mode", "debug", "--udid", udid]
 
 
-def tap_id_cmd(udid: str, identifier: str) -> list[str]:
-    return ["rocketsim", "tap", "--udid", udid, "--id", identifier]
-
-
-def tap_xy_cmd(udid: str, x: float, y: float) -> list[str]:
-    return ["rocketsim", "tap", "--udid", udid, "--x", _num(x), "--y", _num(y)]
+def tap_cmd(udid: str, x: float, y: float) -> list[str]:
+    return ["rocketsim", "interact", "tap", _num(x), _num(y), "--udid", udid]
 
 
 def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str]:
-    return ["rocketsim", "swipe", "--udid", udid, _num(x1), _num(y1), _num(x2), _num(y2)]
+    return ["rocketsim", "interact", "swipe",
+            "--from", f"{_num(x1)},{_num(y1)}", "--to", f"{_num(x2)},{_num(y2)}",
+            "--duration", "0.2", "--udid", udid]
 
 
-def doubletap_id_cmd(udid: str, identifier: str) -> list[str]:
-    return ["rocketsim", "doubletap", "--udid", udid, "--id", identifier]
-
-
-def pinch_cmd(udid: str, x: float, y: float, scale: float) -> list[str]:
-    return ["rocketsim", "pinch", "--udid", udid, "--x", _num(x), "--y", _num(y), "--scale", str(scale)]
-
-
-def rotate_cmd(udid: str, x: float, y: float, radians: float) -> list[str]:
-    return ["rocketsim", "rotate", "--udid", udid, "--x", _num(x), "--y", _num(y),
-            "--radians", str(radians)]
+def longpress_cmd(udid: str, x: float, y: float, duration: float) -> list[str]:
+    return ["rocketsim", "interact", "long-press", _num(x), _num(y),
+            "--duration", str(duration), "--udid", udid]
 
 
 def type_cmd(udid: str, text: str) -> list[str]:
-    return ["rocketsim", "type", "--udid", udid, text]
+    return ["rocketsim", "interact", "type", text, "--udid", udid]
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
-    return ["rocketsim", "screenshot", "--udid", udid, path]
+    # `rocketsim screenshot` writes a PNG to stdout; simctl writes straight to a
+    # file and is always available, so reuse it (same choice as the idb backend).
+    return ["xcrun", "simctl", "io", udid, "screenshot", path]
 
 
 def _num(v: float) -> str:
-    return str(int(v)) if v == int(v) else str(v)
+    return str(round(v))  # interact coordinates are taken as integers
 
 
-# --- elements parsing ---
+# --- elements parsing (rs/1 debug format) ---
 
 
 def _frame(value: Any) -> base.Frame:
+    # debug: [[x, y], [w, h]]; tolerate flat [x, y, w, h] and {x, y, width, height}.
+    if isinstance(value, list) and len(value) == 2 and all(isinstance(p, list) for p in value):
+        (x, y), (w, h) = value
+        return (float(x), float(y), float(w), float(h))
     if isinstance(value, list) and len(value) == 4:
         return (float(value[0]), float(value[1]), float(value[2]), float(value[3]))
     f = value or {}
@@ -86,73 +91,75 @@ def _frame(value: Any) -> base.Frame:
 
 
 def _to_element(item: dict[str, Any]) -> base.Element:
+    # No accessibilityIdentifier exists in the agent protocol; the IdMap fills it.
+    role = item.get("role")
     return {
-        "identifier": item.get("identifier"),
+        "identifier": None,
         "label": item.get("label"),
         "value": item.get("value"),
-        "traits": list(item.get("traits") or []),
+        "traits": [role] if isinstance(role, str) and role else [],
         "frame": _frame(item.get("frame")),
     }
 
 
 def parse_elements(text: str) -> list[base.Element]:
-    """Parse RocketSim's agent elements output (an array, or { elements: [...] })."""
+    """Parse `elements --agent-mode debug`: `{ data: { elements: [...] }, ok, rs }`.
+
+    Also tolerates a bare `{ elements: [...] }` or a top-level array (for tests).
+    """
     text = text.strip()
     if not text:
         return []
     data = json.loads(text)
-    items = data.get("elements", []) if isinstance(data, dict) else data
+    if isinstance(data, dict):
+        container = data.get("data", data)
+        items = container.get("elements", []) if isinstance(container, dict) else []
+    else:
+        items = data
     return [_to_element(it) for it in items if isinstance(it, dict)]
 
 
 class RocketSimDriver:
-    def __init__(self, udid: str, run: RunFn = _real_run) -> None:
+    name = "rocketsim"
+
+    def __init__(
+        self, udid: str, run: RunFn = _real_run, idmap: idmap_mod.IdMap | None = None
+    ) -> None:
         self.udid = udid
         self._run = run
+        self._idmap = idmap or {}
 
     def query(self) -> list[base.Element]:
-        return parse_elements(self._run(elements_cmd(self.udid)))
-
-    def tap(self, sel: base.Selector) -> None:
-        el = base.resolve_unique(self.query(), sel)
-        identifier = el["identifier"]
-        if identifier is not None:
-            self._run(tap_id_cmd(self.udid, identifier))  # semantic tap (most stable)
-        else:
-            x, y, w, h = el["frame"]
-            self._run(tap_xy_cmd(self.udid, x + w / 2, y + h / 2))
-
-    def tap_point(self, p: base.Point) -> None:
-        self._run(tap_xy_cmd(self.udid, p[0], p[1]))
-
-    def double_tap(self, sel: base.Selector) -> None:
-        el = base.resolve_unique(self.query(), sel)
-        identifier = el["identifier"]
-        if identifier is not None:
-            self._run(doubletap_id_cmd(self.udid, identifier))  # semantic double tap
-        else:
-            x, y, w, h = el["frame"]
-            cx, cy = x + w / 2, y + h / 2
-            self._run(tap_xy_cmd(self.udid, cx, cy))
-            self._run(tap_xy_cmd(self.udid, cx, cy))
-
-    def pinch(self, sel: base.Selector, scale: float) -> None:
-        x, y = self._center(sel)
-        self._run(pinch_cmd(self.udid, x, y, scale))
-
-    def rotate(self, sel: base.Selector, radians: float) -> None:
-        x, y = self._center(sel)
-        self._run(rotate_cmd(self.udid, x, y, radians))
+        els = parse_elements(self._run(elements_cmd(self.udid)))
+        return idmap_mod.apply(els, self._idmap)
 
     def _center(self, sel: base.Selector) -> base.Point:
         x, y, w, h = base.resolve_unique(self.query(), sel)["frame"]
         return (x + w / 2, y + h / 2)
 
+    def tap(self, sel: base.Selector) -> None:
+        x, y = self._center(sel)
+        self._run(tap_cmd(self.udid, x, y))
+
+    def tap_point(self, p: base.Point) -> None:
+        self._run(tap_cmd(self.udid, p[0], p[1]))
+
+    def double_tap(self, sel: base.Selector) -> None:
+        x, y = self._center(sel)
+        self._run(tap_cmd(self.udid, x, y))
+        self._run(tap_cmd(self.udid, x, y))
+
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        el = base.resolve_unique(self.query(), sel)
-        x, y, w, h = el["frame"]
-        self._run(["rocketsim", "longpress", "--udid", self.udid,
-                   "--x", _num(x + w / 2), "--y", _num(y + h / 2), "--duration", str(duration)])
+        x, y = self._center(sel)
+        self._run(longpress_cmd(self.udid, x, y, duration))
+
+    def pinch(self, sel: base.Selector, scale: float) -> None:
+        # The interact CLI is single-touch (tap/swipe/long-press only). Fail clearly
+        # rather than approximate; pinch/rotate go through codegen -> XCUITest.
+        raise base.UnsupportedAction("pinch は multiTouch 対応 backend が必要（rocketsim CLI は単一タッチ）")
+
+    def rotate(self, sel: base.Selector, radians: float) -> None:
+        raise base.UnsupportedAction("rotate は multiTouch 対応 backend が必要（rocketsim CLI は単一タッチ）")
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(swipe_cmd(self.udid, frm[0], frm[1], to[0], to[1]))
@@ -167,12 +174,10 @@ class RocketSimDriver:
         self._run(screenshot_cmd(self.udid, path))
 
     def capabilities(self) -> set[str]:
+        # Coordinate actuation only: no semantic tap (no usable identifier), no
+        # native condition wait (the run loop polls query()), no multi-touch.
         return {
             base.Capability.QUERY,
             base.Capability.ELEMENTS,
-            base.Capability.SEMANTIC_TAP,
-            base.Capability.CONDITION_WAIT,
-            base.Capability.NETWORK,
             base.Capability.SCREENSHOT,
-            base.Capability.MULTI_TOUCH,
         }

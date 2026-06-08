@@ -36,10 +36,12 @@ verbatim.
 {
   "runId": "20260605-101530",
   "ok": true,
+  "backend": "idb",
   "scenarios": [
     {
       "scenario": "onboard, log in, and increment the counter",
       "ok": true,
+      "backend": "idb",
       "steps": [
         {
           "index": 5, "action": "tap", "ok": true, "reason": "",
@@ -58,6 +60,9 @@ verbatim.
 ```
 
 - `ok` (top): true if every scenario is ok.
+- `backend`: the actuator that drove the run (`rocketsim` / `idb` / `fake`). One actuator is fixed
+  per run, so the top-level value is normally a single name; each scenario also carries its own
+  `backend` ([drivers](drivers.md#backend-selection-and-the-actuator)).
 - `steps[].duration_s`: each step's timing (the `actionLog`-equivalent information).
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
@@ -80,17 +85,36 @@ step 1 tap: FAIL no match: {...}</failure>
 
 ## report.html
 
-A self-contained HTML for humans (inline CSS, no external assets). Per scenario it shows a
-PASS/FAIL badge and a step table (`#` / action / result / time / reason). Failing rows have a red
-background.
+A self-contained HTML for humans (inline CSS, no external assets). The scenario definition and its
+execution are **merged into one Steps tab**. It has labelled sections (preconditions / **steps** /
+**expectations**), each a table. The **steps** table: `#` / `result` (a PASS/FAIL pill in its own
+column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
+element tree) / `reason`. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
+numbers) are rendered as subtly-styled inline tokens — deliberately a different tone from the solid
+action/assert badges, so variables and constants are identifiable at a glance. An `assert` step's
+checks become a **nested table**, one row per assertion split into `kind` / `target` / `comparison`
+cells (instead of a hard-to-read `a; b; c` line). Steps that never ran (execution stops at the first
+failure) still appear, marked as skipped. The **preconditions** table is collapsible (key / value).
+The **expectations** table uses parallel columns `result` / `kind` (badge) / `target` (the checked
+selector, e.g. `#counter.value`) / `comparison` (e.g. `== “2”`) / `reason`, with the same id/constant
+tokens. A **Rich / YAML toggle** switches the same tab between this structured view and the raw
+scenario YAML.
+
+Failing rows have a red background. Clicking a step seeks the recording to that step **without
+auto-playing** (a paused video stays paused; a playing one keeps playing). Clicking a step's
+screenshot opens a full-size lightbox; **← / →** (or the on-screen arrows) then walk through every
+screenshot in the run, across scenario boundaries, with a caption showing the scenario, step, and
+position. The run's actuator backend is shown as a `driver: <backend>` chip in the header and a small
+badge on each scenario row.
+Device Log / App Trace remain separate tabs.
 
 ## Write API
 
 ```python
-def write_report(run_dir, run_id, results) -> Path   # writes all 3 formats, returns the manifest path
+def write_report(run_dir, run_id, results, definitions=None) -> Path  # all 3 formats; definitions = per-scenario dict
 def manifest_dict(run_id, results) -> dict            # the manifest source (for tests / inspection)
 def junit_xml(results) -> str
-def html_report(run_id, results) -> str
+def html_report(run_id, results, run_dir=None, definitions=None) -> str
 ```
 
 `runner.run_and_report` calls this `write_report` and returns `(results, manifest_path)` to the CLI

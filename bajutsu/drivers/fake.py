@@ -15,6 +15,8 @@ React = Callable[["FakeDriver", str, object], None]
 
 
 class FakeDriver:
+    name = "fake"
+
     def __init__(
         self,
         screen: Sequence[base.Element] | None = None,

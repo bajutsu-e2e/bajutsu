@@ -68,21 +68,28 @@ convention (`<namespace>.<element>`) is in
 
 ## 5. The stability ladder
 
-UI actions are attempted **most-stable-first**. The lower the rung, the more fragile.
+UI actions are attempted **most-stable-first** — but "most stable" is about **selection** (which
+element), not actuation. Both real backends actuate the same way (a coordinate tap at the frame
+center), so what changes between rungs is how the element is chosen. The lower the rung, the more
+fragile.
 
-| Rung | Selection (which element) | Actuation (how to hit it) | Stability |
-|---|---|---|---|
-| 1 | resolve uniquely by `id` | native semantic tap (RocketSim) | most stable (independent of layout / translation / coordinates) |
-| 2 | resolve uniquely by `id` | coordinate tap at the frame center (idb, etc.) | selection is stable by id; only actuation is by coordinate |
-| 3 | resolve by `label` / `traits` | semantic / coordinate tap | selection is weak to localization |
-| 4 | `index` / raw coordinates | coordinate tap | breaks on layout changes. Last resort |
+| Rung | Selection (which element) | Stability |
+|---|---|---|
+| 1 | resolve uniquely by `id` | most stable (independent of layout / translation / coordinates) |
+| 2 | resolve by `label` / `traits` | weak to localization |
+| 3 | `index` / raw coordinates | breaks on layout changes. Last resort |
 
-This is exactly the **ordering of the backend list**: `backend: [rocketsim, idb]` means
-"more stable first." The backend that actually performs actions, the **actuator, is the first
-available backend in the list**; it is fixed once at the start of a run and held for the whole
-run (to avoid the non-determinism of two drivers operating one device). Locally you get
-RocketSim (rung 1); a headless CI auto-degrades to idb (rung 2). Selection is always by `id`,
-so the scenario does not change ([drivers](drivers.md#backend-selection-and-the-actuator)).
+> Actuation is always a frame-center coordinate tap. RocketSim originally sat above idb on the
+> assumption that it offered a native semantic tap; verified on-device, that assumption proved
+> false — its `rs/1` protocol exposes no accessibilityIdentifier, so it too actuates by coordinates
+> and recovers identifiers via the [idmap](drivers.md#identifier-recovery-idmap).
+
+This still shows up in the **ordering of the backend list**: `backend: [rocketsim, idb]` lists
+actuators with the locally-preferred one first. The backend that actually performs actions, the
+**actuator, is the first available backend in the list**; it is fixed once at the start of a run and
+held for the whole run (to avoid the non-determinism of two drivers operating one device). Locally
+you get RocketSim; a headless CI auto-degrades to idb. Selection is always by `id`, so the scenario
+does not change ([drivers](drivers.md#backend-selection-and-the-actuator)).
 
 ## 6. App-agnostic (push differences into config)
 

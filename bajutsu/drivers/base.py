@@ -84,6 +84,10 @@ class Driver(Protocol):
     center via query() / resolve_unique() and taps by coordinates.
     """
 
+    # Backend identifier (e.g. "rocketsim", "idb", "fake"). Recorded in the run
+    # manifest and shown in the report so a run says which actuator drove it.
+    name: str
+
     def query(self) -> list[Element]: ...
     def tap(self, sel: Selector) -> None: ...
     def tap_point(self, p: Point) -> None: ...  # raw coordinate tap (system alerts, etc.)

@@ -46,6 +46,9 @@ apps:
     # Env vars passed to the app on launch (as SIMCTL_CHILD_*). Scenarios can add
     # more via preconditions.launchEnv.
     launchEnv: { SAMPLE_UITEST: "1" }
+    # Recovers accessibilityIdentifiers on no-identifier backends (rocketsim);
+    # ignored by idb. Path is relative to this config file. See bajutsu/idmap.py.
+    idMap: sample/sample.idmap.yaml
     # Optional per-app keys (all override or extend the defaults above):
     #   backend: [...]            # actuator order for this app
     #   device: "iPhone 17 Pro"   # simulator model

@@ -65,6 +65,14 @@ def test_manifest_overall_ok_is_and() -> None:
     assert manifest_dict("r", [_passing(), _failing()])["ok"] is False
 
 
+def test_manifest_records_backend() -> None:
+    # run_scenario stamps each result with the driver it ran (here the fake driver),
+    # and the manifest summarizes the run's actuator at top level.
+    m = manifest_dict("run1", [_passing()])
+    assert m["backend"] == "fake"
+    assert m["scenarios"][0]["backend"] == "fake"
+
+
 def test_junit_pass_and_fail() -> None:
     ok_xml = junit_xml([_passing()])
     assert 'tests="1"' in ok_xml
@@ -94,6 +102,133 @@ def test_html_report() -> None:
     assert "run9" in out
     assert "s1" in out and "s2" in out
     assert "PASS" in out and "FAIL" in out
+
+
+def test_html_expectations_block() -> None:
+    # Expects render as a table with PASS/FAIL in its own column.
+    out = html_report("run9", [_passing(), _failing()])
+    assert 'class="expects"' in out
+    assert "class='extbl'" in out  # a table, not a list
+    # target / comparison are split into their own cells.
+    assert "<th>result</th><th>kind</th><th>target</th><th>comparison</th><th>reason</th>" in out
+    assert 'class="exst ok">PASS' in out
+    assert 'class="exst ng">FAIL' in out
+    assert 'act-assert">exists' in out  # the assertion kind pill
+    assert 'class="exreason"' in out  # the failing expect shows its reason
+
+
+def test_expectations_tokenized_from_definition() -> None:
+    # With the definition available, an evaluated expectation reuses the tokenized
+    # description (id as a variable token), not the raw detail string.
+    definition = {
+        "name": "s1",
+        "steps": [{"tap": {"id": "a"}}],
+        "expect": [{"exists": {"id": "home.title"}}],
+    }
+    out = html_report("run9", [_passing()], definitions=[definition])
+    assert 'class="expects"' in out
+    # #home.title only appears in the expectation (the step taps #a), so this proves
+    # the expectation itself is tokenized.
+    assert '<span class="tk id">#home.title</span>' in out
+
+
+def test_lightbox_arrows_navigate_screenshots() -> None:
+    # The full-size lightbox has prev/next controls + arrow keys, walking every
+    # screenshot in the run (the gallery is all `img.shot`, across scenarios).
+    out = html_report("run1", [_passing()])
+    assert 'class="lb-nav lb-prev"' in out and 'class="lb-nav lb-next"' in out
+    assert "ArrowLeft" in out and "ArrowRight" in out
+    assert "img.shot" in out  # gallery collected from every step thumbnail
+
+
+def test_step_click_seeks_without_autoplay() -> None:
+    # Clicking a step seeks the recording but never starts playback on a paused video.
+    out = html_report("run9", [_passing()])
+    assert "v.currentTime = t;" in out
+    assert "v.play()" not in out
+
+
+def test_html_shows_backend() -> None:
+    # The actuator is shown both as a header chip and a per-scenario badge.
+    out = html_report("run9", [_passing()])
+    assert "driver: fake" in out
+    assert '<span class="drv"' in out  # per-scenario row badge
+    # The header chip uses a dedicated class (not the `.drv` row badge) so it sets
+    # its own white text (not blue-on-blue) and centers in the flex row.
+    assert '<span class="chip dchip"' in out
+    assert ".chip.dchip{background:#2c5fb3;color:#fff" in out
+    assert "align-items:center" in out and "display:inline-flex;align-items:center" in out
+
+
+def test_merged_steps_show_rich_definition() -> None:
+    # Steps and Scenario are one merged tab: each planned step renders richly, and
+    # steps that never ran (the plan is longer than the outcomes) still appear.
+    definition = {
+        "name": "s1",
+        "preconditions": {"erase": False, "launchEnv": {"SAMPLE_SEED": "5"}},
+        "steps": [
+            {"tap": {"id": "counter.increment"}},
+            {"type": {"text": "Item 3", "into": {"id": "home.search"}}},
+            {"wait": {"until": "settled", "timeout": 3.0}},
+        ],
+    }
+    out = html_report("run9", [_passing()], definitions=[definition])
+    assert 'data-tab="scenario"' not in out  # merged into the Steps tab
+    assert 'data-tab="steps"' in out
+    # Steps are a table parallel to the expectations table: result / action / detail.
+    assert "class='sttbl'" in out
+    assert "<th>#</th><th>result</th><th>action</th><th>detail</th>" in out
+    # Selectors and string literals are tokenized (distinct from the action badges).
+    assert '<span class="tk id">#counter.increment</span>' in out
+    assert '<span class="tk str">“Item 3”</span> into <span class="tk id">#home.search</span>' in out
+    assert "until settled (≤" in out and '<span class="tk num">3s</span>' in out
+    # Preconditions are a collapsible table, not chips.
+    assert '<details class="pre"' in out
+    assert '<td class="pk">SAMPLE_SEED</td><td>5</td>' in out
+    assert "class='skip'" in out  # planned-but-not-run steps are marked
+
+
+def test_assert_step_splits_into_cells() -> None:
+    # An assert step's multiple checks become a nested table, each split into
+    # kind / target / comparison cells (instead of a joined "a; b; c" string).
+    definition = {
+        "name": "s1",
+        "steps": [
+            {
+                "assert": [
+                    {"value": {"sel": {"id": "ctrl.button.value"}, "equals": "0"}},
+                    {"enabled": {"id": "ctrl.button"}},
+                    {"disabled": {"id": "ctrl.buttonDisabled"}},
+                ]
+            }
+        ],
+    }
+    out = html_report("run9", [_passing()], definitions=[definition])
+    assert 'class="atbl"' in out
+    assert '<span class="tk id">#ctrl.button.value</span>' in out
+    assert '<span class="tk str">“0”</span>' in out
+    assert '<span class="tk id">#ctrl.buttonDisabled</span>' in out
+    assert "; enabled" not in out  # no longer joined on one line
+
+
+def test_steps_section_has_label() -> None:
+    out = html_report(
+        "run9", [_passing()], definitions=[{"name": "s1", "steps": [{"tap": {"id": "a"}}]}]
+    )
+    assert 'class="steps-sec"' in out
+    assert '<span class="deflbl">steps</span>' in out
+
+
+def test_scenario_rich_yaml_toggle() -> None:
+    # With raw YAML provided, the merged tab offers a Rich / YAML toggle.
+    definition = {"name": "s1", "steps": [{"tap": {"id": "a"}}]}
+    yaml = "- name: s1\n  steps:\n    - tap: { id: a }\n"
+    out = html_report("run9", [_passing()], definitions=[definition], sources=[yaml])
+    assert 'data-view="rich"' in out and 'data-view="yaml"' in out
+    assert 'class="view view-rich active"' in out
+    assert 'class="src"' in out and "tap: { id: a }" in out
+    # No YAML source -> no toggle.
+    assert 'data-view="yaml"' not in html_report("run9", [_passing()], definitions=[definition])
 
 
 def test_html_embeds_scenario_video() -> None:

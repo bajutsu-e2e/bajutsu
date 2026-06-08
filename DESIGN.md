@@ -188,6 +188,8 @@ class Driver(Protocol):
 
 > **要点**: セレクタは常に識別子 / ラベルで書く。RocketSim はそれをそのまま渡し、idb バックエンドは `query()` で識別子 → frame 中心に解決してから座標 tap する。これでシナリオはバックエンド非依存になり、手元 (RocketSim) → CI (idb) で同じシナリオが動く。
 
+> **実機検証による訂正（2026-06）**: 上の「RocketSim はセレクタ（識別子）をそのまま渡す」という前提は実機では成り立たない。RocketSim の `rs/1` agent プロトコルは role / label / value / frame と *一時的な* 要素 id のみを公開し、**accessibilityIdentifier を持たない**。そのため RocketSim も idb 同様に **frame 中心の座標 tap** で操作し、id 優先セレクタを解決するには **idmap レイヤ**（アプリ単位の `apps.<name>.idMap`、実装 `bajutsu/idmap.py`、例 `sample/sample.idmap.yaml`）で識別子を `query()` 時に復元する必要がある。すなわち本節の「セマンティック tap = 最安定」という順 1（下の stability ladder）と「RocketSim semantic tap > idb 座標 tap」という backend 並び順の根拠は無効で、両バックエンドとも座標で操作する。RocketSim から落ちた能力: semanticTap / conditionWait / network / multiTouch（pinch / rotate は `UnsupportedAction`）。詳細は [docs/drivers.md](docs/drivers.md) の RocketSim / Identifier recovery を参照。
+
 ### セレクタ解決のセマンティクス（決定性の要）
 
 `query()` で取得した要素ツリーに、Selector の各フィールドを **AND** で適用して候補を絞る。

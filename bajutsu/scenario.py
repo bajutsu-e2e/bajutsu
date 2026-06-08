@@ -330,7 +330,14 @@ def _prune(obj: Any) -> Any:
     return obj
 
 
+def scenario_dict(scenario: Scenario) -> dict[str, Any]:
+    """A pruned, alias-keyed dict of one scenario (for the rich report view)."""
+    return cast(
+        "dict[str, Any]",
+        _prune(scenario.model_dump(mode="json", by_alias=True, exclude_none=True)),
+    )
+
+
 def dump_scenarios(scenarios: list[Scenario]) -> str:
     """Serialize scenarios back to YAML (round-trips through load_scenarios)."""
-    data = [_prune(s.model_dump(mode="json", by_alias=True, exclude_none=True)) for s in scenarios]
-    return _yaml.safe_dump(data)
+    return _yaml.safe_dump([scenario_dict(s) for s in scenarios])

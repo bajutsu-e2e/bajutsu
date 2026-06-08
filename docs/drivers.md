@@ -46,25 +46,36 @@ resolution.
 | `query` | element-tree query | ✅ | ✅ | ✅ |
 | `elements` | element-dump evidence | ✅ | ✅ | ✅ |
 | `screenshot` | screenshot | ✅ | ✅ | ✅ |
-| `semanticTap` | tap directly by id/label (no coordinates; most stable) | ✅ | — | ✅ |
-| `conditionWait` | native condition waiting | ✅ | — | ✅ |
-| `network` | native network monitoring | ✅ | — | — |
+| `semanticTap` | tap directly by id/label (no coordinates) | — | — | ✅ |
+| `conditionWait` | native condition waiting | — | — | ✅ |
+| `network` | native network monitoring | — | — | — |
+| `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ |
+
+> Both real backends actuate by **frame-center coordinates** — neither exposes a usable semantic tap
+> on a real device (see RocketSim below), so the run loop resolves a unique element via `query()` and
+> taps its center. `pinch` / `rotate` raise `UnsupportedAction` on both (single-touch); those go
+> through codegen → XCUITest.
 
 ## RocketSim
 
-Has a semantic tap; the top rung of the stability ladder. For local use (a GUI must be resident).
-Implementation: `drivers/rocketsim.py`.
+Local backend (the RocketSim GUI app must be running). Implementation: `drivers/rocketsim.py`.
 
-- `query()`: normalizes the output of `rocketsim elements --agent --udid <udid>` (an array or
-  `{ elements: [...] }`) via `parse_elements`.
-- `tap(sel)`: first `resolve_unique` to confirm uniqueness → if the element has an `identifier`,
-  `rocketsim tap --id <identifier>` (**semantic tap = most stable**); otherwise a coordinate tap at
-  the frame center.
-- `long_press` / `swipe` / `type_text` / `screenshot` map to the corresponding commands.
+**Verified on-device (2026-06):** RocketSim's `rs/1` agent protocol exposes role / label / value /
+frame and an *ephemeral* element id — but **no accessibilityIdentifier**. So, unlike idb, RocketSim
+cannot resolve bajutsu's id-first selectors on its own. Two consequences:
 
-> ⚠️ **The CLI surface is "assumed"**: RocketSim's actual CLI and `rs/1` JSON schema are unconfirmed;
-> the parser and command builders are to be confirmed / adjusted on a real device (the NOTE atop
-> `rocketsim.py`).
+1. Identifiers are recovered by an **[idmap](#identifier-recovery-idmap)** applied in `query()`.
+2. Actuation is by **frame-center coordinates** (`rocketsim interact tap <x> <y>`), not the `--id`
+   semantic tap (that `--id` is the ephemeral id, useless across snapshots).
+
+- `query()`: parses `rocketsim elements --agent-mode debug --udid <udid>`
+  (`{ data: { elements: [...] } }`, frames as `[[x,y],[w,h]]`) via `parse_elements`, then applies the
+  app's idmap to fill identifiers.
+- `tap(sel)`: `resolve_unique` → tap the frame center via `rocketsim interact tap`.
+- `type_text` / `swipe` / `long_press` → `rocketsim interact type|swipe|long-press`; `screenshot`
+  uses `simctl io` (reliable, same as idb).
+- A concrete UDID is required (`booted` is a simctl-only alias; the run pipeline resolves it via
+  `env.resolve_udid`).
 
 ## idb
 
@@ -83,6 +94,31 @@ Headless, coordinate-based. For CI. With no semantic tap, the abstraction resolv
 > ⚠️ The describe-all JSON key names are **assumed** to match fb-idb's output and need confirmation
 > against the installed idb (the note atop `idb.py`). The idb client is `uv sync --extra idb`;
 > `idb_companion` is `brew install facebook/fb/idb-companion`.
+
+## Identifier recovery (idmap)
+
+Implementation: `bajutsu/idmap.py`. Per-app, optional (`apps.<name>.idMap` in config, a path relative
+to the config file).
+
+idb's `describe-all` carries `AXUniqueId` (= accessibilityIdentifier), so id-first selectors resolve
+directly. RocketSim's protocol has no identifier at all — only role / label / value. An **idmap**
+bridges the gap: a table mapping each accessibilityIdentifier to a matcher against what RocketSim
+*does* report.
+
+```yaml
+# sample/sample.idmap.yaml
+home.title:        { role: staticText, label: "Home" }      # role splits title vs the "Home" tab
+counter.value:     { role: staticText, labelMatches: "^Count:" }  # regex for dynamic text
+counter.increment: { role: button, label: "+" }
+home.search:       { role: textField }                       # the only text field on the screen
+list.row.3:        { role: staticText, label: "Item 3" }
+```
+
+`apply(elements, idmap)` fills the identifier on each element whose identifier is unset, but **only
+when a matcher resolves to exactly one** such element — ambiguous or absent matches are left
+unresolved so the selector layer reports "no match / ambiguous" instead of guessing. A backend that
+already provides identifiers (idb) is therefore unaffected. The same id-first scenario then runs on
+both backends.
 
 ## FakeDriver
 
@@ -111,7 +147,7 @@ KNOWN = ("rocketsim", "idb")               # fake is test-only; not listed here
 
 def default_available(backend) -> bool:    # is the executable on PATH (a coarse first check)
 def select_actuator(backends, available) -> str:  # the first available in stability order
-def make_driver(backend, udid) -> Driver:  # "rocketsim" → RocketSimDriver, "idb" → IdbDriver
+def make_driver(backend, udid, idmap=None) -> Driver:  # "rocketsim" → RocketSimDriver (uses idmap), "idb" → IdbDriver
 ```
 
 - `backend` is a **stability-ordered list** (more stable first; [concepts](concepts.md#5-the-stability-ladder)).

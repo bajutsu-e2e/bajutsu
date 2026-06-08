@@ -124,6 +124,8 @@ def parse_describe_all(text: str) -> list[base.Element]:
 
 
 class IdbDriver:
+    name = "idb"
+
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
         self.udid = udid
         self._run = run
