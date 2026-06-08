@@ -85,3 +85,6 @@ def test_run_and_report(tmp_path: Path) -> None:
     data = json.loads(manifest.read_text(encoding="utf-8"))
     assert data["runId"] == "run1"
     assert (tmp_path / "runs" / "run1" / "junit.xml").exists()
+    # The executed scenario is kept alongside its results.
+    scn_file = tmp_path / "runs" / "run1" / "scenario.yaml"
+    assert scn_file.exists() and "name: a" in scn_file.read_text(encoding="utf-8")
