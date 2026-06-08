@@ -11,6 +11,7 @@ from pathlib import Path
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact
+from bajutsu.network import NetworkExchange
 from bajutsu.orchestrator import RunResult, StepOutcome, run_scenario
 from bajutsu.report import html_report, junit_xml, manifest_dict, write_report
 from bajutsu.scenario import Scenario
@@ -130,6 +131,26 @@ def test_expectations_tokenized_from_definition() -> None:
     # #home.title only appears in the expectation (the step taps #a), so this proves
     # the expectation itself is tokenized.
     assert '<span class="tk id">#home.title</span>' in out
+
+
+def test_expectations_request_kind_rendered() -> None:
+    # A `request` expectation has no selector like the UI kinds, so it must render its
+    # own kind pill + method/status cells instead of the unknown-kind "?" fallback.
+    definition = {
+        "name": "s1",
+        "steps": [{"tap": {"id": "net.status"}}],
+        "expect": [{"request": {"method": "GET", "status": 200}}],
+    }
+    result = run_scenario(
+        FakeDriver([_el("net.status", "200")]),
+        Scenario.model_validate(definition),
+        network=lambda: [NetworkExchange(method="GET", path="/x", status=200)],
+    )
+    out = html_report("run9", [result], definitions=[definition])
+    assert 'act-assert">request' in out   # the kind pill, not "?"
+    assert 'act-assert">?' not in out
+    assert '<span class="tk kw">GET</span>' in out
+    assert 'status == <span class="tk num">200</span>' in out
 
 
 def test_lightbox_arrows_navigate_screenshots() -> None:
@@ -267,6 +288,59 @@ def test_html_interactive_structure(tmp_path: Path) -> None:
     # log embedded inline (filterable without a server) and trace rendered as a table
     assert "ERROR boom" in out
     assert "reindex" in out and "12.3" in out
+
+
+def test_html_network_tab(tmp_path: Path) -> None:
+    sid = "00-s1"
+    (tmp_path / sid).mkdir(parents=True)
+    (tmp_path / sid / "network.json").write_text(
+        '[{"method":"GET","url":"https://example.com/items","path":"/items","status":200,'
+        '"durationMs":75.4,"responseHeaders":{"Content-Type":"text/html"},'
+        '"responseBody":"<html>hi</html>"}]',
+        encoding="utf-8",
+    )
+    r = RunResult(
+        scenario="s1", ok=True, steps=[], expect_results=[],
+        artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
+    )
+    out = html_report("run1", [r], tmp_path)
+    # A Network tab appears and renders the captured exchange: method / path / status,
+    # plus the headers and (HTML-escaped) body when expanded.
+    assert 'data-tab="net"' in out
+    assert "captured by BajutsuKit" in out
+    assert 'class="nxm">GET' in out
+    assert "/items" in out and 'nxs ok">200' in out
+    assert "Content-Type" in out and "&lt;html&gt;hi&lt;/html&gt;" in out
+    # No network artifact -> no Network tab.
+    assert 'data-tab="net"' not in html_report("run1", [_passing()])
+
+
+def test_html_wait_request_detail_is_rich() -> None:
+    # A `wait: { until: { request } }` step renders a tokenized detail (method / url /
+    # status), in the same tone as other details — not a raw `{'request': ...}` dump.
+    definition = {
+        "name": "s1",
+        "steps": [
+            {"tap": {"id": "net.fetch"}},
+            {"wait": {"until": {"request": {"method": "GET", "url": "https://example.com",
+                                            "status": 200}}, "timeout": 8}},
+        ],
+        "expect": [],
+    }
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, started_at=0.0),
+            StepOutcome(index=1, action="wait", ok=True, started_at=0.1),
+        ],
+        expect_results=[], artifacts=[],
+    )
+    out = html_report("run1", [r], definitions=[definition])
+    assert "until request" in out
+    assert '<span class="tk kw">GET</span>' in out
+    assert '<span class="tk str">https://example.com</span>' in out
+    assert 'status == <span class="tk num">200</span>' in out
+    assert "{'request'" not in out  # not the raw python dict
 
 
 def test_html_step_rows_carry_video_offset() -> None:

@@ -171,6 +171,83 @@ def _trace_panel(run_dir: Path | None, art: Artifact, e: Any) -> str:
     )
 
 
+# Max response/request body chars embedded inline (the full body is in network.json).
+_BODY_MAX = 4000
+
+
+def _status_class(status: Any) -> str:
+    if isinstance(status, int) and not isinstance(status, bool):
+        if 200 <= status < 400:
+            return "ok"
+        if status >= 400:
+            return "ng"
+    return ""
+
+
+def _kv_block(label: str, headers: Any, e: Any) -> str:
+    """A request/response header block (skipped when empty)."""
+    if not isinstance(headers, dict) or not headers:
+        return ""
+    rows = "".join(
+        f'<div class="nxh"><span class="nxhk">{e(str(k))}</span>'
+        f'<span class="nxhv">{e(str(v))}</span></div>'
+        for k, v in headers.items()
+    )
+    return f'<div class="nxsec"><span class="nxlbl">{e(label)}</span>{rows}</div>'
+
+
+def _body_block(label: str, body: Any, e: Any) -> str:
+    """A request/response body block, truncated inline (skipped when empty)."""
+    if not isinstance(body, str) or not body:
+        return ""
+    text = body if len(body) <= _BODY_MAX else body[:_BODY_MAX] + "\n… (truncated)"
+    return f'<div class="nxsec"><span class="nxlbl">{e(label)}</span><pre class="nxpre">{e(text)}</pre></div>'
+
+
+def _network_item(d: dict[str, Any], e: Any) -> str:
+    """One captured exchange: a summary line (method / path / status / duration) that
+    expands to the full url, headers, and bodies."""
+    method = str(d.get("method") or "")
+    status = d.get("status")
+    target = str(d.get("path") or d.get("url") or "")
+    dur = d.get("durationMs")
+    dur_s = f"{float(dur):.0f} ms" if isinstance(dur, (int, float)) and not isinstance(dur, bool) else ""
+    head = (
+        f'<span class="nxm">{e(method)}</span>'
+        f'<span class="nxp">{e(target)}</span>'
+        f'<span class="nxs {_status_class(status)}">{e(str(status) if status is not None else "—")}</span>'
+        f'<span class="nxd muted">{e(dur_s)}</span>'
+    )
+    sections: list[str] = []
+    url = str(d.get("url") or "")
+    if url and url != target:
+        sections.append(f'<div class="nxsec"><span class="nxlbl">url</span><div class="nxh">{e(url)}</div></div>')
+    sections.append(_kv_block("request headers", d.get("requestHeaders"), e))
+    sections.append(_body_block("request body", d.get("requestBody"), e))
+    sections.append(_kv_block("response headers", d.get("responseHeaders"), e))
+    sections.append(_body_block("response body", d.get("responseBody"), e))
+    err = d.get("error")
+    if err:
+        sections.append(f'<div class="nxsec"><span class="nxlbl">error</span><div class="nxh err">{e(str(err))}</div></div>')
+    body = "".join(s for s in sections if s) or '<div class="muted">(no headers or body)</div>'
+    return f'<details class="nx"><summary>{head}</summary><div class="nxbody">{body}</div></details>'
+
+
+def _network_panel(run_dir: Path | None, art: Artifact, e: Any) -> str:
+    """The exchanges BajutsuKit captured and POSTed to the collector (network.json)."""
+    link = f'<a href="{e(art.name)}">{e(art.name)}</a>'
+    data = _read_json(run_dir, art.name) if run_dir else None
+    if not isinstance(data, list) or not data:
+        return f'<div class="muted">network: {link} (no exchanges)</div>'
+    items = "".join(_network_item(d, e) for d in data if isinstance(d, dict))
+    n = sum(1 for d in data if isinstance(d, dict))
+    plural = "exchange" if n == 1 else "exchanges"
+    return (
+        f'<div class="muted">{n} {plural} captured by BajutsuKit · {link}</div>'
+        f'<div class="nxlist">{items}</div>'
+    )
+
+
 # --- scenario definition (rich view) ---
 
 # action key (alias-cased, as dumped) -> (display label, color class)
@@ -240,6 +317,29 @@ def _countmatch(m: dict[str, Any], e: Any) -> str:
     return "?"
 
 
+def _request_text(m: dict[str, Any], e: Any) -> tuple[str, str]:
+    """(target, comparison) for a request matcher: the target is the matched method /
+    endpoint (url or path), the comparison is the expected status / count. Shared by the
+    `request` assertion and the `until: { request }` wait."""
+    target: list[str] = []
+    if m.get("method") is not None:
+        target.append(_tok("kw", str(m["method"]).upper(), e))
+    if m.get("url") is not None:
+        target.append(_tok("str", str(m["url"]), e))
+    if m.get("urlMatches") is not None:
+        target.append(_tok("re", f"url~/{m['urlMatches']}/", e))
+    if m.get("path") is not None:
+        target.append(_tok("str", str(m["path"]), e))
+    if m.get("pathMatches") is not None:
+        target.append(_tok("re", f"path~/{m['pathMatches']}/", e))
+    comp: list[str] = []
+    if m.get("status") is not None:
+        comp.append("status == " + _tok("num", str(m["status"]), e))
+    if m.get("count") is not None:
+        comp.append("count == " + _tok("num", str(m["count"]), e))
+    return " ".join(target) or "?", " ".join(comp)
+
+
 def _assert_parts(a: dict[str, Any], e: Any) -> tuple[str, str, str]:
     """Decompose one assertion into (kind, target, comparison) so each lands in its
     own table cell: e.g. `value` / `#ctrl.button.value` / `== “0”`. The comparison is
@@ -258,6 +358,9 @@ def _assert_parts(a: dict[str, Any], e: Any) -> tuple[str, str, str]:
     for kind in ("enabled", "disabled", "selected"):
         if kind in a:
             return kind, _sel_text(a[kind], e), ""
+    if "request" in a:
+        target, comp = _request_text(a["request"], e)
+        return "request", target, comp
     return "?", "", ""
 
 
@@ -297,11 +400,13 @@ def _step_desc(action: str, payload: Any, e: Any) -> str:
             cond = "for " + _sel_text(payload["for"], e)
         else:
             until = payload.get("until")
-            cond = (
-                "until gone " + _sel_text(until["gone"], e)
-                if isinstance(until, dict) and "gone" in until
-                else f"until {e(str(until))}"
-            )
+            if isinstance(until, dict) and "gone" in until:
+                cond = "until gone " + _sel_text(until["gone"], e)
+            elif isinstance(until, dict) and "request" in until:
+                target, comp = _request_text(until["request"], e)
+                cond = "until request " + " · ".join(p for p in (target, comp) if p and p != "?")
+            else:
+                cond = f"until {e(str(until))}"
         return f"{cond} (≤" + _tok("num", f"{_gnum(payload.get('timeout'))}s", e) + ")"
     if action == "assert":
         return _assert_rows(payload, e)
@@ -460,6 +565,9 @@ def _scenario_section(
     )
     # Steps and Scenario are merged into one tab (per-step plan + outcome).
     panels: list[tuple[str, str, str]] = [("steps", "Steps", _merged_panel(r, definition, source, e))]
+    net = _artifact(r, "network")
+    if net is not None:
+        panels.append(("net", "Network", _network_panel(run_dir, net, e)))
     dev = _artifact(r, "deviceLog")
     if dev is not None:
         panels.append(("log", "Device Log", _log_panel(run_dir, dev, e)))
@@ -603,6 +711,27 @@ tr.skip td{color:var(--mut);opacity:.65}
 .view{display:none} .view.active{display:block}
 .src{background:#1c1c1e;color:#e6e6e6;border-radius:8px;padding:.6rem .75rem;max-height:460px;
  overflow:auto;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;white-space:pre;margin:0}
+/* Network tab — the exchanges BajutsuKit captured (network.json). */
+.nxlist{display:flex;flex-direction:column;gap:.3rem;margin-top:.45rem}
+details.nx{border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--card)}
+details.nx>summary{list-style:none;cursor:pointer;display:flex;gap:.55rem;align-items:center;padding:.36rem .6rem}
+details.nx>summary::-webkit-details-marker{display:none}
+.nxm{font:600 .7rem/1.4 ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;color:#fff;
+ background:#2c5fb3;border-radius:4px;padding:.06rem .4rem;min-width:3.4rem;text-align:center;flex:none}
+.nxp{flex:1;font:.82rem ui-monospace,Menlo,Consolas,monospace;word-break:break-all;color:var(--ink)}
+.nxs{flex:none;font:700 .7rem/1.4 -apple-system,system-ui,sans-serif;border-radius:4px;padding:.05rem .4rem;
+ background:var(--mut);color:#fff;min-width:2.4rem;text-align:center}
+.nxs.ok{background:var(--ok)} .nxs.ng{background:var(--ng)}
+.nxd{flex:none}
+.nxbody{padding:.15rem .6rem .55rem;border-top:1px solid var(--line);background:#fafafb}
+.nxsec{margin-top:.5rem}
+.nxlbl{display:block;font:700 .66rem -apple-system,system-ui,sans-serif;text-transform:uppercase;
+ letter-spacing:.04em;color:var(--mut);margin-bottom:.22rem}
+.nxh{display:flex;gap:.5rem;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+.nxh.err{color:var(--ng)}
+.nxhk{color:#3a4ba0;min-width:9rem;flex:none} .nxhv{color:var(--ink);word-break:break-all}
+.nxpre{background:#1c1c1e;color:#e6e6e6;border-radius:7px;padding:.45rem .6rem;max-height:240px;overflow:auto;
+ font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:0}
 a{color:#0a6cff}
 """
 
