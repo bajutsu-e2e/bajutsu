@@ -24,3 +24,6 @@ sample/*.xcodeproj/
 sample/build/
 DerivedData/
 *.xcuserstate
+
+**/.build/**
+**/.swiftpm/**
