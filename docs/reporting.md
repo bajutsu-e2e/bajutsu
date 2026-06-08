@@ -94,7 +94,12 @@ numbers) are rendered as subtly-styled inline tokens — deliberately a differen
 action/assert badges, so variables and constants are identifiable at a glance. An `assert` step's
 checks become a **nested table**, one row per assertion split into `kind` / `target` / `comparison`
 cells (instead of a hard-to-read `a; b; c` line). Steps that never ran (execution stops at the first
-failure) still appear, marked as skipped. The **preconditions** table is collapsible (key / value).
+failure) still appear, marked as skipped. **Observed network exchanges are interleaved into the
+steps** in time order (each placed by its offset from the scenario start): a row with the HTTP method
+as a neutral badge, the status in the `result` column, and the exchange's settings (method / endpoint
+/ status / duration / headers) as a **nested table** in the detail cell. Which requests appear is
+filtered by the scenario's `networkSteps.domains` (by URL host); the Network tab still lists them all.
+The **preconditions** table is collapsible (key / value).
 The **expectations** table uses parallel columns `result` / `kind` (badge) / `target` (the checked
 selector, e.g. `#counter.value`) / `comparison` (e.g. `== “2”`) / `reason`, with the same id/constant
 tokens. A **Rich / YAML toggle** switches the same tab between this structured view and the raw

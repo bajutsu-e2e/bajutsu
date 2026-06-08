@@ -315,6 +315,56 @@ def test_html_network_tab(tmp_path: Path) -> None:
     assert 'data-tab="net"' not in html_report("run1", [_passing()])
 
 
+def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
+    sid = "00-s1"
+    (tmp_path / sid).mkdir(parents=True)
+    (tmp_path / sid / "network.json").write_text(
+        '[{"method":"GET","url":"https://api.example.com/items","status":200,"durationMs":50,'
+        '"responseHeaders":{"Content-Type":"application/json"},"startedAt":0.5},'
+        '{"method":"POST","url":"https://other.com/log","status":204,"startedAt":1.2}]',
+        encoding="utf-8",
+    )
+    definition = {"name": "s1", "steps": [{"tap": {"id": "a"}}, {"wait": {"until": "settled", "timeout": 3}}]}
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, started_at=0.0),
+            StepOutcome(index=1, action="wait", ok=True, started_at=1.0),
+        ],
+        expect_results=[],
+        artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
+    )
+    out = html_report("run1", [r], tmp_path, definitions=[definition])
+    # Each exchange is an interleaved row whose detail is a nested settings table.
+    assert 'class="act act-net">GET' in out and 'class="nxtbl"' in out
+    assert 'class="nxk">endpoint' in out and "https://api.example.com/items" in out
+    assert 'class="nxk">response headers' in out and "Content-Type" in out
+    # Time order: tap(0.0) -> GET(0.5) -> wait(1.0) -> POST(1.2).
+    assert out.index(">#a<") < out.index('act-net">GET') < out.index('act-wait">wait') < out.index('act-net">POST')
+
+
+def test_html_exchanges_filtered_by_domain(tmp_path: Path) -> None:
+    sid = "00-s1"
+    (tmp_path / sid).mkdir(parents=True)
+    (tmp_path / sid / "network.json").write_text(
+        '[{"method":"GET","url":"https://api.example.com/x","status":200,"startedAt":0.2},'
+        '{"method":"POST","url":"https://tracker.io/log","status":204,"startedAt":0.3}]',
+        encoding="utf-8",
+    )
+    definition = {"name": "s1", "steps": [{"tap": {"id": "a"}}], "networkSteps": {"domains": ["example.com"]}}
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[StepOutcome(index=0, action="tap", ok=True, started_at=0.0)],
+        expect_results=[],
+        artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
+    )
+    out = html_report("run1", [r], tmp_path, definitions=[definition])
+    # Only the example.com request is interleaved into Steps (one act-net row)...
+    assert out.count('class="act act-net"') == 1 and "https://api.example.com/x" in out
+    # ...but the filtered-out request still appears in the (unfiltered) Network tab.
+    assert "tracker.io" in out
+
+
 def test_html_wait_request_detail_is_rich() -> None:
     # A `wait: { until: { request } }` step renders a tokenized detail (method / url /
     # status), in the same tone as other details — not a raw `{'request': ...}` dump.

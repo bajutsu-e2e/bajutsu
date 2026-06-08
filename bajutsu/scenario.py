@@ -329,6 +329,15 @@ class Redact(_Model):
     fields: list[str] = Field(default_factory=list)
 
 
+class NetworkSteps(_Model):
+    """Which observed requests to interleave into the report's Steps timeline. With
+    `domains` set, only exchanges whose URL host matches one of them — exactly or as a
+    parent suffix (`example.com` matches `api.example.com`) — appear in Steps; empty /
+    unset shows every captured exchange. The Network tab always lists them all."""
+
+    domains: list[str] = Field(default_factory=list)
+
+
 class Scenario(_Model):
     """One scenario."""
 
@@ -337,6 +346,7 @@ class Scenario(_Model):
     steps: list[Step]
     expect: list[Assertion] = Field(default_factory=list)
     capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
+    network_steps: NetworkSteps | None = Field(default=None, alias="networkSteps")
     redact: Redact | None = None
 
 

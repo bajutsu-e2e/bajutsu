@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import threading
+import time
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -46,9 +48,12 @@ class NetworkCollector:
     `snapshot()` on the main thread. `clear()` between scenarios scopes the exchanges.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, now: Callable[[], float] = time.monotonic) -> None:
         self._lock = threading.Lock()
-        self._exchanges: list[NetworkExchange] = []
+        # Each exchange with the monotonic time it was received (≈ completion), so the
+        # report can place it on the scenario timeline.
+        self._items: list[tuple[NetworkExchange, float]] = []
+        self._now = now
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.port = 0
@@ -61,15 +66,20 @@ class NetworkCollector:
         except Exception:  # noqa: BLE001 — a malformed report must not crash the run
             return
         with self._lock:
-            self._exchanges.append(ex)
+            self._items.append((ex, self._now()))
 
     def snapshot(self) -> list[NetworkExchange]:
         with self._lock:
-            return list(self._exchanges)
+            return [ex for ex, _ in self._items]
+
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
+        """Each exchange with its receive time (monotonic), in arrival order."""
+        with self._lock:
+            return list(self._items)
 
     def clear(self) -> None:
         with self._lock:
-            self._exchanges.clear()
+            self._items.clear()
 
     # --- lifecycle ---
 

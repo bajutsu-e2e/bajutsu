@@ -5,6 +5,8 @@
 - name: fetch makes a GET request
   preconditions:
     launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: network }
+  # Only show requests to example.com inline in the report's Steps timeline.
+  networkSteps: { domains: ["example.com"] }
   steps:
     - tap: { id: net.fetch }
     # Wait on the observed traffic itself (a GET to this endpoint), not a screen-settle proxy.

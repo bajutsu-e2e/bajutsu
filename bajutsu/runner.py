@@ -11,6 +11,7 @@ import json
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 from bajutsu import env
 from bajutsu.backends import default_available, make_driver, select_actuator
@@ -33,12 +34,22 @@ def _no_net() -> list[NetworkExchange]:
 
 
 def _write_network(
-    exchanges: list[NetworkExchange], run_dir: Path, sid: str, redactor: Redactor
+    timed: list[tuple[NetworkExchange, float]], scenario_start: float,
+    run_dir: Path, sid: str, redactor: Redactor,
 ) -> Artifact | None:
-    """Write a scenario's observed exchanges to <sid>/network.json (redacted)."""
-    if not exchanges:
+    """Write a scenario's observed exchanges to <sid>/network.json (redacted).
+
+    Each exchange gets a `startedAt` offset (seconds from the scenario's start, the same
+    frame as a step's `started_at`) so the report can place it on the timeline: the
+    receive time is ≈ completion, so the start is `received - scenario_start - duration`.
+    """
+    if not timed:
         return None
-    data = [ex.model_dump(by_alias=True, exclude_none=True) for ex in exchanges]
+    data: list[dict[str, Any]] = []
+    for ex, received in timed:
+        d = ex.model_dump(by_alias=True, exclude_none=True)
+        d["startedAt"] = round(max(0.0, received - scenario_start - (ex.duration_ms or 0.0) / 1000.0), 3)
+        data.append(d)
     text = redactor.redact_text(json.dumps(data, ensure_ascii=False, indent=2))
     out = run_dir / sid / "network.json"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -108,14 +119,18 @@ def run_all(
         sid = f"{i:02d}-{scenario_slug(s.name)}"
         if collector is not None:
             collector.clear()
+        driver = factory(eff, s)
+        # Capture t0 after the app has launched, so exchange offsets share the step
+        # timeline's origin (run_scenario times steps from its own entry, post-launch).
+        scenario_start = time.monotonic()
         result = run_scenario(
-            factory(eff, s), s, clock, sink=sink, on_blocked=on_blocked,
+            driver, s, clock, sink=sink, on_blocked=on_blocked,
             scenario_id=sid, network=(collector.snapshot if collector is not None else _no_net),
         )
         if teardown is not None:
             teardown(eff, s)
         if collector is not None and run_dir is not None:
-            art = _write_network(collector.snapshot(), run_dir, sid, redactor)
+            art = _write_network(collector.snapshot_timed(), scenario_start, run_dir, sid, redactor)
             if art is not None:
                 result.artifacts.append(art)
         results.append(result)

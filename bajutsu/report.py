@@ -14,6 +14,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from xml.etree import ElementTree as ET
 
 from bajutsu.evidence import Artifact
@@ -464,38 +465,118 @@ def _step_detail_cell(step_def: dict[str, Any] | None, e: Any) -> str:
     return desc + extra
 
 
-def _merged_table(r: RunResult, plan: list[dict[str, Any]], e: Any) -> str:
-    """One row per step (a table parallel to the expectations table): result / action
-    / detail / time / view / reason.
+def _exchange_host(url: str) -> str:
+    try:
+        return (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return ""
 
-    Driven by the plan so steps that never ran (execution stops at the first
-    failure) still appear, marked as not run. Rows that did run stay clickable
-    `srow`s tagged with their video offset (`data-t`)."""
+
+def _domain_allowed(host: str, domains: list[str]) -> bool:
+    """No filter -> every exchange; otherwise the host must equal a listed domain or be
+    a subdomain of one (`api.example.com` is allowed by `example.com`)."""
+    if not domains:
+        return True
+    host = host.lower()
+    return any(host == d.lower() or host.endswith("." + d.lower()) for d in domains)
+
+
+def _header_lines(headers: dict[str, Any], e: Any) -> str:
+    return "<br>".join(
+        f'<span class="nxhk">{e(str(k))}</span>: {e(str(v))}' for k, v in headers.items()
+    )
+
+
+def _exchange_table(d: dict[str, Any], e: Any) -> str:
+    """The exchange's settings as a small two-column table, so they read down the cell
+    instead of crammed onto one line."""
+    rows: list[str] = []
+
+    def add(key: str, val_html: str) -> None:
+        rows.append(f'<tr><td class="nxk">{e(key)}</td><td class="nxv">{val_html}</td></tr>')
+
+    add("method", _tok("kw", str(d.get("method") or ""), e))
+    endpoint = d.get("url") or d.get("path")
+    if endpoint:
+        add("endpoint", _tok("str", str(endpoint), e))
+    if d.get("status") is not None:
+        add("status", _tok("num", str(d["status"]), e))
+    dur = d.get("durationMs")
+    if isinstance(dur, (int, float)) and not isinstance(dur, bool):
+        add("duration", _tok("num", f"{dur:.0f} ms", e))
+    for label, key in (("request headers", "requestHeaders"), ("response headers", "responseHeaders")):
+        hdrs = d.get(key)
+        if isinstance(hdrs, dict) and hdrs:
+            add(label, _header_lines(hdrs, e))
+    return f'<table class="nxtbl"><tbody>{"".join(rows)}</tbody></table>'
+
+
+def _exchange_row(d: dict[str, Any], e: Any) -> str:
+    """An interleaved network row in the Steps table: the method as a neutral badge, the
+    status in the result column, and the settings as a nested table."""
+    method = str(d.get("method") or "")
+    status = d.get("status")
+    t = d.get("startedAt")
+    at = f"{float(t):.1f}s" if isinstance(t, (int, float)) and not isinstance(t, bool) else ""
+    result = f'<span class="exst {_status_class(status)}">{e(str(status)) if status is not None else "—"}</span>'
+    badge = f'<span class="act act-net">{e(method or "req")}</span>'
+    return (
+        "<tr class='nrow'><td class='nix'>↳</td>"
+        f"<td>{result}</td><td>{badge}</td>"
+        f"<td class='adesc'>{_exchange_table(d, e)}</td>"
+        f"<td>{at}</td><td class='ev'>—</td><td></td></tr>"
+    )
+
+
+def _step_row(i: int, step_def: dict[str, Any] | None, out: Any, e: Any) -> str:
+    action = _step_action_cell(step_def, out.action if out else None, e)
+    detail = _step_detail_cell(step_def, e)
+    if out is not None:
+        tag = (
+            f"<tr class='srow {'ok' if out.ok else 'ng'}' data-t='{out.started_at:.3f}'"
+            f" title='jump to {out.started_at:.1f}s in the recording'>"
+        )
+        st = "ok" if out.ok else "ng"
+        result = f'<span class="exst {st}">{"PASS" if out.ok else "FAIL"}</span>'
+        at, view = f"{out.started_at:.1f}s", _step_evidence(out, e)
+        reason = f'<span class="exreason">{e(out.reason)}</span>' if not out.ok and out.reason else ""
+    else:
+        tag = "<tr class='skip'>"
+        result, at, view, reason = '<span class="exst">—</span>', "", "—", ""
+    return (
+        f"{tag}<td>{i}</td><td>{result}</td><td>{action}</td>"
+        f"<td class='adesc'>{detail}</td><td>{at}</td>"
+        f"<td class='ev'>{view}</td><td>{reason}</td></tr>"
+    )
+
+
+def _merged_table(
+    r: RunResult, plan: list[dict[str, Any]], exchanges: list[dict[str, Any]], e: Any
+) -> str:
+    """One row per step plus the observed network exchanges interleaved in time order
+    (result / action / detail / time / view / reason).
+
+    Driven by the plan so steps that never ran (execution stops at the first failure)
+    still appear; ran steps and exchanges are ordered by their offset from the scenario
+    start (a step is placed before an exchange at the same offset), and not-run steps
+    trail at the end in plan order."""
     by_index = {s.index: s for s in r.steps}
     total = max(len(plan), len(r.steps))
-    rows: list[str] = []
+    timed: list[tuple[float, int, str]] = []  # (offset, step-before-exchange, html)
+    skipped: list[str] = []
     for i in range(total):
         step_def = plan[i] if i < len(plan) else None
         out = by_index.get(i)
-        action = _step_action_cell(step_def, out.action if out else None, e)
-        detail = _step_detail_cell(step_def, e)
-        if out is not None:
-            tag = (
-                f"<tr class='srow {'ok' if out.ok else 'ng'}' data-t='{out.started_at:.3f}'"
-                f" title='jump to {out.started_at:.1f}s in the recording'>"
-            )
-            st = "ok" if out.ok else "ng"
-            result = f'<span class="exst {st}">{"PASS" if out.ok else "FAIL"}</span>'
-            at, view = f"{out.started_at:.1f}s", _step_evidence(out, e)
-            reason = f'<span class="exreason">{e(out.reason)}</span>' if not out.ok and out.reason else ""
+        if out is None:
+            skipped.append(_step_row(i, step_def, None, e))
         else:
-            tag = "<tr class='skip'>"
-            result, at, view, reason = '<span class="exst">—</span>', "", "—", ""
-        rows.append(
-            f"{tag}<td>{i}</td><td>{result}</td><td>{action}</td>"
-            f"<td class='adesc'>{detail}</td><td>{at}</td>"
-            f"<td class='ev'>{view}</td><td>{reason}</td></tr>"
-        )
+            timed.append((out.started_at, 0, _step_row(i, step_def, out, e)))
+    for d in exchanges:
+        t = d.get("startedAt")
+        offset = float(t) if isinstance(t, (int, float)) and not isinstance(t, bool) else 0.0
+        timed.append((offset, 1, _exchange_row(d, e)))
+    timed.sort(key=lambda x: (x[0], x[1]))
+    rows = [html for _, _, html in timed] + skipped
     return (
         '<div class="steps-sec"><span class="deflbl">steps</span>'
         "<table class='sttbl'><thead><tr><th>#</th><th>result</th><th>action</th>"
@@ -530,16 +611,23 @@ def _expects_view(r: RunResult, definition: dict[str, Any] | None, e: Any) -> st
     return _expects_table("expectations (not evaluated)", rows)
 
 
-def _rich_view(r: RunResult, definition: dict[str, Any] | None, e: Any) -> str:
+def _rich_view(
+    r: RunResult, definition: dict[str, Any] | None, exchanges: list[dict[str, Any]], e: Any
+) -> str:
     plan = (definition or {}).get("steps") or []
-    return _preconditions_block(definition, e) + _merged_table(r, plan, e) + _expects_view(r, definition, e)
+    return (
+        _preconditions_block(definition, e)
+        + _merged_table(r, plan, exchanges, e)
+        + _expects_view(r, definition, e)
+    )
 
 
 def _merged_panel(
-    r: RunResult, definition: dict[str, Any] | None, source: str | None, e: Any
+    r: RunResult, definition: dict[str, Any] | None, source: str | None,
+    exchanges: list[dict[str, Any]], e: Any,
 ) -> str:
     """The combined Steps+Scenario view, with a Rich/YAML toggle when YAML is given."""
-    rich = _rich_view(r, definition, e)
+    rich = _rich_view(r, definition, exchanges, e)
     if not source:
         return rich
     return (
@@ -563,9 +651,18 @@ def _scenario_section(
         f'<video controls preload="metadata" src="{e(video.name)}"></video>'
         if video else '<div class="muted">no recording</div>'
     )
-    # Steps and Scenario are merged into one tab (per-step plan + outcome).
-    panels: list[tuple[str, str, str]] = [("steps", "Steps", _merged_panel(r, definition, source, e))]
+    # Steps and Scenario are merged into one tab (per-step plan + outcome), with the
+    # observed exchanges interleaved (filtered to the scenario's networkSteps.domains).
     net = _artifact(r, "network")
+    net_data = _read_json(run_dir, net.name) if (net is not None and run_dir is not None) else None
+    all_exchanges = [d for d in net_data if isinstance(d, dict)] if isinstance(net_data, list) else []
+    domains = ((definition or {}).get("networkSteps") or {}).get("domains") or []
+    step_exchanges = [
+        d for d in all_exchanges if _domain_allowed(_exchange_host(str(d.get("url") or "")), domains)
+    ]
+    panels: list[tuple[str, str, str]] = [
+        ("steps", "Steps", _merged_panel(r, definition, source, step_exchanges, e))
+    ]
     if net is not None:
         panels.append(("net", "Network", _network_panel(run_dir, net, e)))
     dev = _artifact(r, "deviceLog")
@@ -732,6 +829,14 @@ details.nx>summary::-webkit-details-marker{display:none}
 .nxhk{color:#3a4ba0;min-width:9rem;flex:none} .nxhv{color:var(--ink);word-break:break-all}
 .nxpre{background:#1c1c1e;color:#e6e6e6;border-radius:7px;padding:.45rem .6rem;max-height:240px;overflow:auto;
  font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:0}
+/* Network exchanges interleaved into the Steps table. */
+.act-net{background:#4a5568}
+tr.nrow td{background:#f4f6fb;border-top:1px dashed var(--line)}
+td.nix{color:var(--mut);text-align:center}
+.nxtbl{border-collapse:collapse;width:auto;margin:.1rem 0}
+.nxtbl td{border:0;padding:.05rem .6rem .05rem 0;vertical-align:top}
+.nxtbl td.nxk{color:var(--mut);font:600 .76rem -apple-system,system-ui,sans-serif;white-space:nowrap;width:1%}
+.nxtbl td.nxv{font:.82rem/1.5 ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
 a{color:#0a6cff}
 """
 

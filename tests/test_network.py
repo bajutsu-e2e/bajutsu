@@ -71,6 +71,16 @@ def test_collector_receives_and_clears() -> None:
         c.stop()
 
 
+def test_collector_snapshot_timed_records_receive_order() -> None:
+    times = iter([1.0, 2.5])
+    c = NetworkCollector(now=lambda: next(times))
+    c.add({"method": "GET", "path": "/a", "status": 200})
+    c.add({"method": "POST", "path": "/b", "status": 201})
+    timed = c.snapshot_timed()
+    assert [t for _, t in timed] == [1.0, 2.5]            # receive times preserved
+    assert [ex.path for ex, _ in timed] == ["/a", "/b"]   # in arrival order
+
+
 def test_orchestrator_request_assertion_step() -> None:
     scn = load_scenarios(
         "- name: net\n"
