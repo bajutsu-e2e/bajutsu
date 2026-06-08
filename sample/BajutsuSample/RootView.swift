@@ -49,6 +49,9 @@ struct MainTabView: View {
             SystemView()
                 .tabItem { Label("System", systemImage: "gearshape.2") }
                 .tag(8)
+            NetworkView()
+                .tabItem { Label("Network", systemImage: "network") }
+                .tag(9)
         }
     }
 }

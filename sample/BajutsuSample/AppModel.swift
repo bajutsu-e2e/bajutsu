@@ -64,6 +64,7 @@ final class AppModel: ObservableObject {
         case "presentation": return 6
         case "async": return 7
         case "system": return 8
+        case "network": return 9
         default: return 0
         }
     }

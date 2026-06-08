@@ -11,12 +11,17 @@ settings:
     SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
     SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
     SUPPORTS_MACCATALYST: NO
+packages:
+  BajutsuKit:
+    path: ../BajutsuKit
 targets:
   BajutsuSample:
     type: application
     platform: iOS
     sources:
       - path: BajutsuSample
+    dependencies:
+      - package: BajutsuKit
     info:
       path: BajutsuSample/Info.plist
       properties:

@@ -1,0 +1,12 @@
+# Network observation: tap Fetch -> wait for the response (mirrored to net.status) ->
+# assert both the UI value and the observed request. BajutsuKit (linked into the app)
+# captures the exchange; bajutsu injects BAJUTSU_COLLECTOR automatically on `run`.
+- name: fetch makes a GET request
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: network }
+  steps:
+    - tap: { id: net.fetch }
+    - wait: { until: settled, timeout: 8 }
+  expect:
+    - value: { sel: { id: net.status }, equals: "200" }
+    - request: { method: GET, status: 200 }

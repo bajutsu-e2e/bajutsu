@@ -1,3 +1,4 @@
+import BajutsuKit
 import SwiftUI
 import UIKit
 
@@ -10,6 +11,8 @@ struct BajutsuSampleApp: App {
         if ProcessInfo.processInfo.environment["SAMPLE_UITEST"] != nil {
             UIView.setAnimationsEnabled(false)
         }
+        // Network capture: a no-op unless bajutsu injected BAJUTSU_COLLECTOR.
+        BajutsuNet.startIfEnabled()
     }
 
     var body: some Scene {
