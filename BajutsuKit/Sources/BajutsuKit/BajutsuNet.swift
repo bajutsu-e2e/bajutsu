@@ -34,11 +34,21 @@ public enum BajutsuNet {
     ) {
         guard let collectorURL else { return }
         let http = response as? HTTPURLResponse
+        let durationMs = Date().timeIntervalSince(startedAt) * 1000
+        // Surface the exchange to the host app's UI (same data POSTed below).
+        BajutsuExchangeStore.shared.record(BajutsuExchange(
+            method: request.httpMethod ?? "GET",
+            url: request.url?.absoluteString ?? "",
+            path: request.url?.path ?? "",
+            status: http?.statusCode,
+            durationMs: durationMs,
+            error: error.map { String(describing: $0) }
+        ))
         var payload: [String: Any] = [
             "method": request.httpMethod ?? "GET",
             "url": request.url?.absoluteString ?? "",
             "path": request.url?.path ?? "",
-            "durationMs": Date().timeIntervalSince(startedAt) * 1000,
+            "durationMs": durationMs,
         ]
         if let http { payload["status"] = http.statusCode }
         if let error { payload["error"] = String(describing: error) }
