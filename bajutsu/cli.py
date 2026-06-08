@@ -15,6 +15,7 @@ from bajutsu.config import Effective, load_config, resolve
 from bajutsu.doctor import render, score
 from bajutsu.dotenv import load_dotenv
 from bajutsu.evidence import FileSink
+from bajutsu.network import NetworkCollector
 from bajutsu.record import record as record_loop
 from bajutsu.runner import device_factory, device_teardown, launch_driver, run_and_report
 from bajutsu.scenario import Preconditions, dump_scenarios, load_scenarios
@@ -67,6 +68,10 @@ def run(
     log_subsystem: str = typer.Option(
         "", "--log-subsystem", help="os_log subsystem for appTrace (defaults to the app's bundleId)"
     ),
+    network: bool = typer.Option(
+        True, "--network/--no-network",
+        help="collect the app's network exchanges (for `request` assertions); needs BajutsuKit in the app",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Run a scenario deterministically (no AI, unless --dismiss-alerts)."""
@@ -92,15 +97,27 @@ def run(
 
         guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None)
         on_blocked = guard.dismiss
+    # Start the network collector and point the app at it via launch env. The app's
+    # BajutsuKit POSTs each exchange here (no-op for apps without the SDK).
+    collector = None
+    if network:
+        collector = NetworkCollector()
+        url = f"http://127.0.0.1:{collector.start()}"
+        for s in scenarios:
+            s.preconditions.launch_env.setdefault("BAJUTSU_COLLECTOR", url)
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
     sink = FileSink(
         Path("runs") / run_id, udid=udid, log_predicate=log_predicate or None,
         log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact,
     )
-    results, manifest = run_and_report(
-        eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
-        teardown=device_teardown(udid),
-    )
+    try:
+        results, manifest = run_and_report(
+            eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
+            teardown=device_teardown(udid), collector=collector,
+        )
+    finally:
+        if collector is not None:
+            collector.stop()
     ok = all(r.ok for r in results)
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
     raise typer.Exit(0 if ok else 1)

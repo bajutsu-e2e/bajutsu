@@ -21,7 +21,16 @@ from bajutsu import assertions, intervals
 from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
+from bajutsu.network import NetworkExchange
 from bajutsu.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait
+
+# Returns the network exchanges observed so far (for `request` assertions).
+NetworkSource = Callable[[], list[NetworkExchange]]
+
+
+def _no_network() -> list[NetworkExchange]:
+    return []
+
 
 _SWIPE_DIST = 100.0
 _POLL = 0.05
@@ -214,7 +223,7 @@ BlockedHandler = Callable[[base.Driver], bool]
 
 
 def _run_step_body(
-    driver: base.Driver, step: Step, kind: str, clock: Clock
+    driver: base.Driver, step: Step, kind: str, clock: Clock, network: NetworkSource
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results)."""
     try:
@@ -224,7 +233,7 @@ def _run_step_body(
             return ok, reason, []
         if kind == "assert_":
             assert step.assert_ is not None
-            results = assertions.evaluate(driver.query(), step.assert_)
+            results = assertions.evaluate(driver.query(), step.assert_, network())
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results
         _do_action(driver, step)
@@ -312,6 +321,7 @@ def run_scenario(
     sink: EvidenceSink | None = None,
     on_blocked: BlockedHandler | None = None,
     scenario_id: str | None = None,
+    network: NetworkSource = _no_network,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -335,12 +345,12 @@ def run_scenario(
     try:
         failure = _run_steps(
             driver, scenario, clock, sink, on_blocked, wants_screen_changed,
-            outcomes, scenario_start, sid,
+            outcomes, scenario_start, sid, network,
         )
         if failure is None and scenario.expect:
-            expect_results = assertions.evaluate(driver.query(), scenario.expect)
+            expect_results = assertions.evaluate(driver.query(), scenario.expect, network())
             if not assertions.passed(expect_results) and on_blocked is not None and on_blocked(driver):
-                expect_results = assertions.evaluate(driver.query(), scenario.expect)  # retry once
+                expect_results = assertions.evaluate(driver.query(), scenario.expect, network())  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
     finally:
@@ -367,6 +377,7 @@ def _run_steps(
     outcomes: list[StepOutcome],
     scenario_start: float,
     sid: str,
+    network: NetworkSource,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None."""
     failure: str | None = None
@@ -379,9 +390,9 @@ def _run_steps(
         before = driver.query() if wants_screen_changed else None
         start = clock.now()
         outcome.started_at = max(0.0, start - scenario_start)
-        ok, reason, results = _run_step_body(driver, step, kind, clock)
+        ok, reason, results = _run_step_body(driver, step, kind, clock, network)
         if not ok and on_blocked is not None and on_blocked(driver):
-            ok, reason, results = _run_step_body(driver, step, kind, clock)  # retry once
+            ok, reason, results = _run_step_body(driver, step, kind, clock, network)  # retry once
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 

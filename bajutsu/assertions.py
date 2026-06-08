@@ -14,7 +14,8 @@ import re
 from dataclasses import dataclass
 
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, CountMatch, Exists, Selector, TextMatch
+from bajutsu.network import NetworkExchange
+from bajutsu.scenario import Assertion, CountMatch, Exists, RequestMatch, Selector, TextMatch
 
 
 @dataclass(frozen=True)
@@ -112,8 +113,53 @@ def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> Asser
     return AssertionResult(ok, kind, detail, reason)
 
 
-def evaluate_one(elements: list[base.Element], a: Assertion) -> AssertionResult:
-    """Evaluate one assertion (the kind is guaranteed unique by scenario validation)."""
+def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
+    if req.method is not None and ex.method.upper() != req.method.upper():
+        return False
+    if req.path is not None and ex.path != req.path:
+        return False
+    if req.path_matches is not None and re.search(req.path_matches, ex.path) is None:
+        return False
+    if req.status is not None and ex.status != req.status:
+        return False
+    return True
+
+
+def _req_str(req: RequestMatch) -> str:
+    parts: list[str] = []
+    if req.method is not None:
+        parts.append(req.method.upper())
+    if req.path is not None:
+        parts.append(req.path)
+    if req.path_matches is not None:
+        parts.append(f"~{req.path_matches}")
+    if req.status is not None:
+        parts.append(f"status={req.status}")
+    if req.count is not None:
+        parts.append(f"count={req.count}")
+    return " ".join(parts)
+
+
+def _eval_request(exchanges: list[NetworkExchange], req: RequestMatch) -> AssertionResult:
+    n = sum(1 for ex in exchanges if _match_request(ex, req))
+    ok = (n == req.count) if req.count is not None else (n >= 1)
+    detail = f"request {_req_str(req)}"
+    if ok:
+        return AssertionResult(True, "request", detail)
+    reason = (
+        f"count={req.count} を期待したが {n} 件"
+        if req.count is not None
+        else f"一致する通信なし（観測 {len(exchanges)} 件）"
+    )
+    return AssertionResult(False, "request", detail, reason)
+
+
+def evaluate_one(
+    elements: list[base.Element], a: Assertion, exchanges: list[NetworkExchange] | None = None
+) -> AssertionResult:
+    """Evaluate one assertion (the kind is guaranteed unique by scenario validation).
+
+    UI kinds check `elements`; `request` checks the observed network `exchanges`."""
     if a.exists is not None:
         return _eval_exists(elements, a.exists)
     if a.value is not None:
@@ -128,12 +174,18 @@ def evaluate_one(elements: list[base.Element], a: Assertion) -> AssertionResult:
         return _eval_state(elements, "disabled", a.disabled)
     if a.selected is not None:
         return _eval_state(elements, "selected", a.selected)
+    if a.request is not None:
+        return _eval_request(exchanges or [], a.request)
     raise AssertionError("空のアサーション（scenario 検証で弾かれるはず）")
 
 
-def evaluate(elements: list[base.Element], assertions: list[Assertion]) -> list[AssertionResult]:
+def evaluate(
+    elements: list[base.Element],
+    assertions: list[Assertion],
+    exchanges: list[NetworkExchange] | None = None,
+) -> list[AssertionResult]:
     """Evaluate all of expect/assert (the caller decides AND via passed())."""
-    return [evaluate_one(elements, a) for a in assertions]
+    return [evaluate_one(elements, a, exchanges) for a in assertions]
 
 
 def passed(results: list[AssertionResult]) -> bool:

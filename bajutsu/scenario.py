@@ -32,7 +32,9 @@ _STEP_ACTIONS = (
     "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
     "wait", "assert_", "relaunch",
 )
-_ASSERTION_KINDS = ("exists", "value", "label", "count", "enabled", "disabled", "selected")
+_ASSERTION_KINDS = (
+    "exists", "value", "label", "count", "enabled", "disabled", "selected", "request",
+)
 
 
 class _Model(BaseModel):
@@ -207,6 +209,24 @@ class CountMatch(_Model):
         return self
 
 
+class RequestMatch(_Model):
+    """`request`: assert on observed network traffic. The match fields (method / path
+    / pathMatches / status) are AND-ed; `count` checks how many exchanges matched
+    (exact when set, otherwise at least one). At least one match field is required."""
+
+    method: str | None = None
+    path: str | None = None  # exact path (query ignored)
+    path_matches: str | None = Field(default=None, alias="pathMatches")  # regex over path
+    status: int | None = None
+    count: int | None = None  # exact count; None -> at least 1
+
+    @model_validator(mode="after")
+    def _has_criterion(self) -> Self:
+        if self.method is None and self.path is None and self.path_matches is None and self.status is None:
+            raise ValueError("request は method/path/pathMatches/status のいずれかが必要")
+        return self
+
+
 class Assertion(_Model):
     """One machine check. Exactly one kind may be set."""
 
@@ -217,6 +237,7 @@ class Assertion(_Model):
     enabled: Selector | None = None
     disabled: Selector | None = None
     selected: Selector | None = None
+    request: RequestMatch | None = None
 
     @model_validator(mode="after")
     def _one_kind(self) -> Self:

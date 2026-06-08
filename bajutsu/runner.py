@@ -7,6 +7,7 @@ driver.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -15,14 +16,34 @@ from bajutsu import env
 from bajutsu.backends import default_available, make_driver, select_actuator
 from bajutsu.config import Effective
 from bajutsu.drivers import base
-from bajutsu.evidence import EvidenceSink
+from bajutsu.evidence import Artifact, EvidenceSink
+from bajutsu.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import BlockedHandler, Clock, RunResult, run_scenario, scenario_slug
+from bajutsu.redaction import Redactor
 from bajutsu.report import write_report
 from bajutsu.scenario import Preconditions, Scenario, dump_scenarios, scenario_dict
 
 DriverFactory = Callable[[Effective, Scenario], base.Driver]
 # Run after each scenario finishes (e.g. terminate the app -> back to SpringBoard).
 Teardown = Callable[[Effective, Scenario], None]
+
+
+def _no_net() -> list[NetworkExchange]:
+    return []
+
+
+def _write_network(
+    exchanges: list[NetworkExchange], run_dir: Path, sid: str, redactor: Redactor
+) -> Artifact | None:
+    """Write a scenario's observed exchanges to <sid>/network.json (redacted)."""
+    if not exchanges:
+        return None
+    data = [ex.model_dump(by_alias=True, exclude_none=True) for ex in exchanges]
+    text = redactor.redact_text(json.dumps(data, ensure_ascii=False, indent=2))
+    out = run_dir / sid / "network.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    return Artifact(f"{sid}/network.json", "network", "collector")
 
 
 def launch_driver(
@@ -71,20 +92,32 @@ def run_all(
     on_blocked: BlockedHandler | None = None,
     sink: EvidenceSink | None = None,
     teardown: Teardown | None = None,
+    collector: NetworkCollector | None = None,
+    run_dir: Path | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each with a freshly built driver.
 
     After each scenario finishes, `teardown` runs (e.g. terminate the app so the
-    Simulator returns to SpringBoard between scenarios and after the last one).
+    Simulator returns to SpringBoard between scenarios and after the last one). When a
+    `collector` is given, its exchanges are cleared per scenario, exposed to `request`
+    assertions, and written to <sid>/network.json.
     """
+    redactor = Redactor(eff.redact)
     results: list[RunResult] = []
     for i, s in enumerate(scenarios):
+        sid = f"{i:02d}-{scenario_slug(s.name)}"
+        if collector is not None:
+            collector.clear()
         result = run_scenario(
             factory(eff, s), s, clock, sink=sink, on_blocked=on_blocked,
-            scenario_id=f"{i:02d}-{scenario_slug(s.name)}",
+            scenario_id=sid, network=(collector.snapshot if collector is not None else _no_net),
         )
         if teardown is not None:
             teardown(eff, s)
+        if collector is not None and run_dir is not None:
+            art = _write_network(collector.snapshot(), run_dir, sid, redactor)
+            if art is not None:
+                result.artifacts.append(art)
         results.append(result)
     return results
 
@@ -99,9 +132,13 @@ def run_and_report(
     on_blocked: BlockedHandler | None = None,
     sink: EvidenceSink | None = None,
     teardown: Teardown | None = None,
+    collector: NetworkCollector | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit under runs_dir/run_id."""
-    results = run_all(eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown)
+    results = run_all(
+        eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown,
+        collector=collector, run_dir=runs_dir / run_id,
+    )
     # The merged Steps tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).
     definitions = [scenario_dict(s) for s in scenarios]
