@@ -1,10 +1,7 @@
-# Cross-backend parity check: the exact same id-driven steps must pass on both
-# rocketsim (semantic tap) and idb (coordinate tap). One run uses one actuator, so
-# prove parity by running this file twice and comparing the two reports:
-#   bajutsu run sample/scenarios/cross_backend.yaml --app sample --backend rocketsim --no-erase
-#   bajutsu run sample/scenarios/cross_backend.yaml --app sample --backend idb       --no-erase
+# An id-driven smoke scenario for the sample app, run on idb:
+#   bajutsu run sample/scenarios/cross_backend.yaml --app sample --no-erase
 # Every step addresses elements by id and uses single-touch actions only (idb is
-# single-touch), so the run loop never diverges between the two backends.
+# single-touch).
 - name: increment the counter and filter the list
   preconditions:
     launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_SEED: "5" }

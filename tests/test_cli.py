@@ -1,7 +1,7 @@
 """Tests for the CLI error/loading paths (the device paths need a Simulator).
 
-The sandbox has no rocketsim/idb on PATH, so backend selection fails cleanly with
-exit code 2 — which lets us drive run/doctor right up to the device boundary.
+The sandbox has no idb on PATH, so backend selection fails cleanly with exit code
+2 — which lets us drive run/doctor right up to the device boundary.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from bajutsu.cli import app
 runner = CliRunner()
 
 CONFIG = """
-defaults: { backend: [rocketsim, idb] }
+defaults: { backend: [idb] }
 apps:
   demo: { bundleId: com.example.demo, idNamespaces: [home] }
 """

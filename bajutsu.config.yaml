@@ -10,9 +10,9 @@ defaults:
   # Actuator selection in UI-stability order. The FIRST backend available on this
   # machine becomes the actuator and performs every tap/type/swipe/query for the
   # whole run (fixed at start, to avoid two drivers fighting over one device).
-  # rocketsim taps semantically (by id, most stable); idb taps by coordinate.
+  # idb is headless and taps by coordinate (resolving each element's frame center).
   # May be a single string or a list.
-  backend: [rocketsim, idb]
+  backend: [idb]
 
   device: "iPhone 15"   # default simulator model (override per app if needed)
   locale: en_US         # default locale
@@ -46,9 +46,6 @@ apps:
     # Env vars passed to the app on launch (as SIMCTL_CHILD_*). Scenarios can add
     # more via preconditions.launchEnv.
     launchEnv: { SAMPLE_UITEST: "1" }
-    # Recovers accessibilityIdentifiers on no-identifier backends (rocketsim);
-    # ignored by idb. Path is relative to this config file. See bajutsu/idmap.py.
-    idMap: sample/sample.idmap.yaml
     # Optional per-app keys (all override or extend the defaults above):
     #   backend: [...]            # actuator order for this app
     #   device: "iPhone 17 Pro"   # simulator model

@@ -1,7 +1,8 @@
 """Backend selection and driver construction.
 
 The backend list is ordered most-stable-first; the actuator is the first one that
-is available in this environment (e.g. RocketSim needs a GUI, idb is headless).
+is available in this environment. idb is the only backend today, but the selection
+machinery is kept so another backend can be registered later.
 """
 
 from __future__ import annotations
@@ -11,13 +12,11 @@ from collections.abc import Callable
 
 from bajutsu.drivers import base
 from bajutsu.drivers.idb import IdbDriver
-from bajutsu.drivers.rocketsim import RocketSimDriver
-from bajutsu.idmap import IdMap
 
-KNOWN = ("rocketsim", "idb")
+KNOWN = ("idb",)
 
 # Which executable backs each backend (used by the default availability check).
-_EXECUTABLE = {"rocketsim": "rocketsim", "idb": "idb"}
+_EXECUTABLE = {"idb": "idb"}
 
 
 def default_available(backend: str) -> bool:
@@ -34,11 +33,7 @@ def select_actuator(backends: list[str], available: Callable[[str], bool] = defa
     raise RuntimeError(f"no available actuator among {backends}")
 
 
-def make_driver(backend: str, udid: str, idmap: IdMap | None = None) -> base.Driver:
-    if backend == "rocketsim":
-        # rocketsim has no accessibilityIdentifier in its protocol; the idmap
-        # recovers them. idb gets identifiers natively, so it ignores the idmap.
-        return RocketSimDriver(udid, idmap=idmap)
+def make_driver(backend: str, udid: str) -> base.Driver:
     if backend == "idb":
         return IdbDriver(udid)
     raise ValueError(f"unknown backend: {backend!r}")

@@ -8,7 +8,7 @@ from bajutsu.config import load_config, resolve
 
 CONFIG_YAML = """
 defaults:
-  backend: [rocketsim, idb]
+  backend: [idb]
   device: "iPhone 15"
   locale: ja_JP
   capture: [screenshot.after, elements, actionLog]
@@ -30,7 +30,7 @@ apps:
 def test_resolve_searchsample() -> None:
     eff = resolve(load_config(CONFIG_YAML), "searchsample")
     assert eff.bundle_id == "com.example.SearchSample"
-    assert eff.backend == ["rocketsim", "idb"]  # from defaults
+    assert eff.backend == ["idb"]  # from defaults
     assert eff.device == "iPhone 15"
     assert eff.locale == "ja_JP"
     assert eff.launch_env == {"SEARCH_SHOW_SETTINGS": "1"}
@@ -48,13 +48,13 @@ def test_redact_is_merged() -> None:
 
 
 def test_backend_single_string_normalized() -> None:
-    cfg = load_config("defaults: { backend: rocketsim }\napps: { x: { bundleId: com.x } }")
-    assert resolve(cfg, "x").backend == ["rocketsim"]
+    cfg = load_config("defaults: { backend: idb }\napps: { x: { bundleId: com.x } }")
+    assert resolve(cfg, "x").backend == ["idb"]
 
 
 def test_app_overrides_defaults() -> None:
     cfg = load_config(
-        "defaults: { backend: [rocketsim], device: 'iPhone 15' }\n"
+        "defaults: { backend: [fake], device: 'iPhone 15' }\n"
         "apps: { x: { bundleId: com.x, backend: idb, locale: en_US } }"
     )
     eff = resolve(cfg, "x")
@@ -71,6 +71,6 @@ def test_unknown_app_raises() -> None:
 def test_minimal_defaults() -> None:
     cfg = load_config("apps: { x: { bundleId: com.x } }")
     eff = resolve(cfg, "x")
-    assert eff.backend == ["rocketsim"]
+    assert eff.backend == ["idb"]
     assert eff.device == "iPhone 15"
     assert eff.capture == ["screenshot.after", "elements", "actionLog"]

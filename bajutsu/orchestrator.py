@@ -68,7 +68,7 @@ class RunResult:
     failure: str | None = None
     # Scenario-level artifacts (the always-on screen recording, etc.).
     artifacts: list[Artifact] = field(default_factory=list)
-    # Which backend (actuator) drove this scenario: "rocketsim" / "idb" / "fake".
+    # Which backend (actuator) drove this scenario: "idb" / "fake".
     backend: str = ""
 
 

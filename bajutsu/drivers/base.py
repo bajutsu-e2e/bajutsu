@@ -1,4 +1,4 @@
-"""Driver abstraction — the linchpin shared by both backends (RocketSim / idb).
+"""Driver abstraction — the linchpin shared by every backend (idb / fake).
 
 Frozen first because everything else depends on it:
 - common types Point / Element / Selector
@@ -37,7 +37,7 @@ class Capability:
 
 
 class Element(TypedDict):
-    """A single on-screen element, normalized from RocketSim / idb output."""
+    """A single on-screen element, normalized from idb output."""
 
     identifier: str | None
     label: str | None
@@ -77,14 +77,14 @@ class Selector(TypedDict, total=False):
 
 @runtime_checkable
 class Driver(Protocol):
-    """Common interface for both backends.
+    """Common interface for every backend.
 
     Actions (tap/type/swipe/wait/query) are performed by the actuator only. On a
     backend without semantic tap (e.g. idb), the abstraction resolves the frame
     center via query() / resolve_unique() and taps by coordinates.
     """
 
-    # Backend identifier (e.g. "rocketsim", "idb", "fake"). Recorded in the run
+    # Backend identifier (e.g. "idb", "fake"). Recorded in the run
     # manifest and shown in the report so a run says which actuator drove it.
     name: str
 

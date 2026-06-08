@@ -1,1 +1,1 @@
-"""Driver layer — unify RocketSim / idb behind a common interface."""
+"""Driver layer — the idb backend (and the in-memory fake) behind a common interface."""

@@ -16,7 +16,6 @@ from bajutsu.backends import default_available, make_driver, select_actuator
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import EvidenceSink
-from bajutsu.idmap import IdMap
 from bajutsu.orchestrator import BlockedHandler, Clock, RunResult, run_scenario, scenario_slug
 from bajutsu.report import write_report
 from bajutsu.scenario import Preconditions, Scenario, dump_scenarios, scenario_dict
@@ -32,7 +31,6 @@ def launch_driver(
     actuator: str,
     preconditions: Preconditions | None = None,
     env_run: env.RunFn = env._real_run,
-    idmap: IdMap | None = None,
 ) -> base.Driver:
     """Erase/boot/launch the app (with config + scenario env) and return a driver.
 
@@ -48,7 +46,7 @@ def launch_driver(
     e.launch(eff.bundle_id, [*eff.launch_args, *pre.launch_args], launch_env)
     if pre.deeplink is not None:
         e.openurl(pre.deeplink)
-    driver = make_driver(actuator, udid, idmap=idmap)
+    driver = make_driver(actuator, udid)
     _await_ready(driver)
     return driver
 
@@ -117,17 +115,16 @@ def device_factory(
     backends: list[str],
     available: Callable[[str], bool] = default_available,
     env_run: env.RunFn = env._real_run,
-    idmap: IdMap | None = None,
 ) -> DriverFactory:
     """A real driver factory: pick the actuator, then launch the app per scenario.
 
     The simctl sequencing (erase/boot) is best-effort and should be confirmed on a
-    real device. `idmap` recovers identifiers for no-identifier backends (rocketsim).
+    real device.
     """
     actuator = select_actuator(backends, available)
 
     def factory(eff: Effective, scenario: Scenario) -> base.Driver:
-        return launch_driver(udid, eff, actuator, scenario.preconditions, env_run, idmap=idmap)
+        return launch_driver(udid, eff, actuator, scenario.preconditions, env_run)
 
     return factory
 

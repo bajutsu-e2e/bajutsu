@@ -15,7 +15,6 @@ from bajutsu.config import Effective, load_config, resolve
 from bajutsu.doctor import render, score
 from bajutsu.dotenv import load_dotenv
 from bajutsu.evidence import FileSink
-from bajutsu.idmap import IdMap, load_idmap
 from bajutsu.record import record as record_loop
 from bajutsu.runner import device_factory, device_teardown, launch_driver, run_and_report
 from bajutsu.scenario import Preconditions, dump_scenarios, load_scenarios
@@ -46,17 +45,6 @@ def _load_effective(config: str, app_name: str) -> Effective:
 
 def _backends(backend: str, fallback: list[str]) -> list[str]:
     return [b.strip() for b in backend.split(",") if b.strip()] if backend else fallback
-
-
-def _load_idmap(config: str, eff: Effective) -> IdMap | None:
-    """Load the per-app idmap (path is relative to the config file), if configured."""
-    if eff.id_map is None:
-        return None
-    path = Path(config).parent / eff.id_map
-    if not path.exists():
-        typer.echo(f"idMap not found: {path}")
-        raise typer.Exit(2)
-    return load_idmap(path.read_text(encoding="utf-8"))
 
 
 @app.command()
@@ -91,11 +79,10 @@ def run(
     if not erase:
         for s in scenarios:
             s.preconditions.erase = False
-    # Backend CLIs (rocketsim / idb) need a concrete UDID, not the simctl "booted" alias.
+    # The idb CLI needs a concrete UDID, not the simctl "booted" alias.
     udid = _env.resolve_udid(udid)
-    idmap = _load_idmap(config, eff)
     try:
-        factory = device_factory(udid, _backends(backend, eff.backend), idmap=idmap)
+        factory = device_factory(udid, _backends(backend, eff.backend))
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -150,7 +137,7 @@ def record(
 
         alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
     udid = _env.resolve_udid(udid)
-    driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase), idmap=_load_idmap(config, eff))
+    driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
     scenario = record_loop(driver, goal, ClaudeAgent(), name=goal, alert_guard=alert_guard)
     Path(out).write_text(dump_scenarios([scenario]), encoding="utf-8")
     typer.echo(f"recorded {len(scenario.steps)} steps -> {out}")
@@ -171,7 +158,7 @@ def doctor(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     udid = _env.resolve_udid(udid)
-    driver = make_driver(actuator, udid, idmap=_load_idmap(config, eff))
+    driver = make_driver(actuator, udid)
     result = score(driver.query(), eff.id_namespaces)
     typer.echo(render(result))
     raise typer.Exit(0 if result.grade != "Blocked" else 1)
