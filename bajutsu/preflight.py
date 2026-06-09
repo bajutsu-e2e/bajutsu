@@ -1,0 +1,67 @@
+"""Environment runnability gate for `doctor` / CI.
+
+The convention `doctor.score` answers "is the app's screen testable?". This answers the
+prior question: "can this host actually drive a Simulator?" — are the CLIs an on-device
+run needs present, and is a Simulator booted? Pure checks over injectable probes, so they
+are testable without touching the machine.
+"""
+
+from __future__ import annotations
+
+import shutil
+from collections.abc import Callable
+from dataclasses import dataclass
+
+Which = Callable[[str], str | None]
+
+# backend -> the extra CLIs an on-device run needs beyond Xcode's `xcrun`.
+_BACKEND_TOOLS: dict[str, list[tuple[str, str]]] = {
+    "idb": [
+        ("idb", "the fb-idb client — `uv sync --extra idb`"),
+        ("idb_companion", "`brew install facebook/fb/idb-companion`"),
+    ],
+}
+
+
+@dataclass(frozen=True)
+class Check:
+    name: str
+    ok: bool
+    detail: str  # the path found, or how to fix it
+
+
+def _tool(exe: str, hint: str, which: Which) -> Check:
+    path = which(exe)
+    return Check(exe, path is not None, path or hint)
+
+
+def runnability(
+    backend: str,
+    which: Which = shutil.which,
+    booted_count: Callable[[], int] | None = None,
+) -> list[Check]:
+    """The runnability checks for `backend`: Xcode's `xcrun`, the backend's CLIs, and
+    (when `booted_count` is given) a booted Simulator. `fake` needs nothing."""
+    if backend == "fake":
+        return []
+    checks = [_tool("xcrun", "Xcode + `xcode-select --install`", which)]
+    for exe, hint in _BACKEND_TOOLS.get(backend, []):
+        checks.append(_tool(exe, hint, which))
+    if booted_count is not None:
+        count = booted_count()
+        checks.append(
+            Check(
+                "Simulator booted",
+                count > 0,
+                f"{count} booted" if count else "boot one: `xcrun simctl boot <udid>`",
+            )
+        )
+    return checks
+
+
+def passed(checks: list[Check]) -> bool:
+    return all(c.ok for c in checks)
+
+
+def render(checks: list[Check]) -> str:
+    return "\n".join(f"  {'✓' if c.ok else '✗'} {c.name}: {c.detail}" for c in checks)

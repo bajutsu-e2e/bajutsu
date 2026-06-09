@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import env as _env
-from bajutsu import github
+from bajutsu import github, preflight
 from bajutsu.backends import make_driver, select_actuator
 from bajutsu.claude_agent import ClaudeAgent
 from bajutsu.codegen import class_name_for, to_xcuitest
@@ -219,13 +219,22 @@ def doctor(
     backend: str = typer.Option(""),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Report a convention score for the app's current screen."""
+    """Check the environment is runnable, then score the app's current screen."""
     eff = _load_effective(config, app_name)
     try:
         actuator = select_actuator(_backends(backend, eff.backend))
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
+    # with a fixable checklist instead of crashing later on a missing tool / no device.
+    env_checks = preflight.runnability(actuator, booted_count=lambda: len(_env.booted_udids()))
+    if env_checks:
+        typer.echo("environment:")
+        typer.echo(preflight.render(env_checks))
+        if not preflight.passed(env_checks):
+            raise typer.Exit(1)
+        typer.echo("")
     udid = _env.resolve_udid(udid)
     driver = make_driver(actuator, udid)
     result = score(driver.query(), eff.id_namespaces)

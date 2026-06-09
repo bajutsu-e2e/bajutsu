@@ -93,6 +93,20 @@ def resolve_udid(udid: str, run: RunFn = _real_run) -> str:
     return udid
 
 
+def booted_udids(run: RunFn = _real_run) -> list[str]:
+    """UDIDs of the currently-booted Simulators (empty on any failure)."""
+    try:
+        data = json.loads(run(list_booted_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError):
+        return []
+    return [
+        str(dev["udid"])
+        for devices in (data.get("devices") or {}).values()
+        for dev in devices
+        if dev.get("state") == "Booted" and dev.get("udid")
+    ]
+
+
 class Env:
     """Thin simctl front end for one device."""
 

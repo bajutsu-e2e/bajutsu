@@ -17,6 +17,25 @@ def test_command_builders() -> None:
     ]
 
 
+def test_booted_udids_parses_simctl() -> None:
+    import json
+
+    payload = json.dumps({
+        "devices": {
+            "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                {"udid": "AAA", "state": "Booted"},
+                {"udid": "BBB", "state": "Shutdown"},
+            ],
+        }
+    })
+    assert env.booted_udids(run=lambda args, e=None: payload) == ["AAA"]
+
+    def boom(args: list[str], e: object = None) -> str:
+        raise OSError("simctl not found")
+
+    assert env.booted_udids(run=boom) == []  # failure -> empty, never raises
+
+
 def test_locale_args() -> None:
     assert env.locale_args("ja_JP") == ["-AppleLocale", "ja_JP", "-AppleLanguages", "(ja)"]
     assert env.locale_args("en") == ["-AppleLocale", "en", "-AppleLanguages", "(en)"]
