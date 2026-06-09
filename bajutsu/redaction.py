@@ -10,6 +10,7 @@ masked key). Images (screenshots/video) cannot be masked and are left as-is.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact
@@ -37,6 +38,7 @@ class Redactor:
     def __init__(self, redact: Redact | None) -> None:
         redact = redact or Redact()
         self._keys: list[str] = [*redact.headers, *redact.fields]
+        self._header_names: set[str] = {h.lower() for h in redact.headers}
         self._labels: set[str] = set(redact.labels)
         self._patterns = _patterns(self._keys)
 
@@ -66,4 +68,25 @@ class Redactor:
                     if isinstance(raw, str) and raw:
                         new[field] = self.redact_text(raw)
             out.append(new)  # type: ignore[arg-type]
+        return out
+
+    def redact_exchange(self, exchange: dict[str, Any]) -> dict[str, Any]:
+        """Mask secrets in one network-exchange dict: a header value is masked whole when
+        its name is a configured header (else scrubbed as free text), and the url / bodies
+        are scrubbed as free text so query params and body fields (token / password) are
+        caught — which a whole-JSON text pass misses, since bodies are escaped strings."""
+        if not self.active:
+            return exchange
+        out = dict(exchange)
+        for key in ("requestHeaders", "responseHeaders"):
+            headers = out.get(key)
+            if isinstance(headers, dict):
+                out[key] = {
+                    k: PLACEHOLDER if str(k).lower() in self._header_names else self.redact_text(str(v))
+                    for k, v in headers.items()
+                }
+        for key in ("url", "requestBody", "responseBody"):
+            value = out.get(key)
+            if isinstance(value, str):
+                out[key] = self.redact_text(value)
         return out

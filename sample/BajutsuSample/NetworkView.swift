@@ -35,8 +35,13 @@ struct NetworkView: View {
                 // Request-pattern buttons: query parameters, a POST body, and DELETE.
                 Button("GET query") { send("GET", "\(base)/get?q=hello&n=42") }
                     .accessibilityIdentifier("net.get-query")
-                Button("POST body") { send("POST", "\(base)/post", body: #"{"name":"bajutsu","n":42}"#) }
-                    .accessibilityIdentifier("net.post")
+                // Carries a secret header + body field to exercise redaction of evidence.
+                Button("POST body") {
+                    send("POST", "\(base)/post",
+                         body: #"{"name":"bajutsu","n":42,"password":"hunter2"}"#,
+                         headers: ["Authorization": "Bearer demo-secret-abc123"])
+                }
+                .accessibilityIdentifier("net.post")
                 Button("DELETE") { send("DELETE", "\(base)/delete") }
                     .accessibilityIdentifier("net.delete")
 
@@ -100,7 +105,8 @@ struct NetworkView: View {
     }
 
     // Issue a request with an explicit method and optional JSON body (BajutsuKit captures it).
-    private func send(_ method: String, _ urlStr: String, body: String? = nil) {
+    private func send(_ method: String, _ urlStr: String, body: String? = nil,
+                      headers: [String: String] = [:]) {
         status = "loading"
         guard let url = URL(string: urlStr) else { status = "bad-url"; return }
         var req = URLRequest(url: url)
@@ -109,6 +115,7 @@ struct NetworkView: View {
             req.httpBody = Data(body.utf8)
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        for (key, value) in headers { req.setValue(value, forHTTPHeaderField: key) }
         URLSession.shared.dataTask(with: req) { _, response, error in
             Task { @MainActor in
                 if let http = response as? HTTPURLResponse {

@@ -49,8 +49,8 @@ def _write_network(
     for ex, received in timed:
         d = ex.model_dump(by_alias=True, exclude_none=True)
         d["startedAt"] = round(max(0.0, received - scenario_start - (ex.duration_ms or 0.0) / 1000.0), 3)
-        data.append(d)
-    text = redactor.redact_text(json.dumps(data, ensure_ascii=False, indent=2))
+        data.append(redactor.redact_exchange(d))
+    text = json.dumps(data, ensure_ascii=False, indent=2)
     out = run_dir / sid / "network.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
