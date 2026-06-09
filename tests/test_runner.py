@@ -8,8 +8,8 @@ from pathlib import Path
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.runner import device_teardown, run_all, run_and_report
-from bajutsu.scenario import Redact, Scenario
+from bajutsu.runner import device_relauncher, device_teardown, run_all, run_and_report
+from bajutsu.scenario import Redact, Relaunch, Scenario
 
 
 def _eff() -> Effective:
@@ -75,6 +75,29 @@ def test_device_teardown_terminates_the_app() -> None:
     teardown = device_teardown("UDID-1", env_run=fake_run)
     teardown(_eff(), Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}))
     assert calls == [["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"]]
+
+
+def test_relauncher_relaunches_with_locale_and_overrides() -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], env: object = None) -> str:
+        calls.append(args)
+        return ""
+
+    # Scenario locale (ja_JP) overrides the app/config default (en_US from _eff()).
+    scn = Scenario.model_validate(
+        {"name": "a", "preconditions": {"locale": "ja_JP"}, "steps": [{"tap": {"id": "ok"}}]}
+    )
+    driver = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
+    relaunch = device_relauncher("UDID-1", env_run=fake_run)(_eff(), scn, driver)
+    relaunch(Relaunch(env={"K": "V"}, args=["--fresh"]))
+
+    assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
+    launch = next(c for c in calls if "launch" in c)
+    assert "--fresh" in launch  # per-relaunch arg
+    # Locale forced via app launch args, scenario locale winning.
+    assert launch[launch.index("-AppleLocale") + 1] == "ja_JP"
+    assert "(ja)" in launch
 
 
 def test_run_and_report(tmp_path: Path) -> None:

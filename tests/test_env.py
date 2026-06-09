@@ -17,6 +17,11 @@ def test_command_builders() -> None:
     ]
 
 
+def test_locale_args() -> None:
+    assert env.locale_args("ja_JP") == ["-AppleLocale", "ja_JP", "-AppleLanguages", "(ja)"]
+    assert env.locale_args("en") == ["-AppleLocale", "en", "-AppleLanguages", "(en)"]
+
+
 def test_child_env_prefix() -> None:
     assert env.child_env({"FOO": "1"}) == {"SIMCTL_CHILD_FOO": "1"}
 

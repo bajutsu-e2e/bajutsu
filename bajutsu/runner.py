@@ -84,7 +84,10 @@ def launch_driver(
     e.boot()
     e.terminate(eff.bundle_id)  # clean start so readiness reflects the new launch
     launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env}
-    e.launch(eff.bundle_id, [*eff.launch_args, *pre.launch_args], launch_env)
+    locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
+    e.launch(
+        eff.bundle_id, [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)], launch_env
+    )
     if pre.deeplink is not None:
         e.openurl(pre.deeplink)
     driver = make_driver(actuator, udid)
@@ -220,7 +223,10 @@ def device_relauncher(udid: str, env_run: env.RunFn = env._real_run) -> Relaunch
         def relaunch(opts: Relaunch) -> None:
             e.terminate(eff.bundle_id)
             launch_env = {**eff.launch_env, **pre.launch_env, **(opts.env or {})}
-            launch_args = [*eff.launch_args, *pre.launch_args, *(opts.args or [])]
+            locale = pre.locale or eff.locale
+            launch_args = [
+                *eff.launch_args, *pre.launch_args, *(opts.args or []), *env.locale_args(locale)
+            ]
             e.launch(eff.bundle_id, launch_args, launch_env)
             _await_ready(driver)
 
