@@ -1,0 +1,7 @@
+# Phase 5: device-environment steps (simctl-backed). Run via an injected DeviceControl.
+- name: set location then receive a push
+  steps:
+    - setLocation: { lat: 35.681, lon: 139.767 }
+    - push: { payload: { aps: { alert: "You have a new message" } } }
+  expect:
+    - exists: { id: home.title }

@@ -1,0 +1,10 @@
+# Phase 3: one scenario, three rows. Each runs in its own clean environment.
+- name: search returns results
+  data:
+    - { q: dog }
+    - { q: cat }
+    - { q: "ねこ" }
+  steps:
+    - type: { into: { id: search.field }, text: "${row.q}" }
+  expect:
+    - exists: { id: results.list }

@@ -1,0 +1,6 @@
+# Reusable login component (Phase 2). Callers supply email / password via `use: { with }`.
+params: [email, password]
+steps:
+  - type: { into: { id: auth.email }, text: "${params.email}" }
+  - type: { into: { id: auth.password }, text: "${params.password}" }
+  - tap: { id: auth.submit }
