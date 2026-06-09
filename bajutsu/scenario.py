@@ -12,7 +12,7 @@ from typing import Any, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from bajutsu import _yaml
+from bajutsu import _yaml, interp
 from bajutsu.drivers import base
 
 Point = tuple[float, float]
@@ -31,7 +31,7 @@ _CAPTURE_MODS = {"before", "after", "around", "onError"}
 
 _STEP_ACTIONS = (
     "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
-    "wait", "assert_", "relaunch",
+    "wait", "assert_", "relaunch", "use",
 )
 _ASSERTION_KINDS = (
     "exists", "value", "label", "count", "enabled", "disabled", "selected", "request",
@@ -271,6 +271,15 @@ class Assertion(_Model):
 # --- Steps ---
 
 
+class Use(_Model):
+    """Invoke a reusable component, substituting its declared params with `with`. The
+    `use` step is expanded away (replaced by the component's steps) before the run, so it
+    is a compile-time macro, not a runtime action — determinism is unaffected."""
+
+    component: str
+    with_: dict[str, str] = Field(default_factory=dict, alias="with")
+
+
 class Step(_Model):
     """One action plus optional modifiers (capture / name)."""
 
@@ -284,6 +293,7 @@ class Step(_Model):
     wait: Wait | None = None
     assert_: list[Assertion] | None = Field(default=None, alias="assert")
     relaunch: Relaunch | None = None
+    use: Use | None = None
     capture: list[str] | None = None
     name: str | None = None
 
@@ -384,6 +394,14 @@ class Scenario(_Model):
     redact: Redact | None = None
 
 
+class Component(_Model):
+    """A reusable, parameterized sequence of steps. `params` are the names a caller must
+    supply via `use: { with: {...} }`; the steps reference them as `${params.<name>}`."""
+
+    params: list[str] = Field(default_factory=list)
+    steps: list[Step]
+
+
 Selector.model_rebuild()
 
 
@@ -393,6 +411,66 @@ def load_scenarios(text: str) -> list[Scenario]:
     if not isinstance(data, list):
         raise ValueError("シナリオファイルはシナリオの配列（§6.1）")
     return [Scenario.model_validate(item) for item in data]
+
+
+def load_component(text: str) -> Component:
+    """Parse a YAML string (a single component mapping) into a validated Component."""
+    return Component.model_validate(_yaml.safe_load(text))
+
+
+def _interp_steps(steps: list[Step], bindings: dict[str, str]) -> list[Step]:
+    """Substitute `bindings` into each step (via a model_dump round-trip) and re-validate.
+    Aliases are preserved (by_alias) so the dump re-parses cleanly."""
+    out: list[Step] = []
+    for st in steps:
+        dumped = st.model_dump(by_alias=True, exclude_none=True)
+        out.append(Step.model_validate(interp.interpolate(dumped, bindings)))
+    return out
+
+
+def expand_components(
+    scenarios: list[Scenario],
+    resolve: Callable[[str], Component],
+    max_depth: int = 25,
+) -> None:
+    """Replace every `use` step with the referenced component's steps (params
+    substituted), recursively and in place. A component may itself `use` another. Raises
+    on a missing/unknown param, a residual `${params.*}` token (referencing an undeclared
+    param), a reference cycle, or excessive nesting depth. Pure compile-time expansion —
+    after this no `use` steps remain, so the run loop is unaffected."""
+    cache: dict[str, Component] = {}
+
+    def expand(steps: list[Step], stack: list[str]) -> list[Step]:
+        if len(stack) > max_depth:
+            raise ValueError(f"component のネストが深すぎます（>{max_depth}）: {' -> '.join(stack)}")
+        out: list[Step] = []
+        for st in steps:
+            if st.use is None:
+                out.append(st)
+                continue
+            ref = st.use.component
+            if ref in stack:
+                raise ValueError(f"component が循環参照しています: {' -> '.join([*stack, ref])}")
+            if ref not in cache:
+                cache[ref] = resolve(ref)
+            comp = cache[ref]
+            args = st.use.with_
+            missing = sorted(set(comp.params) - set(args))
+            unknown = sorted(set(args) - set(comp.params))
+            if missing:
+                raise ValueError(f"component {ref!r} の params が不足: {missing}")
+            if unknown:
+                raise ValueError(f"component {ref!r} に未知の params: {unknown}")
+            substituted = _interp_steps(comp.steps, {f"params.{k}": v for k, v in args.items()})
+            dumps = [s.model_dump(by_alias=True, exclude_none=True) for s in substituted]
+            residual = sorted(t for t in interp.find_tokens(dumps) if t.startswith("params."))
+            if residual:
+                raise ValueError(f"component {ref!r} が未宣言の param を参照: {residual}")
+            out.extend(expand(substituted, [*stack, ref]))
+        return out
+
+    for scenario in scenarios:
+        scenario.steps = expand(scenario.steps, [])
 
 
 def select_scenarios(

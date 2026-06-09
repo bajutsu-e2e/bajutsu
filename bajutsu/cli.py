@@ -33,6 +33,8 @@ from bajutsu.scenario import (
     apply_setups,
     dump_mocks,
     dump_scenarios,
+    expand_components,
+    load_component,
     load_scenarios,
     select_scenarios,
 )
@@ -117,6 +119,16 @@ def run(
         )
     except (OSError, ValueError, IndexError) as e:
         typer.echo(f"setup の読み込みに失敗: {e}")
+        raise typer.Exit(2) from None
+    # Expand reusable components (`use` steps) into their parameterized steps. Runs after
+    # setup expansion so prelude steps may also `use` components.
+    try:
+        expand_components(
+            scenarios,
+            lambda ref: load_component((base_dir / ref).read_text(encoding="utf-8")),
+        )
+    except (OSError, ValueError) as e:
+        typer.echo(f"component の展開に失敗: {e}")
         raise typer.Exit(2) from None
     if not erase:
         for s in scenarios:
