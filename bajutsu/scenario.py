@@ -31,7 +31,7 @@ _CAPTURE_MODS = {"before", "after", "around", "onError"}
 
 _STEP_ACTIONS = (
     "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
-    "wait", "assert_", "relaunch", "use",
+    "wait", "assert_", "relaunch", "set_location", "push", "use",
 )
 _ASSERTION_KINDS = (
     "exists", "value", "label", "count", "enabled", "disabled", "selected", "request",
@@ -199,6 +199,20 @@ class Relaunch(_Model):
     args: list[str] | None = None
 
 
+class SetLocation(_Model):
+    """Override the simulated device's GPS location (simctl location set)."""
+
+    lat: float
+    lon: float
+
+
+class Push(_Model):
+    """Deliver a simulated push notification (simctl push) with this APNs payload
+    (e.g. {"aps": {"alert": "..."}}) to the app under test."""
+
+    payload: dict[str, Any]
+
+
 # --- Assertions ---
 
 
@@ -293,6 +307,8 @@ class Step(_Model):
     wait: Wait | None = None
     assert_: list[Assertion] | None = Field(default=None, alias="assert")
     relaunch: Relaunch | None = None
+    set_location: SetLocation | None = Field(default=None, alias="setLocation")
+    push: Push | None = None
     use: Use | None = None
     capture: list[str] | None = None
     name: str | None = None

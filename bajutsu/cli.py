@@ -22,6 +22,7 @@ from bajutsu.evidence import FileSink
 from bajutsu.network import NetworkCollector
 from bajutsu.record import record as record_loop
 from bajutsu.runner import (
+    device_control,
     device_factory,
     device_pool,
     device_relauncher,
@@ -193,11 +194,13 @@ def run(
         # fixed device, so the parallel sink captures instant evidence only (udid=None).
         factory, relauncher, release = device_pool(udids, backends, eff.bundle_id)
         teardown = None
+        control = None  # device control needs a single pinned device; unavailable in parallel
         sink = FileSink(Path("runs") / run_id, redact=eff.redact, secrets=secret_values)
     else:
         factory = device_factory(udids[0], backends)
         relauncher = device_relauncher(udids[0])
         teardown = device_teardown(udids[0])
+        control = device_control(udids[0], eff.bundle_id)
         sink = FileSink(
             Path("runs") / run_id, udid=udids[0], log_predicate=log_predicate or None,
             log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact, secrets=secret_values,
@@ -207,6 +210,7 @@ def run(
             eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
             teardown=teardown, collector=collector, relauncher=relauncher,
             workers=workers, release=release, bindings=secret_bindings, secret_values=secret_values,
+            control=control,
         )
     finally:
         if collector is not None:

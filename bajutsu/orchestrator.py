@@ -41,6 +41,15 @@ NetworkSource = Callable[[], list[NetworkExchange]]
 RelaunchFn = Callable[[Relaunch], None]
 
 
+class DeviceControl(Protocol):
+    """Device-environment operations a step may trigger (simctl-backed). Injected by the
+    runner so the orchestrator stays backend-agnostic; None means unavailable (the fake
+    driver, or parallel runs which don't pin a single device)."""
+
+    def set_location(self, lat: float, lon: float) -> None: ...
+    def push(self, payload: dict[str, object]) -> None: ...
+
+
 def _no_network() -> list[NetworkExchange]:
     return []
 
@@ -103,7 +112,7 @@ def scenario_slug(name: str) -> str:
 def _action_of(step: Step) -> str:
     for a in (
         "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
-        "wait", "assert_", "relaunch",
+        "wait", "assert_", "relaunch", "set_location", "push",
     ):
         if getattr(step, a) is not None:
             return a
@@ -216,8 +225,12 @@ def _interp_asserts(asserts: list[Assertion], bindings: Mapping[str, str]) -> li
     ]
 
 
-def _do_action(driver: base.Driver, step: Step, relaunch: RelaunchFn | None = None) -> None:
-    """Run tap / longPress / type / swipe / relaunch (wait and assert live in the run loop)."""
+def _do_action(
+    driver: base.Driver, step: Step, relaunch: RelaunchFn | None = None,
+    control: DeviceControl | None = None,
+) -> None:
+    """Run tap / longPress / type / swipe / relaunch / device control (wait and assert live
+    in the run loop)."""
     if step.tap is not None:
         driver.tap(step.tap.as_selector())
         return
@@ -254,6 +267,16 @@ def _do_action(driver: base.Driver, step: Step, relaunch: RelaunchFn | None = No
             raise base.UnsupportedAction("relaunch にはデバイス環境が必要（fake driver では実行不可）")
         relaunch(step.relaunch)
         return
+    if step.set_location is not None:
+        if control is None:
+            raise base.UnsupportedAction("setLocation にはデバイス環境が必要（fake driver では実行不可）")
+        control.set_location(step.set_location.lat, step.set_location.lon)
+        return
+    if step.push is not None:
+        if control is None:
+            raise base.UnsupportedAction("push にはデバイス環境が必要（fake driver では実行不可）")
+        control.push(step.push.payload)
+        return
     raise AssertionError("未対応アクション")
 
 
@@ -274,6 +297,7 @@ BlockedHandler = Callable[[base.Driver], bool]
 def _run_step_body(
     driver: base.Driver, step: Step, kind: str, clock: Clock, network: NetworkSource,
     relaunch: RelaunchFn | None = None, bindings: Mapping[str, str] | None = None,
+    control: DeviceControl | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results)."""
     step = _interp_step(step, bindings or {})
@@ -287,7 +311,7 @@ def _run_step_body(
             results = assertions.evaluate(driver.query(), step.assert_, network())
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results
-        _do_action(driver, step, relaunch)
+        _do_action(driver, step, relaunch, control)
         return True, "", []
     except (base.SelectorError, base.UnsupportedAction, NotImplementedError) as e:
         return False, str(e), []
@@ -375,6 +399,7 @@ def run_scenario(
     network: NetworkSource = _no_network,
     relaunch: RelaunchFn | None = None,
     bindings: Mapping[str, str] | None = None,
+    control: DeviceControl | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -398,7 +423,7 @@ def run_scenario(
     try:
         failure = _run_steps(
             driver, scenario, clock, sink, on_blocked, wants_screen_changed,
-            outcomes, scenario_start, sid, network, relaunch, bindings,
+            outcomes, scenario_start, sid, network, relaunch, bindings, control,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, bindings or {})
@@ -434,6 +459,7 @@ def _run_steps(
     network: NetworkSource,
     relaunch: RelaunchFn | None = None,
     bindings: Mapping[str, str] | None = None,
+    control: DeviceControl | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None."""
     failure: str | None = None
@@ -446,9 +472,13 @@ def _run_steps(
         before = driver.query() if wants_screen_changed else None
         start = clock.now()
         outcome.started_at = max(0.0, start - scenario_start)
-        ok, reason, results = _run_step_body(driver, step, kind, clock, network, relaunch, bindings)
+        ok, reason, results = _run_step_body(
+            driver, step, kind, clock, network, relaunch, bindings, control
+        )
         if not ok and on_blocked is not None and on_blocked(driver):
-            ok, reason, results = _run_step_body(driver, step, kind, clock, network, relaunch, bindings)  # retry
+            ok, reason, results = _run_step_body(
+                driver, step, kind, clock, network, relaunch, bindings, control
+            )  # retry
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 
