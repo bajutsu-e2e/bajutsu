@@ -34,6 +34,7 @@ from bajutsu.scenario import (
     dump_mocks,
     dump_scenarios,
     load_scenarios,
+    select_scenarios,
 )
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
@@ -69,6 +70,8 @@ def run(
     scenario: str,
     app_name: str = typer.Option(..., "--app"),
     backend: str = typer.Option("", help="comma list; first available is the actuator"),
+    tag: str = typer.Option("", "--tag", help="comma list; run only scenarios with any of these tags"),
+    exclude: str = typer.Option("", "--exclude", help="comma list; skip scenarios with any of these tags"),
     udid: str = typer.Option("booted"),
     workers: int = typer.Option(1),
     erase: bool = typer.Option(True, "--erase/--no-erase", help="erase the device before each test"),
@@ -97,6 +100,13 @@ def run(
         typer.echo(f"scenario not found: {scenario}")
         raise typer.Exit(2)
     scenarios = load_scenarios(scenario_path.read_text(encoding="utf-8"))
+    include = [t.strip() for t in tag.split(",") if t.strip()]
+    excluded = [t.strip() for t in exclude.split(",") if t.strip()]
+    if include or excluded:
+        scenarios = select_scenarios(scenarios, include, excluded)
+        if not scenarios:
+            typer.echo("no scenarios match --tag/--exclude")
+            raise typer.Exit(2)
     # Prepend any reusable setup prelude (its steps run before the scenario's own). The
     # setup reference is a scenario file resolved relative to this scenario's directory.
     base_dir = scenario_path.parent

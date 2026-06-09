@@ -374,6 +374,7 @@ class Scenario(_Model):
     """One scenario."""
 
     name: str
+    tags: list[str] = Field(default_factory=list)
     preconditions: Preconditions = Field(default_factory=Preconditions)
     steps: list[Step]
     expect: list[Assertion] = Field(default_factory=list)
@@ -392,6 +393,24 @@ def load_scenarios(text: str) -> list[Scenario]:
     if not isinstance(data, list):
         raise ValueError("シナリオファイルはシナリオの配列（§6.1）")
     return [Scenario.model_validate(item) for item in data]
+
+
+def select_scenarios(
+    scenarios: list[Scenario], include: list[str], exclude: list[str]
+) -> list[Scenario]:
+    """Filter scenarios by tag, preserving order. A scenario is kept when it carries at
+    least one `include` tag (or `include` is empty) and none of the `exclude` tags;
+    `exclude` wins over `include`. Pure metadata filtering — never mutates or reorders."""
+    inc, exc = set(include), set(exclude)
+    out: list[Scenario] = []
+    for s in scenarios:
+        tags = set(s.tags)
+        if exc & tags:
+            continue
+        if inc and not (inc & tags):
+            continue
+        out.append(s)
+    return out
 
 
 def _prune(obj: Any) -> Any:
