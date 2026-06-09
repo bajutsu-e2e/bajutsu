@@ -366,7 +366,10 @@ def test_html_exchanges_filtered_by_domain(tmp_path: Path) -> None:
         '{"method":"POST","url":"https://tracker.io/log","status":204,"startedAt":0.3}]',
         encoding="utf-8",
     )
-    definition = {"name": "s1", "steps": [{"tap": {"id": "a"}}], "networkSteps": {"domains": ["example.com"]}}
+    definition = {
+        "name": "s1", "steps": [{"tap": {"id": "a"}}],
+        "network": {"filter": {"domains": ["example.com"]}},
+    }
     r = RunResult(
         scenario="s1", ok=True,
         steps=[StepOutcome(index=0, action="tap", ok=True, started_at=0.0)],

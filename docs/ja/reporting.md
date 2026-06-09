@@ -91,7 +91,7 @@ detail 中の識別子（`#home.title`）と定数リテラル（`“text”`・
 描画し、ソリッドな action/assert バッジとは**異なるトンマナ**にして、変数と定数を一目で識別できる
 ようにしている。`assert` ステップの複数チェックは**ネストしたテーブル**になり、1 アサーション 1 行で
 `kind` / `target` / `comparison` のセルに分割する（読みにくい `a; b; c` を解消）。実行されなかった
-ステップ（失敗で停止）も skipped として残る。**観測した通信を時系列で steps に差し込む**（各々シナリオ開始からのオフセットで配置）: HTTP メソッドを中立バッジ、ステータスを `result` 列に置き、通信の設定（method / endpoint / status / duration / ヘッダ）を detail セル内の**ネストしたテーブル**で表示する。どの通信を出すかはシナリオの `networkSteps.domains`（URL ホスト）で絞る。Network タブは引き続き全件を載せる。**preconditions** テーブルは折りたたみ可（key / value）。
+ステップ（失敗で停止）も skipped として残る。**観測した通信を時系列で steps に差し込む**（各々シナリオ開始からのオフセットで配置）: HTTP メソッドを中立バッジ、ステータスを `result` 列に置き、通信の設定（method / endpoint / status / duration / ヘッダ）を detail セル内の**ネストしたテーブル**で表示する。どの通信を出すかはシナリオの `network.filter.domains`（URL ホスト）で絞る。Network タブは引き続き全件を載せる。**preconditions** テーブルは折りたたみ可（key / value）。
 **expectations** テーブルは並行カラム `result` / `kind`（バッジ）/ `target`（検査対象セレクタ＝例
 `#counter.value`）/ `comparison`（例 `== “2”`）/ `reason`（同じ id/定数トークン）。**Rich / YAML
 トグル**で同じタブを構造化ビューと生のシナリオ YAML に切り替えられる。

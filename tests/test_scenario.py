@@ -92,16 +92,16 @@ def test_unknown_key_rejected() -> None:
         Step.model_validate({"tapp": {"id": "a"}})  # typo rejected by extra=forbid
 
 
-def test_network_steps_domain_filter() -> None:
+def test_network_filter_domains() -> None:
     s = Scenario.model_validate({
         "name": "n",
         "steps": [{"tap": {"id": "a"}}],
-        "networkSteps": {"domains": ["example.com", "api.example.com"]},
+        "network": {"filter": {"domains": ["example.com", "api.example.com"]}},
     })
-    assert s.network_steps is not None
-    assert s.network_steps.domains == ["example.com", "api.example.com"]
+    assert s.network is not None and s.network.filter is not None
+    assert s.network.filter.domains == ["example.com", "api.example.com"]
     # Unset is allowed (shows every exchange in Steps).
-    assert Scenario.model_validate({"name": "n", "steps": [{"tap": {"id": "a"}}]}).network_steps is None
+    assert Scenario.model_validate({"name": "n", "steps": [{"tap": {"id": "a"}}]}).network is None
 
 
 def test_wait_forms() -> None:

@@ -98,7 +98,7 @@ failure) still appear, marked as skipped. **Observed network exchanges are inter
 steps** in time order (each placed by its offset from the scenario start): a row with the HTTP method
 as a neutral badge, the status in the `result` column, and the exchange's settings (method / endpoint
 / status / duration / headers) as a **nested table** in the detail cell. Which requests appear is
-filtered by the scenario's `networkSteps.domains` (by URL host); the Network tab still lists them all.
+filtered by the scenario's `network.filter.domains` (by URL host); the Network tab still lists them all.
 The **preconditions** table is collapsible (key / value).
 The **expectations** table uses parallel columns `result` / `kind` (badge) / `target` (the checked
 selector, e.g. `#counter.value`) / `comparison` (e.g. `== “2”`) / `reason`, with the same id/constant

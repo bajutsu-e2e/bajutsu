@@ -597,7 +597,8 @@ def _scenario_data(
     net = _artifact(r, "network")
     net_data = _read_json(run_dir, net.name) if (net is not None and run_dir is not None) else None
     all_exchanges = [d for d in net_data if isinstance(d, dict)] if isinstance(net_data, list) else []
-    domains = ((definition or {}).get("networkSteps") or {}).get("domains") or []
+    net_filter = ((definition or {}).get("network") or {}).get("filter") or {}
+    domains = net_filter.get("domains") or []
     step_exchanges = [
         d for d in all_exchanges if _domain_allowed(_exchange_host(str(d.get("url") or "")), domains)
     ]

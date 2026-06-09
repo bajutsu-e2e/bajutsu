@@ -32,7 +32,7 @@ One file = **a list of scenarios**. `load_scenarios()` rejects a top level that 
 | `steps` | list | required | The ordered actions (below) |
 | `expect` | list | `[]` | Final assertions after all steps pass ([selectors](selectors.md#assertion-evaluation)) |
 | `capturePolicy` | list | `[]` | Repeatedly-firing evidence rules ([evidence](evidence.md#a-capturepolicy-rule-based)) |
-| `networkSteps` | object | none | `{ domains: [...] }` — which observed requests to interleave into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
+| `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
 
 ```yaml

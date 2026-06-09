@@ -32,7 +32,7 @@
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
 | `capturePolicy` | list | `[]` | 繰り返し発火する証跡ルール（[evidence](evidence.md#a-capturepolicyルール方式)） |
-| `networkSteps` | object | なし | `{ domains: [...] }` — レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定は全件表示。Network タブは常に全件（[reporting](reporting.md#reporthtml)） |
+| `network` | object | なし | `{ filter: { domains: [...] } }` — `filter.domains` でレポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定は全件表示。Network タブは常に全件（[reporting](reporting.md#reporthtml)） |
 | `redact` | object | なし | 証跡保存前のマスク対象（[evidence](evidence.md#マスキングredact)） |
 
 ```yaml

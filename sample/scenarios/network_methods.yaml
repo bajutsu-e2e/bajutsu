@@ -1,12 +1,12 @@
 # Network request-pattern dataset: query parameters, a POST body, and DELETE.
 # The sample's Network tab fires each request against an echo endpoint (httpbin.org);
 # BajutsuKit captures what the app sent and bajutsu asserts the request shape — method,
-# endpoint, query (in the url) and the request body. `networkSteps` keeps the report's
+# endpoint, query (in the url) and the request body. `network.filter` keeps the report's
 # result timeline focused on httpbin requests.
 - name: GET with query parameters
   preconditions:
     launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: network }
-  networkSteps: { domains: ["httpbin.org"] }
+  network: { filter: { domains: ["httpbin.org"] } }
   steps:
     - tap: { id: net.get-query }
     - wait: { until: { request: { method: GET, path: /get } }, timeout: 15 }
@@ -17,7 +17,7 @@
 - name: POST with a JSON body
   preconditions:
     launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: network }
-  networkSteps: { domains: ["httpbin.org"] }
+  network: { filter: { domains: ["httpbin.org"] } }
   steps:
     - tap: { id: net.post }
     - wait: { until: { request: { method: POST, path: /post } }, timeout: 15 }
@@ -28,7 +28,7 @@
 - name: DELETE request
   preconditions:
     launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: network }
-  networkSteps: { domains: ["httpbin.org"] }
+  network: { filter: { domains: ["httpbin.org"] } }
   steps:
     - tap: { id: net.delete }
     - wait: { until: { request: { method: DELETE, path: /delete } }, timeout: 15 }

@@ -335,13 +335,20 @@ class Redact(_Model):
     fields: list[str] = Field(default_factory=list)
 
 
-class NetworkSteps(_Model):
+class NetworkFilter(_Model):
     """Which observed requests to interleave into the report's Steps timeline. With
     `domains` set, only exchanges whose URL host matches one of them — exactly or as a
     parent suffix (`example.com` matches `api.example.com`) — appear in Steps; empty /
     unset shows every captured exchange. The Network tab always lists them all."""
 
     domains: list[str] = Field(default_factory=list)
+
+
+class Network(_Model):
+    """Per-scenario network settings. `filter` scopes which observed requests are
+    interleaved into the report's Steps timeline."""
+
+    filter: NetworkFilter | None = None
 
 
 class MockResponse(_Model):
@@ -371,7 +378,7 @@ class Scenario(_Model):
     steps: list[Step]
     expect: list[Assertion] = Field(default_factory=list)
     capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
-    network_steps: NetworkSteps | None = Field(default=None, alias="networkSteps")
+    network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
 
