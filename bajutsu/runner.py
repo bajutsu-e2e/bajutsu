@@ -19,14 +19,23 @@ from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink
 from bajutsu.network import NetworkCollector, NetworkExchange
-from bajutsu.orchestrator import BlockedHandler, Clock, RunResult, run_scenario, scenario_slug
+from bajutsu.orchestrator import (
+    BlockedHandler,
+    Clock,
+    RelaunchFn,
+    RunResult,
+    run_scenario,
+    scenario_slug,
+)
 from bajutsu.redaction import Redactor
 from bajutsu.report import write_report
-from bajutsu.scenario import Preconditions, Scenario, dump_scenarios, scenario_dict
+from bajutsu.scenario import Preconditions, Relaunch, Scenario, dump_scenarios, scenario_dict
 
 DriverFactory = Callable[[Effective, Scenario], base.Driver]
 # Run after each scenario finishes (e.g. terminate the app -> back to SpringBoard).
 Teardown = Callable[[Effective, Scenario], None]
+# Builds the in-scenario relaunch function for a scenario (given its live driver).
+RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
 
 
 def _no_net() -> list[NetworkExchange]:
@@ -105,6 +114,7 @@ def run_all(
     teardown: Teardown | None = None,
     collector: NetworkCollector | None = None,
     run_dir: Path | None = None,
+    relauncher: RelaunchFactory | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each with a freshly built driver.
 
@@ -126,6 +136,7 @@ def run_all(
         result = run_scenario(
             driver, s, clock, sink=sink, on_blocked=on_blocked,
             scenario_id=sid, network=(collector.snapshot if collector is not None else _no_net),
+            relaunch=(relauncher(eff, s, driver) if relauncher is not None else None),
         )
         if teardown is not None:
             teardown(eff, s)
@@ -148,12 +159,13 @@ def run_and_report(
     sink: EvidenceSink | None = None,
     teardown: Teardown | None = None,
     collector: NetworkCollector | None = None,
+    relauncher: RelaunchFactory | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
     run_dir = runs_dir / run_id
     results = run_all(
         eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown,
-        collector=collector, run_dir=run_dir,
+        collector=collector, run_dir=run_dir, relauncher=relauncher,
     )
     # The merged Result tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).
@@ -194,3 +206,24 @@ def device_teardown(udid: str, env_run: env.RunFn = env._real_run) -> Teardown:
         e.terminate(eff.bundle_id)
 
     return teardown
+
+
+def device_relauncher(udid: str, env_run: env.RunFn = env._real_run) -> RelaunchFactory:
+    """A relauncher for a `relaunch` step: terminate the app and launch it again (re-applying
+    the scenario's launch env/args, plus any per-relaunch overrides), then wait until ready.
+    The device is not erased/rebooted — only the app process restarts."""
+    e = env.Env(udid, run=env_run)
+
+    def for_scenario(eff: Effective, scenario: Scenario, driver: base.Driver) -> RelaunchFn:
+        pre = scenario.preconditions
+
+        def relaunch(opts: Relaunch) -> None:
+            e.terminate(eff.bundle_id)
+            launch_env = {**eff.launch_env, **pre.launch_env, **(opts.env or {})}
+            launch_args = [*eff.launch_args, *pre.launch_args, *(opts.args or [])]
+            e.launch(eff.bundle_id, launch_args, launch_env)
+            _await_ready(driver)
+
+        return relaunch
+
+    return for_scenario

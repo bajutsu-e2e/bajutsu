@@ -18,7 +18,13 @@ from bajutsu.dotenv import load_dotenv
 from bajutsu.evidence import FileSink
 from bajutsu.network import NetworkCollector
 from bajutsu.record import record as record_loop
-from bajutsu.runner import device_factory, device_teardown, launch_driver, run_and_report
+from bajutsu.runner import (
+    device_factory,
+    device_relauncher,
+    device_teardown,
+    launch_driver,
+    run_and_report,
+)
 from bajutsu.scenario import Preconditions, dump_mocks, dump_scenarios, load_scenarios
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
@@ -124,6 +130,7 @@ def run(
         results, manifest = run_and_report(
             eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
             teardown=device_teardown(udid), collector=collector,
+            relauncher=device_relauncher(udid),
         )
     finally:
         if collector is not None:
