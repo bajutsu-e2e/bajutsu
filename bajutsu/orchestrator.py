@@ -22,10 +22,13 @@ from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.network import NetworkExchange
-from bajutsu.scenario import CaptureRule, Gone, Scenario, Selector, Step, Wait, WaitRequest
+from bajutsu.scenario import CaptureRule, Gone, Relaunch, Scenario, Selector, Step, Wait, WaitRequest
 
 # Returns the network exchanges observed so far (for `request` assertions / waits).
 NetworkSource = Callable[[], list[NetworkExchange]]
+# Performs an in-scenario app relaunch (terminate + launch). Injected by the runner so the
+# orchestrator stays backend-agnostic; None means relaunch is unavailable (e.g. fake driver).
+RelaunchFn = Callable[[Relaunch], None]
 
 
 def _no_network() -> list[NetworkExchange]:
@@ -182,7 +185,7 @@ def _wait_settled(driver: base.Driver, deadline: float, clock: Clock) -> tuple[b
     return True, ""
 
 
-def _do_action(driver: base.Driver, step: Step) -> None:
+def _do_action(driver: base.Driver, step: Step, relaunch: RelaunchFn | None = None) -> None:
     """Run tap / longPress / type / swipe / relaunch (wait and assert live in the run loop)."""
     if step.tap is not None:
         driver.tap(step.tap.as_selector())
@@ -216,7 +219,10 @@ def _do_action(driver: base.Driver, step: Step) -> None:
         driver.rotate(step.rotate.sel.as_selector(), step.rotate.radians)
         return
     if step.relaunch is not None:
-        raise NotImplementedError("relaunch は env 統合後（M1 後半）")
+        if relaunch is None:
+            raise base.UnsupportedAction("relaunch にはデバイス環境が必要（fake driver では実行不可）")
+        relaunch(step.relaunch)
+        return
     raise AssertionError("未対応アクション")
 
 
@@ -235,7 +241,8 @@ BlockedHandler = Callable[[base.Driver], bool]
 
 
 def _run_step_body(
-    driver: base.Driver, step: Step, kind: str, clock: Clock, network: NetworkSource
+    driver: base.Driver, step: Step, kind: str, clock: Clock, network: NetworkSource,
+    relaunch: RelaunchFn | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results)."""
     try:
@@ -248,7 +255,7 @@ def _run_step_body(
             results = assertions.evaluate(driver.query(), step.assert_, network())
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results
-        _do_action(driver, step)
+        _do_action(driver, step, relaunch)
         return True, "", []
     except (base.SelectorError, base.UnsupportedAction, NotImplementedError) as e:
         return False, str(e), []
@@ -334,6 +341,7 @@ def run_scenario(
     on_blocked: BlockedHandler | None = None,
     scenario_id: str | None = None,
     network: NetworkSource = _no_network,
+    relaunch: RelaunchFn | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -357,7 +365,7 @@ def run_scenario(
     try:
         failure = _run_steps(
             driver, scenario, clock, sink, on_blocked, wants_screen_changed,
-            outcomes, scenario_start, sid, network,
+            outcomes, scenario_start, sid, network, relaunch,
         )
         if failure is None and scenario.expect:
             expect_results = assertions.evaluate(driver.query(), scenario.expect, network())
@@ -390,6 +398,7 @@ def _run_steps(
     scenario_start: float,
     sid: str,
     network: NetworkSource,
+    relaunch: RelaunchFn | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None."""
     failure: str | None = None
@@ -402,9 +411,9 @@ def _run_steps(
         before = driver.query() if wants_screen_changed else None
         start = clock.now()
         outcome.started_at = max(0.0, start - scenario_start)
-        ok, reason, results = _run_step_body(driver, step, kind, clock, network)
+        ok, reason, results = _run_step_body(driver, step, kind, clock, network, relaunch)
         if not ok and on_blocked is not None and on_blocked(driver):
-            ok, reason, results = _run_step_body(driver, step, kind, clock, network)  # retry once
+            ok, reason, results = _run_step_body(driver, step, kind, clock, network, relaunch)  # retry
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 

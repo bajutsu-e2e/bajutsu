@@ -88,6 +88,8 @@ assertions.py  evidence.py ── intervals.py
 - シナリオスキーマ（厳格検証）と YAML ラウンドトリップ
 - 7 種のアサーション評価
 - Tier 2 run ループ（act → wait → verify）、`FakeDriver` で検証
+- DSL: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、
+  起動時の `locale` 適用、デバイスプール上の並列実行（`--workers`）
 - 証跡: 瞬時（`screenshot`/`elements`）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク
   collector（`network.json`）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用**
 - ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）:
@@ -108,12 +110,7 @@ assertions.py  evidence.py ── intervals.py
 
 | 機能 | 現状 | 場所 |
 |---|---|---|
-| 並列実行 `--workers` | CLI フラグは受けるが**未使用**（直列実行のみ） | `cli.py:55` |
-| `locale` の適用 | config / preconditions に値は持つが launch で**適用していない** | `config.py` / `scenario.py` |
-| `preconditions.setup`（再利用前段） | スキーマのみ。runner は読まない | `config.py` / `scenario.py` |
 | `mockServer`（外部モックコマンド） | config スキーマのみ。`cmd`/`port` の外部サーバは**未実装** — シナリオ `mocks`（宣言的なプロトコル内スタブ、実装済み）で代替 | `config.py` `MockServer` |
-| `relaunch` ステップ | `NotImplementedError`（env 統合後） | `orchestrator.py` `_do_action` |
-| `within` セレクタ | `NotImplementedError`（階層クエリが必要） | `drivers/base.py` `matches` |
 | `trace` コマンド | CLI に**未実装**（DESIGN の構想） | — |
 | `doctor` の実行可能ゲート | コードの `doctor` は **充足度スコアのみ**。env/権限ゲートは未実装 | `doctor.py` |
 

@@ -11,7 +11,7 @@ from collections.abc import Callable
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import Scenario
+from bajutsu.scenario import Relaunch, Scenario
 
 
 class FakeClock:
@@ -62,6 +62,22 @@ def test_happy_path_tap_and_expect() -> None:
     )
     assert result.ok
     assert driver.actions == [("tap", {"id": "settings.open"})]
+
+
+def test_relaunch_invokes_injected_callback() -> None:
+    # A relaunch step calls the injected relauncher with its env/args overrides.
+    seen: list[Relaunch] = []
+    scn = _scenario({"name": "r", "steps": [{"relaunch": {"env": {"SEED": "9"}, "args": ["--fresh"]}}]})
+    res = run_scenario(FakeDriver([_el("home.title", "H")]), scn, relaunch=seen.append)
+    assert res.ok, res.failure
+    assert len(seen) == 1 and seen[0].env == {"SEED": "9"} and seen[0].args == ["--fresh"]
+
+
+def test_relaunch_without_callback_fails_cleanly() -> None:
+    # No relauncher injected (e.g. fake driver) -> a clear failure, not a crash.
+    scn = _scenario({"name": "r", "steps": [{"relaunch": {}}]})
+    res = run_scenario(FakeDriver([_el("home.title", "H")]), scn)
+    assert not res.ok and "relaunch" in (res.failure or "")
 
 
 def test_react_transition_then_expect() -> None:

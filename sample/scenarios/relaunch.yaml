@@ -1,0 +1,14 @@
+# Relaunch: advance past onboarding, restart the app mid-scenario, and confirm it came
+# back fresh (UITEST mode resets state on launch), proving terminate + relaunch + ready.
+- name: relaunch restarts the app fresh
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: onboarding.start }, timeout: 5 }
+    - tap: { id: onboarding.start }                 # advance to the login screen
+    - wait: { for: { id: auth.email }, timeout: 5 }
+    - relaunch: {}                                  # terminate + launch again
+    - wait: { for: { id: onboarding.start }, timeout: 6 }  # back at onboarding = fresh start
+  expect:
+    - exists: { id: onboarding.start }
+    - exists: { id: auth.email, negate: true }      # the login screen is gone after relaunch

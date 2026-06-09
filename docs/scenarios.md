@@ -65,8 +65,8 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 | `launchArgs` | list[str] | `[]` | Launch arguments (appended to config's `launchArgs`) | ✅ |
 | `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `launchEnv`) | ✅ |
 | `deeplink` | str | none | Opened after launch via `simctl openurl` | ✅ |
-| `locale` | str | none | (**not wired**: value is held but not applied at launch) | ⚠️ |
-| `setup` | str | none | A reusable prelude scenario (**not wired**: schema only) | ⚠️ |
+| `locale` | str | none | Force the locale/language at launch (`-AppleLocale`/`-AppleLanguages`); overrides the app/config default | ✅ |
+| `setup` | str | none | A reusable prelude scenario file (resolved relative to this scenario); its steps run before this scenario's own | ✅ |
 
 > **launchEnv resolution order** is **config's `launchEnv` < preconditions' `launchEnv`** (the
 > one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
@@ -84,7 +84,7 @@ actions in one step is a validation error (`scenario.py` `_one_action`).
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` or `swipe: { from: [x,y], to: [x,y] }` | selector form and coordinate form cannot mix |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | condition wait (below) |
 | `assert` | `assert: [ <Assertion>... ]` | mid-step verification |
-| `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | **not implemented** (`NotImplementedError`) |
+| `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |
 
 Modifiers:
 
@@ -182,8 +182,8 @@ Shared by `capture:` (per-step) and `capturePolicy[].capture` (rules). The form 
 - **Modifiers**: `before` / `after` / `around` / `onError`
 
 Validation is over the set of kinds and modifiers (`scenario.py` `_validate_capture`). The
-acquisition timing per kind, and which are actually captured today (`network`/`appTrace` are not
-implemented), are in [evidence](evidence.md#evidence-kinds-and-acquisition-timing).
+acquisition timing per kind, and which are captured, are in
+[evidence](evidence.md#evidence-kinds-and-acquisition-timing).
 
 ## YAML caveat
 

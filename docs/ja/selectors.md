@@ -51,7 +51,7 @@ class Element(TypedDict):
 | `labelMatches` | label の部分一致 / 正規表現（`re.search`） | 補助 |
 | `traits` | トレイトで絞る（部分集合判定。例 `["button"]`） | 補助 |
 | `value` | accessibility value の完全一致 | 補助 |
-| `within` | 親要素でスコープ限定 | **未実装**（階層クエリが必要） |
+| `within` | コンテナでスコープ限定（幾何: 候補の frame が `within` の解決先の内側にあること。ネスト可） | 一意化 |
 | `index` | 複数マッチ時の n 番目（負数可） | 最終手段・フレーキー |
 
 > `id` / `idMatches` のマッチは `fnmatch.fnmatchcase`（大小区別あり glob）、`labelMatches` は
@@ -69,7 +69,7 @@ class Element(TypedDict):
 
 ### `matches(el, sel) -> bool`
 
-1 要素がセレクタの全条件を満たすか（AND）。`within` を含むと `NotImplementedError`。
+1 要素が要素単位の条件を満たすか（AND）。`within` は要素横断（空間）の制約で、`find_all` 側で解決する。
 
 ### `find_all(elements, sel) -> list[Element]`
 

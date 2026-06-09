@@ -49,7 +49,7 @@ apps:
 | `id_namespaces` | app | doctor が参照 |
 | `reserved_namespaces` | defaults | 情報用（doctor は app の `idNamespaces` のみで採点） |
 | `mock_server` | app | ⚠️ スキーマのみ・未配線 |
-| `setup` | app | ⚠️ スキーマのみ・未配線 |
+| `setup` | app | 既定の再利用前段（その steps を各シナリオの本編前に実行） |
 | `capture` | defaults | 既定証跡（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | defaults ∪ app | マージ（下記） |
 
@@ -73,7 +73,7 @@ config を指す。`--backend idb` で actuator 順を上書きできる（[cli]
 1. **実装規約を適用** — 主要要素に `accessibilityIdentifier`（アプリの名前空間で）、状態を
    label / traits / value に露出、launch hook、アニメ無効化。
 2. **`apps.<name>` を追加** — `bundleId`（必須）/ `deeplinkScheme` / 既定 `launchEnv` / `idNamespaces` 等。
-3. **（任意）再利用前段** — ログイン等を `setup:` シナリオに切り出す（※ 現状 `setup` は未配線）。
+3. **（任意）再利用前段** — ログイン等を `setup:` シナリオに切り出し、その steps を各シナリオの本編前に実行（app 単位 / シナリオ単位で指定）。
 4. **`bajutsu doctor --app <name>` で検証** — 規約充足度スコアを見る（下記）。
 5. **シナリオを配置** — 識別子はそのアプリの名前空間で書く。
 

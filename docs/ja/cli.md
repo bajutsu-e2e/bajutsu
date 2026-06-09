@@ -34,7 +34,7 @@ bajutsu run <scenario.yaml> --app <name> [options]
 | `--dismiss-alerts` | off | システムアラートを視覚で消す保険（要 API キー・[recording](recording.md#システムアラートの自動対処)） |
 | `--alert-instruction` | "" | dismiss の代わりに押すボタンの指示 |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
-| `--workers` | 1 | ⚠️ **未使用**（並列実行は未実装。直列に走る） |
+| `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` と `--no-network` が必要（プール数で上限） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書く（[evidence](evidence.md#sink証跡の出力先)）。

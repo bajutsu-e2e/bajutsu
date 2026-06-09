@@ -51,7 +51,7 @@ Addresses an element. **All provided fields are AND-ed.**
 | `labelMatches` | substring / regex over label (`re.search`) | auxiliary |
 | `traits` | narrow by trait (subset test, e.g. `["button"]`) | auxiliary |
 | `value` | exact accessibility value | auxiliary |
-| `within` | scope to a parent | **not implemented** (needs a hierarchical query) |
+| `within` | scope to a container (geometric: the candidate's frame must sit inside one the `within` selector resolves to; nestable) | disambiguation |
 | `index` | nth of multiple matches (negative allowed) | last resort · flaky |
 
 > `id` / `idMatches` match via `fnmatch.fnmatchcase` (case-sensitive glob), `labelMatches` via
@@ -70,8 +70,8 @@ functions.
 
 ### `matches(el, sel) -> bool`
 
-Whether one element satisfies all of the selector's conditions (AND). Including `within` raises
-`NotImplementedError`.
+Whether one element satisfies the per-element conditions (AND). `within` is a cross-element
+(spatial) constraint resolved by `find_all`, not here.
 
 ### `find_all(elements, sel) -> list[Element]`
 

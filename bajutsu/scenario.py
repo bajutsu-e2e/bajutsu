@@ -7,6 +7,7 @@ converted to drivers.base.Selector (a TypedDict) and passed to resolution.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -412,6 +413,29 @@ def scenario_dict(scenario: Scenario) -> dict[str, Any]:
 def dump_scenarios(scenarios: list[Scenario]) -> str:
     """Serialize scenarios back to YAML (round-trips through load_scenarios)."""
     return _yaml.safe_dump([scenario_dict(s) for s in scenarios])
+
+
+def apply_setups(
+    scenarios: list[Scenario],
+    default_setup: str | None,
+    resolve: Callable[[str], list[Step]],
+) -> None:
+    """Prepend each scenario's reusable setup prelude in place.
+
+    A scenario's `setup` precondition (falling back to the app/config default) names a
+    reusable prelude; `resolve` turns that reference into a list of steps (e.g. by loading
+    a shared scenario file and taking its steps). Those steps run before the scenario's
+    own — so a shared login / navigation flow is written once and reused. The same
+    reference is resolved at most once.
+    """
+    cache: dict[str, list[Step]] = {}
+    for scenario in scenarios:
+        ref = scenario.preconditions.setup or default_setup
+        if not ref:
+            continue
+        if ref not in cache:
+            cache[ref] = resolve(ref)
+        scenario.steps = [*cache[ref], *scenario.steps]
 
 
 def dump_mocks(mocks: list[Mock]) -> str:

@@ -53,7 +53,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> Ru
 | `longPress` | `driver.long_press(sel, duration)` |
 | `type` | `into` があれば先に `driver.tap(into)` → `driver.type_text(text)` |
 | `swipe` | `{from,to}` ならそのまま `driver.swipe`。`{on,direction}` なら対象を `resolve_unique` → frame 中心から方向へ 100pt（`_SWIPE_DIST`） |
-| `relaunch` | **`NotImplementedError`**（env 統合後の予定） |
+| `relaunch` | runner が注入する relauncher でアプリを terminate + 再起動（launch env/args 再適用＋上書き）し、ready まで待つ |
 
 ## 待機（条件待機）
 

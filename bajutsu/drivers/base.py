@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import fnmatch
 import re
-from typing import Protocol, TypedDict, runtime_checkable
+from typing import Protocol, TypedDict, cast, runtime_checkable
 
 # Coordinates in points: x, y.
 Point = tuple[float, float]
@@ -126,13 +126,11 @@ class AmbiguousSelector(SelectorError):
 
 
 def matches(el: Element, sel: Selector) -> bool:
-    """Whether an element satisfies all selector conditions (AND).
+    """Whether an element satisfies the per-element selector conditions (AND).
 
-    `within` needs parent/child structure, so it is unsupported on the current
-    flat Element.
+    `within` is a cross-element (spatial) constraint and is resolved by `find_all`,
+    not here; it is ignored if present in `sel`.
     """
-    if "within" in sel:
-        raise NotImplementedError("`within` は階層クエリが必要（将来対応）")
     if "id" in sel and el["identifier"] != sel["id"]:
         return False
     if "idMatches" in sel and not (
@@ -152,9 +150,27 @@ def matches(el: Element, sel: Selector) -> bool:
     return True
 
 
+def _contains(outer: Frame, inner: Frame) -> bool:
+    """Whether `inner`'s frame is spatially contained in `outer`'s (edges inclusive)."""
+    ox, oy, ow, oh = outer
+    ix, iy, iw, ih = inner
+    return ix >= ox and iy >= oy and ix + iw <= ox + ow and iy + ih <= oy + oh
+
+
 def find_all(elements: list[Element], sel: Selector) -> list[Element]:
-    """All matching elements (for idMatches triggers and count assertions)."""
-    return [el for el in elements if matches(el, sel)]
+    """All matching elements (for idMatches triggers and count assertions).
+
+    `within` scopes the result to elements spatially contained in a parent the `within`
+    selector resolves to. The accessibility tree is flat, so "parent" is geometric: the
+    `within` selector picks one or more container elements and a candidate qualifies when
+    its frame sits inside one of theirs. `within` may nest.
+    """
+    base_sel = cast(Selector, {k: v for k, v in sel.items() if k != "within"})
+    found = [el for el in elements if matches(el, base_sel)]
+    if "within" in sel:
+        scopes = [parent["frame"] for parent in find_all(elements, sel["within"])]
+        found = [el for el in found if any(_contains(scope, el["frame"]) for scope in scopes)]
+    return found
 
 
 def resolve_unique(elements: list[Element], sel: Selector) -> Element:

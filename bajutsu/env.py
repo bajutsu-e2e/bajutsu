@@ -31,6 +31,15 @@ def launch_cmd(udid: str, bundle_id: str, args: Sequence[str] = ()) -> list[str]
     return ["xcrun", "simctl", "launch", "--terminate-running-process", udid, bundle_id, *args]
 
 
+def locale_args(locale: str) -> list[str]:
+    """App launch arguments that force the locale + language. iOS reads `-AppleLocale` and
+    `-AppleLanguages` from the process argv via NSUserDefaults, so passing them as the app's
+    launch args makes a run deterministic regardless of the device's region settings.
+    `ja_JP` -> `-AppleLocale ja_JP -AppleLanguages (ja)`."""
+    language = locale.split("_", 1)[0]
+    return ["-AppleLocale", locale, "-AppleLanguages", f"({language})"]
+
+
 def terminate_cmd(udid: str, bundle_id: str) -> list[str]:
     return ["xcrun", "simctl", "terminate", udid, bundle_id]
 
