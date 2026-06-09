@@ -27,7 +27,18 @@ summary::-webkit-details-marker{display:none}
    which would let a wide network table push the screenshot/reason columns off-screen). */
 .detail{min-width:0}
 .sttbl td.adesc{overflow-wrap:anywhere}
-video{width:100%;border:1px solid var(--line);border-radius:8px;background:#000}
+/* Custom player: a slim control bar sits BELOW the recording rather than overlaying it
+   (the native HTML5 controls draw their bar across the bottom of the frame, covering the
+   app's own bottom UI — e.g. a tab bar — which reads as "in the way"). */
+.player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
+.player video{display:block;width:100%;background:#000;cursor:pointer}
+.vctl{display:flex;align-items:center;gap:.5rem;padding:.34rem .5rem;background:#1c1c1e;color:#e6e6e6}
+.vplay{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
+ cursor:pointer;font-size:.66rem;line-height:1;display:flex;align-items:center;justify-content:center}
+.vplay:hover{background:#4a4d52}
+.vseek{flex:1;min-width:0;height:.3rem;cursor:pointer;accent-color:#0a6cff}
+.vtime{flex:none;font:600 .72rem/1 ui-monospace,Menlo,Consolas,monospace;color:#cfcfcf;
+ white-space:nowrap}
 .tabs{display:flex;gap:.2rem;border-bottom:1px solid var(--line);margin-bottom:.55rem}
 .tab{padding:.35rem .75rem;border:0;background:none;cursor:pointer;font:inherit;font-size:.84rem;
  color:var(--mut);border-bottom:2px solid transparent}

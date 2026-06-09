@@ -89,6 +89,33 @@
     else if(e.key === 'ArrowLeft') lbShow(lbIndex - 1);
     else if(e.key === 'ArrowRight') lbShow(lbIndex + 1);
   });
+  // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
+  // so the controls never overlay the video frame the way the native HTML5 controls do.
+  function fmtT(t){
+    if(!isFinite(t) || t < 0) t = 0;
+    var m = Math.floor(t / 60), s = Math.floor(t % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  document.querySelectorAll('.player').forEach(function(p){
+    var v = p.querySelector('video'), btn = p.querySelector('.vplay');
+    var seek = p.querySelector('.vseek'), time = p.querySelector('.vtime');
+    if(!v || !btn || !seek || !time) return;
+    function paint(){ btn.textContent = v.paused ? '▶' : '❚❚'; }
+    function clock(){ time.textContent = fmtT(v.currentTime) + ' / ' + fmtT(v.duration); }
+    function meta(){ if(isFinite(v.duration)) seek.max = v.duration; clock(); }
+    function toggle(){ if(v.paused) v.play(); else v.pause(); }
+    btn.addEventListener('click', toggle);
+    v.addEventListener('click', toggle);   // clicking the frame itself plays/pauses
+    v.addEventListener('play', paint);
+    v.addEventListener('pause', paint);
+    v.addEventListener('loadedmetadata', meta);
+    v.addEventListener('timeupdate', function(){
+      if(!seek.matches(':active')) seek.value = v.currentTime;   // don't fight an active drag
+      clock();
+    });
+    seek.addEventListener('input', function(){ v.currentTime = parseFloat(seek.value); });
+    paint(); meta();   // handle the case where metadata is already cached (event won't fire)
+  });
   // Sync each scenario's recording with its step rows: click a step to seek there,
   // and highlight the step whose time window the playhead is in.
   document.querySelectorAll('.scn').forEach(function(scn){

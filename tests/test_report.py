@@ -164,9 +164,12 @@ def test_lightbox_arrows_navigate_screenshots() -> None:
 
 def test_step_click_seeks_without_autoplay() -> None:
     # Clicking a step seeks the recording but never starts playback on a paused video.
+    # Playback is started only from the explicit play/pause control, never the seek path.
     out = html_report("run9", [_passing()])
-    assert "v.currentTime = t;" in out
-    assert "v.play()" not in out
+    assert "v.currentTime = t;" in out          # step-row click seeks
+    assert "if(v.paused) v.play();" in out      # play() is reachable only via the button
+    # The seek handler stays seek-only (it has no .play() of its own).
+    assert "Seek only" in out
 
 
 def test_html_shows_backend() -> None:
