@@ -92,9 +92,9 @@ Implemented but not yet validated on a real device (needs Xcode + a Simulator):
   against the installed tool; the simctl launch sequencing is best-effort.
 
 Not yet wired (schema/flags exist, but the runtime does not act on them): parallel
-execution (`--workers`), `locale` application, reusable `setup` preconditions, the mock
-server (deterministic network — the network is observed but not yet mocked), `relaunch` /
-`within`, the `trace` command, and self-healing triage. See
+execution (`--workers`), `locale` application, reusable `setup` preconditions, the external
+`mockServer` command (superseded by scenario `mocks`), `relaunch` / `within`, the `trace`
+command, and self-healing triage. See
 [`docs/architecture.md`](docs/architecture.md) for the full implemented-vs-unwired table.
 
 ## Requirements
@@ -182,9 +182,9 @@ bajutsu/
 - **M2 — mostly done.** The AI loop (`record`) + `capturePolicy` evidence rules + `video` /
   `deviceLog` + the reporter (JUnit/HTML). *(Done. Idempotent normalization / provenance
   comments are still light.)*
-- **M3 — mostly done.** XCUITest codegen ✅, app traces (`appTrace` / os_signpost) ✅, redaction
-  applied to captured evidence ✅, and network **observation** (the in-app collector + `request`
-  assertions, validated on-device) ✅. Remaining: the mock server (deterministic network — observed,
-  not yet mocked) + CI integration.
+- **M3 — done bar CI.** XCUITest codegen ✅, app traces (`appTrace` / os_signpost) ✅, redaction
+  applied to captured evidence ✅, network **observation** (the in-app collector + `request`
+  assertions) ✅, and **deterministic mocks** (scenario `mocks` → offline in-protocol stubs) ✅ —
+  all validated on-device. Remaining: CI integration.
 - **M4 — not started.** Self-healing triage (summarize failures, propose minimal scenario
   diffs; human review required).

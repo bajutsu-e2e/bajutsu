@@ -59,6 +59,31 @@ expect:
 | `bodyMatches` | regex/substring over the request body |
 | `count` | exact number of matching exchanges — an aggregate, exempt from the 1:1 rule (omit ⇒ at least one) |
 
+## Deterministic mocks
+
+A scenario's `mocks` make the network deterministic: when an outgoing request matches a
+rule, BajutsuKit returns the canned response **instead of hitting the network**, so a test
+never depends on a live server (and runs offline). The stub is served inside the URL
+protocol — after TLS, no proxy/CA — and is still observed (it appears in `network.json`
+flagged `mocked`, and `request` assertions match it like any exchange).
+
+```yaml
+mocks:
+  - match: { method: GET, urlMatches: "example.com" }   # request-side matcher
+    respond:
+      status: 418                                        # default 200
+      headers: { Content-Type: text/plain }
+      body: "stubbed by bajutsu"
+      # delayMs: 200                                     # optional artificial latency
+  - match: { method: POST, pathMatches: "/login$" }
+    respond: { status: 201, body: "{\"token\":\"t\"}" }
+```
+
+The first matching rule wins. `match` reuses the request matcher's request-side fields
+(`method` / `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`). Mocks ride the
+same channel as observation, so they need `--network`. The rules are injected into the app
+via the `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`).
+
 ## Timing
 
 Network is async, so a step can run before the response lands. Bridge the gap with a wait
