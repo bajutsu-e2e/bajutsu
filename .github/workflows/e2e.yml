@@ -43,11 +43,17 @@ jobs:
         id: sim
         run: |
           set -euo pipefail
-          runtime=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r.get('platform')=='iOS' and r.get('isAvailable')]; print(rs[-1]['identifier'] if rs else '')")
-          devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys; ts=[t for t in json.load(sys.stdin)['devicetypes'] if t.get('productFamily')=='iPhone']; print(ts[-1]['identifier'] if ts else '')")
-          test -n "$runtime" && test -n "$devtype"
-          udid=$(xcrun simctl create ci-iphone "$devtype" "$runtime")
-          xcrun simctl boot "$udid"
+          # Prefer a pre-installed available iPhone simulator — it's guaranteed compatible
+          # with the runner's Xcode. (Pairing the newest device type with the newest
+          # runtime ourselves can hit "Incompatible device".) Fall back to creating one
+          # with simctl's default runtime.
+          udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
+          if [ -z "$udid" ]; then
+            devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
+            udid=$(xcrun simctl create ci-iphone "$devtype")
+          fi
+          echo "Using simulator $udid"
+          xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
