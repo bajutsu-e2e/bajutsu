@@ -93,8 +93,8 @@ Implemented but not yet validated on a real device (needs Xcode + a Simulator):
 
 Not yet wired (schema/flags exist, but the runtime does not act on them): parallel
 execution (`--workers`), `locale` application, reusable `setup` preconditions, the mock
-server (deterministic network), `network` / `appTrace` evidence, `relaunch` / `within`,
-redaction application, the `trace` command, and self-healing triage. See
+server (deterministic network — the network is observed but not yet mocked), `relaunch` /
+`within`, the `trace` command, and self-healing triage. See
 [`docs/architecture.md`](docs/architecture.md) for the full implemented-vs-unwired table.
 
 ## Requirements
@@ -182,7 +182,9 @@ bajutsu/
 - **M2 — mostly done.** The AI loop (`record`) + `capturePolicy` evidence rules + `video` /
   `deviceLog` + the reporter (JUnit/HTML). *(Done. Idempotent normalization / provenance
   comments are still light.)*
-- **M3 — partially done.** XCUITest codegen ✅. Remaining: network (mock) + app traces
-  (os_signpost / `appTrace`) + redaction application + CI integration.
+- **M3 — mostly done.** XCUITest codegen ✅, app traces (`appTrace` / os_signpost) ✅, redaction
+  applied to captured evidence ✅, and network **observation** (the in-app collector + `request`
+  assertions, validated on-device) ✅. Remaining: the mock server (deterministic network — observed,
+  not yet mocked) + CI integration.
 - **M4 — not started.** Self-healing triage (summarize failures, propose minimal scenario
   diffs; human review required).

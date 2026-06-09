@@ -108,8 +108,7 @@ assertions.py  evidence.py ── intervals.py
 | 並列実行 `--workers` | CLI フラグは受けるが**未使用**（直列実行のみ） | `cli.py:55` |
 | `locale` の適用 | config / preconditions に値は持つが launch で**適用していない** | `config.py` / `scenario.py` |
 | `preconditions.setup`（再利用前段） | スキーマのみ。runner は読まない | `config.py` / `scenario.py` |
-| `mockServer`（決定的ネットワーク） | config スキーマのみ。起動・接続は**未実装** | `config.py` `MockServer` |
-| `network` / `appTrace` 証跡 | capture トークンとして**検証は通る**が、取得は未実装（取得元が無い） | `evidence.py` |
+| `mockServer`（決定的ネットワーク） | config スキーマのみ。起動・接続は**未実装**（通信は*観測*するがまだ*モック*しない） | `config.py` `MockServer` |
 | `relaunch` ステップ | `NotImplementedError`（env 統合後） | `orchestrator.py` `_do_action` |
 | `within` セレクタ | `NotImplementedError`（階層クエリが必要） | `drivers/base.py` `matches` |
 | `trace` コマンド | CLI に**未実装**（DESIGN の構想） | — |

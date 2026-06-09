@@ -91,7 +91,9 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 - Scenario schema (strict validation) and YAML round-trip
 - Evaluation of the 7 assertion kinds
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
-- Evidence: instant (`screenshot`/`elements`) + interval (`video`/`deviceLog`) + `capturePolicy` firing
+- Evidence: instant (`screenshot`/`elements`) + interval (`video`/`deviceLog`/`appTrace`) + the
+  network collector (`network.json`) + `capturePolicy` firing + **redaction applied** to logs /
+  element trees / network exchanges before they are written
 - Reporting (`manifest.json` / `junit.xml` / `report.html`)
 - Config resolution (defaults × apps, redact merge) and actuator selection
 - The `simctl` command layer · the idb output parser · the `doctor` score
@@ -111,8 +113,7 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 | Parallel execution `--workers` | CLI flag is accepted but **unused** (serial only) | `cli.py:55` |
 | `locale` application | config / preconditions hold a value but it is **not applied** at launch | `config.py` / `scenario.py` |
 | `preconditions.setup` (reusable prelude) | schema only; the runner does not read it | `config.py` / `scenario.py` |
-| `mockServer` (deterministic network) | config schema only; start/connect is **not implemented** | `config.py` `MockServer` |
-| `network` / `appTrace` evidence | capture tokens **validate**, but capture is unimplemented (no source) | `evidence.py` |
+| `mockServer` (deterministic network) | config schema only; start/connect is **not implemented** (the network is *observed*, not yet *mocked*) | `config.py` `MockServer` |
 | `relaunch` step | `NotImplementedError` (after env integration) | `orchestrator.py` `_do_action` |
 | `within` selector | `NotImplementedError` (needs a hierarchical query) | `drivers/base.py` `matches` |
 | `trace` command | **not in the CLI** (a DESIGN concept) | — |
