@@ -109,9 +109,9 @@ The sample app's id catalog is in [sample-app](sample-app.md#accessibilityidenti
 Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It analyzes one screen's
 `query()` (the CLI uses the screen obtained via the actuator) and produces a score.
 
-> ⚠️ The "runnability gates" from DESIGN (backend / simctl / app / deeplink / mock existence checks)
-> are **not implemented** in the code's `doctor`. Today it is **score only**, computed against the
-> currently displayed screen. It also does not cover all screens (entry / current screen only).
+> `doctor` runs a **runnability gate** first (`preflight.py`: the required CLIs for the actuator
+> — `xcrun`, and `idb` / `idb_companion` for idb — plus a booted Simulator), then the score. The
+> score still covers only the currently displayed screen (entry / current screen, not all screens).
 
 ### Metrics (`Score`)
 
