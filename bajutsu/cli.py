@@ -85,13 +85,18 @@ def run(
     if not erase:
         for s in scenarios:
             s.preconditions.erase = False
-    # The idb CLI needs a concrete UDID, not the simctl "booted" alias.
-    udid = _env.resolve_udid(udid)
+    # Validate the backend before touching the Simulator CLIs, so an unknown/unavailable
+    # actuator exits cleanly (2) instead of crashing on a missing `xcrun`/`simctl` (the
+    # `run` path mirrors `doctor`: backend check first, then resolve the udid).
+    backends = _backends(backend, eff.backend)
     try:
-        factory = device_factory(udid, _backends(backend, eff.backend))
+        select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    # The idb CLI needs a concrete UDID, not the simctl "booted" alias.
+    udid = _env.resolve_udid(udid)
+    factory = device_factory(udid, backends)
     on_blocked = None
     if dismiss_alerts:
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
