@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Keep the SHA-pinned GitHub Actions current (Dependabot bumps the pin + the version
+  # comment). Grouped so all action bumps land in one PR.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Python dependencies (pyproject.toml: runtime + dev/idb extras).
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
