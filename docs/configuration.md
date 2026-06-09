@@ -51,7 +51,7 @@ An undefined app raises `KeyError` (the CLI exits with code 2).
 | `id_namespaces` | app | referenced by doctor |
 | `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |
 | `mock_server` | app | ⚠️ schema only · not wired |
-| `setup` | app | ⚠️ schema only · not wired |
+| `setup` | app | default reusable prelude (a scenario whose steps run before each scenario's own) |
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
 
@@ -78,8 +78,8 @@ tool changes.
    app's namespace), expose state in label / traits / value, launch hooks, disable animations.
 2. **Add `apps.<name>`** — `bundleId` (required) / `deeplinkScheme` / default `launchEnv` /
    `idNamespaces`, etc.
-3. **(Optional) a reusable prelude** — factor login etc. into a `setup:` scenario (note: `setup` is
-   currently not wired).
+3. **(Optional) a reusable prelude** — factor login etc. into a `setup:` scenario whose steps run
+   before each scenario's own (set per app or per scenario).
 4. **Verify with `bajutsu doctor --app <name>`** — look at the convention score (below).
 5. **Place scenarios** — write identifiers in the app's namespace.
 

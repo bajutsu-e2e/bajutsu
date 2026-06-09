@@ -65,8 +65,8 @@
 | `launchArgs` | list[str] | `[]` | 起動引数（config の `launchArgs` に追記） | ✅ |
 | `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入。config の `launchEnv` にマージ） | ✅ |
 | `deeplink` | str | なし | 起動後に `simctl openurl` で開く | ✅ |
-| `locale` | str | なし | （**未配線**: 値は持つが起動時に適用していない） | ⚠️ |
-| `setup` | str | なし | 再利用する前段シナリオ（**未配線**: スキーマのみ） | ⚠️ |
+| `locale` | str | なし | 起動時に locale/言語を強制（`-AppleLocale`/`-AppleLanguages`）。app/config の既定を上書き | ✅ |
+| `setup` | str | なし | 再利用する前段シナリオファイル（このシナリオからの相対）。その steps を本編の前に実行 | ✅ |
 
 > `launchEnv` の解決順は **config の `launchEnv` < preconditions の `launchEnv`**（テストに近い方が
 > 勝つ）。`launch_driver` で `{**eff.launch_env, **pre.launch_env}` とマージする。
@@ -84,7 +84,7 @@
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在不可 |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
-| `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | **未実装**（`NotImplementedError`） |
+| `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動（launch env/args を再適用＋上書き）し、ready まで待つ |
 
 修飾子:
 
@@ -176,7 +176,7 @@
 - **修飾子**: `before` / `after` / `around` / `onError`
 
 検証は種別・修飾子の集合に対して行われる（`scenario.py` `_validate_capture`）。種別ごとの
-取得タイミングと現状の取得可否（`network`/`appTrace` は未実装）は [evidence](evidence.md#証跡種別と取得タイミング)。
+取得タイミングと取得可否は [evidence](evidence.md#証跡種別と取得タイミング)。
 
 ## YAML の注意点
 

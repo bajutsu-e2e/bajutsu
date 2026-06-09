@@ -59,7 +59,7 @@ For each step `i` (in `orchestrator.py`):
 | `longPress` | `driver.long_press(sel, duration)` |
 | `type` | if `into`, `driver.tap(into)` first → `driver.type_text(text)` |
 | `swipe` | `{from,to}` → `driver.swipe` directly. `{on,direction}` → `resolve_unique` the target → from the frame center, 100pt in the direction (`_SWIPE_DIST`) |
-| `relaunch` | **`NotImplementedError`** (planned after env integration) |
+| `relaunch` | terminate + relaunch the app (re-applying launch env/args + overrides) via the runner-injected relauncher, then wait until ready |
 
 ## Waits (condition waits only)
 

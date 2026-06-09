@@ -36,7 +36,7 @@ bajutsu run <scenario.yaml> --app <name> [options]
 | `--dismiss-alerts` | off | the safety net that visually dismisses system alerts (needs an API key; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--alert-instruction` | "" | which button to press instead of dismissing |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
-| `--workers` | 1 | ⚠️ **unused** (parallel execution is unimplemented; runs serially) |
+| `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` and `--no-network` (capped to the pool size) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
