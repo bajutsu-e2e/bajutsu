@@ -141,10 +141,11 @@ class Swipe(_Model):
 class RequestMatch(_Model):
     """Network-traffic matcher, shared by the `request` assertion and the
     `until: { request: ... }` wait. The fields (method / url / urlMatches / path /
-    pathMatches / status) are AND-ed; `count` is how many exchanges matched — exact for
-    the assertion, a lower bound for the wait. The endpoint can be pinned by `url`
-    (exact full URL) or `urlMatches` (regex/substring), or just the `path`. At least one
-    match field is required."""
+    pathMatches / status / bodyMatches) are AND-ed; `count` is how many exchanges matched
+    — exact for the assertion, a lower bound for the wait. The endpoint can be pinned by
+    `url` (exact full URL) or `urlMatches` (regex/substring; query strings live here), or
+    just the `path`; `bodyMatches` checks the request body. At least one match field is
+    required."""
 
     method: str | None = None
     url: str | None = None  # exact full URL (the endpoint)
@@ -152,15 +153,19 @@ class RequestMatch(_Model):
     path: str | None = None  # exact path (query ignored)
     path_matches: str | None = Field(default=None, alias="pathMatches")  # regex over path
     status: int | None = None
+    body_matches: str | None = Field(default=None, alias="bodyMatches")  # regex/substring over request body
     count: int | None = None
 
     @model_validator(mode="after")
     def _has_criterion(self) -> Self:
         if all(
             v is None
-            for v in (self.method, self.url, self.url_matches, self.path, self.path_matches, self.status)
+            for v in (self.method, self.url, self.url_matches, self.path, self.path_matches,
+                      self.status, self.body_matches)
         ):
-            raise ValueError("request は method/url/urlMatches/path/pathMatches/status のいずれかが必要")
+            raise ValueError(
+                "request は method/url/urlMatches/path/pathMatches/status/bodyMatches のいずれかが必要"
+            )
         return self
 
 

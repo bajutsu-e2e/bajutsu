@@ -50,6 +50,14 @@ def test_request_matches_url_endpoint() -> None:
     assert not evaluate_one([], _req(url="https://other.com/items"), exs).ok
 
 
+def test_request_matches_body() -> None:
+    exs = [_ex("POST", "/post", 200, request_body='{"name":"bajutsu","n":42}')]
+    assert evaluate_one([], _req(method="POST", body_matches='"name":"bajutsu"'), exs).ok
+    assert not evaluate_one([], _req(method="POST", body_matches="other"), exs).ok
+    # An exchange with no request body never matches a bodyMatches criterion.
+    assert not evaluate_one([], _req(body_matches="x"), [_ex("GET", "/x", 200)]).ok
+
+
 def test_request_no_match_fails_with_reason() -> None:
     r = evaluate_one([], _req(method="DELETE"), [_ex("GET", "/x")])
     assert not r.ok and "通信" in r.reason

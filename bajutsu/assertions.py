@@ -126,6 +126,10 @@ def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
         return False
     if req.status is not None and ex.status != req.status:
         return False
+    if req.body_matches is not None and (
+        ex.request_body is None or re.search(req.body_matches, ex.request_body) is None
+    ):
+        return False
     return True
 
 
@@ -150,6 +154,8 @@ def request_label(req: RequestMatch) -> str:
         parts.append(f"~{req.path_matches}")
     if req.status is not None:
         parts.append(f"status={req.status}")
+    if req.body_matches is not None:
+        parts.append(f"body~{req.body_matches}")
     if req.count is not None:
         parts.append(f"count={req.count}")
     return " ".join(parts)

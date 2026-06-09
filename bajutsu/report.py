@@ -213,6 +213,8 @@ def _request_parts(m: dict[str, Any]) -> tuple[list[Part], list[Part]]:
     cg: list[list[Part]] = []
     if m.get("status") is not None:
         cg.append([("", "status == "), ("num", str(m["status"]))])
+    if m.get("bodyMatches") is not None:
+        cg.append([("", "body~"), ("re", f"/{m['bodyMatches']}/")])
     if m.get("count") is not None:
         cg.append([("", "count == "), ("num", str(m["count"]))])
     return _join(*tg) or [("", "?")], _join(*cg)

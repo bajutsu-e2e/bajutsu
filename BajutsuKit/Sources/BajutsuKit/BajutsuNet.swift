@@ -30,7 +30,8 @@ public enum BajutsuNet {
     }
 
     static func report(
-        request: URLRequest, response: URLResponse?, body: Data, startedAt: Date, error: Error?
+        request: URLRequest, requestBody: Data?, response: URLResponse?, body: Data,
+        startedAt: Date, error: Error?
     ) {
         guard let collectorURL else { return }
         let http = response as? HTTPURLResponse
@@ -54,7 +55,7 @@ public enum BajutsuNet {
         if let error { payload["error"] = String(describing: error) }
         payload["requestHeaders"] = request.allHTTPHeaderFields ?? [:]
         if let http { payload["responseHeaders"] = stringHeaders(http.allHeaderFields) }
-        if let reqBody = request.httpBody, let s = String(data: reqBody, encoding: .utf8) {
+        if let reqBody = requestBody, let s = String(data: reqBody, encoding: .utf8), !s.isEmpty {
             payload["requestBody"] = s
         }
         if let s = String(data: body, encoding: .utf8), !s.isEmpty {
