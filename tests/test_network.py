@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import urllib.request
 
-from bajutsu.assertions import evaluate_one
+from bajutsu.assertions import evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import run_scenario
@@ -56,6 +56,33 @@ def test_request_matches_body() -> None:
     assert not evaluate_one([], _req(method="POST", body_matches="other"), exs).ok
     # An exchange with no request body never matches a bodyMatches criterion.
     assert not evaluate_one([], _req(body_matches="x"), [_ex("GET", "/x", 200)]).ok
+
+
+def test_request_assertions_map_one_to_one() -> None:
+    # Two `request` assertions need two distinct exchanges: one exchange satisfies only one.
+    get = Assertion(request=RequestMatch(method="GET"))
+    one = evaluate([], [get, get], [_ex("GET", "/a", 200)])
+    assert sum(r.ok for r in one) == 1           # only one can be satisfied
+    assert "1 対 1" in next(r.reason for r in one if not r.ok)
+    two = evaluate([], [get, get], [_ex("GET", "/a", 200), _ex("GET", "/b", 200)])
+    assert all(r.ok for r in two)                # both satisfied by distinct exchanges
+
+
+def test_request_assignment_uses_augmenting_not_greedy() -> None:
+    # A broad matcher must not steal the only exchange a specific matcher needs: the
+    # assignment reshuffles (broad -> the other exchange) so both pass.
+    exs = [_ex("GET", "/x", 200, url="https://a.test/x"), _ex("GET", "/x", 200, url="https://b.test/x")]
+    broad = Assertion(request=RequestMatch(method="GET"))                  # matches both
+    specific = Assertion(request=RequestMatch(method="GET", url_matches="a\\.test"))  # only the first
+    assert all(r.ok for r in evaluate([], [broad, specific], exs))
+
+
+def test_request_count_assertion_stays_independent() -> None:
+    # A `count` request is an explicit aggregate, evaluated independently of the 1:1 rule.
+    exs = [_ex("GET", "/a", 200), _ex("GET", "/b", 200)]
+    res = evaluate([], [Assertion(request=RequestMatch(method="GET", count=2)),
+                        Assertion(request=RequestMatch(method="GET"))], exs)
+    assert all(r.ok for r in res)
 
 
 def test_request_no_match_fails_with_reason() -> None:

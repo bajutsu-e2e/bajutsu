@@ -36,22 +36,28 @@ collector stays empty); the feature is opt-in per app.
 ## The `request` assertion
 
 `request` is an assertion kind (alongside `exists` / `value` / `count` / …). Match fields
-are AND-ed; `count` checks how many exchanges matched (exact when set, otherwise ≥ 1):
+are AND-ed. Each plain `request` corresponds to **one** observed exchange: multiple
+`request` assertions in a block are matched **one-to-one** to distinct exchanges — two
+`request` lines need two separate requests. `count` is the exception: it is an explicit
+aggregate (exact when set, otherwise the lone matcher needs ≥ 1).
 
 ```yaml
 expect:
-  - request: { method: GET, status: 200 }                 # ≥ 1 GET that returned 200
-  - request: { method: POST, path: /login, status: 200 }  # exact path
-  - request: { pathMatches: "^/items", count: 2 }          # regex on path, exactly 2
+  - request: { method: POST, path: /login, status: 200, bodyMatches: "\"user\"" }  # one login POST
+  - request: { method: GET, urlMatches: "q=hello&n=42" }                           # a *different* request
+  - request: { pathMatches: "^/items", count: 2 }                                  # aggregate: exactly 2
 ```
 
 | field | meaning |
 |---|---|
 | `method` | HTTP method (case-insensitive) |
+| `url` | exact full URL (the endpoint) |
+| `urlMatches` | regex/substring over the URL (query strings live here) |
 | `path` | exact URL path (query ignored) |
 | `pathMatches` | regex over the path |
 | `status` | response status code |
-| `count` | exact number of matching exchanges (omit ⇒ at least one) |
+| `bodyMatches` | regex/substring over the request body |
+| `count` | exact number of matching exchanges — an aggregate, exempt from the 1:1 rule (omit ⇒ at least one) |
 
 ## Timing
 

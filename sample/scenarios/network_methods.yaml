@@ -11,9 +11,8 @@
     - tap: { id: net.get-query }
     - wait: { until: { request: { method: GET, path: /get } }, timeout: 15 }
   expect:
-    # The query string lives in the url (path drops it).
-    - request: { method: GET, path: /get, urlMatches: "q=hello", status: 200 }
-    - request: { method: GET, urlMatches: "n=42" }
+    # One `request` ↔ one observed request. The query string lives in the url (path drops it).
+    - request: { method: GET, path: /get, urlMatches: "q=hello&n=42", status: 200 }
 
 - name: POST with a JSON body
   preconditions:
@@ -23,9 +22,8 @@
     - tap: { id: net.post }
     - wait: { until: { request: { method: POST, path: /post } }, timeout: 15 }
   expect:
-    - request: { method: POST, path: /post, status: 200 }
-    # The data the app put in the request body.
-    - request: { method: POST, bodyMatches: "\"name\":\"bajutsu\"" }
+    # One `request` ↔ one observed request: method + endpoint + status + the body data.
+    - request: { method: POST, path: /post, status: 200, bodyMatches: "\"name\":\"bajutsu\"" }
 
 - name: DELETE request
   preconditions:
