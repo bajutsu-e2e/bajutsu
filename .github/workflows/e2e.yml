@@ -1,11 +1,12 @@
 # On-device E2E: build the sample app, boot a Simulator, and run a smoke scenario through
 # the idb backend. This exercises the full path (driver + simctl + idb + real actuation)
-# that the Linux `ci.yml` cannot. macOS runners are slow/metered, so this is manual
-# (run it on demand from the Actions tab or `gh workflow run e2e.yml`), not scheduled.
+# that the Linux `ci.yml` cannot. Runs on every PR (the change under review gets exercised
+# end-to-end) and on demand (the Actions tab / `gh workflow run e2e.yml`).
 name: E2E (Simulator)
 
 on:
   workflow_dispatch:
+  pull_request:
 
 permissions:
   contents: read
