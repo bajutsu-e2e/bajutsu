@@ -101,7 +101,9 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
 - Reporting (`manifest.json` / `junit.xml` / `report.html`)
 - Config resolution (defaults × apps, redact merge) and actuator selection
-- The `simctl` command layer · the idb output parser · the `doctor` score
+- The `simctl` command layer · the idb output parser · the `doctor` score + runnability gate
+  (`preflight.py`: required CLIs + a booted Simulator)
+- The `trace` command (`trace.py`): a text timeline over a saved run (steps + network + appTrace)
 - The CLI `run` / `doctor` / `codegen`, plus `record` (AI authoring) + the alert guard
 - XCUITest code generation
 
@@ -116,7 +118,5 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 | Feature | Status | Location |
 |---|---|---|
 | `mockServer` (external mock command) | config schema only; the `cmd`/`port` external server is **not implemented** — superseded by scenario `mocks` (declarative in-protocol stubs, implemented) | `config.py` `MockServer` |
-| `trace` command | **not in the CLI** (a DESIGN concept) | — |
-| `doctor` runnability gates | the code's `doctor` is **score only**; env/permission gates are unimplemented | `doctor.py` |
 
 These are also flagged inline on the relevant feature pages.

@@ -5,7 +5,8 @@
 > Implementation-grounded reference for the natural-language-driven iOS E2E testing tool
 > (iOS Simulator only). Where [`README.md`](../README.md) is the pitch and [`DESIGN.md`](../DESIGN.md)
 > is the design rationale (the *why*), this set of pages explains **what the code actually
-> does today**, feature by feature.
+> does today**, feature by feature. Forward-looking work (what we want to build next) lives
+> in [roadmap.md](roadmap.md).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives an app
 on the iOS Simulator (tap / type / swipe / wait), and verifies the result with

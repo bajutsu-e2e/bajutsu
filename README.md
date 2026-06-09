@@ -91,9 +91,8 @@ Implemented but not yet validated on a real device (needs Xcode + a Simulator):
   but the external CLI surface and JSON schema are **assumed** and must be confirmed
   against the installed tool; the simctl launch sequencing is best-effort.
 
-Not yet wired (schema/flags exist, but the runtime does not act on them): the external
-`mockServer` command (superseded by scenario `mocks`), the `trace` command, and
-self-healing triage. See
+Not yet wired: the external `mockServer` command (superseded by scenario `mocks`), and
+self-healing triage (M4). See
 [`docs/architecture.md`](docs/architecture.md) for the full implemented-vs-unwired table.
 
 ## Requirements

@@ -50,18 +50,31 @@ bajutsu run sample/scenarios/smoke.yaml --app sample --udid <UDID> --backend idb
 
 ## `doctor`
 
-Reports the **convention score** for the current screen ([configuration](configuration.md#doctor-the-convention-score)).
-AI-independent.
+A **runnability gate** + the **convention score** for the current screen (AI-independent;
+[configuration](configuration.md#doctor-the-convention-score)).
 
 ```bash
 bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
 ```
 
-- `query()`s via the actuator and renders `score(elements, idNamespaces)`.
-- **Exits 1 when the grade is Blocked, 0 otherwise.**
+- First the env gate (`preflight.py`): the required CLIs for the actuator (`xcrun`; `idb` /
+  `idb_companion` for idb) and a **booted Simulator**, printed as a ✓/✗ checklist. A missing
+  check **exits 1** (fail fast with a fixable hint).
+- Then `query()`s via the actuator and renders `score(elements, idNamespaces)`. **Exits 1 when
+  the grade is Blocked, 0 otherwise.**
 
-> ⚠️ Env / connection gates are unimplemented. The score is computed only against "the currently
-> displayed screen."
+## `trace`
+
+Inspects a finished run as a **text timeline** — per scenario, steps and observed network
+exchanges interleaved chronologically, then expectations, app-trace intervals, and an evidence
+summary. Read-only (reads the saved `manifest.json` / `network.json` / `appTrace.json`).
+
+```bash
+bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
+```
+
+- With no `<run-dir>`, uses the latest run under `runs/`. `--scenario` filters by name substring.
+- **Exits 2** if no run is found.
 
 ## `record`
 

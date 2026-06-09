@@ -83,9 +83,8 @@ Bajutsu は自然言語で書かれた（または記録された）テストシ
   JSON スキーマは **想定** で、インストール済みツールに対する確認が要る。simctl の launch 手順も
   best-effort。
 
-未配線（スキーマ / フラグはあるが実行時に効かない）: 外部 `mockServer` コマンド（シナリオ
-`mocks` で代替済み）、`trace` コマンド、自己修復トリアージ。完全な
-「実装済み vs 未配線」表は [`docs/ja/architecture.md`](docs/ja/architecture.md)。
+未配線: 外部 `mockServer` コマンド（シナリオ `mocks` で代替済み）、自己修復トリアージ（M4）。
+完全な「実装済み vs 未配線」表は [`docs/ja/architecture.md`](docs/ja/architecture.md)。
 
 ## 要件
 

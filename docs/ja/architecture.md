@@ -96,7 +96,8 @@ assertions.py  evidence.py ── intervals.py
   `request` アサーション、`wait: { until: request }`、オフラインのスタブ応答
 - レポート（`manifest.json` / `junit.xml` / `report.html`）
 - config 解決（defaults × apps、redact マージ）と actuator 選択
-- `simctl` コマンド層・idb の出力パーサ・`doctor` スコア
+- `simctl` コマンド層・idb の出力パーサ・`doctor` スコア + 実行可能ゲート（`preflight.py`: 必須 CLI + 起動済みシミュレータ）
+- `trace` コマンド（`trace.py`）: 保存済み run のテキストタイムライン（steps + network + appTrace）
 - CLI `run` / `doctor` / `codegen`、および `record`（AI オーサリング）+ alert guard
 - XCUITest コード生成
 
@@ -111,7 +112,5 @@ assertions.py  evidence.py ── intervals.py
 | 機能 | 現状 | 場所 |
 |---|---|---|
 | `mockServer`（外部モックコマンド） | config スキーマのみ。`cmd`/`port` の外部サーバは**未実装** — シナリオ `mocks`（宣言的なプロトコル内スタブ、実装済み）で代替 | `config.py` `MockServer` |
-| `trace` コマンド | CLI に**未実装**（DESIGN の構想） | — |
-| `doctor` の実行可能ゲート | コードの `doctor` は **充足度スコアのみ**。env/権限ゲートは未実装 | `doctor.py` |
 
 これらは各機能ページでも該当箇所に「未実装」と注記している。

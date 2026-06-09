@@ -47,16 +47,28 @@ bajutsu run sample/scenarios/smoke.yaml --app sample --udid <UDID> --backend idb
 
 ## `doctor`
 
-現在画面の **規約充足度スコア**を出す（[configuration](configuration.md#doctor規約充足度スコア)）。AI 非依存。
+**実行可能ゲート** + 現在画面の **規約充足度スコア**（AI 非依存。[configuration](configuration.md#doctor規約充足度スコア)）。
 
 ```bash
 bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
 ```
 
-- actuator で `query()` し、`score(elements, idNamespaces)` を `render` して表示。
-- **終了コードは grade が Blocked で 1、それ以外 0**。
+- まず env ゲート（`preflight.py`）: actuator が必要とする CLI（`xcrun`、idb なら `idb` /
+  `idb_companion`）と**起動済みシミュレータ**を ✓/✗ チェックリストで表示。不足があれば**終了 1**（直し方ヒント付きで即失敗）。
+- 次に actuator で `query()` し、`score(elements, idNamespaces)` を表示。**grade が Blocked で 1、それ以外 0**。
 
-> ⚠️ env / 接続ゲートは未実装。スコアは「いま表示されている画面」に対してのみ計算される。
+## `trace`
+
+完了した run を**テキストタイムライン**で検査する。シナリオごとに、ステップと観測した通信を
+時系列で交互に並べ、続けて expectations・app-trace 区間・証跡サマリを出す。読み取り専用
+（保存済みの `manifest.json` / `network.json` / `appTrace.json` を読む）。
+
+```bash
+bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
+```
+
+- `<run-dir>` 省略時は `runs/` 直下の最新 run。`--scenario` は名前の部分一致で絞り込み。
+- run が見つからなければ**終了 2**。
 
 ## `record`
 
