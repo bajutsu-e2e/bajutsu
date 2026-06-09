@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 
 # (argv, extra_env) -> stdout
@@ -54,6 +55,18 @@ def screenshot_cmd(udid: str, path: str) -> list[str]:
 
 def record_video_cmd(udid: str, path: str) -> list[str]:
     return ["xcrun", "simctl", "io", udid, "recordVideo", path]
+
+
+def set_location_cmd(udid: str, lat: float, lon: float) -> list[str]:
+    return ["xcrun", "simctl", "location", udid, "set", f"{lat},{lon}"]
+
+
+def clear_location_cmd(udid: str) -> list[str]:
+    return ["xcrun", "simctl", "location", udid, "clear"]
+
+
+def push_cmd(udid: str, bundle_id: str, payload_path: str) -> list[str]:
+    return ["xcrun", "simctl", "push", udid, bundle_id, payload_path]
 
 
 def child_env(env: Mapping[str, str]) -> dict[str, str]:
@@ -142,3 +155,19 @@ class Env:
 
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path), None)
+
+    def set_location(self, lat: float, lon: float) -> None:
+        self._run(set_location_cmd(self.udid, lat, lon), None)
+
+    def clear_location(self) -> None:
+        self._run(clear_location_cmd(self.udid), None)
+
+    def push(self, bundle_id: str, payload: dict[str, object]) -> None:
+        """Deliver a simulated push: write the APNs payload to a temp file, then push it."""
+        with tempfile.NamedTemporaryFile("w", suffix=".apns", delete=False, encoding="utf-8") as f:
+            json.dump(payload, f)
+            path = f.name
+        try:
+            self._run(push_cmd(self.udid, bundle_id, path), None)
+        finally:
+            os.unlink(path)

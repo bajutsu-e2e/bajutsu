@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from bajutsu.evidence import FileSink
 from bajutsu.network import NetworkCollector
 from bajutsu.record import record as record_loop
 from bajutsu.runner import (
+    device_control,
     device_factory,
     device_pool,
     device_relauncher,
@@ -33,7 +35,12 @@ from bajutsu.scenario import (
     apply_setups,
     dump_mocks,
     dump_scenarios,
+    expand_components,
+    expand_data,
+    load_component,
     load_scenarios,
+    read_csv,
+    select_scenarios,
 )
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
@@ -69,6 +76,8 @@ def run(
     scenario: str,
     app_name: str = typer.Option(..., "--app"),
     backend: str = typer.Option("", help="comma list; first available is the actuator"),
+    tag: str = typer.Option("", "--tag", help="comma list; run only scenarios with any of these tags"),
+    exclude: str = typer.Option("", "--exclude", help="comma list; skip scenarios with any of these tags"),
     udid: str = typer.Option("booted"),
     workers: int = typer.Option(1),
     erase: bool = typer.Option(True, "--erase/--no-erase", help="erase the device before each test"),
@@ -92,11 +101,23 @@ def run(
 ) -> None:
     """Run a scenario deterministically (no AI, unless --dismiss-alerts)."""
     eff = _load_effective(config, app_name)
+    # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
+    # is interpolated at action time, while their literal values are masked in evidence and
+    # run-level artifacts (the scenario definition keeps the token, never the value).
+    secret_bindings = {f"secrets.{n}": os.environ[n] for n in eff.secrets if n in os.environ}
+    secret_values = list(secret_bindings.values())
     scenario_path = Path(scenario)
     if not scenario_path.exists():
         typer.echo(f"scenario not found: {scenario}")
         raise typer.Exit(2)
     scenarios = load_scenarios(scenario_path.read_text(encoding="utf-8"))
+    include = [t.strip() for t in tag.split(",") if t.strip()]
+    excluded = [t.strip() for t in exclude.split(",") if t.strip()]
+    if include or excluded:
+        scenarios = select_scenarios(scenarios, include, excluded)
+        if not scenarios:
+            typer.echo("no scenarios match --tag/--exclude")
+            raise typer.Exit(2)
     # Prepend any reusable setup prelude (its steps run before the scenario's own). The
     # setup reference is a scenario file resolved relative to this scenario's directory.
     base_dir = scenario_path.parent
@@ -107,6 +128,26 @@ def run(
         )
     except (OSError, ValueError, IndexError) as e:
         typer.echo(f"setup の読み込みに失敗: {e}")
+        raise typer.Exit(2) from None
+    # Expand reusable components (`use` steps) into their parameterized steps. Runs after
+    # setup expansion so prelude steps may also `use` components.
+    try:
+        expand_components(
+            scenarios,
+            lambda ref: load_component((base_dir / ref).read_text(encoding="utf-8")),
+        )
+    except (OSError, ValueError) as e:
+        typer.echo(f"component の展開に失敗: {e}")
+        raise typer.Exit(2) from None
+    # Data-driven expansion: one run per data row (${row.col} substituted). Must precede
+    # the launch-env / collector loops below so every derived scenario is wired up.
+    try:
+        scenarios = expand_data(
+            scenarios,
+            lambda ref: read_csv((base_dir / ref).read_text(encoding="utf-8")),
+        )
+    except (OSError, ValueError) as e:
+        typer.echo(f"data の展開に失敗: {e}")
         raise typer.Exit(2) from None
     if not erase:
         for s in scenarios:
@@ -153,20 +194,23 @@ def run(
         # fixed device, so the parallel sink captures instant evidence only (udid=None).
         factory, relauncher, release = device_pool(udids, backends, eff.bundle_id)
         teardown = None
-        sink = FileSink(Path("runs") / run_id, redact=eff.redact)
+        control = None  # device control needs a single pinned device; unavailable in parallel
+        sink = FileSink(Path("runs") / run_id, redact=eff.redact, secrets=secret_values)
     else:
         factory = device_factory(udids[0], backends)
         relauncher = device_relauncher(udids[0])
         teardown = device_teardown(udids[0])
+        control = device_control(udids[0], eff.bundle_id)
         sink = FileSink(
             Path("runs") / run_id, udid=udids[0], log_predicate=log_predicate or None,
-            log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact,
+            log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact, secrets=secret_values,
         )
     try:
         results, manifest = run_and_report(
             eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
             teardown=teardown, collector=collector, relauncher=relauncher,
-            workers=workers, release=release,
+            workers=workers, release=release, bindings=secret_bindings, secret_values=secret_values,
+            control=control,
         )
     finally:
         if collector is not None:

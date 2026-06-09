@@ -25,6 +25,7 @@ from bajutsu.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import (
     BlockedHandler,
     Clock,
+    DeviceControl,
     RelaunchFn,
     RunResult,
     run_scenario,
@@ -123,6 +124,9 @@ def run_all(
     relauncher: RelaunchFactory | None = None,
     workers: int = 1,
     release: Callable[[base.Driver], None] | None = None,
+    bindings: Mapping[str, str] | None = None,
+    secret_values: list[str] | None = None,
+    control: DeviceControl | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each with a freshly built driver.
 
@@ -139,7 +143,7 @@ def run_all(
     """
     if workers > 1 and collector is not None:
         raise ValueError("並列実行（workers>1）は共有コレクタ非対応。--no-network で実行")
-    redactor = Redactor(eff.redact)
+    redactor = Redactor(eff.redact, values=secret_values)
 
     def run_one(i: int, s: Scenario) -> RunResult:
         sid = f"{i:02d}-{scenario_slug(s.name)}"
@@ -153,6 +157,7 @@ def run_all(
                 driver, s, clock, sink=sink, on_blocked=on_blocked, scenario_id=sid,
                 network=(collector.snapshot if collector is not None else _no_net),
                 relaunch=(relauncher(eff, s, driver) if relauncher is not None else None),
+                bindings=bindings, control=control,
             )
             if teardown is not None:
                 teardown(eff, s)
@@ -185,12 +190,16 @@ def run_and_report(
     relauncher: RelaunchFactory | None = None,
     workers: int = 1,
     release: Callable[[base.Driver], None] | None = None,
+    bindings: Mapping[str, str] | None = None,
+    secret_values: list[str] | None = None,
+    control: DeviceControl | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
     run_dir = runs_dir / run_id
     results = run_all(
         eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown,
         collector=collector, run_dir=run_dir, relauncher=relauncher, workers=workers, release=release,
+        bindings=bindings, secret_values=secret_values, control=control,
     )
     # The merged Result tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).
@@ -200,7 +209,21 @@ def run_and_report(
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
     (run_dir / "scenario.yaml").write_text(dump_scenarios(scenarios), encoding="utf-8")
     manifest = write_report(run_dir, run_id, results, definitions, sources)
+    # Final safety net: scrub any literal secret value that reached a run-level artifact
+    # (e.g. an assertion's expected/actual text in the manifest / HTML). The scenario
+    # definitions already hold tokens, not values, so this only catches result text.
+    _scrub_secret_values(run_dir, secret_values)
     return results, manifest
+
+
+def _scrub_secret_values(run_dir: Path, secret_values: list[str] | None) -> None:
+    if not secret_values:
+        return
+    scrub = Redactor(None, values=secret_values)
+    for name in ("manifest.json", "junit.xml", "report.html", "scenario.yaml"):
+        path = run_dir / name
+        if path.exists():
+            path.write_text(scrub.redact_text(path.read_text(encoding="utf-8")), encoding="utf-8")
 
 
 def device_factory(
@@ -271,6 +294,23 @@ def device_pool(
             free.put(udid)
 
     return factory, relauncher, release
+
+
+def device_control(
+    udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
+) -> DeviceControl:
+    """A DeviceControl bound to one device, backing `setLocation` / `push` steps via
+    simctl. Not used in parallel runs (no single pinned device)."""
+    e = env.Env(udid, run=env_run)
+
+    class _Control:
+        def set_location(self, lat: float, lon: float) -> None:
+            e.set_location(lat, lon)
+
+        def push(self, payload: dict[str, object]) -> None:
+            e.push(bundle_id, payload)
+
+    return _Control()
 
 
 def device_relauncher(udid: str, env_run: env.RunFn = env._real_run) -> RelaunchFactory:

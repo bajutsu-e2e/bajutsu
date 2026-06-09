@@ -115,12 +115,13 @@ class FileSink:
         log_predicate: str | None = None,
         log_subsystem: str | None = None,
         redact: Redact | None = None,
+        secrets: list[str] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.udid = udid
         self.log_predicate = log_predicate
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
-        self.redactor = Redactor(redact)
+        self.redactor = Redactor(redact, values=secrets)
 
     def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
         # Re-root each artifact name under step_id so it is relative to the run dir

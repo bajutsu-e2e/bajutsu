@@ -8,7 +8,7 @@ later by the runner.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -39,6 +39,7 @@ class Defaults(_Model):
         default_factory=lambda: ["screenshot.after", "elements", "actionLog"]
     )
     redact: Redact = Field(default_factory=Redact)
+    secrets: list[str] = Field(default_factory=list)
     reserved_namespaces: list[str] = Field(default_factory=list, alias="reservedNamespaces")
 
     @field_validator("backend", mode="before")
@@ -59,6 +60,7 @@ class AppConfig(_Model):
     mock_server: MockServer | None = Field(default=None, alias="mockServer")
     setup: str | None = None
     redact: Redact = Field(default_factory=Redact)
+    secrets: list[str] = Field(default_factory=list)
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -89,6 +91,7 @@ class Effective:
     setup: str | None
     capture: list[str]
     redact: Redact
+    secrets: list[str] = field(default_factory=list)
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -123,6 +126,7 @@ def resolve(config: Config, app: str) -> Effective:
         setup=a.setup,
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),
+        secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
     )
 
 
