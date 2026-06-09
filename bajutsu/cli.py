@@ -10,6 +10,7 @@ import typer
 from bajutsu import env as _env
 from bajutsu import github, preflight
 from bajutsu import trace as _trace
+from bajutsu import triage as _triage
 from bajutsu.backends import make_driver, select_actuator
 from bajutsu.claude_agent import ClaudeAgent
 from bajutsu.codegen import class_name_for, to_xcuitest
@@ -255,6 +256,25 @@ def trace(
         typer.echo(f"no run found{f': {run_dir}' if run_dir else f' under {runs}/'}")
         raise typer.Exit(2)
     typer.echo(_trace.trace_run(path, scenario or None))
+
+
+@app.command()
+def triage(
+    run_dir: str = typer.Argument("", help="run directory (default: the latest under runs/)"),
+    scenario: str = typer.Option("", "--scenario", help="only the scenario whose name contains this"),
+    runs: str = typer.Option("runs", help="runs root (used when run_dir is omitted)"),
+) -> None:
+    """Diagnose a failed run and suggest a minimal fix (advisory — never the pass/fail judge)."""
+    path = Path(run_dir) if run_dir else _trace.latest_run(Path(runs))
+    if path is None or not (path / "manifest.json").exists():
+        typer.echo(f"no run found{f': {run_dir}' if run_dir else f' under {runs}/'}")
+        raise typer.Exit(2)
+    context = _triage.assemble(path, scenario or None)
+    if context is None:
+        typer.echo("no failed scenario to triage in this run")
+        raise typer.Exit(0)
+    result = _triage.HeuristicTriageAgent().triage(context)
+    typer.echo(_triage.render(context, result))
 
 
 @app.command()
