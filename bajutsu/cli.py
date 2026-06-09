@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import env as _env
+from bajutsu import github
 from bajutsu.backends import make_driver, select_actuator
 from bajutsu.claude_agent import ClaudeAgent
 from bajutsu.codegen import class_name_for, to_xcuitest
@@ -123,6 +124,7 @@ def run(
         if collector is not None:
             collector.stop()
     ok = all(r.ok for r in results)
+    github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
     raise typer.Exit(0 if ok else 1)
 
