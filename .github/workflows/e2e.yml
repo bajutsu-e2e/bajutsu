@@ -6,7 +6,20 @@ name: E2E (Simulator)
 
 on:
   workflow_dispatch:
+  # Only on PRs that touch what an on-device run actually exercises — the app, the SDK,
+  # the runtime, the build/deps, or this workflow itself. Docs-only PRs skip the (metered)
+  # macOS run.
   pull_request:
+    paths:
+      - "bajutsu/**"
+      - "BajutsuKit/**"
+      - "sample/**"
+      - "bajutsu.config.yaml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".github/workflows/e2e.yml"
+      - ".github/actions/bajutsu-e2e/**"
 
 permissions:
   contents: read
