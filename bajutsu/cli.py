@@ -34,8 +34,10 @@ from bajutsu.scenario import (
     dump_mocks,
     dump_scenarios,
     expand_components,
+    expand_data,
     load_component,
     load_scenarios,
+    read_csv,
     select_scenarios,
 )
 
@@ -129,6 +131,16 @@ def run(
         )
     except (OSError, ValueError) as e:
         typer.echo(f"component の展開に失敗: {e}")
+        raise typer.Exit(2) from None
+    # Data-driven expansion: one run per data row (${row.col} substituted). Must precede
+    # the launch-env / collector loops below so every derived scenario is wired up.
+    try:
+        scenarios = expand_data(
+            scenarios,
+            lambda ref: read_csv((base_dir / ref).read_text(encoding="utf-8")),
+        )
+    except (OSError, ValueError) as e:
+        typer.echo(f"data の展開に失敗: {e}")
         raise typer.Exit(2) from None
     if not erase:
         for s in scenarios:

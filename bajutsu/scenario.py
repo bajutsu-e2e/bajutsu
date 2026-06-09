@@ -385,6 +385,8 @@ class Scenario(_Model):
 
     name: str
     tags: list[str] = Field(default_factory=list)
+    data: list[dict[str, str]] | None = None
+    data_file: str | None = Field(default=None, alias="dataFile")
     preconditions: Preconditions = Field(default_factory=Preconditions)
     steps: list[Step]
     expect: list[Assertion] = Field(default_factory=list)
@@ -392,6 +394,12 @@ class Scenario(_Model):
     network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
+
+    @model_validator(mode="after")
+    def _one_data_source(self) -> Self:
+        if self.data is not None and self.data_file is not None:
+            raise ValueError("data と dataFile は併用できない（どちらか一方）")
+        return self
 
 
 class Component(_Model):
@@ -471,6 +479,47 @@ def expand_components(
 
     for scenario in scenarios:
         scenario.steps = expand(scenario.steps, [])
+
+
+def read_csv(text: str) -> list[dict[str, str]]:
+    """Parse CSV text into a list of {column: value} row dicts (header row required)."""
+    import csv
+    import io
+
+    return [dict(row) for row in csv.DictReader(io.StringIO(text))]
+
+
+def _instantiate(scenario: Scenario, row: dict[str, str], index: int) -> Scenario:
+    dumped = scenario.model_dump(by_alias=True, exclude_none=True)
+    dumped.pop("data", None)
+    dumped.pop("dataFile", None)
+    out = cast("dict[str, Any]", interp.interpolate(dumped, {f"row.{k}": v for k, v in row.items()}))
+    kv = ", ".join(f"{k}={v}" for k, v in row.items())
+    out["name"] = f"{scenario.name} [row {index + 1}: {kv}]" if kv else f"{scenario.name} [row {index + 1}]"
+    return Scenario.model_validate(out)
+
+
+def expand_data(
+    scenarios: list[Scenario],
+    resolve_csv: Callable[[str], list[dict[str, str]]],
+) -> list[Scenario]:
+    """Expand each data-driven scenario into one scenario per data row, substituting
+    `${row.<col>}` tokens. A scenario with neither `data` nor `dataFile` passes through
+    unchanged. Each derived scenario keeps the original's preconditions (erase default
+    intact), so every row runs in its own clean environment — isolation is preserved."""
+    out: list[Scenario] = []
+    for s in scenarios:
+        if s.data is not None:
+            rows: list[dict[str, str]] | None = s.data
+        elif s.data_file is not None:
+            rows = resolve_csv(s.data_file)
+        else:
+            rows = None
+        if rows is None:
+            out.append(s)
+            continue
+        out.extend(_instantiate(s, row, i) for i, row in enumerate(rows))
+    return out
 
 
 def select_scenarios(
