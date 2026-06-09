@@ -181,6 +181,8 @@ details.nx>summary::-webkit-details-marker{display:none}
 .nxpre{background:#1c1c1e;color:#e6e6e6;border-radius:7px;padding:.45rem .6rem;max-height:240px;overflow:auto;
  font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:0}
 .nxat{flex:none;font:600 .7rem/1.4 ui-monospace,Menlo,Consolas,monospace}
+.nxmock{flex:none;font:600 .62rem/1 -apple-system,system-ui,sans-serif;text-transform:uppercase;
+ letter-spacing:.04em;color:#7a3aa8;background:#f3eafc;border:1px solid #e2cdf5;border-radius:4px;padding:.05rem .3rem}
 /* Network exchanges interleaved into the result timeline. The request/response row is a
    click target; its full settings table expands into a separate full-width row below
    (so it gets the whole width, not the cramped detail column). */
@@ -208,6 +210,7 @@ a{color:#0a6cff}
  .cap{color:#9db8f0;background:#1b2433;border-color:#2c3a52}
  .tk.id{color:#aab8f5;background:#222a3f} .tk.str{color:#e0a458} .tk.num{color:#5fd0d0} .tk.re{color:#c79bea}
  .nxhk{color:#aab8f5}
+ .nxmock{color:#c79bea;background:#2a2140;border-color:#42305e}
  details.pre>summary{background:#2a2b2f}
  tr.ng{background:#3a2422}
  tr.srow:hover td,tr.xrow:hover td{background:#2a2f3a}

@@ -550,6 +550,7 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
         "status": str(status) if status is not None else "—",
         "status_cls": _status_class(status),
         "dur": f"{float(dur):.0f} ms" if isinstance(dur, (int, float)) and not isinstance(dur, bool) else "",
+        "mocked": bool(d.get("mocked")),
         "sections": sections,
     }
 

@@ -53,7 +53,7 @@
 {%- endmacro -%}
 
 {%- macro nxitem(it) -%}
-<details class="nx"><summary><span class="nxat muted" title="request time (offset from scenario start)">{{ it.at }}</span><span class="nxm">{{ it.method }}</span><span class="nxp">{{ it.target }}</span><span class="nxs{% if it.status_cls %} {{ it.status_cls }}{% endif %}">{{ it.status }}</span><span class="nxd muted">{{ it.dur }}</span></summary><div class="nxbody">
+<details class="nx"><summary><span class="nxat muted" title="request time (offset from scenario start)">{{ it.at }}</span><span class="nxm">{{ it.method }}</span><span class="nxp">{{ it.target }}</span><span class="nxs{% if it.status_cls %} {{ it.status_cls }}{% endif %}">{{ it.status }}</span><span class="nxd muted">{{ it.dur }}</span>{% if it.mocked %}<span class="nxmock" title="served by a bajutsu mock stub (no real network call)">mock</span>{% endif %}</summary><div class="nxbody">
 {%- if it.sections -%}
 {%- for s in it.sections -%}
 {%- if s.kind == 'line' %}<div class="nxsec"><span class="nxlbl">{{ s.label }}</span><div class="nxh{% if s.cls %} {{ s.cls }}{% endif %}">{{ s.text }}</div></div>
