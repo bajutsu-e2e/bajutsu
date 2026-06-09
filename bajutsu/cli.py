@@ -25,7 +25,13 @@ from bajutsu.runner import (
     launch_driver,
     run_and_report,
 )
-from bajutsu.scenario import Preconditions, dump_mocks, dump_scenarios, load_scenarios
+from bajutsu.scenario import (
+    Preconditions,
+    apply_setups,
+    dump_mocks,
+    dump_scenarios,
+    load_scenarios,
+)
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
 
@@ -88,6 +94,17 @@ def run(
         typer.echo(f"scenario not found: {scenario}")
         raise typer.Exit(2)
     scenarios = load_scenarios(scenario_path.read_text(encoding="utf-8"))
+    # Prepend any reusable setup prelude (its steps run before the scenario's own). The
+    # setup reference is a scenario file resolved relative to this scenario's directory.
+    base_dir = scenario_path.parent
+    try:
+        apply_setups(
+            scenarios, eff.setup,
+            lambda ref: load_scenarios((base_dir / ref).read_text(encoding="utf-8"))[0].steps,
+        )
+    except (OSError, ValueError, IndexError) as e:
+        typer.echo(f"setup の読み込みに失敗: {e}")
+        raise typer.Exit(2) from None
     if not erase:
         for s in scenarios:
             s.preconditions.erase = False

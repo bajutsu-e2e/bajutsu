@@ -18,6 +18,7 @@ from bajutsu.scenario import (
     Swipe,
     Wait,
     WaitRequest,
+    apply_setups,
     dump_scenarios,
     load_scenarios,
 )
@@ -219,3 +220,44 @@ def test_trigger_idmatches_requires_action() -> None:
             "steps": [{"tap": {"id": "a"}}],
             "capturePolicy": [{"on": {"event": "screenChanged", "idMatches": "*.x"}, "capture": ["elements"]}],
         })
+
+
+def _step(sid: str) -> Step:
+    return Step.model_validate({"tap": {"id": sid}})
+
+
+def test_apply_setups_prepends_prelude_steps() -> None:
+    scns = [
+        Scenario.model_validate(
+            {"name": "a", "preconditions": {"setup": "login.yaml"}, "steps": [{"tap": {"id": "x"}}]}
+        ),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "y"}}]}),  # no setup
+    ]
+    seen: list[str] = []
+
+    def resolve(ref: str) -> list[Step]:
+        seen.append(ref)
+        return [_step("auth.email"), _step("auth.submit")]
+
+    apply_setups(scns, default_setup=None, resolve=resolve)
+    assert [s.tap.id for s in scns[0].steps if s.tap] == ["auth.email", "auth.submit", "x"]
+    assert [s.tap.id for s in scns[1].steps if s.tap] == ["y"]  # untouched
+    assert seen == ["login.yaml"]
+
+
+def test_apply_setups_default_is_shared_and_resolved_once() -> None:
+    scns = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "x"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "y"}}]}),
+    ]
+    count = 0
+
+    def resolve(ref: str) -> list[Step]:
+        nonlocal count
+        count += 1
+        return [_step("prelude")]
+
+    apply_setups(scns, default_setup="common.yaml", resolve=resolve)
+    assert scns[0].steps[0].tap and scns[0].steps[0].tap.id == "prelude"
+    assert scns[1].steps[0].tap and scns[1].steps[0].tap.id == "prelude"
+    assert count == 1  # the shared default is resolved once and cached
