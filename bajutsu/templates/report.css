@@ -54,7 +54,10 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
  background:rgba(255,255,255,.14);color:#fff;font-size:1.7rem;line-height:1;display:flex;
  align-items:center;justify-content:center}
 .lb-nav:hover{background:rgba(255,255,255,.28)}
-.media{position:sticky;top:3.4rem}
+/* The recording stays at the top of its column. It is deliberately not sticky: a
+   sticky grid item shifts down a few px when the other column grows (e.g. expanding a
+   network row), which reads as the video "jumping". */
+.media{align-self:start}
 .pass{color:var(--ok);font-weight:700} .fail{color:var(--ng);font-weight:700}
 .logbar{display:flex;gap:.5rem;align-items:center;margin:.1rem 0 .35rem}
 .logbar input{flex:1;padding:.32rem .55rem;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:.84rem}
