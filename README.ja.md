@@ -84,8 +84,8 @@ Bajutsu は自然言語で書かれた（または記録された）テストシ
   best-effort。
 
 未配線（スキーマ / フラグはあるが実行時に効かない）: 並列実行（`--workers`）、`locale` の適用、
-再利用 `setup` precondition、モックサーバ（決定的ネットワーク）、`network` / `appTrace` 証跡、
-`relaunch` / `within`、redaction の適用、`trace` コマンド、自己修復トリアージ。完全な
+再利用 `setup` precondition、外部 `mockServer` コマンド（シナリオ `mocks` で代替済み）、
+`relaunch` / `within`、`trace` コマンド、自己修復トリアージ。完全な
 「実装済み vs 未配線」表は [`docs/ja/architecture.md`](docs/ja/architecture.md)。
 
 ## 要件
@@ -171,6 +171,8 @@ bajutsu/
   操作する）。*（ロジックは実装・テスト済み。「idb で同一シナリオが通る」は実機での確認が必要。）*
 - **M2 — ほぼ完了。** AI ループ（`record`）+ `capturePolicy` 証跡ルール + `video` / `deviceLog` +
   レポーター（JUnit/HTML）。*（完了。冪等な正規化 / 来歴コメントはまだ軽い。）*
-- **M3 — 一部完了。** XCUITest codegen ✅。残り: ネットワーク（モック）+ アプリトレース
-  （os_signpost / `appTrace`）+ redaction の適用 + CI 統合。
+- **M3 — CI を残してほぼ完了。** XCUITest codegen ✅、アプリトレース（`appTrace` / os_signpost）✅、
+  証跡への redaction 適用 ✅、ネットワーク**観測**（アプリ内 collector + `request` アサーション）✅、
+  **決定的モック**（シナリオ `mocks` → オフラインのプロトコル内スタブ）✅ — いずれも実機検証済み。
+  残り: CI 統合。
 - **M4 — 未着手。** 自己修復トリアージ（失敗の要約、最小シナリオ差分の提案。人間レビュー前提）。

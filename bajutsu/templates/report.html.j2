@@ -1,0 +1,92 @@
+{#- Self-contained interactive HTML report. report.py builds a pure-data context;
+    all markup lives here. CSS/JS are inlined (passed in as `css` / `js`). -#}
+{%- macro parts(items) -%}
+{%- for kind, text in items -%}
+{%- if kind %}<span class="tk {{ kind }}">{{ text }}</span>{% else %}{{ text }}{% endif -%}
+{%- endfor -%}
+{%- endmacro -%}
+
+{%- macro actbadge(a) -%}
+{%- if a %}<span class="act{% if a.cls %} {{ a.cls }}{% endif %}">{{ a.label }}</span>{% endif -%}
+{%- endmacro -%}
+
+{%- macro nxvalue(v) -%}
+{%- if v.kind == 'parts' %}{{ parts(v.parts) }}
+{%- elif v.kind == 'headers' %}{% for k, hv in v.pairs %}{% if not loop.first %}<br>{% endif %}<span class="nxhk">{{ k }}</span>: {{ hv }}{% endfor %}
+{%- elif v.kind == 'body' %}<pre class="nxpre">{{ v.text }}</pre>{% endif -%}
+{%- endmacro -%}
+
+{%- macro detail(d) -%}
+{%- if d.kind == 'parts' -%}{{ parts(d.parts) }}
+{%- elif d.kind == 'asserts' -%}<table class="atbl"><tbody>{% for kind, target, comp in d.rows %}<tr><td><span class="act act-assert">{{ kind }}</span></td><td class="adesc">{{ parts(target) }}</td><td class="adesc">{{ parts(comp) }}</td></tr>{% endfor %}</tbody></table>
+{%- elif d.kind == 'nxsummary' -%}<span class="xmark">▸</span> {{ parts(d.summary) }}
+{%- endif -%}
+{%- if d.name %} <span class="stepname">{{ d.name }}</span>{% endif %}{% for c in d.caps %} <span class="cap">{{ c }}</span>{% endfor %}
+{%- endmacro -%}
+
+{%- macro stepview(v) -%}
+{%- if v is none %}—{% else %}{% if v.shot %}<img class="shot" loading="lazy" src="{{ v.shot }}" alt="{{ v.alt }}">{% endif %}{% if v.tree %}<a class="elnk" href="{{ v.tree }}" target="_blank" rel="noopener">tree</a>{% endif %}{% if not v.shot and not v.tree %}—{% endif %}{% endif -%}
+{%- endmacro -%}
+
+{%- macro steprow(row) -%}
+<tr class='{{ row.rowcls }}'{% if row.data_t %} data-t='{{ row.data_t }}'{% endif %}{% if row.title %} title='{{ row.title }}'{% endif %}><td{% if row.numcls %} class='{{ row.numcls }}'{% endif %}>{{ row.num }}</td><td>{% if row.result is not none %}<span class="exst{% if row.result.cls %} {{ row.result.cls }}{% endif %}">{{ row.result.text }}</span>{% endif %}</td><td>{{ actbadge(row.action) }}</td><td class='adesc'>{{ detail(row.detail) }}</td><td>{{ row.at }}</td><td class='ev'>{{ stepview(row.view) }}</td><td>{% if row.reason %}<span class="exreason">{{ row.reason }}</span>{% endif %}</td></tr>{% if row.expand %}<tr class='nxdetail' hidden><td colspan='7'><table class="nxtbl"><tbody>{% for label, val in row.expand.pairs %}<tr><td class="nxk">{{ label }}</td><td class="nxv">{{ nxvalue(val) }}</td></tr>{% endfor %}</tbody></table></td></tr>{% endif %}
+{%- endmacro -%}
+
+{%- macro exrow(row) -%}
+<tr class='{{ row.rowcls }}'><td><span class="exst{% if row.stcls %} {{ row.stcls }}{% endif %}">{{ row.status }}</span></td><td><span class="act act-assert">{{ row.kind }}</span></td><td class="adesc">{{ parts(row.target) }}</td><td class="adesc">{{ parts(row.comp) }}</td><td>{% if row.reason %}<span class="exreason">{{ row.reason }}</span>{% endif %}</td></tr>
+{%- endmacro -%}
+
+{%- macro precond(rows) -%}
+{%- if rows %}<details class="pre" open><summary>preconditions ({{ rows|length }})</summary><table class="pretbl"><tbody>{% for k, v in rows %}<tr><td class="pk">{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}</tbody></table></details>{% endif -%}
+{%- endmacro -%}
+
+{%- macro rich(p) -%}
+{{ precond(p.preconditions) }}<div class="steps-sec"><span class="deflbl">steps</span><table class='sttbl'><thead><tr><th>#</th><th>result</th><th>action</th><th>detail</th><th>at</th><th>view</th><th>reason</th></tr></thead><tbody>{% for row in p.steprows %}{{ steprow(row) }}{% endfor %}</tbody></table></div>{% if p.expects %}<div class="expects"><span class="deflbl">{{ p.expects.label }}</span><table class='extbl'><thead><tr><th>result</th><th>kind</th><th>target</th><th>comparison</th><th>reason</th></tr></thead><tbody>{% for row in p.expects.rows %}{{ exrow(row) }}{% endfor %}</tbody></table></div>{% endif %}
+{%- endmacro -%}
+
+{%- macro result_panel(p) -%}
+{%- if p.source is not none -%}
+<div class="vtoggle"><button class="vt active" data-view="rich">Rich</button><button class="vt" data-view="yaml">YAML</button></div><div class="view view-rich active">{{ rich(p) }}</div><div class="view view-yaml"><pre class="src">{{ p.source }}</pre></div>
+{%- else -%}
+{{ rich(p) }}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro nxitem(it) -%}
+<details class="nx"><summary><span class="nxat muted" title="request time (offset from scenario start)">{{ it.at }}</span><span class="nxm">{{ it.method }}</span><span class="nxp">{{ it.target }}</span><span class="nxs{% if it.status_cls %} {{ it.status_cls }}{% endif %}">{{ it.status }}</span><span class="nxd muted">{{ it.dur }}</span>{% if it.mocked %}<span class="nxmock" title="served by a bajutsu mock stub (no real network call)">mock</span>{% endif %}</summary><div class="nxbody">
+{%- if it.sections -%}
+{%- for s in it.sections -%}
+{%- if s.kind == 'line' %}<div class="nxsec"><span class="nxlbl">{{ s.label }}</span><div class="nxh{% if s.cls %} {{ s.cls }}{% endif %}">{{ s.text }}</div></div>
+{%- elif s.kind == 'kv' %}<div class="nxsec"><span class="nxlbl">{{ s.label }}</span>{% for k, v in s.pairs %}<div class="nxh"><span class="nxhk">{{ k }}</span><span class="nxhv">{{ v }}</span></div>{% endfor %}</div>
+{%- elif s.kind == 'pre' %}<div class="nxsec"><span class="nxlbl">{{ s.label }}</span><pre class="nxpre">{{ s.text }}</pre></div>{% endif -%}
+{%- endfor -%}
+{%- else %}<div class="muted">(no headers or body)</div>{% endif -%}
+</div></details>
+{%- endmacro -%}
+
+{%- macro network_panel(p) -%}
+{%- if p.empty %}<div class="muted">network: <a href="{{ p.link }}">{{ p.link }}</a> (no exchanges)</div>
+{%- else %}<div class="muted">{{ p.count }} {{ p.plural }} captured by BajutsuKit · <a href="{{ p.link }}">{{ p.link }}</a></div><div class="nxlist">{% for it in p.exchanges %}{{ nxitem(it) }}{% endfor %}</div>{% endif -%}
+{%- endmacro -%}
+
+{%- macro log_panel(p) -%}
+{%- if p.lines is none %}<div class="muted">device log: <a href="{{ p.link }}">{{ p.link }}</a></div>
+{%- else %}<div class="logbar"><input class="logfilter" type="search" placeholder="filter log…"><span class="logcount muted">{{ p.shown }} lines</span></div><div class="muted">{{ p.note }}<a href="{{ p.link }}">{{ p.link }}</a></div><div class="log">{% if p.lines %}{% for ln in p.lines %}<div class="ln">{{ ln }}</div>{% endfor %}{% else %}<div class="ln muted">(empty)</div>{% endif %}</div>{% endif -%}
+{%- endmacro -%}
+
+{%- macro trace_panel(p) -%}
+{%- if p.empty %}<div class="muted">app trace: <a href="{{ p.link }}">{{ p.link }}</a> (no intervals)</div>
+{%- else %}<table><thead><tr><th>interval</th><th>duration</th><th>begin</th><th>end</th></tr></thead><tbody>{% for n, d, b, e in p.rows %}<tr><td>{{ n }}</td><td>{{ d }} ms</td><td>{{ b }}</td><td>{{ e }}</td></tr>{% endfor %}</tbody></table>{% endif -%}
+{%- endmacro -%}
+
+{%- macro panel_body(panel) -%}
+{%- if panel.kind == 'result' %}{{ result_panel(panel) }}
+{%- elif panel.kind == 'network' %}{{ network_panel(panel) }}
+{%- elif panel.kind == 'log' %}{{ log_panel(panel) }}
+{%- elif panel.kind == 'trace' %}{{ trace_panel(panel) }}{% endif -%}
+{%- endmacro -%}
+
+{%- macro scenario(s) -%}
+<details class="scn" data-ok="{{ s.ok|lower }}"{% if s.open %} open{% endif %}><summary><span class="dot{% if not s.ok %} ng{% endif %}"></span><span class="sname">{{ s.name }}</span> {% if s.backend %}<span class="drv" title="actuator backend">{{ s.backend }}</span>{% endif %}{% if s.ok %}<span class="pass">PASS</span>{% else %}<span class="fail">FAIL</span>{% endif %}</summary><div class="body"><div class="media">{% if s.video %}<div class="player"><video preload="metadata" src="{{ s.video }}"></video><div class="vctl"><button class="vplay" type="button" aria-label="play / pause">▶</button><span class="vseekwrap"><input class="vseek" type="range" min="0" max="0" value="0" step="0.05" aria-label="seek"><span class="vmarks" aria-hidden="true"></span></span><span class="vtime">0:00 / 0:00</span></div></div>{% else %}<div class="muted">no recording</div>{% endif %}</div><div class="detail"><div class="tabs">{% for panel in s.panels %}<button class="tab{% if loop.first %} active{% endif %}" data-tab="{{ panel.key }}">{{ panel.label }}</button>{% endfor %}</div>{% for panel in s.panels %}<div class="panel{% if loop.first %} active{% endif %}" data-panel="{{ panel.key }}">{{ panel_body(panel) }}</div>{% endfor %}</div></div></details>
+{%- endmacro -%}
+<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Bajutsu run {{ run_id }}</title><style>{{ css|safe }}</style></head><body><header><h1>Bajutsu run {{ run_id }} {% if overall %}<span class="pass">PASS</span>{% else %}<span class="fail">FAIL</span>{% endif %}</h1><div class="stats"><span class="chip ok">{{ passed }} passed</span><span class="chip ng">{{ failed }} failed</span>{% if backend %}<span class="chip dchip" title="actuator backend">driver: {{ backend }}</span>{% endif %}</div><div class="ctl"><label><input type="checkbox" onchange="onlyFailures(this)"> only failures</label><button class="hbtn" onclick="toggleAll(true)">expand all</button><button class="hbtn" onclick="toggleAll(false)">collapse all</button></div></header><main>{% for s in scenarios %}{{ scenario(s) }}{% endfor %}</main><div class="lb" id="lb"><button class="lb-nav lb-prev" type="button" aria-label="previous screenshot">‹</button><figure class="lb-fig"><img alt="step screenshot"><figcaption class="lb-cap"></figcaption></figure><button class="lb-nav lb-next" type="button" aria-label="next screenshot">›</button></div><script>{{ js|safe }}</script></body></html>

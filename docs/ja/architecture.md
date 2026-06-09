@@ -88,7 +88,10 @@ assertions.py  evidence.py ── intervals.py
 - シナリオスキーマ（厳格検証）と YAML ラウンドトリップ
 - 7 種のアサーション評価
 - Tier 2 run ループ（act → wait → verify）、`FakeDriver` で検証
-- 証跡: 瞬時（`screenshot`/`elements`）+ 区間（`video`/`deviceLog`）+ `capturePolicy` 発火
+- 証跡: 瞬時（`screenshot`/`elements`）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク
+  collector（`network.json`）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用**
+- ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）:
+  `request` アサーション、`wait: { until: request }`、オフラインのスタブ応答
 - レポート（`manifest.json` / `junit.xml` / `report.html`）
 - config 解決（defaults × apps、redact マージ）と actuator 選択
 - `simctl` コマンド層・idb の出力パーサ・`doctor` スコア
@@ -108,8 +111,7 @@ assertions.py  evidence.py ── intervals.py
 | 並列実行 `--workers` | CLI フラグは受けるが**未使用**（直列実行のみ） | `cli.py:55` |
 | `locale` の適用 | config / preconditions に値は持つが launch で**適用していない** | `config.py` / `scenario.py` |
 | `preconditions.setup`（再利用前段） | スキーマのみ。runner は読まない | `config.py` / `scenario.py` |
-| `mockServer`（決定的ネットワーク） | config スキーマのみ。起動・接続は**未実装** | `config.py` `MockServer` |
-| `network` / `appTrace` 証跡 | capture トークンとして**検証は通る**が、取得は未実装（取得元が無い） | `evidence.py` |
+| `mockServer`（外部モックコマンド） | config スキーマのみ。`cmd`/`port` の外部サーバは**未実装** — シナリオ `mocks`（宣言的なプロトコル内スタブ、実装済み）で代替 | `config.py` `MockServer` |
 | `relaunch` ステップ | `NotImplementedError`（env 統合後） | `orchestrator.py` `_do_action` |
 | `within` セレクタ | `NotImplementedError`（階層クエリが必要） | `drivers/base.py` `matches` |
 | `trace` コマンド | CLI に**未実装**（DESIGN の構想） | — |

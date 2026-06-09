@@ -164,9 +164,12 @@ def test_lightbox_arrows_navigate_screenshots() -> None:
 
 def test_step_click_seeks_without_autoplay() -> None:
     # Clicking a step seeks the recording but never starts playback on a paused video.
+    # Playback is started only from the explicit play/pause control, never the seek path.
     out = html_report("run9", [_passing()])
-    assert "v.currentTime = t;" in out
-    assert "v.play()" not in out
+    assert "v.currentTime = t;" in out          # step-row click seeks
+    assert "if(v.paused) v.play();" in out      # play() is reachable only via the button
+    # The seek handler stays seek-only (it has no .play() of its own).
+    assert "Seek only" in out
 
 
 def test_html_shows_backend() -> None:
@@ -295,7 +298,7 @@ def test_html_network_tab(tmp_path: Path) -> None:
     (tmp_path / sid).mkdir(parents=True)
     (tmp_path / sid / "network.json").write_text(
         '[{"method":"GET","url":"https://example.com/items","path":"/items","status":200,'
-        '"durationMs":75.4,"responseHeaders":{"Content-Type":"text/html"},'
+        '"durationMs":75.4,"startedAt":0.8,"responseHeaders":{"Content-Type":"text/html"},'
         '"responseBody":"<html>hi</html>"}]',
         encoding="utf-8",
     )
@@ -304,10 +307,11 @@ def test_html_network_tab(tmp_path: Path) -> None:
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
     out = html_report("run1", [r], tmp_path)
-    # A Network tab appears and renders the captured exchange: method / path / status,
-    # plus the headers and (HTML-escaped) body when expanded.
+    # A Network tab appears and renders the captured exchange: request time / method /
+    # path / status, plus the headers and (HTML-escaped) body when expanded.
     assert 'data-tab="net"' in out
     assert "captured by BajutsuKit" in out
+    assert 'class="nxat muted"' in out and ">0.8s</span>" in out   # the request time on the row
     assert 'class="nxm">GET' in out
     assert "/items" in out and 'nxs ok">200' in out
     assert "Content-Type" in out and "&lt;html&gt;hi&lt;/html&gt;" in out
@@ -315,12 +319,19 @@ def test_html_network_tab(tmp_path: Path) -> None:
     assert 'data-tab="net"' not in html_report("run1", [_passing()])
 
 
+def test_html_dark_mode_and_log_highlight() -> None:
+    out = html_report("run9", [_passing()])
+    assert "@media (prefers-color-scheme: dark)" in out  # dark-mode CSS is bundled
+    assert ".log mark{" in out                           # highlight style for log matches
+    assert "'<mark>'" in out                              # the log filter wraps matches in <mark>
+
+
 def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
     sid = "00-s1"
     (tmp_path / sid).mkdir(parents=True)
     (tmp_path / sid / "network.json").write_text(
         '[{"method":"GET","url":"https://api.example.com/items","status":200,"durationMs":50,'
-        '"responseHeaders":{"Content-Type":"application/json"},"startedAt":0.5},'
+        '"responseHeaders":{"Content-Type":"application/json"},"responseBody":"hello-body","startedAt":0.5},'
         '{"method":"POST","url":"https://other.com/log","status":204,"startedAt":1.2}]',
         encoding="utf-8",
     )
@@ -335,11 +346,15 @@ def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
     out = html_report("run1", [r], tmp_path, definitions=[definition])
-    # Each exchange is an interleaved row whose detail is a nested settings table.
-    assert 'class="act act-net">GET' in out and 'class="nxtbl"' in out
+    # Each exchange splits into a request row (method badge) and a response row.
+    assert 'class="act act-net">GET' in out and 'act-net">response' in out
+    # The row is a click target; its settings expand into a full-width row below.
+    assert 'class="xmark">▸' in out and "class='nxdetail' hidden" in out
     assert 'class="nxk">endpoint' in out and "https://api.example.com/items" in out
-    assert 'class="nxk">response headers' in out and "Content-Type" in out
-    # Time order: tap(0.0) -> GET(0.5) -> wait(1.0) -> POST(1.2).
+    # The response row carries the response headers and (viewable) body.
+    assert 'class="nxk">headers' in out and "Content-Type" in out
+    assert 'class="nxk">body' in out and "hello-body" in out
+    # Time order: tap(0.0) -> GET request(0.5) -> wait(1.0) -> POST request(1.2).
     assert out.index(">#a<") < out.index('act-net">GET') < out.index('act-wait">wait') < out.index('act-net">POST')
 
 
@@ -359,8 +374,9 @@ def test_html_exchanges_filtered_by_domain(tmp_path: Path) -> None:
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
     out = html_report("run1", [r], tmp_path, definitions=[definition])
-    # Only the example.com request is interleaved into Steps (one act-net row)...
-    assert out.count('class="act act-net"') == 1 and "https://api.example.com/x" in out
+    # Only the example.com exchange is interleaved into the result timeline (its request
+    # + response rows = two act-net badges)...
+    assert out.count('class="act act-net"') == 2 and "https://api.example.com/x" in out
     # ...but the filtered-out request still appears in the (unfiltered) Network tab.
     assert "tracker.io" in out
 

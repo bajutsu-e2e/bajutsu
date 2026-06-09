@@ -1,0 +1,63 @@
+# On-device E2E: build the sample app, boot a Simulator, and run a smoke scenario through
+# the idb backend. This exercises the full path (driver + simctl + idb + real actuation)
+# that the Linux `ci.yml` cannot. macOS runners are slow/metered, so this is nightly +
+# manual rather than per-PR.
+name: E2E (Simulator)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"  # nightly ~06:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: smoke (idb)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Build the sample app
+        run: make sample-build
+
+      - name: Boot a Simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          runtime=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r.get('platform')=='iOS' and r.get('isAvailable')]; print(rs[-1]['identifier'] if rs else '')")
+          devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys; ts=[t for t in json.load(sys.stdin)['devicetypes'] if t.get('productFamily')=='iPhone']; print(ts[-1]['identifier'] if ts else '')")
+          test -n "$runtime" && test -n "$devtype"
+          udid=$(xcrun simctl create ci-iphone "$devtype" "$runtime")
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
+
+      - name: Run smoke scenarios
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: sample/scenarios/smoke.yaml
+          app: sample
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: smoke-run

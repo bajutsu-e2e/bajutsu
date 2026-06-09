@@ -52,6 +52,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 11 | [codegen](codegen.md) | Scenario → native XCUITest generation |
 | 12 | [cli](cli.md) | Full reference for CLI commands and options |
 | 13 | [sample-app](sample-app.md) | The bundled `BajutsuSample` fixture (exercises every primitive) |
+| 14 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
 
 ## Quick start
 

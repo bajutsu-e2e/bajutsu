@@ -126,6 +126,10 @@ def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
         return False
     if req.status is not None and ex.status != req.status:
         return False
+    if req.body_matches is not None and (
+        ex.request_body is None or re.search(req.body_matches, ex.request_body) is None
+    ):
+        return False
     return True
 
 
@@ -150,6 +154,8 @@ def request_label(req: RequestMatch) -> str:
         parts.append(f"~{req.path_matches}")
     if req.status is not None:
         parts.append(f"status={req.status}")
+    if req.body_matches is not None:
+        parts.append(f"body~{req.body_matches}")
     if req.count is not None:
         parts.append(f"count={req.count}")
     return " ".join(parts)
@@ -164,6 +170,45 @@ def _eval_request(exchanges: list[NetworkExchange], req: RequestMatch) -> Assert
     reason = (
         f"count={req.count} を期待したが {n} 件"
         if req.count is not None
+        else f"一致する通信なし（観測 {len(exchanges)} 件）"
+    )
+    return AssertionResult(False, "request", detail, reason)
+
+
+def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch]) -> list[int]:
+    """Assign each request matcher a *distinct* exchange — one `request` ↔ one exchange.
+
+    Maximum bipartite matching (Kuhn's augmenting paths) so a broad matcher never steals
+    the only exchange a more specific one needs. Returns, per matcher, the exchange index
+    it was assigned, or -1 when none is left for it."""
+    adj = [[j for j, ex in enumerate(exchanges) if _match_request(ex, req)] for req in reqs]
+    ex_to_req = [-1] * len(exchanges)
+    assigned = [-1] * len(reqs)
+
+    def augment(i: int, seen: list[bool]) -> bool:
+        for j in adj[i]:
+            if not seen[j]:
+                seen[j] = True
+                if ex_to_req[j] == -1 or augment(ex_to_req[j], seen):
+                    ex_to_req[j], assigned[i] = i, j
+                    return True
+        return False
+
+    for i in range(len(reqs)):
+        augment(i, [False] * len(exchanges))
+    return assigned
+
+
+def _request_assignment_result(
+    req: RequestMatch, assigned_ex: int, exchanges: list[NetworkExchange]
+) -> AssertionResult:
+    detail = f"request {request_label(req)}"
+    if assigned_ex != -1:
+        return AssertionResult(True, "request", detail)
+    matched_any = any(_match_request(ex, req) for ex in exchanges)
+    reason = (
+        "一致する通信は他の request と対応済み（request と通信は 1 対 1）"
+        if matched_any
         else f"一致する通信なし（観測 {len(exchanges)} 件）"
     )
     return AssertionResult(False, "request", detail, reason)
@@ -199,8 +244,25 @@ def evaluate(
     assertions: list[Assertion],
     exchanges: list[NetworkExchange] | None = None,
 ) -> list[AssertionResult]:
-    """Evaluate all of expect/assert (the caller decides AND via passed())."""
-    return [evaluate_one(elements, a, exchanges) for a in assertions]
+    """Evaluate all of expect/assert (the caller decides AND via passed()).
+
+    Plain `request` assertions (no `count`) in the block are matched **one-to-one** to
+    distinct exchanges: two `request` lines need two separate exchanges. (`count` is an
+    explicit aggregate and stays independent.)"""
+    exs = exchanges or []
+    bare: list[tuple[int, RequestMatch]] = []
+    for i, a in enumerate(assertions):
+        if a.request is not None and a.request.count is None:
+            bare.append((i, a.request))
+    assigned: dict[int, AssertionResult] = {}
+    if len(bare) >= 2:
+        order = _assign_requests(exs, [req for _, req in bare])
+        for (i, req), ex_idx in zip(bare, order):
+            assigned[i] = _request_assignment_result(req, ex_idx, exs)
+    return [
+        assigned[i] if i in assigned else evaluate_one(elements, a, exs)
+        for i, a in enumerate(assertions)
+    ]
 
 
 def passed(results: list[AssertionResult]) -> bool:

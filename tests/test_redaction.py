@@ -34,6 +34,26 @@ def test_redact_text_masks_known_keys() -> None:
     assert "page=2" in out and "nothing here" in out
 
 
+def test_redact_exchange_masks_headers_url_and_body() -> None:
+    red = _r(headers=["Authorization"], fields=["token", "password"])
+    ex = red.redact_exchange({
+        "method": "POST",
+        "url": "https://api.example.com/login?token=qstring",
+        "requestHeaders": {"Authorization": "Bearer abc.def", "Accept": "application/json"},
+        "requestBody": '{"name":"bajutsu","password":"hunter2"}',
+        "responseBody": '{"token":"resp-secret"}',
+    })
+    # Header masked whole by name; non-secret header untouched.
+    assert ex["requestHeaders"]["Authorization"] == PLACEHOLDER
+    assert ex["requestHeaders"]["Accept"] == "application/json"
+    # Body fields and query params scrubbed (a whole-JSON text pass would miss escaped bodies).
+    assert "hunter2" not in ex["requestBody"] and "resp-secret" not in ex["responseBody"]
+    assert "qstring" not in ex["url"]
+    assert "bajutsu" in ex["requestBody"]   # non-secret field kept
+    # No-op when unconfigured.
+    assert Redactor(Redact()).redact_exchange({"requestBody": '{"password":"x"}'})["requestBody"] == '{"password":"x"}'
+
+
 def test_redactor_inactive_when_unconfigured() -> None:
     red = Redactor(Redact())
     assert red.active is False

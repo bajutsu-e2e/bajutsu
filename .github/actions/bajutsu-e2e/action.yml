@@ -1,0 +1,63 @@
+name: bajutsu E2E
+description: >-
+  Run bajutsu scenarios against an already-booted Simulator with the idb backend,
+  then upload the run (report.html, screenshots, video, network.json) as an artifact.
+  The caller is responsible for building and installing the app first (build varies per
+  app); this action owns the bajutsu-specific part (idb setup, doctor, run, artifacts).
+
+inputs:
+  scenarios:
+    description: Scenario file(s) / glob to run.
+    required: true
+  app:
+    description: App key in bajutsu.config.yaml.
+    required: true
+  udid:
+    description: Simulator UDID (or "booted" for the current one).
+    required: false
+    default: booted
+  backend:
+    description: Actuator backend.
+    required: false
+    default: idb
+  config:
+    description: Path to bajutsu.config.yaml.
+    required: false
+    default: bajutsu.config.yaml
+  artifact-name:
+    description: Name for the uploaded run artifacts.
+    required: false
+    default: bajutsu-run
+
+runs:
+  using: composite
+  steps:
+    - name: Install idb_companion
+      shell: bash
+      run: brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion
+
+    - name: Sync dependencies (idb backend)
+      shell: bash
+      run: uv sync --extra idb
+
+    - name: Preflight (bajutsu doctor — non-blocking)
+      shell: bash
+      run: >-
+        uv run --no-sync bajutsu doctor --app "${{ inputs.app }}" --udid "${{ inputs.udid }}"
+        --backend "${{ inputs.backend }}" --config "${{ inputs.config }}"
+        || echo "doctor: non-blocking (convention score only)"
+
+    - name: Run scenarios
+      shell: bash
+      run: >-
+        uv run --no-sync bajutsu run ${{ inputs.scenarios }} --app "${{ inputs.app }}"
+        --udid "${{ inputs.udid }}" --backend "${{ inputs.backend }}"
+        --config "${{ inputs.config }}" --no-erase
+
+    - name: Upload run artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: runs/
+        if-no-files-found: ignore

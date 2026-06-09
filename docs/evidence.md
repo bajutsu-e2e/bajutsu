@@ -37,11 +37,13 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 | `actionLog` | orchestrator internals (action · duration) | — | ✅ inherent in the manifest |
 | `video` | `simctl io recordVideo` | interval | ✅ captured (needs udid) |
 | `deviceLog` | `simctl spawn log stream` | interval | ✅ captured (needs udid) |
-| `network` | (the mock server) | interval | ⚠️ **not implemented** (no source) |
-| `appTrace` | (os_signpost / OSLog) | interval | ⚠️ **not implemented** |
+| `network` | the in-app collector (BajutsuKit → `network.json`) | interval | ✅ captured (the `--network` run flag) |
+| `appTrace` | `simctl spawn log stream` over the app's os_log subsystem | interval | ✅ captured (needs udid + subsystem) |
 
-> `network` / `appTrace` **validate** as capture tokens (valid in the schema), but there is no
-> acquisition implementation in `evidence.py` / `intervals.py`, so they are not recorded today.
+> `appTrace` pairs the app's `os_signpost` / `os_log` `<name> started` / `<name> finished` markers
+> into timed intervals (`intervals.parse_app_trace`). `network` is produced by the request collector
+> rather than the interval system — its exchanges are written to `<sid>/network.json`
+> ([network observation](drivers.md), the `--network` flag).
 
 **Default modifiers**: instant kinds (`screenshot`/`elements`) default to `after`; interval kinds
 (`video`/`deviceLog`) default to `around` (start before the action, stop after the step). Stating
@@ -150,6 +152,9 @@ redact:
   fields: ["token", "password"]         # JSON/body field names
 ```
 
-> ⚠️ The **application** of redact (the actual masking) is future wiring, together with the
-> evidence it targets (especially network). Today it goes only as far as the declaration (the schema
-> and the merge).
+> Redaction **is applied** before evidence is written (`redaction.py` `Redactor`): the device log /
+> app trace are scrubbed by key→value patterns, the element tree masks a value when its label is
+> configured (or scrubs an embedded secret), and each network exchange is masked structurally —
+> header values by name, and the url / request / response bodies as free text (so query params and
+> `token` / `password` body fields are caught). Images (screenshots / video) cannot be masked and
+> are left as-is.

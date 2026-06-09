@@ -11,6 +11,7 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
     private var innerTask: URLSessionDataTask?
     private var responseData = Data()
     private var capturedResponse: URLResponse?
+    private var capturedRequestBody: Data?
     private var startedAt = Date()
 
     // MARK: URLProtocol
@@ -30,10 +31,61 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
             return
         }
         URLProtocol.setProperty(true, forKey: Self.handledKey, in: mutable)
+        // A request body is moved to httpBodyStream by the time a URLProtocol sees it, so
+        // drain the stream to capture it, then re-attach it as httpBody so the forwarded
+        // request still carries the body.
+        if let body = request.httpBody {
+            capturedRequestBody = body
+        } else if let stream = request.httpBodyStream {
+            let body = Self.drain(stream)
+            capturedRequestBody = body
+            mutable.httpBody = body
+            mutable.httpBodyStream = nil
+        }
         startedAt = Date()
+        // Deterministic stub: if a mock matches, answer it and never touch the network.
+        if let rule = BajutsuMocks.shared.stub(for: request, body: capturedRequestBody) {
+            serveStub(rule)
+            return
+        }
         inner = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         innerTask = inner?.dataTask(with: mutable as URLRequest)
         innerTask?.resume()
+    }
+
+    private func serveStub(_ rule: BajutsuMockRule) {
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                  url: url, statusCode: rule.status, httpVersion: "HTTP/1.1", headerFields: rule.headers)
+        else { client?.urlProtocolDidFinishLoading(self); return }
+        let deliver = { [weak self] in
+            guard let self else { return }
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: rule.body)
+            self.client?.urlProtocolDidFinishLoading(self)
+            BajutsuNet.report(
+                request: self.request, requestBody: self.capturedRequestBody, response: response,
+                body: rule.body, startedAt: self.startedAt, error: nil, mocked: true
+            )
+        }
+        if rule.delaySeconds > 0 {
+            DispatchQueue.global().asyncAfter(deadline: .now() + rule.delaySeconds, execute: deliver)
+        } else {
+            deliver()
+        }
+    }
+
+    private static func drain(_ stream: InputStream) -> Data {
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buf = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let n = stream.read(&buf, maxLength: buf.count)
+            if n <= 0 { break }
+            data.append(buf, count: n)
+        }
+        return data
     }
 
     override func stopLoading() {
@@ -64,8 +116,8 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
             client?.urlProtocolDidFinishLoading(self)
         }
         BajutsuNet.report(
-            request: request, response: capturedResponse, body: responseData,
-            startedAt: startedAt, error: error
+            request: request, requestBody: capturedRequestBody, response: capturedResponse,
+            body: responseData, startedAt: startedAt, error: error
         )
         inner?.finishTasksAndInvalidate()
     }

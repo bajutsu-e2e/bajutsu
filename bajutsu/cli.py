@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import env as _env
+from bajutsu import github
 from bajutsu.backends import make_driver, select_actuator
 from bajutsu.claude_agent import ClaudeAgent
 from bajutsu.codegen import class_name_for, to_xcuitest
@@ -18,7 +19,7 @@ from bajutsu.evidence import FileSink
 from bajutsu.network import NetworkCollector
 from bajutsu.record import record as record_loop
 from bajutsu.runner import device_factory, device_teardown, launch_driver, run_and_report
-from bajutsu.scenario import Preconditions, dump_scenarios, load_scenarios
+from bajutsu.scenario import Preconditions, dump_mocks, dump_scenarios, load_scenarios
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
 
@@ -84,13 +85,18 @@ def run(
     if not erase:
         for s in scenarios:
             s.preconditions.erase = False
-    # The idb CLI needs a concrete UDID, not the simctl "booted" alias.
-    udid = _env.resolve_udid(udid)
+    # Validate the backend before touching the Simulator CLIs, so an unknown/unavailable
+    # actuator exits cleanly (2) instead of crashing on a missing `xcrun`/`simctl` (the
+    # `run` path mirrors `doctor`: backend check first, then resolve the udid).
+    backends = _backends(backend, eff.backend)
     try:
-        factory = device_factory(udid, _backends(backend, eff.backend))
+        select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    # The idb CLI needs a concrete UDID, not the simctl "booted" alias.
+    udid = _env.resolve_udid(udid)
+    factory = device_factory(udid, backends)
     on_blocked = None
     if dismiss_alerts:
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
@@ -105,6 +111,10 @@ def run(
         url = f"http://127.0.0.1:{collector.start()}"
         for s in scenarios:
             s.preconditions.launch_env.setdefault("BAJUTSU_COLLECTOR", url)
+            # Mocks ride the same channel: BajutsuKit stubs matching requests instead of
+            # forwarding them (so the network is deterministic, and still observed).
+            if s.mocks:
+                s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
     sink = FileSink(
         Path("runs") / run_id, udid=udid, log_predicate=log_predicate or None,
@@ -119,6 +129,7 @@ def run(
         if collector is not None:
             collector.stop()
     ok = all(r.ok for r in results)
+    github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
     raise typer.Exit(0 if ok else 1)
 

@@ -50,6 +50,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 | 11 | [codegen](codegen.md) | シナリオ → ネイティブ XCUITest 生成 |
 | 12 | [cli](cli.md) | CLI コマンド・オプションの完全リファレンス |
 | 13 | [sample-app](sample-app.md) | 同梱フィクスチャ `BajutsuSample`（全プリミティブを網羅） |
+| 14 | [ci](ci.md) | CI で動かす — リポ自身の workflow + 再利用可能な `bajutsu-e2e` アクション |
 
 ## クイックスタート
 

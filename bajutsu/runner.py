@@ -49,8 +49,8 @@ def _write_network(
     for ex, received in timed:
         d = ex.model_dump(by_alias=True, exclude_none=True)
         d["startedAt"] = round(max(0.0, received - scenario_start - (ex.duration_ms or 0.0) / 1000.0), 3)
-        data.append(d)
-    text = redactor.redact_text(json.dumps(data, ensure_ascii=False, indent=2))
+        data.append(redactor.redact_exchange(d))
+    text = json.dumps(data, ensure_ascii=False, indent=2)
     out = run_dir / sid / "network.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
@@ -149,16 +149,20 @@ def run_and_report(
     teardown: Teardown | None = None,
     collector: NetworkCollector | None = None,
 ) -> tuple[list[RunResult], Path]:
-    """Run scenarios and write manifest.json + JUnit under runs_dir/run_id."""
+    """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
+    run_dir = runs_dir / run_id
     results = run_all(
         eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown,
-        collector=collector, run_dir=runs_dir / run_id,
+        collector=collector, run_dir=run_dir,
     )
-    # The merged Steps tab renders each scenario as a structured view (definitions)
+    # The merged Result tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).
     definitions = [scenario_dict(s) for s in scenarios]
     sources = [dump_scenarios([s]) for s in scenarios]
-    manifest = write_report(runs_dir / run_id, run_id, results, definitions, sources)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    # Keep the executed scenario alongside its results (re-runnable / reviewable).
+    (run_dir / "scenario.yaml").write_text(dump_scenarios(scenarios), encoding="utf-8")
+    manifest = write_report(run_dir, run_id, results, definitions, sources)
     return results, manifest
 
 

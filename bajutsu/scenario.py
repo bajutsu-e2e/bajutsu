@@ -141,10 +141,11 @@ class Swipe(_Model):
 class RequestMatch(_Model):
     """Network-traffic matcher, shared by the `request` assertion and the
     `until: { request: ... }` wait. The fields (method / url / urlMatches / path /
-    pathMatches / status) are AND-ed; `count` is how many exchanges matched — exact for
-    the assertion, a lower bound for the wait. The endpoint can be pinned by `url`
-    (exact full URL) or `urlMatches` (regex/substring), or just the `path`. At least one
-    match field is required."""
+    pathMatches / status / bodyMatches) are AND-ed; `count` is how many exchanges matched
+    — exact for the assertion, a lower bound for the wait. The endpoint can be pinned by
+    `url` (exact full URL) or `urlMatches` (regex/substring; query strings live here), or
+    just the `path`; `bodyMatches` checks the request body. At least one match field is
+    required."""
 
     method: str | None = None
     url: str | None = None  # exact full URL (the endpoint)
@@ -152,15 +153,19 @@ class RequestMatch(_Model):
     path: str | None = None  # exact path (query ignored)
     path_matches: str | None = Field(default=None, alias="pathMatches")  # regex over path
     status: int | None = None
+    body_matches: str | None = Field(default=None, alias="bodyMatches")  # regex/substring over request body
     count: int | None = None
 
     @model_validator(mode="after")
     def _has_criterion(self) -> Self:
         if all(
             v is None
-            for v in (self.method, self.url, self.url_matches, self.path, self.path_matches, self.status)
+            for v in (self.method, self.url, self.url_matches, self.path, self.path_matches,
+                      self.status, self.body_matches)
         ):
-            raise ValueError("request は method/url/urlMatches/path/pathMatches/status のいずれかが必要")
+            raise ValueError(
+                "request は method/url/urlMatches/path/pathMatches/status/bodyMatches のいずれかが必要"
+            )
         return self
 
 
@@ -338,6 +343,25 @@ class NetworkSteps(_Model):
     domains: list[str] = Field(default_factory=list)
 
 
+class MockResponse(_Model):
+    """The canned response a mock returns (defaults to an empty 200)."""
+
+    status: int = 200
+    headers: dict[str, str] = Field(default_factory=dict)
+    body: str | None = None
+    delay_ms: float | None = Field(default=None, alias="delayMs")  # artificial latency
+
+
+class Mock(_Model):
+    """A deterministic network stub: when an outgoing request matches `match`, BajutsuKit
+    returns `respond` instead of hitting the network (so tests don't depend on a live
+    server). `match` reuses the request matcher's request-side fields (method / url /
+    urlMatches / path / pathMatches / bodyMatches); status / count do not apply here."""
+
+    match: RequestMatch
+    respond: MockResponse = Field(default_factory=MockResponse)
+
+
 class Scenario(_Model):
     """One scenario."""
 
@@ -347,6 +371,7 @@ class Scenario(_Model):
     expect: list[Assertion] = Field(default_factory=list)
     capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
     network_steps: NetworkSteps | None = Field(default=None, alias="networkSteps")
+    mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
 
 
@@ -387,3 +412,11 @@ def scenario_dict(scenario: Scenario) -> dict[str, Any]:
 def dump_scenarios(scenarios: list[Scenario]) -> str:
     """Serialize scenarios back to YAML (round-trips through load_scenarios)."""
     return _yaml.safe_dump([scenario_dict(s) for s in scenarios])
+
+
+def dump_mocks(mocks: list[Mock]) -> str:
+    """Serialize a scenario's mocks to the compact JSON BajutsuKit reads from
+    BAJUTSU_MOCKS (alias keys, omitting unset fields)."""
+    import json
+
+    return json.dumps([m.model_dump(by_alias=True, exclude_none=True) for m in mocks])

@@ -35,11 +35,12 @@
 | `actionLog` | orchestrator 内部（操作・所要時間） | — | ✅ manifest に内在 |
 | `video` | `simctl io recordVideo` | 区間 | ✅ 取得（要 udid） |
 | `deviceLog` | `simctl spawn log stream` | 区間 | ✅ 取得（要 udid） |
-| `network` | （モックサーバ） | 区間 | ⚠️ **未実装**（取得元が無い） |
-| `appTrace` | （os_signpost / OSLog） | 区間 | ⚠️ **未実装** |
+| `network` | アプリ内 collector（BajutsuKit → `network.json`） | 区間 | ✅ 取得（`--network` フラグ） |
+| `appTrace` | `simctl spawn log stream`（アプリの os_log subsystem） | 区間 | ✅ 取得（要 udid + subsystem） |
 
-> `network` / `appTrace` は capture トークンとして **検証は通る**（スキーマ上は有効）が、`evidence.py` /
-> `intervals.py` に取得実装が無いため、現状は記録されない。
+> `appTrace` はアプリの `os_signpost` / `os_log` の `<name> started` / `<name> finished` マーカーを
+> 区間にペアリングする（`intervals.parse_app_trace`）。`network` は区間システムではなく request
+> collector が生成し、各 exchange を `<sid>/network.json` に書き出す（`--network` フラグ）。
 
 **修飾子の既定**: 瞬時系（`screenshot`/`elements`）は `after`、区間系（`video`/`deviceLog`）は `around`
 （操作前に開始しステップ後に停止）。`screenshot.before` のように明示すると `before.png` 等のファイル名になる。

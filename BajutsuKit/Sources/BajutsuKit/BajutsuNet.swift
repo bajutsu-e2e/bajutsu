@@ -23,14 +23,19 @@ public enum BajutsuNet {
     public static func startIfEnabled(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
-        guard let raw = environment["BAJUTSU_COLLECTOR"], let url = URL(string: raw) else { return }
-        collectorURL = url
+        BajutsuMocks.shared.load(environment)
+        if let raw = environment["BAJUTSU_COLLECTOR"], let url = URL(string: raw) {
+            collectorURL = url
+        }
+        // Register the interceptor if there is anything to do: observe and/or stub.
+        guard collectorURL != nil || !BajutsuMocks.shared.rules.isEmpty else { return }
         URLProtocol.registerClass(BajutsuURLProtocol.self)
         BajutsuURLProtocol.installIntoDefaultConfigurations()
     }
 
     static func report(
-        request: URLRequest, response: URLResponse?, body: Data, startedAt: Date, error: Error?
+        request: URLRequest, requestBody: Data?, response: URLResponse?, body: Data,
+        startedAt: Date, error: Error?, mocked: Bool = false
     ) {
         guard let collectorURL else { return }
         let http = response as? HTTPURLResponse
@@ -51,10 +56,11 @@ public enum BajutsuNet {
             "durationMs": durationMs,
         ]
         if let http { payload["status"] = http.statusCode }
+        if mocked { payload["mocked"] = true }
         if let error { payload["error"] = String(describing: error) }
         payload["requestHeaders"] = request.allHTTPHeaderFields ?? [:]
         if let http { payload["responseHeaders"] = stringHeaders(http.allHeaderFields) }
-        if let reqBody = request.httpBody, let s = String(data: reqBody, encoding: .utf8) {
+        if let reqBody = requestBody, let s = String(data: reqBody, encoding: .utf8), !s.isEmpty {
             payload["requestBody"] = s
         }
         if let s = String(data: body, encoding: .utf8), !s.isEmpty {

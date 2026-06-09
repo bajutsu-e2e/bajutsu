@@ -1,0 +1,223 @@
+:root{--ok:#0a7d33;--ng:#c0362c;--bg:#f6f6f8;--card:#fff;--line:#e4e4e7;--mut:#777;--ink:#1c1c1e}
+*{box-sizing:border-box}
+body{font-family:-apple-system,system-ui,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--ink)}
+header{position:sticky;top:0;z-index:5;background:var(--ink);color:#fff;padding:.7rem 1.1rem;
+ display:flex;gap:.9rem;align-items:center;flex-wrap:wrap}
+header h1{font-size:1rem;margin:0;font-weight:600}
+.stats{display:flex;gap:.4rem;font-size:.82rem;align-items:center}
+.chip{display:inline-flex;align-items:center;padding:.12rem .55rem;border-radius:999px;background:#3a3a3c}
+.chip.ok{background:var(--ok)} .chip.ng{background:var(--ng)}
+.chip.dchip{background:#2c5fb3;color:#fff;font-variant:small-caps;letter-spacing:.02em}
+.drv{font:600 .68rem/1 ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;
+ letter-spacing:.04em;color:#2c5fb3;background:#eaf0fb;border:1px solid #cfe0f8;
+ border-radius:5px;padding:.1rem .35rem}
+.ctl{margin-left:auto;display:flex;gap:.6rem;align-items:center;font-size:.82rem}
+.ctl label{display:flex;gap:.3rem;align-items:center;cursor:pointer}
+.hbtn{background:#3a3a3c;color:#fff;border:0;border-radius:6px;padding:.25rem .6rem;cursor:pointer;font:inherit;font-size:.8rem}
+main{padding:1.1rem;max-width:1100px;margin:0 auto}
+details.scn{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:0 0 .9rem;overflow:hidden}
+details.scn[data-ok=false]{border-color:#f1c4bf}
+summary{list-style:none;cursor:pointer;padding:.7rem 1rem;display:flex;gap:.55rem;align-items:center;font-weight:600}
+summary::-webkit-details-marker{display:none}
+.sname{flex:1}
+.dot{width:.6rem;height:.6rem;border-radius:50%;background:var(--ok);flex:none} .dot.ng{background:var(--ng)}
+.body{padding:0 1rem 1rem;display:grid;grid-template-columns:300px 1fr;gap:1.1rem;align-items:start}
+@media(max-width:760px){.body{grid-template-columns:1fr}}
+/* Let the 1fr detail column shrink to its track (grid items default to min-width:auto,
+   which would let a wide network table push the screenshot/reason columns off-screen). */
+.detail{min-width:0}
+.sttbl td.adesc{overflow-wrap:anywhere}
+/* Custom player: a slim control bar sits BELOW the recording rather than overlaying it
+   (the native HTML5 controls draw their bar across the bottom of the frame, covering the
+   app's own bottom UI — e.g. a tab bar — which reads as "in the way"). */
+.player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
+.player video{display:block;width:100%;background:#000;cursor:pointer}
+.vctl{display:flex;align-items:center;gap:.5rem;padding:.34rem .5rem;background:#1c1c1e;color:#e6e6e6}
+.vplay{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
+ cursor:pointer;font-size:.66rem;line-height:1;display:flex;align-items:center;justify-content:center}
+.vplay:hover{background:#4a4d52}
+.vseekwrap{position:relative;flex:1;min-width:0;display:flex;align-items:center}
+.vseek{flex:1;min-width:0;height:.3rem;cursor:pointer;accent-color:#0a6cff}
+/* Step ticks over the scrubber: one per executed step, at its recording offset, so the
+   timeline shows where each step happened. Hovering a tick shows a step-number bubble;
+   clicking it seeks there. The container passes pointer events through (so the slider
+   stays draggable in the gaps); each tick opts back in. The track is inset by ~half the
+   thumb so 0% / 100% line up with the thumb's travel, not the raw element edges. */
+.vmarks{position:absolute;left:7px;right:7px;top:0;bottom:0;pointer-events:none}
+.vmark{position:absolute;top:50%;width:12px;height:16px;margin-left:-6px;transform:translateY(-50%);
+ display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer}
+.vmark::after{content:"";width:2px;height:9px;background:#f0a500;border-radius:1px;
+ box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.vmark:hover::after{height:12px;background:#ffb733}
+.vmtip{position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);
+ background:#000;color:#fff;white-space:nowrap;font:600 .66rem -apple-system,system-ui,sans-serif;
+ padding:.14rem .44rem;border-radius:5px;opacity:0;pointer-events:none;transition:opacity .12s;
+ box-shadow:0 2px 10px rgba(0,0,0,.5);z-index:3}
+.vmtip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);
+ border:4px solid transparent;border-top-color:#000}
+.vmark:hover .vmtip{opacity:1}
+.vtime{flex:none;font:600 .72rem/1 ui-monospace,Menlo,Consolas,monospace;color:#cfcfcf;
+ white-space:nowrap}
+.tabs{display:flex;gap:.2rem;border-bottom:1px solid var(--line);margin-bottom:.55rem}
+.tab{padding:.35rem .75rem;border:0;background:none;cursor:pointer;font:inherit;font-size:.84rem;
+ color:var(--mut);border-bottom:2px solid transparent}
+.tab.active{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.panel{display:none} .panel.active{display:block}
+table{border-collapse:collapse;width:100%;font-size:.84rem}
+th,td{border-bottom:1px solid var(--line);padding:.32rem .5rem;text-align:left}
+th{color:var(--mut);font-weight:600}
+tr.ng{background:#fff4f3}
+tr.srow{cursor:pointer}
+tr.srow:hover td{background:#eef4ff}
+tr.srow.playing td{background:#fff3c4;box-shadow:inset 3px 0 0 #f0a500}
+td.ev{white-space:nowrap}
+img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-align:middle;
+ cursor:zoom-in;background:#fafafa}
+.elnk{font-size:.78rem;margin-left:.4rem}
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;
+ justify-content:center;z-index:50;cursor:zoom-out}
+.lb.open{display:flex}
+.lb-fig{margin:0;display:flex;flex-direction:column;align-items:center;gap:.6rem;cursor:default}
+.lb img{max-width:84vw;max-height:84vh;border-radius:8px;box-shadow:0 10px 50px rgba(0,0,0,.6)}
+.lb-cap{color:#e8e8e8;font:.84rem -apple-system,system-ui,sans-serif;text-align:center}
+.lb-nav{flex:none;margin:0 .8rem;width:2.6rem;height:2.6rem;border:0;border-radius:50%;cursor:pointer;
+ background:rgba(255,255,255,.14);color:#fff;font-size:1.7rem;line-height:1;display:flex;
+ align-items:center;justify-content:center}
+.lb-nav:hover{background:rgba(255,255,255,.28)}
+/* The recording stays at the top of its column. It is deliberately not sticky: a
+   sticky grid item shifts down a few px when the other column grows (e.g. expanding a
+   network row), which reads as the video "jumping". */
+.media{align-self:start}
+.pass{color:var(--ok);font-weight:700} .fail{color:var(--ng);font-weight:700}
+.logbar{display:flex;gap:.5rem;align-items:center;margin:.1rem 0 .35rem}
+.logbar input{flex:1;padding:.32rem .55rem;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:.84rem}
+.log{background:#1c1c1e;color:#e6e6e6;border-radius:8px;padding:.5rem .65rem;max-height:360px;overflow:auto;
+ font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;counter-reset:ln}
+.log .ln{white-space:pre-wrap;word-break:break-word;padding-left:3.2rem;text-indent:-3.2rem}
+.log .ln::before{counter-increment:ln;content:counter(ln);display:inline-block;width:2.8rem;
+ margin-right:.4rem;color:#6b6b6e;text-align:right;text-indent:0}
+.log .ln.hide{display:none}
+.muted{color:var(--mut);font-size:.8rem}
+.deflbl{display:block;margin-bottom:.35rem;font-size:.72rem;font-weight:700;text-transform:uppercase;
+ letter-spacing:.05em;color:var(--mut)}
+details.pre{margin-bottom:.6rem;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+details.pre>summary{display:block;cursor:pointer;padding:.32rem .6rem;background:#fafafb;
+ font:700 .72rem -apple-system,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+details.pre>summary::before{content:"▸";display:inline-block;margin-right:.4rem;color:var(--mut);transition:transform .15s}
+details.pre[open]>summary::before{transform:rotate(90deg)}
+.pretbl td{border-bottom:1px solid var(--line);padding:.26rem .55rem;font-size:.82rem;vertical-align:top}
+.pretbl tr:last-child td{border-bottom:0}
+.pretbl td.pk{color:var(--mut);font:600 .8rem ui-monospace,Menlo,Consolas,monospace;width:1%;white-space:nowrap}
+.act{display:inline-block;font:600 .72rem/1.4 -apple-system,system-ui,sans-serif;text-transform:uppercase;
+ letter-spacing:.03em;color:#fff;background:#6b7280;border-radius:5px;padding:.08rem .42rem;min-width:4.3rem;
+ text-align:center}
+.act-tap{background:#2c5fb3} .act-type{background:#7a3aa8} .act-move{background:#0a7d6b}
+.act-wait{background:#8a6d1a} .act-assert{background:#0a7d33}
+.adesc{font:.84rem/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--ink);word-break:break-word}
+/* Inline value tokens — subtle, lowercase, NOT solid badges, so ids (variables)
+   and string/number literals (constants) are identifiable at a glance. */
+.tk{font-family:inherit}
+.tk.id{color:#3a4ba0;background:#eef1fc;border-radius:3px;padding:0 .2rem}
+.tk.str{color:#9a5b00}
+.tk.num{color:#0a6b6b}
+.tk.re{color:#7a3aa8;font-style:italic}
+.tk.kw{color:var(--mut)}
+.stepname{font-size:.74rem;color:var(--mut);font-style:italic}
+.cap{font-size:.68rem;color:#2c5fb3;background:#eaf0fb;border:1px solid #cfe0f8;border-radius:4px;
+ padding:.02rem .3rem}
+.expects{margin-top:.8rem}
+.extbl td{vertical-align:top}
+.extbl td:nth-child(-n+2),.extbl th:nth-child(-n+2),.extbl td:nth-child(4),.extbl th:nth-child(4){
+ width:1%;white-space:nowrap}
+.exst{display:inline-block;font:700 .68rem/1.4 -apple-system,system-ui,sans-serif;letter-spacing:.04em;
+ color:#fff;background:var(--mut);border-radius:5px;padding:.06rem .42rem;min-width:3.1rem;text-align:center}
+.exst.ok{background:var(--ok)} .exst.ng{background:var(--ng)}
+.exreason{color:var(--ng);font-size:.8rem;font-style:italic}
+/* Fixed layout + explicit column widths so a wide network detail can't push the view
+   (screenshot) / reason columns off-screen: the detail column takes the bounded
+   remainder and wraps its content. */
+.sttbl{table-layout:fixed}
+/* Scope the column widths to the outer table's own rows (direct children, excluding the
+   expanded full-width row) so they don't leak into the nested settings table. */
+.sttbl>thead>tr>th:nth-child(1),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(1){width:1.8rem;white-space:nowrap}
+.sttbl>thead>tr>th:nth-child(2),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(2){width:3.6rem;white-space:nowrap}
+.sttbl>thead>tr>th:nth-child(3),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(3){width:5.2rem;white-space:nowrap}
+.sttbl>thead>tr>th:nth-child(5),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(5){width:2.8rem;white-space:nowrap}
+.sttbl>thead>tr>th:nth-child(6),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(6){width:4.4rem}
+.sttbl>thead>tr>th:nth-child(7),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(7){width:6rem}
+.sttbl>tbody>tr:not(.nxdetail)>td:first-child{color:var(--mut)}
+/* Nested assertion table inside an `assert` step's detail cell (one row per check). */
+.atbl{border-collapse:collapse;width:auto}
+.atbl td{border:0;padding:.04rem .55rem .04rem 0;vertical-align:top}
+.atbl td:first-child{width:1%;white-space:nowrap}
+tr.skip td{color:var(--mut);opacity:.65}
+.vtoggle{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-bottom:.6rem}
+.vt{background:var(--card);color:var(--mut);border:0;cursor:pointer;font:600 .78rem -apple-system,system-ui,sans-serif;
+ padding:.25rem .7rem}
+.vt+.vt{border-left:1px solid var(--line)}
+.vt.active{background:var(--ink);color:#fff}
+.view{display:none} .view.active{display:block}
+.src{background:#1c1c1e;color:#e6e6e6;border-radius:8px;padding:.6rem .75rem;max-height:460px;
+ overflow:auto;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;white-space:pre;margin:0}
+/* Network tab — the exchanges BajutsuKit captured (network.json). */
+.nxlist{display:flex;flex-direction:column;gap:.3rem;margin-top:.45rem}
+details.nx{border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--card)}
+details.nx>summary{list-style:none;cursor:pointer;display:flex;gap:.55rem;align-items:center;padding:.36rem .6rem}
+details.nx>summary::-webkit-details-marker{display:none}
+.nxm{font:600 .7rem/1.4 ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;color:#fff;
+ background:#2c5fb3;border-radius:4px;padding:.06rem .4rem;min-width:3.4rem;text-align:center;flex:none}
+.nxp{flex:1;font:.82rem ui-monospace,Menlo,Consolas,monospace;word-break:break-all;color:var(--ink)}
+.nxs{flex:none;font:700 .7rem/1.4 -apple-system,system-ui,sans-serif;border-radius:4px;padding:.05rem .4rem;
+ background:var(--mut);color:#fff;min-width:2.4rem;text-align:center}
+.nxs.ok{background:var(--ok)} .nxs.ng{background:var(--ng)}
+.nxd{flex:none}
+.nxbody{padding:.15rem .6rem .55rem;border-top:1px solid var(--line);background:#fafafb}
+.nxsec{margin-top:.5rem}
+.nxlbl{display:block;font:700 .66rem -apple-system,system-ui,sans-serif;text-transform:uppercase;
+ letter-spacing:.04em;color:var(--mut);margin-bottom:.22rem}
+.nxh{display:flex;gap:.5rem;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+.nxh.err{color:var(--ng)}
+.nxhk{color:#3a4ba0;min-width:9rem;flex:none} .nxhv{color:var(--ink);word-break:break-all}
+.nxpre{background:#1c1c1e;color:#e6e6e6;border-radius:7px;padding:.45rem .6rem;max-height:240px;overflow:auto;
+ font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:0}
+.nxat{flex:none;font:600 .7rem/1.4 ui-monospace,Menlo,Consolas,monospace}
+.nxmock{flex:none;font:600 .62rem/1 -apple-system,system-ui,sans-serif;text-transform:uppercase;
+ letter-spacing:.04em;color:#7a3aa8;background:#f3eafc;border:1px solid #e2cdf5;border-radius:4px;padding:.05rem .3rem}
+/* Network exchanges interleaved into the result timeline. The request/response row is a
+   click target; its full settings table expands into a separate full-width row below
+   (so it gets the whole width, not the cramped detail column). */
+.act-net{background:#4a5568}
+tr.nrow td{background:#f4f6fb;border-top:1px dashed var(--line)}
+td.nix{color:var(--mut);text-align:center}
+tr.xrow{cursor:pointer}
+tr.xrow:hover td{background:#eef4ff}
+.xmark{display:inline-block;color:var(--mut);transition:transform .15s}
+tr.xrow.open .xmark{transform:rotate(90deg)}
+tr.nxdetail>td{background:#fafafb;padding:.15rem .7rem .5rem}
+.nxtbl{border-collapse:collapse;width:100%;margin:0}
+.nxtbl td{border:0;padding:.05rem 0;vertical-align:top}
+.nxtbl td.nxk{color:var(--mut);font:600 .76rem -apple-system,system-ui,sans-serif;
+ white-space:nowrap;width:1%;padding-right:1.1rem}
+.nxtbl td.nxv{font:.82rem/1.5 ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+.log mark{background:#ffd54a;color:#1c1c1e;border-radius:2px;padding:0 .05rem}
+a{color:#0a6cff}
+/* Dark mode — flip the palette variables, then the hardcoded light backgrounds and the
+   token text colors that need lightening on a dark surface. */
+@media (prefers-color-scheme: dark){
+ :root{--bg:#17181a;--card:#202124;--line:#34353a;--mut:#9aa0a6;--ink:#e8eaed;--ok:#2ea043;--ng:#e5534b}
+ header{background:#0d0e10}
+ .drv{color:#9db8f0;background:#1b2433;border-color:#2c3a52}
+ .cap{color:#9db8f0;background:#1b2433;border-color:#2c3a52}
+ .tk.id{color:#aab8f5;background:#222a3f} .tk.str{color:#e0a458} .tk.num{color:#5fd0d0} .tk.re{color:#c79bea}
+ .nxhk{color:#aab8f5}
+ .nxmock{color:#c79bea;background:#2a2140;border-color:#42305e}
+ details.pre>summary{background:#2a2b2f}
+ tr.ng{background:#3a2422}
+ tr.srow:hover td,tr.xrow:hover td{background:#2a2f3a}
+ tr.srow.playing td{background:#3a3520}
+ tr.nrow td{background:#1d2230}
+ .nxbody,tr.nxdetail>td{background:#1b1c1f}
+ img.shot{background:#2a2b2f}
+ .vt.active{background:#4a4d52}
+ a{color:#5b9cff}
+}

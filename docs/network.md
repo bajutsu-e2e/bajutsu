@@ -36,22 +36,53 @@ collector stays empty); the feature is opt-in per app.
 ## The `request` assertion
 
 `request` is an assertion kind (alongside `exists` / `value` / `count` / …). Match fields
-are AND-ed; `count` checks how many exchanges matched (exact when set, otherwise ≥ 1):
+are AND-ed. Each plain `request` corresponds to **one** observed exchange: multiple
+`request` assertions in a block are matched **one-to-one** to distinct exchanges — two
+`request` lines need two separate requests. `count` is the exception: it is an explicit
+aggregate (exact when set, otherwise the lone matcher needs ≥ 1).
 
 ```yaml
 expect:
-  - request: { method: GET, status: 200 }                 # ≥ 1 GET that returned 200
-  - request: { method: POST, path: /login, status: 200 }  # exact path
-  - request: { pathMatches: "^/items", count: 2 }          # regex on path, exactly 2
+  - request: { method: POST, path: /login, status: 200, bodyMatches: "\"user\"" }  # one login POST
+  - request: { method: GET, urlMatches: "q=hello&n=42" }                           # a *different* request
+  - request: { pathMatches: "^/items", count: 2 }                                  # aggregate: exactly 2
 ```
 
 | field | meaning |
 |---|---|
 | `method` | HTTP method (case-insensitive) |
+| `url` | exact full URL (the endpoint) |
+| `urlMatches` | regex/substring over the URL (query strings live here) |
 | `path` | exact URL path (query ignored) |
 | `pathMatches` | regex over the path |
 | `status` | response status code |
-| `count` | exact number of matching exchanges (omit ⇒ at least one) |
+| `bodyMatches` | regex/substring over the request body |
+| `count` | exact number of matching exchanges — an aggregate, exempt from the 1:1 rule (omit ⇒ at least one) |
+
+## Deterministic mocks
+
+A scenario's `mocks` make the network deterministic: when an outgoing request matches a
+rule, BajutsuKit returns the canned response **instead of hitting the network**, so a test
+never depends on a live server (and runs offline). The stub is served inside the URL
+protocol — after TLS, no proxy/CA — and is still observed (it appears in `network.json`
+flagged `mocked`, and `request` assertions match it like any exchange).
+
+```yaml
+mocks:
+  - match: { method: GET, urlMatches: "example.com" }   # request-side matcher
+    respond:
+      status: 418                                        # default 200
+      headers: { Content-Type: text/plain }
+      body: "stubbed by bajutsu"
+      # delayMs: 200                                     # optional artificial latency
+  - match: { method: POST, pathMatches: "/login$" }
+    respond: { status: 201, body: "{\"token\":\"t\"}" }
+```
+
+The first matching rule wins. `match` reuses the request matcher's request-side fields
+(`method` / `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`). Mocks ride the
+same channel as observation, so they need `--network`. The rules are injected into the app
+via the `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`).
 
 ## Timing
 
