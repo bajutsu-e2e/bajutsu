@@ -10,7 +10,7 @@ from bajutsu.assertions import evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import Assertion, RequestMatch, load_scenarios
+from bajutsu.scenario import Assertion, RequestMatch, dump_mocks, load_scenarios
 
 
 def _ex(method: str = "GET", path: str = "/items", status: int = 200, **kw: object) -> NetworkExchange:
@@ -88,6 +88,31 @@ def test_request_count_assertion_stays_independent() -> None:
 def test_request_no_match_fails_with_reason() -> None:
     r = evaluate_one([], _req(method="DELETE"), [_ex("GET", "/x")])
     assert not r.ok and "通信" in r.reason
+
+
+def test_mocks_parse_and_serialize() -> None:
+    scn = load_scenarios(
+        "- name: m\n"
+        "  mocks:\n"
+        "    - match: { method: GET, urlMatches: example.com }\n"
+        "      respond: { status: 418, headers: { Content-Type: text/plain }, body: hi, delayMs: 50 }\n"
+        "    - match: { method: POST, pathMatches: /post$ }\n"          # respond defaults to 200/empty
+        "  steps: [ { tap: { id: x } } ]\n"
+    )[0]
+    assert len(scn.mocks) == 2
+    first = scn.mocks[0]
+    assert first.match.method == "GET" and first.respond.status == 418 and first.respond.body == "hi"
+    assert scn.mocks[1].respond.status == 200  # default response
+    # Serialized for BAJUTSU_MOCKS with alias keys, unset fields omitted.
+    payload = json.loads(dump_mocks(scn.mocks))
+    assert payload[0]["match"]["urlMatches"] == "example.com"
+    assert payload[0]["respond"] == {"status": 418, "headers": {"Content-Type": "text/plain"},
+                                     "body": "hi", "delayMs": 50.0}
+
+
+def test_exchange_carries_mocked_flag() -> None:
+    assert NetworkExchange.model_validate({"method": "GET", "mocked": True}).mocked is True
+    assert NetworkExchange(method="GET").mocked is False  # default: a real call
 
 
 def test_collector_receives_and_clears() -> None:

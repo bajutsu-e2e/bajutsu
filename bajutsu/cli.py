@@ -18,7 +18,7 @@ from bajutsu.evidence import FileSink
 from bajutsu.network import NetworkCollector
 from bajutsu.record import record as record_loop
 from bajutsu.runner import device_factory, device_teardown, launch_driver, run_and_report
-from bajutsu.scenario import Preconditions, dump_scenarios, load_scenarios
+from bajutsu.scenario import Preconditions, dump_mocks, dump_scenarios, load_scenarios
 
 app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
 
@@ -105,6 +105,10 @@ def run(
         url = f"http://127.0.0.1:{collector.start()}"
         for s in scenarios:
             s.preconditions.launch_env.setdefault("BAJUTSU_COLLECTOR", url)
+            # Mocks ride the same channel: BajutsuKit stubs matching requests instead of
+            # forwarding them (so the network is deterministic, and still observed).
+            if s.mocks:
+                s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
     sink = FileSink(
         Path("runs") / run_id, udid=udid, log_predicate=log_predicate or None,

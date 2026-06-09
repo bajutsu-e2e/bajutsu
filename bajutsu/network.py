@@ -39,6 +39,7 @@ class NetworkExchange(BaseModel):
     response_body: str | None = Field(default=None, alias="responseBody")
     started_at: float | None = Field(default=None, alias="startedAt")
     duration_ms: float | None = Field(default=None, alias="durationMs")
+    mocked: bool = False  # served by a bajutsu mock stub (not a real network call)
 
 
 class NetworkCollector:

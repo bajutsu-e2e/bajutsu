@@ -343,6 +343,25 @@ class NetworkSteps(_Model):
     domains: list[str] = Field(default_factory=list)
 
 
+class MockResponse(_Model):
+    """The canned response a mock returns (defaults to an empty 200)."""
+
+    status: int = 200
+    headers: dict[str, str] = Field(default_factory=dict)
+    body: str | None = None
+    delay_ms: float | None = Field(default=None, alias="delayMs")  # artificial latency
+
+
+class Mock(_Model):
+    """A deterministic network stub: when an outgoing request matches `match`, BajutsuKit
+    returns `respond` instead of hitting the network (so tests don't depend on a live
+    server). `match` reuses the request matcher's request-side fields (method / url /
+    urlMatches / path / pathMatches / bodyMatches); status / count do not apply here."""
+
+    match: RequestMatch
+    respond: MockResponse = Field(default_factory=MockResponse)
+
+
 class Scenario(_Model):
     """One scenario."""
 
@@ -352,6 +371,7 @@ class Scenario(_Model):
     expect: list[Assertion] = Field(default_factory=list)
     capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
     network_steps: NetworkSteps | None = Field(default=None, alias="networkSteps")
+    mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
 
 
@@ -392,3 +412,11 @@ def scenario_dict(scenario: Scenario) -> dict[str, Any]:
 def dump_scenarios(scenarios: list[Scenario]) -> str:
     """Serialize scenarios back to YAML (round-trips through load_scenarios)."""
     return _yaml.safe_dump([scenario_dict(s) for s in scenarios])
+
+
+def dump_mocks(mocks: list[Mock]) -> str:
+    """Serialize a scenario's mocks to the compact JSON BajutsuKit reads from
+    BAJUTSU_MOCKS (alias keys, omitting unset fields)."""
+    import json
+
+    return json.dumps([m.model_dump(by_alias=True, exclude_none=True) for m in mocks])

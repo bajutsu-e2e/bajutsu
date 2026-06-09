@@ -43,9 +43,36 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
             mutable.httpBodyStream = nil
         }
         startedAt = Date()
+        // Deterministic stub: if a mock matches, answer it and never touch the network.
+        if let rule = BajutsuMocks.shared.stub(for: request, body: capturedRequestBody) {
+            serveStub(rule)
+            return
+        }
         inner = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         innerTask = inner?.dataTask(with: mutable as URLRequest)
         innerTask?.resume()
+    }
+
+    private func serveStub(_ rule: BajutsuMockRule) {
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                  url: url, statusCode: rule.status, httpVersion: "HTTP/1.1", headerFields: rule.headers)
+        else { client?.urlProtocolDidFinishLoading(self); return }
+        let deliver = { [weak self] in
+            guard let self else { return }
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: rule.body)
+            self.client?.urlProtocolDidFinishLoading(self)
+            BajutsuNet.report(
+                request: self.request, requestBody: self.capturedRequestBody, response: response,
+                body: rule.body, startedAt: self.startedAt, error: nil, mocked: true
+            )
+        }
+        if rule.delaySeconds > 0 {
+            DispatchQueue.global().asyncAfter(deadline: .now() + rule.delaySeconds, execute: deliver)
+        } else {
+            deliver()
+        }
     }
 
     private static func drain(_ stream: InputStream) -> Data {
