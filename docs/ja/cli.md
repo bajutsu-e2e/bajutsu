@@ -70,6 +70,20 @@ bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
 - `<run-dir>` 省略時は `runs/` 直下の最新 run。`--scenario` は名前の部分一致で絞り込み。
 - run が見つからなければ**終了 2**。
 
+## `triage`
+
+run 内の最初の**失敗**シナリオを診断し、最小の修正案を出す — **助言のみ**で pass/fail は判定しない
+（AI 境界）。失敗コンテキスト（落ちたステップ＋理由、失敗 expectation、失敗時の要素ツリー、シナリオ）
+を組み立て `TriageAgent` に渡す。既定はルールベース（`HeuristicTriageAgent`、API キー不要）: 失敗を
+分類（selector / timing / assertion）し、対象 id が画面に無く似た id があれば「もしかして…?」を提案
+（id リネームの自己修復）。同じプロトコルで AI エージェントに差し替え可能。
+
+```bash
+bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs]
+```
+
+- 既定は `runs/` 直下の最新 run。失敗シナリオが無ければ**終了 0**。
+
 ## `record`
 
 AI でゴールに向けて探索し、**記録したシナリオを OUT に書き出す**（Tier 1・[recording](recording.md)）。

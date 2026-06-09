@@ -76,6 +76,22 @@ bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
 - With no `<run-dir>`, uses the latest run under `runs/`. `--scenario` filters by name substring.
 - **Exits 2** if no run is found.
 
+## `triage`
+
+Diagnoses the first **failed** scenario in a run and suggests a minimal fix — **advisory**, it
+never judges pass/fail (the AI boundary). Assembles the failure context (the failing step + its
+reason, failed expectations, the element tree nearest the failure, the scenario) and runs a
+`TriageAgent`. The default is rule-based (`HeuristicTriageAgent`, no API key): it categorizes the
+failure (selector / timing / assertion) and, when a target id is absent but a similar id is on
+screen, suggests "did you mean …?" (the classic renamed-id self-heal). An AI agent can be dropped
+in behind the same protocol.
+
+```bash
+bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs]
+```
+
+- Defaults to the latest run under `runs/`. **Exits 0** when the run has no failed scenario.
+
 ## `record`
 
 Explores toward a goal with AI and **writes the recorded scenario to OUT** (Tier 1; [recording](recording.md)).

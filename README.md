@@ -184,5 +184,7 @@ bajutsu/
   applied to captured evidence ✅, network **observation** (the in-app collector + `request`
   assertions) ✅, and **deterministic mocks** (scenario `mocks` → offline in-protocol stubs) ✅ —
   all validated on-device. Remaining: CI integration.
-- **M4 — not started.** Self-healing triage (summarize failures, propose minimal scenario
-  diffs; human review required).
+- **M4 — started (skeleton).** Self-healing triage: `bajutsu triage` assembles a failed run's
+  context and diagnoses it (root cause + suggested fixes; advisory, human review required). The
+  default agent is rule-based (renamed-id "did you mean", timing / assertion categories); a
+  ClaudeAgent-backed triage drops in behind the same `TriageAgent` protocol (next).
