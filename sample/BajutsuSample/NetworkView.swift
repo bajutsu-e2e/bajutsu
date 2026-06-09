@@ -15,6 +15,12 @@ struct NetworkView: View {
         ProcessInfo.processInfo.environment["SAMPLE_API_URL"] ?? "https://example.com"
     }
 
+    // An echo endpoint that accepts every method and reflects query/body (for exercising
+    // POST/DELETE/query/body request patterns). Overridable via SAMPLE_HTTP_BASE.
+    private var base: String {
+        ProcessInfo.processInfo.environment["SAMPLE_HTTP_BASE"] ?? "https://httpbin.org"
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -25,6 +31,14 @@ struct NetworkView: View {
                 Button("Fetch") { fetch() }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("net.fetch")
+
+                // Request-pattern buttons: query parameters, a POST body, and DELETE.
+                Button("GET query") { send("GET", "\(base)/get?q=hello&n=42") }
+                    .accessibilityIdentifier("net.get-query")
+                Button("POST body") { send("POST", "\(base)/post", body: #"{"name":"bajutsu","n":42}"#) }
+                    .accessibilityIdentifier("net.post")
+                Button("DELETE") { send("DELETE", "\(base)/delete") }
+                    .accessibilityIdentifier("net.delete")
 
                 Text("Status: \(status)")
                     .accessibilityIdentifier("net.status")
@@ -75,6 +89,27 @@ struct NetworkView: View {
         status = "loading"
         guard let url = URL(string: apiURL) else { status = "bad-url"; return }
         URLSession.shared.dataTask(with: url) { _, response, error in
+            Task { @MainActor in
+                if let http = response as? HTTPURLResponse {
+                    status = "\(http.statusCode)"
+                } else {
+                    status = error == nil ? "done" : "error"
+                }
+            }
+        }.resume()
+    }
+
+    // Issue a request with an explicit method and optional JSON body (BajutsuKit captures it).
+    private func send(_ method: String, _ urlStr: String, body: String? = nil) {
+        status = "loading"
+        guard let url = URL(string: urlStr) else { status = "bad-url"; return }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        if let body {
+            req.httpBody = Data(body.utf8)
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        URLSession.shared.dataTask(with: req) { _, response, error in
             Task { @MainActor in
                 if let http = response as? HTTPURLResponse {
                     status = "\(http.statusCode)"
