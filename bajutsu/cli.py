@@ -20,6 +20,7 @@ from bajutsu.network import NetworkCollector
 from bajutsu.record import record as record_loop
 from bajutsu.runner import (
     device_factory,
+    device_pool,
     device_relauncher,
     device_teardown,
     launch_driver,
@@ -117,9 +118,14 @@ def run(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    # The idb CLI needs a concrete UDID, not the simctl "booted" alias.
-    udid = _env.resolve_udid(udid)
-    factory = device_factory(udid, backends)
+    # The idb CLI needs concrete UDIDs (not the simctl "booted" alias). `--udid` may be a
+    # comma list — a device pool for parallel runs (`--workers`), capped to the pool size.
+    udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
+    workers = max(1, min(workers, len(udids)))
+    parallel = workers > 1
+    if parallel and network:
+        typer.echo("並列実行（--workers>1）は --no-network が必要（共有コレクタは並列非対応）")
+        raise typer.Exit(2)
     on_blocked = None
     if dismiss_alerts:
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
@@ -139,15 +145,26 @@ def run(
             if s.mocks:
                 s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    sink = FileSink(
-        Path("runs") / run_id, udid=udid, log_predicate=log_predicate or None,
-        log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact,
-    )
+    release = None
+    if parallel:
+        # One driver per device, leased per scenario; interval evidence (video/log) needs a
+        # fixed device, so the parallel sink captures instant evidence only (udid=None).
+        factory, relauncher, release = device_pool(udids, backends, eff.bundle_id)
+        teardown = None
+        sink = FileSink(Path("runs") / run_id, redact=eff.redact)
+    else:
+        factory = device_factory(udids[0], backends)
+        relauncher = device_relauncher(udids[0])
+        teardown = device_teardown(udids[0])
+        sink = FileSink(
+            Path("runs") / run_id, udid=udids[0], log_predicate=log_predicate or None,
+            log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact,
+        )
     try:
         results, manifest = run_and_report(
             eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
-            teardown=device_teardown(udid), collector=collector,
-            relauncher=device_relauncher(udid),
+            teardown=teardown, collector=collector, relauncher=relauncher,
+            workers=workers, release=release,
         )
     finally:
         if collector is not None:

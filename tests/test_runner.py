@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
@@ -53,6 +55,27 @@ def test_run_all() -> None:
     ]
     results = run_all(_eff(), scenarios, _factory)
     assert [r.ok for r in results] == [True, False]
+
+
+def test_run_all_parallel_preserves_order_and_releases() -> None:
+    from bajutsu.runner import run_all as _run_all
+
+    scenarios = [
+        Scenario.model_validate({"name": n, "steps": [{"tap": {"id": "ok"}}]}) for n in ("a", "b", "c")
+    ]
+    released: list[base.Driver] = []
+    results = _run_all(_eff(), scenarios, _factory, workers=2, release=released.append)
+    assert [r.scenario for r in results] == ["a", "b", "c"]  # order preserved despite concurrency
+    assert all(r.ok for r in results)
+    assert len(released) == 3  # every leased driver is released
+
+
+def test_run_all_parallel_rejects_shared_collector() -> None:
+    from bajutsu.network import NetworkCollector
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    with pytest.raises(ValueError, match="並列"):
+        run_all(_eff(), scenarios, _factory, workers=2, collector=NetworkCollector())
 
 
 def test_run_all_tears_down_after_each_scenario() -> None:

@@ -8,8 +8,11 @@ driver.
 from __future__ import annotations
 
 import json
+import queue
+import threading
 import time
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -118,37 +121,54 @@ def run_all(
     collector: NetworkCollector | None = None,
     run_dir: Path | None = None,
     relauncher: RelaunchFactory | None = None,
+    workers: int = 1,
+    release: Callable[[base.Driver], None] | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each with a freshly built driver.
 
     After each scenario finishes, `teardown` runs (e.g. terminate the app so the
-    Simulator returns to SpringBoard between scenarios and after the last one). When a
-    `collector` is given, its exchanges are cleared per scenario, exposed to `request`
-    assertions, and written to <sid>/network.json.
+    Simulator returns to SpringBoard between scenarios and after the last one) and, if
+    given, `release(driver)` returns the scenario's device to a pool. When a `collector`
+    is given, its exchanges are cleared per scenario, exposed to `request` assertions, and
+    written to <sid>/network.json.
+
+    With `workers > 1` scenarios run concurrently (results stay in declaration order). The
+    caller must supply device-independent resources per scenario — a device-pool `factory`
+    / `release` and no shared `collector` (the single loopback receiver is not
+    parallel-safe).
     """
+    if workers > 1 and collector is not None:
+        raise ValueError("並列実行（workers>1）は共有コレクタ非対応。--no-network で実行")
     redactor = Redactor(eff.redact)
-    results: list[RunResult] = []
-    for i, s in enumerate(scenarios):
+
+    def run_one(i: int, s: Scenario) -> RunResult:
         sid = f"{i:02d}-{scenario_slug(s.name)}"
         if collector is not None:
             collector.clear()
         driver = factory(eff, s)
-        # Capture t0 after the app has launched, so exchange offsets share the step
-        # timeline's origin (run_scenario times steps from its own entry, post-launch).
-        scenario_start = time.monotonic()
-        result = run_scenario(
-            driver, s, clock, sink=sink, on_blocked=on_blocked,
-            scenario_id=sid, network=(collector.snapshot if collector is not None else _no_net),
-            relaunch=(relauncher(eff, s, driver) if relauncher is not None else None),
-        )
-        if teardown is not None:
-            teardown(eff, s)
-        if collector is not None and run_dir is not None:
-            art = _write_network(collector.snapshot_timed(), scenario_start, run_dir, sid, redactor)
-            if art is not None:
-                result.artifacts.append(art)
-        results.append(result)
-    return results
+        try:
+            # t0 after launch, so exchange offsets share the step timeline's origin.
+            scenario_start = time.monotonic()
+            result = run_scenario(
+                driver, s, clock, sink=sink, on_blocked=on_blocked, scenario_id=sid,
+                network=(collector.snapshot if collector is not None else _no_net),
+                relaunch=(relauncher(eff, s, driver) if relauncher is not None else None),
+            )
+            if teardown is not None:
+                teardown(eff, s)
+            if collector is not None and run_dir is not None:
+                art = _write_network(collector.snapshot_timed(), scenario_start, run_dir, sid, redactor)
+                if art is not None:
+                    result.artifacts.append(art)
+            return result
+        finally:
+            if release is not None:
+                release(driver)
+
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(lambda pair: run_one(*pair), list(enumerate(scenarios))))
+    return [run_one(i, s) for i, s in enumerate(scenarios)]
 
 
 def run_and_report(
@@ -163,12 +183,14 @@ def run_and_report(
     teardown: Teardown | None = None,
     collector: NetworkCollector | None = None,
     relauncher: RelaunchFactory | None = None,
+    workers: int = 1,
+    release: Callable[[base.Driver], None] | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
     run_dir = runs_dir / run_id
     results = run_all(
         eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown,
-        collector=collector, run_dir=run_dir, relauncher=relauncher,
+        collector=collector, run_dir=run_dir, relauncher=relauncher, workers=workers, release=release,
     )
     # The merged Result tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).
@@ -209,6 +231,46 @@ def device_teardown(udid: str, env_run: env.RunFn = env._real_run) -> Teardown:
         e.terminate(eff.bundle_id)
 
     return teardown
+
+
+def device_pool(
+    udids: list[str],
+    backends: list[str],
+    bundle_id: str,
+    available: Callable[[str], bool] = default_available,
+    env_run: env.RunFn = env._real_run,
+) -> tuple[DriverFactory, RelaunchFactory, Callable[[base.Driver], None]]:
+    """A pool of devices for parallel runs. The factory leases a free udid per scenario
+    (blocking until one frees up), and release() terminates that scenario's app and returns
+    its udid to the pool. relauncher/release act on the leased device. Returns
+    (factory, relauncher, release)."""
+    actuator = select_actuator(backends, available)
+    free: queue.Queue[str] = queue.Queue()
+    for udid in udids:
+        free.put(udid)
+    leased: dict[int, str] = {}
+    lock = threading.Lock()
+
+    def factory(eff: Effective, scenario: Scenario) -> base.Driver:
+        udid = free.get()
+        driver = launch_driver(udid, eff, actuator, scenario.preconditions, env_run)
+        with lock:
+            leased[id(driver)] = udid
+        return driver
+
+    def relauncher(eff: Effective, scenario: Scenario, driver: base.Driver) -> RelaunchFn:
+        with lock:
+            udid = leased[id(driver)]
+        return device_relauncher(udid, env_run)(eff, scenario, driver)
+
+    def release(driver: base.Driver) -> None:
+        with lock:
+            udid = leased.pop(id(driver), None)
+        if udid is not None:
+            env.Env(udid, run=env_run).terminate(bundle_id)
+            free.put(udid)
+
+    return factory, relauncher, release
 
 
 def device_relauncher(udid: str, env_run: env.RunFn = env._real_run) -> RelaunchFactory:
