@@ -99,13 +99,32 @@
   document.querySelectorAll('.player').forEach(function(p){
     var v = p.querySelector('video'), btn = p.querySelector('.vplay');
     var seek = p.querySelector('.vseek'), time = p.querySelector('.vtime');
+    var marks = p.querySelector('.vmarks'), scn = p.closest('.scn');
     if(!v || !btn || !seek || !time) return;
     function paint(){ btn.textContent = v.paused ? '▶' : '❚❚'; }
     function clock(){ time.textContent = fmtT(v.currentTime) + ' / ' + fmtT(v.duration); }
-    function meta(){ if(isFinite(v.duration)) seek.max = v.duration; clock(); }
+    function ticks(){
+      // One tick per executed step, placed at its recording offset (data-t seconds).
+      // Each carries a hover bubble (step number + time) and seeks there on click.
+      if(!marks || !scn || !isFinite(v.duration) || v.duration <= 0) return;
+      var html = '';
+      scn.querySelectorAll('tr.srow[data-t]').forEach(function(r){
+        var t = parseFloat(r.getAttribute('data-t')); if(isNaN(t)) return;
+        var pct = Math.max(0, Math.min(100, t / v.duration * 100));
+        var td = r.querySelector('td'), num = td ? td.textContent.trim() : '';
+        html += '<span class="vmark" data-t="' + t + '" style="left:' + pct.toFixed(3) + '%">'
+          + '<span class="vmtip">Step ' + esc(num) + ' · ' + fmtT(t) + '</span></span>';
+      });
+      marks.innerHTML = html;
+    }
+    function meta(){ if(isFinite(v.duration)) seek.max = v.duration; clock(); ticks(); }
     function toggle(){ if(v.paused) v.play(); else v.pause(); }
     btn.addEventListener('click', toggle);
     v.addEventListener('click', toggle);   // clicking the frame itself plays/pauses
+    if(marks) marks.addEventListener('click', function(e){   // clicking a tick seeks to that step
+      var m = e.target.closest('.vmark'); if(!m) return;
+      var t = parseFloat(m.getAttribute('data-t')); if(!isNaN(t)) v.currentTime = t;
+    });
     v.addEventListener('play', paint);
     v.addEventListener('pause', paint);
     v.addEventListener('loadedmetadata', meta);

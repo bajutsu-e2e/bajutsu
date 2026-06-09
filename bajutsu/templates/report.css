@@ -36,7 +36,26 @@ summary::-webkit-details-marker{display:none}
 .vplay{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
  cursor:pointer;font-size:.66rem;line-height:1;display:flex;align-items:center;justify-content:center}
 .vplay:hover{background:#4a4d52}
+.vseekwrap{position:relative;flex:1;min-width:0;display:flex;align-items:center}
 .vseek{flex:1;min-width:0;height:.3rem;cursor:pointer;accent-color:#0a6cff}
+/* Step ticks over the scrubber: one per executed step, at its recording offset, so the
+   timeline shows where each step happened. Hovering a tick shows a step-number bubble;
+   clicking it seeks there. The container passes pointer events through (so the slider
+   stays draggable in the gaps); each tick opts back in. The track is inset by ~half the
+   thumb so 0% / 100% line up with the thumb's travel, not the raw element edges. */
+.vmarks{position:absolute;left:7px;right:7px;top:0;bottom:0;pointer-events:none}
+.vmark{position:absolute;top:50%;width:12px;height:16px;margin-left:-6px;transform:translateY(-50%);
+ display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer}
+.vmark::after{content:"";width:2px;height:9px;background:#f0a500;border-radius:1px;
+ box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.vmark:hover::after{height:12px;background:#ffb733}
+.vmtip{position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);
+ background:#000;color:#fff;white-space:nowrap;font:600 .66rem -apple-system,system-ui,sans-serif;
+ padding:.14rem .44rem;border-radius:5px;opacity:0;pointer-events:none;transition:opacity .12s;
+ box-shadow:0 2px 10px rgba(0,0,0,.5);z-index:3}
+.vmtip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);
+ border:4px solid transparent;border-top-color:#000}
+.vmark:hover .vmtip{opacity:1}
 .vtime{flex:none;font:600 .72rem/1 ui-monospace,Menlo,Consolas,monospace;color:#cfcfcf;
  white-space:nowrap}
 .tabs{display:flex;gap:.2rem;border-bottom:1px solid var(--line);margin-bottom:.55rem}
