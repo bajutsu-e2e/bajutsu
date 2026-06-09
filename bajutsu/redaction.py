@@ -33,23 +33,32 @@ def _patterns(keys: list[str]) -> list[re.Pattern[str]]:
 
 
 class Redactor:
-    """Applies a `Redact` config to evidence. A no-op when nothing is configured."""
+    """Applies a `Redact` config to evidence. A no-op when nothing is configured.
 
-    def __init__(self, redact: Redact | None) -> None:
+    `values` are literal secret values (resolved from the environment) masked wherever
+    they appear — this catches a secret the app echoes into a log / element / response,
+    which key-based patterns alone would miss. Longest values are masked first so a value
+    that is a substring of another does not leave a partial leak."""
+
+    def __init__(self, redact: Redact | None, values: list[str] | None = None) -> None:
         redact = redact or Redact()
         self._keys: list[str] = [*redact.headers, *redact.fields]
         self._header_names: set[str] = {h.lower() for h in redact.headers}
         self._labels: set[str] = set(redact.labels)
         self._patterns = _patterns(self._keys)
+        self._values: list[str] = sorted({v for v in (values or []) if v}, key=len, reverse=True)
 
     @property
     def active(self) -> bool:
-        return bool(self._keys or self._labels)
+        return bool(self._keys or self._labels or self._values)
 
     def redact_text(self, text: str) -> str:
-        """Mask the value after any configured key in free text (logs/traces)."""
+        """Mask the value after any configured key, and any literal secret value, in free
+        text (logs/traces)."""
         for pattern in self._patterns:
             text = pattern.sub(lambda m: m.group(1) + PLACEHOLDER, text)
+        for value in self._values:
+            text = text.replace(value, PLACEHOLDER)
         return text
 
     def redact_elements(self, elements: list[base.Element]) -> list[base.Element]:

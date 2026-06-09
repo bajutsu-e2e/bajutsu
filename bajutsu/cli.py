@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -99,6 +100,11 @@ def run(
 ) -> None:
     """Run a scenario deterministically (no AI, unless --dismiss-alerts)."""
     eff = _load_effective(config, app_name)
+    # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
+    # is interpolated at action time, while their literal values are masked in evidence and
+    # run-level artifacts (the scenario definition keeps the token, never the value).
+    secret_bindings = {f"secrets.{n}": os.environ[n] for n in eff.secrets if n in os.environ}
+    secret_values = list(secret_bindings.values())
     scenario_path = Path(scenario)
     if not scenario_path.exists():
         typer.echo(f"scenario not found: {scenario}")
@@ -187,20 +193,20 @@ def run(
         # fixed device, so the parallel sink captures instant evidence only (udid=None).
         factory, relauncher, release = device_pool(udids, backends, eff.bundle_id)
         teardown = None
-        sink = FileSink(Path("runs") / run_id, redact=eff.redact)
+        sink = FileSink(Path("runs") / run_id, redact=eff.redact, secrets=secret_values)
     else:
         factory = device_factory(udids[0], backends)
         relauncher = device_relauncher(udids[0])
         teardown = device_teardown(udids[0])
         sink = FileSink(
             Path("runs") / run_id, udid=udids[0], log_predicate=log_predicate or None,
-            log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact,
+            log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact, secrets=secret_values,
         )
     try:
         results, manifest = run_and_report(
             eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
             teardown=teardown, collector=collector, relauncher=relauncher,
-            workers=workers, release=release,
+            workers=workers, release=release, bindings=secret_bindings, secret_values=secret_values,
         )
     finally:
         if collector is not None:
