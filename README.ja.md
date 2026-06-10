@@ -38,6 +38,51 @@ Bajutsu は自然言語で書かれた（または記録された）テストシ
 
 ## アーキテクチャ
 
+```mermaid
+flowchart TB
+    goal(["🗣️ 自然言語ゴール"])
+    hand(["✍️ 人手編集"])
+    scenario[["📄 シナリオ (YAML)"]]
+
+    subgraph tier1["Tier 1 · AI — 著者 / 失敗調査役"]
+        record["record<br/>探索 + 記録"]
+        agent["Claude Agent<br/>+ システムアラートガード"]
+        record <--> agent
+    end
+
+    subgraph tier2["Tier 2 · 決定的 run — CI ゲートに AI なし"]
+        orch["Orchestrator<br/>observe → act → verify"]
+        driver["抽象ドライバ API<br/>tap · type · swipe · wait · query · screenshot"]
+        idb["idb バックエンド"]
+        sim["📱 iOS Simulator"]
+        env["Environment Manager (simctl)"]
+        orch --> driver --> idb --> sim
+        env -.->|boot / install / launch| sim
+    end
+
+    verdict{"合否<br/>機械アサーションのみ"}
+    report["📊 Reporter<br/>manifest.json · JUnit · HTML"]
+    codegen["codegen<br/>→ XCUITest (Swift)"]
+    triage["triage (M4)<br/>原因 + 修正案 · 助言のみ"]
+
+    goal --> record
+    record ==> scenario
+    hand ==> scenario
+    scenario ==> orch
+    scenario -.-> codegen
+    orch --> verdict
+    orch --> report
+    verdict -->|失敗| triage
+    triage -.->|修正案| scenario
+
+    classDef ai fill:#fde68a,stroke:#d97706,color:#1f2937;
+    classDef det fill:#bfdbfe,stroke:#2563eb,color:#1f2937;
+    class tier1 ai
+    class tier2 det
+```
+
+同じフローをテキストで:
+
 ```
 自然言語ゴール ──(record, Tier 1 / AI)──▶ シナリオ (YAML) ◀──(人手編集)
                                                        │

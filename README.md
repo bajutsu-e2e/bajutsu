@@ -45,6 +45,51 @@ per-feature documentation (in Japanese) lives in [`docs/`](docs/README.md).
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    goal(["🗣️ Natural-language goal"])
+    hand(["✍️ Hand-edited"])
+    scenario[["📄 Scenario (YAML)"]]
+
+    subgraph tier1["Tier 1 · AI — author and failure investigator"]
+        record["record<br/>explore + record"]
+        agent["Claude Agent<br/>+ system-alert guard"]
+        record <--> agent
+    end
+
+    subgraph tier2["Tier 2 · Deterministic run — no AI in the CI gate"]
+        orch["Orchestrator<br/>observe → act → verify"]
+        driver["Abstract Driver API<br/>tap · type · swipe · wait · query · screenshot"]
+        idb["idb backend"]
+        sim["📱 iOS Simulator"]
+        env["Environment Manager (simctl)"]
+        orch --> driver --> idb --> sim
+        env -.->|boot / install / launch| sim
+    end
+
+    verdict{"Pass / Fail<br/>machine assertions only"}
+    report["📊 Reporter<br/>manifest.json · JUnit · HTML"]
+    codegen["codegen<br/>→ XCUITest (Swift)"]
+    triage["triage (M4)<br/>root cause + fixes · advisory"]
+
+    goal --> record
+    record ==> scenario
+    hand ==> scenario
+    scenario ==> orch
+    scenario -.-> codegen
+    orch --> verdict
+    orch --> report
+    verdict -->|fail| triage
+    triage -.->|suggest edits| scenario
+
+    classDef ai fill:#fde68a,stroke:#d97706,color:#1f2937;
+    classDef det fill:#bfdbfe,stroke:#2563eb,color:#1f2937;
+    class tier1 ai
+    class tier2 det
+```
+
+The same flow as text:
+
 ```
 Natural-language goal ──(record, Tier 1 / AI)──▶ Scenario (YAML) ◀──(hand-edited)
                                                        │
