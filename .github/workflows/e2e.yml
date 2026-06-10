@@ -1,7 +1,9 @@
-# On-device E2E: build the sample app, boot a Simulator, and run a smoke scenario through
-# the idb backend. This exercises the full path (driver + simctl + idb + real actuation)
-# that the Linux `ci.yml` cannot. Runs on every PR (the change under review gets exercised
-# end-to-end) and on demand (the Actions tab / `gh workflow run e2e.yml`).
+# On-device E2E (macOS) — two jobs the Linux `ci.yml` cannot run:
+#   - smoke (idb): build the sample, boot a Simulator, run a scenario through the idb backend
+#     (driver + simctl + idb + real actuation).
+#   - xcuitest (codegen): generate a native XCUITest from a scenario and run it with
+#     xcodebuild — no bajutsu / idb / AI at test time (the codegen output path).
+# Runs on every relevant PR and on demand (the Actions tab / `gh workflow run e2e.yml`).
 name: E2E (Simulator)
 
 on:
@@ -53,21 +55,7 @@ jobs:
 
       - name: Boot a Simulator
         id: sim
-        run: |
-          set -euo pipefail
-          # Prefer a pre-installed available iPhone simulator — it's guaranteed compatible
-          # with the runner's Xcode. (Pairing the newest device type with the newest
-          # runtime ourselves can hit "Incompatible device".) Fall back to creating one
-          # with simctl's default runtime.
-          udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
-          if [ -z "$udid" ]; then
-            devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
-            udid=$(xcrun simctl create ci-iphone "$devtype")
-          fi
-          echo "Using simulator $udid"
-          xcrun simctl boot "$udid" || true
-          xcrun simctl bootstatus "$udid" -b
-          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/boot-simulator
 
       - name: Install the app
         run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
@@ -79,3 +67,43 @@ jobs:
           app: sample
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
+
+  # The codegen output path: a scenario -> native XCUITest, compiled and run by xcodebuild
+  # with no bajutsu / idb / AI at test time. This is the claim M3 makes about codegen, so CI
+  # has to exercise the generated Swift natively (not just the idb runtime above).
+  xcuitest:
+    name: xcuitest (codegen)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Boot a Simulator
+        id: sim
+        uses: ./.github/actions/boot-simulator
+
+      # `make ui-test` re-generates ComponentsUITests.swift from the scenario, regenerates
+      # the project, then `xcodebuild test`s it. xcodebuild builds the app + UITests target
+      # itself, so no separate build/install step is needed.
+      - name: Codegen + run native XCUITest
+        run: make ui-test SIM=${{ steps.sim.outputs.udid }}
+
+      - name: Upload xcresult
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: xcuitest-result
+          path: sample/build/dd/Logs/Test/*.xcresult
+          if-no-files-found: ignore
