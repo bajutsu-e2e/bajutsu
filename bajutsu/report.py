@@ -322,17 +322,45 @@ def _action_data(step_def: dict[str, Any] | None, out_action: str | None) -> dic
     return None
 
 
-def _view_data(out: Any) -> dict[str, Any]:
+def _tree_row(e: dict[str, Any]) -> dict[str, str]:
+    """One captured element rendered as a row for the in-report element viewer."""
+    frame = e.get("frame")
+    fr = ""
+    if isinstance(frame, (list, tuple)) and len(frame) == 4:
+        x, y, w, h = frame
+        fr = f"{_gnum(x)}, {_gnum(y)} · {_gnum(w)}×{_gnum(h)}"
+    val = e.get("value")
+    return {
+        "id": e.get("identifier") or "",
+        "label": e.get("label") or "",
+        "value": "" if val is None else str(val),
+        "traits": " ".join(e.get("traits") or []),
+        "frame": fr,
+    }
+
+
+def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
     shot = next((a for a in out.artifacts if a.kind == "screenshot"), None)
     tree = next((a for a in out.artifacts if a.kind == "elements"), None)
+    # Embed the captured elements inline so the report shows them in an overlay (no
+    # new tab), matching how logs/network are embedded for offline (file://) viewing.
+    tree_rows: list[dict[str, str]] | None = None
+    if tree is not None and run_dir is not None:
+        data = _read_json(run_dir, tree.name)
+        if isinstance(data, list):
+            tree_rows = [_tree_row(e) for e in data if isinstance(e, dict)]
     return {
         "shot": shot.name if shot else None,
         "tree": tree.name if tree else None,
+        "tree_rows": tree_rows,
+        "tree_count": len(tree_rows) if tree_rows is not None else 0,
         "alt": f"step {out.index} result",
     }
 
 
-def _step_run_row(i: int, step_def: dict[str, Any] | None, out: Any) -> dict[str, Any]:
+def _step_run_row(
+    i: int, step_def: dict[str, Any] | None, out: Any, run_dir: Path | None
+) -> dict[str, Any]:
     return {
         "rowcls": f"srow {'ok' if out.ok else 'ng'}",
         "data_t": f"{out.started_at:.3f}",
@@ -342,7 +370,7 @@ def _step_run_row(i: int, step_def: dict[str, Any] | None, out: Any) -> dict[str
         "action": _action_data(step_def, out.action),
         "detail": _step_detail(step_def),
         "at": f"{out.started_at:.1f}s",
-        "view": _view_data(out),
+        "view": _view_data(out, run_dir),
         "reason": out.reason if (not out.ok and out.reason) else None,
         "expand": None,
     }
@@ -420,7 +448,8 @@ def _response_row(d: dict[str, Any], at: float) -> dict[str, Any]:
 
 
 def _merged_rows(
-    r: RunResult, plan: list[dict[str, Any]], exchanges: list[dict[str, Any]]
+    r: RunResult, plan: list[dict[str, Any]], exchanges: list[dict[str, Any]],
+    run_dir: Path | None,
 ) -> list[dict[str, Any]]:
     """Step rows plus the observed exchanges (split request/response) interleaved by
     time offset; not-run steps trail at the end in plan order."""
@@ -434,7 +463,7 @@ def _merged_rows(
         if out is None:
             skipped.append(_step_skip_row(i, step_def))
         else:
-            timed.append((out.started_at, 0, _step_run_row(i, step_def, out)))
+            timed.append((out.started_at, 0, _step_run_row(i, step_def, out, run_dir)))
     for d in exchanges:
         t0 = _as_float(d.get("startedAt"))
         dur_s = _as_float(d.get("durationMs")) / 1000.0
@@ -508,13 +537,13 @@ def _domain_allowed(host: str, domains: list[str]) -> bool:
 
 def _result_panel(
     r: RunResult, definition: dict[str, Any] | None, source: str | None,
-    exchanges: list[dict[str, Any]],
+    exchanges: list[dict[str, Any]], run_dir: Path | None,
 ) -> dict[str, Any]:
     plan = (definition or {}).get("steps") or []
     return {
         "kind": "result", "key": "steps", "label": "Result", "source": source,
         "preconditions": _preconditions_rows(definition),
-        "steprows": _merged_rows(r, plan, exchanges),
+        "steprows": _merged_rows(r, plan, exchanges, run_dir),
         "expects": _expects_data(r, definition),
     }
 
@@ -602,7 +631,7 @@ def _scenario_data(
     step_exchanges = [
         d for d in all_exchanges if _domain_allowed(_exchange_host(str(d.get("url") or "")), domains)
     ]
-    panels: list[dict[str, Any]] = [_result_panel(r, definition, source, step_exchanges)]
+    panels: list[dict[str, Any]] = [_result_panel(r, definition, source, step_exchanges, run_dir)]
     if net is not None:
         panels.append(_network_panel(run_dir, net))
     dev = _artifact(r, "deviceLog")

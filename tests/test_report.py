@@ -431,7 +431,7 @@ def test_html_step_rows_carry_video_offset() -> None:
     assert "timeupdate" in out and "playing" in out
 
 
-def test_html_shows_step_screenshot_and_tree() -> None:
+def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     r = RunResult(
         scenario="s1", ok=True,
         steps=[
@@ -442,9 +442,34 @@ def test_html_shows_step_screenshot_and_tree() -> None:
         ],
         expect_results=[], artifacts=[],
     )
-    out = html_report("run1", [r])
-    # the step's screenshot (lightbox thumbnail) and its element-tree link are shown
+    step_dir = tmp_path / "00-s1" / "step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(
+        json.dumps([_el("home.title", "Welcome", ["staticText"])]), encoding="utf-8"
+    )
+    out = html_report("run1", [r], tmp_path)
+    # the step's screenshot (lightbox thumbnail) and its element viewer are shown
     assert 'class="shot"' in out and 'src="00-s1/step0/after.png"' in out
-    assert 'href="00-s1/step0/elements.json"' in out
+    # the element tree opens in-report (no new tab): a button + inline embedded data,
+    # rendered into the #tv overlay rather than linking out to the json file.
+    assert 'class="elnk treebtn"' in out
+    assert 'target="_blank"' not in out
+    assert "home.title" in out and "Welcome" in out
+    assert 'id="tv"' in out and "tvFilter" in out
     # the lightbox overlay + opener are present
     assert 'id="lb"' in out and "openLightbox" in out
+
+
+def test_html_tree_falls_back_to_link_without_run_dir() -> None:
+    # Structure-only render (no run_dir → no element data to embed): keep a link.
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, started_at=0.0, artifacts=[
+                Artifact("00-s1/step0/elements.json", "elements", "driver"),
+            ]),
+        ],
+        expect_results=[], artifacts=[],
+    )
+    out = html_report("run1", [r])
+    assert 'href="00-s1/step0/elements.json"' in out

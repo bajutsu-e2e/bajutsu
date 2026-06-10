@@ -1,5 +1,14 @@
 (function(){
   function esc(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+  // The recording is pinned (CSS position:sticky) just below the sticky header. The header
+  // wraps to two lines at narrow widths, so publish its live height as --hh rather than
+  // hardcode an offset that would leave a gap or let the video slip under the header.
+  var hdr = document.querySelector('header');
+  function syncHeaderH(){
+    if(hdr) document.documentElement.style.setProperty('--hh', hdr.offsetHeight + 'px');
+  }
+  syncHeaderH();
+  window.addEventListener('resize', syncHeaderH);
   document.addEventListener('click', function(e){
     var t = e.target.closest('.tab'); if(!t) return;
     var scn = t.closest('.scn'), name = t.getAttribute('data-tab');
@@ -89,6 +98,40 @@
     else if(e.key === 'ArrowLeft') lbShow(lbIndex - 1);
     else if(e.key === 'ArrowRight') lbShow(lbIndex + 1);
   });
+  // Element viewer: clicking a step's "tree" opens its captured accessibility
+  // elements in an overlay (embedded inline, so it works offline — no new tab),
+  // with a live filter over the rows.
+  var tv = document.getElementById('tv');
+  var tvBody = tv && tv.querySelector('.tv-body');
+  var tvInput = tv && tv.querySelector('.tvfilter');
+  var tvCount = tv && tv.querySelector('.tvcount');
+  function tvFilter(q){
+    if(!tvBody) return;
+    q = q.toLowerCase(); var n = 0;
+    tvBody.querySelectorAll('tbody tr').forEach(function(r){
+      var hit = !q || r.textContent.toLowerCase().indexOf(q) !== -1;
+      r.style.display = hit ? '' : 'none'; if(hit) n++;
+    });
+    if(tvCount) tvCount.textContent = n + (n === 1 ? ' element' : ' elements');
+  }
+  function tvClose(){ if(tv){ tv.classList.remove('open'); if(tvBody) tvBody.innerHTML = ''; } }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('.treebtn'); if(!b || !tv || !tvBody) return;
+    var tpl = b.parentNode.querySelector('template.treedata'); if(!tpl) return;
+    tvBody.innerHTML = tpl.innerHTML;
+    if(tvInput) tvInput.value = '';
+    tvFilter('');
+    tv.classList.add('open');
+    if(tvInput) tvInput.focus();
+  });
+  if(tv){
+    tv.addEventListener('click', function(e){ if(e.target === tv) tvClose(); });  // backdrop only
+    var tvX = tv.querySelector('.tv-close'); if(tvX) tvX.addEventListener('click', tvClose);
+    if(tvInput) tvInput.addEventListener('input', function(){ tvFilter(this.value); });
+    document.addEventListener('keydown', function(e){
+      if(tv.classList.contains('open') && e.key === 'Escape') tvClose();
+    });
+  }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
   // so the controls never overlay the video frame the way the native HTML5 controls do.
   function fmtT(t){
@@ -143,7 +186,7 @@
     if(!rows.length) return;
     rows.forEach(function(r){
       r.addEventListener('click', function(e){
-        if(e.target.closest('a')) return;                 // links (element tree) work normally
+        if(e.target.closest('a') || e.target.closest('.treebtn')) return;  // links / tree button handled elsewhere
         var shot = e.target.closest('.shot');
         if(shot){ openLightbox(shot.getAttribute('src')); return; }
         var t = parseFloat(r.getAttribute('data-t'));
