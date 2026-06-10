@@ -7,8 +7,11 @@
 > この構造を **AI 非依存**で実行する。
 >
 > 実装: `bajutsu/scenario.py`（pydantic、`extra="forbid"` で未知キーを拒否）。
+>
+> **規範的な文法** —— すべての生成規則・型・既定値・検証規則 —— は [dsl-grammar](dsl-grammar.md) にある。
+> このページはオーサリングガイド: 例でシナリオの書き方を示す。
 
-関連: [selectors](selectors.md)（セレクタとアサーション評価の仕組み）・[evidence](evidence.md)（証跡）・[run-loop](run-loop.md)（実行）
+関連: [dsl-grammar](dsl-grammar.md)（形式文法）・[selectors](selectors.md)（セレクタとアサーション評価の仕組み）・[evidence](evidence.md)（証跡）・[run-loop](run-loop.md)（実行）
 
 ---
 
@@ -28,11 +31,14 @@
 | キー | 型 | 既定 | 説明 |
 |---|---|---|---|
 | `name` | str | 必須 | シナリオ名（レポート / JUnit testcase / codegen のメソッド名に使う） |
+| `tags` | list[str] | `[]` | 選択ラベル。CLI の `--tag` / `--exclude` で実行対象を絞る（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
+| `data` / `dataFile` | list / str | なし | データ駆動の行 —— インライン `data` か `dataFile`（CSV パス）。1 行 1 run に展開し `${row.col}` を置換。排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `preconditions` | object | `{}` | テスト前の環境準備（下記） |
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
 | `capturePolicy` | list | `[]` | 繰り返し発火する証跡ルール（[evidence](evidence.md#a-capturepolicyルール方式)） |
 | `network` | object | なし | `{ filter: { domains: [...] } }` — `filter.domains` でレポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定は全件表示。Network タブは常に全件（[reporting](reporting.md#reporthtml)） |
+| `mocks` | list | `[]` | 決定的なネットワークスタブ —— 一致する送信リクエストにネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡保存前のマスク対象（[evidence](evidence.md#マスキングredact)） |
 
 ```yaml
@@ -71,6 +77,34 @@
 > `launchEnv` の解決順は **config の `launchEnv` < preconditions の `launchEnv`**（テストに近い方が
 > 勝つ）。`launch_driver` で `{**eff.launch_env, **pre.launch_env}` とマージする。
 
+## セレクタ（要素の指定）
+
+セレクタは操作・検証の対象となる **どの要素か** を指定する。1 つ以上のフィールドを与え、複数指定は
+**AND**（すべて一致）。最低 1 つは必須。セレクタがどう一意の要素に絞られるか（そして *曖昧* なセレクタが
+最初の一致を選ばず失敗する理由）は [selectors](selectors.md)、形式的な形は
+[dsl-grammar](dsl-grammar.md#2-文法の全体像) にある。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `id` | str | 完全一致の `accessibilityIdentifier` —— **第一候補**（安定・非ローカライズ） |
+| `idMatches` | str | id へのグロブ（例 `"list.row.*"`。複数一致を前提） |
+| `label` | str | 完全一致の `accessibilityLabel`（可視テキスト）—— 補助 / 曖昧性解消 |
+| `labelMatches` | str | label への正規表現 / 部分一致（`re.search`） |
+| `traits` | list[str] | アクセシビリティ trait で絞る（部分集合判定、例 `[button]`） |
+| `value` | str | 完全一致の accessibility value |
+| `within` | Selector | コンテナに限定 —— 一致要素はネストしたセレクタが解決する要素の内側にある必要がある（入れ子可） |
+| `index` | int | 複数一致の k 番目を選ぶ（負数可）—— 最終手段・順序依存 |
+
+```yaml
+- tap: { id: counter.increment }                               # id で（推奨）
+- tap: { label: "Delete" }                                     # 可視 label で（例: アラートのボタン）
+- tap: { id: row.action, within: { id: list.row.3 } }          # コンテナの部分木に限定
+- tap: { labelMatches: "^Item ", traits: [button], index: 0 }  # 最初に一致する button、フィールドは AND
+```
+
+> まず `id`。要素の *集合*（count / 存在）には `idMatches`。`index` は最終手段 —— 順序が変わると壊れる。
+> 解決の完全な意味論は [selectors](selectors.md)。
+
 ## ステップ文法（`steps`）
 
 各ステップは **ちょうど 1 アクション** + 任意の修飾子（`capture:` / `name:`）。1 ステップに
@@ -79,12 +113,18 @@
 | アクション | 形 | 説明 |
 |---|---|---|
 | `tap` | `tap: <Selector>` | 一意解決を要求（曖昧なら失敗） |
+| `doubleTap` | `doubleTap: <Selector>` | 解決した要素を 2 回素早くタップ |
 | `longPress` | `longPress: { sel: <Selector>, duration: <sec> }` | 長押し |
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | `into` 指定時は先にフォーカス |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在不可 |
+| `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` 拡大, `<1` 縮小） |
+| `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動（launch env/args を再適用＋上書き）し、ready まで待つ |
+| `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書き（`simctl location set`） |
+| `push` | `push: { payload: {...} }` | この APNs ペイロードで疑似プッシュ通知を配信（`simctl push`） |
+| `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開 —— コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)） |
 
 修飾子:
 
@@ -116,6 +156,19 @@
 
 `{on,direction}` と `{from,to}` は **完全にどちらか一方**でなければならない（混在・片側欠落は検証エラー）。
 
+### `doubleTap` / `pinch` / `rotate`（ジェスチャ）
+
+```yaml
+- doubleTap: { id: gest.doubletap }                    # 2 回素早くタップ
+- pinch:  { sel: { id: gest.pinch },  scale: 2.0 }     # >1 拡大, 0<scale<1 縮小
+- rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 時計回り（ラジアン）
+```
+
+`scale` は **> 0** が必須（でなければ検証エラー）。`pinch` / `rotate` はマルチタッチが必要で、idb
+バックエンドでは "needs multiTouch" の明確な理由で失敗する —— 実機での実行先は生成された XCUITest
+（`pinch(withScale:)` / `rotate(_:)`）。`doubleTap` は idb で動く（2 回タップ）。
+（[`sample/scenarios/gestures.yaml`](../../sample/scenarios/gestures.yaml) 実物）
+
 ### `wait`（条件待機）
 
 固定 sleep は文法として存在しない。**`timeout` は必須**（無限待ち禁止）。
@@ -131,8 +184,9 @@
 `for` と `until` は排他（片方のみ）。`until` の値は `screenChanged` / `settled` /
 `{ gone: <Selector> }` / `{ request: <RequestMatch> }`。`request` 形式はネットワーク collector
 （[evidence](evidence.md)、`--network` 実行フラグ）をポーリングし、観測した通信が 1 件でも一致する
-まで待つ（マッチャは `request` アサーションと同じ: `method` / `url` / `urlMatches` / `path` /
-`pathMatches` / `status` を AND、`count` で閾値を上げられる）。エンドポイントは `url`（完全一致）か
+まで待つ（マッチャは [`request` アサーション](#requestネットワークアサーション)と同じ: `method` / `url` /
+`urlMatches` / `path` / `pathMatches` / `status` / `bodyMatches` を AND、`count` で閾値を上げられる）。
+エンドポイントは `url`（完全一致）か
 `urlMatches`（正規表現/部分一致）、または `path` で指定する。タイムアウトの扱いは種別で異なる（[run-loop](run-loop.md#待機条件待機)）:
 `for` / `gone` / `screenChanged` / `request` はタイムアウト = ステップ失敗。`settled` は安定化
 ヒントなのでタイムアウトしても現在画面で続行（失敗にしない）。
@@ -145,6 +199,17 @@
 - assert:
     - disabled: { id: auth.submit }
 ```
+
+### `setLocation` / `push`（デバイス制御）
+
+```yaml
+- setLocation: { lat: 35.681, lon: 139.767 }              # simctl location set
+- push: { payload: { aps: { alert: "You have mail" } } }  # simctl push（APNs ペイロード）
+```
+
+どちらも `simctl` 経由で Simulator を操作し、デバイスごとの制御チャネルが必要。よって fake ドライバや
+並列実行では使えず、その場合ステップはクリーンに失敗する（クラッシュしない）。`push` は `payload` を
+APNs JSON として対象アプリに配信する。
 
 ## アサーション DSL
 
@@ -159,14 +224,142 @@
 | `count` | 一致要素数 | `count: { sel: { idMatches: "list.row.*" }, equals: 5 }` |
 | `enabled` / `disabled` | 操作可否（traits の `notEnabled`） | `disabled: { id: auth.submit }` |
 | `selected` | 選択 / トグル状態（trait `selected`） | `selected: { id: tab.home }` |
+| `request` | 一致するネットワーク通信が観測された（`--network` が必要） | `request: { method: POST, path: /login, status: 200, count: 1 }` |
 
 - `exists` はセレクタを **インラインで**書く（`{ id: ... }` 直書き）。`negate` は任意。
 - `value` / `label` は `sel:` + `equals` / `contains` / `matches` の **いずれか 1 つ**。
 - `count` は `sel:` + `equals` / `atLeast` / `atMost` の **いずれか 1 つ**。
 - `enabled` / `disabled` / `selected` はセレクタを直書き。
+- `request` は **観測されたネットワーク通信**に一致する（[下記](#requestネットワークアサーション)）。`--network` 実行フラグが必要。
 
 > **ロケール注意**: `label`/`value` の文字列比較や可視テキストを見るアサーションは翻訳で壊れる。
 > これらは config の固定 locale 前提で書き、セレクタ自体は `id` で書く。
+
+### `request`（ネットワークアサーション）
+
+`request` は run のネットワーク collector が **一致する HTTP 通信を観測した**ことを表明する（`--network`
+実行フラグとアプリ内の BajutsuKit が必要）。同じマッチャが `until: { request: ... }` の wait と `mocks`
+（下記）を支える。マッチフィールドは最低 1 つ必須で、列挙したフィールドは **AND**。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `method` | str | HTTP メソッド（`GET`, `POST`, …） |
+| `url` | str | 完全一致の URL（エンドポイント） |
+| `urlMatches` | str | URL への正規表現 / 部分一致（クエリはここ） |
+| `path` | str | 完全一致パス（クエリ無視） |
+| `pathMatches` | str | パスへの正規表現 |
+| `status` | int | レスポンスのステータスコード |
+| `bodyMatches` | str | **リクエストボディ**への正規表現 / 部分一致 |
+| `count` | int | 一致した通信数 —— アサーションでは **厳密**、wait では **下限** |
+
+```yaml
+- assert:
+    - request: { method: POST, path: /login, status: 200, count: 1 }
+    - request: { urlMatches: "/search", bodyMatches: "apple" }   # リクエストボディで一致
+```
+
+> `count` はマッチフィールド **ではない** —— `method` / `url` / `urlMatches` / `path` / `pathMatches` /
+> `status` / `bodyMatches` の少なくとも 1 つが必要。
+> （[`sample/scenarios/network_mock.yaml`](../../sample/scenarios/network_mock.yaml) 実物）
+
+## ネットワークモック（決定的スタブ）
+
+`mocks` はテストをライブサーバから独立させる: 送信リクエストが一致すると、BajutsuKit はネットワークへ
+行かずに定型レスポンスを返す。各モックは `{ match, respond }`。
+
+- **`match`** は[リクエストマッチャ](#requestネットワークアサーション)の **リクエスト側**フィールドを
+  再利用する（`method` / `url` / `urlMatches` / `path` / `pathMatches` / `bodyMatches`）。`status` /
+  `count` はモックの `match` には **適用されない**。
+- **`respond`** は定型の返答: `status`（既定 `200`）・`headers`（既定 `{}`）・`body`（文字列）・
+  `delayMs`（人工遅延）。`respond` を省くと空の `200` を返す。
+
+```yaml
+- name: GET answered by a mock stub
+  mocks:
+    - match: { method: GET, urlMatches: "example.com" }
+      respond:
+        status: 418                       # 実 example.com は 200 を返す。418 はスタブが応答した証拠
+        headers: { Content-Type: text/plain }
+        body: "stubbed by bajutsu"
+  steps:
+    - tap:  { id: net.fetch }
+    - wait: { until: { request: { method: GET, urlMatches: "example.com", status: 418 } }, timeout: 6 }
+  expect:
+    - request: { method: GET, urlMatches: "example.com", status: 418 }
+```
+
+モックは `BAJUTSU_MOCKS` env で BajutsuKit に渡される（`dump_mocks`, `scenario.py:610`）。形式的な形は
+[dsl-grammar](dsl-grammar.md#2-文法の全体像)。
+
+## 再利用とデータ駆動とタグ
+
+コア文法の周りに小さなテンプレート + マクロ層がある。これはロード時、決定的 run の **前**に走るので、
+ランナーは常に展開済みのプレーンなシナリオしか見ない。規範的な規則（展開順・`${ns.key}` 補間・深さ制限）は
+[dsl-grammar](dsl-grammar.md#6-テンプレートとマクロ層)。ここはオーサリング視点。
+
+### コンポーネント（`use` → 再利用ステップ）
+
+**コンポーネント**は別ファイル: `params` のリストと、それを `${params.<name>}` で参照する `steps` の
+リストからなる。`use` ステップが `with` で params を束縛して呼び出す。`use` は **コンパイル時マクロ** ——
+`expand_components`（`scenario.py:455`）が run の前にコンポーネントの置換済みステップへ置き換える
+（再帰的 —— コンポーネントが別のコンポーネントを `use` でき、深さ ≤ 25）。params 不足・未知 params・
+未宣言を指す残留 `${params.*}`・循環参照ではエラー。`use` は run に残らないので決定性に影響しない。
+
+```yaml
+# login.component.yaml —— コンポーネントファイル（単一マッピング、別ロード）
+params: [user, pass]
+steps:
+  - type: { text: "${params.user}", into: { id: auth.user } }
+  - type: { text: "${params.pass}", into: { id: auth.pass } }
+  - tap:  { id: auth.submit }
+```
+
+```yaml
+# シナリオ側 —— 上の 3 ステップに params を置換して展開される
+steps:
+  - use: { component: login.component.yaml, with: { user: alice, pass: hunter2 } }
+  - tap: { id: home.tab }
+```
+
+### データ駆動シナリオ（`data` / `dataFile`）
+
+`data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を
+置換して **1 行 1 シナリオ**に展開される（`expand_data`, `scenario.py:518`）。派生シナリオは
+`"<name> [row N: col=val, …]"` に改名され、元の preconditions を保つ（`erase` も既定 true のまま ——
+各行が自分のクリーンな環境で走る）。
+
+```yaml
+- name: search returns a result
+  data:
+    - { q: dog, expect: "1 result" }
+    - { q: cat, expect: "2 results" }
+  steps:
+    - type: { text: "${row.q}", into: { id: search.field }, submit: true }
+  expect:
+    - label: { sel: { id: home.status }, equals: "${row.expect}" }
+```
+
+> **ちょうど 1 トークン**だけの文字列（`"${row.qty}"`）は **生**の値になる（数値は数値のまま）。大きな
+> 文字列に **埋め込まれた**トークンはテキストとして差し込まれる（`"item-${row.id}"`）。
+
+CSV の `dataFile` は列名を与えるヘッダ行を持ち、以降の各行が 1 シナリオになる。
+
+### タグと選択
+
+`tags` はシナリオにラベルを付ける。CLI の `--tag` / `--exclude` で実行対象を絞る。シナリオは少なくとも 1 つの
+`--tag` を持ち（または `--tag` 未指定）、かつ `--exclude` のタグを 1 つも持たないとき残る ——
+`--exclude` が `--tag` に優先する（`select_scenarios`, `scenario.py:541`）。両フラグはカンマ区切り可。
+
+```yaml
+- name: checkout smoke
+  tags: [smoke, checkout]
+  steps:
+    - tap: { id: cart.checkout }
+```
+
+```bash
+uv run bajutsu run scenarios.yaml --tag smoke --exclude wip   # @smoke を実行、@wip は除外
+```
 
 ## capture トークン文法
 

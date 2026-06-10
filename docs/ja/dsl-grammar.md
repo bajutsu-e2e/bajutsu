@@ -141,7 +141,7 @@ Point ::= [ number, number ]
 # ── Selector（1 条件以上・指定フィールドは AND）────────────────────────
 Selector ::= {
   id?:           string,
-  idMatches?:    string,        # id に対する正規表現
+  idMatches?:    string,        # id に対するグロブ（fnmatch, 例 "list.row.*"）
   label?:        string,
   labelMatches?: string,        # label に対する正規表現
   traits?:       list(string),

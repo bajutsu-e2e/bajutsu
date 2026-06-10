@@ -143,7 +143,7 @@ Point ::= [ number, number ]
 # ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
 Selector ::= {
   id?:           string,
-  idMatches?:    string,        # regex over the id
+  idMatches?:    string,        # glob over the id (fnmatch, e.g. "list.row.*")
   label?:        string,
   labelMatches?: string,        # regex over the label
   traits?:       list(string),
