@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -44,14 +45,52 @@ class TriageContext:
 
 
 @dataclass(frozen=True)
+class Fix:
+    """A mechanically-applicable edit a human reviews before it is written.
+
+    Only `renameId` is supported today: replace a selector id throughout a scenario file
+    (the classic self-heal — an id was renamed). The boundary still holds: the fix is applied
+    to the scenario *source*, shown as a diff, and only written when the human opts in.
+    """
+
+    kind: str        # "renameId"
+    summary: str     # human description, e.g. "rename id `nav.setting` -> `nav.settings`"
+    old_id: str
+    new_id: str
+
+
+@dataclass(frozen=True)
 class Triage:
     summary: str
     category: str  # selector | timing | assertion | unknown
     suggestions: list[str]
+    fix: Fix | None = None
 
 
 class TriageAgent(Protocol):
     def triage(self, context: TriageContext) -> Triage: ...
+
+
+# --- applying a fix (pure) ---
+
+
+def apply_fix(text: str, fix: Fix) -> tuple[str, int]:
+    """Apply `fix` to scenario source `text`; return (patched_text, replacement_count).
+
+    `renameId` replaces whole-token occurrences of the old id — the negative lookarounds keep
+    `nav.setting` from matching inside `nav.settings`. An unknown kind is a no-op."""
+    if fix.kind != "renameId":
+        return text, 0
+    pattern = re.compile(r"(?<![\w.])" + re.escape(fix.old_id) + r"(?![\w.])")
+    return pattern.subn(fix.new_id, text)
+
+
+def diff_fix(old: str, new: str, path: str) -> str:
+    """A unified diff of a fix, for the human to review before `--write`."""
+    return "".join(difflib.unified_diff(
+        old.splitlines(keepends=True), new.splitlines(keepends=True),
+        fromfile=path, tofile=path,
+    ))
 
 
 # --- assembly (pure) ---
@@ -200,6 +239,7 @@ class HeuristicTriageAgent:
             and context.target_id not in _ids(context.elements)
         )
         hints = []
+        fix: Fix | None = None
         if absent and context.target_id:
             close = _close(context.target_id, context.elements)
             hints.append(
@@ -207,17 +247,20 @@ class HeuristicTriageAgent:
                 + (f" — did you mean {', '.join('`' + c + '`' for c in close)}?" if close else
                    " (its id may have changed, or the screen differs from expected).")
             )
+            if close:  # a confident rename — the one mechanically-applicable self-heal
+                fix = Fix("renameId", f"rename id `{context.target_id}` -> `{close[0]}`",
+                          context.target_id, close[0])
 
         if fs is not None and fs.action == "wait":
             sugg = [*hints, "Raise the wait timeout, or check the awaited element/condition is reachable."]
-            return Triage("A wait condition was not met before its timeout.", "timing", sugg)
+            return Triage("A wait condition was not met before its timeout.", "timing", sugg, fix=fix)
 
         if fs is not None and fs.action in _ACT_TARGETS:
             if "件一致" in fs.reason and context.target_id:
                 sugg = [f"`{context.target_id}` matched multiple elements — add `within` or `index` to disambiguate."]
             else:
                 sugg = hints or ["Verify the selector resolves to exactly one element (see the element tree)."]
-            return Triage(f"The `{fs.action}` step could not resolve or act on its target.", "selector", sugg)
+            return Triage(f"The `{fs.action}` step could not resolve or act on its target.", "selector", sugg, fix=fix)
 
         if context.failed_expectations:
             sugg = [*hints, "Compare each failed expectation below with the screen state at the end of the run."]
@@ -244,4 +287,6 @@ def render(context: TriageContext, triage: Triage) -> str:
         lines.append(f"  evidence: {' · '.join(context.evidence)}")
     lines += ["", f"diagnosis [{triage.category}]: {triage.summary}", "suggested fixes:"]
     lines += [f"  - {s}" for s in triage.suggestions]
+    if triage.fix is not None:
+        lines.append(f"applicable fix: {triage.fix.summary} (apply with `triage --apply <scenario-file>`)")
     return "\n".join(lines)

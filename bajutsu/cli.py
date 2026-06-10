@@ -317,6 +317,12 @@ def triage(
     ai: bool = typer.Option(
         False, "--ai", help="diagnose with Claude (needs ANTHROPIC_API_KEY) instead of the rule-based agent"
     ),
+    apply: str = typer.Option(
+        "", "--apply", help="scenario source file to patch with the suggested fix (shows a dry-run diff)"
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="with --apply, write the patched file instead of only showing the diff"
+    ),
 ) -> None:
     """Diagnose a failed run and suggest a minimal fix (advisory — never the pass/fail judge)."""
     path = Path(run_dir) if run_dir else _trace.latest_run(Path(runs))
@@ -336,6 +342,31 @@ def triage(
         agent = _triage.HeuristicTriageAgent()
     result = agent.triage(context)
     typer.echo(_triage.render(context, result))
+    if apply:
+        _apply_fix(result, apply, write)
+
+
+def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> None:
+    """Render (and optionally write) the suggested fix against a scenario source file."""
+    if result.fix is None:
+        typer.echo("\nno applicable structured fix for this failure (advisory only).")
+        return
+    try:
+        src = Path(target).read_text(encoding="utf-8")
+    except OSError as exc:
+        typer.echo(f"\ncannot read {target}: {exc}")
+        raise typer.Exit(2)
+    patched, count = _triage.apply_fix(src, result.fix)
+    if count == 0:
+        typer.echo(f"\nfix: {result.fix.summary} — no occurrences of `{result.fix.old_id}` in {target}")
+        return
+    typer.echo(f"\nfix: {result.fix.summary} ({count} occurrence{'' if count == 1 else 's'} in {target})")
+    typer.echo(_triage.diff_fix(src, patched, target))
+    if write:
+        Path(target).write_text(patched, encoding="utf-8")
+        typer.echo(f"wrote {target}")
+    else:
+        typer.echo("dry-run — re-run with --write to apply.")
 
 
 @app.command()

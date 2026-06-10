@@ -5,12 +5,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from typer.testing import CliRunner
+
 from bajutsu import triage
-from bajutsu.triage import FailedStep, HeuristicTriageAgent, TriageContext
+from bajutsu.cli import app
+from bajutsu.triage import Fix, FailedStep, HeuristicTriageAgent, TriageContext, apply_fix, diff_fix
+
+runner = CliRunner()
 
 
 def _write_run(runs: Path, *, ok: bool, reason: str = "", step_action: str = "tap",
-               with_screenshot: bool = False) -> Path:
+               with_screenshot: bool = False, scenario_id: str = "home.titel") -> Path:
     run = runs / "r"
     (run / "00-s" / "step0").mkdir(parents=True)
     artifacts = [{"name": "00-s/step0/elements.json", "kind": "elements", "provider": "driver"}]
@@ -31,7 +36,7 @@ def _write_run(runs: Path, *, ok: bool, reason: str = "", step_action: str = "ta
         }],
     }
     (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run / "scenario.yaml").write_text(f"- name: s\n  steps:\n    - {step_action}: {{ id: home.titel }}\n",
+    (run / "scenario.yaml").write_text(f"- name: s\n  steps:\n    - {step_action}: {{ id: {scenario_id} }}\n",
                                        encoding="utf-8")
     (run / "00-s" / "step0" / "elements.json").write_text(json.dumps([
         {"identifier": "home.title", "label": "Home", "traits": ["button"], "value": None, "frame": [0, 0, 10, 10]},
@@ -71,6 +76,8 @@ def test_heuristic_selector_suggests_close_id(tmp_path: Path) -> None:
     result = HeuristicTriageAgent().triage(ctx)
     assert result.category == "selector"
     assert any("home.title" in s for s in result.suggestions)  # "did you mean home.title?"
+    assert result.fix is not None and result.fix.kind == "renameId"
+    assert (result.fix.old_id, result.fix.new_id) == ("home.titel", "home.title")
 
 
 def test_heuristic_ambiguous_selector() -> None:
@@ -81,6 +88,53 @@ def test_heuristic_ambiguous_selector() -> None:
     result = HeuristicTriageAgent().triage(ctx)
     assert result.category == "selector"
     assert any("within" in s or "index" in s for s in result.suggestions)
+    assert result.fix is None  # ambiguity is not a mechanically-applicable rename
+
+
+def test_apply_fix_renames_whole_token_only() -> None:
+    text = "    - tap: { id: nav.setting }\n    - exists: { id: nav.settings }\n"
+    patched, n = apply_fix(text, Fix("renameId", "rename", "nav.setting", "nav.settings"))
+    assert n == 1  # only the exact token, never the substring inside nav.settings
+    assert patched == "    - tap: { id: nav.settings }\n    - exists: { id: nav.settings }\n"
+
+
+def test_apply_fix_unknown_kind_is_noop() -> None:
+    assert apply_fix("x", Fix("addIndex", "s", "a", "b")) == ("x", 0)
+
+
+def test_diff_fix_shows_change() -> None:
+    d = diff_fix("a: 1\n", "a: 2\n", "s.yaml")
+    assert "-a: 1" in d and "+a: 2" in d and "s.yaml" in d
+
+
+def test_cli_triage_apply_dry_run_then_write(tmp_path: Path) -> None:
+    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    src = tmp_path / "src.yaml"
+    src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
+
+    dry = runner.invoke(app, ["triage", str(run), "--apply", str(src)])
+    assert dry.exit_code == 0
+    assert "rename id `home.titel` -> `home.title`" in dry.output
+    assert "-    - tap: { id: home.titel }" in dry.output
+    assert "+    - tap: { id: home.title }" in dry.output
+    assert "dry-run" in dry.output
+    assert "home.titel" in src.read_text(encoding="utf-8")  # unchanged on dry-run
+
+    wrote = runner.invoke(app, ["triage", str(run), "--apply", str(src), "--write"])
+    assert wrote.exit_code == 0 and "wrote" in wrote.output
+    patched = src.read_text(encoding="utf-8")
+    assert "home.title }" in patched and "home.titel" not in patched
+
+
+def test_cli_triage_apply_no_fix_is_advisory(tmp_path: Path) -> None:
+    # an ambiguous-match failure (target id IS on screen) has no applicable rename fix
+    run = _write_run(tmp_path / "runs", ok=False, reason="2 件一致: {'id': 'home.title'}",
+                     scenario_id="home.title")
+    src = tmp_path / "src.yaml"
+    src.write_text("- name: s\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
+    r = runner.invoke(app, ["triage", str(run), "--apply", str(src)])
+    assert r.exit_code == 0
+    assert "no applicable structured fix" in r.output
 
 
 def test_heuristic_timing_and_assertion() -> None:
