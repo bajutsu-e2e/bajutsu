@@ -24,7 +24,7 @@ from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
 from bajutsu.config import load_config
-from bajutsu.scenario import load_scenarios
+from bajutsu.scenario import load_scenario_file
 
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
@@ -36,15 +36,22 @@ Popen = Callable[..., Any]
 
 
 def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
-    """Every `*.yaml` under `scenarios_dir`, with the scenario names each file defines and a
-    path (relative to cwd) the run command can take."""
+    """Every `*.yaml` under `scenarios_dir`: a path the run command can take, the file-level
+    `description`, and each scenario's name + description (for the UI)."""
     out: list[dict[str, Any]] = []
     for path in sorted(scenarios_dir.glob("*.yaml")):
+        description: str | None = None
+        scenarios: list[dict[str, Any]] = []
         try:
-            names = [s.name for s in load_scenarios(path.read_text(encoding="utf-8"))]
+            sf = load_scenario_file(path.read_text(encoding="utf-8"))
+            description = sf.description
+            scenarios = [{"name": s.name, "description": s.description} for s in sf.scenarios]
         except (OSError, ValueError):
-            names = []
-        out.append({"file": path.name, "path": str(path), "names": names})
+            pass
+        out.append({
+            "file": path.name, "path": str(path), "description": description,
+            "scenarios": scenarios, "names": [s["name"] for s in scenarios],
+        })
     return out
 
 
@@ -287,6 +294,10 @@ pre.out{margin:.6rem 0 0;max-height:220px;overflow:auto;background:#0b1220;borde
 .report{height:calc(100vh - 6rem)}iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut)}
 .names{color:var(--mut);font-size:.8em;margin-top:.2rem;min-height:1em}
+.names .finfo{color:var(--fg);font-size:1.05em;margin-bottom:.25rem}
+.scnlist{list-style:none;margin:.1rem 0 0;padding:0;font-size:1em;max-height:30vh;overflow:auto}
+.scnlist li{padding:.12rem 0;color:var(--fg)}
+.scnlist .sd{color:var(--mut)}
 .left{display:flex;flex-direction:column;gap:1rem}
 .hhead{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:.5rem}
 .refresh{background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;cursor:pointer;padding:.1rem .45rem}
@@ -330,16 +341,24 @@ pre.out{margin:.6rem 0 0;max-height:220px;overflow:auto;background:#0b1220;borde
 </main>
 <script>
 const $=s=>document.querySelector(s);
-let poll=null,selectedRun=null;
+let poll=null,selectedRun=null,scnFiles=[];
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 async function load(){
-  const scn=await (await fetch('/api/scenarios')).json();
+  scnFiles=await (await fetch('/api/scenarios')).json();
   const app=await (await fetch('/api/apps')).json();
-  $('#scn').innerHTML=scn.map(s=>`<option value="${s.path}" data-names="${(s.names||[]).join(', ')}">${s.file}</option>`).join('');
-  $('#app').innerHTML=app.map(a=>`<option>${a}</option>`).join('');
-  showNames();
+  $('#scn').innerHTML=scnFiles.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
+  $('#app').innerHTML=app.map(a=>`<option>${esc(a)}</option>`).join('');
+  showInfo();
 }
-function showNames(){const o=$('#scn').selectedOptions[0];$('#names').textContent=o?o.dataset.names:''}
-$('#scn').addEventListener('change',showNames);
+function showInfo(){
+  const f=scnFiles.find(s=>s.path===$('#scn').value),el=$('#names');
+  if(!f){el.innerHTML='';return}
+  let h='';
+  if(f.description)h+=`<div class="finfo">${esc(f.description)}</div>`;
+  if(f.scenarios&&f.scenarios.length)h+='<ul class="scnlist">'+f.scenarios.map(s=>`<li><b>${esc(s.name)}</b>${s.description?' &mdash; <span class="sd">'+esc(s.description)+'</span>':''}</li>`).join('')+'</ul>';
+  el.innerHTML=h;
+}
+$('#scn').addEventListener('change',showInfo);
 $('#go').addEventListener('click',async()=>{
   if(poll)clearInterval(poll);
   $('#go').disabled=true;$('#out').hidden=false;$('#out').textContent='';

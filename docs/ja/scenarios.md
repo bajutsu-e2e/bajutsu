@@ -17,7 +17,9 @@
 
 ## ファイルの形
 
-1 ファイル = **シナリオの配列**。`load_scenarios()` はトップレベルがリストでなければ拒否する。
+1 ファイル = **シナリオの配列**、またはファイルレベル説明を付けたい場合は
+`{ description, scenarios }` マッピング。`load_scenarios()` はどちらの形式も受け付ける
+（どちらでもないトップレベルは拒否）。
 
 ```yaml
 - name: ...        # シナリオ 1
@@ -26,11 +28,25 @@
   steps: [...]
 ```
 
+ファイルレベル説明（および任意の per-scenario `description`）を付ける場合:
+
+```yaml
+description: このファイルが何を扱うか。
+scenarios:
+  - name: ...
+    description: このシナリオが何を確認するか。
+    steps: [...]
+```
+
+ファイル説明と各シナリオの `description` は `report.html`（サマリーヘッダーと各シナリオカード）
+および `bajutsu serve` の UI に表示される。
+
 ## トップレベル構造（`Scenario`）
 
 | キー | 型 | 既定 | 説明 |
 |---|---|---|---|
 | `name` | str | 必須 | シナリオ名（レポート / JUnit testcase / codegen のメソッド名に使う） |
+| `description` | str | なし | 任意の説明文。シナリオの report カードと serve UI に表示 |
 | `tags` | list[str] | `[]` | 選択ラベル。CLI の `--tag` / `--exclude` で実行対象を絞る（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行 —— インライン `data` か `dataFile`（CSV パス）。1 行 1 run に展開し `${row.col}` を置換。排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `preconditions` | object | `{}` | テスト前の環境準備（下記） |

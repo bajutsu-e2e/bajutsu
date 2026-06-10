@@ -45,6 +45,19 @@ def test_list_apps(tmp_path: Path) -> None:
     assert srv.list_apps(cfg) == ["demo", "other"]
 
 
+def test_list_scenarios_includes_descriptions(tmp_path: Path) -> None:
+    d = tmp_path / "scn"
+    d.mkdir()
+    (d / "described.yaml").write_text(
+        "description: file note\nscenarios:\n  - name: a\n    description: scn note\n"
+        "    steps:\n      - tap: { id: x }\n",
+        encoding="utf-8")
+    got = srv.list_scenarios(d)
+    assert got[0]["description"] == "file note"
+    assert got[0]["scenarios"] == [{"name": "a", "description": "scn note"}]
+    assert got[0]["names"] == ["a"]
+
+
 def _write_run(runs: Path, run_id: str, *, ok: bool, scenarios: list[tuple[str, bool]]) -> None:
     d = runs / run_id
     d.mkdir(parents=True)

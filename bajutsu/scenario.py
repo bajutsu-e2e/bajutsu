@@ -400,6 +400,7 @@ class Scenario(_Model):
     """One scenario."""
 
     name: str
+    description: str | None = None
     tags: list[str] = Field(default_factory=list)
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
@@ -429,12 +430,30 @@ class Component(_Model):
 Selector.model_rebuild()
 
 
-def load_scenarios(text: str) -> list[Scenario]:
-    """Parse a YAML string (a list of scenarios) into validated Scenario objects."""
+class ScenarioFile(_Model):
+    """A scenario file: an optional file-level `description` plus the scenarios it defines.
+
+    Two on-disk forms are accepted: the bare list of scenarios (no file description), or a
+    `{description: "...", scenarios: [...]}` mapping.
+    """
+
+    description: str | None = None
+    scenarios: list[Scenario]
+
+
+def load_scenario_file(text: str) -> ScenarioFile:
+    """Parse a scenario file (a list of scenarios, or a `{description, scenarios}` mapping)."""
     data = _yaml.safe_load(text)
-    if not isinstance(data, list):
-        raise ValueError("シナリオファイルはシナリオの配列（§6.1）")
-    return [Scenario.model_validate(item) for item in data]
+    if isinstance(data, list):
+        return ScenarioFile.model_validate({"scenarios": data})
+    if isinstance(data, dict):
+        return ScenarioFile.model_validate(data)
+    raise ValueError("シナリオファイルはシナリオの配列、または {description, scenarios} マッピング（§6.1）")
+
+
+def load_scenarios(text: str) -> list[Scenario]:
+    """Parse a scenario file into validated Scenario objects (any file-level description dropped)."""
+    return load_scenario_file(text).scenarios
 
 
 def load_component(text: str) -> Component:
@@ -582,6 +601,15 @@ def scenario_dict(scenario: Scenario) -> dict[str, Any]:
 def dump_scenarios(scenarios: list[Scenario]) -> str:
     """Serialize scenarios back to YAML (round-trips through load_scenarios)."""
     return _yaml.safe_dump([scenario_dict(s) for s in scenarios])
+
+
+def dump_scenario_file(scenarios: list[Scenario], description: str | None = None) -> str:
+    """Serialize a scenario file. With a file-level `description`, emits the `{description,
+    scenarios}` mapping form; otherwise the bare list (round-trips through load_scenario_file)."""
+    body = [scenario_dict(s) for s in scenarios]
+    if description:
+        return _yaml.safe_dump({"description": description, "scenarios": body})
+    return _yaml.safe_dump(body)
 
 
 def apply_setups(

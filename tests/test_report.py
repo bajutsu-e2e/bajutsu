@@ -111,6 +111,15 @@ def test_html_report_shows_source_filename() -> None:
     assert 'class="sfile"' not in html_report("run9", [_failing()])  # omitted when unknown
 
 
+def test_html_report_shows_descriptions() -> None:
+    definition = {"name": "s2", "description": "what this scenario checks", "steps": []}
+    out = html_report("run9", [_failing()], definitions=[definition], description="what this file covers")
+    assert 'class="fdesc">what this file covers' in out      # file-level description in the header
+    assert 'class="sdesc">what this scenario checks' in out  # per-scenario description in the card
+    # both omitted when absent
+    assert 'class="fdesc"' not in html_report("run9", [_failing()])
+
+
 def test_html_expectations_block() -> None:
     # Expects render as a table with PASS/FAIL in its own column.
     out = html_report("run9", [_passing(), _failing()])

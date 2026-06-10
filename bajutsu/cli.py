@@ -41,6 +41,7 @@ from bajutsu.scenario import (
     expand_components,
     expand_data,
     load_component,
+    load_scenario_file,
     load_scenarios,
     read_csv,
     select_scenarios,
@@ -113,7 +114,8 @@ def run(
     if not scenario_path.exists():
         typer.echo(f"scenario not found: {scenario}")
         raise typer.Exit(2)
-    scenarios = load_scenarios(scenario_path.read_text(encoding="utf-8"))
+    scenario_file = load_scenario_file(scenario_path.read_text(encoding="utf-8"))
+    scenarios = scenario_file.scenarios
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
     if include or excluded:
@@ -213,7 +215,7 @@ def run(
             eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
             teardown=teardown, collector=collector, relauncher=relauncher,
             workers=workers, release=release, bindings=secret_bindings, secret_values=secret_values,
-            control=control, source_name=scenario_path.name,
+            control=control, source_name=scenario_path.name, description=scenario_file.description,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

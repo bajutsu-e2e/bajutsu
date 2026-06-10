@@ -7,6 +7,7 @@ header h1{font-size:1rem;margin:0;font-weight:600}
 .htitle{display:flex;flex-direction:column;gap:.15rem;min-width:0}
 .subtitle{font-size:.85rem;color:rgba(255,255,255,.62);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64ch}
 .sfile{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.82)}
+.fdesc{font-size:.82rem;font-weight:400;color:rgba(255,255,255,.6);max-width:72ch}
 .stats{display:flex;gap:.4rem;font-size:.82rem;align-items:center}
 .chip{display:inline-flex;align-items:center;padding:.12rem .55rem;border-radius:999px;background:#3a3a3c}
 .chip.ok{background:var(--ok)} .chip.ng{background:var(--ng)}
@@ -26,7 +27,8 @@ details.scn{background:var(--card);border:1px solid var(--line);border-radius:10
 details.scn[data-ok=false]{border-color:#f1c4bf}
 summary{list-style:none;cursor:pointer;padding:.7rem 1rem;display:flex;gap:.55rem;align-items:center;font-weight:600}
 summary::-webkit-details-marker{display:none}
-.sname{flex:1}
+.smeta{flex:1;min-width:0;display:flex;flex-direction:column;gap:.1rem}
+.sdesc{font-weight:400;font-size:.82rem;color:var(--mut)}
 .dot{width:.6rem;height:.6rem;border-radius:50%;background:var(--ok);flex:none} .dot.ng{background:var(--ng)}
 .body{padding:0 1rem 1rem;display:grid;grid-template-columns:300px 1fr;gap:1.1rem;align-items:start}
 @media(max-width:760px){.body{grid-template-columns:1fr}}

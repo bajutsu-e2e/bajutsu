@@ -19,7 +19,9 @@ from bajutsu.scenario import (
     Wait,
     WaitRequest,
     apply_setups,
+    dump_scenario_file,
     dump_scenarios,
+    load_scenario_file,
     load_scenarios,
 )
 
@@ -38,6 +40,38 @@ SCENARIO_YAML = """
   expect:
     - exists: { label: "正規化設定が変更されています", negate: true }
 """
+
+
+def test_scenario_file_descriptions() -> None:
+    text = (
+        "description: file-level note\n"
+        "scenarios:\n"
+        "  - name: a\n"
+        "    description: per-scenario note\n"
+        "    steps:\n"
+        "      - tap: { id: x }\n"
+    )
+    sf = load_scenario_file(text)
+    assert sf.description == "file-level note"
+    assert sf.scenarios[0].description == "per-scenario note"
+    # load_scenarios still returns just the scenarios (file description dropped)
+    assert load_scenarios(text)[0].description == "per-scenario note"
+
+
+def test_scenario_file_bare_list_has_no_description() -> None:
+    sf = load_scenario_file("- name: a\n  steps:\n    - tap: { id: x }\n")
+    assert sf.description is None and sf.scenarios[0].name == "a"
+    assert sf.scenarios[0].description is None
+
+
+def test_scenario_file_round_trips_with_descriptions() -> None:
+    sf = load_scenario_file(
+        "description: top\nscenarios:\n  - name: a\n    description: d\n    steps:\n      - tap: { id: x }\n"
+    )
+    rt = load_scenario_file(dump_scenario_file(sf.scenarios, sf.description))
+    assert rt.description == "top" and rt.scenarios[0].description == "d"
+    # without a file description, dump_scenario_file emits the bare list form
+    assert load_scenario_file(dump_scenario_file(sf.scenarios)).description is None
 
 
 def test_load_scenario_example() -> None:

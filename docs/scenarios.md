@@ -17,7 +17,9 @@ Related: [dsl-grammar](dsl-grammar.md) (formal grammar) · [selectors](selectors
 
 ## File shape
 
-One file = **a list of scenarios**. `load_scenarios()` rejects a top level that is not a list.
+One file = **a list of scenarios**, or a `{ description, scenarios }` mapping when you want a
+file-level description. `load_scenarios()` accepts either form; a top level that is neither is
+rejected.
 
 ```yaml
 - name: ...        # scenario 1
@@ -26,11 +28,25 @@ One file = **a list of scenarios**. `load_scenarios()` rejects a top level that 
   steps: [...]
 ```
 
+With a file-level description (and an optional per-scenario `description`):
+
+```yaml
+description: What this file covers.
+scenarios:
+  - name: ...
+    description: What this scenario checks.
+    steps: [...]
+```
+
+Both the file description and each scenario's `description` appear in `report.html` (the
+summary header and each scenario card) and in the `bajutsu serve` UI.
+
 ## Top-level structure (`Scenario`)
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `name` | str | required | Scenario name (used for the report / JUnit testcase / codegen method name) |
+| `description` | str | none | Optional human description; shown on the scenario's report card and in the serve UI |
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |

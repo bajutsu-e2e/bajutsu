@@ -642,6 +642,7 @@ def _scenario_data(
         panels.append(_trace_panel(run_dir, trace))
     return {
         "name": r.scenario, "ok": r.ok, "backend": r.backend, "open": not r.ok,
+        "description": (definition or {}).get("description"),
         "video": video.name if video else None, "panels": panels,
     }
 
@@ -666,6 +667,7 @@ def html_report(
     definitions: list[dict[str, Any]] | None = None,
     sources: list[str] | None = None,
     source_name: str | None = None,
+    description: str | None = None,
 ) -> str:
     """A self-contained interactive HTML report (inline CSS + JS, no external assets).
 
@@ -686,7 +688,7 @@ def html_report(
     return _env().get_template("report.html.j2").render(
         run_id=run_id, passed=passed, failed=len(results) - passed, overall=passed == len(results),
         backend=_run_backend(results), css=_asset("report.css"), js=_asset("report.js"),
-        scenarios=scenarios, source_name=source_name,
+        scenarios=scenarios, source_name=source_name, description=description,
     )
 
 
@@ -697,6 +699,7 @@ def write_report(
     definitions: list[dict[str, Any]] | None = None,
     sources: list[str] | None = None,
     source_name: str | None = None,
+    description: str | None = None,
 ) -> Path:
     """Write manifest.json, junit.xml, and report.html under run_dir; return the manifest path.
 
@@ -711,6 +714,7 @@ def write_report(
     )
     (run_dir / "junit.xml").write_text(junit_xml(results), encoding="utf-8")
     (run_dir / "report.html").write_text(
-        html_report(run_id, results, run_dir, definitions, sources, source_name), encoding="utf-8"
+        html_report(run_id, results, run_dir, definitions, sources, source_name, description),
+        encoding="utf-8"
     )
     return manifest_path
