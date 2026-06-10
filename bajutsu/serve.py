@@ -277,7 +277,9 @@ main{display:grid;grid-template-columns:340px 1fr;gap:1rem;padding:1rem;align-it
 label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
 select,input[type=text]{width:100%;padding:.45rem;background:#0b1220;color:var(--fg);border:1px solid var(--line);border-radius:6px}
 .row{display:flex;gap:1rem}.row>div{flex:1}
-.checks{display:flex;gap:1rem;margin-top:.6rem;align-items:center}.checks label{display:flex;gap:.35rem;align-items:center;margin:0;color:var(--fg)}
+.checks{display:flex;flex-direction:column;gap:.7rem;margin-top:.7rem}
+.checks label{display:block;margin:0;color:var(--fg);cursor:pointer}
+.checks .hint{display:block;color:var(--mut);font-size:.78em;line-height:1.35;margin:.15rem 0 0 1.45rem}
 button.run{margin-top:1rem;width:100%;padding:.6rem;background:var(--acc);color:#082f49;border:0;border-radius:6px;font-weight:700;cursor:pointer}
 button.run:disabled{opacity:.5;cursor:default}
 .status{margin-top:.8rem;font-weight:600}.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}.status.run{color:var(--acc)}
@@ -310,8 +312,10 @@ pre.out{margin:.6rem 0 0;max-height:220px;overflow:auto;background:#0b1220;borde
       <div class="row"><div><label>Backend</label><input id="backend" type="text" placeholder="idb"></div>
         <div><label>UDID</label><input id="udid" type="text" placeholder="booted"></div></div>
       <div class="checks">
-        <label><input type="checkbox" id="noerase" checked> no-erase</label>
-        <label><input type="checkbox" id="dismiss"> dismiss-alerts</label>
+        <label><input type="checkbox" id="noerase" checked> no-erase
+          <span class="hint">Reuse the Simulator's current state instead of wiping it before each scenario &mdash; faster, and needed when you installed the app yourself (erasing removes it). Off = erase the device first.</span></label>
+        <label><input type="checkbox" id="dismiss"> dismiss-alerts
+          <span class="hint">Use Claude vision to dismiss unexpected system prompts (Save Password, notification permission) that idb can't see or tap. Needs ANTHROPIC_API_KEY.</span></label>
       </div>
       <button class="run" id="go">Run</button>
       <div class="status" id="status"></div>
