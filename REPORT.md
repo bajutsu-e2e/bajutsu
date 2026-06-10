@@ -66,7 +66,7 @@ AI ループ（M2）と実機検証のための、計装済み自己完結 Swift
   （`list.row.<id>`、`settings.reindex`、予約 `auth.*` / `nav.*`）。
 - **`sample/scenarios/`** — 全プリミティブを使う example シナリオ（smoke / auth / settings / list）。
   スキーマ検証を CI で実施。
-- **`simyoke.config.yaml`** — `sample` と `searchsample` の app エントリを持つ実 config。
+- **`simyoke.config.yaml`** — `sample` の app エントリを持つ実 config。
 
 ---
 

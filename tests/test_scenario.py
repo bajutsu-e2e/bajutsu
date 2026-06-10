@@ -28,8 +28,8 @@ SCENARIO_YAML = """
 - name: 設定を開いて再生成する
   preconditions:
     erase: true
-    launchEnv: { SEARCH_SHOW_SETTINGS: "1" }
-    deeplink: "searchsample://settings"
+    launchEnv: { SAMPLE_SCREEN: "settings" }
+    deeplink: "bajutsusample://settings"
     locale: "ja_JP"
   steps:
     - tap: { id: settings.open }
@@ -46,7 +46,7 @@ def test_load_scenario_example() -> None:
     s = scenarios[0]
     assert s.name == "設定を開いて再生成する"
     assert s.preconditions.erase is True
-    assert s.preconditions.launch_env == {"SEARCH_SHOW_SETTINGS": "1"}
+    assert s.preconditions.launch_env == {"SAMPLE_SCREEN": "settings"}
     assert len(s.steps) == 2
     assert s.steps[1].capture == ["screenshot.after", "deviceLog"]
     assert s.expect[0].exists is not None

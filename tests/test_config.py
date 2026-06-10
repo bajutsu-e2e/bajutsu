@@ -16,32 +16,32 @@ defaults:
   reservedNamespaces: [auth, nav]
 
 apps:
-  searchsample:
-    bundleId: com.example.SearchSample
-    deeplinkScheme: searchsample
-    launchEnv: { SEARCH_SHOW_SETTINGS: "1" }
-    idNamespaces: [settings, search, result]
-    mockServer: { cmd: "serve", port: 8080, stubs: ./mocks/searchsample }
-    setup: ./scenarios/searchsample/_setup.yaml
+  sample:
+    bundleId: com.bajutsu.sample
+    deeplinkScheme: bajutsusample
+    launchEnv: { SAMPLE_UITEST: "1" }
+    idNamespaces: [home, list, counter, settings]
+    mockServer: { cmd: "serve", port: 8080, stubs: ./mocks/sample }
+    setup: ./scenarios/sample/_setup.yaml
     redact: { labels: ["カード番号"] }
 """
 
 
-def test_resolve_searchsample() -> None:
-    eff = resolve(load_config(CONFIG_YAML), "searchsample")
-    assert eff.bundle_id == "com.example.SearchSample"
+def test_resolve_sample() -> None:
+    eff = resolve(load_config(CONFIG_YAML), "sample")
+    assert eff.bundle_id == "com.bajutsu.sample"
     assert eff.backend == ["idb"]  # from defaults
     assert eff.device == "iPhone 15"
     assert eff.locale == "ja_JP"
-    assert eff.launch_env == {"SEARCH_SHOW_SETTINGS": "1"}
-    assert eff.id_namespaces == ["settings", "search", "result"]
+    assert eff.launch_env == {"SAMPLE_UITEST": "1"}
+    assert eff.id_namespaces == ["home", "list", "counter", "settings"]
     assert eff.reserved_namespaces == ["auth", "nav"]
     assert eff.mock_server is not None and eff.mock_server.port == 8080
-    assert eff.setup == "./scenarios/searchsample/_setup.yaml"
+    assert eff.setup == "./scenarios/sample/_setup.yaml"
 
 
 def test_redact_is_merged() -> None:
-    eff = resolve(load_config(CONFIG_YAML), "searchsample")
+    eff = resolve(load_config(CONFIG_YAML), "sample")
     assert eff.redact.labels == ["カード番号"]            # from the app
     assert eff.redact.headers == ["Authorization", "Cookie"]  # from defaults
     assert eff.redact.fields == ["token", "password"]
