@@ -4,6 +4,7 @@ HTTP endpoints (a real ThreadingHTTPServer on an ephemeral port)."""
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import threading
 import time
@@ -87,9 +88,42 @@ def test_list_runs_empty_dir(tmp_path: Path) -> None:
 def test_run_command_builder() -> None:
     cmd = srv.run_command("s.yaml", "demo", backend="idb", udid="U", config="c.yaml")
     assert cmd[:5] == [sys.executable, "-m", "bajutsu", "run", "s.yaml"]
-    assert cmd[5:] == ["--app", "demo", "--config", "c.yaml", "--backend", "idb", "--udid", "U", "--no-erase"]
+    # erase defaults to None: no flag, so each scenario's preconditions.erase decides.
+    assert cmd[5:] == ["--app", "demo", "--config", "c.yaml", "--backend", "idb", "--udid", "U"]
+    assert "--erase" not in cmd and "--no-erase" not in cmd
     erased = srv.run_command("s.yaml", "demo", erase=True, dismiss_alerts=True)
     assert "--erase" in erased and "--no-erase" not in erased and "--dismiss-alerts" in erased
+    assert "--no-erase" in srv.run_command("s.yaml", "demo", erase=False)  # explicit override
+
+
+def test_run_command_parallel_pool() -> None:
+    cmd = srv.run_command("s.yaml", "demo", udid="A,B", workers=2)
+    assert cmd[cmd.index("--udid") + 1] == "A,B"  # comma list passes through as a device pool
+    assert cmd[cmd.index("--workers") + 1] == "2"
+    assert "--workers" not in srv.run_command("s.yaml", "demo", workers=1)  # single-device omits it
+
+
+def test_int_coercion() -> None:
+    assert srv._int(3, 1) == 3 and srv._int("4", 1) == 4
+    assert srv._int(None, 1) == 1 and srv._int("x", 1) == 1  # bad values fall back
+
+
+def _boom(_args: list[str], _e: object = None) -> str:
+    raise OSError("simctl not found")
+
+
+def test_list_simulators_parses_and_orders() -> None:
+    payload = json.dumps({"devices": {
+        "com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+            {"udid": "B1", "name": "iPhone 17", "state": "Shutdown", "isAvailable": True},
+            {"udid": "A1", "name": "iPhone 17 Pro", "state": "Booted", "isAvailable": True},
+            {"udid": "X", "name": "old", "state": "Shutdown", "isAvailable": False},  # filtered out
+        ],
+    }})
+    sims = srv.list_simulators(simctl=lambda args, e=None: payload)
+    assert [s["udid"] for s in sims] == ["A1", "B1"]  # booted first, then by name
+    assert sims[0] == {"udid": "A1", "name": "iPhone 17 Pro", "runtime": "iOS 26.5", "booted": True}
+    assert srv.list_simulators(simctl=_boom) == []  # failure -> empty, never raises
 
 
 # --- job logic with an injected Popen ---
@@ -130,6 +164,45 @@ def test_run_job_marks_failure(tmp_path: Path) -> None:
     job = state.new_job(["x"])
     srv.run_job(state, job)
     assert job.view()["ok"] is False and job.view()["runId"] == "r"
+
+
+def test_run_job_boots_devices_before_running(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    boots: list[str] = []
+
+    def simctl(args: list[str], _e: object = None) -> str:
+        boots.append(args[3])  # ["xcrun","simctl","bootstatus",<udid>,"-b"]
+        return ""
+
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+                           popen=_fake_popen(["PASS  runs/r/manifest.json\n"]), simctl=simctl)
+    job = state.new_job(["x"], udids=["U1", "U2"])
+    srv.run_job(state, job)
+    assert sorted(boots) == ["U1", "U2"]  # every picked device booted before the run (parallel)
+    v = job.view()
+    assert v["ok"] is True and v["runId"] == "r"
+    assert any("booting U1" in line for line in v["lines"])
+
+
+def test_run_job_boot_failure_skips_the_run(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    spawned: list[Any] = []
+
+    def simctl(args: list[str], _e: object = None) -> str:
+        raise subprocess.CalledProcessError(1, args, stderr="Invalid device")
+
+    def popen(*a: Any, **_k: Any) -> _FakeProc:
+        spawned.append(a)
+        return _FakeProc([])
+
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+                           popen=popen, simctl=simctl)
+    job = state.new_job(["x"], udids=["BAD"])
+    srv.run_job(state, job)
+    v = job.view()
+    assert v["status"] == "done" and v["ok"] is False
+    assert spawned == []  # the run is not spawned when a device won't boot
+    assert any("boot failed" in line for line in v["lines"])
 
 
 # --- HTTP endpoints (real server) ---
@@ -190,6 +263,55 @@ def test_http_run_then_job_status(tmp_path: Path) -> None:
                 break
             time.sleep(0.02)
         assert j["status"] == "done" and j["ok"] is True and j["runId"] == "done-1"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_run_boots_pool_and_passes_workers(tmp_path: Path) -> None:
+    """The UI's picked devices are booted, and the udid pool + workers reach the run command."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    captured: list[list[str]] = []
+    boots: list[str] = []
+
+    def popen(cmd: list[str], **_kw: Any) -> _FakeProc:
+        captured.append(cmd)
+        return _FakeProc(["PASS  runs/p/manifest.json\n"])
+
+    def simctl(args: list[str], _e: object = None) -> str:
+        boots.append(args[3])
+        return ""
+
+    server, port = _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs,
+                                         cwd=tmp_path, popen=popen, simctl=simctl))
+    try:
+        body = json.dumps({"scenario": "s.yaml", "app": "demo", "udid": "A,B", "workers": 2}).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/run", data=body,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req).read()
+        for _ in range(100):  # the job runs on a background thread; wait for the spawn
+            if captured:
+                break
+            time.sleep(0.02)
+        cmd = captured[0]
+        assert cmd[cmd.index("--udid") + 1] == "A,B"
+        assert cmd[cmd.index("--workers") + 1] == "2"
+        assert sorted(boots) == ["A", "B"]  # both picked devices booted before the run
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_simulators(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    payload = json.dumps({"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+        {"udid": "U1", "name": "iPhone 17 Pro", "state": "Booted", "isAvailable": True}]}})
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+                           simctl=lambda args, e=None: payload)
+    server, port = _serve(state)
+    try:
+        sims = _get_json(port, "/api/simulators")
+        assert sims == [{"udid": "U1", "name": "iPhone 17 Pro", "runtime": "iOS 26.5", "booted": True}]
     finally:
         server.shutdown()
         server.server_close()
