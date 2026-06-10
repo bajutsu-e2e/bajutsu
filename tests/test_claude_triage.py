@@ -135,3 +135,40 @@ def test_no_screenshot_is_text_only() -> None:
     content = client.calls[0]["messages"][0]["content"]
     assert [c["type"] for c in content] == ["text"]
     assert "attached above" not in content[0]["text"]
+
+
+def _diagnose_with_fix(fix: dict[str, Any]) -> _Block:
+    return _Block("diagnose", {"category": "selector", "summary": "renamed",
+                               "suggestions": ["did you mean nav.settings?"], "fix": fix})
+
+
+def test_fix_is_parsed_into_triage() -> None:
+    block = _diagnose_with_fix({"kind": "renameId", "old_id": "nav.setting", "new_id": "nav.settings"})
+    result = ClaudeTriageAgent(client=FakeClient(block)).triage(_ctx())
+    assert result.fix is not None and result.fix.kind == "renameId"
+    assert (result.fix.old_id, result.fix.new_id) == ("nav.setting", "nav.settings")
+    assert result.fix.summary == "rename id `nav.setting` -> `nav.settings`"
+
+
+def test_no_fix_when_omitted() -> None:
+    assert ClaudeTriageAgent(client=FakeClient(_diagnose())).triage(_ctx()).fix is None
+
+
+def test_invalid_fix_is_rejected() -> None:
+    bad_fixes = [
+        {"kind": "renameId", "old_id": "a", "new_id": "a"},   # a no-op rename
+        {"kind": "addIndex", "old_id": "a", "new_id": "b"},   # unsupported kind
+        {"kind": "renameId", "old_id": "", "new_id": "b"},    # empty old id
+        {"kind": "renameId", "new_id": "b"},                  # missing old id
+    ]
+    for bad in bad_fixes:
+        result = ClaudeTriageAgent(client=FakeClient(_diagnose_with_fix(bad))).triage(_ctx())
+        assert result.fix is None, bad
+
+
+def test_tool_schema_exposes_optional_fix() -> None:
+    client = FakeClient(_diagnose())
+    ClaudeTriageAgent(client=client).triage(_ctx())
+    schema = client.calls[0]["tools"][0]["input_schema"]
+    assert schema["properties"]["fix"]["properties"]["kind"]["enum"] == ["renameId"]
+    assert "fix" not in schema["required"]  # advisory-by-default; fix is opt-in for the model

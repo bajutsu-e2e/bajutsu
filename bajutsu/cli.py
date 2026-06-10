@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -323,6 +325,13 @@ def triage(
     write: bool = typer.Option(
         False, "--write", help="with --apply, write the patched file instead of only showing the diff"
     ),
+    rerun: bool = typer.Option(
+        False, "--rerun", help="after --write, re-run the patched scenario to verify the fix (needs --app + a device)"
+    ),
+    app_name: str = typer.Option("", "--app", help="app key, for --rerun"),
+    backend: str = typer.Option("", "--backend", help="actuator backend, for --rerun"),
+    udid: str = typer.Option("booted", "--udid", help="simulator udid, for --rerun"),
+    config: str = typer.Option(DEFAULT_CONFIG, "--config", help="config path, for --rerun"),
 ) -> None:
     """Diagnose a failed run and suggest a minimal fix (advisory — never the pass/fail judge)."""
     path = Path(run_dir) if run_dir else _trace.latest_run(Path(runs))
@@ -342,15 +351,23 @@ def triage(
         agent = _triage.HeuristicTriageAgent()
     result = agent.triage(context)
     typer.echo(_triage.render(context, result))
-    if apply:
-        _apply_fix(result, apply, write)
+    if not apply:
+        return
+    wrote = _apply_fix(result, apply, write)
+    if rerun:
+        if not wrote:
+            typer.echo("\n--rerun needs --write (nothing was applied to re-run).")
+        elif not app_name:
+            typer.echo("\n--rerun needs --app to run the patched scenario.")
+        else:
+            _verify_rerun(apply, app_name, backend, udid, config)
 
 
-def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> None:
-    """Render (and optionally write) the suggested fix against a scenario source file."""
+def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> bool:
+    """Render (and optionally write) the suggested fix. Returns True only when a file was written."""
     if result.fix is None:
         typer.echo("\nno applicable structured fix for this failure (advisory only).")
-        return
+        return False
     try:
         src = Path(target).read_text(encoding="utf-8")
     except OSError as exc:
@@ -359,14 +376,36 @@ def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> None:
     patched, count = _triage.apply_fix(src, result.fix)
     if count == 0:
         typer.echo(f"\nfix: {result.fix.summary} — no occurrences of `{result.fix.old_id}` in {target}")
-        return
+        return False
     typer.echo(f"\nfix: {result.fix.summary} ({count} occurrence{'' if count == 1 else 's'} in {target})")
     typer.echo(_triage.diff_fix(src, patched, target))
-    if write:
-        Path(target).write_text(patched, encoding="utf-8")
-        typer.echo(f"wrote {target}")
-    else:
+    if not write:
         typer.echo("dry-run — re-run with --write to apply.")
+        return False
+    Path(target).write_text(patched, encoding="utf-8")
+    typer.echo(f"wrote {target}")
+    return True
+
+
+def _rerun_command(target: str, app_name: str, backend: str, udid: str, config: str) -> list[str]:
+    """The `bajutsu run` invocation that re-checks a patched scenario (kept --no-erase to reuse
+    the current device state). Built as a list so it is easy to assert in tests."""
+    cmd = [sys.executable, "-m", "bajutsu", "run", target, "--app", app_name, "--config", config, "--no-erase"]
+    if backend:
+        cmd += ["--backend", backend]
+    if udid:
+        cmd += ["--udid", udid]
+    return cmd
+
+
+def _verify_rerun(target: str, app_name: str, backend: str, udid: str, config: str) -> None:
+    cmd = _rerun_command(target, app_name, backend, udid, config)
+    typer.echo(f"\nre-running {target} to verify the fix ...")
+    code = subprocess.call(cmd)
+    typer.echo(
+        "fix verified — the scenario now passes." if code == 0
+        else "the scenario still fails after the fix; further diagnosis needed."
+    )
 
 
 @app.command()

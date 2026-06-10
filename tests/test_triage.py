@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from bajutsu import triage
-from bajutsu.cli import app
+from bajutsu.cli import _rerun_command, app
 from bajutsu.triage import Fix, FailedStep, HeuristicTriageAgent, TriageContext, apply_fix, diff_fix
 
 runner = CliRunner()
@@ -135,6 +136,43 @@ def test_cli_triage_apply_no_fix_is_advisory(tmp_path: Path) -> None:
     r = runner.invoke(app, ["triage", str(run), "--apply", str(src)])
     assert r.exit_code == 0
     assert "no applicable structured fix" in r.output
+
+
+def test_rerun_command_builder() -> None:
+    cmd = _rerun_command("s.yaml", "demo", "idb", "DEAD-BEEF", "cfg.yaml")
+    assert cmd[1:] == ["-m", "bajutsu", "run", "s.yaml", "--app", "demo",
+                       "--config", "cfg.yaml", "--no-erase", "--backend", "idb", "--udid", "DEAD-BEEF"]
+    bare = _rerun_command("s.yaml", "demo", "", "", "cfg.yaml")  # no backend, empty udid omitted
+    assert "--backend" not in bare and "--udid" not in bare
+
+
+def test_cli_rerun_needs_write(tmp_path: Path) -> None:
+    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    src = tmp_path / "src.yaml"
+    src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
+    r = runner.invoke(app, ["triage", str(run), "--apply", str(src), "--rerun", "--app", "demo"])
+    assert r.exit_code == 0
+    assert "--rerun needs --write" in r.output
+    assert "home.titel" in src.read_text(encoding="utf-8")  # untouched on dry-run
+
+
+def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    src = tmp_path / "src.yaml"
+    src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
+    captured: dict[str, list[str]] = {}
+
+    def fake_call(cmd: list[str]) -> int:
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr("bajutsu.cli.subprocess.call", fake_call)
+    r = runner.invoke(app, ["triage", str(run), "--apply", str(src), "--write", "--rerun",
+                            "--app", "demo", "--backend", "idb"])
+    assert r.exit_code == 0
+    assert "wrote" in r.output and "fix verified" in r.output
+    assert captured["cmd"][2:7] == ["bajutsu", "run", str(src), "--app", "demo"]
+    assert "home.titel" not in src.read_text(encoding="utf-8")  # the fix was written
 
 
 def test_heuristic_timing_and_assertion() -> None:

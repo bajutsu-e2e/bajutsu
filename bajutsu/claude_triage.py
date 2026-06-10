@@ -15,7 +15,7 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from bajutsu.triage import Triage, TriageContext
+from bajutsu.triage import Fix, Triage, TriageContext
 
 MODEL = "claude-opus-4-8"
 
@@ -43,7 +43,12 @@ asynchronous UI — the element is reachable but not present yet.
 - summary: one or two sentences naming the concrete root cause.
 - suggestions: concrete, minimal edits (a renamed id, `within` / `index` to disambiguate a \
 selector, a longer timeout or an explicit wait, a corrected expected value). Prefer the \
-smallest change that makes the scenario deterministic again."""
+smallest change that makes the scenario deterministic again.
+- fix (ONLY when the failure is a renamed/misspelled selector id AND the correct id is \
+visible on the captured screen): kind=renameId, old_id = the id the scenario uses now, \
+new_id = the correct id from the screen. This lets the rename be applied automatically. \
+Omit `fix` for ambiguous matches, timing, assertion, or any failure you are not certain a \
+single id rename resolves."""
 
 # Static tool definition (cached together with the system prompt). Its shape mirrors the
 # `Triage` dataclass so the tool input maps straight back to it.
@@ -63,6 +68,17 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "concrete, minimal fixes a human can apply",
+                },
+                "fix": {
+                    "type": "object",
+                    "description": "an automatically-applicable edit; include ONLY for a "
+                    "renamed/misspelled selector id whose correct id is visible on the screen",
+                    "properties": {
+                        "kind": {"type": "string", "enum": ["renameId"]},
+                        "old_id": {"type": "string", "description": "the id the scenario uses now"},
+                        "new_id": {"type": "string", "description": "the correct id from the screen"},
+                    },
+                    "required": ["kind", "old_id", "new_id"],
                 },
             },
             "required": ["summary", "category", "suggestions"],
@@ -122,6 +138,18 @@ def _user_content(context: TriageContext) -> list[dict[str, Any]]:
     return content
 
 
+def _parse_fix(raw: Any) -> Fix | None:
+    """Accept a model-proposed fix only if it is a well-formed, non-trivial id rename."""
+    if not isinstance(raw, dict):
+        return None
+    old_id, new_id = raw.get("old_id"), raw.get("new_id")
+    if raw.get("kind") != "renameId" or not isinstance(old_id, str) or not isinstance(new_id, str):
+        return None
+    if not old_id or not new_id or old_id == new_id:
+        return None
+    return Fix("renameId", f"rename id `{old_id}` -> `{new_id}`", old_id, new_id)
+
+
 def _to_triage(message: Any) -> Triage:
     tool_use = next((b for b in message.content if b.type == "tool_use"), None)
     if tool_use is None:
@@ -131,7 +159,7 @@ def _to_triage(message: Any) -> Triage:
     if category not in _CATEGORIES:
         category = "unknown"
     suggestions = [str(s) for s in (args.get("suggestions") or [])]
-    return Triage(str(args.get("summary", "")), category, suggestions)
+    return Triage(str(args.get("summary", "")), category, suggestions, fix=_parse_fix(args.get("fix")))
 
 
 class ClaudeTriageAgent:
