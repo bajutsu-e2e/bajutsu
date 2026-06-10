@@ -141,6 +141,22 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] 
 - Config's `launchEnv` goes into the generated test's `app.launchEnvironment`.
 - On file output: `wrote <N> scenario(s) -> <out>`.
 
+## `serve`
+
+A local web UI to **run a scenario and view its report** — a Tier-1 convenience, **not part
+of the CI gate**. Lists the scenarios + apps, spawns `python -m bajutsu run ...` per request on
+a background thread, streams its output, and serves the produced `runs/<id>/` tree so the
+report's relative asset links resolve. Stdlib only (no web framework); binds `127.0.0.1`.
+
+```bash
+bajutsu serve [--port 8765] [--scenarios sample/scenarios] [--config bajutsu.config.yaml] [--runs runs]
+```
+
+- Pick a scenario file + app, set backend / udid / `no-erase` / `dismiss-alerts`, hit **Run**;
+  the output streams live and the `report.html` embeds on completion.
+- The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH` so
+  the `idb` client resolves). Run it from the project root so `bajutsu.config.yaml` resolves.
+
 ## Environment variables (.env)
 
 `_bootstrap` (`@app.callback`) loads `.env` before every command (implementation: `bajutsu/dotenv.py`).

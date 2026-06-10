@@ -444,5 +444,19 @@ def codegen(
         typer.echo(f"wrote {len(scenarios)} scenario(s) -> {out}")
 
 
+@app.command()
+def serve(
+    port: int = typer.Option(8765, "--port"),
+    scenarios: str = typer.Option("sample/scenarios", "--scenarios", help="directory of scenario .yaml files"),
+    config: str = typer.Option(DEFAULT_CONFIG, "--config"),
+    runs: str = typer.Option("runs", "--runs", help="runs root to serve reports from"),
+    host: str = typer.Option("127.0.0.1", "--host"),
+) -> None:
+    """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI)."""
+    from bajutsu.serve import serve as _serve
+
+    _serve(host, port, Path(scenarios), Path(config), Path(runs))
+
+
 if __name__ == "__main__":
     app()
