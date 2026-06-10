@@ -15,7 +15,7 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from bajutsu.triage import Fix, Triage, TriageContext
+from bajutsu.triage import FIX_KINDS, Fix, Triage, TriageContext, fix_summary
 
 MODEL = "claude-opus-4-8"
 
@@ -44,11 +44,17 @@ asynchronous UI — the element is reachable but not present yet.
 - suggestions: concrete, minimal edits (a renamed id, `within` / `index` to disambiguate a \
 selector, a longer timeout or an explicit wait, a corrected expected value). Prefer the \
 smallest change that makes the scenario deterministic again.
-- fix (ONLY when the failure is a renamed/misspelled selector id AND the correct id is \
-visible on the captured screen): kind=renameId, old_id = the id the scenario uses now, \
-new_id = the correct id from the screen. This lets the rename be applied automatically. \
-Omit `fix` for ambiguous matches, timing, assertion, or any failure you are not certain a \
-single id rename resolves."""
+- fix (an automatically-applicable edit; include ONLY when you are confident, else omit). \
+`find` MUST be an exact substring of the scenario definition shown below, and `replace` is \
+what it becomes:
+  - renameId: a misspelled/renamed selector id whose correct id is visible on screen. \
+find = the id the scenario uses now, replace = the correct id.
+  - addIndex: an ambiguous selector that matched several elements. find = the exact selector \
+fragment of the failing step (e.g. `{ id: row.cell }`), replace = the same fragment with \
+`index:` (or `within:`) added to pick one.
+  - raiseTimeout: a wait that timed out though the element was reachable. find = the exact \
+`timeout: N` fragment of the failing wait, replace = it with a larger number.
+Omit `fix` for assertion failures, or whenever you cannot name an exact `find` fragment."""
 
 # Static tool definition (cached together with the system prompt). Its shape mirrors the
 # `Triage` dataclass so the tool input maps straight back to it.
@@ -71,14 +77,18 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "fix": {
                     "type": "object",
-                    "description": "an automatically-applicable edit; include ONLY for a "
-                    "renamed/misspelled selector id whose correct id is visible on the screen",
+                    "description": "an automatically-applicable edit; `find` MUST be an exact "
+                    "substring of the scenario definition shown",
                     "properties": {
-                        "kind": {"type": "string", "enum": ["renameId"]},
-                        "old_id": {"type": "string", "description": "the id the scenario uses now"},
-                        "new_id": {"type": "string", "description": "the correct id from the screen"},
+                        "kind": {
+                            "type": "string", "enum": list(FIX_KINDS),
+                            "description": "renameId (misspelled/renamed id), addIndex "
+                            "(disambiguate an ambiguous match), raiseTimeout (lengthen a wait)",
+                        },
+                        "find": {"type": "string", "description": "exact text in the scenario to replace"},
+                        "replace": {"type": "string", "description": "the replacement text"},
                     },
-                    "required": ["kind", "old_id", "new_id"],
+                    "required": ["kind", "find", "replace"],
                 },
             },
             "required": ["summary", "category", "suggestions"],
@@ -139,15 +149,15 @@ def _user_content(context: TriageContext) -> list[dict[str, Any]]:
 
 
 def _parse_fix(raw: Any) -> Fix | None:
-    """Accept a model-proposed fix only if it is a well-formed, non-trivial id rename."""
+    """Accept a model-proposed fix only if it is a well-formed, non-trivial find/replace."""
     if not isinstance(raw, dict):
         return None
-    old_id, new_id = raw.get("old_id"), raw.get("new_id")
-    if raw.get("kind") != "renameId" or not isinstance(old_id, str) or not isinstance(new_id, str):
+    kind, find, replace = raw.get("kind"), raw.get("find"), raw.get("replace")
+    if kind not in FIX_KINDS or not isinstance(find, str) or not isinstance(replace, str):
         return None
-    if not old_id or not new_id or old_id == new_id:
+    if not find or not replace or find == replace:
         return None
-    return Fix("renameId", f"rename id `{old_id}` -> `{new_id}`", old_id, new_id)
+    return Fix(kind, fix_summary(kind, find, replace), find, replace)
 
 
 def _to_triage(message: Any) -> Triage:

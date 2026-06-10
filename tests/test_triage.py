@@ -78,7 +78,7 @@ def test_heuristic_selector_suggests_close_id(tmp_path: Path) -> None:
     assert result.category == "selector"
     assert any("home.title" in s for s in result.suggestions)  # "did you mean home.title?"
     assert result.fix is not None and result.fix.kind == "renameId"
-    assert (result.fix.old_id, result.fix.new_id) == ("home.titel", "home.title")
+    assert (result.fix.find, result.fix.replace) == ("home.titel", "home.title")
 
 
 def test_heuristic_ambiguous_selector() -> None:
@@ -99,8 +99,22 @@ def test_apply_fix_renames_whole_token_only() -> None:
     assert patched == "    - tap: { id: nav.settings }\n    - exists: { id: nav.settings }\n"
 
 
-def test_apply_fix_unknown_kind_is_noop() -> None:
-    assert apply_fix("x", Fix("addIndex", "s", "a", "b")) == ("x", 0)
+def test_apply_fix_addindex_replaces_exact_fragment() -> None:
+    text = "    - tap: { id: row.cell }\n    - tap: { id: row.cellar }\n"
+    patched, n = apply_fix(text, Fix("addIndex", "x", "{ id: row.cell }", "{ id: row.cell, index: 0 }"))
+    assert n == 1 and "{ id: row.cell, index: 0 }" in patched  # the exact fragment, not row.cellar
+    assert "{ id: row.cellar }" in patched
+
+
+def test_apply_fix_raise_timeout_replaces_fragment() -> None:
+    text = "    - wait: { for: { id: spinner }, timeout: 5 }\n"
+    patched, n = apply_fix(text, Fix("raiseTimeout", "x", "timeout: 5", "timeout: 15"))
+    assert n == 1 and "timeout: 15" in patched
+
+
+def test_apply_fix_fragment_absent_is_safe_noop() -> None:
+    assert apply_fix("nothing here\n", Fix("addIndex", "s", "{ id: gone }", "{ id: gone, index: 0 }")) \
+        == ("nothing here\n", 0)
 
 
 def test_diff_fix_shows_change() -> None:

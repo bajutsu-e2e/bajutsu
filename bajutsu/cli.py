@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -342,6 +343,14 @@ def triage(
     if context is None:
         typer.echo("no failed scenario to triage in this run")
         raise typer.Exit(0)
+    # When patching a source file, diagnose against *its* text (not the run's normalized dump)
+    # so a fix's `find` fragment matches the file that --apply edits — otherwise float/flow-style
+    # normalization (`timeout: 2.0`, block selectors) makes fragment fixes miss.
+    if apply:
+        try:
+            context = replace(context, scenario_yaml=Path(apply).read_text(encoding="utf-8"))
+        except OSError:
+            pass  # _apply_fix reports the read failure below
     agent: _triage.TriageAgent
     if ai:
         from bajutsu.claude_triage import ClaudeTriageAgent
@@ -375,7 +384,7 @@ def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> bool:
         raise typer.Exit(2)
     patched, count = _triage.apply_fix(src, result.fix)
     if count == 0:
-        typer.echo(f"\nfix: {result.fix.summary} — no occurrences of `{result.fix.old_id}` in {target}")
+        typer.echo(f"\nfix: {result.fix.summary} — `{result.fix.find}` not found in {target} (no-op)")
         return False
     typer.echo(f"\nfix: {result.fix.summary} ({count} occurrence{'' if count == 1 else 's'} in {target})")
     typer.echo(_triage.diff_fix(src, patched, target))

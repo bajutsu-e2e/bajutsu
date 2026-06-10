@@ -44,19 +44,30 @@ class TriageContext:
     screenshot: bytes | None = None  # the screenshot nearest the failure, if one was captured
 
 
+FIX_KINDS = ("renameId", "addIndex", "raiseTimeout")
+_FIX_LABELS = {"renameId": "rename id", "addIndex": "disambiguate selector", "raiseTimeout": "raise timeout"}
+
+
+def fix_summary(kind: str, find: str, replace: str) -> str:
+    return f"{_FIX_LABELS.get(kind, kind)} `{find}` -> `{replace}`"
+
+
 @dataclass(frozen=True)
 class Fix:
-    """A mechanically-applicable edit a human reviews before it is written.
+    """A mechanically-applicable edit a human reviews before it is written — `find` -> `replace`
+    over the scenario source.
 
-    Only `renameId` is supported today: replace a selector id throughout a scenario file
-    (the classic self-heal — an id was renamed). The boundary still holds: the fix is applied
-    to the scenario *source*, shown as a diff, and only written when the human opts in.
+    `renameId` replaces a selector id as a whole token (safe to apply everywhere it appears —
+    the classic self-heal). `addIndex` / `raiseTimeout` replace an exact fragment of the
+    failing step (disambiguate an ambiguous match, or lengthen a wait). The boundary still
+    holds: every fix is shown as a diff and written only when the human opts in, and a fragment
+    that no longer matches the source is a safe no-op.
     """
 
-    kind: str        # "renameId"
-    summary: str     # human description, e.g. "rename id `nav.setting` -> `nav.settings`"
-    old_id: str
-    new_id: str
+    kind: str        # one of FIX_KINDS
+    summary: str
+    find: str
+    replace: str
 
 
 @dataclass(frozen=True)
@@ -77,12 +88,16 @@ class TriageAgent(Protocol):
 def apply_fix(text: str, fix: Fix) -> tuple[str, int]:
     """Apply `fix` to scenario source `text`; return (patched_text, replacement_count).
 
-    `renameId` replaces whole-token occurrences of the old id — the negative lookarounds keep
-    `nav.setting` from matching inside `nav.settings`. An unknown kind is a no-op."""
-    if fix.kind != "renameId":
+    `renameId` replaces whole-token occurrences of the id — the negative lookarounds keep
+    `nav.setting` from matching inside `nav.settings`. The fragment kinds (`addIndex`,
+    `raiseTimeout`) replace an exact substring; when it no longer matches the source the count
+    is 0 and the text is unchanged — a safe no-op the diff makes obvious."""
+    if not fix.find:
         return text, 0
-    pattern = re.compile(r"(?<![\w.])" + re.escape(fix.old_id) + r"(?![\w.])")
-    return pattern.subn(fix.new_id, text)
+    if fix.kind == "renameId":
+        pattern = re.compile(r"(?<![\w.])" + re.escape(fix.find) + r"(?![\w.])")
+        return pattern.subn(fix.replace, text)
+    return text.replace(fix.find, fix.replace), text.count(fix.find)
 
 
 def diff_fix(old: str, new: str, path: str) -> str:
@@ -247,8 +262,8 @@ class HeuristicTriageAgent:
                 + (f" — did you mean {', '.join('`' + c + '`' for c in close)}?" if close else
                    " (its id may have changed, or the screen differs from expected).")
             )
-            if close:  # a confident rename — the one mechanically-applicable self-heal
-                fix = Fix("renameId", f"rename id `{context.target_id}` -> `{close[0]}`",
+            if close:  # a confident rename — the deterministic, whole-token self-heal
+                fix = Fix("renameId", fix_summary("renameId", context.target_id, close[0]),
                           context.target_id, close[0])
 
         if fs is not None and fs.action == "wait":
