@@ -24,12 +24,12 @@
 {%- if d.name %} <span class="stepname">{{ d.name }}</span>{% endif %}{% for c in d.caps %} <span class="cap">{{ c }}</span>{% endfor %}
 {%- endmacro -%}
 
-{%- macro treetable(rows) -%}
-<table class="tvtbl"><thead><tr><th>id</th><th>label</th><th>value</th><th>traits</th><th>frame</th></tr></thead><tbody>{% for e in rows %}<tr><td class="tvid">{{ e.id }}</td><td>{{ e.label }}</td><td>{{ e.value }}</td><td class="tvtr">{{ e.traits }}</td><td class="tvfr">{{ e.frame }}</td></tr>{% endfor %}</tbody></table>
+{%- macro treetable(rows, sw, sh) -%}
+<table class="tvtbl"{% if sw and sh %} data-sw="{{ sw }}" data-sh="{{ sh }}"{% endif %}><thead><tr><th>id</th><th>label</th><th>value</th><th>traits</th><th>frame</th></tr></thead><tbody>{% for e in rows %}<tr{% if e.rect %} class="tvrow" data-x="{{ e.rect.x }}" data-y="{{ e.rect.y }}" data-w="{{ e.rect.w }}" data-h="{{ e.rect.h }}"{% endif %}><td class="tvid">{{ e.id }}</td><td>{{ e.label }}</td><td>{{ e.value }}</td><td class="tvtr">{{ e.traits }}</td><td class="tvfr">{{ e.frame }}</td></tr>{% endfor %}</tbody></table>
 {%- endmacro -%}
 
 {%- macro stepview(v) -%}
-{%- if v is none %}—{% else %}{% if v.shot %}<img class="shot" loading="lazy" src="{{ v.shot }}" alt="{{ v.alt }}">{% endif %}{% if v.tree_rows is not none %}<button class="elnk treebtn" type="button" data-count="{{ v.tree_count }}">tree</button><template class="treedata">{{ treetable(v.tree_rows) }}</template>{% elif v.tree %}<a class="elnk" href="{{ v.tree }}" target="_blank" rel="noopener">tree</a>{% endif %}{% if not v.shot and not v.tree %}—{% endif %}{% endif -%}
+{%- if v is none %}—{% else %}{% if v.shot %}<img class="shot" loading="lazy" src="{{ v.shot }}" alt="{{ v.alt }}">{% endif %}{% if v.tree_rows is not none %}<button class="elnk treebtn" type="button" data-count="{{ v.tree_count }}">tree</button><template class="treedata">{{ treetable(v.tree_rows, v.screen_w, v.screen_h) }}</template>{% elif v.tree %}<a class="elnk" href="{{ v.tree }}" target="_blank" rel="noopener">tree</a>{% endif %}{% if not v.shot and not v.tree %}—{% endif %}{% endif -%}
 {%- endmacro -%}
 
 {%- macro steprow(row) -%}

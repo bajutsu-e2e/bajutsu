@@ -330,13 +330,16 @@ def _action_data(step_def: dict[str, Any] | None, out_action: str | None) -> dic
     return None
 
 
-def _tree_row(e: dict[str, Any]) -> dict[str, str]:
-    """One captured element rendered as a row for the in-report element viewer."""
+def _tree_row(e: dict[str, Any]) -> dict[str, Any]:
+    """One captured element rendered as a row for the in-report element viewer. `rect`
+    carries the raw frame (points) so the viewer can highlight it on the screenshot."""
     frame = e.get("frame")
     fr = ""
+    rect: dict[str, str] | None = None
     if isinstance(frame, (list, tuple)) and len(frame) == 4:
         x, y, w, h = frame
         fr = f"{_gnum(x)}, {_gnum(y)} · {_gnum(w)}×{_gnum(h)}"
+        rect = {"x": _gnum(x), "y": _gnum(y), "w": _gnum(w), "h": _gnum(h)}
     val = e.get("value")
     return {
         "id": e.get("identifier") or "",
@@ -344,7 +347,24 @@ def _tree_row(e: dict[str, Any]) -> dict[str, str]:
         "value": "" if val is None else str(val),
         "traits": " ".join(e.get("traits") or []),
         "frame": fr,
+        "rect": rect,
     }
+
+
+def _screen_rect(elements: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    """The screen extent in points — the bounding box of every element frame. The
+    element viewer maps a hovered frame onto the (full-screen) screenshot as a
+    percentage of this, so it needs no device scale. The JS refines the height from the
+    screenshot's true pixel size, so a long scrolling list does not distort the mapping."""
+    w = h = 0.0
+    for e in elements:
+        fr = e.get("frame")
+        if isinstance(fr, (list, tuple)) and len(fr) == 4:
+            x, y, fw, fh = (_as_float(v) for v in fr)
+            w, h = max(w, x + fw), max(h, y + fh)
+    if w <= 0 or h <= 0:
+        return None, None
+    return _gnum(w), _gnum(h)
 
 
 def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
@@ -352,16 +372,21 @@ def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
     tree = next((a for a in out.artifacts if a.kind == "elements"), None)
     # Embed the captured elements inline so the report shows them in an overlay (no
     # new tab), matching how logs/network are embedded for offline (file://) viewing.
-    tree_rows: list[dict[str, str]] | None = None
+    tree_rows: list[dict[str, Any]] | None = None
+    screen_w = screen_h = None
     if tree is not None and run_dir is not None:
         data = _read_json(run_dir, tree.name)
         if isinstance(data, list):
-            tree_rows = [_tree_row(e) for e in data if isinstance(e, dict)]
+            els = [e for e in data if isinstance(e, dict)]
+            tree_rows = [_tree_row(e) for e in els]
+            screen_w, screen_h = _screen_rect(els)
     return {
         "shot": shot.name if shot else None,
         "tree": tree.name if tree else None,
         "tree_rows": tree_rows,
         "tree_count": len(tree_rows) if tree_rows is not None else 0,
+        "screen_w": screen_w,
+        "screen_h": screen_h,
         "alt": f"step {out.index} result",
     }
 

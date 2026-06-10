@@ -105,8 +105,25 @@
   var tvBody = tv && tv.querySelector('.tv-body');
   var tvInput = tv && tv.querySelector('.tvfilter');
   var tvCount = tv && tv.querySelector('.tvcount');
+  // Screen extent (points) of the currently shown step, used to map an element's frame
+  // onto the screenshot. Seeded from the element bounding box, refined from the shot's
+  // real pixel size (see tvOpen) so a long scrolling list doesn't distort the mapping.
+  var tvScreenW = NaN, tvScreenH = NaN;
+  function tvHighlight(tr){
+    var hl = tvBody && tvBody.querySelector('.tv-hl'); if(!hl) return;
+    var x = parseFloat(tr.getAttribute('data-x')), y = parseFloat(tr.getAttribute('data-y'));
+    var w = parseFloat(tr.getAttribute('data-w')), h = parseFloat(tr.getAttribute('data-h'));
+    if(!(tvScreenW > 0) || !(tvScreenH > 0) || isNaN(x) || isNaN(y)){ hl.hidden = true; return; }
+    hl.style.left = (x / tvScreenW * 100) + '%';
+    hl.style.top = (y / tvScreenH * 100) + '%';
+    hl.style.width = Math.max(0, w / tvScreenW * 100) + '%';
+    hl.style.height = Math.max(0, h / tvScreenH * 100) + '%';
+    hl.hidden = false;
+  }
+  function tvUnhighlight(){ var hl = tvBody && tvBody.querySelector('.tv-hl'); if(hl) hl.hidden = true; }
   function tvFilter(q){
     if(!tvBody) return;
+    tvUnhighlight();
     q = q.toLowerCase(); var n = 0;
     tvBody.querySelectorAll('tbody tr').forEach(function(r){
       var hit = !q || r.textContent.toLowerCase().indexOf(q) !== -1;
@@ -118,7 +135,39 @@
   document.addEventListener('click', function(e){
     var b = e.target.closest('.treebtn'); if(!b || !tv || !tvBody) return;
     var tpl = b.parentNode.querySelector('template.treedata'); if(!tpl) return;
-    tvBody.innerHTML = tpl.innerHTML;
+    tvBody.innerHTML = '';
+    // Show the step's screenshot beside its elements so the two can be read together;
+    // hovering an element row highlights its frame on the shot (tv-hl overlay).
+    var shot = b.parentNode.querySelector('img.shot'), imEl = null;
+    if(shot){
+      var sd = document.createElement('div'); sd.className = 'tv-shot';
+      var frame = document.createElement('div'); frame.className = 'tv-shotframe';
+      imEl = document.createElement('img'); imEl.alt = 'step screenshot';
+      var src = shot.getAttribute('src'); imEl.src = src;
+      imEl.addEventListener('click', function(){ tvClose(); openLightbox(src); });  // zoom full-size
+      var hl = document.createElement('div'); hl.className = 'tv-hl'; hl.hidden = true;
+      frame.appendChild(imEl); frame.appendChild(hl); sd.appendChild(frame); tvBody.appendChild(sd);
+    }
+    var tree = document.createElement('div'); tree.className = 'tv-tree';
+    tree.innerHTML = tpl.innerHTML;
+    tree.addEventListener('mouseover', function(e){ var tr = e.target.closest('tr.tvrow'); if(tr) tvHighlight(tr); });
+    tree.addEventListener('mouseleave', tvUnhighlight);
+    tvBody.appendChild(tree);
+    // Seed the screen extent from the element bounding box, then refine: derive the
+    // device scale from the width (which rarely scrolls) and recompute the height.
+    var tbl = tree.querySelector('.tvtbl');
+    tvScreenW = tbl ? parseFloat(tbl.getAttribute('data-sw')) : NaN;
+    tvScreenH = tbl ? parseFloat(tbl.getAttribute('data-sh')) : NaN;
+    if(imEl){
+      var refine = function(){
+        if(imEl.naturalWidth > 0 && tvScreenW > 0){
+          var scale = Math.max(1, Math.round(imEl.naturalWidth / tvScreenW));
+          tvScreenW = imEl.naturalWidth / scale;
+          tvScreenH = imEl.naturalHeight / scale;
+        }
+      };
+      if(imEl.complete) refine(); else imEl.addEventListener('load', refine);
+    }
     if(tvInput) tvInput.value = '';
     tvFilter('');
     tv.classList.add('open');

@@ -603,6 +603,31 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     assert 'id="lb"' in out and "openLightbox" in out
 
 
+def test_html_tree_rows_carry_frame_for_screenshot_highlight(tmp_path: Path) -> None:
+    # Each element row embeds its raw frame (points) and the table the screen rect, so
+    # the viewer can highlight the hovered element's location on the screenshot.
+    el = {**_el("home.cta", "Buy", ["button"]), "frame": (12.0, 40.0, 100.0, 36.0)}
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", ok=True, started_at=0.0, artifacts=[
+                Artifact("00-s1/step0/after.png", "screenshot", "driver"),
+                Artifact("00-s1/step0/elements.json", "elements", "driver"),
+            ]),
+        ],
+        expect_results=[], artifacts=[],
+    )
+    step_dir = tmp_path / "00-s1" / "step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(json.dumps([el]), encoding="utf-8")
+    out = html_report("run1", [r], tmp_path)
+    # the row carries the frame; the table carries the screen extent (bbox: 112x76)
+    assert 'class="tvrow" data-x="12" data-y="40" data-w="100" data-h="36"' in out
+    assert 'data-sw="112" data-sh="76"' in out
+    # the highlight overlay + frame wrapper are wired in JS/CSS
+    assert "tv-hl" in out and "tv-shotframe" in out
+
+
 def test_html_tree_falls_back_to_link_without_run_dir() -> None:
     # Structure-only render (no run_dir → no element data to embed): keep a link.
     r = RunResult(
