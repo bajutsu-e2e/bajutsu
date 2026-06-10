@@ -186,7 +186,9 @@ bajutsu/
   all validated on-device. **CI** ✅: `ci.yml` runs ruff + mypy + pytest on Linux (py3.11 /
   3.13); `e2e.yml` runs the idb smoke scenario *and* the codegen→XCUITest path
   (`make ui-test`) on a macOS Simulator.
-- **M4 — started (skeleton).** Self-healing triage: `bajutsu triage` assembles a failed run's
+- **M4 — in progress.** Self-healing triage: `bajutsu triage` assembles a failed run's
   context and diagnoses it (root cause + suggested fixes; advisory, human review required). The
   default agent is rule-based (renamed-id "did you mean", timing / assertion categories); a
-  ClaudeAgent-backed triage drops in behind the same `TriageAgent` protocol (next).
+  **ClaudeAgent-backed triage** (`triage --ai`) drops in behind the same `TriageAgent` protocol
+  for richer, evidence-grounded diagnoses (validated end-to-end against the real API). Next:
+  optional screenshot vision in the triage context, and applying a suggested fix as an edit.

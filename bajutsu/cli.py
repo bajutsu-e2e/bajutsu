@@ -314,6 +314,9 @@ def triage(
     run_dir: str = typer.Argument("", help="run directory (default: the latest under runs/)"),
     scenario: str = typer.Option("", "--scenario", help="only the scenario whose name contains this"),
     runs: str = typer.Option("runs", help="runs root (used when run_dir is omitted)"),
+    ai: bool = typer.Option(
+        False, "--ai", help="diagnose with Claude (needs ANTHROPIC_API_KEY) instead of the rule-based agent"
+    ),
 ) -> None:
     """Diagnose a failed run and suggest a minimal fix (advisory — never the pass/fail judge)."""
     path = Path(run_dir) if run_dir else _trace.latest_run(Path(runs))
@@ -324,7 +327,14 @@ def triage(
     if context is None:
         typer.echo("no failed scenario to triage in this run")
         raise typer.Exit(0)
-    result = _triage.HeuristicTriageAgent().triage(context)
+    agent: _triage.TriageAgent
+    if ai:
+        from bajutsu.claude_triage import ClaudeTriageAgent
+
+        agent = ClaudeTriageAgent()
+    else:
+        agent = _triage.HeuristicTriageAgent()
+    result = agent.triage(context)
     typer.echo(_triage.render(context, result))
 
 
