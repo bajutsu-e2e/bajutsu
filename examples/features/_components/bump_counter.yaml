@@ -1,0 +1,5 @@
+# Reusable: increment the Home counter twice (no params).
+params: []
+steps:
+  - tap: { id: counter.increment }
+  - tap: { id: counter.increment }

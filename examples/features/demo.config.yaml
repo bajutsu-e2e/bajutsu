@@ -1,0 +1,13 @@
+# Demo config for running the feature scenarios on-device. Mirrors the sample app
+# entry from bajutsu.config.yaml, adding `secrets: [PASSWORD]` so ${secrets.PASSWORD}
+# resolves from the environment.
+defaults:
+  backend: [idb]
+  device: "iPhone 17 Pro"
+apps:
+  sample:
+    bundleId: com.bajutsu.sample
+    deeplinkScheme: bajutsusample
+    launchEnv: { SAMPLE_UITEST: "1" }
+    idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp]
+    secrets: [PASSWORD]
