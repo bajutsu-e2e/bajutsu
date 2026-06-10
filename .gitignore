@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Local-only scratch notes (never committed)
+UNCOMMITTED_CHANGES.md
+
 # Python
 __pycache__/
 *.py[cod]
