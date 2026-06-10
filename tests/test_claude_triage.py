@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 from bajutsu.claude_triage import ClaudeTriageAgent, _render
@@ -114,3 +115,23 @@ def test_render_handles_empty_elements_and_expectations() -> None:
     assert "(no element tree captured)" in text
     assert "Failed expectations:" in text
     assert "  - value equals='2': id='counter'" in text
+
+
+def test_screenshot_sent_as_image_block() -> None:
+    client = FakeClient(_diagnose())
+    png = b"\x89PNG\r\n\x1a\n fake-bytes"
+    ClaudeTriageAgent(client=client).triage(_ctx(screenshot=png))
+    content = client.calls[0]["messages"][0]["content"]
+    image = next(c for c in content if c["type"] == "image")
+    assert image["source"]["media_type"] == "image/png"
+    assert base64.standard_b64decode(image["source"]["data"]) == png
+    text = next(c for c in content if c["type"] == "text")["text"]
+    assert "attached above" in text
+
+
+def test_no_screenshot_is_text_only() -> None:
+    client = FakeClient(_diagnose())
+    ClaudeTriageAgent(client=client).triage(_ctx(screenshot=None))
+    content = client.calls[0]["messages"][0]["content"]
+    assert [c["type"] for c in content] == ["text"]
+    assert "attached above" not in content[0]["text"]

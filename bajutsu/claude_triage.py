@@ -12,6 +12,7 @@ injectable for testing — mirroring `claude_agent.ClaudeAgent`.
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 from bajutsu.triage import Triage, TriageContext
@@ -26,7 +27,9 @@ the ROOT CAUSE of the failure and propose the minimal fix a human should apply.
 
 You are advisory only — you never decide pass/fail, you diagnose and suggest. Reason strictly \
 from the evidence given: the failure message, the failed step, the accessibility element tree \
-captured nearest the failure, and the scenario definition. Never invent element ids.
+captured nearest the failure, a screenshot of that screen when one is attached, and the \
+scenario definition. Use the screenshot for visual state the element tree omits (what screen \
+is actually shown, a blocking overlay, an empty/loading state). Never invent element ids.
 
 Call the `diagnose` tool exactly once with:
 - category, one of:
@@ -97,8 +100,26 @@ def _render(context: TriageContext) -> str:
         lines += ["", "Scenario definition (YAML):", context.scenario_yaml.rstrip()]
     if context.evidence:
         lines += ["", f"Evidence captured: {', '.join(context.evidence)}"]
+    if context.screenshot is not None:
+        lines += ["", "A screenshot of the screen at the failure is attached above."]
     lines += ["", "Call the `diagnose` tool exactly once."]
     return "\n".join(lines)
+
+
+def _user_content(context: TriageContext) -> list[dict[str, Any]]:
+    """The user message: the failure screenshot (if any) followed by the text context."""
+    content: list[dict[str, Any]] = []
+    if context.screenshot is not None:
+        content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": base64.standard_b64encode(context.screenshot).decode("ascii"),
+            },
+        })
+    content.append({"type": "text", "text": _render(context)})
+    return content
 
 
 def _to_triage(message: Any) -> Triage:
@@ -142,6 +163,6 @@ class ClaudeTriageAgent:
             ],
             tools=TOOLS,
             tool_choice={"type": "any"},  # force the one diagnose call; no thinking with forced choice
-            messages=[{"role": "user", "content": [{"type": "text", "text": _render(context)}]}],
+            messages=[{"role": "user", "content": _user_content(context)}],
         )
         return _to_triage(message)

@@ -9,16 +9,21 @@ from bajutsu import triage
 from bajutsu.triage import FailedStep, HeuristicTriageAgent, TriageContext
 
 
-def _write_run(runs: Path, *, ok: bool, reason: str = "", step_action: str = "tap") -> Path:
+def _write_run(runs: Path, *, ok: bool, reason: str = "", step_action: str = "tap",
+               with_screenshot: bool = False) -> Path:
     run = runs / "r"
     (run / "00-s" / "step0").mkdir(parents=True)
+    artifacts = [{"name": "00-s/step0/elements.json", "kind": "elements", "provider": "driver"}]
+    if with_screenshot:
+        artifacts.append({"name": "00-s/step0/after.png", "kind": "screenshot", "provider": "driver"})
+        (run / "00-s" / "step0" / "after.png").write_bytes(b"\x89PNG\r\n\x1a\n demo")
     manifest = {
         "runId": "r", "ok": ok, "backend": "idb",
         "scenarios": [{
             "scenario": "s", "ok": ok, "backend": "idb",
             "steps": [{
                 "index": 0, "action": step_action, "ok": ok, "reason": reason,
-                "artifacts": [{"name": "00-s/step0/elements.json", "kind": "elements", "provider": "driver"}],
+                "artifacts": artifacts,
             }],
             "expect_results": [],
             "failure": None if ok else f"step0 {step_action}: {reason}",
@@ -47,6 +52,17 @@ def test_assemble_extracts_failure_context(tmp_path: Path) -> None:
 
 def test_assemble_none_when_run_passed(tmp_path: Path) -> None:
     assert triage.assemble(_write_run(tmp_path / "runs", ok=True)) is None  # nothing to triage
+
+
+def test_assemble_reads_failure_screenshot(tmp_path: Path) -> None:
+    ctx = triage.assemble(_write_run(tmp_path / "runs", ok=False, reason="x", with_screenshot=True))
+    assert ctx is not None
+    assert ctx.screenshot == b"\x89PNG\r\n\x1a\n demo"
+
+
+def test_assemble_no_screenshot_is_none(tmp_path: Path) -> None:
+    ctx = triage.assemble(_write_run(tmp_path / "runs", ok=False, reason="x"))
+    assert ctx is not None and ctx.screenshot is None
 
 
 def test_heuristic_selector_suggests_close_id(tmp_path: Path) -> None:

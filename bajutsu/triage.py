@@ -40,6 +40,7 @@ class TriageContext:
     scenario_yaml: str             # the failing scenario's definition
     target_id: str | None          # the failing step's selector id, if any
     evidence: list[str] = field(default_factory=list)
+    screenshot: bytes | None = None  # the screenshot nearest the failure, if one was captured
 
 
 @dataclass(frozen=True)
@@ -83,8 +84,8 @@ def _target_id(step: Step) -> str | None:
     return None
 
 
-def _elements_near(run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None) -> list[base.Element]:
-    """The element tree from the failing step (or the nearest earlier step that has one)."""
+def _nearest_artifact(steps: list[dict[str, Any]], failed_index: int | None, kind: str) -> dict[str, Any] | None:
+    """The artifact of `kind` from the failing step, else the nearest earlier step that has one."""
     if failed_index is not None:
         order = [failed_index, *range(failed_index - 1, -1, -1)]
     else:
@@ -92,11 +93,30 @@ def _elements_near(run_dir: Path, steps: list[dict[str, Any]], failed_index: int
     for i in order:
         if 0 <= i < len(steps):
             for art in steps[i].get("artifacts") or []:
-                if art.get("kind") == "elements":
-                    data = _read_json(run_dir / str(art.get("name")))
-                    if isinstance(data, list):
-                        return data
+                if isinstance(art, dict) and art.get("kind") == kind:
+                    return art
+    return None
+
+
+def _elements_near(run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None) -> list[base.Element]:
+    """The element tree from the failing step (or the nearest earlier step that has one)."""
+    art = _nearest_artifact(steps, failed_index, "elements")
+    if art is not None:
+        data = _read_json(run_dir / str(art.get("name")))
+        if isinstance(data, list):
+            return data
     return []
+
+
+def _screenshot_near(run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None) -> bytes | None:
+    """The screenshot from the failing step (or the nearest earlier step that has one)."""
+    art = _nearest_artifact(steps, failed_index, "screenshot")
+    if art is not None:
+        try:
+            return (run_dir / str(art.get("name"))).read_bytes()
+        except OSError:
+            return None
+    return None
 
 
 def assemble(run_dir: Path, scenario_filter: str | None = None) -> TriageContext | None:
@@ -145,6 +165,7 @@ def assemble(run_dir: Path, scenario_filter: str | None = None) -> TriageContext
         scenario_yaml=scenario_yaml,
         target_id=target_id,
         evidence=sorted({str(a.get("kind")) for a in failed.get("artifacts") or []}),
+        screenshot=_screenshot_near(run_dir, steps, failed_step.index if failed_step else None),
     )
 
 
