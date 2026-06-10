@@ -107,11 +107,11 @@ flowchart TB
 
 ## ステータス
 
-実装済み・テスト済み（306 のユニットテスト、Simulator 不要で走る）:
+実装済み・テスト済み（324 のユニットテスト、Simulator 不要で走る）:
 
 - ドライバ抽象と **セレクタ解決**（決定性の核）
 - **シナリオスキーマ**（ステップ / 待機 / アサーション）の厳格検証 + YAML ラウンドトリップ
-- **アサーション評価**（exists / value / label / count / enabled / disabled / selected）
+- **アサーション評価**（exists / value / label / count / enabled / disabled / selected / request）
 - **Tier 2 run ループ**（act → wait → verify）、インメモリ fake driver で検証
 - **証跡サブシステム**: 瞬時（screenshot / elements）、`video` / `deviceLog` 区間証跡（simctl）、
   `capturePolicy` トリガールール
@@ -120,7 +120,7 @@ flowchart TB
 - **simctl コマンド層**、**idb 出力パーサ**、**doctor** 規約スコア
 - **AI オーサリングループ**（`record`）: Agent 抽象 + Claude 実装 + システムアラートガード
 - **XCUITest codegen**（構造マッピング・テスト時 AI 不要）
-- 配線済み CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage`
+- 配線済み CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage` / `serve`
 
 実機 Simulator で検証済み（iPhone 17 Pro・近年の iOS）:
 
@@ -151,6 +151,7 @@ bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
 bajutsu record <out.yaml>      --app <name> --goal "..."   # 探索 + 記録（Tier 1・要 API キー）
 bajutsu doctor                 --app <name>                # 現在画面の規約スコア
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift   # ネイティブ XCUITest を出力
+bajutsu serve                  [--port 8765]                # ローカル Web UI: シナリオ実行 + レポート閲覧（Tier 1）
 ```
 
 アプリ別設定は `bajutsu.config.yaml`（リポジトリ同梱の `sample` アプリ）:
@@ -207,11 +208,11 @@ bajutsu/
 
 ## ロードマップ
 
-- **M1 — 完了（実機検証待ち）。** 決定的ランナー: env (simctl) + ドライバ + シナリオ +
-  アサーション + 軽量証跡 + manifest + アプリ別 config + `run` / `doctor`。完了条件: 同一の
-  id ファーストシナリオが idb 上で決定的に通り、config だけで対象アプリを切り替えられること
-  （idb は id ファーストセレクタをネイティブの `AXUniqueId` から直接解決し、フレーム中心の座標で
-  操作する）。*（ロジックは実装・テスト済み。「idb で同一シナリオが通る」は実機での確認が必要。）*
+- **M1 — 完了（実機検証済み）。** 決定的ランナー: env (simctl) + ドライバ + シナリオ +
+  アサーション + 軽量証跡 + manifest + アプリ別 config + `run` / `doctor`。完了条件を実機で達成:
+  同一の id ファーストシナリオ（`sample/scenarios/cross_backend.yaml`）が idb 上で決定的に通り、
+  config だけで対象アプリを切り替えられる（idb は id ファーストセレクタをネイティブの `AXUniqueId`
+  から直接解決し、フレーム中心の座標で操作する）。
 - **M2 — ほぼ完了。** AI ループ（`record`）+ `capturePolicy` 証跡ルール + `video` / `deviceLog` +
   レポーター（JUnit/HTML）。*（完了。冪等な正規化 / 来歴コメントはまだ軽い。）*
 - **M3 — 完了。** XCUITest codegen ✅、アプリトレース（`appTrace` / os_signpost）✅、

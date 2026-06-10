@@ -115,11 +115,11 @@ breakdown.
 
 ## Status
 
-Implemented and covered by tests (306 unit tests, run without a Simulator):
+Implemented and covered by tests (324 unit tests, run without a Simulator):
 
 - Driver abstraction and **selector resolution** (the determinism core)
 - **Scenario schema** (steps, waits, assertions) with strict validation + YAML round-trip
-- **Assertion evaluation** (exists / value / label / count / enabled / disabled / selected)
+- **Assertion evaluation** (exists / value / label / count / enabled / disabled / selected / request)
 - **Tier 2 run loop** (act → wait → verify), tested via an in-memory fake driver
 - **Evidence subsystem**: instant captures (screenshot / elements), `video` / `deviceLog`
   interval captures (simctl), and `capturePolicy` trigger rules
@@ -128,7 +128,7 @@ Implemented and covered by tests (306 unit tests, run without a Simulator):
 - **simctl command layer**, **idb output parsers**, and the **doctor** convention score
 - **AI authoring loop** (`record`): Agent abstraction + Claude implementation + system-alert guard
 - **XCUITest codegen** (structural mapping; no AI at test time)
-- The wired CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage`
+- The wired CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage` / `serve`
 
 Validated on a real Simulator (iPhone 17 Pro, recent iOS):
 
@@ -160,6 +160,7 @@ bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
 bajutsu record <out.yaml>      --app <name> --goal "..."   # explore + record (Tier 1, needs API key)
 bajutsu doctor                 --app <name>                # convention score for the current screen
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift   # emit a native XCUITest
+bajutsu serve                  [--port 8765]                # local web UI: run scenarios + view reports (Tier 1)
 ```
 
 Per-app settings live in `bajutsu.config.yaml` (the repo ships the `sample` app, below):

@@ -79,9 +79,13 @@ The `bajutsu/` package (Python 3.11+, pydantic v2 / typer / anthropic / pyyaml).
 | `evidence.py` | Evidence capture (instant / interval) and Sinks | [evidence](evidence.md) |
 | `intervals.py` | Interval evidence (video / deviceLog) as simctl child processes | [evidence](evidence.md#interval-evidence-video--devicelog) |
 | `report.py` | `manifest.json` + JUnit XML + HTML | [reporting](reporting.md) |
+| `network.py` | Network collector + in-protocol deterministic mocks | [evidence](evidence.md) |
+| `redaction.py` | Redaction of evidence (labels / headers / fields + secret values) | [evidence](evidence.md) |
+| `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.`) | [scenarios](scenarios.md) |
 | `config.py` | Team defaults × per-app resolution (`Effective`) | [configuration](configuration.md) |
 | `backends.py` | Backend availability check · actuator selection · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `env.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
+| `preflight.py` | Runnability gate (required CLIs + a booted Simulator) | [configuration](configuration.md) |
 | `runner.py` | config + scenarios → report. Device factory (launch sequence) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
 | `agent.py` | Authoring Agent abstraction (`Observation`/`Proposal`/`Agent`) | [recording](recording.md) |
@@ -89,7 +93,12 @@ The `bajutsu/` package (Python 3.11+, pydantic v2 / typer / anthropic / pyyaml).
 | `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |
 | `alerts.py` | System-alert detection / dismissal (vision locator) | [recording](recording.md#dismissing-system-alerts-automatically) |
 | `codegen.py` | Scenario → XCUITest (Swift) generation | [codegen](codegen.md) |
-| `cli.py` | Typer-based CLI (`run`/`record`/`doctor`/`codegen`) | [cli](cli.md) |
+| `trace.py` | Text timeline over a saved run (the `trace` command) | [cli](cli.md) |
+| `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
+| `claude_triage.py` | Claude-backed `TriageAgent` (`--ai`, failure screenshot) | [cli](cli.md) |
+| `github.py` | GitHub helpers (CI) | [ci](ci.md) |
+| `serve.py` | Local web UI (the `serve` command) | [cli](cli.md) |
+| `cli.py` | Typer-based CLI (`run`/`record`/`doctor`/`codegen`/`trace`/`triage`/`serve`) | [cli](cli.md) |
 | `dotenv.py` | Minimal `.env` loader (never overrides an existing var) | [cli](cli.md#environment-variables-env) |
 | `_yaml.py` | YAML loader that keeps `on`/`off`/`yes`/`no` as strings | [scenarios](scenarios.md#yaml-caveat) |
 
@@ -99,17 +108,17 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `dr
 (selector resolution), which every execution path depends on.
 
 ```
-                       cli.py            ← user entry (Typer)
-        ┌─────────────────┼───────────────────────────┐
-     runner.py        record.py                     codegen.py
-        │           (Tier 1 / AI)                (structural mapping)
-   orchestrator.py   agent.py / claude_agent.py / alerts.py
+                       cli.py            ← user entry (Typer): run / record / doctor / codegen / trace / triage / serve
+        ┌─────────────┬───┴───────┬───────────────┬───────────┐
+     runner.py    record.py    codegen.py     trace.py     triage.py / claude_triage.py
+        │       (Tier 1 / AI)  (structural)   (timeline)   (M4 self-heal · advisory)
+   orchestrator.py   agent.py / claude_agent.py / alerts.py        serve.py · github.py (web UI · CI)
         │                 │
    ┌────┼────────┬────────┘
-assertions.py  evidence.py ── intervals.py
+assertions.py  evidence.py ── intervals.py · network.py · redaction.py
         │         │
-   scenario.py  report.py        config.py     backends.py     env.py
-        │                            │              │            │
+   scenario.py  report.py     config.py · preflight.py   backends.py   env.py
+        │ (interp.py)             │              │            │
         └──────────────┬─────────────┴──────────────┴────────────┘
                        ▼
                 drivers/base.py  ←── the determinism core (Element / Selector / resolve_unique)
@@ -128,7 +137,7 @@ assertions.py  evidence.py ── intervals.py
 
 ## Test layout
 
-`tests/` holds **306 unit tests** (`uv run pytest -q`). None require a real Simulator: command
+`tests/` holds **324 unit tests** (`uv run pytest -q`). None require a real Simulator: command
 builders are verified as pure functions, and execution paths are tested with `FakeDriver` /
 injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sample app is
 `make e2e` / `make ui-test` ([sample-app](sample-app.md)).
@@ -144,11 +153,15 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 
 - Selector resolution and ambiguity detection (the determinism core)
 - Scenario schema (strict validation) and YAML round-trip
-- Evaluation of the 7 assertion kinds
+- Evaluation of the 8 assertion kinds
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool
+- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`), data-driven
+  scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}` with value
+  masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push` device
+  steps, the `doubleTap` action, and file-level + scenario-level `description`
 - Evidence: instant (`screenshot`/`elements`) + interval (`video`/`deviceLog`/`appTrace`) + the
   network collector (`network.json`) + `capturePolicy` firing + **redaction applied** to logs /
   element trees / network exchanges before they are written
@@ -163,7 +176,8 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
-- The CLI `run` / `doctor` / `codegen` / `trace` / `triage`, plus `record` (AI authoring) + the alert guard
+- The CLI `run` / `doctor` / `codegen` / `trace` / `triage` / `serve`, plus `record` (AI authoring) + the alert guard
+- The `serve` local web UI (Tier 1): run scenarios and view their reports from a browser (not for CI)
 - XCUITest code generation
 
 ### Validated on a real Simulator (iPhone 17 Pro, recent iOS)

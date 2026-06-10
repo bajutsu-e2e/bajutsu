@@ -127,15 +127,16 @@ to the report.
 Builds the environment with `simctl` per the `preconditions`:
 
 ```
-erase (if pre.erase) → boot → terminate(bundle) (for a clean launch state)
-  → launch(bundle, launchArgs, {**config.launchEnv, **pre.launchEnv})
+erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a clean launch state)
+  → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
   → openurl(deeplink) (if any) → make_driver(actuator, udid)
   → _await_ready (poll until query() returns 2+ elements, up to 10s)
 ```
 
-> `_await_ready` polls until "the app has rendered a UI (more than the root element)." ⚠️ `locale`
-> and `setup` are **not applied here** even though `Effective` / `Preconditions` hold values (not
-> wired). The simctl sequencing itself is best-effort and needs confirmation on a real device.
+> `_await_ready` polls until "the app has rendered a UI (more than the root element)." `locale` **is**
+> applied at launch (the scenario's `preconditions.locale` overrides the config default, passed as
+> launch args via `env.locale_args`). The simctl launch sequencing is validated on a real device
+> (iPhone 17 Pro) via `make e2e` + the `e2e.yml` CI workflow.
 
 ### `device_factory` / `run_all` / `run_and_report`
 

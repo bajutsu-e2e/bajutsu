@@ -66,7 +66,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 
 ```bash
 uv sync --extra dev                  # .venv + deps + dev tools
-uv run pytest -q                     # 306 unit tests (no Simulator needed)
+uv run pytest -q                     # 324 unit tests (no Simulator needed)
 
 # Against the bundled sample (needs a real Simulator)
 make sample-build                    # build the fixture app
@@ -80,6 +80,7 @@ bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
 bajutsu doctor               --app <name>                # convention score
 bajutsu record <out.yaml>    --app <name> --goal "..."   # AI explore + record (needs API key)
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift
+bajutsu serve                                            # local web UI (Tier 1; not for CI)
 ```
 
 Details in [cli](cli.md).

@@ -309,7 +309,7 @@ a canned response instead of hitting the network. Each mock is `{ match, respond
     - request: { method: GET, urlMatches: "example.com", status: 418 }
 ```
 
-Mocks are handed to BajutsuKit via the `BAJUTSU_MOCKS` env (`dump_mocks`, `scenario.py:610`). The formal
+Mocks are handed to BajutsuKit via the `BAJUTSU_MOCKS` env (`dump_mocks`, `scenario.py:638`). The formal
 shape is in [dsl-grammar](dsl-grammar.md#2-grammar-at-a-glance).
 
 ## Reuse, data, and tags
@@ -323,7 +323,7 @@ deterministic run**, so the runner only ever sees plain, fully-expanded scenario
 
 A **component** is a separate file: a list of `params` and a list of `steps` that reference them as
 `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**
-— `expand_components` (`scenario.py:455`) replaces it with the component's substituted steps before the
+— `expand_components` (`scenario.py:474`) replaces it with the component's substituted steps before the
 run (recursive — a component may itself `use` another, depth ≤ 25). It errors on a missing or unknown
 param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` survives
 into the run, so determinism is unaffected.
@@ -347,7 +347,7 @@ steps:
 ### Data-driven scenarios (`data` / `dataFile`)
 
 A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is
-expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:518`).
+expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:537`).
 Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions (so
 `erase` still defaults true — every row runs in its own clean environment).
 
@@ -371,7 +371,7 @@ A CSV `dataFile` has a header row naming the columns; each subsequent row become
 
 `tags` label a scenario; the CLI `--tag` / `--exclude` flags pick which scenarios run. A scenario is kept
 when it carries at least one `--tag` (or none was given) **and** none of the `--exclude` tags —
-`--exclude` wins over `--tag` (`select_scenarios`, `scenario.py:541`). Both flags accept a comma list.
+`--exclude` wins over `--tag` (`select_scenarios`, `scenario.py:560`). Both flags accept a comma list.
 
 ```yaml
 - name: checkout smoke
@@ -383,6 +383,23 @@ when it carries at least one `--tag` (or none was given) **and** none of the `--
 ```bash
 uv run bajutsu run scenarios.yaml --tag smoke --exclude wip   # run @smoke, skip anything @wip
 ```
+
+### Secrets (`${secrets.X}`)
+
+Declare secret environment-variable names in config (`secrets: [API_TOKEN, ...]`). Each declared name
+`X` is resolved from the environment and substituted into the executed step **at action time** as
+`${secrets.X}`. The scenario file keeps the **token**, never the value, and the literal values are
+**auto-masked** in evidence — so a secret is safe to commit and review. Unlike `${params.*}` /
+`${row.*}` (load-time expansion), this namespace is resolved by the run loop.
+
+```yaml
+# config declares: secrets: [API_TOKEN]
+steps:
+  - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
+```
+
+> `vars.*` (capturing a UI value at runtime) is **not yet implemented** — the `${...}` primitive would
+> support it, but the run loop never binds `vars.*`.
 
 ## capture token grammar
 

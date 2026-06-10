@@ -118,15 +118,16 @@ class RunResult:
 `preconditions` に従って `simctl` で環境を作る:
 
 ```
-erase（pre.erase なら） → boot → terminate(bundle)（クリーンな起動状態に）
-  → launch(bundle, launchArgs, {**config.launchEnv, **pre.launchEnv})
+erase（pre.erase なら shutdown → erase） → boot → terminate(bundle)（クリーンな起動状態に）
+  → launch(bundle, [launchArgs, *locale_args(locale)], {**config.launchEnv, **pre.launchEnv})
   → openurl(deeplink)（あれば） → make_driver(actuator, udid)
   → _await_ready（query() が 2 要素以上返すまで最大 10s ポーリング）
 ```
 
 > `_await_ready` は「アプリが UI を描画した（ルート要素より多い）」ことをポーリングで待つ。
-> ⚠️ `locale` と `setup` は `Effective` / `Preconditions` に値があっても **ここで適用していない**
-> （未配線）。simctl の手順自体も best-effort で実機要確認。
+> `locale` は launch 時に **適用される**（シナリオの `preconditions.locale` が config 既定を上書きし、
+> `env.locale_args` で launch 引数として渡る）。simctl の launch 手順は `make e2e` ＋ `e2e.yml` CI
+> ワークフローで実機（iPhone 17 Pro）検証済み。
 
 ### `device_factory` / `run_all` / `run_and_report`
 

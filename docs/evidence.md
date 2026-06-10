@@ -158,3 +158,9 @@ redact:
 > header values by name, and the url / request / response bodies as free text (so query params and
 > `token` / `password` body fields are caught). Images (screenshots / video) cannot be masked and
 > are left as-is.
+>
+> Redaction also extends to **secret input values**: the literal values behind `${secrets.X}`
+> (resolved from the environment, declared via config's `secrets:`
+> [configuration](configuration.md#secrets-secrets)) are masked wherever they would appear in
+> evidence — not just the configured `labels` / `headers` / `fields`. Longest values are masked
+> first so a value that is a substring of another never leaves a partial leak.

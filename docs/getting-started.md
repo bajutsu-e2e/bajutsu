@@ -44,14 +44,14 @@ Confirm the CLI is wired up:
 uv run bajutsu --help
 ```
 
-You should see the commands `run`, `doctor`, `record`, `codegen`, `trace`, and `triage`
-(full reference: [cli](cli.md)).
+You should see the commands `run`, `doctor`, `record`, `codegen`, `trace`, `triage`, and
+`serve` (full reference: [cli](cli.md)).
 
 ---
 
 ## Step 2 — Run the unit suite (no Simulator)
 
-This is the fastest way to confirm everything is healthy — 306 tests that exercise the
+This is the fastest way to confirm everything is healthy — 324 tests that exercise the
 determinism core, the scenario schema, assertions, and the run loop against an in-memory fake
 driver, **without touching a Simulator**.
 

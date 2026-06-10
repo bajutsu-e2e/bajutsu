@@ -63,7 +63,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 
 ```bash
 uv sync --extra dev                  # .venv 作成 + 依存 + 開発ツール
-uv run pytest -q                     # 306 のユニットテスト（実機不要）
+uv run pytest -q                     # 324 のユニットテスト（実機不要）
 
 # 同梱サンプルに対して（実機 Simulator が必要）
 make sample-build                    # フィクスチャアプリをビルド
@@ -77,6 +77,7 @@ bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
 bajutsu doctor               --app <name>            # 規約充足度スコア
 bajutsu record <out.yaml>    --app <name> --goal "..."  # AI で探索・記録（要 API キー）
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift
+bajutsu serve                                        # ローカル Web UI（Tier 1・CI 用ではない）
 ```
 
 詳細は [cli](cli.md)。
@@ -85,6 +86,6 @@ bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift
 
 - **コードが正**: 記述は現在の実装（`bajutsu/`）に対応づけ、要所で `file.py:line` を示す。
 - **設計と実装の差を明示**: [`DESIGN.md`](../../DESIGN.md) に書かれていてもまだ配線されていない機能
-  （並列実行・モックサーバ・`network`/`appTrace` 証跡・`trace` コマンド・`relaunch`/`within` など）は、
-  各ページと [architecture の実装状況](architecture.md#実装状況) で「未実装」と明記する。
+  （外部 `mockServer` コマンド —— シナリオ `mocks` で代替）は、各ページと
+  [architecture の実装状況](architecture.md#実装状況) で「未実装」と明記する。
 - **言語**: 散文は日本語（[`DESIGN.md`](../../DESIGN.md) に合わせる）。コード内のコメント / docstring は英語。

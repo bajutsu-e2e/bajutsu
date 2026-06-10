@@ -141,6 +141,8 @@ class AssertionResult:
 | `enabled` | `resolve_unique` | `notEnabled` トレイトが **無い** |
 | `disabled` | `resolve_unique` | `notEnabled` トレイトが **有る** |
 | `selected` | `resolve_unique` | `selected` トレイトが有る |
+| `request` | 観測した通信を照合（要素ツリーではない） | `count` 指定時は `equals`/`atLeast`/…、無指定なら 1 件以上（[network](network.md)） |
 
 > `exists` だけ `find_all`（複数許容）で、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）。
-> つまり「2 件あるのに値を検証しようとした」場合も決定的に失敗する。
+> つまり「2 件あるのに値を検証しようとした」場合も決定的に失敗する。`request` だけが非 UI の
+> アサーションで、要素ではなくキャプチャした HTTP(S) 通信を検査する（全 8 種別）。

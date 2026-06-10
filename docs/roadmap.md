@@ -13,16 +13,16 @@
 
 ---
 
-## 1. 実機検証で残るもの（M1 クローズアウト）
+## 1. 実機検証（M1 クローズアウト）
 
-決定的コアは FakeDriver で end-to-end に通る。残るのは「実機（Xcode + Simulator）に触れる境界」の検証。
+決定的コアは FakeDriver で end-to-end に通り、**idb backend の subprocess 実行（`describe-all` パース・frame-center
+tap/text/swipe）と simctl 起動シーケンスは実機（iPhone 17 Pro / 最新 iOS）で検証済み**（`make e2e` + `e2e.yml` CI、
+[architecture.md](architecture.md#implementation-status)）。残るのは継続メンテ系の監視のみ。
 
 | 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
 |---|---|---|---|---|
-| idb backend の subprocess 実行検証 | パーサはテスト済みだが、外部 CLI のコマンド面と JSON スキーマは「推測」。導入済み idb の実出力に対して確認・調整する | P0 | 📋 | [REPORT §5](../REPORT.md)、`bajutsu/drivers/idb.py` 冒頭注記、[architecture.md](architecture.md#implementation-status) |
-| simctl 起動シーケンスの検証 | erase/boot/launch/openurl/io の順序と待ちを実機で確定（ベストエフォート実装中） | P0 | 📋 | `bajutsu/env.py` |
 | `idb_companion` バージョン監視 | idb 自体のメンテ頻度・最新ランタイム互換に追従。CI でバージョンを固定/監視 | P1 | 💡 | [DESIGN §11](../DESIGN.md) |
-| idb 要素ツリー正規化の精度 | `.searchable` 等 SwiftUI 標準要素のツリー表現が崩れないか実機で確認 | P1 | 💡 | [DESIGN §11](../DESIGN.md) |
+| idb 要素ツリー正規化の精度 | `.searchable` 等 SwiftUI 標準要素のツリー表現が崩れないか実機で継続確認 | P1 | 💡 | [DESIGN §11](../DESIGN.md) |
 
 ## 2. プラットフォーム拡張（Android / Flutter）
 
@@ -40,9 +40,11 @@
 
 AI 駆動の `record`（Tier 1）は実装済み（[recording.md](recording.md)）。ここでの狙いは **AI に依らない操作キャプチャ**と
 **シナリオの可視編集**で、§6.5 のラウンドトリップ（記録 → 編集 → 再実行）を人にとって扱いやすくすること。
+ローカル Web UI ランチャ `bajutsu serve`（シナリオ実行 + ブラウザ内レポート閲覧）はその最初の一歩として実装済み（下表）。
 
 | 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
 |---|---|---|---|---|
+| ローカル Web UI（`bajutsu serve`） | シナリオ / アプリ一覧・ワンクリック実行・実行ログのストリーミング・ブラウザ内レポート表示の小さなランチャ（stdlib のみ）。CI ゲートには入らない Tier 1 の利便機能。GUI エディタ（可視編集・要素ピッカー）への第一歩 | P3 | ✅ | `bajutsu/serve.py`、[cli.md](cli.md) |
 | 操作キャプチャ record | Simulator 上の実操作（tap / type / swipe）を記録してシナリオ化（AI 非依存）。idb のイベント取得 or アクセシビリティイベント監視が要 | P2 | 💡 | [DESIGN §6.5](../DESIGN.md)、`bajutsu/record.py` |
 | シナリオ GUI エディタ | シナリオ YAML / アサーション DSL を可視編集。スクショ上で要素ピッカー → セレクタ確定、doctor スコア連携 | P3 | 💡 | [scenarios.md](scenarios.md)、[selectors.md](selectors.md) |
 | 既存 AI record との棲み分け | 「AI が探索して書く」と「人の操作を写経する」の役割分担と相互変換を明文化 | P3 | 💡 | [recording.md](recording.md) |
@@ -106,12 +108,12 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | 機能 | 概要 / Bajutsu での形 | 由来 | 優先度 | 状態 | 関連 |
 |---|---|---|---|---|---|
 | ビジュアル回帰アサーション | スクショをベースラインと差分比較する**新アサーション種別**。除外領域・per-device / per-locale ベースライン対応。AI ではなく決定的な機械チェックなので「機械アサーションのみで合否」に合致 | 両社 | P1 | 💡 | [DESIGN §6.4](../DESIGN.md)、[evidence.md](evidence.md) |
-| パラメータ化シェアドステップ | `setup` プレリュード（引数なし・実装済み）を超え、**引数付きの再利用ステップ部品**を定義・呼び出し。ログイン等の共通手順を DRY 化 | MagicPod | P1 | 💡 | [DESIGN §6.5](../DESIGN.md)、`bajutsu/scenario.py` |
-| データ駆動シナリオ | 1 シナリオを**データ表（CSV / inline）で複数回反復**実行。多言語・境界値テストに有効 | MagicPod | P2 | 💡 | [scenarios.md](scenarios.md) |
-| シークレット変数 | 入力に使い、証跡では**自動マスク**される変数。既存 `redact`（証跡側・実装済み）を入力値まで拡張 | MagicPod | P2 | 💡 | [evidence.md](evidence.md)、`bajutsu/redaction.py` |
-| シナリオ変数 + 軽い制御フロー | 値を capture して後続で再利用。条件分岐 / ループは**決定性を崩さない範囲**で慎重に（過度な分岐は避ける） | MagicPod | P2 | 💡 | [scenarios.md](scenarios.md) |
-| タグ / ラベル + 選択実行 | シナリオにタグを付け、`--tag` 等でサブセット実行（include/exclude）。CI の段階実行に有効 | MagicPod | P2 | 💡 | [cli.md](cli.md) |
-| デバイス制御プリミティブ拡張 | 位置情報 / タイムゾーン / クリップボード / 前面・背面遷移 / シェイク / push 通知 など（`rotate`/`swipe`/`pinch` は実装済み） | MagicPod | P2 | 💡 | [DESIGN §6.2](../DESIGN.md)、`bajutsu/scenario.py` |
+| パラメータ化シェアドステップ | `use` ステップで**引数付きの再利用部品（component）**を定義・呼び出し、`${params.*}` を展開（`expand_components`）。`setup` プレリュード（引数なし）と併用可。ログイン等の共通手順を DRY 化 | MagicPod | P1 | ✅ | `bajutsu/scenario.py`（`use`/`expand_components`）、[scenarios.md](scenarios.md) |
+| データ駆動シナリオ | `data`（inline）/ `dataFile`（CSV）で 1 シナリオを複数行ぶん反復。`${row.*}` を各行で置換（`expand_data`）。多言語・境界値テストに有効 | MagicPod | P2 | ✅ | `bajutsu/scenario.py`（`expand_data`）、[scenarios.md](scenarios.md) |
+| シークレット変数 | `${secrets.X}` を環境変数から解決して入力に使い、その**実値を証跡で自動マスク**（既存 `redact` を入力値まで拡張）。config の `secrets:` で宣言 | MagicPod | P2 | ✅ | `bajutsu/interp.py`・`bajutsu/redaction.py`、[evidence.md](evidence.md) |
+| シナリオ変数 + 軽い制御フロー | `${...}` 補間プリミティブ（`interp.py`、params/row/secrets を共通処理）は実装済み。残りは **UI 値の capture → 後続で再利用（`vars.*`）** と、決定性を崩さない範囲の条件分岐 / ループ | MagicPod | P2 | 🚧 | `bajutsu/interp.py`、[scenarios.md](scenarios.md) |
+| タグ / ラベル + 選択実行 | シナリオ `tags` を `--tag`/`--exclude` でサブセット実行（include/exclude、exclude 優先・`select_scenarios`）。CI の段階実行に有効 | MagicPod | P2 | ✅ | `bajutsu/scenario.py`（`select_scenarios`）、[cli.md](cli.md) |
+| デバイス制御プリミティブ拡張 | **位置情報（`setLocation`）と push 通知（`push`）は実装済み**。残りは タイムゾーン / クリップボード / 前面・背面遷移 / シェイク など（`rotate`/`swipe`/`pinch` も既存） | MagicPod | P2 | 💡 | [DESIGN §6.2](../DESIGN.md)、`bajutsu/scenario.py` |
 | ユーティリティステップ | HTTP リクエスト発行 / OTP・2FA コード生成 / メール受信を API で検証。実アプリのログインフロー自動化に必要 | MagicPod | P3 | 💡 | [scenarios.md](scenarios.md) |
 | WebView / ハイブリッド対応 | 現状はネイティブ a11y ツリー前提。WebView 内 DOM への橋渡し | MagicPod | P3 | 💡 | [drivers.md](drivers.md) |
 

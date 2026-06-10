@@ -85,11 +85,15 @@ step 1 tap: FAIL no match: {...}</failure>
 
 ## report.html
 
-A self-contained HTML for humans (inline CSS, no external assets). The scenario definition and its
-execution are **merged into one Steps tab**. It has labelled sections (preconditions / **steps** /
+A self-contained HTML for humans (inline CSS, no external assets). The header shows the run id and
+overall PASS/FAIL, the **scenario file name** under the run id (`source_name`), and the **file-level
+`description`** when present. Each scenario row's summary shows the **scenario name** and, when set,
+the **scenario-level `description`** beside it, so a run surfaces scenario name + file name +
+descriptions throughout. The scenario definition and its execution are **merged into one Steps tab**. It has labelled sections (preconditions / **steps** /
 **expectations**), each a table. The **steps** table: `#` / `result` (a PASS/FAIL pill in its own
 column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
-element tree) / `reason`. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
+an **in-report element-tree viewer**: the captured elements open in an in-page overlay, no new tab) /
+`reason`. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
 numbers) are rendered as subtly-styled inline tokens — deliberately a different tone from the solid
 action/assert badges, so variables and constants are identifiable at a glance. An `assert` step's
 checks become a **nested table**, one row per assertion split into `kind` / `target` / `comparison`
@@ -116,10 +120,10 @@ Device Log / App Trace remain separate tabs.
 ## Write API
 
 ```python
-def write_report(run_dir, run_id, results, definitions=None) -> Path  # all 3 formats; definitions = per-scenario dict
+def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> Path  # all 3 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description
 def manifest_dict(run_id, results) -> dict            # the manifest source (for tests / inspection)
 def junit_xml(results) -> str
-def html_report(run_id, results, run_dir=None, definitions=None) -> str
+def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 ```
 
 `runner.run_and_report` calls this `write_report` and returns `(results, manifest_path)` to the CLI

@@ -25,6 +25,7 @@ defaults:                       # shared across all apps
   locale:  en_US
   capture: [screenshot.after, elements, actionLog]
   redact:  { headers: [Authorization, Cookie], fields: [token, password] }
+  secrets: [LOGIN_PASSWORD]         # env var names usable as ${secrets.X} (values masked in evidence)
   reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
 
 apps:
@@ -33,7 +34,7 @@ apps:
     deeplinkScheme: bajutsusample
     idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
     launchEnv:      { SAMPLE_UITEST: "1" }
-    # optional: backend / device / locale / launchArgs / setup / redact / mockServer
+    # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer
 ```
 
 ### Resolution (`resolve` → `Effective`)
@@ -54,6 +55,7 @@ An undefined app raises `KeyError` (the CLI exits with code 2).
 | `setup` | app | default reusable prelude (a scenario whose steps run before each scenario's own) |
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
+| `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
 
 The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
 defaults / app).
@@ -63,6 +65,15 @@ defaults / app).
 Config's `defaults.redact` and `apps.<name>.redact` are **union**ed (`_merge_redact`, unioning
 `labels`/`headers`/`fields` individually). The scenario's `redact`
 ([evidence](evidence.md#masking-redact)) layers on top.
+
+### Secrets (`secrets:`)
+
+`secrets:` (a list of **environment-variable names**, declared in `defaults` and/or `apps.<name>`,
+unioned by `resolve`) is the declaration site for the `${secrets.X}` variables a scenario can input.
+At run time `bajutsu run` resolves each declared name from the environment, interpolates its value
+into the action (`${secrets.X}`), and **masks the literal value everywhere it would appear in
+evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
+token, never the value.
 
 ## Selecting from the CLI
 

@@ -83,10 +83,14 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 
 ## report.html
 
-人間が見る自己完結 HTML（インライン CSS、外部アセット無し）。シナリオ定義とその実行結果は
-**1 つの Steps タブに統合**され、ラベル付きセクション（preconditions / **steps** / **expectations**）
-ごとにテーブルで描画する。**steps** テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
-`action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクショ＋element tree）/ `reason`。
+人間が見る自己完結 HTML（インライン CSS、外部アセット無し）。ヘッダには run id と全体 PASS/FAIL、
+その下に **シナリオファイル名**（`source_name`）、さらにファイルレベルの **`description`** があれば
+表示する。各シナリオ行のサマリには **シナリオ名** と、設定があれば横に **シナリオレベルの
+`description`** を表示する。こうして run 全体でシナリオ名 + ファイル名 + description を提示する。
+シナリオ定義とその実行結果は **1 つの Steps タブに統合**され、ラベル付きセクション
+（preconditions / **steps** / **expectations**）ごとにテーブルで描画する。**steps** テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
+`action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクショ＋**レポート内 element tree
+ビューア**: キャプチャした要素を別タブではなくページ内オーバーレイで開く）/ `reason`。
 detail 中の識別子（`#home.title`）と定数リテラル（`“text”`・数値）は控えめなインライントークンで
 描画し、ソリッドな action/assert バッジとは**異なるトンマナ**にして、変数と定数を一目で識別できる
 ようにしている。`assert` ステップの複数チェックは**ネストしたテーブル**になり、1 アサーション 1 行で
@@ -105,10 +109,10 @@ detail 中の識別子（`#home.title`）と定数リテラル（`“text”`・
 ## 書き出し API
 
 ```python
-def write_report(run_dir, run_id, results, definitions=None) -> Path  # 3 形式を書く。definitions=シナリオ毎の dict
+def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> Path  # 3 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名、description=ファイルレベルの説明
 def manifest_dict(run_id, results) -> dict            # manifest の素（テスト・検査用）
 def junit_xml(results) -> str
-def html_report(run_id, results, run_dir=None, definitions=None) -> str
+def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 ```
 
 `runner.run_and_report` がこの `write_report` を呼び、CLI に `(results, manifest_path)` を返す

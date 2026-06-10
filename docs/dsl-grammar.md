@@ -93,9 +93,9 @@ ComponentFile ::= <Component>               # a single mapping (loaded separatel
 # ── Scenario ───────────────────────────────────────────────────────────
 Scenario ::= {
   name:            string,                  # required
-  tags?:           list(string),            # default []  — selection (§9)
+  tags?:           list(string),            # default []  — selection (§6.4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
-  dataFile?:       string,                  # CSV path      ┘ (§9)
+  dataFile?:       string,                  # CSV path      ┘ (§6.3)
   preconditions?:  <Preconditions>,         # default {}
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
@@ -114,7 +114,7 @@ Preconditions ::= {
   launchEnv?:  map(string,string),          # default {}    — injected as SIMCTL_CHILD_*
   deeplink?:   string,
   locale?:     string,
-  setup?:      string,                      # a reusable prelude file (§9)
+  setup?:      string,                      # a reusable prelude file (§6.4)
 }
 
 # ── Step = exactly one Action + optional modifiers ─────────────────────
@@ -133,7 +133,7 @@ Action    ::=
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}
-  | { use:         { component: string, with?: map(string,string) } }   # macro (§9)
+  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2)
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right") }   # selector form  ┐ XOR
@@ -295,8 +295,10 @@ trimmed). Substitution is **type-preserving at the edges**:
 - A token whose namespace isn't being substituted **right now is left intact**, so each layer fills
   only its own namespace.
 
-Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), and `vars.*` / `secrets.*`
-(resolved later by the run loop).
+Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), and `secrets.*` (declared
+via config `secrets:`, resolved from the environment by the run loop at action time, §6.4). (UI-value
+capture via `vars.*` is **not yet implemented** — the interpolation primitive would support it, but the
+run loop never binds `vars.*`.)
 
 ### 6.2 Components (`use` → reusable steps)
 
@@ -318,7 +320,7 @@ steps:
   - use: { component: login.component.yaml, with: { email: "a@b.com", password: "pw" } }
 ```
 
-`expand_components` (`scenario.py:455`) **replaces** each `use` with the component's substituted
+`expand_components` (`scenario.py:474`) **replaces** each `use` with the component's substituted
 steps, recursively (a component may itself `use` another, depth ≤ 25). It raises on a missing param,
 an unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle.
 Because expansion is pure and compile-time, **no `use` survives into the run** — determinism is
@@ -327,7 +329,7 @@ unaffected.
 ### 6.3 Data-driven scenarios (`data` / `dataFile`)
 
 A scenario with `data` (inline rows) or `dataFile` (a CSV path; mutually exclusive) is expanded into
-**one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:518`). Each
+**one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:537`). Each
 derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the original preconditions**
 (so `erase` still defaults true — every row runs in its own clean environment).
 
@@ -342,13 +344,18 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
     - label: { sel: { id: home.status }, equals: "${row.expect}" }
 ```
 
-### 6.4 `setup` preludes and tag selection
+### 6.4 `setup` preludes, secrets, and tag selection
 
 - **`setup`** (a `Preconditions` key, or the app/config default): names a reusable scenario file
-  whose steps are **prepended** to this scenario's own (`apply_setups`, `scenario.py:587`) — a shared
+  whose steps are **prepended** to this scenario's own (`apply_setups`, `scenario.py:615`) — a shared
   login / navigation flow written once.
+- **`secrets`** (declared in config as `secrets:` — a list of environment-variable names): each
+  declared name `X` is resolved from `os.environ[X]` and bound to `${secrets.X}`, substituted into the
+  executed step **at action time** (`cli.py`, `orchestrator.py` `_interp_step`). The scenario keeps the
+  `${secrets.X}` token, never the value, and the literal values are auto-masked in evidence
+  (`Redactor`). Unlike `params.*` / `row.*`, this namespace is resolved by the run loop, not at load.
 - **`tags`** + the `--tag` / `--exclude` CLI flags filter which scenarios run; `exclude` wins over
-  `include` (`select_scenarios`, `scenario.py:541`).
+  `include` (`select_scenarios`, `scenario.py:560`).
 
 ### 6.5 Expansion order
 
@@ -369,10 +376,10 @@ load_scenarios        # parse + validate against this grammar
 
 - `load_scenarios(text) -> list[Scenario]` validates against everything above; the top level must be
   a sequence, and any rule in [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load
-  error (`scenario.py:432`).
+  error (`scenario.py:444`).
 - `dump_scenarios(scenarios) -> str` serializes back to YAML, pruning `None` / empty list / empty
   dict for readability and emitting alias keys (`idMatches`, `launchEnv`, …). The output **reloads
-  cleanly** — this is the round-trip `record` relies on (`scenario.py:582`).
+  cleanly** — this is the round-trip `record` relies on (`scenario.py:601`).
 
 For the *semantics* behind the shapes — how a selector resolves to 0/1/2+ elements, how each
 assertion compares, how waits time out — continue to [selectors](selectors.md) and

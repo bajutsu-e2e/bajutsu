@@ -36,6 +36,11 @@ not "judging pass/fail," and runs only when explicitly opted in
 Both are the same `observe → act → verify` loop, but the layer where AI participates is
 strictly separated.
 
+> The scenario is just YAML, so humans extend it with authoring features that never involve
+> AI: reusable `use` components, data-driven rows (`data` / `dataFile`), secret variables
+> (`${secrets.X}`), `tag`s for selection, `setLocation` / `push` device steps, and file- /
+> scenario-level `description`s ([scenarios](scenarios.md)).
+
 ## 3. Determinism first (four concrete mechanisms)
 
 Bajutsu's "deterministic" is not a slogan; it is enforced by the structure of the code.
@@ -49,8 +54,8 @@ Bajutsu's "deterministic" is not a slogan; it is enforced by the structure of th
 3. **Start from a clean environment.** Each test, by default, `simctl erase`s before boot/launch,
    cutting off contamination from the previous test. State is injected via launch env / deeplink
    ([drivers](drivers.md#environment-management-simctl)).
-4. **Pass/fail is machine-checkable only.** No "feels like it passed." The machine assertions
-   are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`
+4. **Pass/fail is machine-checkable only.** No "feels like it passed." The eight machine
+   assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`
    ([selectors](selectors.md#assertion-evaluation)).
 
 > A distinction: accessibility identifiers only stabilize the **determinism of selection**.

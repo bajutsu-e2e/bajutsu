@@ -77,9 +77,13 @@ flowchart TB
 | `evidence.py` | 証跡の取得（瞬時 / 区間）と Sink | [evidence](evidence.md) |
 | `intervals.py` | 区間証跡（video / deviceLog）の simctl 子プロセス管理 | [evidence](evidence.md#区間証跡video--devicelog) |
 | `report.py` | `manifest.json` + JUnit XML + HTML | [reporting](reporting.md) |
+| `network.py` | ネットワーク collector + プロトコル内の決定的モック | [evidence](evidence.md) |
+| `redaction.py` | 証跡の redaction（ラベル / ヘッダ / フィールド + シークレット値） | [evidence](evidence.md) |
+| `interp.py` | `${ns.key}` 補間プリミティブ（`params.` / `row.` / `secrets.`） | [scenarios](scenarios.md) |
 | `config.py` | チーム既定 × アプリ別の解決（`Effective`） | [configuration](configuration.md) |
 | `backends.py` | バックエンド可用性判定・actuator 選択・Driver 生成 | [drivers](drivers.md#バックエンド選択と-actuator) |
 | `env.py` | `simctl` ラッパ（erase/boot/launch/openurl/io） | [drivers](drivers.md#環境管理simctl) |
+| `preflight.py` | 実行可能ゲート（必須 CLI + 起動済みシミュレータ） | [configuration](configuration.md) |
 | `runner.py` | config + シナリオ → レポート。デバイス factory（launch 手順） | [run-loop](run-loop.md#runner実行パイプライン) |
 | `doctor.py` | 規約充足度スコア（id カバレッジ等） | [configuration](configuration.md#doctor規約充足度スコア) |
 | `agent.py` | オーサリング Agent 抽象（`Observation`/`Proposal`/`Agent`） | [recording](recording.md) |
@@ -87,7 +91,12 @@ flowchart TB
 | `record.py` | record ループ（observe → 提案 → 実行 → 書き出し） | [recording](recording.md#record-ループ) |
 | `alerts.py` | システムアラートの検出・dismiss（視覚ロケータ） | [recording](recording.md#システムアラートの自動対処) |
 | `codegen.py` | シナリオ → XCUITest（Swift）生成 | [codegen](codegen.md) |
-| `cli.py` | Typer ベース CLI（`run`/`record`/`doctor`/`codegen`） | [cli](cli.md) |
+| `trace.py` | 保存済み run のテキストタイムライン（`trace` コマンド） | [cli](cli.md) |
+| `triage.py` | M4 自己修復: ルールベース `HeuristicTriageAgent` + 構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）、`--apply`/`--write`/`--rerun` | [cli](cli.md) |
+| `claude_triage.py` | Claude ベースの `TriageAgent`（`--ai`・失敗スクショ） | [cli](cli.md) |
+| `github.py` | GitHub ヘルパ（CI） | [ci](ci.md) |
+| `serve.py` | ローカル Web UI（`serve` コマンド） | [cli](cli.md) |
+| `cli.py` | Typer ベース CLI（`run`/`record`/`doctor`/`codegen`/`trace`/`triage`/`serve`） | [cli](cli.md) |
 | `dotenv.py` | `.env` の最小ローダ（既存環境変数を上書きしない） | [cli](cli.md#環境変数env) |
 | `_yaml.py` | `on`/`off`/`yes`/`no` を文字列のまま読む YAML ローダ | [scenarios](scenarios.md#yaml-の注意点) |
 
@@ -97,17 +106,17 @@ flowchart TB
 実行系がここに依存する。
 
 ```
-                       cli.py            ← ユーザ接点（Typer）
-        ┌─────────────────┼───────────────────────────┐
-     runner.py        record.py                     codegen.py
-        │           （Tier 1 / AI）                （構造マッピング）
-   orchestrator.py   agent.py / claude_agent.py / alerts.py
+                       cli.py            ← ユーザ接点（Typer）: run / record / doctor / codegen / trace / triage / serve
+        ┌─────────────┬───┴───────┬───────────────┬───────────┐
+     runner.py    record.py    codegen.py     trace.py     triage.py / claude_triage.py
+        │       （Tier 1 / AI） （構造マッピング）（タイムライン）（M4 自己修復・助言）
+   orchestrator.py   agent.py / claude_agent.py / alerts.py        serve.py · github.py（Web UI・CI）
         │                 │
    ┌────┼────────┬────────┘
-assertions.py  evidence.py ── intervals.py
+assertions.py  evidence.py ── intervals.py · network.py · redaction.py
         │         │
-   scenario.py  report.py        config.py     backends.py     env.py
-        │                            │              │            │
+   scenario.py  report.py     config.py · preflight.py   backends.py   env.py
+        │ （interp.py）            │              │            │
         └──────────────┬─────────────┴──────────────┴────────────┘
                        ▼
                 drivers/base.py  ←── 決定性の核（Element / Selector / resolve_unique）
@@ -124,7 +133,7 @@ assertions.py  evidence.py ── intervals.py
 
 ## テスト構成
 
-`tests/` に **306 のユニットテスト**（`uv run pytest -q`）。すべて実機 Simulator を必要としない:
+`tests/` に **324 のユニットテスト**（`uv run pytest -q`）。すべて実機 Simulator を必要としない:
 コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`・`Spawn`・`Clock`）で
 検証する。サンプルアプリに対する実機 E2E は `make e2e` / `make ui-test`（[sample-app](sample-app.md)）。
 
@@ -139,10 +148,14 @@ assertions.py  evidence.py ── intervals.py
 
 - セレクタ解決と曖昧検出（決定性の核）
 - シナリオスキーマ（厳格検証）と YAML ラウンドトリップ
-- 7 種のアサーション評価
+- 8 種のアサーション評価
 - Tier 2 run ループ（act → wait → verify）、`FakeDriver` で検証
 - DSL: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、
   起動時の `locale` 適用、デバイスプール上の並列実行（`--workers`）
+- DSL のオーサリング再利用: 再利用可能なパラメータ化コンポーネント（`use` / `${params.*}`）、
+  データ駆動シナリオ（`data` / `dataFile` と `${row.*}`）、シークレット変数（`${secrets.X}`・値マスク）、
+  シナリオタグ + `--tag` / `--exclude` 選択、`setLocation` / `push` デバイスステップ、`doubleTap` アクション、
+  ファイル単位 + シナリオ単位の `description`
 - 証跡: 瞬時（`screenshot`/`elements`）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク
   collector（`network.json`）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用**
 - ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）:
@@ -155,7 +168,8 @@ assertions.py  evidence.py ── intervals.py
   `TriageAgent` 診断（ルールベース `HeuristicTriageAgent`、または `--ai` の Claude・失敗スクショ込み）。
   エージェントは構造化 fix（`renameId` / `addIndex` / `raiseTimeout`）を提案でき、`--apply`/`--write` で
   シナリオ source に適用（diff プレビュー・opt-in）、`--rerun` で再実行検証
-- CLI `run` / `doctor` / `codegen` / `trace` / `triage`、および `record`（AI オーサリング）+ alert guard
+- CLI `run` / `doctor` / `codegen` / `trace` / `triage` / `serve`、および `record`（AI オーサリング）+ alert guard
+- `serve` ローカル Web UI（Tier 1）: ブラウザからシナリオを実行しレポートを閲覧（CI 用ではない）
 - XCUITest コード生成
 
 ### 実機 Simulator で検証済み（iPhone 17 Pro・近年の iOS）

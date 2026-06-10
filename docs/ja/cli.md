@@ -29,11 +29,15 @@ bajutsu run <scenario.yaml> --app <name> [options]
 |---|---|---|
 | `--app` | （必須） | 対象アプリ（config の `apps.<name>`） |
 | `--backend` | config | actuator 順（カンマ区切り。先頭から最初に使えるもの） |
-| `--udid` | `booted` | 対象 Simulator |
+| `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
+| `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
+| `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | `--erase` | 各テスト前に `simctl erase`。`--no-erase` で全シナリオの `preconditions.erase` を false に |
 | `--dismiss-alerts` | off | システムアラートを視覚で消す保険（要 API キー・[recording](recording.md#システムアラートの自動対処)） |
 | `--alert-instruction` | "" | dismiss の代わりに押すボタンの指示 |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
+| `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
+| `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（アプリに BajutsuKit が必要・`--workers>1` は `--no-network` 必須） |
 | `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` と `--no-network` が必要（プール数で上限） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 

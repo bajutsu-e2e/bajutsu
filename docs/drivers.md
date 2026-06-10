@@ -72,9 +72,10 @@ Headless, coordinate-based. For CI. With no semantic tap, the abstraction resolv
 - `swipe`: adds `--duration 0.2` to make it a real drag (an instantaneous swipe is not recognized
   as a pan by SwiftUI).
 
-> ⚠️ The describe-all JSON key names are **assumed** to match fb-idb's output and need confirmation
-> against the installed idb (the note atop `idb.py`). The idb client is `uv sync --extra idb`;
-> `idb_companion` is `brew install facebook/fb/idb-companion`.
+> The describe-all JSON key names follow fb-idb's output and are **validated on-device** against
+> fb-idb (iPhone 17 Pro, recent iOS) via `make e2e` + the `e2e.yml` CI workflow; re-check them only
+> if the installed idb version changes the schema (the note atop `idb.py`). The idb client is
+> `uv sync --extra idb`; `idb_companion` is `brew install facebook/fb/idb-companion`.
 
 ## FakeDriver
 

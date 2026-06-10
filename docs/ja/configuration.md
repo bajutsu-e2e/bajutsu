@@ -23,6 +23,7 @@ defaults:                       # 全アプリ共通の既定
   locale:  en_US
   capture: [screenshot.after, elements, actionLog]
   redact:  { headers: [Authorization, Cookie], fields: [token, password] }
+  secrets: [LOGIN_PASSWORD]         # ${secrets.X} に使える環境変数名（実値は証跡でマスク）
   reservedNamespaces: [auth, nav]   # 共有フロー / コンポーネントの id 契約（情報用）
 
 apps:
@@ -31,7 +32,7 @@ apps:
     deeplinkScheme: bajutsusample
     idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
     launchEnv:      { SAMPLE_UITEST: "1" }
-    # 任意: backend / device / locale / launchArgs / setup / redact / mockServer
+    # 任意: backend / device / locale / launchArgs / setup / redact / secrets / mockServer
 ```
 
 ### 解決（`resolve` → `Effective`）
@@ -52,6 +53,7 @@ apps:
 | `setup` | app | 既定の再利用前段（その steps を各シナリオの本編前に実行） |
 | `capture` | defaults | 既定証跡（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | defaults ∪ app | マージ（下記） |
+| `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
 
 `backend` フィールド検証で `_norm` が「単一文字列 → 1 要素リスト」に正規化する（defaults / app 双方）。
 
@@ -60,6 +62,14 @@ apps:
 config の `defaults.redact` と `apps.<name>.redact` は **union** される（`_merge_redact`、
 `labels`/`headers`/`fields` を個別に和集合）。さらにシナリオの `redact`（[evidence](evidence.md#マスキングredact)）が
 重なる。
+
+### シークレット（`secrets:`）
+
+`secrets:` は **環境変数名のリスト**（`defaults` と `apps.<name>` の双方で宣言でき、`resolve` が和集合に
+する）で、シナリオが入力に使える `${secrets.X}` 変数の宣言元。`bajutsu run` は実行時に宣言された各名前を
+環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値を
+マスク**する（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンが
+残り、実値は残らない。
 
 ## CLI からの選択
 

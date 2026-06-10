@@ -147,7 +147,9 @@ Per-kind mechanics:
 | `enabled` | `resolve_unique` | the `notEnabled` trait is **absent** |
 | `disabled` | `resolve_unique` | the `notEnabled` trait is **present** |
 | `selected` | `resolve_unique` | the `selected` trait is present |
+| `request` | matches over the observed network exchanges (not the element tree) | `equals`/`atLeast`/… via `count`, else ≥ 1 ([network](network.md)) |
 
 > Only `exists` uses `find_all` (allows multiple); the other single-element assertions use
 > `resolve_unique` (ambiguous fails). So "tried to check the value when there were 2 matches" also
-> fails deterministically.
+> fails deterministically. The `request` kind is the one non-UI assertion — it checks the captured
+> HTTP(S) exchanges instead of the elements (eight kinds in total).

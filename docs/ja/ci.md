@@ -10,7 +10,7 @@
 | Workflow | ランナー | タイミング | 内容 |
 |---|---|---|---|
 | [`ci.yml`](../../.github/workflows/ci.yml) | Linux | `main` への push・全 PR | `ruff` + `mypy` + `pytest`（Python 3.11 / 3.13）。ロジック層はシミュレータ不要で速い・安い |
-| [`e2e.yml`](../../.github/workflows/e2e.yml) | macOS | nightly + 手動 | サンプルアプリをビルド → シミュレータ起動 → idb バックエンドで `smoke.yaml` 実行（driver + simctl + idb の全経路） |
+| [`e2e.yml`](../../.github/workflows/e2e.yml) | macOS | 手動 + アプリ/SDK/ランタイムを触る PR | 2 ジョブ: **smoke (idb)** はサンプルをビルド → シミュレータ起動 → idb バックエンドで `smoke.yaml` 実行（driver + simctl + idb）。**xcuitest (codegen)** はシナリオからネイティブ XCUITest を生成し（`make ui-test`）`xcodebuild` で実行（テスト時に bajutsu / idb / AI は不要） |
 
 dev ツールは `dev` extra にあるため、Linux ジョブは `uv sync --extra dev` → `uv run --no-sync …`
 で実行（素の `uv run` はデフォルト集合に再同期して落としてしまう）。

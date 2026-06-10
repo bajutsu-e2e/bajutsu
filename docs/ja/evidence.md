@@ -144,5 +144,13 @@ redact:
   fields: ["token", "password"]    # JSON/body フィールド名
 ```
 
-> ⚠️ redact の **適用（実際のマスク処理）** は、対象となる証跡（特に network）と合わせて今後の配線。
-> 現状は宣言（スキーマとマージ）まで。
+> redact は証跡の書き出し前に **適用される**（`redaction.py` `Redactor`）: device log / app trace は
+> key→value パターンでスクラブ、要素ツリーは label が設定済みなら value をマスク（または埋め込まれた
+> secret をスクラブ）、各 network exchange は構造的にマスクする — ヘッダ値は名前で、url / request /
+> response の body はフリーテキストとして（クエリパラメータや `token` / `password` の body フィールドも
+> 捕捉）。画像（スクショ / video）はマスクできず素のまま残る。
+>
+> redact は **secret の入力値** にも及ぶ: `${secrets.X}` の背後にある実値（環境から解決、config の
+> `secrets:` で宣言・[configuration](configuration.md#シークレットsecrets)）は、設定済みの
+> `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクされる。長い値から先に
+> マスクするため、ある値が別の値の部分文字列でも部分的な漏れは残らない。

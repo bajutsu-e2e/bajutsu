@@ -290,8 +290,9 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 - 大きな文字列に **埋め込まれた**トークンはテキストとして差し込まれる（`"item-${row.id}"`）。
 - いま置換していない名前空間のトークンは **そのまま残る** ので、各層は自分の名前空間だけを埋める。
 
-名前空間: `params.*`（コンポーネント・§6.2）、`row.*`（データ駆動・§6.3）、`vars.*` / `secrets.*`
-（run ループが後で解決）。
+名前空間: `params.*`（コンポーネント・§6.2）、`row.*`（データ駆動・§6.3）、`secrets.*`（config の
+`secrets:` で宣言し、run ループがアクション時に環境変数から解決・§6.4）。（UI 値を実行時に取り込む
+`vars.*` は **未実装** —— 補間プリミティブは対応できるが、run ループは `vars.*` を束縛しない。）
 
 ### 6.2 コンポーネント（`use` → 再利用ステップ）
 
@@ -313,7 +314,7 @@ steps:
   - use: { component: login.component.yaml, with: { email: "a@b.com", password: "pw" } }
 ```
 
-`expand_components`（`scenario.py:455`）は各 `use` をコンポーネントの置換済みステップに **置き換える**。
+`expand_components`（`scenario.py:474`）は各 `use` をコンポーネントの置換済みステップに **置き換える**。
 再帰的で（コンポーネントが別のコンポーネントを `use` でき、深さ ≤ 25）、params 不足・未知 params・
 未宣言を指す残留 `${params.*}`・循環参照ではエラーになる。展開は純粋でコンパイル時なので、
 **`use` は run に残らない** —— 決定性に影響しない。
@@ -321,7 +322,7 @@ steps:
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 
 `data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を
-置換して **1 行 1 シナリオ**に展開される（`expand_data`, `scenario.py:518`）。派生シナリオは
+置換して **1 行 1 シナリオ**に展開される（`expand_data`, `scenario.py:537`）。派生シナリオは
 `"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保つ**（`erase` も既定 true のまま ——
 各行が自分のクリーンな環境で走る）。
 
@@ -336,13 +337,18 @@ steps:
     - label: { sel: { id: home.status }, equals: "${row.expect}" }
 ```
 
-### 6.4 `setup` プレリュードとタグ選択
+### 6.4 `setup` プレリュード・secrets・タグ選択
 
 - **`setup`**（`Preconditions` のキー、またはアプリ/config の既定）: 再利用シナリオファイルを指し、
-  その steps をこのシナリオ自身の前に **前置**する（`apply_setups`, `scenario.py:587`）—— 共有のログイン /
+  その steps をこのシナリオ自身の前に **前置**する（`apply_setups`, `scenario.py:615`）—— 共有のログイン /
   ナビゲーション手順を 1 度だけ書く。
+- **`secrets`**（config に `secrets:` —— 環境変数名のリスト —— で宣言）: 宣言した各名 `X` は
+  `os.environ[X]` から解決され `${secrets.X}` に束縛、**アクション時**に実行ステップへ置換される
+  （`cli.py`, `orchestrator.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、
+  リテラル値は証跡で自動マスクされる（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間は
+  ロード時ではなく run ループが解決する。
 - **`tags`** + CLI の `--tag` / `--exclude` で実行対象を絞る。`exclude` が `include` に優先する
-  （`select_scenarios`, `scenario.py:541`）。
+  （`select_scenarios`, `scenario.py:560`）。
 
 ### 6.5 展開順
 
@@ -362,10 +368,10 @@ load_scenarios        # この文法に対しパース + 検証
 ## 7. 検証とラウンドトリップ
 
 - `load_scenarios(text) -> list[Scenario]` は上記すべてに対して検証する。トップレベルはシーケンス
-  必須で、[§4](#4-個数と排他の制約) のいずれかの規則違反はロードエラー（`scenario.py:432`）。
+  必須で、[§4](#4-個数と排他の制約) のいずれかの規則違反はロードエラー（`scenario.py:444`）。
 - `dump_scenarios(scenarios) -> str` は YAML へ戻す。可読性のため `None` / 空リスト / 空辞書を刈り取り、
   エイリアスキー（`idMatches`・`launchEnv` …）で出力する。出力は **そのまま再ロード可能** ——
-  `record` が依存するラウンドトリップ（`scenario.py:582`）。
+  `record` が依存するラウンドトリップ（`scenario.py:601`）。
 
 形の背後にある *意味論* —— セレクタが 0/1/2+ 件にどう解決するか、各アサーションがどう比較するか、
 wait がどうタイムアウトするか —— は [selectors](selectors.md) と [run-loop](run-loop.md) へ。例で

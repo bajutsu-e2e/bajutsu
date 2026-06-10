@@ -31,11 +31,15 @@ bajutsu run <scenario.yaml> --app <name> [options]
 |---|---|---|
 | `--app` | (required) | the target app (config's `apps.<name>`) |
 | `--backend` | config | actuator order (comma-separated; first usable wins) |
-| `--udid` | `booted` | the target Simulator |
+| `--tag` | "" | comma list; run only scenarios carrying any of these tags |
+| `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
+| `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | `--erase` | `simctl erase` before each test; `--no-erase` sets every scenario's `preconditions.erase` to false |
 | `--dismiss-alerts` | off | the safety net that visually dismisses system alerts (needs an API key; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--alert-instruction` | "" | which button to press instead of dismissing |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
+| `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
+| `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app; `--workers>1` requires `--no-network`) |
 | `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` and `--no-network` (capped to the pool size) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
