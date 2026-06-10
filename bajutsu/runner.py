@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import queue
+import subprocess
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -79,21 +80,29 @@ def launch_driver(
 ) -> base.Driver:
     """Erase/boot/launch the app (with config + scenario env) and return a driver.
 
-    The simctl sequencing is best-effort and should be confirmed on a real device.
+    simctl `erase` requires a shut-down device, so an erase run shuts the device
+    down first (shutdown -> erase -> boot); otherwise erasing a booted Simulator
+    fails. Any simctl step that still fails (e.g. the app isn't installed) is
+    surfaced as a clean env.DeviceError so the CLI can exit 2 instead of dumping a
+    traceback.
     """
     pre = preconditions or Preconditions()
     e = env.Env(udid, run=env_run)
-    if pre.erase:
-        e.erase()
-    e.boot()
-    e.terminate(eff.bundle_id)  # clean start so readiness reflects the new launch
-    launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env}
-    locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
-    e.launch(
-        eff.bundle_id, [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)], launch_env
-    )
-    if pre.deeplink is not None:
-        e.openurl(pre.deeplink)
+    try:
+        if pre.erase:
+            e.shutdown()  # erase only works on a shut-down device
+            e.erase()
+        e.boot()
+        e.terminate(eff.bundle_id)  # clean start so readiness reflects the new launch
+        launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env}
+        locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
+        e.launch(
+            eff.bundle_id, [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)], launch_env
+        )
+        if pre.deeplink is not None:
+            e.openurl(pre.deeplink)
+    except subprocess.CalledProcessError as exc:
+        raise env.device_error(exc) from exc
     driver = make_driver(actuator, udid)
     _await_ready(driver)
     return driver
@@ -234,8 +243,8 @@ def device_factory(
 ) -> DriverFactory:
     """A real driver factory: pick the actuator, then launch the app per scenario.
 
-    The simctl sequencing (erase/boot) is best-effort and should be confirmed on a
-    real device.
+    The simctl sequencing (shutdown/erase/boot) lives in launch_driver, which
+    surfaces any failure as a clean env.DeviceError.
     """
     actuator = select_actuator(backends, available)
 

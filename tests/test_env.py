@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Mapping
 
 from bajutsu import env
@@ -63,3 +64,32 @@ def test_env_uses_injected_runner() -> None:
     ]
     assert calls[1][1] == {"SIMCTL_CHILD_K": "v"}
     assert calls[2] == (["xcrun", "simctl", "openurl", "UDID", "app://settings"], None)
+
+
+def test_shutdown_is_idempotent() -> None:
+    """shutdown() of an already-shut-down device is a no-op, not a crash."""
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
+        calls.append(args)
+        raise subprocess.CalledProcessError(
+            1, args, stderr="Unable to shutdown device in current state: Shutdown"
+        )
+
+    env.Env("UDID", run=fake_run).shutdown()  # swallows the error
+    assert calls == [["xcrun", "simctl", "shutdown", "UDID"]]
+
+
+def test_device_error_keeps_command_and_simctl_stderr() -> None:
+    exc = subprocess.CalledProcessError(
+        149,
+        ["xcrun", "simctl", "erase", "U"],
+        output="",
+        stderr="Unable to erase contents and settings in current state: Booted\n",
+    )
+    err = env.device_error(exc)
+    assert isinstance(err, env.DeviceError)
+    msg = str(err)
+    assert "exit 149" in msg
+    assert "xcrun simctl erase U" in msg
+    assert "Booted" in msg  # simctl's own (actionable) stderr is preserved

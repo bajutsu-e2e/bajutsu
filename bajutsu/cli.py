@@ -212,6 +212,9 @@ def run(
             workers=workers, release=release, bindings=secret_bindings, secret_values=secret_values,
             control=control,
         )
+    except _env.DeviceError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
     finally:
         if collector is not None:
             collector.stop()
@@ -252,7 +255,11 @@ def record(
 
         alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
     udid = _env.resolve_udid(udid)
-    driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
+    try:
+        driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
+    except _env.DeviceError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
     scenario = record_loop(driver, goal, ClaudeAgent(), name=goal, alert_guard=alert_guard)
     Path(out).write_text(dump_scenarios([scenario]), encoding="utf-8")
     typer.echo(f"recorded {len(scenario.steps)} steps -> {out}")

@@ -16,6 +16,29 @@ from collections.abc import Callable, Mapping, Sequence
 RunFn = Callable[[list[str], Mapping[str, str] | None], str]
 
 
+class DeviceError(RuntimeError):
+    """A simctl operation failed in a way the user can act on (e.g. launching an
+    app that isn't installed, or an invalid device).
+
+    Carries a clean, actionable message — the CLI surfaces it and exits 2, the
+    same boundary as other device errors, instead of dumping a Python traceback.
+    """
+
+
+def device_error(exc: subprocess.CalledProcessError) -> DeviceError:
+    """Turn a raw simctl failure into a clean DeviceError.
+
+    Keeps the failed command, simctl's exit code, and its stderr — usually the
+    most actionable part, e.g. "Unable to ... in current state: Booted" or
+    "Unable to lookup in current state" when the app isn't installed.
+    """
+    cmd = exc.cmd if isinstance(exc.cmd, str) else " ".join(map(str, exc.cmd or []))
+    detail = (exc.stderr if isinstance(exc.stderr, str) else "") or ""
+    msg = f"device operation failed (exit {exc.returncode}): {cmd}"
+    detail = detail.strip()
+    return DeviceError(f"{msg}\n{detail}" if detail else msg)
+
+
 def erase_cmd(udid: str) -> list[str]:
     return ["xcrun", "simctl", "erase", udid]
 
@@ -129,6 +152,12 @@ class Env:
 
     def erase(self) -> None:
         self._run(erase_cmd(self.udid), None)
+
+    def shutdown(self) -> None:
+        try:
+            self._run(shutdown_cmd(self.udid), None)
+        except subprocess.CalledProcessError:
+            pass  # already shut down; shutdown is idempotent
 
     def boot(self) -> None:
         try:

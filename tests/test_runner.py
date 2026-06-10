@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from bajutsu import env
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.runner import device_relauncher, device_teardown, run_all, run_and_report
-from bajutsu.scenario import Redact, Relaunch, Scenario
+from bajutsu.runner import (
+    device_relauncher,
+    device_teardown,
+    launch_driver,
+    run_all,
+    run_and_report,
+)
+from bajutsu.scenario import Preconditions, Redact, Relaunch, Scenario
 
 
 def _eff() -> Effective:
@@ -121,6 +129,41 @@ def test_relauncher_relaunches_with_locale_and_overrides() -> None:
     # Locale forced via app launch args, scenario locale winning.
     assert launch[launch.index("-AppleLocale") + 1] == "ja_JP"
     assert "(ja)" in launch
+
+
+def test_launch_driver_shuts_down_before_erase(monkeypatch: pytest.MonkeyPatch) -> None:
+    """erase requires a shut-down device, so the sequence is shutdown -> erase -> boot."""
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        calls.append(args)
+        return ""
+
+    ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
+    monkeypatch.setattr("bajutsu.runner.make_driver", lambda actuator, udid: ready)
+
+    launch_driver("UDID-1", _eff(), "idb", Preconditions(), env_run=fake_run)
+
+    verbs = [c[2] for c in calls if c[:2] == ["xcrun", "simctl"]]
+    assert verbs.index("shutdown") < verbs.index("erase") < verbs.index("boot")
+    assert verbs.index("boot") < verbs.index("launch")  # boot before launching the app
+
+
+def test_launch_driver_surfaces_failing_erase_as_device_error() -> None:
+    """A simctl failure becomes a clean DeviceError (exit 2 at the CLI), not a traceback."""
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        if args[:3] == ["xcrun", "simctl", "erase"]:
+            raise subprocess.CalledProcessError(
+                149, args, output="",
+                stderr="Unable to erase contents and settings in current state: Booted",
+            )
+        return ""
+
+    with pytest.raises(env.DeviceError) as excinfo:
+        launch_driver("UDID-1", _eff(), "idb", Preconditions(), env_run=fake_run)
+    msg = str(excinfo.value)
+    assert "exit 149" in msg
+    assert "Booted" in msg  # simctl's actionable stderr is carried through
 
 
 def test_run_and_report(tmp_path: Path) -> None:
