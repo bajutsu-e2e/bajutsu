@@ -59,6 +59,9 @@ class AppConfig(_Model):
     id_namespaces: list[str] = Field(default_factory=list, alias="idNamespaces")
     mock_server: MockServer | None = Field(default=None, alias="mockServer")
     setup: str | None = None
+    # Path to the built .app. When set, a run installs it on each device before launch (if
+    # missing) — so a freshly-picked/booted simulator works without a manual `simctl install`.
+    app_path: str | None = Field(default=None, alias="appPath")
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
 
@@ -92,6 +95,8 @@ class Effective:
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
+    # Built .app to install on each device before launch (if missing). None = manual install.
+    app_path: str | None = None
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -127,6 +132,7 @@ def resolve(config: Config, app: str) -> Effective:
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),
         secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
+        app_path=a.app_path,
     )
 
 
