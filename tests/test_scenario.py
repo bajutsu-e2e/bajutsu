@@ -90,7 +90,20 @@ def test_load_scenario_example() -> None:
 
 def test_preconditions_default() -> None:
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
-    assert s.preconditions.erase is True  # clean by default
+    assert s.preconditions.erase is False  # no full wipe by default; reinstall keeps the app fresh
+    assert s.preconditions.reinstall == "clean"  # uninstall + install by default
+
+
+def test_preconditions_reinstall_validated() -> None:
+    s = Scenario.model_validate(
+        {"name": "x", "preconditions": {"erase": True, "reinstall": "overwrite"},
+         "steps": [{"tap": {"id": "a"}}]}
+    )
+    assert s.preconditions.erase is True and s.preconditions.reinstall == "overwrite"
+    with pytest.raises(ValidationError):  # only clean | overwrite are accepted
+        Scenario.model_validate(
+            {"name": "x", "preconditions": {"reinstall": "bogus"}, "steps": [{"tap": {"id": "a"}}]}
+        )
 
 
 def test_selector_alias_and_as_selector() -> None:

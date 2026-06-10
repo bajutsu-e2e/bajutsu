@@ -78,7 +78,14 @@ class Selector(_Model):
 class Preconditions(_Model):
     """Per-test environment setup."""
 
-    erase: bool = True
+    # Wipe the whole simulator (simctl erase) before the test — apps, data, settings. Off by
+    # default: the app is reinstalled fresh each run (see `reinstall`), so a full wipe is only
+    # needed when a test wants a pristine device (no other apps / default settings).
+    erase: bool = False
+    # How the app is (re)installed before each run, when the app config gives an `appPath`:
+    #   clean     — uninstall then install (fresh app + data; the default)
+    #   overwrite — install over the existing app (keeps its data container)
+    reinstall: Literal["clean", "overwrite"] = "clean"
     launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
     launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
     deeplink: str | None = None
