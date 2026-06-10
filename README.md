@@ -180,10 +180,12 @@ bajutsu/
 - **M2 — mostly done.** The AI loop (`record`) + `capturePolicy` evidence rules + `video` /
   `deviceLog` + the reporter (JUnit/HTML). *(Done. Idempotent normalization / provenance
   comments are still light.)*
-- **M3 — done bar CI.** XCUITest codegen ✅, app traces (`appTrace` / os_signpost) ✅, redaction
+- **M3 — done.** XCUITest codegen ✅, app traces (`appTrace` / os_signpost) ✅, redaction
   applied to captured evidence ✅, network **observation** (the in-app collector + `request`
   assertions) ✅, and **deterministic mocks** (scenario `mocks` → offline in-protocol stubs) ✅ —
-  all validated on-device. Remaining: CI integration.
+  all validated on-device. **CI** ✅: `ci.yml` runs ruff + mypy + pytest on Linux (py3.11 /
+  3.13); `e2e.yml` runs the idb smoke scenario *and* the codegen→XCUITest path
+  (`make ui-test`) on a macOS Simulator.
 - **M4 — started (skeleton).** Self-healing triage: `bajutsu triage` assembles a failed run's
   context and diagnoses it (root cause + suggested fixes; advisory, human review required). The
   default agent is rule-based (renamed-id "did you mean", timing / assertion categories); a
