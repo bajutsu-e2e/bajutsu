@@ -35,22 +35,27 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 
 ## トピック一覧（推奨の読む順）
 
+> **はじめての人は [Getting started チュートリアル](getting-started.md) から。** インストールから
+> 「テストが green になる」までを手を動かして辿る（インストール → ユニットテスト → シナリオ →
+> 実機実行 → レポート）。その後で下のリファレンス各ページへ。
+
 | # | ページ | 何を説明するか |
 |---|---|---|
 | 1 | [concepts](concepts.md) | 設計思想と中核原則（決定性・2 層・安定度順ラダー・AI の関与境界） |
 | 2 | [architecture](architecture.md) | モジュール構成・依存関係・**実装状況（実装済み / 未配線）** |
 | 3 | [scenarios](scenarios.md) | シナリオ YAML の文法（ステップ / 待機 / アサーション / 証跡トークン）= オーサリングリファレンス |
-| 4 | [selectors](selectors.md) | セレクタモデルと決定的解決（0/1/2+ 件）・アサーション評価の仕組み = 決定性の核 |
-| 5 | [drivers](drivers.md) | Driver 抽象・idb / fake・能力差の吸収・simctl 環境 |
-| 6 | [run-loop](run-loop.md) | Orchestrator（observe → act → verify）・待機・リトライ・実行結果 |
-| 7 | [evidence](evidence.md) | 証跡サブシステム（瞬時 / 区間・capturePolicy・provider・redact） |
-| 8 | [reporting](reporting.md) | レポート（manifest.json / JUnit / HTML）と `runs/` レイアウト |
-| 9 | [configuration](configuration.md) | 設定の階層（defaults × apps）・アプリのオンボーディング・`doctor` 充足度スコア |
-| 10 | [recording](recording.md) | AI オーサリング（Tier 1 `record`）・Agent 抽象・システムアラート対処 |
-| 11 | [codegen](codegen.md) | シナリオ → ネイティブ XCUITest 生成 |
-| 12 | [cli](cli.md) | CLI コマンド・オプションの完全リファレンス |
-| 13 | [sample-app](sample-app.md) | 同梱フィクスチャ `BajutsuSample`（全プリミティブを網羅） |
-| 14 | [ci](ci.md) | CI で動かす — リポ自身の workflow + 再利用可能な `bajutsu-e2e` アクション |
+| 4 | [dsl-grammar](dsl-grammar.md) | シナリオ DSL の **形式文法**（EBNF + 全検証制約）—— [scenarios](scenarios.md) の背後にある規範仕様 |
+| 5 | [selectors](selectors.md) | セレクタモデルと決定的解決（0/1/2+ 件）・アサーション評価の仕組み = 決定性の核 |
+| 6 | [drivers](drivers.md) | Driver 抽象・idb / fake・能力差の吸収・simctl 環境 |
+| 7 | [run-loop](run-loop.md) | Orchestrator（observe → act → verify）・待機・リトライ・実行結果 |
+| 8 | [evidence](evidence.md) | 証跡サブシステム（瞬時 / 区間・capturePolicy・provider・redact） |
+| 9 | [reporting](reporting.md) | レポート（manifest.json / JUnit / HTML）と `runs/` レイアウト |
+| 10 | [configuration](configuration.md) | 設定の階層（defaults × apps）・アプリのオンボーディング・`doctor` 充足度スコア |
+| 11 | [recording](recording.md) | AI オーサリング（Tier 1 `record`）・Agent 抽象・システムアラート対処 |
+| 12 | [codegen](codegen.md) | シナリオ → ネイティブ XCUITest 生成 |
+| 13 | [cli](cli.md) | CLI コマンド・オプションの完全リファレンス |
+| 14 | [sample-app](sample-app.md) | 同梱フィクスチャ `BajutsuSample`（全プリミティブを網羅） |
+| 15 | [ci](ci.md) | CI で動かす — リポ自身の workflow + 再利用可能な `bajutsu-e2e` アクション |
 
 ## クイックスタート
 

@@ -1,0 +1,379 @@
+**English** · [日本語](ja/dsl-grammar.md)
+
+# Scenario DSL grammar (formal reference)
+
+> The **normative grammar** of the scenario DSL — every production, type, default, and
+> validation constraint, derived directly from the pydantic models in `bajutsu/scenario.py`
+> (`extra="forbid"`, so unknown keys are rejected). Where [scenarios](scenarios.md) is the prose
+> *authoring guide* (how to write a scenario, with examples), this page is the *language spec*
+> (what parses and what is rejected). It also covers the templating + macro layer — components,
+> data-driven rows, and `setup` preludes — that surrounds the core grammar.
+
+Related: [scenarios](scenarios.md) (authoring guide) · [selectors](selectors.md) (how selectors/assertions evaluate) · [evidence](evidence.md) · [getting-started](getting-started.md)
+
+---
+
+## 1. Notation
+
+The DSL is a tree of YAML nodes, so the grammar is written over the **abstract structure**
+(mappings / sequences / scalars), not a character stream.
+
+| Form | Meaning |
+|---|---|
+| `X ::= …` | production: `X` is defined as … |
+| `A \| B` | alternation: `A` or `B` |
+| `T?` (on a value) | optional value |
+| `{ k: T }` | a YAML mapping with key `k` of type `T` |
+| `{ k?: T }` | key `k` is optional |
+| `A & B` | a mapping carrying the keys of **both** `A` and `B` |
+| `list(T)` | a YAML sequence whose items are `T` |
+| `map(K, V)` | a YAML mapping from `K` to `V` |
+| `"literal"` | an exact string (a key name or an enum value) |
+| `<Name>` | a non-terminal (defined elsewhere on this page) |
+
+Scalar terminals: `string`, `integer`, `number` (int or float), `boolean` (**only** `true` /
+`false` — see [§3](#3-the-lexical-layer-yaml)), `any` (any YAML value).
+
+Every mapping rejects keys it does not declare (`_Model`, `scenario.py:41`).
+
+---
+
+## 2. Grammar at a glance
+
+First, the **reference graph** — which non-terminal references which. It surfaces the recursion
+and sharing that the EBNF text below makes hard to trace: `Selector`'s `within` self-loop, and
+how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and
+`Mock.match`. (`relaunch` / `setLocation` / `push` carry only scalars, so they reference no
+shared non-terminal and are omitted.)
+
+```mermaid
+graph LR
+  SF["ScenarioFile = list(Scenario)"] --> SC["Scenario"]
+
+  SC -->|preconditions| PRE["Preconditions"]
+  SC -->|steps| ST["Step"]
+  SC -->|expect| AS["Assertion"]
+  SC -->|capturePolicy| CR["CaptureRule"]
+  SC -->|network| NET["Network"]
+  SC -->|mocks| MK["Mock"]
+  SC -->|redact| RD["Redact"]
+
+  ST -->|"tap·doubleTap·longPress·<br/>type·swipe·pinch·rotate"| SEL["Selector"]
+  ST -->|wait| WT["Wait"]
+  ST -->|assert| AS
+  ST -->|use| CMP["Component"]
+  ST -->|capture| CT["CaptureToken"]
+  CMP -->|steps| ST
+
+  SEL -->|within| SEL
+  WT -->|"for · until:gone"| SEL
+  WT -->|until:request| RM["RequestMatch"]
+
+  AS -->|"exists·enabled·<br/>disabled·selected"| SEL
+  AS -->|"value·label"| TM["TextMatch"]
+  AS -->|count| CM["CountMatch"]
+  AS -->|request| RM
+  TM --> SEL
+  CM --> SEL
+
+  CR -->|on| TR["Trigger"]
+  CR -->|capture| CT
+  NET -->|filter| NF["NetworkFilter"]
+  MK -->|match| RM
+  MK -->|respond| MR["MockResponse"]
+```
+
+And the productions in full:
+
+```ebnf
+# ── Files ──────────────────────────────────────────────────────────────
+ScenarioFile  ::= list(<Scenario>)          # top level MUST be a sequence
+ComponentFile ::= <Component>               # a single mapping (loaded separately)
+
+# ── Scenario ───────────────────────────────────────────────────────────
+Scenario ::= {
+  name:            string,                  # required
+  tags?:           list(string),            # default []  — selection (§9)
+  data?:           list(map(string,string)),# inline rows   ┐ XOR
+  dataFile?:       string,                  # CSV path      ┘ (§9)
+  preconditions?:  <Preconditions>,         # default {}
+  steps:           list(<Step>),            # required
+  expect?:         list(<Assertion>),       # default []  — final checks
+  capturePolicy?:  list(<CaptureRule>),     # default []
+  network?:        <Network>,
+  mocks?:          list(<Mock>),            # default []
+  redact?:         <Redact>,
+}
+
+Component ::= { params?: list(string), steps: list(<Step>) }
+
+# ── Preconditions ──────────────────────────────────────────────────────
+Preconditions ::= {
+  erase?:      boolean,                     # default true  — simctl erase first
+  launchArgs?: list(string),                # default []
+  launchEnv?:  map(string,string),          # default {}    — injected as SIMCTL_CHILD_*
+  deeplink?:   string,
+  locale?:     string,
+  setup?:      string,                      # a reusable prelude file (§9)
+}
+
+# ── Step = exactly one Action + optional modifiers ─────────────────────
+Step      ::= <Action> & <StepMods>
+StepMods  ::= { capture?: list(<CaptureToken>), name?: string }
+Action    ::=
+    { tap:         <Selector> }
+  | { doubleTap:   <Selector> }
+  | { longPress:   { sel: <Selector>, duration: number } }
+  | { type:        { text: string, into?: <Selector>, submit?: boolean } }   # submit default false
+  | { swipe:       <Swipe> }
+  | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
+  | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
+  | { wait:        <Wait> }
+  | { assert:      list(<Assertion>) }
+  | { relaunch:    { env?: map(string,string), args?: list(string) } }
+  | { setLocation: { lat: number, lon: number } }
+  | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}
+  | { use:         { component: string, with?: map(string,string) } }   # macro (§9)
+
+Swipe ::=
+    { on: <Selector>, direction: ("up"|"down"|"left"|"right") }   # selector form  ┐ XOR
+  | { from: <Point>,  to: <Point> }                               # coordinate form ┘
+Point ::= [ number, number ]
+
+# ── Selector (≥1 field; provided fields are AND-ed) ────────────────────
+Selector ::= {
+  id?:           string,
+  idMatches?:    string,        # regex over the id
+  label?:        string,
+  labelMatches?: string,        # regex over the label
+  traits?:       list(string),
+  value?:        string,
+  within?:       <Selector>,    # restrict to a container's subtree
+  index?:        integer,       # pick the k-th match when intentionally non-unique
+}
+
+# ── Wait (exactly one of for / until) ──────────────────────────────────
+Wait  ::= { for: <Selector>, timeout: number }
+        | { until: <Until>,   timeout: number }
+Until ::= "screenChanged" | "settled"
+        | { gone: <Selector> }
+        | { request: <RequestMatch> }
+
+# ── Assertions (exactly one kind per item) ─────────────────────────────
+Assertion ::=
+    { exists:   <Selector> & { negate?: boolean } }   # selector inline; negate default false
+  | { value:    <TextMatch> }
+  | { label:    <TextMatch> }
+  | { count:    <CountMatch> }
+  | { enabled:  <Selector> }
+  | { disabled: <Selector> }
+  | { selected: <Selector> }
+  | { request:  <RequestMatch> }
+
+TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
+CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
+
+RequestMatch ::= {              # ≥1 of the match fields below
+  method?:      string,
+  url?:         string,         # exact full URL (the endpoint)
+  urlMatches?:  string,         # regex/substring over the URL (query strings live here)
+  path?:        string,         # exact path (query ignored)
+  pathMatches?: string,         # regex over the path
+  status?:      integer,
+  bodyMatches?: string,         # regex/substring over the request body
+  count?:       integer,        # assertion → exact count; wait → lower bound
+}
+
+# ── Evidence capture ───────────────────────────────────────────────────
+CaptureToken ::= <Kind> ( "." <Modifier> )?
+Kind     ::= "screenshot" | "elements" | "actionLog" | "deviceLog" | "network" | "video" | "appTrace"
+Modifier ::= "before" | "after" | "around" | "onError"
+
+CaptureRule ::= { on: <Trigger>, capture: list(<CaptureToken>) }
+Trigger ::=                                    # exactly one of action / event / result
+    { action: string, idMatches?: string }     # idMatches only alongside action
+  | { event: "screenChanged" }
+  | { result: "error" }
+
+# ── Network / mocks / redact ───────────────────────────────────────────
+Network ::= { filter?: { domains?: list(string) } }
+Redact  ::= { labels?: list(string), headers?: list(string), fields?: list(string) }
+Mock    ::= { match: <RequestMatch>, respond?: <MockResponse> }   # match: request-side fields only
+MockResponse ::= { status?: integer, headers?: map(string,string), body?: string, delayMs?: number }
+```
+
+> **Grammar vs. wiring.** This page specifies what **parses and validates**. How completely each
+> action is actuated by a given backend, and which evidence kinds are acquired where, is a separate
+> question tracked in [drivers](drivers.md) and the
+> [architecture status table](architecture.md#implementation-status).
+
+---
+
+## 3. The lexical layer (YAML)
+
+A scenario file is YAML, parsed by Bajutsu's loader (`_yaml.py`), with **one deliberate
+deviation** from YAML 1.1:
+
+- **Only `true` / `false` are booleans.** `on` / `off` / `yes` / `no` stay **strings**. This keeps
+  the `capturePolicy` trigger key `on:` a key (not the boolean `True`) and keeps id/label values
+  like `on` intact. ([scenarios](scenarios.md#yaml-caveat))
+
+Scalar mapping: YAML strings → `string`, YAML ints → `integer`, ints or floats → `number`, and a
+`<Point>` is a two-element flow sequence `[x, y]`.
+
+---
+
+## 4. Cardinality & mutual-exclusion constraints
+
+Beyond shapes, the models enforce these rules (each is a `model_validator`; a violation is a load
+error). This table is the **authoritative list of "exactly one / at least one / not both"**.
+
+| Construct | Rule | Source |
+|---|---|---|
+| `Selector` | **≥ 1** field present | `scenario.py:67` |
+| `Step` | **exactly one** action key (`tap` … `use`); `capture`/`name` are modifiers, not actions | `scenario.py:321` |
+| `Swipe` | **exactly one** form: `{on,direction}` **or** `{from,to}` — never mixed, never half-specified | `scenario.py:129` |
+| `Pinch` | `scale` **> 0** | `scenario.py:103` |
+| `Wait` | **exactly one** of `for` / `until` | `scenario.py:190` |
+| `Assertion` | **exactly one** kind (`exists` … `request`) | `scenario.py:277` |
+| `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario.py:243` |
+| `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario.py:258` |
+| `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` (`count` is not a match field) | `scenario.py:160` |
+| `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario.py:338` |
+| `Scenario` | `data` and `dataFile` **not both** | `scenario.py:414` |
+| every mapping | **no unknown keys** (`extra="forbid"`) | `scenario.py:41` |
+
+`exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an
+optional `negate: true` checks *absence*. The loader rewrites that into `{ sel, negate }` before
+validation (`Exists._inline`, `scenario.py:225`).
+
+---
+
+## 5. Defaults
+
+Omitted optional keys take these values (so a minimal scenario is just `name` + `steps`).
+
+| Field | Default |
+|---|---|
+| `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
+| `Scenario.preconditions` | `{}` (i.e. `erase: true`) |
+| `Preconditions.erase` | `true` |
+| `Preconditions.launchArgs` | `[]` |
+| `Preconditions.launchEnv` | `{}` |
+| `TypeText.submit` | `false` |
+| `Exists.negate` | `false` |
+| `MockResponse.status` | `200` |
+| `MockResponse.headers` | `{}` |
+| `Component.params` | `[]` |
+
+A complete minimal scenario:
+
+```yaml
+- name: opens home
+  steps:
+    - tap:  { id: onboarding.start }
+    - wait: { for: { id: home.title }, timeout: 5 }
+  expect:
+    - exists: { id: home.title }
+```
+
+---
+
+## 6. The templating + macro layer
+
+Around the core grammar sits a small substitution + expansion layer. It runs at load time,
+**before** the deterministic run, so the runner only ever sees plain, fully-expanded scenarios.
+
+### 6.1 `${namespace.key}` interpolation
+
+Implementation: `bajutsu/interp.py`. A token is `${namespace.key}` (whitespace inside the braces is
+trimmed). Substitution is **type-preserving at the edges**:
+
+- A string that is **exactly one token** (`"${row.qty}"`) becomes the **raw bound value** (e.g. a
+  number stays a number).
+- A token **embedded** in a larger string is spliced in as text (`"item-${row.id}"`).
+- A token whose namespace isn't being substituted **right now is left intact**, so each layer fills
+  only its own namespace.
+
+Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), and `vars.*` / `secrets.*`
+(resolved later by the run loop).
+
+### 6.2 Components (`use` → reusable steps)
+
+A `<Component>` is a separate file (`ComponentFile`): a list of `params` and a list of `steps` that
+reference them as `${params.<name>}`. A `use` step invokes it, binding the params via `with`:
+
+```yaml
+# login.component.yaml
+params: [email, password]
+steps:
+  - type: { text: "${params.email}",    into: { id: auth.email } }
+  - type: { text: "${params.password}", into: { id: auth.password } }
+  - tap:  { id: auth.submit }
+```
+
+```yaml
+# in a scenario
+steps:
+  - use: { component: login.component.yaml, with: { email: "a@b.com", password: "pw" } }
+```
+
+`expand_components` (`scenario.py:455`) **replaces** each `use` with the component's substituted
+steps, recursively (a component may itself `use` another, depth ≤ 25). It raises on a missing param,
+an unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle.
+Because expansion is pure and compile-time, **no `use` survives into the run** — determinism is
+unaffected.
+
+### 6.3 Data-driven scenarios (`data` / `dataFile`)
+
+A scenario with `data` (inline rows) or `dataFile` (a CSV path; mutually exclusive) is expanded into
+**one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:518`). Each
+derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the original preconditions**
+(so `erase` still defaults true — every row runs in its own clean environment).
+
+```yaml
+- name: search returns a result
+  data:
+    - { q: apple,  expect: "1 result" }
+    - { q: banana, expect: "2 results" }
+  steps:
+    - type: { text: "${row.q}", into: { id: home.search }, submit: true }
+  expect:
+    - label: { sel: { id: home.status }, equals: "${row.expect}" }
+```
+
+### 6.4 `setup` preludes and tag selection
+
+- **`setup`** (a `Preconditions` key, or the app/config default): names a reusable scenario file
+  whose steps are **prepended** to this scenario's own (`apply_setups`, `scenario.py:587`) — a shared
+  login / navigation flow written once.
+- **`tags`** + the `--tag` / `--exclude` CLI flags filter which scenarios run; `exclude` wins over
+  `include` (`select_scenarios`, `scenario.py:541`).
+
+### 6.5 Expansion order
+
+The load pipeline (`cli.py`) applies these deterministically, in order:
+
+```
+load_scenarios        # parse + validate against this grammar
+  → select_scenarios  # --tag / --exclude
+  → apply_setups      # prepend the setup prelude (so a prelude may itself `use` components)
+  → expand_components  # `use` → component steps  (${params.*})
+  → expand_data        # one scenario per row     (${row.*})
+  → run               # the deterministic loop sees only expanded scenarios
+```
+
+---
+
+## 7. Validation & round-trip
+
+- `load_scenarios(text) -> list[Scenario]` validates against everything above; the top level must be
+  a sequence, and any rule in [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load
+  error (`scenario.py:432`).
+- `dump_scenarios(scenarios) -> str` serializes back to YAML, pruning `None` / empty list / empty
+  dict for readability and emitting alias keys (`idMatches`, `launchEnv`, …). The output **reloads
+  cleanly** — this is the round-trip `record` relies on (`scenario.py:582`).
+
+For the *semantics* behind the shapes — how a selector resolves to 0/1/2+ elements, how each
+assertion compares, how waits time out — continue to [selectors](selectors.md) and
+[run-loop](run-loop.md). To start writing scenarios by example, see [scenarios](scenarios.md).

@@ -38,22 +38,27 @@ Which module owns each box, and how they depend on each other, is in [architectu
 
 ## Pages (suggested reading order)
 
+> **New here? Start with the [Getting started tutorial](getting-started.md)** — a hands-on,
+> zero-to-green walkthrough (install → unit tests → scenario → device run → report). Then come
+> back to the reference pages below.
+
 | # | Page | What it covers |
 |---|---|---|
 | 1 | [concepts](concepts.md) | Design philosophy & core principles (determinism, two tiers, stability ladder, the AI boundary) |
 | 2 | [architecture](architecture.md) | Module layout, dependencies, and the **implementation status** (implemented / unwired) |
 | 3 | [scenarios](scenarios.md) | Scenario YAML grammar (steps / waits / assertions / capture tokens) = the authoring reference |
-| 4 | [selectors](selectors.md) | Selector model and deterministic resolution (0/1/2+ matches); how assertions evaluate = the determinism core |
-| 5 | [drivers](drivers.md) | Driver abstraction · idb / fake · capability differences · the simctl environment |
-| 6 | [run-loop](run-loop.md) | Orchestrator (observe → act → verify) · waits · retries · run results |
-| 7 | [evidence](evidence.md) | Evidence subsystem (instant / interval · capturePolicy · provider · redact) |
-| 8 | [reporting](reporting.md) | Reports (manifest.json / JUnit / HTML) and the `runs/` layout |
-| 9 | [configuration](configuration.md) | Config layering (defaults × apps) · onboarding a new app · the `doctor` convention score |
-| 10 | [recording](recording.md) | AI authoring (Tier 1 `record`) · the Agent abstraction · system-alert handling |
-| 11 | [codegen](codegen.md) | Scenario → native XCUITest generation |
-| 12 | [cli](cli.md) | Full reference for CLI commands and options |
-| 13 | [sample-app](sample-app.md) | The bundled `BajutsuSample` fixture (exercises every primitive) |
-| 14 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
+| 4 | [dsl-grammar](dsl-grammar.md) | The **formal grammar** of the scenario DSL (EBNF + every validation constraint) — the normative spec behind [scenarios](scenarios.md) |
+| 5 | [selectors](selectors.md) | Selector model and deterministic resolution (0/1/2+ matches); how assertions evaluate = the determinism core |
+| 6 | [drivers](drivers.md) | Driver abstraction · idb / fake · capability differences · the simctl environment |
+| 7 | [run-loop](run-loop.md) | Orchestrator (observe → act → verify) · waits · retries · run results |
+| 8 | [evidence](evidence.md) | Evidence subsystem (instant / interval · capturePolicy · provider · redact) |
+| 9 | [reporting](reporting.md) | Reports (manifest.json / JUnit / HTML) and the `runs/` layout |
+| 10 | [configuration](configuration.md) | Config layering (defaults × apps) · onboarding a new app · the `doctor` convention score |
+| 11 | [recording](recording.md) | AI authoring (Tier 1 `record`) · the Agent abstraction · system-alert handling |
+| 12 | [codegen](codegen.md) | Scenario → native XCUITest generation |
+| 13 | [cli](cli.md) | Full reference for CLI commands and options |
+| 14 | [sample-app](sample-app.md) | The bundled `BajutsuSample` fixture (exercises every primitive) |
+| 15 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
 
 ## Quick start
 
