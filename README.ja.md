@@ -120,7 +120,7 @@ flowchart TB
 - **simctl コマンド層**、**idb 出力パーサ**、**doctor** 規約スコア
 - **AI オーサリングループ**（`record`）: Agent 抽象 + Claude 実装 + システムアラートガード
 - **XCUITest codegen**（構造マッピング・テスト時 AI 不要）
-- 配線済み CLI: `run` / `doctor` / `record` / `codegen`
+- 配線済み CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage`
 
 実装済みだが実機未検証（Xcode + Simulator が必要）:
 
@@ -128,7 +128,7 @@ flowchart TB
   JSON スキーマは **想定** で、インストール済みツールに対する確認が要る。simctl の launch 手順も
   best-effort。
 
-未配線: 外部 `mockServer` コマンド（シナリオ `mocks` で代替済み）、自己修復トリアージ（M4）。
+未配線: 外部 `mockServer` コマンド（シナリオ `mocks` で代替済み）。
 完全な「実装済み vs 未配線」表は [`docs/ja/architecture.md`](docs/ja/architecture.md)。
 
 ## 要件
@@ -214,10 +214,16 @@ bajutsu/
   操作する）。*（ロジックは実装・テスト済み。「idb で同一シナリオが通る」は実機での確認が必要。）*
 - **M2 — ほぼ完了。** AI ループ（`record`）+ `capturePolicy` 証跡ルール + `video` / `deviceLog` +
   レポーター（JUnit/HTML）。*（完了。冪等な正規化 / 来歴コメントはまだ軽い。）*
-- **M3 — CI を残してほぼ完了。** XCUITest codegen ✅、アプリトレース（`appTrace` / os_signpost）✅、
+- **M3 — 完了。** XCUITest codegen ✅、アプリトレース（`appTrace` / os_signpost）✅、
   証跡への redaction 適用 ✅、ネットワーク**観測**（アプリ内 collector + `request` アサーション）✅、
   **決定的モック**（シナリオ `mocks` → オフラインのプロトコル内スタブ）✅ — いずれも実機検証済み。
-  残り: CI 統合。
-- **M4 — 着手（骨組み）。** 自己修復トリアージ: `bajutsu triage` が失敗 run のコンテキストを組み立て
-  診断（原因＋修正案。助言のみ・人間レビュー前提）。既定はルールベース（id リネームの「もしかして」、
-  timing / assertion 分類）。同じ `TriageAgent` プロトコルで ClaudeAgent 版に差し替え予定（次）。
+  **CI** ✅: `ci.yml` が Linux で ruff + mypy + pytest（py3.11 / 3.13）、`e2e.yml` が macOS Simulator で
+  idb smoke と codegen→XCUITest 経路（`make ui-test`）。
+- **M4 — 実装済み。** 自己修復トリアージ: `bajutsu triage` が失敗 run のコンテキストを組み立て
+  診断（原因＋修正案。**助言のみ**・合否は判定しない）。同じ `TriageAgent` プロトコルの裏で、既定の
+  ルールベース `HeuristicTriageAgent`（id リネームの「もしかして」、timing / assertion 分類）か
+  `triage --ai`（失敗**スクショ**も読む Claude 版）が診断。エージェントは**構造化 fix**（`renameId` /
+  `addIndex` 曖昧一致の一意化 / `raiseTimeout`）を提案でき、`--apply <file>` が dry-run diff を表示・
+  `--write` が source に適用・`--rerun` が patched シナリオを再実行して緑を確認。境界は保たれる:
+  fix は人間が diff をレビューして opt-in した時のみ適用。実機で rename・曖昧一致の閉ループ（診断→適用→
+  再実行→緑）、timing は実 API で `raiseTimeout` 提案を実証済み。

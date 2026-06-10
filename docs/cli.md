@@ -83,14 +83,25 @@ never judges pass/fail (the AI boundary). Assembles the failure context (the fai
 reason, failed expectations, the element tree nearest the failure, the scenario) and runs a
 `TriageAgent`. The default is rule-based (`HeuristicTriageAgent`, no API key): it categorizes the
 failure (selector / timing / assertion) and, when a target id is absent but a similar id is on
-screen, suggests "did you mean …?" (the classic renamed-id self-heal). An AI agent can be dropped
-in behind the same protocol.
+screen, suggests "did you mean …?" (the classic renamed-id self-heal). `--ai` swaps in a
+Claude-backed agent (needs `ANTHROPIC_API_KEY`) that reasons over the same context plus the
+failure **screenshot** for richer diagnoses.
+
+An agent may also return a **structured fix** the tool can apply — `renameId`, `addIndex`
+(disambiguate an ambiguous match), or `raiseTimeout`. `--apply <scenario-file>` prints it as a
+**dry-run diff**; `--write` applies it to the source; `--rerun --app <name>` then re-runs the
+patched scenario (`--no-erase`) and reports whether it now passes. The boundary holds: a fix
+lands only when you opt in after reviewing the diff, and a fragment that no longer matches the
+source is a safe no-op.
 
 ```bash
-bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs]
+bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs] [--ai]
+bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
+               [--rerun --app <name> [--backend idb] [--udid <udid>]]
 ```
 
 - Defaults to the latest run under `runs/`. **Exits 0** when the run has no failed scenario.
+- `--rerun` requires `--write` (nothing to verify otherwise) and `--app`.
 
 ## `record`
 

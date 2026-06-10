@@ -87,8 +87,8 @@ Details in [cli](cli.md).
 - **Code is the source of truth.** Statements map to the current implementation (`bajutsu/`),
   with `file.py:line` pointers at key spots.
 - **Design vs. implementation gaps are explicit.** Features described in [`DESIGN.md`](../DESIGN.md)
-  but not yet wired up (the external `mockServer` command — superseded by scenario `mocks` — and
-  M4 self-healing triage) are flagged as such on each page and in the
+  but not yet wired up (the external `mockServer` command — superseded by scenario `mocks`) are
+  flagged as such on each page and in the
   [architecture status table](architecture.md#implementation-status).
 - **Languages.** English is primary; a Japanese translation lives under [`ja/`](ja/README.md).
   Code comments / docstrings are in English.

@@ -128,7 +128,7 @@ Implemented and covered by tests (~150 unit tests, run without a Simulator):
 - **simctl command layer**, **idb output parsers**, and the **doctor** convention score
 - **AI authoring loop** (`record`): Agent abstraction + Claude implementation + system-alert guard
 - **XCUITest codegen** (structural mapping; no AI at test time)
-- The wired CLI: `run` / `doctor` / `record` / `codegen`
+- The wired CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage`
 
 Implemented but not yet validated on a real device (needs Xcode + a Simulator):
 
@@ -136,8 +136,7 @@ Implemented but not yet validated on a real device (needs Xcode + a Simulator):
   but the external CLI surface and JSON schema are **assumed** and must be confirmed
   against the installed tool; the simctl launch sequencing is best-effort.
 
-Not yet wired: the external `mockServer` command (superseded by scenario `mocks`), and
-self-healing triage (M4). See
+Not yet wired: the external `mockServer` command (superseded by scenario `mocks`). See
 [`docs/architecture.md`](docs/architecture.md) for the full implemented-vs-unwired table.
 
 ## Requirements
@@ -231,9 +230,14 @@ bajutsu/
   all validated on-device. **CI** ✅: `ci.yml` runs ruff + mypy + pytest on Linux (py3.11 /
   3.13); `e2e.yml` runs the idb smoke scenario *and* the codegen→XCUITest path
   (`make ui-test`) on a macOS Simulator.
-- **M4 — in progress.** Self-healing triage: `bajutsu triage` assembles a failed run's
-  context and diagnoses it (root cause + suggested fixes; advisory, human review required). The
-  default agent is rule-based (renamed-id "did you mean", timing / assertion categories); a
-  **ClaudeAgent-backed triage** (`triage --ai`) drops in behind the same `TriageAgent` protocol
-  for richer, evidence-grounded diagnoses (validated end-to-end against the real API). Next:
-  optional screenshot vision in the triage context, and applying a suggested fix as an edit.
+- **M4 — implemented.** Self-healing triage: `bajutsu triage` assembles a failed run's context
+  and diagnoses it (root cause + suggested fixes; **advisory** — never the pass/fail judge).
+  Diagnosis runs through one of two agents behind the same `TriageAgent` protocol: the default
+  rule-based `HeuristicTriageAgent` (renamed-id "did you mean", timing / assertion categories) or
+  `triage --ai` (a Claude-backed agent that also reads the failure **screenshot**). An agent can
+  propose a **structured fix** — `renameId`, `addIndex` (disambiguate an ambiguous match), or
+  `raiseTimeout` — which `--apply <file>` shows as a dry-run diff and `--write` applies to the
+  scenario source; `--rerun` then re-runs the patched scenario to confirm it passes. The boundary
+  holds: a fix is only applied when the human opts in after reviewing the diff. Validated on a
+  real Simulator end-to-end: a renamed-id and an ambiguous-match failure each diagnose → apply →
+  re-run to green; a timing failure proposes a `raiseTimeout` against the real API.

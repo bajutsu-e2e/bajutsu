@@ -159,9 +159,11 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 - The `simctl` command layer · the idb output parser · the `doctor` score + runnability gate
   (`preflight.py`: required CLIs + a booted Simulator)
 - The `trace` command (`trace.py`): a text timeline over a saved run (steps + network + appTrace)
-- M4 triage skeleton (`triage.py`): assemble a failed run's context + a `TriageAgent` diagnosis;
-  default `HeuristicTriageAgent` (rule-based, "did you mean" id self-heal). AI agent: pending
-- The CLI `run` / `doctor` / `codegen`, plus `record` (AI authoring) + the alert guard
+- M4 self-healing triage (`triage.py` + `claude_triage.py`): assemble a failed run's context +
+  a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
+  screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
+  `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
+- The CLI `run` / `doctor` / `codegen` / `trace` / `triage`, plus `record` (AI authoring) + the alert guard
 - XCUITest code generation
 
 ### Implemented but not validated on a real device (needs external CLIs)

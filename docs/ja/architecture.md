@@ -151,9 +151,11 @@ assertions.py  evidence.py ── intervals.py
 - config 解決（defaults × apps、redact マージ）と actuator 選択
 - `simctl` コマンド層・idb の出力パーサ・`doctor` スコア + 実行可能ゲート（`preflight.py`: 必須 CLI + 起動済みシミュレータ）
 - `trace` コマンド（`trace.py`）: 保存済み run のテキストタイムライン（steps + network + appTrace）
-- M4 トリアージ骨組み（`triage.py`）: 失敗 run のコンテキスト組み立て + `TriageAgent` 診断。既定は
-  `HeuristicTriageAgent`（ルールベース、id リネームの「もしかして」自己修復）。AI エージェントは予定
-- CLI `run` / `doctor` / `codegen`、および `record`（AI オーサリング）+ alert guard
+- M4 自己修復トリアージ（`triage.py` + `claude_triage.py`）: 失敗 run のコンテキスト組み立て +
+  `TriageAgent` 診断（ルールベース `HeuristicTriageAgent`、または `--ai` の Claude・失敗スクショ込み）。
+  エージェントは構造化 fix（`renameId` / `addIndex` / `raiseTimeout`）を提案でき、`--apply`/`--write` で
+  シナリオ source に適用（diff プレビュー・opt-in）、`--rerun` で再実行検証
+- CLI `run` / `doctor` / `codegen` / `trace` / `triage`、および `record`（AI オーサリング）+ alert guard
 - XCUITest コード生成
 
 ### 実機未検証（実装はあるが外部 CLI に対する検証が必要）

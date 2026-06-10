@@ -76,13 +76,22 @@ run 内の最初の**失敗**シナリオを診断し、最小の修正案を出
 （AI 境界）。失敗コンテキスト（落ちたステップ＋理由、失敗 expectation、失敗時の要素ツリー、シナリオ）
 を組み立て `TriageAgent` に渡す。既定はルールベース（`HeuristicTriageAgent`、API キー不要）: 失敗を
 分類（selector / timing / assertion）し、対象 id が画面に無く似た id があれば「もしかして…?」を提案
-（id リネームの自己修復）。同じプロトコルで AI エージェントに差し替え可能。
+（id リネームの自己修復）。`--ai` は同じコンテキストに失敗**スクショ**を加えて推論する Claude 版に差し替え
+（`ANTHROPIC_API_KEY` が必要）。
+
+エージェントは適用可能な**構造化 fix**（`renameId` / `addIndex` 曖昧一致の一意化 / `raiseTimeout`）も
+返せる。`--apply <scenario-file>` が **dry-run diff** を表示、`--write` が source に適用、`--rerun --app
+<name>` が patched シナリオを再実行（`--no-erase`）して緑になったか報告する。境界は保たれる: fix は人間が
+diff をレビューして opt-in した時のみ適用、断片が source に一致しなければ安全に no-op。
 
 ```bash
-bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs]
+bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs] [--ai]
+bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
+               [--rerun --app <name> [--backend idb] [--udid <udid>]]
 ```
 
 - 既定は `runs/` 直下の最新 run。失敗シナリオが無ければ**終了 0**。
+- `--rerun` は `--write` と `--app` が必要。
 
 ## `record`
 
