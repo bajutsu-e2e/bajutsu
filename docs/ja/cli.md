@@ -32,13 +32,13 @@ bajutsu run <scenario.yaml> --app <name> [options]
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
-| `--erase / --no-erase` | `--erase` | 各テスト前に `simctl erase`。`--no-erase` で全シナリオの `preconditions.erase` を false に |
+| `--erase / --no-erase` | シナリオ準拠 | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの指定に従う。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
 | `--dismiss-alerts` | off | システムアラートを視覚で消す保険（要 API キー・[recording](recording.md#システムアラートの自動対処)） |
 | `--alert-instruction` | "" | dismiss の代わりに押すボタンの指示 |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
-| `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（アプリに BajutsuKit が必要・`--workers>1` は `--no-network` 必須） |
-| `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` と `--no-network` が必要（プール数で上限） |
+| `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（アプリに BajutsuKit が必要） |
+| `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` が必要（プール数で上限）。各デバイスが自前のネットワークコレクタ・インターバル録画・デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能する |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書く（[evidence](evidence.md#sink証跡の出力先)）。

@@ -83,7 +83,8 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 | Key | Type | Default | Description | Wired |
 |---|---|---|---|---|
-| `erase` | bool | `true` | `simctl erase` before each test (clean environment) | ✅ |
+| `erase` | bool | `false` | Wipe the whole simulator (`simctl erase` — apps/data/settings) before the test. Off by default; `reinstall` keeps the app fresh without a full wipe, so set `true` only when a test needs a pristine device | ✅ |
+| `reinstall` | `clean` \| `overwrite` | `clean` | How the app is reinstalled before each run when the app config sets `appPath`: `clean` = uninstall then install (fresh app + data); `overwrite` = install over the existing app (keeps its data) | ✅ |
 | `launchArgs` | list[str] | `[]` | Launch arguments (appended to config's `launchArgs`) | ✅ |
 | `launchEnv` | dict | `{}` | Launch env (injected via `SIMCTL_CHILD_*`; merged onto config's `launchEnv`) | ✅ |
 | `deeplink` | str | none | Opened after launch via `simctl openurl` | ✅ |
@@ -349,7 +350,7 @@ steps:
 A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is
 expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:537`).
 Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions (so
-`erase` still defaults true — every row runs in its own clean environment).
+every row reinstalls the app fresh, and inherits the template's `erase` / `reinstall`).
 
 ```yaml
 - name: search returns a result

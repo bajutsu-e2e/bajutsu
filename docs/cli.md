@@ -34,13 +34,13 @@ bajutsu run <scenario.yaml> --app <name> [options]
 | `--tag` | "" | comma list; run only scenarios carrying any of these tags |
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
-| `--erase / --no-erase` | `--erase` | `simctl erase` before each test; `--no-erase` sets every scenario's `preconditions.erase` to false |
+| `--erase / --no-erase` | per-scenario | override every scenario's `preconditions.erase` (wipe the simulator first); omit to let each scenario decide. The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
 | `--dismiss-alerts` | off | the safety net that visually dismisses system alerts (needs an API key; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--alert-instruction` | "" | which button to press instead of dismissing |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
-| `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app; `--workers>1` requires `--no-network`) |
-| `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` and `--no-network` (capped to the pool size) |
+| `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app) |
+| `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` (capped to the pool size). Each device carries its own network collector, interval recordings, and device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
