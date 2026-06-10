@@ -59,6 +59,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 13 | [cli](cli.md) | Full reference for CLI commands and options |
 | 14 | [sample-app](sample-app.md) | The bundled `BajutsuSample` fixture (exercises every primitive) |
 | 15 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
+| 16 | [cloud-hosting](cloud-hosting.md) | **Forward-looking** — hosting the web UI as a shared, public service (server/DB/storage/deploy selection) |
 
 ## Quick start
 
