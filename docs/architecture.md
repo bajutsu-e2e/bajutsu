@@ -9,6 +9,61 @@ Related: [concepts](concepts.md) · the per-feature pages (linked below)
 
 ---
 
+## Overview (data flow)
+
+The end-to-end shape: a scenario (authored by AI or by hand) is the shared hub, `run` replays it
+deterministically with no AI in the gate, and `codegen` / `triage` branch off the same artifact.
+Tier 1 (AI — yellow) only ever *authors and investigates*; Tier 2 (deterministic — blue) decides
+pass/fail from machine assertions alone.
+
+```mermaid
+flowchart TB
+    goal(["🗣️ Natural-language goal"])
+    hand(["✍️ Hand-edited"])
+    scenario[["📄 Scenario (YAML)"]]
+
+    subgraph tier1["Tier 1 · AI — author and failure investigator"]
+        record["record<br/>explore + record"]
+        agent["Claude Agent<br/>+ system-alert guard"]
+        record <--> agent
+    end
+
+    subgraph tier2["Tier 2 · Deterministic run — no AI in the CI gate"]
+        orch["Orchestrator<br/>observe → act → verify"]
+        driver["Abstract Driver API<br/>tap · type · swipe · wait · query · screenshot"]
+        idb["idb backend"]
+        sim["📱 iOS Simulator"]
+        env["Environment Manager (simctl)"]
+        orch --> driver --> idb --> sim
+        env -.->|boot / install / launch| sim
+    end
+
+    verdict{"Pass / Fail<br/>machine assertions only"}
+    report["📊 Reporter<br/>manifest.json · JUnit · HTML"]
+    codegen["codegen<br/>→ XCUITest (Swift)"]
+    triage["triage (M4)<br/>root cause + fixes · advisory"]
+
+    goal --> record
+    record ==> scenario
+    hand ==> scenario
+    scenario ==> orch
+    scenario -.-> codegen
+    orch --> verdict
+    orch --> report
+    verdict -->|fail| triage
+    triage -.->|suggest edits| scenario
+
+    classDef ai fill:#fde68a,stroke:#d97706,color:#1f2937;
+    classDef det fill:#bfdbfe,stroke:#2563eb,color:#1f2937;
+    class tier1 ai
+    class tier2 det
+```
+
+The [dependency-layer view](#dependencies-layers) below is the same system seen as module layers
+rather than data flow.
+
+---
+
 ## Module list and roles
 
 The `bajutsu/` package (Python 3.11+, pydantic v2 / typer / anthropic / pyyaml).
