@@ -21,7 +21,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 ## `run`
 
-Runs a scenario **deterministically** (AI-independent unless `--dismiss-alerts`).
+Runs a scenario **deterministically**; pass/fail is machine-only. The sole AI is the **alert guard** (on by default per scenario), which fires only to clear an OS prompt that blocked a step — see [`dismissAlerts`](scenarios.md#dismissalerts-the-system-alert-guard).
 
 ```bash
 bajutsu run <scenario.yaml> --app <name> [options]
@@ -35,8 +35,8 @@ bajutsu run <scenario.yaml> --app <name> [options]
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | per-scenario | override every scenario's `preconditions.erase` (wipe the simulator first); omit to let each scenario decide. The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--dismiss-alerts` | off | the safety net that visually dismisses system alerts (needs an API key; [recording](recording.md#dismissing-system-alerts-automatically)) |
-| `--alert-instruction` | "" | which button to press instead of dismissing |
+| `--dismiss-alerts / --no-dismiss-alerts` | per-scenario (on) | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts idb can't see; omit to let each scenario decide (needs an API key; [recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--alert-instruction` | "" | default button instruction (a scenario's own `dismissAlerts.instruction` wins) |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
 | `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app) |
@@ -156,7 +156,7 @@ report's relative asset links resolve. Stdlib only (no web framework); binds `12
 bajutsu serve [--port 8765] [--scenarios sample/scenarios] [--config bajutsu.config.yaml] [--runs runs]
 ```
 
-- Pick a scenario file + app, set backend / udid / `no-erase` / `dismiss-alerts`, hit **Run**;
+- Pick a scenario file + app, set backend / udid / erase / `disable alert-dismiss`, hit **Run**;
   the output streams live and the `report.html` embeds on completion.
 - A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
@@ -171,7 +171,7 @@ bajutsu serve [--port 8765] [--scenarios sample/scenarios] [--config bajutsu.con
 - **Never overrides an existing environment variable** (a real value always wins). `.env` is a
   fallback.
 - The path defaults to `.env`, changeable via `BAJUTSU_DOTENV`. It is `.gitignore`d.
-- Main use: `ANTHROPIC_API_KEY` (for `record` and `--dismiss-alerts`).
+- Main use: `ANTHROPIC_API_KEY` (for `record` and the alert guard, which runs by default).
 
 ```bash
 # .env

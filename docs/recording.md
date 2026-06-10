@@ -114,14 +114,17 @@ class SystemAlertGuard:
 
 ### Usage in run / record
 
-- `run --dismiss-alerts`: passes `SystemAlertGuard(...).dismiss` as `on_blocked`. On step failure it
-  clears the prompt and **retries that step exactly once**
-  ([run-loop](run-loop.md#run_scenario-running-one-scenario)). `--alert-instruction "..."` specifies
-  which button to press.
-- `record --dismiss-alerts`: clears prompts that interrupt authoring so the agent always sees a clean
-  screen. **A dismissal is an environment operation, not a recorded step** (replay handles it with
-  `run --dismiss-alerts`).
+- `run`: the guard is **on by default** per scenario — the CLI passes a `SystemAlertGuard(...).dismiss`
+  as `on_blocked` for each scenario whose [`dismissAlerts`](scenarios.md#dismissalerts-the-system-alert-guard)
+  is enabled. On step failure it clears the prompt and **retries that step exactly once**
+  ([run-loop](run-loop.md#run_scenario-running-one-scenario)). A scenario sets `dismissAlerts: false`
+  to opt out or `{ instruction: "tap Allow" }` to name a button; `--dismiss-alerts`/`--no-dismiss-alerts`
+  overrides every scenario and `--alert-instruction "..."` sets a default instruction.
+- `record --dismiss-alerts`: opt-in (authoring has no scenario yet). Clears prompts that interrupt
+  authoring so the agent always sees a clean screen. **A dismissal is an environment operation, not a
+  recorded step** (replay handles it via each scenario's `dismissAlerts`).
 
-> Both use a vision model, so they need `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env)).
-> Unless you pass `--dismiss-alerts`, `run` is fully AI-independent
+> The guard uses a vision model, so it needs `ANTHROPIC_API_KEY` ([.env in cli](cli.md#environment-variables-env));
+> without one it is **best-effort** and simply no-ops, never failing a run. The guard fires only to clear
+> a blocking prompt — pass/fail stays machine-only and AI-independent
 > ([concepts](concepts.md#1-ai-is-the-author-and-the-investigator-never-the-judge)).

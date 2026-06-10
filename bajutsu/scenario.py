@@ -403,6 +403,29 @@ class Mock(_Model):
     respond: MockResponse = Field(default_factory=MockResponse)
 
 
+class DismissAlerts(_Model):
+    """Per-scenario control of the system-alert guard — the vision-based dismissal of OS
+    prompts (e.g. iOS "Save Password?", a permission request) that idb cannot see or tap.
+
+    The guard is ON by default and fires only when a step (or `expect`) is blocked: it
+    screenshots, asks the locator where to tap, taps the prompt away, and retries once.
+    Two on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
+        dismissAlerts: false                  — disable the guard for this scenario
+        dismissAlerts: { instruction: "..." } — keep it on, but tap the named button
+                                                 (e.g. "tap Allow" to grant a prompt)
+    """
+
+    enabled: bool = True
+    # When set, the locator taps the button this names instead of the default dismissive one
+    # (e.g. "tap Allow"); a per-scenario instruction wins over the CLI `--alert-instruction`.
+    instruction: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_bool(cls, data: Any) -> Any:
+        return {"enabled": data} if isinstance(data, bool) else data
+
+
 class Scenario(_Model):
     """One scenario."""
 
@@ -418,6 +441,9 @@ class Scenario(_Model):
     network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)
     redact: Redact | None = None
+    # The alert guard runs on by default; unset means "on, dismiss the prompt" (see
+    # DismissAlerts). Kept None when unset so a dumped scenario stays clean.
+    dismiss_alerts: DismissAlerts | None = Field(default=None, alias="dismissAlerts")
 
     @model_validator(mode="after")
     def _one_data_source(self) -> Self:

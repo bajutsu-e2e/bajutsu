@@ -80,7 +80,10 @@ class SystemAlertGuard:
         png = _screenshot_png(driver)
         if png is None:
             return None
-        decision = self._locator.locate(png, self._instruction)
+        try:
+            decision = self._locator.locate(png, self._instruction)
+        except Exception:  # noqa: BLE001 — locator unavailable (no API key / transient error)
+            return None  # best-effort: the guard is on by default, so it must never crash a run
         if not decision.present:
             return None
         width, height = _screen_points(driver)

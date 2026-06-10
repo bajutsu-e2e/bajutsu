@@ -69,6 +69,20 @@ def test_guard_passes_instruction_to_locator() -> None:
     assert locator.seen[0][1] == "tap Save"
 
 
+class _RaisingLocator:
+    """A locator that fails (e.g. no API key / a transient API error)."""
+
+    def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision:
+        raise RuntimeError("no ANTHROPIC_API_KEY")
+
+
+def test_guard_is_best_effort_when_locator_raises() -> None:
+    # The guard is on by default, so a failing locator must no-op (return None), never crash a run.
+    driver = ShotDriver([_window()])
+    assert SystemAlertGuard(_RaisingLocator()).dismiss(driver) is None
+    assert not any(a[0] == "tap_point" for a in driver.actions)
+
+
 def test_guard_noop_when_no_screenshot() -> None:
     driver = FakeDriver([_window()])  # base FakeDriver writes no bytes -> no screenshot
     locator = StubLocator(AlertDecision(present=True, x=0.5, y=0.5))

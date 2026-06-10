@@ -101,6 +101,7 @@ Scenario ::= {
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []
   redact?:         <Redact>,
+  dismissAlerts?:  <DismissAlerts>,         # アラートガード; 未指定で ON
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -114,6 +115,11 @@ Preconditions ::= {
   locale?:     string,
   setup?:      string,                      # 再利用プレリュードファイル（§6.4）
 }
+
+# ── DismissAlerts（視覚アラートガード; 既定 ON）────────────────────────
+DismissAlerts ::= boolean                                   # { enabled: <bool> } の短縮形
+               | { enabled?: boolean,                       # 既定 true
+                   instruction?: string }                   # 押すボタン（無指定なら dismiss）
 
 # ── Step = ちょうど 1 アクション + 任意の修飾子 ─────────────────────────
 Step      ::= <Action> & <StepMods>

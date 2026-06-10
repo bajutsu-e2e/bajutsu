@@ -28,7 +28,9 @@ from bajutsu.runner import (
     run_and_report,
 )
 from bajutsu.scenario import (
+    DismissAlerts,
     Preconditions,
+    Scenario,
     apply_setups,
     dump_mocks,
     dump_scenarios,
@@ -82,11 +84,12 @@ def run(
         None, "--erase/--no-erase",
         help="override every scenario's preconditions.erase (default: per-scenario)",
     ),
-    dismiss_alerts: bool = typer.Option(
-        False, "--dismiss-alerts", help="use vision to dismiss unexpected OS prompts (needs API key)"
+    dismiss_alerts: bool | None = typer.Option(
+        None, "--dismiss-alerts/--no-dismiss-alerts",
+        help="override every scenario's dismissAlerts (default: per-scenario, on; needs API key)",
     ),
     alert_instruction: str = typer.Option(
-        "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
+        "", "--alert-instruction", help="default button instruction (a scenario's own wins)"
     ),
     log_predicate: str = typer.Option(
         "", "--log-predicate", help="NSPredicate narrowing the deviceLog stream (e.g. subsystem)"
@@ -100,7 +103,9 @@ def run(
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Run a scenario deterministically (no AI, unless --dismiss-alerts)."""
+    """Run a scenario deterministically. Pass/fail is machine-only; the sole AI is the
+    alert guard (on by default per scenario), which only fires to clear an OS prompt that
+    blocked a step — see each scenario's `dismissAlerts`."""
     eff = _load_effective(config, app_name)
     # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
     # is interpolated at action time, while their literal values are masked in evidence and
@@ -169,12 +174,33 @@ def run(
     # comma list — a device pool for parallel runs (`--workers`), capped to the pool size.
     udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
     workers = max(1, min(workers, len(udids)))
-    on_blocked = None
-    if dismiss_alerts:
+    # --dismiss-alerts / --no-dismiss-alerts, when given, forces every scenario's guard on/off
+    # (preserving any per-scenario instruction); otherwise each scenario's own `dismissAlerts`
+    # (default on) decides. Mirrors the --erase override.
+    if dismiss_alerts is not None:
+        for s in scenarios:
+            instr = s.dismiss_alerts.instruction if s.dismiss_alerts else None
+            s.dismiss_alerts = DismissAlerts(enabled=dismiss_alerts, instruction=instr)
+    # Build a per-scenario alert-guard factory unless every scenario disabled it. The vision
+    # locator is shared (one Anthropic client); each scenario gets its own guard so its
+    # instruction applies. The guard is best-effort, so a missing key just no-ops per run.
+    on_blocked_for = None
+    if any(s.dismiss_alerts is None or s.dismiss_alerts.enabled for s in scenarios):
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
+        from bajutsu.orchestrator import BlockedHandler
 
-        guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None)
-        on_blocked = guard.dismiss
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            typer.echo("note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard will no-op")
+        locator = ClaudeAlertLocator()
+        default_instruction = alert_instruction or None
+
+        def _guard_for(s: Scenario) -> BlockedHandler | None:
+            cfg = s.dismiss_alerts or DismissAlerts()
+            if not cfg.enabled:
+                return None
+            return SystemAlertGuard(locator, cfg.instruction or default_instruction).dismiss
+
+        on_blocked_for = _guard_for
     # Mocks ride the network channel: BajutsuKit stubs matching requests instead of
     # forwarding them (so the network is deterministic, and still observed). They are
     # per-scenario and device-independent, so they're baked into the scenario's launch env;
@@ -194,7 +220,7 @@ def run(
     )
     try:
         results, manifest = run_and_report(
-            eff, scenarios, lease, Path("runs"), run_id, on_blocked=on_blocked,
+            eff, scenarios, lease, Path("runs"), run_id, on_blocked_for=on_blocked_for,
             workers=workers, bindings=secret_bindings, secret_values=secret_values,
             source_name=scenario_path.name, description=scenario_file.description,
         )

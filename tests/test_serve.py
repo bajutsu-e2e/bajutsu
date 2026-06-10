@@ -94,6 +94,10 @@ def test_run_command_builder() -> None:
     erased = srv.run_command("s.yaml", "demo", erase=True, dismiss_alerts=True)
     assert "--erase" in erased and "--no-erase" not in erased and "--dismiss-alerts" in erased
     assert "--no-erase" in srv.run_command("s.yaml", "demo", erase=False)  # explicit override
+    # dismiss_alerts defaults to None: no flag, so each scenario's dismissAlerts (on) decides.
+    assert "--dismiss-alerts" not in cmd and "--no-dismiss-alerts" not in cmd
+    # False forces the guard off for the run (mirrors --no-erase).
+    assert "--no-dismiss-alerts" in srv.run_command("s.yaml", "demo", dismiss_alerts=False)
 
 
 def test_run_command_parallel_pool() -> None:

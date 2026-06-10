@@ -56,6 +56,7 @@ scenarios:
 | `network` | object | なし | `{ filter: { domains: [...] } }` — `filter.domains` でレポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定は全件表示。Network タブは常に全件（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ —— 一致する送信リクエストにネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡保存前のマスク対象（[evidence](evidence.md#マスキングredact)） |
+| `dismissAlerts` | bool / object | なし（ON） | 視覚**アラートガード** —— idb から見えない OS プロンプトを片付ける。既定 ON。`false` で無効化、`{ instruction: "tap Allow" }` で ON のままボタンを指定。CLI `--dismiss-alerts`/`--no-dismiss-alerts` が上書き（[下記](#dismissalertsシステムアラートガード)） |
 
 ```yaml
 - name: onboard, log in, and increment the counter
@@ -92,6 +93,37 @@ scenarios:
 
 > `launchEnv` の解決順は **config の `launchEnv` < preconditions の `launchEnv`**（テストに近い方が
 > 勝つ）。`launch_driver` で `{**eff.launch_env, **pre.launch_env}` とマージする。
+
+## dismissAlerts（システムアラートガード）
+
+idb は **SpringBoard レベルのプロンプト**（iOS の "Save Password?"、権限リクエスト、"Allow Paste"
+など）を見ることも tap することもできない —— これらはアプリを覆って要素ツリーを潰し、ステップを
+静かにブロックする。**アラートガード**は視覚ベースの保険（`alerts.py`）で、ブロックされたステップで
+スクリーンショットを撮り、Claude にどこを tap するか尋ね、プロンプトを片付けてからそのステップを 1 回
+再試行する（[詳細](recording.md#システムアラートの自動対処)）。
+
+既定で **ON**、かつ**ステップ（または `expect`）がブロックされたときだけ**発火するので、成功する
+シナリオはモデルを呼ばない。`ANTHROPIC_API_KEY` が必要だが、無くても単に no-op する（run には影響
+しない）。シナリオごとに変えるには `dismissAlerts` を使う:
+
+| 形 | 意味 |
+|---|---|
+| （省略） | ON。**最も無害な**ボタンを押す（"Not Now" / "Don't Allow" / "Cancel"） |
+| `dismissAlerts: false` | このシナリオでは無効 |
+| `dismissAlerts: { instruction: "tap Allow" }` | ON のまま、instruction が指すボタンを押す —— 例えば権限を**許可**する |
+| `dismissAlerts: { enabled: false }` | 無効（`false` の明示的なオブジェクト形） |
+
+```yaml
+- name: grant notification permission
+  dismissAlerts: { instruction: "tap Allow" }   # dismiss ではなくプロンプトを許可する
+  steps:
+    - tap:  { id: sys.requestNotif }
+    - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # ガードが Allow を押し、これが通る
+```
+
+CLI の `--dismiss-alerts` / `--no-dismiss-alerts` は**全シナリオを上書き**する（無指定ならシナリオ
+ごとの既定）。`--alert-instruction` は既定のボタン指示で、シナリオ自身の `instruction` が勝つ。
+（[`sample/scenarios/permission.yaml`](../../sample/scenarios/permission.yaml) 実物）
 
 ## セレクタ（要素の指定）
 

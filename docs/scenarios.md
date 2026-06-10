@@ -56,6 +56,7 @@ summary header and each scenario card) and in the `bajutsu serve` UI.
 | `network` | object | none | `{ filter: { domains: [...] } }` — `filter.domains` scopes which observed requests are interleaved into the report's Steps timeline (by URL host; a parent domain matches subdomains). Unset shows all; the Network tab always lists them all ([reporting](reporting.md#reporthtml)) |
 | `mocks` | list | `[]` | Deterministic network stubs — a matching outgoing request gets a canned response instead of hitting the network ([network mocks](#network-mocks-deterministic-stubs)) |
 | `redact` | object | none | Masking applied before evidence is written ([evidence](evidence.md#masking-redact)) |
+| `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb can't see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
 
 ```yaml
 - name: onboard, log in, and increment the counter
@@ -93,6 +94,38 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 > **launchEnv resolution order** is **config's `launchEnv` < preconditions' `launchEnv`** (the
 > one closer to the test wins). `launch_driver` merges `{**eff.launch_env, **pre.launch_env}`.
+
+## dismissAlerts (the system-alert guard)
+
+idb can't see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request,
+"Allow Paste") — they cover the app and collapse its element tree, silently blocking a step. The
+**alert guard** is a vision-based safety net (`alerts.py`): on a blocked step it screenshots, asks
+Claude where to tap, taps the prompt away, and retries the step once
+([details](recording.md#dismissing-system-alerts-automatically)).
+
+It is **on by default** and fires **only when a step (or `expect`) is blocked**, so a passing
+scenario never calls the model. It needs `ANTHROPIC_API_KEY`; without one it simply no-ops (the run
+is unaffected). Use `dismissAlerts` to change it per scenario:
+
+| Form | Meaning |
+|---|---|
+| (omitted) | on; tap the **least-destructive** button ("Not Now" / "Don't Allow" / "Cancel") |
+| `dismissAlerts: false` | off for this scenario |
+| `dismissAlerts: { instruction: "tap Allow" }` | on, but tap the button the instruction names — e.g. to **grant** a permission |
+| `dismissAlerts: { enabled: false }` | off (the explicit object form of `false`) |
+
+```yaml
+- name: grant notification permission
+  dismissAlerts: { instruction: "tap Allow" }   # accept the prompt instead of dismissing it
+  steps:
+    - tap:  { id: sys.requestNotif }
+    - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
+```
+
+The CLI `--dismiss-alerts` / `--no-dismiss-alerts` flag **overrides every scenario** (otherwise the
+per-scenario default applies); `--alert-instruction` sets a default button instruction that a
+scenario's own `instruction` overrides. (real file:
+[`sample/scenarios/permission.yaml`](../sample/scenarios/permission.yaml))
 
 ## Selectors (addressing an element)
 

@@ -122,12 +122,13 @@ def _int(value: Any, default: int) -> int:
 
 def run_command(
     scenario: str, app: str, *, backend: str = "", udid: str = "", workers: int = 1,
-    erase: bool | None = None, dismiss_alerts: bool = False, config: str = "bajutsu.config.yaml",
+    erase: bool | None = None, dismiss_alerts: bool | None = None,
+    config: str = "bajutsu.config.yaml",
 ) -> list[str]:
     """The `python -m bajutsu run ...` argv for a launch request. `udid` may be a comma list and
     `workers > 1` runs those devices as a parallel pool (capped to the pool size by the CLI).
-    `erase` is an override: True/False force --erase/--no-erase, None leaves each scenario's own
-    preconditions.erase to decide."""
+    `erase` / `dismiss_alerts` are overrides: True/False force the flag on/off, None leaves each
+    scenario's own preconditions.erase / dismissAlerts (the latter on by default) to decide."""
     cmd = [sys.executable, "-m", "bajutsu", "run", scenario, "--app", app, "--config", config]
     if backend:
         cmd += ["--backend", backend]
@@ -139,8 +140,10 @@ def run_command(
         cmd += ["--erase"]
     elif erase is False:
         cmd += ["--no-erase"]
-    if dismiss_alerts:
+    if dismiss_alerts is True:
         cmd += ["--dismiss-alerts"]
+    elif dismiss_alerts is False:
+        cmd += ["--no-dismiss-alerts"]
     return cmd
 
 
@@ -316,7 +319,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 backend=body.get("backend", ""), udid=udid,
                 workers=_int(body.get("workers"), 1),
                 erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
-                dismiss_alerts=bool(body.get("dismissAlerts", False)),
+                dismiss_alerts=body["dismissAlerts"] if isinstance(body.get("dismissAlerts"), bool) else None,
                 config=str(state.config),
             )
             job = state.new_job(cmd, udids=boot)
@@ -436,8 +439,8 @@ pre.out{margin:.6rem 0 0;max-height:220px;overflow:auto;background:#0b1220;borde
         <div class="checks">
           <label><input type="checkbox" id="erasedev"> erase device first
             <span class="hint">Wipe the whole simulator (simctl erase &mdash; all apps, data, settings) before each scenario. Off (default) leaves it to each scenario's <code>preconditions.erase</code>; the app is reinstalled fresh either way.</span></label>
-          <label><input type="checkbox" id="dismiss"> dismiss-alerts
-            <span class="hint">Use Claude vision to dismiss unexpected system prompts (Save Password, notification permission) that idb can't see or tap. Needs ANTHROPIC_API_KEY.</span></label>
+          <label><input type="checkbox" id="nodismiss"> disable alert-dismiss
+            <span class="hint">The alert guard is on by default: Claude vision dismisses unexpected system prompts (Save Password, notification permission) that idb can't see or tap (needs ANTHROPIC_API_KEY). Check to force it off for this run; a scenario can also set <code>dismissAlerts</code> itself.</span></label>
         </div>
         <button class="run" id="go">Run</button>
         <div class="status" id="status"></div>
@@ -491,7 +494,7 @@ $('#go').addEventListener('click',async()=>{
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     scenario:$('#scn').value,app:$('#app').value,backend:$('#backend').value.trim(),udid:pickedUdids().join(',')||'booted',
     workers:parseInt($('#workers').value,10)||1,
-    erase:$('#erasedev').checked||undefined,dismissAlerts:$('#dismiss').checked})});
+    erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined})});
   const {jobId,error}=await r.json();
   if(error){setStatus(error,'ng');$('#go').disabled=false;return}
   poll=setInterval(()=>check(jobId),1000);check(jobId);

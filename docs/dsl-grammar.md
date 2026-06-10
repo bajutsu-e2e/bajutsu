@@ -103,6 +103,7 @@ Scenario ::= {
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []
   redact?:         <Redact>,
+  dismissAlerts?:  <DismissAlerts>,         # alert guard; on when unset
 }
 
 Component ::= { params?: list(string), steps: list(<Step>) }
@@ -116,6 +117,11 @@ Preconditions ::= {
   locale?:     string,
   setup?:      string,                      # a reusable prelude file (§6.4)
 }
+
+# ── DismissAlerts (vision alert guard; on by default) ──────────────────
+DismissAlerts ::= boolean                                   # shorthand for { enabled: <bool> }
+               | { enabled?: boolean,                       # default true
+                   instruction?: string }                   # button to tap (else dismiss)
 
 # ── Step = exactly one Action + optional modifiers ─────────────────────
 Step      ::= <Action> & <StepMods>

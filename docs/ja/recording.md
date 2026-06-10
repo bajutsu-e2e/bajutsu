@@ -110,12 +110,15 @@ class SystemAlertGuard:
 
 ### run / record での使い方
 
-- `run --dismiss-alerts`: `SystemAlertGuard(...).dismiss` を `on_blocked` として渡す。ステップ失敗時に
+- `run`: ガードはシナリオごとに**既定 ON**。CLI は [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード)
+  が有効な各シナリオに `SystemAlertGuard(...).dismiss` を `on_blocked` として渡す。ステップ失敗時に
   プロンプトを片付け、**そのステップを 1 回だけ再試行**する（[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。
-  `--alert-instruction "..."` で押すボタンを指定できる。
-- `record --dismiss-alerts`: オーサリング中に割り込むプロンプトを片付け、エージェントに常にクリーンな
-  画面を見せる。**dismissal は環境操作であって記録ステップにはしない**（リプレイ側は
-  `run --dismiss-alerts` で対処する）。
+  シナリオ側で `dismissAlerts: false` で無効化、`{ instruction: "tap Allow" }` でボタンを指定。
+  `--dismiss-alerts`/`--no-dismiss-alerts` は全シナリオを上書きし、`--alert-instruction "..."` は既定指示。
+- `record --dismiss-alerts`: opt-in（オーサリング時はまだシナリオが無い）。割り込むプロンプトを片付け、
+  エージェントに常にクリーンな画面を見せる。**dismissal は環境操作であって記録ステップにはしない**
+  （リプレイ側は各シナリオの `dismissAlerts` で対処する）。
 
-> いずれも視覚モデルを使うため `ANTHROPIC_API_KEY` が要る（[cli の .env](cli.md#環境変数env)）。
-> `--dismiss-alerts` を付けない限り `run` は完全に AI 非依存（[concepts](concepts.md#1-ai-は著者と調査役であり判定者ではない)）。
+> ガードは視覚モデルを使うため `ANTHROPIC_API_KEY` が要る（[cli の .env](cli.md#環境変数env)）。
+> 無くても**ベストエフォート**で単に no-op し、run を失敗させない。ガードはブロックしたプロンプトを
+> 片付けるためだけに発火し、合否は機械判定のみで AI 非依存（[concepts](concepts.md#1-ai-は著者と調査役であり判定者ではない)）。

@@ -49,6 +49,11 @@ from bajutsu.scenario import (
 # Builds the in-scenario relaunch function for a scenario (given its live driver).
 RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
 
+# Selects the alert-guard handler for one scenario (None = no guard for it). The CLI sets this
+# so each scenario's `dismissAlerts` (default on, optional instruction) decides whether — and
+# how — the vision guard runs; the orchestrator stays oblivious to the per-scenario choice.
+OnBlockedFor = Callable[[Scenario], "BlockedHandler | None"]
+
 
 @dataclass
 class Lease:
@@ -175,6 +180,7 @@ def run_all(
     lease: LeaseFn,
     clock: Clock | None = None,
     on_blocked: BlockedHandler | None = None,
+    on_blocked_for: OnBlockedFor | None = None,
     run_dir: Path | None = None,
     workers: int = 1,
     bindings: Mapping[str, str] | None = None,
@@ -189,6 +195,9 @@ def run_all(
     cleared per scenario, exposed to `request` assertions, and written to <sid>/network.json
     (redacted with `secret_values`).
 
+    `on_blocked_for`, when given, picks each scenario's alert-guard handler (honoring its
+    `dismissAlerts`); it takes precedence over the single `on_blocked` (used by tests).
+
     With `workers > 1` scenarios run concurrently (results stay in declaration order). The
     pool hands each worker its own device and per-device resources, so the run loop has no
     shared mutable state.
@@ -198,13 +207,14 @@ def run_all(
     def run_one(i: int, s: Scenario) -> RunResult:
         sid = f"{i:02d}-{scenario_slug(s.name)}"
         lz = lease(eff, s)
+        handler = on_blocked_for(s) if on_blocked_for is not None else on_blocked
         try:
             if lz.collector is not None:
                 lz.collector.clear()
             # t0 after launch, so exchange offsets share the step timeline's origin.
             scenario_start = time.monotonic()
             result = run_scenario(
-                lz.driver, s, clock, sink=lz.sink, on_blocked=on_blocked, scenario_id=sid,
+                lz.driver, s, clock, sink=lz.sink, on_blocked=handler, scenario_id=sid,
                 network=(lz.collector.snapshot if lz.collector is not None else _no_net),
                 relaunch=lz.relaunch, bindings=bindings, control=lz.control,
             )
@@ -233,6 +243,7 @@ def run_and_report(
     run_id: str,
     clock: Clock | None = None,
     on_blocked: BlockedHandler | None = None,
+    on_blocked_for: OnBlockedFor | None = None,
     workers: int = 1,
     bindings: Mapping[str, str] | None = None,
     secret_values: list[str] | None = None,
@@ -242,8 +253,8 @@ def run_and_report(
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
     run_dir = runs_dir / run_id
     results = run_all(
-        eff, scenarios, lease, clock, on_blocked=on_blocked, run_dir=run_dir,
-        workers=workers, bindings=bindings, secret_values=secret_values,
+        eff, scenarios, lease, clock, on_blocked=on_blocked, on_blocked_for=on_blocked_for,
+        run_dir=run_dir, workers=workers, bindings=bindings, secret_values=secret_values,
     )
     # The merged Result tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).

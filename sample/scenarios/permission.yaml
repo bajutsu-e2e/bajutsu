@@ -1,13 +1,14 @@
 # The notification-permission prompt lives in SpringBoard, so idb's app-scoped
-# query cannot see or tap it. Run with the vision alert guard, instructing it to
-# grant:
+# query cannot see or tap it. The vision alert guard is on by default; this scenario
+# sets dismissAlerts.instruction so it taps "Allow" (granting the prompt) instead of
+# dismissing it. Just run (needs ANTHROPIC_API_KEY for the guard):
 #
-#   bajutsu run sample/scenarios/permission.yaml --app sample \
-#     --backend idb --no-erase --dismiss-alerts --alert-instruction "tap Allow"
+#   bajutsu run sample/scenarios/permission.yaml --app sample --backend idb --no-erase
 #
 # The prompt only appears while authorization is notDetermined, so reinstall the
 # app first (uninstall + install resets notification authorization).
 - name: grant notification permission
+  dismissAlerts: { instruction: "tap Allow" }   # grant the prompt instead of dismissing it
   preconditions:
     launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "system" }
   steps:

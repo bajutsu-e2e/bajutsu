@@ -19,7 +19,7 @@
 
 ## `run`
 
-シナリオを **決定的に実行**（`--dismiss-alerts` を付けない限り AI 非依存）。
+シナリオを **決定的に実行**。合否は機械判定のみ。唯一の AI は**アラートガード**（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトを片付けるためだけに発火する —— [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード) 参照。
 
 ```bash
 bajutsu run <scenario.yaml> --app <name> [options]
@@ -33,8 +33,8 @@ bajutsu run <scenario.yaml> --app <name> [options]
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | シナリオ準拠 | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの指定に従う。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--dismiss-alerts` | off | システムアラートを視覚で消す保険（要 API キー・[recording](recording.md#システムアラートの自動対処)） |
-| `--alert-instruction` | "" | dismiss の代わりに押すボタンの指示 |
+| `--dismiss-alerts / --no-dismiss-alerts` | シナリオ準拠（ON） | 各シナリオの `dismissAlerts` を上書き —— idb から見えないシステムアラートを視覚で消すガード。省略時は各シナリオの指定に従う（要 API キー・[recording](recording.md#システムアラートの自動対処)） |
+| `--alert-instruction` | "" | 既定のボタン指示（シナリオ自身の `dismissAlerts.instruction` が勝つ） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
 | `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（アプリに BajutsuKit が必要） |
@@ -146,7 +146,7 @@ stdlib のみ（Web フレームワーク不要）、`127.0.0.1` バインド。
 bajutsu serve [--port 8765] [--scenarios sample/scenarios] [--config bajutsu.config.yaml] [--runs runs]
 ```
 
-- シナリオファイル + app を選び、backend / udid / `no-erase` / `dismiss-alerts` を設定して **Run**。
+- シナリオファイル + app を選び、backend / udid / erase / `disable alert-dismiss` を設定して **Run**。
   出力がライブ表示され、完了で `report.html` が埋め込まれる。
 - 操作 UI の下の **History** リストに過去の run（新しい順・pass/fail ドット・シナリオ要約）が並び、
   クリックでそのレポートを再表示。`GET /api/runs` が裏側。
@@ -160,7 +160,7 @@ bajutsu serve [--port 8765] [--scenarios sample/scenarios] [--config bajutsu.con
 - `KEY=VALUE` 形式。`#` コメント・空行・`export ` 接頭・クォートに対応。
 - **既存の環境変数を上書きしない**（実環境の値が常に勝つ）。`.env` はフォールバック。
 - 読み先は既定 `.env`、`BAJUTSU_DOTENV` で変更可。`.gitignore` 済み。
-- 主な用途: `ANTHROPIC_API_KEY`（`record` と `--dismiss-alerts`）。
+- 主な用途: `ANTHROPIC_API_KEY`（`record` と、既定で動くアラートガード）。
 
 ```bash
 # .env
