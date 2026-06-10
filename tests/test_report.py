@@ -105,6 +105,12 @@ def test_html_report() -> None:
     assert "PASS" in out and "FAIL" in out
 
 
+def test_html_report_shows_source_filename() -> None:
+    out = html_report("run9", [_failing()], source_name="smoke.yaml")
+    assert 'class="sfile">smoke.yaml' in out  # the scenario file name in the summary header
+    assert 'class="sfile"' not in html_report("run9", [_failing()])  # omitted when unknown
+
+
 def test_html_expectations_block() -> None:
     # Expects render as a table with PASS/FAIL in its own column.
     out = html_report("run9", [_passing(), _failing()])

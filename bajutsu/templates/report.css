@@ -4,7 +4,9 @@ body{font-family:-apple-system,system-ui,"Segoe UI",sans-serif;margin:0;backgrou
 header{position:sticky;top:0;z-index:5;background:var(--ink);color:#fff;padding:.7rem 1.1rem;
  display:flex;gap:.9rem;align-items:center;flex-wrap:wrap}
 header h1{font-size:1rem;margin:0;font-weight:600}
-.subtitle{font-size:.85rem;color:rgba(255,255,255,.62);font-weight:400;margin-left:-.4rem}
+.htitle{display:flex;flex-direction:column;gap:.15rem;min-width:0}
+.subtitle{font-size:.85rem;color:rgba(255,255,255,.62);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64ch}
+.sfile{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.82)}
 .stats{display:flex;gap:.4rem;font-size:.82rem;align-items:center}
 .chip{display:inline-flex;align-items:center;padding:.12rem .55rem;border-radius:999px;background:#3a3a3c}
 .chip.ok{background:var(--ok)} .chip.ng{background:var(--ng)}

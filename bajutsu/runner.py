@@ -202,6 +202,7 @@ def run_and_report(
     bindings: Mapping[str, str] | None = None,
     secret_values: list[str] | None = None,
     control: DeviceControl | None = None,
+    source_name: str | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
     run_dir = runs_dir / run_id
@@ -217,7 +218,7 @@ def run_and_report(
     run_dir.mkdir(parents=True, exist_ok=True)
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
     (run_dir / "scenario.yaml").write_text(dump_scenarios(scenarios), encoding="utf-8")
-    manifest = write_report(run_dir, run_id, results, definitions, sources)
+    manifest = write_report(run_dir, run_id, results, definitions, sources, source_name)
     # Final safety net: scrub any literal secret value that reached a run-level artifact
     # (e.g. an assertion's expected/actual text in the manifest / HTML). The scenario
     # definitions already hold tokens, not values, so this only catches result text.

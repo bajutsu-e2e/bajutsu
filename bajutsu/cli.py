@@ -213,7 +213,7 @@ def run(
             eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
             teardown=teardown, collector=collector, relauncher=relauncher,
             workers=workers, release=release, bindings=secret_bindings, secret_values=secret_values,
-            control=control,
+            control=control, source_name=scenario_path.name,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))
