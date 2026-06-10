@@ -11,10 +11,15 @@ header h1{font-size:1rem;margin:0;font-weight:600}
 .stats{display:flex;gap:.4rem;font-size:.82rem;align-items:center}
 .chip{display:inline-flex;align-items:center;padding:.12rem .55rem;border-radius:999px;background:#3a3a3c}
 .chip.ok{background:var(--ok)} .chip.ng{background:var(--ng)}
+.chip.tchip{background:#3a3a3c;color:#fff;font-variant:tabular-nums}
 .chip.dchip{background:#2c5fb3;color:#fff;font-variant:small-caps;letter-spacing:.02em}
 .drv{font:600 .68rem/1 ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;
  letter-spacing:.04em;color:#2c5fb3;background:#eaf0fb;border:1px solid #cfe0f8;
  border-radius:5px;padding:.1rem .35rem}
+.dev{font:600 .68rem/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;
+ color:#0f766e;background:#e6f6f3;border:1px solid #b9e6dd;border-radius:5px;padding:.1rem .35rem}
+.sdur{font:600 .68rem/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;
+ color:var(--mut);background:#f1f1f3;border:1px solid var(--line);border-radius:5px;padding:.1rem .35rem}
 .ctl{margin-left:auto;display:flex;gap:.6rem;align-items:center;font-size:.82rem}
 .ctl label{display:flex;gap:.3rem;align-items:center;cursor:pointer}
 .hbtn{background:#3a3a3c;color:#fff;border:0;border-radius:6px;padding:.25rem .6rem;cursor:pointer;font:inherit;font-size:.8rem}
@@ -134,6 +139,8 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
 .muted{color:var(--mut);font-size:.8rem}
 .deflbl{display:block;margin-bottom:.35rem;font-size:.72rem;font-weight:700;text-transform:uppercase;
  letter-spacing:.05em;color:var(--mut)}
+.envsec{margin-bottom:.8rem}
+.envsec .pretbl{border:1px solid var(--line);border-radius:8px;overflow:hidden}
 details.pre{margin-bottom:.6rem;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 details.pre>summary{display:block;cursor:pointer;padding:.32rem .6rem;background:#fafafb;
  font:700 .72rem -apple-system,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
@@ -146,7 +153,7 @@ details.pre[open]>summary::before{transform:rotate(90deg)}
  letter-spacing:.03em;color:#fff;background:#6b7280;border-radius:5px;padding:.08rem .42rem;min-width:4.3rem;
  text-align:center}
 .act-tap{background:#2c5fb3} .act-type{background:#7a3aa8} .act-move{background:#0a7d6b}
-.act-wait{background:#8a6d1a} .act-assert{background:#0a7d33}
+.act-wait{background:#8a6d1a} .act-assert{background:#0a7d33} .act-alert{background:#a8521f}
 .adesc{font:.84rem/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--ink);word-break:break-word}
 /* Inline value tokens — subtle, lowercase, NOT solid badges, so ids (variables)
    and string/number literals (constants) are identifiable at a glance. */
@@ -173,18 +180,23 @@ details.pre[open]>summary::before{transform:rotate(90deg)}
 .sttbl{table-layout:fixed}
 /* Scope the column widths to the outer table's own rows (direct children, excluding the
    expanded full-width row) so they don't leak into the nested settings table. */
-.sttbl>thead>tr>th:nth-child(1),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(1){width:1.8rem;white-space:nowrap}
-.sttbl>thead>tr>th:nth-child(2),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(2){width:3.6rem;white-space:nowrap}
-.sttbl>thead>tr>th:nth-child(3),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(3){width:5.2rem;white-space:nowrap}
-.sttbl>thead>tr>th:nth-child(5),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(5){width:2.8rem;white-space:nowrap}
-.sttbl>thead>tr>th:nth-child(6),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(6){width:4.4rem}
-.sttbl>thead>tr>th:nth-child(7),.sttbl>tbody>tr:not(.nxdetail)>td:nth-child(7){width:6rem}
-.sttbl>tbody>tr:not(.nxdetail)>td:first-child{color:var(--mut)}
+.sttbl>thead>tr>th:nth-child(1),.sttbl>tbody>tr:not(.nxdetail):not(.alertrow)>td:nth-child(1){width:1.8rem;white-space:nowrap}
+.sttbl>thead>tr>th:nth-child(2),.sttbl>tbody>tr:not(.nxdetail):not(.alertrow)>td:nth-child(2){width:3.6rem;white-space:nowrap}
+.sttbl>thead>tr>th:nth-child(3),.sttbl>tbody>tr:not(.nxdetail):not(.alertrow)>td:nth-child(3){width:5.2rem;white-space:nowrap}
+.sttbl>thead>tr>th:nth-child(5),.sttbl>tbody>tr:not(.nxdetail):not(.alertrow)>td:nth-child(5){width:2.8rem;white-space:nowrap}
+.sttbl>thead>tr>th:nth-child(6),.sttbl>tbody>tr:not(.nxdetail):not(.alertrow)>td:nth-child(6){width:4.4rem}
+.sttbl>thead>tr>th:nth-child(7),.sttbl>tbody>tr:not(.nxdetail):not(.alertrow)>td:nth-child(7){width:6rem}
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow)>td:first-child{color:var(--mut)}
 /* Nested assertion table inside an `assert` step's detail cell (one row per check). */
 .atbl{border-collapse:collapse;width:auto}
 .atbl td{border:0;padding:.04rem .55rem .04rem 0;vertical-align:top}
 .atbl td:first-child{width:1%;white-space:nowrap}
 tr.skip td{color:var(--mut);opacity:.65}
+/* A system prompt the guard cleared so a blocked step could be retried (a sub-row under
+   the step, and a note under the expectations table). */
+tr.alertrow>td{background:#fdf3ec;border-top:1px dashed var(--line);color:var(--mut);
+ font:.78rem/1.5 -apple-system,system-ui,sans-serif;padding:.18rem .7rem}
+.alertnote{margin-top:.45rem;color:var(--mut);font-size:.8rem}
 .vtoggle{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-bottom:.6rem}
 .vt{background:var(--card);color:var(--mut);border:0;cursor:pointer;font:600 .78rem -apple-system,system-ui,sans-serif;
  padding:.25rem .7rem}
@@ -241,6 +253,7 @@ a{color:#0a6cff}
  :root{--bg:#17181a;--card:#202124;--line:#34353a;--mut:#9aa0a6;--ink:#e8eaed;--ok:#2ea043;--ng:#e5534b}
  header{background:#0d0e10}
  .drv{color:#9db8f0;background:#1b2433;border-color:#2c3a52}
+ .dev{color:#7fded0;background:#11221f;border-color:#1f3d37}
  .cap{color:#9db8f0;background:#1b2433;border-color:#2c3a52}
  .tk.id{color:#aab8f5;background:#222a3f} .tk.str{color:#e0a458} .tk.num{color:#5fd0d0} .tk.re{color:#c79bea}
  .nxhk{color:#aab8f5}

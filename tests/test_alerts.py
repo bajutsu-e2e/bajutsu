@@ -10,7 +10,7 @@ from bajutsu.agent import Proposal
 from bajutsu.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator import AlertEvent, run_scenario
 from bajutsu.record import record as record_loop
 from bajutsu.scenario import Step, load_scenarios
 
@@ -48,8 +48,9 @@ class StubLocator:
 
 def test_guard_taps_normalized_point_when_present() -> None:
     driver = ShotDriver([_window(402.0, 874.0)])
-    guard = SystemAlertGuard(StubLocator(AlertDecision(present=True, x=0.5, y=0.25)))
-    assert guard.dismiss(driver) is True
+    guard = SystemAlertGuard(StubLocator(AlertDecision(present=True, x=0.5, y=0.25, label="Not Now")))
+    # The dismissal returns an AlertEvent carrying the tapped button (for the report).
+    assert guard.dismiss(driver) == AlertEvent(label="Not Now")
     # normalized (0.5, 0.25) maps to point space (402, 874)
     assert ("tap_point", (201.0, 218.5)) in driver.actions
     assert any(a[0] == "screenshot" for a in driver.actions)
@@ -57,7 +58,7 @@ def test_guard_taps_normalized_point_when_present() -> None:
 
 def test_guard_noop_when_absent() -> None:
     driver = ShotDriver([_window()])
-    assert SystemAlertGuard(StubLocator(AlertDecision(present=False))).dismiss(driver) is False
+    assert SystemAlertGuard(StubLocator(AlertDecision(present=False))).dismiss(driver) is None
     assert not any(a[0] == "tap_point" for a in driver.actions)
 
 
@@ -71,7 +72,7 @@ def test_guard_passes_instruction_to_locator() -> None:
 def test_guard_noop_when_no_screenshot() -> None:
     driver = FakeDriver([_window()])  # base FakeDriver writes no bytes -> no screenshot
     locator = StubLocator(AlertDecision(present=True, x=0.5, y=0.5))
-    assert SystemAlertGuard(locator).dismiss(driver) is False
+    assert SystemAlertGuard(locator).dismiss(driver) is None
     assert locator.seen == []  # never reached the locator
 
 
@@ -146,14 +147,16 @@ def test_on_blocked_retries_step_after_recovery() -> None:
     }
     driver = FakeDriver([])  # empty screen -> the tap fails to resolve
 
-    def on_blocked(d: base.Driver) -> bool:
+    def on_blocked(d: base.Driver) -> AlertEvent | None:
         assert isinstance(d, FakeDriver)
         d.screen = [target]  # "dismiss the alert": the app reappears
-        return True
+        return AlertEvent(label="Not Now")
 
     result = run_scenario(driver, load_scenarios(_TAP_GO)[0], on_blocked=on_blocked)
     assert result.ok is True
     assert ("tap", {"id": "go"}) in driver.actions
+    # The dismissal is recorded on the retried step's outcome (for the report).
+    assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
 
 
 def test_failure_stands_without_handler() -> None:
@@ -178,10 +181,10 @@ def test_on_blocked_retries_expect_after_recovery() -> None:
     here, later = _el("here"), _el("later")
     driver = FakeDriver([here])  # 'later' is missing until the alert is dismissed
 
-    def on_blocked(d: base.Driver) -> bool:
+    def on_blocked(d: base.Driver) -> AlertEvent | None:
         assert isinstance(d, FakeDriver)
         d.screen = [here, later]
-        return True
+        return AlertEvent(label="Allow")
 
     yaml = (
         "- name: e\n"
@@ -190,6 +193,8 @@ def test_on_blocked_retries_expect_after_recovery() -> None:
     )
     result = run_scenario(driver, load_scenarios(yaml)[0], on_blocked=on_blocked)
     assert result.ok is True
+    # The expect-phase dismissal is recorded on the run result (not on any step).
+    assert result.expect_alerts == [AlertEvent(label="Allow")]
 
 
 # --- record loop + alert guard ---

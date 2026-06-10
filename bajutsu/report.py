@@ -115,6 +115,14 @@ def _truncate(body: str) -> str:
     return body if len(body) <= _BODY_MAX else body[:_BODY_MAX] + "\n… (truncated)"
 
 
+def _fmt_duration(seconds: float) -> str:
+    """A compact human duration: '0.8s', '12.3s', or '1m 23s' once it passes a minute."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, secs = divmod(int(round(seconds)), 60)
+    return f"{minutes}m {secs}s"
+
+
 def _status_class(status: Any) -> str:
     if isinstance(status, int) and not isinstance(status, bool):
         if 200 <= status < 400:
@@ -373,6 +381,7 @@ def _step_run_row(
         "view": _view_data(out, run_dir),
         "reason": out.reason if (not out.ok and out.reason) else None,
         "expand": None,
+        "alerts": [{"label": a.label} for a in out.alerts],
     }
 
 
@@ -505,7 +514,8 @@ def _expects_data(r: RunResult, definition: dict[str, Any] | None) -> dict[str, 
                 "kind": kind, "target": target, "comp": comp,
                 "reason": a.reason if not a.ok else None,
             })
-        return {"label": "expectations", "rows": rows}
+        return {"label": "expectations", "rows": rows,
+                "alerts": [{"label": a.label} for a in r.expect_alerts]}
     if not planned:
         return None
     rows = []
@@ -546,6 +556,21 @@ def _result_panel(
         "steprows": _merged_rows(r, plan, exchanges, run_dir),
         "expects": _expects_data(r, definition),
     }
+
+
+def _environment_panel(r: RunResult) -> dict[str, Any]:
+    """The simulator the scenario ran on — device model / OS / actuator / udid — shown as a
+    tab beside Result. Unknown fields (e.g. the fake driver names no device) are omitted."""
+    sim: list[tuple[str, str]] = []
+    if r.device_name:
+        sim.append(("device", r.device_name))
+    if r.device_runtime:
+        sim.append(("OS", r.device_runtime))
+    if r.backend:
+        sim.append(("actuator", r.backend))
+    if r.device:
+        sim.append(("udid", r.device))
+    return {"kind": "env", "key": "env", "label": "Environment", "sim": sim}
 
 
 def _network_item(d: dict[str, Any]) -> dict[str, Any]:
@@ -631,7 +656,10 @@ def _scenario_data(
     step_exchanges = [
         d for d in all_exchanges if _domain_allowed(_exchange_host(str(d.get("url") or "")), domains)
     ]
-    panels: list[dict[str, Any]] = [_result_panel(r, definition, source, step_exchanges, run_dir)]
+    panels: list[dict[str, Any]] = [
+        _result_panel(r, definition, source, step_exchanges, run_dir),
+        _environment_panel(r),
+    ]
     if net is not None:
         panels.append(_network_panel(run_dir, net))
     dev = _artifact(r, "deviceLog")
@@ -641,8 +669,9 @@ def _scenario_data(
     if trace is not None:
         panels.append(_trace_panel(run_dir, trace))
     return {
-        "name": r.scenario, "ok": r.ok, "backend": r.backend, "open": not r.ok,
+        "name": r.scenario, "ok": r.ok, "backend": r.backend, "device": r.device, "open": not r.ok,
         "description": (definition or {}).get("description"),
+        "duration": _fmt_duration(r.duration_s),
         "video": video.name if video else None, "panels": panels,
     }
 
@@ -685,9 +714,12 @@ def html_report(
         )
         for i, r in enumerate(results)
     ]
+    devices = dict.fromkeys(r.device for r in results if r.device)  # ordered-unique device count
+    total_duration = _fmt_duration(sum(r.duration_s for r in results))
     return _env().get_template("report.html.j2").render(
         run_id=run_id, passed=passed, failed=len(results) - passed, overall=passed == len(results),
-        backend=_run_backend(results), css=_asset("report.css"), js=_asset("report.js"),
+        backend=_run_backend(results), device_count=len(devices), total_duration=total_duration,
+        css=_asset("report.css"), js=_asset("report.js"),
         scenarios=scenarios, source_name=source_name, description=description,
     )
 

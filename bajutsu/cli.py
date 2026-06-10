@@ -21,15 +21,9 @@ from bajutsu.codegen import class_name_for, to_xcuitest
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.doctor import render, score
 from bajutsu.dotenv import load_dotenv
-from bajutsu.evidence import FileSink
-from bajutsu.network import NetworkCollector
 from bajutsu.record import record as record_loop
 from bajutsu.runner import (
-    device_control,
-    device_factory,
     device_pool,
-    device_relauncher,
-    device_teardown,
     launch_driver,
     run_and_report,
 )
@@ -84,7 +78,10 @@ def run(
     exclude: str = typer.Option("", "--exclude", help="comma list; skip scenarios with any of these tags"),
     udid: str = typer.Option("booted"),
     workers: int = typer.Option(1),
-    erase: bool = typer.Option(True, "--erase/--no-erase", help="erase the device before each test"),
+    erase: bool | None = typer.Option(
+        None, "--erase/--no-erase",
+        help="override every scenario's preconditions.erase (default: per-scenario)",
+    ),
     dismiss_alerts: bool = typer.Option(
         False, "--dismiss-alerts", help="use vision to dismiss unexpected OS prompts (needs API key)"
     ),
@@ -145,7 +142,7 @@ def run(
         typer.echo(f"component の展開に失敗: {e}")
         raise typer.Exit(2) from None
     # Data-driven expansion: one run per data row (${row.col} substituted). Must precede
-    # the launch-env / collector loops below so every derived scenario is wired up.
+    # the launch-env (mocks) loop below so every derived scenario is wired up.
     try:
         scenarios = expand_data(
             scenarios,
@@ -154,9 +151,11 @@ def run(
     except (OSError, ValueError) as e:
         typer.echo(f"data の展開に失敗: {e}")
         raise typer.Exit(2) from None
-    if not erase:
+    # --erase / --no-erase, when given, overrides every scenario; otherwise each scenario's
+    # own preconditions.erase (default off) decides whether its device is wiped first.
+    if erase is not None:
         for s in scenarios:
-            s.preconditions.erase = False
+            s.preconditions.erase = erase
     # Validate the backend before touching the Simulator CLIs, so an unknown/unavailable
     # actuator exits cleanly (2) instead of crashing on a missing `xcrun`/`simctl` (the
     # `run` path mirrors `doctor`: backend check first, then resolve the udid).
@@ -170,59 +169,40 @@ def run(
     # comma list — a device pool for parallel runs (`--workers`), capped to the pool size.
     udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
     workers = max(1, min(workers, len(udids)))
-    parallel = workers > 1
-    if parallel and network:
-        typer.echo("並列実行（--workers>1）は --no-network が必要（共有コレクタは並列非対応）")
-        raise typer.Exit(2)
     on_blocked = None
     if dismiss_alerts:
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
 
         guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None)
         on_blocked = guard.dismiss
-    # Start the network collector and point the app at it via launch env. The app's
-    # BajutsuKit POSTs each exchange here (no-op for apps without the SDK).
-    collector = None
+    # Mocks ride the network channel: BajutsuKit stubs matching requests instead of
+    # forwarding them (so the network is deterministic, and still observed). They are
+    # per-scenario and device-independent, so they're baked into the scenario's launch env;
+    # the per-device collector url is injected by the pool at lease time.
     if network:
-        collector = NetworkCollector()
-        url = f"http://127.0.0.1:{collector.start()}"
         for s in scenarios:
-            s.preconditions.launch_env.setdefault("BAJUTSU_COLLECTOR", url)
-            # Mocks ride the same channel: BajutsuKit stubs matching requests instead of
-            # forwarding them (so the network is deterministic, and still observed).
             if s.mocks:
                 s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
-    release = None
-    if parallel:
-        # One driver per device, leased per scenario; interval evidence (video/log) needs a
-        # fixed device, so the parallel sink captures instant evidence only (udid=None).
-        factory, relauncher, release = device_pool(udids, backends, eff.bundle_id)
-        teardown = None
-        control = None  # device control needs a single pinned device; unavailable in parallel
-        sink = FileSink(Path("runs") / run_id, redact=eff.redact, secrets=secret_values)
-    else:
-        factory = device_factory(udids[0], backends)
-        relauncher = device_relauncher(udids[0])
-        teardown = device_teardown(udids[0])
-        control = device_control(udids[0], eff.bundle_id)
-        sink = FileSink(
-            Path("runs") / run_id, udid=udids[0], log_predicate=log_predicate or None,
-            log_subsystem=log_subsystem or eff.bundle_id, redact=eff.redact, secrets=secret_values,
-        )
+    # A pool of one-or-more devices. Each device carries its own network collector, evidence
+    # sink (interval recordings), and device control — so network collection / video / log /
+    # setLocation / push all work the same whether workers is 1 or N.
+    lease, shutdown = device_pool(
+        udids, backends, eff, Path("runs") / run_id, network=network,
+        log_predicate=log_predicate or None, log_subsystem=log_subsystem or eff.bundle_id,
+        secret_values=secret_values,
+    )
     try:
         results, manifest = run_and_report(
-            eff, scenarios, factory, Path("runs"), run_id, on_blocked=on_blocked, sink=sink,
-            teardown=teardown, collector=collector, relauncher=relauncher,
-            workers=workers, release=release, bindings=secret_bindings, secret_values=secret_values,
-            control=control, source_name=scenario_path.name, description=scenario_file.description,
+            eff, scenarios, lease, Path("runs"), run_id, on_blocked=on_blocked,
+            workers=workers, bindings=secret_bindings, secret_values=secret_values,
+            source_name=scenario_path.name, description=scenario_file.description,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     finally:
-        if collector is not None:
-            collector.stop()
+        shutdown()
     ok = all(r.ok for r in results)
     github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")

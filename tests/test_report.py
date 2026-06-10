@@ -12,7 +12,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact
 from bajutsu.network import NetworkExchange
-from bajutsu.orchestrator import RunResult, StepOutcome, run_scenario
+from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome, run_scenario
 from bajutsu.report import html_report, junit_xml, manifest_dict, write_report
 from bajutsu.scenario import Scenario
 
@@ -168,6 +168,118 @@ def test_expectations_request_kind_rendered() -> None:
     assert 'status == <span class="tk num">200</span>' in out
 
 
+def test_fmt_duration_compact() -> None:
+    from bajutsu.report import _fmt_duration
+
+    assert _fmt_duration(0.0) == "0.0s"
+    assert _fmt_duration(0.84) == "0.8s"
+    assert _fmt_duration(12.34) == "12.3s"
+    assert _fmt_duration(83) == "1m 23s"  # rolls over to minutes past 60s
+
+
+def test_html_shows_execution_time() -> None:
+    # Each scenario shows its own duration in its row, and the header shows the run total
+    # (the sum across scenarios).
+    a = RunResult(scenario="s1", ok=True, steps=[], duration_s=1.5)
+    b = RunResult(scenario="s2", ok=True, steps=[], duration_s=2.0)
+    out = html_report("run1", [a, b])
+    # Per-scenario badge in each summary row.
+    assert out.count('class="sdur"') == 2
+    assert ">1.5s</span>" in out and ">2.0s</span>" in out
+    # Header total chip = sum of the scenario durations.
+    assert 'class="chip tchip"' in out
+    assert ">3.5s</span>" in out
+
+
+def test_manifest_records_scenario_duration() -> None:
+    r = RunResult(scenario="s1", ok=True, steps=[], duration_s=2.5)
+    assert manifest_dict("run1", [r])["scenarios"][0]["duration_s"] == 2.5
+
+
+def test_html_environment_tab_shows_simulator() -> None:
+    # Each scenario gets an Environment tab (beside Result) naming the simulator it ran on:
+    # device model, OS runtime, actuator, and udid.
+    r = _passing()
+    r.device, r.device_name, r.device_runtime = "SIM-ABC123", "iPhone 15", "iOS 17.2"
+    out = html_report("run1", [r])
+    assert 'data-tab="env"' in out and 'data-panel="env"' in out
+    assert ">Environment</button>" in out  # the tab label
+    assert '<span class="deflbl">simulator</span>' in out
+    assert '<td class="pk">device</td><td>iPhone 15</td>' in out
+    assert '<td class="pk">OS</td><td>iOS 17.2</td>' in out
+    assert '<td class="pk">actuator</td><td>fake</td>' in out
+    assert '<td class="pk">udid</td><td>SIM-ABC123</td>' in out
+    # Result stays the active first tab; Environment is a sibling, not the default.
+    assert out.index('data-tab="steps"') < out.index('data-tab="env"')
+
+
+def test_html_preconditions_render_in_result_tab() -> None:
+    # Preconditions render in the Result tab (the steps panel), ahead of the Environment tab.
+    definition = {
+        "name": "s1", "steps": [{"tap": {"id": "a"}}],
+        "preconditions": {"locale": "ja_JP", "launchEnv": {"SAMPLE_SEED": "5"}},
+    }
+    out = html_report("run9", [_passing()], definitions=[definition])
+    assert '<details class="pre"' in out
+    assert '<td class="pk">locale</td><td>ja_JP</td>' in out
+    assert '<td class="pk">SAMPLE_SEED</td><td>5</td>' in out
+    # In the Result panel, which precedes the Environment panel.
+    assert out.index('<details class="pre"') < out.index('data-panel="env"')
+
+
+def test_manifest_records_device_environment() -> None:
+    r = _passing()
+    r.device, r.device_name, r.device_runtime = "SIM-1", "iPhone 15", "iOS 17.2"
+    scenario = manifest_dict("run1", [r])["scenarios"][0]
+    assert scenario["device"] == "SIM-1"
+    assert scenario["device_name"] == "iPhone 15"
+    assert scenario["device_runtime"] == "iOS 17.2"
+
+
+def test_html_shows_dismissed_system_alert() -> None:
+    # A step that only passed after the guard cleared a system prompt shows the dismissal
+    # as a sub-row, so a retried step is not silently rendered as "just passing".
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[StepOutcome(index=0, action="tap", ok=True, started_at=0.0,
+                           alerts=[AlertEvent(label="Not Now")])],
+        expect_results=[], artifacts=[],
+    )
+    out = html_report("run1", [r], definitions=[{"name": "s1", "steps": [{"tap": {"id": "a"}}]}])
+    assert "class='alertrow'" in out
+    assert 'act-alert">system alert' in out
+    assert '<span class="tk str">“Not Now”</span>' in out
+    # A step with no dismissal renders no alert row.
+    assert "class='alertrow'" not in html_report("run1", [_passing()])
+
+
+def test_html_shows_expect_phase_dismissed_alert() -> None:
+    # A prompt cleared right before the scenario-level expect re-checked is noted under
+    # the expectations table (it belongs to no single step).
+    r = _passing()  # carries an evaluated expectation
+    r.expect_alerts = [AlertEvent(label="Allow")]
+    out = html_report("run1", [r])
+    assert 'class="alertnote"' in out
+    assert 'act-alert">system alert' in out
+    assert "dismissed before re-checking" in out
+    assert '<span class="tk str">“Allow”</span>' in out
+    # No expect-phase dismissal -> no note.
+    assert 'class="alertnote"' not in html_report("run1", [_passing()])
+
+
+def test_manifest_records_dismissed_alerts() -> None:
+    # asdict captures the dismissals so the manifest (the source of truth) carries them too.
+    r = RunResult(
+        scenario="s1", ok=True,
+        steps=[StepOutcome(index=0, action="tap", ok=True, alerts=[AlertEvent(label="Not Now")])],
+        expect_alerts=[AlertEvent(label="Allow")],
+    )
+    m = manifest_dict("run1", [r])
+    scenario = m["scenarios"][0]
+    assert scenario["steps"][0]["alerts"] == [{"label": "Not Now"}]
+    assert scenario["expect_alerts"] == [{"label": "Allow"}]
+
+
 def test_lightbox_arrows_navigate_screenshots() -> None:
     # The full-size lightbox has prev/next controls + arrow keys, walking every
     # screenshot in the run (the gallery is all `img.shot`, across scenarios).
@@ -185,6 +297,22 @@ def test_step_click_seeks_without_autoplay() -> None:
     assert "if(v.paused) v.play();" in out      # play() is reachable only via the button
     # The seek handler stays seek-only (it has no .play() of its own).
     assert "Seek only" in out
+
+
+def test_device_shown_in_manifest_and_report() -> None:
+    # A parallel run records the device per scenario; the report shows a per-scenario badge
+    # and a header "N devices" chip when the work was split across simulators.
+    a, b = _passing(), _passing()
+    a.device, b.device = "SIM-AAAA", "SIM-BBBB"
+    m = manifest_dict("run1", [a, b])
+    assert [s["device"] for s in m["scenarios"]] == ["SIM-AAAA", "SIM-BBBB"]
+    out = html_report("run1", [a, b])
+    assert 'class="dev"' in out and "ran on simulator SIM-AAAA" in out  # per-scenario badge
+    assert "2 devices" in out  # header summary chip when split across devices
+    # A single-device run omits the header devices chip.
+    one = _passing()
+    one.device = "SIM-AAAA"
+    assert "devices</span>" not in html_report("run1", [one])
 
 
 def test_html_shows_backend() -> None:

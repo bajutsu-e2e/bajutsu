@@ -79,6 +79,18 @@ class RealClock:
 
 
 @dataclass
+class AlertEvent:
+    """A system prompt the guard dismissed so a blocked step/expect could proceed.
+
+    Recorded on the outcome (StepOutcome.alerts / RunResult.expect_alerts) and surfaced in
+    the report, so a step that only passed on a retry isn't shown as if nothing had blocked
+    it. `label` is the button the guard tapped (e.g. "Not Now"); empty when the locator
+    named none."""
+
+    label: str = ""
+
+
+@dataclass
 class StepOutcome:
     index: int
     action: str
@@ -88,6 +100,8 @@ class StepOutcome:
     started_at: float = 0.0  # offset (s) from the scenario video's start, for video sync
     assertion_results: list[AssertionResult] = field(default_factory=list)
     artifacts: list[Artifact] = field(default_factory=list)
+    # System prompts the guard cleared before this step succeeded (usually 0 or 1).
+    alerts: list[AlertEvent] = field(default_factory=list)
 
 
 @dataclass
@@ -101,6 +115,16 @@ class RunResult:
     artifacts: list[Artifact] = field(default_factory=list)
     # Which backend (actuator) drove this scenario: "idb" / "fake".
     backend: str = ""
+    # The simulator udid this scenario ran on — shows how a parallel pool split the work.
+    device: str = ""
+    # The simulator's device model / OS runtime (e.g. "iPhone 15" / "iOS 17.2"), for the
+    # report's Environment tab; empty when not resolvable (e.g. the fake driver).
+    device_name: str = ""
+    device_runtime: str = ""
+    # Wall-clock the scenario took end to end (steps + verification), for the report.
+    duration_s: float = 0.0
+    # System prompts the guard cleared before the scenario-level `expect` re-checked.
+    expect_alerts: list[AlertEvent] = field(default_factory=list)
 
 
 def scenario_slug(name: str) -> str:
@@ -289,9 +313,9 @@ def _require_multi_touch(driver: base.Driver, action: str) -> None:
         )
 
 
-# on_blocked(driver) -> True if it cleared a blocking condition (e.g. a system
-# alert) and the step is worth retrying.
-BlockedHandler = Callable[[base.Driver], bool]
+# on_blocked(driver) -> the AlertEvent it dismissed if it cleared a blocking condition
+# (e.g. a system alert), so the step/expect is worth retrying; else None.
+BlockedHandler = Callable[[base.Driver], "AlertEvent | None"]
 
 
 def _run_step_body(
@@ -416,6 +440,7 @@ def run_scenario(
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
     expect_results: list[AssertionResult] = []
+    expect_alerts: list[AlertEvent] = []
     failure: str | None = None
     artifacts: list[Artifact] = []
     scenario_start = clock.now()  # ~video start; step offsets are measured from here
@@ -428,8 +453,11 @@ def run_scenario(
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, bindings or {})
             expect_results = assertions.evaluate(driver.query(), expect, network())
-            if not assertions.passed(expect_results) and on_blocked is not None and on_blocked(driver):
-                expect_results = assertions.evaluate(driver.query(), expect, network())  # retry once
+            if not assertions.passed(expect_results) and on_blocked is not None:
+                event = on_blocked(driver)
+                if event is not None:
+                    expect_alerts.append(event)
+                    expect_results = assertions.evaluate(driver.query(), expect, network())  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
     finally:
@@ -443,6 +471,8 @@ def run_scenario(
         failure=failure,
         artifacts=artifacts,
         backend=getattr(driver, "name", ""),
+        duration_s=max(0.0, clock.now() - scenario_start),
+        expect_alerts=expect_alerts,
     )
 
 
@@ -475,10 +505,13 @@ def _run_steps(
         ok, reason, results = _run_step_body(
             driver, step, kind, clock, network, relaunch, bindings, control
         )
-        if not ok and on_blocked is not None and on_blocked(driver):
-            ok, reason, results = _run_step_body(
-                driver, step, kind, clock, network, relaunch, bindings, control
-            )  # retry
+        if not ok and on_blocked is not None:
+            event = on_blocked(driver)
+            if event is not None:
+                outcome.alerts.append(event)
+                ok, reason, results = _run_step_body(
+                    driver, step, kind, clock, network, relaunch, bindings, control
+                )  # retry
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 

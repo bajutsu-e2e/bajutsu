@@ -1,8 +1,11 @@
-"""Run pipeline — execute scenarios through a driver factory and write the report.
+"""Run pipeline — execute scenarios through a device pool and write the report.
 
-The driver factory encapsulates "launch the app for this scenario and return a
-ready driver", so the runner stays backend-agnostic and testable with the fake
-driver.
+The pool leases a device per scenario: it launches the app and returns a `Lease`
+bundling the live driver with that device's per-device resources (evidence sink,
+relaunch, device control, network collector). A single-device run is just a pool of
+one, so network collection / interval evidence / device control work the same whether
+`workers` is 1 or N. The run loop stays backend-agnostic and testable with a fake
+lease over the fake driver.
 """
 
 from __future__ import annotations
@@ -10,10 +13,10 @@ from __future__ import annotations
 import json
 import queue
 import subprocess
-import threading
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +24,7 @@ from bajutsu import env
 from bajutsu.backends import default_available, make_driver, select_actuator
 from bajutsu.config import Effective
 from bajutsu.drivers import base
-from bajutsu.evidence import Artifact, EvidenceSink
+from bajutsu.evidence import Artifact, EvidenceSink, FileSink
 from bajutsu.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import (
     BlockedHandler,
@@ -43,11 +46,36 @@ from bajutsu.scenario import (
     scenario_dict,
 )
 
-DriverFactory = Callable[[Effective, Scenario], base.Driver]
-# Run after each scenario finishes (e.g. terminate the app -> back to SpringBoard).
-Teardown = Callable[[Effective, Scenario], None]
 # Builds the in-scenario relaunch function for a scenario (given its live driver).
 RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
+
+
+@dataclass
+class Lease:
+    """A leased device for one scenario run: its live driver plus the per-device
+    resources bound to that device. `release()` terminates the app and returns the
+    device to the pool.
+
+    `collector` is None when network collection is off; otherwise it is the device's
+    own receiver (the app POSTs to it), cleared per scenario by the run loop.
+    """
+
+    driver: base.Driver
+    sink: EvidenceSink
+    relaunch: RelaunchFn | None
+    control: DeviceControl | None
+    collector: NetworkCollector | None
+    release: Callable[[], None]
+    udid: str = ""  # the leased device, recorded on each RunResult (parallel-split attribution)
+    # The leased device's model / OS runtime, recorded on the result for the report's
+    # Environment tab (empty when the simulator catalog couldn't be read).
+    device_name: str = ""
+    device_runtime: str = ""
+
+
+# Leases a free device for one scenario (blocking until one frees up): launches the app
+# and returns the Lease the run loop drives, then release()s.
+LeaseFn = Callable[[Effective, Scenario], Lease]
 
 
 def _no_net() -> list[NetworkExchange]:
@@ -84,6 +112,7 @@ def launch_driver(
     actuator: str,
     preconditions: Preconditions | None = None,
     env_run: env.RunFn = env._real_run,
+    extra_env: Mapping[str, str] | None = None,
 ) -> base.Driver:
     """Erase/boot/launch the app (with config + scenario env) and return a driver.
 
@@ -92,6 +121,9 @@ def launch_driver(
     fails. Any simctl step that still fails (e.g. the app isn't installed) is
     surfaced as a clean env.DeviceError so the CLI can exit 2 instead of dumping a
     traceback.
+
+    `extra_env` is merged last into the launch env (e.g. the per-device
+    `BAJUTSU_COLLECTOR` url so the app reports to its own collector).
     """
     pre = preconditions or Preconditions()
     e = env.Env(udid, run=env_run)
@@ -100,8 +132,18 @@ def launch_driver(
             e.shutdown()  # erase only works on a shut-down device
             e.erase()
         e.boot()
+        # When the app config gives a built .app, reinstall it before each run so every
+        # scenario starts from a known-good binary. `reinstall=clean` (default) uninstalls
+        # first (fresh app + data); `overwrite` installs over the existing app (keeps its
+        # data). After an `erase` the app is already gone, so the uninstall is skipped.
+        if eff.app_path:
+            if not Path(eff.app_path).exists():
+                raise env.DeviceError(f"appPath not found: {eff.app_path} (build the app first)")
+            if pre.reinstall == "clean" and not pre.erase:
+                e.uninstall(eff.bundle_id)
+            e.install(eff.app_path)
         e.terminate(eff.bundle_id)  # clean start so readiness reflects the new launch
-        launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env}
+        launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env, **(extra_env or {})}
         locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
         e.launch(
             eff.bundle_id, [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)], launch_env
@@ -130,61 +172,52 @@ def _await_ready(driver: base.Driver, timeout: float = 10.0, poll: float = 0.2) 
 def run_all(
     eff: Effective,
     scenarios: list[Scenario],
-    factory: DriverFactory,
+    lease: LeaseFn,
     clock: Clock | None = None,
     on_blocked: BlockedHandler | None = None,
-    sink: EvidenceSink | None = None,
-    teardown: Teardown | None = None,
-    collector: NetworkCollector | None = None,
     run_dir: Path | None = None,
-    relauncher: RelaunchFactory | None = None,
     workers: int = 1,
-    release: Callable[[base.Driver], None] | None = None,
     bindings: Mapping[str, str] | None = None,
     secret_values: list[str] | None = None,
-    control: DeviceControl | None = None,
 ) -> list[RunResult]:
-    """Run every scenario, each with a freshly built driver.
+    """Run every scenario, each on a freshly leased device.
 
-    After each scenario finishes, `teardown` runs (e.g. terminate the app so the
-    Simulator returns to SpringBoard between scenarios and after the last one) and, if
-    given, `release(driver)` returns the scenario's device to a pool. When a `collector`
-    is given, its exchanges are cleared per scenario, exposed to `request` assertions, and
-    written to <sid>/network.json.
+    `lease(eff, scenario)` blocks until a device is free, launches the app, and returns a
+    Lease bundling the live driver with that device's evidence sink / relaunch / control /
+    network collector. After the scenario finishes, `lease.release()` terminates the app and
+    returns the device to the pool. When the lease carries a collector, its exchanges are
+    cleared per scenario, exposed to `request` assertions, and written to <sid>/network.json
+    (redacted with `secret_values`).
 
     With `workers > 1` scenarios run concurrently (results stay in declaration order). The
-    caller must supply device-independent resources per scenario — a device-pool `factory`
-    / `release` and no shared `collector` (the single loopback receiver is not
-    parallel-safe).
+    pool hands each worker its own device and per-device resources, so the run loop has no
+    shared mutable state.
     """
-    if workers > 1 and collector is not None:
-        raise ValueError("並列実行（workers>1）は共有コレクタ非対応。--no-network で実行")
     redactor = Redactor(eff.redact, values=secret_values)
 
     def run_one(i: int, s: Scenario) -> RunResult:
         sid = f"{i:02d}-{scenario_slug(s.name)}"
-        if collector is not None:
-            collector.clear()
-        driver = factory(eff, s)
+        lz = lease(eff, s)
         try:
+            if lz.collector is not None:
+                lz.collector.clear()
             # t0 after launch, so exchange offsets share the step timeline's origin.
             scenario_start = time.monotonic()
             result = run_scenario(
-                driver, s, clock, sink=sink, on_blocked=on_blocked, scenario_id=sid,
-                network=(collector.snapshot if collector is not None else _no_net),
-                relaunch=(relauncher(eff, s, driver) if relauncher is not None else None),
-                bindings=bindings, control=control,
+                lz.driver, s, clock, sink=lz.sink, on_blocked=on_blocked, scenario_id=sid,
+                network=(lz.collector.snapshot if lz.collector is not None else _no_net),
+                relaunch=lz.relaunch, bindings=bindings, control=lz.control,
             )
-            if teardown is not None:
-                teardown(eff, s)
-            if collector is not None and run_dir is not None:
-                art = _write_network(collector.snapshot_timed(), scenario_start, run_dir, sid, redactor)
+            result.device = lz.udid  # attribute the scenario to the device that ran it
+            result.device_name = lz.device_name  # for the report's Environment tab
+            result.device_runtime = lz.device_runtime
+            if lz.collector is not None and run_dir is not None:
+                art = _write_network(lz.collector.snapshot_timed(), scenario_start, run_dir, sid, redactor)
                 if art is not None:
                     result.artifacts.append(art)
             return result
         finally:
-            if release is not None:
-                release(driver)
+            lz.release()
 
     if workers > 1:
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -195,29 +228,22 @@ def run_all(
 def run_and_report(
     eff: Effective,
     scenarios: list[Scenario],
-    factory: DriverFactory,
+    lease: LeaseFn,
     runs_dir: Path,
     run_id: str,
     clock: Clock | None = None,
     on_blocked: BlockedHandler | None = None,
-    sink: EvidenceSink | None = None,
-    teardown: Teardown | None = None,
-    collector: NetworkCollector | None = None,
-    relauncher: RelaunchFactory | None = None,
     workers: int = 1,
-    release: Callable[[base.Driver], None] | None = None,
     bindings: Mapping[str, str] | None = None,
     secret_values: list[str] | None = None,
-    control: DeviceControl | None = None,
     source_name: str | None = None,
     description: str | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
     run_dir = runs_dir / run_id
     results = run_all(
-        eff, scenarios, factory, clock, on_blocked=on_blocked, sink=sink, teardown=teardown,
-        collector=collector, run_dir=run_dir, relauncher=relauncher, workers=workers, release=release,
-        bindings=bindings, secret_values=secret_values, control=control,
+        eff, scenarios, lease, clock, on_blocked=on_blocked, run_dir=run_dir,
+        workers=workers, bindings=bindings, secret_values=secret_values,
     )
     # The merged Result tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).
@@ -244,81 +270,96 @@ def _scrub_secret_values(run_dir: Path, secret_values: list[str] | None) -> None
             path.write_text(scrub.redact_text(path.read_text(encoding="utf-8")), encoding="utf-8")
 
 
-def device_factory(
-    udid: str,
-    backends: list[str],
-    available: Callable[[str], bool] = default_available,
-    env_run: env.RunFn = env._real_run,
-) -> DriverFactory:
-    """A real driver factory: pick the actuator, then launch the app per scenario.
-
-    The simctl sequencing (shutdown/erase/boot) lives in launch_driver, which
-    surfaces any failure as a clean env.DeviceError.
-    """
-    actuator = select_actuator(backends, available)
-
-    def factory(eff: Effective, scenario: Scenario) -> base.Driver:
-        return launch_driver(udid, eff, actuator, scenario.preconditions, env_run)
-
-    return factory
-
-
-def device_teardown(udid: str, env_run: env.RunFn = env._real_run) -> Teardown:
-    """A teardown that terminates the app after each scenario, returning the
-    Simulator to SpringBoard."""
-    e = env.Env(udid, run=env_run)
-
-    def teardown(eff: Effective, scenario: Scenario) -> None:
-        e.terminate(eff.bundle_id)
-
-    return teardown
-
-
 def device_pool(
     udids: list[str],
     backends: list[str],
-    bundle_id: str,
+    eff: Effective,
+    run_dir: Path,
+    *,
+    network: bool = False,
+    log_predicate: str | None = None,
+    log_subsystem: str | None = None,
+    secret_values: list[str] | None = None,
     available: Callable[[str], bool] = default_available,
     env_run: env.RunFn = env._real_run,
-) -> tuple[DriverFactory, RelaunchFactory, Callable[[base.Driver], None]]:
-    """A pool of devices for parallel runs. The factory leases a free udid per scenario
-    (blocking until one frees up), and release() terminates that scenario's app and returns
-    its udid to the pool. relauncher/release act on the leased device. Returns
-    (factory, relauncher, release)."""
+) -> tuple[LeaseFn, Callable[[], None]]:
+    """A pool of N>=1 devices for (parallel) runs.
+
+    `lease(eff, scenario)` leases a free udid (blocking until one frees up), launches the app
+    pointed at that device's own network collector, and returns a Lease whose evidence sink
+    (interval recordings under `run_dir`), relaunch, and device control are all bound to the
+    leased device. The Lease's `release()` terminates the app and returns the udid to the
+    pool. `shutdown()` stops every device's collector.
+
+    A single-device run is just a pool of one, so network collection / interval evidence /
+    device control work the same whether `workers` is 1 or N. The only shared state is the
+    free-device queue (thread-safe) and the read-only collectors map, so leases need no lock.
+
+    Returns (lease, shutdown).
+    """
     actuator = select_actuator(backends, available)
+    # Resolve the device model / OS once up front (static per device) so each result can name
+    # the simulator it ran on in the report; best-effort, so a missing catalog just omits it.
+    catalog = env.device_catalog(env_run)
     free: queue.Queue[str] = queue.Queue()
     for udid in udids:
         free.put(udid)
-    leased: dict[int, str] = {}
-    lock = threading.Lock()
+    # One collector per device (its own ephemeral port), started up front and reused across
+    # leases (cleared per scenario by the run loop). If a start fails mid-setup, stop the
+    # ones already started so we don't leak listening sockets.
+    collectors: dict[str, NetworkCollector] = {}
+    if network:
+        started: list[NetworkCollector] = []
+        try:
+            for udid in udids:
+                collector = NetworkCollector()
+                collector.start()
+                collectors[udid] = collector
+                started.append(collector)
+        except Exception:
+            for collector in started:
+                collector.stop()
+            raise
 
-    def factory(eff: Effective, scenario: Scenario) -> base.Driver:
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
-        driver = launch_driver(udid, eff, actuator, scenario.preconditions, env_run)
-        with lock:
-            leased[id(driver)] = udid
-        return driver
+        collector = collectors.get(udid)
+        # Point the app at this device's collector (survives a relaunch via the relauncher).
+        extra_env = (
+            {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
+            if collector is not None else None
+        )
+        driver = launch_driver(udid, eff, actuator, scenario.preconditions, env_run, extra_env)
+        sink = FileSink(
+            run_dir, udid=udid, log_predicate=log_predicate, log_subsystem=log_subsystem,
+            redact=eff.redact, secrets=secret_values,
+        )
+        relaunch = device_relauncher(udid, env_run, extra_env)(eff, scenario, driver)
+        control = device_control(udid, eff.bundle_id, env_run)
 
-    def relauncher(eff: Effective, scenario: Scenario, driver: base.Driver) -> RelaunchFn:
-        with lock:
-            udid = leased[id(driver)]
-        return device_relauncher(udid, env_run)(eff, scenario, driver)
-
-    def release(driver: base.Driver) -> None:
-        with lock:
-            udid = leased.pop(id(driver), None)
-        if udid is not None:
-            env.Env(udid, run=env_run).terminate(bundle_id)
+        def release() -> None:
+            env.Env(udid, run=env_run).terminate(eff.bundle_id)
             free.put(udid)
 
-    return factory, relauncher, release
+        meta = catalog.get(udid, {})
+        return Lease(
+            driver=driver, sink=sink, relaunch=relaunch, control=control,
+            collector=collector, release=release, udid=udid,
+            device_name=meta.get("name", ""), device_runtime=meta.get("runtime", ""),
+        )
+
+    def shutdown() -> None:
+        for collector in collectors.values():
+            collector.stop()
+
+    return lease, shutdown
 
 
 def device_control(
     udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
 ) -> DeviceControl:
     """A DeviceControl bound to one device, backing `setLocation` / `push` steps via
-    simctl. Not used in parallel runs (no single pinned device)."""
+    simctl."""
     e = env.Env(udid, run=env_run)
 
     class _Control:
@@ -331,10 +372,16 @@ def device_control(
     return _Control()
 
 
-def device_relauncher(udid: str, env_run: env.RunFn = env._real_run) -> RelaunchFactory:
+def device_relauncher(
+    udid: str, env_run: env.RunFn = env._real_run, extra_env: Mapping[str, str] | None = None
+) -> RelaunchFactory:
     """A relauncher for a `relaunch` step: terminate the app and launch it again (re-applying
     the scenario's launch env/args, plus any per-relaunch overrides), then wait until ready.
-    The device is not erased/rebooted — only the app process restarts."""
+    The device is not erased/rebooted — only the app process restarts.
+
+    `extra_env` (e.g. the device's collector url) is re-applied so it survives the relaunch;
+    an explicit per-relaunch `env` override still wins over it.
+    """
     e = env.Env(udid, run=env_run)
 
     def for_scenario(eff: Effective, scenario: Scenario, driver: base.Driver) -> RelaunchFn:
@@ -342,7 +389,7 @@ def device_relauncher(udid: str, env_run: env.RunFn = env._real_run) -> Relaunch
 
         def relaunch(opts: Relaunch) -> None:
             e.terminate(eff.bundle_id)
-            launch_env = {**eff.launch_env, **pre.launch_env, **(opts.env or {})}
+            launch_env = {**eff.launch_env, **pre.launch_env, **(extra_env or {}), **(opts.env or {})}
             locale = pre.locale or eff.locale
             launch_args = [
                 *eff.launch_args, *pre.launch_args, *(opts.args or []), *env.locale_args(locale)

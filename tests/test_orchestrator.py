@@ -64,6 +64,21 @@ def test_happy_path_tap_and_expect() -> None:
     assert driver.actions == [("tap", {"id": "settings.open"})]
 
 
+def test_run_scenario_records_duration() -> None:
+    # The result carries the scenario's wall-clock (measured off the injected clock) so the
+    # report can show per-scenario and total execution time.
+    here = _el("here", "H")
+    driver = FakeDriver([])  # 'here' shows only after the first poll-sleep advances the clock
+
+    def appear(_t: float) -> None:
+        driver.screen = [here]
+
+    scn = _scenario({"name": "d", "steps": [{"wait": {"for": {"id": "here"}, "timeout": 1}}]})
+    result = run_scenario(driver, scn, clock=FakeClock(appear))
+    assert result.ok
+    assert result.duration_s == 0.05  # exactly one 0.05s poll elapsed
+
+
 def test_relaunch_invokes_injected_callback() -> None:
     # A relaunch step calls the injected relauncher with its env/args overrides.
     seen: list[Relaunch] = []

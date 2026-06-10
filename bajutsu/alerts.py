@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu.drivers import base
+from bajutsu.orchestrator import AlertEvent
 
 LOCATOR_MODEL = "claude-opus-4-8"
 
@@ -73,19 +74,20 @@ class SystemAlertGuard:
         self._locator = locator
         self._instruction = instruction
 
-    def dismiss(self, driver: base.Driver) -> bool:
-        """Tap to clear a blocking prompt if one is on screen. True if it acted."""
+    def dismiss(self, driver: base.Driver) -> AlertEvent | None:
+        """Tap to clear a blocking prompt if one is on screen. Returns the AlertEvent it
+        dismissed (the button it tapped), or None when nothing on screen needed clearing."""
         png = _screenshot_png(driver)
         if png is None:
-            return False
+            return None
         decision = self._locator.locate(png, self._instruction)
         if not decision.present:
-            return False
+            return None
         width, height = _screen_points(driver)
         if width <= 0 or height <= 0:
-            return False
+            return None
         driver.tap_point((decision.x * width, decision.y * height))
-        return True
+        return AlertEvent(label=decision.label)
 
 
 # --- Claude vision locator (the production brain) ---

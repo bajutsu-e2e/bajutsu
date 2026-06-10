@@ -16,6 +16,34 @@ def test_command_builders() -> None:
     assert env.launch_cmd("U", "com.x", ["-flag", "1"]) == [
         "xcrun", "simctl", "launch", "--terminate-running-process", "U", "com.x", "-flag", "1",
     ]
+    assert env.list_devices_cmd() == ["xcrun", "simctl", "list", "devices", "available", "-j"]
+    assert env.bootstatus_cmd("U") == ["xcrun", "simctl", "bootstatus", "U", "-b"]
+    assert env.install_cmd("U", "/p.app") == ["xcrun", "simctl", "install", "U", "/p.app"]
+    assert env.uninstall_cmd("U", "com.x") == ["xcrun", "simctl", "uninstall", "U", "com.x"]
+    assert env.get_app_container_cmd("U", "com.x") == [
+        "xcrun", "simctl", "get_app_container", "U", "com.x", "app",
+    ]
+
+
+def test_uninstall_is_idempotent() -> None:
+    """uninstall() of an app that isn't installed is a no-op, not a crash."""
+    def absent(args: list[str], e: object = None) -> str:
+        raise subprocess.CalledProcessError(2, args, stderr="not installed")
+
+    env.Env("U", run=absent).uninstall("com.x")  # swallows the error
+
+
+def test_is_installed_reflects_get_app_container() -> None:
+    import subprocess
+
+    def present(args: list[str], e: object = None) -> str:
+        return "/path/to.app"
+
+    def absent(args: list[str], e: object = None) -> str:
+        raise subprocess.CalledProcessError(2, args, stderr="No such file or directory")
+
+    assert env.Env("U", run=present).is_installed("com.x") is True
+    assert env.Env("U", run=absent).is_installed("com.x") is False  # missing -> False, no raise
 
 
 def test_booted_udids_parses_simctl() -> None:
@@ -35,6 +63,31 @@ def test_booted_udids_parses_simctl() -> None:
         raise OSError("simctl not found")
 
     assert env.booted_udids(run=boom) == []  # failure -> empty, never raises
+
+
+def test_runtime_label_humanizes_identifier() -> None:
+    assert env.runtime_label("com.apple.CoreSimulator.SimRuntime.iOS-26-5") == "iOS 26.5"
+    assert env.runtime_label("com.apple.CoreSimulator.SimRuntime.watchOS-11-0") == "watchOS 11.0"
+
+
+def test_device_catalog_maps_udid_to_model_and_os() -> None:
+    import json
+
+    payload = json.dumps({
+        "devices": {
+            "com.apple.CoreSimulator.SimRuntime.iOS-17-2": [
+                {"udid": "AAA", "name": "iPhone 15", "isAvailable": True},
+                {"name": "no-udid-skipped"},
+            ],
+        }
+    })
+    catalog = env.device_catalog(run=lambda args, e=None: payload)
+    assert catalog == {"AAA": {"name": "iPhone 15", "runtime": "iOS 17.2"}}
+
+    def boom(args: list[str], e: object = None) -> str:
+        raise OSError("simctl not found")
+
+    assert env.device_catalog(run=boom) == {}  # failure -> empty, never raises
 
 
 def test_locale_args() -> None:

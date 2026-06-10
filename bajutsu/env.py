@@ -92,6 +92,19 @@ def push_cmd(udid: str, bundle_id: str, payload_path: str) -> list[str]:
     return ["xcrun", "simctl", "push", udid, bundle_id, payload_path]
 
 
+def install_cmd(udid: str, app_path: str) -> list[str]:
+    return ["xcrun", "simctl", "install", udid, app_path]
+
+
+def uninstall_cmd(udid: str, bundle_id: str) -> list[str]:
+    return ["xcrun", "simctl", "uninstall", udid, bundle_id]
+
+
+def get_app_container_cmd(udid: str, bundle_id: str) -> list[str]:
+    """Path of the app's installed bundle — succeeds only if the app is installed."""
+    return ["xcrun", "simctl", "get_app_container", udid, bundle_id, "app"]
+
+
 def child_env(env: Mapping[str, str]) -> dict[str, str]:
     """Launch env vars are passed to the app via SIMCTL_CHILD_<NAME> on the parent process."""
     return {f"SIMCTL_CHILD_{k}": v for k, v in env.items()}
@@ -99,6 +112,15 @@ def child_env(env: Mapping[str, str]) -> dict[str, str]:
 
 def list_booted_cmd() -> list[str]:
     return ["xcrun", "simctl", "list", "devices", "booted", "-j"]
+
+
+def list_devices_cmd() -> list[str]:
+    return ["xcrun", "simctl", "list", "devices", "available", "-j"]
+
+
+def bootstatus_cmd(udid: str) -> list[str]:
+    """Boot the device if it isn't already (-b) and wait until it finishes booting."""
+    return ["xcrun", "simctl", "bootstatus", udid, "-b"]
 
 
 def _real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
@@ -143,6 +165,28 @@ def booted_udids(run: RunFn = _real_run) -> list[str]:
     ]
 
 
+def runtime_label(runtime_id: str) -> str:
+    """'com.apple.CoreSimulator.SimRuntime.iOS-26-5' -> 'iOS 26.5'."""
+    return runtime_id.split("SimRuntime.")[-1].replace("-", " ", 1).replace("-", ".")
+
+
+def device_catalog(run: RunFn = _real_run) -> dict[str, dict[str, str]]:
+    """Map udid -> {'name', 'runtime'} for the available simulators (best-effort, {} on any
+    failure). Lets a run label which simulator (device model + OS) each scenario ran on."""
+    try:
+        data = json.loads(run(list_devices_cmd(), None))
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError, ValueError):
+        return {}
+    catalog: dict[str, dict[str, str]] = {}
+    for runtime, devices in (data.get("devices") or {}).items():
+        label = runtime_label(runtime)
+        for dev in devices:
+            udid = dev.get("udid")
+            if udid:
+                catalog[str(udid)] = {"name": str(dev.get("name", "")), "runtime": label}
+    return catalog
+
+
 class Env:
     """Thin simctl front end for one device."""
 
@@ -164,6 +208,22 @@ class Env:
             self._run(boot_cmd(self.udid), None)
         except subprocess.CalledProcessError:
             pass  # already booted; boot is idempotent
+
+    def is_installed(self, bundle_id: str) -> bool:
+        try:
+            self._run(get_app_container_cmd(self.udid, bundle_id), None)
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def install(self, app_path: str) -> None:
+        self._run(install_cmd(self.udid, app_path), None)
+
+    def uninstall(self, bundle_id: str) -> None:
+        try:
+            self._run(uninstall_cmd(self.udid, bundle_id), None)
+        except subprocess.CalledProcessError:
+            pass  # not installed; uninstall is idempotent
 
     def launch(
         self,
