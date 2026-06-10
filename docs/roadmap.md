@@ -4,7 +4,7 @@
 > [未整理アイデア置き場](#未整理アイデア置き場)に放り込み、固まってきたら下の表へ昇格させる。
 >
 > - **現状（実装済み / 未配線）の正確な一覧**は [architecture.md#implementation-status](architecture.md#implementation-status) が真実。ここは「これから」を扱う。
-> - 設計の背景（なぜ）は [`../DESIGN.md`](../DESIGN.md)、開発経緯は [`../REPORT.md`](../REPORT.md)。
+> - 設計の背景（なぜ）は [`../DESIGN.md`](../DESIGN.md)。
 
 ## 凡例
 
