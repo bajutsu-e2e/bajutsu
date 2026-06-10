@@ -126,12 +126,45 @@ def parse_describe_all(text: str) -> list[base.Element]:
 class IdbDriver:
     name = "idb"
 
+    # During a SwiftUI screen transition idb intermittently returns a near-empty
+    # accessibility tree (observed: a single element with no identifier) even though
+    # the screen has visually rendered. These bound a short retry so query() rides
+    # over that transient without masking a genuinely sparse screen for long.
+    _READY_MIN = 2          # a tree this size or larger is treated as settled
+    _EMPTY_RETRIES = 5      # extra describe-all attempts on a degenerate tree
+    _EMPTY_BACKOFF_S = 0.2  # delay between those attempts (<= ~1s added, bounded)
+
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
         self.udid = udid
         self._run = run
+        self._max_seen = 0  # richest tree seen on this device; gates the empty retry
 
     def query(self) -> list[base.Element]:
+        """describe-all, parsed and normalized into Elements.
+
+        idb sometimes returns a near-empty tree mid-transition; once a richer tree
+        has been seen on this device, a degenerate result is retried a bounded number
+        of times so a single-shot assertion or wait does not act on the transient
+        snapshot. A screen that has only ever been sparse (max seen < _READY_MIN) is
+        returned as-is, so a genuinely small screen is never masked.
+        """
+        els = self._describe()
+        for _ in range(self._EMPTY_RETRIES):
+            if not self._is_transient_empty(els):
+                break
+            time.sleep(self._EMPTY_BACKOFF_S)
+            els = self._describe()
+        self._max_seen = max(self._max_seen, len(els))
+        return els
+
+    def _describe(self) -> list[base.Element]:
         return parse_describe_all(self._run(describe_all_cmd(self.udid)))
+
+    def _is_transient_empty(self, els: list[base.Element]) -> bool:
+        """Whether a result looks like idb's mid-transition empty tree rather than a
+        real screen — fewer than _READY_MIN elements, but only once a richer tree has
+        been observed (so the first sparse screen seen is taken at face value)."""
+        return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
 
     def _resolve(self, sel: base.Selector, timeout: float = 3.0, poll: float = 0.2) -> base.Element:
         # Real-device trees can be transiently empty during transitions; retry

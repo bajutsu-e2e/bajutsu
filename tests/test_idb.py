@@ -60,3 +60,59 @@ def test_tap_resolves_frame_center() -> None:
 
 def test_capabilities_has_no_semantic_tap() -> None:
     assert base.Capability.SEMANTIC_TAP not in IdbDriver("U", run=lambda a: "[]").capabilities()
+
+
+# A near-empty tree as idb returns mid-transition: one element, no identifier.
+EMPTY = '[{"AXLabel":"","frame":{"x":0,"y":0,"width":0,"height":0}}]'
+
+
+def _scripted(responses: list[str]) -> tuple[object, list[int]]:
+    """A run() that returns describe-all responses in order (one per describe-all call),
+    holding the last once exhausted. Returns (run, calls) where calls[0] counts
+    describe-all invocations."""
+    seq = list(responses)
+    calls = [0]
+
+    def run(args: list[str]) -> str:
+        if "describe-all" in args:
+            calls[0] += 1
+            return seq.pop(0) if len(seq) > 1 else seq[0]
+        return ""
+
+    return run, calls
+
+
+def test_query_retries_through_transient_empty() -> None:
+    # Full tree first (establishes a richer baseline), then a transient empty, then full.
+    run, calls = _scripted([FIXTURE, EMPTY, FIXTURE])
+    driver = IdbDriver("U", run=run)
+    driver._EMPTY_BACKOFF_S = 0  # no real sleeping in the test
+
+    assert len(driver.query()) == 3  # baseline: _max_seen becomes 3
+    els = driver.query()  # hits EMPTY then recovers to the full tree
+    assert len(els) == 3
+    assert els[0]["identifier"] == "settings.open"
+    assert calls[0] == 3  # 1 baseline + (1 empty + 1 recovered)
+
+
+def test_query_does_not_retry_genuinely_sparse_screen() -> None:
+    # No richer tree has ever been seen, so a small tree is taken at face value.
+    run, calls = _scripted([EMPTY])
+    driver = IdbDriver("U", run=run)
+    driver._EMPTY_BACKOFF_S = 0
+
+    assert len(driver.query()) == 1
+    assert calls[0] == 1  # returned immediately, no retry
+
+
+def test_query_returns_after_bounded_retries_when_empty_persists() -> None:
+    # After a rich tree, a persistent empty tree is retried a bounded number of
+    # times and then returned — query() must not hang masking a real empty screen.
+    run, calls = _scripted([FIXTURE, EMPTY])
+    driver = IdbDriver("U", run=run)
+    driver._EMPTY_BACKOFF_S = 0
+
+    assert len(driver.query()) == 3  # baseline
+    calls[0] = 0
+    assert len(driver.query()) == 1  # gives up and returns the empty tree
+    assert calls[0] == 1 + IdbDriver._EMPTY_RETRIES  # initial + bounded retries
