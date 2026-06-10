@@ -115,6 +115,77 @@ MinIO へアップロードする。
 **サイジング**。動画証跡が重いので MinIO 用に数百 GB を見込む。Linux ノードは控えめでよい
 （2 vCPU / 4 GB。OrbStack で Mac に同居も可）。**Mac が占有量を支配**する。
 
+### 負荷分散 —— 2 つの別問題
+
+これを 1 つの「ロードバランサ」と捉えない。コントロールプレーン（HTTP・安価・水平スケール）と
+**Mac プール**（希少・低並列・低速）では、最適な手法が**逆**になる。
+
+**コントロールプレーンの負荷分散（容易・標準的）**。ステートレスな FastAPI を **N レプリカ**並べ、
+前段の **Caddy/HAProxy** で分散:
+
+- long-lived な SSE 接続が多いので round-robin より **least-conn** を推奨。ヘルスチェック付き。
+- **sticky セッションを使わない** —— 署名 Cookie/JWT、or セッションを Redis に外出しし、どの
+  レプリカでも任意リクエストを処理可能にする。
+- **SSE はシャード不要**: ライブログの真実は Redis pub/sub なので、*どの*レプリカでも*任意*の run の
+  ログを配信できる。LB は SSE を**バッファリングしない**設定（flush / no-buffer）に。async uvicorn は
+  少ない worker で多数の SSE を捌くが、想定同時視聴数に合わせて並列度は確保する。
+
+**ワーカーの「負荷分散」＝ジョブスケジューリング（本丸）**。Mac は同時 Simulator 数 **K** が小さく
+（RAM 制約で 1〜3）、1 run は数分。鉄則は **push ではなく pull**:
+
+- **プル型キュー**。ワーカーは *Simulator スロットが空いたときだけ* Redis からジョブを lease する。
+  これだけで**自動負荷分散 + バックプレッシャ**が成立 —— 中央スケジューラが各 Mac の負荷を知る必要
+  がない。
+- **スロット = 並列度**。各ワーカーの concurrency を物理 Simulator スロット数に固定（RQ/Celery の
+  worker concurrency）。総スループット = 全 Mac のスロット合計。
+- **能力別ルーティング**。デバイス / iOS runtime 別にキューを分け（`q:ios18`・`q:ipad`）、その
+  runtime を持つ Mac だけが該当キューを subscribe する。
+- **lease + heartbeat → 再投入**。Mac が run 途中で落ちたらジョブを re-queue（Celery の ack-late /
+  RQ の死活監視）。Mac プールは希少なので取りこぼさない。
+
+### マルチテナント
+
+4 つの軸:
+
+- **データ隔離**。共有 Postgres + 全テーブルに `org_id`、アプリ層で**全クエリを org スコープ**、
+  防御多層化に **Postgres RLS** ポリシーを併用。MinIO は**テナント prefix**
+  （`artifacts/<org_id>/runs/…`）で、配信は org スコープの**署名付き URL** のみ。自前運用では
+  スキーマ/DB 分離より **共有スキーマ + `org_id` + RLS** が勝る。
+- **実行隔離**（シナリオは実質「デバイスを操る非信頼コード」）。**run ごとに使い捨て Simulator**
+  （`--erase` / 都度 create+delete）で、同じ Mac でもテナント間で状態・keychain・スクショ・
+  ネットワークが残らない。org の `ANTHROPIC_API_KEY` やアプリ認証は**ジョブのプロセス env にだけ
+  注入**し、永続させず、終了後に消す。高隔離テナントには **Mac 丸ごと専有**（or macOS VM）とし、
+  同一 Mac で 2 テナントの Simulator を同時走行させない —— 利用率 vs 隔離。**ジョブ単位の egress
+  制御**も追加。
+- **公平性・ノイジーネイバー対策**。enqueue 時に**テナント別 同時実行クォータ**を強制（org の
+  in-flight 数を数え、超過分は org 別 pending キューで保留）し、1 テナントが希少な Mac を独占でき
+  ないように。純 FIFO を**重み付き公平スケジューリング**に置換: テナント別キュー + ディスパッチャが
+  pending を持つ org をラウンドロビン（クォータ尊重）してワーカー向けキューへ供給。優先度ティアも
+  同じ仕組みに乗る。
+- **認可境界**。全リクエストが org（OAuth/Authelia の claim）を持つ。全エンドポイントで org スコープ
+  を強制、org 内 RBAC、ワーカーには**そのジョブの org コンテキストとスコープ済みシークレットだけ**
+  渡す。
+
+### 水平スケール後のセルフホスト SPOF
+
+水平スケールした途端、**Redis と Postgres が単一障害点**になる（Redis はキュー・pub/sub・クォータ
+状態を握る）。**Redis は Sentinel で HA 化**、**Postgres** は primary+replica（Patroni）か最低でも
+堅実なバックアップ（単一ノードでも可、ただし **SPOF と明記**）、**LB 自身**も keepalived/VRRP or
+DNS で冗長化する。
+
+```
+[DNS] → [HAProxy ×2 (VRRP)] → [FastAPI ×N] ─┬─ Postgres (primary+replica)
+                                            ├─ Redis (Sentinel)   ← キュー / pub-sub / クォータ
+                                            └─ MinIO (tenant prefix)
+                                                   │ プル型キュー（device別 + org公平）
+                              Mac mini プール ×M（各 K スロット・run毎 erase・専有/隔離）
+```
+
+要するに: **前段 LB は安価な制御層だけ**を分散し、**実体の分散はプル型キュー + スロット**が担い、
+**マルチテナント = `org_id`/RLS（データ）＋ 使い捨て Simulator（実行）＋ テナント別クォータと公平
+スケジューリング（資源）** で実現する。Mac プールは弾力的に増えないため、**公平性と隔離が設計の
+中心**になる。
+
 ---
 
 ## 推奨

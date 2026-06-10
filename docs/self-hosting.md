@@ -117,6 +117,77 @@ tailnet, runs `bajutsu run --erase` on a fresh Simulator, streams logs back, and
 **Sizing.** Video evidence is heavy — budget a few hundred GB for MinIO. The Linux node is modest
 (2 vCPU / 4 GB; it can even co-locate on the Mac via OrbStack). The **Macs dominate** the footprint.
 
+### Load balancing — two separate problems
+
+Don't treat this as one "load balancer." The control plane (HTTP, cheap, scales out) and the **Mac
+pool** (scarce, low-concurrency, slow) need **opposite** techniques.
+
+**Control-plane load balancing (easy, standard).** Run **N replicas** of the FastAPI app behind
+**Caddy/HAProxy**:
+
+- Prefer **least-conn** over round-robin (SSE connections are long-lived); health-check upstreams.
+- **No sticky sessions** — use signed-cookie/JWT auth or keep sessions in Redis, so any replica
+  serves any request.
+- **SSE is naturally shardable**: live logs come from Redis pub/sub, so *any* replica can stream
+  *any* run's logs. Configure the LB to **not buffer** SSE (flush / no-buffering). Async uvicorn
+  handles many SSE on few workers, but size worker concurrency to the expected live viewers.
+
+**Worker "load balancing" = job scheduling (the real problem).** A Mac runs only **K** concurrent
+Simulators (small — RAM-bound, often 1–3), and a run takes minutes. The rule is **pull, not push**:
+
+- **Pull-based queue.** Workers lease a job from Redis *only when a Simulator slot is free*. That
+  alone gives automatic balancing **and** back-pressure — no central scheduler needs to track each
+  Mac's load.
+- **Slots = concurrency.** Pin each worker's concurrency to its physical Simulator slots (RQ/Celery
+  worker concurrency). Total throughput = sum of slots across the pool.
+- **Route by capability.** Separate queues per device / iOS runtime (`q:ios18`, `q:ipad`); a worker
+  subscribes only to queues it can serve.
+- **Lease + heartbeat → re-queue.** If a Mac dies mid-run, the job must re-enqueue (Celery
+  ack-late / RQ liveness). The Mac pool is scarce — don't drop jobs.
+
+### Multi-tenancy
+
+Four axes:
+
+- **Data isolation.** Shared Postgres with an `org_id` on every table, **org-scoped on every query**
+  in the app layer, with **Postgres RLS** policies as defense-in-depth. MinIO uses a **tenant
+  prefix** (`artifacts/<org_id>/runs/…`) served only through **org-scoped signed URLs**. Shared
+  schema + `org_id` + RLS beats schema/DB-per-tenant for self-host ops.
+- **Execution isolation** (a scenario is effectively untrusted code driving a device). Use an
+  **ephemeral Simulator per run** (`--erase` / create+delete) so no state, keychain, screenshots,
+  or network bleed between tenants on the same Mac. **Inject per-org secrets** (the org's
+  `ANTHROPIC_API_KEY`, app credentials) into the job process env only, never persisted, scrubbed on
+  exit. For high-isolation tenants, **dedicate whole Macs** (or macOS VMs) and don't co-run two
+  tenants' Simulators on one Mac — utilization vs isolation. Add **per-job egress controls**.
+- **Fairness / noisy-neighbor.** Enforce **per-tenant concurrency quotas** at enqueue time (count an
+  org's in-flight jobs; hold the rest in a per-org pending queue) so one tenant can't monopolize the
+  scarce Macs. Replace pure FIFO with **weighted-fair scheduling**: per-tenant queues + a dispatcher
+  that round-robins across orgs with pending work (respecting quotas) into the worker-facing queue.
+  Priority tiers ride the same mechanism.
+- **Authorization boundary.** Every request carries its org (the OAuth/Authelia claim); enforce org
+  scope on every endpoint, RBAC within the org, and hand workers **only that job's org context and
+  scoped secrets**.
+
+### Self-host SPOFs once you scale out
+
+Horizontal scale makes **Redis and Postgres single points of failure** (Redis now holds the queue,
+pub/sub, *and* quota state). Make **Redis HA with Sentinel**, **Postgres** primary+replica (Patroni)
+or at least a solid backup (a single node is acceptable for self-host **if** flagged as a SPOF), and
+the **LB itself** redundant via keepalived/VRRP or DNS.
+
+```
+[DNS] → [HAProxy ×2 (VRRP)] → [FastAPI ×N] ─┬─ Postgres (primary+replica)
+                                            ├─ Redis (Sentinel)   ← queue / pub-sub / quotas
+                                            └─ MinIO (tenant prefix)
+                                                   │ pull queue (per-device + per-org fairness)
+                              Mac mini pool ×M (K slots each · erase per run · dedicated/isolated)
+```
+
+In short: the **front LB balances only the cheap control plane**; the **real distribution is the
+pull queue + slots**; and **multi-tenancy = `org_id`/RLS (data) + ephemeral Simulator (execution) +
+per-tenant quotas and fair scheduling (resources)**. Because the Mac pool can't scale elastically,
+**fairness and isolation are the center of the design.**
+
 ---
 
 ## Recommendation
