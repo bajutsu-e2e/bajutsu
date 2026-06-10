@@ -124,7 +124,7 @@ assertions.py  evidence.py ── intervals.py
 
 ## テスト構成
 
-`tests/` に **150 のユニットテスト**（`uv run pytest -q`）。すべて実機 Simulator を必要としない:
+`tests/` に **306 のユニットテスト**（`uv run pytest -q`）。すべて実機 Simulator を必要としない:
 コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`・`Spawn`・`Clock`）で
 検証する。サンプルアプリに対する実機 E2E は `make e2e` / `make ui-test`（[sample-app](sample-app.md)）。
 
@@ -158,11 +158,11 @@ assertions.py  evidence.py ── intervals.py
 - CLI `run` / `doctor` / `codegen` / `trace` / `triage`、および `record`（AI オーサリング）+ alert guard
 - XCUITest コード生成
 
-### 実機未検証（実装はあるが外部 CLI に対する検証が必要）
+### 実機 Simulator で検証済み（iPhone 17 Pro・近年の iOS）
 
-- idb バックエンドの subprocess 実行。**出力パーサはテスト済みだが、外部 CLI の
-  サーフェスと JSON スキーマは「想定」**で、インストール済みツールに対する確認が要る
-  （`drivers/idb.py` 冒頭の注記）。`simctl` の launch 手順も best-effort。
+- idb バックエンドの subprocess 実行 — `describe-all` パース、フレーム中心の tap / text / swipe、
+  `simctl` launch 手順 — を、インストール済みの `idb` / `idb_companion` に対し sample シナリオ実行・
+  証跡取得・triage 自己修復ループを実機で走らせて確認済み（`make e2e`。`e2e.yml` CI も idb smoke を実行）。
 
 ### 未配線（スキーマ/フラグはあるが実行時に効かない）
 

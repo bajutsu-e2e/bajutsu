@@ -2,8 +2,9 @@
 
 Parses `idb ui describe-all` JSON into normalized Elements and acts via
 `idb ui tap/text/swipe`. idb has no semantic tap, so a tap resolves the target's
-frame center first. The JSON key names follow fb-idb's describe-all output and
-should be validated against the installed idb version.
+frame center first. The JSON key names follow fb-idb's describe-all output,
+validated on-device against fb-idb (iPhone 17 Pro, recent iOS); re-check them if
+the installed idb version changes the schema.
 """
 
 from __future__ import annotations

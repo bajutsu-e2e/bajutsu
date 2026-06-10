@@ -128,7 +128,7 @@ assertions.py  evidence.py ── intervals.py
 
 ## Test layout
 
-`tests/` holds **150 unit tests** (`uv run pytest -q`). None require a real Simulator: command
+`tests/` holds **306 unit tests** (`uv run pytest -q`). None require a real Simulator: command
 builders are verified as pure functions, and execution paths are tested with `FakeDriver` /
 injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sample app is
 `make e2e` / `make ui-test` ([sample-app](sample-app.md)).
@@ -166,11 +166,12 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 - The CLI `run` / `doctor` / `codegen` / `trace` / `triage`, plus `record` (AI authoring) + the alert guard
 - XCUITest code generation
 
-### Implemented but not validated on a real device (needs external CLIs)
+### Validated on a real Simulator (iPhone 17 Pro, recent iOS)
 
-- The idb backend's subprocess execution. **The output parser is tested, but the external CLI
-  surface and JSON schema are "assumed"** and must be confirmed against the installed tool (the note
-  at the top of `drivers/idb.py`). The simctl launch sequencing is also best-effort.
+- The idb backend's subprocess execution — `describe-all` parsing, frame-center tap / text /
+  swipe, and the simctl launch sequencing — confirmed against the installed `idb` /
+  `idb_companion` by running the sample scenarios, evidence capture, and the triage self-heal
+  loop on-device (`make e2e`; the `e2e.yml` CI workflow also exercises the idb smoke path).
 
 ### Not yet wired (schema/flags exist but have no runtime effect)
 

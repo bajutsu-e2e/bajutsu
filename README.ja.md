@@ -4,8 +4,8 @@
 
 > iOS Simulator 向けの自然言語駆動 E2E テスト。
 > **ステータス: pre-alpha** — 決定的コア・AI オーサリングループ（`record`）・証跡サブシステム・
-> XCUITest codegen はすべて実装・ユニットテスト済み。デバイス操作を担うバックエンド *実行部*
-> （idb）は実装済みだが実機未検証で、デバイス上での E2E 実行は未確認。
+> XCUITest codegen・自己修復トリアージはすべて実装・ユニットテスト済みで、idb バックエンドは
+> **実機 Simulator で E2E 検証済み**: シナリオ実行・証跡取得・triage の自己修復ループがいずれも実機で動く。
 
 Bajutsu は自然言語で書かれた（または記録された）テストシナリオを受け取り、iOS Simulator 上の
 アプリを操作（tap / type / swipe / wait）し、**機械チェック可能なアサーション**で結果を検証する。
@@ -107,7 +107,7 @@ flowchart TB
 
 ## ステータス
 
-実装済み・テスト済み（約 150 のユニットテスト、Simulator 不要で走る）:
+実装済み・テスト済み（306 のユニットテスト、Simulator 不要で走る）:
 
 - ドライバ抽象と **セレクタ解決**（決定性の核）
 - **シナリオスキーマ**（ステップ / 待機 / アサーション）の厳格検証 + YAML ラウンドトリップ
@@ -122,11 +122,11 @@ flowchart TB
 - **XCUITest codegen**（構造マッピング・テスト時 AI 不要）
 - 配線済み CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage`
 
-実装済みだが実機未検証（Xcode + Simulator が必要）:
+実機 Simulator で検証済み（iPhone 17 Pro・近年の iOS）:
 
-- idb バックエンドの subprocess 実行。出力パーサはテスト済みだが、外部 CLI のサーフェスと
-  JSON スキーマは **想定** で、インストール済みツールに対する確認が要る。simctl の launch 手順も
-  best-effort。
+- idb バックエンドの subprocess 実行 — `describe-all` パース、フレーム中心の tap / text / swipe、
+  simctl launch 手順 — を、インストール済みの `idb` / `idb_companion` に対し `sample` シナリオ実行・
+  証跡取得・triage 自己修復ループを実機で走らせて確認済み。
 
 未配線: 外部 `mockServer` コマンド（シナリオ `mocks` で代替済み）。
 完全な「実装済み vs 未配線」表は [`docs/ja/architecture.md`](docs/ja/architecture.md)。

@@ -4,9 +4,9 @@
 
 > Natural-language-driven E2E testing for iOS Simulators.
 > **Status: pre-alpha** — the deterministic core, the AI authoring loop (`record`), the
-> evidence subsystem, and XCUITest codegen are all implemented and unit-tested. The
-> device-facing backend *execution* (idb) is implemented but not yet validated
-> against a real Simulator, so end-to-end runs on a device are still unverified.
+> evidence subsystem, XCUITest codegen, and self-healing triage are all implemented and
+> unit-tested, and the idb backend is **validated end-to-end on a real Simulator**: scenarios,
+> evidence capture, and the triage self-heal loop all run on-device.
 
 Bajutsu takes test scenarios written in (or recorded from) natural language and runs
 them against an app on the iOS Simulator: it performs taps / typing / swipes / waits and
@@ -115,7 +115,7 @@ breakdown.
 
 ## Status
 
-Implemented and covered by tests (~150 unit tests, run without a Simulator):
+Implemented and covered by tests (306 unit tests, run without a Simulator):
 
 - Driver abstraction and **selector resolution** (the determinism core)
 - **Scenario schema** (steps, waits, assertions) with strict validation + YAML round-trip
@@ -130,11 +130,12 @@ Implemented and covered by tests (~150 unit tests, run without a Simulator):
 - **XCUITest codegen** (structural mapping; no AI at test time)
 - The wired CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage`
 
-Implemented but not yet validated on a real device (needs Xcode + a Simulator):
+Validated on a real Simulator (iPhone 17 Pro, recent iOS):
 
-- The idb backend's subprocess execution. Its output parsers are tested,
-  but the external CLI surface and JSON schema are **assumed** and must be confirmed
-  against the installed tool; the simctl launch sequencing is best-effort.
+- The idb backend's subprocess execution — `describe-all` parsing, frame-center
+  tap / text / swipe, and the simctl launch sequencing — confirmed against the installed
+  `idb` / `idb_companion` by running the `sample` scenarios, evidence capture, and the
+  triage self-heal loop on-device.
 
 Not yet wired: the external `mockServer` command (superseded by scenario `mocks`). See
 [`docs/architecture.md`](docs/architecture.md) for the full implemented-vs-unwired table.
