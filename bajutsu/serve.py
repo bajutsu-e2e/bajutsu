@@ -326,14 +326,13 @@ pre.out{margin:.6rem 0 0;max-height:220px;overflow:auto;background:#0b1220;borde
 </main>
 <script>
 const $=s=>document.querySelector(s);
-let poll=null;
+let poll=null,selectedRun=null;
 async function load(){
   const scn=await (await fetch('/api/scenarios')).json();
   const app=await (await fetch('/api/apps')).json();
   $('#scn').innerHTML=scn.map(s=>`<option value="${s.path}" data-names="${(s.names||[]).join(', ')}">${s.file}</option>`).join('');
   $('#app').innerHTML=app.map(a=>`<option>${a}</option>`).join('');
   showNames();
-  loadHistory();
 }
 function showNames(){const o=$('#scn').selectedOptions[0];$('#names').textContent=o?o.dataset.names:''}
 $('#scn').addEventListener('change',showNames);
@@ -355,20 +354,20 @@ async function check(id){
   clearInterval(poll);poll=null;$('#go').disabled=false;
   setStatus(j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId);
-  loadHistory(j.runId);
+  loadHistory();
 }
-function setReport(id){$('#report').innerHTML=`<iframe src="/runs/${id}/report.html"></iframe>`}
-function select(li){$('#history').querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}
-async function loadHistory(sel){
-  const runs=await (await fetch('/api/runs')).json();
+function setReport(id){selectedRun=id;$('#report').innerHTML=`<iframe src="/runs/${id}/report.html"></iframe>`}
+async function loadHistory(){
+  let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
   const ul=$('#history');
   if(!runs.length){ul.innerHTML='<li class="muted">no runs yet</li>';return}
-  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}"><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
-  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id);select(li)}));
-  if(sel){const m=ul.querySelector('li[data-id="'+sel+'"]');if(m)select(m)}
+  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
+  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id);ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
-$('#refresh').addEventListener('click',()=>loadHistory());
+$('#refresh').addEventListener('click',loadHistory);
 function setStatus(t,c){const s=$('#status');s.textContent=t;s.className='status '+c}
 load();
+loadHistory();
+setInterval(loadHistory,4000);
 </script>
 </body></html>"""
