@@ -45,6 +45,32 @@ def test_list_apps(tmp_path: Path) -> None:
     assert srv.list_apps(cfg) == ["demo", "other"]
 
 
+def _write_run(runs: Path, run_id: str, *, ok: bool, scenarios: list[tuple[str, bool]]) -> None:
+    d = runs / run_id
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps({
+        "runId": run_id, "ok": ok,
+        "scenarios": [{"scenario": n, "ok": o} for n, o in scenarios],
+    }), encoding="utf-8")
+    (d / "report.html").write_text("<html></html>", encoding="utf-8")
+
+
+def test_list_runs_newest_first_with_summary(tmp_path: Path) -> None:
+    _, _, runs = _project(tmp_path)
+    _write_run(runs, "20260610-1", ok=True, scenarios=[("alpha", True)])
+    _write_run(runs, "20260610-2", ok=False, scenarios=[("alpha", True), ("beta", False)])
+    (runs / "not-a-run").mkdir()  # no manifest → skipped
+    got = srv.list_runs(runs)
+    assert [r["id"] for r in got] == ["20260610-2", "20260610-1"]  # newest first
+    assert got[0]["ok"] is False and got[0]["passed"] == 1 and got[0]["total"] == 2
+    assert got[0]["scenarios"] == ["alpha", "beta"] and got[0]["report"] is True
+    assert got[1]["ok"] is True
+
+
+def test_list_runs_empty_dir(tmp_path: Path) -> None:
+    assert srv.list_runs(tmp_path / "nope") == []
+
+
 def test_run_command_builder() -> None:
     cmd = srv.run_command("s.yaml", "demo", backend="idb", udid="U", config="c.yaml")
     assert cmd[:5] == [sys.executable, "-m", "bajutsu", "run", "s.yaml"]
@@ -118,6 +144,18 @@ def test_http_lists_and_index(tmp_path: Path) -> None:
         assert b"bajutsu" in _get(port, "/")[1]
         assert _get_json(port, "/api/scenarios")[0]["names"] == ["alpha", "beta"]
         assert _get_json(port, "/api/apps") == ["demo", "other"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_runs_history(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    _write_run(runs, "20260610-1", ok=True, scenarios=[("alpha", True)])
+    server, port = _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path))
+    try:
+        hist = _get_json(port, "/api/runs")
+        assert len(hist) == 1 and hist[0]["id"] == "20260610-1" and hist[0]["ok"] is True
     finally:
         server.shutdown()
         server.server_close()

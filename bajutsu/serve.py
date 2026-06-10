@@ -55,6 +55,33 @@ def list_apps(config_path: Path) -> list[str]:
         return []
 
 
+def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
+    """Past runs under `runs_dir` (newest first), each summarized from its manifest.json for
+    the history list. Run ids are timestamps, so a reverse lexicographic sort is newest-first."""
+    out: list[dict[str, Any]] = []
+    if not runs_dir.is_dir():
+        return out
+    for d in runs_dir.iterdir():
+        manifest = d / "manifest.json"
+        if not (d.is_dir() and manifest.is_file()):
+            continue
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
+        out.append({
+            "id": d.name,
+            "ok": bool(data.get("ok")),
+            "report": (d / "report.html").is_file(),
+            "scenarios": [str(s.get("scenario", "")) for s in scenarios],
+            "passed": sum(1 for s in scenarios if s.get("ok")),
+            "total": len(scenarios),
+        })
+    out.sort(key=lambda r: r["id"], reverse=True)
+    return out
+
+
 def run_command(
     scenario: str, app: str, *, backend: str = "", udid: str = "", erase: bool = False,
     dismiss_alerts: bool = False, config: str = "bajutsu.config.yaml",
@@ -166,6 +193,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self._json(list_scenarios(state.scenarios_dir))
             elif path == "/api/apps":
                 self._json(list_apps(state.config))
+            elif path == "/api/runs":
+                self._json(list_runs(state.runs_dir))
             elif path.startswith("/api/jobs/"):
                 job = state.jobs.get(path[len("/api/jobs/"):])
                 self._json(job.view() if job else {"error": "no such job"}, 200 if job else 404)
@@ -256,23 +285,42 @@ pre.out{margin:.6rem 0 0;max-height:220px;overflow:auto;background:#0b1220;borde
 .report{height:calc(100vh - 6rem)}iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut)}
 .names{color:var(--mut);font-size:.8em;margin-top:.2rem;min-height:1em}
+.left{display:flex;flex-direction:column;gap:1rem}
+.hhead{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:.5rem}
+.refresh{background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;cursor:pointer;padding:.1rem .45rem}
+.history{list-style:none;margin:0;padding:0;max-height:42vh;overflow:auto}
+.history li{display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;border-radius:6px;cursor:pointer}
+.history li:hover{background:#0b1220}
+.history li.sel{background:#0b1220;outline:1px solid var(--acc)}
+.history li.muted{cursor:default}
+.history li.muted:hover{background:none}
+.dot{width:.6rem;height:.6rem;border-radius:50%;flex:0 0 auto}.dot.ok{background:var(--ok)}.dot.ng{background:var(--ng)}
+.hid{font-variant-numeric:tabular-nums}
+.hsum{color:var(--mut);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.muted{color:var(--mut)}
 </style></head>
 <body>
 <header>bajutsu <span class="mut">run a scenario · view its report (Tier 1 — not the CI gate)</span></header>
 <main>
-  <div class="card">
-    <label>Scenario</label>
-    <select id="scn"></select><div class="names" id="names"></div>
-    <label>App</label><select id="app"></select>
-    <div class="row"><div><label>Backend</label><input id="backend" type="text" placeholder="idb"></div>
-      <div><label>UDID</label><input id="udid" type="text" placeholder="booted"></div></div>
-    <div class="checks">
-      <label><input type="checkbox" id="noerase" checked> no-erase</label>
-      <label><input type="checkbox" id="dismiss"> dismiss-alerts</label>
+  <div class="left">
+    <div class="card">
+      <label>Scenario</label>
+      <select id="scn"></select><div class="names" id="names"></div>
+      <label>App</label><select id="app"></select>
+      <div class="row"><div><label>Backend</label><input id="backend" type="text" placeholder="idb"></div>
+        <div><label>UDID</label><input id="udid" type="text" placeholder="booted"></div></div>
+      <div class="checks">
+        <label><input type="checkbox" id="noerase" checked> no-erase</label>
+        <label><input type="checkbox" id="dismiss"> dismiss-alerts</label>
+      </div>
+      <button class="run" id="go">Run</button>
+      <div class="status" id="status"></div>
+      <pre class="out" id="out" hidden></pre>
     </div>
-    <button class="run" id="go">Run</button>
-    <div class="status" id="status"></div>
-    <pre class="out" id="out" hidden></pre>
+    <div class="card">
+      <div class="hhead"><span>History</span><button class="refresh" id="refresh" title="refresh">&#8635;</button></div>
+      <ul class="history" id="history"></ul>
+    </div>
   </div>
   <div class="report" id="report"><div class="empty">Run a scenario to see its report here.</div></div>
 </main>
@@ -285,6 +333,7 @@ async function load(){
   $('#scn').innerHTML=scn.map(s=>`<option value="${s.path}" data-names="${(s.names||[]).join(', ')}">${s.file}</option>`).join('');
   $('#app').innerHTML=app.map(a=>`<option>${a}</option>`).join('');
   showNames();
+  loadHistory();
 }
 function showNames(){const o=$('#scn').selectedOptions[0];$('#names').textContent=o?o.dataset.names:''}
 $('#scn').addEventListener('change',showNames);
@@ -305,8 +354,20 @@ async function check(id){
   if(j.status==='running'){setStatus('running…','run');return}
   clearInterval(poll);poll=null;$('#go').disabled=false;
   setStatus(j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
-  if(j.runId)$('#report').innerHTML=`<iframe src="/runs/${j.runId}/report.html"></iframe>`;
+  if(j.runId)setReport(j.runId);
+  loadHistory(j.runId);
 }
+function setReport(id){$('#report').innerHTML=`<iframe src="/runs/${id}/report.html"></iframe>`}
+function select(li){$('#history').querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}
+async function loadHistory(sel){
+  const runs=await (await fetch('/api/runs')).json();
+  const ul=$('#history');
+  if(!runs.length){ul.innerHTML='<li class="muted">no runs yet</li>';return}
+  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}"><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
+  ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id);select(li)}));
+  if(sel){const m=ul.querySelector('li[data-id="'+sel+'"]');if(m)select(m)}
+}
+$('#refresh').addEventListener('click',()=>loadHistory());
 function setStatus(t,c){const s=$('#status');s.textContent=t;s.className='status '+c}
 load();
 </script>

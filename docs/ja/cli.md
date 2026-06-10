@@ -144,6 +144,8 @@ bajutsu serve [--port 8765] [--scenarios sample/scenarios] [--config bajutsu.con
 
 - シナリオファイル + app を選び、backend / udid / `no-erase` / `dismiss-alerts` を設定して **Run**。
   出力がライブ表示され、完了で `report.html` が埋め込まれる。
+- 操作 UI の下の **History** リストに過去の run（新しい順・pass/fail ドット・シナリオ要約）が並び、
+  クリックでそのレポートを再表示。`GET /api/runs` が裏側。
 - run サブプロセスは起動環境を継承（venv の `bin` を `PATH` 先頭に付与し `idb` クライアントを解決）。
   `bajutsu.config.yaml` が解決するようプロジェクトルートから実行する。
 

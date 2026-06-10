@@ -154,6 +154,8 @@ bajutsu serve [--port 8765] [--scenarios sample/scenarios] [--config bajutsu.con
 
 - Pick a scenario file + app, set backend / udid / `no-erase` / `dismiss-alerts`, hit **Run**;
   the output streams live and the `report.html` embeds on completion.
+- A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
+  scenario summary); click one to reopen its report. `GET /api/runs` backs it.
 - The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH` so
   the `idb` client resolves). Run it from the project root so `bajutsu.config.yaml` resolves.
 
