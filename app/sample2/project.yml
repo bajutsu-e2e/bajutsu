@@ -13,7 +13,7 @@ settings:
     SUPPORTS_MACCATALYST: NO
 packages:
   BajutsuKit:
-    path: ../BajutsuKit
+    path: ../../BajutsuKit
 targets:
   BajutsuSample:
     type: application
@@ -32,35 +32,14 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
-          - CFBundleURLName: com.bajutsu.sample
+          - CFBundleURLName: com.bajutsu.sample2
             CFBundleURLSchemes: [bajutsusample]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.sample
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.sample2
         TARGETED_DEVICE_FAMILY: "1,2"
-  BajutsuSampleUITests:
-    type: bundle.ui-testing
-    platform: iOS
-    sources:
-      - path: BajutsuSampleUITests
-    dependencies:
-      - target: BajutsuSample
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.sample.uitests
-        TARGETED_DEVICE_FAMILY: "1,2"
-        GENERATE_INFOPLIST_FILE: YES
 schemes:
   BajutsuSample:
     build:
       targets:
         BajutsuSample: all
-  UITests:
-    build:
-      targets:
-        BajutsuSample: all
-        BajutsuSampleUITests: [test]
-    test:
-      targets:
-        - BajutsuSampleUITests
-      gatherCoverageData: false

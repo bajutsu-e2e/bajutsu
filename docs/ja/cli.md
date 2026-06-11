@@ -46,7 +46,7 @@ bajutsu run <scenario.yaml> --app <name> [options]
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
 
 ```bash
-bajutsu run sample/scenarios/smoke.yaml --app sample --udid <UDID> --backend idb --no-erase
+bajutsu run app/sample/scenarios/smoke.yaml --app sample --udid <UDID> --backend idb --no-erase
 ```
 
 ## `doctor`
@@ -143,7 +143,7 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] 
 stdlib のみ（Web フレームワーク不要）、`127.0.0.1` バインド。
 
 ```bash
-bajutsu serve [--port 8765] [--scenarios sample/scenarios] [--config bajutsu.config.yaml] [--runs runs]
+bajutsu serve [--port 8765] [--scenarios app/sample/scenarios] [--config bajutsu.config.yaml] [--runs runs]
 ```
 
 - シナリオファイル + app を選び、backend / udid / erase / `disable alert-dismiss` を設定して **Run**。

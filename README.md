@@ -220,7 +220,7 @@ bajutsu/
 - **M1 — done (validated on-device).** Deterministic runner: env (simctl) + drivers +
   scenarios + assertions + lightweight evidence + manifest + per-app config + `run` / `doctor`.
   Done criteria met on a real device: the same id-first scenario
-  (`sample/scenarios/cross_backend.yaml`) passes deterministically on idb, with the target app
+  (`app/sample/scenarios/cross_backend.yaml`) passes deterministically on idb, with the target app
   switchable via config alone. idb resolves id-first selectors directly from the native
   `AXUniqueId` and actuates by frame-center coordinates.
 - **M2 — mostly done.** The AI loop (`record`) + `capturePolicy` evidence rules + `video` /

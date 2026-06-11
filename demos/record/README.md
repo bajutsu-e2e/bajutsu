@@ -32,7 +32,7 @@ the idb backend, with `appPath` so the app installs automatically):
    assertion catches it) → fix it back → it **passes** again. That is the edit-and-re-run loop
    you use to maintain an AI-authored scenario.
 
-The generated scenario mirrors [`sample/scenarios/smoke.yaml`](../../sample/scenarios/smoke.yaml)
+The generated scenario mirrors [`app/sample/scenarios/smoke.yaml`](../../app/sample/scenarios/smoke.yaml)
 (onboarding → login → home → counter), including a `wait for Home` so it survives the login
 screen transition on a real device.
 

@@ -2,11 +2,11 @@
 
 # The sample app (the BajutsuSample fixture)
 
-> The small, self-contained SwiftUI app under `sample/`. A test fixture built to exercise **every**
+> The small, self-contained SwiftUI app under `app/sample/`. A test fixture built to exercise **every**
 > Bajutsu primitive (all step kinds, all assertion kinds, launch-env hooks, a deeplink, and an
 > `os_signpost` interval), plus a small UI gallery (Controls / Text / Lists tabs).
 >
-> Full details in [`sample/README.md`](../sample/README.md). Here we summarize the mapping to
+> Full details in [`app/sample/README.md`](../app/sample/README.md). Here we summarize the mapping to
 > Bajutsu features.
 
 Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [codegen](codegen.md) · [cli](cli.md)
@@ -19,7 +19,7 @@ Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [code
 - bundle id `com.bajutsu.sample` · deeplink scheme `bajutsusample`.
 - Built with XcodeGen + xcodebuild (`project.yml` is the source of truth; `.xcodeproj`/`build/` are
   gitignored).
-- Example scenarios are in [`sample/scenarios/`](../sample/scenarios).
+- Example scenarios are in [`app/sample/scenarios/`](../app/sample/scenarios).
 
 ```bash
 make sample-gen     # xcodegen generate -> BajutsuSample.xcodeproj
@@ -71,15 +71,15 @@ Which scenario uses each primitive (mapped to the grammar in [scenarios](scenari
 
 | Primitive | Scenario |
 |---|---|
-| tap / type(into) / wait(for) | [`smoke.yaml`](../sample/scenarios/smoke.yaml) |
-| enabled / disabled | [`auth.yaml`](../sample/scenarios/auth.yaml) |
-| selected / exists(+negate) / value / capturePolicy | [`settings.yaml`](../sample/scenarios/settings.yaml) |
-| count / idMatches / search filter | [`list.yaml`](../sample/scenarios/list.yaml) · [`lists.yaml`](../sample/scenarios/lists.yaml) |
-| longPress / in-app alert (label tap) / swipe(on+direction) | [`components.yaml`](../sample/scenarios/components.yaml) |
-| video / deviceLog interval + os_signpost | [`evidence.yaml`](../sample/scenarios/evidence.yaml) |
-| Controls gallery (toggle / stepper / slider / picker / menu / button) | [`controls.yaml`](../sample/scenarios/controls.yaml) |
-| Text entry (value + char count / clear / inline validation) | [`text.yaml`](../sample/scenarios/text.yaml) |
-| List search / swipe-delete / edit / pull-to-refresh / push nav / empty state | [`lists.yaml`](../sample/scenarios/lists.yaml) |
+| tap / type(into) / wait(for) | [`smoke.yaml`](../app/sample/scenarios/smoke.yaml) |
+| enabled / disabled | [`auth.yaml`](../app/sample/scenarios/auth.yaml) |
+| selected / exists(+negate) / value / capturePolicy | [`settings.yaml`](../app/sample/scenarios/settings.yaml) |
+| count / idMatches / search filter | [`list.yaml`](../app/sample/scenarios/list.yaml) · [`lists.yaml`](../app/sample/scenarios/lists.yaml) |
+| longPress / in-app alert (label tap) / swipe(on+direction) | [`components.yaml`](../app/sample/scenarios/components.yaml) |
+| video / deviceLog interval + os_signpost | [`evidence.yaml`](../app/sample/scenarios/evidence.yaml) |
+| Controls gallery (toggle / stepper / slider / picker / menu / button) | [`controls.yaml`](../app/sample/scenarios/controls.yaml) |
+| Text entry (value + char count / clear / inline validation) | [`text.yaml`](../app/sample/scenarios/text.yaml) |
+| List search / swipe-delete / edit / pull-to-refresh / push nav / empty state | [`lists.yaml`](../app/sample/scenarios/lists.yaml) |
 
 ## The UI-test target and make targets
 
@@ -105,5 +105,5 @@ bajutsu codegen components.yaml -o BajutsuSampleUITests/ComponentsUITests.swift
 
 `project.yml` already defines the `BajutsuSampleUITests` (`bundle.ui-testing`) target and the
 `UITests` scheme. The generated
-[`ComponentsUITests.swift`](../sample/BajutsuSampleUITests/ComponentsUITests.swift) is committed (as
+[`ComponentsUITests.swift`](../app/sample/BajutsuSampleUITests/ComponentsUITests.swift) is committed (as
 an example of codegen output).

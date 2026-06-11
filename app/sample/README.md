@@ -4,7 +4,7 @@ A small, self-contained SwiftUI app used as Bajutsu's fixture. It is instrumente
 to exercise **every** Bajutsu primitive: all step types, all assertion kinds,
 launch-env hooks, a deeplink, and an `os_signpost` interval. Example scenarios live
 in [`scenarios/`](scenarios) and the app is wired in the repo-root
-[`bajutsu.config.yaml`](../bajutsu.config.yaml) as the `sample` app.
+[`bajutsu.config.yaml`](../../bajutsu.config.yaml) as the `sample` app.
 
 ## Build & run
 
@@ -13,7 +13,7 @@ Requires Xcode and [XcodeGen](https://github.com/yonyz/XcodeGen) (`brew install 
 ```bash
 make sample-gen      # xcodegen generate  -> BajutsuSample.xcodeproj
 make sample-build    # compile for the iOS Simulator
-# or: cd sample && xcodegen generate && open BajutsuSample.xcodeproj
+# or: cd app/sample && xcodegen generate && open BajutsuSample.xcodeproj
 ```
 
 The generated `.xcodeproj` and `build/` are gitignored; `project.yml` is the source

@@ -15,7 +15,7 @@ on:
     paths:
       - "bajutsu/**"
       - "BajutsuKit/**"
-      - "sample/**"
+      - "app/sample/**"
       - "bajutsu.config.yaml"
       - "pyproject.toml"
       - "uv.lock"
@@ -58,12 +58,12 @@ jobs:
         uses: ./.github/actions/boot-simulator
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "app/sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
 
       - name: Run smoke scenarios
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: sample/scenarios/smoke.yaml
+          scenarios: app/sample/scenarios/smoke.yaml
           app: sample
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
@@ -105,5 +105,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: xcuitest-result
-          path: sample/build/dd/Logs/Test/*.xcresult
+          path: app/sample/build/dd/Logs/Test/*.xcresult
           if-no-files-found: ignore
