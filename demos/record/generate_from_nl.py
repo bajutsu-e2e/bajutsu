@@ -101,6 +101,7 @@ _TAP_VERBS = {"tap", "press", "click", "open"}
 _CHECK_VERBS = ("check", "verify", "confirm", "expect", "ensure")
 _COUNTS = {"once", "twice", "thrice", "times", "time"}
 _STOP = {"the", "that", "it", "a", "an"}
+_TAP_FILLER = {"button", "buttons"}  # UI-noun noise in a tap clause; the trait filter already scopes to buttons
 
 
 def _clauses(goal: str) -> list[str]:
@@ -131,11 +132,12 @@ def _repeat(clause: str) -> int:
 
 
 def _tap_target(clause: str) -> str:
-    """The thing to tap: the clause minus a leading verb and any count words."""
+    """The thing to tap: the clause minus a leading verb, count words, and the filler noun
+    'button' (e.g. "tap get started button" -> "get started")."""
     words = clause.split()
     if words and words[0].lower() in _TAP_VERBS:
         words = words[1:]
-    kept = [w for w in words if w.lower() not in _COUNTS and not w.isdigit()]
+    kept = [w for w in words if w.lower() not in _COUNTS and w.lower() not in _TAP_FILLER and not w.isdigit()]
     return " ".join(kept).strip(" .") or clause
 
 

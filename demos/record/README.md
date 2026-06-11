@@ -19,18 +19,27 @@ watch the deterministic check respond.
 
 - a booted Simulator (`open -a Simulator`),
 - the idb client (`brew install facebook/fb/idb-companion && uv sync --extra idb`),
-- the sample2 app built (`make -C demos/record sample2-build`).
+- the sample2 app built (`make -C demos/record sample2-build`),
+- `ANTHROPIC_API_KEY` (env or a gitignored `.env`) — step 1 authors with Claude.
 
-It then walks three phases, using [`demo.config.yaml`](demo.config.yaml) (the `sample2` app on
-the idb backend, with `appPath` so the app installs automatically):
+The goal comes from the first non-comment line of [`goals.txt`](goals.txt) (override with
+`GOAL="..." ./demo.sh`). It then walks four phases, using [`demo.config.yaml`](demo.config.yaml)
+(the `sample2` app on the idb backend, with `appPath` so the app installs automatically):
 
-1. **Generate** — turn a natural-language goal into `generated.yaml` (gitignored) with
-   [`generate_from_nl.py`](generate_from_nl.py), and print the YAML.
+1. **Author (AI)** — `bajutsu record` runs the real Tier-1 loop: **Claude** reads the goal plus
+   the live screen (screenshot + accessibility tree) on the booted app and proposes each step,
+   writing the executed steps out as `generated.yaml` (gitignored). For an offline, no-key run
+   the keyword stand-in [`generate_from_nl.py`](generate_from_nl.py) authors the same flow.
 2. **Execute** — `bajutsu run generated.yaml --app sample2 --config demo.config.yaml` on the
    booted Simulator. The counter flow passes.
 3. **Modify** — edit the expected count to a wrong value → re-run → the run **fails** (the
    assertion catches it) → fix it back → it **passes** again. That is the edit-and-re-run loop
    you use to maintain an AI-authored scenario.
+4. **Diagnose** — change a selector label (`Log in` → `Log In`) to simulate a selector that
+   drifted out from under the test → re-run → the tap **fails** to resolve → `bajutsu triage`
+   reads the failed run and **diagnoses** it (category + the likely fix from the captured
+   element tree). Triage stays advisory — it explains the failure, never judges pass/fail.
+   The selector is then restored and the scenario re-runs **green**.
 
 The generated scenario follows the app's onboarding → login → home → counter flow, including a
 `wait for Home` so it survives the login screen transition on a real device.
