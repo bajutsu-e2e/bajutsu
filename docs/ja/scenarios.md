@@ -84,7 +84,8 @@ scenarios:
 
 | キー | 型 | 既定 | 説明 | 配線 |
 |---|---|---|---|---|
-| `erase` | bool | `true` | 各テスト前に `simctl erase`（クリーン環境） | ✅ |
+| `erase` | bool | `false` | 各テスト前にシム全体を wipe（`simctl erase` —— アプリ/データ/設定）。既定はオフ。`reinstall` が全 wipe なしでアプリを fresh に保つので、まっさらなデバイスが必要なテストだけ `true` に | ✅ |
+| `reinstall` | `clean` \| `overwrite` | `clean` | config が `appPath` を指定したとき各 run 前にどう再インストールするか: `clean` = uninstall してから install（アプリ + データを fresh に）。`overwrite` = 既存アプリに上書き install（データコンテナは保持） | ✅ |
 | `launchArgs` | list[str] | `[]` | 起動引数（config の `launchArgs` に追記） | ✅ |
 | `launchEnv` | dict | `{}` | 起動 env（`SIMCTL_CHILD_*` で注入。config の `launchEnv` にマージ） | ✅ |
 | `deeplink` | str | なし | 起動後に `simctl openurl` で開く | ✅ |
@@ -373,8 +374,8 @@ steps:
 
 `data`（インライン行）か `dataFile`（CSV パス。両者は **排他**）を持つシナリオは、`${row.<column>}` を
 置換して **1 行 1 シナリオ**に展開される（`expand_data`, `scenario.py:537`）。派生シナリオは
-`"<name> [row N: col=val, …]"` に改名され、元の preconditions を保つ（`erase` も既定 true のまま ——
-各行が自分のクリーンな環境で走る）。
+`"<name> [row N: col=val, …]"` に改名され、元の preconditions を保つ（各行ともアプリは fresh に再
+インストールされ、テンプレートの `erase` / `reinstall` を継承する）。
 
 ```yaml
 - name: search returns a result

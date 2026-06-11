@@ -108,7 +108,8 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
-  erase?:      boolean,                     # 既定 true  — 先頭で simctl erase
+  erase?:      boolean,                     # 既定 false — 先頭で simctl erase
+  reinstall?:  ("clean" | "overwrite"),     # 既定 "clean" — config が appPath 指定時の再インストール
   launchArgs?: list(string),                # 既定 []
   launchEnv?:  map(string,string),          # 既定 {}    — SIMCTL_CHILD_* として注入
   deeplink?:   string,
@@ -259,10 +260,13 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | フィールド | 既定値 |
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
-| `Scenario.preconditions` | `{}`（= `erase: true`） |
-| `Preconditions.erase` | `true` |
+| `Scenario.preconditions` | `{}`（= `erase: false`, `reinstall: clean`） |
+| `Scenario.dismissAlerts` | 未指定（アラートガード ON; プロンプトを dismiss） |
+| `Preconditions.erase` | `false` |
+| `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
+| `DismissAlerts.enabled` | `true` |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |
@@ -329,8 +333,8 @@ steps:
 
 `data`（インライン行）か `dataFile`（CSV パス。両者は排他）を持つシナリオは、`${row.<column>}` を
 置換して **1 行 1 シナリオ**に展開される（`expand_data`, `scenario.py:537`）。派生シナリオは
-`"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保つ**（`erase` も既定 true のまま ——
-各行が自分のクリーンな環境で走る）。
+`"<name> [row N: col=val, …]"` に改名され、**元の preconditions を保つ**（各行ともアプリは fresh に
+再インストールされ、テンプレートの `erase` / `reinstall` を継承する）。
 
 ```yaml
 - name: search returns a result

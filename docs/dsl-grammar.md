@@ -110,7 +110,8 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 
 # ── Preconditions ──────────────────────────────────────────────────────
 Preconditions ::= {
-  erase?:      boolean,                     # default true  — simctl erase first
+  erase?:      boolean,                     # default false — simctl erase first
+  reinstall?:  ("clean" | "overwrite"),     # default "clean" — app reinstall when config sets appPath
   launchArgs?: list(string),                # default []
   launchEnv?:  map(string,string),          # default {}    — injected as SIMCTL_CHILD_*
   deeplink?:   string,
@@ -262,10 +263,13 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | Field | Default |
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` | `[]` |
-| `Scenario.preconditions` | `{}` (i.e. `erase: true`) |
-| `Preconditions.erase` | `true` |
+| `Scenario.preconditions` | `{}` (i.e. `erase: false`, `reinstall: clean`) |
+| `Scenario.dismissAlerts` | unset (alert guard on; dismiss the prompt) |
+| `Preconditions.erase` | `false` |
+| `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
+| `DismissAlerts.enabled` | `true` |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |
@@ -337,7 +341,7 @@ unaffected.
 A scenario with `data` (inline rows) or `dataFile` (a CSV path; mutually exclusive) is expanded into
 **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:537`). Each
 derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the original preconditions**
-(so `erase` still defaults true — every row runs in its own clean environment).
+(so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`).
 
 ```yaml
 - name: search returns a result
