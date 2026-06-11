@@ -210,7 +210,7 @@ bajutsu/
 
 - **M1 — 完了（実機検証済み）。** 決定的ランナー: env (simctl) + ドライバ + シナリオ +
   アサーション + 軽量証跡 + manifest + アプリ別 config + `run` / `doctor`。完了条件を実機で達成:
-  同一の id ファーストシナリオ（`sample/scenarios/cross_backend.yaml`）が idb 上で決定的に通り、
+  同一の id ファーストシナリオ（`app/sample/scenarios/cross_backend.yaml`）が idb 上で決定的に通り、
   config だけで対象アプリを切り替えられる（idb は id ファーストセレクタをネイティブの `AXUniqueId`
   から直接解決し、フレーム中心の座標で操作する）。
 - **M2 — ほぼ完了。** AI ループ（`record`）+ `capturePolicy` 証跡ルール + `video` / `deviceLog` +

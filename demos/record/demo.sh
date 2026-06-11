@@ -16,7 +16,7 @@ cd "$(dirname "$0")/../.."          # repo root (the run's working directory)
 HERE="demos/record"
 CONFIG="$HERE/demo.config.yaml"
 SCENARIO="$HERE/generated.yaml"
-APP_PATH="sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
+APP_PATH="app/sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
 GOAL="Get started, log in with email demo@bajutsu.dev and password hunter2, \
 wait for Home, then tap Increment twice, and check the counter shows 2"
 
