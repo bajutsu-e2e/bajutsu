@@ -280,13 +280,13 @@ def test_manifest_records_dismissed_alerts() -> None:
     assert scenario["expect_alerts"] == [{"label": "Allow"}]
 
 
-def test_lightbox_arrows_navigate_screenshots() -> None:
-    # The full-size lightbox has prev/next controls + arrow keys, walking every
-    # screenshot in the run (the gallery is all `img.shot`, across scenarios).
+def test_screenshot_opens_element_viewer_and_arrows_navigate_steps() -> None:
+    # The full-size screenshot preview (lightbox) is gone: clicking a step's screenshot
+    # opens the element viewer, and ← / → walk through every step's elements across the run.
     out = html_report("run1", [_passing()])
-    assert 'class="lb-nav lb-prev"' in out and 'class="lb-nav lb-next"' in out
-    assert "ArrowLeft" in out and "ArrowRight" in out
-    assert "img.shot" in out  # gallery collected from every step thumbnail
+    assert 'id="lb"' not in out and "lb-nav" not in out and "openLightbox" not in out
+    assert "tvOpen(shot.closest('td.ev'))" in out  # the screenshot opens the element viewer
+    assert "ArrowLeft" in out and "ArrowRight" in out and "tvHosts" in out  # arrow keys walk the steps
 
 
 def test_step_click_seeks_without_autoplay() -> None:
@@ -591,7 +591,7 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
         json.dumps([_el("home.title", "Welcome", ["staticText"])]), encoding="utf-8"
     )
     out = html_report("run1", [r], tmp_path)
-    # the step's screenshot (lightbox thumbnail) and its element viewer are shown
+    # the step's screenshot thumbnail and its element viewer are shown
     assert 'class="shot"' in out and 'src="00-s1/step0/after.png"' in out
     # the element tree opens in-report (no new tab): a button + inline embedded data,
     # rendered into the #tv overlay rather than linking out to the json file.
@@ -599,8 +599,10 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     assert 'target="_blank"' not in out
     assert "home.title" in out and "Welcome" in out
     assert 'id="tv"' in out and "tvFilter" in out
-    # the lightbox overlay + opener are present
-    assert 'id="lb"' in out and "openLightbox" in out
+    # the screenshot preview (lightbox) is gone; the element viewer shows the step's own
+    # info above the table instead.
+    assert 'id="lb"' not in out and "openLightbox" not in out
+    assert 'class="tv-step"' in out
 
 
 def test_html_tree_rows_carry_frame_for_screenshot_highlight(tmp_path: Path) -> None:

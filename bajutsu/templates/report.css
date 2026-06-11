@@ -24,10 +24,8 @@ header h1{font-size:1rem;margin:0;font-weight:600}
 .ctl label{display:flex;gap:.3rem;align-items:center;cursor:pointer}
 .hbtn{background:#3a3a3c;color:#fff;border:0;border-radius:6px;padding:.25rem .6rem;cursor:pointer;font:inherit;font-size:.8rem}
 main{padding:1.1rem;max-width:1100px;margin:0 auto}
-/* No overflow:hidden here: a clipping ancestor would cancel the recording's
-   position:sticky (it would scroll away with the steps instead of pinning). The
-   border-radius still clips the card's own background/border; children stay inside it
-   via .body's padding, and wide network tables are bounded by .detail{min-width:0}. */
+/* The border-radius clips the card's own background/border; children stay inside it via
+   .body's padding, and wide network tables are bounded by .detail{min-width:0}. */
 details.scn{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:0 0 .9rem}
 details.scn[data-ok=false]{border-color:#f1c4bf}
 summary{list-style:none;cursor:pointer;padding:.7rem 1rem;display:flex;gap:.55rem;align-items:center;font-weight:600}
@@ -44,8 +42,7 @@ summary::-webkit-details-marker{display:none}
 /* Custom player: a slim control bar sits BELOW the recording rather than overlaying it
    (the native HTML5 controls draw their bar across the bottom of the frame, covering the
    app's own bottom UI — e.g. a tab bar — which reads as "in the way"). */
-.player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000;
- position:sticky;top:calc(var(--hh, 3rem) + .5rem)}
+.player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
 .player video{display:block;width:100%;background:#000;cursor:pointer}
 .vctl{display:flex;align-items:center;gap:.5rem;padding:.34rem .5rem;background:#1c1c1e;color:#e6e6e6}
 .vplay{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
@@ -87,7 +84,7 @@ tr.srow:hover td{background:#eef4ff}
 tr.srow.playing td{background:#fff3c4;box-shadow:inset 3px 0 0 #f0a500}
 td.ev{white-space:nowrap}
 img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-align:middle;
- cursor:zoom-in;background:#fafafa}
+ cursor:pointer;background:#fafafa}
 .elnk{font-size:.78rem;margin-left:.4rem}
 .treebtn{font:inherit;font-size:.78rem;border:0;padding:0;background:transparent;color:#0a6cff;
  cursor:pointer;text-decoration:underline}
@@ -104,11 +101,19 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
  font-size:.84rem;background:var(--bg);color:var(--ink)}
 .tvcount{flex:none}
 .tv-close{flex:none;border:0;background:transparent;color:var(--mut);font-size:1.05rem;line-height:1;cursor:pointer}
-.tv-body{overflow:auto;padding:.3rem .6rem .6rem;display:flex;gap:.7rem;align-items:flex-start}
+/* Step-info band above the element table: the step's number, result/action badges and
+   tokenized detail, cloned from the step's own row so the elements read in context. */
+.tv-step{flex:none;display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;
+ padding:.45rem .7rem;border-bottom:1px solid var(--line);background:#fafafb}
+.tv-step[hidden]{display:none}
+.tv-stepnum{font:700 .78rem -apple-system,system-ui,sans-serif;color:var(--mut)}
+.tv-stepdesc{font:.82rem/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--ink);word-break:break-word}
+.tv-stepat{margin-left:auto;font:600 .72rem/1 ui-monospace,Menlo,Consolas,monospace}
+.tv-body{flex:1 1 auto;min-height:0;overflow:auto;padding:.3rem .6rem .6rem;display:flex;gap:.7rem;align-items:flex-start}
 .tv-shot{flex:none;position:sticky;top:0;align-self:flex-start}
 .tv-shotframe{position:relative;display:inline-block;line-height:0}
 .tv-shot img{display:block;width:auto;max-width:300px;max-height:72vh;border:1px solid var(--line);
- border-radius:6px;background:#fafafa;cursor:zoom-in}
+ border-radius:6px;background:#fafafa}
 /* Highlight box overlaying the screenshot, sized as a % of the screen rect so it tracks
    the displayed image at any scale. Positioned on row hover (tv-hl), updated in JS. */
 .tv-hl{position:absolute;border:2px solid #0a6cff;background:rgba(10,108,255,.18);
@@ -120,23 +125,10 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
  font:600 .72rem -apple-system,system-ui,sans-serif;color:var(--mut);border-bottom:1px solid var(--line)}
 .tvtbl td{padding:.22rem .4rem;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-word}
 .tvtbl td.tvid{color:#0a6cff} .tvtbl td.tvfr{color:var(--mut);white-space:nowrap}
-.lb{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;
- justify-content:center;z-index:50;cursor:zoom-out}
-.lb.open{display:flex}
-.lb-fig{margin:0;display:flex;flex-direction:column;align-items:center;gap:.6rem;cursor:default}
-.lb img{max-width:84vw;max-height:84vh;border-radius:8px;box-shadow:0 10px 50px rgba(0,0,0,.6)}
-.lb-cap{color:#e8e8e8;font:.84rem -apple-system,system-ui,sans-serif;text-align:center}
-.lb-nav{flex:none;margin:0 .8rem;width:2.6rem;height:2.6rem;border:0;border-radius:50%;cursor:pointer;
- background:rgba(255,255,255,.14);color:#fff;font-size:1.7rem;line-height:1;display:flex;
- align-items:center;justify-content:center}
-.lb-nav:hover{background:rgba(255,255,255,.28)}
-/* The recording follows the scroll within its own scenario: the .media grid item
-   stretches to the full row height, and the inner .player pins just below the sticky
-   header until the scenario card scrolls past (sticky clamps at the bottom of .media).
-   Sticking the inner .player rather than the grid item itself avoids the few-px "jump" a
-   sticky grid item makes when the detail column grows (e.g. expanding a network row).
-   --hh is the live header height, measured in report.js (the header wraps when narrow). */
-.media{align-self:stretch}
+/* The recording sits at the top of its column (it no longer follows the page scroll).
+   The detail column is bounded to the recording's height in report.js so the two
+   columns end together; the steps list scrolls within that bound (see .rich-wrap). */
+.media{align-self:start}
 .pass{color:var(--ok);font-weight:700} .fail{color:var(--ng);font-weight:700}
 .logbar{display:flex;gap:.5rem;align-items:center;margin:.1rem 0 .35rem}
 .logbar input{flex:1;padding:.32rem .55rem;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:.84rem}
@@ -176,7 +168,14 @@ details.pre[open]>summary::before{transform:rotate(90deg)}
 .stepname{font-size:.74rem;color:var(--mut);font-style:italic}
 .cap{font-size:.68rem;color:#2c5fb3;background:#eaf0fb;border:1px solid #cfe0f8;border-radius:4px;
  padding:.02rem .3rem}
-.expects{margin-top:.8rem}
+/* The Result view is a flex column bounded to the recording's height (max-height set in
+   report.js). The steps list scrolls within .rich-scroll; the expectations footer is
+   pinned at the bottom so it stays visible while the steps scroll. */
+.rich-wrap{display:flex;flex-direction:column;min-height:0}
+.rich-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+/* Keep the steps column headers in view while the list scrolls. */
+.steps-sec .sttbl>thead>tr>th{position:sticky;top:0;z-index:1;background:var(--card)}
+.expects{flex:none;margin-top:0;padding-top:.6rem;border-top:1px solid var(--line);background:var(--card)}
 .extbl td{vertical-align:top}
 .extbl td:nth-child(-n+2),.extbl th:nth-child(-n+2),.extbl td:nth-child(4),.extbl th:nth-child(4){
  width:1%;white-space:nowrap}
@@ -269,6 +268,7 @@ a{color:#0a6cff}
  .nxhk{color:#aab8f5}
  .nxmock{color:#c79bea;background:#2a2140;border-color:#42305e}
  details.pre>summary{background:#2a2b2f}
+ .tv-step{background:#1b1c1f}
  tr.ng{background:#3a2422}
  tr.srow:hover td,tr.xrow:hover td,.tvtbl tr.tvrow:hover td{background:#2a2f3a}
  tr.srow.playing td{background:#3a3520}

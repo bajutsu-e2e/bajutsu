@@ -1,14 +1,5 @@
 (function(){
   function esc(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
-  // The recording is pinned (CSS position:sticky) just below the sticky header. The header
-  // wraps to two lines at narrow widths, so publish its live height as --hh rather than
-  // hardcode an offset that would leave a gap or let the video slip under the header.
-  var hdr = document.querySelector('header');
-  function syncHeaderH(){
-    if(hdr) document.documentElement.style.setProperty('--hh', hdr.offsetHeight + 'px');
-  }
-  syncHeaderH();
-  window.addEventListener('resize', syncHeaderH);
   document.addEventListener('click', function(e){
     var t = e.target.closest('.tab'); if(!t) return;
     var scn = t.closest('.scn'), name = t.getAttribute('data-tab');
@@ -60,51 +51,21 @@
   window.toggleAll = function(open){
     document.querySelectorAll('details.scn').forEach(function(d){ d.open = open; });
   };
-  // Lightbox: click a step thumbnail to view it full-size, then ← / → walk through
-  // every screenshot in the run (across scenarios). Esc or a backdrop click closes.
-  var lb = document.getElementById('lb');
-  var lbImg = lb && lb.querySelector('img');
-  var lbCap = lb && lb.querySelector('.lb-cap');
-  var lbIndex = -1;
-  function lbShots(){ return Array.prototype.slice.call(document.querySelectorAll('img.shot')); }
-  function lbShow(i){
-    var arr = lbShots(); if(!arr.length || !lbImg) return;
-    lbIndex = (i % arr.length + arr.length) % arr.length;   // wrap around
-    var s = arr[lbIndex];
-    lbImg.src = s.getAttribute('src');
-    if(lbCap){
-      var scn = s.closest('.scn'), row = s.closest('tr');
-      var name = scn && scn.querySelector('.sname') ? scn.querySelector('.sname').textContent : '';
-      var step = row && row.querySelector('td') ? row.querySelector('td').textContent : '';
-      lbCap.textContent = name + (step !== '' ? '  ·  step ' + step : '') + '   ' + (lbIndex+1) + ' / ' + arr.length;
-    }
-    lb.classList.add('open');
-  }
-  function lbClose(){ if(!lb) return; lb.classList.remove('open'); if(lbImg) lbImg.removeAttribute('src'); lbIndex = -1; }
-  window.openLightbox = function(src){
-    var arr = lbShots(), i = 0;
-    for(var k=0;k<arr.length;k++){ if(arr[k].getAttribute('src') === src){ i = k; break; } }
-    lbShow(i);
-  };
-  if(lb){
-    lb.addEventListener('click', function(e){ if(e.target === lb) lbClose(); });  // backdrop only
-    var prev = lb.querySelector('.lb-prev'), next = lb.querySelector('.lb-next');
-    if(prev) prev.addEventListener('click', function(){ lbShow(lbIndex - 1); });
-    if(next) next.addEventListener('click', function(){ lbShow(lbIndex + 1); });
-  }
-  document.addEventListener('keydown', function(e){
-    if(!lb || !lb.classList.contains('open')) return;
-    if(e.key === 'Escape') lbClose();
-    else if(e.key === 'ArrowLeft') lbShow(lbIndex - 1);
-    else if(e.key === 'ArrowRight') lbShow(lbIndex + 1);
-  });
-  // Element viewer: clicking a step's "tree" opens its captured accessibility
-  // elements in an overlay (embedded inline, so it works offline — no new tab),
-  // with a live filter over the rows.
+  // Element viewer: clicking a step's screenshot (or its "tree" button) opens that step's
+  // captured accessibility elements in an overlay — embedded inline, so it works offline
+  // (no new tab). The step's own info is shown above the element table, and ← / → walk
+  // through every step's elements across the run.
   var tv = document.getElementById('tv');
   var tvBody = tv && tv.querySelector('.tv-body');
+  var tvStep = tv && tv.querySelector('.tv-step');
   var tvInput = tv && tv.querySelector('.tvfilter');
   var tvCount = tv && tv.querySelector('.tvcount');
+  // Every step "view" cell carrying embedded element data, in document order — the walk
+  // order for the ← / → keys.
+  var tvHosts = Array.prototype.slice.call(document.querySelectorAll('td.ev')).filter(function(td){
+    return td.querySelector('template.treedata');
+  });
+  var tvIndex = -1;
   // Screen extent (points) of the currently shown step, used to map an element's frame
   // onto the screenshot. Seeded from the element bounding box, refined from the shot's
   // real pixel size (see tvOpen) so a long scrolling list doesn't distort the mapping.
@@ -131,20 +92,38 @@
     });
     if(tvCount) tvCount.textContent = n + (n === 1 ? ' element' : ' elements');
   }
-  function tvClose(){ if(tv){ tv.classList.remove('open'); if(tvBody) tvBody.innerHTML = ''; } }
-  document.addEventListener('click', function(e){
-    var b = e.target.closest('.treebtn'); if(!b || !tv || !tvBody) return;
-    var tpl = b.parentNode.querySelector('template.treedata'); if(!tpl) return;
+  function tvClose(){ if(tv){ tv.classList.remove('open'); if(tvBody) tvBody.innerHTML = ''; tvIndex = -1; } }
+  // The step-info band above the element table: step number, result/action badges and
+  // the tokenized detail, cloned from the step's own row.
+  function tvBuildStep(host){
+    if(!tvStep) return;
+    tvStep.innerHTML = '';
+    var row = host.closest('tr.srow');
+    if(!row){ tvStep.hidden = true; return; }
+    var cells = row.children;
+    var num = cells[0] ? cells[0].textContent.trim() : '';
+    if(num){ var n = document.createElement('span'); n.className = 'tv-stepnum'; n.textContent = 'step ' + num; tvStep.appendChild(n); }
+    var rb = cells[1] && cells[1].querySelector('.exst'); if(rb) tvStep.appendChild(rb.cloneNode(true));
+    var ab = cells[2] && cells[2].querySelector('.act'); if(ab) tvStep.appendChild(ab.cloneNode(true));
+    if(cells[3]){ var d = document.createElement('span'); d.className = 'tv-stepdesc'; d.innerHTML = cells[3].innerHTML; tvStep.appendChild(d); }
+    var at = cells[4] ? cells[4].textContent.trim() : '';
+    if(at){ var a = document.createElement('span'); a.className = 'tv-stepat muted'; a.textContent = at; tvStep.appendChild(a); }
+    tvStep.hidden = false;
+  }
+  function tvOpen(host){
+    if(!host || !tv || !tvBody) return;
+    var tpl = host.querySelector('template.treedata'); if(!tpl) return;
+    tvIndex = tvHosts.indexOf(host);
+    tvBuildStep(host);
     tvBody.innerHTML = '';
     // Show the step's screenshot beside its elements so the two can be read together;
     // hovering an element row highlights its frame on the shot (tv-hl overlay).
-    var shot = b.parentNode.querySelector('img.shot'), imEl = null;
+    var shot = host.querySelector('img.shot'), imEl = null;
     if(shot){
       var sd = document.createElement('div'); sd.className = 'tv-shot';
       var frame = document.createElement('div'); frame.className = 'tv-shotframe';
       imEl = document.createElement('img'); imEl.alt = 'step screenshot';
-      var src = shot.getAttribute('src'); imEl.src = src;
-      imEl.addEventListener('click', function(){ tvClose(); openLightbox(src); });  // zoom full-size
+      imEl.src = shot.getAttribute('src');
       var hl = document.createElement('div'); hl.className = 'tv-hl'; hl.hidden = true;
       frame.appendChild(imEl); frame.appendChild(hl); sd.appendChild(frame); tvBody.appendChild(sd);
     }
@@ -170,15 +149,24 @@
     }
     if(tvInput) tvInput.value = '';
     tvFilter('');
+    tvBody.scrollTop = 0;
     tv.classList.add('open');
-    if(tvInput) tvInput.focus();
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('.treebtn'); if(!b) return;
+    tvOpen(b.closest('td.ev') || b.parentNode);
   });
   if(tv){
     tv.addEventListener('click', function(e){ if(e.target === tv) tvClose(); });  // backdrop only
     var tvX = tv.querySelector('.tv-close'); if(tvX) tvX.addEventListener('click', tvClose);
     if(tvInput) tvInput.addEventListener('input', function(){ tvFilter(this.value); });
     document.addEventListener('keydown', function(e){
-      if(tv.classList.contains('open') && e.key === 'Escape') tvClose();
+      if(!tv.classList.contains('open')) return;
+      if(e.key === 'Escape'){ tvClose(); return; }
+      // While typing in the filter, let ← / → move the text cursor instead of navigating.
+      if(document.activeElement === tvInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
+      if(e.key === 'ArrowLeft' && tvIndex > 0){ e.preventDefault(); tvOpen(tvHosts[tvIndex - 1]); }
+      else if(e.key === 'ArrowRight' && tvIndex >= 0 && tvIndex < tvHosts.length - 1){ e.preventDefault(); tvOpen(tvHosts[tvIndex + 1]); }
     });
   }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
@@ -188,6 +176,24 @@
     var m = Math.floor(t / 60), s = Math.floor(t % 60);
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
+  // Bound the Result view to the recording's height so the steps list scrolls within its
+  // own container (instead of pushing the page) and ends level with the player; the
+  // expectations footer then pins to the bottom of that bound. Cleared when there is no
+  // recording or the card is collapsed (so the layout falls back to its natural flow).
+  function syncResultHeight(scn){
+    var player = scn.querySelector('.player'), wrap = scn.querySelector('.rich-wrap');
+    if(!wrap) return;
+    if(!player){ wrap.style.maxHeight = ''; return; }
+    var pr = player.getBoundingClientRect();
+    if(pr.height < 80){ wrap.style.maxHeight = ''; return; }   // collapsed / metadata not loaded yet
+    var h = pr.bottom - wrap.getBoundingClientRect().top;
+    wrap.style.maxHeight = h > 120 ? h + 'px' : '';
+  }
+  function syncAllHeights(){ document.querySelectorAll('.scn').forEach(syncResultHeight); }
+  window.addEventListener('resize', syncAllHeights);
+  document.querySelectorAll('details.scn').forEach(function(d){
+    d.addEventListener('toggle', function(){ if(d.open) syncResultHeight(d); });
+  });
   document.querySelectorAll('.player').forEach(function(p){
     var v = p.querySelector('video'), btn = p.querySelector('.vplay');
     var seek = p.querySelector('.vseek'), time = p.querySelector('.vtime');
@@ -209,7 +215,7 @@
       });
       marks.innerHTML = html;
     }
-    function meta(){ if(isFinite(v.duration)) seek.max = v.duration; clock(); ticks(); }
+    function meta(){ if(isFinite(v.duration)) seek.max = v.duration; clock(); ticks(); if(scn) syncResultHeight(scn); }
     function toggle(){ if(v.paused) v.play(); else v.pause(); }
     btn.addEventListener('click', toggle);
     v.addEventListener('click', toggle);   // clicking the frame itself plays/pauses
@@ -227,17 +233,26 @@
     seek.addEventListener('input', function(){ v.currentTime = parseFloat(seek.value); });
     paint(); meta();   // handle the case where metadata is already cached (event won't fire)
   });
-  // Sync each scenario's recording with its step rows: click a step to seek there,
-  // and highlight the step whose time window the playhead is in.
+  // Sync each scenario's recording with its step rows: click a step to seek there (or
+  // click its screenshot to open the element viewer), and highlight the step whose time
+  // window the playhead is in — scrolling it into view within the bounded steps list.
+  function scrollIntoBox(box, row){
+    if(!box || !row) return;
+    var cr = box.getBoundingClientRect(), rr = row.getBoundingClientRect();
+    if(cr.height <= 0) return;   // result view not visible (another tab is active)
+    if(rr.top < cr.top) box.scrollTop -= (cr.top - rr.top) + 8;
+    else if(rr.bottom > cr.bottom) box.scrollTop += (rr.bottom - cr.bottom) + 8;
+  }
   document.querySelectorAll('.scn').forEach(function(scn){
     var v = scn.querySelector('video'); if(!v) return;
     var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow'));
     if(!rows.length) return;
+    var box = scn.querySelector('.rich-scroll'), lastCur = null;
     rows.forEach(function(r){
       r.addEventListener('click', function(e){
         if(e.target.closest('a') || e.target.closest('.treebtn')) return;  // links / tree button handled elsewhere
         var shot = e.target.closest('.shot');
-        if(shot){ openLightbox(shot.getAttribute('src')); return; }
+        if(shot){ tvOpen(shot.closest('td.ev')); return; }   // screenshot opens the element viewer
         var t = parseFloat(r.getAttribute('data-t'));
         // Seek only: keep playing if already playing, stay paused if paused.
         if(!isNaN(t)){ v.currentTime = t; }
@@ -250,6 +265,7 @@
         if(!isNaN(t) && t <= ct) cur = rows[i];
       }
       rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
+      if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(box, cur); }
     });
   });
 })();
