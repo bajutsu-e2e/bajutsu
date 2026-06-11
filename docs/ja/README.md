@@ -66,8 +66,8 @@ uv sync --extra dev                  # .venv 作成 + 依存 + 開発ツール
 uv run pytest -q                     # 324 のユニットテスト（実機不要）
 
 # 同梱サンプルに対して（実機 Simulator が必要）
-make sample-build                    # フィクスチャアプリをビルド
-make e2e                             # idb バックエンドで smoke シナリオを実行
+make -C demos/features sample-build                    # フィクスチャアプリをビルド
+make -C demos/features e2e                             # idb バックエンドで smoke シナリオを実行
 ```
 
 CLI の最小形:

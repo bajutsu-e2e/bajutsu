@@ -219,7 +219,7 @@ bajutsu/
   証跡への redaction 適用 ✅、ネットワーク**観測**（アプリ内 collector + `request` アサーション）✅、
   **決定的モック**（シナリオ `mocks` → オフラインのプロトコル内スタブ）✅ — いずれも実機検証済み。
   **CI** ✅: `ci.yml` が Linux で ruff + mypy + pytest（py3.11 / 3.13）、`e2e.yml` が macOS Simulator で
-  idb smoke と codegen→XCUITest 経路（`make ui-test`）。
+  idb smoke と codegen→XCUITest 経路（`make -C demos/features ui-test`）。
 - **M4 — 実装済み。** 自己修復トリアージ: `bajutsu triage` が失敗 run のコンテキストを組み立て
   診断（原因＋修正案。**助言のみ**・合否は判定しない）。同じ `TriageAgent` プロトコルの裏で、既定の
   ルールベース `HeuristicTriageAgent`（id リネームの「もしかして」、timing / assertion 分類）か

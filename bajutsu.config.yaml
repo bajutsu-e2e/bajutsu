@@ -48,7 +48,7 @@ apps:
     launchEnv: { SAMPLE_UITEST: "1" }
     # Built .app to install on each device before launch (if missing) — so a freshly
     # picked/booted simulator just works without a manual `simctl install`. Built by
-    # `make sample-build`; path is relative to the run's working directory.
+    # `make -C demos/features sample-build`; path is relative to the run's working directory.
     appPath: app/sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
     # Optional per-app keys (all override or extend the defaults above):
     #   backend: [...]            # actuator order for this app

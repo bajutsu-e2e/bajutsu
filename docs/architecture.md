@@ -140,7 +140,7 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 `tests/` holds **324 unit tests** (`uv run pytest -q`). None require a real Simulator: command
 builders are verified as pure functions, and execution paths are tested with `FakeDriver` /
 injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sample app is
-`make e2e` / `make ui-test` ([sample-app](sample-app.md)).
+`make -C demos/features e2e` / `make -C demos/features ui-test` ([sample-app](sample-app.md)).
 
 ---
 
@@ -185,7 +185,7 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 - The idb backend's subprocess execution — `describe-all` parsing, frame-center tap / text /
   swipe, and the simctl launch sequencing — confirmed against the installed `idb` /
   `idb_companion` by running the sample scenarios, evidence capture, and the triage self-heal
-  loop on-device (`make e2e`; the `e2e.yml` CI workflow also exercises the idb smoke path).
+  loop on-device (`make -C demos/features e2e`; the `e2e.yml` CI workflow also exercises the idb smoke path).
 
 ### Not yet wired (schema/flags exist but have no runtime effect)
 

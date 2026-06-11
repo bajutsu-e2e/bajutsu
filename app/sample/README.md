@@ -11,8 +11,8 @@ in [`scenarios/`](scenarios) and the app is wired in the repo-root
 Requires Xcode and [XcodeGen](https://github.com/yonyz/XcodeGen) (`brew install xcodegen`).
 
 ```bash
-make sample-gen      # xcodegen generate  -> BajutsuSample.xcodeproj
-make sample-build    # compile for the iOS Simulator
+make -C demos/features sample-gen      # xcodegen generate  -> BajutsuSample.xcodeproj
+make -C demos/features sample-build    # compile for the iOS Simulator
 # or: cd app/sample && xcodegen generate && open BajutsuSample.xcodeproj
 ```
 

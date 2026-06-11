@@ -33,7 +33,7 @@ targets:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
           - CFBundleURLName: com.bajutsu.sample2
-            CFBundleURLSchemes: [bajutsusample]
+            CFBundleURLSchemes: [bajutsusample2]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.sample2

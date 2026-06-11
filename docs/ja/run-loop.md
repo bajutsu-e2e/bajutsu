@@ -126,7 +126,7 @@ erase（pre.erase なら shutdown → erase） → boot → terminate(bundle)（
 
 > `_await_ready` は「アプリが UI を描画した（ルート要素より多い）」ことをポーリングで待つ。
 > `locale` は launch 時に **適用される**（シナリオの `preconditions.locale` が config 既定を上書きし、
-> `env.locale_args` で launch 引数として渡る）。simctl の launch 手順は `make e2e` ＋ `e2e.yml` CI
+> `env.locale_args` で launch 引数として渡る）。simctl の launch 手順は `make -C demos/features e2e` ＋ `e2e.yml` CI
 > ワークフローで実機（iPhone 17 Pro）検証済み。
 
 ### `device_factory` / `run_all` / `run_and_report`

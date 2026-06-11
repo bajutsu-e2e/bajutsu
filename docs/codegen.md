@@ -97,5 +97,5 @@ file header also states "do not edit by hand; re-generate."
 - Class name `class_name_for(stem)` = the stem title-cased with a `UITests` suffix. The CLI derives
   it from the output filename (the `-o` stem) or, absent that, the scenario filename.
 
-The live run on the sample (`make ui-test`) is in
+The live run on the sample (`make -C demos/features ui-test`) is in
 [sample-app](sample-app.md#the-ui-test-target-and-make-targets).

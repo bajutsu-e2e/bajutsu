@@ -1,13 +1,13 @@
-# Generate → run → modify a scenario against the sample app
+# Generate → run → modify a scenario against the sample2 app
 
 `record` is Bajutsu's authoring path: an **agent** reads a natural-language *goal* plus the
 live screen, proposes one action at a time, and the loop writes the executed steps out as a
 deterministic scenario. `run` later replays that scenario with **no AI**
 ([recording](../../docs/recording.md), [concepts](../../docs/concepts.md)).
 
-This folder lets you experience the whole lifecycle against the bundled **`sample`** app —
-generate a scenario from a goal, run it on a Simulator, then modify it and watch the
-deterministic check respond.
+This folder lets you experience the whole lifecycle against the bundled **`sample2`** app
+(`app/sample2/`) — generate a scenario from a goal, run it on a Simulator, then modify it and
+watch the deterministic check respond.
 
 ## The guided demo (`demo.sh`)
 
@@ -19,22 +19,21 @@ deterministic check respond.
 
 - a booted Simulator (`open -a Simulator`),
 - the idb client (`brew install facebook/fb/idb-companion && uv sync --extra idb`),
-- the sample app built (`make sample-build`).
+- the sample2 app built (`make -C demos/record sample2-build`).
 
-It then walks three phases, using [`demo.config.yaml`](demo.config.yaml) (the `sample` app on
+It then walks three phases, using [`demo.config.yaml`](demo.config.yaml) (the `sample2` app on
 the idb backend, with `appPath` so the app installs automatically):
 
 1. **Generate** — turn a natural-language goal into `generated.yaml` (gitignored) with
    [`generate_from_nl.py`](generate_from_nl.py), and print the YAML.
-2. **Execute** — `bajutsu run generated.yaml --app sample --config demo.config.yaml` on the
+2. **Execute** — `bajutsu run generated.yaml --app sample2 --config demo.config.yaml` on the
    booted Simulator. The counter flow passes.
 3. **Modify** — edit the expected count to a wrong value → re-run → the run **fails** (the
    assertion catches it) → fix it back → it **passes** again. That is the edit-and-re-run loop
    you use to maintain an AI-authored scenario.
 
-The generated scenario mirrors [`app/sample/scenarios/smoke.yaml`](../../app/sample/scenarios/smoke.yaml)
-(onboarding → login → home → counter), including a `wait for Home` so it survives the login
-screen transition on a real device.
+The generated scenario follows the app's onboarding → login → home → counter flow, including a
+`wait for Home` so it survives the login screen transition on a real device.
 
 ## Generation on its own (offline, no Simulator)
 
@@ -48,7 +47,7 @@ uv run python demos/record/generate_from_nl.py "<goal>" --out demos/record/gener
 ```
 
 It (1) drives an in-memory `FakeDriver` whose taps advance onboarding → login → home — its
-ids match the real sample app, (2) authors via the real `record()` loop, and (3) replays the
+ids match the real sample2 app, (2) authors via the real `record()` loop, and (3) replays the
 result to prove it is valid. [`goals.txt`](goals.txt) holds ready-to-edit examples.
 
 ## The agent here vs. production
@@ -77,11 +76,11 @@ label). A goal that names something not on screen raises a clear error — the s
 
 ## Live Claude authoring
 
-To author against the running sample app with real Claude instead of the deterministic
+To author against the running sample2 app with real Claude instead of the deterministic
 stand-in (needs `ANTHROPIC_API_KEY`):
 
 ```bash
-uv run bajutsu record demos/record/generated.yaml --app sample \
+uv run bajutsu record demos/record/generated.yaml --app sample2 \
   --config demos/record/demo.config.yaml --backend idb \
   --goal "increment the counter twice and check it reads 2"
 ```

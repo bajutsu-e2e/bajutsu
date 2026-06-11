@@ -94,4 +94,4 @@ final class ComponentsUITests: XCTestCase {
 - クラス名 `class_name_for(stem)` = stem を `Title` 化して `UITests` 接尾。CLI は出力ファイル名
   （`-o` の stem）か、なければシナリオファイル名から決める。
 
-サンプルでの実走（`make ui-test`）は [sample-app](sample-app.md#ui-テストターゲットと-make-ターゲット)。
+サンプルでの実走（`make -C demos/features ui-test`）は [sample-app](sample-app.md#ui-テストターゲットと-make-ターゲット)。

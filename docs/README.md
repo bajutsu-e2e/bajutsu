@@ -69,8 +69,8 @@ uv sync --extra dev                  # .venv + deps + dev tools
 uv run pytest -q                     # 324 unit tests (no Simulator needed)
 
 # Against the bundled sample (needs a real Simulator)
-make sample-build                    # build the fixture app
-make e2e                             # run the smoke scenario on the idb backend
+make -C demos/features sample-build                    # build the fixture app
+make -C demos/features e2e                             # run the smoke scenario on the idb backend
 ```
 
 Minimal CLI:

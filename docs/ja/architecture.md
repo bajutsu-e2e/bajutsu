@@ -135,7 +135,7 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 
 `tests/` に **324 のユニットテスト**（`uv run pytest -q`）。すべて実機 Simulator を必要としない:
 コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`・`Spawn`・`Clock`）で
-検証する。サンプルアプリに対する実機 E2E は `make e2e` / `make ui-test`（[sample-app](sample-app.md)）。
+検証する。サンプルアプリに対する実機 E2E は `make -C demos/features e2e` / `make -C demos/features ui-test`（[sample-app](sample-app.md)）。
 
 ---
 
@@ -176,7 +176,7 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 
 - idb バックエンドの subprocess 実行 — `describe-all` パース、フレーム中心の tap / text / swipe、
   `simctl` launch 手順 — を、インストール済みの `idb` / `idb_companion` に対し sample シナリオ実行・
-  証跡取得・triage 自己修復ループを実機で走らせて確認済み（`make e2e`。`e2e.yml` CI も idb smoke を実行）。
+  証跡取得・triage 自己修復ループを実機で走らせて確認済み（`make -C demos/features e2e`。`e2e.yml` CI も idb smoke を実行）。
 
 ### 未配線（スキーマ/フラグはあるが実行時に効かない）
 

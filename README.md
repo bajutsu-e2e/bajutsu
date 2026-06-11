@@ -231,7 +231,7 @@ bajutsu/
   assertions) ✅, and **deterministic mocks** (scenario `mocks` → offline in-protocol stubs) ✅ —
   all validated on-device. **CI** ✅: `ci.yml` runs ruff + mypy + pytest on Linux (py3.11 /
   3.13); `e2e.yml` runs the idb smoke scenario *and* the codegen→XCUITest path
-  (`make ui-test`) on a macOS Simulator.
+  (`make -C demos/features ui-test`) on a macOS Simulator.
 - **M4 — implemented.** Self-healing triage: `bajutsu triage` assembles a failed run's context
   and diagnoses it (root cause + suggested fixes; **advisory** — never the pass/fail judge).
   Diagnosis runs through one of two agents behind the same `TriageAgent` protocol: the default

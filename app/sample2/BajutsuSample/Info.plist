@@ -40,7 +40,7 @@
 			<string>com.bajutsu.sample2</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>bajutsusample</string>
+				<string>bajutsusample2</string>
 			</array>
 		</dict>
 	</array>

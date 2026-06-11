@@ -22,8 +22,8 @@ Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [code
 - Example scenarios are in [`app/sample/scenarios/`](../app/sample/scenarios).
 
 ```bash
-make sample-gen     # xcodegen generate -> BajutsuSample.xcodeproj
-make sample-build   # compile for the iOS Simulator
+make -C demos/features sample-gen     # xcodegen generate -> BajutsuSample.xcodeproj
+make -C demos/features sample-build   # compile for the iOS Simulator
 ```
 
 ## Launch-env hooks
@@ -85,7 +85,7 @@ Which scenario uses each primitive (mapped to the grammar in [scenarios](scenari
 
 Two paths against a real Simulator ([`Makefile`](../Makefile)). `SIM` auto-detects the booted device.
 
-### `make e2e` (run on the idb backend)
+### `make -C demos/features e2e` (run on the idb backend)
 
 ```
 sample-build → simctl install → bajutsu run smoke.yaml (idb / --no-erase) → bajutsu doctor
@@ -95,7 +95,7 @@ Prereqs: a booted Simulator · `brew install facebook/fb/idb-companion` · `uv s
 
 ### The UI-test target and make target
 
-`make ui-test` runs the **codegen path**: generate an XCUITest from a scenario and run it via
+`make -C demos/features ui-test` runs the **codegen path**: generate an XCUITest from a scenario and run it via
 xcodebuild (no bajutsu runtime / idb / AI at test time · [codegen](codegen.md)).
 
 ```

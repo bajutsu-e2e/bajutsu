@@ -16,7 +16,7 @@
 ## 1. 実機検証（M1 クローズアウト）
 
 決定的コアは FakeDriver で end-to-end に通り、**idb backend の subprocess 実行（`describe-all` パース・frame-center
-tap/text/swipe）と simctl 起動シーケンスは実機（iPhone 17 Pro / 最新 iOS）で検証済み**（`make e2e` + `e2e.yml` CI、
+tap/text/swipe）と simctl 起動シーケンスは実機（iPhone 17 Pro / 最新 iOS）で検証済み**（`make -C demos/features e2e` + `e2e.yml` CI、
 [architecture.md](architecture.md#implementation-status)）。残るのは継続メンテ系の監視のみ。
 
 | 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |

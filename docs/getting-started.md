@@ -111,7 +111,7 @@ The repo ships a small SwiftUI fixture, `BajutsuSample`, instrumented for every 
 primitive. Build it for the Simulator:
 
 ```bash
-make sample-build         # xcodegen generate -> xcodebuild for the iOS Simulator
+make -C demos/features sample-build         # xcodegen generate -> xcodebuild for the iOS Simulator
 ```
 
 This produces `BajutsuSample.app` under `app/sample/build/…`. (The `.xcodeproj` and `build/` are
@@ -134,7 +134,7 @@ The one-shot path is the `make` target, which installs the freshly built app and
 scenario plus a `doctor` check on the booted device:
 
 ```bash
-make e2e
+make -C demos/features e2e
 ```
 
 Or drive the CLI directly (the same thing, spelled out):
@@ -211,7 +211,7 @@ entry points share the same scenario format:
   ```bash
   uv run bajutsu codegen app/sample/scenarios/smoke.yaml --app sample -o UITests/Smoke.swift
   ```
-  The structural mapping: [codegen](codegen.md). Run it end-to-end with `make ui-test`.
+  The structural mapping: [codegen](codegen.md). Run it end-to-end with `make -C demos/features ui-test`.
 
 From here, the reference pages go deep on each piece — start with [concepts](concepts.md) for the
 *why*, then follow the suggested reading order in the [docs index](README.md). To onboard your own

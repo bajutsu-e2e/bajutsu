@@ -73,7 +73,7 @@ Headless, coordinate-based. For CI. With no semantic tap, the abstraction resolv
   as a pan by SwiftUI).
 
 > The describe-all JSON key names follow fb-idb's output and are **validated on-device** against
-> fb-idb (iPhone 17 Pro, recent iOS) via `make e2e` + the `e2e.yml` CI workflow; re-check them only
+> fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/features e2e` + the `e2e.yml` CI workflow; re-check them only
 > if the installed idb version changes the schema (the note atop `idb.py`). The idb client is
 > `uv sync --extra idb`; `idb_companion` is `brew install facebook/fb/idb-companion`.
 

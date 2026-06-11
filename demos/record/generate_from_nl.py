@@ -16,7 +16,7 @@ visible elements of an in-memory FakeDriver. The record loop, the
     uv run python demos/record/generate_from_nl.py --file demos/record/goals.txt
     uv run python demos/record/generate_from_nl.py "<goal>" --out demos/record/generated.yaml
 
-The mock app mirrors the bundled `sample` app's accessibility ids (onboarding -> login
+The mock app mirrors the bundled `sample2` app's accessibility ids (onboarding -> login
 -> home -> counter), so a scenario generated here runs as-is against the real app on a
 Simulator — see `demo.sh` and this folder's README for the full generate -> run -> modify
 lifecycle. The real, open-ended generator is `bajutsu record --goal "..."`.

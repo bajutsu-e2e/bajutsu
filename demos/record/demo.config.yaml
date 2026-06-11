@@ -1,18 +1,18 @@
-# Self-contained config for the record demo (demo.sh). Runs the bundled sample app
-# on a booted Simulator via idb. Mirrors the `sample` entry in the repo-root
-# bajutsu.config.yaml, and pins `appPath` so `bajutsu run` installs the freshly-built
-# app on the device automatically (clean reinstall) before each scenario.
+# Self-contained config for the record demo (demo.sh). Runs the bundled sample2 app
+# (app/sample2/) on a booted Simulator via idb, and pins `appPath` so `bajutsu run`
+# installs the freshly-built app on the device automatically (clean reinstall) before
+# each scenario.
 defaults:
   backend: [idb]
   device: "iPhone 15"
   capture: [screenshot.after, elements, actionLog]
 apps:
-  sample:
-    bundleId: com.bajutsu.sample
-    deeplinkScheme: bajutsusample
+  sample2:
+    bundleId: com.bajutsu.sample2
+    deeplinkScheme: bajutsusample2
     idNamespaces: [home, counter, onboarding, auth, nav, settings]
     # The sample app reads SAMPLE_UITEST to disable animations; with no SAMPLE_LOGGED_IN
     # it starts at onboarding, so the generated onboarding -> login -> home flow applies.
     launchEnv: { SAMPLE_UITEST: "1" }
-    # Built by `make sample-build`; path is relative to the repo root (the run's cwd).
-    appPath: app/sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
+    # Built by `make -C demos/record sample2-build`; path is relative to the repo root (the run's cwd).
+    appPath: app/sample2/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
