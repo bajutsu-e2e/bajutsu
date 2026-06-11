@@ -15,8 +15,8 @@ from bajutsu import env as _env
 from bajutsu import github, preflight
 from bajutsu import trace as _trace
 from bajutsu import triage as _triage
+from bajutsu.agents import make_agent
 from bajutsu.backends import make_driver, select_actuator
-from bajutsu.claude_agent import ClaudeAgent
 from bajutsu.codegen import class_name_for, to_xcuitest
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.doctor import render, score
@@ -246,15 +246,27 @@ def record(
         True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
     ),
     dismiss_alerts: bool = typer.Option(
-        False, "--dismiss-alerts", help="dismiss unexpected OS prompts while authoring (needs API key)"
+        True, "--dismiss-alerts/--no-dismiss-alerts",
+        help="dismiss unexpected OS prompts while authoring (on by default; uses the same API key)",
     ),
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
+    ),
+    agent: str = typer.Option(
+        "", "--agent",
+        help="authoring agent: 'api' (Anthropic API, pay-per-token) or 'claude-code' "
+        "(the `claude` CLI, billed to your Claude subscription). Defaults to $BAJUTSU_AGENT or 'api'.",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario to OUT."""
     eff = _load_effective(config, app_name)
+    kind = agent or os.environ.get("BAJUTSU_AGENT") or "api"
+    try:
+        authoring_agent = make_agent(kind)
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
     try:
         actuator = select_actuator(_backends(backend, eff.backend))
     except RuntimeError as e:
@@ -271,9 +283,13 @@ def record(
     except _env.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    scenario = record_loop(driver, goal, ClaudeAgent(), name=goal, alert_guard=alert_guard)
+    typer.echo(f"authoring with the {kind} agent toward: {goal}")
+    scenario = record_loop(
+        driver, goal, authoring_agent, name=goal, alert_guard=alert_guard,
+        report=lambda msg: typer.echo(msg, err=True),
+    )
     Path(out).write_text(dump_scenarios([scenario]), encoding="utf-8")
-    typer.echo(f"recorded {len(scenario.steps)} steps -> {out}")
+    typer.echo(f"recorded {len(scenario.steps)} steps ({kind} agent) -> {out}")
 
 
 @app.command()

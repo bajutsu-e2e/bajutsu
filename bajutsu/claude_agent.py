@@ -23,63 +23,95 @@ SYSTEM_PROMPT = """You are an iOS end-to-end test author. You drive an app on th
 iOS Simulator to accomplish a goal, then record the steps as a deterministic test.
 
 Each turn you receive the goal, a screenshot of the current screen, and the \
-screen's accessibility elements (each with a stable `id`). Use the screenshot to \
-read the visual layout and any state the element list does not capture; always act \
-by the `id` from the element list. You must call exactly one tool:
+screen's accessibility elements. Each element has a `label`, `value`, and `traits`, \
+and — only if the app instrumented it — a stable `id`. Address an element by:
 
-- tap(id): tap the element with that identifier.
-- type_text(id, text): focus the field and type text into it.
-- wait_for(id, timeout): wait until an element with that id appears.
+- `id` when it has one — non-localized and data-derived, so ALWAYS prefer it; otherwise
+- any combination of `label` (exact accessibility label), `value` (exact value — e.g. \
+an empty text field exposes its placeholder like "Email" as its value), and `traits` \
+(e.g. ["textField"], ["button"]). These are ANDed, so combine them to pin one element \
+(a text field with value "Email" → value="Email", traits=["textField"]).
+- add `index` (0-based, in the listed order) only when several elements still match.
+
+Use the screenshot to map the goal's wording to the right element when the text \
+differs from it (e.g. a "+" button is the increment control). You must call exactly one tool:
+
+- tap(id|label): tap that element.
+- type_text(id|label, text): focus the field and type text into it.
+- wait_for(id|label, timeout): wait until that element appears.
 - finish(assertions): the goal is reached; provide machine-checkable assertions \
-that verify it, addressed by id.
+that verify it, each addressing an element by id or label.
 
 Rules:
-- Act only on elements by the `id` shown in the screen. Never invent ids.
+- Act only on elements present in the screen list; address them by their real `id` \
+or `label`. Never invent an id or a label that is not shown.
 - Take the most direct path to the goal. Do not repeat an action that did not \
 change the screen.
+- Always fill `reason`: one short sentence of your reasoning for THIS turn — what you \
+see on the screen and why this action moves toward the goal. This is shown live to the \
+person watching, so make it a clear thought, not a restatement of the action.
 - Call finish only once the goal is FULLY reached. If the goal names a target \
 value or count (e.g. "the count shows 2"), confirm the current screen already \
 shows it before finishing; if not, keep acting. Then provide assertions that \
-prove it (a result element exists, a value equals an expected string, etc.)."""
+prove it — prefer `valueEquals` against an element's `value`, or `labelContains` \
+when the number is part of the label (e.g. a "Count: 2" text)."""
+
+# A reusable selector fragment: address an element by id (preferred), else by any combination
+# of label / value / traits, with index as a last-resort disambiguator. Shared by every tool so
+# id-first and label-only apps use one shape. The conditions are ANDed at resolve time.
+_TARGET_PROPS: dict[str, Any] = {
+    "id": {"type": "string", "description": "accessibility identifier (preferred when present)"},
+    "label": {"type": "string", "description": "exact accessibility label (when there is no id)"},
+    "value": {
+        "type": "string",
+        "description": "exact accessibility value — e.g. a text field's placeholder ('Email') "
+        "while it is empty, or a status text's value",
+    },
+    "traits": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "required traits, e.g. ['button'] or ['textField'] — narrows an unlabeled element",
+    },
+    "index": {"type": "integer", "description": "0-based pick among elements that still match"},
+}
+
+# The agent's reasoning for the turn — required on every tool so the watcher always sees a
+# thought (it is streamed live during `record`), not just the chosen action.
+_REASON_PROP: dict[str, Any] = {
+    "reason": {
+        "type": "string",
+        "description": "one short sentence of your reasoning for this turn: what you see and "
+        "why this action advances the goal",
+    }
+}
 
 # Static tool definitions (cached together with the system prompt).
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "tap",
-        "description": "Tap the element with this accessibility identifier.",
+        "description": "Tap the element addressed by id or label.",
         "input_schema": {
             "type": "object",
-            "properties": {
-                "id": {"type": "string", "description": "accessibility identifier"},
-                "reason": {"type": "string"},
-            },
-            "required": ["id"],
+            "properties": {**_TARGET_PROPS, **_REASON_PROP},
+            "required": ["reason"],
         },
     },
     {
         "name": "type_text",
-        "description": "Focus the field with this id and type the given text.",
+        "description": "Focus the field (addressed by id or label) and type the given text.",
         "input_schema": {
             "type": "object",
-            "properties": {
-                "id": {"type": "string"},
-                "text": {"type": "string"},
-                "reason": {"type": "string"},
-            },
-            "required": ["id", "text"],
+            "properties": {**_TARGET_PROPS, "text": {"type": "string"}, **_REASON_PROP},
+            "required": ["text", "reason"],
         },
     },
     {
         "name": "wait_for",
-        "description": "Wait until an element with this id appears, up to timeout seconds.",
+        "description": "Wait until the element (addressed by id or label) appears, up to timeout seconds.",
         "input_schema": {
             "type": "object",
-            "properties": {
-                "id": {"type": "string"},
-                "timeout": {"type": "number"},
-                "reason": {"type": "string"},
-            },
-            "required": ["id", "timeout"],
+            "properties": {**_TARGET_PROPS, "timeout": {"type": "number"}, **_REASON_PROP},
+            "required": ["timeout", "reason"],
         },
     },
     {
@@ -93,7 +125,7 @@ TOOLS: list[dict[str, Any]] = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "id": {"type": "string"},
+                            **_TARGET_PROPS,
                             "check": {
                                 "type": "string",
                                 "enum": ["exists", "notExists", "valueEquals", "labelContains"],
@@ -103,12 +135,12 @@ TOOLS: list[dict[str, Any]] = [
                                 "description": "expected text for valueEquals / labelContains",
                             },
                         },
-                        "required": ["id", "check"],
+                        "required": ["check"],
                     },
                 },
-                "reason": {"type": "string"},
+                **_REASON_PROP,
             },
-            "required": ["assertions"],
+            "required": ["assertions", "reason"],
         },
     },
 ]
@@ -116,53 +148,87 @@ TOOLS: list[dict[str, Any]] = [
 
 def _render(observation: Observation) -> str:
     lines = [f"Goal: {observation.goal}", "", "Current screen elements:"]
+    shown = 0
     for element in observation.screen:
-        identifier = element["identifier"]
-        if not identifier:
-            continue  # only surface stable, identified elements
-        lines.append(
-            f"- id={identifier} label={element['label']!r} "
-            f"traits={element['traits']} value={element['value']!r}"
+        identifier, label, value, traits = (
+            element["identifier"], element["label"], element["value"], element["traits"]
         )
+        if "application" in traits:
+            continue  # the app root is not an actionable target
+        if not (identifier or label or value or traits):
+            continue  # nothing to address it by
+        lines.append(
+            f"- id={identifier!r} label={label!r} value={value!r} traits={traits}"
+        )
+        shown += 1
+    if not shown:
+        lines.append("- (no addressable elements; the screen may still be loading)")
     lines += ["", f"Steps taken so far: {len(observation.history)}"]
     lines.append("Call exactly one tool: tap, type_text, wait_for, or finish.")
     return "\n".join(lines)
 
 
+def _target(args: Any) -> dict[str, Any]:
+    """A selector dict addressing one element: id when given, else any of label / value /
+    traits (ANDed), with index as a last-resort disambiguator."""
+    if args.get("id"):
+        sel: dict[str, Any] = {"id": args["id"]}
+        if args.get("index") is not None:
+            sel["index"] = args["index"]
+        return sel
+    sel = {}
+    if args.get("label") is not None:
+        sel["label"] = args["label"]
+    if args.get("value") is not None:
+        sel["value"] = args["value"]
+    if args.get("traits"):
+        sel["traits"] = args["traits"]
+    if not sel:
+        raise ValueError("target needs an id, label, value, or traits")
+    if args.get("index") is not None:
+        sel["index"] = args["index"]
+    return sel
+
+
 def _to_assertion(item: Any) -> Assertion:
-    identifier = item["id"]
+    sel = _target(item)
     check = item["check"]
     text = item.get("text")
     if check == "exists":
-        return Assertion.model_validate({"exists": {"id": identifier}})
+        return Assertion.model_validate({"exists": sel})
     if check == "notExists":
-        return Assertion.model_validate({"exists": {"id": identifier, "negate": True}})
+        return Assertion.model_validate({"exists": {**sel, "negate": True}})
     if check == "valueEquals":
-        return Assertion.model_validate({"value": {"sel": {"id": identifier}, "equals": text}})
+        return Assertion.model_validate({"value": {"sel": sel, "equals": text}})
     if check == "labelContains":
-        return Assertion.model_validate({"label": {"sel": {"id": identifier}, "contains": text}})
+        return Assertion.model_validate({"label": {"sel": sel, "contains": text}})
     raise ValueError(f"unknown assertion check: {check!r}")
+
+
+def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
+    """Turn one tool/action call — `(name, args)` — into a Proposal. Shared by the API agent
+    (a Claude tool_use block) and the Claude Code agent (a structured-output object), so both
+    backends map the same action shape to the same scenario step."""
+    note = args.get("reason", "")
+    if name == "tap":
+        return Proposal(step=Step.model_validate({"tap": _target(args)}), note=note)
+    if name == "type_text":
+        step = {"type": {"into": _target(args), "text": args["text"]}}
+        return Proposal(step=Step.model_validate(step), note=note)
+    if name == "wait_for":
+        step = {"wait": {"for": _target(args), "timeout": args["timeout"]}}
+        return Proposal(step=Step.model_validate(step), note=note)
+    if name == "finish":
+        expect = [_to_assertion(a) for a in args.get("assertions", [])]
+        return Proposal(done=True, expect=expect, note=note)
+    raise ValueError(f"unknown tool: {name!r}")
 
 
 def _to_proposal(message: Any) -> Proposal:
     tool_use = next((b for b in message.content if b.type == "tool_use"), None)
     if tool_use is None:
         return Proposal(done=True, note="model returned no tool call")
-    name = tool_use.name
-    args = tool_use.input
-    note = args.get("reason", "")
-    if name == "tap":
-        return Proposal(step=Step.model_validate({"tap": {"id": args["id"]}}), note=note)
-    if name == "type_text":
-        step = {"type": {"into": {"id": args["id"]}, "text": args["text"]}}
-        return Proposal(step=Step.model_validate(step), note=note)
-    if name == "wait_for":
-        step = {"wait": {"for": {"id": args["id"]}, "timeout": args["timeout"]}}
-        return Proposal(step=Step.model_validate(step), note=note)
-    if name == "finish":
-        expect = [_to_assertion(a) for a in args.get("assertions", [])]
-        return Proposal(done=True, expect=expect, note=note)
-    raise ValueError(f"unknown tool: {name!r}")
+    return proposal_from_call(tool_use.name, tool_use.input)
 
 
 class ClaudeAgent:

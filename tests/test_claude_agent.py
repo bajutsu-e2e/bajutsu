@@ -143,3 +143,68 @@ def test_claude_agent_drives_record() -> None:
     assert scenario.expect[0].exists is not None and scenario.expect[0].exists.sel.id == "done"
     # the recorded scenario round-trips
     assert load_scenarios(dump_scenarios([scenario]))[0].name == "reach"
+
+
+# --- authoring against an app with no ids and no values (label / value / traits) ---
+
+
+def _vel(label: str | None, traits: list[str], value: str | None = None) -> base.Element:
+    """A value-/id-less element: only a label (maybe), traits, and an auto placeholder value."""
+    return {"identifier": None, "label": label, "traits": traits, "value": value,
+            "frame": (0.0, 0.0, 10.0, 10.0)}
+
+
+def test_tap_by_label_when_no_id() -> None:
+    step = ClaudeAgent(client=FakeClient(_Block("tap", {"label": "Get Started"}))).next_action(_obs()).step
+    assert step is not None and step.tap is not None
+    assert step.tap.id is None and step.tap.label == "Get Started"
+
+
+def test_type_into_field_by_value_and_traits() -> None:
+    block = _Block("type_text", {"value": "Email", "traits": ["textField"], "text": "a@b.co"})
+    step = ClaudeAgent(client=FakeClient(block)).next_action(_obs()).step
+    assert step is not None and step.type is not None and step.type.into is not None
+    assert step.type.into.value == "Email" and step.type.into.traits == ["textField"]
+    assert step.type.text == "a@b.co"
+
+
+def test_tap_by_traits_and_index() -> None:
+    step = ClaudeAgent(client=FakeClient(_Block("tap", {"traits": ["textField"], "index": 1}))).next_action(_obs()).step
+    assert step is not None and step.tap is not None
+    assert step.tap.traits == ["textField"] and step.tap.index == 1
+
+
+def test_finish_label_contains_for_valueless_counter() -> None:
+    block = _Block("finish", {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]})
+    proposal = ClaudeAgent(client=FakeClient(block)).next_action(_obs())
+    assert proposal.done is True
+    assert proposal.expect[0].label is not None
+    assert proposal.expect[0].label.sel.label == "Count: 2"
+    assert proposal.expect[0].label.contains == "2"
+
+
+def test_authored_valueless_selectors_resolve_uniquely() -> None:
+    """A scenario authored against a no-id/no-value screen must produce selectors that the
+    deterministic driver resolves to exactly one element — the half `run` replays without AI."""
+    # The home screen as idb reports it for the value-less sample2: a label-only count text
+    # and a "+" button, plus two unlabeled fields distinguished only by placeholder/position.
+    screen = [
+        _vel("Count: 2", ["staticText"]),
+        _vel("+", ["button"]),
+        _vel(None, ["textField"], value="Email"),
+        _vel(None, ["textField"], value="Password"),
+    ]
+    plus = ClaudeAgent(client=FakeClient(_Block("tap", {"label": "+"}))).next_action(_obs()).step
+    email = ClaudeAgent(client=FakeClient(
+        _Block("type_text", {"value": "Email", "traits": ["textField"], "text": "x"})
+    )).next_action(_obs()).step
+    count = ClaudeAgent(client=FakeClient(
+        _Block("finish", {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]})
+    )).next_action(_obs()).expect[0]
+
+    assert plus is not None and plus.tap is not None
+    assert base.resolve_unique(screen, plus.tap.as_selector())["label"] == "+"
+    assert email is not None and email.type is not None and email.type.into is not None
+    assert base.resolve_unique(screen, email.type.into.as_selector())["value"] == "Email"
+    assert count.label is not None
+    assert base.resolve_unique(screen, count.label.sel.as_selector())["label"] == "Count: 2"

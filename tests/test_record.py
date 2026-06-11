@@ -5,7 +5,7 @@ from __future__ import annotations
 from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.record import record
+from bajutsu.record import _shows_app_ui, record
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 
@@ -79,6 +79,68 @@ def test_record_respects_max_steps() -> None:
     driver = FakeDriver([_el("a", "A")])
     scenario = record(driver, "x", LoopAgent(), max_steps=3)
     assert len(scenario.steps) == 3
+
+
+def _vel(label: str | None, traits: list[str]) -> base.Element:
+    return {"identifier": None, "label": label, "traits": traits, "value": None,
+            "frame": (0.0, 0.0, 10.0, 10.0)}
+
+
+def test_shows_app_ui_recognizes_label_only_screen() -> None:
+    # An app without accessibility identifiers (sample2): label-only elements are still app UI.
+    app = _vel("BajutsuSample", ["application"])
+    assert _shows_app_ui([app, _vel("Get Started", ["button"])]) is True
+    assert _shows_app_ui([_el("onboarding.start", "Get Started")]) is True  # id-only also counts
+    # A tree collapsed under a system alert — only the bare app window, nothing actionable.
+    assert _shows_app_ui([app]) is False
+    assert _shows_app_ui([]) is False
+
+
+class _NoSleep:
+    def sleep(self, _seconds: float) -> None:
+        return None
+
+
+def test_alert_guard_activity_is_reported() -> None:
+    """When a system prompt collapses the tree, the guard's detection and dismissal are streamed."""
+    from bajutsu.orchestrator import AlertEvent
+
+    app = _vel("App", ["application"])
+    driver = FakeDriver([app])  # blocked: only the bare app window is visible
+
+    def guard(d: base.Driver) -> AlertEvent:
+        assert isinstance(d, FakeDriver)
+        d.screen = [app, _vel("Get Started", ["button"])]  # dismissing reveals the app
+        return AlertEvent(label="Not Now")
+
+    agent = FakeAgent([
+        Proposal(step=Step.model_validate({"tap": {"label": "Get Started"}})),
+        Proposal(done=True),
+    ])
+    msgs: list[str] = []
+    record(driver, "x", agent, clock=_NoSleep(), with_screenshot=False,
+           alert_guard=guard, report=msgs.append)
+    joined = "\n".join(msgs)
+    assert "blocked by a system prompt" in joined
+    assert "dismissed a system alert" in joined and "Not Now" in joined
+
+
+def test_alert_guard_not_fired_on_a_label_only_app() -> None:
+    """Regression: with the guard on and a no-id app, the screen must not look 'blocked' — else
+    the guard fires (a vision call) every turn and the loop never reaches the agent."""
+    calls = {"n": 0}
+
+    def guard(_driver: base.Driver) -> None:
+        calls["n"] += 1
+
+    driver = FakeDriver([_vel("Get Started", ["button"])])
+    agent = FakeAgent([
+        Proposal(step=Step.model_validate({"tap": {"label": "Get Started"}})),
+        Proposal(done=True),
+    ])
+    scenario = record(driver, "start", agent, alert_guard=guard)
+    assert calls["n"] == 0  # the app showed actionable UI; the guard never had to fire
+    assert scenario.steps and scenario.steps[0].tap is not None
 
 
 def test_settle_wait_targets_value_assertion() -> None:

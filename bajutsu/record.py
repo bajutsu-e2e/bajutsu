@@ -8,12 +8,45 @@ scenario that `run` later replays with no AI.
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from bajutsu.agent import Agent, Observation
 from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock, _action_of, _do_action, _wait
-from bajutsu.scenario import Assertion, Scenario, Step
+from bajutsu.scenario import Assertion, Scenario, Selector, Step
+
+# A live-progress sink: each turn's decision is handed to it as a one-line string.
+Reporter = Callable[[str], None]
+
+
+def _describe_selector(sel: Selector | None) -> str:
+    """A compact human label for a selector — id if present, else label/value/traits[index]."""
+    if sel is None:
+        return "?"
+    if sel.id:
+        return f"#{sel.id}"
+    parts = []
+    if sel.label is not None:
+        parts.append(f"label={sel.label!r}")
+    if sel.value is not None:
+        parts.append(f"value={sel.value!r}")
+    if sel.traits:
+        parts.append(f"traits={sel.traits}")
+    if sel.index is not None:
+        parts.append(f"index={sel.index}")
+    return " ".join(parts) or "?"
+
+
+def _describe_step(step: Step) -> str:
+    """A one-line summary of a proposed step, for live record output."""
+    if step.tap is not None:
+        return f"tap {_describe_selector(step.tap)}"
+    if step.type is not None:
+        return f"type {step.type.text!r} into {_describe_selector(step.type.into)}"
+    if step.wait is not None:
+        return f"wait for {_describe_selector(step.wait.for_)}"
+    return next((f for f in step.model_dump(exclude_none=True)), "step")
 
 
 def _screenshot_bytes(driver: base.Driver) -> bytes | None:
@@ -69,25 +102,49 @@ def _execute(driver: base.Driver, step: Step, clock: Clock) -> None:
         _do_action(driver, step)
 
 
+def _shows_app_ui(elements: list[base.Element]) -> bool:
+    """Whether the tree shows the app's own UI (rather than being collapsed under a system
+    overlay). A SpringBoard alert collapses the app's tree to a bare window; a live app screen
+    has actionable content. "Actionable" = any non-application element carrying an `id` OR a
+    `label`, so apps WITHOUT accessibility identifiers (label/coordinate-driven, e.g. sample2)
+    are not mistaken for a blocked screen — the bug that made the guard fire every turn."""
+    return any(
+        (el.get("identifier") or el.get("label")) and "application" not in (el.get("traits") or [])
+        for el in elements
+    )
+
+
 def _clear_blocking(
-    driver: base.Driver, guard: BlockedHandler, clock: Clock, max_tries: int = 3
+    driver: base.Driver, guard: BlockedHandler, clock: Clock, max_tries: int = 3,
+    report: Reporter | None = None,
 ) -> None:
     """Dismiss anything covering the app (e.g. a system alert) before the agent observes.
 
-    The agent acts by element id, but a SpringBoard alert has no queryable id and
-    collapses the tree to a window with no identified elements — leaving the agent
-    nothing to act on. While the tree stays collapsed, keep asking the guard to clear
-    it: an alert caught mid-animation can be missed on the first screenshot.
+    A SpringBoard alert has no queryable app content and collapses the tree to a bare
+    window — leaving the agent nothing to act on. While the tree stays collapsed, keep
+    asking the guard to clear it: an alert caught mid-animation can be missed on the first
+    screenshot. When `report` is given, the guard's detection and dismissal are streamed
+    so the watcher sees it stepping in.
     """
+    say = report or (lambda _msg: None)
+    announced = False
     for _ in range(max_tries):
-        if any(el["identifier"] for el in driver.query()):
+        if _shows_app_ui(driver.query()):
             return  # the app is showing actionable elements; nothing blocking
-        guard(driver)  # try to dismiss whatever is covering the app
+        if not announced:
+            say("⚠️  the app screen looks blocked by a system prompt — asking the alert guard to clear it …")
+            announced = True
+        event = guard(driver)  # try to dismiss whatever is covering the app
+        if event is not None:
+            label = getattr(event, "label", "")
+            say(f"🛡️  dismissed a system alert · tapped {label!r}" if label
+                else "🛡️  dismissed a system alert")
         clock.sleep(0.5)  # let it animate out before re-checking
 
 
 def _execute_with_recovery(
-    driver: base.Driver, step: Step, clock: Clock, guard: BlockedHandler | None
+    driver: base.Driver, step: Step, clock: Clock, guard: BlockedHandler | None,
+    report: Reporter | None = None,
 ) -> bool:
     """Execute a step; if it fails because a prompt is covering the app, clear it and retry."""
     try:
@@ -96,7 +153,8 @@ def _execute_with_recovery(
     except base.SelectorError:
         if guard is None:
             return False
-        _clear_blocking(driver, guard, clock)
+        (report or (lambda _m: None))("⚠️  a step could not act — a system prompt may be covering the app; recovering …")
+        _clear_blocking(driver, guard, clock, report=report)
         try:
             _execute(driver, step, clock)
             return True
@@ -114,6 +172,7 @@ def record(
     clock: Clock | None = None,
     with_screenshot: bool = True,
     alert_guard: BlockedHandler | None = None,
+    report: Reporter | None = None,
 ) -> Scenario:
     """Explore toward `goal` with `agent`, returning the recorded scenario.
 
@@ -121,33 +180,45 @@ def record(
     that surfaces while authoring is dismissed so the agent keeps a clean view. The
     dismissal is environmental, not a recorded step; replay handles it with
     `run --dismiss-alerts`.
+
+    If `report` is given, each turn's decision (the agent's proposed action and reason)
+    is streamed to it as a one-line string, so a caller can show progress live.
     """
     clock = clock or RealClock()
+    say = report or (lambda _msg: None)
     steps: list[Step] = []
     expect: list[Assertion] = []
 
     for _ in range(max_steps):
         if alert_guard is not None:
-            _clear_blocking(driver, alert_guard, clock)
+            _clear_blocking(driver, alert_guard, clock, report=report)
         elements = driver.query()
-        if alert_guard is not None and not any(el["identifier"] for el in elements):
+        if alert_guard is not None and not _shows_app_ui(elements):
             # A prompt slipped in after the last clear: don't ask the agent to act on a
             # dead screen (it would hallucinate ids); re-clear on the next iteration.
             clock.sleep(0.3)
             continue
+        n = len(steps) + 1
+        say(f"[{n}] observing {len(elements)} elements; asking the agent …")
         screenshot = _screenshot_bytes(driver) if with_screenshot else None
         proposal = agent.next_action(
             Observation(goal=goal, screen=elements, history=list(steps), screenshot=screenshot)
         )
+        if proposal.note:  # the agent's reasoning for this turn, shown before the action it chose
+            say(f"[{n}] \U0001f4ad {proposal.note}")
         if proposal.done:
+            say(f"[{n}] ✓ finish · {len(proposal.expect)} assertion(s)")
             expect = proposal.expect
             settle = _settle_step(expect)
             if settle is not None:
                 steps.append(settle)  # let an async screen render before replay verifies
             break
         if proposal.step is None:
+            say(f"[{n}] agent proposed no action; stopping")
             break
-        if not _execute_with_recovery(driver, proposal.step, clock, alert_guard):
+        say(f"[{n}] → {_describe_step(proposal.step)}")
+        if not _execute_with_recovery(driver, proposal.step, clock, alert_guard, report=report):
+            say(f"[{n}] ! could not resolve that target on the live screen; stopping")
             break  # the proposed action did not resolve, even after clearing prompts
         steps.append(proposal.step)
 

@@ -42,6 +42,12 @@ _TARGET_SCHEMA: dict[str, Any] = {
 PROPOSAL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        # `reason` first so the model states its thinking before committing to an action.
+        "reason": {
+            "type": "string",
+            "description": "one short sentence of your reasoning for this turn: what you see and "
+            "why this action advances the goal",
+        },
         "tool": {"type": "string", "enum": ["tap", "type_text", "wait_for", "finish"]},
         **_TARGET_SCHEMA,
         "text": {"type": "string", "description": "text to type (type_text)"},
@@ -61,17 +67,17 @@ PROPOSAL_SCHEMA: dict[str, Any] = {
                 "required": ["check"],
             },
         },
-        "reason": {"type": "string"},
     },
-    "required": ["tool"],
+    "required": ["reason", "tool"],
 }
 
 _STRUCTURED_NOTE = (
     "\n\nYou are running non-interactively with no screenshot — reason only from the element "
-    "list above. Do not use any tools or read any files. Emit exactly one action object: set "
-    "`tool` to tap, type_text, wait_for, or finish and fill its fields (the target via "
-    "id/label/value/traits/index; `text` for type_text; `timeout` for wait_for; `assertions` "
-    "for finish)."
+    "list above. Do not use any tools or read any files. Emit exactly one action object: first "
+    "set `reason` to one sentence of your reasoning (what you see and why this action advances "
+    "the goal — this is shown live to the person watching), then set `tool` to tap, type_text, "
+    "wait_for, or finish and fill its fields (the target via id/label/value/traits/index; "
+    "`text` for type_text; `timeout` for wait_for; `assertions` for finish)."
 )
 
 # A runner takes the argv and returns the CLI's stdout. Injectable for tests.
