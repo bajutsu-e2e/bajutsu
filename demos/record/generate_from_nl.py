@@ -14,9 +14,12 @@ visible elements of an in-memory FakeDriver. The record loop, the
     uv run python demos/record/generate_from_nl.py
     uv run python demos/record/generate_from_nl.py "tap Increment, then check the counter shows 1"
     uv run python demos/record/generate_from_nl.py --file demos/record/goals.txt
+    uv run python demos/record/generate_from_nl.py "<goal>" --out demos/record/generated.yaml
 
-Change the goal and the generated scenario changes. The supported mini-grammar is in
-this folder's README; the real, open-ended version is `bajutsu record --goal "..."`.
+The mock app mirrors the bundled `sample` app's accessibility ids (onboarding -> login
+-> home -> counter), so a scenario generated here runs as-is against the real app on a
+Simulator — see `demo.sh` and this folder's README for the full generate -> run -> modify
+lifecycle. The real, open-ended generator is `bajutsu record --goal "..."`.
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ from bajutsu.scenario import Assertion, Scenario, Step, dump_scenarios
 
 DEFAULT_GOAL = (
     "Get started, log in with email demo@bajutsu.dev and password hunter2, "
-    "then tap Increment twice, and check the counter shows 2"
+    "wait for Home, then tap Increment twice, and check the counter shows 2"
 )
 
 
@@ -157,6 +160,11 @@ def plan_from_goal(goal: str) -> tuple[Plan, list[tuple[str, str]]]:
             plan.append(("type", _after("email", clause), "email"))
             plan.append(("type", _after("password", clause), "password"))
             plan.append(("tap", "log in"))
+        elif low.startswith("wait"):  # "wait for X [up to Ns]" -> a condition wait
+            m = re.search(r"up to (\d+)\s*s", low)
+            target = re.sub(r"^wait\s+(for\s+)?", "", clause, flags=re.IGNORECASE)
+            target = re.sub(r"\s+up to .*$", "", target, flags=re.IGNORECASE).strip(" .")
+            plan.append(("wait", target, m.group(1) if m else "5"))
         elif low.startswith(_CHECK_VERBS):  # an expectation (recorded as `expect`)
             value = _after("shows", clause) or _after("is", clause)
             expects.append((_check_target(clause), value))
@@ -209,6 +217,12 @@ class KeywordAgent:
             ]
             return Proposal(done=True, expect=expect)
         kind, *rest = self._plan[i]
+        if kind == "wait":
+            hint, timeout = rest
+            eid = _ground(obs.screen, hint)
+            return Proposal(
+                step=Step.model_validate({"wait": {"for": {"id": eid}, "timeout": float(timeout)}})
+            )
         if kind == "type":
             text, hint = rest
             eid = _ground(obs.screen, hint, field=True)
@@ -220,22 +234,26 @@ class KeywordAgent:
 # --- Run it: goal -> record -> scenario YAML -> deterministic replay ---
 
 
-def author(goal: str) -> Scenario:
+def author(goal: str, name: str | None = None) -> Scenario:
     """Drive the record loop with `goal` and return the generated scenario."""
-    return record(make_app(), goal, KeywordAgent(goal), name=goal, with_screenshot=False)
+    return record(make_app(), goal, KeywordAgent(goal), name=name or goal, with_screenshot=False)
 
 
-def run_verbose(goal: str) -> bool:
-    """Author one goal, print the full scenario YAML + replay result. Returns ok."""
+def run_verbose(goal: str, out: Path | None = None, name: str | None = None) -> bool:
+    """Author one goal, print the scenario YAML (and optionally write it) + replay. Returns ok."""
     print("Natural-language goal:")
     print(f"  {goal}\n")
     try:
-        scenario = author(goal)
+        scenario = author(goal, name)
     except LookupError as e:
         print(f"Could not author this goal: {e}")
         return False
     print(f"Recorded {len(scenario.steps)} steps. Generated scenario (plain YAML, no AI):\n")
-    print(dump_scenarios([scenario]))
+    yaml = dump_scenarios([scenario])
+    print(yaml)
+    if out is not None:
+        out.write_text(yaml, encoding="utf-8")
+        print(f"wrote {out}")
     driver = make_app()
     result = run_scenario(driver, scenario)
     typed = [arg for kind, arg in driver.actions if kind == "type"]
@@ -272,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
         "-f", "--file", type=Path,
         help="read goals from a text file (one per line; # comments allowed) and run each",
     )
+    parser.add_argument("-o", "--out", type=Path, help="write the generated scenario YAML to this file")
+    parser.add_argument("--name", help="scenario name in the output (default: the goal sentence)")
     args = parser.parse_args(argv)
 
     if args.file is not None:
@@ -283,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if passed == len(results) else 1
 
     goal = " ".join(args.goal).strip() or DEFAULT_GOAL
-    return 0 if run_verbose(goal) else 1
+    return 0 if run_verbose(goal, out=args.out, name=args.name) else 1
 
 
 if __name__ == "__main__":
