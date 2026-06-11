@@ -24,7 +24,7 @@ app. It exercises shared steps + secret input + device control entirely on the *
 Home screen** (`SAMPLE_LOGGED_IN=1`), so the assertions are deterministic.
 
 ```bash
-# Build + install the sample first (see sample/README.md), then:
+# Build + install the sample first (see app/sample/README.md), then:
 PASSWORD='s3cr3t' uv run bajutsu run demos/features/sample_features.yaml \
   --app sample --config demos/features/demo.config.yaml --no-erase --no-network
 ```

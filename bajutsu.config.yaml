@@ -36,7 +36,7 @@ defaults:
 
 # ── Per-app entries. `--app <name>` selects one of these ──
 apps:
-  # The bundled fixture app (sample/). Instrumented for every Bajutsu primitive.
+  # The bundled fixture app (app/sample/). Instrumented for every Bajutsu primitive.
   sample:
     bundleId: com.bajutsu.sample      # required — the app's bundle identifier
     deeplinkScheme: bajutsusample     # URL scheme for deep-link preconditions
@@ -49,7 +49,7 @@ apps:
     # Built .app to install on each device before launch (if missing) — so a freshly
     # picked/booted simulator just works without a manual `simctl install`. Built by
     # `make sample-build`; path is relative to the run's working directory.
-    appPath: sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
+    appPath: app/sample/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
     # Optional per-app keys (all override or extend the defaults above):
     #   backend: [...]            # actuator order for this app
     #   device: "iPhone 17 Pro"   # simulator model

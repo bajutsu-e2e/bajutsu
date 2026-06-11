@@ -1,0 +1,66 @@
+name: BajutsuSample
+options:
+  bundleIdPrefix: com.bajutsu
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+    SUPPORTS_MACCATALYST: NO
+packages:
+  BajutsuKit:
+    path: ../../BajutsuKit
+targets:
+  BajutsuSample:
+    type: application
+    platform: iOS
+    sources:
+      - path: BajutsuSample
+    dependencies:
+      - package: BajutsuKit
+    info:
+      path: BajutsuSample/Info.plist
+      properties:
+        UILaunchScreen:
+          UIColorName: ""
+        CFBundleDisplayName: BajutsuSample
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:
+          - CFBundleURLName: com.bajutsu.sample
+            CFBundleURLSchemes: [bajutsusample]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.sample
+        TARGETED_DEVICE_FAMILY: "1,2"
+  BajutsuSampleUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: BajutsuSampleUITests
+    dependencies:
+      - target: BajutsuSample
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.sample.uitests
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  BajutsuSample:
+    build:
+      targets:
+        BajutsuSample: all
+  UITests:
+    build:
+      targets:
+        BajutsuSample: all
+        BajutsuSampleUITests: [test]
+    test:
+      targets:
+        - BajutsuSampleUITests
+      gatherCoverageData: false
