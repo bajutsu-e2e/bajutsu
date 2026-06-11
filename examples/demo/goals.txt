@@ -1,0 +1,27 @@
+# Example goals for examples/demo/generate_from_nl.py — one goal per line.
+# Blank lines and lines starting with `#` are ignored.
+#
+# Run all of them:  uv run python examples/demo/generate_from_nl.py --file examples/demo/goals.txt
+# Run just one:     uv run python examples/demo/generate_from_nl.py "<paste a line below>"
+#
+# These match the demo's mock app (onboarding -> login -> home, with a counter on Home),
+# so each one records and replays cleanly. Edit freely; see this folder's README for the
+# small grammar the stand-in agent understands.
+
+# Log in, increment the counter twice, then assert its value.
+Get started, log in with email demo@bajutsu.dev and password hunter2, then tap Increment twice, and check the counter shows 2
+
+# A single increment (note "shows 1").
+Get started, log in with email a@b.co and password pw, then tap Increment, and check the counter shows 1
+
+# The "N times" count and the "press" verb, asserted with "verify".
+Get started, log in with email user@example.com and password s3cr3t, then press Increment 3 times, and verify the counter shows 3
+
+# The "thrice" count and the "click" verb, asserted with "confirm".
+Get started, log in with email qa@team.dev and password p4ss, then click Increment thrice, and confirm the counter shows 3
+
+# Actions only — no assertion; the scenario just performs the steps.
+Get started, log in with email me@demo.app and password pw123, then tap Increment twice
+
+# Minimal: just the login flow, no counter.
+Get started, log in with email someone@host.io and password letmein
