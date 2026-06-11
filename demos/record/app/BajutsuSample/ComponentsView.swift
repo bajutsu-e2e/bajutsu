@@ -44,7 +44,6 @@ struct ComponentsView: View {
                     }
                 })
             Text("Swiped: \(swipeDir)")
-                .accessibilityValue(swipeDir)
         }
         .padding()
         .alert("Delete item?", isPresented: $showDeleteAlert) {

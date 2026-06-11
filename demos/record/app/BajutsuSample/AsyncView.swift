@@ -23,7 +23,6 @@ struct AsyncView: View {
                         .buttonStyle(.borderedProminent)
                     ProgressView(value: progress)
                     Text("Progress: \(Int(progress * 100))")
-                        .accessibilityValue("\(Int(progress * 100))")
                     if progress >= 1 {
                         Text("Complete")
                     }
@@ -53,7 +52,6 @@ struct AsyncView: View {
                     // bridges the delay rather than racing the still-empty value.
                     if !debounced.isEmpty {
                         Text("Debounced: \(debounced)")
-                            .accessibilityValue(debounced)
                     }
                 }
 
@@ -61,7 +59,6 @@ struct AsyncView: View {
                     Button("Load more") { rows += 3 }
                         .buttonStyle(.bordered)
                     Text("Rows: \(rows)")
-                        .accessibilityValue("\(rows)")
                 }
             }
             .padding()

@@ -24,9 +24,7 @@ struct TextInputView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                 Text("Value: \(basic)")
-                    .accessibilityValue(basic)
                 Text("Count: \(basic.count)")
-                    .accessibilityValue("\(basic.count)")
                 Button("Clear") { basic = "" }
                     .buttonStyle(.bordered)
 
@@ -40,7 +38,6 @@ struct TextInputView: View {
                     .frame(height: 80)
                     .border(.gray.opacity(0.3))
                 Text("Editor: \(multiline)")
-                    .accessibilityValue(multiline)
 
                 // Needs >= 3 chars: submit stays disabled until valid, and an error
                 // label shows once the field has content but is still too short.
@@ -58,7 +55,6 @@ struct TextInputView: View {
                     .disabled(!requiredValid)
                 if !submitted.isEmpty {
                     Text("Submitted: \(submitted)")
-                        .accessibilityValue(submitted)
                 }
             }
             .padding()

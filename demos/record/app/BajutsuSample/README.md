@@ -5,7 +5,9 @@
 実装の詳細（識別子やコードの仕組み）ではなく、画面の役割とユーザー操作の流れに絞っています。
 
 > **このアプリは [`../../sample`](../../sample) の派生版です。** UI は同一ですが、
-> `accessibilityIdentifier` を一切付けていません（ラベルや座標ベースの操作を想定）。
+> `accessibilityIdentifier` も `accessibilityValue` も一切付けていません（ラベル・
+> トレイト・座標ベースの操作を想定）。コントロールの状態は結果ラベルの可視テキスト
+> （例: `Count: 2`、`Toggle: on`）でのみ確認できます。
 > bundle id は `com.bajutsu.sample2` に変更してあります。
 >
 > 識別子・検証プリミティブまで含む詳細仕様は、元アプリの

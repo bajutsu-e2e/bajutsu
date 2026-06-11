@@ -58,7 +58,6 @@ struct ListsNavView: View {
                 }
 
                 Text("Count: \(filtered.count)")
-                    .accessibilityValue("\(filtered.count)")
                 if refreshed {
                     Text("Refreshed")
                 }
@@ -82,7 +81,6 @@ struct ListDetailView: View {
             Text("Detail")
                 .font(.title)
             Text(name)
-                .accessibilityValue(name)
         }
         .padding()
     }

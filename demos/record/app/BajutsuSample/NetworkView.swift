@@ -41,7 +41,6 @@ struct NetworkView: View {
                 Button("DELETE") { send("DELETE", "\(base)/delete") }
 
                 Text("Status: \(status)")
-                    .accessibilityValue(status)
 
                 captured
             }
@@ -58,14 +57,11 @@ struct NetworkView: View {
         if let ex = captures.latest {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Method: \(ex.method)")
-                    .accessibilityValue(ex.method)
                 Text("Status: \(ex.status.map(String.init) ?? "—")")
-                    .accessibilityValue(ex.status.map(String.init) ?? "")
                 Text("Duration: \(Int(ex.durationMs.rounded())) ms")
                 Text(ex.url)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .accessibilityValue(ex.url)
                 if let err = ex.error {
                     Text("Error: \(err)")
                         .foregroundStyle(.red)

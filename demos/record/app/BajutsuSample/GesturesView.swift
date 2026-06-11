@@ -22,7 +22,6 @@ struct GesturesView: View {
                         .background(.blue.opacity(0.15))
                         .onTapGesture(count: 2) { doubled += 1 }
                     Text("Double taps: \(doubled)")
-                        .accessibilityValue("\(doubled)")
                 }
 
                 VStack(alignment: .leading) {
@@ -34,7 +33,6 @@ struct GesturesView: View {
                             pinchDir = value.magnification > 1 ? "in" : "out"
                         })
                     Text("Pinch: \(pinchDir)")
-                        .accessibilityValue(pinchDir)
                 }
 
                 VStack(alignment: .leading) {
@@ -46,7 +44,6 @@ struct GesturesView: View {
                             rotateDir = value.rotation.radians >= 0 ? "cw" : "ccw"
                         })
                     Text("Rotate: \(rotateDir)")
-                        .accessibilityValue(rotateDir)
                 }
             }
             .padding()

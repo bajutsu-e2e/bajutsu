@@ -25,7 +25,6 @@ struct PresentationView: View {
                 Button("Open Dialog") { showDialog = true }
                     .buttonStyle(.bordered)
                 Text("Dialog: \(dialogResult)")
-                    .accessibilityValue(dialogResult)
 
                 Button("Show Toast") { showToastBriefly() }
                     .buttonStyle(.bordered)

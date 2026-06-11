@@ -20,7 +20,6 @@ struct SystemView: View {
                     Button("Request Notifications") { requestNotifications() }
                         .buttonStyle(.borderedProminent)
                     Text("Notifications: \(notifStatus)")
-                        .accessibilityValue(notifStatus)
                     if notifStatus == "authorized" {
                         Text("Granted")
                     }
@@ -32,7 +31,6 @@ struct SystemView: View {
                     Button("Paste") { pasted = UIPasteboard.general.string ?? "" }
                         .buttonStyle(.bordered)
                     Text("Pasted: \(pasted)")
-                        .accessibilityValue(pasted)
                 }
 
                 ShareLink(item: "Shared from Bajutsu")

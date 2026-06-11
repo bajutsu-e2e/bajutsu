@@ -1,9 +1,9 @@
 import SwiftUI
 
 // A gallery of the standard value controls. Each control mirrors its current
-// state into a sibling result label's accessibilityValue, so headless backends
-// (e.g. idb) that don't surface a control's own value can still assert the
-// outcome — the same trick settings.normalizeToggle uses.
+// state into a sibling result label's text (e.g. "Toggle: on"), so headless
+// backends (e.g. idb) that don't surface a control's own value can still assert
+// the outcome by reading that label — sample2 carries no accessibilityValue.
 struct ControlsView: View {
     @State private var toggleOn = false
     @State private var stepperValue = 0
@@ -31,13 +31,11 @@ struct ControlsView: View {
                             .labelsHidden()
                     }
                     Text("Toggle: \(toggleOn ? "on" : "off")")
-                        .accessibilityValue(toggleOn ? "on" : "off")
                 }
 
                 VStack(alignment: .leading) {
                     Stepper("Stepper", value: $stepperValue, in: 0 ... 10)
                     Text("Stepper: \(stepperValue)")
-                        .accessibilityValue("\(stepperValue)")
                 }
 
                 // Stepped so the mirrored value is deterministic regardless of the
@@ -45,7 +43,6 @@ struct ControlsView: View {
                 VStack(alignment: .leading) {
                     Slider(value: $sliderValue, in: 0 ... 10, step: 1)
                     Text("Slider: \(Int(sliderValue))")
-                        .accessibilityValue("\(Int(sliderValue))")
                 }
 
                 // A single-select segment built from id'd buttons. A native
@@ -63,7 +60,6 @@ struct ControlsView: View {
                         }
                     }
                     Text("Segment: \(segments[segment])")
-                        .accessibilityValue(segments[segment])
                 }
 
                 // A Menu renders its items in a system popover; they are addressed by
@@ -74,7 +70,6 @@ struct ControlsView: View {
                         Button("Banana") { menuChoice = "Banana" }
                     }
                     Text("Menu: \(menuChoice)")
-                        .accessibilityValue(menuChoice)
                 }
 
                 // One enabled button (counts taps) and one permanently disabled, to
@@ -86,7 +81,6 @@ struct ControlsView: View {
                         .buttonStyle(.bordered)
                         .disabled(true)
                     Text("Taps: \(tapCount)")
-                        .accessibilityValue("\(tapCount)")
                 }
             }
             .padding()

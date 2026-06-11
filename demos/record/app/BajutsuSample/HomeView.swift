@@ -11,7 +11,6 @@ struct HomeView: View {
 
                 HStack {
                     Text("Count: \(model.counter)")
-                        .accessibilityValue("\(model.counter)")
                     Button("+") { model.increment() }
                 }
 
@@ -65,7 +64,6 @@ struct SettingsView: View {
                 .accessibilityAddTraits(model.normalize ? .isSelected : [])
                 // Mirror the selected state into the value so headless backends that
                 // do not surface the isSelected trait (e.g. idb) can still read it.
-                .accessibilityValue(model.normalize ? "on" : "off")
 
                 if model.settingsChanged {
                     Text("Settings changed — reindex needed")
@@ -75,7 +73,6 @@ struct SettingsView: View {
                 Button("Reindex") { model.reindex() }
 
                 Text("Status: \(model.reindexStatus)")
-                    .accessibilityValue(model.reindexStatus)
 
                 if model.reindexStatus == "done" {
                     Text("Reindex complete")
