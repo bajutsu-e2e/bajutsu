@@ -1,8 +1,8 @@
-# Example goals for examples/demo/generate_from_nl.py — one goal per line.
+# Example goals for demos/record/generate_from_nl.py — one goal per line.
 # Blank lines and lines starting with `#` are ignored.
 #
-# Run all of them:  uv run python examples/demo/generate_from_nl.py --file examples/demo/goals.txt
-# Run just one:     uv run python examples/demo/generate_from_nl.py "<paste a line below>"
+# Run all of them:  uv run python demos/record/generate_from_nl.py --file demos/record/goals.txt
+# Run just one:     uv run python demos/record/generate_from_nl.py "<paste a line below>"
 #
 # These match the demo's mock app (onboarding -> login -> home, with a counter on Home),
 # so each one records and replays cleanly. Edit freely; see this folder's README for the

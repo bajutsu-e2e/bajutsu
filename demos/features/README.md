@@ -9,7 +9,7 @@ Drives the real `load → expand → run` pipeline against the in-memory FakeDri
 prints what each feature did — no Simulator or idb needed:
 
 ```bash
-uv run python examples/features/run_demo.py
+uv run python demos/features/run_demo.py
 ```
 
 The per-feature scenario files it loads: [`tags.yaml`](tags.yaml),
@@ -25,8 +25,8 @@ Home screen** (`SAMPLE_LOGGED_IN=1`), so the assertions are deterministic.
 
 ```bash
 # Build + install the sample first (see sample/README.md), then:
-PASSWORD='s3cr3t' uv run bajutsu run examples/features/sample_features.yaml \
-  --app sample --config examples/features/demo.config.yaml --no-erase --no-network
+PASSWORD='s3cr3t' uv run bajutsu run demos/features/sample_features.yaml \
+  --app sample --config demos/features/demo.config.yaml --no-erase --no-network
 ```
 
 [`demo.config.yaml`](demo.config.yaml) declares `secrets: [PASSWORD]` so

@@ -2,7 +2,7 @@
 
 This drives the *real* pipeline (load -> select -> expand_components -> expand_data
 -> run_scenario) against the in-memory FakeDriver — the same path the unit tests use —
-and prints what each feature did. Run: `uv run python examples/features/run_demo.py`.
+and prints what each feature did. Run: `uv run python demos/features/run_demo.py`.
 """
 
 from __future__ import annotations

@@ -10,11 +10,11 @@ This folder demonstrates that loop **offline** — no API key, no Simulator.
 ## Run
 
 ```bash
-uv run python examples/demo/generate_from_nl.py
+uv run python demos/record/generate_from_nl.py
 # pass your own goal (quote the whole sentence):
-uv run python examples/demo/generate_from_nl.py "tap Increment, then check the counter shows 1"
+uv run python demos/record/generate_from_nl.py "tap Increment, then check the counter shows 1"
 # or run a batch from a file (one goal per line; # comments allowed):
-uv run python examples/demo/generate_from_nl.py --file examples/demo/goals.txt
+uv run python demos/record/generate_from_nl.py --file demos/record/goals.txt
 ```
 
 A single goal prints the full generated YAML + replay result; `--file` prints a one-line

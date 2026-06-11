@@ -5,7 +5,7 @@ FakeDriver — the same path the CLI uses — so each step captures an elements.
 then writes report.html. The FakeDriver here also writes a tiny placeholder PNG per
 screenshot so the lightbox thumbnails render. No Simulator needed.
 
-Run: `uv run python examples/features/run_tree_report.py` (opens the report).
+Run: `uv run python demos/features/run_tree_report.py` (opens the report).
 """
 
 from __future__ import annotations

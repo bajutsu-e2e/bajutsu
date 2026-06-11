@@ -11,9 +11,9 @@ the *same* natural-language goal with a few keyword rules and grounds each actio
 visible elements of an in-memory FakeDriver. The record loop, the
 `Observation -> Proposal` protocol, and the emitted scenario are the real ones.
 
-    uv run python examples/demo/generate_from_nl.py
-    uv run python examples/demo/generate_from_nl.py "tap Increment, then check the counter shows 1"
-    uv run python examples/demo/generate_from_nl.py --file examples/demo/goals.txt
+    uv run python demos/record/generate_from_nl.py
+    uv run python demos/record/generate_from_nl.py "tap Increment, then check the counter shows 1"
+    uv run python demos/record/generate_from_nl.py --file demos/record/goals.txt
 
 Change the goal and the generated scenario changes. The supported mini-grammar is in
 this folder's README; the real, open-ended version is `bajutsu record --goal "..."`.
