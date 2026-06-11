@@ -1,4 +1,18 @@
-.PHONY: test lint typecheck check
+.PHONY: deps deps-check test lint typecheck check
+
+# Install the external tools the idb backend needs (idempotent).
+#   - Homebrew tools (idb_companion / xcodegen) from the Brewfile
+#   - the idb python client via uv (the `idb` extra)
+deps:
+	@command -v brew >/dev/null 2>&1 || { echo "Homebrew is required: https://brew.sh"; exit 1; }
+	brew bundle --file=Brewfile
+	uv sync --extra idb --extra dev
+
+# Verify the required tools are on PATH without installing anything.
+deps-check:
+	@command -v idb_companion >/dev/null 2>&1 && echo "idb_companion: ok" || echo "idb_companion: MISSING (make deps)"
+	@command -v xcodegen >/dev/null 2>&1 && echo "xcodegen: ok" || echo "xcodegen: MISSING (make deps)"
+	@command -v xcrun >/dev/null 2>&1 && echo "xcrun (Xcode): ok" || echo "xcrun (Xcode): MISSING (install Xcode)"
 
 test:
 	uv run pytest -q
