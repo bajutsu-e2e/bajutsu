@@ -26,6 +26,8 @@ runs/
 # iOS sample (XcodeGen-generated project + build output)
 sample/*.xcodeproj/
 sample/build/
+sample2/*.xcodeproj/
+sample2/build/
 DerivedData/
 *.xcuserstate
 
