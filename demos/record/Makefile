@@ -1,10 +1,10 @@
-# Build target for the record demo, which exercises the app/sample2 fixture app.
+# Build target for the record demo, which exercises the demos/record/app fixture app.
 # Invoke from anywhere with `make -C demos/record <target>` (or from inside this folder).
 # ROOT resolves to the repo root so the build output matches demos/record/demo.config.yaml.
 .PHONY: sample2-gen sample2-build
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
-SAMPLE2 := $(ROOT)/app/sample2
+SAMPLE2 := $(ROOT)/demos/record/app
 
 sample2-gen:
 	cd $(SAMPLE2) && xcodegen generate

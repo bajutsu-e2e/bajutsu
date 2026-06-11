@@ -49,7 +49,7 @@ bajutsu run <scenario.yaml> --app <name> [options]
 - Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
 
 ```bash
-bajutsu run app/sample/scenarios/smoke.yaml --app sample --udid <UDID> --backend idb --no-erase
+bajutsu run demos/features/app/scenarios/smoke.yaml --app sample --udid <UDID> --backend idb --no-erase
 ```
 
 ## `doctor`
@@ -153,7 +153,7 @@ a background thread, streams its output, and serves the produced `runs/<id>/` tr
 report's relative asset links resolve. Stdlib only (no web framework); binds `127.0.0.1`.
 
 ```bash
-bajutsu serve [--port 8765] [--scenarios app/sample/scenarios] [--config bajutsu.config.yaml] [--runs runs]
+bajutsu serve [--port 8765] [--scenarios demos/features/app/scenarios] [--config bajutsu.config.yaml] [--runs runs]
 ```
 
 - Pick a scenario file + app, set backend / udid / erase / `disable alert-dismiss`, hit **Run**;

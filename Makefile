@@ -26,5 +26,5 @@ typecheck:
 check: lint typecheck test
 
 # Sample-app build / E2E targets live with their demos:
-#   make -C demos/features sample-gen|sample-build|e2e|ui-test   (app/sample)
-#   make -C demos/record   sample2-gen|sample2-build             (app/sample2)
+#   make -C demos/features sample-gen|sample-build|e2e|ui-test   (demos/features/app)
+#   make -C demos/record   sample2-gen|sample2-build             (demos/record/app)

@@ -69,7 +69,7 @@ it.
 
 A scenario is plain YAML: a list of named tests, each with optional `preconditions`, a list of
 `steps`, and an `expect` block of **machine-checkable assertions**. Open the bundled smoke test,
-[`app/sample/scenarios/smoke.yaml`](../app/sample/scenarios/smoke.yaml):
+[`demos/features/app/scenarios/smoke.yaml`](../demos/features/app/scenarios/smoke.yaml):
 
 ```yaml
 # End-to-end smoke: onboarding -> login -> home -> counter.
@@ -114,7 +114,7 @@ primitive. Build it for the Simulator:
 make -C demos/features sample-build         # xcodegen generate -> xcodebuild for the iOS Simulator
 ```
 
-This produces `BajutsuSample.app` under `app/sample/build/…`. (The `.xcodeproj` and `build/` are
+This produces `BajutsuSample.app` under `demos/features/app/build/…`. (The `.xcodeproj` and `build/` are
 gitignored — `project.yml` is the source of truth.) See [sample-app](sample-app.md) for the launch-env
 hooks and the identifier catalog.
 
@@ -140,7 +140,7 @@ make -C demos/features e2e
 Or drive the CLI directly (the same thing, spelled out):
 
 ```bash
-uv run bajutsu run app/sample/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
+uv run bajutsu run demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
 ```
 
 What the flags mean:
@@ -209,7 +209,7 @@ entry points share the same scenario format:
   How the authoring loop and the system-alert guard work: [recording](recording.md).
 - **Emit a native XCUITest.** Convert a scenario to Swift (no Bajutsu runtime / AI at test time):
   ```bash
-  uv run bajutsu codegen app/sample/scenarios/smoke.yaml --app sample -o UITests/Smoke.swift
+  uv run bajutsu codegen demos/features/app/scenarios/smoke.yaml --app sample -o UITests/Smoke.swift
   ```
   The structural mapping: [codegen](codegen.md). Run it end-to-end with `make -C demos/features ui-test`.
 

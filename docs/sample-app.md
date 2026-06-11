@@ -2,11 +2,11 @@
 
 # The sample app (the BajutsuSample fixture)
 
-> The small, self-contained SwiftUI app under `app/sample/`. A test fixture built to exercise **every**
+> The small, self-contained SwiftUI app under `demos/features/app/`. A test fixture built to exercise **every**
 > Bajutsu primitive (all step kinds, all assertion kinds, launch-env hooks, a deeplink, and an
 > `os_signpost` interval), plus a small UI gallery (Controls / Text / Lists tabs).
 >
-> Full details in [`app/sample/README.md`](../app/sample/README.md). Here we summarize the mapping to
+> Full details in [`demos/features/app/README.md`](../demos/features/app/README.md). Here we summarize the mapping to
 > Bajutsu features.
 
 Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [codegen](codegen.md) · [cli](cli.md)
@@ -19,7 +19,7 @@ Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [code
 - bundle id `com.bajutsu.sample` · deeplink scheme `bajutsusample`.
 - Built with XcodeGen + xcodebuild (`project.yml` is the source of truth; `.xcodeproj`/`build/` are
   gitignored).
-- Example scenarios are in [`app/sample/scenarios/`](../app/sample/scenarios).
+- Example scenarios are in [`demos/features/app/scenarios/`](../demos/features/app/scenarios).
 
 ```bash
 make -C demos/features sample-gen     # xcodegen generate -> BajutsuSample.xcodeproj
@@ -71,15 +71,15 @@ Which scenario uses each primitive (mapped to the grammar in [scenarios](scenari
 
 | Primitive | Scenario |
 |---|---|
-| tap / type(into) / wait(for) | [`smoke.yaml`](../app/sample/scenarios/smoke.yaml) |
-| enabled / disabled | [`auth.yaml`](../app/sample/scenarios/auth.yaml) |
-| selected / exists(+negate) / value / capturePolicy | [`settings.yaml`](../app/sample/scenarios/settings.yaml) |
-| count / idMatches / search filter | [`list.yaml`](../app/sample/scenarios/list.yaml) · [`lists.yaml`](../app/sample/scenarios/lists.yaml) |
-| longPress / in-app alert (label tap) / swipe(on+direction) | [`components.yaml`](../app/sample/scenarios/components.yaml) |
-| video / deviceLog interval + os_signpost | [`evidence.yaml`](../app/sample/scenarios/evidence.yaml) |
-| Controls gallery (toggle / stepper / slider / picker / menu / button) | [`controls.yaml`](../app/sample/scenarios/controls.yaml) |
-| Text entry (value + char count / clear / inline validation) | [`text.yaml`](../app/sample/scenarios/text.yaml) |
-| List search / swipe-delete / edit / pull-to-refresh / push nav / empty state | [`lists.yaml`](../app/sample/scenarios/lists.yaml) |
+| tap / type(into) / wait(for) | [`smoke.yaml`](../demos/features/app/scenarios/smoke.yaml) |
+| enabled / disabled | [`auth.yaml`](../demos/features/app/scenarios/auth.yaml) |
+| selected / exists(+negate) / value / capturePolicy | [`settings.yaml`](../demos/features/app/scenarios/settings.yaml) |
+| count / idMatches / search filter | [`list.yaml`](../demos/features/app/scenarios/list.yaml) · [`lists.yaml`](../demos/features/app/scenarios/lists.yaml) |
+| longPress / in-app alert (label tap) / swipe(on+direction) | [`components.yaml`](../demos/features/app/scenarios/components.yaml) |
+| video / deviceLog interval + os_signpost | [`evidence.yaml`](../demos/features/app/scenarios/evidence.yaml) |
+| Controls gallery (toggle / stepper / slider / picker / menu / button) | [`controls.yaml`](../demos/features/app/scenarios/controls.yaml) |
+| Text entry (value + char count / clear / inline validation) | [`text.yaml`](../demos/features/app/scenarios/text.yaml) |
+| List search / swipe-delete / edit / pull-to-refresh / push nav / empty state | [`lists.yaml`](../demos/features/app/scenarios/lists.yaml) |
 
 ## The UI-test target and make targets
 
@@ -105,5 +105,5 @@ bajutsu codegen components.yaml -o BajutsuSampleUITests/ComponentsUITests.swift
 
 `project.yml` already defines the `BajutsuSampleUITests` (`bundle.ui-testing`) target and the
 `UITests` scheme. The generated
-[`ComponentsUITests.swift`](../app/sample/BajutsuSampleUITests/ComponentsUITests.swift) is committed (as
+[`ComponentsUITests.swift`](../demos/features/app/BajutsuSampleUITests/ComponentsUITests.swift) is committed (as
 an example of codegen output).

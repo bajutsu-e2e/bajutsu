@@ -455,7 +455,7 @@ def codegen(
 @app.command()
 def serve(
     port: int = typer.Option(8765, "--port"),
-    scenarios: str = typer.Option("app/sample/scenarios", "--scenarios", help="directory of scenario .yaml files"),
+    scenarios: str = typer.Option("demos/features/app/scenarios", "--scenarios", help="directory of scenario .yaml files"),
     config: str = typer.Option(DEFAULT_CONFIG, "--config"),
     runs: str = typer.Option("runs", "--runs", help="runs root to serve reports from"),
     host: str = typer.Option("127.0.0.1", "--host"),

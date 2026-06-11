@@ -13,7 +13,7 @@ Requires Xcode and [XcodeGen](https://github.com/yonyz/XcodeGen) (`brew install 
 ```bash
 make -C demos/features sample-gen      # xcodegen generate  -> BajutsuSample.xcodeproj
 make -C demos/features sample-build    # compile for the iOS Simulator
-# or: cd app/sample && xcodegen generate && open BajutsuSample.xcodeproj
+# or: cd demos/features/app && xcodegen generate && open BajutsuSample.xcodeproj
 ```
 
 The generated `.xcodeproj` and `build/` are gitignored; `project.yml` is the source

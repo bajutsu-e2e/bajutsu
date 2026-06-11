@@ -27,10 +27,10 @@ runs/
 demos/record/generated.yaml
 
 # iOS sample (XcodeGen-generated project + build output)
-app/sample/*.xcodeproj/
-app/sample/build/
-app/sample2/*.xcodeproj/
-app/sample2/build/
+demos/features/app/*.xcodeproj/
+demos/features/app/build/
+demos/record/app/*.xcodeproj/
+demos/record/app/build/
 DerivedData/
 *.xcuserstate
 

@@ -12,7 +12,7 @@ from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenarios
 
 ROOT = Path(__file__).resolve().parent.parent
-SCENARIO_DIR = ROOT / "app" / "sample" / "scenarios"
+SCENARIO_DIR = ROOT / "demos" / "features" / "app" / "scenarios"
 CONFIG = ROOT / "bajutsu.config.yaml"
 
 

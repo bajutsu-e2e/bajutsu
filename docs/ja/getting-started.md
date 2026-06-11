@@ -67,7 +67,7 @@ make check                # または: ruff（lint）+ mypy（strict 型）+ pyt
 
 シナリオはただの YAML。名前付きテストのリストで、各テストは任意の `preconditions`、`steps` の
 リスト、そして **機械チェック可能なアサーション** の `expect` ブロックを持つ。同梱の smoke テスト
-[`app/sample/scenarios/smoke.yaml`](../../app/sample/scenarios/smoke.yaml) を開いてみる:
+[`demos/features/app/scenarios/smoke.yaml`](../../demos/features/app/scenarios/smoke.yaml) を開いてみる:
 
 ```yaml
 # End-to-end smoke: onboarding -> login -> home -> counter.
@@ -111,7 +111,7 @@ make check                # または: ruff（lint）+ mypy（strict 型）+ pyt
 make -C demos/features sample-build         # xcodegen generate -> iOS Simulator 向けに xcodebuild
 ```
 
-`app/sample/build/…` 下に `BajutsuSample.app` ができる（`.xcodeproj` と `build/` は gitignore 済み ——
+`demos/features/app/build/…` 下に `BajutsuSample.app` ができる（`.xcodeproj` と `build/` は gitignore 済み ——
 `project.yml` が正）。launch-env フックと識別子カタログは [sample-app](sample-app.md) を参照。
 
 ---
@@ -136,7 +136,7 @@ make -C demos/features e2e
 または CLI を直接叩く（同じことを書き下したもの）:
 
 ```bash
-uv run bajutsu run app/sample/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
+uv run bajutsu run demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
 ```
 
 各フラグの意味:
@@ -206,7 +206,7 @@ uv run bajutsu trace               # runs/ 下の最新実行
 - **ネイティブ XCUITest を吐く。** シナリオを Swift へ変換する（テスト時に Bajutsu ランタイム・AI は
   不要）:
   ```bash
-  uv run bajutsu codegen app/sample/scenarios/smoke.yaml --app sample -o UITests/Smoke.swift
+  uv run bajutsu codegen demos/features/app/scenarios/smoke.yaml --app sample -o UITests/Smoke.swift
   ```
   構造マッピング: [codegen](codegen.md)。`make -C demos/features ui-test` で end-to-end に実行できる。
 

@@ -69,7 +69,7 @@ capturePolicy:
     capture: [screenshot, video, deviceLog, elements, actionLog]
 ```
 
-(real example in [`app/sample/scenarios/settings.yaml`](../app/sample/scenarios/settings.yaml))
+(real example in [`demos/features/app/scenarios/settings.yaml`](../demos/features/app/scenarios/settings.yaml))
 
 The trigger `on` is **exactly one** of `action` / `event` / `result`:
 
@@ -90,7 +90,7 @@ To capture just one step, attach `capture:` directly to the step.
   capture: [video, deviceLog]     # record the interval of this wait
 ```
 
-(real example in [`app/sample/scenarios/evidence.yaml`](../app/sample/scenarios/evidence.yaml))
+(real example in [`demos/features/app/scenarios/evidence.yaml`](../demos/features/app/scenarios/evidence.yaml))
 
 ## Interval evidence (video / deviceLog)
 

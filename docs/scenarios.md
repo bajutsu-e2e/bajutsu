@@ -75,7 +75,7 @@ summary header and each scenario card) and in the `bajutsu serve` UI.
     - value: { sel: { id: counter.value }, equals: "2" }
 ```
 
-(real file: [`app/sample/scenarios/smoke.yaml`](../app/sample/scenarios/smoke.yaml))
+(real file: [`demos/features/app/scenarios/smoke.yaml`](../demos/features/app/scenarios/smoke.yaml))
 
 ## preconditions (environment setup)
 
@@ -125,7 +125,7 @@ is unaffected). Use `dismissAlerts` to change it per scenario:
 The CLI `--dismiss-alerts` / `--no-dismiss-alerts` flag **overrides every scenario** (otherwise the
 per-scenario default applies); `--alert-instruction` sets a default button instruction that a
 scenario's own `instruction` overrides. (real file:
-[`app/sample/scenarios/permission.yaml`](../app/sample/scenarios/permission.yaml))
+[`demos/features/app/scenarios/permission.yaml`](../demos/features/app/scenarios/permission.yaml))
 
 ## Selectors (addressing an element)
 
@@ -219,7 +219,7 @@ is a validation error).
 `scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` need multi-touch: on the idb
 backend they fail with a clear "needs multiTouch" reason — their on-device home is the generated
 XCUITest (`pinch(withScale:)` / `rotate(_:)`); `doubleTap` runs on idb (two taps). (real file:
-[`app/sample/scenarios/gestures.yaml`](../app/sample/scenarios/gestures.yaml))
+[`demos/features/app/scenarios/gestures.yaml`](../demos/features/app/scenarios/gestures.yaml))
 
 ### `wait` (condition wait)
 
@@ -315,7 +315,7 @@ wait and `mocks` (below). At least one match field is required; the listed field
 
 > `count` is **not** a match field — at least one of `method` / `url` / `urlMatches` / `path` /
 > `pathMatches` / `status` / `bodyMatches` must be present. (real file:
-> [`app/sample/scenarios/network_mock.yaml`](../app/sample/scenarios/network_mock.yaml))
+> [`demos/features/app/scenarios/network_mock.yaml`](../demos/features/app/scenarios/network_mock.yaml))
 
 ## Network mocks (deterministic stubs)
 

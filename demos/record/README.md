@@ -6,7 +6,7 @@ deterministic scenario. `run` later replays that scenario with **no AI**
 ([recording](../../docs/recording.md), [concepts](../../docs/concepts.md)).
 
 This folder lets you experience the whole lifecycle against the bundled **`sample2`** app
-(`app/sample2/`) — generate a scenario from a goal, run it on a Simulator, then modify it and
+(`demos/record/app/`) — generate a scenario from a goal, run it on a Simulator, then modify it and
 watch the deterministic check respond.
 
 ## The guided demo (`demo.sh`)
