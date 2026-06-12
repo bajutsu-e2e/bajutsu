@@ -30,6 +30,7 @@ from bajutsu.orchestrator import (
     BlockedHandler,
     Clock,
     DeviceControl,
+    ProgressFn,
     RelaunchFn,
     RunResult,
     run_scenario,
@@ -185,6 +186,7 @@ def run_all(
     workers: int = 1,
     bindings: Mapping[str, str] | None = None,
     secret_values: list[str] | None = None,
+    progress: ProgressFn | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device.
 
@@ -204,8 +206,12 @@ def run_all(
     """
     redactor = Redactor(eff.redact, values=secret_values)
 
+    total = len(scenarios)
+
     def run_one(i: int, s: Scenario) -> RunResult:
         sid = f"{i:02d}-{scenario_slug(s.name)}"
+        if progress is not None:
+            progress(f"▶ scenario {i + 1}/{total}: {s.name}")
         lz = lease(eff, s)
         handler = on_blocked_for(s) if on_blocked_for is not None else on_blocked
         try:
@@ -216,7 +222,7 @@ def run_all(
             result = run_scenario(
                 lz.driver, s, clock, sink=lz.sink, on_blocked=handler, scenario_id=sid,
                 network=(lz.collector.snapshot if lz.collector is not None else _no_net),
-                relaunch=lz.relaunch, bindings=bindings, control=lz.control,
+                relaunch=lz.relaunch, bindings=bindings, control=lz.control, progress=progress,
             )
             result.device = lz.udid  # attribute the scenario to the device that ran it
             result.device_name = lz.device_name  # for the report's Environment tab
@@ -225,6 +231,9 @@ def run_all(
                 art = _write_network(lz.collector.snapshot_timed(), scenario_start, run_dir, sid, redactor)
                 if art is not None:
                     result.artifacts.append(art)
+            if progress is not None:
+                mark = "✔" if result.ok else "✘"
+                progress(f"{mark} scenario {i + 1}/{total}: {s.name} ({result.duration_s:.1f}s)")
             return result
         finally:
             lz.release()
@@ -249,12 +258,14 @@ def run_and_report(
     secret_values: list[str] | None = None,
     source_name: str | None = None,
     description: str | None = None,
+    progress: ProgressFn | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
     run_dir = runs_dir / run_id
     results = run_all(
         eff, scenarios, lease, clock, on_blocked=on_blocked, on_blocked_for=on_blocked_for,
         run_dir=run_dir, workers=workers, bindings=bindings, secret_values=secret_values,
+        progress=progress,
     )
     # The merged Result tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).

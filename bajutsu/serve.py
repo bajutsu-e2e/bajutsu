@@ -140,7 +140,8 @@ def run_command(
     `workers > 1` runs those devices as a parallel pool (capped to the pool size by the CLI).
     `erase` / `dismiss_alerts` are overrides: True/False force the flag on/off, None leaves each
     scenario's own preconditions.erase / dismissAlerts (the latter on by default) to decide."""
-    cmd = [sys.executable, "-m", "bajutsu", "run", scenario, "--app", app, "--config", config]
+    cmd = [sys.executable, "-m", "bajutsu", "run", scenario, "--app", app, "--config", config,
+           "--progress"]  # stream per-scenario/step progress into the run log
     if backend:
         cmd += ["--backend", backend]
     if udid:

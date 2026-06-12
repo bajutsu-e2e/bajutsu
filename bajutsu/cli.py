@@ -101,6 +101,10 @@ def run(
         True, "--network/--no-network",
         help="collect the app's network exchanges (for `request` assertions); needs BajutsuKit in the app",
     ),
+    progress: bool = typer.Option(
+        False, "--progress/--no-progress",
+        help="stream per-scenario/step progress to stderr as the run advances (used by the web UI)",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Run a scenario deterministically. Pass/fail is machine-only; the sole AI is the
@@ -218,11 +222,15 @@ def run(
         log_predicate=log_predicate or None, log_subsystem=log_subsystem or eff.bundle_id,
         secret_values=secret_values,
     )
+    # --progress streams scenario/step lines to stderr (the web UI merges them into its run
+    # log); stdout stays the machine-readable final PASS/FAIL line.
+    progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None
     try:
         results, manifest = run_and_report(
             eff, scenarios, lease, Path("runs"), run_id, on_blocked_for=on_blocked_for,
             workers=workers, bindings=secret_bindings, secret_values=secret_values,
             source_name=scenario_path.name, description=scenario_file.description,
+            progress=progress_fn,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

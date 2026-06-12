@@ -64,6 +64,37 @@ def test_happy_path_tap_and_expect() -> None:
     assert driver.actions == [("tap", {"id": "settings.open"})]
 
 
+def test_progress_reports_each_step() -> None:
+    """`progress` receives one line per step, labeled by the step name or action + target id."""
+    driver = FakeDriver([_el("counter.inc", "+", ["button"]), _el("counter.val", "0")])
+    lines: list[str] = []
+    run_scenario(
+        driver,
+        _scenario({
+            "name": "count up",
+            "steps": [
+                {"tap": {"id": "counter.inc"}},                  # no name → "tap counter.inc"
+                {"name": "check it", "assert": [{"exists": {"id": "counter.val"}}]},
+            ],
+        }),
+        clock=FakeClock(),
+        scenario_id="00-count-up",
+        progress=lines.append,
+    )
+    assert lines == [
+        "00-count-up · step 1/2: tap counter.inc",
+        "00-count-up · step 2/2: check it",  # the step's own name wins over the action label
+    ]
+
+
+def test_progress_defaults_to_silent() -> None:
+    driver = FakeDriver([_el("home.title", "H")])
+    # No progress callback → no error, runs as before.
+    res = run_scenario(driver, _scenario({"name": "n", "steps": [{"tap": {"id": "home.title"}}]}),
+                       clock=FakeClock())
+    assert res.ok
+
+
 def test_run_scenario_records_duration() -> None:
     # The result carries the scenario's wall-clock (measured off the injected clock) so the
     # report can show per-scenario and total execution time.

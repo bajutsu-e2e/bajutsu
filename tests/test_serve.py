@@ -89,7 +89,9 @@ def test_run_command_builder() -> None:
     cmd = srv.run_command("s.yaml", "demo", backend="idb", udid="U", config="c.yaml")
     assert cmd[:5] == [sys.executable, "-m", "bajutsu", "run", "s.yaml"]
     # erase defaults to None: no flag, so each scenario's preconditions.erase decides.
-    assert cmd[5:] == ["--app", "demo", "--config", "c.yaml", "--backend", "idb", "--udid", "U"]
+    # --progress is always passed so the run streams scenario/step lines into the run log.
+    assert cmd[5:] == ["--app", "demo", "--config", "c.yaml", "--progress",
+                       "--backend", "idb", "--udid", "U"]
     assert "--erase" not in cmd and "--no-erase" not in cmd
     erased = srv.run_command("s.yaml", "demo", erase=True, dismiss_alerts=True)
     assert "--erase" in erased and "--no-erase" not in erased and "--dismiss-alerts" in erased
