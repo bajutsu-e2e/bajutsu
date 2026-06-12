@@ -62,6 +62,10 @@ class AppConfig(_Model):
     # Path to the built .app. When set, a run installs it on each device before launch (if
     # missing) — so a freshly-picked/booted simulator works without a manual `simctl install`.
     app_path: str | None = Field(default=None, alias="appPath")
+    # Shell command that builds `app_path`. When set, `bajutsu serve` runs it before the
+    # scenario if the binary is missing (so the Web UI builds on demand). Run from the run's
+    # working directory; e.g. "make -C demos/features sample-build".
+    build: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
 
@@ -97,6 +101,9 @@ class Effective:
     secrets: list[str] = field(default_factory=list)
     # Built .app to install on each device before launch (if missing). None = manual install.
     app_path: str | None = None
+    # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary
+    # is missing. None = no on-demand build.
+    build: str | None = None
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -133,6 +140,7 @@ def resolve(config: Config, app: str) -> Effective:
         redact=_merge_redact(d.redact, a.redact),
         secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
         app_path=a.app_path,
+        build=a.build,
     )
 
 

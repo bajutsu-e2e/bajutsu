@@ -148,6 +148,10 @@ bajutsu serve [--port 8765] [--scenarios demos/features/app/scenarios] [--config
 
 - シナリオファイル + app を選び、backend / udid / erase / `disable alert-dismiss` を設定して **Run**。
   出力がライブ表示され、完了で `report.html` が埋め込まれる。
+- アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
+  実行（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止する。`apps.<name>.build`
+  に `appPath` を生成するシェルコマンド（例: `make -C demos/features sample-build`）を設定すると、
+  手動ビルド無しに UI からオンデマンドでビルドできる。
 - 操作 UI の下の **History** リストに過去の run（新しい順・pass/fail ドット・シナリオ要約）が並び、
   クリックでそのレポートを再表示。`GET /api/runs` が裏側。
 - run サブプロセスは起動環境を継承（venv の `bin` を `PATH` 先頭に付与し `idb` クライアントを解決）。

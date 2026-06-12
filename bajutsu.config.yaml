@@ -50,6 +50,9 @@ apps:
     # picked/booted simulator just works without a manual `simctl install`. Built by
     # `make -C demos/features sample-build`; path is relative to the run's working directory.
     appPath: demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
+    # Shell command that builds appPath. `bajutsu serve` runs it before the scenario when the
+    # binary above is missing, so the Web UI builds the app on demand (no manual build first).
+    build: make -C demos/features sample-build
     # Optional per-app keys (all override or extend the defaults above):
     #   backend: [...]            # actuator order for this app
     #   device: "iPhone 17 Pro"   # simulator model

@@ -24,7 +24,7 @@ from typing import Any, Callable
 from urllib.parse import unquote, urlparse
 
 from bajutsu import env
-from bajutsu.config import load_config
+from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenario_file
 
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
@@ -61,6 +61,17 @@ def list_apps(config_path: Path) -> list[str]:
         return sorted(load_config(config_path.read_text(encoding="utf-8")).apps)
     except (OSError, ValueError):
         return []
+
+
+def app_build_info(config_path: Path, app: str) -> tuple[str | None, str | None]:
+    """`(app_path, build)` for `app` from config — the built `.app` path and the shell command
+    that builds it. Either may be None (unset or any load/resolve error); the run then proceeds
+    without an on-demand build (and the runner reports a missing binary as before)."""
+    try:
+        eff = resolve(load_config(config_path.read_text(encoding="utf-8")), app)
+    except (OSError, ValueError, KeyError):
+        return (None, None)
+    return (eff.app_path, eff.build)
 
 
 def list_simulators(simctl: env.RunFn = env._real_run) -> list[dict[str, Any]]:
@@ -155,6 +166,8 @@ class Job:
     id: str
     cmd: list[str]
     udids: list[str] = field(default_factory=list)  # devices to boot before the run
+    app_path: str | None = None  # built .app the run needs; built on demand if missing
+    build: str | None = None     # shell command that builds app_path (None = no on-demand build)
     status: str = "running"      # running | done
     exit_code: int | None = None
     run_id: str | None = None    # the runs/<id> the run produced, parsed from its output
@@ -182,10 +195,14 @@ class ServeState:
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def new_job(self, cmd: list[str], udids: list[str] | None = None) -> Job:
+    def new_job(
+        self, cmd: list[str], udids: list[str] | None = None,
+        app_path: str | None = None, build: str | None = None,
+    ) -> Job:
         with self._lock:
             self._seq += 1
-            job = Job(id=str(self._seq), cmd=cmd, udids=list(udids or []))
+            job = Job(id=str(self._seq), cmd=cmd, udids=list(udids or []),
+                      app_path=app_path, build=build)
             self.jobs[job.id] = job
         return job
 
@@ -237,10 +254,44 @@ def _boot_devices(state: ServeState, job: Job) -> bool:
     return True
 
 
+def _build_app(state: ServeState, job: Job) -> bool:
+    """Build the app's binary on demand when it is missing. Returns True if the run may proceed:
+    nothing to build (no `build` command, no `app_path`, or the binary already exists), or the
+    build command succeeded. Returns False (marking the job failed) only when a needed build
+    fails — so the run isn't spawned against a missing binary."""
+    if not job.build or not job.app_path:
+        return True
+    if (state.cwd / job.app_path).exists():
+        return True
+    _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
+    try:
+        proc = state.popen(
+            job.build, cwd=str(state.cwd), env=_spawn_env(),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=True,
+        )
+        for raw in proc.stdout or []:
+            _log(job, raw.rstrip("\n"))
+        proc.wait()
+        code = proc.returncode
+    except OSError as e:
+        _log(job, f"build failed: {e}")
+        code = 1
+    if code != 0:
+        _log(job, f"build failed (exit {code}) — skipping the run")
+        with job.lock:
+            job.exit_code = code
+            job.status = "done"
+        return False
+    _log(job, "build ok")
+    return True
+
+
 def run_job(state: ServeState, job: Job) -> None:
-    """Boot the job's devices (if any), then run `job.cmd`, capturing combined output
-    line-by-line and the produced run id."""
+    """Boot the job's devices (if any), build the app if its binary is missing, then run
+    `job.cmd`, capturing combined output line-by-line and the produced run id."""
     if not _boot_devices(state, job):
+        return
+    if not _build_app(state, job):
         return
     proc = state.popen(
         job.cmd, cwd=str(state.cwd), env=_spawn_env(),
@@ -322,7 +373,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 dismiss_alerts=body["dismissAlerts"] if isinstance(body.get("dismissAlerts"), bool) else None,
                 config=str(state.config),
             )
-            job = state.new_job(cmd, udids=boot)
+            app_path, build = app_build_info(state.config, body["app"])
+            job = state.new_job(cmd, udids=boot, app_path=app_path, build=build)
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id})
 

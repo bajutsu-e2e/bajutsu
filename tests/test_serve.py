@@ -170,6 +170,78 @@ def test_run_job_marks_failure(tmp_path: Path) -> None:
     assert job.view()["ok"] is False and job.view()["runId"] == "r"
 
 
+def test_run_job_builds_app_when_binary_missing(tmp_path: Path) -> None:
+    """A missing binary triggers the app's `build` command before the run; both spawns share the
+    injected Popen, so we record each command and synthesize the binary during the build."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    app_path = "MyApp.app"
+    calls: list[Any] = []
+
+    def popen(cmd: Any, **_kw: Any) -> _FakeProc:
+        calls.append(cmd)
+        if cmd == "make build":  # the build command — create the binary it produces
+            (tmp_path / app_path).mkdir()
+            return _FakeProc(["compiling…\n"])
+        return _FakeProc(["PASS  runs/r/manifest.json\n"])  # the run
+
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+                           popen=popen)
+    job = state.new_job(["run"], app_path=app_path, build="make build")
+    srv.run_job(state, job)
+    v = job.view()
+    assert calls == ["make build", ["run"]]  # build first, then the run
+    assert v["ok"] is True and v["runId"] == "r"
+    assert any("building: make build" in line for line in v["lines"])
+    assert any("build ok" in line for line in v["lines"])
+
+
+def test_run_job_skips_build_when_binary_exists(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    (tmp_path / "MyApp.app").mkdir()  # binary already present → no build
+    calls: list[Any] = []
+
+    def popen(cmd: Any, **_kw: Any) -> _FakeProc:
+        calls.append(cmd)
+        return _FakeProc(["PASS  runs/r/manifest.json\n"])
+
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+                           popen=popen)
+    job = state.new_job(["run"], app_path="MyApp.app", build="make build")
+    srv.run_job(state, job)
+    assert calls == [["run"]]  # only the run spawned; the build was skipped
+    assert job.view()["ok"] is True
+
+
+def test_run_job_build_failure_skips_the_run(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    spawned: list[Any] = []
+
+    def popen(cmd: Any, **_kw: Any) -> _FakeProc:
+        spawned.append(cmd)
+        return _FakeProc(["build error\n"], code=2)  # build never creates the binary
+
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+                           popen=popen)
+    job = state.new_job(["run"], app_path="MyApp.app", build="make build")
+    srv.run_job(state, job)
+    v = job.view()
+    assert spawned == ["make build"]  # the run is not spawned when the build fails
+    assert v["status"] == "done" and v["ok"] is False and v["exitCode"] == 2
+    assert any("build failed" in line for line in v["lines"])
+
+
+def test_app_build_info_reads_config(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(
+        "apps:\n  demo:\n    bundleId: com.example.demo\n"
+        "    appPath: build/Demo.app\n    build: make demo\n  bare: { bundleId: com.example.bare }\n",
+        encoding="utf-8")
+    assert srv.app_build_info(cfg, "demo") == ("build/Demo.app", "make demo")
+    assert srv.app_build_info(cfg, "bare") == (None, None)  # neither set
+    assert srv.app_build_info(cfg, "nope") == (None, None)  # unknown app → no build
+    assert srv.app_build_info(tmp_path / "missing.yaml", "demo") == (None, None)  # no config
+
+
 def test_run_job_boots_devices_before_running(tmp_path: Path) -> None:
     scn_dir, cfg, runs = _project(tmp_path)
     boots: list[str] = []
