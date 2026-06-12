@@ -424,7 +424,7 @@ INDEX_HTML = """<!doctype html>
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#0b1220;color:var(--fg)}
 header{position:sticky;top:0;z-index:10;padding:.7rem 1rem;background:var(--bg);border-bottom:1px solid var(--line);font-weight:700}
 header .mut{font-weight:400;color:var(--mut);font-size:.85em;margin-left:.5rem}
-main{display:grid;grid-template-columns:340px 1fr;gap:1rem;padding:1rem;align-items:start}
+main{display:grid;grid-template-columns:340px minmax(300px,360px) 1fr;gap:1rem;padding:1rem;align-items:start}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
 label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
 select,input[type=text]{width:100%;padding:.45rem;background:#0b1220;color:var(--fg);border:1px solid var(--line);border-radius:6px}
@@ -439,10 +439,12 @@ select,input[type=text]{width:100%;padding:.45rem;background:#0b1220;color:var(-
 .checks{display:flex;flex-direction:column;gap:.7rem;margin-top:.7rem}
 .checks label{display:block;margin:0;color:var(--fg);cursor:pointer}
 .checks .hint{display:block;color:var(--mut);font-size:.78em;line-height:1.35;margin:.15rem 0 0 1.45rem}
-button.run{margin-top:1rem;width:100%;padding:.6rem;background:var(--acc);color:#082f49;border:0;border-radius:6px;font-weight:700;cursor:pointer}
+button.run{flex:0 0 auto;width:100%;padding:.6rem;background:var(--acc);color:#082f49;border:0;border-radius:6px;font-weight:700;cursor:pointer}
 button.run:disabled{opacity:.5;cursor:default}
-.status{margin-top:.8rem;font-weight:600}.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}.status.run{color:var(--acc)}
-pre.out{margin:.6rem 0 0;max-height:220px;overflow:auto;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:12px;white-space:pre-wrap}
+.status{flex:0 0 auto;font-weight:600}.status:not(:empty){margin-top:.6rem}.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}.status.run{color:var(--acc)}
+.logpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
+pre.out{flex:1;min-height:0;margin:.6rem 0 0;overflow:auto;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:12px;white-space:pre-wrap}
+pre.out:empty::before{content:"Run a scenario to see its output here.";color:var(--mut)}
 .report{height:calc(100vh - 6rem)}iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut)}
 .names{color:var(--mut);font-size:.8em;margin-top:.2rem;min-height:1em}
@@ -494,15 +496,17 @@ pre.out{margin:.6rem 0 0;max-height:220px;overflow:auto;background:#0b1220;borde
           <label><input type="checkbox" id="nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard is on by default: Claude vision dismisses unexpected system prompts (Save Password, notification permission) that idb can't see or tap (needs ANTHROPIC_API_KEY). Check to force it off for this run; a scenario can also set <code>dismissAlerts</code> itself.</span></label>
         </div>
-        <button class="run" id="go">Run</button>
-        <div class="status" id="status"></div>
-        <pre class="out" id="out" hidden></pre>
       </div>
       <div class="panel" id="panel-history" hidden>
         <div class="hhead"><span>Past runs</span><button class="refresh" id="refresh" title="refresh">&#8635;</button></div>
         <ul class="history" id="history"></ul>
       </div>
     </div>
+  </div>
+  <div class="card logpanel">
+    <button class="run" id="go">Run</button>
+    <div class="status" id="status"></div>
+    <pre class="out" id="out"></pre>
   </div>
   <div class="report" id="report"><div class="empty">Run a scenario to see its report here.</div></div>
 </main>
