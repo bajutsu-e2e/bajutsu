@@ -545,21 +545,21 @@ function onSimChange(){const n=pickedUdids().length;if(n>0)$('#workers').value=n
 $('#simrefresh').addEventListener('click',loadSims);
 $('#go').addEventListener('click',async()=>{
   if(poll)clearInterval(poll);
-  $('#go').disabled=true;$('#out').hidden=false;$('#out').textContent='';
-  setStatus('starting…','run');
+  $('#go').disabled=true;$('#go').textContent='Running…';$('#out').hidden=false;$('#out').textContent='';
+  setStatus('','run');
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     scenario:$('#scn').value,app:$('#app').value,backend:$('#backend').value.trim(),udid:pickedUdids().join(',')||'booted',
     workers:parseInt($('#workers').value,10)||1,
     erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined})});
   const {jobId,error}=await r.json();
-  if(error){setStatus(error,'ng');$('#go').disabled=false;return}
+  if(error){setStatus(error,'ng');$('#go').disabled=false;$('#go').textContent='Run';return}
   poll=setInterval(()=>check(jobId),1000);check(jobId);
 });
 async function check(id){
   const j=await (await fetch('/api/jobs/'+id)).json();
   $('#out').textContent=(j.lines||[]).join('\\n');$('#out').scrollTop=$('#out').scrollHeight;
-  if(j.status==='running'){setStatus('running…','run');return}
-  clearInterval(poll);poll=null;$('#go').disabled=false;
+  if(j.status==='running')return;  // the Run button (disabled, "Running…") shows the running state
+  clearInterval(poll);poll=null;$('#go').disabled=false;$('#go').textContent='Run';
   setStatus(j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId);
   loadHistory();
