@@ -75,3 +75,5 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
+- **PR titles and bodies are always in English**, regardless of the language used in the
+  session. This keeps the project history readable for every contributor.
