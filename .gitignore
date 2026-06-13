@@ -36,3 +36,5 @@ DerivedData/
 
 **/.build/**
 **/.swiftpm/**
+
+worktree
