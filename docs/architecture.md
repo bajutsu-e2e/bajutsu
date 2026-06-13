@@ -66,7 +66,7 @@ rather than data flow.
 
 ## Module list and roles
 
-The `bajutsu/` package (Python 3.11+, pydantic v2 / typer / anthropic / pyyaml).
+The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml / jinja2).
 
 | Module | Role | Page |
 |---|---|---|
@@ -137,7 +137,7 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 
 ## Test layout
 
-`tests/` holds **324 unit tests** (`uv run pytest -q`). None require a real Simulator: command
+`tests/` holds **405 unit tests** (`uv run pytest -q`). None require a real Simulator: command
 builders are verified as pure functions, and execution paths are tested with `FakeDriver` /
 injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sample app is
 `make -C demos/features e2e` / `make -C demos/features ui-test` ([sample-app](sample-app.md)).
