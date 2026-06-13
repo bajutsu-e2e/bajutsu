@@ -10,12 +10,19 @@ straight into the report (manifest).
 
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass
 
 from bajutsu.drivers import base
 from bajutsu.network import NetworkExchange
 from bajutsu.scenario import Assertion, CountMatch, Exists, RequestMatch, Selector, TextMatch
+
+
+@functools.lru_cache(maxsize=128)
+def _compile(pattern: str) -> re.Pattern[str]:
+    """Cached re.compile — avoids recompiling the same pattern on every poll iteration."""
+    return re.compile(pattern)
 
 
 @dataclass(frozen=True)
@@ -77,7 +84,7 @@ def _text_cmp(actual: str | None, op: str, expected: str) -> bool:
         return actual == expected
     if op == "contains":
         return expected in actual
-    return re.search(expected, actual) is not None
+    return _compile(expected).search(actual) is not None
 
 
 def _eval_count(elements: list[base.Element], a: CountMatch) -> AssertionResult:
@@ -118,17 +125,17 @@ def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
         return False
     if req.url is not None and ex.url != req.url:
         return False
-    if req.url_matches is not None and re.search(req.url_matches, ex.url) is None:
+    if req.url_matches is not None and _compile(req.url_matches).search(ex.url) is None:
         return False
     if req.path is not None and ex.path != req.path:
         return False
-    if req.path_matches is not None and re.search(req.path_matches, ex.path) is None:
+    if req.path_matches is not None and _compile(req.path_matches).search(ex.path) is None:
         return False
     if req.status is not None and ex.status != req.status:
         return False
     return not (
         req.body_matches is not None
-        and (ex.request_body is None or re.search(req.body_matches, ex.request_body) is None)
+        and (ex.request_body is None or _compile(req.body_matches).search(ex.request_body) is None)
     )
 
 

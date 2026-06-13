@@ -114,6 +114,28 @@ def test_within_nests() -> None:
     assert got["identifier"] == "btn"
 
 
+def test_compile_cache_reuses_compiled_pattern() -> None:
+    """_compile caches compiled regex patterns so repeated calls skip re.compile."""
+    from bajutsu.drivers.base import _compile
+
+    _compile.cache_clear()
+    _compile("foo.*bar")
+    _compile("foo.*bar")
+    info = _compile.cache_info()
+    assert info.hits == 1 and info.misses == 1
+
+
+def test_label_matches_uses_regex() -> None:
+    """labelMatches selector uses regex matching (via cached compile)."""
+    screen: list[Element] = [
+        _el("a", "Settings Page", ["staticText"]),
+        _el("b", "Home Page", ["staticText"]),
+        _el("c", "About", ["staticText"]),
+    ]
+    found = find_all(screen, {"labelMatches": ".*Page$"})
+    assert [e["identifier"] for e in found] == ["a", "b"]
+
+
 def test_find_all_id_only_uses_index() -> None:
     """find_all with an id-only selector uses a cached index for O(1) lookup."""
     from bajutsu.drivers.base import _id_index

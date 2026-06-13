@@ -11,8 +11,15 @@ Frozen first because everything else depends on it:
 from __future__ import annotations
 
 import fnmatch
+import functools
 import re
 from typing import Protocol, TypedDict, cast, runtime_checkable
+
+
+@functools.lru_cache(maxsize=128)
+def _compile(pattern: str) -> re.Pattern[str]:
+    """Cached re.compile — avoids recompiling the same pattern on every poll iteration."""
+    return re.compile(pattern)
 
 # Coordinates in points: x, y.
 Point = tuple[float, float]
@@ -140,7 +147,7 @@ def matches(el: Element, sel: Selector) -> bool:
     if "label" in sel and el["label"] != sel["label"]:
         return False
     if "labelMatches" in sel and not (
-        el["label"] is not None and re.search(sel["labelMatches"], el["label"]) is not None
+        el["label"] is not None and _compile(sel["labelMatches"]).search(el["label"]) is not None
     ):
         return False
     if "traits" in sel and not set(sel["traits"]).issubset(el["traits"]):
