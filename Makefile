@@ -1,4 +1,15 @@
-.PHONY: deps deps-check serve test lint typecheck check
+.PHONY: setup hooks deps deps-check serve test lint typecheck check
+
+# One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
+# Simulator). Installs the Python toolchain and wires the tracked git hooks.
+setup: hooks
+	uv sync --group dev
+
+# Wire the tracked pre-push gate into this clone. `core.hooksPath` is a per-clone
+# local setting that clone/pull never carry over, so this self-heals existing
+# clones too — `check` runs it before every gate, right when it matters. Idempotent.
+hooks:
+	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
 
 # Install the external tools the idb backend needs (idempotent).
 #   - Homebrew tools (idb_companion / xcodegen) from the Brewfile
@@ -28,7 +39,7 @@ lint:
 typecheck:
 	uv run mypy bajutsu
 
-check: lint typecheck test
+check: hooks lint typecheck test
 
 # Sample-app build / E2E targets live with their demos:
 #   make -C demos/features sample-gen|sample-build|e2e|ui-test   (demos/features/app)
