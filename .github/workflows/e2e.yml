@@ -16,7 +16,7 @@ on:
       - "bajutsu/**"
       - "BajutsuKit/**"
       - "demos/features/app/**"
-      - "bajutsu.config.yaml"
+      - "demos/features/demo.config.yaml"
       - "pyproject.toml"
       - "uv.lock"
       - "Makefile"
@@ -65,6 +65,7 @@ jobs:
         with:
           scenarios: demos/features/app/scenarios/smoke.yaml
           app: sample
+          config: demos/features/demo.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
 
