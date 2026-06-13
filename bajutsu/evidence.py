@@ -32,14 +32,20 @@ class Artifact:
     provider: str
 
 
-def write_elements(driver: base.Driver, step_dir: Path, redactor: Redactor | None = None) -> Path:
+def write_elements(
+    driver: base.Driver,
+    step_dir: Path,
+    redactor: Redactor | None = None,
+    *,
+    elements: list[base.Element] | None = None,
+) -> Path:
     step_dir.mkdir(parents=True, exist_ok=True)
     path = step_dir / "elements.json"
-    elements = driver.query()
+    els = elements if elements is not None else driver.query()
     if redactor is not None:
-        elements = redactor.redact_elements(elements)
+        els = redactor.redact_elements(els)
     path.write_text(
-        json.dumps(elements, ensure_ascii=False, indent=2),
+        json.dumps(els, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return path
@@ -53,14 +59,22 @@ def write_screenshot(driver: base.Driver, step_dir: Path, name: str = "after.png
 
 
 def capture(
-    driver: base.Driver, step_dir: Path, kinds: list[str], redactor: Redactor | None = None
+    driver: base.Driver,
+    step_dir: Path,
+    kinds: list[str],
+    redactor: Redactor | None = None,
+    *,
+    elements: list[base.Element] | None = None,
 ) -> list[Artifact]:
     """Capture the requested instant kinds; return their artifact records."""
     out: list[Artifact] = []
     for token in kinds:
         kind, _, modifier = token.partition(".")
         if kind == "elements":
-            out.append(Artifact(write_elements(driver, step_dir, redactor).name, "elements", "driver"))
+            out.append(Artifact(
+                write_elements(driver, step_dir, redactor, elements=elements).name,
+                "elements", "driver",
+            ))
         elif kind == "screenshot":
             name = f"{modifier or 'after'}.png"
             out.append(Artifact(write_screenshot(driver, step_dir, name).name, "screenshot", "driver"))
@@ -73,7 +87,10 @@ class EvidenceSink(Protocol):
     step, and records the interval artifacts (video / deviceLog / appTrace) for the
     whole scenario."""
 
-    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]: ...
+    def capture(
+        self, driver: base.Driver, step_id: str, kinds: list[str],
+        *, elements: list[base.Element] | None = None,
+    ) -> list[Artifact]: ...
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]
     ) -> list[intervals.Interval]: ...
@@ -85,7 +102,10 @@ class EvidenceSink(Protocol):
 class NullSink:
     """Default sink: capture nothing (keeps runs side-effect free unless asked)."""
 
-    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
+    def capture(
+        self, driver: base.Driver, step_id: str, kinds: list[str],
+        *, elements: list[base.Element] | None = None,
+    ) -> list[Artifact]:
         return []
 
     def start_scenario_intervals(
@@ -123,10 +143,13 @@ class FileSink:
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
         self.redactor = Redactor(redact, values=secrets)
 
-    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
+    def capture(
+        self, driver: base.Driver, step_id: str, kinds: list[str],
+        *, elements: list[base.Element] | None = None,
+    ) -> list[Artifact]:
         # Re-root each artifact name under step_id so it is relative to the run dir
         # (e.g. "00-slug/step0/after.png") and the HTML report can reference it.
-        arts = capture(driver, self.run_dir / step_id, kinds, self.redactor)
+        arts = capture(driver, self.run_dir / step_id, kinds, self.redactor, elements=elements)
         return [Artifact(f"{step_id}/{a.name}", a.kind, a.provider) for a in arts]
 
     def start_scenario_intervals(

@@ -536,12 +536,15 @@ def _run_steps(
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 
-        screen_changed = before is not None and driver.query() != before
+        # Query once after the step: reuse for both screen_changed detection and
+        # evidence capture (elements.json), avoiding a redundant subprocess call.
+        after = driver.query()
+        screen_changed = before is not None and after != before
         fired = _collect_captures(scenario, step, kind, outcome.ok, screen_changed)
         # Interval kinds are recorded scenario-wide (run_scenario), so only the
         # instant kinds are captured per step here.
         instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
-        outcome.artifacts.extend(sink.capture(driver, step_id, instant))
+        outcome.artifacts.extend(sink.capture(driver, step_id, instant, elements=after))
 
         outcomes.append(outcome)
         if not outcome.ok:
