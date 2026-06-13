@@ -17,6 +17,7 @@ import json
 import mimetypes
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -444,22 +445,24 @@ def _build_app(state: ServeState, job: Job) -> bool:
     _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
     try:
         proc = state.popen(
-            job.build,
+            shlex.split(job.build),
             cwd=str(state.cwd),
             env=_spawn_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            shell=True,
         )
         if not _register_proc(job, proc):
             proc.wait()
             with job.lock:
                 job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
             return False
-        for raw in proc.stdout or []:
-            _log(job, raw.rstrip("\n"))
+        try:
+            for raw in proc.stdout or []:
+                _log(job, raw.rstrip("\n"))
+        except OSError:
+            proc.terminate()
         proc.wait()
         code = proc.returncode
     except OSError as e:
@@ -496,13 +499,16 @@ def run_job(state: ServeState, job: Job) -> None:
         with job.lock:
             job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
         return
-    for raw in proc.stdout or []:
-        line = raw.rstrip("\n")
-        match = _RUN_ID_RE.search(line)
-        with job.lock:
-            job.lines.append(line)
-            if match:
-                job.run_id = match.group(1)
+    try:
+        for raw in proc.stdout or []:
+            line = raw.rstrip("\n")
+            match = _RUN_ID_RE.search(line)
+            with job.lock:
+                job.lines.append(line)
+                if match:
+                    job.run_id = match.group(1)
+    except OSError:
+        proc.terminate()
     proc.wait()
     with job.lock:
         job.proc = None
