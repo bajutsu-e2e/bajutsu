@@ -35,5 +35,5 @@ def test_make_driver() -> None:
 
 
 def test_make_driver_unknown() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="bogus"):
         make_driver("bogus", "U")

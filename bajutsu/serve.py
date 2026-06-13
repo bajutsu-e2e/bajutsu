@@ -22,7 +22,7 @@ import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -258,7 +258,7 @@ def unique_scenario_path(path: Path, stamp: str | None = None) -> Path:
     (`foo` → `foo-20260613-153045`) so authoring a scenario never overwrites an existing one."""
     if not path.exists():
         return path
-    stamp = stamp or datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = stamp or datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     return path.parent / f"{path.stem}-{stamp}.yaml"
 
 
@@ -686,11 +686,11 @@ def serve(host: str, port: int, scenarios_dir: Path, config: Path, runs_dir: Pat
     state = ServeState(scenarios_dir=scenarios_dir, config=config, runs_dir=runs_dir)
     server = make_server(state, host, port)
     bound = server.server_address[1]
-    print(f"bajutsu serve → http://{host}:{bound}  (scenarios: {scenarios_dir} · Ctrl-C to stop)")
+    print(f"bajutsu serve → http://{host}:{bound}  (scenarios: {scenarios_dir} · Ctrl-C to stop)")  # noqa: T201
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nstopping…")
+        print("\nstopping…")  # noqa: T201
     finally:
         server.shutdown()
         server.server_close()

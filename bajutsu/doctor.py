@@ -105,8 +105,10 @@ def render(s: Score) -> str:
         f"namespaceConformance: {s.namespace_conformance:.2f}",
         f"duplicateIds: {s.duplicate_ids}",
     ]
-    for e in s.missing_id:
-        lines.append(f"  missing id: label={e['label']!r} traits={e['traits']} frame={e['frame']}")
+    lines.extend(
+        f"  missing id: label={e['label']!r} traits={e['traits']} frame={e['frame']}"
+        for e in s.missing_id
+    )
     if s.off_namespace:
         lines.append(f"  off-namespace ids: {s.off_namespace}")
     if s.duplicates:

@@ -8,10 +8,13 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from bajutsu import serve as srv
 
@@ -513,11 +516,8 @@ def test_http_record_requires_goal_and_app(tmp_path: Path) -> None:
             data=body,
             headers={"Content-Type": "application/json"},
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError, match="400"):
             urllib.request.urlopen(req)
-            raise AssertionError("expected 400")
-        except urllib.error.HTTPError as e:
-            assert e.code == 400
     finally:
         server.shutdown()
         server.server_close()
@@ -546,11 +546,8 @@ def test_http_scenario_save_validates_and_writes(tmp_path: Path) -> None:
             data=bad,
             headers={"Content-Type": "application/json"},
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError, match="400"):
             urllib.request.urlopen(req)
-            raise AssertionError("expected 400 for invalid yaml")
-        except urllib.error.HTTPError as e:
-            assert e.code == 400
         assert target.read_text(encoding="utf-8") == edited  # rejected save left the file intact
     finally:
         server.shutdown()
@@ -645,11 +642,8 @@ def test_http_run_requires_scenario_and_app(tmp_path: Path) -> None:
             data=body,
             headers={"Content-Type": "application/json"},
         )
-        try:
+        with pytest.raises(urllib.error.HTTPError, match="400"):
             urllib.request.urlopen(req)
-            raise AssertionError("expected 400")
-        except urllib.error.HTTPError as e:
-            assert e.code == 400
     finally:
         server.shutdown()
         server.server_close()
@@ -666,11 +660,8 @@ def test_http_serves_run_artifacts_and_blocks_traversal(tmp_path: Path) -> None:
     try:
         status, body, ctype = _get(port, "/runs/r1/report.html")
         assert status == 200 and b"hi" in body and "text/html" in ctype
-        try:
+        with pytest.raises(urllib.error.HTTPError, match="404"):
             _get(port, "/runs/../secret.txt")
-            raise AssertionError("expected 404 for traversal")
-        except urllib.error.HTTPError as e:
-            assert e.code == 404
     finally:
         server.shutdown()
         server.server_close()

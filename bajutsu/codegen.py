@@ -186,14 +186,12 @@ def _emit_scenario(scenario: Scenario, app_launch_env: dict[str, str]) -> list[s
     lines.append("    app.launch()")
     lines.append("")
     for step in scenario.steps:
-        for line in _emit_step(step):
-            lines.append(f"    {line}")
+        lines.extend(f"    {line}" for line in _emit_step(step))
     if scenario.expect:
         lines.append("")
         lines.append("    // expect")
         for assertion in scenario.expect:
-            for line in _emit_assertion(assertion):
-                lines.append(f"    {line}")
+            lines.extend(f"    {line}" for line in _emit_assertion(assertion))
     lines.append("  }")
     return lines
 
