@@ -30,11 +30,29 @@ _CAPTURE_KINDS = {
 _CAPTURE_MODS = {"before", "after", "around", "onError"}
 
 _STEP_ACTIONS = (
-    "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
-    "wait", "assert_", "relaunch", "set_location", "push", "use",
+    "tap",
+    "double_tap",
+    "long_press",
+    "type",
+    "swipe",
+    "pinch",
+    "rotate",
+    "wait",
+    "assert_",
+    "relaunch",
+    "set_location",
+    "push",
+    "use",
 )
 _ASSERTION_KINDS = (
-    "exists", "value", "label", "count", "enabled", "disabled", "selected", "request",
+    "exists",
+    "value",
+    "label",
+    "count",
+    "enabled",
+    "disabled",
+    "selected",
+    "request",
 )
 
 
@@ -61,7 +79,7 @@ class Selector(_Model):
     label_matches: str | None = Field(default=None, alias="labelMatches")
     traits: list[str] | None = None
     value: str | None = None
-    within: "Selector | None" = None
+    within: Selector | None = None
     index: int | None = None
 
     @model_validator(mode="after")
@@ -157,19 +175,30 @@ class RequestMatch(_Model):
 
     method: str | None = None
     url: str | None = None  # exact full URL (the endpoint)
-    url_matches: str | None = Field(default=None, alias="urlMatches")  # regex/substring over the URL
+    url_matches: str | None = Field(
+        default=None, alias="urlMatches"
+    )  # regex/substring over the URL
     path: str | None = None  # exact path (query ignored)
     path_matches: str | None = Field(default=None, alias="pathMatches")  # regex over path
     status: int | None = None
-    body_matches: str | None = Field(default=None, alias="bodyMatches")  # regex/substring over request body
+    body_matches: str | None = Field(
+        default=None, alias="bodyMatches"
+    )  # regex/substring over request body
     count: int | None = None
 
     @model_validator(mode="after")
     def _has_criterion(self) -> Self:
         if all(
             v is None
-            for v in (self.method, self.url, self.url_matches, self.path, self.path_matches,
-                      self.status, self.body_matches)
+            for v in (
+                self.method,
+                self.url,
+                self.url_matches,
+                self.path,
+                self.path_matches,
+                self.status,
+                self.body_matches,
+            )
         ):
             raise ValueError(
                 "request は method/url/urlMatches/path/pathMatches/status/bodyMatches のいずれかが必要"
@@ -481,7 +510,9 @@ def load_scenario_file(text: str) -> ScenarioFile:
         return ScenarioFile.model_validate({"scenarios": data})
     if isinstance(data, dict):
         return ScenarioFile.model_validate(data)
-    raise ValueError("シナリオファイルはシナリオの配列、または {description, scenarios} マッピング（§6.1）")
+    raise ValueError(
+        "シナリオファイルはシナリオの配列、または {description, scenarios} マッピング（§6.1）"
+    )
 
 
 def load_scenarios(text: str) -> list[Scenario]:
@@ -518,7 +549,9 @@ def expand_components(
 
     def expand(steps: list[Step], stack: list[str]) -> list[Step]:
         if len(stack) > max_depth:
-            raise ValueError(f"component のネストが深すぎます（>{max_depth}）: {' -> '.join(stack)}")
+            raise ValueError(
+                f"component のネストが深すぎます（>{max_depth}）: {' -> '.join(stack)}"
+            )
         out: list[Step] = []
         for st in steps:
             if st.use is None:
@@ -561,9 +594,13 @@ def _instantiate(scenario: Scenario, row: dict[str, str], index: int) -> Scenari
     dumped = scenario.model_dump(by_alias=True, exclude_none=True)
     dumped.pop("data", None)
     dumped.pop("dataFile", None)
-    out = cast("dict[str, Any]", interp.interpolate(dumped, {f"row.{k}": v for k, v in row.items()}))
+    out = cast(
+        "dict[str, Any]", interp.interpolate(dumped, {f"row.{k}": v for k, v in row.items()})
+    )
     kv = ", ".join(f"{k}={v}" for k, v in row.items())
-    out["name"] = f"{scenario.name} [row {index + 1}: {kv}]" if kv else f"{scenario.name} [row {index + 1}]"
+    out["name"] = (
+        f"{scenario.name} [row {index + 1}: {kv}]" if kv else f"{scenario.name} [row {index + 1}]"
+    )
     return Scenario.model_validate(out)
 
 

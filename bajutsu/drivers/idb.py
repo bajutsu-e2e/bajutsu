@@ -39,14 +39,35 @@ def describe_all_cmd(udid: str) -> list[str]:
 
 
 def tap_cmd(udid: str, x: float, y: float) -> list[str]:
-    return ["idb", "ui", "tap", "--udid", udid, _num(x), _num(y), "--duration", str(_TAP_DURATION_S)]
+    return [
+        "idb",
+        "ui",
+        "tap",
+        "--udid",
+        udid,
+        _num(x),
+        _num(y),
+        "--duration",
+        str(_TAP_DURATION_S),
+    ]
 
 
 def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str]:
     # A finite duration makes it a real drag; an instantaneous swipe isn't recognized
     # as a pan/drag gesture by SwiftUI.
-    return ["idb", "ui", "swipe", "--udid", udid,
-            _num(x1), _num(y1), _num(x2), _num(y2), "--duration", "0.2"]
+    return [
+        "idb",
+        "ui",
+        "swipe",
+        "--udid",
+        udid,
+        _num(x1),
+        _num(y1),
+        _num(x2),
+        _num(y2),
+        "--duration",
+        "0.2",
+    ]
 
 
 def text_cmd(udid: str, text: str) -> list[str]:
@@ -131,8 +152,8 @@ class IdbDriver:
     # accessibility tree (observed: a single element with no identifier) even though
     # the screen has visually rendered. These bound a short retry so query() rides
     # over that transient without masking a genuinely sparse screen for long.
-    _READY_MIN = 2          # a tree this size or larger is treated as settled
-    _EMPTY_RETRIES = 5      # extra describe-all attempts on a degenerate tree
+    _READY_MIN = 2  # a tree this size or larger is treated as settled
+    _EMPTY_RETRIES = 5  # extra describe-all attempts on a degenerate tree
     _EMPTY_BACKOFF_S = 0.2  # delay between those attempts (<= ~1s added, bounded)
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
@@ -209,7 +230,9 @@ class IdbDriver:
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
         x, y = self._center(sel)
-        self._run(["idb", "ui", "tap", "--udid", self.udid, _num(x), _num(y), "--duration", str(duration)])
+        self._run(
+            ["idb", "ui", "tap", "--udid", self.udid, _num(x), _num(y), "--duration", str(duration)]
+        )
 
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._run(swipe_cmd(self.udid, frm[0], frm[1], to[0], to[1]))

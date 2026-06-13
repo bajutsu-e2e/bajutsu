@@ -12,6 +12,7 @@ resolve. Stdlib only — the same `ThreadingHTTPServer` approach as the network 
 
 from __future__ import annotations
 
+import contextlib
 import json
 import mimetypes
 import os
@@ -19,11 +20,12 @@ import re
 import subprocess
 import sys
 import threading
-from datetime import datetime
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
@@ -54,10 +56,15 @@ def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
             scenarios = [{"name": s.name, "description": s.description} for s in sf.scenarios]
         except (OSError, ValueError):
             pass
-        out.append({
-            "file": path.name, "path": str(path), "description": description,
-            "scenarios": scenarios, "names": [s["name"] for s in scenarios],
-        })
+        out.append(
+            {
+                "file": path.name,
+                "path": str(path),
+                "description": description,
+                "scenarios": scenarios,
+                "names": [s["name"] for s in scenarios],
+            }
+        )
     return out
 
 
@@ -93,10 +100,14 @@ def list_simulators(simctl: env.RunFn = env._real_run) -> list[dict[str, Any]]:
         for d in devices:
             if not d.get("isAvailable", True) or not d.get("udid"):
                 continue
-            sims.append({
-                "udid": str(d["udid"]), "name": str(d.get("name", "")),
-                "runtime": label, "booted": d.get("state") == "Booted",
-            })
+            sims.append(
+                {
+                    "udid": str(d["udid"]),
+                    "name": str(d.get("name", "")),
+                    "runtime": label,
+                    "booted": d.get("state") == "Booted",
+                }
+            )
     sims.sort(key=lambda s: (not s["booted"], s["name"]))
     return sims
 
@@ -116,14 +127,16 @@ def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
         except (OSError, json.JSONDecodeError):
             continue
         scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
-        out.append({
-            "id": d.name,
-            "ok": bool(data.get("ok")),
-            "report": (d / "report.html").is_file(),
-            "scenarios": [str(s.get("scenario", "")) for s in scenarios],
-            "passed": sum(1 for s in scenarios if s.get("ok")),
-            "total": len(scenarios),
-        })
+        out.append(
+            {
+                "id": d.name,
+                "ok": bool(data.get("ok")),
+                "report": (d / "report.html").is_file(),
+                "scenarios": [str(s.get("scenario", "")) for s in scenarios],
+                "passed": sum(1 for s in scenarios if s.get("ok")),
+                "total": len(scenarios),
+            }
+        )
     out.sort(key=lambda r: r["id"], reverse=True)
     return out
 
@@ -137,16 +150,32 @@ def _int(value: Any, default: int) -> int:
 
 
 def run_command(
-    scenario: str, app: str, *, backend: str = "", udid: str = "", workers: int = 1,
-    erase: bool | None = None, dismiss_alerts: bool | None = None,
+    scenario: str,
+    app: str,
+    *,
+    backend: str = "",
+    udid: str = "",
+    workers: int = 1,
+    erase: bool | None = None,
+    dismiss_alerts: bool | None = None,
     config: str = "bajutsu.config.yaml",
 ) -> list[str]:
     """The `python -m bajutsu run ...` argv for a launch request. `udid` may be a comma list and
     `workers > 1` runs those devices as a parallel pool (capped to the pool size by the CLI).
     `erase` / `dismiss_alerts` are overrides: True/False force the flag on/off, None leaves each
     scenario's own preconditions.erase / dismissAlerts (the latter on by default) to decide."""
-    cmd = [sys.executable, "-m", "bajutsu", "run", scenario, "--app", app, "--config", config,
-           "--progress"]  # stream per-scenario/step progress into the run log
+    cmd = [
+        sys.executable,
+        "-m",
+        "bajutsu",
+        "run",
+        scenario,
+        "--app",
+        app,
+        "--config",
+        config,
+        "--progress",
+    ]  # stream per-scenario/step progress into the run log
     if backend:
         cmd += ["--backend", backend]
     if udid:
@@ -165,16 +194,34 @@ def run_command(
 
 
 def record_command(
-    out: str, app: str, goal: str, *, agent: str = "", backend: str = "", udid: str = "",
-    erase: bool | None = None, dismiss_alerts: bool | None = None,
+    out: str,
+    app: str,
+    goal: str,
+    *,
+    agent: str = "",
+    backend: str = "",
+    udid: str = "",
+    erase: bool | None = None,
+    dismiss_alerts: bool | None = None,
     config: str = "bajutsu.config.yaml",
 ) -> list[str]:
     """The `python -m bajutsu record OUT --app … --goal …` argv for an authoring request — the
     Tier-1 record loop the Record tab drives. `agent` picks the brain ("api" / "claude-code");
     `erase` / `dismiss_alerts` mirror `run_command` (None leaves the CLI default — record erases
     and dismisses by default), and `out` is the `*.yaml` the recorded scenario is written to."""
-    cmd = [sys.executable, "-m", "bajutsu", "record", out, "--app", app, "--goal", goal,
-           "--config", config]
+    cmd = [
+        sys.executable,
+        "-m",
+        "bajutsu",
+        "record",
+        out,
+        "--app",
+        app,
+        "--goal",
+        goal,
+        "--config",
+        config,
+    ]
     if agent:
         cmd += ["--agent", agent]
     if backend:
@@ -199,7 +246,7 @@ def scenario_out_path(scenarios_dir: Path, name: str) -> Path:
     'authored'. A `.yaml` suffix is normalized so 'foo' and 'foo.yaml' name the same file."""
     stem = (name or "").strip().replace("/", "-").replace("\\", "-")
     if stem.endswith(".yaml"):
-        stem = stem[:-len(".yaml")]
+        stem = stem[: -len(".yaml")]
     stem = re.sub(r"[\x00-\x1f]", "", stem).strip(" .")
     if not stem or stem in {".", ".."}:
         stem = "authored"
@@ -243,22 +290,28 @@ class Job:
     cmd: list[str]
     udids: list[str] = field(default_factory=list)  # devices to boot before the run
     app_path: str | None = None  # built .app the run needs; built on demand if missing
-    build: str | None = None     # shell command that builds app_path (None = no on-demand build)
-    status: str = "running"      # running | done
+    build: str | None = None  # shell command that builds app_path (None = no on-demand build)
+    status: str = "running"  # running | done
     exit_code: int | None = None
-    run_id: str | None = None    # the runs/<id> a `run` job produced, parsed from its output
+    run_id: str | None = None  # the runs/<id> a `run` job produced, parsed from its output
     out_path: str | None = None  # the scenario a `record` job authored (so the UI can load it)
-    cancelled: bool = False      # a /cancel request stopped this job (vs. a real pass/fail)
-    proc: Any = None             # the live subprocess (build or run), so a cancel can terminate it
+    cancelled: bool = False  # a /cancel request stopped this job (vs. a real pass/fail)
+    proc: Any = None  # the live subprocess (build or run), so a cancel can terminate it
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def view(self) -> dict[str, Any]:
         with self.lock:
             return {
-                "id": self.id, "status": self.status, "exitCode": self.exit_code,
-                "runId": self.run_id, "outPath": self.out_path, "cancelled": self.cancelled,
-                "ok": (self.exit_code == 0 and not self.cancelled) if self.status == "done" else None,
+                "id": self.id,
+                "status": self.status,
+                "exitCode": self.exit_code,
+                "runId": self.run_id,
+                "outPath": self.out_path,
+                "cancelled": self.cancelled,
+                "ok": (self.exit_code == 0 and not self.cancelled)
+                if self.status == "done"
+                else None,
                 "lines": list(self.lines),
             }
 
@@ -276,13 +329,23 @@ class ServeState:
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def new_job(
-        self, cmd: list[str], udids: list[str] | None = None,
-        app_path: str | None = None, build: str | None = None, out_path: str | None = None,
+        self,
+        cmd: list[str],
+        udids: list[str] | None = None,
+        app_path: str | None = None,
+        build: str | None = None,
+        out_path: str | None = None,
     ) -> Job:
         with self._lock:
             self._seq += 1
-            job = Job(id=str(self._seq), cmd=cmd, udids=list(udids or []),
-                      app_path=app_path, build=build, out_path=out_path)
+            job = Job(
+                id=str(self._seq),
+                cmd=cmd,
+                udids=list(udids or []),
+                app_path=app_path,
+                build=build,
+                out_path=out_path,
+            )
             self.jobs[job.id] = job
         return job
 
@@ -302,10 +365,8 @@ def _log(job: Job, line: str) -> None:
 
 def _terminate(proc: Any) -> None:
     """Best-effort stop of a live subprocess; ignore an already-exited / fake proc."""
-    try:
+    with contextlib.suppress(OSError, ProcessLookupError, AttributeError):
         proc.terminate()
-    except (OSError, ProcessLookupError, AttributeError):
-        pass
 
 
 def _register_proc(job: Job, proc: Any) -> bool:
@@ -383,8 +444,14 @@ def _build_app(state: ServeState, job: Job) -> bool:
     _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
     try:
         proc = state.popen(
-            job.build, cwd=str(state.cwd), env=_spawn_env(),
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, shell=True,
+            job.build,
+            cwd=str(state.cwd),
+            env=_spawn_env(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            shell=True,
         )
         if not _register_proc(job, proc):
             proc.wait()
@@ -416,8 +483,13 @@ def run_job(state: ServeState, job: Job) -> None:
     if not _build_app(state, job):
         return
     proc = state.popen(
-        job.cmd, cwd=str(state.cwd), env=_spawn_env(),
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        job.cmd,
+        cwd=str(state.cwd),
+        env=_spawn_env(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
     if not _register_proc(job, proc):
         proc.wait()
@@ -451,7 +523,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
-        def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
+        def do_GET(self) -> None:
             path = urlparse(self.path).path
             if path in ("/", "/index.html"):
                 body = INDEX_HTML.encode("utf-8")
@@ -476,14 +548,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 else:
                     self._json({"yaml": target.read_text(encoding="utf-8")})
             elif path.startswith("/api/jobs/"):
-                job = state.jobs.get(path[len("/api/jobs/"):])
+                job = state.jobs.get(path[len("/api/jobs/") :])
                 self._json(job.view() if job else {"error": "no such job"}, 200 if job else 404)
             elif path.startswith("/runs/"):
-                self._serve_run_file(unquote(path[len("/runs/"):]))
+                self._serve_run_file(unquote(path[len("/runs/") :]))
             else:
                 self._json({"error": "not found"}, 404)
 
-        def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
+        def do_POST(self) -> None:
             path = urlparse(self.path).path
             length = int(self.headers.get("Content-Length") or 0)
             try:
@@ -498,7 +570,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             elif path == "/api/scenario":
                 self._post_scenario(body)
             elif path.startswith("/api/jobs/") and path.endswith("/cancel"):
-                job = state.jobs.get(path[len("/api/jobs/"):-len("/cancel")])
+                job = state.jobs.get(path[len("/api/jobs/") : -len("/cancel")])
                 if job is None:
                     self._json({"error": "no such job"}, 404)
                 else:
@@ -518,11 +590,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             udid = str(body.get("udid", "") or "")
             cmd = run_command(
-                body["scenario"], body["app"],
-                backend=body.get("backend", ""), udid=udid,
+                body["scenario"],
+                body["app"],
+                backend=body.get("backend", ""),
+                udid=udid,
                 workers=_int(body.get("workers"), 1),
                 erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
-                dismiss_alerts=body["dismissAlerts"] if isinstance(body.get("dismissAlerts"), bool) else None,
+                dismiss_alerts=body["dismissAlerts"]
+                if isinstance(body.get("dismissAlerts"), bool)
+                else None,
                 config=str(state.config),
             )
             app_path, build = app_build_info(state.config, body["app"])
@@ -542,15 +618,26 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             )
             udid = str(body.get("udid", "") or "")
             cmd = record_command(
-                str(out), body["app"], str(body["goal"]),
-                agent=body.get("agent", ""), backend=body.get("backend", ""), udid=udid,
+                str(out),
+                body["app"],
+                str(body["goal"]),
+                agent=body.get("agent", ""),
+                backend=body.get("backend", ""),
+                udid=udid,
                 erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
-                dismiss_alerts=body["dismissAlerts"] if isinstance(body.get("dismissAlerts"), bool) else None,
+                dismiss_alerts=body["dismissAlerts"]
+                if isinstance(body.get("dismissAlerts"), bool)
+                else None,
                 config=str(state.config),
             )
             app_path, build = app_build_info(state.config, body["app"])
-            job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path,
-                                build=build, out_path=str(out))
+            job = state.new_job(
+                cmd,
+                udids=self._boot_targets(udid),
+                app_path=app_path,
+                build=build,
+                out_path=str(out),
+            )
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id, "path": str(out)})
 
@@ -613,7 +700,7 @@ INDEX_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>bajutsu</title>
 <style>
-:root{--bg:#0f172a;--card:#1e293b;--line:#334155;--fg:#e2e8f0;--mut:#94a3b8;--acc:#38bdf8;--ok:#22c55e;--ng:#ef4444}
+:root{--bg:#0f172a;--card:#1e293b;--line:#334155;--fg:#e2e8f0;--mut:#94a3b8;--acc:#38bdf8;--ok:#22c55e;--ng:#ef4444;--run:#f59e0b}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#0b1220;color:var(--fg)}
 header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;background:var(--bg);border-bottom:1px solid var(--line)}
 header .brand{font-weight:700}
@@ -645,6 +732,13 @@ textarea.goal{min-height:5.5rem;resize:vertical;line-height:1.4}
 .checks .hint{display:block;color:var(--mut);font-size:.78em;line-height:1.35;margin:.15rem 0 0 1.45rem}
 button.run{flex:0 0 auto;width:100%;padding:.6rem;background:var(--acc);color:#082f49;border:0;border-radius:6px;font-weight:700;cursor:pointer}
 button.run:disabled{opacity:.5;cursor:default}
+/* While a job runs the button turns amber, shows a spinner, and stays disabled (Stop aborts it). */
+button.run.running{background:var(--run);color:#1c1402;opacity:1;cursor:default}
+button.run.running::before{content:"";display:inline-block;width:.9em;height:.9em;margin-right:.5em;vertical-align:-.12em;border:2px solid rgba(28,20,2,.35);border-top-color:#1c1402;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+button.stop{flex:0 0 auto;width:100%;margin-top:.5rem;padding:.6rem;background:var(--ng);color:#fff;border:0;border-radius:6px;font-weight:700;cursor:pointer}
+button.stop:disabled{opacity:.5;cursor:default}
+button.stop[hidden]{display:none}
 .status{flex:0 0 auto;font-weight:600}.status:not(:empty){margin-top:.6rem}.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}.status.run{color:var(--acc)}
 .logpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
 pre.out{flex:1;min-height:0;margin:.6rem 0 0;overflow:auto;background:#0b1220;border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:12px;white-space:pre-wrap}
@@ -725,7 +819,8 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
   </div>
   <div class="rec-stack">
     <div class="card logpanel">
-      <button class="run" id="rec-go">Generate scenario</button>
+      <button class="run" id="rec-go" data-idle="Generate scenario">Generate scenario</button>
+      <button class="stop" id="rec-stop" hidden>Stop</button>
       <div class="status" id="rec-status"></div>
       <pre class="out" id="rec-out" data-empty="Enter a goal and press Generate to watch the agent author it, turn by turn."></pre>
     </div>
@@ -771,7 +866,8 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
     </div>
   </div>
   <div class="card logpanel">
-    <button class="run" id="go">Run</button>
+    <button class="run" id="go" data-idle="Run">Run</button>
+    <button class="stop" id="stop" hidden>Stop</button>
     <div class="status" id="status"></div>
     <pre class="out" id="out" data-empty="Run a scenario to see its output here."></pre>
   </div>
@@ -780,6 +876,17 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
 <script>
 const $=s=>document.querySelector(s);
 let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],apps=[],sims=[];
+let recJobId=null,runJobId=null;
+// Toggle a run/stop button pair between idle and running (amber + spinner via the .running class).
+function setBusy(btn,stop,on,busyLabel){
+  btn.classList.toggle('running',on);btn.disabled=on;btn.textContent=on?busyLabel:btn.dataset.idle;
+  stop.hidden=!on;stop.disabled=false;stop.textContent='Stop';
+}
+// Ask the server to abort a running job; polling then sees it finish and resets the UI.
+async function cancelJob(id,stop){
+  if(!id)return;stop.disabled=true;stop.textContent='Stopping…';
+  try{await fetch('/api/jobs/'+id+'/cancel',{method:'POST'})}catch(e){}
+}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function setStatus(el,t,c){el.textContent=t;el.className='status '+c}
 
@@ -819,7 +926,7 @@ $('#rec-go').addEventListener('click',async()=>{
   const goal=$('#rec-goal').value.trim();
   if(!goal){setStatus($('#rec-status'),'enter a goal first','ng');return}
   if(recPoll)clearInterval(recPoll);
-  $('#rec-go').disabled=true;$('#rec-go').textContent='Authoring…';$('#rec-out').textContent='';
+  setBusy($('#rec-go'),$('#rec-stop'),true,'Authoring…');$('#rec-out').textContent='';
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -827,15 +934,17 @@ $('#rec-go').addEventListener('click',async()=>{
     udid:$('#rec-device').value||'booted',name:$('#rec-name').value.trim()||undefined,
     erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
   const {jobId,path,error}=await r.json();
-  if(error){setStatus($('#rec-status'),error,'ng');$('#rec-go').disabled=false;$('#rec-go').textContent='Generate scenario';return}
-  recPath=path;
+  if(error){setStatus($('#rec-status'),error,'ng');setBusy($('#rec-go'),$('#rec-stop'),false);return}
+  recPath=path;recJobId=jobId;
   recPoll=setInterval(()=>recCheck(jobId),1000);recCheck(jobId);
 });
+$('#rec-stop').addEventListener('click',()=>cancelJob(recJobId,$('#rec-stop')));
 async function recCheck(id){
   const j=await (await fetch('/api/jobs/'+id)).json();
   $('#rec-out').textContent=(j.lines||[]).join('\\n');$('#rec-out').scrollTop=$('#rec-out').scrollHeight;
   if(j.status==='running')return;
-  clearInterval(recPoll);recPoll=null;$('#rec-go').disabled=false;$('#rec-go').textContent='Generate scenario';
+  clearInterval(recPoll);recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);
+  if(j.cancelled){setStatus($('#rec-status'),'cancelled','ng');return}
   setStatus($('#rec-status'),j.ok?'authored ✓':'failed', j.ok?'ok':'ng');
   if(j.ok&&(j.outPath||recPath)){await loadGenerated(j.outPath||recPath);loadScenarios();}
 }
@@ -873,21 +982,24 @@ function onSimChange(){const n=pickedUdids().length;if(n>0)$('#workers').value=n
 $('#simrefresh').addEventListener('click',loadSims);
 $('#go').addEventListener('click',async()=>{
   if(poll)clearInterval(poll);
-  $('#go').disabled=true;$('#go').textContent='Running…';$('#out').textContent='';
+  setBusy($('#go'),$('#stop'),true,'Running…');$('#out').textContent='';
   setStatus($('#status'),'','run');
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     scenario:$('#scn').value,app:$('#app').value,backend:$('#backend').value.trim(),udid:pickedUdids().join(',')||'booted',
     workers:parseInt($('#workers').value,10)||1,
     erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined})});
   const {jobId,error}=await r.json();
-  if(error){setStatus($('#status'),error,'ng');$('#go').disabled=false;$('#go').textContent='Run';return}
+  if(error){setStatus($('#status'),error,'ng');setBusy($('#go'),$('#stop'),false);return}
+  runJobId=jobId;
   poll=setInterval(()=>check(jobId),1000);check(jobId);
 });
+$('#stop').addEventListener('click',()=>cancelJob(runJobId,$('#stop')));
 async function check(id){
   const j=await (await fetch('/api/jobs/'+id)).json();
   $('#out').textContent=(j.lines||[]).join('\\n');$('#out').scrollTop=$('#out').scrollHeight;
-  if(j.status==='running')return;  // the Run button (disabled, "Running…") shows the running state
-  clearInterval(poll);poll=null;$('#go').disabled=false;$('#go').textContent='Run';
+  if(j.status==='running')return;  // the Run button (amber + spinner) shows the running state
+  clearInterval(poll);poll=null;runJobId=null;setBusy($('#go'),$('#stop'),false);
+  if(j.cancelled){setStatus($('#status'),'cancelled','ng');loadHistory();return}
   setStatus($('#status'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId);
   loadHistory();

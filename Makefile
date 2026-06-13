@@ -6,7 +6,7 @@
 deps:
 	@command -v brew >/dev/null 2>&1 || { echo "Homebrew is required: https://brew.sh"; exit 1; }
 	brew bundle --file=Brewfile
-	uv sync --extra idb --extra dev
+	uv sync --extra idb --group dev
 
 # Verify the required tools are on PATH without installing anything.
 deps-check:

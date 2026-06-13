@@ -58,7 +58,7 @@ def _screenshot_bytes(driver: base.Driver) -> bytes | None:
         data = Path(path).read_bytes()
         Path(path).unlink(missing_ok=True)
         return data or None
-    except Exception:  # noqa: BLE001 — screenshots are optional context for the agent
+    except Exception:
         return None
 
 
@@ -115,7 +115,10 @@ def _shows_app_ui(elements: list[base.Element]) -> bool:
 
 
 def _clear_blocking(
-    driver: base.Driver, guard: BlockedHandler, clock: Clock, max_tries: int = 3,
+    driver: base.Driver,
+    guard: BlockedHandler,
+    clock: Clock,
+    max_tries: int = 3,
     report: Reporter | None = None,
 ) -> None:
     """Dismiss anything covering the app (e.g. a system alert) before the agent observes.
@@ -132,18 +135,26 @@ def _clear_blocking(
         if _shows_app_ui(driver.query()):
             return  # the app is showing actionable elements; nothing blocking
         if not announced:
-            say("⚠️  the app screen looks blocked by a system prompt — asking the alert guard to clear it …")
+            say(
+                "⚠️  the app screen looks blocked by a system prompt — asking the alert guard to clear it …"
+            )
             announced = True
         event = guard(driver)  # try to dismiss whatever is covering the app
         if event is not None:
             label = getattr(event, "label", "")
-            say(f"🛡️  dismissed a system alert · tapped {label!r}" if label
-                else "🛡️  dismissed a system alert")
+            say(
+                f"🛡️  dismissed a system alert · tapped {label!r}"
+                if label
+                else "🛡️  dismissed a system alert"
+            )
         clock.sleep(0.5)  # let it animate out before re-checking
 
 
 def _execute_with_recovery(
-    driver: base.Driver, step: Step, clock: Clock, guard: BlockedHandler | None,
+    driver: base.Driver,
+    step: Step,
+    clock: Clock,
+    guard: BlockedHandler | None,
     report: Reporter | None = None,
 ) -> bool:
     """Execute a step; if it fails because a prompt is covering the app, clear it and retry."""
@@ -153,7 +164,9 @@ def _execute_with_recovery(
     except base.SelectorError:
         if guard is None:
             return False
-        (report or (lambda _m: None))("⚠️  a step could not act — a system prompt may be covering the app; recovering …")
+        (report or (lambda _m: None))(
+            "⚠️  a step could not act — a system prompt may be covering the app; recovering …"
+        )
         _clear_blocking(driver, guard, clock, report=report)
         try:
             _execute(driver, step, clock)
@@ -174,7 +187,7 @@ def _plan_goal(agent: Agent, goal: str, say: Reporter) -> list[str]:
         return []
     try:
         plan = [str(step) for step in planner(goal)]
-    except Exception as exc:  # noqa: BLE001 — planning is optional context, never fatal to record
+    except Exception as exc:
         say(f"… could not plan the goal up front ({exc}); proceeding step by step")
         return []
     if plan:
@@ -226,8 +239,11 @@ def record(
         screenshot = _screenshot_bytes(driver) if with_screenshot else None
         proposal = agent.next_action(
             Observation(
-                goal=goal, screen=elements, history=list(steps),
-                screenshot=screenshot, plan=plan,
+                goal=goal,
+                screen=elements,
+                history=list(steps),
+                screenshot=screenshot,
+                plan=plan,
             )
         )
         if proposal.note:  # the agent's reasoning for this turn, shown before the action it chose

@@ -76,9 +76,9 @@ def test_orchestrator_dispatches_gestures() -> None:
 
 def test_pinch_fails_without_multitouch_capability() -> None:
     driver = IdbDriver("U", run=lambda a: "[]")  # idb advertises no MULTI_TOUCH
-    scenario = load_scenarios(
-        "- name: g\n  steps:\n    - pinch: { sel: { id: a }, scale: 2.0 }\n"
-    )[0]
+    scenario = load_scenarios("- name: g\n  steps:\n    - pinch: { sel: { id: a }, scale: 2.0 }\n")[
+        0
+    ]
     result = run_scenario(driver, scenario)
     assert not result.ok
     assert "multiTouch" in (result.failure or "")

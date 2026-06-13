@@ -22,7 +22,7 @@ from bajutsu.scenario import Assertion, CountMatch, Exists, RequestMatch, Select
 class AssertionResult:
     ok: bool
     kind: str
-    detail: str       # what was checked (for the report)
+    detail: str  # what was checked (for the report)
     reason: str = ""  # failure reason (empty when ok)
 
 
@@ -126,11 +126,10 @@ def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
         return False
     if req.status is not None and ex.status != req.status:
         return False
-    if req.body_matches is not None and (
-        ex.request_body is None or re.search(req.body_matches, ex.request_body) is None
-    ):
-        return False
-    return True
+    return not (
+        req.body_matches is not None
+        and (ex.request_body is None or re.search(req.body_matches, ex.request_body) is None)
+    )
 
 
 def count_matching(exchanges: list[NetworkExchange], req: RequestMatch) -> int:
@@ -257,7 +256,7 @@ def evaluate(
     assigned: dict[int, AssertionResult] = {}
     if len(bare) >= 2:
         order = _assign_requests(exs, [req for _, req in bare])
-        for (i, req), ex_idx in zip(bare, order):
+        for (i, req), ex_idx in zip(bare, order, strict=True):
             assigned[i] = _request_assignment_result(req, ex_idx, exs)
     return [
         assigned[i] if i in assigned else evaluate_one(elements, a, exs)

@@ -184,22 +184,25 @@ def _render(observation: Observation) -> str:
     lines = [f"Goal: {observation.goal}"]
     if observation.plan:
         lines.append("")
-        lines.append("Planned steps (your up-front decomposition of the goal — follow it in order, "
-                     "adapting to what the screen actually shows):")
+        lines.append(
+            "Planned steps (your up-front decomposition of the goal — follow it in order, "
+            "adapting to what the screen actually shows):"
+        )
         lines += [f"  {i}. {step}" for i, step in enumerate(observation.plan, 1)]
     lines += ["", "Current screen elements:"]
     shown = 0
     for element in observation.screen:
         identifier, label, value, traits = (
-            element["identifier"], element["label"], element["value"], element["traits"]
+            element["identifier"],
+            element["label"],
+            element["value"],
+            element["traits"],
         )
         if "application" in traits:
             continue  # the app root is not an actionable target
         if not (identifier or label or value or traits):
             continue  # nothing to address it by
-        lines.append(
-            f"- id={identifier!r} label={label!r} value={value!r} traits={traits}"
-        )
+        lines.append(f"- id={identifier!r} label={label!r} value={value!r} traits={traits}")
         shown += 1
     if not shown:
         lines.append("- (no addressable elements; the screen may still be loading)")
@@ -332,13 +335,15 @@ def _user_content(observation: Observation) -> list[dict[str, Any]]:
     """The per-turn user message: the screenshot (if any) followed by the text."""
     content: list[dict[str, Any]] = []
     if observation.screenshot is not None:
-        content.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/png",
-                "data": base64.standard_b64encode(observation.screenshot).decode("ascii"),
-            },
-        })
+        content.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": base64.standard_b64encode(observation.screenshot).decode("ascii"),
+                },
+            }
+        )
     content.append({"type": "text", "text": _render(observation)})
     return content

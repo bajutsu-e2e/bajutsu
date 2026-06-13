@@ -20,7 +20,12 @@ import re
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step
 
-_SWIFT_DIRECTION = {"up": "swipeUp", "down": "swipeDown", "left": "swipeLeft", "right": "swipeRight"}
+_SWIFT_DIRECTION = {
+    "up": "swipeUp",
+    "down": "swipeDown",
+    "left": "swipeLeft",
+    "right": "swipeRight",
+}
 
 
 def _s(text: str) -> str:
@@ -58,7 +63,7 @@ def _element(sel: base.Selector) -> str:
         pattern = f"*{sel['labelMatches']}*"
         return (
             "app.descendants(matching: .any)"
-            f".matching(NSPredicate(format: \"label LIKE %@\", {_s(pattern)})).firstMatch"
+            f'.matching(NSPredicate(format: "label LIKE %@", {_s(pattern)})).firstMatch'
         )
     return 'el("UNSUPPORTED_SELECTOR")'
 
@@ -77,7 +82,7 @@ def _selector_of_step(step: Step) -> base.Selector | None:
     return None
 
 
-def _emit_step(step: Step) -> list[str]:  # noqa: C901 — a flat dispatch over step kinds
+def _emit_step(step: Step) -> list[str]:
     if step.tap is not None:
         return [f"{_element(step.tap.as_selector())}.tap()"]
     if step.double_tap is not None:
@@ -85,13 +90,19 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901 — a flat dispatch over 
     if step.pinch is not None:
         # velocity sign must match the scale: positive zooms in, negative zooms out.
         velocity = 1.0 if step.pinch.scale >= 1 else -1.0
-        return [f"{_element(step.pinch.sel.as_selector())}.pinch(withScale: {step.pinch.scale}, "
-                f"velocity: {velocity})"]
+        return [
+            f"{_element(step.pinch.sel.as_selector())}.pinch(withScale: {step.pinch.scale}, "
+            f"velocity: {velocity})"
+        ]
     if step.rotate is not None:
-        return [f"{_element(step.rotate.sel.as_selector())}.rotate({step.rotate.radians}, "
-                f"withVelocity: 1.0)"]
+        return [
+            f"{_element(step.rotate.sel.as_selector())}.rotate({step.rotate.radians}, "
+            f"withVelocity: 1.0)"
+        ]
     if step.long_press is not None:
-        return [f"{_element(step.long_press.sel.as_selector())}.press(forDuration: {step.long_press.duration})"]
+        return [
+            f"{_element(step.long_press.sel.as_selector())}.press(forDuration: {step.long_press.duration})"
+        ]
     if step.type is not None:
         lines = []
         if step.type.into is not None:
@@ -111,12 +122,12 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901 — a flat dispatch over 
         if w.for_ is not None:
             return [
                 f"XCTAssertTrue({_element(w.for_.as_selector())}"
-                f".waitForExistence(timeout: {w.timeout}), \"wait for element\")"
+                f'.waitForExistence(timeout: {w.timeout}), "wait for element")'
             ]
         if isinstance(w.until, Gone):
             return [
                 f"XCTAssertTrue({_element(w.until.gone.as_selector())}"
-                f".waitForNonExistence(timeout: {w.timeout}), \"wait until gone\")"
+                f'.waitForNonExistence(timeout: {w.timeout}), "wait until gone")'
             ]
         return [f"// settle wait ({w.until}) — XCUITest auto-waits for hittability"]
     if step.assert_ is not None:
@@ -126,26 +137,30 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901 — a flat dispatch over 
     return ["// TODO: unsupported step"]
 
 
-def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901 — flat dispatch over assertion kinds
+def _emit_assertion(a: Assertion) -> list[str]:
     if a.exists is not None:
         element = _element(a.exists.sel.as_selector())
         check = "XCTAssertFalse" if a.exists.negate else "XCTAssertTrue"
         return [f"{check}({element}.exists)"]
     if a.value is not None:
         element = _element(a.value.sel.as_selector())
-        actual = f"(({element}.value as? String) ?? \"\")"
+        actual = f'(({element}.value as? String) ?? "")'
         if a.value.equals is not None:
             return [f"XCTAssertEqual({element}.value as? String, {_s(a.value.equals)})"]
         if a.value.contains is not None:
             return [f"XCTAssertTrue({actual}.contains({_s(a.value.contains)}))"]
-        return [f"XCTAssertNotNil({actual}.range(of: {_s(a.value.matches or '')}, options: .regularExpression))"]
+        return [
+            f"XCTAssertNotNil({actual}.range(of: {_s(a.value.matches or '')}, options: .regularExpression))"
+        ]
     if a.label is not None:
         element = _element(a.label.sel.as_selector())
         if a.label.equals is not None:
             return [f"XCTAssertEqual({element}.label, {_s(a.label.equals)})"]
         if a.label.contains is not None:
             return [f"XCTAssertTrue({element}.label.contains({_s(a.label.contains)}))"]
-        return [f"XCTAssertNotNil({element}.label.range(of: {_s(a.label.matches or '')}, options: .regularExpression))"]
+        return [
+            f"XCTAssertNotNil({element}.label.range(of: {_s(a.label.matches or '')}, options: .regularExpression))"
+        ]
     if a.enabled is not None:
         return [f"XCTAssertTrue({_element(a.enabled.as_selector())}.isEnabled)"]
     if a.disabled is not None:
@@ -199,11 +214,11 @@ def to_xcuitest(
         "  }",
         "  private func byLabel(_ label: String) -> XCUIElement {",
         "    app.descendants(matching: .any).matching("
-        "NSPredicate(format: \"label == %@\", label)).firstMatch",
+        'NSPredicate(format: "label == %@", label)).firstMatch',
         "  }",
         "  private func matchingId(_ glob: String) -> XCUIElementQuery {",
         "    app.descendants(matching: .any).matching("
-        "NSPredicate(format: \"identifier LIKE %@\", glob))",
+        'NSPredicate(format: "identifier LIKE %@", glob))',
         "  }",
         "",
     ]

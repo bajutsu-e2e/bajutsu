@@ -25,7 +25,13 @@ from collections.abc import Callable
 from typing import Any
 
 from bajutsu.agent import Observation, Proposal
-from bajutsu.claude_agent import PLAN_SYSTEM, SYSTEM_PROMPT, _render, proposal_from_call, steps_from_plan
+from bajutsu.claude_agent import (
+    PLAN_SYSTEM,
+    SYSTEM_PROMPT,
+    _render,
+    proposal_from_call,
+    steps_from_plan,
+)
 
 # The selector fragment shared by every action (mirrors the API agent's tool inputs).
 _TARGET_SCHEMA: dict[str, Any] = {
@@ -110,8 +116,12 @@ def _default_runner(cmd: list[str]) -> str:
     # into the authoring call. Auth and the user-level config still apply.
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=tempfile.gettempdir(),
-            env=_subscription_env(), timeout=180,
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=tempfile.gettempdir(),
+            env=_subscription_env(),
+            timeout=180,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(
@@ -134,10 +144,14 @@ class ClaudeCodeAgent:
 
     def _command(self, prompt: str, schema: dict[str, Any], system: str) -> list[str]:
         cmd = [
-            self._binary, "-p",
-            "--output-format", "json",
-            "--json-schema", json.dumps(schema),
-            "--append-system-prompt", system,
+            self._binary,
+            "-p",
+            "--output-format",
+            "json",
+            "--json-schema",
+            json.dumps(schema),
+            "--append-system-prompt",
+            system,
         ]
         if self._model:
             cmd += ["--model", self._model]

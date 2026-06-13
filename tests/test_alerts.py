@@ -48,7 +48,9 @@ class StubLocator:
 
 def test_guard_taps_normalized_point_when_present() -> None:
     driver = ShotDriver([_window(402.0, 874.0)])
-    guard = SystemAlertGuard(StubLocator(AlertDecision(present=True, x=0.5, y=0.25, label="Not Now")))
+    guard = SystemAlertGuard(
+        StubLocator(AlertDecision(present=True, x=0.5, y=0.25, label="Not Now"))
+    )
     # The dismissal returns an AlertEvent carrying the tapped button (for the report).
     assert guard.dismiss(driver) == AlertEvent(label="Not Now")
     # normalized (0.5, 0.25) maps to point space (402, 874)

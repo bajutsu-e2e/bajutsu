@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -76,16 +77,22 @@ def run(
     scenario: str,
     app_name: str = typer.Option(..., "--app"),
     backend: str = typer.Option("", help="comma list; first available is the actuator"),
-    tag: str = typer.Option("", "--tag", help="comma list; run only scenarios with any of these tags"),
-    exclude: str = typer.Option("", "--exclude", help="comma list; skip scenarios with any of these tags"),
+    tag: str = typer.Option(
+        "", "--tag", help="comma list; run only scenarios with any of these tags"
+    ),
+    exclude: str = typer.Option(
+        "", "--exclude", help="comma list; skip scenarios with any of these tags"
+    ),
     udid: str = typer.Option("booted"),
     workers: int = typer.Option(1),
     erase: bool | None = typer.Option(
-        None, "--erase/--no-erase",
+        None,
+        "--erase/--no-erase",
         help="override every scenario's preconditions.erase (default: per-scenario)",
     ),
     dismiss_alerts: bool | None = typer.Option(
-        None, "--dismiss-alerts/--no-dismiss-alerts",
+        None,
+        "--dismiss-alerts/--no-dismiss-alerts",
         help="override every scenario's dismissAlerts (default: per-scenario, on; needs API key)",
     ),
     alert_instruction: str = typer.Option(
@@ -98,11 +105,13 @@ def run(
         "", "--log-subsystem", help="os_log subsystem for appTrace (defaults to the app's bundleId)"
     ),
     network: bool = typer.Option(
-        True, "--network/--no-network",
+        True,
+        "--network/--no-network",
         help="collect the app's network exchanges (for `request` assertions); needs BajutsuKit in the app",
     ),
     progress: bool = typer.Option(
-        False, "--progress/--no-progress",
+        False,
+        "--progress/--no-progress",
         help="stream per-scenario/step progress to stderr as the run advances (used by the web UI)",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
@@ -134,7 +143,8 @@ def run(
     base_dir = scenario_path.parent
     try:
         apply_setups(
-            scenarios, eff.setup,
+            scenarios,
+            eff.setup,
             lambda ref: load_scenarios((base_dir / ref).read_text(encoding="utf-8"))[0].steps,
         )
     except (OSError, ValueError, IndexError) as e:
@@ -194,7 +204,9 @@ def run(
         from bajutsu.orchestrator import BlockedHandler
 
         if not os.environ.get("ANTHROPIC_API_KEY"):
-            typer.echo("note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard will no-op")
+            typer.echo(
+                "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard will no-op"
+            )
         locator = ClaudeAlertLocator()
         default_instruction = alert_instruction or None
 
@@ -218,8 +230,13 @@ def run(
     # sink (interval recordings), and device control — so network collection / video / log /
     # setLocation / push all work the same whether workers is 1 or N.
     lease, shutdown = device_pool(
-        udids, backends, eff, Path("runs") / run_id, network=network,
-        log_predicate=log_predicate or None, log_subsystem=log_subsystem or eff.bundle_id,
+        udids,
+        backends,
+        eff,
+        Path("runs") / run_id,
+        network=network,
+        log_predicate=log_predicate or None,
+        log_subsystem=log_subsystem or eff.bundle_id,
         secret_values=secret_values,
     )
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run
@@ -227,9 +244,17 @@ def run(
     progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None
     try:
         results, manifest = run_and_report(
-            eff, scenarios, lease, Path("runs"), run_id, on_blocked_for=on_blocked_for,
-            workers=workers, bindings=secret_bindings, secret_values=secret_values,
-            source_name=scenario_path.name, description=scenario_file.description,
+            eff,
+            scenarios,
+            lease,
+            Path("runs"),
+            run_id,
+            on_blocked_for=on_blocked_for,
+            workers=workers,
+            bindings=secret_bindings,
+            secret_values=secret_values,
+            source_name=scenario_path.name,
+            description=scenario_file.description,
             progress=progress_fn,
         )
     except _env.DeviceError as e:
@@ -254,14 +279,16 @@ def record(
         True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
     ),
     dismiss_alerts: bool = typer.Option(
-        True, "--dismiss-alerts/--no-dismiss-alerts",
+        True,
+        "--dismiss-alerts/--no-dismiss-alerts",
         help="dismiss unexpected OS prompts while authoring (on by default; uses the same API key)",
     ),
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
     ),
     agent: str = typer.Option(
-        "", "--agent",
+        "",
+        "--agent",
         help="authoring agent: 'api' (Anthropic API, pay-per-token) or 'claude-code' "
         "(the `claude` CLI, billed to your Claude subscription). Defaults to $BAJUTSU_AGENT or 'api'.",
     ),
@@ -292,7 +319,11 @@ def record(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     scenario = record_loop(
-        driver, goal, authoring_agent, name=goal, alert_guard=alert_guard,
+        driver,
+        goal,
+        authoring_agent,
+        name=goal,
+        alert_guard=alert_guard,
         report=lambda msg: typer.echo(msg, err=True),
     )
     Path(out).write_text(dump_scenarios([scenario]), encoding="utf-8")
@@ -346,19 +377,29 @@ def trace(
 @app.command()
 def triage(
     run_dir: str = typer.Argument("", help="run directory (default: the latest under runs/)"),
-    scenario: str = typer.Option("", "--scenario", help="only the scenario whose name contains this"),
+    scenario: str = typer.Option(
+        "", "--scenario", help="only the scenario whose name contains this"
+    ),
     runs: str = typer.Option("runs", help="runs root (used when run_dir is omitted)"),
     ai: bool = typer.Option(
-        False, "--ai", help="diagnose with Claude (needs ANTHROPIC_API_KEY) instead of the rule-based agent"
+        False,
+        "--ai",
+        help="diagnose with Claude (needs ANTHROPIC_API_KEY) instead of the rule-based agent",
     ),
     apply: str = typer.Option(
-        "", "--apply", help="scenario source file to patch with the suggested fix (shows a dry-run diff)"
+        "",
+        "--apply",
+        help="scenario source file to patch with the suggested fix (shows a dry-run diff)",
     ),
     write: bool = typer.Option(
-        False, "--write", help="with --apply, write the patched file instead of only showing the diff"
+        False,
+        "--write",
+        help="with --apply, write the patched file instead of only showing the diff",
     ),
     rerun: bool = typer.Option(
-        False, "--rerun", help="after --write, re-run the patched scenario to verify the fix (needs --app + a device)"
+        False,
+        "--rerun",
+        help="after --write, re-run the patched scenario to verify the fix (needs --app + a device)",
     ),
     app_name: str = typer.Option("", "--app", help="app key, for --rerun"),
     backend: str = typer.Option("", "--backend", help="actuator backend, for --rerun"),
@@ -378,10 +419,9 @@ def triage(
     # so a fix's `find` fragment matches the file that --apply edits — otherwise float/flow-style
     # normalization (`timeout: 2.0`, block selectors) makes fragment fixes miss.
     if apply:
-        try:
+        with contextlib.suppress(OSError):
+            # _apply_fix reports the read failure below
             context = replace(context, scenario_yaml=Path(apply).read_text(encoding="utf-8"))
-        except OSError:
-            pass  # _apply_fix reports the read failure below
     agent: _triage.TriageAgent
     if ai:
         from bajutsu.claude_triage import ClaudeTriageAgent
@@ -403,7 +443,7 @@ def triage(
             _verify_rerun(apply, app_name, backend, udid, config)
 
 
-def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> bool:
+def _apply_fix(result: _triage.Triage, target: str, write: bool) -> bool:
     """Render (and optionally write) the suggested fix. Returns True only when a file was written."""
     if result.fix is None:
         typer.echo("\nno applicable structured fix for this failure (advisory only).")
@@ -412,12 +452,16 @@ def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> bool:
         src = Path(target).read_text(encoding="utf-8")
     except OSError as exc:
         typer.echo(f"\ncannot read {target}: {exc}")
-        raise typer.Exit(2)
+        raise typer.Exit(2) from None
     patched, count = _triage.apply_fix(src, result.fix)
     if count == 0:
-        typer.echo(f"\nfix: {result.fix.summary} — `{result.fix.find}` not found in {target} (no-op)")
+        typer.echo(
+            f"\nfix: {result.fix.summary} — `{result.fix.find}` not found in {target} (no-op)"
+        )
         return False
-    typer.echo(f"\nfix: {result.fix.summary} ({count} occurrence{'' if count == 1 else 's'} in {target})")
+    typer.echo(
+        f"\nfix: {result.fix.summary} ({count} occurrence{'' if count == 1 else 's'} in {target})"
+    )
     typer.echo(_triage.diff_fix(src, patched, target))
     if not write:
         typer.echo("dry-run — re-run with --write to apply.")
@@ -430,7 +474,18 @@ def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> bool:
 def _rerun_command(target: str, app_name: str, backend: str, udid: str, config: str) -> list[str]:
     """The `bajutsu run` invocation that re-checks a patched scenario (kept --no-erase to reuse
     the current device state). Built as a list so it is easy to assert in tests."""
-    cmd = [sys.executable, "-m", "bajutsu", "run", target, "--app", app_name, "--config", config, "--no-erase"]
+    cmd = [
+        sys.executable,
+        "-m",
+        "bajutsu",
+        "run",
+        target,
+        "--app",
+        app_name,
+        "--config",
+        config,
+        "--no-erase",
+    ]
     if backend:
         cmd += ["--backend", backend]
     if udid:
@@ -443,7 +498,8 @@ def _verify_rerun(target: str, app_name: str, backend: str, udid: str, config: s
     typer.echo(f"\nre-running {target} to verify the fix ...")
     code = subprocess.call(cmd)
     typer.echo(
-        "fix verified — the scenario now passes." if code == 0
+        "fix verified — the scenario now passes."
+        if code == 0
         else "the scenario still fails after the fix; further diagnosis needed."
     )
 
@@ -478,7 +534,9 @@ def codegen(
 @app.command()
 def serve(
     port: int = typer.Option(8765, "--port"),
-    scenarios: str = typer.Option("demos/features/app/scenarios", "--scenarios", help="directory of scenario .yaml files"),
+    scenarios: str = typer.Option(
+        "demos/features/app/scenarios", "--scenarios", help="directory of scenario .yaml files"
+    ),
     config: str = typer.Option(DEFAULT_CONFIG, "--config"),
     runs: str = typer.Option("runs", "--runs", help="runs root to serve reports from"),
     host: str = typer.Option("127.0.0.1", "--host"),

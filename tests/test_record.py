@@ -61,10 +61,12 @@ def test_record_produces_scenario() -> None:
             d.screen = nxt
 
     driver = FakeDriver([_el("go", "Go")], react=react)
-    agent = FakeAgent([
-        Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
-        Proposal(done=True, expect=[Assertion.model_validate({"exists": {"id": "done"}})]),
-    ])
+    agent = FakeAgent(
+        [
+            Proposal(step=Step.model_validate({"tap": {"id": "go"}})),
+            Proposal(done=True, expect=[Assertion.model_validate({"exists": {"id": "done"}})]),
+        ]
+    )
 
     scenario = record(driver, "reach done", agent, name="reach")
     assert scenario.name == "reach"
@@ -102,7 +104,9 @@ def test_record_streams_plan_and_feeds_it_to_the_agent() -> None:
 def test_record_without_a_planning_agent_still_works() -> None:
     """A fake agent with no `plan` method records exactly as before — planning is optional."""
     driver = FakeDriver([_el("go", "Go")])
-    agent = FakeAgent([Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)])
+    agent = FakeAgent(
+        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+    )
     scenario = record(driver, "x", agent)
     assert scenario.steps and scenario.steps[0].tap is not None and scenario.steps[0].tap.id == "go"
 
@@ -121,8 +125,13 @@ def test_record_respects_max_steps() -> None:
 
 
 def _vel(label: str | None, traits: list[str]) -> base.Element:
-    return {"identifier": None, "label": label, "traits": traits, "value": None,
-            "frame": (0.0, 0.0, 10.0, 10.0)}
+    return {
+        "identifier": None,
+        "label": label,
+        "traits": traits,
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
 
 
 def test_shows_app_ui_recognizes_label_only_screen() -> None:
@@ -152,13 +161,22 @@ def test_alert_guard_activity_is_reported() -> None:
         d.screen = [app, _vel("Get Started", ["button"])]  # dismissing reveals the app
         return AlertEvent(label="Not Now")
 
-    agent = FakeAgent([
-        Proposal(step=Step.model_validate({"tap": {"label": "Get Started"}})),
-        Proposal(done=True),
-    ])
+    agent = FakeAgent(
+        [
+            Proposal(step=Step.model_validate({"tap": {"label": "Get Started"}})),
+            Proposal(done=True),
+        ]
+    )
     msgs: list[str] = []
-    record(driver, "x", agent, clock=_NoSleep(), with_screenshot=False,
-           alert_guard=guard, report=msgs.append)
+    record(
+        driver,
+        "x",
+        agent,
+        clock=_NoSleep(),
+        with_screenshot=False,
+        alert_guard=guard,
+        report=msgs.append,
+    )
     joined = "\n".join(msgs)
     assert "blocked by a system prompt" in joined
     assert "dismissed a system alert" in joined and "Not Now" in joined
@@ -173,10 +191,12 @@ def test_alert_guard_not_fired_on_a_label_only_app() -> None:
         calls["n"] += 1
 
     driver = FakeDriver([_vel("Get Started", ["button"])])
-    agent = FakeAgent([
-        Proposal(step=Step.model_validate({"tap": {"label": "Get Started"}})),
-        Proposal(done=True),
-    ])
+    agent = FakeAgent(
+        [
+            Proposal(step=Step.model_validate({"tap": {"label": "Get Started"}})),
+            Proposal(done=True),
+        ]
+    )
     scenario = record(driver, "start", agent, alert_guard=guard)
     assert calls["n"] == 0  # the app showed actionable UI; the guard never had to fire
     assert scenario.steps and scenario.steps[0].tap is not None

@@ -39,5 +39,7 @@ def test_fake_backend_needs_nothing() -> None:
 
 
 def test_render_marks_pass_and_fail() -> None:
-    out = preflight.render(preflight.runnability("idb", which=_which({"xcrun"}), booted_count=lambda: 0))
+    out = preflight.render(
+        preflight.runnability("idb", which=_which({"xcrun"}), booted_count=lambda: 0)
+    )
     assert "✓ xcrun" in out and "✗ idb" in out
