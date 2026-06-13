@@ -27,7 +27,7 @@ targets:
       properties:
         UILaunchScreen:
           UIColorName: ""
-        CFBundleDisplayName: BajutsuSample
+        CFBundleDisplayName: Bajutsu Record
         UIRequiredDeviceCapabilities: [arm64]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
