@@ -1,0 +1,32 @@
+#!/bin/bash
+# Pre-push gate: run the same checks CI runs (ruff + mypy + pytest) so broken
+# code never reaches a shared branch. This is the local mirror of CI — keeping
+# the bar identical means "green locally" reliably predicts "green in CI", which
+# is what lets several people / agents push to parallel branches without breaking
+# each other's work.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# (Claude Code web sessions get this wired automatically by the SessionStart hook.)
+#
+# Bypass for a genuine emergency:   git push --no-verify
+set -euo pipefail
+
+# git feeds ref updates on stdin as: <local ref> <local oid> <remote ref> <remote oid>
+# A delete has an all-zero local oid. If every line being pushed is a delete (or
+# there's nothing to push), there's no code to verify — skip the gate.
+refs="$(cat || true)"
+if [ -z "$refs" ] || ! awk '$2 !~ /^0+$/ { found=1 } END { exit !found }' <<<"$refs"; then
+  exit 0
+fi
+
+echo "pre-push: running 'make check' (ruff + mypy + pytest)…" >&2
+
+if command -v make >/dev/null 2>&1; then
+  make check
+else
+  uv run --no-sync ruff check .
+  uv run --no-sync mypy bajutsu
+  uv run --no-sync pytest -q
+fi
+
+echo "pre-push: checks passed — pushing." >&2
