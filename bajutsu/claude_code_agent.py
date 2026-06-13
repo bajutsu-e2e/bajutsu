@@ -25,7 +25,13 @@ from collections.abc import Callable
 from typing import Any
 
 from bajutsu.agent import Observation, Proposal
-from bajutsu.claude_agent import SYSTEM_PROMPT, _render, proposal_from_call
+from bajutsu.claude_agent import (
+    PLAN_SYSTEM,
+    SYSTEM_PROMPT,
+    _render,
+    proposal_from_call,
+    steps_from_plan,
+)
 
 # The selector fragment shared by every action (mirrors the API agent's tool inputs).
 _TARGET_SCHEMA: dict[str, Any] = {
@@ -80,6 +86,18 @@ _STRUCTURED_NOTE = (
     "`text` for type_text; `timeout` for wait_for; `assertions` for finish)."
 )
 
+# The ordered, human-readable decomposition of the goal, emitted before the run starts.
+PLAN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"steps": {"type": "array", "items": {"type": "string"}}},
+    "required": ["steps"],
+}
+
+_PLAN_NOTE = (
+    "\n\nYou are running non-interactively. Do not use any tools or read any files. Emit exactly "
+    "one object whose `steps` is the ordered list of concrete, plain-language steps."
+)
+
 # A runner takes the argv and returns the CLI's stdout. Injectable for tests.
 Runner = Callable[[list[str]], str]
 
@@ -98,8 +116,12 @@ def _default_runner(cmd: list[str]) -> str:
     # into the authoring call. Auth and the user-level config still apply.
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=tempfile.gettempdir(),
-            env=_subscription_env(), timeout=180,
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=tempfile.gettempdir(),
+            env=_subscription_env(),
+            timeout=180,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(
@@ -120,12 +142,16 @@ class ClaudeCodeAgent:
         self._runner = runner or _default_runner
         self._binary = binary
 
-    def _command(self, prompt: str) -> list[str]:
+    def _command(self, prompt: str, schema: dict[str, Any], system: str) -> list[str]:
         cmd = [
-            self._binary, "-p",
-            "--output-format", "json",
-            "--json-schema", json.dumps(PROPOSAL_SCHEMA),
-            "--append-system-prompt", SYSTEM_PROMPT + _STRUCTURED_NOTE,
+            self._binary,
+            "-p",
+            "--output-format",
+            "json",
+            "--json-schema",
+            json.dumps(schema),
+            "--append-system-prompt",
+            system,
         ]
         if self._model:
             cmd += ["--model", self._model]
@@ -133,7 +159,8 @@ class ClaudeCodeAgent:
         return cmd
 
     def next_action(self, observation: Observation) -> Proposal:
-        stdout = self._runner(self._command(_render(observation)))
+        cmd = self._command(_render(observation), PROPOSAL_SCHEMA, SYSTEM_PROMPT + _STRUCTURED_NOTE)
+        stdout = self._runner(cmd)
         try:
             envelope = json.loads(stdout)
         except json.JSONDecodeError as exc:
@@ -144,3 +171,15 @@ class ClaudeCodeAgent:
         if not isinstance(out, dict) or not out.get("tool"):
             return Proposal(done=True, note="claude returned no structured action")
         return proposal_from_call(out["tool"], out)
+
+    def plan(self, goal: str) -> list[str]:
+        cmd = self._command(f"Goal: {goal}", PLAN_SCHEMA, PLAN_SYSTEM + _PLAN_NOTE)
+        stdout = self._runner(cmd)
+        try:
+            envelope = json.loads(stdout)
+        except json.JSONDecodeError:
+            return []  # planning is best-effort context, not required to record
+        out = envelope.get("structured_output")
+        if envelope.get("is_error") or not isinstance(out, dict):
+            return []
+        return steps_from_plan(out.get("steps"))

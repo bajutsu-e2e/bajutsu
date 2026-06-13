@@ -36,16 +36,14 @@ def test_inline_data_expands_per_row() -> None:
 
 
 def test_non_data_scenario_passes_through() -> None:
-    scns = load_scenarios(
-        "- name: s\n  steps:\n    - tap: { id: x }\n"
-    )
+    scns = load_scenarios("- name: s\n  steps:\n    - tap: { id: x }\n")
     out = expand_data(scns, _no_csv)
     assert len(out) == 1 and out[0] is scns[0]
 
 
 def test_data_file_uses_resolver() -> None:
     scns = load_scenarios(
-        "- name: s\n  dataFile: cases.csv\n  steps:\n    - tap: { id: \"${row.target}\" }\n"
+        '- name: s\n  dataFile: cases.csv\n  steps:\n    - tap: { id: "${row.target}" }\n'
     )
     rows = read_csv("target\nbtn.a\nbtn.b\n")
     out = expand_data(scns, lambda ref: rows if ref == "cases.csv" else [])

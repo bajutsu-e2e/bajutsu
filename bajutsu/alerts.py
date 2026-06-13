@@ -51,7 +51,7 @@ def _screenshot_png(driver: base.Driver) -> bytes | None:
         data = Path(path).read_bytes()
         Path(path).unlink(missing_ok=True)
         return data or None
-    except Exception:  # noqa: BLE001 — a missing screenshot just means "cannot guard"
+    except Exception:
         return None
 
 
@@ -82,7 +82,7 @@ class SystemAlertGuard:
             return None
         try:
             decision = self._locator.locate(png, self._instruction)
-        except Exception:  # noqa: BLE001 — locator unavailable (no API key / transient error)
+        except Exception:
             return None  # best-effort: the guard is on by default, so it must never crash a run
         if not decision.present:
             return None

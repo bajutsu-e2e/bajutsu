@@ -12,21 +12,41 @@ def test_command_builders() -> None:
     assert env.erase_cmd("U") == ["xcrun", "simctl", "erase", "U"]
     assert env.boot_cmd("U") == ["xcrun", "simctl", "boot", "U"]
     assert env.openurl_cmd("U", "app://x") == ["xcrun", "simctl", "openurl", "U", "app://x"]
-    assert env.screenshot_cmd("U", "/p.png") == ["xcrun", "simctl", "io", "U", "screenshot", "/p.png"]
+    assert env.screenshot_cmd("U", "/p.png") == [
+        "xcrun",
+        "simctl",
+        "io",
+        "U",
+        "screenshot",
+        "/p.png",
+    ]
     assert env.launch_cmd("U", "com.x", ["-flag", "1"]) == [
-        "xcrun", "simctl", "launch", "--terminate-running-process", "U", "com.x", "-flag", "1",
+        "xcrun",
+        "simctl",
+        "launch",
+        "--terminate-running-process",
+        "U",
+        "com.x",
+        "-flag",
+        "1",
     ]
     assert env.list_devices_cmd() == ["xcrun", "simctl", "list", "devices", "available", "-j"]
     assert env.bootstatus_cmd("U") == ["xcrun", "simctl", "bootstatus", "U", "-b"]
     assert env.install_cmd("U", "/p.app") == ["xcrun", "simctl", "install", "U", "/p.app"]
     assert env.uninstall_cmd("U", "com.x") == ["xcrun", "simctl", "uninstall", "U", "com.x"]
     assert env.get_app_container_cmd("U", "com.x") == [
-        "xcrun", "simctl", "get_app_container", "U", "com.x", "app",
+        "xcrun",
+        "simctl",
+        "get_app_container",
+        "U",
+        "com.x",
+        "app",
     ]
 
 
 def test_uninstall_is_idempotent() -> None:
     """uninstall() of an app that isn't installed is a no-op, not a crash."""
+
     def absent(args: list[str], e: object = None) -> str:
         raise subprocess.CalledProcessError(2, args, stderr="not installed")
 
@@ -49,14 +69,16 @@ def test_is_installed_reflects_get_app_container() -> None:
 def test_booted_udids_parses_simctl() -> None:
     import json
 
-    payload = json.dumps({
-        "devices": {
-            "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
-                {"udid": "AAA", "state": "Booted"},
-                {"udid": "BBB", "state": "Shutdown"},
-            ],
+    payload = json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+                    {"udid": "AAA", "state": "Booted"},
+                    {"udid": "BBB", "state": "Shutdown"},
+                ],
+            }
         }
-    })
+    )
     assert env.booted_udids(run=lambda args, e=None: payload) == ["AAA"]
 
     def boom(args: list[str], e: object = None) -> str:
@@ -73,14 +95,16 @@ def test_runtime_label_humanizes_identifier() -> None:
 def test_device_catalog_maps_udid_to_model_and_os() -> None:
     import json
 
-    payload = json.dumps({
-        "devices": {
-            "com.apple.CoreSimulator.SimRuntime.iOS-17-2": [
-                {"udid": "AAA", "name": "iPhone 15", "isAvailable": True},
-                {"name": "no-udid-skipped"},
-            ],
+    payload = json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-17-2": [
+                    {"udid": "AAA", "name": "iPhone 15", "isAvailable": True},
+                    {"name": "no-udid-skipped"},
+                ],
+            }
         }
-    })
+    )
     catalog = env.device_catalog(run=lambda args, e=None: payload)
     assert catalog == {"AAA": {"name": "iPhone 15", "runtime": "iOS 17.2"}}
 
@@ -113,7 +137,13 @@ def test_env_uses_injected_runner() -> None:
 
     assert calls[0] == (["xcrun", "simctl", "erase", "UDID"], None)
     assert calls[1][0] == [
-        "xcrun", "simctl", "launch", "--terminate-running-process", "UDID", "com.x", "-a",
+        "xcrun",
+        "simctl",
+        "launch",
+        "--terminate-running-process",
+        "UDID",
+        "com.x",
+        "-a",
     ]
     assert calls[1][1] == {"SIMCTL_CHILD_K": "v"}
     assert calls[2] == (["xcrun", "simctl", "openurl", "UDID", "app://settings"], None)

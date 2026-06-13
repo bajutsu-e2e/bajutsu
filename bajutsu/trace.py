@@ -42,7 +42,7 @@ def _at(value: Any) -> float:
 
 def _step_event(step: dict[str, Any]) -> tuple[float, str]:
     mark = "✓" if step.get("ok") else "✗"
-    desc = f"{mark} {str(step.get('action', '')):<9}"
+    desc = f"{mark} {step.get('action', '')!s:<9}"
     dur = step.get("duration_s")
     if isinstance(dur, (int, float)) and not isinstance(dur, bool):
         desc += f"  ({dur:.2f}s)"
@@ -83,7 +83,7 @@ def _scenario_lines(run_dir: Path, scenario: dict[str, Any]) -> list[str]:
         lines.append("  expectations:")
         for e in expects:
             mark = "✓" if e.get("ok") else "✗"
-            line = f"    {mark} {str(e.get('kind', '')):<8} {e.get('detail', '')}"
+            line = f"    {mark} {e.get('kind', '')!s:<8} {e.get('detail', '')}"
             if not e.get("ok") and e.get("reason"):
                 line += f"   ✗ {e['reason']}"
             lines.append(line)
@@ -112,7 +112,10 @@ def trace_run(run_dir: Path, scenario_filter: str | None = None) -> str:
     if not isinstance(manifest, dict):
         return f"no readable manifest.json in {run_dir}"
     grade = "PASS" if manifest.get("ok") else "FAIL"
-    out = [f"bajutsu trace · run {manifest.get('runId', '')} · {grade} · driver: {manifest.get('backend', '')}", ""]
+    out = [
+        f"bajutsu trace · run {manifest.get('runId', '')} · {grade} · driver: {manifest.get('backend', '')}",
+        "",
+    ]
     for scenario in manifest.get("scenarios") or []:
         name = str(scenario.get("scenario", ""))
         if scenario_filter and scenario_filter.lower() not in name.lower():

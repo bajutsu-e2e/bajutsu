@@ -9,7 +9,6 @@ from bajutsu.orchestrator import run_scenario
 from bajutsu.redaction import PLACEHOLDER, Redactor
 from bajutsu.scenario import Redact, Scenario, Step, TypeText
 
-
 # --- config ---
 
 

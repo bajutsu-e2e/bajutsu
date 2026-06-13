@@ -36,22 +36,27 @@ def test_redact_text_masks_known_keys() -> None:
 
 def test_redact_exchange_masks_headers_url_and_body() -> None:
     red = _r(headers=["Authorization"], fields=["token", "password"])
-    ex = red.redact_exchange({
-        "method": "POST",
-        "url": "https://api.example.com/login?token=qstring",
-        "requestHeaders": {"Authorization": "Bearer abc.def", "Accept": "application/json"},
-        "requestBody": '{"name":"bajutsu","password":"hunter2"}',
-        "responseBody": '{"token":"resp-secret"}',
-    })
+    ex = red.redact_exchange(
+        {
+            "method": "POST",
+            "url": "https://api.example.com/login?token=qstring",
+            "requestHeaders": {"Authorization": "Bearer abc.def", "Accept": "application/json"},
+            "requestBody": '{"name":"bajutsu","password":"hunter2"}',
+            "responseBody": '{"token":"resp-secret"}',
+        }
+    )
     # Header masked whole by name; non-secret header untouched.
     assert ex["requestHeaders"]["Authorization"] == PLACEHOLDER
     assert ex["requestHeaders"]["Accept"] == "application/json"
     # Body fields and query params scrubbed (a whole-JSON text pass would miss escaped bodies).
     assert "hunter2" not in ex["requestBody"] and "resp-secret" not in ex["responseBody"]
     assert "qstring" not in ex["url"]
-    assert "bajutsu" in ex["requestBody"]   # non-secret field kept
+    assert "bajutsu" in ex["requestBody"]  # non-secret field kept
     # No-op when unconfigured.
-    assert Redactor(Redact()).redact_exchange({"requestBody": '{"password":"x"}'})["requestBody"] == '{"password":"x"}'
+    assert (
+        Redactor(Redact()).redact_exchange({"requestBody": '{"password":"x"}'})["requestBody"]
+        == '{"password":"x"}'
+    )
 
 
 def test_redactor_inactive_when_unconfigured() -> None:
@@ -61,26 +66,36 @@ def test_redactor_inactive_when_unconfigured() -> None:
 
 
 def _el(identifier: str, label: str, value: str) -> base.Element:
-    return {"identifier": identifier, "label": label, "value": value, "traits": [], "frame": (0, 0, 1, 1)}
+    return {
+        "identifier": identifier,
+        "label": label,
+        "value": value,
+        "traits": [],
+        "frame": (0, 0, 1, 1),
+    }
 
 
 def test_redact_elements_masks_labeled_value() -> None:
     red = _r(labels=["Password"], fields=["token"])
-    els = red.redact_elements([
-        _el("auth.password", "Password", "hunter2"),
-        _el("note", "Note", "auth token=xyz here"),
-        _el("plain", "Plain", "nothing secret"),
-    ])
-    assert els[0]["value"] == PLACEHOLDER           # masked by label
-    assert "xyz" not in (els[1]["value"] or "")     # embedded secret scrubbed
-    assert els[2]["value"] == "nothing secret"      # untouched
+    els = red.redact_elements(
+        [
+            _el("auth.password", "Password", "hunter2"),
+            _el("note", "Note", "auth token=xyz here"),
+            _el("plain", "Plain", "nothing secret"),
+        ]
+    )
+    assert els[0]["value"] == PLACEHOLDER  # masked by label
+    assert "xyz" not in (els[1]["value"] or "")  # embedded secret scrubbed
+    assert els[2]["value"] == "nothing secret"  # untouched
 
 
 def test_filesink_redacts_elements(tmp_path: Path) -> None:
     sink = FileSink(tmp_path / "run", redact=Redact(labels=["Password"]))
     driver = FakeDriver([_el("auth.password", "Password", "hunter2")])
     sink.capture(driver, "00-s/step0", ["elements"])
-    data = json.loads((tmp_path / "run" / "00-s" / "step0" / "elements.json").read_text(encoding="utf-8"))
+    data = json.loads(
+        (tmp_path / "run" / "00-s" / "step0" / "elements.json").read_text(encoding="utf-8")
+    )
     assert data[0]["value"] == PLACEHOLDER
 
 
@@ -103,5 +118,7 @@ def test_filesink_no_redact_leaves_files_untouched(tmp_path: Path) -> None:
     (run / "00-s").mkdir(parents=True)
     log = run / "00-s" / "device.log"
     log.write_text("token=secret\n", encoding="utf-8")
-    FileSink(run).finish_scenario_intervals("00-s", [intervals.Interval(kind="deviceLog", path=log)])
+    FileSink(run).finish_scenario_intervals(
+        "00-s", [intervals.Interval(kind="deviceLog", path=log)]
+    )
     assert log.read_text(encoding="utf-8") == "token=secret\n"  # no redact config -> unchanged

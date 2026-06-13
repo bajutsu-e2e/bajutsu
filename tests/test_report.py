@@ -31,11 +31,13 @@ def _passing() -> RunResult:
     driver = FakeDriver([_el("home.title", "H"), _el("a", "A", ["button"])])
     return run_scenario(
         driver,
-        Scenario.model_validate({
-            "name": "s1",
-            "steps": [{"tap": {"id": "a"}}],
-            "expect": [{"exists": {"id": "home.title"}}],
-        }),
+        Scenario.model_validate(
+            {
+                "name": "s1",
+                "steps": [{"tap": {"id": "a"}}],
+                "expect": [{"exists": {"id": "home.title"}}],
+            }
+        ),
     )
 
 
@@ -43,11 +45,13 @@ def _failing() -> RunResult:
     driver = FakeDriver([_el("a", "A", ["button"])])
     return run_scenario(
         driver,
-        Scenario.model_validate({
-            "name": "s2",
-            "steps": [{"tap": {"id": "a"}}],
-            "expect": [{"exists": {"id": "missing"}}],
-        }),
+        Scenario.model_validate(
+            {
+                "name": "s2",
+                "steps": [{"tap": {"id": "a"}}],
+                "expect": [{"exists": {"id": "missing"}}],
+            }
+        ),
     )
 
 
@@ -113,8 +117,10 @@ def test_html_report_shows_source_filename() -> None:
 
 def test_html_report_shows_descriptions() -> None:
     definition = {"name": "s2", "description": "what this scenario checks", "steps": []}
-    out = html_report("run9", [_failing()], definitions=[definition], description="what this file covers")
-    assert 'class="fdesc">what this file covers' in out      # file-level description in the header
+    out = html_report(
+        "run9", [_failing()], definitions=[definition], description="what this file covers"
+    )
+    assert 'class="fdesc">what this file covers' in out  # file-level description in the header
     assert 'class="sdesc">what this scenario checks' in out  # per-scenario description in the card
     # both omitted when absent
     assert 'class="fdesc"' not in html_report("run9", [_failing()])
@@ -162,7 +168,7 @@ def test_expectations_request_kind_rendered() -> None:
         network=lambda: [NetworkExchange(method="GET", path="/x", status=200)],
     )
     out = html_report("run9", [result], definitions=[definition])
-    assert 'act-assert">request' in out   # the kind pill, not "?"
+    assert 'act-assert">request' in out  # the kind pill, not "?"
     assert 'act-assert">?' not in out
     assert '<span class="tk kw">GET</span>' in out
     assert 'status == <span class="tk num">200</span>' in out
@@ -216,7 +222,8 @@ def test_html_environment_tab_shows_simulator() -> None:
 def test_html_preconditions_render_in_result_tab() -> None:
     # Preconditions render in the Result tab (the steps panel), ahead of the Environment tab.
     definition = {
-        "name": "s1", "steps": [{"tap": {"id": "a"}}],
+        "name": "s1",
+        "steps": [{"tap": {"id": "a"}}],
         "preconditions": {"locale": "ja_JP", "launchEnv": {"SAMPLE_SEED": "5"}},
     }
     out = html_report("run9", [_passing()], definitions=[definition])
@@ -240,10 +247,15 @@ def test_html_shows_dismissed_system_alert() -> None:
     # A step that only passed after the guard cleared a system prompt shows the dismissal
     # as a sub-row, so a retried step is not silently rendered as "just passing".
     r = RunResult(
-        scenario="s1", ok=True,
-        steps=[StepOutcome(index=0, action="tap", ok=True, started_at=0.0,
-                           alerts=[AlertEvent(label="Not Now")])],
-        expect_results=[], artifacts=[],
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0, action="tap", ok=True, started_at=0.0, alerts=[AlertEvent(label="Not Now")]
+            )
+        ],
+        expect_results=[],
+        artifacts=[],
     )
     out = html_report("run1", [r], definitions=[{"name": "s1", "steps": [{"tap": {"id": "a"}}]}])
     assert "class='alertrow'" in out
@@ -270,7 +282,8 @@ def test_html_shows_expect_phase_dismissed_alert() -> None:
 def test_manifest_records_dismissed_alerts() -> None:
     # asdict captures the dismissals so the manifest (the source of truth) carries them too.
     r = RunResult(
-        scenario="s1", ok=True,
+        scenario="s1",
+        ok=True,
         steps=[StepOutcome(index=0, action="tap", ok=True, alerts=[AlertEvent(label="Not Now")])],
         expect_alerts=[AlertEvent(label="Allow")],
     )
@@ -286,15 +299,17 @@ def test_screenshot_opens_element_viewer_and_arrows_navigate_steps() -> None:
     out = html_report("run1", [_passing()])
     assert 'id="lb"' not in out and "lb-nav" not in out and "openLightbox" not in out
     assert "tvOpen(shot.closest('td.ev'))" in out  # the screenshot opens the element viewer
-    assert "ArrowLeft" in out and "ArrowRight" in out and "tvHosts" in out  # arrow keys walk the steps
+    assert (
+        "ArrowLeft" in out and "ArrowRight" in out and "tvHosts" in out
+    )  # arrow keys walk the steps
 
 
 def test_step_click_seeks_without_autoplay() -> None:
     # Clicking a step seeks the recording but never starts playback on a paused video.
     # Playback is started only from the explicit play/pause control, never the seek path.
     out = html_report("run9", [_passing()])
-    assert "v.currentTime = t;" in out          # step-row click seeks
-    assert "if(v.paused) v.play();" in out      # play() is reachable only via the button
+    assert "v.currentTime = t;" in out  # step-row click seeks
+    assert "if(v.paused) v.play();" in out  # play() is reachable only via the button
     # The seek handler stays seek-only (it has no .play() of its own).
     assert "Seek only" in out
 
@@ -347,7 +362,9 @@ def test_merged_steps_show_rich_definition() -> None:
     assert "<th>#</th><th>result</th><th>action</th><th>detail</th>" in out
     # Selectors and string literals are tokenized (distinct from the action badges).
     assert '<span class="tk id">#counter.increment</span>' in out
-    assert '<span class="tk str">“Item 3”</span> into <span class="tk id">#home.search</span>' in out
+    assert (
+        '<span class="tk str">“Item 3”</span> into <span class="tk id">#home.search</span>' in out
+    )
     assert "until settled (≤" in out and '<span class="tk num">3s</span>' in out
     # Preconditions are a collapsible table, not chips.
     assert '<details class="pre"' in out
@@ -400,7 +417,10 @@ def test_scenario_rich_yaml_toggle() -> None:
 
 def test_html_embeds_scenario_video() -> None:
     r = RunResult(
-        scenario="s1", ok=True, steps=[], expect_results=[],
+        scenario="s1",
+        ok=True,
+        steps=[],
+        expect_results=[],
         artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
     )
     out = html_report("run9", [r])
@@ -413,12 +433,17 @@ def test_html_embeds_scenario_video() -> None:
 def test_html_interactive_structure(tmp_path: Path) -> None:
     sid = "00-s1"
     (tmp_path / sid).mkdir(parents=True)
-    (tmp_path / sid / "device.log").write_text("line one\nERROR boom\nline three\n", encoding="utf-8")
+    (tmp_path / sid / "device.log").write_text(
+        "line one\nERROR boom\nline three\n", encoding="utf-8"
+    )
     (tmp_path / sid / "appTrace.json").write_text(
         '[{"name":"reindex","begin":"t0","end":"t1","durationMs":12.3}]', encoding="utf-8"
     )
     r = RunResult(
-        scenario="s1", ok=True, steps=[], expect_results=[],
+        scenario="s1",
+        ok=True,
+        steps=[],
+        expect_results=[],
         artifacts=[
             Artifact(f"{sid}/scenario.mp4", "video", "simctl"),
             Artifact(f"{sid}/device.log", "deviceLog", "simctl"),
@@ -430,7 +455,7 @@ def test_html_interactive_structure(tmp_path: Path) -> None:
     assert '<details class="scn"' in out
     assert 'data-tab="log"' in out and 'data-tab="trace"' in out
     assert 'class="logfilter"' in out
-    assert 'onlyFailures(this)' in out
+    assert "onlyFailures(this)" in out
     # log embedded inline (filterable without a server) and trace rendered as a table
     assert "ERROR boom" in out
     assert "reindex" in out and "12.3" in out
@@ -446,7 +471,10 @@ def test_html_network_tab(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     r = RunResult(
-        scenario="s1", ok=True, steps=[], expect_results=[],
+        scenario="s1",
+        ok=True,
+        steps=[],
+        expect_results=[],
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
     out = html_report("run1", [r], tmp_path)
@@ -454,7 +482,7 @@ def test_html_network_tab(tmp_path: Path) -> None:
     # path / status, plus the headers and (HTML-escaped) body when expanded.
     assert 'data-tab="net"' in out
     assert "captured by BajutsuKit" in out
-    assert 'class="nxat muted"' in out and ">0.8s</span>" in out   # the request time on the row
+    assert 'class="nxat muted"' in out and ">0.8s</span>" in out  # the request time on the row
     assert 'class="nxm">GET' in out
     assert "/items" in out and 'nxs ok">200' in out
     assert "Content-Type" in out and "&lt;html&gt;hi&lt;/html&gt;" in out
@@ -465,8 +493,8 @@ def test_html_network_tab(tmp_path: Path) -> None:
 def test_html_dark_mode_and_log_highlight() -> None:
     out = html_report("run9", [_passing()])
     assert "@media (prefers-color-scheme: dark)" in out  # dark-mode CSS is bundled
-    assert ".log mark{" in out                           # highlight style for log matches
-    assert "'<mark>'" in out                              # the log filter wraps matches in <mark>
+    assert ".log mark{" in out  # highlight style for log matches
+    assert "'<mark>'" in out  # the log filter wraps matches in <mark>
 
 
 def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
@@ -478,9 +506,13 @@ def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
         '{"method":"POST","url":"https://other.com/log","status":204,"startedAt":1.2}]',
         encoding="utf-8",
     )
-    definition = {"name": "s1", "steps": [{"tap": {"id": "a"}}, {"wait": {"until": "settled", "timeout": 3}}]}
+    definition = {
+        "name": "s1",
+        "steps": [{"tap": {"id": "a"}}, {"wait": {"until": "settled", "timeout": 3}}],
+    }
     r = RunResult(
-        scenario="s1", ok=True,
+        scenario="s1",
+        ok=True,
         steps=[
             StepOutcome(index=0, action="tap", ok=True, started_at=0.0),
             StepOutcome(index=1, action="wait", ok=True, started_at=1.0),
@@ -498,7 +530,12 @@ def test_html_exchanges_interleaved_into_steps(tmp_path: Path) -> None:
     assert 'class="nxk">headers' in out and "Content-Type" in out
     assert 'class="nxk">body' in out and "hello-body" in out
     # Time order: tap(0.0) -> GET request(0.5) -> wait(1.0) -> POST request(1.2).
-    assert out.index(">#a<") < out.index('act-net">GET') < out.index('act-wait">wait') < out.index('act-net">POST')
+    assert (
+        out.index(">#a<")
+        < out.index('act-net">GET')
+        < out.index('act-wait">wait')
+        < out.index('act-net">POST')
+    )
 
 
 def test_html_exchanges_filtered_by_domain(tmp_path: Path) -> None:
@@ -510,11 +547,13 @@ def test_html_exchanges_filtered_by_domain(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     definition = {
-        "name": "s1", "steps": [{"tap": {"id": "a"}}],
+        "name": "s1",
+        "steps": [{"tap": {"id": "a"}}],
         "network": {"filter": {"domains": ["example.com"]}},
     }
     r = RunResult(
-        scenario="s1", ok=True,
+        scenario="s1",
+        ok=True,
         steps=[StepOutcome(index=0, action="tap", ok=True, started_at=0.0)],
         expect_results=[],
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
@@ -534,18 +573,26 @@ def test_html_wait_request_detail_is_rich() -> None:
         "name": "s1",
         "steps": [
             {"tap": {"id": "net.fetch"}},
-            {"wait": {"until": {"request": {"method": "GET", "url": "https://example.com",
-                                            "status": 200}}, "timeout": 8}},
+            {
+                "wait": {
+                    "until": {
+                        "request": {"method": "GET", "url": "https://example.com", "status": 200}
+                    },
+                    "timeout": 8,
+                }
+            },
         ],
         "expect": [],
     }
     r = RunResult(
-        scenario="s1", ok=True,
+        scenario="s1",
+        ok=True,
         steps=[
             StepOutcome(index=0, action="tap", ok=True, started_at=0.0),
             StepOutcome(index=1, action="wait", ok=True, started_at=0.1),
         ],
-        expect_results=[], artifacts=[],
+        expect_results=[],
+        artifacts=[],
     )
     out = html_report("run1", [r], definitions=[definition])
     assert "until request" in out
@@ -557,7 +604,8 @@ def test_html_wait_request_detail_is_rich() -> None:
 
 def test_html_step_rows_carry_video_offset() -> None:
     r = RunResult(
-        scenario="s1", ok=True,
+        scenario="s1",
+        ok=True,
         steps=[
             StepOutcome(index=0, action="tap", ok=True, duration_s=0.2, started_at=0.0),
             StepOutcome(index=1, action="wait", ok=True, duration_s=1.1, started_at=1.5),
@@ -576,14 +624,22 @@ def test_html_step_rows_carry_video_offset() -> None:
 
 def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     r = RunResult(
-        scenario="s1", ok=True,
+        scenario="s1",
+        ok=True,
         steps=[
-            StepOutcome(index=0, action="tap", ok=True, started_at=0.0, artifacts=[
-                Artifact("00-s1/step0/after.png", "screenshot", "driver"),
-                Artifact("00-s1/step0/elements.json", "elements", "driver"),
-            ]),
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                started_at=0.0,
+                artifacts=[
+                    Artifact("00-s1/step0/after.png", "screenshot", "driver"),
+                    Artifact("00-s1/step0/elements.json", "elements", "driver"),
+                ],
+            ),
         ],
-        expect_results=[], artifacts=[],
+        expect_results=[],
+        artifacts=[],
     )
     step_dir = tmp_path / "00-s1" / "step0"
     step_dir.mkdir(parents=True)
@@ -610,14 +666,22 @@ def test_html_tree_rows_carry_frame_for_screenshot_highlight(tmp_path: Path) -> 
     # the viewer can highlight the hovered element's location on the screenshot.
     el = {**_el("home.cta", "Buy", ["button"]), "frame": (12.0, 40.0, 100.0, 36.0)}
     r = RunResult(
-        scenario="s1", ok=True,
+        scenario="s1",
+        ok=True,
         steps=[
-            StepOutcome(index=0, action="tap", ok=True, started_at=0.0, artifacts=[
-                Artifact("00-s1/step0/after.png", "screenshot", "driver"),
-                Artifact("00-s1/step0/elements.json", "elements", "driver"),
-            ]),
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                started_at=0.0,
+                artifacts=[
+                    Artifact("00-s1/step0/after.png", "screenshot", "driver"),
+                    Artifact("00-s1/step0/elements.json", "elements", "driver"),
+                ],
+            ),
         ],
-        expect_results=[], artifacts=[],
+        expect_results=[],
+        artifacts=[],
     )
     step_dir = tmp_path / "00-s1" / "step0"
     step_dir.mkdir(parents=True)
@@ -633,13 +697,21 @@ def test_html_tree_rows_carry_frame_for_screenshot_highlight(tmp_path: Path) -> 
 def test_html_tree_falls_back_to_link_without_run_dir() -> None:
     # Structure-only render (no run_dir → no element data to embed): keep a link.
     r = RunResult(
-        scenario="s1", ok=True,
+        scenario="s1",
+        ok=True,
         steps=[
-            StepOutcome(index=0, action="tap", ok=True, started_at=0.0, artifacts=[
-                Artifact("00-s1/step0/elements.json", "elements", "driver"),
-            ]),
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                started_at=0.0,
+                artifacts=[
+                    Artifact("00-s1/step0/elements.json", "elements", "driver"),
+                ],
+            ),
         ],
-        expect_results=[], artifacts=[],
+        expect_results=[],
+        artifacts=[],
     )
     out = html_report("run1", [r])
     assert 'href="00-s1/step0/elements.json"' in out

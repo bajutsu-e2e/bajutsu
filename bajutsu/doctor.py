@@ -37,8 +37,8 @@ class Score:
     duplicate_ids: int
     grade: str  # "Ready" | "Partial" | "Blocked"
     missing_id: list[base.Element]  # actionable elements without an id
-    off_namespace: list[str]        # ids whose first segment is not a declared namespace
-    duplicates: list[str]           # ids that appear 2+ times on the screen
+    off_namespace: list[str]  # ids whose first segment is not a declared namespace
+    duplicates: list[str]  # ids that appear 2+ times on the screen
 
 
 def _is_actionable(el: base.Element) -> bool:

@@ -84,11 +84,16 @@ def test_wait_proposal() -> None:
 
 
 def test_finish_proposal_with_assertions() -> None:
-    block = _Block("finish", {"assertions": [
-        {"id": "home.title", "check": "exists"},
-        {"id": "counter", "check": "valueEquals", "text": "3"},
-        {"id": "spinner", "check": "notExists"},
-    ]})
+    block = _Block(
+        "finish",
+        {
+            "assertions": [
+                {"id": "home.title", "check": "exists"},
+                {"id": "counter", "check": "valueEquals", "text": "3"},
+                {"id": "spinner", "check": "notExists"},
+            ]
+        },
+    )
     proposal = ClaudeAgent(client=FakeClient(block)).next_action(_obs())
     assert proposal.done is True
     assert proposal.expect[0].exists is not None
@@ -134,6 +139,9 @@ def test_claude_agent_drives_record() -> None:
 
     driver = FakeDriver([_el("go", "Go")], react=react)
     client = FakeClient(
+        _Block(
+            "plan", {"steps": ["Tap Go", "Confirm Done is shown"]}
+        ),  # the up-front decomposition
         _Block("tap", {"id": "go"}),
         _Block("finish", {"assertions": [{"id": "done", "check": "exists"}]}),
     )
@@ -145,17 +153,47 @@ def test_claude_agent_drives_record() -> None:
     assert load_scenarios(dump_scenarios([scenario]))[0].name == "reach"
 
 
+def test_plan_decomposes_goal_into_steps() -> None:
+    client = FakeClient(
+        _Block("plan", {"steps": ["Tap Get Started", " ", "Confirm home is shown"]})
+    )
+    steps = ClaudeAgent(client=client).plan("sign in")
+    assert steps == ["Tap Get Started", "Confirm home is shown"]  # blanks dropped, order kept
+    call = client.calls[0]
+    assert call["tool_choice"] == {"type": "tool", "name": "plan"}  # the plan call is forced
+    assert {t["name"] for t in call["tools"]} == {"plan"}
+
+
+def test_plan_is_rendered_into_the_turn_prompt() -> None:
+    from bajutsu.claude_agent import _render
+
+    obs = Observation(
+        goal="g", screen=[_el("a", "A")], history=[], plan=["First do X", "Then do Y"]
+    )
+    text = _render(obs)
+    assert "Planned steps" in text and "1. First do X" in text and "2. Then do Y" in text
+
+
 # --- authoring against an app with no ids and no values (label / value / traits) ---
 
 
 def _vel(label: str | None, traits: list[str], value: str | None = None) -> base.Element:
     """A value-/id-less element: only a label (maybe), traits, and an auto placeholder value."""
-    return {"identifier": None, "label": label, "traits": traits, "value": value,
-            "frame": (0.0, 0.0, 10.0, 10.0)}
+    return {
+        "identifier": None,
+        "label": label,
+        "traits": traits,
+        "value": value,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
 
 
 def test_tap_by_label_when_no_id() -> None:
-    step = ClaudeAgent(client=FakeClient(_Block("tap", {"label": "Get Started"}))).next_action(_obs()).step
+    step = (
+        ClaudeAgent(client=FakeClient(_Block("tap", {"label": "Get Started"})))
+        .next_action(_obs())
+        .step
+    )
     assert step is not None and step.tap is not None
     assert step.tap.id is None and step.tap.label == "Get Started"
 
@@ -169,13 +207,19 @@ def test_type_into_field_by_value_and_traits() -> None:
 
 
 def test_tap_by_traits_and_index() -> None:
-    step = ClaudeAgent(client=FakeClient(_Block("tap", {"traits": ["textField"], "index": 1}))).next_action(_obs()).step
+    step = (
+        ClaudeAgent(client=FakeClient(_Block("tap", {"traits": ["textField"], "index": 1})))
+        .next_action(_obs())
+        .step
+    )
     assert step is not None and step.tap is not None
     assert step.tap.traits == ["textField"] and step.tap.index == 1
 
 
 def test_finish_label_contains_for_valueless_counter() -> None:
-    block = _Block("finish", {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]})
+    block = _Block(
+        "finish", {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]}
+    )
     proposal = ClaudeAgent(client=FakeClient(block)).next_action(_obs())
     assert proposal.done is True
     assert proposal.expect[0].label is not None
@@ -195,12 +239,27 @@ def test_authored_valueless_selectors_resolve_uniquely() -> None:
         _vel(None, ["textField"], value="Password"),
     ]
     plus = ClaudeAgent(client=FakeClient(_Block("tap", {"label": "+"}))).next_action(_obs()).step
-    email = ClaudeAgent(client=FakeClient(
-        _Block("type_text", {"value": "Email", "traits": ["textField"], "text": "x"})
-    )).next_action(_obs()).step
-    count = ClaudeAgent(client=FakeClient(
-        _Block("finish", {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]})
-    )).next_action(_obs()).expect[0]
+    email = (
+        ClaudeAgent(
+            client=FakeClient(
+                _Block("type_text", {"value": "Email", "traits": ["textField"], "text": "x"})
+            )
+        )
+        .next_action(_obs())
+        .step
+    )
+    count = (
+        ClaudeAgent(
+            client=FakeClient(
+                _Block(
+                    "finish",
+                    {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]},
+                )
+            )
+        )
+        .next_action(_obs())
+        .expect[0]
+    )
 
     assert plus is not None and plus.tap is not None
     assert base.resolve_unique(screen, plus.tap.as_selector())["label"] == "+"
