@@ -1,0 +1,268 @@
+"""Pure helpers and CLI command builders for ``bajutsu serve``.
+
+These functions are free of server state and fully unit-testable on their own.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from bajutsu import env
+from bajutsu.config import load_config, resolve
+from bajutsu.scenario import load_scenario_file
+
+# --- query helpers ---
+
+
+def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
+    """Every ``*.yaml`` under *scenarios_dir*: a path the run command can take, the file-level
+    ``description``, and each scenario's name + description (for the UI)."""
+    out: list[dict[str, Any]] = []
+    for path in sorted(scenarios_dir.glob("*.yaml")):
+        description: str | None = None
+        scenarios: list[dict[str, Any]] = []
+        try:
+            sf = load_scenario_file(path.read_text(encoding="utf-8"))
+            description = sf.description
+            scenarios = [{"name": s.name, "description": s.description} for s in sf.scenarios]
+        except (OSError, ValueError):
+            pass
+        out.append(
+            {
+                "file": path.name,
+                "path": str(path),
+                "description": description,
+                "scenarios": scenarios,
+                "names": [s["name"] for s in scenarios],
+            }
+        )
+    return out
+
+
+def list_apps(config_path: Path) -> list[str]:
+    try:
+        return sorted(load_config(config_path.read_text(encoding="utf-8")).apps)
+    except (OSError, ValueError):
+        return []
+
+
+def app_build_info(config_path: Path, app: str) -> tuple[str | None, str | None]:
+    """``(app_path, build)`` for *app* from config — the built ``.app`` path and the shell
+    command that builds it.  Either may be ``None`` (unset or any load/resolve error); the run
+    then proceeds without an on-demand build (and the runner reports a missing binary as
+    before)."""
+    try:
+        eff = resolve(load_config(config_path.read_text(encoding="utf-8")), app)
+    except (OSError, ValueError, KeyError):
+        return (None, None)
+    return (eff.app_path, eff.build)
+
+
+def list_simulators(simctl: env.RunFn = env._real_run) -> list[dict[str, Any]]:
+    """Available simulators for the device picker (booted first): udid, name, runtime, booted.
+    A run boots any picked-but-shut-down device first, so the UI can start from a cold list."""
+    try:
+        data = json.loads(simctl(env.list_devices_cmd(), None))
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, ValueError):
+        return []
+    sims: list[dict[str, Any]] = []
+    for runtime, devices in (data.get("devices") or {}).items():
+        # "com.apple.CoreSimulator.SimRuntime.iOS-26-5" -> "iOS 26.5"
+        label = runtime.split("SimRuntime.")[-1].replace("-", " ", 1).replace("-", ".")
+        for d in devices:
+            if not d.get("isAvailable", True) or not d.get("udid"):
+                continue
+            sims.append(
+                {
+                    "udid": d["udid"],
+                    "name": d.get("name", "?"),
+                    "runtime": label,
+                    "booted": d.get("state") == "Booted",
+                }
+            )
+    sims.sort(key=lambda s: (not s["booted"], s["name"]))
+    return sims
+
+
+def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
+    """Past runs under *runs_dir* (newest first), each summarized from its manifest.json for
+    the history list.  Run ids are timestamps, so a reverse lexicographic sort is newest-first."""
+    out: list[dict[str, Any]] = []
+    if not runs_dir.is_dir():
+        return out
+    for d in runs_dir.iterdir():
+        manifest = d / "manifest.json"
+        if not (d.is_dir() and manifest.is_file()):
+            continue
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
+        out.append(
+            {
+                "id": d.name,
+                "ok": bool(data.get("ok")),
+                "report": (d / "report.html").is_file(),
+                "scenarios": [str(s.get("scenario", "")) for s in scenarios],
+                "passed": sum(1 for s in scenarios if s.get("ok")),
+                "total": len(scenarios),
+            }
+        )
+    out.sort(key=lambda r: r["id"], reverse=True)
+    return out
+
+
+# --- command builders ---
+
+
+def _int(value: Any, default: int) -> int:
+    """Coerce a JSON value to int, falling back to *default* (e.g. for ``workers``)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def run_command(
+    scenario: str,
+    app: str,
+    *,
+    backend: str = "",
+    udid: str = "",
+    workers: int = 1,
+    erase: bool | None = None,
+    dismiss_alerts: bool | None = None,
+    config: str = "bajutsu.config.yaml",
+) -> list[str]:
+    """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
+    list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
+    the CLI).  ``erase`` / ``dismiss_alerts`` are overrides: True/False force the flag on/off,
+    None leaves each scenario's own preconditions.erase / dismissAlerts (the latter on by
+    default) to decide."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "bajutsu",
+        "run",
+        scenario,
+        "--app",
+        app,
+        "--config",
+        config,
+        "--progress",
+    ]  # stream per-scenario/step progress into the run log
+    if backend:
+        cmd += ["--backend", backend]
+    if udid:
+        cmd += ["--udid", udid]
+    if workers > 1:
+        cmd += ["--workers", str(workers)]
+    if erase is True:
+        cmd += ["--erase"]
+    elif erase is False:
+        cmd += ["--no-erase"]
+    if dismiss_alerts is True:
+        cmd += ["--dismiss-alerts"]
+    elif dismiss_alerts is False:
+        cmd += ["--no-dismiss-alerts"]
+    return cmd
+
+
+def record_command(
+    out: str,
+    app: str,
+    goal: str,
+    *,
+    agent: str = "",
+    backend: str = "",
+    udid: str = "",
+    erase: bool | None = None,
+    dismiss_alerts: bool | None = None,
+    config: str = "bajutsu.config.yaml",
+) -> list[str]:
+    """The ``python -m bajutsu record OUT --app … --goal …`` argv for an authoring request —
+    the Tier-1 record loop the Record tab drives.  ``agent`` picks the brain ("api" /
+    "claude-code"); ``erase`` / ``dismiss_alerts`` mirror ``run_command`` (None leaves the CLI
+    default — record erases and dismisses by default), and ``out`` is the ``*.yaml`` the
+    recorded scenario is written to."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "bajutsu",
+        "record",
+        out,
+        "--app",
+        app,
+        "--goal",
+        goal,
+        "--config",
+        config,
+    ]
+    if agent:
+        cmd += ["--agent", agent]
+    if backend:
+        cmd += ["--backend", backend]
+    if udid:
+        cmd += ["--udid", udid]
+    if erase is True:
+        cmd += ["--erase"]
+    elif erase is False:
+        cmd += ["--no-erase"]
+    if dismiss_alerts is True:
+        cmd += ["--dismiss-alerts"]
+    elif dismiss_alerts is False:
+        cmd += ["--no-dismiss-alerts"]
+    return cmd
+
+
+# --- path helpers ---
+
+
+def scenario_out_path(scenarios_dir: Path, name: str) -> Path:
+    """A safe ``*.yaml`` path under *scenarios_dir* for an authored scenario.  ``name`` is the
+    user's file name (or, lacking one, the goal); path separators and control chars are stripped
+    so a request can never escape the scenarios dir, and a blank / unusable name falls back to
+    'authored'.  A ``.yaml`` suffix is normalized so 'foo' and 'foo.yaml' name the same file."""
+    stem = (name or "").strip().replace("/", "-").replace("\\", "-")
+    if stem.endswith(".yaml"):
+        stem = stem[: -len(".yaml")]
+    stem = re.sub(r"[\x00-\x1f]", "", stem).strip(" .")
+    if not stem or stem in {".", ".."}:
+        stem = "authored"
+    return scenarios_dir / f"{stem}.yaml"
+
+
+def unique_scenario_path(path: Path, stamp: str | None = None) -> Path:
+    """*path* if it's free, else the same stem with the run's date-time appended
+    (``foo`` → ``foo-20260613-153045``) so authoring a scenario never overwrites an existing
+    one."""
+    if not path.exists():
+        return path
+    stamp = stamp or datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+    return path.parent / f"{path.stem}-{stamp}.yaml"
+
+
+def _scenario_path(scenarios_dir: Path, p: str | None) -> Path | None:
+    """Resolve *p* (the path the UI passes for a scenario to read or save) to a ``*.yaml`` file
+    inside *scenarios_dir*, or None if it would escape the dir or isn't a scenario file.  The
+    file need not exist yet (saving a freshly authored scenario), but its parent must be the
+    scenarios dir."""
+    if not p:
+        return None
+    target = Path(p)
+    if not target.is_absolute():
+        target = scenarios_dir / target
+    target = target.resolve()
+    base = scenarios_dir.resolve()
+    if target != base and base not in target.parents:
+        return None
+    if target.suffix != ".yaml":
+        return None
+    return target
