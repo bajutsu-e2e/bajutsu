@@ -27,6 +27,22 @@ class LoopAgent:
         return Proposal(step=Step.model_validate({"tap": {"id": "a"}}))
 
 
+class PlanningAgent(FakeAgent):
+    """A fake that also decomposes the goal up front and records the observations it saw."""
+
+    def __init__(self, proposals: list[Proposal], plan_steps: list[str]) -> None:
+        super().__init__(proposals)
+        self._plan_steps = plan_steps
+        self.seen: list[Observation] = []
+
+    def plan(self, goal: str) -> list[str]:
+        return self._plan_steps
+
+    def next_action(self, observation: Observation) -> Proposal:
+        self.seen.append(observation)
+        return super().next_action(observation)
+
+
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:
     return {
         "identifier": identifier,
@@ -66,6 +82,29 @@ def test_record_produces_scenario() -> None:
     assert reloaded[0].steps[0].tap is not None
     assert reloaded[0].steps[0].tap.id == "go"
     assert reloaded[0].steps[1].wait is not None
+
+
+def test_record_streams_plan_and_feeds_it_to_the_agent() -> None:
+    driver = FakeDriver([_el("go", "Go")])
+    agent = PlanningAgent(
+        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)],
+        plan_steps=["Tap Go", "Confirm the result"],
+    )
+    msgs: list[str] = []
+    record(driver, "reach the result", agent, report=msgs.append)
+    joined = "\n".join(msgs)
+    assert "plan — reach the result" in joined  # the decomposition is explained to the watcher
+    assert "1. Tap Go" in joined and "2. Confirm the result" in joined
+    # and the same plan is handed to the agent every turn so it can follow the procedure
+    assert agent.seen[0].plan == ["Tap Go", "Confirm the result"]
+
+
+def test_record_without_a_planning_agent_still_works() -> None:
+    """A fake agent with no `plan` method records exactly as before — planning is optional."""
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent([Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)])
+    scenario = record(driver, "x", agent)
+    assert scenario.steps and scenario.steps[0].tap is not None and scenario.steps[0].tap.id == "go"
 
 
 def test_record_stops_on_unresolvable_action() -> None:

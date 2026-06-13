@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from bajutsu.agent import Observation
-from bajutsu.claude_code_agent import PROPOSAL_SCHEMA, ClaudeCodeAgent
+from bajutsu.claude_code_agent import PLAN_SCHEMA, PROPOSAL_SCHEMA, ClaudeCodeAgent
 from bajutsu.drivers import base
 
 
@@ -61,6 +61,20 @@ def test_finish_label_contains() -> None:
 def test_no_structured_output_finishes_gracefully() -> None:
     proposal = ClaudeCodeAgent(runner=_runner_returning(None)).next_action(_obs())
     assert proposal.done is True and proposal.step is None
+
+
+def test_plan_decomposes_goal() -> None:
+    runner = _runner_returning({"steps": ["Tap Get Started", "", "Confirm home"]})
+    steps = ClaudeCodeAgent(runner=runner).plan("sign in")
+    assert steps == ["Tap Get Started", "Confirm home"]  # blanks dropped, order kept
+    cmd = runner.seen[0]  # type: ignore[attr-defined]
+    assert json.loads(cmd[cmd.index("--json-schema") + 1]) == PLAN_SCHEMA
+    assert "Goal: sign in" in cmd[-1]
+
+
+def test_plan_tolerates_a_bad_envelope() -> None:
+    assert ClaudeCodeAgent(runner=_runner_returning(None)).plan("g") == []
+    assert ClaudeCodeAgent(runner=_runner_returning({"steps": ["x"]}, is_error=True)).plan("g") == []
 
 
 def test_command_passes_schema_and_headless_flags() -> None:

@@ -134,6 +134,7 @@ def test_claude_agent_drives_record() -> None:
 
     driver = FakeDriver([_el("go", "Go")], react=react)
     client = FakeClient(
+        _Block("plan", {"steps": ["Tap Go", "Confirm Done is shown"]}),  # the up-front decomposition
         _Block("tap", {"id": "go"}),
         _Block("finish", {"assertions": [{"id": "done", "check": "exists"}]}),
     )
@@ -143,6 +144,23 @@ def test_claude_agent_drives_record() -> None:
     assert scenario.expect[0].exists is not None and scenario.expect[0].exists.sel.id == "done"
     # the recorded scenario round-trips
     assert load_scenarios(dump_scenarios([scenario]))[0].name == "reach"
+
+
+def test_plan_decomposes_goal_into_steps() -> None:
+    client = FakeClient(_Block("plan", {"steps": ["Tap Get Started", " ", "Confirm home is shown"]}))
+    steps = ClaudeAgent(client=client).plan("sign in")
+    assert steps == ["Tap Get Started", "Confirm home is shown"]  # blanks dropped, order kept
+    call = client.calls[0]
+    assert call["tool_choice"] == {"type": "tool", "name": "plan"}  # the plan call is forced
+    assert {t["name"] for t in call["tools"]} == {"plan"}
+
+
+def test_plan_is_rendered_into_the_turn_prompt() -> None:
+    from bajutsu.claude_agent import _render
+
+    obs = Observation(goal="g", screen=[_el("a", "A")], history=[], plan=["First do X", "Then do Y"])
+    text = _render(obs)
+    assert "Planned steps" in text and "1. First do X" in text and "2. Then do Y" in text
 
 
 # --- authoring against an app with no ids and no values (label / value / traits) ---
