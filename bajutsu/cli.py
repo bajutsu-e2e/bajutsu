@@ -291,7 +291,6 @@ def record(
     except _env.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    typer.echo(f"authoring with the {kind} agent toward: {goal}")
     scenario = record_loop(
         driver, goal, authoring_agent, name=goal, alert_guard=alert_guard,
         report=lambda msg: typer.echo(msg, err=True),
