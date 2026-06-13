@@ -7,7 +7,7 @@ from bajutsu.config import load_config, resolve
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 from bajutsu.redaction import PLACEHOLDER, Redactor
-from bajutsu.scenario import Redact, Scenario, Step, TypeText
+from bajutsu.scenario import Redact, Scenario, Selector, Step, TypeText
 
 # --- config ---
 
@@ -71,6 +71,27 @@ def test_scenario_keeps_token_not_value() -> None:
     drv = FakeDriver()
     run_scenario(drv, scn, bindings={"secrets.pw": "hunter2"})
     assert scn.steps[0].type is not None and scn.steps[0].type.text == "${secrets.pw}"
+
+
+def test_interp_step_returns_original_when_no_tokens_match() -> None:
+    """When bindings exist but the step has no matching tokens,
+    _interp_step returns the original step object (skipping model_validate)."""
+    from bajutsu.orchestrator import _interp_step
+
+    step = Step(tap=Selector(id="home.submit"))
+    result = _interp_step(step, {"secrets.pw": "hunter2"})
+    # Same object — no dump/validate cycle happened
+    assert result is step
+
+
+def test_interp_step_substitutes_when_tokens_match() -> None:
+    """When the step contains a token present in bindings, it is substituted."""
+    from bajutsu.orchestrator import _interp_step
+
+    step = Step(type=TypeText(text="${secrets.pw}"))
+    result = _interp_step(step, {"secrets.pw": "hunter2"})
+    assert result is not step
+    assert result.type is not None and result.type.text == "hunter2"
 
 
 def test_no_bindings_passes_token_through_unchanged() -> None:

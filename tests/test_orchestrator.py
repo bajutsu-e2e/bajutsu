@@ -323,6 +323,86 @@ def test_type_and_swipe_actions() -> None:
     assert [a[0] for a in driver.actions] == ["tap", "type", "swipe", "swipe"]
 
 
+def test_wait_skips_sleep_when_query_exceeds_poll_interval() -> None:
+    """When query() takes longer than _POLL, additional sleep is skipped."""
+    from bajutsu.orchestrator import _POLL, _wait
+    from bajutsu.scenario import Wait
+
+    sleeps: list[float] = []
+
+    class TrackingClock:
+        def __init__(self) -> None:
+            self._t = 0.0
+
+        def now(self) -> float:
+            return self._t
+
+        def sleep(self, s: float) -> None:
+            sleeps.append(s)
+            self._t += s
+
+    clock = TrackingClock()
+    query_latency = _POLL * 3  # query takes 3x _POLL
+    query_count = 0
+
+    class SlowQueryDriver:
+        name = "slow"
+
+        def query(self) -> list[base.Element]:
+            nonlocal query_count
+            clock._t += query_latency  # simulate query latency on the clock
+            query_count += 1
+            if query_count >= 3:
+                return [_el("target", "T")]
+            return []
+
+    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
+    ok, reason = _wait(SlowQueryDriver(), w, clock)  # type: ignore[arg-type]
+    assert ok
+    assert reason == ""
+    # query cost > _POLL -> no extra sleep needed
+    assert all(s < 0.01 for s in sleeps), f"expected near-zero sleeps, got {sleeps}"
+
+
+def test_wait_still_sleeps_when_query_is_fast() -> None:
+    """When query() is fast, sleep remains at _POLL as before."""
+    from bajutsu.orchestrator import _POLL, _wait
+    from bajutsu.scenario import Wait
+
+    sleeps: list[float] = []
+
+    class TrackingClock:
+        def __init__(self) -> None:
+            self._t = 0.0
+
+        def now(self) -> float:
+            return self._t
+
+        def sleep(self, s: float) -> None:
+            sleeps.append(s)
+            self._t += s
+
+    clock = TrackingClock()
+    query_count = 0
+
+    class FastQueryDriver:
+        name = "fast"
+
+        def query(self) -> list[base.Element]:
+            nonlocal query_count
+            # query is instant (does not advance clock)
+            query_count += 1
+            if query_count >= 3:
+                return [_el("target", "T")]
+            return []
+
+    w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
+    ok, _reason = _wait(FastQueryDriver(), w, clock)  # type: ignore[arg-type]
+    assert ok
+    # query is instant -> sleep stays at _POLL
+    assert all(abs(s - _POLL) < 0.001 for s in sleeps), f"expected {_POLL}s sleeps, got {sleeps}"
+
+
 def test_expect_failure() -> None:
     driver = FakeDriver([_el("a", "A", ["button"])])
     result = run_scenario(

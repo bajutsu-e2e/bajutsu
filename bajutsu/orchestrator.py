@@ -204,6 +204,17 @@ def _exists(elements: list[base.Element], sel: base.Selector) -> bool:
     return len(base.find_all(elements, sel)) >= 1
 
 
+def _adaptive_sleep(clock: Clock, before: float) -> None:
+    """Sleep only the remainder of _POLL after subtracting time already spent (e.g. in query).
+
+    When `driver.query()` is backed by a subprocess (idb describe-all ≈ 100-300ms), the call
+    itself already provides sufficient delay and an additional fixed sleep is wasteful."""
+    elapsed = clock.now() - before
+    remaining = _POLL - elapsed
+    if remaining > 0:
+        clock.sleep(remaining)
+
+
 def _wait(
     driver: base.Driver, w: Wait, clock: Clock, network: NetworkSource = _no_network
 ) -> tuple[bool, str]:
@@ -212,36 +223,45 @@ def _wait(
     deadline = clock.now() + w.timeout
     if w.for_ is not None:
         target = w.for_.as_selector()
-        while not _exists(driver.query(), target):
+        while True:
+            t0 = clock.now()
+            if _exists(driver.query(), target):
+                return True, ""
             if clock.now() >= deadline:
                 return False, f"wait timeout: for {target} ({w.timeout}s)"
-            clock.sleep(_POLL)
-        return True, ""
+            _adaptive_sleep(clock, t0)
     if isinstance(w.until, Gone):
         target = w.until.gone.as_selector()
-        while _exists(driver.query(), target):
+        while True:
+            t0 = clock.now()
+            if not _exists(driver.query(), target):
+                return True, ""
             if clock.now() >= deadline:
                 return False, f"wait timeout: gone {target} ({w.timeout}s)"
-            clock.sleep(_POLL)
-        return True, ""
+            _adaptive_sleep(clock, t0)
     if isinstance(w.until, WaitRequest):
         req = w.until.request
         need = req.count if req.count is not None else 1
-        while assertions.count_matching(network(), req) < need:
+        while True:
+            t0 = clock.now()
+            if assertions.count_matching(network(), req) >= need:
+                return True, ""
             if clock.now() >= deadline:
                 label = assertions.request_label(req)
                 return False, f"wait timeout: request {label} ({w.timeout}s)"
-            clock.sleep(_POLL)
-        return True, ""
+            _adaptive_sleep(clock, t0)
     if w.until == "settled":
         return _wait_settled(driver, deadline, clock)
     # until == "screenChanged"
     before = driver.query()
-    while driver.query() == before:
+    while True:
+        t0 = clock.now()
+        current = driver.query()
+        if current != before:
+            return True, ""
         if clock.now() >= deadline:
             return False, f"wait timeout: screenChanged ({w.timeout}s)"
-        clock.sleep(_POLL)
-    return True, ""
+        _adaptive_sleep(clock, t0)
 
 
 _SETTLE_POLLS = 2  # consecutive unchanged polls that count as "settled"
@@ -260,12 +280,13 @@ def _wait_settled(driver: base.Driver, deadline: float, clock: Clock) -> tuple[b
     while stable < _SETTLE_POLLS:
         if clock.now() >= deadline:
             return True, ""
-        clock.sleep(_POLL)
+        t0 = clock.now()
         current = driver.query()
         if current == previous and any(el["identifier"] for el in current):
             stable += 1
         else:
             stable, previous = 0, current
+        _adaptive_sleep(clock, t0)
     return True, ""
 
 
@@ -277,6 +298,8 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
     if not bindings:
         return step
     dumped = step.model_dump(by_alias=True, exclude_none=True)
+    if not interp.find_tokens(dumped) & bindings.keys():
+        return step
     return Step.model_validate(interp.interpolate(dumped, bindings))
 
 
@@ -588,12 +611,15 @@ def _run_steps(
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 
-        screen_changed = before is not None and driver.query() != before
+        # Query once after the step: reuse for both screen_changed detection and
+        # evidence capture (elements.json), avoiding a redundant subprocess call.
+        after = driver.query()
+        screen_changed = before is not None and after != before
         fired = _collect_captures(scenario, step, kind, outcome.ok, screen_changed)
         # Interval kinds are recorded scenario-wide (run_scenario), so only the
         # instant kinds are captured per step here.
         instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
-        outcome.artifacts.extend(sink.capture(driver, step_id, instant))
+        outcome.artifacts.extend(sink.capture(driver, step_id, instant, elements=after))
 
         outcomes.append(outcome)
         if not outcome.ok:

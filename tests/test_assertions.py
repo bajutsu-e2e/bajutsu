@@ -114,3 +114,14 @@ def test_evaluate_and_passed() -> None:
         ],
     )
     assert not passed(results)
+
+
+def test_compile_cache_reuses_compiled_pattern() -> None:
+    """_compile caches compiled regex patterns in assertions module."""
+    from bajutsu.assertions import _compile
+
+    _compile.cache_clear()
+    _compile("foo.*bar")
+    _compile("foo.*bar")
+    info = _compile.cache_info()
+    assert info.hits == 1 and info.misses == 1

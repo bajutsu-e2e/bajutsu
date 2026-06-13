@@ -122,6 +122,60 @@ def test_within_nests() -> None:
     assert got["identifier"] == "btn"
 
 
+def test_compile_cache_reuses_compiled_pattern() -> None:
+    """_compile caches compiled regex patterns so repeated calls skip re.compile."""
+    from bajutsu.drivers.base import _compile
+
+    _compile.cache_clear()
+    _compile("foo.*bar")
+    _compile("foo.*bar")
+    info = _compile.cache_info()
+    assert info.hits == 1 and info.misses == 1
+
+
+def test_label_matches_uses_regex() -> None:
+    """labelMatches selector uses regex matching (via cached compile)."""
+    screen: list[Element] = [
+        _el("a", "Settings Page", ["staticText"]),
+        _el("b", "Home Page", ["staticText"]),
+        _el("c", "About", ["staticText"]),
+    ]
+    found = find_all(screen, {"labelMatches": ".*Page$"})
+    assert [e["identifier"] for e in found] == ["a", "b"]
+
+
+def test_find_all_id_only_uses_index() -> None:
+    """find_all with an id-only selector uses a cached index for O(1) lookup."""
+    from bajutsu.drivers.base import _id_index
+
+    screen: list[Element] = [
+        _el("a", "A", ["button"]),
+        _el("b", "B", ["cell"]),
+        _el("c", "C", ["button"]),
+    ]
+    # First call builds the index
+    idx1 = _id_index(screen)
+    assert idx1["a"] == [screen[0]]
+    assert idx1["b"] == [screen[1]]
+    assert idx1.get("missing") is None
+    # Second call on the same list returns the cached index
+    idx2 = _id_index(screen)
+    assert idx2 is idx1
+
+
+def test_find_all_id_index_invalidates_on_new_list() -> None:
+    """The id index cache invalidates when a new element list is passed."""
+    from bajutsu.drivers.base import _id_index
+
+    screen1: list[Element] = [_el("a", "A")]
+    screen2: list[Element] = [_el("b", "B")]
+    idx1 = _id_index(screen1)
+    idx2 = _id_index(screen2)
+    assert idx2 is not idx1
+    assert "b" in idx2
+    assert "a" not in idx2
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

@@ -11,8 +11,15 @@ Frozen first because everything else depends on it:
 from __future__ import annotations
 
 import fnmatch
+import functools
 import re
 from typing import Protocol, TypedDict, cast, runtime_checkable
+
+
+@functools.lru_cache(maxsize=128)
+def _compile(pattern: str) -> re.Pattern[str]:
+    """Cached re.compile — avoids recompiling the same pattern on every poll iteration."""
+    return re.compile(pattern)
 
 # Coordinates in points: x, y.
 Point = tuple[float, float]
@@ -140,12 +147,33 @@ def matches(el: Element, sel: Selector) -> bool:
     if "label" in sel and el["label"] != sel["label"]:
         return False
     if "labelMatches" in sel and not (
-        el["label"] is not None and re.search(sel["labelMatches"], el["label"]) is not None
+        el["label"] is not None and _compile(sel["labelMatches"]).search(el["label"]) is not None
     ):
         return False
     if "traits" in sel and not set(sel["traits"]).issubset(el["traits"]):
         return False
     return not ("value" in sel and el["value"] != sel["value"])
+
+
+# Single-entry cache: (list_id, list_ref, index_dict).
+# Holding list_ref prevents GC so id() stays stable across lookups.
+_cached_index: tuple[int, list[Element], dict[str | None, list[Element]]] | None = None
+
+
+def _id_index(elements: list[Element]) -> dict[str | None, list[Element]]:
+    """Build (or return cached) identifier -> elements index for a given list.
+
+    The cache holds one entry keyed by ``id(elements)``; a new list auto-invalidates it.
+    Multiple ``find_all`` calls on the same query() result (e.g. a multi-assertion step)
+    share a single O(n) build and then do O(1) lookups."""
+    global _cached_index
+    if _cached_index is not None and _cached_index[0] == id(elements):
+        return _cached_index[2]
+    idx: dict[str | None, list[Element]] = {}
+    for el in elements:
+        idx.setdefault(el["identifier"], []).append(el)
+    _cached_index = (id(elements), elements, idx)
+    return idx
 
 
 def _contains(outer: Frame, inner: Frame) -> bool:
@@ -164,7 +192,11 @@ def find_all(elements: list[Element], sel: Selector) -> list[Element]:
     its frame sits inside one of theirs. `within` may nest.
     """
     base_sel = cast(Selector, {k: v for k, v in sel.items() if k != "within"})
-    found = [el for el in elements if matches(el, base_sel)]
+    # Fast path: id-only selector uses cached index for O(1) lookup.
+    if set(base_sel.keys()) == {"id"}:
+        found = list(_id_index(elements).get(base_sel["id"], []))
+    else:
+        found = [el for el in elements if matches(el, base_sel)]
     if "within" in sel:
         scopes = [parent["frame"] for parent in find_all(elements, sel["within"])]
         found = [el for el in found if any(_contains(scope, el["frame"]) for scope in scopes)]

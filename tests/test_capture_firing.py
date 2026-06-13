@@ -24,7 +24,10 @@ class RecordingSink:
         self.calls: list[tuple[str, list[str]]] = []  # instant capture calls
         self.scenario_intervals: list[tuple[str, list[str]]] = []
 
-    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
+    def capture(
+        self, driver: base.Driver, step_id: str, kinds: list[str],
+        *, elements: list[base.Element] | None = None,
+    ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
         return []
@@ -170,7 +173,10 @@ class IntervalSink:
         self.started: list[tuple[str, list[str]]] = []
         self.finished: list[str] = []
 
-    def capture(self, driver: base.Driver, step_id: str, kinds: list[str]) -> list[Artifact]:
+    def capture(
+        self, driver: base.Driver, step_id: str, kinds: list[str],
+        *, elements: list[base.Element] | None = None,
+    ) -> list[Artifact]:
         return []
 
     def start_scenario_intervals(
@@ -209,6 +215,48 @@ def test_scenario_intervals_recorded_even_when_a_step_fails() -> None:
     assert not result.ok
     assert sink.finished == ["x"]  # finalized in the finally block despite the failure
     assert [a.kind for a in result.artifacts] == ["video", "deviceLog", "appTrace"]
+
+
+def test_screen_changed_shares_query_with_evidence(tmp_path: Path) -> None:
+    """With screenChanged capturePolicy, the post-step query() is shared between
+    screen_changed detection and evidence capture (elements.json), not called twice."""
+    queries_after_tap: list[int] = [0]
+    tapped = [False]
+
+    class CountingDriver(FakeDriver):
+        def query(self) -> list[base.Element]:
+            if tapped[0]:
+                queries_after_tap[0] += 1
+            return super().query()
+
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            tapped[0] = True
+
+    next_screen = [_el("done", "Done")]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap":
+            d.screen = next_screen
+
+    driver = CountingDriver([_el("go", "Go")], react=react)
+    sink = FileSink(tmp_path / "run1")
+    result = run_scenario(
+        driver,
+        _scn({
+            "name": "x",
+            "steps": [{"tap": {"id": "go"}}],
+            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}],
+        }),
+        sink=sink,
+    )
+    assert result.ok
+    # After tap: 1 shared query for screen_changed + evidence (not 2 separate ones)
+    assert queries_after_tap[0] == 1, (
+        f"expected 1 post-step query (shared), got {queries_after_tap[0]}"
+    )
+    # elements.json should still be written
+    assert (tmp_path / "run1" / "x" / "step0" / "elements.json").exists()
 
 
 def test_file_sink_writes_baseline_elements(tmp_path: Path) -> None:
