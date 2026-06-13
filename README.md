@@ -167,6 +167,10 @@ bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift   # emit a nat
 bajutsu serve                  [--port 8765]                # local web UI: run scenarios + view reports (Tier 1)
 ```
 
+> `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the idb
+> backend's dependencies on demand, so a fresh checkout won't hit
+> `no available actuator among ['idb']`. Pass flags via `make serve ARGS="--port 8766"`.
+
 Per-app settings live in `bajutsu.config.yaml` (the repo ships the `sample` app, below):
 
 ```yaml
