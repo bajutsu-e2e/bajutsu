@@ -71,13 +71,18 @@ def capture(
     for token in kinds:
         kind, _, modifier = token.partition(".")
         if kind == "elements":
-            out.append(Artifact(
-                write_elements(driver, step_dir, redactor, elements=elements).name,
-                "elements", "driver",
-            ))
+            out.append(
+                Artifact(
+                    write_elements(driver, step_dir, redactor, elements=elements).name,
+                    "elements",
+                    "driver",
+                )
+            )
         elif kind == "screenshot":
             name = f"{modifier or 'after'}.png"
-            out.append(Artifact(write_screenshot(driver, step_dir, name).name, "screenshot", "driver"))
+            out.append(
+                Artifact(write_screenshot(driver, step_dir, name).name, "screenshot", "driver")
+            )
         # actionLog lives in the manifest; video / deviceLog / appTrace are intervals.
     return out
 
@@ -166,13 +171,20 @@ class FileSink:
             if kind == "video":
                 started.append(intervals.start_video(self.udid, scenario_dir / "scenario.mp4"))
             elif kind == "deviceLog":
-                started.append(intervals.start_device_log(
-                    self.udid, scenario_dir / "device.log", self.log_predicate))
+                started.append(
+                    intervals.start_device_log(
+                        self.udid, scenario_dir / "device.log", self.log_predicate
+                    )
+                )
             elif kind == "appTrace" and self.log_subsystem:
-                started.append(intervals.start_app_trace(
-                    self.udid, scenario_dir / "appTrace.raw", scenario_dir / "appTrace.json",
-                    self.log_subsystem,
-                ))
+                started.append(
+                    intervals.start_app_trace(
+                        self.udid,
+                        scenario_dir / "appTrace.raw",
+                        scenario_dir / "appTrace.json",
+                        self.log_subsystem,
+                    )
+                )
         return started
 
     def finish_scenario_intervals(

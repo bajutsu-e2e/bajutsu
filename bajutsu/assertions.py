@@ -29,7 +29,7 @@ def _compile(pattern: str) -> re.Pattern[str]:
 class AssertionResult:
     ok: bool
     kind: str
-    detail: str       # what was checked (for the report)
+    detail: str  # what was checked (for the report)
     reason: str = ""  # failure reason (empty when ok)
 
 

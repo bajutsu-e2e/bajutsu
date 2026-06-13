@@ -270,7 +270,11 @@ def _step_desc_parts(action: str, payload: Any) -> list[Part]:
     if action == "pinch":
         return [*_sel_parts(payload["sel"]), ("", " · ×"), ("num", _gnum(payload["scale"]))]
     if action == "rotate":
-        return [*_sel_parts(payload["sel"]), ("", " · "), ("num", f"{_gnum(payload['radians'])} rad")]
+        return [
+            *_sel_parts(payload["sel"]),
+            ("", " · "),
+            ("num", f"{_gnum(payload['radians'])} rad"),
+        ]
     if action == "wait":
         return _wait_parts(payload)
     if action == "relaunch":
@@ -313,10 +317,18 @@ def _step_detail(step_def: dict[str, Any] | None) -> dict[str, Any]:
     name = step_def.get("name")
     caps = step_def.get("capture") or []
     if action == "assert":
-        return {"kind": "asserts", "rows": [_assert_parts(a) for a in step_def["assert"]],
-                "name": name, "caps": caps}
-    return {"kind": "parts", "parts": _step_desc_parts(action, step_def[action]),
-            "name": name, "caps": caps}
+        return {
+            "kind": "asserts",
+            "rows": [_assert_parts(a) for a in step_def["assert"]],
+            "name": name,
+            "caps": caps,
+        }
+    return {
+        "kind": "parts",
+        "parts": _step_desc_parts(action, step_def[action]),
+        "name": name,
+        "caps": caps,
+    }
 
 
 def _action_data(step_def: dict[str, Any] | None, out_action: str | None) -> dict[str, str] | None:
@@ -398,7 +410,8 @@ def _step_run_row(
         "rowcls": f"srow {'ok' if out.ok else 'ng'}",
         "data_t": f"{out.started_at:.3f}",
         "title": f"jump to {out.started_at:.1f}s in the recording",
-        "num": str(i), "numcls": None,
+        "num": str(i),
+        "numcls": None,
         "result": {"cls": "ok" if out.ok else "ng", "text": "PASS" if out.ok else "FAIL"},
         "action": _action_data(step_def, out.action),
         "detail": _step_detail(step_def),
@@ -412,12 +425,18 @@ def _step_run_row(
 
 def _step_skip_row(i: int, step_def: dict[str, Any] | None) -> dict[str, Any]:
     return {
-        "rowcls": "skip", "data_t": None, "title": None,
-        "num": str(i), "numcls": None,
+        "rowcls": "skip",
+        "data_t": None,
+        "title": None,
+        "num": str(i),
+        "numcls": None,
         "result": {"cls": "", "text": "—"},
         "action": _action_data(step_def, None),
         "detail": _step_detail(step_def),
-        "at": "", "view": None, "reason": None, "expand": None,
+        "at": "",
+        "view": None,
+        "reason": None,
+        "expand": None,
     }
 
 
@@ -454,35 +473,75 @@ def _request_row(d: dict[str, Any], at: float) -> dict[str, Any]:
     settings table renders in a separate full-width row below (so it gets the whole
     width instead of the cramped detail column)."""
     method = str(d.get("method") or "req")
-    pairs = _nx_pairs(d, [("method", "method"), ("endpoint", "endpoint"),
-                          ("headers", "requestHeaders"), ("body", "requestBody")])
+    pairs = _nx_pairs(
+        d,
+        [
+            ("method", "method"),
+            ("endpoint", "endpoint"),
+            ("headers", "requestHeaders"),
+            ("body", "requestBody"),
+        ],
+    )
     return {
-        "rowcls": "nrow xrow", "data_t": None, "title": None,
-        "num": "→", "numcls": "nix", "result": None,
+        "rowcls": "nrow xrow",
+        "data_t": None,
+        "title": None,
+        "num": "→",
+        "numcls": "nix",
+        "result": None,
         "action": {"label": method, "cls": "act-net"},
-        "detail": {"kind": "nxsummary", "summary": _exchange_summary(d, method), "name": None, "caps": []},
+        "detail": {
+            "kind": "nxsummary",
+            "summary": _exchange_summary(d, method),
+            "name": None,
+            "caps": [],
+        },
         "expand": {"pairs": pairs},
-        "at": f"{at:.1f}s", "view": None, "reason": None,
+        "at": f"{at:.1f}s",
+        "view": None,
+        "reason": None,
     }
 
 
 def _response_row(d: dict[str, Any], at: float) -> dict[str, Any]:
     status = d.get("status")
-    pairs = _nx_pairs(d, [("status", "status"), ("duration", "durationMs"),
-                          ("headers", "responseHeaders"), ("body", "responseBody")])
+    pairs = _nx_pairs(
+        d,
+        [
+            ("status", "status"),
+            ("duration", "durationMs"),
+            ("headers", "responseHeaders"),
+            ("body", "responseBody"),
+        ],
+    )
     return {
-        "rowcls": "nrow xrow", "data_t": None, "title": None,
-        "num": "←", "numcls": "nix",
-        "result": {"cls": _status_class(status), "text": str(status) if status is not None else "—"},
+        "rowcls": "nrow xrow",
+        "data_t": None,
+        "title": None,
+        "num": "←",
+        "numcls": "nix",
+        "result": {
+            "cls": _status_class(status),
+            "text": str(status) if status is not None else "—",
+        },
         "action": {"label": "response", "cls": "act-net"},
-        "detail": {"kind": "nxsummary", "summary": _exchange_summary(d, "response"), "name": None, "caps": []},
+        "detail": {
+            "kind": "nxsummary",
+            "summary": _exchange_summary(d, "response"),
+            "name": None,
+            "caps": [],
+        },
         "expand": {"pairs": pairs},
-        "at": f"{at:.1f}s", "view": None, "reason": None,
+        "at": f"{at:.1f}s",
+        "view": None,
+        "reason": None,
     }
 
 
 def _merged_rows(
-    r: RunResult, plan: list[dict[str, Any]], exchanges: list[dict[str, Any]],
+    r: RunResult,
+    plan: list[dict[str, Any]],
+    exchanges: list[dict[str, Any]],
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
     """Step rows plus the observed exchanges (split request/response) interleaved by
@@ -534,20 +593,38 @@ def _expects_data(r: RunResult, definition: dict[str, Any] | None) -> dict[str, 
             else:
                 kind, target, comp = a.kind, [("", a.detail)], []
             cls = "ok" if a.ok else "ng"
-            rows.append({
-                "rowcls": cls, "stcls": cls, "status": "PASS" if a.ok else "FAIL",
-                "kind": kind, "target": target, "comp": comp,
-                "reason": a.reason if not a.ok else None,
-            })
-        return {"label": "expectations", "rows": rows,
-                "alerts": [{"label": a.label} for a in r.expect_alerts]}
+            rows.append(
+                {
+                    "rowcls": cls,
+                    "stcls": cls,
+                    "status": "PASS" if a.ok else "FAIL",
+                    "kind": kind,
+                    "target": target,
+                    "comp": comp,
+                    "reason": a.reason if not a.ok else None,
+                }
+            )
+        return {
+            "label": "expectations",
+            "rows": rows,
+            "alerts": [{"label": a.label} for a in r.expect_alerts],
+        }
     if not planned:
         return None
     rows = []
     for a in planned:
         kind, target, comp = _assert_parts(a)
-        rows.append({"rowcls": "skip", "stcls": "", "status": "—", "kind": kind,
-                     "target": target, "comp": comp, "reason": None})
+        rows.append(
+            {
+                "rowcls": "skip",
+                "stcls": "",
+                "status": "—",
+                "kind": kind,
+                "target": target,
+                "comp": comp,
+                "reason": None,
+            }
+        )
     return {"label": "expectations (not evaluated)", "rows": rows}
 
 
@@ -571,12 +648,18 @@ def _domain_allowed(host: str, domains: list[str]) -> bool:
 
 
 def _result_panel(
-    r: RunResult, definition: dict[str, Any] | None, source: str | None,
-    exchanges: list[dict[str, Any]], run_dir: Path | None,
+    r: RunResult,
+    definition: dict[str, Any] | None,
+    source: str | None,
+    exchanges: list[dict[str, Any]],
+    run_dir: Path | None,
 ) -> dict[str, Any]:
     plan = (definition or {}).get("steps") or []
     return {
-        "kind": "result", "key": "steps", "label": "Result", "source": source,
+        "kind": "result",
+        "key": "steps",
+        "label": "Result",
+        "source": source,
         "preconditions": _preconditions_rows(definition),
         "steprows": _merged_rows(r, plan, exchanges, run_dir),
         "expects": _expects_data(r, definition),
@@ -624,11 +707,16 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
     if err:
         sections.append({"kind": "line", "label": "error", "text": str(err), "cls": "err"})
     return {
-        "method": method, "target": target,
-        "at": f"{float(started):.1f}s" if isinstance(started, (int, float)) and not isinstance(started, bool) else "",
+        "method": method,
+        "target": target,
+        "at": f"{float(started):.1f}s"
+        if isinstance(started, (int, float)) and not isinstance(started, bool)
+        else "",
         "status": str(status) if status is not None else "—",
         "status_cls": _status_class(status),
-        "dur": f"{float(dur):.0f} ms" if isinstance(dur, (int, float)) and not isinstance(dur, bool) else "",
+        "dur": f"{float(dur):.0f} ms"
+        if isinstance(dur, (int, float)) and not isinstance(dur, bool)
+        else "",
         "mocked": bool(d.get("mocked")),
         "sections": sections,
     }
@@ -637,11 +725,22 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
 def _network_panel(run_dir: Path | None, art: Artifact) -> dict[str, Any]:
     data = _read_json(run_dir, art.name) if run_dir else None
     if not isinstance(data, list) or not data:
-        return {"kind": "network", "key": "net", "label": "Network", "empty": True, "link": art.name}
+        return {
+            "kind": "network",
+            "key": "net",
+            "label": "Network",
+            "empty": True,
+            "link": art.name,
+        }
     items = [_network_item(d) for d in data if isinstance(d, dict)]
     return {
-        "kind": "network", "key": "net", "label": "Network", "empty": False, "link": art.name,
-        "count": len(items), "plural": "exchange" if len(items) == 1 else "exchanges",
+        "kind": "network",
+        "key": "net",
+        "label": "Network",
+        "empty": False,
+        "link": art.name,
+        "count": len(items),
+        "plural": "exchange" if len(items) == 1 else "exchanges",
         "exchanges": items,
     }
 
@@ -652,34 +751,65 @@ def _log_panel(run_dir: Path | None, art: Artifact) -> dict[str, Any]:
         return {"kind": "log", "key": "log", "label": "Device Log", "link": art.name, "lines": None}
     shown = len(lines)
     note = f"showing last {shown} of {total} lines · " if total > shown else ""
-    return {"kind": "log", "key": "log", "label": "Device Log", "link": art.name,
-            "lines": lines, "shown": shown, "note": note}
+    return {
+        "kind": "log",
+        "key": "log",
+        "label": "Device Log",
+        "link": art.name,
+        "lines": lines,
+        "shown": shown,
+        "note": note,
+    }
 
 
 def _trace_panel(run_dir: Path | None, art: Artifact) -> dict[str, Any]:
     data = _read_json(run_dir, art.name) if run_dir else None
     if not isinstance(data, list) or not data:
-        return {"kind": "trace", "key": "trace", "label": "App Trace", "link": art.name, "empty": True}
+        return {
+            "kind": "trace",
+            "key": "trace",
+            "label": "App Trace",
+            "link": art.name,
+            "empty": True,
+        }
     rows = [
-        (str(d.get("name", "")), str(d.get("durationMs", "")), str(d.get("begin", "")), str(d.get("end", "")))
-        for d in data if isinstance(d, dict)
+        (
+            str(d.get("name", "")),
+            str(d.get("durationMs", "")),
+            str(d.get("begin", "")),
+            str(d.get("end", "")),
+        )
+        for d in data
+        if isinstance(d, dict)
     ]
-    return {"kind": "trace", "key": "trace", "label": "App Trace", "link": art.name,
-            "empty": False, "rows": rows}
+    return {
+        "kind": "trace",
+        "key": "trace",
+        "label": "App Trace",
+        "link": art.name,
+        "empty": False,
+        "rows": rows,
+    }
 
 
 def _scenario_data(
-    r: RunResult, run_dir: Path | None,
-    definition: dict[str, Any] | None, source: str | None,
+    r: RunResult,
+    run_dir: Path | None,
+    definition: dict[str, Any] | None,
+    source: str | None,
 ) -> dict[str, Any]:
     video = _artifact(r, "video")
     net = _artifact(r, "network")
     net_data = _read_json(run_dir, net.name) if (net is not None and run_dir is not None) else None
-    all_exchanges = [d for d in net_data if isinstance(d, dict)] if isinstance(net_data, list) else []
+    all_exchanges = (
+        [d for d in net_data if isinstance(d, dict)] if isinstance(net_data, list) else []
+    )
     net_filter = ((definition or {}).get("network") or {}).get("filter") or {}
     domains = net_filter.get("domains") or []
     step_exchanges = [
-        d for d in all_exchanges if _domain_allowed(_exchange_host(str(d.get("url") or "")), domains)
+        d
+        for d in all_exchanges
+        if _domain_allowed(_exchange_host(str(d.get("url") or "")), domains)
     ]
     panels: list[dict[str, Any]] = [
         _result_panel(r, definition, source, step_exchanges, run_dir),
@@ -694,10 +824,15 @@ def _scenario_data(
     if trace is not None:
         panels.append(_trace_panel(run_dir, trace))
     return {
-        "name": r.scenario, "ok": r.ok, "backend": r.backend, "device": r.device, "open": not r.ok,
+        "name": r.scenario,
+        "ok": r.ok,
+        "backend": r.backend,
+        "device": r.device,
+        "open": not r.ok,
         "description": (definition or {}).get("description"),
         "duration": _fmt_duration(r.duration_s),
-        "video": video.name if video else None, "panels": panels,
+        "video": video.name if video else None,
+        "panels": panels,
     }
 
 
@@ -733,7 +868,8 @@ def html_report(
     passed = sum(1 for r in results if r.ok)
     scenarios = [
         _scenario_data(
-            r, run_dir,
+            r,
+            run_dir,
             definitions[i] if definitions and i < len(definitions) else None,
             sources[i] if sources and i < len(sources) else None,
         )
@@ -741,11 +877,23 @@ def html_report(
     ]
     devices = dict.fromkeys(r.device for r in results if r.device)  # ordered-unique device count
     total_duration = _fmt_duration(sum(r.duration_s for r in results))
-    return _env().get_template("report.html.j2").render(
-        run_id=run_id, passed=passed, failed=len(results) - passed, overall=passed == len(results),
-        backend=_run_backend(results), device_count=len(devices), total_duration=total_duration,
-        css=_asset("report.css"), js=_asset("report.js"),
-        scenarios=scenarios, source_name=source_name, description=description,
+    return (
+        _env()
+        .get_template("report.html.j2")
+        .render(
+            run_id=run_id,
+            passed=passed,
+            failed=len(results) - passed,
+            overall=passed == len(results),
+            backend=_run_backend(results),
+            device_count=len(devices),
+            total_duration=total_duration,
+            css=_asset("report.css"),
+            js=_asset("report.js"),
+            scenarios=scenarios,
+            source_name=source_name,
+            description=description,
+        )
     )
 
 
@@ -772,6 +920,6 @@ def write_report(
     (run_dir / "junit.xml").write_text(junit_xml(results), encoding="utf-8")
     (run_dir / "report.html").write_text(
         html_report(run_id, results, run_dir, definitions, sources, source_name, description),
-        encoding="utf-8"
+        encoding="utf-8",
     )
     return manifest_path

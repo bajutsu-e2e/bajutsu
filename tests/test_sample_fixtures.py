@@ -13,7 +13,9 @@ from bajutsu.scenario import load_scenarios
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "demos" / "features" / "app" / "scenarios"
-CONFIG = ROOT / "bajutsu.config.yaml"
+# The sample app's config, kept as a test resource so the fixtures stay verifiable
+# regardless of the working tree's root config.
+CONFIG = Path(__file__).resolve().parent / "resources" / "bajutsu.config.yaml"
 
 
 def test_sample_scenarios_parse() -> None:
@@ -29,7 +31,7 @@ def test_sample_config_resolves() -> None:
     eff = resolve(cfg, "sample")
     assert eff.bundle_id == "com.bajutsu.sample"
     assert eff.deeplink_scheme == "bajutsusample"
-    assert "auth" in eff.id_namespaces          # reserved namespace, used by the app
+    assert "auth" in eff.id_namespaces  # reserved namespace, used by the app
     assert eff.launch_env == {"SAMPLE_UITEST": "1"}
 
 

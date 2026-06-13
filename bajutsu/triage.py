@@ -37,15 +37,19 @@ class TriageContext:
     failure: str
     failed_step: FailedStep | None
     failed_expectations: list[str]
-    elements: list[base.Element]   # the a11y tree nearest the failure
-    scenario_yaml: str             # the failing scenario's definition
-    target_id: str | None          # the failing step's selector id, if any
+    elements: list[base.Element]  # the a11y tree nearest the failure
+    scenario_yaml: str  # the failing scenario's definition
+    target_id: str | None  # the failing step's selector id, if any
     evidence: list[str] = field(default_factory=list)
     screenshot: bytes | None = None  # the screenshot nearest the failure, if one was captured
 
 
 FIX_KINDS = ("renameId", "addIndex", "raiseTimeout")
-_FIX_LABELS = {"renameId": "rename id", "addIndex": "disambiguate selector", "raiseTimeout": "raise timeout"}
+_FIX_LABELS = {
+    "renameId": "rename id",
+    "addIndex": "disambiguate selector",
+    "raiseTimeout": "raise timeout",
+}
 
 
 def fix_summary(kind: str, find: str, replace: str) -> str:
@@ -64,7 +68,7 @@ class Fix:
     that no longer matches the source is a safe no-op.
     """
 
-    kind: str        # one of FIX_KINDS
+    kind: str  # one of FIX_KINDS
     summary: str
     find: str
     replace: str
@@ -102,10 +106,14 @@ def apply_fix(text: str, fix: Fix) -> tuple[str, int]:
 
 def diff_fix(old: str, new: str, path: str) -> str:
     """A unified diff of a fix, for the human to review before `--write`."""
-    return "".join(difflib.unified_diff(
-        old.splitlines(keepends=True), new.splitlines(keepends=True),
-        fromfile=path, tofile=path,
-    ))
+    return "".join(
+        difflib.unified_diff(
+            old.splitlines(keepends=True),
+            new.splitlines(keepends=True),
+            fromfile=path,
+            tofile=path,
+        )
+    )
 
 
 # --- assembly (pure) ---
@@ -138,7 +146,9 @@ def _target_id(step: Step) -> str | None:
     return None
 
 
-def _nearest_artifact(steps: list[dict[str, Any]], failed_index: int | None, kind: str) -> dict[str, Any] | None:
+def _nearest_artifact(
+    steps: list[dict[str, Any]], failed_index: int | None, kind: str
+) -> dict[str, Any] | None:
     """The artifact of `kind` from the failing step, else the nearest earlier step that has one."""
     if failed_index is not None:
         order = [failed_index, *range(failed_index - 1, -1, -1)]
@@ -152,7 +162,9 @@ def _nearest_artifact(steps: list[dict[str, Any]], failed_index: int | None, kin
     return None
 
 
-def _elements_near(run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None) -> list[base.Element]:
+def _elements_near(
+    run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None
+) -> list[base.Element]:
     """The element tree from the failing step (or the nearest earlier step that has one)."""
     art = _nearest_artifact(steps, failed_index, "elements")
     if art is not None:
@@ -162,7 +174,9 @@ def _elements_near(run_dir: Path, steps: list[dict[str, Any]], failed_index: int
     return []
 
 
-def _screenshot_near(run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None) -> bytes | None:
+def _screenshot_near(
+    run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None
+) -> bytes | None:
     """The screenshot from the failing step (or the nearest earlier step that has one)."""
     art = _nearest_artifact(steps, failed_index, "screenshot")
     if art is not None:
@@ -183,7 +197,10 @@ def assemble(run_dir: Path, scenario_filter: str | None = None) -> TriageContext
     for scenario in manifest.get("scenarios") or []:
         if scenario.get("ok"):
             continue
-        if scenario_filter and scenario_filter.lower() not in str(scenario.get("scenario", "")).lower():
+        if (
+            scenario_filter
+            and scenario_filter.lower() not in str(scenario.get("scenario", "")).lower()
+        ):
             continue
         failed = scenario
         break
@@ -194,7 +211,9 @@ def assemble(run_dir: Path, scenario_filter: str | None = None) -> TriageContext
     failed_step = None
     for st in steps:
         if not st.get("ok"):
-            failed_step = FailedStep(int(st.get("index", -1)), str(st.get("action", "")), str(st.get("reason", "")))
+            failed_step = FailedStep(
+                int(st.get("index", -1)), str(st.get("action", "")), str(st.get("reason", ""))
+            )
             break
     failed_expectations = [
         str(e.get("detail", "")) + (f" — {e['reason']}" if e.get("reason") else "")
@@ -250,7 +269,8 @@ class HeuristicTriageAgent:
     def triage(self, context: TriageContext) -> Triage:
         fs = context.failed_step
         absent = bool(
-            context.target_id and context.elements
+            context.target_id
+            and context.elements
             and context.target_id not in _ids(context.elements)
         )
         hints = []
@@ -259,26 +279,50 @@ class HeuristicTriageAgent:
             close = _close(context.target_id, context.elements)
             hints.append(
                 f"`{context.target_id}` is not on the captured screen"
-                + (f" — did you mean {', '.join('`' + c + '`' for c in close)}?" if close else
-                   " (its id may have changed, or the screen differs from expected).")
+                + (
+                    f" — did you mean {', '.join('`' + c + '`' for c in close)}?"
+                    if close
+                    else " (its id may have changed, or the screen differs from expected)."
+                )
             )
             if close:  # a confident rename — the deterministic, whole-token self-heal
-                fix = Fix("renameId", fix_summary("renameId", context.target_id, close[0]),
-                          context.target_id, close[0])
+                fix = Fix(
+                    "renameId",
+                    fix_summary("renameId", context.target_id, close[0]),
+                    context.target_id,
+                    close[0],
+                )
 
         if fs is not None and fs.action == "wait":
-            sugg = [*hints, "Raise the wait timeout, or check the awaited element/condition is reachable."]
-            return Triage("A wait condition was not met before its timeout.", "timing", sugg, fix=fix)
+            sugg = [
+                *hints,
+                "Raise the wait timeout, or check the awaited element/condition is reachable.",
+            ]
+            return Triage(
+                "A wait condition was not met before its timeout.", "timing", sugg, fix=fix
+            )
 
         if fs is not None and fs.action in _ACT_TARGETS:
             if "件一致" in fs.reason and context.target_id:
-                sugg = [f"`{context.target_id}` matched multiple elements — add `within` or `index` to disambiguate."]
+                sugg = [
+                    f"`{context.target_id}` matched multiple elements — add `within` or `index` to disambiguate."
+                ]
             else:
-                sugg = hints or ["Verify the selector resolves to exactly one element (see the element tree)."]
-            return Triage(f"The `{fs.action}` step could not resolve or act on its target.", "selector", sugg, fix=fix)
+                sugg = hints or [
+                    "Verify the selector resolves to exactly one element (see the element tree)."
+                ]
+            return Triage(
+                f"The `{fs.action}` step could not resolve or act on its target.",
+                "selector",
+                sugg,
+                fix=fix,
+            )
 
         if context.failed_expectations:
-            sugg = [*hints, "Compare each failed expectation below with the screen state at the end of the run."]
+            sugg = [
+                *hints,
+                "Compare each failed expectation below with the screen state at the end of the run.",
+            ]
             return Triage("An expectation did not hold.", "assertion", sugg)
 
         return Triage(
@@ -303,5 +347,7 @@ def render(context: TriageContext, triage: Triage) -> str:
     lines += ["", f"diagnosis [{triage.category}]: {triage.summary}", "suggested fixes:"]
     lines += [f"  - {s}" for s in triage.suggestions]
     if triage.fix is not None:
-        lines.append(f"applicable fix: {triage.fix.summary} (apply with `triage --apply <scenario-file>`)")
+        lines.append(
+            f"applicable fix: {triage.fix.summary} (apply with `triage --apply <scenario-file>`)"
+        )
     return "\n".join(lines)

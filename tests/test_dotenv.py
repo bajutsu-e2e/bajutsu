@@ -18,7 +18,7 @@ def test_parse_skips_blanks_and_comments() -> None:
 
 
 def test_parse_strips_export_and_quotes() -> None:
-    parsed = parse_dotenv('export TOKEN="sk-ant-xyz"\nNAME=\'Jane Doe\'\n')
+    parsed = parse_dotenv("export TOKEN=\"sk-ant-xyz\"\nNAME='Jane Doe'\n")
     assert parsed == {"TOKEN": "sk-ant-xyz", "NAME": "Jane Doe"}
 
 

@@ -14,7 +14,9 @@ def _res(name: str, ok: bool, failure: str | None = None) -> RunResult:
 
 def test_emit_noop_outside_actions(tmp_path: Path) -> None:
     out: list[str] = []
-    emitted = github.emit([_res("s", False, "x")], tmp_path / "report.html", env={}, echo=out.append)
+    emitted = github.emit(
+        [_res("s", False, "x")], tmp_path / "report.html", env={}, echo=out.append
+    )
     assert emitted is False and out == []  # nothing outside Actions
 
 
@@ -23,7 +25,8 @@ def test_emit_annotations_and_summary(tmp_path: Path) -> None:
     out: list[str] = []
     results = [_res("login works", True), _res("checkout fails", False, "value mismatch\nactual=3")]
     emitted = github.emit(
-        results, Path("runs/r1/report.html"),
+        results,
+        Path("runs/r1/report.html"),
         env={"GITHUB_ACTIONS": "true", "GITHUB_STEP_SUMMARY": str(summary)},
         echo=out.append,
     )

@@ -6,13 +6,18 @@ import json
 from typing import Any
 
 from bajutsu.agent import Observation
-from bajutsu.claude_code_agent import PROPOSAL_SCHEMA, ClaudeCodeAgent
+from bajutsu.claude_code_agent import PLAN_SCHEMA, PROPOSAL_SCHEMA, ClaudeCodeAgent
 from bajutsu.drivers import base
 
 
 def _el(label: str | None, traits: list[str], value: str | None = None) -> base.Element:
-    return {"identifier": None, "label": label, "traits": traits, "value": value,
-            "frame": (0.0, 0.0, 10.0, 10.0)}
+    return {
+        "identifier": None,
+        "label": label,
+        "traits": traits,
+        "value": value,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
 
 
 def _obs(goal: str = "g") -> Observation:
@@ -25,8 +30,14 @@ def _runner_returning(structured: dict[str, Any] | None, *, is_error: bool = Fal
 
     def run(cmd: list[str]) -> str:
         seen.append(cmd)
-        return json.dumps({"type": "result", "is_error": is_error,
-                           "result": "ok", "structured_output": structured})
+        return json.dumps(
+            {
+                "type": "result",
+                "is_error": is_error,
+                "result": "ok",
+                "structured_output": structured,
+            }
+        )
 
     run.seen = seen  # type: ignore[attr-defined]
     return run
@@ -50,7 +61,10 @@ def test_type_by_value_and_traits() -> None:
 
 def test_finish_label_contains() -> None:
     runner = _runner_returning(
-        {"tool": "finish", "assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]}
+        {
+            "tool": "finish",
+            "assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}],
+        }
     )
     proposal = ClaudeCodeAgent(runner=runner).next_action(_obs())
     assert proposal.done is True
@@ -61,6 +75,22 @@ def test_finish_label_contains() -> None:
 def test_no_structured_output_finishes_gracefully() -> None:
     proposal = ClaudeCodeAgent(runner=_runner_returning(None)).next_action(_obs())
     assert proposal.done is True and proposal.step is None
+
+
+def test_plan_decomposes_goal() -> None:
+    runner = _runner_returning({"steps": ["Tap Get Started", "", "Confirm home"]})
+    steps = ClaudeCodeAgent(runner=runner).plan("sign in")
+    assert steps == ["Tap Get Started", "Confirm home"]  # blanks dropped, order kept
+    cmd = runner.seen[0]  # type: ignore[attr-defined]
+    assert json.loads(cmd[cmd.index("--json-schema") + 1]) == PLAN_SCHEMA
+    assert "Goal: sign in" in cmd[-1]
+
+
+def test_plan_tolerates_a_bad_envelope() -> None:
+    assert ClaudeCodeAgent(runner=_runner_returning(None)).plan("g") == []
+    assert (
+        ClaudeCodeAgent(runner=_runner_returning({"steps": ["x"]}, is_error=True)).plan("g") == []
+    )
 
 
 def test_command_passes_schema_and_headless_flags() -> None:

@@ -14,11 +14,21 @@ from bajutsu.scenario import Push, Scenario, SetLocation, Step
 
 def test_location_and_push_command_builders() -> None:
     assert env.set_location_cmd("U", 35.6, 139.7) == [
-        "xcrun", "simctl", "location", "U", "set", "35.6,139.7",
+        "xcrun",
+        "simctl",
+        "location",
+        "U",
+        "set",
+        "35.6,139.7",
     ]
     assert env.clear_location_cmd("U") == ["xcrun", "simctl", "location", "U", "clear"]
     assert env.push_cmd("U", "com.demo", "/tmp/p.apns") == [
-        "xcrun", "simctl", "push", "U", "com.demo", "/tmp/p.apns",
+        "xcrun",
+        "simctl",
+        "push",
+        "U",
+        "com.demo",
+        "/tmp/p.apns",
     ]
 
 

@@ -82,8 +82,8 @@ def test_within_scopes_to_container() -> None:
     screen: list[Element] = [
         _el("form.login", "login", ["group"], frame=(0.0, 0.0, 100.0, 50.0)),
         _el("form.signup", "signup", ["group"], frame=(0.0, 60.0, 100.0, 50.0)),
-        _el("row.submit", "Go", ["button"], frame=(10.0, 10.0, 30.0, 20.0)),   # inside login
-        _el("row.submit", "Go", ["button"], frame=(10.0, 70.0, 30.0, 20.0)),   # inside signup
+        _el("row.submit", "Go", ["button"], frame=(10.0, 10.0, 30.0, 20.0)),  # inside login
+        _el("row.submit", "Go", ["button"], frame=(10.0, 70.0, 30.0, 20.0)),  # inside signup
     ]
     # Ambiguous on its own…
     try:
@@ -92,8 +92,14 @@ def test_within_scopes_to_container() -> None:
     except AmbiguousSelector:
         pass
     # …but `within` scopes it to one section.
-    assert resolve_unique(screen, {"id": "row.submit", "within": {"id": "form.login"}})["frame"][1] == 10.0
-    assert resolve_unique(screen, {"id": "row.submit", "within": {"id": "form.signup"}})["frame"][1] == 70.0
+    assert (
+        resolve_unique(screen, {"id": "row.submit", "within": {"id": "form.login"}})["frame"][1]
+        == 10.0
+    )
+    assert (
+        resolve_unique(screen, {"id": "row.submit", "within": {"id": "form.signup"}})["frame"][1]
+        == 70.0
+    )
 
 
 def test_within_excludes_elements_outside_the_scope() -> None:
@@ -110,7 +116,9 @@ def test_within_nests() -> None:
         _el("inner", frame=(10.0, 10.0, 50.0, 50.0)),
         _el("btn", "go", ["button"], frame=(15.0, 15.0, 5.0, 5.0)),  # inside inner ⊂ outer
     ]
-    got = resolve_unique(screen, {"id": "btn", "within": {"id": "inner", "within": {"id": "outer"}}})
+    got = resolve_unique(
+        screen, {"id": "btn", "within": {"id": "inner", "within": {"id": "outer"}}}
+    )
     assert got["identifier"] == "btn"
 
 

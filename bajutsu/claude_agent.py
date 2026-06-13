@@ -56,6 +56,40 @@ shows it before finishing; if not, keep acting. Then provide assertions that \
 prove it — prefer `valueEquals` against an element's `value`, or `labelContains` \
 when the number is part of the label (e.g. a "Count: 2" text)."""
 
+PLAN_SYSTEM = """You are an iOS end-to-end test author. Before driving the app, break the \
+user's goal into a short, ordered list of concrete, human-readable steps — the procedure a \
+tester would follow on screen to accomplish it.
+
+Each step is ONE plain-language action or check, in the order it happens, e.g.:
+- "Tap the 'Get Started' button on the welcome screen"
+- "Enter an email address into the Email field"
+- "Tap 'Add to Cart' on the product"
+- "Confirm the cart badge shows 2 items"
+
+Guidance:
+- Keep it concrete and minimal — 2–8 steps is typical. End with the check that confirms the goal.
+- You have NOT seen the screen yet, so describe intent, not specific element ids; do not invent ids.
+- This plan is shown to the person watching and guides the run, but the live screen is the source \
+of truth — it is fine if the actual run deviates.
+
+Call the `plan` tool exactly once."""
+
+PLAN_TOOL: dict[str, Any] = {
+    "name": "plan",
+    "description": "Record the ordered, concrete steps to accomplish the goal.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "steps": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "ordered concrete steps, each a short plain-language action or check",
+            }
+        },
+        "required": ["steps"],
+    },
+}
+
 # A reusable selector fragment: address an element by id (preferred), else by any combination
 # of label / value / traits, with index as a last-resort disambiguator. Shared by every tool so
 # id-first and label-only apps use one shape. The conditions are ANDed at resolve time.
@@ -147,19 +181,28 @@ TOOLS: list[dict[str, Any]] = [
 
 
 def _render(observation: Observation) -> str:
-    lines = [f"Goal: {observation.goal}", "", "Current screen elements:"]
+    lines = [f"Goal: {observation.goal}"]
+    if observation.plan:
+        lines.append("")
+        lines.append(
+            "Planned steps (your up-front decomposition of the goal — follow it in order, "
+            "adapting to what the screen actually shows):"
+        )
+        lines += [f"  {i}. {step}" for i, step in enumerate(observation.plan, 1)]
+    lines += ["", "Current screen elements:"]
     shown = 0
     for element in observation.screen:
         identifier, label, value, traits = (
-            element["identifier"], element["label"], element["value"], element["traits"]
+            element["identifier"],
+            element["label"],
+            element["value"],
+            element["traits"],
         )
         if "application" in traits:
             continue  # the app root is not an actionable target
         if not (identifier or label or value or traits):
             continue  # nothing to address it by
-        lines.append(
-            f"- id={identifier!r} label={label!r} value={value!r} traits={traits}"
-        )
+        lines.append(f"- id={identifier!r} label={label!r} value={value!r} traits={traits}")
         shown += 1
     if not shown:
         lines.append("- (no addressable elements; the screen may still be loading)")
@@ -224,6 +267,14 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
     raise ValueError(f"unknown tool: {name!r}")
 
 
+def steps_from_plan(raw: Any) -> list[str]:
+    """Normalize a `plan` tool/structured-output result into a clean list of step strings.
+    Shared by both backends so the API agent and the Claude Code agent return the same shape."""
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [str(step).strip() for step in raw if str(step).strip()]
+
+
 def _to_proposal(message: Any) -> Proposal:
     tool_use = next((b for b in message.content if b.type == "tool_use"), None)
     if tool_use is None:
@@ -264,18 +315,35 @@ class ClaudeAgent:
         )
         return _to_proposal(message)
 
+    def plan(self, goal: str) -> list[str]:
+        client = self._ensure_client()
+        message = client.messages.create(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            system=[{"type": "text", "text": PLAN_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            tools=[PLAN_TOOL],
+            tool_choice={"type": "tool", "name": "plan"},  # force the plan call
+            messages=[{"role": "user", "content": f"Goal: {goal}"}],
+        )
+        block = next((b for b in message.content if b.type == "tool_use"), None)
+        if block is None:
+            return []
+        return steps_from_plan(block.input.get("steps"))
+
 
 def _user_content(observation: Observation) -> list[dict[str, Any]]:
     """The per-turn user message: the screenshot (if any) followed by the text."""
     content: list[dict[str, Any]] = []
     if observation.screenshot is not None:
-        content.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/png",
-                "data": base64.standard_b64encode(observation.screenshot).decode("ascii"),
-            },
-        })
+        content.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": base64.standard_b64encode(observation.screenshot).decode("ascii"),
+                },
+            }
+        )
     content.append({"type": "text", "text": _render(observation)})
     return content

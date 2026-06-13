@@ -25,7 +25,9 @@ def default_available(backend: str) -> bool:
     return exe is not None and shutil.which(exe) is not None
 
 
-def select_actuator(backends: list[str], available: Callable[[str], bool] = default_available) -> str:
+def select_actuator(
+    backends: list[str], available: Callable[[str], bool] = default_available
+) -> str:
     """First available backend in stability order."""
     for b in backends:
         if b in KNOWN and available(b):

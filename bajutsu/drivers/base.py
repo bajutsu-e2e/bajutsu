@@ -35,12 +35,12 @@ class Capability:
     """
 
     QUERY = "query"
-    SEMANTIC_TAP = "semanticTap"      # tap directly by id/label (no coordinates; most stable)
+    SEMANTIC_TAP = "semanticTap"  # tap directly by id/label (no coordinates; most stable)
     CONDITION_WAIT = "conditionWait"  # native condition waiting
-    NETWORK = "network"               # native network monitoring
+    NETWORK = "network"  # native network monitoring
     SCREENSHOT = "screenshot"
     ELEMENTS = "elements"
-    MULTI_TOUCH = "multiTouch"        # two-finger gestures (pinch / rotate); idb is single-touch
+    MULTI_TOUCH = "multiTouch"  # two-finger gestures (pinch / rotate); idb is single-touch
 
 
 class Element(TypedDict):
@@ -62,7 +62,7 @@ class Trait:
     BUTTON = "button"
     LINK = "link"
     NOT_ENABLED = "notEnabled"  # disabled state (enabled / disabled assertions)
-    SELECTED = "selected"       # selected / toggled state (selected assertion)
+    SELECTED = "selected"  # selected / toggled state (selected assertion)
 
 
 class Selector(TypedDict, total=False):
@@ -72,14 +72,14 @@ class Selector(TypedDict, total=False):
     `labelMatches` are auxiliary; `index` is a last resort (flaky).
     """
 
-    id: str            # exact accessibilityIdentifier (first choice)
-    idMatches: str     # glob pattern (assumes multiple matches, e.g. "*.submit")
-    label: str         # exact accessibilityLabel (auxiliary / disambiguation only)
+    id: str  # exact accessibilityIdentifier (first choice)
+    idMatches: str  # glob pattern (assumes multiple matches, e.g. "*.submit")
+    label: str  # exact accessibilityLabel (auxiliary / disambiguation only)
     labelMatches: str  # substring / regex over label
     traits: list[str]  # narrow by type (e.g. ["button"])
-    value: str         # accessibility value match
+    value: str  # accessibility value match
     within: Selector  # scope to a parent (needs a hierarchical query; not implemented)
-    index: int         # nth of multiple matches (last resort; flaky)
+    index: int  # nth of multiple matches (last resort; flaky)
 
 
 @runtime_checkable

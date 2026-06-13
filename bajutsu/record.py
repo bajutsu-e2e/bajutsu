@@ -115,7 +115,10 @@ def _shows_app_ui(elements: list[base.Element]) -> bool:
 
 
 def _clear_blocking(
-    driver: base.Driver, guard: BlockedHandler, clock: Clock, max_tries: int = 3,
+    driver: base.Driver,
+    guard: BlockedHandler,
+    clock: Clock,
+    max_tries: int = 3,
     report: Reporter | None = None,
 ) -> None:
     """Dismiss anything covering the app (e.g. a system alert) before the agent observes.
@@ -132,18 +135,26 @@ def _clear_blocking(
         if _shows_app_ui(driver.query()):
             return  # the app is showing actionable elements; nothing blocking
         if not announced:
-            say("⚠️  the app screen looks blocked by a system prompt — asking the alert guard to clear it …")
+            say(
+                "⚠️  the app screen looks blocked by a system prompt — asking the alert guard to clear it …"
+            )
             announced = True
         event = guard(driver)  # try to dismiss whatever is covering the app
         if event is not None:
             label = getattr(event, "label", "")
-            say(f"🛡️  dismissed a system alert · tapped {label!r}" if label
-                else "🛡️  dismissed a system alert")
+            say(
+                f"🛡️  dismissed a system alert · tapped {label!r}"
+                if label
+                else "🛡️  dismissed a system alert"
+            )
         clock.sleep(0.5)  # let it animate out before re-checking
 
 
 def _execute_with_recovery(
-    driver: base.Driver, step: Step, clock: Clock, guard: BlockedHandler | None,
+    driver: base.Driver,
+    step: Step,
+    clock: Clock,
+    guard: BlockedHandler | None,
     report: Reporter | None = None,
 ) -> bool:
     """Execute a step; if it fails because a prompt is covering the app, clear it and retry."""
@@ -153,13 +164,37 @@ def _execute_with_recovery(
     except base.SelectorError:
         if guard is None:
             return False
-        (report or (lambda _m: None))("⚠️  a step could not act — a system prompt may be covering the app; recovering …")
+        (report or (lambda _m: None))(
+            "⚠️  a step could not act — a system prompt may be covering the app; recovering …"
+        )
         _clear_blocking(driver, guard, clock, report=report)
         try:
             _execute(driver, step, clock)
             return True
         except base.SelectorError:
             return False
+
+
+def _plan_goal(agent: Agent, goal: str, say: Reporter) -> list[str]:
+    """Decompose the goal into concrete steps up front and stream them to the watcher.
+
+    Best-effort: an agent without a `plan` method (e.g. a test fake) or a planning call that
+    fails just yields no plan — the loop then runs exactly as before. When a plan is produced
+    it is both explained here and fed back to the agent each turn via `Observation.plan`.
+    """
+    planner = getattr(agent, "plan", None)
+    if planner is None:
+        return []
+    try:
+        plan = [str(step) for step in planner(goal)]
+    except Exception as exc:
+        say(f"… could not plan the goal up front ({exc}); proceeding step by step")
+        return []
+    if plan:
+        say(f"\U0001f5fa️  plan — {goal}")
+        for i, step in enumerate(plan, 1):
+            say(f"   {i}. {step}")
+    return plan
 
 
 def record(
@@ -188,6 +223,7 @@ def record(
     say = report or (lambda _msg: None)
     steps: list[Step] = []
     expect: list[Assertion] = []
+    plan = _plan_goal(agent, goal, say)
 
     for _ in range(max_steps):
         if alert_guard is not None:
@@ -202,7 +238,13 @@ def record(
         say(f"[{n}] observing {len(elements)} elements; asking the agent …")
         screenshot = _screenshot_bytes(driver) if with_screenshot else None
         proposal = agent.next_action(
-            Observation(goal=goal, screen=elements, history=list(steps), screenshot=screenshot)
+            Observation(
+                goal=goal,
+                screen=elements,
+                history=list(steps),
+                screenshot=screenshot,
+                plan=plan,
+            )
         )
         if proposal.note:  # the agent's reasoning for this turn, shown before the action it chose
             say(f"[{n}] \U0001f4ad {proposal.note}")

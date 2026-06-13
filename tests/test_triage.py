@@ -15,42 +15,82 @@ from bajutsu.triage import FailedStep, Fix, HeuristicTriageAgent, TriageContext,
 runner = CliRunner()
 
 
-def _write_run(runs: Path, *, ok: bool, reason: str = "", step_action: str = "tap",
-               with_screenshot: bool = False, scenario_id: str = "home.titel") -> Path:
+def _write_run(
+    runs: Path,
+    *,
+    ok: bool,
+    reason: str = "",
+    step_action: str = "tap",
+    with_screenshot: bool = False,
+    scenario_id: str = "home.titel",
+) -> Path:
     run = runs / "r"
     (run / "00-s" / "step0").mkdir(parents=True)
     artifacts = [{"name": "00-s/step0/elements.json", "kind": "elements", "provider": "driver"}]
     if with_screenshot:
-        artifacts.append({"name": "00-s/step0/after.png", "kind": "screenshot", "provider": "driver"})
+        artifacts.append(
+            {"name": "00-s/step0/after.png", "kind": "screenshot", "provider": "driver"}
+        )
         (run / "00-s" / "step0" / "after.png").write_bytes(b"\x89PNG\r\n\x1a\n demo")
     manifest = {
-        "runId": "r", "ok": ok, "backend": "idb",
-        "scenarios": [{
-            "scenario": "s", "ok": ok, "backend": "idb",
-            "steps": [{
-                "index": 0, "action": step_action, "ok": ok, "reason": reason,
-                "artifacts": artifacts,
-            }],
-            "expect_results": [],
-            "failure": None if ok else f"step0 {step_action}: {reason}",
-            "artifacts": [{"name": "00-s/device.log", "kind": "deviceLog", "provider": "simctl"}],
-        }],
+        "runId": "r",
+        "ok": ok,
+        "backend": "idb",
+        "scenarios": [
+            {
+                "scenario": "s",
+                "ok": ok,
+                "backend": "idb",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": step_action,
+                        "ok": ok,
+                        "reason": reason,
+                        "artifacts": artifacts,
+                    }
+                ],
+                "expect_results": [],
+                "failure": None if ok else f"step0 {step_action}: {reason}",
+                "artifacts": [
+                    {"name": "00-s/device.log", "kind": "deviceLog", "provider": "simctl"}
+                ],
+            }
+        ],
     }
     (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run / "scenario.yaml").write_text(f"- name: s\n  steps:\n    - {step_action}: {{ id: {scenario_id} }}\n",
-                                       encoding="utf-8")
-    (run / "00-s" / "step0" / "elements.json").write_text(json.dumps([
-        {"identifier": "home.title", "label": "Home", "traits": ["button"], "value": None, "frame": [0, 0, 10, 10]},
-    ]), encoding="utf-8")
+    (run / "scenario.yaml").write_text(
+        f"- name: s\n  steps:\n    - {step_action}: {{ id: {scenario_id} }}\n", encoding="utf-8"
+    )
+    (run / "00-s" / "step0" / "elements.json").write_text(
+        json.dumps(
+            [
+                {
+                    "identifier": "home.title",
+                    "label": "Home",
+                    "traits": ["button"],
+                    "value": None,
+                    "frame": [0, 0, 10, 10],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
     return run
 
 
 def test_assemble_extracts_failure_context(tmp_path: Path) -> None:
-    ctx = triage.assemble(_write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}"))
+    ctx = triage.assemble(
+        _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    )
     assert ctx is not None
     assert ctx.scenario == "s"
-    assert ctx.failed_step is not None and ctx.failed_step.action == "tap" and ctx.failed_step.index == 0
-    assert ctx.target_id == "home.titel"                       # from scenario.yaml
+    assert (
+        ctx.failed_step is not None
+        and ctx.failed_step.action == "tap"
+        and ctx.failed_step.index == 0
+    )
+    assert ctx.target_id == "home.titel"  # from scenario.yaml
     assert any(e["identifier"] == "home.title" for e in ctx.elements)  # the real screen
     assert "name: s" in ctx.scenario_yaml
     assert "deviceLog" in ctx.evidence
@@ -72,7 +112,9 @@ def test_assemble_no_screenshot_is_none(tmp_path: Path) -> None:
 
 
 def test_heuristic_selector_suggests_close_id(tmp_path: Path) -> None:
-    ctx = triage.assemble(_write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}"))
+    ctx = triage.assemble(
+        _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    )
     assert ctx is not None
     result = HeuristicTriageAgent().triage(ctx)
     assert result.category == "selector"
@@ -83,8 +125,13 @@ def test_heuristic_selector_suggests_close_id(tmp_path: Path) -> None:
 
 def test_heuristic_ambiguous_selector() -> None:
     ctx = TriageContext(
-        scenario="s", failure="...", failed_step=FailedStep(0, "tap", "2 件一致: ..."),
-        failed_expectations=[], elements=[], scenario_yaml="", target_id="row.cell",
+        scenario="s",
+        failure="...",
+        failed_step=FailedStep(0, "tap", "2 件一致: ..."),
+        failed_expectations=[],
+        elements=[],
+        scenario_yaml="",
+        target_id="row.cell",
     )
     result = HeuristicTriageAgent().triage(ctx)
     assert result.category == "selector"
@@ -101,7 +148,9 @@ def test_apply_fix_renames_whole_token_only() -> None:
 
 def test_apply_fix_addindex_replaces_exact_fragment() -> None:
     text = "    - tap: { id: row.cell }\n    - tap: { id: row.cellar }\n"
-    patched, n = apply_fix(text, Fix("addIndex", "x", "{ id: row.cell }", "{ id: row.cell, index: 0 }"))
+    patched, n = apply_fix(
+        text, Fix("addIndex", "x", "{ id: row.cell }", "{ id: row.cell, index: 0 }")
+    )
     assert n == 1 and "{ id: row.cell, index: 0 }" in patched  # the exact fragment, not row.cellar
     assert "{ id: row.cellar }" in patched
 
@@ -113,8 +162,9 @@ def test_apply_fix_raise_timeout_replaces_fragment() -> None:
 
 
 def test_apply_fix_fragment_absent_is_safe_noop() -> None:
-    assert apply_fix("nothing here\n", Fix("addIndex", "s", "{ id: gone }", "{ id: gone, index: 0 }")) \
-        == ("nothing here\n", 0)
+    assert apply_fix(
+        "nothing here\n", Fix("addIndex", "s", "{ id: gone }", "{ id: gone, index: 0 }")
+    ) == ("nothing here\n", 0)
 
 
 def test_diff_fix_shows_change() -> None:
@@ -143,8 +193,12 @@ def test_cli_triage_apply_dry_run_then_write(tmp_path: Path) -> None:
 
 def test_cli_triage_apply_no_fix_is_advisory(tmp_path: Path) -> None:
     # an ambiguous-match failure (target id IS on screen) has no applicable rename fix
-    run = _write_run(tmp_path / "runs", ok=False, reason="2 件一致: {'id': 'home.title'}",
-                     scenario_id="home.title")
+    run = _write_run(
+        tmp_path / "runs",
+        ok=False,
+        reason="2 件一致: {'id': 'home.title'}",
+        scenario_id="home.title",
+    )
     src = tmp_path / "src.yaml"
     src.write_text("- name: s\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
     r = runner.invoke(app, ["triage", str(run), "--apply", str(src)])
@@ -154,8 +208,21 @@ def test_cli_triage_apply_no_fix_is_advisory(tmp_path: Path) -> None:
 
 def test_rerun_command_builder() -> None:
     cmd = _rerun_command("s.yaml", "demo", "idb", "DEAD-BEEF", "cfg.yaml")
-    assert cmd[1:] == ["-m", "bajutsu", "run", "s.yaml", "--app", "demo",
-                       "--config", "cfg.yaml", "--no-erase", "--backend", "idb", "--udid", "DEAD-BEEF"]
+    assert cmd[1:] == [
+        "-m",
+        "bajutsu",
+        "run",
+        "s.yaml",
+        "--app",
+        "demo",
+        "--config",
+        "cfg.yaml",
+        "--no-erase",
+        "--backend",
+        "idb",
+        "--udid",
+        "DEAD-BEEF",
+    ]
     bare = _rerun_command("s.yaml", "demo", "", "", "cfg.yaml")  # no backend, empty udid omitted
     assert "--backend" not in bare and "--udid" not in bare
 
@@ -181,8 +248,21 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         return 0
 
     monkeypatch.setattr("bajutsu.cli.subprocess.call", fake_call)
-    r = runner.invoke(app, ["triage", str(run), "--apply", str(src), "--write", "--rerun",
-                            "--app", "demo", "--backend", "idb"])
+    r = runner.invoke(
+        app,
+        [
+            "triage",
+            str(run),
+            "--apply",
+            str(src),
+            "--write",
+            "--rerun",
+            "--app",
+            "demo",
+            "--backend",
+            "idb",
+        ],
+    )
     assert r.exit_code == 0
     assert "wrote" in r.output and "fix verified" in r.output
     assert captured["cmd"][2:7] == ["bajutsu", "run", str(src), "--app", "demo"]
@@ -190,16 +270,30 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_heuristic_timing_and_assertion() -> None:
-    timing = HeuristicTriageAgent().triage(TriageContext(
-        scenario="s", failure="…", failed_step=FailedStep(1, "wait", "timeout"),
-        failed_expectations=[], elements=[], scenario_yaml="", target_id="home.spinner",
-    ))
+    timing = HeuristicTriageAgent().triage(
+        TriageContext(
+            scenario="s",
+            failure="…",
+            failed_step=FailedStep(1, "wait", "timeout"),
+            failed_expectations=[],
+            elements=[],
+            scenario_yaml="",
+            target_id="home.spinner",
+        )
+    )
     assert timing.category == "timing"
 
-    assertion = HeuristicTriageAgent().triage(TriageContext(
-        scenario="s", failure="expect: …", failed_step=None,
-        failed_expectations=["value equals='2': id='counter'"], elements=[], scenario_yaml="", target_id=None,
-    ))
+    assertion = HeuristicTriageAgent().triage(
+        TriageContext(
+            scenario="s",
+            failure="expect: …",
+            failed_step=None,
+            failed_expectations=["value equals='2': id='counter'"],
+            elements=[],
+            scenario_yaml="",
+            target_id=None,
+        )
+    )
     assert assertion.category == "assertion"
 
 

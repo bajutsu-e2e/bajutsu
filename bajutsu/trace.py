@@ -112,7 +112,10 @@ def trace_run(run_dir: Path, scenario_filter: str | None = None) -> str:
     if not isinstance(manifest, dict):
         return f"no readable manifest.json in {run_dir}"
     grade = "PASS" if manifest.get("ok") else "FAIL"
-    out = [f"bajutsu trace · run {manifest.get('runId', '')} · {grade} · driver: {manifest.get('backend', '')}", ""]
+    out = [
+        f"bajutsu trace · run {manifest.get('runId', '')} · {grade} · driver: {manifest.get('backend', '')}",
+        "",
+    ]
     for scenario in manifest.get("scenarios") or []:
         name = str(scenario.get("scenario", ""))
         if scenario_filter and scenario_filter.lower() not in name.lower():

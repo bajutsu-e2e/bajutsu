@@ -39,6 +39,10 @@ NetworkSource = Callable[[], list[NetworkExchange]]
 # Performs an in-scenario app relaunch (terminate + launch). Injected by the runner so the
 # orchestrator stays backend-agnostic; None means relaunch is unavailable (e.g. fake driver).
 RelaunchFn = Callable[[Relaunch], None]
+# Receives a human-readable progress line (e.g. "step 2/5: tap home.title") as the run advances.
+# Injected from the CLI (`--progress`) so the web UI can stream per-scenario/step progress; None
+# (the default everywhere) keeps the pipeline silent.
+ProgressFn = Callable[[str], None]
 
 
 class DeviceControl(Protocol):
@@ -135,12 +139,49 @@ def scenario_slug(name: str) -> str:
 
 def _action_of(step: Step) -> str:
     for a in (
-        "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
-        "wait", "assert_", "relaunch", "set_location", "push",
+        "tap",
+        "double_tap",
+        "long_press",
+        "type",
+        "swipe",
+        "pinch",
+        "rotate",
+        "wait",
+        "assert_",
+        "relaunch",
+        "set_location",
+        "push",
     ):
         if getattr(step, a) is not None:
             return a
     raise AssertionError("step に有効なアクションがない（scenario 検証で保証済み）")
+
+
+def _selector_hint(obj: object) -> str:
+    """A short target string for a progress label — the first id/label found on an action object
+    or its nested selector (e.g. `type`'s `into`, `swipe`'s `on`). Empty when nothing identifies
+    it. Never returns typed text (kept out of progress so secrets don't leak)."""
+    for attr in ("id", "label", "id_matches", "label_matches"):
+        v = getattr(obj, attr, None)
+        if v:
+            return str(v)
+    for attr in ("into", "on", "sel", "of", "within"):
+        nested = getattr(obj, attr, None)
+        if nested is not None:
+            hint = _selector_hint(nested)
+            if hint:
+                return hint
+    return ""
+
+
+def _step_label(step: Step, kind: str) -> str:
+    """A concise description of a step for progress output: the step's own `name` if set,
+    otherwise the action kind plus its target id/label (e.g. "tap home.title")."""
+    if step.name:
+        return step.name
+    hint = _selector_hint(getattr(step, kind))
+    pretty = kind.rstrip("_").replace("_", " ")
+    return f"{pretty} {hint}".strip()
 
 
 def _center(frame: base.Frame) -> base.Point:
@@ -267,13 +308,17 @@ def _interp_asserts(asserts: list[Assertion], bindings: Mapping[str, str]) -> li
     if not bindings:
         return asserts
     return [
-        Assertion.model_validate(interp.interpolate(a.model_dump(by_alias=True, exclude_none=True), bindings))
+        Assertion.model_validate(
+            interp.interpolate(a.model_dump(by_alias=True, exclude_none=True), bindings)
+        )
         for a in asserts
     ]
 
 
 def _do_action(
-    driver: base.Driver, step: Step, relaunch: RelaunchFn | None = None,
+    driver: base.Driver,
+    step: Step,
+    relaunch: RelaunchFn | None = None,
     control: DeviceControl | None = None,
 ) -> None:
     """Run tap / longPress / type / swipe / relaunch / device control (wait and assert live
@@ -311,12 +356,16 @@ def _do_action(
         return
     if step.relaunch is not None:
         if relaunch is None:
-            raise base.UnsupportedAction("relaunch にはデバイス環境が必要（fake driver では実行不可）")
+            raise base.UnsupportedAction(
+                "relaunch にはデバイス環境が必要（fake driver では実行不可）"
+            )
         relaunch(step.relaunch)
         return
     if step.set_location is not None:
         if control is None:
-            raise base.UnsupportedAction("setLocation にはデバイス環境が必要（fake driver では実行不可）")
+            raise base.UnsupportedAction(
+                "setLocation にはデバイス環境が必要（fake driver では実行不可）"
+            )
         control.set_location(step.set_location.lat, step.set_location.lon)
         return
     if step.push is not None:
@@ -342,8 +391,13 @@ BlockedHandler = Callable[[base.Driver], "AlertEvent | None"]
 
 
 def _run_step_body(
-    driver: base.Driver, step: Step, kind: str, clock: Clock, network: NetworkSource,
-    relaunch: RelaunchFn | None = None, bindings: Mapping[str, str] | None = None,
+    driver: base.Driver,
+    step: Step,
+    kind: str,
+    clock: Clock,
+    network: NetworkSource,
+    relaunch: RelaunchFn | None = None,
+    bindings: Mapping[str, str] | None = None,
     control: DeviceControl | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results)."""
@@ -447,6 +501,7 @@ def run_scenario(
     relaunch: RelaunchFn | None = None,
     bindings: Mapping[str, str] | None = None,
     control: DeviceControl | None = None,
+    progress: ProgressFn | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -470,8 +525,20 @@ def run_scenario(
 
     try:
         failure = _run_steps(
-            driver, scenario, clock, sink, on_blocked, wants_screen_changed,
-            outcomes, scenario_start, sid, network, relaunch, bindings, control,
+            driver,
+            scenario,
+            clock,
+            sink,
+            on_blocked,
+            wants_screen_changed,
+            outcomes,
+            scenario_start,
+            sid,
+            network,
+            relaunch,
+            bindings,
+            control,
+            progress,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, bindings or {})
@@ -480,7 +547,9 @@ def run_scenario(
                 event = on_blocked(driver)
                 if event is not None:
                     expect_alerts.append(event)
-                    expect_results = assertions.evaluate(driver.query(), expect, network())  # retry once
+                    expect_results = assertions.evaluate(
+                        driver.query(), expect, network()
+                    )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
     finally:
@@ -513,12 +582,16 @@ def _run_steps(
     relaunch: RelaunchFn | None = None,
     bindings: Mapping[str, str] | None = None,
     control: DeviceControl | None = None,
+    progress: ProgressFn | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None."""
     failure: str | None = None
+    total = len(scenario.steps)
     for i, step in enumerate(scenario.steps):
         kind = _action_of(step)
         outcome = StepOutcome(index=i, action=kind)
+        if progress is not None:
+            progress(f"{sid} · step {i + 1}/{total}: {_step_label(step, kind)}")
         # Per-step instant evidence lives under the scenario's dir so multi-scenario
         # runs don't share (and overwrite) a flat step0/ at the run root.
         step_id = f"{sid}/{step.name or f'step{i}'}"

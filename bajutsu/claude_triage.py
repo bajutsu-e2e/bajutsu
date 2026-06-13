@@ -81,11 +81,15 @@ TOOLS: list[dict[str, Any]] = [
                     "substring of the scenario definition shown",
                     "properties": {
                         "kind": {
-                            "type": "string", "enum": list(FIX_KINDS),
+                            "type": "string",
+                            "enum": list(FIX_KINDS),
                             "description": "renameId (misspelled/renamed id), addIndex "
                             "(disambiguate an ambiguous match), raiseTimeout (lengthen a wait)",
                         },
-                        "find": {"type": "string", "description": "exact text in the scenario to replace"},
+                        "find": {
+                            "type": "string",
+                            "description": "exact text in the scenario to replace",
+                        },
                         "replace": {"type": "string", "description": "the replacement text"},
                     },
                     "required": ["kind", "find", "replace"],
@@ -136,14 +140,16 @@ def _user_content(context: TriageContext) -> list[dict[str, Any]]:
     """The user message: the failure screenshot (if any) followed by the text context."""
     content: list[dict[str, Any]] = []
     if context.screenshot is not None:
-        content.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/png",
-                "data": base64.standard_b64encode(context.screenshot).decode("ascii"),
-            },
-        })
+        content.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": base64.standard_b64encode(context.screenshot).decode("ascii"),
+                },
+            }
+        )
     content.append({"type": "text", "text": _render(context)})
     return content
 
@@ -169,7 +175,9 @@ def _to_triage(message: Any) -> Triage:
     if category not in _CATEGORIES:
         category = "unknown"
     suggestions = [str(s) for s in (args.get("suggestions") or [])]
-    return Triage(str(args.get("summary", "")), category, suggestions, fix=_parse_fix(args.get("fix")))
+    return Triage(
+        str(args.get("summary", "")), category, suggestions, fix=_parse_fix(args.get("fix"))
+    )
 
 
 class ClaudeTriageAgent:
@@ -200,7 +208,9 @@ class ClaudeTriageAgent:
                 }
             ],
             tools=TOOLS,
-            tool_choice={"type": "any"},  # force the one diagnose call; no thinking with forced choice
+            tool_choice={
+                "type": "any"
+            },  # force the one diagnose call; no thinking with forced choice
             messages=[{"role": "user", "content": _user_content(context)}],
         )
         return _to_triage(message)

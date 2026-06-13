@@ -53,15 +53,53 @@ def test_happy_path_tap_and_expect() -> None:
     driver = FakeDriver([_el("home.title", "ホーム"), _el("settings.open", "設定", ["button"])])
     result = run_scenario(
         driver,
-        _scenario({
-            "name": "open settings",
-            "steps": [{"tap": {"id": "settings.open"}}],
-            "expect": [{"exists": {"id": "home.title"}}],
-        }),
+        _scenario(
+            {
+                "name": "open settings",
+                "steps": [{"tap": {"id": "settings.open"}}],
+                "expect": [{"exists": {"id": "home.title"}}],
+            }
+        ),
         clock=FakeClock(),
     )
     assert result.ok
     assert driver.actions == [("tap", {"id": "settings.open"})]
+
+
+def test_progress_reports_each_step() -> None:
+    """`progress` receives one line per step, labeled by the step name or action + target id."""
+    driver = FakeDriver([_el("counter.inc", "+", ["button"]), _el("counter.val", "0")])
+    lines: list[str] = []
+    run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "count up",
+                "steps": [
+                    {"tap": {"id": "counter.inc"}},  # no name → "tap counter.inc"
+                    {"name": "check it", "assert": [{"exists": {"id": "counter.val"}}]},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        scenario_id="00-count-up",
+        progress=lines.append,
+    )
+    assert lines == [
+        "00-count-up · step 1/2: tap counter.inc",
+        "00-count-up · step 2/2: check it",  # the step's own name wins over the action label
+    ]
+
+
+def test_progress_defaults_to_silent() -> None:
+    driver = FakeDriver([_el("home.title", "H")])
+    # No progress callback → no error, runs as before.
+    res = run_scenario(
+        driver,
+        _scenario({"name": "n", "steps": [{"tap": {"id": "home.title"}}]}),
+        clock=FakeClock(),
+    )
+    assert res.ok
 
 
 def test_run_scenario_records_duration() -> None:
@@ -82,7 +120,9 @@ def test_run_scenario_records_duration() -> None:
 def test_relaunch_invokes_injected_callback() -> None:
     # A relaunch step calls the injected relauncher with its env/args overrides.
     seen: list[Relaunch] = []
-    scn = _scenario({"name": "r", "steps": [{"relaunch": {"env": {"SEED": "9"}, "args": ["--fresh"]}}]})
+    scn = _scenario(
+        {"name": "r", "steps": [{"relaunch": {"env": {"SEED": "9"}, "args": ["--fresh"]}}]}
+    )
     res = run_scenario(FakeDriver([_el("home.title", "H")]), scn, relaunch=seen.append)
     assert res.ok, res.failure
     assert len(seen) == 1 and seen[0].env == {"SEED": "9"} and seen[0].args == ["--fresh"]
@@ -106,11 +146,13 @@ def test_react_transition_then_expect() -> None:
     driver = FakeDriver(home, react=react)
     result = run_scenario(
         driver,
-        _scenario({
-            "name": "drill into settings",
-            "steps": [{"tap": {"id": "settings.open"}}, {"tap": {"id": "settings.reindex"}}],
-            "expect": [{"exists": {"id": "settings.title"}}],
-        }),
+        _scenario(
+            {
+                "name": "drill into settings",
+                "steps": [{"tap": {"id": "settings.open"}}, {"tap": {"id": "settings.reindex"}}],
+                "expect": [{"exists": {"id": "settings.title"}}],
+            }
+        ),
         clock=FakeClock(),
     )
     assert result.ok
@@ -143,13 +185,23 @@ def test_assert_step_intermediate() -> None:
     driver = FakeDriver([_el("counter", "c", ["staticText"], value="3")])
     ok = run_scenario(
         driver,
-        _scenario({"name": "x", "steps": [{"assert": [{"value": {"sel": {"id": "counter"}, "equals": "3"}}]}]}),
+        _scenario(
+            {
+                "name": "x",
+                "steps": [{"assert": [{"value": {"sel": {"id": "counter"}, "equals": "3"}}]}],
+            }
+        ),
         clock=FakeClock(),
     )
     assert ok.ok
     bad = run_scenario(
         driver,
-        _scenario({"name": "x", "steps": [{"assert": [{"value": {"sel": {"id": "counter"}, "equals": "4"}}]}]}),
+        _scenario(
+            {
+                "name": "x",
+                "steps": [{"assert": [{"value": {"sel": {"id": "counter"}, "equals": "4"}}]}],
+            }
+        ),
         clock=FakeClock(),
     )
     assert not bad.ok
@@ -191,7 +243,12 @@ def test_wait_until_gone() -> None:
 
     result = run_scenario(
         driver,
-        _scenario({"name": "x", "steps": [{"wait": {"until": {"gone": {"id": "spinner"}}, "timeout": 1.0}}]}),
+        _scenario(
+            {
+                "name": "x",
+                "steps": [{"wait": {"until": {"gone": {"id": "spinner"}}, "timeout": 1.0}}],
+            }
+        ),
         clock=FakeClock(on_sleep),
     )
     assert result.ok
@@ -217,10 +274,15 @@ def test_wait_settled_waits_for_a_stable_screen() -> None:
 
     def on_sleep(t: float) -> None:
         if t < 0.15:  # a transition still in progress: the frame keeps moving
-            driver.screen = [{
-                "identifier": "home", "label": "Home", "traits": ["button"],
-                "value": None, "frame": (t, 0.0, 10.0, 10.0),
-            }]
+            driver.screen = [
+                {
+                    "identifier": "home",
+                    "label": "Home",
+                    "traits": ["button"],
+                    "value": None,
+                    "frame": (t, 0.0, 10.0, 10.0),
+                }
+            ]
 
     result = run_scenario(
         driver,
@@ -245,14 +307,16 @@ def test_type_and_swipe_actions() -> None:
     driver = FakeDriver([_el("search.field", "検索", ["textField"]), _el("list", "", ["table"])])
     result = run_scenario(
         driver,
-        _scenario({
-            "name": "x",
-            "steps": [
-                {"type": {"text": "hello", "into": {"id": "search.field"}}},
-                {"swipe": {"on": {"id": "list"}, "direction": "up"}},
-                {"swipe": {"from": [1, 2], "to": [3, 4]}},
-            ],
-        }),
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"type": {"text": "hello", "into": {"id": "search.field"}}},
+                    {"swipe": {"on": {"id": "list"}, "direction": "up"}},
+                    {"swipe": {"from": [1, 2], "to": [3, 4]}},
+                ],
+            }
+        ),
         clock=FakeClock(),
     )
     assert result.ok
@@ -343,11 +407,13 @@ def test_expect_failure() -> None:
     driver = FakeDriver([_el("a", "A", ["button"])])
     result = run_scenario(
         driver,
-        _scenario({
-            "name": "x",
-            "steps": [{"tap": {"id": "a"}}],
-            "expect": [{"exists": {"id": "missing"}}],
-        }),
+        _scenario(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "a"}}],
+                "expect": [{"exists": {"id": "missing"}}],
+            }
+        ),
         clock=FakeClock(),
     )
     assert not result.ok

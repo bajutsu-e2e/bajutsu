@@ -18,7 +18,14 @@ class FakeProc:
 
 def test_record_video_cmd() -> None:
     assert intervals.record_video_cmd("UDID", "/tmp/v.mp4") == [
-        "xcrun", "simctl", "io", "UDID", "recordVideo", "--codec", "h264", "/tmp/v.mp4",
+        "xcrun",
+        "simctl",
+        "io",
+        "UDID",
+        "recordVideo",
+        "--codec",
+        "h264",
+        "/tmp/v.mp4",
     ]
 
 
@@ -70,15 +77,17 @@ def test_interval_kinds_registry() -> None:
 
 # --- appTrace: log-marker interval parsing ---
 
-_NDJSON = "\n".join([
-    '{"eventType": "logEvent", "eventMessage": "reindex started",'
-    ' "timestamp": "2026-06-05 01:01:11.681183+0900"}',
-    '{"eventType": "logEvent", "eventMessage": "noise here",'
-    ' "timestamp": "2026-06-05 01:01:11.900000+0900"}',
-    "not json — should be skipped",
-    '{"eventType": "logEvent", "eventMessage": "reindex finished",'
-    ' "timestamp": "2026-06-05 01:01:12.881183+0900"}',
-])
+_NDJSON = "\n".join(
+    [
+        '{"eventType": "logEvent", "eventMessage": "reindex started",'
+        ' "timestamp": "2026-06-05 01:01:11.681183+0900"}',
+        '{"eventType": "logEvent", "eventMessage": "noise here",'
+        ' "timestamp": "2026-06-05 01:01:11.900000+0900"}',
+        "not json — should be skipped",
+        '{"eventType": "logEvent", "eventMessage": "reindex finished",'
+        ' "timestamp": "2026-06-05 01:01:12.881183+0900"}',
+    ]
+)
 
 
 def test_parse_app_trace_pairs_markers() -> None:
@@ -91,8 +100,10 @@ def test_parse_app_trace_pairs_markers() -> None:
 
 
 def test_parse_app_trace_ignores_unpaired() -> None:
-    text = '{"eventType": "logEvent", "eventMessage": "load started",' \
+    text = (
+        '{"eventType": "logEvent", "eventMessage": "load started",'
         ' "timestamp": "2026-06-05 01:01:11.000000+0900"}'
+    )
     assert intervals.parse_app_trace(text) == []
 
 
@@ -117,5 +128,6 @@ def test_start_app_trace_writes_parsed_json(tmp_path: Path) -> None:
     assert interval.kind == "appTrace"
     assert interval.stop() == out  # transform turns raw -> parsed json
     import json as _json
+
     parsed = _json.loads(out.read_text())
     assert parsed[0]["name"] == "reindex" and parsed[0]["durationMs"] == 1200.0

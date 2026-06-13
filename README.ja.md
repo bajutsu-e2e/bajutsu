@@ -1,5 +1,9 @@
 [English](README.md) · **日本語**
 
+<p align="center">
+  <img src="assets/icons/png/bajutsu-256.png" alt="Bajutsu — 馬" width="148" height="148">
+</p>
+
 # Bajutsu
 
 > iOS Simulator 向けの自然言語駆動 E2E テスト。

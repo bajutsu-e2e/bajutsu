@@ -158,6 +158,10 @@ bajutsu serve [--port 8765] [--scenarios demos/features/app/scenarios] [--config
 
 - Pick a scenario file + app, set backend / udid / erase / `disable alert-dismiss`, hit **Run**;
   the output streams live and the `report.html` embeds on completion.
+- If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
+  (its output streams into the job log); a build failure aborts the run before it spawns. Set
+  `apps.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features
+  sample-build`) to build on demand from the UI without a manual build first.
 - A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
 - The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH` so

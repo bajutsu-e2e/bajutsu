@@ -126,9 +126,7 @@ def bootstatus_cmd(udid: str) -> list[str]:
 
 def _real_run(args: list[str], extra_env: Mapping[str, str] | None = None) -> str:
     full_env = {**os.environ, **(extra_env or {})}
-    return subprocess.run(
-        args, capture_output=True, text=True, check=True, env=full_env
-    ).stdout
+    return subprocess.run(args, capture_output=True, text=True, check=True, env=full_env).stdout
 
 
 def resolve_udid(udid: str, run: RunFn = _real_run) -> str:
