@@ -64,7 +64,7 @@ flowchart TB
 
 ## モジュール一覧と役割
 
-`bajutsu/` パッケージ（Python 3.11+、pydantic v2 / typer / anthropic / pyyaml）。
+`bajutsu/` パッケージ（Python 3.13+、pydantic v2 / typer / anthropic / pyyaml / jinja2）。
 
 | モジュール | 役割 | ページ |
 |---|---|---|
@@ -133,7 +133,7 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 
 ## テスト構成
 
-`tests/` に **324 のユニットテスト**（`uv run pytest -q`）。すべて実機 Simulator を必要としない:
+`tests/` に **405 のユニットテスト**（`uv run pytest -q`）。すべて実機 Simulator を必要としない:
 コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`・`Spawn`・`Clock`）で
 検証する。サンプルアプリに対する実機 E2E は `make -C demos/features e2e` / `make -C demos/features ui-test`（[sample-app](sample-app.md)）。
 

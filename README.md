@@ -119,7 +119,7 @@ breakdown.
 
 ## Status
 
-Implemented and covered by tests (324 unit tests, run without a Simulator):
+Implemented and covered by tests (405 unit tests, run without a Simulator):
 
 - Driver abstraction and **selector resolution** (the determinism core)
 - **Scenario schema** (steps, waits, assertions) with strict validation + YAML round-trip
@@ -237,8 +237,8 @@ bajutsu/
 - **M3 — done.** XCUITest codegen ✅, app traces (`appTrace` / os_signpost) ✅, redaction
   applied to captured evidence ✅, network **observation** (the in-app collector + `request`
   assertions) ✅, and **deterministic mocks** (scenario `mocks` → offline in-protocol stubs) ✅ —
-  all validated on-device. **CI** ✅: `ci.yml` runs ruff + mypy + pytest on Linux (py3.11 /
-  3.13); `e2e.yml` runs the idb smoke scenario *and* the codegen→XCUITest path
+  all validated on-device. **CI** ✅: `ci.yml` runs ruff + mypy + pytest on Linux (py3.13);
+  `e2e.yml` runs the idb smoke scenario *and* the codegen→XCUITest path
   (`make -C demos/features ui-test`) on a macOS Simulator.
 - **M4 — implemented.** Self-healing triage: `bajutsu triage` assembles a failed run's context
   and diagnoses it (root cause + suggested fixes; **advisory** — never the pass/fail judge).

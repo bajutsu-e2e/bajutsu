@@ -64,7 +64,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 
 ```bash
 uv sync --extra dev                  # .venv 作成 + 依存 + 開発ツール
-uv run pytest -q                     # 324 のユニットテスト（実機不要）
+uv run pytest -q                     # 405 のユニットテスト（実機不要）
 
 # 同梱サンプルに対して（実機 Simulator が必要）
 make -C demos/features sample-build                    # フィクスチャアプリをビルド

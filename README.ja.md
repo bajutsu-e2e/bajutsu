@@ -111,7 +111,7 @@ flowchart TB
 
 ## ステータス
 
-実装済み・テスト済み（324 のユニットテスト、Simulator 不要で走る）:
+実装済み・テスト済み（405 のユニットテスト、Simulator 不要で走る）:
 
 - ドライバ抽象と **セレクタ解決**（決定性の核）
 - **シナリオスキーマ**（ステップ / 待機 / アサーション）の厳格検証 + YAML ラウンドトリップ
@@ -222,7 +222,7 @@ bajutsu/
 - **M3 — 完了。** XCUITest codegen ✅、アプリトレース（`appTrace` / os_signpost）✅、
   証跡への redaction 適用 ✅、ネットワーク**観測**（アプリ内 collector + `request` アサーション）✅、
   **決定的モック**（シナリオ `mocks` → オフラインのプロトコル内スタブ）✅ — いずれも実機検証済み。
-  **CI** ✅: `ci.yml` が Linux で ruff + mypy + pytest（py3.11 / 3.13）、`e2e.yml` が macOS Simulator で
+  **CI** ✅: `ci.yml` が Linux で ruff + mypy + pytest（py3.13）、`e2e.yml` が macOS Simulator で
   idb smoke と codegen→XCUITest 経路（`make -C demos/features ui-test`）。
 - **M4 — 実装済み。** 自己修復トリアージ: `bajutsu triage` が失敗 run のコンテキストを組み立て
   診断（原因＋修正案。**助言のみ**・合否は判定しない）。同じ `TriageAgent` プロトコルの裏で、既定の
