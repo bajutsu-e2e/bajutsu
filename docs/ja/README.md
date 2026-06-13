@@ -56,9 +56,11 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 | 13 | [cli](cli.md) | CLI コマンド・オプションの完全リファレンス |
 | 14 | [sample-app](sample-app.md) | 同梱フィクスチャ `BajutsuSample`（全プリミティブを網羅） |
 | 15 | [ci](ci.md) | CI で動かす — リポ自身の workflow + 再利用可能な `bajutsu-e2e` アクション |
-| 16 | [cloud-hosting](cloud-hosting.md) | **将来構想** — Web UI を共有・公開サービスとしてホスティング（サーバ/DB/ストレージ/デプロイ選定） |
-| 17 | [self-hosting](self-hosting.md) | **将来構想** — Web UI を自前の Mac で稼働: 今日使える単一 Mac 構成 + 完全セルフホストのマルチテナント構成 |
-| 18 | [ai-development](ai-development.md) | AI エージェントと人間の並行開発の運用規約（ゲート / ブランチ / pre-push フック / worktree）—— [`CLAUDE.md`](../../CLAUDE.md) の詳細版 |
+| 16 | [vision](vision.md) | **将来構想** — north star: 成長の 3 軸（reach / scale / authoring）と、すべてが守る不変条件 |
+| 17 | [multi-platform](multi-platform.md) | **将来構想** — 既存の driver 抽象の背後で Android（エミュレータ）と Web（ブラウザ）へ拡張する具体的な計画と設計 |
+| 18 | [cloud-hosting](cloud-hosting.md) | **将来構想** — Web UI を共有・公開サービスとしてホスティング（サーバ/DB/ストレージ/デプロイ選定） |
+| 19 | [self-hosting](self-hosting.md) | **将来構想** — Web UI を自前の Mac で稼働: 今日使える単一 Mac 構成 + 完全セルフホストのマルチテナント構成 |
+| 20 | [ai-development](ai-development.md) | AI エージェントと人間の並行開発の運用規約（ゲート / ブランチ / pre-push フック / worktree）—— [`CLAUDE.md`](../../CLAUDE.md) の詳細版 |
 
 ## クイックスタート
 
