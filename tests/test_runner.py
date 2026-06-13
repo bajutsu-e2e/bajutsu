@@ -488,6 +488,45 @@ def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch
         shutdown()
 
 
+def test_device_pool_stops_started_collectors_when_one_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If a collector fails to start mid-setup, the ones already started must be stopped so
+    the pool doesn't leak listening sockets."""
+    started: list[object] = []
+
+    class FlakyCollector:
+        count = 0
+
+        def __init__(self) -> None:
+            FlakyCollector.count += 1
+            self._idx = FlakyCollector.count
+            self.stopped = False
+
+        def start(self) -> None:
+            if self._idx == 2:  # the second device's collector fails to bind
+                raise OSError("port in use")
+            started.append(self)
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    monkeypatch.setattr("bajutsu.runner.NetworkCollector", FlakyCollector)
+    monkeypatch.setattr("bajutsu.runner.make_driver", lambda actuator, udid: FakeDriver([]))
+
+    with pytest.raises(OSError, match="port in use"):
+        device_pool(
+            ["UDID-A", "UDID-B"],
+            ["idb"],
+            _eff(),
+            Path("runs"),
+            network=True,
+            available=lambda b: True,
+            env_run=lambda args, extra_env=None: "",
+        )
+    assert len(started) == 1 and started[0].stopped  # type: ignore[attr-defined]
+
+
 def test_run_and_report(tmp_path: Path) -> None:
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     results, manifest = run_and_report(_eff(), scenarios, _lease, tmp_path / "runs", "run1")
@@ -499,3 +538,35 @@ def test_run_and_report(tmp_path: Path) -> None:
     # The executed scenario is kept alongside its results.
     scn_file = tmp_path / "runs" / "run1" / "scenario.yaml"
     assert scn_file.exists() and "name: a" in scn_file.read_text(encoding="utf-8")
+
+
+def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> None:
+    """The run-level scrub is the final safety net: a secret that reaches result text (here a
+    failing assertion's expected value, interpolated from a binding) must not survive into any
+    written artifact, even though the scenario definition only ever holds the token."""
+    secret = "S3CR3T-TOKEN"
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "a",
+                "steps": [{"tap": {"id": "ok"}}],
+                "expect": [{"value": {"sel": {"id": "ok"}, "equals": "${secrets.token}"}}],
+            }
+        )
+    ]
+    results, _ = run_and_report(
+        _eff(),
+        scenarios,
+        _lease,
+        tmp_path / "runs",
+        "run1",
+        bindings={"secrets.token": secret},
+        secret_values=[secret],
+    )
+    # The assertion failed, so the secret value really did reach the in-memory result text.
+    assert not results[0].ok
+    assert results[0].failure is not None and secret in results[0].failure
+    # ...but it is scrubbed out of every written artifact.
+    run_dir = tmp_path / "runs" / "run1"
+    for name in ("manifest.json", "junit.xml", "scenario.yaml"):
+        assert secret not in (run_dir / name).read_text(encoding="utf-8")

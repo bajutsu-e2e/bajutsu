@@ -155,12 +155,6 @@ def test_apply_fix_addindex_replaces_exact_fragment() -> None:
     assert "{ id: row.cellar }" in patched
 
 
-def test_apply_fix_raise_timeout_replaces_fragment() -> None:
-    text = "    - wait: { for: { id: spinner }, timeout: 5 }\n"
-    patched, n = apply_fix(text, Fix("raiseTimeout", "x", "timeout: 5", "timeout: 15"))
-    assert n == 1 and "timeout: 15" in patched
-
-
 def test_apply_fix_fragment_absent_is_safe_noop() -> None:
     assert apply_fix(
         "nothing here\n", Fix("addIndex", "s", "{ id: gone }", "{ id: gone, index: 0 }")

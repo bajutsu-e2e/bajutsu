@@ -8,13 +8,16 @@ from bajutsu.backends import make_driver, select_actuator
 from bajutsu.drivers import base
 
 
-def test_select_first_available() -> None:
-    assert select_actuator(["idb"], available=lambda b: True) == "idb"
-
-
-def test_select_skips_unknown_backends() -> None:
-    # Unknown backends are never selected, even when reported "available".
-    assert select_actuator(["bogus", "idb"], available=lambda b: True) == "idb"
+@pytest.mark.parametrize(
+    ("order", "expected"),
+    [
+        (["idb"], "idb"),
+        # unknown backends are never selected, even when reported "available"
+        (["bogus", "idb"], "idb"),
+    ],
+)
+def test_select_actuator_picks_first_known_available(order: list[str], expected: str) -> None:
+    assert select_actuator(order, available=lambda b: True) == expected
 
 
 def test_select_none_available_raises() -> None:

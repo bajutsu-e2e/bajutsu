@@ -15,7 +15,9 @@ from bajutsu.drivers.base import (
 )
 
 
-def _el(
+# Kept local (not shared via conftest) so this determinism-core file stays self-contained
+# and runnable directly, per the module docstring.
+def el(
     identifier: str | None = None,
     label: str | None = None,
     traits: list[str] | None = None,
@@ -32,10 +34,10 @@ def _el(
 
 
 SCREEN: list[Element] = [
-    _el("settings.open", "設定", ["button"]),
-    _el("settings.reindex", "再生成", ["button"]),
-    _el("result.row.1", "A", ["cell"]),
-    _el("result.row.2", "B", ["cell"]),
+    el("settings.open", "設定", ["button"]),
+    el("settings.reindex", "再生成", ["button"]),
+    el("result.row.1", "A", ["cell"]),
+    el("result.row.2", "B", ["cell"]),
 ]
 
 
@@ -80,10 +82,10 @@ def test_and_of_fields() -> None:
 def test_within_scopes_to_container() -> None:
     # Two same-id buttons, each inside a different section container.
     screen: list[Element] = [
-        _el("form.login", "login", ["group"], frame=(0.0, 0.0, 100.0, 50.0)),
-        _el("form.signup", "signup", ["group"], frame=(0.0, 60.0, 100.0, 50.0)),
-        _el("row.submit", "Go", ["button"], frame=(10.0, 10.0, 30.0, 20.0)),  # inside login
-        _el("row.submit", "Go", ["button"], frame=(10.0, 70.0, 30.0, 20.0)),  # inside signup
+        el("form.login", "login", ["group"], frame=(0.0, 0.0, 100.0, 50.0)),
+        el("form.signup", "signup", ["group"], frame=(0.0, 60.0, 100.0, 50.0)),
+        el("row.submit", "Go", ["button"], frame=(10.0, 10.0, 30.0, 20.0)),  # inside login
+        el("row.submit", "Go", ["button"], frame=(10.0, 70.0, 30.0, 20.0)),  # inside signup
     ]
     # Ambiguous on its own…
     try:
@@ -104,17 +106,17 @@ def test_within_scopes_to_container() -> None:
 
 def test_within_excludes_elements_outside_the_scope() -> None:
     screen: list[Element] = [
-        _el("box", frame=(0.0, 0.0, 50.0, 50.0)),
-        _el("btn", "out", ["button"], frame=(100.0, 100.0, 10.0, 10.0)),  # outside box
+        el("box", frame=(0.0, 0.0, 50.0, 50.0)),
+        el("btn", "out", ["button"], frame=(100.0, 100.0, 10.0, 10.0)),  # outside box
     ]
     assert find_all(screen, {"id": "btn", "within": {"id": "box"}}) == []
 
 
 def test_within_nests() -> None:
     screen: list[Element] = [
-        _el("outer", frame=(0.0, 0.0, 100.0, 100.0)),
-        _el("inner", frame=(10.0, 10.0, 50.0, 50.0)),
-        _el("btn", "go", ["button"], frame=(15.0, 15.0, 5.0, 5.0)),  # inside inner ⊂ outer
+        el("outer", frame=(0.0, 0.0, 100.0, 100.0)),
+        el("inner", frame=(10.0, 10.0, 50.0, 50.0)),
+        el("btn", "go", ["button"], frame=(15.0, 15.0, 5.0, 5.0)),  # inside inner ⊂ outer
     ]
     got = resolve_unique(
         screen, {"id": "btn", "within": {"id": "inner", "within": {"id": "outer"}}}
@@ -136,9 +138,9 @@ def test_compile_cache_reuses_compiled_pattern() -> None:
 def test_label_matches_uses_regex() -> None:
     """labelMatches selector uses regex matching (via cached compile)."""
     screen: list[Element] = [
-        _el("a", "Settings Page", ["staticText"]),
-        _el("b", "Home Page", ["staticText"]),
-        _el("c", "About", ["staticText"]),
+        el("a", "Settings Page", ["staticText"]),
+        el("b", "Home Page", ["staticText"]),
+        el("c", "About", ["staticText"]),
     ]
     found = find_all(screen, {"labelMatches": ".*Page$"})
     assert [e["identifier"] for e in found] == ["a", "b"]
@@ -149,9 +151,9 @@ def test_find_all_id_only_uses_index() -> None:
     from bajutsu.drivers.base import _id_index
 
     screen: list[Element] = [
-        _el("a", "A", ["button"]),
-        _el("b", "B", ["cell"]),
-        _el("c", "C", ["button"]),
+        el("a", "A", ["button"]),
+        el("b", "B", ["cell"]),
+        el("c", "C", ["button"]),
     ]
     # First call builds the index
     idx1 = _id_index(screen)
@@ -167,8 +169,8 @@ def test_find_all_id_index_invalidates_on_new_list() -> None:
     """The id index cache invalidates when a new element list is passed."""
     from bajutsu.drivers.base import _id_index
 
-    screen1: list[Element] = [_el("a", "A")]
-    screen2: list[Element] = [_el("b", "B")]
+    screen1: list[Element] = [el("a", "A")]
+    screen2: list[Element] = [el("b", "B")]
     idx1 = _id_index(screen1)
     idx2 = _id_index(screen2)
     assert idx2 is not idx1

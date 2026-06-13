@@ -5,34 +5,20 @@ Verify that scenario -> resolve -> assert closes as pure logic.
 
 from __future__ import annotations
 
+from conftest import el
+
 from bajutsu.assertions import evaluate, evaluate_one, passed
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion
 
-
-def _el(
-    identifier: str | None = None,
-    label: str | None = None,
-    traits: list[str] | None = None,
-    value: str | None = None,
-) -> base.Element:
-    return {
-        "identifier": identifier,
-        "label": label,
-        "traits": traits or [],
-        "value": value,
-        "frame": (0.0, 0.0, 10.0, 10.0),
-    }
-
-
 SCREEN: list[base.Element] = [
-    _el("home.title", "ホーム", ["staticText"]),
-    _el("counter", "カウント", ["staticText"], value="3"),
-    _el("submit", "送信", ["button", "notEnabled"]),  # disabled
-    _el("tab.home", "ホームタブ", ["button", "selected"]),
-    _el("status", "処理完了しました", ["staticText"]),
-    _el("result.row.1", "A", ["cell"]),
-    _el("result.row.2", "B", ["cell"]),
+    el("home.title", "ホーム", ["staticText"]),
+    el("counter", "カウント", ["staticText"], value="3"),
+    el("submit", "送信", ["button", "notEnabled"]),  # disabled
+    el("tab.home", "ホームタブ", ["button", "selected"]),
+    el("status", "処理完了しました", ["staticText"]),
+    el("result.row.1", "A", ["cell"]),
+    el("result.row.2", "B", ["cell"]),
 ]
 
 
