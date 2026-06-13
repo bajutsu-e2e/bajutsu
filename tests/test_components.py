@@ -49,11 +49,9 @@ def test_use_expands_and_substitutes_params() -> None:
 
 def test_nested_components_expand() -> None:
     table = {
-        "inner.yaml": load_component(
-            "params: [x]\nsteps:\n  - tap: { id: \"${params.x}\" }\n"
-        ),
+        "inner.yaml": load_component('params: [x]\nsteps:\n  - tap: { id: "${params.x}" }\n'),
         "outer.yaml": load_component(
-            "params: [y]\nsteps:\n  - use: { component: inner.yaml, with: { x: \"${params.y}\" } }\n"
+            'params: [y]\nsteps:\n  - use: { component: inner.yaml, with: { x: "${params.y}" } }\n'
         ),
     }
     scns = load_scenarios(
@@ -83,7 +81,7 @@ def test_unknown_param_raises() -> None:
 
 def test_undeclared_param_token_raises() -> None:
     bad = load_component(
-        "params: [a]\nsteps:\n  - tap: { id: \"${params.b}\" }\n"  # references undeclared b
+        'params: [a]\nsteps:\n  - tap: { id: "${params.b}" }\n'  # references undeclared b
     )
     scns = load_scenarios(
         "- name: s\n  steps:\n    - use: { component: bad.yaml, with: { a: x } }\n"

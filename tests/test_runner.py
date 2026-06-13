@@ -61,8 +61,12 @@ def _fake_driver() -> base.Driver:
 # A lease over a fake driver with no per-device resources (no evidence/network/control).
 def _lease(eff: Effective, scenario: Scenario) -> Lease:
     return Lease(
-        driver=_fake_driver(), sink=NullSink(), relaunch=None, control=None,
-        collector=None, release=lambda: None,
+        driver=_fake_driver(),
+        sink=NullSink(),
+        relaunch=None,
+        control=None,
+        collector=None,
+        release=lambda: None,
     )
 
 
@@ -77,14 +81,19 @@ def test_run_all() -> None:
 
 def test_run_all_parallel_preserves_order_and_releases() -> None:
     scenarios = [
-        Scenario.model_validate({"name": n, "steps": [{"tap": {"id": "ok"}}]}) for n in ("a", "b", "c")
+        Scenario.model_validate({"name": n, "steps": [{"tap": {"id": "ok"}}]})
+        for n in ("a", "b", "c")
     ]
     released: list[str] = []
 
     def lease(eff: Effective, s: Scenario) -> Lease:
         return Lease(
-            driver=_fake_driver(), sink=NullSink(), relaunch=None, control=None,
-            collector=None, release=lambda: released.append(s.name),
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: released.append(s.name),
         )
 
     results = run_all(_eff(), scenarios, lease, workers=2)
@@ -102,8 +111,12 @@ def test_run_all_releases_after_each_scenario() -> None:
 
     def lease(eff: Effective, s: Scenario) -> Lease:
         return Lease(
-            driver=_fake_driver(), sink=NullSink(), relaunch=None, control=None,
-            collector=None, release=lambda: released.append(s.name),
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: released.append(s.name),
         )
 
     run_all(_eff(), scenarios, lease)
@@ -144,8 +157,13 @@ def test_run_all_attributes_each_scenario_to_its_device() -> None:
 
     def lease(eff: Effective, s: Scenario) -> Lease:
         return Lease(
-            driver=_fake_driver(), sink=NullSink(), relaunch=None, control=None,
-            collector=None, release=lambda: None, udid=f"DEV-{s.name}",
+            driver=_fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+            udid=f"DEV-{s.name}",
         )
 
     results = run_all(_eff(), scenarios, lease, workers=2)
@@ -171,7 +189,9 @@ def test_relauncher_relaunches_with_locale_and_overrides() -> None:
     )(_eff(), scn, driver)
     relaunch(Relaunch(env={"K": "V"}, args=["--fresh"]))
 
-    assert any(c[0] == ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] for c in calls)
+    assert any(
+        c[0] == ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] for c in calls
+    )
     launch, launch_env = next(c for c in calls if "launch" in c[0])
     assert "--fresh" in launch  # per-relaunch arg
     # Locale forced via app launch args, scenario locale winning.
@@ -213,7 +233,11 @@ def test_launch_driver_injects_extra_env(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr("bajutsu.runner.make_driver", lambda actuator, udid: ready)
 
     launch_driver(
-        "UDID-1", _eff(), "idb", Preconditions(erase=False), env_run=fake_run,
+        "UDID-1",
+        _eff(),
+        "idb",
+        Preconditions(erase=False),
+        env_run=fake_run,
         extra_env={"BAJUTSU_COLLECTOR": "http://127.0.0.1:7"},
     )
 
@@ -225,18 +249,21 @@ def _recording_run(calls: list[list[str]]):
     def fake_run(args: list[str], extra_env: object = None) -> str:
         calls.append(args)
         return ""
+
     return fake_run
 
 
-def _launch_recording(monkeypatch: pytest.MonkeyPatch, app_path: str, pre: Preconditions
-                      ) -> list[list[str]]:
+def _launch_recording(
+    monkeypatch: pytest.MonkeyPatch, app_path: str, pre: Preconditions
+) -> list[list[str]]:
     calls: list[list[str]] = []
     monkeypatch.setattr(
         "bajutsu.runner.make_driver",
         lambda actuator, udid: FakeDriver([_el("home.title", "H"), _el("ok", "OK")]),
     )
-    launch_driver("UDID-1", replace(_eff(), app_path=app_path), "idb", pre,
-                  env_run=_recording_run(calls))
+    launch_driver(
+        "UDID-1", replace(_eff(), app_path=app_path), "idb", pre, env_run=_recording_run(calls)
+    )
     return calls
 
 
@@ -282,17 +309,19 @@ def test_launch_driver_errors_on_missing_app_path(monkeypatch: pytest.MonkeyPatc
     eff = replace(_eff(), app_path="/nope/X.app")
     monkeypatch.setattr("bajutsu.runner.make_driver", lambda actuator, udid: FakeDriver([]))
     with pytest.raises(env.DeviceError) as excinfo:
-        launch_driver("UDID-1", eff, "idb", Preconditions(erase=False),
-                      env_run=_recording_run([]))
+        launch_driver("UDID-1", eff, "idb", Preconditions(erase=False), env_run=_recording_run([]))
     assert "appPath not found" in str(excinfo.value)
 
 
 def test_launch_driver_surfaces_failing_erase_as_device_error() -> None:
     """A simctl failure becomes a clean DeviceError (exit 2 at the CLI), not a traceback."""
+
     def fake_run(args: list[str], extra_env: object = None) -> str:
         if args[:3] == ["xcrun", "simctl", "erase"]:
             raise subprocess.CalledProcessError(
-                149, args, output="",
+                149,
+                args,
+                output="",
                 stderr="Unable to erase contents and settings in current state: Booted",
             )
         return ""
@@ -324,8 +353,13 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
     )
 
     lease, shutdown = device_pool(
-        ["UDID-A", "UDID-B"], ["idb"], _eff(), Path("runs"),
-        network=True, available=lambda b: True, env_run=fake_run,
+        ["UDID-A", "UDID-B"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=fake_run,
     )
     la = lb = None
     try:
@@ -347,7 +381,8 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
         launch_envs = [e for args, e in calls if "launch" in args]
         urls = {e.get("SIMCTL_CHILD_BAJUTSU_COLLECTOR") for e in launch_envs}
         assert urls == {
-            f"http://127.0.0.1:{la.collector.port}", f"http://127.0.0.1:{lb.collector.port}"
+            f"http://127.0.0.1:{la.collector.port}",
+            f"http://127.0.0.1:{lb.collector.port}",
         }
     finally:
         if la is not None:
@@ -363,9 +398,15 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
 def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) -> None:
     # The pool reads the simulator catalog once and tags each lease with its device model /
     # OS runtime, so the report's Environment tab can name the simulator a scenario ran on.
-    catalog = json.dumps({"devices": {
-        "com.apple.CoreSimulator.SimRuntime.iOS-17-2": [{"udid": "UDID-A", "name": "iPhone 15"}],
-    }})
+    catalog = json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-17-2": [
+                    {"udid": "UDID-A", "name": "iPhone 15"}
+                ],
+            }
+        }
+    )
 
     def fake_run(args: list[str], extra_env: object = None) -> str:
         return catalog if args == env.list_devices_cmd() else ""
@@ -375,7 +416,12 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
-        ["UDID-A"], ["idb"], _eff(), Path("runs"), available=lambda b: True, env_run=fake_run,
+        ["UDID-A"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        available=lambda b: True,
+        env_run=fake_run,
     )
     try:
         lz = lease(_eff(), _scn("a"))
@@ -391,8 +437,13 @@ def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.Monke
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
-        ["UDID-1"], ["idb"], _eff(), Path("runs"), network=True,
-        log_subsystem="com.example.demo", available=lambda b: True,
+        ["UDID-1"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        log_subsystem="com.example.demo",
+        available=lambda b: True,
         env_run=lambda args, extra_env=None: "",
     )
     try:
@@ -419,8 +470,13 @@ def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
-        ["UDID-1"], ["idb"], _eff(), Path("runs"), network=False,
-        available=lambda b: True, env_run=fake_run,
+        ["UDID-1"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=fake_run,
     )
     try:
         lz = lease(_eff(), _scn("a"))

@@ -91,7 +91,9 @@ class Redactor:
             headers = out.get(key)
             if isinstance(headers, dict):
                 out[key] = {
-                    k: PLACEHOLDER if str(k).lower() in self._header_names else self.redact_text(str(v))
+                    k: PLACEHOLDER
+                    if str(k).lower() in self._header_names
+                    else self.redact_text(str(v))
                     for k, v in headers.items()
                 }
         for key in ("url", "requestBody", "responseBody"):

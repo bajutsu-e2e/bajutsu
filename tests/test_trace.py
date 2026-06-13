@@ -13,26 +13,63 @@ def _write_run(runs: Path, run_id: str, *, ok: bool = True) -> Path:
     sid = "00-s"
     (run / sid).mkdir(parents=True)
     manifest = {
-        "runId": run_id, "ok": ok, "backend": "idb",
-        "scenarios": [{
-            "scenario": "s", "ok": ok, "backend": "idb",
-            "steps": [
-                {"index": 0, "action": "tap", "ok": True, "reason": "", "duration_s": 0.3, "started_at": 0.0},
-                {"index": 1, "action": "wait", "ok": ok, "reason": "" if ok else "timeout",
-                 "duration_s": 0.1, "started_at": 0.7},
-            ],
-            "expect_results": [{"ok": True, "kind": "request", "detail": "request GET status=200", "reason": ""}],
-            "failure": None if ok else "expect: no match",
-            "artifacts": [
-                {"name": f"{sid}/network.json", "kind": "network", "provider": "collector"},
-                {"name": f"{sid}/appTrace.json", "kind": "appTrace", "provider": "simctl"},
-            ],
-        }],
+        "runId": run_id,
+        "ok": ok,
+        "backend": "idb",
+        "scenarios": [
+            {
+                "scenario": "s",
+                "ok": ok,
+                "backend": "idb",
+                "steps": [
+                    {
+                        "index": 0,
+                        "action": "tap",
+                        "ok": True,
+                        "reason": "",
+                        "duration_s": 0.3,
+                        "started_at": 0.0,
+                    },
+                    {
+                        "index": 1,
+                        "action": "wait",
+                        "ok": ok,
+                        "reason": "" if ok else "timeout",
+                        "duration_s": 0.1,
+                        "started_at": 0.7,
+                    },
+                ],
+                "expect_results": [
+                    {
+                        "ok": True,
+                        "kind": "request",
+                        "detail": "request GET status=200",
+                        "reason": "",
+                    }
+                ],
+                "failure": None if ok else "expect: no match",
+                "artifacts": [
+                    {"name": f"{sid}/network.json", "kind": "network", "provider": "collector"},
+                    {"name": f"{sid}/appTrace.json", "kind": "appTrace", "provider": "simctl"},
+                ],
+            }
+        ],
     }
     (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    (run / sid / "network.json").write_text(json.dumps([
-        {"method": "GET", "url": "https://example.com", "status": 200, "durationMs": 150.0, "startedAt": 0.4},
-    ]), encoding="utf-8")
+    (run / sid / "network.json").write_text(
+        json.dumps(
+            [
+                {
+                    "method": "GET",
+                    "url": "https://example.com",
+                    "status": 200,
+                    "durationMs": 150.0,
+                    "startedAt": 0.4,
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
     (run / sid / "appTrace.json").write_text(
         json.dumps([{"name": "reindex", "durationMs": 1282.3}]), encoding="utf-8"
     )

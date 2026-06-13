@@ -31,7 +31,7 @@ def test_sample_config_resolves() -> None:
     eff = resolve(cfg, "sample")
     assert eff.bundle_id == "com.bajutsu.sample"
     assert eff.deeplink_scheme == "bajutsusample"
-    assert "auth" in eff.id_namespaces          # reserved namespace, used by the app
+    assert "auth" in eff.id_namespaces  # reserved namespace, used by the app
     assert eff.launch_env == {"SAMPLE_UITEST": "1"}
 
 

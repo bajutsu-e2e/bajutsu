@@ -42,7 +42,7 @@ def test_resolve_sample() -> None:
 
 def test_redact_is_merged() -> None:
     eff = resolve(load_config(CONFIG_YAML), "sample")
-    assert eff.redact.labels == ["カード番号"]            # from the app
+    assert eff.redact.labels == ["カード番号"]  # from the app
     assert eff.redact.headers == ["Authorization", "Cookie"]  # from defaults
     assert eff.redact.fields == ["token", "password"]
 
@@ -58,7 +58,7 @@ def test_app_overrides_defaults() -> None:
         "apps: { x: { bundleId: com.x, backend: idb, locale: en_US } }"
     )
     eff = resolve(cfg, "x")
-    assert eff.backend == ["idb"]   # app override
+    assert eff.backend == ["idb"]  # app override
     assert eff.device == "iPhone 15"  # falls through to defaults
     assert eff.locale == "en_US"
 

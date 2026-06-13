@@ -29,15 +29,36 @@ def record_video_cmd(udid: str, path: str) -> list[str]:
 
 
 def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
-    cmd = ["xcrun", "simctl", "spawn", udid, "log", "stream", "--level", "debug", "--style", "compact"]
+    cmd = [
+        "xcrun",
+        "simctl",
+        "spawn",
+        udid,
+        "log",
+        "stream",
+        "--level",
+        "debug",
+        "--style",
+        "compact",
+    ]
     if predicate:
         cmd += ["--predicate", predicate]
     return cmd
 
 
 def app_trace_cmd(udid: str, subsystem: str) -> list[str]:
-    return ["xcrun", "simctl", "spawn", udid, "log", "stream",
-            "--predicate", f'subsystem == "{subsystem}"', "--style", "ndjson"]
+    return [
+        "xcrun",
+        "simctl",
+        "spawn",
+        udid,
+        "log",
+        "stream",
+        "--predicate",
+        f'subsystem == "{subsystem}"',
+        "--style",
+        "ndjson",
+    ]
 
 
 class Proc(Protocol):
@@ -159,12 +180,14 @@ def parse_app_trace(ndjson_text: str) -> list[dict[str, object]]:
         end = _END.match(message)
         if end and end.group("name") in begins:
             start = begins.pop(end.group("name"))
-            out.append({
-                "name": end.group("name"),
-                "begin": start.isoformat(),
-                "end": stamp.isoformat(),
-                "durationMs": round((stamp - start).total_seconds() * 1000, 1),
-            })
+            out.append(
+                {
+                    "name": end.group("name"),
+                    "begin": start.isoformat(),
+                    "end": stamp.isoformat(),
+                    "durationMs": round((stamp - start).total_seconds() * 1000, 1),
+                }
+            )
     return out
 
 
@@ -180,7 +203,11 @@ def start_app_trace(
         return json_path
 
     return Interval(
-        kind="appTrace", path=raw_path, _proc=proc, _stop_signal=signal.SIGTERM, _transform=transform
+        kind="appTrace",
+        path=raw_path,
+        _proc=proc,
+        _stop_signal=signal.SIGTERM,
+        _transform=transform,
     )
 
 

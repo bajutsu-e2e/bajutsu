@@ -68,14 +68,18 @@ def test_action_trigger_adds_to_baseline() -> None:
     sink = RecordingSink()
     run_scenario(
         driver,
-        _scn({
-            "name": "x",
-            "steps": [{"tap": {"id": "home.submit"}}],
-            "capturePolicy": [
-                {"on": {"action": "tap", "idMatches": "*.submit"},
-                 "capture": ["screenshot.before"]},
-            ],
-        }),
+        _scn(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "home.submit"}}],
+                "capturePolicy": [
+                    {
+                        "on": {"action": "tap", "idMatches": "*.submit"},
+                        "capture": ["screenshot.before"],
+                    },
+                ],
+            }
+        ),
         sink=sink,
     )
     assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
@@ -86,13 +90,18 @@ def test_action_trigger_skips_on_id_mismatch() -> None:
     sink = RecordingSink()
     run_scenario(
         driver,
-        _scn({
-            "name": "x",
-            "steps": [{"tap": {"id": "home.cancel"}}],
-            "capturePolicy": [
-                {"on": {"action": "tap", "idMatches": "*.submit"}, "capture": ["screenshot.before"]},
-            ],
-        }),
+        _scn(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "home.cancel"}}],
+                "capturePolicy": [
+                    {
+                        "on": {"action": "tap", "idMatches": "*.submit"},
+                        "capture": ["screenshot.before"],
+                    },
+                ],
+            }
+        ),
         sink=sink,
     )
     assert sink.calls == [("x/step0", BASELINE)]  # only the baseline, policy did not fire
@@ -109,11 +118,15 @@ def test_screen_changed_trigger_adds_to_baseline() -> None:
     sink = RecordingSink()
     run_scenario(
         driver,
-        _scn({
-            "name": "x",
-            "steps": [{"tap": {"id": "go"}}],
-            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}],
-        }),
+        _scn(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "go"}}],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+            }
+        ),
         sink=sink,
     )
     assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
@@ -124,11 +137,13 @@ def test_error_trigger_is_the_safety_net() -> None:
     sink = RecordingSink()
     run_scenario(
         driver,
-        _scn({
-            "name": "x",
-            "steps": [{"tap": {"id": "missing"}}],
-            "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot.before"]}],
-        }),
+        _scn(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "missing"}}],
+                "capturePolicy": [{"on": {"result": "error"}, "capture": ["screenshot.before"]}],
+            }
+        ),
         sink=sink,
     )
     assert sink.calls == [("x/step0", [*BASELINE, "screenshot.before"])]
@@ -177,7 +192,9 @@ class IntervalSink:
 def test_scenario_intervals_always_recorded() -> None:
     driver = FakeDriver([_el("a", "A")])
     sink = IntervalSink()
-    result = run_scenario(driver, _scn({"name": "My Scn", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
+    result = run_scenario(
+        driver, _scn({"name": "My Scn", "steps": [{"tap": {"id": "a"}}]}), sink=sink
+    )
     assert sink.started == [("my-scn", ["video", "deviceLog", "appTrace"])]
     assert sink.finished == ["my-scn"]
     assert sorted(a.kind for a in result.artifacts) == ["appTrace", "deviceLog", "video"]
@@ -186,7 +203,9 @@ def test_scenario_intervals_always_recorded() -> None:
 def test_scenario_intervals_recorded_even_when_a_step_fails() -> None:
     driver = FakeDriver([_el("a", "A")])
     sink = IntervalSink()
-    result = run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "missing"}}]}), sink=sink)
+    result = run_scenario(
+        driver, _scn({"name": "x", "steps": [{"tap": {"id": "missing"}}]}), sink=sink
+    )
     assert not result.ok
     assert sink.finished == ["x"]  # finalized in the finally block despite the failure
     assert [a.kind for a in result.artifacts] == ["video", "deviceLog", "appTrace"]

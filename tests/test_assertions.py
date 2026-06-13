@@ -28,7 +28,7 @@ def _el(
 SCREEN: list[base.Element] = [
     _el("home.title", "ホーム", ["staticText"]),
     _el("counter", "カウント", ["staticText"], value="3"),
-    _el("submit", "送信", ["button", "notEnabled"]),       # disabled
+    _el("submit", "送信", ["button", "notEnabled"]),  # disabled
     _el("tab.home", "ホームタブ", ["button", "selected"]),
     _el("status", "処理完了しました", ["staticText"]),
     _el("result.row.1", "A", ["cell"]),
@@ -50,7 +50,7 @@ def test_exists() -> None:
 
 
 def test_exists_negate() -> None:
-    assert _ok({"exists": {"id": "spinner", "negate": True}})        # absent, so passes
+    assert _ok({"exists": {"id": "spinner", "negate": True}})  # absent, so passes
     assert not _ok({"exists": {"id": "home.title", "negate": True}})  # present, so fails
 
 

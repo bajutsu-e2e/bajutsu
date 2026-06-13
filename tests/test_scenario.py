@@ -96,8 +96,11 @@ def test_preconditions_default() -> None:
 
 def test_preconditions_reinstall_validated() -> None:
     s = Scenario.model_validate(
-        {"name": "x", "preconditions": {"erase": True, "reinstall": "overwrite"},
-         "steps": [{"tap": {"id": "a"}}]}
+        {
+            "name": "x",
+            "preconditions": {"erase": True, "reinstall": "overwrite"},
+            "steps": [{"tap": {"id": "a"}}],
+        }
     )
     assert s.preconditions.erase is True and s.preconditions.reinstall == "overwrite"
     with pytest.raises(ValidationError):  # only clean | overwrite are accepted
@@ -121,7 +124,11 @@ def test_dismiss_alerts_bool_and_object_forms() -> None:
     assert off.dismiss_alerts.enabled is False  # bare bool is shorthand for {enabled: <bool>}
 
     instr = Scenario.model_validate(
-        {"name": "x", "dismissAlerts": {"instruction": "tap Allow"}, "steps": [{"tap": {"id": "a"}}]}
+        {
+            "name": "x",
+            "dismissAlerts": {"instruction": "tap Allow"},
+            "steps": [{"tap": {"id": "a"}}],
+        }
     )
     assert instr.dismiss_alerts is not None
     assert instr.dismiss_alerts.enabled is True  # object form stays on unless enabled: false
@@ -146,8 +153,13 @@ def test_selector_alias_and_as_selector() -> None:
 def test_selector_resolves_via_base() -> None:
     # Bridge a scenario Selector into base resolution (the determinism core).
     elements: list[base.Element] = [
-        {"identifier": "settings.open", "label": "設定", "traits": ["button"],
-         "value": None, "frame": (0.0, 0.0, 10.0, 10.0)},
+        {
+            "identifier": "settings.open",
+            "label": "設定",
+            "traits": ["button"],
+            "value": None,
+            "frame": (0.0, 0.0, 10.0, 10.0),
+        },
     ]
     sel = Selector.model_validate({"id": "settings.open"})
     assert base.resolve_unique(elements, sel.as_selector())["label"] == "設定"
@@ -171,11 +183,13 @@ def test_unknown_key_rejected() -> None:
 
 
 def test_network_filter_domains() -> None:
-    s = Scenario.model_validate({
-        "name": "n",
-        "steps": [{"tap": {"id": "a"}}],
-        "network": {"filter": {"domains": ["example.com", "api.example.com"]}},
-    })
+    s = Scenario.model_validate(
+        {
+            "name": "n",
+            "steps": [{"tap": {"id": "a"}}],
+            "network": {"filter": {"domains": ["example.com", "api.example.com"]}},
+        }
+    )
     assert s.network is not None and s.network.filter is not None
     assert s.network.filter.domains == ["example.com", "api.example.com"]
     # Unset is allowed (shows every exchange in Steps).
@@ -187,10 +201,17 @@ def test_wait_forms() -> None:
     assert Wait.model_validate({"until": "screenChanged", "timeout": 5}).until == "screenChanged"
     gone = Wait.model_validate({"until": {"gone": {"id": "spinner"}}, "timeout": 15})
     assert gone.until is not None
-    req = Wait.model_validate({"until": {"request": {"method": "GET", "status": 200}}, "timeout": 8})
+    req = Wait.model_validate(
+        {"until": {"request": {"method": "GET", "status": 200}}, "timeout": 8}
+    )
     assert isinstance(req.until, WaitRequest) and req.until.request.method == "GET"
-    url_req = Wait.model_validate({"until": {"request": {"url": "https://x.com/items"}}, "timeout": 8})
-    assert isinstance(url_req.until, WaitRequest) and url_req.until.request.url == "https://x.com/items"
+    url_req = Wait.model_validate(
+        {"until": {"request": {"url": "https://x.com/items"}}, "timeout": 8}
+    )
+    assert (
+        isinstance(url_req.until, WaitRequest)
+        and url_req.until.request.url == "https://x.com/items"
+    )
     with pytest.raises(ValidationError):  # an empty request matcher is rejected
         Wait.model_validate({"until": {"request": {}}, "timeout": 8})
     with pytest.raises(ValidationError):  # timeout required
@@ -293,11 +314,15 @@ def test_dump_round_trip() -> None:
 
 def test_trigger_idmatches_requires_action() -> None:
     with pytest.raises(ValidationError):
-        Scenario.model_validate({
-            "name": "x",
-            "steps": [{"tap": {"id": "a"}}],
-            "capturePolicy": [{"on": {"event": "screenChanged", "idMatches": "*.x"}, "capture": ["elements"]}],
-        })
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "a"}}],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged", "idMatches": "*.x"}, "capture": ["elements"]}
+                ],
+            }
+        )
 
 
 def _step(sid: str) -> Step:

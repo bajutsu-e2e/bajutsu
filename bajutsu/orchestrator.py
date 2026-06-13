@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from bajutsu import assertions, intervals, interp
+from bajutsu import assertions, interp, intervals
 from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
@@ -139,8 +139,18 @@ def scenario_slug(name: str) -> str:
 
 def _action_of(step: Step) -> str:
     for a in (
-        "tap", "double_tap", "long_press", "type", "swipe", "pinch", "rotate",
-        "wait", "assert_", "relaunch", "set_location", "push",
+        "tap",
+        "double_tap",
+        "long_press",
+        "type",
+        "swipe",
+        "pinch",
+        "rotate",
+        "wait",
+        "assert_",
+        "relaunch",
+        "set_location",
+        "push",
     ):
         if getattr(step, a) is not None:
             return a
@@ -275,13 +285,17 @@ def _interp_asserts(asserts: list[Assertion], bindings: Mapping[str, str]) -> li
     if not bindings:
         return asserts
     return [
-        Assertion.model_validate(interp.interpolate(a.model_dump(by_alias=True, exclude_none=True), bindings))
+        Assertion.model_validate(
+            interp.interpolate(a.model_dump(by_alias=True, exclude_none=True), bindings)
+        )
         for a in asserts
     ]
 
 
 def _do_action(
-    driver: base.Driver, step: Step, relaunch: RelaunchFn | None = None,
+    driver: base.Driver,
+    step: Step,
+    relaunch: RelaunchFn | None = None,
     control: DeviceControl | None = None,
 ) -> None:
     """Run tap / longPress / type / swipe / relaunch / device control (wait and assert live
@@ -319,12 +333,16 @@ def _do_action(
         return
     if step.relaunch is not None:
         if relaunch is None:
-            raise base.UnsupportedAction("relaunch にはデバイス環境が必要（fake driver では実行不可）")
+            raise base.UnsupportedAction(
+                "relaunch にはデバイス環境が必要（fake driver では実行不可）"
+            )
         relaunch(step.relaunch)
         return
     if step.set_location is not None:
         if control is None:
-            raise base.UnsupportedAction("setLocation にはデバイス環境が必要（fake driver では実行不可）")
+            raise base.UnsupportedAction(
+                "setLocation にはデバイス環境が必要（fake driver では実行不可）"
+            )
         control.set_location(step.set_location.lat, step.set_location.lon)
         return
     if step.push is not None:
@@ -350,8 +368,13 @@ BlockedHandler = Callable[[base.Driver], "AlertEvent | None"]
 
 
 def _run_step_body(
-    driver: base.Driver, step: Step, kind: str, clock: Clock, network: NetworkSource,
-    relaunch: RelaunchFn | None = None, bindings: Mapping[str, str] | None = None,
+    driver: base.Driver,
+    step: Step,
+    kind: str,
+    clock: Clock,
+    network: NetworkSource,
+    relaunch: RelaunchFn | None = None,
+    bindings: Mapping[str, str] | None = None,
     control: DeviceControl | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results)."""
@@ -479,8 +502,20 @@ def run_scenario(
 
     try:
         failure = _run_steps(
-            driver, scenario, clock, sink, on_blocked, wants_screen_changed,
-            outcomes, scenario_start, sid, network, relaunch, bindings, control, progress,
+            driver,
+            scenario,
+            clock,
+            sink,
+            on_blocked,
+            wants_screen_changed,
+            outcomes,
+            scenario_start,
+            sid,
+            network,
+            relaunch,
+            bindings,
+            control,
+            progress,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, bindings or {})
@@ -489,7 +524,9 @@ def run_scenario(
                 event = on_blocked(driver)
                 if event is not None:
                     expect_alerts.append(event)
-                    expect_results = assertions.evaluate(driver.query(), expect, network())  # retry once
+                    expect_results = assertions.evaluate(
+                        driver.query(), expect, network()
+                    )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
     finally:

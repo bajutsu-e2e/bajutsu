@@ -89,8 +89,11 @@ def _no_net() -> list[NetworkExchange]:
 
 
 def _write_network(
-    timed: list[tuple[NetworkExchange, float]], scenario_start: float,
-    run_dir: Path, sid: str, redactor: Redactor,
+    timed: list[tuple[NetworkExchange, float]],
+    scenario_start: float,
+    run_dir: Path,
+    sid: str,
+    redactor: Redactor,
 ) -> Artifact | None:
     """Write a scenario's observed exchanges to <sid>/network.json (redacted).
 
@@ -103,7 +106,9 @@ def _write_network(
     data: list[dict[str, Any]] = []
     for ex, received in timed:
         d = ex.model_dump(by_alias=True, exclude_none=True)
-        d["startedAt"] = round(max(0.0, received - scenario_start - (ex.duration_ms or 0.0) / 1000.0), 3)
+        d["startedAt"] = round(
+            max(0.0, received - scenario_start - (ex.duration_ms or 0.0) / 1000.0), 3
+        )
         data.append(redactor.redact_exchange(d))
     text = json.dumps(data, ensure_ascii=False, indent=2)
     out = run_dir / sid / "network.json"
@@ -152,7 +157,9 @@ def launch_driver(
         launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env, **(extra_env or {})}
         locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
         e.launch(
-            eff.bundle_id, [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)], launch_env
+            eff.bundle_id,
+            [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)],
+            launch_env,
         )
         if pre.deeplink is not None:
             e.openurl(pre.deeplink)
@@ -170,7 +177,7 @@ def _await_ready(driver: base.Driver, timeout: float = 10.0, poll: float = 0.2) 
         try:
             if len(driver.query()) >= 2:
                 return
-        except Exception:  # noqa: BLE001 — app may not be answerable yet
+        except Exception:
             pass
         time.sleep(poll)
 
@@ -220,15 +227,25 @@ def run_all(
             # t0 after launch, so exchange offsets share the step timeline's origin.
             scenario_start = time.monotonic()
             result = run_scenario(
-                lz.driver, s, clock, sink=lz.sink, on_blocked=handler, scenario_id=sid,
+                lz.driver,
+                s,
+                clock,
+                sink=lz.sink,
+                on_blocked=handler,
+                scenario_id=sid,
                 network=(lz.collector.snapshot if lz.collector is not None else _no_net),
-                relaunch=lz.relaunch, bindings=bindings, control=lz.control, progress=progress,
+                relaunch=lz.relaunch,
+                bindings=bindings,
+                control=lz.control,
+                progress=progress,
             )
             result.device = lz.udid  # attribute the scenario to the device that ran it
             result.device_name = lz.device_name  # for the report's Environment tab
             result.device_runtime = lz.device_runtime
             if lz.collector is not None and run_dir is not None:
-                art = _write_network(lz.collector.snapshot_timed(), scenario_start, run_dir, sid, redactor)
+                art = _write_network(
+                    lz.collector.snapshot_timed(), scenario_start, run_dir, sid, redactor
+                )
                 if art is not None:
                     result.artifacts.append(art)
             if progress is not None:
@@ -263,8 +280,16 @@ def run_and_report(
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
     run_dir = runs_dir / run_id
     results = run_all(
-        eff, scenarios, lease, clock, on_blocked=on_blocked, on_blocked_for=on_blocked_for,
-        run_dir=run_dir, workers=workers, bindings=bindings, secret_values=secret_values,
+        eff,
+        scenarios,
+        lease,
+        clock,
+        on_blocked=on_blocked,
+        on_blocked_for=on_blocked_for,
+        run_dir=run_dir,
+        workers=workers,
+        bindings=bindings,
+        secret_values=secret_values,
         progress=progress,
     )
     # The merged Result tab renders each scenario as a structured view (definitions)
@@ -273,8 +298,12 @@ def run_and_report(
     sources = [dump_scenarios([s]) for s in scenarios]
     run_dir.mkdir(parents=True, exist_ok=True)
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
-    (run_dir / "scenario.yaml").write_text(dump_scenario_file(scenarios, description), encoding="utf-8")
-    manifest = write_report(run_dir, run_id, results, definitions, sources, source_name, description)
+    (run_dir / "scenario.yaml").write_text(
+        dump_scenario_file(scenarios, description), encoding="utf-8"
+    )
+    manifest = write_report(
+        run_dir, run_id, results, definitions, sources, source_name, description
+    )
     # Final safety net: scrub any literal secret value that reached a run-level artifact
     # (e.g. an assertion's expected/actual text in the manifest / HTML). The scenario
     # definitions already hold tokens, not values, so this only catches result text.
@@ -349,12 +378,17 @@ def device_pool(
         # Point the app at this device's collector (survives a relaunch via the relauncher).
         extra_env = (
             {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
-            if collector is not None else None
+            if collector is not None
+            else None
         )
         driver = launch_driver(udid, eff, actuator, scenario.preconditions, env_run, extra_env)
         sink = FileSink(
-            run_dir, udid=udid, log_predicate=log_predicate, log_subsystem=log_subsystem,
-            redact=eff.redact, secrets=secret_values,
+            run_dir,
+            udid=udid,
+            log_predicate=log_predicate,
+            log_subsystem=log_subsystem,
+            redact=eff.redact,
+            secrets=secret_values,
         )
         relaunch = device_relauncher(udid, env_run, extra_env)(eff, scenario, driver)
         control = device_control(udid, eff.bundle_id, env_run)
@@ -365,9 +399,15 @@ def device_pool(
 
         meta = catalog.get(udid, {})
         return Lease(
-            driver=driver, sink=sink, relaunch=relaunch, control=control,
-            collector=collector, release=release, udid=udid,
-            device_name=meta.get("name", ""), device_runtime=meta.get("runtime", ""),
+            driver=driver,
+            sink=sink,
+            relaunch=relaunch,
+            control=control,
+            collector=collector,
+            release=release,
+            udid=udid,
+            device_name=meta.get("name", ""),
+            device_runtime=meta.get("runtime", ""),
         )
 
     def shutdown() -> None:
@@ -377,9 +417,7 @@ def device_pool(
     return lease, shutdown
 
 
-def device_control(
-    udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
-) -> DeviceControl:
+def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run) -> DeviceControl:
     """A DeviceControl bound to one device, backing `setLocation` / `push` steps via
     simctl."""
     e = env.Env(udid, run=env_run)
@@ -411,10 +449,18 @@ def device_relauncher(
 
         def relaunch(opts: Relaunch) -> None:
             e.terminate(eff.bundle_id)
-            launch_env = {**eff.launch_env, **pre.launch_env, **(extra_env or {}), **(opts.env or {})}
+            launch_env = {
+                **eff.launch_env,
+                **pre.launch_env,
+                **(extra_env or {}),
+                **(opts.env or {}),
+            }
             locale = pre.locale or eff.locale
             launch_args = [
-                *eff.launch_args, *pre.launch_args, *(opts.args or []), *env.locale_args(locale)
+                *eff.launch_args,
+                *pre.launch_args,
+                *(opts.args or []),
+                *env.locale_args(locale),
             ]
             e.launch(eff.bundle_id, launch_args, launch_env)
             _await_ready(driver)
