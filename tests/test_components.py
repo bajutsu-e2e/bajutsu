@@ -67,7 +67,7 @@ def test_missing_param_raises() -> None:
     scns = load_scenarios(
         "- name: s\n  steps:\n    - use: { component: login.yaml, with: { user: alice } }\n"
     )
-    with pytest.raises(ValueError, match="不足"):
+    with pytest.raises(ValueError, match="missing required params"):
         expand_components(scns, _resolver({"login.yaml": LOGIN}))
 
 
@@ -75,7 +75,7 @@ def test_unknown_param_raises() -> None:
     scns = load_scenarios(
         "- name: s\n  steps:\n    - use: { component: login.yaml, with: { user: a, pass: b, extra: c } }\n"
     )
-    with pytest.raises(ValueError, match="未知"):
+    with pytest.raises(ValueError, match="unknown params"):
         expand_components(scns, _resolver({"login.yaml": LOGIN}))
 
 
@@ -86,7 +86,7 @@ def test_undeclared_param_token_raises() -> None:
     scns = load_scenarios(
         "- name: s\n  steps:\n    - use: { component: bad.yaml, with: { a: x } }\n"
     )
-    with pytest.raises(ValueError, match="未宣言"):
+    with pytest.raises(ValueError, match="undeclared params"):
         expand_components(scns, _resolver({"bad.yaml": bad}))
 
 
@@ -96,5 +96,5 @@ def test_cycle_raises() -> None:
         "b.yaml": load_component("steps:\n  - use: { component: a.yaml }\n"),
     }
     scns = load_scenarios("- name: s\n  steps:\n    - use: { component: a.yaml }\n")
-    with pytest.raises(ValueError, match="循環"):
+    with pytest.raises(ValueError, match="cycle detected"):
         expand_components(scns, _resolver(table))

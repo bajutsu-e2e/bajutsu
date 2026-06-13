@@ -60,13 +60,21 @@ class _Model(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
+def _exactly_one(obj: _Model, fields: tuple[str, ...], context: str) -> list[str]:
+    """Return the list of set fields from *fields*; raise if not exactly one is set."""
+    present = [f for f in fields if getattr(obj, f) is not None]
+    if len(present) != 1:
+        raise ValueError(f"exactly one of {list(fields)} required ({context}): {present or 'none'}")
+    return present
+
+
 def _validate_capture(tokens: list[str]) -> list[str]:
     for t in tokens:
         kind, _, mod = t.partition(".")
         if kind not in _CAPTURE_KINDS:
-            raise ValueError(f"未知の証跡種別: {t!r}（§9）")
+            raise ValueError(f"unknown capture kind: {t!r} (§9)")
         if mod and mod not in _CAPTURE_MODS:
-            raise ValueError(f"未知の修飾子: {t!r}（§9）")
+            raise ValueError(f"unknown capture modifier: {t!r} (§9)")
     return tokens
 
 
@@ -85,7 +93,7 @@ class Selector(_Model):
     @model_validator(mode="after")
     def _non_empty(self) -> Self:
         if not self.model_dump(exclude_none=True, by_alias=True):
-            raise ValueError("セレクタは少なくとも 1 条件が必要（§5）")
+            raise ValueError("selector requires at least one condition (§5)")
         return self
 
     def as_selector(self) -> base.Selector:
@@ -128,7 +136,7 @@ class Pinch(_Model):
     @model_validator(mode="after")
     def _positive(self) -> Self:
         if self.scale <= 0:
-            raise ValueError("pinch の scale は正の値（>1 で拡大, <1 で縮小）（§6.2）")
+            raise ValueError("pinch scale must be positive (>1 zooms in, <1 zooms out) (§6.2)")
         return self
 
 
@@ -156,12 +164,12 @@ class Swipe(_Model):
         sel_fields = self.on is not None or self.direction is not None
         pt_fields = self.from_ is not None or self.to is not None
         if sel_fields and pt_fields:
-            raise ValueError("swipe は {on,direction} と {from,to} を混在できない（§6.2）")
+            raise ValueError("swipe cannot mix {on,direction} with {from,to} (§6.2)")
         if self.on is not None and self.direction is not None:
             return self
         if self.from_ is not None and self.to is not None:
             return self
-        raise ValueError("swipe は {on,direction} か {from,to} を完全に指定する（§6.2）")
+        raise ValueError("swipe requires either {on,direction} or {from,to} completely (§6.2)")
 
 
 class RequestMatch(_Model):
@@ -226,7 +234,7 @@ class Wait(_Model):
     @model_validator(mode="after")
     def _one(self) -> Self:
         if (self.for_ is None) == (self.until is None):
-            raise ValueError("wait は for か until のどちらか一方（§6.3）")
+            raise ValueError("wait requires exactly one of 'for' or 'until' (§6.3)")
         return self
 
 
@@ -279,7 +287,7 @@ class TextMatch(_Model):
     @model_validator(mode="after")
     def _one_op(self) -> Self:
         if sum(o is not None for o in (self.equals, self.contains, self.matches)) != 1:
-            raise ValueError("value/label は equals/contains/matches のいずれか 1 つ（§6.4）")
+            raise ValueError("value/label requires exactly one of equals/contains/matches (§6.4)")
         return self
 
 
@@ -294,7 +302,7 @@ class CountMatch(_Model):
     @model_validator(mode="after")
     def _one_op(self) -> Self:
         if sum(o is not None for o in (self.equals, self.at_least, self.at_most)) != 1:
-            raise ValueError("count は equals/atLeast/atMost のいずれか 1 つ（§6.4）")
+            raise ValueError("count requires exactly one of equals/atLeast/atMost (§6.4)")
         return self
 
 
@@ -312,9 +320,7 @@ class Assertion(_Model):
 
     @model_validator(mode="after")
     def _one_kind(self) -> Self:
-        kinds = [k for k in _ASSERTION_KINDS if getattr(self, k) is not None]
-        if len(kinds) != 1:
-            raise ValueError(f"アサーションは 1 種類のみ（§6.4）: {kinds or 'なし'}")
+        _exactly_one(self, _ASSERTION_KINDS, "§6.4")
         return self
 
 
@@ -356,9 +362,7 @@ class Step(_Model):
 
     @model_validator(mode="after")
     def _one_action(self) -> Self:
-        present = [a for a in _STEP_ACTIONS if getattr(self, a) is not None]
-        if len(present) != 1:
-            raise ValueError(f"ステップは 1 アクション（§6.2）: {present or 'なし'}")
+        _exactly_one(self, _STEP_ACTIONS, "§6.2")
         return self
 
 
@@ -373,11 +377,9 @@ class Trigger(_Model):
 
     @model_validator(mode="after")
     def _one(self) -> Self:
-        primary = [p for p in ("action", "event", "result") if getattr(self, p) is not None]
-        if len(primary) != 1:
-            raise ValueError("on は action / event / result のいずれか 1 つ（§9 A）")
+        _exactly_one(self, ("action", "event", "result"), "§9 A")
         if self.id_matches is not None and self.action is None:
-            raise ValueError("idMatches は action と併用する（§9 A）")
+            raise ValueError("idMatches requires action (§9 A)")
         return self
 
 
@@ -477,7 +479,7 @@ class Scenario(_Model):
     @model_validator(mode="after")
     def _one_data_source(self) -> Self:
         if self.data is not None and self.data_file is not None:
-            raise ValueError("data と dataFile は併用できない（どちらか一方）")
+            raise ValueError("data and dataFile are mutually exclusive")
         return self
 
 
@@ -550,7 +552,7 @@ def expand_components(
     def expand(steps: list[Step], stack: list[str]) -> list[Step]:
         if len(stack) > max_depth:
             raise ValueError(
-                f"component のネストが深すぎます（>{max_depth}）: {' -> '.join(stack)}"
+                f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}"
             )
         out: list[Step] = []
         for st in steps:
@@ -559,7 +561,7 @@ def expand_components(
                 continue
             ref = st.use.component
             if ref in stack:
-                raise ValueError(f"component が循環参照しています: {' -> '.join([*stack, ref])}")
+                raise ValueError(f"component cycle detected: {' -> '.join([*stack, ref])}")
             if ref not in cache:
                 cache[ref] = resolve(ref)
             comp = cache[ref]
@@ -567,14 +569,14 @@ def expand_components(
             missing = sorted(set(comp.params) - set(args))
             unknown = sorted(set(args) - set(comp.params))
             if missing:
-                raise ValueError(f"component {ref!r} の params が不足: {missing}")
+                raise ValueError(f"component {ref!r} missing required params: {missing}")
             if unknown:
-                raise ValueError(f"component {ref!r} に未知の params: {unknown}")
+                raise ValueError(f"component {ref!r} has unknown params: {unknown}")
             substituted = _interp_steps(comp.steps, {f"params.{k}": v for k, v in args.items()})
             dumps = [s.model_dump(by_alias=True, exclude_none=True) for s in substituted]
             residual = sorted(t for t in interp.find_tokens(dumps) if t.startswith("params."))
             if residual:
-                raise ValueError(f"component {ref!r} が未宣言の param を参照: {residual}")
+                raise ValueError(f"component {ref!r} references undeclared params: {residual}")
             out.extend(expand(substituted, [*stack, ref]))
         return out
 
