@@ -33,12 +33,14 @@ again before you push. On-device E2E (macOS + Simulator) is a separate, heavier 
 The tracked **pre-push hook** runs `make check` and refuses the push if anything fails:
 
 ```bash
-git config core.hooksPath .githooks   # enable once per clone
+make setup   # uv sync --group dev + wire the git hooks (run once on a fresh clone)
 ```
 
-Claude Code web sessions get this wired automatically by
-[`.claude/hooks/session-start.sh`](../.claude/hooks/session-start.sh). In a real emergency you
-can bypass with `git push --no-verify`, but the next CI run will still gate the PR.
+`core.hooksPath` is a per-clone local setting that clone/pull never carry over, so an existing
+clone won't have it — but you don't need to remember: `make check` (and `make hooks`) re-wires it
+every time, so the gate self-heals right before you push. Claude Code web sessions also get it
+automatically via [`.claude/hooks/session-start.sh`](../.claude/hooks/session-start.sh). In a real
+emergency you can bypass with `git push --no-verify`, but the next CI run will still gate the PR.
 
 When you change behavior, change a test with it — the suite is the contract that protects every
 other session from your change.
@@ -63,8 +65,7 @@ Two agents must never edit the same checkout. Give each session its own
 # from the main checkout
 git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main
 cd ../bajutsu-<topic>
-uv sync --group dev          # each worktree gets its own .venv (gitignored)
-git config core.hooksPath .githooks
+make setup                   # uv sync --group dev + wire the hooks for this worktree
 ```
 
 When the branch is merged (or abandoned), clean up:

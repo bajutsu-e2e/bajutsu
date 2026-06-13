@@ -56,9 +56,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 - **One topic per branch.** Branch off `main` as `claude/<short-topic>` (or `<user>/<topic>`).
   Keep changes small and focused — small PRs merge fast and conflict rarely.
 - **The gate is the contract.** Never push red. The tracked pre-push hook
-  ([`.githooks/pre-push`](.githooks/pre-push)) runs `make check` for you; enable it once with
-  `git config core.hooksPath .githooks` (web sessions get this automatically). The deterministic
-  test suite is the regression net — if you change behavior, a test should change with it.
+  ([`.githooks/pre-push`](.githooks/pre-push)) runs `make check` for you. `core.hooksPath` is a
+  per-clone local setting that clone/pull never carry over, so `make check` (and `make hooks`)
+  re-wires it on every run — the gate self-heals, no manual `git config` needed. Run `make setup`
+  once on a fresh clone; web sessions get it automatically. The deterministic test suite is the
+  regression net — if you change behavior, a test should change with it.
 - **Rebase, don't drift.** Before pushing, `git fetch origin && git rebase origin/main` so you
   integrate others' merged work early and surface conflicts while they're small.
 - **Stay in your lane.** Touch only the files your task needs. If a change must cut across many

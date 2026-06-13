@@ -32,11 +32,14 @@ Simulator 不要なので Linux で数秒。変更を「完了」と呼ぶ前と
 追跡対象の **pre-push フック** が `make check` を走らせ、失敗したら push を拒否する:
 
 ```bash
-git config core.hooksPath .githooks   # クローンごとに 1 回有効化
+make setup   # uv sync --group dev + git フックの有効化（クローン直後に 1 回）
 ```
 
-Claude Code の web セッションでは [`.claude/hooks/session-start.sh`](../../.claude/hooks/session-start.sh)
-が自動で設定する。本当の緊急時は `git push --no-verify` で回避できるが、その後の CI が PR をゲートする。
+`core.hooksPath` はクローンごとのローカル設定で、clone/pull では伝播しない。だから既存クローンには
+入っていない —— が、覚えておく必要はない。`make check`（および `make hooks`）が毎回これを張り直すので、
+push 直前にゲートが自己修復される。Claude Code の web セッションでも
+[`.claude/hooks/session-start.sh`](../../.claude/hooks/session-start.sh) が自動で設定する。
+本当の緊急時は `git push --no-verify` で回避できるが、その後の CI が PR をゲートする。
 
 挙動を変えたらテストも一緒に変える —— スイートは、あなたの変更から他の全セッションを守る契約。
 
@@ -60,8 +63,7 @@ make check                  # rebase 後に再検証
 # メインのチェックアウトから
 git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main
 cd ../bajutsu-<topic>
-uv sync --group dev          # worktree ごとに独立した .venv（gitignore 済み）
-git config core.hooksPath .githooks
+make setup                   # uv sync --group dev + この worktree のフック有効化
 ```
 
 ブランチがマージ（または破棄）されたら片付ける:
