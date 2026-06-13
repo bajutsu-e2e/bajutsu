@@ -1,4 +1,4 @@
-.PHONY: deps deps-check test lint typecheck check
+.PHONY: deps deps-check serve test lint typecheck check
 
 # Install the external tools the idb backend needs (idempotent).
 #   - Homebrew tools (idb_companion / xcodegen) from the Brewfile
@@ -13,6 +13,11 @@ deps-check:
 	@command -v idb_companion >/dev/null 2>&1 && echo "idb_companion: ok" || echo "idb_companion: MISSING (make deps)"
 	@command -v xcodegen >/dev/null 2>&1 && echo "xcodegen: ok" || echo "xcodegen: MISSING (make deps)"
 	@command -v xcrun >/dev/null 2>&1 && echo "xcrun (Xcode): ok" || echo "xcrun (Xcode): MISSING (install Xcode)"
+
+# Launch the web UI, installing the idb backend's deps on demand (see scripts/serve.sh).
+# Pass flags through ARGS, e.g. `make serve ARGS="--port 8766"`.
+serve:
+	@./scripts/serve.sh $(ARGS)
 
 test:
 	uv run pytest -q
