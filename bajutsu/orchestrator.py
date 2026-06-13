@@ -257,6 +257,8 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
     if not bindings:
         return step
     dumped = step.model_dump(by_alias=True, exclude_none=True)
+    if not interp.find_tokens(dumped) & bindings.keys():
+        return step
     return Step.model_validate(interp.interpolate(dumped, bindings))
 
 
