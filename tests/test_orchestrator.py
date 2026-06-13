@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from conftest import el
+
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
@@ -30,27 +32,12 @@ class FakeClock:
             self.on_sleep(self._t)
 
 
-def _el(
-    identifier: str | None = None,
-    label: str | None = None,
-    traits: list[str] | None = None,
-    value: str | None = None,
-) -> base.Element:
-    return {
-        "identifier": identifier,
-        "label": label,
-        "traits": traits or [],
-        "value": value,
-        "frame": (0.0, 0.0, 10.0, 10.0),
-    }
-
-
 def _scenario(data: dict[str, object]) -> Scenario:
     return Scenario.model_validate(data)
 
 
 def test_happy_path_tap_and_expect() -> None:
-    driver = FakeDriver([_el("home.title", "ホーム"), _el("settings.open", "設定", ["button"])])
+    driver = FakeDriver([el("home.title", "ホーム"), el("settings.open", "設定", ["button"])])
     result = run_scenario(
         driver,
         _scenario(
@@ -68,7 +55,7 @@ def test_happy_path_tap_and_expect() -> None:
 
 def test_progress_reports_each_step() -> None:
     """`progress` receives one line per step, labeled by the step name or action + target id."""
-    driver = FakeDriver([_el("counter.inc", "+", ["button"]), _el("counter.val", "0")])
+    driver = FakeDriver([el("counter.inc", "+", ["button"]), el("counter.val", "0")])
     lines: list[str] = []
     run_scenario(
         driver,
@@ -92,7 +79,7 @@ def test_progress_reports_each_step() -> None:
 
 
 def test_progress_defaults_to_silent() -> None:
-    driver = FakeDriver([_el("home.title", "H")])
+    driver = FakeDriver([el("home.title", "H")])
     # No progress callback → no error, runs as before.
     res = run_scenario(
         driver,
@@ -105,7 +92,7 @@ def test_progress_defaults_to_silent() -> None:
 def test_run_scenario_records_duration() -> None:
     # The result carries the scenario's wall-clock (measured off the injected clock) so the
     # report can show per-scenario and total execution time.
-    here = _el("here", "H")
+    here = el("here", "H")
     driver = FakeDriver([])  # 'here' shows only after the first poll-sleep advances the clock
 
     def appear(_t: float) -> None:
@@ -123,7 +110,7 @@ def test_relaunch_invokes_injected_callback() -> None:
     scn = _scenario(
         {"name": "r", "steps": [{"relaunch": {"env": {"SEED": "9"}, "args": ["--fresh"]}}]}
     )
-    res = run_scenario(FakeDriver([_el("home.title", "H")]), scn, relaunch=seen.append)
+    res = run_scenario(FakeDriver([el("home.title", "H")]), scn, relaunch=seen.append)
     assert res.ok, res.failure
     assert len(seen) == 1 and seen[0].env == {"SEED": "9"} and seen[0].args == ["--fresh"]
 
@@ -131,13 +118,13 @@ def test_relaunch_invokes_injected_callback() -> None:
 def test_relaunch_without_callback_fails_cleanly() -> None:
     # No relauncher injected (e.g. fake driver) -> a clear failure, not a crash.
     scn = _scenario({"name": "r", "steps": [{"relaunch": {}}]})
-    res = run_scenario(FakeDriver([_el("home.title", "H")]), scn)
+    res = run_scenario(FakeDriver([el("home.title", "H")]), scn)
     assert not res.ok and "relaunch" in (res.failure or "")
 
 
 def test_react_transition_then_expect() -> None:
-    home = [_el("settings.open", "設定", ["button"])]
-    settings = [_el("settings.reindex", "再生成", ["button"]), _el("settings.title", "設定")]
+    home = [el("settings.open", "設定", ["button"])]
+    settings = [el("settings.reindex", "再生成", ["button"]), el("settings.title", "設定")]
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
         if kind == "tap" and arg == {"id": "settings.open"}:
@@ -159,7 +146,7 @@ def test_react_transition_then_expect() -> None:
 
 
 def test_tap_not_found_fails_and_stops() -> None:
-    driver = FakeDriver([_el("a", "A", ["button"])])
+    driver = FakeDriver([el("a", "A", ["button"])])
     result = run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"tap": {"id": "missing"}}, {"tap": {"id": "a"}}]}),
@@ -171,7 +158,7 @@ def test_tap_not_found_fails_and_stops() -> None:
 
 
 def test_tap_ambiguous_fails() -> None:
-    driver = FakeDriver([_el("row.1", "A", ["cell"]), _el("row.2", "B", ["cell"])])
+    driver = FakeDriver([el("row.1", "A", ["cell"]), el("row.2", "B", ["cell"])])
     result = run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"tap": {"idMatches": "row.*"}}]}),
@@ -182,7 +169,7 @@ def test_tap_ambiguous_fails() -> None:
 
 
 def test_assert_step_intermediate() -> None:
-    driver = FakeDriver([_el("counter", "c", ["staticText"], value="3")])
+    driver = FakeDriver([el("counter", "c", ["staticText"], value="3")])
     ok = run_scenario(
         driver,
         _scenario(
@@ -209,11 +196,11 @@ def test_assert_step_intermediate() -> None:
 
 
 def test_wait_for_appears() -> None:
-    driver = FakeDriver([_el("a", "A", ["button"])])
+    driver = FakeDriver([el("a", "A", ["button"])])
 
     def on_sleep(t: float) -> None:
         if t >= 0.1 and all(e["identifier"] != "ready" for e in driver.screen):
-            driver.screen = [*driver.screen, _el("ready", "R")]
+            driver.screen = [*driver.screen, el("ready", "R")]
 
     result = run_scenario(
         driver,
@@ -224,7 +211,7 @@ def test_wait_for_appears() -> None:
 
 
 def test_wait_timeout() -> None:
-    driver = FakeDriver([_el("a", "A", ["button"])])
+    driver = FakeDriver([el("a", "A", ["button"])])
     result = run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "never"}, "timeout": 0.2}}]}),
@@ -235,7 +222,7 @@ def test_wait_timeout() -> None:
 
 
 def test_wait_until_gone() -> None:
-    driver = FakeDriver([_el("spinner", "")])
+    driver = FakeDriver([el("spinner", "")])
 
     def on_sleep(t: float) -> None:
         if t >= 0.1:
@@ -255,11 +242,11 @@ def test_wait_until_gone() -> None:
 
 
 def test_wait_screen_changed() -> None:
-    driver = FakeDriver([_el("a", "A", ["button"])])
+    driver = FakeDriver([el("a", "A", ["button"])])
 
     def on_sleep(t: float) -> None:
         if t >= 0.1:
-            driver.screen = [_el("b", "B", ["button"])]
+            driver.screen = [el("b", "B", ["button"])]
 
     result = run_scenario(
         driver,
@@ -269,8 +256,21 @@ def test_wait_screen_changed() -> None:
     assert result.ok
 
 
+def test_wait_screen_changed_times_out_when_screen_is_static() -> None:
+    # A screen that never changes must fail the step, not pass it — a wrongly-passing
+    # wait would silently weaken every downstream assertion.
+    driver = FakeDriver([el("a", "A", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"wait": {"until": "screenChanged", "timeout": 0.2}}]}),
+        clock=FakeClock(),
+    )
+    assert not result.ok
+    assert "timeout: screenChanged" in result.steps[0].reason
+
+
 def test_wait_settled_waits_for_a_stable_screen() -> None:
-    driver = FakeDriver([_el("home", "Home", ["button"])])
+    driver = FakeDriver([el("home", "Home", ["button"])])
 
     def on_sleep(t: float) -> None:
         if t < 0.15:  # a transition still in progress: the frame keeps moving
@@ -304,7 +304,7 @@ def test_wait_settled_proceeds_on_blank_screen() -> None:
 
 
 def test_type_and_swipe_actions() -> None:
-    driver = FakeDriver([_el("search.field", "検索", ["textField"]), _el("list", "", ["table"])])
+    driver = FakeDriver([el("search.field", "検索", ["textField"]), el("list", "", ["table"])])
     result = run_scenario(
         driver,
         _scenario(
@@ -353,7 +353,7 @@ def test_wait_skips_sleep_when_query_exceeds_poll_interval() -> None:
             clock._t += query_latency  # simulate query latency on the clock
             query_count += 1
             if query_count >= 3:
-                return [_el("target", "T")]
+                return [el("target", "T")]
             return []
 
     w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
@@ -393,7 +393,7 @@ def test_wait_still_sleeps_when_query_is_fast() -> None:
             # query is instant (does not advance clock)
             query_count += 1
             if query_count >= 3:
-                return [_el("target", "T")]
+                return [el("target", "T")]
             return []
 
     w = Wait.model_validate({"for": {"id": "target"}, "timeout": 5.0})
@@ -404,7 +404,7 @@ def test_wait_still_sleeps_when_query_is_fast() -> None:
 
 
 def test_expect_failure() -> None:
-    driver = FakeDriver([_el("a", "A", ["button"])])
+    driver = FakeDriver([el("a", "A", ["button"])])
     result = run_scenario(
         driver,
         _scenario(

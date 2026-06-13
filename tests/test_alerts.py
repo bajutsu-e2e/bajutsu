@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
-from typing import Any
+
+from conftest import FakeAnthropic, FakeBlock
 
 from bajutsu.agent import Proposal
 from bajutsu.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
@@ -95,32 +96,9 @@ def test_guard_noop_when_no_screenshot() -> None:
 # --- ClaudeAlertLocator (fake Anthropic client) ---
 
 
-class _Block:
-    def __init__(self, inp: dict[str, Any]) -> None:
-        self.type = "tool_use"
-        self.name = "resolve_alert"
-        self.input = inp
-
-
-class _Message:
-    def __init__(self, block: _Block) -> None:
-        self.content = [block]
-
-
-class _Messages:
-    def __init__(self, message: _Message, calls: list[dict[str, Any]]) -> None:
-        self._message = message
-        self._calls = calls
-
-    def create(self, **kwargs: Any) -> _Message:
-        self._calls.append(kwargs)
-        return self._message
-
-
-class FakeClient:
-    def __init__(self, inp: dict[str, Any]) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.messages = _Messages(_Message(_Block(inp)), self.calls)
+def _resolve_alert(inp: dict[str, object]) -> FakeAnthropic:
+    """A fake client whose single tool call is the alert locator's `resolve_alert`."""
+    return FakeAnthropic(FakeBlock("resolve_alert", dict(inp)))
 
 
 def _png(width: int, height: int) -> bytes:
@@ -130,7 +108,7 @@ def _png(width: int, height: int) -> bytes:
 
 
 def test_locator_normalizes_pixel_coordinates() -> None:
-    client = FakeClient({"present": True, "x": 374, "y": 1611, "label": "Not Now"})
+    client = _resolve_alert({"present": True, "x": 374, "y": 1611, "label": "Not Now"})
     decision = ClaudeAlertLocator(client=client).locate(_png(1206, 2622), "tap Save")
     assert decision.present is True and decision.label == "Not Now"
     assert abs(decision.x - 374 / 1206) < 1e-6
@@ -144,7 +122,7 @@ def test_locator_normalizes_pixel_coordinates() -> None:
 
 
 def test_locator_absent_decision() -> None:
-    decision = ClaudeAlertLocator(client=FakeClient({"present": False})).locate(_png(10, 10), None)
+    decision = ClaudeAlertLocator(client=_resolve_alert({"present": False})).locate(_png(10, 10), None)
     assert decision.present is False
 
 

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import base64
-from typing import Any
+
+from conftest import FakeAnthropic, FakeBlock
 
 from bajutsu.agent import Observation
 from bajutsu.claude_agent import ClaudeAgent
@@ -11,39 +12,6 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.record import record
 from bajutsu.scenario import dump_scenarios, load_scenarios
-
-
-class _Block:
-    def __init__(self, name: str, inp: dict[str, Any]) -> None:
-        self.type = "tool_use"
-        self.name = name
-        self.input = inp
-
-
-class _Message:
-    def __init__(self, block: _Block) -> None:
-        self.content = [block]
-
-
-class _Messages:
-    def __init__(self, messages: list[_Message], calls: list[dict[str, Any]]) -> None:
-        self._messages = messages
-        self._calls = calls
-        self._i = 0
-
-    def create(self, **kwargs: Any) -> _Message:
-        self._calls.append(kwargs)
-        message = self._messages[min(self._i, len(self._messages) - 1)]
-        self._i += 1
-        return message
-
-
-class FakeClient:
-    """Mimics anthropic.Anthropic for `client.messages.create(...)`."""
-
-    def __init__(self, *blocks: _Block) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.messages = _Messages([_Message(b) for b in blocks], self.calls)
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:
@@ -61,7 +29,7 @@ def _obs(goal: str = "g") -> Observation:
 
 
 def test_tap_proposal() -> None:
-    agent = ClaudeAgent(client=FakeClient(_Block("tap", {"id": "settings.open"})))
+    agent = ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"id": "settings.open"})))
     proposal = agent.next_action(_obs())
     assert proposal.step is not None
     assert proposal.step.tap is not None
@@ -69,7 +37,7 @@ def test_tap_proposal() -> None:
 
 
 def test_type_text_proposal() -> None:
-    agent = ClaudeAgent(client=FakeClient(_Block("type_text", {"id": "f", "text": "hi"})))
+    agent = ClaudeAgent(client=FakeAnthropic(FakeBlock("type_text", {"id": "f", "text": "hi"})))
     step = agent.next_action(_obs()).step
     assert step is not None and step.type is not None
     assert step.type.text == "hi"
@@ -77,14 +45,14 @@ def test_type_text_proposal() -> None:
 
 
 def test_wait_proposal() -> None:
-    agent = ClaudeAgent(client=FakeClient(_Block("wait_for", {"id": "spinner", "timeout": 5})))
+    agent = ClaudeAgent(client=FakeAnthropic(FakeBlock("wait_for", {"id": "spinner", "timeout": 5})))
     step = agent.next_action(_obs()).step
     assert step is not None and step.wait is not None
     assert step.wait.for_ is not None and step.wait.for_.id == "spinner"
 
 
 def test_finish_proposal_with_assertions() -> None:
-    block = _Block(
+    block = FakeBlock(
         "finish",
         {
             "assertions": [
@@ -94,7 +62,7 @@ def test_finish_proposal_with_assertions() -> None:
             ]
         },
     )
-    proposal = ClaudeAgent(client=FakeClient(block)).next_action(_obs())
+    proposal = ClaudeAgent(client=FakeAnthropic(block)).next_action(_obs())
     assert proposal.done is True
     assert proposal.expect[0].exists is not None
     assert proposal.expect[1].value is not None and proposal.expect[1].value.equals == "3"
@@ -102,7 +70,7 @@ def test_finish_proposal_with_assertions() -> None:
 
 
 def test_request_uses_forced_tool_choice_and_cache() -> None:
-    client = FakeClient(_Block("tap", {"id": "a"}))
+    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
     ClaudeAgent(client=client, model="claude-opus-4-8").next_action(_obs())
     call = client.calls[0]
     assert call["model"] == "claude-opus-4-8"
@@ -112,7 +80,7 @@ def test_request_uses_forced_tool_choice_and_cache() -> None:
 
 
 def test_screenshot_sent_as_image_block() -> None:
-    client = FakeClient(_Block("tap", {"id": "a"}))
+    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
     png = b"\x89PNG\r\n\x1a\n fake-bytes"
     obs = Observation(goal="g", screen=[_el("a", "A")], history=[], screenshot=png)
     ClaudeAgent(client=client).next_action(obs)
@@ -124,7 +92,7 @@ def test_screenshot_sent_as_image_block() -> None:
 
 
 def test_no_screenshot_is_text_only() -> None:
-    client = FakeClient(_Block("tap", {"id": "a"}))
+    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
     ClaudeAgent(client=client).next_action(_obs())  # no screenshot
     content = client.calls[0]["messages"][0]["content"]
     assert [c["type"] for c in content] == ["text"]
@@ -138,12 +106,12 @@ def test_claude_agent_drives_record() -> None:
             d.screen = nxt
 
     driver = FakeDriver([_el("go", "Go")], react=react)
-    client = FakeClient(
-        _Block(
+    client = FakeAnthropic(
+        FakeBlock(
             "plan", {"steps": ["Tap Go", "Confirm Done is shown"]}
         ),  # the up-front decomposition
-        _Block("tap", {"id": "go"}),
-        _Block("finish", {"assertions": [{"id": "done", "check": "exists"}]}),
+        FakeBlock("tap", {"id": "go"}),
+        FakeBlock("finish", {"assertions": [{"id": "done", "check": "exists"}]}),
     )
     scenario = record(driver, "reach done", ClaudeAgent(client=client), name="reach")
 
@@ -154,8 +122,8 @@ def test_claude_agent_drives_record() -> None:
 
 
 def test_plan_decomposes_goal_into_steps() -> None:
-    client = FakeClient(
-        _Block("plan", {"steps": ["Tap Get Started", " ", "Confirm home is shown"]})
+    client = FakeAnthropic(
+        FakeBlock("plan", {"steps": ["Tap Get Started", " ", "Confirm home is shown"]})
     )
     steps = ClaudeAgent(client=client).plan("sign in")
     assert steps == ["Tap Get Started", "Confirm home is shown"]  # blanks dropped, order kept
@@ -190,7 +158,7 @@ def _vel(label: str | None, traits: list[str], value: str | None = None) -> base
 
 def test_tap_by_label_when_no_id() -> None:
     step = (
-        ClaudeAgent(client=FakeClient(_Block("tap", {"label": "Get Started"})))
+        ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"label": "Get Started"})))
         .next_action(_obs())
         .step
     )
@@ -199,8 +167,8 @@ def test_tap_by_label_when_no_id() -> None:
 
 
 def test_type_into_field_by_value_and_traits() -> None:
-    block = _Block("type_text", {"value": "Email", "traits": ["textField"], "text": "a@b.co"})
-    step = ClaudeAgent(client=FakeClient(block)).next_action(_obs()).step
+    block = FakeBlock("type_text", {"value": "Email", "traits": ["textField"], "text": "a@b.co"})
+    step = ClaudeAgent(client=FakeAnthropic(block)).next_action(_obs()).step
     assert step is not None and step.type is not None and step.type.into is not None
     assert step.type.into.value == "Email" and step.type.into.traits == ["textField"]
     assert step.type.text == "a@b.co"
@@ -208,7 +176,7 @@ def test_type_into_field_by_value_and_traits() -> None:
 
 def test_tap_by_traits_and_index() -> None:
     step = (
-        ClaudeAgent(client=FakeClient(_Block("tap", {"traits": ["textField"], "index": 1})))
+        ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"traits": ["textField"], "index": 1})))
         .next_action(_obs())
         .step
     )
@@ -217,10 +185,10 @@ def test_tap_by_traits_and_index() -> None:
 
 
 def test_finish_label_contains_for_valueless_counter() -> None:
-    block = _Block(
+    block = FakeBlock(
         "finish", {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]}
     )
-    proposal = ClaudeAgent(client=FakeClient(block)).next_action(_obs())
+    proposal = ClaudeAgent(client=FakeAnthropic(block)).next_action(_obs())
     assert proposal.done is True
     assert proposal.expect[0].label is not None
     assert proposal.expect[0].label.sel.label == "Count: 2"
@@ -238,11 +206,11 @@ def test_authored_valueless_selectors_resolve_uniquely() -> None:
         _vel(None, ["textField"], value="Email"),
         _vel(None, ["textField"], value="Password"),
     ]
-    plus = ClaudeAgent(client=FakeClient(_Block("tap", {"label": "+"}))).next_action(_obs()).step
+    plus = ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"label": "+"}))).next_action(_obs()).step
     email = (
         ClaudeAgent(
-            client=FakeClient(
-                _Block("type_text", {"value": "Email", "traits": ["textField"], "text": "x"})
+            client=FakeAnthropic(
+                FakeBlock("type_text", {"value": "Email", "traits": ["textField"], "text": "x"})
             )
         )
         .next_action(_obs())
@@ -250,8 +218,8 @@ def test_authored_valueless_selectors_resolve_uniquely() -> None:
     )
     count = (
         ClaudeAgent(
-            client=FakeClient(
-                _Block(
+            client=FakeAnthropic(
+                FakeBlock(
                     "finish",
                     {"assertions": [{"label": "Count: 2", "check": "labelContains", "text": "2"}]},
                 )

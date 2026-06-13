@@ -5,39 +5,11 @@ from __future__ import annotations
 import base64
 from typing import Any
 
+from conftest import FakeAnthropic, FakeBlock
+
 from bajutsu.claude_triage import ClaudeTriageAgent, _render
 from bajutsu.drivers import base
 from bajutsu.triage import FailedStep, TriageContext
-
-
-class _Block:
-    def __init__(self, name: str, inp: dict[str, Any]) -> None:
-        self.type = "tool_use"
-        self.name = name
-        self.input = inp
-
-
-class _Message:
-    def __init__(self, *blocks: _Block) -> None:
-        self.content = list(blocks)
-
-
-class _Messages:
-    def __init__(self, message: _Message, calls: list[dict[str, Any]]) -> None:
-        self._message = message
-        self._calls = calls
-
-    def create(self, **kwargs: Any) -> _Message:
-        self._calls.append(kwargs)
-        return self._message
-
-
-class FakeClient:
-    """Mimics anthropic.Anthropic for `client.messages.create(...)`."""
-
-    def __init__(self, *blocks: _Block) -> None:
-        self.calls: list[dict[str, Any]] = []
-        self.messages = _Messages(_Message(*blocks), self.calls)
 
 
 def _el(identifier: str, label: str) -> base.Element:
@@ -67,8 +39,8 @@ def _ctx(**over: Any) -> TriageContext:
 
 def _diagnose(
     category: str = "selector", summary: str = "id renamed", suggestions: list[str] | None = None
-) -> _Block:
-    return _Block(
+) -> FakeBlock:
+    return FakeBlock(
         "diagnose",
         {
             "category": category,
@@ -79,7 +51,7 @@ def _diagnose(
 
 
 def test_diagnose_maps_to_triage() -> None:
-    agent = ClaudeTriageAgent(client=FakeClient(_diagnose()))
+    agent = ClaudeTriageAgent(client=FakeAnthropic(_diagnose()))
     result = agent.triage(_ctx())
     assert result.category == "selector"
     assert result.summary == "id renamed"
@@ -87,19 +59,19 @@ def test_diagnose_maps_to_triage() -> None:
 
 
 def test_unknown_category_is_clamped() -> None:
-    agent = ClaudeTriageAgent(client=FakeClient(_diagnose(category="bogus")))
+    agent = ClaudeTriageAgent(client=FakeAnthropic(_diagnose(category="bogus")))
     assert agent.triage(_ctx()).category == "unknown"
 
 
 def test_no_tool_call_falls_back_to_unknown() -> None:
-    agent = ClaudeTriageAgent(client=FakeClient())  # message with no tool_use blocks
+    agent = ClaudeTriageAgent(client=FakeAnthropic())  # message with no tool_use blocks
     result = agent.triage(_ctx())
     assert result.category == "unknown"
     assert result.suggestions == []
 
 
 def test_request_uses_forced_tool_choice_and_cache() -> None:
-    client = FakeClient(_diagnose())
+    client = FakeAnthropic(_diagnose())
     ClaudeTriageAgent(client=client, model="claude-opus-4-8").triage(_ctx())
     call = client.calls[0]
     assert call["model"] == "claude-opus-4-8"
@@ -140,7 +112,7 @@ def test_render_handles_empty_elements_and_expectations() -> None:
 
 
 def test_screenshot_sent_as_image_block() -> None:
-    client = FakeClient(_diagnose())
+    client = FakeAnthropic(_diagnose())
     png = b"\x89PNG\r\n\x1a\n fake-bytes"
     ClaudeTriageAgent(client=client).triage(_ctx(screenshot=png))
     content = client.calls[0]["messages"][0]["content"]
@@ -152,15 +124,15 @@ def test_screenshot_sent_as_image_block() -> None:
 
 
 def test_no_screenshot_is_text_only() -> None:
-    client = FakeClient(_diagnose())
+    client = FakeAnthropic(_diagnose())
     ClaudeTriageAgent(client=client).triage(_ctx(screenshot=None))
     content = client.calls[0]["messages"][0]["content"]
     assert [c["type"] for c in content] == ["text"]
     assert "attached above" not in content[0]["text"]
 
 
-def _diagnose_with_fix(fix: dict[str, Any]) -> _Block:
-    return _Block(
+def _diagnose_with_fix(fix: dict[str, Any]) -> FakeBlock:
+    return FakeBlock(
         "diagnose",
         {
             "category": "selector",
@@ -175,7 +147,7 @@ def test_fix_is_parsed_into_triage() -> None:
     block = _diagnose_with_fix(
         {"kind": "renameId", "find": "nav.setting", "replace": "nav.settings"}
     )
-    result = ClaudeTriageAgent(client=FakeClient(block)).triage(_ctx())
+    result = ClaudeTriageAgent(client=FakeAnthropic(block)).triage(_ctx())
     assert result.fix is not None and result.fix.kind == "renameId"
     assert (result.fix.find, result.fix.replace) == ("nav.setting", "nav.settings")
     assert result.fix.summary == "rename id `nav.setting` -> `nav.settings`"
@@ -185,7 +157,7 @@ def test_fragment_fix_kinds_are_parsed() -> None:
     add = _diagnose_with_fix(
         {"kind": "addIndex", "find": "{ id: row.cell }", "replace": "{ id: row.cell, index: 0 }"}
     )
-    res = ClaudeTriageAgent(client=FakeClient(add)).triage(_ctx())
+    res = ClaudeTriageAgent(client=FakeAnthropic(add)).triage(_ctx())
     assert res.fix is not None and res.fix.kind == "addIndex"
     assert (
         res.fix.summary
@@ -195,12 +167,12 @@ def test_fragment_fix_kinds_are_parsed() -> None:
     bump = _diagnose_with_fix(
         {"kind": "raiseTimeout", "find": "timeout: 5", "replace": "timeout: 15"}
     )
-    res2 = ClaudeTriageAgent(client=FakeClient(bump)).triage(_ctx())
+    res2 = ClaudeTriageAgent(client=FakeAnthropic(bump)).triage(_ctx())
     assert res2.fix is not None and res2.fix.kind == "raiseTimeout"
 
 
 def test_no_fix_when_omitted() -> None:
-    assert ClaudeTriageAgent(client=FakeClient(_diagnose())).triage(_ctx()).fix is None
+    assert ClaudeTriageAgent(client=FakeAnthropic(_diagnose())).triage(_ctx()).fix is None
 
 
 def test_invalid_fix_is_rejected() -> None:
@@ -211,12 +183,12 @@ def test_invalid_fix_is_rejected() -> None:
         {"kind": "addIndex", "replace": "b"},  # missing find
     ]
     for bad in bad_fixes:
-        result = ClaudeTriageAgent(client=FakeClient(_diagnose_with_fix(bad))).triage(_ctx())
+        result = ClaudeTriageAgent(client=FakeAnthropic(_diagnose_with_fix(bad))).triage(_ctx())
         assert result.fix is None, bad
 
 
 def test_tool_schema_exposes_optional_fix() -> None:
-    client = FakeClient(_diagnose())
+    client = FakeAnthropic(_diagnose())
     ClaudeTriageAgent(client=client).triage(_ctx())
     schema = client.calls[0]["tools"][0]["input_schema"]
     assert schema["properties"]["fix"]["properties"]["kind"]["enum"] == [
