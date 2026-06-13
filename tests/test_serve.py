@@ -385,6 +385,43 @@ def test_run_job_boot_failure_skips_the_run(tmp_path: Path) -> None:
     assert any("boot failed" in line for line in v["lines"])
 
 
+class _Killable:
+    """A fake subprocess that records a cancel's terminate() (no real process to kill)."""
+
+    def __init__(self) -> None:
+        self.killed = False
+
+    def terminate(self) -> None:
+        self.killed = True
+
+
+def test_cancel_job_flags_and_terminates() -> None:
+    job = srv.Job(id="1", cmd=["x"])
+    job.proc = _Killable()
+    assert srv.cancel_job(job) is True
+    assert job.cancelled is True and job.proc.killed is True  # the live subprocess is stopped
+    assert job.lines[-1] == "cancelled"  # the cancel is noted in the streamed log
+    v = job.view()
+    assert v["cancelled"] is True and v["ok"] is None  # still running until run_job marks it done
+    job.status = "done"
+    assert srv.cancel_job(job) is False  # a finished job can't be cancelled
+
+
+def test_cancel_before_spawn_skips_the_run(tmp_path: Path) -> None:
+    """A cancel that lands before the proc is registered stops the job without streaming output."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+        popen=_fake_popen(["should-not-appear\n"]),
+    )
+    job = state.new_job(["x"])
+    job.cancelled = True  # the /cancel arrived before run_job registered the subprocess
+    srv.run_job(state, job)
+    v = job.view()
+    assert v["status"] == "done" and v["cancelled"] is True and v["ok"] is False
+    assert not any("should-not-appear" in line for line in v["lines"])  # streaming was skipped
+
+
 # --- HTTP endpoints (real server) ---
 
 
@@ -552,6 +589,34 @@ def test_http_scenario_save_validates_and_writes(tmp_path: Path) -> None:
         except urllib.error.HTTPError as e:
             assert e.code == 400
         assert target.read_text(encoding="utf-8") == edited  # rejected save left the file intact
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _post(port: int, path: str) -> int:
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=b"{}",
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+
+
+def test_http_cancel_terminates_running_job(tmp_path: Path) -> None:
+    """POST /api/jobs/<id>/cancel stops a running job (the Stop button) and 404s an unknown id."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    job = state.new_job(["x"])
+    job.proc = _Killable()  # a job mid-run, with a live subprocess to terminate
+    server, port = _serve(state)
+    try:
+        assert _post(port, f"/api/jobs/{job.id}/cancel") == {"cancelled": True}
+        assert job.cancelled is True and job.proc.killed is True
+        assert _get_json(port, f"/api/jobs/{job.id}")["cancelled"] is True
+        try:
+            _post(port, "/api/jobs/nope/cancel")
+            raise AssertionError("expected 404 for an unknown job")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
     finally:
         server.shutdown()
         server.server_close()
