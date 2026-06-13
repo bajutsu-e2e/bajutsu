@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from bajutsu import triage
 from bajutsu.cli import _rerun_command, app
-from bajutsu.triage import Fix, FailedStep, HeuristicTriageAgent, TriageContext, apply_fix, diff_fix
+from bajutsu.triage import FailedStep, Fix, HeuristicTriageAgent, TriageContext, apply_fix, diff_fix
 
 runner = CliRunner()
 

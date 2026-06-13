@@ -17,10 +17,11 @@ import re
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 from bajutsu import env
@@ -272,7 +273,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
-        def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
+        def do_GET(self) -> None:
             path = urlparse(self.path).path
             if path in ("/", "/index.html"):
                 body = INDEX_HTML.encode("utf-8")
@@ -297,7 +298,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             else:
                 self._json({"error": "not found"}, 404)
 
-        def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
+        def do_POST(self) -> None:
             if urlparse(self.path).path != "/api/run":
                 self._json({"error": "not found"}, 404)
                 return

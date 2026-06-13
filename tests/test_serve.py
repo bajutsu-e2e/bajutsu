@@ -9,8 +9,9 @@ import sys
 import threading
 import time
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from bajutsu import serve as srv
 

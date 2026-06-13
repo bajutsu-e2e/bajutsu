@@ -120,7 +120,7 @@ def test_collector_receives_and_clears() -> None:
     port = c.start()
     try:
         body = json.dumps({"method": "GET", "path": "/items", "status": 200}).encode()
-        urllib.request.urlopen(  # noqa: S310 — localhost test server
+        urllib.request.urlopen(
             urllib.request.Request(f"http://127.0.0.1:{port}/report", data=body, method="POST")
         ).read()
         snap = c.snapshot()

@@ -119,7 +119,7 @@ def _fmt_duration(seconds: float) -> str:
     """A compact human duration: '0.8s', '12.3s', or '1m 23s' once it passes a minute."""
     if seconds < 60:
         return f"{seconds:.1f}s"
-    minutes, secs = divmod(int(round(seconds)), 60)
+    minutes, secs = divmod(round(seconds), 60)
     return f"{minutes}m {secs}s"
 
 

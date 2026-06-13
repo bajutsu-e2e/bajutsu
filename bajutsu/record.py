@@ -58,7 +58,7 @@ def _screenshot_bytes(driver: base.Driver) -> bytes | None:
         data = Path(path).read_bytes()
         Path(path).unlink(missing_ok=True)
         return data or None
-    except Exception:  # noqa: BLE001 — screenshots are optional context for the agent
+    except Exception:
         return None
 
 

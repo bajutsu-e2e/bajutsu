@@ -65,7 +65,7 @@ def test_start_device_log_lifecycle() -> None:
 
 
 def test_interval_kinds_registry() -> None:
-    assert intervals.INTERVAL_KINDS == frozenset({"video", "deviceLog", "appTrace"})
+    assert frozenset({"video", "deviceLog", "appTrace"}) == intervals.INTERVAL_KINDS
 
 
 # --- appTrace: log-marker interval parsing ---

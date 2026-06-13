@@ -42,7 +42,7 @@ def _at(value: Any) -> float:
 
 def _step_event(step: dict[str, Any]) -> tuple[float, str]:
     mark = "✓" if step.get("ok") else "✗"
-    desc = f"{mark} {str(step.get('action', '')):<9}"
+    desc = f"{mark} {step.get('action', '')!s:<9}"
     dur = step.get("duration_s")
     if isinstance(dur, (int, float)) and not isinstance(dur, bool):
         desc += f"  ({dur:.2f}s)"
@@ -83,7 +83,7 @@ def _scenario_lines(run_dir: Path, scenario: dict[str, Any]) -> list[str]:
         lines.append("  expectations:")
         for e in expects:
             mark = "✓" if e.get("ok") else "✗"
-            line = f"    {mark} {str(e.get('kind', '')):<8} {e.get('detail', '')}"
+            line = f"    {mark} {e.get('kind', '')!s:<8} {e.get('detail', '')}"
             if not e.get("ok") and e.get("reason"):
                 line += f"   ✗ {e['reason']}"
             lines.append(line)

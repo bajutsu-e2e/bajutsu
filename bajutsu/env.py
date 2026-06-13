@@ -6,6 +6,7 @@ runner so the device-touching part stays thin and swappable in tests.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -198,16 +199,12 @@ class Env:
         self._run(erase_cmd(self.udid), None)
 
     def shutdown(self) -> None:
-        try:
+        with contextlib.suppress(subprocess.CalledProcessError):
             self._run(shutdown_cmd(self.udid), None)
-        except subprocess.CalledProcessError:
-            pass  # already shut down; shutdown is idempotent
 
     def boot(self) -> None:
-        try:
+        with contextlib.suppress(subprocess.CalledProcessError):
             self._run(boot_cmd(self.udid), None)
-        except subprocess.CalledProcessError:
-            pass  # already booted; boot is idempotent
 
     def is_installed(self, bundle_id: str) -> bool:
         try:
@@ -220,10 +217,8 @@ class Env:
         self._run(install_cmd(self.udid, app_path), None)
 
     def uninstall(self, bundle_id: str) -> None:
-        try:
+        with contextlib.suppress(subprocess.CalledProcessError):
             self._run(uninstall_cmd(self.udid, bundle_id), None)
-        except subprocess.CalledProcessError:
-            pass  # not installed; uninstall is idempotent
 
     def launch(
         self,
@@ -234,10 +229,8 @@ class Env:
         self._run(launch_cmd(self.udid, bundle_id, args), child_env(env or {}))
 
     def terminate(self, bundle_id: str) -> None:
-        try:
+        with contextlib.suppress(subprocess.CalledProcessError):
             self._run(terminate_cmd(self.udid, bundle_id), None)
-        except subprocess.CalledProcessError:
-            pass  # not running
 
     def openurl(self, url: str) -> None:
         self._run(openurl_cmd(self.udid, url), None)

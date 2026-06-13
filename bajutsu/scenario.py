@@ -61,7 +61,7 @@ class Selector(_Model):
     label_matches: str | None = Field(default=None, alias="labelMatches")
     traits: list[str] | None = None
     value: str | None = None
-    within: "Selector | None" = None
+    within: Selector | None = None
     index: int | None = None
 
     @model_validator(mode="after")

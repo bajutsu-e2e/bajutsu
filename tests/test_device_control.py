@@ -9,7 +9,6 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 from bajutsu.scenario import Push, Scenario, SetLocation, Step
 
-
 # --- pure command builders ---
 
 

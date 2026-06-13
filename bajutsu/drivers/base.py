@@ -71,7 +71,7 @@ class Selector(TypedDict, total=False):
     labelMatches: str  # substring / regex over label
     traits: list[str]  # narrow by type (e.g. ["button"])
     value: str         # accessibility value match
-    within: "Selector"  # scope to a parent (needs a hierarchical query; not implemented)
+    within: Selector  # scope to a parent (needs a hierarchical query; not implemented)
     index: int         # nth of multiple matches (last resort; flaky)
 
 
@@ -145,9 +145,7 @@ def matches(el: Element, sel: Selector) -> bool:
         return False
     if "traits" in sel and not set(sel["traits"]).issubset(el["traits"]):
         return False
-    if "value" in sel and el["value"] != sel["value"]:
-        return False
-    return True
+    return not ("value" in sel and el["value"] != sel["value"])
 
 
 def _contains(outer: Frame, inner: Frame) -> bool:

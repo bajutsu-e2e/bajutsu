@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from bajutsu import assertions, intervals, interp
+from bajutsu import assertions, interp, intervals
 from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink

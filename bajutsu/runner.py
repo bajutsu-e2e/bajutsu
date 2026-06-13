@@ -169,7 +169,7 @@ def _await_ready(driver: base.Driver, timeout: float = 10.0, poll: float = 0.2) 
         try:
             if len(driver.query()) >= 2:
                 return
-        except Exception:  # noqa: BLE001 — app may not be answerable yet
+        except Exception:
             pass
         time.sleep(poll)
 

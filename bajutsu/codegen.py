@@ -77,7 +77,7 @@ def _selector_of_step(step: Step) -> base.Selector | None:
     return None
 
 
-def _emit_step(step: Step) -> list[str]:  # noqa: C901 — a flat dispatch over step kinds
+def _emit_step(step: Step) -> list[str]:
     if step.tap is not None:
         return [f"{_element(step.tap.as_selector())}.tap()"]
     if step.double_tap is not None:
@@ -126,7 +126,7 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901 — a flat dispatch over 
     return ["// TODO: unsupported step"]
 
 
-def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901 — flat dispatch over assertion kinds
+def _emit_assertion(a: Assertion) -> list[str]:
     if a.exists is not None:
         element = _element(a.exists.sel.as_selector())
         check = "XCTAssertFalse" if a.exists.negate else "XCTAssertTrue"

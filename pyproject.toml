@@ -3,20 +3,27 @@ name = "bajutsu"
 version = "0.0.0"
 description = "自然言語駆動 iOS E2E テストツール（Simulator 限定）"
 readme = "DESIGN.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
-    "typer>=0.12",
-    "pydantic>=2.7",
-    "anthropic>=0.40",
-    "pyyaml>=6.0",
+    "anthropic>=0.50",
     "jinja2>=3.1",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "typer>=0.12",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "types-pyyaml>=6.0"]
 # The idb backend shells out to the `idb` client; idb_companion is a separate
 # `brew install facebook/fb/idb-companion`.
 idb = ["fb-idb>=1.1.0"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8",
+    "ruff>=0.5",
+    "types-pyyaml>=6.0",
+]
 
 [project.scripts]
 bajutsu = "bajutsu.cli:app"
@@ -30,8 +37,30 @@ packages = ["bajutsu"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "ANN",
+    "B",
+    "E",
+    "F",
+    "I",
+    "N",
+    "PIE",
+    "RUF",
+    "SIM",
+    "UP",
+]
+ignore = [
+    "ANN401",  # Any is used intentionally for flexible APIs
+    "E501",    # line length is enforced by the formatter, not the linter
+    "N818",    # exception names like ElementNotFound are clear without Error suffix
+    "RUF001",  # fullwidth characters are intentional in Japanese strings
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true

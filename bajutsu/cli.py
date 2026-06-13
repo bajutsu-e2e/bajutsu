@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -371,10 +372,9 @@ def triage(
     # so a fix's `find` fragment matches the file that --apply edits — otherwise float/flow-style
     # normalization (`timeout: 2.0`, block selectors) makes fragment fixes miss.
     if apply:
-        try:
+        with contextlib.suppress(OSError):
+            # _apply_fix reports the read failure below
             context = replace(context, scenario_yaml=Path(apply).read_text(encoding="utf-8"))
-        except OSError:
-            pass  # _apply_fix reports the read failure below
     agent: _triage.TriageAgent
     if ai:
         from bajutsu.claude_triage import ClaudeTriageAgent
@@ -396,7 +396,7 @@ def triage(
             _verify_rerun(apply, app_name, backend, udid, config)
 
 
-def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> bool:
+def _apply_fix(result: _triage.Triage, target: str, write: bool) -> bool:
     """Render (and optionally write) the suggested fix. Returns True only when a file was written."""
     if result.fix is None:
         typer.echo("\nno applicable structured fix for this failure (advisory only).")
@@ -405,7 +405,7 @@ def _apply_fix(result: "_triage.Triage", target: str, write: bool) -> bool:
         src = Path(target).read_text(encoding="utf-8")
     except OSError as exc:
         typer.echo(f"\ncannot read {target}: {exc}")
-        raise typer.Exit(2)
+        raise typer.Exit(2) from None
     patched, count = _triage.apply_fix(src, result.fix)
     if count == 0:
         typer.echo(f"\nfix: {result.fix.summary} — `{result.fix.find}` not found in {target} (no-op)")
