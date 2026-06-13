@@ -11,3 +11,10 @@ apps:
     launchEnv: { SAMPLE_UITEST: "1" }
     idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp]
     secrets: [PASSWORD]
+    # Built .app to install on each device before launch (if missing) — so a freshly
+    # picked/booted simulator just works without a manual `simctl install`. `bajutsu
+    # serve` runs `build` below on demand when this binary is missing, so the Web UI
+    # builds + installs the app itself (no manual build first). Path is relative to
+    # the run's working directory (the repo root).
+    appPath: demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
+    build: make -C demos/features sample-build
