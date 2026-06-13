@@ -109,6 +109,51 @@ def test_run_command_parallel_pool() -> None:
     assert "--workers" not in srv.run_command("s.yaml", "demo", workers=1)  # single-device omits it
 
 
+def test_record_command_builder() -> None:
+    cmd = srv.record_command("out.yaml", "demo", "tap Increment", agent="claude-code",
+                             backend="idb", udid="U", config="c.yaml")
+    assert cmd[:5] == [sys.executable, "-m", "bajutsu", "record", "out.yaml"]
+    assert cmd[5:11] == ["--app", "demo", "--goal", "tap Increment", "--config", "c.yaml"]
+    assert cmd[cmd.index("--agent") + 1] == "claude-code"
+    assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
+    # erase / dismiss default to None (the CLI defaults — record erases and dismisses): no flag.
+    assert "--erase" not in cmd and "--no-erase" not in cmd and "--no-dismiss-alerts" not in cmd
+    # Explicit overrides mirror run_command.
+    assert "--no-erase" in srv.record_command("o.yaml", "demo", "g", erase=False)
+    assert "--no-dismiss-alerts" in srv.record_command("o.yaml", "demo", "g", dismiss_alerts=False)
+    bare = srv.record_command("o.yaml", "demo", "g")  # no agent → no --agent (CLI default applies)
+    assert "--agent" not in bare and "--backend" not in bare
+
+
+def test_scenario_out_path_sanitizes(tmp_path: Path) -> None:
+    d = tmp_path / "scn"
+    assert srv.scenario_out_path(d, "login") == d / "login.yaml"
+    assert srv.scenario_out_path(d, "login.yaml") == d / "login.yaml"  # suffix normalized
+    assert srv.scenario_out_path(d, "a/b/../c") == d / "a-b-..-c.yaml"  # no escape via separators
+    assert srv.scenario_out_path(d, "") == d / "authored.yaml"  # blank → fallback
+    assert srv.scenario_out_path(d, "   ") == d / "authored.yaml"
+    assert srv.scenario_out_path(d, "..") == d / "authored.yaml"  # never names the parent dir
+
+
+def test_unique_scenario_path_stamps_existing(tmp_path: Path) -> None:
+    p = tmp_path / "generated.yaml"
+    assert srv.unique_scenario_path(p) == p  # free → unchanged
+    p.write_text("a", encoding="utf-8")
+    # taken → the run's date-time is appended so nothing is overwritten
+    assert srv.unique_scenario_path(p, stamp="20260613-153045") == tmp_path / "generated-20260613-153045.yaml"
+
+
+def test_scenario_path_guard_keeps_inside_dir(tmp_path: Path) -> None:
+    d = tmp_path / "scn"
+    d.mkdir()
+    assert srv._scenario_path(d, None) is None
+    assert srv._scenario_path(d, "smoke.yaml") == (d / "smoke.yaml").resolve()
+    assert srv._scenario_path(d, str(d / "x.yaml")) == (d / "x.yaml").resolve()
+    assert srv._scenario_path(d, "x.txt") is None  # only *.yaml
+    assert srv._scenario_path(d, "../escape.yaml") is None  # traversal blocked
+    assert srv._scenario_path(d, str(tmp_path / "outside.yaml")) is None
+
+
 def test_int_coercion() -> None:
     assert srv._int(3, 1) == 3 and srv._int("4", 1) == 4
     assert srv._int(None, 1) == 1 and srv._int("x", 1) == 1  # bad values fall back
@@ -341,6 +386,86 @@ def test_http_run_then_job_status(tmp_path: Path) -> None:
                 break
             time.sleep(0.02)
         assert j["status"] == "done" and j["ok"] is True and j["runId"] == "done-1"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_record_authors_scenario(tmp_path: Path) -> None:
+    """POST /api/record spawns the `record` command (the Record tab), reports the out path, and
+    on completion the authored `*.yaml` is readable via GET /api/scenario."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    captured: list[list[str]] = []
+
+    def popen(cmd: list[str], **_kw: Any) -> _FakeProc:
+        captured.append(cmd)
+        out = cmd[cmd.index("record") + 1]  # the OUT path the record command writes to
+        (tmp_path / out).write_text(SCENARIO, encoding="utf-8")  # simulate the recorded scenario
+        return _FakeProc(["[1] -> tap #x\n", "recorded 1 steps (api agent) -> " + out + "\n"])
+
+    server, port = _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs,
+                                         cwd=tmp_path, popen=popen))
+    try:
+        body = json.dumps({"goal": "tap x", "app": "demo", "name": "authored"}).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/record", data=body,
+                                     headers={"Content-Type": "application/json"})
+        resp = json.loads(urllib.request.urlopen(req).read())
+        assert resp["path"].endswith("authored.yaml")
+        for _ in range(100):
+            j = _get_json(port, "/api/jobs/" + resp["jobId"])
+            if j["status"] == "done":
+                break
+            time.sleep(0.02)
+        assert j["status"] == "done" and j["ok"] is True
+        assert j["outPath"] == resp["path"]
+        cmd = captured[0]
+        assert cmd[1:5] == ["-m", "bajutsu", "record", str(scn_dir / "authored.yaml")]
+        assert cmd[cmd.index("--goal") + 1] == "tap x"
+        got = _get_json(port, "/api/scenario?path=" + urllib.parse.quote(resp["path"]))
+        assert got["yaml"] == SCENARIO  # the authored scenario is served back for the editor
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_record_requires_goal_and_app(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    server, port = _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path))
+    try:
+        body = json.dumps({"goal": "tap x"}).encode()  # missing app
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/record", data=body,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req)
+            raise AssertionError("expected 400")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_scenario_save_validates_and_writes(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    server, port = _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path))
+    try:
+        target = scn_dir / "smoke.yaml"
+        edited = "- name: edited\n  steps:\n    - tap: { id: y }\n"
+        body = json.dumps({"path": str(target), "yaml": edited}).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/scenario", data=body,
+                                     headers={"Content-Type": "application/json"})
+        assert json.loads(urllib.request.urlopen(req).read())["ok"] is True
+        assert target.read_text(encoding="utf-8") == edited  # the edit landed on disk
+
+        bad = json.dumps({"path": str(target), "yaml": "steps: [not, a, scenario, list"}).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/scenario", data=bad,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req)
+            raise AssertionError("expected 400 for invalid yaml")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+        assert target.read_text(encoding="utf-8") == edited  # rejected save left the file intact
     finally:
         server.shutdown()
         server.server_close()
