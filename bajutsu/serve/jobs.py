@@ -200,7 +200,7 @@ def _build_app(state: ServeState, job: Job) -> bool:
             for raw in proc.stdout or []:
                 _log(job, raw.rstrip("\n"))
         except OSError:
-            proc.terminate()
+            _terminate(proc)
         proc.wait()
         code = proc.returncode
     except OSError as e:
@@ -246,7 +246,7 @@ def run_job(state: ServeState, job: Job) -> None:
                 if match:
                     job.run_id = match.group(1)
     except OSError:
-        proc.terminate()
+        _terminate(proc)
     proc.wait()
     with job.lock:
         job.proc = None
