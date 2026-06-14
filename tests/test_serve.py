@@ -275,7 +275,7 @@ def test_run_job_builds_app_when_binary_missing(tmp_path: Path) -> None:
 
     def popen(cmd: Any, **_kw: Any) -> _FakeProc:
         calls.append(cmd)
-        if cmd == "make build":  # the build command — create the binary it produces
+        if cmd == ["make", "build"]:  # the build command — create the binary it produces
             (tmp_path / app_path).mkdir()
             return _FakeProc(["compiling…\n"])
         return _FakeProc(["PASS  runs/r/manifest.json\n"])  # the run
@@ -286,7 +286,7 @@ def test_run_job_builds_app_when_binary_missing(tmp_path: Path) -> None:
     job = state.new_job(["run"], app_path=app_path, build="make build")
     srv.run_job(state, job)
     v = job.view()
-    assert calls == ["make build", ["run"]]  # build first, then the run
+    assert calls == [["make", "build"], ["run"]]  # build first (shlex-split), then the run
     assert v["ok"] is True and v["runId"] == "r"
     assert any("building: make build" in line for line in v["lines"])
     assert any("build ok" in line for line in v["lines"])
@@ -324,7 +324,7 @@ def test_run_job_build_failure_skips_the_run(tmp_path: Path) -> None:
     job = state.new_job(["run"], app_path="MyApp.app", build="make build")
     srv.run_job(state, job)
     v = job.view()
-    assert spawned == ["make build"]  # the run is not spawned when the build fails
+    assert spawned == [["make", "build"]]  # the run is not spawned when the build fails
     assert v["status"] == "done" and v["ok"] is False and v["exitCode"] == 2
     assert any("build failed" in line for line in v["lines"])
 
@@ -386,6 +386,70 @@ def test_run_job_boot_failure_skips_the_run(tmp_path: Path) -> None:
     assert v["status"] == "done" and v["ok"] is False
     assert spawned == []  # the run is not spawned when a device won't boot
     assert any("boot failed" in line for line in v["lines"])
+
+
+def test_run_job_terminates_process_on_output_error(tmp_path: Path) -> None:
+    """If stdout iteration raises, the process must be terminated so it doesn't leak."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    terminated: list[bool] = []
+
+    class _ExplodingProc:
+        def __init__(self) -> None:
+            self.returncode = 1
+
+        @property
+        def stdout(self):
+            def _boom():
+                yield "line 1\n"
+                raise OSError("broken pipe")
+            return _boom()
+
+        def wait(self) -> None:
+            pass
+
+        def terminate(self) -> None:
+            terminated.append(True)
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+        popen=lambda *_a, **_kw: _ExplodingProc(),
+    )
+    job = state.new_job(["run"])
+    srv.run_job(state, job)
+    assert terminated, "process was not terminated after stdout error"
+    assert job.view()["status"] == "done"
+
+
+def test_build_app_terminates_process_on_output_error(tmp_path: Path) -> None:
+    """If stdout iteration raises during build, the build process must be terminated."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    terminated: list[bool] = []
+
+    class _ExplodingProc:
+        def __init__(self) -> None:
+            self.returncode = 1
+
+        @property
+        def stdout(self):
+            def _boom():
+                yield "compiling…\n"
+                raise OSError("broken pipe")
+            return _boom()
+
+        def wait(self) -> None:
+            pass
+
+        def terminate(self) -> None:
+            terminated.append(True)
+
+    state = srv.ServeState(
+        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+        popen=lambda *_a, **_kw: _ExplodingProc(),
+    )
+    job = state.new_job(["run"], app_path="Missing.app", build="make build")
+    srv.run_job(state, job)
+    assert terminated, "build process was not terminated after stdout error"
+    assert job.view()["status"] == "done"
 
 
 # --- HTTP endpoints (real server) ---
