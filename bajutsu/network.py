@@ -20,7 +20,7 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class NetworkExchange(BaseModel):
@@ -64,7 +64,7 @@ class NetworkCollector:
     def add(self, data: dict[str, Any]) -> None:
         try:
             ex = NetworkExchange.model_validate(data)
-        except Exception:
+        except ValidationError:
             return
         with self._lock:
             self._items.append((ex, self._now()))

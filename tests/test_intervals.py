@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import signal
 from pathlib import Path
 
@@ -105,6 +106,28 @@ def test_parse_app_trace_ignores_unpaired() -> None:
         ' "timestamp": "2026-06-05 01:01:11.000000+0900"}'
     )
     assert intervals.parse_app_trace(text) == []
+
+
+def test_subprocess_proc_closes_file_on_popen_failure(tmp_path: Path, monkeypatch) -> None:
+    """If Popen raises after the output file is opened, the file handle must be closed."""
+    import subprocess as sp
+
+    out = tmp_path / "out.log"
+    opened_files: list = []
+    _real_open = Path.open
+
+    def tracking_open(self, *a, **kw):
+        f = _real_open(self, *a, **kw)
+        opened_files.append(f)
+        return f
+
+    monkeypatch.setattr(Path, "open", tracking_open)
+    monkeypatch.setattr(sp, "Popen", lambda *_a, **_kw: (_ for _ in ()).throw(OSError("no")))
+
+    with contextlib.suppress(OSError):
+        intervals._SubprocessProc(["fake"], out)
+    assert len(opened_files) == 1
+    assert opened_files[0].closed, "file handle leaked — not closed after Popen failure"
 
 
 def test_app_trace_cmd() -> None:

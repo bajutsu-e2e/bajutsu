@@ -74,11 +74,16 @@ Spawn = Callable[[list[str], "Path | None"], Proc]
 class _SubprocessProc:
     def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
         self._file = stdout_path.open("wb") if stdout_path is not None else None
-        self._proc = subprocess.Popen(
-            argv,
-            stdout=self._file if self._file is not None else subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            self._proc = subprocess.Popen(
+                argv,
+                stdout=self._file if self._file is not None else subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except BaseException:
+            if self._file is not None:
+                self._file.close()
+            raise
 
     def stop(self, sig: int) -> None:
         self._proc.send_signal(sig)
