@@ -1,522 +1,31 @@
-"""`bajutsu serve` — a local web UI to author scenarios and run them.
-
-A Tier-1 convenience (authoring / operation), **never part of the CI gate**. Two top-level
-tabs over the CLI: **Record** authors a scenario from a natural-language goal (`python -m
-bajutsu record …`), streaming the agent's turn-by-turn progress and writing the result under
-the scenarios dir; **Replay** runs a scenario (`python -m bajutsu run …`) and shows its
-self-contained `report.html`. Each request spawns the CLI on a background thread, streams its
-output, and the produced `runs/<id>/` tree is served so the report's relative asset links
-resolve. Stdlib only — the same `ThreadingHTTPServer` approach as the network collector
-([[network]]).
-"""
+"""HTTP request handler for ``bajutsu serve``."""
 
 from __future__ import annotations
 
-import contextlib
 import json
 import mimetypes
-import os
-import re
-import shlex
-import subprocess
-import sys
 import threading
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
 
-from bajutsu import env
-from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenario_file
-
-# The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
-_RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
-
-Popen = Callable[..., Any]
-
-
-# --- pure helpers (unit-tested without a server) ---
-
-
-def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
-    """Every `*.yaml` under `scenarios_dir`: a path the run command can take, the file-level
-    `description`, and each scenario's name + description (for the UI)."""
-    out: list[dict[str, Any]] = []
-    for path in sorted(scenarios_dir.glob("*.yaml")):
-        description: str | None = None
-        scenarios: list[dict[str, Any]] = []
-        try:
-            sf = load_scenario_file(path.read_text(encoding="utf-8"))
-            description = sf.description
-            scenarios = [{"name": s.name, "description": s.description} for s in sf.scenarios]
-        except (OSError, ValueError):
-            pass
-        out.append(
-            {
-                "file": path.name,
-                "path": str(path),
-                "description": description,
-                "scenarios": scenarios,
-                "names": [s["name"] for s in scenarios],
-            }
-        )
-    return out
-
-
-def list_apps(config_path: Path) -> list[str]:
-    try:
-        return sorted(load_config(config_path.read_text(encoding="utf-8")).apps)
-    except (OSError, ValueError):
-        return []
-
-
-def app_build_info(config_path: Path, app: str) -> tuple[str | None, str | None]:
-    """`(app_path, build)` for `app` from config — the built `.app` path and the shell command
-    that builds it. Either may be None (unset or any load/resolve error); the run then proceeds
-    without an on-demand build (and the runner reports a missing binary as before)."""
-    try:
-        eff = resolve(load_config(config_path.read_text(encoding="utf-8")), app)
-    except (OSError, ValueError, KeyError):
-        return (None, None)
-    return (eff.app_path, eff.build)
-
-
-def list_simulators(simctl: env.RunFn = env._real_run) -> list[dict[str, Any]]:
-    """Available simulators for the device picker (booted first): udid, name, runtime, booted.
-    A run boots any picked-but-shut-down device first, so the UI can start from a cold list."""
-    try:
-        data = json.loads(simctl(env.list_devices_cmd(), None))
-    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, ValueError):
-        return []
-    sims: list[dict[str, Any]] = []
-    for runtime, devices in (data.get("devices") or {}).items():
-        # "com.apple.CoreSimulator.SimRuntime.iOS-26-5" -> "iOS 26.5"
-        label = runtime.split("SimRuntime.")[-1].replace("-", " ", 1).replace("-", ".")
-        for d in devices:
-            if not d.get("isAvailable", True) or not d.get("udid"):
-                continue
-            sims.append(
-                {
-                    "udid": str(d["udid"]),
-                    "name": str(d.get("name", "")),
-                    "runtime": label,
-                    "booted": d.get("state") == "Booted",
-                }
-            )
-    sims.sort(key=lambda s: (not s["booted"], s["name"]))
-    return sims
-
-
-def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
-    """Past runs under `runs_dir` (newest first), each summarized from its manifest.json for
-    the history list. Run ids are timestamps, so a reverse lexicographic sort is newest-first."""
-    out: list[dict[str, Any]] = []
-    if not runs_dir.is_dir():
-        return out
-    for d in runs_dir.iterdir():
-        manifest = d / "manifest.json"
-        if not (d.is_dir() and manifest.is_file()):
-            continue
-        try:
-            data = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
-        out.append(
-            {
-                "id": d.name,
-                "ok": bool(data.get("ok")),
-                "report": (d / "report.html").is_file(),
-                "scenarios": [str(s.get("scenario", "")) for s in scenarios],
-                "passed": sum(1 for s in scenarios if s.get("ok")),
-                "total": len(scenarios),
-            }
-        )
-    out.sort(key=lambda r: r["id"], reverse=True)
-    return out
-
-
-def _int(value: Any, default: int) -> int:
-    """Coerce a JSON value to int, falling back to `default` (e.g. for `workers`)."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def run_command(
-    scenario: str,
-    app: str,
-    *,
-    backend: str = "",
-    udid: str = "",
-    workers: int = 1,
-    erase: bool | None = None,
-    dismiss_alerts: bool | None = None,
-    config: str = "bajutsu.config.yaml",
-) -> list[str]:
-    """The `python -m bajutsu run ...` argv for a launch request. `udid` may be a comma list and
-    `workers > 1` runs those devices as a parallel pool (capped to the pool size by the CLI).
-    `erase` / `dismiss_alerts` are overrides: True/False force the flag on/off, None leaves each
-    scenario's own preconditions.erase / dismissAlerts (the latter on by default) to decide."""
-    cmd = [
-        sys.executable,
-        "-m",
-        "bajutsu",
-        "run",
-        scenario,
-        "--app",
-        app,
-        "--config",
-        config,
-        "--progress",
-    ]  # stream per-scenario/step progress into the run log
-    if backend:
-        cmd += ["--backend", backend]
-    if udid:
-        cmd += ["--udid", udid]
-    if workers > 1:
-        cmd += ["--workers", str(workers)]
-    if erase is True:
-        cmd += ["--erase"]
-    elif erase is False:
-        cmd += ["--no-erase"]
-    if dismiss_alerts is True:
-        cmd += ["--dismiss-alerts"]
-    elif dismiss_alerts is False:
-        cmd += ["--no-dismiss-alerts"]
-    return cmd
-
-
-def record_command(
-    out: str,
-    app: str,
-    goal: str,
-    *,
-    agent: str = "",
-    backend: str = "",
-    udid: str = "",
-    erase: bool | None = None,
-    dismiss_alerts: bool | None = None,
-    config: str = "bajutsu.config.yaml",
-) -> list[str]:
-    """The `python -m bajutsu record OUT --app … --goal …` argv for an authoring request — the
-    Tier-1 record loop the Record tab drives. `agent` picks the brain ("api" / "claude-code");
-    `erase` / `dismiss_alerts` mirror `run_command` (None leaves the CLI default — record erases
-    and dismisses by default), and `out` is the `*.yaml` the recorded scenario is written to."""
-    cmd = [
-        sys.executable,
-        "-m",
-        "bajutsu",
-        "record",
-        out,
-        "--app",
-        app,
-        "--goal",
-        goal,
-        "--config",
-        config,
-    ]
-    if agent:
-        cmd += ["--agent", agent]
-    if backend:
-        cmd += ["--backend", backend]
-    if udid:
-        cmd += ["--udid", udid]
-    if erase is True:
-        cmd += ["--erase"]
-    elif erase is False:
-        cmd += ["--no-erase"]
-    if dismiss_alerts is True:
-        cmd += ["--dismiss-alerts"]
-    elif dismiss_alerts is False:
-        cmd += ["--no-dismiss-alerts"]
-    return cmd
-
-
-def scenario_out_path(scenarios_dir: Path, name: str) -> Path:
-    """A safe `*.yaml` path under `scenarios_dir` for an authored scenario. `name` is the user's
-    file name (or, lacking one, the goal); path separators and control chars are stripped so a
-    request can never escape the scenarios dir, and a blank / unusable name falls back to
-    'authored'. A `.yaml` suffix is normalized so 'foo' and 'foo.yaml' name the same file."""
-    stem = (name or "").strip().replace("/", "-").replace("\\", "-")
-    if stem.endswith(".yaml"):
-        stem = stem[: -len(".yaml")]
-    stem = re.sub(r"[\x00-\x1f]", "", stem).strip(" .")
-    if not stem or stem in {".", ".."}:
-        stem = "authored"
-    return scenarios_dir / f"{stem}.yaml"
-
-
-def unique_scenario_path(path: Path, stamp: str | None = None) -> Path:
-    """`path` if it's free, else the same stem with the run's date-time appended
-    (`foo` → `foo-20260613-153045`) so authoring a scenario never overwrites an existing one."""
-    if not path.exists():
-        return path
-    stamp = stamp or datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-    return path.parent / f"{path.stem}-{stamp}.yaml"
-
-
-def _scenario_path(scenarios_dir: Path, p: str | None) -> Path | None:
-    """Resolve `p` (the path the UI passes for a scenario to read or save) to a `*.yaml` file
-    inside `scenarios_dir`, or None if it would escape the dir or isn't a scenario file. The
-    file need not exist yet (saving a freshly authored scenario), but its parent must be the
-    scenarios dir."""
-    if not p:
-        return None
-    target = Path(p)
-    if not target.is_absolute():
-        target = scenarios_dir / target
-    target = target.resolve()
-    base = scenarios_dir.resolve()
-    if target != base and base not in target.parents:
-        return None
-    if target.suffix != ".yaml":
-        return None
-    return target
-
-
-# --- jobs ---
-
-
-@dataclass
-class Job:
-    id: str
-    cmd: list[str]
-    udids: list[str] = field(default_factory=list)  # devices to boot before the run
-    app_path: str | None = None  # built .app the run needs; built on demand if missing
-    build: str | None = None  # shell command that builds app_path (None = no on-demand build)
-    status: str = "running"  # running | done
-    exit_code: int | None = None
-    run_id: str | None = None  # the runs/<id> a `run` job produced, parsed from its output
-    out_path: str | None = None  # the scenario a `record` job authored (so the UI can load it)
-    cancelled: bool = False  # a /cancel request stopped this job (vs. a real pass/fail)
-    proc: Any = None  # the live subprocess (build or run), so a cancel can terminate it
-    lines: list[str] = field(default_factory=list)
-    lock: threading.Lock = field(default_factory=threading.Lock)
-
-    def view(self) -> dict[str, Any]:
-        with self.lock:
-            return {
-                "id": self.id,
-                "status": self.status,
-                "exitCode": self.exit_code,
-                "runId": self.run_id,
-                "outPath": self.out_path,
-                "cancelled": self.cancelled,
-                "ok": (self.exit_code == 0 and not self.cancelled)
-                if self.status == "done"
-                else None,
-                "lines": list(self.lines),
-            }
-
-
-@dataclass
-class ServeState:
-    scenarios_dir: Path
-    config: Path
-    runs_dir: Path
-    cwd: Path = field(default_factory=Path.cwd)
-    popen: Popen = subprocess.Popen
-    simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
-    jobs: dict[str, Job] = field(default_factory=dict)
-    _seq: int = 0
-    _lock: threading.Lock = field(default_factory=threading.Lock)
-
-    def new_job(
-        self,
-        cmd: list[str],
-        udids: list[str] | None = None,
-        app_path: str | None = None,
-        build: str | None = None,
-        out_path: str | None = None,
-    ) -> Job:
-        with self._lock:
-            self._seq += 1
-            job = Job(
-                id=str(self._seq),
-                cmd=cmd,
-                udids=list(udids or []),
-                app_path=app_path,
-                build=build,
-                out_path=out_path,
-            )
-            self.jobs[job.id] = job
-        return job
-
-
-def _spawn_env() -> dict[str, str]:
-    """Ensure the venv bin dir (where the `idb` client lives) is on PATH for the run."""
-    env = dict(os.environ)
-    bindir = str(Path(sys.executable).parent)
-    env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
-    return env
-
-
-def _log(job: Job, line: str) -> None:
-    with job.lock:
-        job.lines.append(line)
-
-
-def _terminate(proc: Any) -> None:
-    """Best-effort stop of a live subprocess; ignore an already-exited / fake proc."""
-    with contextlib.suppress(OSError, ProcessLookupError, AttributeError):
-        proc.terminate()
-
-
-def _register_proc(job: Job, proc: Any) -> bool:
-    """Attach `proc` as the job's live subprocess so a cancel request can reach it. If a cancel
-    already arrived, kill `proc` at once and return False so the caller stops before streaming."""
-    with job.lock:
-        if job.cancelled:
-            kill = True
-        else:
-            job.proc = proc
-            kill = False
-    if kill:
-        _terminate(proc)
-    return not kill
-
-
-def cancel_job(job: Job) -> bool:
-    """Request cancellation of a running job: flag it and terminate its current subprocess (the
-    streamed output then ends and run_job marks the job done). Returns False if already finished."""
-    with job.lock:
-        if job.status == "done":
-            return False
-        job.cancelled = True
-        proc = job.proc
-        if not job.lines or job.lines[-1] != "cancelled":
-            job.lines.append("cancelled")
-    if proc is not None:
-        _terminate(proc)
-    return True
-
-
-def _boot_devices(state: ServeState, job: Job) -> bool:
-    """Boot the job's devices in parallel (each `bootstatus -b` boots its device and waits
-    until ready) so multiple cold simulators come up at the same time, then the run drives
-    them concurrently. Returns False and marks the job failed if any device won't boot."""
-    if not job.udids:
-        return True
-    for udid in job.udids:
-        _log(job, f"booting {udid}…")
-    errors: dict[str, str] = {}
-    errlock = threading.Lock()
-
-    def boot(udid: str) -> None:
-        try:
-            state.simctl(env.bootstatus_cmd(udid), None)
-            _log(job, f"booted {udid}")
-        except (OSError, subprocess.CalledProcessError) as e:
-            with errlock:
-                errors[udid] = str(e)
-
-    threads = [threading.Thread(target=boot, args=(u,), daemon=True) for u in job.udids]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    if errors:
-        for udid, msg in errors.items():
-            _log(job, f"boot failed: {udid}: {msg}")
-        with job.lock:
-            job.exit_code = 1
-            job.status = "done"
-        return False
-    return True
-
-
-def _build_app(state: ServeState, job: Job) -> bool:
-    """Build the app's binary on demand when it is missing. Returns True if the run may proceed:
-    nothing to build (no `build` command, no `app_path`, or the binary already exists), or the
-    build command succeeded. Returns False (marking the job failed) only when a needed build
-    fails — so the run isn't spawned against a missing binary."""
-    if not job.build or not job.app_path:
-        return True
-    if (state.cwd / job.app_path).exists():
-        return True
-    _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
-    try:
-        proc = state.popen(
-            shlex.split(job.build),
-            cwd=str(state.cwd),
-            env=_spawn_env(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        if not _register_proc(job, proc):
-            proc.wait()
-            with job.lock:
-                job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
-            return False
-        try:
-            for raw in proc.stdout or []:
-                _log(job, raw.rstrip("\n"))
-        except OSError:
-            proc.terminate()
-        proc.wait()
-        code = proc.returncode
-    except OSError as e:
-        _log(job, f"build failed: {e}")
-        code = 1
-    if code != 0:
-        _log(job, f"build failed (exit {code}) — skipping the run")
-        with job.lock:
-            job.exit_code = code
-            job.status = "done"
-        return False
-    _log(job, "build ok")
-    return True
-
-
-def run_job(state: ServeState, job: Job) -> None:
-    """Boot the job's devices (if any), build the app if its binary is missing, then run
-    `job.cmd`, capturing combined output line-by-line and the produced run id."""
-    if not _boot_devices(state, job):
-        return
-    if not _build_app(state, job):
-        return
-    proc = state.popen(
-        job.cmd,
-        cwd=str(state.cwd),
-        env=_spawn_env(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    if not _register_proc(job, proc):
-        proc.wait()
-        with job.lock:
-            job.exit_code, job.status, job.proc = proc.returncode or 1, "done", None
-        return
-    try:
-        for raw in proc.stdout or []:
-            line = raw.rstrip("\n")
-            match = _RUN_ID_RE.search(line)
-            with job.lock:
-                job.lines.append(line)
-                if match:
-                    job.run_id = match.group(1)
-    except OSError:
-        proc.terminate()
-    proc.wait()
-    with job.lock:
-        job.proc = None
-        job.exit_code = proc.returncode
-        job.status = "done"
-
-
-# --- HTTP ---
+from bajutsu.serve.helpers import (
+    _int,
+    _scenario_path,
+    app_build_info,
+    list_apps,
+    list_runs,
+    list_scenarios,
+    list_simulators,
+    record_command,
+    run_command,
+    scenario_out_path,
+    unique_scenario_path,
+)
+from bajutsu.serve.jobs import ServeState, cancel_job, run_job
 
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
@@ -531,35 +40,40 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:
             path = urlparse(self.path).path
-            if path in ("/", "/index.html"):
-                body = INDEX_HTML.encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-            elif path == "/api/scenarios":
-                self._json(list_scenarios(state.scenarios_dir))
-            elif path == "/api/apps":
-                self._json(list_apps(state.config))
-            elif path == "/api/simulators":
-                self._json(list_simulators(state.simctl))
-            elif path == "/api/runs":
-                self._json(list_runs(state.runs_dir))
-            elif path == "/api/scenario":
-                qs = parse_qs(urlparse(self.path).query)
-                target = _scenario_path(state.scenarios_dir, next(iter(qs.get("path") or []), None))
-                if target is None or not target.is_file():
+            match path:
+                case "/" | "/index.html":
+                    body = INDEX_HTML.encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                case "/api/scenarios":
+                    self._json(list_scenarios(state.scenarios_dir))
+                case "/api/apps":
+                    self._json(list_apps(state.config))
+                case "/api/simulators":
+                    self._json(list_simulators(state.simctl))
+                case "/api/runs":
+                    self._json(list_runs(state.runs_dir))
+                case "/api/scenario":
+                    qs = parse_qs(urlparse(self.path).query)
+                    target = _scenario_path(
+                        state.scenarios_dir, next(iter(qs.get("path") or []), None)
+                    )
+                    if target is None or not target.is_file():
+                        self._json({"error": "not found"}, 404)
+                    else:
+                        self._json({"yaml": target.read_text(encoding="utf-8")})
+                case _ if path.startswith("/api/jobs/"):
+                    job = state.jobs.get(path[len("/api/jobs/") :])
+                    self._json(
+                        job.view() if job else {"error": "no such job"}, 200 if job else 404
+                    )
+                case _ if path.startswith("/runs/"):
+                    self._serve_run_file(unquote(path[len("/runs/") :]))
+                case _:
                     self._json({"error": "not found"}, 404)
-                else:
-                    self._json({"yaml": target.read_text(encoding="utf-8")})
-            elif path.startswith("/api/jobs/"):
-                job = state.jobs.get(path[len("/api/jobs/") :])
-                self._json(job.view() if job else {"error": "no such job"}, 200 if job else 404)
-            elif path.startswith("/runs/"):
-                self._serve_run_file(unquote(path[len("/runs/") :]))
-            else:
-                self._json({"error": "not found"}, 404)
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
@@ -569,20 +83,21 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             except json.JSONDecodeError:
                 self._json({"error": "bad json"}, 400)
                 return
-            if path == "/api/run":
-                self._post_run(body)
-            elif path == "/api/record":
-                self._post_record(body)
-            elif path == "/api/scenario":
-                self._post_scenario(body)
-            elif path.startswith("/api/jobs/") and path.endswith("/cancel"):
-                job = state.jobs.get(path[len("/api/jobs/") : -len("/cancel")])
-                if job is None:
-                    self._json({"error": "no such job"}, 404)
-                else:
-                    self._json({"cancelled": cancel_job(job)})
-            else:
-                self._json({"error": "not found"}, 404)
+            match path:
+                case "/api/run":
+                    self._post_run(body)
+                case "/api/record":
+                    self._post_record(body)
+                case "/api/scenario":
+                    self._post_scenario(body)
+                case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
+                    job = state.jobs.get(path[len("/api/jobs/") : -len("/cancel")])
+                    if job is None:
+                        self._json({"error": "no such job"}, 404)
+                    else:
+                        self._json({"cancelled": cancel_job(job)})
+                case _:
+                    self._json({"error": "not found"}, 404)
 
         # Concrete picked devices are booted (and waited on) before a run/record; the "booted"
         # alias names whatever is already up, so it is not a boot target.
@@ -608,14 +123,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 config=str(state.config),
             )
             app_path, build = app_build_info(state.config, body["app"])
-            job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
+            job = state.new_job(
+                cmd, udids=self._boot_targets(udid), app_path=app_path, build=build
+            )
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id})
 
         def _post_record(self, body: dict[str, Any]) -> None:
-            """Author a scenario from a natural-language goal (the Record tab). Spawns the same
-            `record` loop the CLI runs, on a background thread, writing the recorded scenario to a
-            `*.yaml` under the scenarios dir — so it then shows up in the Replay tab's list."""
+            """Author a scenario from a natural-language goal (the Record tab)."""
             if not body.get("goal") or not body.get("app"):
                 self._json({"error": "goal and app are required"}, 400)
                 return
@@ -648,9 +163,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self._json({"jobId": job.id, "path": str(out)})
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
-            """Save an edited scenario back to its `*.yaml` (the Record tab's editor / the
-            edit-and-re-run loop). The YAML is validated first so a malformed save is rejected
-            with its parse error rather than corrupting the scenarios dir."""
+            """Save an edited scenario back to its ``*.yaml``."""
             target = _scenario_path(state.scenarios_dir, body.get("path"))
             if target is None:
                 self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
@@ -684,22 +197,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def make_server(state: ServeState, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
+def make_server(
+    state: ServeState, host: str = "127.0.0.1", port: int = 0
+) -> ThreadingHTTPServer:
     return ThreadingHTTPServer((host, port), _make_handler(state))
-
-
-def serve(host: str, port: int, scenarios_dir: Path, config: Path, runs_dir: Path) -> None:
-    state = ServeState(scenarios_dir=scenarios_dir, config=config, runs_dir=runs_dir)
-    server = make_server(state, host, port)
-    bound = server.server_address[1]
-    print(f"bajutsu serve → http://{host}:{bound}  (scenarios: {scenarios_dir} · Ctrl-C to stop)")  # noqa: T201
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nstopping…")  # noqa: T201
-    finally:
-        server.shutdown()
-        server.server_close()
 
 
 INDEX_HTML = """<!doctype html>
@@ -785,7 +286,7 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
 <body>
 <header>
   <span class="brand">bajutsu</span>
-  <span class="mut">natural-language authoring · deterministic replay (Tier 1 — not the CI gate)</span>
+  <span class="mut">natural-language authoring \u00b7 deterministic replay (Tier 1 \u2014 not the CI gate)</span>
   <div class="toptabs">
     <button class="toptab active" data-view="record">Record</button>
     <button class="toptab" data-view="replay">Replay</button>
@@ -812,7 +313,7 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
           <div style="flex:0 0 auto"><button class="refresh" id="rec-simrefresh" title="refresh devices">&#8635;</button></div>
         </div>
         <label>Save as</label>
-        <input id="rec-name" type="text" placeholder="generated.yaml — leave blank to default">
+        <input id="rec-name" type="text" placeholder="generated.yaml \u2014 leave blank to default">
         <div class="subhint">The recorded scenario is written under the scenarios dir, so it shows up in the <b>Replay</b> tab to run. Blank defaults to <code>generated.yaml</code>; if the name already exists, the run's date-time is appended (e.g. <code>generated-20260613-153045.yaml</code>) so nothing is overwritten.</div>
         <div class="checks">
           <label><input type="checkbox" id="rec-erase"> erase device first
@@ -836,7 +337,7 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
         <span class="muted" id="rec-yamlinfo" style="font-size:.8em"></span>
         <button class="savebtn" id="rec-save" disabled>Save</button>
       </div>
-      <textarea id="rec-yaml" class="yaml" placeholder="The recorded scenario YAML appears here once authoring finishes — edit and Save, then run it in the Replay tab."></textarea>
+      <textarea id="rec-yaml" class="yaml" placeholder="The recorded scenario YAML appears here once authoring finishes \u2014 edit and Save, then run it in the Replay tab."></textarea>
     </div>
   </div>
 </main>
@@ -890,7 +391,7 @@ function setBusy(btn,stop,on,busyLabel){
 }
 // Ask the server to abort a running job; polling then sees it finish and resets the UI.
 async function cancelJob(id,stop){
-  if(!id)return;stop.disabled=true;stop.textContent='Stopping…';
+  if(!id)return;stop.disabled=true;stop.textContent='Stopping\u2026';
   try{await fetch('/api/jobs/'+id+'/cancel',{method:'POST'})}catch(e){}
 }
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -920,10 +421,10 @@ async function loadSims(){
   try{sims=await (await fetch('/api/simulators')).json()}catch(e){sims=[]}
   // Replay: multi-select checkboxes (parallel pool).
   const el=$('#sims');
-  el.innerHTML=sims.length?sims.map(s=>`<label><input type="checkbox" class="simck" value="${esc(s.udid)}"><span class="dot ${s.booted?'ok':'off'}" title="${s.booted?'booted':'shut down'}"></span><span>${esc(s.name)}</span><span class="rt">${esc(s.runtime)}${s.booted?'':' · off'}</span></label>`).join(''):'<div class="empty">no simulators found</div>';
+  el.innerHTML=sims.length?sims.map(s=>`<label><input type="checkbox" class="simck" value="${esc(s.udid)}"><span class="dot ${s.booted?'ok':'off'}" title="${s.booted?'booted':'shut down'}"></span><span>${esc(s.name)}</span><span class="rt">${esc(s.runtime)}${s.booted?'':' \u00b7 off'}</span></label>`).join(''):'<div class="empty">no simulators found</div>';
   el.querySelectorAll('.simck').forEach(c=>c.addEventListener('change',onSimChange));
   // Record: single-device dropdown ("booted" = whatever is already up).
-  $('#rec-device').innerHTML='<option value="booted">booted (already up)</option>'+sims.map(s=>`<option value="${esc(s.udid)}">${esc(s.name)} · ${esc(s.runtime)}${s.booted?'':' · off'}</option>`).join('');
+  $('#rec-device').innerHTML='<option value="booted">booted (already up)</option>'+sims.map(s=>`<option value="${esc(s.udid)}">${esc(s.name)} \u00b7 ${esc(s.runtime)}${s.booted?'':' \u00b7 off'}</option>`).join('');
 }
 
 // ---- Record: author a scenario from a goal ----
@@ -932,7 +433,7 @@ $('#rec-go').addEventListener('click',async()=>{
   const goal=$('#rec-goal').value.trim();
   if(!goal){setStatus($('#rec-status'),'enter a goal first','ng');return}
   if(recPoll)clearInterval(recPoll);
-  setBusy($('#rec-go'),$('#rec-stop'),true,'Authoring…');$('#rec-out').textContent='';
+  setBusy($('#rec-go'),$('#rec-stop'),true,'Authoring\u2026');$('#rec-out').textContent='';
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -951,7 +452,7 @@ async function recCheck(id){
   if(j.status==='running')return;
   clearInterval(recPoll);recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);
   if(j.cancelled){setStatus($('#rec-status'),'cancelled','ng');return}
-  setStatus($('#rec-status'),j.ok?'authored ✓':'failed', j.ok?'ok':'ng');
+  setStatus($('#rec-status'),j.ok?'authored \u2713':'failed', j.ok?'ok':'ng');
   if(j.ok&&(j.outPath||recPath)){await loadGenerated(j.outPath||recPath);loadScenarios();}
 }
 async function loadGenerated(path){
@@ -964,13 +465,13 @@ async function loadGenerated(path){
 }
 $('#rec-save').addEventListener('click',async()=>{
   if(!recPath)return;
-  $('#rec-save').disabled=true;$('#rec-save').textContent='Saving…';
+  $('#rec-save').disabled=true;$('#rec-save').textContent='Saving\u2026';
   const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({path:recPath,yaml:$('#rec-yaml').value})});
   const d=await r.json();
   $('#rec-save').textContent='Save';$('#rec-save').disabled=false;
   if(d.error){setStatus($('#rec-status'),d.error,'ng')}
-  else{setStatus($('#rec-status'),'saved ✓','ok');loadScenarios()}
+  else{setStatus($('#rec-status'),'saved \u2713','ok');loadScenarios()}
 });
 
 // ---- Replay: scenario info, run, history ----
@@ -988,7 +489,7 @@ function onSimChange(){const n=pickedUdids().length;if(n>0)$('#workers').value=n
 $('#simrefresh').addEventListener('click',loadSims);
 $('#go').addEventListener('click',async()=>{
   if(poll)clearInterval(poll);
-  setBusy($('#go'),$('#stop'),true,'Running…');$('#out').textContent='';
+  setBusy($('#go'),$('#stop'),true,'Running\u2026');$('#out').textContent='';
   setStatus($('#status'),'','run');
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     scenario:$('#scn').value,app:$('#app').value,backend:$('#backend').value.trim(),udid:pickedUdids().join(',')||'booted',
@@ -1016,7 +517,7 @@ async function loadHistory(){
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
   const ul=$('#history');
   if(!runs.length){ul.innerHTML='<li class="muted">no runs yet</li>';return}
-  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' · '+r.scenarios.join(', '):''}</span></li>`).join('');
+  ul.innerHTML=runs.map(r=>`<li data-id="${r.id}"${r.id===selectedRun?' class="sel"':''}><span class="dot ${r.ok?'ok':'ng'}"></span><span class="hid">${r.id}</span><span class="hsum">${r.passed}/${r.total}${r.scenarios.length?' \u00b7 '+r.scenarios.join(', '):''}</span></li>`).join('');
   ul.querySelectorAll('li[data-id]').forEach(li=>li.addEventListener('click',()=>{setReport(li.dataset.id);ul.querySelectorAll('li').forEach(x=>x.classList.remove('sel'));li.classList.add('sel')}));
 }
 $('#refresh').addEventListener('click',loadHistory);
