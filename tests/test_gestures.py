@@ -50,7 +50,7 @@ def test_pinch_scale_must_be_positive() -> None:
 
 
 def test_step_is_one_action() -> None:
-    with pytest.raises(ValueError, match="1 アクション"):
+    with pytest.raises(ValueError, match="exactly one"):
         load_scenarios("- name: g\n  steps:\n    - doubleTap: { id: a }\n      tap: { id: b }\n")
 
 
