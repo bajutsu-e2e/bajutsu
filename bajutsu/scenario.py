@@ -209,7 +209,7 @@ class RequestMatch(_Model):
             )
         ):
             raise ValueError(
-                "request は method/url/urlMatches/path/pathMatches/status/bodyMatches のいずれかが必要"
+                "request requires at least one of method/url/urlMatches/path/pathMatches/status/bodyMatches"
             )
         return self
 
@@ -513,7 +513,7 @@ def load_scenario_file(text: str) -> ScenarioFile:
     if isinstance(data, dict):
         return ScenarioFile.model_validate(data)
     raise ValueError(
-        "シナリオファイルはシナリオの配列、または {description, scenarios} マッピング（§6.1）"
+        "scenario file must be a list of scenarios or a {description, scenarios} mapping (§6.1)"
     )
 
 
