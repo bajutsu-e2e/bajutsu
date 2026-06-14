@@ -5,6 +5,7 @@
 >
 > - **現状（実装済み / 未配線）の正確な一覧**は [architecture.md#implementation-status](architecture.md#implementation-status) が真実。ここは「これから」を扱う。
 > - 設計の背景（なぜ）は [`../DESIGN.md`](../DESIGN.md)。
+> - **全体の戦略的な「形」（north star）**は [vision.md](vision.md)。ここは粒度の細かいバックログ、vision はその傘。
 
 ## 凡例
 
@@ -28,6 +29,9 @@ tap/text/swipe）と simctl 起動シーケンスは実機（iPhone 17 Pro / 最
 
 現状はスコープを **iOS Simulator 限定**としている（[DESIGN §1](../DESIGN.md)）。driver / backend 抽象を活かして
 マルチプラットフォーム化する大きな方向性。**コアのスコープ文（DESIGN §1・README）の更新を伴う戦略的判断**。
+
+> **具体的な方針・設計（セレクタ可搬性の写像・プラットフォーム別バックエンド・展開順）は
+> [multi-platform.md](multi-platform.md) に詳述。** 下表はそのバックログ要約。
 
 | 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
 |---|---|---|---|---|
