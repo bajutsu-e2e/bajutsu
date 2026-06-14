@@ -158,6 +158,13 @@ def test_collector_receives_and_clears() -> None:
         c.stop()
 
 
+def test_collector_add_ignores_invalid_data() -> None:
+    """Malformed data (validation error) is silently dropped, not propagated."""
+    c = NetworkCollector()
+    c.add({"status": "not_an_int"})  # status must be int|None — triggers ValidationError
+    assert c.snapshot() == []
+
+
 def test_collector_snapshot_timed_records_receive_order() -> None:
     times = iter([1.0, 2.5])
     c = NetworkCollector(now=lambda: next(times))

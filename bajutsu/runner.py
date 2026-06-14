@@ -177,7 +177,7 @@ def _await_ready(driver: base.Driver, timeout: float = 10.0, poll: float = 0.2) 
         try:
             if len(driver.query()) >= 2:
                 return
-        except Exception:
+        except (OSError, subprocess.CalledProcessError, ValueError):
             pass
         time.sleep(poll)
 
