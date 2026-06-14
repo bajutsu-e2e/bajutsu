@@ -111,3 +111,71 @@ def test_compile_cache_reuses_compiled_pattern() -> None:
     _compile("foo.*bar")
     info = _compile.cache_info()
     assert info.hits == 1 and info.misses == 1
+
+
+# --- visual assertion evaluation ---
+
+
+def test_visual_assertion_pass(tmp_path):
+    from PIL import Image
+
+    from bajutsu.assertions import VisualContext
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    img = Image.new("RGBA", (10, 10), (255, 0, 0, 255))
+    img.save(baselines / "red.png")
+
+    # Simulate a driver screenshot that matches
+    screenshot = tmp_path / "screenshot.png"
+    img.save(screenshot)
+
+    ctx = VisualContext(
+        screenshot_path=screenshot,
+        baselines_dir=baselines,
+        diff_dir=tmp_path / "diffs",
+    )
+    result = evaluate_one(SCREEN, _a({"visual": {"baseline": "red.png"}}), visual_context=ctx)
+    assert result.ok
+    assert result.kind == "visual"
+
+
+def test_visual_assertion_fail(tmp_path):
+    from PIL import Image
+
+    from bajutsu.assertions import VisualContext
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (10, 10), (255, 0, 0, 255)).save(baselines / "red.png")
+
+    screenshot = tmp_path / "screenshot.png"
+    Image.new("RGBA", (10, 10), (0, 0, 255, 255)).save(screenshot)
+
+    ctx = VisualContext(
+        screenshot_path=screenshot,
+        baselines_dir=baselines,
+        diff_dir=tmp_path / "diffs",
+    )
+    result = evaluate_one(SCREEN, _a({"visual": {"baseline": "red.png"}}), visual_context=ctx)
+    assert not result.ok
+    assert "diff" in result.reason
+
+
+def test_visual_assertion_missing_baseline(tmp_path):
+    from bajutsu.assertions import VisualContext
+
+    ctx = VisualContext(
+        screenshot_path=tmp_path / "screenshot.png",
+        baselines_dir=tmp_path / "baselines",
+        diff_dir=tmp_path / "diffs",
+    )
+    result = evaluate_one(SCREEN, _a({"visual": {"baseline": "missing.png"}}), visual_context=ctx)
+    assert not result.ok
+    assert "baseline not found" in result.reason
+
+
+def test_visual_assertion_no_context():
+    result = evaluate_one(SCREEN, _a({"visual": {"baseline": "x.png"}}))
+    assert not result.ok
+    assert "no visual context" in result.reason

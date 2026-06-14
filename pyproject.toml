@@ -16,10 +16,12 @@ dependencies = [
 # The idb backend shells out to the `idb` client; idb_companion is a separate
 # `brew install facebook/fb/idb-companion`.
 idb = ["fb-idb>=1.1.0"]
+visual = ["pillow>=10.0"]
 
 [dependency-groups]
 dev = [
     "mypy>=1.10",
+    "pillow>=10.0",
     "pytest>=8",
     "pytest-xdist>=3",
     "ruff>=0.5",

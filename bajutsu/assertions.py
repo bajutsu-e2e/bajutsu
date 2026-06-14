@@ -13,10 +13,19 @@ from __future__ import annotations
 import functools
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from bajutsu.drivers import base
 from bajutsu.network import NetworkExchange
-from bajutsu.scenario import Assertion, CountMatch, Exists, RequestMatch, Selector, TextMatch
+from bajutsu.scenario import (
+    Assertion,
+    CountMatch,
+    Exists,
+    RequestMatch,
+    Selector,
+    TextMatch,
+    VisualMatch,
+)
 
 
 @functools.lru_cache(maxsize=128)
@@ -31,6 +40,16 @@ class AssertionResult:
     kind: str
     detail: str  # what was checked (for the report)
     reason: str = ""  # failure reason (empty when ok)
+
+
+@dataclass(frozen=True)
+class VisualContext:
+    """Context needed by visual assertions — paths to the current screenshot,
+    the baselines directory, and where to write diff images."""
+
+    screenshot_path: Path
+    baselines_dir: Path
+    diff_dir: Path
 
 
 def _sel_str(sel: Selector) -> str:
@@ -220,12 +239,39 @@ def _request_assignment_result(
     return AssertionResult(False, "request", detail, reason)
 
 
+def _eval_visual(ctx: VisualContext | None, a: VisualMatch) -> AssertionResult:
+    detail = f"visual ≈ {a.baseline}"
+    if ctx is None:
+        return AssertionResult(False, "visual", detail, "no visual context provided")
+    baseline_path = ctx.baselines_dir / a.baseline
+    if not baseline_path.is_file():
+        return AssertionResult(False, "visual", detail, f"baseline not found: {a.baseline}")
+
+    from bajutsu.visual import compare_images
+
+    ctx.diff_dir.mkdir(parents=True, exist_ok=True)
+    diff_path = ctx.diff_dir / f"diff-{a.baseline}"
+    result = compare_images(
+        ctx.screenshot_path,
+        baseline_path,
+        threshold=a.threshold,
+        exclude=a.exclude,
+        diff_path=diff_path,
+    )
+    return AssertionResult(result.ok, "visual", detail, result.reason)
+
+
 def evaluate_one(
-    elements: list[base.Element], a: Assertion, exchanges: list[NetworkExchange] | None = None
+    elements: list[base.Element],
+    a: Assertion,
+    exchanges: list[NetworkExchange] | None = None,
+    *,
+    visual_context: VisualContext | None = None,
 ) -> AssertionResult:
     """Evaluate one assertion (the kind is guaranteed unique by scenario validation).
 
-    UI kinds check `elements`; `request` checks the observed network `exchanges`."""
+    UI kinds check ``elements``; ``request`` checks the observed network ``exchanges``;
+    ``visual`` compares a screenshot to a baseline via *visual_context*."""
     if a.exists is not None:
         return _eval_exists(elements, a.exists)
     if a.value is not None:
@@ -242,13 +288,17 @@ def evaluate_one(
         return _eval_state(elements, "selected", a.selected)
     if a.request is not None:
         return _eval_request(exchanges or [], a.request)
-    raise AssertionError("空のアサーション（scenario 検証で弾かれるはず）")
+    if a.visual is not None:
+        return _eval_visual(visual_context, a.visual)
+    raise AssertionError("empty assertion (should be caught by scenario validation)")
 
 
 def evaluate(
     elements: list[base.Element],
     assertions: list[Assertion],
     exchanges: list[NetworkExchange] | None = None,
+    *,
+    visual_context: VisualContext | None = None,
 ) -> list[AssertionResult]:
     """Evaluate all of expect/assert (the caller decides AND via passed()).
 
@@ -266,7 +316,9 @@ def evaluate(
         for (i, req), ex_idx in zip(bare, order, strict=True):
             assigned[i] = _request_assignment_result(req, ex_idx, exs)
     return [
-        assigned[i] if i in assigned else evaluate_one(elements, a, exs)
+        assigned[i]
+        if i in assigned
+        else evaluate_one(elements, a, exs, visual_context=visual_context)
         for i, a in enumerate(assertions)
     ]
 
