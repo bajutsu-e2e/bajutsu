@@ -340,8 +340,7 @@ def render(context: TriageContext, triage: Triage) -> str:
     if context.failed_step is not None:
         fs = context.failed_step
         lines.append(f"  failed step: [{fs.index}] {fs.action} — {fs.reason}")
-    for exp in context.failed_expectations:
-        lines.append(f"  failed expect: {exp}")
+    lines.extend(f"  failed expect: {exp}" for exp in context.failed_expectations)
     if context.evidence:
         lines.append(f"  evidence: {' · '.join(context.evidence)}")
     lines += ["", f"diagnosis [{triage.category}]: {triage.summary}", "suggested fixes:"]

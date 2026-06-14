@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -225,7 +225,7 @@ def run(
         for s in scenarios:
             if s.mocks:
                 s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
-    run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # A pool of one-or-more devices. Each device carries its own network collector, evidence
     # sink (interval recordings), and device control — so network collection / video / log /
     # setLocation / push all work the same whether workers is 1 or N.
@@ -241,7 +241,7 @@ def run(
     )
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run
     # log); stdout stays the machine-readable final PASS/FAIL line.
-    progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None
+    progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None  # noqa: T201
     try:
         results, manifest = run_and_report(
             eff,

@@ -45,12 +45,12 @@ def test_parse_gesture_steps() -> None:
 
 
 def test_pinch_scale_must_be_positive() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="scale"):
         load_scenarios("- name: g\n  steps:\n    - pinch: { sel: { id: a }, scale: 0 }\n")
 
 
 def test_step_is_one_action() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="1 アクション"):
         load_scenarios("- name: g\n  steps:\n    - doubleTap: { id: a }\n      tap: { id: b }\n")
 
 

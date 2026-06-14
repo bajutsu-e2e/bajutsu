@@ -43,24 +43,31 @@ line-length = 100
 select = [
     "ANN",
     "B",
+    "C4",
+    "DTZ",
     "E",
     "F",
     "I",
     "N",
+    "PERF",
     "PIE",
+    "PT",
     "RUF",
     "SIM",
+    "T20",
     "UP",
 ]
 ignore = [
     "ANN401",  # Any is used intentionally for flexible APIs
     "E501",    # line length is enforced by the formatter, not the linter
     "N818",    # exception names like ElementNotFound are clear without Error suffix
+    "PT018",   # compound assert (guard + check) is often more readable as-is
     "RUF001",  # fullwidth characters are intentional in Japanese strings
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ANN"]
+"demos/**" = ["ANN", "T20"]
+"tests/**" = ["ANN", "T20"]
 
 [tool.pytest.ini_options]
 addopts = "-n auto"

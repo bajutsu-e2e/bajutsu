@@ -92,9 +92,11 @@ def _scenario_lines(run_dir: Path, scenario: dict[str, Any]) -> list[str]:
     intervals = _read_json(run_dir / trace_name) if trace_name else None
     if isinstance(intervals, list) and intervals:
         lines.append("  appTrace:")
-        for it in intervals:
-            if isinstance(it, dict):
-                lines.append(f"    {it.get('name', '')}   {it.get('durationMs', '?')}ms")
+        lines.extend(
+            f"    {it.get('name', '')}   {it.get('durationMs', '?')}ms"
+            for it in intervals
+            if isinstance(it, dict)
+        )
 
     kinds = sorted({str(a.get("kind")) for a in scenario.get("artifacts") or []})
     if kinds:
