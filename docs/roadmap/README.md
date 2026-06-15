@@ -99,6 +99,7 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | ID | Item | Status |
 |---|---|---|
 | [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server.md) | MCP server | Implemented |
+| [BE-0018](BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) | Return evidence as MCP resources | Implemented |
 
 ## Proposals
 
@@ -133,12 +134,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESI
 | [BE-0014](BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
 | [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
 | [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
-
-### Integration & automation (MCP)
-
-| ID | Item | Status |
-|---|---|---|
-| [BE-0018](BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) | Return evidence as MCP resources | Proposal |
 
 ### Backend expansion (iOS actuators)
 
