@@ -9,12 +9,21 @@ from fastmcp import FastMCP
 from bajutsu.trace import latest_run
 
 
+def _safe_run_path(runs_dir: Path, run_id: str, filename: str) -> Path:
+    """Resolve a run artifact path, rejecting path traversal."""
+    target = (runs_dir / run_id / filename).resolve()
+    base = runs_dir.resolve()
+    if base not in target.parents:
+        raise ValueError(f"invalid run_id: {run_id}")
+    return target
+
+
 def register_resources(mcp: FastMCP, runs_dir: Path) -> None:
 
     @mcp.resource("bajutsu://runs/{run_id}/manifest.json")
     def run_manifest(run_id: str) -> str:
         """The manifest.json for a completed run (structured JSON)."""
-        path = runs_dir / run_id / "manifest.json"
+        path = _safe_run_path(runs_dir, run_id, "manifest.json")
         if not path.is_file():
             raise ValueError(f"no manifest for run {run_id}")
         return path.read_text(encoding="utf-8")
@@ -22,7 +31,7 @@ def register_resources(mcp: FastMCP, runs_dir: Path) -> None:
     @mcp.resource("bajutsu://runs/{run_id}/report.html")
     def run_report(run_id: str) -> str:
         """The self-contained HTML report for a completed run."""
-        path = runs_dir / run_id / "report.html"
+        path = _safe_run_path(runs_dir, run_id, "report.html")
         if not path.is_file():
             raise ValueError(f"no report for run {run_id}")
         return path.read_text(encoding="utf-8")

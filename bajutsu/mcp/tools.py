@@ -22,7 +22,7 @@ def _load_effective(config_path: Path, app: str) -> Effective:
     try:
         return resolve(cfg, app)
     except KeyError as e:
-        raise ValueError(str(e)) from None
+        raise ValueError(e.args[0] if e.args else str(e)) from None
 
 
 def make_driver(actuator: str, udid: str) -> Driver:
@@ -62,8 +62,20 @@ def register_tools(mcp: FastMCP, config_path: Path, runs_dir: Path) -> None:
         Returns a summary with the manifest path. The scenario parameter is
         a path to a *.yaml file; if omitted, all scenarios in the app's
         configured directory are run."""
-        cmd = [sys.executable, "-m", "bajutsu", "run", "--app", app, "--config", str(config_path)]
-        cmd.extend(["--runs", str(runs_dir), "--udid", udid, "--workers", str(workers)])
+        cmd = [
+            sys.executable,
+            "-m",
+            "bajutsu",
+            "run",
+            "--app",
+            app,
+            "--config",
+            str(config_path),
+            "--udid",
+            udid,
+            "--workers",
+            str(workers),
+        ]
         if scenario:
             cmd.extend(["--scenario", scenario])
         if tag:
