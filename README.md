@@ -231,4 +231,4 @@ evidence rules, XCUITest codegen + CI, and self-healing triage — all validated
 Simulator (see [Status](#status) above for the implemented surface).
 
 The forward-looking, prioritized backlog (what we want to build next) lives in
-[`docs/roadmap.md`](docs/roadmap.md).
+[`docs/roadmap/`](docs/roadmap/README.md).

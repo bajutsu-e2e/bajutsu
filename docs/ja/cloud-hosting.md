@@ -8,7 +8,7 @@
 > `bajutsu run` を subprocess 起動するだけ（[cli](cli.md) · [reporting](reporting.md)）。公開は
 > アドレスの変更ではなく、**システムの形そのもの**を変える。
 
-関連: [architecture](architecture.md) · [ci](ci.md) · [roadmap](roadmap.md)
+関連: [architecture](architecture.md) · [ci](ci.md) · [roadmap](roadmap/README.md)
 
 ---
 

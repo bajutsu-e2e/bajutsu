@@ -9,7 +9,7 @@
 > ([cli](cli.md#serve) · [reporting](reporting.md)). Going public changes the shape of the
 > system, not just its address.
 
-Related: [architecture](architecture.md) · [ci](ci.md) · [roadmap](roadmap.md)
+Related: [architecture](architecture.md) · [ci](ci.md) · [roadmap](roadmap/README.md)
 
 ---
 

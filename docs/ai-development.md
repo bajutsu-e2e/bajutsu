@@ -101,3 +101,61 @@ supersede stale runs instead of piling up. Two PRs that each pass independently 
 conflict in behavior — the merge is where they meet, which is exactly why the deterministic test
 suite (not an LLM, not a human eyeball) is the arbiter. Keep the suite meaningful and your branch
 rebased, and parallel work composes.
+
+## Roadmap items: BE IDs (strict)
+
+The roadmap is **one file per item** under [`roadmap/`](roadmap/README.md). Each item's filename
+is `BE-NNNN-<slug>.md`, where **BE** stands for *Bajutsu Evolution* and `NNNN` is a
+**zero-padded, 4-digit, monotonically increasing** ID. The English file lives in `docs/roadmap/`;
+its Japanese mirror lives in `docs/ja/roadmap/` (same ID and slug).
+
+When you add a roadmap item:
+
+1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1. Find the current max with:
+   ```bash
+   ls docs/roadmap/BE-*.md | sort | tail -1
+   ```
+   Never reuse, skip, or guess a number.
+2. **Create both language files** — `docs/roadmap/BE-NNNN-<slug>.md` (English) and
+   `docs/ja/roadmap/BE-NNNN-<slug>.md` (Japanese mirror, same ID & slug) — and add a row for it
+   to the matching topic table in **both** `README.md` indexes
+   ([en](roadmap/README.md), [ja](ja/roadmap/README.md)).
+3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
+   it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
+   item forever.
+
+Each file follows the **Swift-Evolution proposal format** — a metadata block (`* Proposal`,
+`* Status`, `* Track`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
+`## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`. Fill what
+you can and mark unknowns `TBD`. The **Status** field decides the management track and the index
+section the item appears in:
+
+| Status | Track |
+|---|---|
+| `Implemented` · `Accepted, in progress` | **Accepted** — a decision & implementation record |
+| `Proposal` · `Proposal (deferred)` | **Proposals** — under consideration |
+
+As an item advances, **update its Status** (and move its row to the right index group) rather than
+renaming the file. Milestones M1–M4 are `BE-0001`–`BE-0004` (accepted & implemented).
+
+This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
+
+## Documentation style (every document, both languages)
+
+These rules apply to all documentation — English under `docs/` and the Japanese mirror under
+`docs/ja/` — and to every future update, not just new files. Agents must follow them, and they
+apply equally when reporting on or summarizing work.
+
+- **Write natural prose.** A Japanese document must read as natural Japanese; an English document
+  must read as natural English. A mirror conveys the same content naturally in its own language —
+  it is not a word-for-word transliteration of the other.
+- **No coined terms.** Use established, widely-used technical terms and ordinary words. Do not
+  invent vocabulary, and do not stretch a word into a meaning it does not normally carry.
+- **No forced or unnatural translation.** Use the conventional translation of a term. When
+  translating it would read unnaturally, keep the original term instead — usually the English word
+  (e.g. `selector`, `actuator`, `backend`, `assertion`) rather than a contrived literal rendering.
+- **No omissions; be self-contained.** A reader must be able to understand the document on its own.
+  Spell out an abbreviation the first time it appears, give a term the context it needs, and do not
+  assume the reader has already read another page.
+
+The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).

@@ -76,6 +76,24 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   favors short, purposeful comments). Don't add narration.
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
+- **Documentation style (both languages, every doc and every update).** Write natural prose —
+  natural Japanese in `docs/ja/`, natural English in `docs/` — and report the same way. **No coined
+  terms:** use established, widely-used technical terms and ordinary words. **No forced
+  translation:** use the conventional translation; if rendering a term would read unnaturally, keep
+  the original (usually English) term (e.g. `selector`, `actuator`, `backend`). **No omissions:**
+  each document must be self-contained — spell out abbreviations on first use and give the context
+  a reader needs, without assuming they read another page first. Full guidance:
+  [`docs/ai-development.md`](docs/ai-development.md).
+- **Roadmap items use BE IDs (strict).** Every roadmap item is one file
+  `docs/roadmap/BE-NNNN-<slug>.md` — `BE` = *Bajutsu Evolution*, `NNNN` a zero-padded 4-digit
+  monotonically increasing ID — with a Japanese mirror in `docs/ja/roadmap/`. When you add one:
+  allocate the next ID (`ls docs/roadmap/BE-*.md | sort | tail -1`, then +1; never reuse, skip,
+  or guess), create **both** language files, and add a row to **both** `README.md` indexes.
+  Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
+  Motivation / Detailed design / Alternatives considered / References); its `Status` files it
+  under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /
+  `Proposal (deferred)`). **IDs are permanent — never renumber an existing item.** Full rule:
+  [`docs/roadmap/README.md`](docs/roadmap/README.md) · [`docs/ai-development.md`](docs/ai-development.md).
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
 - **PR titles and bodies are always in English**, regardless of the language used in the
   session. This keeps the project history readable for every contributor.
