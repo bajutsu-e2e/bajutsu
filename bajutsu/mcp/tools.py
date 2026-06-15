@@ -26,14 +26,12 @@ def _load_effective(config_path: Path, app: str) -> Effective:
 
 
 def make_driver(actuator: str, udid: str) -> Driver:
-    """Construct a driver (thin wrapper so tests can monkeypatch it)."""
     from bajutsu.backends import make_driver as _make
 
     return _make(actuator, udid)
 
 
 def register_tools(mcp: FastMCP, config_path: Path, runs_dir: Path) -> None:
-    """Register bajutsu_doctor and bajutsu_run as MCP tools."""
 
     @mcp.tool()
     def bajutsu_doctor(app: str, udid: str = "booted") -> str:
@@ -77,14 +75,12 @@ def register_tools(mcp: FastMCP, config_path: Path, runs_dir: Path) -> None:
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
-        # Find the manifest path in stdout (the CLI prints it).
         manifest_path = ""
         for line in result.stdout.splitlines():
             if "manifest" in line.lower() and ".json" in line:
                 manifest_path = line.strip()
                 break
 
-        # Read manifest if available for summary.
         ok = result.returncode == 0
         summary = f"{'PASS' if ok else 'FAIL'}"
         if manifest_path:
