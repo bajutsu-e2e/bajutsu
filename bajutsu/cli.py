@@ -698,7 +698,7 @@ def serve(
     )
 
 
-DEFAULT_CONFIG = "bajutsu.config.yaml"
+_MCP_TRANSPORTS = ("stdio", "sse")
 
 
 @app.command()
@@ -710,6 +710,9 @@ def mcp(
     ),
 ) -> None:
     """Start the MCP server for AI agent integration (Model Context Protocol)."""
+    if transport not in _MCP_TRANSPORTS:
+        typer.echo(f"unsupported transport {transport!r} (choose from {_MCP_TRANSPORTS})")
+        raise typer.Exit(2)
     try:
         from bajutsu.mcp import create_server
     except ImportError:

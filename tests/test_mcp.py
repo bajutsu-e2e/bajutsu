@@ -43,7 +43,7 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     screen = [el("home.title", "Home", ["button"]), el("home.btn", "Go", ["button"])]
     driver = FakeDriver(screen)
 
-    from fastmcp import FastMCP  # type: ignore[import-untyped]
+    from fastmcp import FastMCP
 
     mcp = FastMCP("test")
     register_tools(mcp, config, tmp_path / "runs")
@@ -76,7 +76,7 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr("bajutsu.mcp.tools.subprocess.run", fake_run)
 
-    from fastmcp import FastMCP  # type: ignore[import-untyped]
+    from fastmcp import FastMCP
 
     from bajutsu.mcp.tools import register_tools
 
@@ -101,7 +101,7 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr("bajutsu.mcp.tools.subprocess.run", fake_run)
 
-    from fastmcp import FastMCP  # type: ignore[import-untyped]
+    from fastmcp import FastMCP
 
     from bajutsu.mcp.tools import register_tools
 
@@ -123,7 +123,7 @@ def test_manifest_resource_reads_file(tmp_path: Path) -> None:
     manifest = {"runId": "run1", "ok": True}
     (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-    from fastmcp import FastMCP  # type: ignore[import-untyped]
+    from fastmcp import FastMCP
 
     from bajutsu.mcp.resources import register_resources
 
@@ -139,7 +139,7 @@ def test_manifest_resource_errors_on_missing_run(tmp_path: Path) -> None:
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
 
-    from fastmcp import FastMCP  # type: ignore[import-untyped]
+    from fastmcp import FastMCP
 
     from bajutsu.mcp.resources import register_resources
 
@@ -150,6 +150,15 @@ def test_manifest_resource_errors_on_missing_run(tmp_path: Path) -> None:
         _run(mcp.read_resource("bajutsu://runs/nonexistent/manifest.json"))
 
 
+def test_safe_run_path_rejects_traversal(tmp_path: Path) -> None:
+    from bajutsu.mcp.resources import _safe_run_path
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    with pytest.raises(ValueError, match="invalid run_id"):
+        _safe_run_path(runs_dir, "../secret", "manifest.json")
+
+
 def test_latest_manifest_finds_newest(tmp_path: Path) -> None:
     runs_dir = tmp_path / "runs"
     for name in ["20260101T000000", "20260616T120000"]:
@@ -157,7 +166,7 @@ def test_latest_manifest_finds_newest(tmp_path: Path) -> None:
         d.mkdir(parents=True)
         (d / "manifest.json").write_text(json.dumps({"runId": name}), encoding="utf-8")
 
-    from fastmcp import FastMCP  # type: ignore[import-untyped]
+    from fastmcp import FastMCP
 
     from bajutsu.mcp.resources import register_resources
 
