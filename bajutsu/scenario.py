@@ -355,8 +355,15 @@ class Use(_Model):
     with_: dict[str, str] = Field(default_factory=dict, alias="with")
 
 
+class Extract(_Model):
+    """Capture a UI element's property into a runtime variable (``vars.*``)."""
+
+    sel: Selector
+    prop: Literal["value", "label", "identifier"] = "value"
+
+
 class Step(_Model):
-    """One action plus optional modifiers (capture / name)."""
+    """One action plus optional modifiers (capture / name / extract)."""
 
     tap: Selector | None = None
     double_tap: Selector | None = Field(default=None, alias="doubleTap")
@@ -372,6 +379,7 @@ class Step(_Model):
     push: Push | None = None
     use: Use | None = None
     capture: list[str] | None = None
+    extract: dict[str, Extract] | None = None
     name: str | None = None
 
     @field_validator("capture")

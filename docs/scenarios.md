@@ -401,8 +401,25 @@ steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # real value typed; token kept in the report
 ```
 
-> `vars.*` (capturing a UI value at runtime) is **not yet implemented** — the `${...}` primitive would
-> support it, but the run loop never binds `vars.*`.
+### Runtime variables (`${vars.*}`)
+
+A step's `extract` modifier captures a UI element's property into `vars.*` after the step
+executes. Subsequent steps (and scenario-level `expect`) can reference the captured value
+via `${vars.<name>}`.
+
+```yaml
+steps:
+  - tap: { id: counter.inc }
+    extract:
+      count: { sel: { id: counter.value } }          # vars.count ← element's value (default)
+      heading: { sel: { id: header }, prop: label }   # vars.heading ← element's label
+  - assert:
+      - value: { sel: { id: other.field }, equals: "${vars.count}" }
+```
+
+Each `extract` entry specifies a `sel` (selector, resolved via `resolve_unique`) and an
+optional `prop` (`value` | `label` | `identifier`; default `value`). If the selector
+cannot be uniquely resolved or the property is `None`, the step fails.
 
 ## capture token grammar
 
