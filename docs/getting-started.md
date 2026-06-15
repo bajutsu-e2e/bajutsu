@@ -140,7 +140,7 @@ make -C demos/features e2e
 Or drive the CLI directly (the same thing, spelled out):
 
 ```bash
-uv run bajutsu run demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
+uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
 ```
 
 What the flags mean:
@@ -204,7 +204,7 @@ entry points share the same scenario format:
 - **Author with AI.** Let Claude explore toward a goal and write the scenario for you (Tier 1).
   Put `ANTHROPIC_API_KEY=sk-ant-…` in a `.env` file, then:
   ```bash
-  uv run bajutsu record out.yaml --app sample --goal "log in and increment the counter to 3"
+  uv run bajutsu record --app sample --goal "log in and increment the counter to 3"   # writes into the app's scenarios dir
   ```
   How the authoring loop and the system-alert guard work: [recording](recording.md).
 - **Emit a native XCUITest.** Convert a scenario to Swift (no Bajutsu runtime / AI at test time):

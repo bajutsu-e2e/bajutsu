@@ -7,7 +7,7 @@ description: >-
 
 inputs:
   scenarios:
-    description: Scenario file(s) / glob to run.
+    description: A single scenario *.yaml to run (passed as `run --scenario`).
     required: true
   app:
     description: App key in bajutsu.config.yaml.
@@ -50,7 +50,7 @@ runs:
     - name: Run scenarios
       shell: bash
       run: >-
-        uv run --no-sync bajutsu run ${{ inputs.scenarios }} --app "${{ inputs.app }}"
+        uv run --no-sync bajutsu run --scenario "${{ inputs.scenarios }}" --app "${{ inputs.app }}"
         --udid "${{ inputs.udid }}" --backend "${{ inputs.backend }}"
         --config "${{ inputs.config }}" --no-erase
 

@@ -50,7 +50,7 @@ it safely reachable for a team with **near-zero code change**.
 
 **1) Run `serve` as a LaunchAgent** — keep it bound to `127.0.0.1` (never exposed raw). A
 `~/Library/LaunchAgents/com.bajutsu.serve.plist` runs
-`python -m bajutsu serve --host 127.0.0.1 --port 8765 --scenarios <dir>` with
+`python -m bajutsu serve --host 127.0.0.1 --port 8765 --config <config.yml>` with
 `RunAtLoad` + `KeepAlive`, `ANTHROPIC_API_KEY` in `EnvironmentVariables` (for `--dismiss-alerts`),
 and stdout/stderr to `~/Library/Logs/`. Load it with
 `launchctl bootstrap gui/$(id -u) …`. It must be a **LaunchAgent** (GUI session), not a

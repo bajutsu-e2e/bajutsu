@@ -14,12 +14,6 @@ from bajutsu.cli import app
 
 runner = CliRunner()
 
-CONFIG = """
-defaults: { backend: [idb] }
-apps:
-  demo: { bundleId: com.example.demo, idNamespaces: [home] }
-"""
-
 SCENARIO = """
 - name: demo
   steps:
@@ -28,24 +22,39 @@ SCENARIO = """
 
 
 def _write(tmp_path: Path) -> tuple[Path, Path]:
+    """Lay out a config + scenarios under tmp_path and return (config, standalone scenario).
+
+    Three apps exercise the config-driven `run`/`record` paths: `demo` has a scenarios dir
+    with one file, `bare` has none, `empty` points at an empty dir. The scenarios paths are
+    absolute so the config resolves them regardless of the test process's cwd."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "demo.yaml").write_text(SCENARIO, encoding="utf-8")
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text(CONFIG, encoding="utf-8")
+    cfg.write_text(
+        "defaults: { backend: [idb] }\n"
+        "apps:\n"
+        f"  demo: {{ bundleId: com.example.demo, idNamespaces: [home], scenarios: {scn_dir} }}\n"
+        "  bare: { bundleId: com.example.bare, idNamespaces: [home] }\n"
+        f"  empty: {{ bundleId: com.example.empty, idNamespaces: [home], scenarios: {empty_dir} }}\n",
+        encoding="utf-8",
+    )
     scn = tmp_path / "s.yaml"
     scn.write_text(SCENARIO, encoding="utf-8")
     return cfg, scn
 
 
 def test_run_missing_config(tmp_path: Path) -> None:
-    r = runner.invoke(
-        app, ["run", "x.yaml", "--app", "demo", "--config", str(tmp_path / "nope.yaml")]
-    )
+    r = runner.invoke(app, ["run", "--app", "demo", "--config", str(tmp_path / "nope.yaml")])
     assert r.exit_code == 2
     assert "config not found" in r.output
 
 
 def test_run_unknown_app(tmp_path: Path) -> None:
     cfg, scn = _write(tmp_path)
-    r = runner.invoke(app, ["run", str(scn), "--app", "ghost", "--config", str(cfg)])
+    r = runner.invoke(app, ["run", "--scenario", str(scn), "--app", "ghost", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "unknown app" in r.output
 
@@ -53,7 +62,8 @@ def test_run_unknown_app(tmp_path: Path) -> None:
 def test_run_missing_scenario(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     r = runner.invoke(
-        app, ["run", str(tmp_path / "missing.yaml"), "--app", "demo", "--config", str(cfg)]
+        app,
+        ["run", "--scenario", str(tmp_path / "missing.yaml"), "--app", "demo", "--config", str(cfg)],
     )
     assert r.exit_code == 2
     assert "scenario not found" in r.output
@@ -63,10 +73,33 @@ def test_run_no_backend_available(tmp_path: Path) -> None:
     # An unknown backend is never available -> clean exit 2 (independent of PATH).
     cfg, scn = _write(tmp_path)
     r = runner.invoke(
-        app, ["run", str(scn), "--app", "demo", "--backend", "nope", "--config", str(cfg)]
+        app,
+        ["run", "--scenario", str(scn), "--app", "demo", "--backend", "nope", "--config", str(cfg)],
     )
     assert r.exit_code == 2
     assert "no available actuator" in r.output
+
+
+def test_run_reads_configured_dir(tmp_path: Path) -> None:
+    # No --scenario: run loads the app's configured scenarios dir, then hits the backend gate.
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(app, ["run", "--app", "demo", "--backend", "nope", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "no available actuator" in r.output
+
+
+def test_run_no_scenarios_dir(tmp_path: Path) -> None:
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(app, ["run", "--app", "bare", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "no scenarios dir" in r.output
+
+
+def test_run_empty_scenarios_dir(tmp_path: Path) -> None:
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(app, ["run", "--app", "empty", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "no scenarios found" in r.output
 
 
 def test_doctor_no_backend_available(tmp_path: Path) -> None:
@@ -83,6 +116,7 @@ def test_record_no_backend_available(tmp_path: Path) -> None:
         app,
         [
             "record",
+            "--out",
             str(out),
             "--app",
             "demo",
@@ -98,20 +132,19 @@ def test_record_no_backend_available(tmp_path: Path) -> None:
     assert "no available actuator" in r.output
 
 
+def test_record_no_scenarios_dir(tmp_path: Path) -> None:
+    # No --out and the app has no scenarios dir -> can't decide where to write.
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(app, ["record", "--app", "bare", "--goal", "x", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "no scenarios dir" in r.output
+
+
 def test_record_unknown_app(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     r = runner.invoke(
         app,
-        [
-            "record",
-            str(tmp_path / "rec.yaml"),
-            "--app",
-            "ghost",
-            "--goal",
-            "x",
-            "--config",
-            str(cfg),
-        ],
+        ["record", "--out", str(tmp_path / "rec.yaml"), "--app", "ghost", "--goal", "x", "--config", str(cfg)],
     )
     assert r.exit_code == 2
 

@@ -18,16 +18,22 @@ import pytest
 
 from bajutsu import serve as srv
 
-CONFIG = "defaults: { backend: [idb] }\napps:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n"
 SCENARIO = "- name: alpha\n  steps:\n    - tap: { id: home.title }\n- name: beta\n  steps:\n    - tap: { id: x }\n"
 
 
 def _project(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A scenarios dir + config + runs dir. `demo` declares its scenarios dir in config (so the
+    config-driven listing works without a `--scenarios` override); `other` declares none."""
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text(CONFIG, encoding="utf-8")
+    cfg.write_text(
+        "defaults: { backend: [idb] }\napps:\n"
+        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n"
+        "  other: { bundleId: com.example.other }\n",
+        encoding="utf-8",
+    )
     runs = tmp_path / "runs"
     runs.mkdir()
     return scn_dir, cfg, runs
@@ -98,10 +104,10 @@ def test_list_runs_empty_dir(tmp_path: Path) -> None:
 
 def test_run_command_builder() -> None:
     cmd = srv.run_command("s.yaml", "demo", backend="idb", udid="U", config="c.yaml")
-    assert cmd[:5] == [sys.executable, "-m", "bajutsu", "run", "s.yaml"]
+    assert cmd[:6] == [sys.executable, "-m", "bajutsu", "run", "--scenario", "s.yaml"]
     # erase defaults to None: no flag, so each scenario's preconditions.erase decides.
     # --progress is always passed so the run streams scenario/step lines into the run log.
-    assert cmd[5:] == [
+    assert cmd[6:] == [
         "--app",
         "demo",
         "--config",
@@ -139,8 +145,8 @@ def test_record_command_builder() -> None:
         udid="U",
         config="c.yaml",
     )
-    assert cmd[:5] == [sys.executable, "-m", "bajutsu", "record", "out.yaml"]
-    assert cmd[5:11] == ["--app", "demo", "--goal", "tap Increment", "--config", "c.yaml"]
+    assert cmd[:6] == [sys.executable, "-m", "bajutsu", "record", "--out", "out.yaml"]
+    assert cmd[6:12] == ["--app", "demo", "--goal", "tap Increment", "--config", "c.yaml"]
     assert cmd[cmd.index("--agent") + 1] == "claude-code"
     assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
     # erase / dismiss default to None (the CLI defaults — record erases and dismisses): no flag.
@@ -342,6 +348,44 @@ def test_app_build_info_reads_config(tmp_path: Path) -> None:
     assert srv.app_build_info(tmp_path / "missing.yaml", "demo") == (None, None)  # no config
 
 
+def test_app_scenarios_dir_reads_config(tmp_path: Path) -> None:
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text(
+        "apps:\n  demo: { bundleId: com.example.demo, scenarios: scn/dir }\n"
+        "  bare: { bundleId: com.example.bare }\n",
+        encoding="utf-8",
+    )
+    assert srv.app_scenarios_dir(cfg, "demo") == Path("scn/dir")
+    assert srv.app_scenarios_dir(cfg, "bare") is None  # unset
+    assert srv.app_scenarios_dir(cfg, "nope") is None  # unknown app
+    assert srv.app_scenarios_dir(tmp_path / "missing.yaml", "demo") is None  # no config
+
+
+def test_list_fs_lists_dirs_and_yaml(tmp_path: Path) -> None:
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "a.yaml").write_text("- name: a\n  steps: []\n", encoding="utf-8")
+    (tmp_path / "b.yml").write_text("x", encoding="utf-8")
+    (tmp_path / "note.txt").write_text("x", encoding="utf-8")  # non-yaml, excluded
+    (tmp_path / ".hidden").write_text("x", encoding="utf-8")  # hidden, excluded
+    got = srv.list_fs(tmp_path, None)
+    assert got["cwd"] == str(tmp_path.resolve())
+    assert got["parent"] is None  # at the browse ceiling
+    assert got["dirs"] == ["sub"]
+    assert got["files"] == ["a.yaml", "b.yml"]
+    # Descending into a subdir exposes a parent to climb back to (but not above root).
+    deeper = srv.list_fs(tmp_path, "sub")
+    assert deeper["parent"] == str(tmp_path.resolve())
+
+
+def test_list_fs_blocks_traversal(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    with pytest.raises(ValueError, match="outside root"):
+        srv.list_fs(root, "..")
+    with pytest.raises(ValueError, match="outside root"):
+        srv.list_fs(root, str(tmp_path))  # absolute, outside root
+
+
 def test_run_job_boots_devices_before_running(tmp_path: Path) -> None:
     scn_dir, cfg, runs = _project(tmp_path)
     boots: list[str] = []
@@ -477,7 +521,7 @@ def test_http_lists_and_index(tmp_path: Path) -> None:
     )
     try:
         assert b"bajutsu" in _get(port, "/")[1]
-        assert _get_json(port, "/api/scenarios")[0]["names"] == ["alpha", "beta"]
+        assert _get_json(port, "/api/scenarios?app=demo")[0]["names"] == ["alpha", "beta"]
         assert _get_json(port, "/api/apps") == ["demo", "other"]
     finally:
         server.shutdown()
@@ -535,7 +579,7 @@ def test_http_record_authors_scenario(tmp_path: Path) -> None:
 
     def popen(cmd: list[str], **_kw: Any) -> _FakeProc:
         captured.append(cmd)
-        out = cmd[cmd.index("record") + 1]  # the OUT path the record command writes to
+        out = cmd[cmd.index("--out") + 1]  # the OUT path the record command writes to
         (tmp_path / out).write_text(SCENARIO, encoding="utf-8")  # simulate the recorded scenario
         return _FakeProc(["[1] -> tap #x\n", "recorded 1 steps (api agent) -> " + out + "\n"])
 
@@ -559,9 +603,11 @@ def test_http_record_authors_scenario(tmp_path: Path) -> None:
         assert j["status"] == "done" and j["ok"] is True
         assert j["outPath"] == resp["path"]
         cmd = captured[0]
-        assert cmd[1:5] == ["-m", "bajutsu", "record", str(scn_dir / "authored.yaml")]
+        assert cmd[1:6] == ["-m", "bajutsu", "record", "--out", str(scn_dir / "authored.yaml")]
         assert cmd[cmd.index("--goal") + 1] == "tap x"
-        got = _get_json(port, "/api/scenario?path=" + urllib.parse.quote(resp["path"]))
+        got = _get_json(
+            port, "/api/scenario?app=demo&path=" + urllib.parse.quote(resp["path"])
+        )
         assert got["yaml"] == SCENARIO  # the authored scenario is served back for the editor
     finally:
         server.shutdown()
@@ -708,6 +754,79 @@ def test_http_run_requires_scenario_and_app(tmp_path: Path) -> None:
         )
         with pytest.raises(urllib.error.HTTPError, match="400"):
             urllib.request.urlopen(req)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _post(port: int, path: str, payload: dict[str, Any]) -> tuple[int, Any]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_http_fs_lists_and_blocks_traversal(tmp_path: Path) -> None:
+    _, _, runs = _project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
+    try:
+        got = _get_json(port, "/api/fs")
+        assert "bajutsu.config.yaml" in got["files"] and "scenarios" in got["dirs"]
+        # A dir escaping the root is rejected (400), never listed.
+        with pytest.raises(urllib.error.HTTPError, match="400"):
+            _get(port, "/api/fs?dir=" + urllib.parse.quote(".."))
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
+    _, _, runs = _project(tmp_path)
+    # No config bound at startup; the browse root is the project dir.
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
+    try:
+        assert _get_json(port, "/api/config")["hasConfig"] is False
+        assert _get_json(port, "/api/apps") == []  # nothing until a config is opened
+        status, resp = _post(port, "/api/config", {"path": "bajutsu.config.yaml"})
+        assert status == 200 and resp["ok"] is True and resp["apps"] == ["demo", "other"]
+        assert _get_json(port, "/api/config")["hasConfig"] is True
+        assert _get_json(port, "/api/apps") == ["demo", "other"]
+        # A path outside the browse root is rejected.
+        status, _ = _post(port, "/api/config", {"path": "/etc/hosts"})
+        assert status == 400
+        # A path inside root but not a config file → 404.
+        status, _ = _post(port, "/api/config", {"path": "nope.yaml"})
+        assert status == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_scenarios_by_app_from_config(tmp_path: Path) -> None:
+    _, cfg, runs = _project(tmp_path)
+    # Config-driven (no --scenarios override): the dir comes from the selected app.
+    server, port = _serve(srv.ServeState(runs_dir=runs, config=cfg, root=tmp_path, cwd=tmp_path))
+    try:
+        assert _get_json(port, "/api/scenarios?app=demo")[0]["names"] == ["alpha", "beta"]
+        assert _get_json(port, "/api/scenarios?app=other") == []  # app has no scenarios dir
+        assert _get_json(port, "/api/scenarios") == []  # no app → nothing
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_run_requires_open_config(tmp_path: Path) -> None:
+    _, _, runs = _project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))  # no config
+    try:
+        status, resp = _post(port, "/api/run", {"scenario": "s.yaml", "app": "demo"})
+        assert status == 400 and "open a config" in resp["error"]
     finally:
         server.shutdown()
         server.server_close()

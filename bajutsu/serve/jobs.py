@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import env
+from bajutsu.serve.helpers import app_scenarios_dir
 
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
@@ -56,9 +57,10 @@ class Job:
 
 @dataclass
 class ServeState:
-    scenarios_dir: Path
-    config: Path
     runs_dir: Path
+    config: Path | None = None  # None until a config is opened from the UI
+    scenarios_dir: Path | None = None  # override; default is the selected app's configured dir
+    root: Path = field(default_factory=Path.cwd)  # the file browser's browse ceiling
     cwd: Path = field(default_factory=Path.cwd)
     popen: Popen = subprocess.Popen
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
@@ -86,6 +88,16 @@ class ServeState:
             )
             self.jobs[job.id] = job
         return job
+
+
+def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:
+    """The scenarios dir to list/save for *app*: the ``--scenarios`` override if set, else the
+    app's configured dir.  None when neither is available."""
+    if state.scenarios_dir is not None:
+        return state.scenarios_dir
+    if state.config is None or not app:
+        return None
+    return app_scenarios_dir(state.config, app)
 
 
 def _spawn_env() -> dict[str, str]:

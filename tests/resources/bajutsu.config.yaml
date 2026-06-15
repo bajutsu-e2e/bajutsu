@@ -53,6 +53,9 @@ apps:
     # Shell command that builds appPath. `bajutsu serve` runs it before the scenario when the
     # binary above is missing, so the Web UI builds the app on demand (no manual build first).
     build: make -C demos/features sample-build
+    # Directory of this app's scenarios. `bajutsu run --app sample` runs every *.yaml here
+    # (or pass --scenario for one); `record` writes new ones here. Relative to the run's cwd.
+    scenarios: demos/features/app/scenarios
     # Optional per-app keys (all override or extend the defaults above):
     #   backend: [...]            # actuator order for this app
     #   device: "iPhone 17 Pro"   # simulator model

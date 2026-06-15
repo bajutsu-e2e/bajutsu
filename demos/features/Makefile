@@ -23,7 +23,7 @@ APP = $(SAMPLE)/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
 
 e2e: sample-build
 	xcrun simctl install $(SIM) $(APP)
-	cd $(ROOT) && uv run bajutsu run demos/features/app/scenarios/smoke.yaml --app sample --udid $(SIM) --backend idb --config $(CONFIG) --no-erase
+	cd $(ROOT) && uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --udid $(SIM) --backend idb --config $(CONFIG) --no-erase
 	cd $(ROOT) && uv run bajutsu doctor --app sample --udid $(SIM) --backend idb --config $(CONFIG)
 
 # Generate a native XCUITest from a scenario and run it via xcodebuild (no bajutsu

@@ -6,17 +6,20 @@ import json
 import mimetypes
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
 
+from bajutsu.config import load_config
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.helpers import (
     _int,
     _scenario_path,
     app_build_info,
     list_apps,
+    list_fs,
     list_runs,
     list_scenarios,
     list_simulators,
@@ -25,7 +28,7 @@ from bajutsu.serve.helpers import (
     scenario_out_path,
     unique_scenario_path,
 )
-from bajutsu.serve.jobs import ServeState, cancel_job, run_job
+from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job, run_job
 
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
@@ -49,17 +52,36 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.end_headers()
                     self.wfile.write(body)
                 case "/api/scenarios":
-                    self._json(list_scenarios(state.scenarios_dir))
+                    qs = parse_qs(urlparse(self.path).query)
+                    scn_dir = _scenarios_dir_for(state, next(iter(qs.get("app") or []), None))
+                    self._json(list_scenarios(scn_dir) if scn_dir else [])
                 case "/api/apps":
-                    self._json(list_apps(state.config))
+                    self._json(list_apps(state.config) if state.config else [])
+                case "/api/config":
+                    self._json(
+                        {
+                            "config": str(state.config) if state.config else None,
+                            "hasConfig": state.config is not None,
+                            "root": str(state.root.resolve()),
+                        }
+                    )
+                case "/api/fs":
+                    qs = parse_qs(urlparse(self.path).query)
+                    try:
+                        self._json(list_fs(state.root, next(iter(qs.get("dir") or []), None)))
+                    except (ValueError, OSError) as e:
+                        self._json({"error": str(e)}, 400)
                 case "/api/simulators":
                     self._json(list_simulators(state.simctl))
                 case "/api/runs":
                     self._json(list_runs(state.runs_dir))
                 case "/api/scenario":
                     qs = parse_qs(urlparse(self.path).query)
-                    target = _scenario_path(
-                        state.scenarios_dir, next(iter(qs.get("path") or []), None)
+                    scn_dir = _scenarios_dir_for(state, next(iter(qs.get("app") or []), None))
+                    target = (
+                        _scenario_path(scn_dir, next(iter(qs.get("path") or []), None))
+                        if scn_dir
+                        else None
                     )
                     if target is None or not target.is_file():
                         self._json({"error": "not found"}, 404)
@@ -84,6 +106,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self._json({"error": "bad json"}, 400)
                 return
             match path:
+                case "/api/config":
+                    self._post_config(body)
                 case "/api/run":
                     self._post_run(body)
                 case "/api/record":
@@ -105,7 +129,35 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         def _boot_targets(udid: str) -> list[str]:
             return [u.strip() for u in udid.split(",") if u.strip() and u.strip() != "booted"]
 
+        def _post_config(self, body: dict[str, Any]) -> None:
+            """Bind a config.yml chosen in the UI's file browser.  The body carries a path the
+            browser surfaced (confined to ``--root``); we validate it loads, then re-point
+            ``state.config`` so apps/scenarios come from it."""
+            raw = str(body.get("path", "") or "")
+            if not raw:
+                self._json({"error": "path is required"}, 400)
+                return
+            target = (state.root / raw).resolve() if not Path(raw).is_absolute() else Path(raw)
+            base = state.root.resolve()
+            if target != base and base not in target.parents:
+                self._json({"error": "path is outside the browse root"}, 400)
+                return
+            if not target.is_file():
+                self._json({"error": "config not found"}, 404)
+                return
+            try:
+                load_config(target.read_text(encoding="utf-8"))
+            except (OSError, ValueError, yaml.YAMLError) as e:
+                self._json({"error": f"invalid config: {e}"}, 400)
+                return
+            state.config = target
+            self._json({"ok": True, "config": str(target), "apps": list_apps(target)})
+
         def _post_run(self, body: dict[str, Any]) -> None:
+            cfg = state.config
+            if cfg is None:
+                self._json({"error": "open a config first"}, 400)
+                return
             if not body.get("scenario") or not body.get("app"):
                 self._json({"error": "scenario and app are required"}, 400)
                 return
@@ -120,9 +172,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 dismiss_alerts=body["dismissAlerts"]
                 if isinstance(body.get("dismissAlerts"), bool)
                 else None,
-                config=str(state.config),
+                config=str(cfg),
             )
-            app_path, build = app_build_info(state.config, body["app"])
+            app_path, build = app_build_info(cfg, body["app"])
             job = state.new_job(
                 cmd, udids=self._boot_targets(udid), app_path=app_path, build=build
             )
@@ -130,12 +182,22 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self._json({"jobId": job.id})
 
         def _post_record(self, body: dict[str, Any]) -> None:
-            """Author a scenario from a natural-language goal (the Record tab)."""
+            """Author a scenario from a natural-language goal (the Record tab).  The authored
+            file lands in the selected app's configured scenarios dir."""
+            cfg = state.config
+            if cfg is None:
+                self._json({"error": "open a config first"}, 400)
+                return
             if not body.get("goal") or not body.get("app"):
                 self._json({"error": "goal and app are required"}, 400)
                 return
+            scn_dir = _scenarios_dir_for(state, str(body["app"]))
+            if scn_dir is None:
+                self._json({"error": f"app '{body['app']}' has no scenarios dir"}, 400)
+                return
+            scn_dir.mkdir(parents=True, exist_ok=True)
             out = unique_scenario_path(
-                scenario_out_path(state.scenarios_dir, str(body.get("name") or "generated"))
+                scenario_out_path(scn_dir, str(body.get("name") or "generated"))
             )
             udid = str(body.get("udid", "") or "")
             cmd = record_command(
@@ -149,9 +211,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 dismiss_alerts=body["dismissAlerts"]
                 if isinstance(body.get("dismissAlerts"), bool)
                 else None,
-                config=str(state.config),
+                config=str(cfg),
             )
-            app_path, build = app_build_info(state.config, body["app"])
+            app_path, build = app_build_info(cfg, body["app"])
             job = state.new_job(
                 cmd,
                 udids=self._boot_targets(udid),
@@ -163,8 +225,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self._json({"jobId": job.id, "path": str(out)})
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
-            """Save an edited scenario back to its ``*.yaml``."""
-            target = _scenario_path(state.scenarios_dir, body.get("path"))
+            """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""
+            scn_dir = _scenarios_dir_for(state, str(body.get("app") or "") or None)
+            target = _scenario_path(scn_dir, body.get("path")) if scn_dir else None
             if target is None:
                 self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
                 return
@@ -282,11 +345,29 @@ pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
 .yamlhead .savebtn{margin-left:auto;background:var(--acc);color:#082f49;border:0;border-radius:6px;font-weight:700;padding:.35rem .9rem;cursor:pointer}
 .yamlhead .savebtn:disabled{opacity:.4;cursor:default}
 textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre;overflow:auto;tab-size:2}
+.cfgbtn{background:#0b1220;border:1px solid var(--line);color:var(--acc);padding:.3rem .8rem;font:inherit;font-weight:600;border-radius:8px;cursor:pointer}
+.cfgbtn:hover{color:var(--fg)}
+header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal{position:fixed;inset:0;z-index:50;background:rgba(2,6,23,.7);display:flex;align-items:center;justify-content:center}
+.modal[hidden]{display:none}
+.fsbox{width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem}
+.fshead{display:flex;align-items:center;margin-bottom:.6rem}.fshead .ttl{font-weight:700}
+.fshead .fsclose{margin-left:auto;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
+.fspath{color:var(--mut);font-size:.82em;margin-bottom:.4rem;word-break:break-all}
+.fslist{list-style:none;margin:0;padding:0;overflow:auto;flex:1;border:1px solid var(--line);border-radius:8px}
+.fslist li{padding:.4rem .6rem;cursor:pointer;display:flex;gap:.5rem;align-items:center}
+.fslist li:hover{background:#0b1220}
+.fslist li .ic{width:1.2em;text-align:center}
+.fslist li.file .nm{color:var(--acc)}
+.fslist li.muted{color:var(--mut);cursor:default}.fslist li.muted:hover{background:none}
+.fshint{color:var(--mut);font-size:.78em;margin-top:.5rem}
 </style></head>
 <body>
 <header>
   <span class="brand">bajutsu</span>
   <span class="mut">natural-language authoring \u00b7 deterministic replay (Tier 1 \u2014 not the CI gate)</span>
+  <button class="cfgbtn" id="opencfg">Open config</button>
+  <span class="cfgname" id="cfgname"></span>
   <div class="toptabs">
     <button class="toptab active" data-view="record">Record</button>
     <button class="toptab" data-view="replay">Replay</button>
@@ -380,6 +461,16 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
   </div>
   <div class="report" id="report"><div class="empty">Run a scenario to see its report here.</div></div>
 </main>
+
+<!-- ===== Open config: a server-side file browser confined to the serve --root ===== -->
+<div class="modal" id="fsmodal" hidden>
+  <div class="fsbox">
+    <div class="fshead"><span class="ttl">Open config</span><button class="fsclose" id="fsclose">&#10005;</button></div>
+    <div class="fspath" id="fspath"></div>
+    <ul class="fslist" id="fslist"></ul>
+    <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>
+  </div>
+</div>
 <script>
 const $=s=>document.querySelector(s);
 let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],apps=[],sims=[];
@@ -405,6 +496,38 @@ function showView(name){
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
+// ---- config: bound at startup or opened from the UI's file browser ----
+async function loadConfig(){
+  let c;try{c=await (await fetch('/api/config')).json()}catch(e){c={hasConfig:false}}
+  $('#cfgname').textContent=c.hasConfig?c.config:'no config bound — open one →';
+  if(c.hasConfig){await loadShared()}else{openFs()}
+}
+// Browse the server's --root for a config.yml. Paths returned by /api/fs are absolute and the
+// server re-validates every one against --root, so clicking can never escape the browse ceiling.
+async function browseFs(dir){
+  let d;try{d=await (await fetch('/api/fs'+(dir?('?dir='+encodeURIComponent(dir)):''))).json()}catch(e){d={error:'failed'}}
+  if(d.error){$('#fslist').innerHTML='<li class="muted">'+esc(d.error)+'</li>';return}
+  $('#fspath').textContent=d.cwd;
+  let h='';
+  if(d.parent!=null)h+=`<li class="dir" data-dir="${esc(d.parent)}"><span class="ic">&#8593;</span><span class="nm">..</span></li>`;
+  h+=d.dirs.map(n=>`<li class="dir" data-dir="${esc(d.cwd+'/'+n)}"><span class="ic">&#128193;</span><span class="nm">${esc(n)}</span></li>`).join('');
+  h+=d.files.map(n=>`<li class="file" data-file="${esc(d.cwd+'/'+n)}"><span class="ic">&#128196;</span><span class="nm">${esc(n)}</span></li>`).join('');
+  $('#fslist').innerHTML=h||'<li class="muted">empty</li>';
+  $('#fslist').querySelectorAll('li[data-dir]').forEach(li=>li.addEventListener('click',()=>browseFs(li.dataset.dir)));
+  $('#fslist').querySelectorAll('li[data-file]').forEach(li=>li.addEventListener('click',()=>chooseConfig(li.dataset.file)));
+}
+function openFs(){$('#fsmodal').hidden=false;browseFs('')}
+function closeFs(){$('#fsmodal').hidden=true}
+$('#opencfg').addEventListener('click',openFs);
+$('#fsclose').addEventListener('click',closeFs);
+$('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
+async function chooseConfig(path){
+  const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
+  const d=await r.json();
+  if(d.error){$('#fslist').innerHTML='<li class="muted">'+esc(d.error)+'</li>';return}
+  $('#cfgname').textContent=d.config;closeFs();await loadShared();
+}
+
 // ---- shared data: apps, scenarios, simulators (used by both views) ----
 async function loadShared(){
   try{apps=await (await fetch('/api/apps')).json()}catch(e){apps=[]}
@@ -412,11 +535,14 @@ async function loadShared(){
   $('#app').innerHTML=opts;$('#rec-app').innerHTML=opts;
   await loadScenarios();
 }
+// Scenarios come from the selected app's configured dir, so reload when the Replay app changes.
 async function loadScenarios(){
-  try{scnFiles=await (await fetch('/api/scenarios')).json()}catch(e){scnFiles=[]}
+  const app=$('#app').value;
+  try{scnFiles=app?await (await fetch('/api/scenarios?app='+encodeURIComponent(app))).json():[]}catch(e){scnFiles=[]}
   $('#scn').innerHTML=scnFiles.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
   showInfo();
 }
+$('#app').addEventListener('change',loadScenarios);
 async function loadSims(){
   try{sims=await (await fetch('/api/simulators')).json()}catch(e){sims=[]}
   // Replay: multi-select checkboxes (parallel pool).
@@ -458,7 +584,7 @@ async function recCheck(id){
 async function loadGenerated(path){
   recPath=path;
   try{
-    const d=await (await fetch('/api/scenario?path='+encodeURIComponent(path))).json();
+    const d=await (await fetch('/api/scenario?app='+encodeURIComponent($('#rec-app').value)+'&path='+encodeURIComponent(path))).json();
     if(d.yaml!=null){$('#rec-yaml').value=d.yaml;$('#rec-save').disabled=false;
       $('#rec-yamlinfo').textContent=path.split('/').pop();}
   }catch(e){}
@@ -467,7 +593,7 @@ $('#rec-save').addEventListener('click',async()=>{
   if(!recPath)return;
   $('#rec-save').disabled=true;$('#rec-save').textContent='Saving\u2026';
   const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({path:recPath,yaml:$('#rec-yaml').value})});
+    body:JSON.stringify({app:$('#rec-app').value,path:recPath,yaml:$('#rec-yaml').value})});
   const d=await r.json();
   $('#rec-save').textContent='Save';$('#rec-save').disabled=false;
   if(d.error){setStatus($('#rec-status'),d.error,'ng')}
@@ -528,7 +654,7 @@ function showTab(name){
 }
 document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
 
-loadShared();
+loadConfig();
 loadSims();
 loadHistory();
 setInterval(loadHistory,4000);

@@ -32,7 +32,8 @@ apps:
     deeplinkScheme: bajutsusample
     idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
     launchEnv:      { SAMPLE_UITEST: "1" }
-    # 任意: backend / device / locale / launchArgs / setup / redact / secrets / mockServer
+    scenarios:      demos/features/app/scenarios   # このアプリのシナリオディレクトリ（run が読み、record が書く）
+    # 任意: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 ```
 
 ### 解決（`resolve` → `Effective`）
@@ -51,6 +52,7 @@ apps:
 | `reserved_namespaces` | defaults | 情報用（doctor は app の `idNamespaces` のみで採点） |
 | `mock_server` | app | ⚠️ スキーマのみ・未配線 |
 | `setup` | app | 既定の再利用前段（その steps を各シナリオの本編前に実行） |
+| `scenarios` | app | このアプリのシナリオディレクトリ。`run --app` は配下の `*.yaml` を全件読み、`record` は新規をここへ書く。実行 cwd 基準の相対パス。`run --scenario` / `record --out` で上書き |
 | `capture` | defaults | 既定証跡（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |

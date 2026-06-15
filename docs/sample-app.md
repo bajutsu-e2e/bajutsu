@@ -102,7 +102,7 @@ Two paths against a real Simulator ([`Makefile`](../Makefile)). `SIM` auto-detec
 ### `make -C demos/features e2e` (run on the idb backend)
 
 ```
-sample-build → simctl install → bajutsu run smoke.yaml (idb / --no-erase) → bajutsu doctor
+sample-build → simctl install → bajutsu run --scenario smoke.yaml (idb / --no-erase) → bajutsu doctor
 ```
 
 Prereqs: a booted Simulator · `brew install facebook/fb/idb-companion` · `uv sync --extra idb`.

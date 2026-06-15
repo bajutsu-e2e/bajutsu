@@ -72,10 +72,94 @@ def _backends(backend: str, fallback: list[str]) -> list[str]:
     return [b.strip() for b in backend.split(",") if b.strip()] if backend else fallback
 
 
+def _scenario_files(eff: Effective, scenario: str, app_name: str) -> tuple[list[Path], bool]:
+    """The scenario files `run` should load: `[--scenario]` when given (an explicit override),
+    else every `*.yaml` in the app's configured `scenarios` dir. Returns `(files, single)` where
+    `single` flags the one-file override (so the report can carry that file's name/description)."""
+    if scenario:
+        path = Path(scenario)
+        if not path.exists():
+            typer.echo(f"scenario not found: {scenario}")
+            raise typer.Exit(2)
+        return [path], True
+    if eff.scenarios is None:
+        typer.echo(
+            f"app '{app_name}' has no scenarios dir "
+            f"(set apps.{app_name}.scenarios, or pass --scenario)"
+        )
+        raise typer.Exit(2)
+    scenarios_dir = Path(eff.scenarios)
+    if not scenarios_dir.is_dir():
+        typer.echo(f"scenarios dir not found: {eff.scenarios}")
+        raise typer.Exit(2)
+    files = sorted(scenarios_dir.glob("*.yaml"))
+    if not files:
+        typer.echo(f"no scenarios found in {eff.scenarios}")
+        raise typer.Exit(2)
+    return files, False
+
+
+def _expand_file(path: Path, eff: Effective) -> tuple[list[Scenario], str | None]:
+    """Load one scenario file and expand its setup/component/data refs (each resolved relative
+    to THIS file's directory, so a multi-file dir run keeps every file's refs local). Returns
+    the expanded scenarios plus the file-level description."""
+    scenario_file = load_scenario_file(path.read_text(encoding="utf-8"))
+    scenarios = scenario_file.scenarios
+    # Refs (setup/use/data) resolve relative to this scenario file's own directory.
+    base_dir = path.parent
+    try:
+        apply_setups(
+            scenarios,
+            eff.setup,
+            lambda ref: load_scenarios((base_dir / ref).read_text(encoding="utf-8"))[0].steps,
+        )
+    except (OSError, ValueError, IndexError) as e:
+        typer.echo(f"setup の読み込みに失敗: {e}")
+        raise typer.Exit(2) from None
+    try:
+        expand_components(
+            scenarios,
+            lambda ref: load_component((base_dir / ref).read_text(encoding="utf-8")),
+        )
+    except (OSError, ValueError) as e:
+        typer.echo(f"component の展開に失敗: {e}")
+        raise typer.Exit(2) from None
+    try:
+        scenarios = expand_data(
+            scenarios,
+            lambda ref: read_csv((base_dir / ref).read_text(encoding="utf-8")),
+        )
+    except (OSError, ValueError) as e:
+        typer.echo(f"data の展開に失敗: {e}")
+        raise typer.Exit(2) from None
+    return scenarios, scenario_file.description
+
+
+def _record_out_path(eff: Effective, out: str, name: str, goal: str, app_name: str) -> Path:
+    """Where `record` writes the authored scenario: `--out` when given, else an auto-named,
+    never-overwriting `*.yaml` under the app's configured `scenarios` dir (same naming as the
+    web UI's Record tab)."""
+    if out:
+        return Path(out)
+    if eff.scenarios is None:
+        typer.echo(
+            f"app '{app_name}' has no scenarios dir "
+            f"(set apps.{app_name}.scenarios, or pass --out)"
+        )
+        raise typer.Exit(2)
+    from bajutsu.serve import scenario_out_path, unique_scenario_path
+
+    return unique_scenario_path(scenario_out_path(Path(eff.scenarios), name or goal))
+
+
 @app.command()
 def run(
-    scenario: str,
     app_name: str = typer.Option(..., "--app"),
+    scenario: str = typer.Option(
+        "",
+        "--scenario",
+        help="run only this one *.yaml (overrides the app's configured scenarios dir)",
+    ),
     backend: str = typer.Option("", help="comma list; first available is the actuator"),
     tag: str = typer.Option(
         "", "--tag", help="comma list; run only scenarios with any of these tags"
@@ -125,12 +209,20 @@ def run(
     # run-level artifacts (the scenario definition keeps the token, never the value).
     secret_bindings = {f"secrets.{n}": os.environ[n] for n in eff.secrets if n in os.environ}
     secret_values = list(secret_bindings.values())
-    scenario_path = Path(scenario)
-    if not scenario_path.exists():
-        typer.echo(f"scenario not found: {scenario}")
-        raise typer.Exit(2)
-    scenario_file = load_scenario_file(scenario_path.read_text(encoding="utf-8"))
-    scenarios = scenario_file.scenarios
+    # Either the explicit `--scenario` file, or every `*.yaml` in the app's configured dir.
+    # Each file's setup/component/data refs resolve relative to its own directory, then the
+    # expanded scenarios are concatenated into one run.
+    files, single = _scenario_files(eff, scenario, app_name)
+    scenarios: list[Scenario] = []
+    description: str | None = None
+    for path in files:
+        expanded, file_desc = _expand_file(path, eff)
+        scenarios.extend(expanded)
+        if single:
+            description = file_desc
+    # The report's source label: the single file's name, or the dir name for a config-driven run.
+    source_name = files[0].name if single else Path(eff.scenarios or "").name
+    # --tag/--exclude selects across the combined, fully-expanded set.
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
     if include or excluded:
@@ -138,38 +230,6 @@ def run(
         if not scenarios:
             typer.echo("no scenarios match --tag/--exclude")
             raise typer.Exit(2)
-    # Prepend any reusable setup prelude (its steps run before the scenario's own). The
-    # setup reference is a scenario file resolved relative to this scenario's directory.
-    base_dir = scenario_path.parent
-    try:
-        apply_setups(
-            scenarios,
-            eff.setup,
-            lambda ref: load_scenarios((base_dir / ref).read_text(encoding="utf-8"))[0].steps,
-        )
-    except (OSError, ValueError, IndexError) as e:
-        typer.echo(f"setup の読み込みに失敗: {e}")
-        raise typer.Exit(2) from None
-    # Expand reusable components (`use` steps) into their parameterized steps. Runs after
-    # setup expansion so prelude steps may also `use` components.
-    try:
-        expand_components(
-            scenarios,
-            lambda ref: load_component((base_dir / ref).read_text(encoding="utf-8")),
-        )
-    except (OSError, ValueError) as e:
-        typer.echo(f"component の展開に失敗: {e}")
-        raise typer.Exit(2) from None
-    # Data-driven expansion: one run per data row (${row.col} substituted). Must precede
-    # the launch-env (mocks) loop below so every derived scenario is wired up.
-    try:
-        scenarios = expand_data(
-            scenarios,
-            lambda ref: read_csv((base_dir / ref).read_text(encoding="utf-8")),
-        )
-    except (OSError, ValueError) as e:
-        typer.echo(f"data の展開に失敗: {e}")
-        raise typer.Exit(2) from None
     # --erase / --no-erase, when given, overrides every scenario; otherwise each scenario's
     # own preconditions.erase (default off) decides whether its device is wiped first.
     if erase is not None:
@@ -253,8 +313,8 @@ def run(
             workers=workers,
             bindings=secret_bindings,
             secret_values=secret_values,
-            source_name=scenario_path.name,
-            description=scenario_file.description,
+            source_name=source_name,
+            description=description,
             progress=progress_fn,
         )
     except _env.DeviceError as e:
@@ -270,9 +330,14 @@ def run(
 
 @app.command()
 def record(
-    out: str,
     app_name: str = typer.Option(..., "--app"),
     goal: str = typer.Option(..., "--goal", help="natural-language goal to author"),
+    out: str = typer.Option(
+        "", "--out", help="explicit output path (overrides the app's configured scenarios dir)"
+    ),
+    name: str = typer.Option(
+        "", "--name", help="file name for the authored scenario (auto-named from the goal if blank)"
+    ),
     udid: str = typer.Option("booted"),
     backend: str = typer.Option(""),
     erase: bool = typer.Option(
@@ -294,8 +359,10 @@ def record(
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Explore the app with AI toward a goal and write the recorded scenario to OUT."""
+    """Explore the app with AI toward a goal and write the recorded scenario. With `--out` it
+    writes there; otherwise it auto-names a file under the app's configured `scenarios` dir."""
     eff = _load_effective(config, app_name)
+    out_path = _record_out_path(eff, out, name, goal, app_name)
     kind = agent or os.environ.get("BAJUTSU_AGENT") or "api"
     try:
         authoring_agent = make_agent(kind)
@@ -326,8 +393,9 @@ def record(
         alert_guard=alert_guard,
         report=lambda msg: typer.echo(msg, err=True),
     )
-    Path(out).write_text(dump_scenarios([scenario]), encoding="utf-8")
-    typer.echo(f"recorded {len(scenario.steps)} steps ({kind} agent) -> {out}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(dump_scenarios([scenario]), encoding="utf-8")
+    typer.echo(f"recorded {len(scenario.steps)} steps ({kind} agent) -> {out_path}")
 
 
 @app.command()
@@ -479,6 +547,7 @@ def _rerun_command(target: str, app_name: str, backend: str, udid: str, config: 
         "-m",
         "bajutsu",
         "run",
+        "--scenario",
         target,
         "--app",
         app_name,
@@ -534,17 +603,31 @@ def codegen(
 @app.command()
 def serve(
     port: int = typer.Option(8765, "--port"),
-    scenarios: str = typer.Option(
-        "demos/features/app/scenarios", "--scenarios", help="directory of scenario .yaml files"
+    config: str = typer.Option(
+        "", "--config", help="config to bind at startup; omit to open one from the UI"
     ),
-    config: str = typer.Option(DEFAULT_CONFIG, "--config"),
+    root: str = typer.Option(
+        "", "--root", help="root the UI's file browser may explore (default: current directory)"
+    ),
+    scenarios: str = typer.Option(
+        "", "--scenarios", help="override the app's scenarios dir (default: from config)"
+    ),
     runs: str = typer.Option("runs", "--runs", help="runs root to serve reports from"),
     host: str = typer.Option("127.0.0.1", "--host"),
 ) -> None:
-    """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI)."""
+    """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
+
+    Without `--config`, open a config.yml from the UI's file browser (limited to `--root`)."""
     from bajutsu.serve import serve as _serve
 
-    _serve(host, port, Path(scenarios), Path(config), Path(runs))
+    _serve(
+        host,
+        port,
+        Path(scenarios) if scenarios else None,
+        Path(config) if config else None,
+        Path(runs),
+        Path(root) if root else Path.cwd(),
+    )
 
 
 if __name__ == "__main__":

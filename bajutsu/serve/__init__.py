@@ -25,7 +25,9 @@ from bajutsu.serve.helpers import (
     _int,
     _scenario_path,
     app_build_info,
+    app_scenarios_dir,
     list_apps,
+    list_fs,
     list_runs,
     list_scenarios,
     list_simulators,
@@ -43,8 +45,10 @@ __all__ = [
     "_int",
     "_scenario_path",
     "app_build_info",
+    "app_scenarios_dir",
     "cancel_job",
     "list_apps",
+    "list_fs",
     "list_runs",
     "list_scenarios",
     "list_simulators",
@@ -58,11 +62,24 @@ __all__ = [
 ]
 
 
-def serve(host: str, port: int, scenarios_dir: Path, config: Path, runs_dir: Path) -> None:
-    state = ServeState(scenarios_dir=scenarios_dir, config=config, runs_dir=runs_dir)
+def serve(
+    host: str,
+    port: int,
+    scenarios_dir: Path | None,
+    config: Path | None,
+    runs_dir: Path,
+    root: Path | None = None,
+) -> None:
+    state = ServeState(
+        runs_dir=runs_dir,
+        config=config,
+        scenarios_dir=scenarios_dir,
+        root=root or Path.cwd(),
+    )
     server = make_server(state, host, port)
     bound = server.server_address[1]
-    print(f"bajutsu serve → http://{host}:{bound}  (scenarios: {scenarios_dir} · Ctrl-C to stop)")  # noqa: T201
+    hint = str(config) if config else "open a config.yml in the UI"
+    print(f"bajutsu serve → http://{host}:{bound}  (config: {hint} · Ctrl-C to stop)")  # noqa: T201
     try:
         server.serve_forever()
     except KeyboardInterrupt:

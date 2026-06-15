@@ -99,7 +99,7 @@ deeplink を持たない（`SAMPLE_TAB=network` で開く）。
 ### `make -C demos/features e2e`（idb バックエンドで run）
 
 ```
-sample-build → simctl install → bajutsu run smoke.yaml（idb / --no-erase）→ bajutsu doctor
+sample-build → simctl install → bajutsu run --scenario smoke.yaml（idb / --no-erase）→ bajutsu doctor
 ```
 
 前提: booted Simulator・`brew install facebook/fb/idb-companion`・`uv sync --extra idb`。
