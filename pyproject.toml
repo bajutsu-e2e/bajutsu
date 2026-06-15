@@ -17,9 +17,11 @@ dependencies = [
 # `brew install facebook/fb/idb-companion`.
 idb = ["fb-idb>=1.1.0"]
 visual = ["pillow>=10.0"]
+mcp = ["fastmcp>=2.0.0"]
 
 [dependency-groups]
 dev = [
+    "fastmcp>=2.0.0",
     "mypy>=1.10",
     "pillow>=10.0",
     "pytest>=8",
