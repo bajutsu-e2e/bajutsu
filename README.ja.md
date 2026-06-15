@@ -1,7 +1,7 @@
 [English](README.md) · **日本語**
 
 <p align="center">
-  <img src="assets/icons/png/bajutsu-256.png" alt="Bajutsu — 馬" width="148" height="148">
+  <img src="assets/icons/logo.png" alt="Bajutsu - logo" width="300" height="300">
 </p>
 
 # Bajutsu
