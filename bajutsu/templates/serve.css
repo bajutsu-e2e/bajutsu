@@ -1,0 +1,96 @@
+/* serve WebUI styles. Colors come from CSS variables defined in serve.themes.css —
+   keep new rules theme-aware by using var(--…) (e.g. --bg2 for inset wells,
+   --on-acc / --on-run for text on the accent / running buttons, --scrim for overlays)
+   rather than literals. */
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg2);color:var(--fg)}
+header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;background:var(--bg);border-bottom:1px solid var(--line)}
+header .brand{font-weight:700}
+header .mut{font-weight:400;color:var(--mut);font-size:.85em}
+.toptabs{display:flex;gap:.3rem;margin-left:auto}
+.toptab{background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.35rem 1.1rem;font:inherit;font-weight:600;border-radius:8px;cursor:pointer}
+.toptab:hover{color:var(--fg)}
+.toptab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
+.themepick{background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:.35rem .6rem;font:inherit;font-weight:600;cursor:pointer}
+main{display:grid;grid-template-columns:340px minmax(300px,360px) 1fr;gap:1rem;padding:1rem;align-items:start}
+main[hidden]{display:none}
+/* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
+#view-record{grid-template-columns:340px 1fr}
+.rec-stack{display:flex;flex-direction:column;gap:1rem;height:calc(100vh - 6rem)}
+.rec-stack>.logpanel,.rec-stack>.yamlpanel{flex:1;min-height:0;height:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
+label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
+select,input[type=text],input[type=number],textarea{width:100%;padding:.45rem;background:var(--bg2);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}
+textarea.goal{min-height:5.5rem;resize:vertical;line-height:1.4}
+.row{display:flex;gap:1rem}.row>div{flex:1}
+.subhint{color:var(--mut);font-size:.78em;margin:.3rem 0 0;line-height:1.35}
+.sims{max-height:24vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:.25rem}
+.sims label{display:flex;align-items:center;gap:.45rem;margin:0;padding:.22rem .35rem;color:var(--fg);cursor:pointer;font-size:.9em;border-radius:4px}
+.sims label:hover{background:var(--bg2)}
+.sims .rt{color:var(--mut);font-size:.85em;margin-left:auto;white-space:nowrap}
+.sims .empty{color:var(--mut);padding:.35rem}
+.dot.off{background:var(--mut);opacity:.5}
+.checks{display:flex;flex-direction:column;gap:.7rem;margin-top:.7rem}
+.checks label{display:block;margin:0;color:var(--fg);cursor:pointer}
+.checks .hint{display:block;color:var(--mut);font-size:.78em;line-height:1.35;margin:.15rem 0 0 1.45rem}
+button.run{flex:0 0 auto;width:100%;padding:.6rem;background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;cursor:pointer}
+button.run:disabled{opacity:.5;cursor:default}
+/* While a job runs the button turns amber, shows a spinner, and stays disabled (Stop aborts it). */
+button.run.running{background:var(--run);color:var(--on-run);opacity:1;cursor:default}
+button.run.running::before{content:"";display:inline-block;width:.9em;height:.9em;margin-right:.5em;vertical-align:-.12em;border:2px solid color-mix(in srgb,var(--on-run) 30%,transparent);border-top-color:var(--on-run);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+button.stop{flex:0 0 auto;width:100%;margin-top:.5rem;padding:.6rem;background:var(--ng);color:#fff;border:0;border-radius:6px;font-weight:700;cursor:pointer}
+button.stop:disabled{opacity:.5;cursor:default}
+button.stop[hidden]{display:none}
+.status{flex:0 0 auto;font-weight:600}.status:not(:empty){margin-top:.6rem}.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}.status.run{color:var(--acc)}
+.logpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
+pre.out{flex:1;min-height:0;margin:.6rem 0 0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:12px;white-space:pre-wrap}
+pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
+.report{height:calc(100vh - 6rem)}iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
+.empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut);text-align:center;padding:1rem}
+.names{color:var(--mut);font-size:.8em;margin-top:.2rem;min-height:1em}
+.names .finfo{color:var(--fg);font-size:1.05em;margin-bottom:.25rem}
+.scnlist{list-style:none;margin:.1rem 0 0;padding:0;font-size:1em;max-height:30vh;overflow:auto}
+.scnlist li{padding:.12rem 0;color:var(--fg)}
+.scnlist .sd{color:var(--mut)}
+.left{display:flex;flex-direction:column;gap:1rem;height:calc(100vh - 6rem)}
+.left>.card{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.left>.card>.panel{flex:1;min-height:0;overflow-y:auto}
+.tabs{flex:0 0 auto;display:flex;gap:.25rem;margin:-.25rem 0 .9rem;border-bottom:1px solid var(--line)}
+.tab{flex:1;background:none;border:0;border-bottom:2px solid transparent;color:var(--mut);padding:.5rem .3rem;font:inherit;font-weight:600;cursor:pointer}
+.tab:hover{color:var(--fg)}.tab.active{color:var(--fg);border-bottom-color:var(--acc)}
+.panel[hidden]{display:none}
+.hhead{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:.5rem}
+.refresh{background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;cursor:pointer;padding:.1rem .45rem}
+.history{list-style:none;margin:0;padding:0;max-height:calc(100vh - 11rem);overflow:auto}
+.history li{display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;border-radius:6px;cursor:pointer}
+.history li:hover{background:var(--bg2)}
+.history li.sel{background:var(--bg2);outline:1px solid var(--acc)}
+.history li.muted{cursor:default}
+.history li.muted:hover{background:none}
+.dot{width:.6rem;height:.6rem;border-radius:50%;flex:0 0 auto}.dot.ok{background:var(--ok)}.dot.ng{background:var(--ng)}
+.hid{font-variant-numeric:tabular-nums}
+.hsum{color:var(--mut);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.muted{color:var(--mut)}
+.yamlpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column}
+.yamlhead{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
+.yamlhead .ttl{font-weight:600}
+.yamlhead .savebtn{margin-left:auto;background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .9rem;cursor:pointer}
+.yamlhead .savebtn:disabled{opacity:.4;cursor:default}
+textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;white-space:pre;overflow:auto;tab-size:2}
+/* Open-config control + its server-side file-browser modal. */
+.cfgbtn{background:var(--bg2);border:1px solid var(--line);color:var(--acc);padding:.3rem .8rem;font:inherit;font-weight:600;border-radius:8px;cursor:pointer}
+.cfgbtn:hover{color:var(--fg)}
+header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal{position:fixed;inset:0;z-index:50;background:var(--scrim);display:flex;align-items:center;justify-content:center}
+.modal[hidden]{display:none}
+.fsbox{width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem}
+.fshead{display:flex;align-items:center;margin-bottom:.6rem}.fshead .ttl{font-weight:700}
+.fshead .fsclose{margin-left:auto;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
+.fspath{color:var(--mut);font-size:.82em;margin-bottom:.4rem;word-break:break-all}
+.fslist{list-style:none;margin:0;padding:0;overflow:auto;flex:1;border:1px solid var(--line);border-radius:8px}
+.fslist li{padding:.4rem .6rem;cursor:pointer;display:flex;gap:.5rem;align-items:center}
+.fslist li:hover{background:var(--bg2)}
+.fslist li .ic{width:1.2em;text-align:center}
+.fslist li.file .nm{color:var(--acc)}
+.fslist li.muted{color:var(--mut);cursor:default}.fslist li.muted:hover{background:none}
+.fshint{color:var(--mut);font-size:.78em;margin-top:.5rem}
