@@ -10,7 +10,7 @@
 
 ## はじめに
 
-現状はネイティブ a11y ツリー前提。WebView 内 DOM への橋渡し。
+現状はネイティブ a11y ツリー前提。WebView 内 DOM（Document Object Model）への橋渡し。
 
 ## 動機
 

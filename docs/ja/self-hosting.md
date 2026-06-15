@@ -86,7 +86,7 @@ tailscale serve --bg 8765    # → https://<machine>.<tailnet>.ts.net （tailnet
 | Fly Postgres | **postgres** コンテナ |
 | Upstash Redis | **redis** コンテナ |
 | Cloudflare R2（成果物） | **MinIO**（S3 互換・自前） |
-| GitHub OAuth（Authlib） | **Authelia** or **Keycloak**（自前 IdP）/ oauth2-proxy |
+| GitHub OAuth（Authlib） | **Authelia** or **Keycloak**（自前 IdP: Identity Provider、認証基盤）/ oauth2-proxy |
 | Caddy / TLS | **Caddy**（Let's Encrypt or 内部 CA） |
 | MacStadium Orka（Mac プール） | 自前の **Mac mini プール（1…N 台）** + worker agent を `LaunchAgent` 常駐 |
 | Doppler（secrets） | **SOPS + age** or Vault（or 権限を絞った `.env`） |
@@ -123,7 +123,7 @@ MinIO へアップロードする。
 **コントロールプレーンの負荷分散（容易・標準的）**。ステートレスな FastAPI を **N レプリカ**並べ、
 前段の **Caddy/HAProxy** で分散:
 
-- long-lived な SSE 接続が多いので round-robin より **least-conn** を推奨。ヘルスチェック付き。
+- long-lived な SSE（Server-Sent Events）接続が多いので round-robin より **least-conn** を推奨。ヘルスチェック付き。
 - **sticky セッションを使わない** —— 署名 Cookie/JWT、or セッションを Redis に外出しし、どの
   レプリカでも任意リクエストを処理可能にする。
 - **SSE はシャード不要**: ライブログの真実は Redis pub/sub なので、*どの*レプリカでも*任意*の run の
@@ -148,7 +148,7 @@ MinIO へアップロードする。
 4 つの軸:
 
 - **データ隔離**。共有 Postgres + 全テーブルに `org_id`、アプリ層で**全クエリを org スコープ**、
-  防御多層化に **Postgres RLS** ポリシーを併用。MinIO は**テナント prefix**
+  防御多層化に **Postgres RLS（行レベルセキュリティ）** ポリシーを併用。MinIO は**テナント prefix**
   （`artifacts/<org_id>/runs/…`）で、配信は org スコープの**署名付き URL** のみ。自前運用では
   スキーマ/DB 分離より **共有スキーマ + `org_id` + RLS** が勝る。
 - **実行隔離**（シナリオは実質「デバイスを操る非信頼コード」）。**run ごとに使い捨て Simulator**
@@ -163,13 +163,13 @@ MinIO へアップロードする。
   pending を持つ org をラウンドロビン（クォータ尊重）してワーカー向けキューへ供給。優先度ティアも
   同じ仕組みに乗る。
 - **認可境界**。全リクエストが org（OAuth/Authelia の claim）を持つ。全エンドポイントで org スコープ
-  を強制、org 内 RBAC、ワーカーには**そのジョブの org コンテキストとスコープ済みシークレットだけ**
+  を強制、org 内 RBAC（ロールベースアクセス制御）、ワーカーには**そのジョブの org コンテキストとスコープ済みシークレットだけ**
   渡す。
 
-### 水平スケール後のセルフホスト SPOF
+### 水平スケール後のセルフホスト SPOF（単一障害点）
 
-水平スケールした途端、**Redis と Postgres が単一障害点**になる（Redis はキュー・pub/sub・クォータ
-状態を握る）。**Redis は Sentinel で HA 化**、**Postgres** は primary+replica（Patroni）か最低でも
+水平スケールした途端、**Redis と Postgres が単一障害点（SPOF: Single Point of Failure）**になる（Redis はキュー・pub/sub・クォータ
+状態を握る）。**Redis は Sentinel で HA（高可用性）化**、**Postgres** は primary+replica（Patroni）か最低でも
 堅実なバックアップ（単一ノードでも可、ただし **SPOF と明記**）、**LB 自身**も keepalived/VRRP or
 DNS で冗長化する。
 

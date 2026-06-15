@@ -3,7 +3,7 @@
 # CLI reference
 
 > Implementation: `bajutsu/cli.py` (Typer). The entry point is `bajutsu = "bajutsu.cli:app"` in
-> `pyproject.toml`. Every command selects one app with `--app <name>` and points at config with
+> `pyproject.toml`. Every command in this CLI (command-line interface) selects one app with `--app <name>` and points at config with
 > `--config` (default `bajutsu.config.yaml`). App-specific differences live in config
 > ([configuration](configuration.md)).
 

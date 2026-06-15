@@ -56,7 +56,7 @@ class Driver(Protocol):
 
 ## idb
 
-ヘッドレス・座標ベース。CI 向き。semantic tap を持たないため、抽象側で **id → frame 中心 → 座標 tap**
+ヘッドレス・座標ベース。CI（継続的インテグレーション）向き。semantic tap を持たないため、抽象側で **id → frame 中心 → 座標 tap**
 に解決する。実装: `drivers/idb.py`。
 
 - `query()`: `idb ui describe-all --udid <udid> --json` を `parse_describe_all` で正規化

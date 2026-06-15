@@ -13,7 +13,7 @@ XCUITest codegen, app traces (`appTrace` / os_signpost), redaction of captured e
 
 ## Motivation
 
-To be adopted in real pipelines the tool must emit native tests, observe (and deterministically stub) network, redact secrets in evidence, and gate every change in CI.
+To be adopted in real pipelines the tool must emit native tests, observe (and deterministically stub) network, redact secrets in evidence, and gate every change in CI (continuous integration).
 
 ## Detailed design
 

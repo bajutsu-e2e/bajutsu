@@ -9,7 +9,7 @@
 
 ## Introduction
 
-Expose `run` / `doctor` / `record` / `codegen` as MCP tools so agents like Claude can drive them directly. A good fit with Tier 1 (AI authoring).
+Expose `run` / `doctor` / `record` / `codegen` as MCP (Model Context Protocol) tools so agents like Claude can drive them directly. A good fit with Tier 1 (AI authoring).
 
 ## Motivation
 

@@ -31,7 +31,7 @@
 | 種別 | 取得元 | 区間 / 瞬時 | 現状 |
 |---|---|---|---|
 | `screenshot` | ドライバ（idb は `simctl io screenshot`） | 瞬時 | ✅ 取得 |
-| `elements`（a11y ツリー） | `driver.query()` を JSON 化 | 瞬時 | ✅ 取得 |
+| `elements`（a11y＝アクセシビリティのツリー） | `driver.query()` を JSON 化 | 瞬時 | ✅ 取得 |
 | `actionLog` | orchestrator 内部（操作・所要時間） | — | ✅ manifest に内在 |
 | `video` | `simctl io recordVideo` | 区間 | ✅ 取得（要 udid） |
 | `deviceLog` | `simctl spawn log stream` | 区間 | ✅ 取得（要 udid） |
@@ -133,7 +133,7 @@ class Artifact:
 
 ## マスキング（redact）
 
-スクショ / ログ / ネットワークに PII・トークンが写り得るため、保存前にマスクする対象を宣言する。
+スクショ / ログ / ネットワークに PII（個人情報）・トークンが写り得るため、保存前にマスクする対象を宣言する。
 実装: `scenario.py` `Redact`。config の `redact` とシナリオの `redact` はマージ（union）される
 （[configuration](configuration.md#redact-のマージ)）。
 

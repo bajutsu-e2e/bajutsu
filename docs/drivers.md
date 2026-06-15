@@ -60,7 +60,7 @@ resolution.
 
 ## idb
 
-Headless, coordinate-based. For CI. With no semantic tap, the abstraction resolves
+Headless, coordinate-based. For CI (continuous integration). With no semantic tap, the abstraction resolves
 **id → frame center → coordinate tap**. Implementation: `drivers/idb.py`.
 
 - `query()`: normalizes `idb ui describe-all --udid <udid> --json` via `parse_describe_all`

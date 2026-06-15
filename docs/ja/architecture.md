@@ -150,7 +150,7 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 - シナリオスキーマ（厳格検証）と YAML ラウンドトリップ
 - 8 種のアサーション評価
 - Tier 2 run ループ（act → wait → verify）、`FakeDriver` で検証
-- DSL: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、
+- DSL（ドメイン固有言語）: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、
   起動時の `locale` 適用、デバイスプール上の並列実行（`--workers`）
 - DSL のオーサリング再利用: 再利用可能なパラメータ化コンポーネント（`use` / `${params.*}`）、
   データ駆動シナリオ（`data` / `dataFile` と `${row.*}`）、シークレット変数（`${secrets.X}`・値マスク）、

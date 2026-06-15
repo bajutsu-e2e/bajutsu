@@ -33,7 +33,7 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 | Kind | Source | Interval / instant | Status |
 |---|---|---|---|
 | `screenshot` | the driver (idb uses `simctl io screenshot`) | instant | ✅ captured |
-| `elements` (a11y tree) | `driver.query()` as JSON | instant | ✅ captured |
+| `elements` (a11y / accessibility tree) | `driver.query()` as JSON | instant | ✅ captured |
 | `actionLog` | orchestrator internals (action · duration) | — | ✅ inherent in the manifest |
 | `video` | `simctl io recordVideo` | interval | ✅ captured (needs udid) |
 | `deviceLog` | `simctl spawn log stream` | interval | ✅ captured (needs udid) |
@@ -141,7 +141,7 @@ class Artifact:
 
 ## Masking (redact)
 
-Because screenshots / logs / network can capture PII and tokens, declare what to mask before
+Because screenshots / logs / network can capture PII (personally identifiable information) and tokens, declare what to mask before
 writing. Implementation: `scenario.py` `Redact`. Config's `redact` and the scenario's `redact` are
 merged (union) ([configuration](configuration.md#merging-redact)).
 

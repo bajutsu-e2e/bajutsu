@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Issue HTTP requests / generate OTP / 2FA codes / verify received email via APIs. Needed for automating real-app login flows.
+Issue HTTP requests / generate OTP (one-time password) / 2FA (two-factor authentication) codes / verify received email via APIs. Needed for automating real-app login flows.
 
 ## Motivation
 

@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Currently assumes a native a11y tree. Bridge into the DOM inside a WebView.
+Currently assumes a native a11y tree. Bridge into the DOM (Document Object Model) inside a WebView.
 
 ## Motivation
 

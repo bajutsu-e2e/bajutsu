@@ -77,8 +77,9 @@ token, never the value.
 
 ## Selecting from the CLI
 
-Every command selects one app with `--app <name>` and points at config with `--config` (default
-`bajutsu.config.yaml`). `--backend idb` overrides the actuator order ([cli](cli.md)).
+Every command in the CLI (command-line interface) selects one app with `--app <name>` and points at
+config with `--config` (default `bajutsu.config.yaml`). `--backend idb` overrides the actuator order
+([cli](cli.md)).
 
 ## Onboarding a new app
 

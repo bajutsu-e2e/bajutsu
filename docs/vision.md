@@ -19,7 +19,8 @@ Every future direction is evaluated against the **prime directives**
 fixed point the whole vision rotates around:
 
 1. **AI is the author and the failure investigator, never the judge.** No future feature may put
-   an LLM into the Tier-2 `run`/CI gate. Pass/fail stays machine-checkable, always.
+   an LLM (large language model) into the Tier-2 `run`/CI (continuous integration) gate. Pass/fail
+   stays machine-checkable, always.
 2. **Determinism first.** No fixed sleeps; an ambiguous selector fails fast. Every new platform,
    host, or authoring tool inherits this — it is not negotiable for reach or convenience.
 3. **App-agnostic / backend-agnostic.** Per-app and per-platform differences live in config and
@@ -70,7 +71,7 @@ expensive device-worker pool, so a team runs and reviews from a browser.
   exposure mandates.
 - **[self-hosting](self-hosting.md)** — your own Mac(s): a today-ready single-Mac setup and a
   fully self-hosted multi-tenant topology.
-- **MCP integration** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)) — expose `run`/`doctor`/`record`/
+- **MCP (Model Context Protocol) integration** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)) — expose `run`/`doctor`/`record`/
   `codegen` as MCP tools and evidence as MCP resources, so agents drive Bajutsu directly. This
   rides the Tier-1 boundary cleanly: agents *author and investigate*, the gate stays deterministic.
 
@@ -79,7 +80,7 @@ expensive device-worker pool, so a team runs and reviews from a browser.
 The scenario is just YAML owned by humans; this axis makes *writing and keeping* it cheap without
 ever softening the gate.
 
-- **GUI editor & non-AI action capture** ([roadmap → Authoring experience](roadmap/README.md#authoring-experience-record--gui-editor)) —
+- **GUI (graphical user interface) editor & non-AI action capture** ([roadmap → Authoring experience](roadmap/README.md#authoring-experience-record--gui-editor)) —
   visually edit scenarios, pick selectors on a screenshot, and capture real taps/types into a
   scenario without an LLM. `bajutsu serve` is the first step.
 - **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions.md)) — a new
@@ -100,7 +101,7 @@ never the core.
 
 | Fixed core | Where |
 |---|---|
-| Scenario DSL & grammar | [scenarios](scenarios.md) · [dsl-grammar](dsl-grammar.md) |
+| Scenario DSL (domain-specific language) & grammar | [scenarios](scenarios.md) · [dsl-grammar](dsl-grammar.md) |
 | Selector model & deterministic resolution | [selectors](selectors.md) |
 | Machine assertions (the only judges) | `assertions.py` · [concepts](concepts.md) |
 | observe → act → verify orchestrator | [run-loop](run-loop.md) |

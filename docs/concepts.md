@@ -12,8 +12,9 @@ Related: [architecture](architecture.md) · [selectors](selectors.md) · [run-lo
 
 ## 1. AI is the author and the investigator, never the judge
 
-The non-determinism, cost, and latency of an LLM must **not enter the CI gate**. This is the
-top-level constraint, and it directly produces the two-tier structure (below).
+The non-determinism, cost, and latency of an LLM (large language model) must **not enter the CI
+(continuous integration) gate**. This is the top-level constraint, and it directly produces the
+two-tier structure (below).
 
 | Command | Tier | AI | How pass/fail is decided |
 |---|---|---|---|

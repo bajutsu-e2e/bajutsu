@@ -9,7 +9,7 @@
 
 ## Introduction
 
-The doctor feasibility gate (the CLI suite + a check for a booted Simulator) is implemented ([architecture.md](../architecture.md#implementation-status)). This topic is a placeholder — add new onboarding candidates here as they come up.
+The doctor feasibility gate (the CLI (command-line interface) suite + a check for a booted Simulator) is implemented ([architecture.md](../architecture.md#implementation-status)). This topic is a placeholder — add new onboarding candidates here as they come up.
 
 ## Motivation
 

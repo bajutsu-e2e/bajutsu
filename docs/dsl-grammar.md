@@ -2,7 +2,7 @@
 
 # Scenario DSL grammar (formal reference)
 
-> The **normative grammar** of the scenario DSL — every production, type, default, and
+> The **normative grammar** of the scenario DSL (domain-specific language) — every production, type, default, and
 > validation constraint, derived directly from the pydantic models in `bajutsu/scenario.py`
 > (`extra="forbid"`, so unknown keys are rejected). Where [scenarios](scenarios.md) is the prose
 > *authoring guide* (how to write a scenario, with examples), this page is the *language spec*
@@ -41,7 +41,7 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario.py:41`).
 ## 2. Grammar at a glance
 
 First, the **reference graph** — which non-terminal references which. It surfaces the recursion
-and sharing that the EBNF text below makes hard to trace: `Selector`'s `within` self-loop, and
+and sharing that the EBNF (extended Backus–Naur form) text below makes hard to trace: `Selector`'s `within` self-loop, and
 how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and
 `Mock.match`. (`relaunch` / `setLocation` / `push` carry only scalars, so they reference no
 shared non-terminal and are omitted.)

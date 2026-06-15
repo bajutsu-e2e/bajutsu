@@ -9,7 +9,7 @@
 
 ## Introduction
 
-Flutter renders its own UI, so elements rarely surface in the OS a11y tree. Consider resolving through Flutter's semantics tree (`integration_test` / VM Service / Flutter Driver).
+Flutter renders its own UI, so elements rarely surface in the OS a11y (accessibility) tree. Consider resolving through Flutter's semantics tree (`integration_test` / VM Service / Flutter Driver).
 
 ## Motivation
 

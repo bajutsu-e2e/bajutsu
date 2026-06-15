@@ -38,7 +38,7 @@ uv sync --extra dev                        # creates .venv (Python 3.13) + deps 
 `uv` reads `pyproject.toml` / `uv.lock` and builds an isolated `.venv`. Prefix project commands
 with `uv run` (e.g. `uv run bajutsu …`) so they use that environment.
 
-Confirm the CLI is wired up:
+Confirm the CLI (command-line interface) is wired up:
 
 ```bash
 uv run bajutsu --help
@@ -157,7 +157,7 @@ On success you'll see a line like:
 PASS  runs/20260610-120000/manifest.json
 ```
 
-`run` **exits 0 when every scenario passes, 1 on any failure** — that exit code is the CI gate
+`run` **exits 0 when every scenario passes, 1 on any failure** — that exit code is the CI (continuous integration) gate
 ([run-loop](run-loop.md)).
 
 > Hit an environment problem (no booted Simulator, idb not installed)? Run

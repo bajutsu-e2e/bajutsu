@@ -9,7 +9,7 @@
 
 ## はじめに
 
-`manifest.json` / `report.html` 等の実行結果をエージェントが読めるリソースとして公開。
+`manifest.json` / `report.html` 等の実行結果を、エージェントが読める MCP（Model Context Protocol）リソースとして公開。
 
 ## 動機
 

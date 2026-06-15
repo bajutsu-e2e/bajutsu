@@ -8,7 +8,7 @@
 
 Bajutsu は、自然言語で書かれた（または記録された）テストシナリオを受け取り、iOS Simulator
 上のアプリを操作（tap / type / swipe / wait）し、**機械チェック可能なアサーション**で結果を
-検証する。中心思想は「**AI を CI ゲートに持ち込まない**」こと —— AI はシナリオの *著者* と失敗時の
+検証する。中心思想は「**AI を CI（継続的インテグレーション）ゲートに持ち込まない**」こと —— AI はシナリオの *著者* と失敗時の
 *調査役* であって、合否の *判定者* にはならない（[concepts](concepts.md) 参照）。
 
 ## 全体像（データフロー）
@@ -44,7 +44,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 | 1 | [concepts](concepts.md) | 設計思想と中核原則（決定性・2 層・安定度順ラダー・AI の関与境界） |
 | 2 | [architecture](architecture.md) | モジュール構成・依存関係・**実装状況（実装済み / 未配線）** |
 | 3 | [scenarios](scenarios.md) | シナリオ YAML の文法（ステップ / 待機 / アサーション / 証跡トークン）= オーサリングリファレンス |
-| 4 | [dsl-grammar](dsl-grammar.md) | シナリオ DSL の **形式文法**（EBNF + 全検証制約）—— [scenarios](scenarios.md) の背後にある規範仕様 |
+| 4 | [dsl-grammar](dsl-grammar.md) | シナリオ DSL（ドメイン固有言語）の **形式文法**（EBNF + 全検証制約）—— [scenarios](scenarios.md) の背後にある規範仕様 |
 | 5 | [selectors](selectors.md) | セレクタモデルと決定的解決（0/1/2+ 件）・アサーション評価の仕組み = 決定性の核 |
 | 6 | [drivers](drivers.md) | Driver 抽象・idb / fake・能力差の吸収・simctl 環境 |
 | 7 | [run-loop](run-loop.md) | Orchestrator（observe → act → verify）・待機・リトライ・実行結果 |

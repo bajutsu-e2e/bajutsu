@@ -242,7 +242,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` は**全シナリオを上書
 
 ### `assert`（中間検証）
 
-ステップ途中での検証。DSL は `expect` と同一（次節）。
+ステップ途中での検証。DSL（ドメイン固有言語）は `expect` と同一（次節）。
 
 ```yaml
 - assert:

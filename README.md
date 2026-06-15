@@ -6,7 +6,7 @@
 
 # Bajutsu
 
-> Natural-language-driven E2E testing for iOS Simulators.
+> Natural-language-driven E2E (end-to-end) testing for iOS Simulators.
 > **Status: pre-alpha** — the deterministic core, the AI authoring loop (`record`), the
 > evidence subsystem, XCUITest codegen, and self-healing triage are all implemented and
 > unit-tested, and the idb backend is **validated end-to-end on a real Simulator**: scenarios,
@@ -22,7 +22,8 @@ verifies the result with **machine-checkable assertions**.
 > about taming that — riding the Simulator through a scenario with a steady, deterministic
 > hand so it goes exactly where you point it, every time.
 
-The guiding idea is to keep the LLM out of the CI gate:
+The guiding idea is to keep the LLM (large language model) out of the CI (continuous
+integration) gate:
 
 - **AI is the author and the failure investigator, never the judge.** It helps *write*
   scenarios (explore + record) and *investigate* failures, but a `run` is fully

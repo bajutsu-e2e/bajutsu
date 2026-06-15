@@ -7,7 +7,7 @@
 > assertion checks the accumulated exchanges.
 >
 > Implementation: `bajutsu/network.py` (model + collector), `bajutsu/assertions.py`
-> (`request` eval), the in-app SDK [`BajutsuKit`](../BajutsuKit/README.md).
+> (`request` eval), the in-app SDK (software development kit) [`BajutsuKit`](../BajutsuKit/README.md).
 
 Related: [scenarios](scenarios.md) · [evidence](evidence.md)
 
@@ -20,7 +20,7 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
 1. On `run`, bajutsu starts a **collector** (`NetworkCollector`) on `127.0.0.1:<port>` and
    injects its URL into the app via the `BAJUTSU_COLLECTOR` launch env.
 2. The app (linked with **BajutsuKit**) installs a `URLProtocol` that records each
-   request/response and POSTs it to the collector — **after TLS** (no proxy / CA), so it
+   request/response and POSTs it to the collector — **after TLS (Transport Layer Security)** (no proxy, no CA / certificate authority), so it
    works under idb and is readable programmatically.
 3. The collector keeps the exchanges in memory; a step's `request` assertion is evaluated
    against them in real time, and they are written to `<sid>/network.json` (redacted) as
