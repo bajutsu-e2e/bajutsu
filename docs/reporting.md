@@ -109,6 +109,16 @@ selector, e.g. `#counter.value`) / `comparison` (e.g. `== “2”`) / `reason`, 
 tokens. A **Rich / YAML toggle** switches the same tab between this structured view and the raw
 scenario YAML.
 
+A `visual` expectation renders an **interactive baseline-vs-actual comparator** beneath its row,
+with four modes: **Swipe** (drag a divider to wipe between the two), **Onion** (a slider cross-fades
+actual over baseline), **Blend** (`mix-blend-mode: difference` — identical pixels go black, changes
+glow live), and **Diff** (the machine's precomputed pixel diff, with the assertion's `exclude`
+regions masked — present only when the check failed). A `diff <pct>%` badge accompanies it, or a
+`no baseline yet` badge on a first run (when only the actual screenshot exists). When the check did
+not pass, an **Approve as baseline** button promotes the captured screenshot into the baselines dir;
+it `POST`s `/api/approve` and so works only when the report is opened through `bajutsu serve` (it is
+hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.md#approve).
+
 Failing rows have a red background. Clicking a step seeks the recording to that step **without
 auto-playing** (a paused video stays paused; a playing one keeps playing). Clicking a step's
 screenshot opens a full-size lightbox; **← / →** (or the on-screen arrows) then walk through every

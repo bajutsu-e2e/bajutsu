@@ -61,6 +61,9 @@ class ServeState:
     config: Path | None = None  # None until a config is opened from the UI
     scenarios_dir: Path | None = None  # override; default is the selected app's configured dir
     root: Path = field(default_factory=Path.cwd)  # the file browser's browse ceiling
+    # where `visual` baselines live (and where Approve promotes to); serve() defaults it to
+    # <scenarios_dir>/baselines.
+    baselines_dir: Path = field(default_factory=lambda: Path("baselines"))
     cwd: Path = field(default_factory=Path.cwd)
     popen: Popen = subprocess.Popen
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)

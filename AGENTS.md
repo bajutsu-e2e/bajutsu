@@ -12,3 +12,5 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 - **Work in parallel safely:** one topic per `claude/<topic>` branch, keep changes small, never
   push red (the pre-push hook enforces the gate), rebase on `origin/main` before pushing.
   Full guide: [`docs/ai-development.md`](docs/ai-development.md).
+- **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the idb
+  backend's deps on demand; pass flags via `ARGS`.

@@ -2,7 +2,7 @@
 # Invoke from anywhere with `make -C demos/features <target>` (or from inside this folder).
 # ROOT resolves to the repo root so the paths match demos/features/demo.config.yaml, the
 # purpose-built config for these scenarios (passed explicitly via --config below).
-.PHONY: sample-gen sample-build e2e ui-test
+.PHONY: sample-gen sample-build e2e ui-test vrt vrt-approve
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 SAMPLE := $(ROOT)/demos/features/app
@@ -34,3 +34,18 @@ ui-test:
 	cd $(SAMPLE) && xcodegen generate
 	cd $(SAMPLE) && xcodebuild test -project BajutsuSample.xcodeproj -scheme UITests \
 		-destination 'platform=iOS Simulator,id=$(SIM)' -derivedDataPath build/dd
+
+# Visual regression demo. Baselines live beside the scenario (gitignored, regenerate locally).
+BASELINES = $(SAMPLE)/scenarios/baselines
+
+# First run reports a missing baseline (exit 1) — that's expected. Approve the captured
+# screenshot (`make -C demos/features vrt-approve`, or the WebUI's Approve button), then
+# re-run `vrt`: now it pixel-matches and passes. `-` lets the first run's failure not abort make.
+vrt: sample-build
+	xcrun simctl install $(SIM) $(APP)
+	-cd $(ROOT) && uv run bajutsu run demos/features/app/scenarios/visual.yaml --app sample \
+		--udid $(SIM) --backend idb --config $(CONFIG) --no-erase --baselines $(BASELINES)
+
+# Promote the latest run's captured screenshot(s) to baselines, then re-run to confirm pass.
+vrt-approve:
+	cd $(ROOT) && uv run bajutsu approve --baselines $(BASELINES)

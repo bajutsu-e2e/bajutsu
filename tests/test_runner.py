@@ -540,6 +540,32 @@ def test_run_and_report(tmp_path: Path) -> None:
     assert scn_file.exists() and "name: a" in scn_file.read_text(encoding="utf-8")
 
 
+def test_run_and_report_forwards_baselines_dir(tmp_path: Path) -> None:
+    # A visual expect with the baselines dir forwarded builds a VisualContext, so a missing
+    # baseline reports "baseline not found" — not "no visual context" (the unforwarded bug).
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "vis",
+                "steps": [{"tap": {"id": "ok"}}],
+                "expect": [{"visual": {"baseline": "home.png"}}],
+            }
+        )
+    ]
+    results, _ = run_and_report(
+        _eff(),
+        scenarios,
+        _lease,
+        tmp_path / "runs",
+        "run1",
+        baselines_dir=tmp_path / "baselines",
+    )
+    ev = results[0].expect_results[0]
+    assert ev.kind == "visual"
+    assert "baseline not found" in ev.reason
+    assert ev.visual is not None and ev.visual.missing
+
+
 def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> None:
     """The run-level scrub is the final safety net: a secret that reaches result text (here a
     failing assertion's expected value, interpolated from a binding) must not survive into any

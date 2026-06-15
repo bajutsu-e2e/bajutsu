@@ -43,6 +43,7 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
 | `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（アプリに BajutsuKit が必要） |
 | `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` が必要（プール数で上限）。各デバイスが自前のネットワークコレクタ・インターバル録画・デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能する |
+| `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書く（[evidence](evidence.md#sink証跡の出力先)）。
@@ -144,6 +145,27 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] 
 - config の `launchEnv` が生成テストの `app.launchEnvironment` に入る。
 - ファイル出力時は `wrote <N> scenario(s) -> <out>`。
 
+## `approve`
+
+実行で撮影したスクリーンショットを `visual` の**ベースライン**へ昇格させる — ビジュアル
+リグレッションのループ（run → 確認 → approve → 再run）の後半。`manifest.json` を読むだけなので
+**Simulator 不要**で CI でもヘッドレスに動き、WebUI の **Approve** ボタンの CLI 版にあたる。
+
+```bash
+bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs runs]
+```
+
+| オプション | 既定 | 説明 |
+|---|---|---|
+| `<run_dir>` | `runs/` 配下の最新 | 承認元の実行 |
+| `--baselines` | （必須） | 昇格した PNG を書き出す先 |
+| `--scenario` | "" | この scenario id のみ（実行ディレクトリの `00-home` など） |
+| `--all` | off | 既に合格したベースラインも更新（既定: 失敗 / 不在のみ） |
+| `--runs` | `runs` | `<run_dir>` 省略時に使う runs ルート |
+
+- 各 visual チェックの `visual-actual.png` を `<dir>/<baseline>` へコピー。1 件以上昇格すれば
+  **終了 0**、対象が無ければ **1**。
+
 ## `serve`
 
 **シナリオを実行してレポートを見る**ローカル Web UI — Tier 1 の利便機能で、**CI ゲートには入らない**。
@@ -152,12 +174,15 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] 
 stdlib のみ（Web フレームワーク不要）、`127.0.0.1` バインド。
 
 ```bash
-bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs]
+bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
 ```
 
 - `--config` は**任意**。省略すると UI のファイルブラウザ（「Open config」ボタン）から `config.yml` を開ける。
   ブラウザの走査は `--root`（既定: カレントディレクトリ）配下に限定。`--scenarios <dir>` は選択アプリの設定済み
   ディレクトリの上書きとして使える。
+- `--baselines` でビジュアルリグレッションのベースラインディレクトリを指定（既定: アプリのシナリオ
+  ディレクトリ配下の `baselines/`）。UI から起動した実行はこれを使い、レポートの **Approve** ボタンが
+  `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させる。
 - app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run**。
   出力がライブ表示され、完了で `report.html` が埋め込まれる。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを

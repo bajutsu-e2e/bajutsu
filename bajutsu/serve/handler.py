@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import json
 import mimetypes
+import shutil
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -116,6 +117,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._post_record(body)
                 case "/api/scenario":
                     self._post_scenario(body)
+                case "/api/approve":
+                    self._post_approve(body)
                 case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     job = state.jobs.get(path[len("/api/jobs/") : -len("/cancel")])
                     if job is None:
@@ -175,6 +178,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 if isinstance(body.get("dismissAlerts"), bool)
                 else None,
                 config=str(cfg),
+                baselines=str(state.baselines_dir),
             )
             app_path, build = app_build_info(cfg, body["app"])
             job = state.new_job(
@@ -241,6 +245,32 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             target.write_text(text, encoding="utf-8")
             self._json({"ok": True, "path": str(target)})
+
+        def _post_approve(self, body: dict[str, Any]) -> None:
+            """Promote a run's captured screenshot to a `visual` baseline.
+
+            Copies ``runs/<runId>/<sid>/visual-actual.png`` → ``baselines/<baseline>``. Both
+            ends are resolved and confined to their roots so a crafted runId / sid / baseline
+            can't read or write outside the runs / baselines directories."""
+            run_id = str(body.get("runId") or "")
+            sid = str(body.get("sid") or "")
+            baseline = str(body.get("baseline") or "")
+            if not run_id or not sid or not baseline:
+                self._json({"error": "runId, sid and baseline are required"}, 400)
+                return
+            runs_base = state.runs_dir.resolve()
+            actual = (state.runs_dir / run_id / sid / "visual-actual.png").resolve()
+            base_root = state.baselines_dir.resolve()
+            dest = (state.baselines_dir / baseline).resolve()
+            if runs_base not in actual.parents or not actual.is_file():
+                self._json({"error": "no captured screenshot for this run"}, 404)
+                return
+            if base_root != dest.parent and base_root not in dest.parents:
+                self._json({"error": "baseline path escapes the baselines dir"}, 400)
+                return
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(actual, dest)
+            self._json({"ok": True, "baseline": baseline})
 
         def _serve_run_file(self, rel: str) -> None:
             base = state.runs_dir.resolve()

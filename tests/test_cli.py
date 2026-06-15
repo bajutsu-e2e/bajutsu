@@ -153,3 +153,66 @@ def test_doctor_unknown_app(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     r = runner.invoke(app, ["doctor", "--app", "ghost", "--config", str(cfg)])
     assert r.exit_code == 2
+
+
+def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
+    import json
+
+    run_dir = runs / run_id
+    (run_dir / "00-home").mkdir(parents=True)
+    (run_dir / "00-home" / "visual-actual.png").write_bytes(b"PNGDATA")
+    manifest = {
+        "runId": run_id,
+        "ok": ok,
+        "scenarios": [
+            {
+                "scenario": "home",
+                "ok": ok,
+                "expect_results": [
+                    {
+                        "ok": ok,
+                        "kind": "visual",
+                        "detail": "visual ≈ home.png",
+                        "reason": "" if ok else "baseline not found: home.png",
+                        "visual": {
+                            "baseline_name": "home.png",
+                            "actual": "00-home/visual-actual.png",
+                            "baseline": None,
+                            "diff": None,
+                            "diff_pct": None,
+                            "missing": not ok,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return run_dir
+
+
+def test_approve_promotes_failing_visual(tmp_path: Path) -> None:
+    run_dir = _write_visual_run(tmp_path / "runs", "20260610-1", ok=False)
+    baselines = tmp_path / "baselines"
+    r = runner.invoke(app, ["approve", str(run_dir), "--baselines", str(baselines)])
+    assert r.exit_code == 0
+    assert (baselines / "home.png").read_bytes() == b"PNGDATA"
+    assert "approved home.png" in r.output
+
+
+def test_approve_skips_passing_without_all(tmp_path: Path) -> None:
+    run_dir = _write_visual_run(tmp_path / "runs", "20260610-1", ok=True)
+    baselines = tmp_path / "baselines"
+    r = runner.invoke(app, ["approve", str(run_dir), "--baselines", str(baselines)])
+    assert r.exit_code == 1  # nothing to approve (the check passed)
+    assert not (baselines / "home.png").exists()
+    # --all refreshes the passing baseline too.
+    r = runner.invoke(app, ["approve", str(run_dir), "--baselines", str(baselines), "--all"])
+    assert r.exit_code == 0
+    assert (baselines / "home.png").read_bytes() == b"PNGDATA"
+
+
+def test_approve_no_run_found(tmp_path: Path) -> None:
+    r = runner.invoke(app, ["approve", "--baselines", str(tmp_path / "b"), "--runs", str(tmp_path)])
+    assert r.exit_code == 2
+    assert "no run found" in r.output

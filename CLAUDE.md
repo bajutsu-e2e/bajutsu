@@ -47,6 +47,12 @@ gate: `make -C demos/features e2e` (requires `make deps` first). Don't block cor
   Copy [`.env.example`](.env.example) → `.env` (gitignored). The deterministic gate needs none.
 - `mypy` is **strict** and `ruff` is configured in [`pyproject.toml`](pyproject.toml) — match
   the existing style. Fullwidth/Japanese characters in strings are intentional (RUF001 is off).
+- **Always launch the web UI with `make serve`** — never `bajutsu serve` / `python -m bajutsu
+  serve` directly. `make serve` ([`scripts/serve.sh`](scripts/serve.sh)) installs the idb
+  backend's deps on demand (the idb client + `idb_companion`), which a bare `serve` skips —
+  leaving runs to fail with `no available actuator`. Pass flags through `ARGS`, e.g.
+  `make serve ARGS="--config demos/features/demo.config.yaml --port 8766"` (the demo config is
+  needed for the sample app, since the repo has no root `bajutsu.config.yaml`).
 
 ## Working in parallel without breaking each other
 

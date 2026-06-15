@@ -174,9 +174,17 @@ Assertion ::=
   | { disabled: <Selector> }
   | { selected: <Selector> }
   | { request:  <RequestMatch> }
+  | { visual:   <VisualMatch> }
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
+
+VisualMatch ::= {                  # 画面をベースライン画像とピクセル比較する
+  baseline:   string,             # --baselines 内で解決されるファイル名（既定: シナリオ隣の baselines/）
+  threshold?: number,             # 許容差分（ピクセルの%、既定 0.0 = 完全一致）
+  exclude?:   list(<ExcludeRegion>),  # 比較前にマスクする領域（ステータスバー・時計など）
+}
+ExcludeRegion ::= { x: number, y: number, w: number, h: number }   # スクリーンショットのピクセル
 
 RequestMatch ::= {              # 下記マッチフィールドの 1 つ以上
   method?:      string,
@@ -239,7 +247,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Swipe` | 形は **ちょうど 1 つ**: `{on,direction}` か `{from,to}` —— 混在・片側欠落は不可 | `scenario.py:129` |
 | `Pinch` | `scale` **> 0** | `scenario.py:103` |
 | `Wait` | `for` / `until` の **どちらか一方** | `scenario.py:190` |
-| `Assertion` | 種類（`exists` … `request`）**ちょうど 1 つ** | `scenario.py:277` |
+| `Assertion` | 種類（`exists` … `request` … `visual`）**ちょうど 1 つ** | `scenario.py:277` |
 | `TextMatch`（`value`/`label`） | `equals` / `contains` / `matches` の **ちょうど 1 つ** | `scenario.py:243` |
 | `CountMatch`（`count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario.py:258` |
 | `RequestMatch` | `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` の **1 つ以上**（`count` はマッチフィールドではない） | `scenario.py:160` |

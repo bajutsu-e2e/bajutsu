@@ -256,6 +256,40 @@ tr.nxdetail>td{background:#fafafb;padding:.15rem .7rem .5rem}
 .nxtbl td.nxv{font:.82rem/1.5 ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
 .log mark{background:#ffd54a;color:#1c1c1e;border-radius:2px;padding:0 .05rem}
 a{color:#0a6cff}
+/* Visual regression: an interactive baseline-vs-actual comparator beneath a `visual`
+   expectation, with swipe / onion / mix-blend (and the machine pixel-diff) modes. */
+tr.visrow>td{background:#fafafb}
+.vstrip{display:flex;flex-wrap:wrap;gap:.7rem;align-items:flex-start}
+.vshot{margin:0;display:flex;flex-direction:column;gap:.2rem}
+.vshot figcaption{font:600 .7rem -apple-system,system-ui,sans-serif;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.vshot img{display:block;max-width:160px;max-height:320px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.vcmp{max-width:340px}
+.vcmp-ctl{display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem;flex-wrap:wrap}
+.vcmp-modes{display:flex;gap:.2rem}
+.vcmp-mode{font:600 .74rem -apple-system,system-ui,sans-serif;color:var(--mut);background:#f1f1f3;border:1px solid var(--line);border-radius:5px;padding:.12rem .55rem;cursor:pointer}
+.vcmp-mode.active{color:#fff;background:#0a6cff;border-color:#0a6cff}
+.vcmp-range{flex:1;min-width:90px;max-width:170px;accent-color:#0a6cff}
+.vcmp-stage{position:relative;display:inline-block;line-height:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff;touch-action:none}
+.vcmp-base{display:block;width:100%;max-height:440px;object-fit:contain}
+.vcmp-over,.vcmp-diff{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;mix-blend-mode:normal}
+.vcmp-diff{display:none}
+.vcmp-handle{display:none;position:absolute;top:0;bottom:0;left:var(--p);width:2px;margin-left:-1px;background:#0a6cff;box-shadow:0 0 0 1px rgba(255,255,255,.7)}
+.vcmp-handle::after{content:"";position:absolute;top:50%;left:50%;width:1.1rem;height:1.1rem;transform:translate(-50%,-50%);border-radius:50%;background:#0a6cff;box-shadow:0 0 0 2px #fff}
+.vcmp.mode-swipe .vcmp-stage{cursor:ew-resize}
+.vcmp.mode-swipe .vcmp-over{clip-path:inset(0 calc(100% - var(--p)) 0 0)}
+.vcmp.mode-swipe .vcmp-handle{display:block}
+.vcmp.mode-blend .vcmp-stage{background:#000}
+.vcmp.mode-blend .vcmp-over{mix-blend-mode:difference}
+.vcmp.mode-diff .vcmp-over{display:none}
+.vcmp.mode-diff .vcmp-diff{display:block}
+.vcmp-legend{margin-top:.3rem;font:.74rem -apple-system,system-ui,sans-serif;color:var(--mut)}
+.vmeta{display:flex;align-items:center;gap:.6rem;margin-top:.5rem}
+.vbadge{font:600 .76rem -apple-system,system-ui,sans-serif;color:var(--mut);background:#f1f1f3;border:1px solid var(--line);border-radius:5px;padding:.1rem .4rem}
+.vbadge.miss{color:#fff;background:var(--ng);border-color:var(--ng)}
+.vapprove{font:600 .8rem -apple-system,system-ui,sans-serif;color:#fff;background:var(--ok);border:0;border-radius:6px;padding:.3rem .8rem;cursor:pointer}
+.vapprove:hover{filter:brightness(1.08)}
+.vapprove:disabled{opacity:.55;cursor:default}
+.vapprove.done{background:var(--mut)}
 /* Dark mode — flip the palette variables, then the hardcoded light backgrounds and the
    token text colors that need lightening on a dark surface. */
 @media (prefers-color-scheme: dark){
@@ -278,4 +312,8 @@ a{color:#0a6cff}
  .vt.active{background:#4a4d52}
  a{color:#5b9cff}
  .treebtn,.tvtbl td.tvid{color:#5b9cff}
+ tr.visrow>td{background:#1b1c1f}
+ .vshot img,.vcmp-stage,.vcmp-base{background:#2a2b2f}
+ .vcmp.mode-blend .vcmp-stage{background:#000}
+ .vcmp-mode{background:#2a2f3a;border-color:#34353a}
 }
