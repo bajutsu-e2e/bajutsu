@@ -134,7 +134,8 @@ Implemented and covered by tests (405 unit tests, run without a Simulator):
 - **simctl command layer**, **idb output parsers**, and the **doctor** convention score
 - **AI authoring loop** (`record`): Agent abstraction + Claude implementation + system-alert guard
 - **XCUITest codegen** (structural mapping; no AI at test time)
-- The wired CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage` / `serve`
+- The wired CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage` / `serve` / `mcp` / `lint` / `schema`
+- **MCP server** (`bajutsu mcp`): exposes `run` and `doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code agent integration
 
 Validated on a real Simulator (iPhone 17 Pro, recent iOS):
 
@@ -167,6 +168,9 @@ bajutsu record --app <name> --goal "..." [--out file]     # explore + record (Ti
 bajutsu doctor --app <name>                               # convention score for the current screen
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift   # emit a native XCUITest
 bajutsu serve  [--port 8765] [--config c.yaml]            # local web UI: run scenarios + view reports (Tier 1)
+bajutsu mcp    [--config c.yaml] [--transport stdio]      # MCP server for agent integration (needs `bajutsu[mcp]`)
+bajutsu lint   <scenario.yaml>                            # validate a scenario without running it
+bajutsu schema                                            # print the JSON Schema for editor integration
 ```
 
 > `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the idb
@@ -220,6 +224,8 @@ bajutsu/
 ├── record.py              # record loop: explore -> emit a scenario
 ├── alerts.py              # system-alert guard (vision locator)
 ├── codegen.py             # scenario -> XCUITest (Swift)
+├── lint.py                # scenario linter + JSON Schema generation
+├── mcp/                   # MCP server (tools + resources for agent integration)
 ├── dotenv.py              # minimal .env loader
 ├── _yaml.py               # YAML loader (keeps on/off as strings)
 └── cli.py                 # CLI (typer)

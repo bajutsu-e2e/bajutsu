@@ -94,6 +94,12 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0034](BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md) | Tags / labels + selective runs | Implemented | MagicPod |
 | [BE-0039](BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
 
+### Integration & automation (MCP)
+
+| ID | Item | Status |
+|---|---|---|
+| [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server.md) | MCP server | Implemented |
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *Accepted* once a decision is made.
@@ -132,7 +138,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESI
 
 | ID | Item | Status |
 |---|---|---|
-| [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server.md) | MCP server | Proposal |
 | [BE-0018](BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) | Return evidence as MCP resources | Proposal |
 
 ### Backend expansion (iOS actuators)

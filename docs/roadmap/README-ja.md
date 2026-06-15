@@ -89,6 +89,12 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0034](BE-0034-tags-selective-runs/BE-0034-tags-selective-runs-ja.md) | タグ / ラベル + 選択実行 | 実装済み | MagicPod |
 | [BE-0039](BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin-ja.md) | 自己修復は「提案＋opt-in 適用」に限定 | 実装済み | 両社 |
 
+### 統合・自動化（MCP）
+
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server-ja.md) | MCP サーバ化 | 実装済み |
+
 ## 提案
 
 検討中 — まだ決定していません。決定したら *可決済み* に昇格してください。
@@ -127,7 +133,6 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server-ja.md) | MCP サーバ化 | 提案 |
 | [BE-0018](BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources-ja.md) | 証跡を MCP リソースで返す | 提案 |
 
 ### バックエンド拡張（iOS actuator）
