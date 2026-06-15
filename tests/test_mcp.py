@@ -46,7 +46,7 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     from fastmcp import FastMCP
 
     mcp = FastMCP("test")
-    register_tools(mcp, config, tmp_path / "runs")
+    register_tools(mcp, config)
 
     monkeypatch.setattr("bajutsu.mcp.tools.make_driver", lambda actuator, udid: driver)
     monkeypatch.setattr(
@@ -81,7 +81,7 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     from bajutsu.mcp.tools import register_tools
 
     mcp = FastMCP("test")
-    register_tools(mcp, config, runs_dir)
+    register_tools(mcp, config)
 
     result = _run(mcp.call_tool("bajutsu_run", {"app": "demo", "scenario": str(scenario)}))
     text = result.content[0].text
@@ -106,7 +106,7 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     from bajutsu.mcp.tools import register_tools
 
     mcp = FastMCP("test")
-    register_tools(mcp, config, runs_dir)
+    register_tools(mcp, config)
 
     result = _run(mcp.call_tool("bajutsu_run", {"app": "demo"}))
     text = result.content[0].text
