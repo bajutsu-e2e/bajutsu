@@ -1,8 +1,7 @@
 """Scenario linter — validate YAML scenarios without running them.
 
-Reuses the existing Pydantic schema validation, component expansion, and
-data-driven expansion. Returns a list of human-readable error strings
-(empty = valid).
+Reuses the existing Pydantic schema validation (``load_scenario_file``).
+Returns a list of human-readable error strings (empty = valid).
 """
 
 from __future__ import annotations
@@ -38,12 +37,28 @@ def lint_file(path: Path) -> list[str]:
 
 
 def scenario_json_schema() -> str:
-    """Return the JSON Schema for a scenario file (a list of Scenario objects)."""
+    """Return the JSON Schema for a scenario file.
+
+    Covers both on-disk forms: a bare list of scenarios, or a
+    ``{description, scenarios}`` mapping."""
     import json
 
-    from bajutsu.scenario import ScenarioFile
+    from bajutsu.scenario import Scenario, ScenarioFile
 
-    return json.dumps(ScenarioFile.model_json_schema(), indent=2, ensure_ascii=False)
+    file_schema = ScenarioFile.model_json_schema()
+    list_schema = {"type": "array", "items": {"$ref": "#/$defs/Scenario"}}
+    defs = file_schema.pop("$defs", {})
+    # Ensure Scenario def is present (it may be nested under ScenarioFile's defs).
+    if "Scenario" not in defs:
+        scenario_schema = Scenario.model_json_schema()
+        defs.update(scenario_schema.pop("$defs", {}))
+        defs["Scenario"] = {k: v for k, v in scenario_schema.items() if k != "$defs"}
+
+    return json.dumps(
+        {"anyOf": [list_schema, file_schema], "$defs": defs},
+        indent=2,
+        ensure_ascii=False,
+    )
 
 
 def _format_validation_error(e: ValidationError | ValueError) -> list[str]:

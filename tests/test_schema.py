@@ -7,10 +7,10 @@ import json
 from bajutsu.lint import scenario_json_schema
 
 
-def test_schema_is_valid_json() -> None:
-    schema = scenario_json_schema()
-    parsed = json.loads(schema)
-    assert "$defs" in parsed or "properties" in parsed
+def test_schema_is_valid_json_with_anyof() -> None:
+    parsed = json.loads(scenario_json_schema())
+    assert "anyOf" in parsed
+    assert "$defs" in parsed
 
 
 def test_schema_references_scenario() -> None:
