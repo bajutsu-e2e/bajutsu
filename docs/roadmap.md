@@ -1,147 +1,162 @@
-# Bajutsu ロードマップ / バックログ
+**English** · [日本語](ja/roadmap.md)
 
-> 今後実装したい機能を集約する**生きたドキュメント**。思いついた機能はまず
-> [未整理アイデア置き場](#未整理アイデア置き場)に放り込み、固まってきたら下の表へ昇格させる。
+# Bajutsu roadmap / backlog
+
+> A **living document** that gathers the features we want to build next. Drop any new idea
+> into the [Unsorted ideas](#unsorted-ideas) bin first, then promote it into the tables below
+> once it firms up.
 >
-> - **現状（実装済み / 未配線）の正確な一覧**は [architecture.md#implementation-status](architecture.md#implementation-status) が真実。ここは「これから」を扱う。
-> - 設計の背景（なぜ）は [`../DESIGN.md`](../DESIGN.md)。
-> - **全体の戦略的な「形」（north star）**は [vision.md](vision.md)。ここは粒度の細かいバックログ、vision はその傘。
+> - **The accurate list of what exists today (implemented / unwired)** lives in
+>   [architecture.md#implementation-status](architecture.md#implementation-status) — that is
+>   the source of truth. This page is about what's *next*.
+> - The design background (the *why*) is in [`../DESIGN.md`](../DESIGN.md).
+> - The **strategic "shape" of the whole (the north star)** is in [vision.md](vision.md).
+>   This page is the granular backlog; vision is the umbrella over it.
 
-## 凡例
+## Legend
 
-**優先度** — `P0`（次にやる） / `P1`（やる） / `P2`（あると良い） / `P3`（アイデア段階）
-**状態** — 💡アイデア / 📋計画済み / 🚧進行中 / ❄️保留・スコープ外寄り / ✅完了（完了したら表から削除し architecture.md へ反映）
-
----
-
-## 1. 実機検証（M1 クローズアウト）
-
-決定的コアは FakeDriver で end-to-end に通り、**idb backend の subprocess 実行（`describe-all` パース・frame-center
-tap/text/swipe）と simctl 起動シーケンスは実機（iPhone 17 Pro / 最新 iOS）で検証済み**（`make -C demos/features e2e` + `e2e.yml` CI、
-[architecture.md](architecture.md#implementation-status)）。残るのは継続メンテ系の監視のみ。
-
-| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
-|---|---|---|---|---|
-| `idb_companion` バージョン監視 | idb 自体のメンテ頻度・最新ランタイム互換に追従。CI でバージョンを固定/監視 | P1 | 💡 | [DESIGN §11](../DESIGN.md) |
-| idb 要素ツリー正規化の精度 | `.searchable` 等 SwiftUI 標準要素のツリー表現が崩れないか実機で継続確認 | P1 | 💡 | [DESIGN §11](../DESIGN.md) |
-
-## 2. プラットフォーム拡張（Android / Flutter）
-
-現状はスコープを **iOS Simulator 限定**としている（[DESIGN §1](../DESIGN.md)）。driver / backend 抽象を活かして
-マルチプラットフォーム化する大きな方向性。**コアのスコープ文（DESIGN §1・README）の更新を伴う戦略的判断**。
-
-> **具体的な方針・設計（セレクタ可搬性の写像・プラットフォーム別バックエンド・展開順）は
-> [multi-platform.md](multi-platform.md) に詳述。** 下表はそのバックログ要約。
-
-| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
-|---|---|---|---|---|
-| Android backend | Android エミュレータ向け driver。adb + UIAutomator 等で操作。セレクタは `resource-id` / `content-desc` を id ファーストに対応づけ | P2 | 💡 | [DESIGN §5](../DESIGN.md)、`bajutsu/drivers/` |
-| Flutter 対応 | Flutter は独自レンダリングで OS の a11y ツリーに要素が出にくい。Flutter の semantics ツリー（`integration_test` / VM Service / Flutter Driver）経由の解決を検討 | P2 | 💡 | — |
-| 抽象のクロスプラットフォーム化 | セレクタ解決・安定度順ラダー・証跡サブシステムを OS 横断で再利用できるか設計レビュー（プラットフォーム差は抽象側で吸収） | P2 | 💡 | [DESIGN §5](../DESIGN.md)、[architecture.md](architecture.md) |
-| スコープ文の更新 | 「やること / やらないこと」とプロダクト説明を iOS 限定からマルチプラットフォームへ改訂 | P2 | 💡 | [DESIGN §1](../DESIGN.md)、[`../README.md`](../README.md) |
-
-## 3. オーサリング体験（record / GUI エディタ）
-
-AI 駆動の `record`（Tier 1）は実装済み（[recording.md](recording.md)）。ここでの狙いは **AI に依らない操作キャプチャ**と
-**シナリオの可視編集**で、§6.5 のラウンドトリップ（記録 → 編集 → 再実行）を人にとって扱いやすくすること。
-ローカル Web UI ランチャ `bajutsu serve`（シナリオ実行 + ブラウザ内レポート閲覧）はその最初の一歩として実装済み（下表）。
-
-| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
-|---|---|---|---|---|
-| ローカル Web UI（`bajutsu serve`） | シナリオ / アプリ一覧・ワンクリック実行・実行ログのストリーミング・ブラウザ内レポート表示の小さなランチャ（stdlib のみ）。CI ゲートには入らない Tier 1 の利便機能。GUI エディタ（可視編集・要素ピッカー）への第一歩 | P3 | ✅ | `bajutsu/serve.py`、[cli.md](cli.md) |
-| 操作キャプチャ record | Simulator 上の実操作（tap / type / swipe）を記録してシナリオ化（AI 非依存）。idb のイベント取得 or アクセシビリティイベント監視が要 | P2 | 💡 | [DESIGN §6.5](../DESIGN.md)、`bajutsu/record.py` |
-| シナリオ GUI エディタ | シナリオ YAML / アサーション DSL を可視編集。スクショ上で要素ピッカー → セレクタ確定、doctor スコア連携 | P3 | 💡 | [scenarios.md](scenarios.md)、[selectors.md](selectors.md) |
-| 既存 AI record との棲み分け | 「AI が探索して書く」と「人の操作を写経する」の役割分担と相互変換を明文化 | P3 | 💡 | [recording.md](recording.md) |
-| Web UI の公開ホスティング | ローカル `serve` を共有・公開サービス化。コントロールプレーン（Linux: FastAPI + Postgres + Redis + R2）と macOS ワーカープール（Orka）に分離し、認証・隔離・per-run Simulator を追加。`subprocess.Popen` をジョブキュー化する中核リファクタを伴う | P3 | 💡 | [cloud-hosting.md](cloud-hosting.md)、`bajutsu/serve.py` |
-| Web UI のセルフホスティング | 自前 Mac で稼働させる構成。段階 A（Tailscale + LaunchAgent で現 `serve` を即時稼働）と段階 B（Docker Compose: Postgres/Redis/MinIO/Authelia + 自前 Mac ワーカープール）。Simulator が GUI セッション必須な点を含む運用ガイド | P3 | 💡 | [self-hosting.md](self-hosting.md)、`bajutsu/serve.py` |
-
-## 4. 統合・自動化（MCP 化）
-
-| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
-|---|---|---|---|---|
-| MCP サーバ化 | `run` / `doctor` / `record` / `codegen` を MCP ツールとして公開し、Claude 等のエージェントから直接駆動。Tier 1（AI オーサリング）と相性が良い | P2 | 💡 | [cli.md](cli.md)、`bajutsu/agent.py` / `claude_agent.py` |
-| 証跡を MCP リソースで返す | `manifest.json` / `report.html` 等の実行結果をエージェントが読めるリソースとして公開 | P2 | 💡 | [reporting.md](reporting.md) |
-
-## 5. バックエンド拡張（iOS actuator）
-
-| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
-|---|---|---|---|---|
-| XCUITest backend | idb に次ぐ 2 つ目の actuator。安定度順ラダーの上位として登録できるようにする（抽象は既に維持済み） | P2 | 💡 | [DESIGN §5 / §3](../DESIGN.md)、`bajutsu/backends.py` |
-| マルチ backend 証跡フォールバック | 現状 actuator は単一。証跡取得だけ別 backend に逃がす能力差吸収（§9 で設計済み・未配線） | P2 | 💡 | [drivers.md](drivers.md)、[DESIGN §9](../DESIGN.md) |
-
-## 6. 自己修復トリアージ（M4）
-
-AI を「判定者」にせず、調査役に限定したまま回帰の保守コストを下げる。
-
-| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
-|---|---|---|---|---|
-| AI triage（原因要約・修正提案） | 失敗証跡を AI が読み、原因要約・修正提案を出す（人間レビュー前提）。`bajutsu triage`（ルールベース）＋ `--ai`（Claude・失敗スクショ込み）。決定的な `trace` コマンドはその下の層 | P2 | ✅ | [DESIGN §3.1 / §12](../DESIGN.md)、`bajutsu/triage.py`・`bajutsu/claude_triage.py` |
-| `update`（最小差分提案＝構造化 fix の適用） | 壊れたシナリオを全体再記録せず最小差分で更新。triage が構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）を提案 → `--apply`(dry-run diff)/`--write` で source に適用、`--rerun` で再実行検証。実機で rename・addIndex の閉ループ実証済み | P2 | ✅ | [DESIGN §6.5](../DESIGN.md)、`bajutsu triage --apply` |
-| 「テストを甘くする」防止策 | 自己修復が合否を緩めるリスクへの歯止め。fix は**必ず人間が diff レビュー＋ `--write` で明示適用**（自動適用しない）、断片不一致は安全 no-op | P2 | ✅ | [DESIGN §11](../DESIGN.md) |
-
-## 7. doctor / オンボーディング
-
-> doctor の実行可能性ゲート（CLI 群 + 起動済み Simulator の有無チェック）は**実装済み**
-> （[architecture.md](architecture.md#implementation-status)）。新しいオンボーディング系の候補が出たらここに追加する。
-
-## 8. codegen 網羅性
-
-| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
-|---|---|---|---|---|
-| 座標 swipe の生成 | 現状 `swipe { from, to }` は `// TODO` にフォールバック | P2 | 💡 | [codegen.md](codegen.md) |
-| 未対応構文の縮小 | 未知セレクタ等が `// TODO` に落ちる範囲を減らす | P3 | 💡 | [codegen.md](codegen.md) |
-
-## 9. その他・保留
-
-| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
-|---|---|---|---|---|
-| `mockServer`（外部モック） | config スキーマのみ存在。宣言的な in-protocol `mocks`（実装済み）に置き換えられており、外部サーバ方式が本当に要るか要検討 | P3 | ❄️ | [architecture.md](architecture.md#implementation-status)、`config.py` `MockServer` |
-| 証跡ルールの過剰マッチ対策 | capturePolicy の過剰マッチで成果物が肥大するのを防ぐ（`--explain` ドライラン・既定ポリシー軽量化） | P2 | 💡 | [DESIGN §11](../DESIGN.md) |
+**Priority** — `P0` (do next) / `P1` (will do) / `P2` (nice to have) / `P3` (idea stage)
+**Status** — 💡 idea / 📋 planned / 🚧 in progress / ❄️ on hold / leaning out-of-scope / ✅ done (once done, remove from the table and reflect it in architecture.md)
 
 ---
 
-## 10. 競合調査（MagicPod / Autify）由来の候補
+## 1. On-device validation (M1 close-out)
 
-MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + クラウド端末ファーム + ビジュアル系**が DNA。
-両社の旗艦機能は「**実行中に AI がロケータ/タップ位置を自動補正する**」点だが、これは Bajutsu の核心
-（[DESIGN §2](../DESIGN.md)：**AI を CI ゲートに入れない / 決定性ファースト**）と正面衝突する。
-よって「決定的にそのまま取り込めるもの」と「**ゲート外（Tier 1 / triage）に限れば取り込めるもの**」を分けて評価した。
+The deterministic core runs end-to-end on the FakeDriver, and **the idb backend's subprocess
+execution (`describe-all` parsing, frame-center tap/text/swipe) and the simctl launch sequence
+are validated on a real device (iPhone 17 Pro / latest iOS)** (`make -C demos/features e2e` +
+the `e2e.yml` CI, [architecture.md](architecture.md#implementation-status)). What remains is
+only ongoing maintenance monitoring.
 
-### 10.1 取り込む（決定的・思想に合致）
+| Feature | Summary | Priority | Status | Source / related |
+|---|---|---|---|---|
+| `idb_companion` version monitoring | Keep up with idb's own maintenance cadence and compatibility with the latest runtimes. Pin/monitor the version in CI | P1 | 💡 | [DESIGN §11](../DESIGN.md) |
+| idb element-tree normalization accuracy | Continuously confirm on a real device that the tree representation of standard SwiftUI elements (e.g. `.searchable`) does not break | P1 | 💡 | [DESIGN §11](../DESIGN.md) |
 
-| 機能 | 概要 / Bajutsu での形 | 由来 | 優先度 | 状態 | 関連 |
+## 2. Platform expansion (Android / Flutter)
+
+The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.md)). This is the
+broad direction of going multi-platform by leveraging the driver / backend abstractions. It is a
+**strategic decision that entails updating the core scope statement (DESIGN §1 and the README)**.
+
+> **The concrete approach and design (the mapping for selector portability, per-platform
+> backends, and the rollout order) are detailed in [multi-platform.md](multi-platform.md).**
+> The table below is a backlog summary of that.
+
+| Feature | Summary | Priority | Status | Source / related |
+|---|---|---|---|---|
+| Android backend | A driver for the Android emulator, driving it via adb + UIAutomator and the like. Maps `resource-id` / `content-desc` selectors id-first | P2 | 💡 | [DESIGN §5](../DESIGN.md), `bajutsu/drivers/` |
+| Flutter support | Flutter renders its own UI, so elements rarely surface in the OS a11y tree. Consider resolving through Flutter's semantics tree (`integration_test` / VM Service / Flutter Driver) | P2 | 💡 | — |
+| Cross-platform abstractions | Design-review whether selector resolution, the stability-order ladder, and the evidence subsystem can be reused across OSes (platform differences absorbed on the abstraction side) | P2 | 💡 | [DESIGN §5](../DESIGN.md), [architecture.md](architecture.md) |
+| Update the scope statement | Revise "what we do / don't do" and the product description from iOS-only to multi-platform | P2 | 💡 | [DESIGN §1](../DESIGN.md), [`../README.md`](../README.md) |
+
+## 3. Authoring experience (record / GUI editor)
+
+The AI-driven `record` (Tier 1) is implemented ([recording.md](recording.md)). The aim here is
+**non-AI action capture** and **visual editing of scenarios**, to make the §6.5 round trip
+(record → edit → re-run) easy for humans. The local web UI launcher `bajutsu serve` (run
+scenarios + view reports in the browser) is implemented as the first step toward this (table below).
+
+| Feature | Summary | Priority | Status | Source / related |
+|---|---|---|---|---|
+| Local web UI (`bajutsu serve`) | A small launcher for the scenario / app list, one-click runs, streaming run logs, and in-browser report display (stdlib only). A Tier 1 convenience that stays out of the CI gate. The first step toward a GUI editor (visual editing, element picker) | P3 | ✅ | `bajutsu/serve.py`, [cli.md](cli.md) |
+| Action-capture record | Record real operations on the Simulator (tap / type / swipe) into a scenario (AI-independent). Needs idb event capture or accessibility-event monitoring | P2 | 💡 | [DESIGN §6.5](../DESIGN.md), `bajutsu/record.py` |
+| Scenario GUI editor | Visually edit the scenario YAML / assertion DSL. Pick an element on a screenshot → settle on a selector, integrated with the doctor score | P3 | 💡 | [scenarios.md](scenarios.md), [selectors.md](selectors.md) |
+| Demarcation from the existing AI record | Document the division of roles between "AI explores and writes" and "transcribe a human's operations", plus conversion between them | P3 | 💡 | [recording.md](recording.md) |
+| Public hosting of the web UI | Turn the local `serve` into a shared, public service. Split into a control plane (Linux: FastAPI + Postgres + Redis + R2) and a macOS worker pool (Orka), adding auth, isolation, and per-run Simulators. Entails a core refactor turning `subprocess.Popen` into a job queue | P3 | 💡 | [cloud-hosting.md](cloud-hosting.md), `bajutsu/serve.py` |
+| Self-hosting of the web UI | A setup that runs on your own Mac. Stage A (Tailscale + LaunchAgent to run the current `serve` immediately) and Stage B (Docker Compose: Postgres/Redis/MinIO/Authelia + your own Mac worker pool). An operations guide covering the fact that the Simulator requires a GUI session | P3 | 💡 | [self-hosting.md](self-hosting.md), `bajutsu/serve.py` |
+
+## 4. Integration & automation (MCP)
+
+| Feature | Summary | Priority | Status | Source / related |
+|---|---|---|---|---|
+| MCP server | Expose `run` / `doctor` / `record` / `codegen` as MCP tools so agents like Claude can drive them directly. A good fit with Tier 1 (AI authoring) | P2 | 💡 | [cli.md](cli.md), `bajutsu/agent.py` / `claude_agent.py` |
+| Return evidence as MCP resources | Expose run results such as `manifest.json` / `report.html` as resources an agent can read | P2 | 💡 | [reporting.md](reporting.md) |
+
+## 5. Backend expansion (iOS actuators)
+
+| Feature | Summary | Priority | Status | Source / related |
+|---|---|---|---|---|
+| XCUITest backend | A second actuator after idb. Make it registerable at the top of the stability-order ladder (the abstraction is already maintained) | P2 | 💡 | [DESIGN §5 / §3](../DESIGN.md), `bajutsu/backends.py` |
+| Multi-backend evidence fallback | The actuator is currently single. Absorb capability gaps by routing only evidence capture to a different backend (designed in §9, not yet wired) | P2 | 💡 | [drivers.md](drivers.md), [DESIGN §9](../DESIGN.md) |
+
+## 6. Self-healing triage (M4)
+
+Lower the maintenance cost of regressions while keeping AI out of the judge role and limited to
+an investigator.
+
+| Feature | Summary | Priority | Status | Source / related |
+|---|---|---|---|---|
+| AI triage (root-cause summary, fix suggestions) | AI reads the failure evidence and produces a root-cause summary and fix suggestions (human review assumed). `bajutsu triage` (rule-based) plus `--ai` (Claude, including the failure screenshot). The deterministic `trace` command is the layer beneath it | P2 | ✅ | [DESIGN §3.1 / §12](../DESIGN.md), `bajutsu/triage.py` · `bajutsu/claude_triage.py` |
+| `update` (minimal-diff proposals = applying structured fixes) | Update a broken scenario with a minimal diff instead of re-recording the whole thing. Triage proposes a structured fix (`renameId`/`addIndex`/`raiseTimeout`) → `--apply` (dry-run diff) / `--write` applies it to the source, `--rerun` verifies by re-running. The rename and addIndex closed loops are proven on a real device | P2 | ✅ | [DESIGN §6.5](../DESIGN.md), `bajutsu triage --apply` |
+| Guards against "making tests laxer" | A brake against the risk of self-healing loosening pass/fail. A fix is **always reviewed by a human as a diff and explicitly applied with `--write`** (never auto-applied); a fragment mismatch is a safe no-op | P2 | ✅ | [DESIGN §11](../DESIGN.md) |
+
+## 7. doctor / onboarding
+
+> The doctor feasibility gate (the CLI suite + a check for a booted Simulator) is
+> **implemented** ([architecture.md](architecture.md#implementation-status)). Add new
+> onboarding candidates here as they come up.
+
+## 8. codegen coverage
+
+| Feature | Summary | Priority | Status | Source / related |
+|---|---|---|---|---|
+| Coordinate swipe generation | `swipe { from, to }` currently falls back to a `// TODO` | P2 | 💡 | [codegen.md](codegen.md) |
+| Shrink unsupported syntax | Reduce the range of cases (e.g. unknown selectors) that drop to a `// TODO` | P3 | 💡 | [codegen.md](codegen.md) |
+
+## 9. Miscellaneous / on hold
+
+| Feature | Summary | Priority | Status | Source / related |
+|---|---|---|---|---|
+| `mockServer` (external mock) | Only the config schema exists. It has been superseded by declarative in-protocol `mocks` (implemented), so whether an external-server approach is really needed is open | P3 | ❄️ | [architecture.md](architecture.md#implementation-status), `config.py` `MockServer` |
+| Guard against over-matching evidence rules | Prevent artifacts from bloating due to over-matching capturePolicy (an `--explain` dry run, a lighter default policy) | P2 | 💡 | [DESIGN §11](../DESIGN.md) |
+
+---
+
+## 10. Candidates from competitive research (MagicPod / Autify)
+
+MagicPod and Autify have **AI self-healing + no-code + cloud device farm + visual testing** in
+their DNA. Both companies' flagship feature is "**AI auto-corrects locators / tap positions
+during a run**", but that collides head-on with Bajutsu's core ([DESIGN §2](../DESIGN.md):
+**keep AI out of the CI gate / determinism first**). So we evaluated them split into "things we
+can adopt deterministically as-is" and "**things we can adopt only outside the gate (Tier 1 /
+triage)**".
+
+### 10.1 Adopt (deterministic, aligned with the philosophy)
+
+| Feature | Summary / shape in Bajutsu | Origin | Priority | Status | Related |
 |---|---|---|---|---|---|
-| ビジュアル回帰アサーション | スクショをベースラインと差分比較する**新アサーション種別**。除外領域・per-device / per-locale ベースライン対応。AI ではなく決定的な機械チェックなので「機械アサーションのみで合否」に合致 | 両社 | P1 | 💡 | [DESIGN §6.4](../DESIGN.md)、[evidence.md](evidence.md) |
-| パラメータ化シェアドステップ | `use` ステップで**引数付きの再利用部品（component）**を定義・呼び出し、`${params.*}` を展開（`expand_components`）。`setup` プレリュード（引数なし）と併用可。ログイン等の共通手順を DRY 化 | MagicPod | P1 | ✅ | `bajutsu/scenario.py`（`use`/`expand_components`）、[scenarios.md](scenarios.md) |
-| データ駆動シナリオ | `data`（inline）/ `dataFile`（CSV）で 1 シナリオを複数行ぶん反復。`${row.*}` を各行で置換（`expand_data`）。多言語・境界値テストに有効 | MagicPod | P2 | ✅ | `bajutsu/scenario.py`（`expand_data`）、[scenarios.md](scenarios.md) |
-| シークレット変数 | `${secrets.X}` を環境変数から解決して入力に使い、その**実値を証跡で自動マスク**（既存 `redact` を入力値まで拡張）。config の `secrets:` で宣言 | MagicPod | P2 | ✅ | `bajutsu/interp.py`・`bajutsu/redaction.py`、[evidence.md](evidence.md) |
-| シナリオ変数 + 軽い制御フロー | `${...}` 補間プリミティブ（`interp.py`、params/row/secrets を共通処理）は実装済み。残りは **UI 値の capture → 後続で再利用（`vars.*`）** と、決定性を崩さない範囲の条件分岐 / ループ | MagicPod | P2 | 🚧 | `bajutsu/interp.py`、[scenarios.md](scenarios.md) |
-| タグ / ラベル + 選択実行 | シナリオ `tags` を `--tag`/`--exclude` でサブセット実行（include/exclude、exclude 優先・`select_scenarios`）。CI の段階実行に有効 | MagicPod | P2 | ✅ | `bajutsu/scenario.py`（`select_scenarios`）、[cli.md](cli.md) |
-| デバイス制御プリミティブ拡張 | **位置情報（`setLocation`）と push 通知（`push`）は実装済み**。残りは タイムゾーン / クリップボード / 前面・背面遷移 / シェイク など（`rotate`/`swipe`/`pinch` も既存） | MagicPod | P2 | 💡 | [DESIGN §6.2](../DESIGN.md)、`bajutsu/scenario.py` |
-| ユーティリティステップ | HTTP リクエスト発行 / OTP・2FA コード生成 / メール受信を API で検証。実アプリのログインフロー自動化に必要 | MagicPod | P3 | 💡 | [scenarios.md](scenarios.md) |
-| WebView / ハイブリッド対応 | 現状はネイティブ a11y ツリー前提。WebView 内 DOM への橋渡し | MagicPod | P3 | 💡 | [drivers.md](drivers.md) |
+| Visual-regression assertions | A **new assertion type** that diffs a screenshot against a baseline. Supports exclusion regions and per-device / per-locale baselines. Because it is a deterministic machine check rather than AI, it fits "pass/fail by machine assertions only" | Both | P1 | 💡 | [DESIGN §6.4](../DESIGN.md), [evidence.md](evidence.md) |
+| Parameterized shared steps | Define and call **reusable components with arguments** via the `use` step, expanding `${params.*}` (`expand_components`). Usable alongside the `setup` prelude (no args). DRYs up common steps like login | MagicPod | P1 | ✅ | `bajutsu/scenario.py` (`use`/`expand_components`), [scenarios.md](scenarios.md) |
+| Data-driven scenarios | Repeat one scenario over multiple rows via `data` (inline) / `dataFile` (CSV). Substitute `${row.*}` per row (`expand_data`). Effective for multilingual / boundary-value testing | MagicPod | P2 | ✅ | `bajutsu/scenario.py` (`expand_data`), [scenarios.md](scenarios.md) |
+| Secret variables | Resolve `${secrets.X}` from environment variables for use in input, and **automatically mask their real values in evidence** (extending the existing `redact` down to input values). Declared in config under `secrets:` | MagicPod | P2 | ✅ | `bajutsu/interp.py` · `bajutsu/redaction.py`, [evidence.md](evidence.md) |
+| Scenario variables + light control flow | The `${...}` interpolation primitive (`interp.py`, handling params/row/secrets uniformly) is implemented. What remains is **capturing UI values → reusing them later (`vars.*`)** and conditionals / loops within bounds that don't break determinism | MagicPod | P2 | 🚧 | `bajutsu/interp.py`, [scenarios.md](scenarios.md) |
+| Tags / labels + selective runs | Run a subset of scenarios by `tags` with `--tag`/`--exclude` (include/exclude, exclude wins, `select_scenarios`). Effective for staged CI runs | MagicPod | P2 | ✅ | `bajutsu/scenario.py` (`select_scenarios`), [cli.md](cli.md) |
+| Extended device-control primitives | **Location (`setLocation`) and push notifications (`push`) are implemented.** What remains is timezone / clipboard / foreground-background transitions / shake, etc. (`rotate`/`swipe`/`pinch` already exist) | MagicPod | P2 | 💡 | [DESIGN §6.2](../DESIGN.md), `bajutsu/scenario.py` |
+| Utility steps | Issue HTTP requests / generate OTP / 2FA codes / verify received email via APIs. Needed for automating real-app login flows | MagicPod | P3 | 💡 | [scenarios.md](scenarios.md) |
+| WebView / hybrid support | Currently assumes a native a11y tree. Bridge into the DOM inside a WebView | MagicPod | P3 | 💡 | [drivers.md](drivers.md) |
 
-### 10.2 ゲート外限定で取り込む（Tier 1 / triage のみ・CI ゲートには入れない）
+### 10.2 Adopt outside the gate only (Tier 1 / triage only, never in the CI gate)
 
-| 機能 | 概要 / Bajutsu での形 | 由来 | 優先度 | 状態 | 関連 |
+| Feature | Summary / shape in Bajutsu | Origin | Priority | Status | Related |
 |---|---|---|---|---|---|
-| 自律クロール探索（App Explorer 風） | AI が**自律的に画面遷移をクロールして画面マップを生成 + クラッシュ/到達不能を報告**。Tier 1 の `record` を強化。「AI = 探索者」に合致 | Autify VAX | P2 | 💡 | [recording.md](recording.md)、[DESIGN §3.1](../DESIGN.md) |
-| 自己修復は「提案＋opt-in 適用」に限定 | 両社は実行中に自動補正。Bajutsu は §6 の **triage が最小差分を提案 → 人間が diff レビュー → `--write` で明示適用**に留める（実行中の暗黙補正はしない＝「テストを甘くする」防止・[DESIGN §11](../DESIGN.md)） | 両社 | P2 | ✅ | [#6-自己修復トリアージm4](#6-自己修復トリアージm4) |
-| AI アサーション | 自然言語の期待を AI が判定。**CI ゲートには絶対入れない**（決定性が崩れる）。record / triage の下書き支援に限る | MagicPod | P3 | ❄️ | [DESIGN §2 / §3.1](../DESIGN.md) |
+| Autonomous crawl exploration (App Explorer style) | AI **autonomously crawls screen transitions to generate a screen map + reports crashes / unreachable states**. Strengthens Tier 1 `record`. Fits "AI = explorer" | Autify VAX | P2 | 💡 | [recording.md](recording.md), [DESIGN §3.1](../DESIGN.md) |
+| Self-healing limited to "propose + opt-in apply" | Both companies auto-correct during a run. Bajutsu stays with §6's **triage proposes a minimal diff → human reviews the diff → explicitly applies with `--write`** (no implicit in-run correction = the "making tests laxer" guard, [DESIGN §11](../DESIGN.md)) | Both | P2 | ✅ | [§6](#6-self-healing-triage-m4) |
+| AI assertions | AI judges a natural-language expectation. **Never put into the CI gate** (it breaks determinism). Limited to draft assistance in record / triage | MagicPod | P3 | ❄️ | [DESIGN §2 / §3.1](../DESIGN.md) |
 
-### 10.3 取り込まない（既に充足 / スコープ外）
+### 10.3 Not adopting (already covered / out of scope)
 
-- **変更履歴・バージョン管理** — シナリオは YAML で git 管理されるため既に充足。
-- **クラウド端末ファーム / 実機・クラウド実行** — iOS Simulator 限定の現スコープ外（[DESIGN §1](../DESIGN.md)）。マルチプラットフォームは別途 [§2](#2-プラットフォーム拡張android--flutter)。
-- **ステップ毎スクショ / エラー時 UI ツリー / 端末ログ** — 証跡サブシステム（capturePolicy + `result:error` 安全網）で充足済み。
-- **NL→テスト生成（Autopilot 相当）** — 既存 `record` + [§3](#3-オーサリング体験record--gui-エディタ) と重複。
-- **スケジューリング / Slack / TestRail 連携** — CI・通知レイヤの領域。優先度低（必要なら別途）。
-- **失敗テストの自動リトライ** — 決定性ファースト（固定 sleep 排除・条件待機）と緊張。flaky 隠蔽になり得るため、入れるなら quarantine 用途に限定して要検討。
+- **Change history / version management** — already covered, since scenarios are YAML under git.
+- **Cloud device farm / real-device / cloud execution** — out of the current iOS-Simulator-only scope ([DESIGN §1](../DESIGN.md)). Multi-platform is tracked separately in [§2](#2-platform-expansion-android--flutter).
+- **Per-step screenshots / UI tree on error / device logs** — already covered by the evidence subsystem (capturePolicy + the `result:error` safety net).
+- **NL→test generation (Autopilot equivalent)** — overlaps with the existing `record` + [§3](#3-authoring-experience-record--gui-editor).
+- **Scheduling / Slack / TestRail integration** — the domain of the CI / notification layer. Low priority (separately, if needed).
+- **Automatic retry of failed tests** — in tension with determinism-first (no fixed sleeps, condition waits). It can hide flakiness, so if adopted at all it should be limited to quarantine use and needs careful consideration.
 
 ---
 
-## 未整理アイデア置き場
+## Unsorted ideas
 
-> 形になっていない思いつきはここへ。後で上の表に昇格させる。
+> Drop half-formed thoughts here. Promote them into the tables above later.
 
 -

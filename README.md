@@ -31,7 +31,8 @@ The guiding idea is to keep the LLM out of the CI gate:
   deterministic runner for CI regression.
 
 Design rationale (in Japanese) lives in [`DESIGN.md`](DESIGN.md). Implementation-grounded,
-per-feature documentation (in Japanese) lives in [`docs/`](docs/README.md).
+per-feature documentation lives in [`docs/`](docs/README.md) — English, with a Japanese mirror
+under [`docs/ja/`](docs/ja/README.md).
 
 ## Core principles
 
@@ -225,29 +226,9 @@ bajutsu/
 
 ## Roadmap
 
-- **M1 — done (validated on-device).** Deterministic runner: env (simctl) + drivers +
-  scenarios + assertions + lightweight evidence + manifest + per-app config + `run` / `doctor`.
-  Done criteria met on a real device: the same id-first scenario
-  (`demos/features/app/scenarios/cross_backend.yaml`) passes deterministically on idb, with the target app
-  switchable via config alone. idb resolves id-first selectors directly from the native
-  `AXUniqueId` and actuates by frame-center coordinates.
-- **M2 — mostly done.** The AI loop (`record`) + `capturePolicy` evidence rules + `video` /
-  `deviceLog` + the reporter (JUnit/HTML). *(Done. Idempotent normalization / provenance
-  comments are still light.)*
-- **M3 — done.** XCUITest codegen ✅, app traces (`appTrace` / os_signpost) ✅, redaction
-  applied to captured evidence ✅, network **observation** (the in-app collector + `request`
-  assertions) ✅, and **deterministic mocks** (scenario `mocks` → offline in-protocol stubs) ✅ —
-  all validated on-device. **CI** ✅: `ci.yml` runs ruff + mypy + pytest on Linux (py3.13);
-  `e2e.yml` runs the idb smoke scenario *and* the codegen→XCUITest path
-  (`make -C demos/features ui-test`) on a macOS Simulator.
-- **M4 — implemented.** Self-healing triage: `bajutsu triage` assembles a failed run's context
-  and diagnoses it (root cause + suggested fixes; **advisory** — never the pass/fail judge).
-  Diagnosis runs through one of two agents behind the same `TriageAgent` protocol: the default
-  rule-based `HeuristicTriageAgent` (renamed-id "did you mean", timing / assertion categories) or
-  `triage --ai` (a Claude-backed agent that also reads the failure **screenshot**). An agent can
-  propose a **structured fix** — `renameId`, `addIndex` (disambiguate an ambiguous match), or
-  `raiseTimeout` — which `--apply <file>` shows as a dry-run diff and `--write` applies to the
-  scenario source; `--rerun` then re-runs the patched scenario to confirm it passes. The boundary
-  holds: a fix is only applied when the human opts in after reviewing the diff. Validated on a
-  real Simulator end-to-end: a renamed-id and an ambiguous-match failure each diagnose → apply →
-  re-run to green; a timing failure proposes a `raiseTimeout` against the real API.
+Milestones M1–M4 are complete — the deterministic runner, the AI `record` loop + `capturePolicy`
+evidence rules, XCUITest codegen + CI, and self-healing triage — all validated on a real
+Simulator (see [Status](#status) above for the implemented surface).
+
+The forward-looking, prioritized backlog (what we want to build next) lives in
+[`docs/roadmap.md`](docs/roadmap.md).

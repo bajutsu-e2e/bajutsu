@@ -82,10 +82,10 @@ ever softening the gate.
 - **GUI editor & non-AI action capture** ([roadmap](roadmap.md), §3) —
   visually edit scenarios, pick selectors on a screenshot, and capture real taps/types into a
   scenario without an LLM. `bajutsu serve` is the first step.
-- **Visual-regression assertions** ([roadmap §10.1](roadmap.md#101-取り込む決定的思想に合致)) — a new
+- **Visual-regression assertions** ([roadmap §10.1](roadmap.md#101-adopt-deterministic-aligned-with-the-philosophy)) — a new
   *deterministic* assertion type (baseline diff). It fits precisely because it is machine-checked,
   not AI-judged.
-- **Self-healing triage** ([roadmap §6](roadmap.md#6-自己修復トリアージm4)) — already shipped: AI reads
+- **Self-healing triage** ([roadmap §6](roadmap.md#6-self-healing-triage-m4)) — already shipped: AI reads
   failure evidence and proposes a **minimal diff**, which a human reviews and applies with
   `--write`. The guardrail — *never auto-soften a committed test* — is what keeps this inside the
   directives.
@@ -123,7 +123,7 @@ the lowest cost — are:
    and exercises the rich end of the capability model (native network/video/semantic).
 2. **MCP server** ([roadmap](roadmap.md), §4). Low surface area, high leverage for
    the Tier-1 authoring loop, and it does not touch the gate.
-3. **Visual-regression assertions** ([roadmap §10.1](roadmap.md#101-取り込む決定的思想に合致)). A
+3. **Visual-regression assertions** ([roadmap §10.1](roadmap.md#101-adopt-deterministic-aligned-with-the-philosophy)). A
    deterministic capability competitors gate behind AI — a differentiator that *strengthens* the
    directives instead of straining them.
 

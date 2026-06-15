@@ -1,0 +1,149 @@
+[English](../roadmap.md) · **日本語**
+
+# Bajutsu ロードマップ / バックログ
+
+> 今後実装したい機能を集約する**生きたドキュメント**。思いついた機能はまず
+> [未整理アイデア置き場](#未整理アイデア置き場)に放り込み、固まってきたら下の表へ昇格させる。
+>
+> - **現状（実装済み / 未配線）の正確な一覧**は [architecture.md#実装状況](architecture.md#実装状況) が真実。ここは「これから」を扱う。
+> - 設計の背景（なぜ）は [`../../DESIGN.md`](../../DESIGN.md)。
+> - **全体の戦略的な「形」（north star）**は [vision.md](vision.md)。ここは粒度の細かいバックログ、vision はその傘。
+
+## 凡例
+
+**優先度** — `P0`（次にやる） / `P1`（やる） / `P2`（あると良い） / `P3`（アイデア段階）
+**状態** — 💡アイデア / 📋計画済み / 🚧進行中 / ❄️保留・スコープ外寄り / ✅完了（完了したら表から削除し architecture.md へ反映）
+
+---
+
+## 1. 実機検証（M1 クローズアウト）
+
+決定的コアは FakeDriver で end-to-end に通り、**idb backend の subprocess 実行（`describe-all` パース・frame-center
+tap/text/swipe）と simctl 起動シーケンスは実機（iPhone 17 Pro / 最新 iOS）で検証済み**（`make -C demos/features e2e` + `e2e.yml` CI、
+[architecture.md](architecture.md#実装状況)）。残るのは継続メンテ系の監視のみ。
+
+| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
+|---|---|---|---|---|
+| `idb_companion` バージョン監視 | idb 自体のメンテ頻度・最新ランタイム互換に追従。CI でバージョンを固定/監視 | P1 | 💡 | [DESIGN §11](../../DESIGN.md) |
+| idb 要素ツリー正規化の精度 | `.searchable` 等 SwiftUI 標準要素のツリー表現が崩れないか実機で継続確認 | P1 | 💡 | [DESIGN §11](../../DESIGN.md) |
+
+## 2. プラットフォーム拡張（Android / Flutter）
+
+現状はスコープを **iOS Simulator 限定**としている（[DESIGN §1](../../DESIGN.md)）。driver / backend 抽象を活かして
+マルチプラットフォーム化する大きな方向性。**コアのスコープ文（DESIGN §1・README）の更新を伴う戦略的判断**。
+
+> **具体的な方針・設計（セレクタ可搬性の写像・プラットフォーム別バックエンド・展開順）は
+> [multi-platform.md](multi-platform.md) に詳述。** 下表はそのバックログ要約。
+
+| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
+|---|---|---|---|---|
+| Android backend | Android エミュレータ向け driver。adb + UIAutomator 等で操作。セレクタは `resource-id` / `content-desc` を id ファーストに対応づけ | P2 | 💡 | [DESIGN §5](../../DESIGN.md)、`bajutsu/drivers/` |
+| Flutter 対応 | Flutter は独自レンダリングで OS の a11y ツリーに要素が出にくい。Flutter の semantics ツリー（`integration_test` / VM Service / Flutter Driver）経由の解決を検討 | P2 | 💡 | — |
+| 抽象のクロスプラットフォーム化 | セレクタ解決・安定度順ラダー・証跡サブシステムを OS 横断で再利用できるか設計レビュー（プラットフォーム差は抽象側で吸収） | P2 | 💡 | [DESIGN §5](../../DESIGN.md)、[architecture.md](architecture.md) |
+| スコープ文の更新 | 「やること / やらないこと」とプロダクト説明を iOS 限定からマルチプラットフォームへ改訂 | P2 | 💡 | [DESIGN §1](../../DESIGN.md)、[`../../README.md`](../../README.md) |
+
+## 3. オーサリング体験（record / GUI エディタ）
+
+AI 駆動の `record`（Tier 1）は実装済み（[recording.md](recording.md)）。ここでの狙いは **AI に依らない操作キャプチャ**と
+**シナリオの可視編集**で、§6.5 のラウンドトリップ（記録 → 編集 → 再実行）を人にとって扱いやすくすること。
+ローカル Web UI ランチャ `bajutsu serve`（シナリオ実行 + ブラウザ内レポート閲覧）はその最初の一歩として実装済み（下表）。
+
+| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
+|---|---|---|---|---|
+| ローカル Web UI（`bajutsu serve`） | シナリオ / アプリ一覧・ワンクリック実行・実行ログのストリーミング・ブラウザ内レポート表示の小さなランチャ（stdlib のみ）。CI ゲートには入らない Tier 1 の利便機能。GUI エディタ（可視編集・要素ピッカー）への第一歩 | P3 | ✅ | `bajutsu/serve.py`、[cli.md](cli.md) |
+| 操作キャプチャ record | Simulator 上の実操作（tap / type / swipe）を記録してシナリオ化（AI 非依存）。idb のイベント取得 or アクセシビリティイベント監視が要 | P2 | 💡 | [DESIGN §6.5](../../DESIGN.md)、`bajutsu/record.py` |
+| シナリオ GUI エディタ | シナリオ YAML / アサーション DSL を可視編集。スクショ上で要素ピッカー → セレクタ確定、doctor スコア連携 | P3 | 💡 | [scenarios.md](scenarios.md)、[selectors.md](selectors.md) |
+| 既存 AI record との棲み分け | 「AI が探索して書く」と「人の操作を写経する」の役割分担と相互変換を明文化 | P3 | 💡 | [recording.md](recording.md) |
+| Web UI の公開ホスティング | ローカル `serve` を共有・公開サービス化。コントロールプレーン（Linux: FastAPI + Postgres + Redis + R2）と macOS ワーカープール（Orka）に分離し、認証・隔離・per-run Simulator を追加。`subprocess.Popen` をジョブキュー化する中核リファクタを伴う | P3 | 💡 | [cloud-hosting.md](cloud-hosting.md)、`bajutsu/serve.py` |
+| Web UI のセルフホスティング | 自前 Mac で稼働させる構成。段階 A（Tailscale + LaunchAgent で現 `serve` を即時稼働）と段階 B（Docker Compose: Postgres/Redis/MinIO/Authelia + 自前 Mac ワーカープール）。Simulator が GUI セッション必須な点を含む運用ガイド | P3 | 💡 | [self-hosting.md](self-hosting.md)、`bajutsu/serve.py` |
+
+## 4. 統合・自動化（MCP 化）
+
+| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
+|---|---|---|---|---|
+| MCP サーバ化 | `run` / `doctor` / `record` / `codegen` を MCP ツールとして公開し、Claude 等のエージェントから直接駆動。Tier 1（AI オーサリング）と相性が良い | P2 | 💡 | [cli.md](cli.md)、`bajutsu/agent.py` / `claude_agent.py` |
+| 証跡を MCP リソースで返す | `manifest.json` / `report.html` 等の実行結果をエージェントが読めるリソースとして公開 | P2 | 💡 | [reporting.md](reporting.md) |
+
+## 5. バックエンド拡張（iOS actuator）
+
+| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
+|---|---|---|---|---|
+| XCUITest backend | idb に次ぐ 2 つ目の actuator。安定度順ラダーの上位として登録できるようにする（抽象は既に維持済み） | P2 | 💡 | [DESIGN §5 / §3](../../DESIGN.md)、`bajutsu/backends.py` |
+| マルチ backend 証跡フォールバック | 現状 actuator は単一。証跡取得だけ別 backend に逃がす能力差吸収（§9 で設計済み・未配線） | P2 | 💡 | [drivers.md](drivers.md)、[DESIGN §9](../../DESIGN.md) |
+
+## 6. 自己修復トリアージ（M4）
+
+AI を「判定者」にせず、調査役に限定したまま回帰の保守コストを下げる。
+
+| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
+|---|---|---|---|---|
+| AI triage（原因要約・修正提案） | 失敗証跡を AI が読み、原因要約・修正提案を出す（人間レビュー前提）。`bajutsu triage`（ルールベース）＋ `--ai`（Claude・失敗スクショ込み）。決定的な `trace` コマンドはその下の層 | P2 | ✅ | [DESIGN §3.1 / §12](../../DESIGN.md)、`bajutsu/triage.py`・`bajutsu/claude_triage.py` |
+| `update`（最小差分提案＝構造化 fix の適用） | 壊れたシナリオを全体再記録せず最小差分で更新。triage が構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）を提案 → `--apply`(dry-run diff)/`--write` で source に適用、`--rerun` で再実行検証。実機で rename・addIndex の閉ループ実証済み | P2 | ✅ | [DESIGN §6.5](../../DESIGN.md)、`bajutsu triage --apply` |
+| 「テストを甘くする」防止策 | 自己修復が合否を緩めるリスクへの歯止め。fix は**必ず人間が diff レビュー＋ `--write` で明示適用**（自動適用しない）、断片不一致は安全 no-op | P2 | ✅ | [DESIGN §11](../../DESIGN.md) |
+
+## 7. doctor / オンボーディング
+
+> doctor の実行可能性ゲート（CLI 群 + 起動済み Simulator の有無チェック）は**実装済み**
+> （[architecture.md](architecture.md#実装状況)）。新しいオンボーディング系の候補が出たらここに追加する。
+
+## 8. codegen 網羅性
+
+| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
+|---|---|---|---|---|
+| 座標 swipe の生成 | 現状 `swipe { from, to }` は `// TODO` にフォールバック | P2 | 💡 | [codegen.md](codegen.md) |
+| 未対応構文の縮小 | 未知セレクタ等が `// TODO` に落ちる範囲を減らす | P3 | 💡 | [codegen.md](codegen.md) |
+
+## 9. その他・保留
+
+| 機能 | 概要 | 優先度 | 状態 | 出典 / 関連 |
+|---|---|---|---|---|
+| `mockServer`（外部モック） | config スキーマのみ存在。宣言的な in-protocol `mocks`（実装済み）に置き換えられており、外部サーバ方式が本当に要るか要検討 | P3 | ❄️ | [architecture.md](architecture.md#実装状況)、`config.py` `MockServer` |
+| 証跡ルールの過剰マッチ対策 | capturePolicy の過剰マッチで成果物が肥大するのを防ぐ（`--explain` ドライラン・既定ポリシー軽量化） | P2 | 💡 | [DESIGN §11](../../DESIGN.md) |
+
+---
+
+## 10. 競合調査（MagicPod / Autify）由来の候補
+
+MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + クラウド端末ファーム + ビジュアル系**が DNA。
+両社の旗艦機能は「**実行中に AI がロケータ/タップ位置を自動補正する**」点だが、これは Bajutsu の核心
+（[DESIGN §2](../../DESIGN.md)：**AI を CI ゲートに入れない / 決定性ファースト**）と正面衝突する。
+よって「決定的にそのまま取り込めるもの」と「**ゲート外（Tier 1 / triage）に限れば取り込めるもの**」を分けて評価した。
+
+### 10.1 取り込む（決定的・思想に合致）
+
+| 機能 | 概要 / Bajutsu での形 | 由来 | 優先度 | 状態 | 関連 |
+|---|---|---|---|---|---|
+| ビジュアル回帰アサーション | スクショをベースラインと差分比較する**新アサーション種別**。除外領域・per-device / per-locale ベースライン対応。AI ではなく決定的な機械チェックなので「機械アサーションのみで合否」に合致 | 両社 | P1 | 💡 | [DESIGN §6.4](../../DESIGN.md)、[evidence.md](evidence.md) |
+| パラメータ化シェアドステップ | `use` ステップで**引数付きの再利用部品（component）**を定義・呼び出し、`${params.*}` を展開（`expand_components`）。`setup` プレリュード（引数なし）と併用可。ログイン等の共通手順を DRY 化 | MagicPod | P1 | ✅ | `bajutsu/scenario.py`（`use`/`expand_components`）、[scenarios.md](scenarios.md) |
+| データ駆動シナリオ | `data`（inline）/ `dataFile`（CSV）で 1 シナリオを複数行ぶん反復。`${row.*}` を各行で置換（`expand_data`）。多言語・境界値テストに有効 | MagicPod | P2 | ✅ | `bajutsu/scenario.py`（`expand_data`）、[scenarios.md](scenarios.md) |
+| シークレット変数 | `${secrets.X}` を環境変数から解決して入力に使い、その**実値を証跡で自動マスク**（既存 `redact` を入力値まで拡張）。config の `secrets:` で宣言 | MagicPod | P2 | ✅ | `bajutsu/interp.py`・`bajutsu/redaction.py`、[evidence.md](evidence.md) |
+| シナリオ変数 + 軽い制御フロー | `${...}` 補間プリミティブ（`interp.py`、params/row/secrets を共通処理）は実装済み。残りは **UI 値の capture → 後続で再利用（`vars.*`）** と、決定性を崩さない範囲の条件分岐 / ループ | MagicPod | P2 | 🚧 | `bajutsu/interp.py`、[scenarios.md](scenarios.md) |
+| タグ / ラベル + 選択実行 | シナリオ `tags` を `--tag`/`--exclude` でサブセット実行（include/exclude、exclude 優先・`select_scenarios`）。CI の段階実行に有効 | MagicPod | P2 | ✅ | `bajutsu/scenario.py`（`select_scenarios`）、[cli.md](cli.md) |
+| デバイス制御プリミティブ拡張 | **位置情報（`setLocation`）と push 通知（`push`）は実装済み**。残りは タイムゾーン / クリップボード / 前面・背面遷移 / シェイク など（`rotate`/`swipe`/`pinch` も既存） | MagicPod | P2 | 💡 | [DESIGN §6.2](../../DESIGN.md)、`bajutsu/scenario.py` |
+| ユーティリティステップ | HTTP リクエスト発行 / OTP・2FA コード生成 / メール受信を API で検証。実アプリのログインフロー自動化に必要 | MagicPod | P3 | 💡 | [scenarios.md](scenarios.md) |
+| WebView / ハイブリッド対応 | 現状はネイティブ a11y ツリー前提。WebView 内 DOM への橋渡し | MagicPod | P3 | 💡 | [drivers.md](drivers.md) |
+
+### 10.2 ゲート外限定で取り込む（Tier 1 / triage のみ・CI ゲートには入れない）
+
+| 機能 | 概要 / Bajutsu での形 | 由来 | 優先度 | 状態 | 関連 |
+|---|---|---|---|---|---|
+| 自律クロール探索（App Explorer 風） | AI が**自律的に画面遷移をクロールして画面マップを生成 + クラッシュ/到達不能を報告**。Tier 1 の `record` を強化。「AI = 探索者」に合致 | Autify VAX | P2 | 💡 | [recording.md](recording.md)、[DESIGN §3.1](../../DESIGN.md) |
+| 自己修復は「提案＋opt-in 適用」に限定 | 両社は実行中に自動補正。Bajutsu は §6 の **triage が最小差分を提案 → 人間が diff レビュー → `--write` で明示適用**に留める（実行中の暗黙補正はしない＝「テストを甘くする」防止・[DESIGN §11](../../DESIGN.md)） | 両社 | P2 | ✅ | [#6-自己修復トリアージm4](#6-自己修復トリアージm4) |
+| AI アサーション | 自然言語の期待を AI が判定。**CI ゲートには絶対入れない**（決定性が崩れる）。record / triage の下書き支援に限る | MagicPod | P3 | ❄️ | [DESIGN §2 / §3.1](../../DESIGN.md) |
+
+### 10.3 取り込まない（既に充足 / スコープ外）
+
+- **変更履歴・バージョン管理** — シナリオは YAML で git 管理されるため既に充足。
+- **クラウド端末ファーム / 実機・クラウド実行** — iOS Simulator 限定の現スコープ外（[DESIGN §1](../../DESIGN.md)）。マルチプラットフォームは別途 [§2](#2-プラットフォーム拡張android--flutter)。
+- **ステップ毎スクショ / エラー時 UI ツリー / 端末ログ** — 証跡サブシステム（capturePolicy + `result:error` 安全網）で充足済み。
+- **NL→テスト生成（Autopilot 相当）** — 既存 `record` + [§3](#3-オーサリング体験record--gui-エディタ) と重複。
+- **スケジューリング / Slack / TestRail 連携** — CI・通知レイヤの領域。優先度低（必要なら別途）。
+- **失敗テストの自動リトライ** — 決定性ファースト（固定 sleep 排除・条件待機）と緊張。flaky 隠蔽になり得るため、入れるなら quarantine 用途に限定して要検討。
+
+---
+
+## 未整理アイデア置き場
+
+> 形になっていない思いつきはここへ。後で上の表に昇格させる。
+
+-

@@ -6,7 +6,7 @@
 > Simulator only** ([DESIGN §1](../DESIGN.md), [README](../README.md)). This page lays out a
 > concrete strategy and design for reusing the existing abstractions to also drive **Android**
 > (emulator) and **Web** (browser) — what stays unchanged, what each new backend adds, and the
-> order to build it in. It is the long-form of [roadmap §2](roadmap.md#2-プラットフォーム拡張android--flutter).
+> order to build it in. It is the long-form of [roadmap §2](roadmap.md#2-platform-expansion-android--flutter).
 
 Related: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [configuration](configuration.md) · [vision](vision.md)
 
