@@ -16,6 +16,8 @@ dist/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Secrets (loaded by bajutsu at startup; .env.example is the tracked template)
 .env

@@ -9,11 +9,14 @@
 
 | Workflow | ランナー | タイミング | 内容 |
 |---|---|---|---|
-| [`ci.yml`](../../.github/workflows/ci.yml) | Linux | `main` への push・全 PR | `ruff` + `mypy` + `pytest`（Python 3.13）。ロジック層はシミュレータ不要で速い・安い |
+| [`ci.yml`](../../.github/workflows/ci.yml) | Linux | `main` への push・全 PR | `make check` ゲート一式（Python 3.13）— ロックの鮮度（`uv lock --check`）・整形（`ruff format --check`）・lint（`ruff`）・シェル lint（`shellcheck`）・ワークフロー lint（`actionlint`）・型（`mypy bajutsu demos`）・カバレッジ下限つき `pytest`（`--cov-fail-under=85`）。ロジック層はシミュレータ不要で速い・安い |
 | [`e2e.yml`](../../.github/workflows/e2e.yml) | macOS | 手動 + アプリ/SDK/ランタイムを触る PR | 2 ジョブ: **smoke (idb)** はサンプルをビルド → シミュレータ起動 → idb バックエンドで `smoke.yaml` 実行（driver + simctl + idb）。**xcuitest (codegen)** はシナリオからネイティブ XCUITest を生成し（`make -C demos/features ui-test`）`xcodebuild` で実行（テスト時に bajutsu / idb / AI は不要） |
 
-dev ツールは `dev` extra にあるため、Linux ジョブは `uv sync --extra dev` → `uv run --no-sync …`
-で実行（素の `uv run` はデフォルト集合に再同期して落としてしまう）。
+dev ツールは `dev` 依存グループにあるため、Linux ジョブは `uv sync --group dev` → `uv run
+--no-sync …` で実行（素の `uv run` はデフォルト集合に再同期して落としてしまう）。このゲートは
+[`make check`](../../Makefile) と [`pre-push`](../../.githooks/pre-push) フックを段ごとにミラー
+しており、`actionlint`（CI が入れる単体バイナリ）以外は新規クローンでも `uv` だけで同一に走る
+——これが「ローカルで緑」＝「CI で緑」を担保します。
 
 ## あなたのアプリの CI で回す
 

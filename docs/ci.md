@@ -9,11 +9,15 @@ Two distinct things, kept separate:
 
 | Workflow | Runner | When | What |
 |---|---|---|---|
-| [`ci.yml`](../.github/workflows/ci.yml) | Linux | push to `main`, every PR (pull request) | `ruff` + `mypy` + `pytest` on Python 3.13 (the logic layer needs no Simulator — fast, cheap) |
+| [`ci.yml`](../.github/workflows/ci.yml) | Linux | push to `main`, every PR (pull request) | the full `make check` gate on Python 3.13 — lockfile freshness (`uv lock --check`), formatting (`ruff format --check`), lint (`ruff`), shell lint (`shellcheck`), workflow lint (`actionlint`), types (`mypy bajutsu demos`), and `pytest` with a coverage floor (`--cov-fail-under=85`). The logic layer needs no Simulator, so it's fast and cheap |
 | [`e2e.yml`](../.github/workflows/e2e.yml) | macOS | manual + PRs touching the app/SDK/runtime | two jobs: **smoke (idb)** builds the sample, boots a Simulator, and runs `smoke.yaml` through the idb backend (driver + simctl + idb); **xcuitest (codegen)** generates a native XCUITest from a scenario (`make -C demos/features ui-test`) and runs it with `xcodebuild` (no bajutsu / idb / AI at test time) |
 
-The dev tools live in the `dev` extra, so the Linux job runs `uv sync --extra dev` then
-`uv run --no-sync …` (plain `uv run` would re-sync to the default set and drop them).
+The dev tools live in the `dev` dependency group, so the Linux job runs `uv sync --group
+dev` then `uv run --no-sync …` (plain `uv run` would re-sync to the default set and drop
+them). The gate mirrors [`make check`](../Makefile) and the [`pre-push`](../.githooks/pre-push)
+hook step-for-step; every check except `actionlint` (a standalone binary CI installs) runs
+identically on a fresh clone via `uv` alone, which is what makes "green locally" predict
+"green in CI".
 
 ## Running bajutsu in your app's CI
 

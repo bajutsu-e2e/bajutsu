@@ -23,8 +23,12 @@ dev = [
     "mypy>=1.10",
     "pillow>=10.0",
     "pytest>=8",
+    "pytest-cov>=5",
     "pytest-xdist>=3",
     "ruff>=0.5",
+    # Bundles the `shellcheck` binary so the gate lints shell scripts via uv alone
+    # (no system package needed). The lone non-uv check is actionlint (CI-installed).
+    "shellcheck-py>=0.10",
     "types-pyyaml>=6.0",
 ]
 

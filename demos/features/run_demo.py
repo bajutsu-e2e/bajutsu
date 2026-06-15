@@ -11,8 +11,9 @@ from pathlib import Path
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.scenario import (
+    Component,
     Scenario,
     expand_components,
     expand_data,
@@ -48,7 +49,7 @@ def _load(name: str) -> list[Scenario]:
     return load_scenarios((HERE / name).read_text(encoding="utf-8"))
 
 
-def _resolve_component(ref: str) -> object:
+def _resolve_component(ref: str) -> Component:
     return load_component((HERE / ref).read_text(encoding="utf-8"))
 
 
@@ -56,7 +57,7 @@ def _verdict(ok: bool) -> str:
     return "PASS" if ok else "FAIL"
 
 
-def _run(scenario: Scenario, **kw: object) -> object:
+def _run(scenario: Scenario, **kw: object) -> RunResult:
     return run_scenario(_driver(), scenario, **kw)  # type: ignore[arg-type]
 
 
