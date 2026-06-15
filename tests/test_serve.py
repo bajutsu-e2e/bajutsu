@@ -528,6 +528,32 @@ def test_http_lists_and_index(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_index_inlines_assets(tmp_path: Path) -> None:
+    """The index serves one self-contained doc with the CSS/JS/themes inlined."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        status, body, ctype = _get(port, "/")
+        text = body.decode("utf-8")
+        assert status == 200 and ctype.startswith("text/html")
+        assert '[data-theme="daylight"]' in text  # from serve.themes.css
+        assert "--bg2" in text  # from serve.css (theme-aware inset color)
+        assert "function showView" in text  # from serve.js
+        assert "const THEMES" in text  # the theme registry
+        assert "browseFs" in text  # config-browser JS survives the split
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_serve_assets_present() -> None:
+    """Guard against a template file going missing from the package."""
+    for name in ("serve.html.j2", "serve.css", "serve.themes.css", "serve.js"):
+        assert srv.handler._asset(name).strip()  # non-empty
+
+
 def test_http_runs_history(tmp_path: Path) -> None:
     scn_dir, cfg, runs = _project(tmp_path)
     _write_run(runs, "20260610-1", ok=True, scenarios=[("alpha", True)])

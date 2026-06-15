@@ -1,0 +1,21 @@
+/* Theme registry for the serve WebUI.
+   Each theme is one block of CSS custom properties, selected by [data-theme="<name>"]
+   on <html>. The first block doubles as :root so it is also the no-attribute default.
+
+   To add a theme:
+     1. add a [data-theme="<name>"]{ … } block here with the same set of variables, and
+     2. add { value:"<name>", label:"<Label>" } to the THEMES array in serve.js.
+   The picker is rendered from THEMES, so the new theme then appears automatically.
+   No Python changes are needed. */
+:root,[data-theme="midnight"]{
+  --bg:#0f172a; --bg2:#0b1220; --card:#1e293b; --line:#334155;
+  --fg:#e2e8f0; --mut:#94a3b8; --acc:#38bdf8; --on-acc:#082f49;
+  --ok:#22c55e; --ng:#ef4444; --run:#f59e0b; --on-run:#1c1402;
+  --scrim:rgba(2,6,23,.7);
+}
+[data-theme="daylight"]{
+  --bg:#f8fafc; --bg2:#eef2f7; --card:#ffffff; --line:#cbd5e1;
+  --fg:#0f172a; --mut:#64748b; --acc:#0284c7; --on-acc:#ffffff;
+  --ok:#16a34a; --ng:#dc2626; --run:#d97706; --on-run:#ffffff;
+  --scrim:rgba(15,23,42,.45);
+}
