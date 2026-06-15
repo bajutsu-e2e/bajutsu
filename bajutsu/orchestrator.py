@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from bajutsu import assertions, interp, intervals
-from bajutsu.assertions import AssertionResult
+from bajutsu.assertions import AssertionResult, VisualContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.network import NetworkExchange
@@ -502,6 +502,7 @@ def run_scenario(
     bindings: Mapping[str, str] | None = None,
     control: DeviceControl | None = None,
     progress: ProgressFn | None = None,
+    visual_context: VisualContext | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -542,13 +543,19 @@ def run_scenario(
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, bindings or {})
-            expect_results = assertions.evaluate(driver.query(), expect, network())
+            if visual_context is not None:
+                driver.screenshot(str(visual_context.screenshot_path))
+            expect_results = assertions.evaluate(
+                driver.query(), expect, network(), visual_context=visual_context
+            )
             if not assertions.passed(expect_results) and on_blocked is not None:
                 event = on_blocked(driver)
                 if event is not None:
                     expect_alerts.append(event)
+                    if visual_context is not None:
+                        driver.screenshot(str(visual_context.screenshot_path))
                     expect_results = assertions.evaluate(
-                        driver.query(), expect, network()
+                        driver.query(), expect, network(), visual_context=visual_context
                     )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)

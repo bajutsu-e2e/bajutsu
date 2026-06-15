@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import env
+from bajutsu.assertions import VisualContext
 from bajutsu.backends import default_available, make_driver, select_actuator
 from bajutsu.config import Effective
 from bajutsu.drivers import base
@@ -194,6 +195,7 @@ def run_all(
     bindings: Mapping[str, str] | None = None,
     secret_values: list[str] | None = None,
     progress: ProgressFn | None = None,
+    baselines_dir: Path | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device.
 
@@ -226,6 +228,14 @@ def run_all(
                 lz.collector.clear()
             # t0 after launch, so exchange offsets share the step timeline's origin.
             scenario_start = time.monotonic()
+            # Build visual context for scenario-level visual assertions (expect).
+            vc: VisualContext | None = None
+            if baselines_dir is not None and run_dir is not None:
+                vc = VisualContext(
+                    screenshot_path=run_dir / sid / "visual-actual.png",
+                    baselines_dir=baselines_dir,
+                    diff_dir=run_dir / sid,
+                )
             result = run_scenario(
                 lz.driver,
                 s,
@@ -238,6 +248,7 @@ def run_all(
                 bindings=bindings,
                 control=lz.control,
                 progress=progress,
+                visual_context=vc,
             )
             result.device = lz.udid  # attribute the scenario to the device that ran it
             result.device_name = lz.device_name  # for the report's Environment tab

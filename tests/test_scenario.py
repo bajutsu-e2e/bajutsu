@@ -364,3 +364,34 @@ def test_apply_setups_default_is_shared_and_resolved_once() -> None:
     assert scns[0].steps[0].tap and scns[0].steps[0].tap.id == "prelude"
     assert scns[1].steps[0].tap and scns[1].steps[0].tap.id == "prelude"
     assert count == 1  # the shared default is resolved once and cached
+
+
+# --- visual assertion model ---
+
+
+def test_visual_assertion_parses() -> None:
+    a = Assertion.model_validate({"visual": {"baseline": "counter.png"}})
+    assert a.visual is not None
+    assert a.visual.baseline == "counter.png"
+    assert a.visual.threshold == 0.0  # default
+
+
+def test_visual_assertion_with_exclude_and_threshold() -> None:
+    a = Assertion.model_validate(
+        {
+            "visual": {
+                "baseline": "home.png",
+                "threshold": 0.5,
+                "exclude": [{"x": 0, "y": 0, "w": 390, "h": 54}],
+            }
+        }
+    )
+    assert a.visual is not None
+    assert a.visual.threshold == 0.5
+    assert len(a.visual.exclude) == 1
+    assert a.visual.exclude[0].w == 390
+
+
+def test_visual_assertion_requires_baseline() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"visual": {}})

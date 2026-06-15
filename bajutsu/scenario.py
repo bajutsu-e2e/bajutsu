@@ -53,6 +53,7 @@ _ASSERTION_KINDS = (
     "disabled",
     "selected",
     "request",
+    "visual",
 )
 
 
@@ -306,6 +307,23 @@ class CountMatch(_Model):
         return self
 
 
+class ExcludeRegion(_Model):
+    """A rectangular region to ignore during visual comparison (e.g. status bar, clock)."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class VisualMatch(_Model):
+    """Visual regression assertion — compare a screenshot to a baseline image."""
+
+    baseline: str
+    threshold: float = 0.0  # allowed diff percentage (0.0 = exact match)
+    exclude: list[ExcludeRegion] | None = None
+
+
 class Assertion(_Model):
     """One machine check. Exactly one kind may be set."""
 
@@ -317,6 +335,7 @@ class Assertion(_Model):
     disabled: Selector | None = None
     selected: Selector | None = None
     request: RequestMatch | None = None
+    visual: VisualMatch | None = None
 
     @model_validator(mode="after")
     def _one_kind(self) -> Self:
