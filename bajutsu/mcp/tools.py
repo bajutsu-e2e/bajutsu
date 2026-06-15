@@ -31,7 +31,7 @@ def make_driver(actuator: str, udid: str) -> Driver:
     return _make(actuator, udid)
 
 
-def register_tools(mcp: FastMCP, config_path: Path, runs_dir: Path) -> None:
+def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
     @mcp.tool()
     def bajutsu_doctor(app: str, udid: str = "booted") -> str:
