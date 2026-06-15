@@ -524,6 +524,29 @@ def test_extract_in_scenario_expect() -> None:
     assert result.ok, result.failure
 
 
+def test_extract_selector_is_interpolated() -> None:
+    """Tokens in extract selectors are substituted via bindings."""
+    driver = FakeDriver([el("ok", "OK", ["button"]), el("target", "T", value="99")])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "interp extract",
+                "steps": [
+                    {
+                        "tap": {"id": "ok"},
+                        "extract": {"val": {"sel": {"id": "${secrets.sel}"}}},
+                    },
+                    {"assert": [{"value": {"sel": {"id": "target"}, "equals": "${vars.val}"}}]},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        bindings={"secrets.sel": "target"},
+    )
+    assert result.ok, result.failure
+
+
 def test_expect_failure() -> None:
     driver = FakeDriver([el("a", "A", ["button"])])
     result = run_scenario(
