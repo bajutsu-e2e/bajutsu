@@ -409,8 +409,10 @@ def _run_step_body(
     bindings: Mapping[str, str] | None = None,
     control: DeviceControl | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
-    """Execute one step's effect, returning (ok, reason, assertion_results)."""
-    step = _interp_step(step, bindings or {})
+    """Execute one step's effect, returning (ok, reason, assertion_results).
+
+    The caller is responsible for interpolation (``_interp_step``) before
+    calling this function."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -632,31 +634,29 @@ def _run_steps(
         outcome = StepOutcome(index=i, action=kind)
         if progress is not None:
             progress(f"{sid} · step {i + 1}/{total}: {_step_label(step, kind)}")
+        interp = _interp_step(step, bindings or {})
         step_id = f"{sid}/{step.name or f'step{i}'}"
         before = driver.query() if wants_screen_changed else None
         start = clock.now()
         outcome.started_at = max(0.0, start - scenario_start)
         ok, reason, results = _run_step_body(
-            driver, step, kind, clock, network, relaunch, bindings, control
+            driver, interp, kind, clock, network, relaunch, bindings, control
         )
         if not ok and on_blocked is not None:
             event = on_blocked(driver)
             if event is not None:
                 outcome.alerts.append(event)
                 ok, reason, results = _run_step_body(
-                    driver, step, kind, clock, network, relaunch, bindings, control
+                    driver, interp, kind, clock, network, relaunch, bindings, control
                 )  # retry
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 
-        # Query once after the step: reuse for both screen_changed detection and
-        # evidence capture (elements.json), avoiding a redundant subprocess call.
         after = driver.query()
         screen_changed = before is not None and after != before
 
-        # Extract UI values into vars.* (only on success).
-        if outcome.ok and step.extract and bindings is not None:
-            ext_ok, ext_reason = _run_extract(after, step.extract, bindings)
+        if outcome.ok and interp.extract and bindings is not None:
+            ext_ok, ext_reason = _run_extract(after, interp.extract, bindings)
             if not ext_ok:
                 outcome.ok, outcome.reason = False, ext_reason
 
