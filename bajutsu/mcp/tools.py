@@ -75,17 +75,18 @@ def register_tools(mcp: FastMCP, config_path: Path, runs_dir: Path) -> None:
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
-        manifest_path = ""
-        for line in result.stdout.splitlines():
-            if "manifest" in line.lower() and ".json" in line:
-                manifest_path = line.strip()
-                break
+        manifest_lines = [
+            line.strip()
+            for line in result.stdout.splitlines()
+            if "manifest" in line.lower() and ".json" in line
+        ]
+        manifest_path = manifest_lines[0] if manifest_lines else ""
 
         ok = result.returncode == 0
-        summary = f"{'PASS' if ok else 'FAIL'}"
+        parts = ["PASS" if ok else "FAIL"]
         if manifest_path:
-            summary += f"  {manifest_path}"
+            parts.append(manifest_path)
         if not ok and result.stderr:
-            summary += f"\n{result.stderr.strip()}"
+            parts.append(result.stderr.strip())
 
-        return summary
+        return "  ".join(parts[:2]) + ("\n" + parts[2] if len(parts) > 2 else "")
