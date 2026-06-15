@@ -19,10 +19,13 @@ def _safe_run_path(runs_dir: Path, run_id: str, filename: str) -> Path:
 
 
 def _safe_artifact_path(runs_dir: Path, run_id: str, rel_path: str) -> Path:
-    """Resolve a nested artifact path, rejecting path traversal."""
-    target = (runs_dir / run_id / rel_path).resolve()
-    base = runs_dir.resolve()
-    if base not in target.parents:
+    """Resolve a nested artifact path, rejecting path traversal.
+
+    Ensures the resolved path stays under ``runs_dir/run_id``, preventing
+    both escape from runs_dir and cross-run reads."""
+    run_base = (runs_dir / run_id).resolve()
+    target = (run_base / rel_path).resolve()
+    if run_base not in target.parents and target != run_base:
         raise ValueError(f"invalid artifact path: {rel_path}")
     return target
 

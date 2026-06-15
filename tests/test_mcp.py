@@ -221,6 +221,17 @@ def test_artifact_resource_rejects_traversal(tmp_path: Path) -> None:
         _safe_artifact_path(runs_dir, "run1", "../../etc/passwd")
 
 
+def test_safe_artifact_path_rejects_cross_run(tmp_path: Path) -> None:
+    from bajutsu.mcp.resources import _safe_artifact_path
+
+    runs_dir = tmp_path / "runs"
+    (runs_dir / "run1").mkdir(parents=True)
+    (runs_dir / "run2").mkdir(parents=True)
+    (runs_dir / "run2" / "secret.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid artifact path"):
+        _safe_artifact_path(runs_dir, "run1", "../run2/secret.json")
+
+
 def test_artifact_resource_missing_file(tmp_path: Path) -> None:
     runs_dir = tmp_path / "runs"
     (runs_dir / "run1").mkdir(parents=True)
