@@ -10,7 +10,6 @@ from bajutsu.trace import latest_run
 
 
 def register_resources(mcp: FastMCP, runs_dir: Path) -> None:
-    """Register run-evidence resources."""
 
     @mcp.resource("bajutsu://runs/{run_id}/manifest.json")
     def run_manifest(run_id: str) -> str:
