@@ -6,6 +6,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait 7 days after a release before opening a PR — a fresh version has had time to
+    # surface yanks/regressions, reducing supply-chain risk from a just-published bump.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
@@ -15,6 +19,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       python:
         patterns: ["*"]
