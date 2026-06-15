@@ -22,12 +22,16 @@
 シナリオを **決定的に実行**。合否は機械判定のみ。唯一の AI は**アラートガード**（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトを片付けるためだけに発火する —— [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード) 参照。
 
 ```bash
-bajutsu run <scenario.yaml> --app <name> [options]
+bajutsu run --app <name> [--scenario <file.yaml>] [options]
 ```
+
+既定では、そのアプリの設定済みシナリオディレクトリ（`apps.<name>.scenarios`、[configuration](configuration.md) 参照）内の
+**すべての `*.yaml`** を読み込んで実行する —— config だけで実行できる。単一ファイルだけ実行するには `--scenario <file>` を渡す。
 
 | オプション | 既定 | 説明 |
 |---|---|---|
 | `--app` | （必須） | 対象アプリ（config の `apps.<name>`） |
+| `--scenario` | config の `scenarios` ディレクトリ | アプリのシナリオディレクトリ全体ではなく単一の `*.yaml` を実行 |
 | `--backend` | config | actuator 順（カンマ区切り。先頭から最初に使えるもの） |
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
@@ -46,7 +50,8 @@ bajutsu run <scenario.yaml> --app <name> [options]
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
 
 ```bash
-bajutsu run demos/features/app/scenarios/smoke.yaml --app sample --udid <UDID> --backend idb --no-erase
+bajutsu run --app sample --udid <UDID> --backend idb --no-erase            # アプリのシナリオディレクトリ全体
+bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --no-erase   # 単一ファイル
 ```
 
 ## `doctor`
@@ -99,16 +104,20 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 
 ## `record`
 
-AI でゴールに向けて探索し、**記録したシナリオを OUT に書き出す**（Tier 1・[recording](recording.md)）。
+AI でゴールに向けて探索し、**記録したシナリオを書き出す**（Tier 1・[recording](recording.md)）。
+既定ではアプリの設定済みシナリオディレクトリ（`apps.<name>.scenarios`）配下に自動命名の `*.yaml` を書く。
+特定パスに書くには `--out` を渡す。
 
 ```bash
-bajutsu record <out.yaml> --app <name> --goal "<自然言語ゴール>" [options]
+bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>] [options]
 ```
 
 | オプション | 既定 | 説明 |
 |---|---|---|
 | `--app` | （必須） | 対象アプリ |
 | `--goal` | （必須） | 著すゴール（自然言語） |
+| `--out` | config の `scenarios` 配下に自動命名 | 出力パスを明示（アプリのシナリオディレクトリを上書き） |
+| `--name` | （ゴールから） | 自動命名するファイル名（`--out` 指定時は無視） |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
@@ -117,7 +126,7 @@ bajutsu record <out.yaml> --app <name> --goal "<自然言語ゴール>" [options
 | `--config` | `bajutsu.config.yaml` | config |
 
 - 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出す。
-- 出力: `recorded <N> steps -> <out>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
+- 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
 
 ## `codegen`
 
@@ -138,15 +147,18 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] 
 ## `serve`
 
 **シナリオを実行してレポートを見る**ローカル Web UI — Tier 1 の利便機能で、**CI ゲートには入らない**。
-シナリオ + app を一覧し、リクエストごとに `python -m bajutsu run ...` をバックグラウンドスレッドで起動、
-出力をストリーム、生成された `runs/<id>/` ツリーを配信する（report の相対資産リンクが解決する）。
+各アプリのシナリオ（`apps.<name>.scenarios` から）を一覧し、リクエストごとに `python -m bajutsu run ...` を
+バックグラウンドスレッドで起動、出力をストリーム、生成された `runs/<id>/` ツリーを配信する（report の相対資産リンクが解決する）。
 stdlib のみ（Web フレームワーク不要）、`127.0.0.1` バインド。
 
 ```bash
-bajutsu serve [--port 8765] [--scenarios demos/features/app/scenarios] [--config bajutsu.config.yaml] [--runs runs]
+bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs]
 ```
 
-- シナリオファイル + app を選び、backend / udid / erase / `disable alert-dismiss` を設定して **Run**。
+- `--config` は**任意**。省略すると UI のファイルブラウザ（「Open config」ボタン）から `config.yml` を開ける。
+  ブラウザの走査は `--root`（既定: カレントディレクトリ）配下に限定。`--scenarios <dir>` は選択アプリの設定済み
+  ディレクトリの上書きとして使える。
+- app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run**。
   出力がライブ表示され、完了で `report.html` が埋め込まれる。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
   実行（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止する。`apps.<name>.build`

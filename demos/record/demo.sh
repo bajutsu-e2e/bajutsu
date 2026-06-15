@@ -34,7 +34,7 @@ GOAL="${GOAL:-$(grep -vE '^[[:space:]]*(#|$)' "$GOALS_FILE" | head -n1)}"
 note() { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 
 run_scenario() {  # run the scenario; returns bajutsu's exit code (0 pass, 1 fail)
-  uv run bajutsu run "$SCENARIO" --app sample2 --config "$CONFIG" --backend idb --no-network
+  uv run bajutsu run --scenario "$SCENARIO" --app sample2 --config "$CONFIG" --backend idb --no-network
 }
 
 set_expected_count() {  # $1 = new expected counter value — edit the generated scenario in place
@@ -100,7 +100,7 @@ rm -f "$SCENARIO"   # always start from scratch — discard any scenario left by
 # screenshot + the accessibility tree on the booted sample2 app and proposes one step at a
 # time (streamed live: 💭 reasoning → action); the loop writes the executed steps out as the
 # deterministic scenario `run` replays. The claude-code agent bills your Claude subscription.
-uv run bajutsu record "$SCENARIO" --app sample2 --goal "$GOAL" \
+uv run bajutsu record --out "$SCENARIO" --app sample2 --goal "$GOAL" \
   --config "$CONFIG" --backend idb --no-erase --agent "$AGENT"
 echo "--- $SCENARIO ---"
 cat "$SCENARIO"

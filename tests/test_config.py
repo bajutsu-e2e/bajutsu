@@ -75,8 +75,14 @@ def test_minimal_defaults() -> None:
     assert eff.device == "iPhone 15"
     assert eff.capture == ["screenshot.after", "elements", "actionLog"]
     assert eff.app_path is None  # absent unless configured
+    assert eff.scenarios is None  # absent unless configured
 
 
 def test_app_path_parsed() -> None:
     cfg = load_config("apps: { x: { bundleId: com.x, appPath: build/X.app } }")
     assert resolve(cfg, "x").app_path == "build/X.app"
+
+
+def test_scenarios_parsed() -> None:
+    cfg = load_config("apps: { x: { bundleId: com.x, scenarios: scn/dir } }")
+    assert resolve(cfg, "x").scenarios == "scn/dir"

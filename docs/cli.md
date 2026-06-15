@@ -24,12 +24,17 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 Runs a scenario **deterministically**; pass/fail is machine-only. The sole AI is the **alert guard** (on by default per scenario), which fires only to clear an OS prompt that blocked a step — see [`dismissAlerts`](scenarios.md#dismissalerts-the-system-alert-guard).
 
 ```bash
-bajutsu run <scenario.yaml> --app <name> [options]
+bajutsu run --app <name> [--scenario <file.yaml>] [options]
 ```
+
+By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
+(`apps.<name>.scenarios`, see [configuration](configuration.md)) — so the config alone is enough
+to run. Pass `--scenario <file>` to run a single file instead.
 
 | Option | Default | Description |
 |---|---|---|
 | `--app` | (required) | the target app (config's `apps.<name>`) |
+| `--scenario` | config's `scenarios` dir | run one `*.yaml` instead of the app's whole scenarios dir |
 | `--backend` | config | actuator order (comma-separated; first usable wins) |
 | `--tag` | "" | comma list; run only scenarios carrying any of these tags |
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
@@ -49,7 +54,8 @@ bajutsu run <scenario.yaml> --app <name> [options]
 - Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
 
 ```bash
-bajutsu run demos/features/app/scenarios/smoke.yaml --app sample --udid <UDID> --backend idb --no-erase
+bajutsu run --app sample --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
+bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --no-erase   # one file
 ```
 
 ## `doctor`
@@ -109,16 +115,20 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 
 ## `record`
 
-Explores toward a goal with AI and **writes the recorded scenario to OUT** (Tier 1; [recording](recording.md)).
+Explores toward a goal with AI and **writes the recorded scenario** (Tier 1; [recording](recording.md)).
+By default it auto-names a `*.yaml` under the app's configured scenarios dir
+(`apps.<name>.scenarios`); pass `--out` to write a specific path instead.
 
 ```bash
-bajutsu record <out.yaml> --app <name> --goal "<natural-language goal>" [options]
+bajutsu record --app <name> --goal "<natural-language goal>" [--out <file.yaml>] [options]
 ```
 
 | Option | Default | Description |
 |---|---|---|
 | `--app` | (required) | the target app |
 | `--goal` | (required) | the goal to author (natural language) |
+| `--out` | auto-named in config's `scenarios` dir | explicit output path (overrides the app's scenarios dir) |
+| `--name` | (from the goal) | file name for the auto-named scenario (ignored when `--out` is given) |
 | `--udid` | `booted` | the target Simulator |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
@@ -127,7 +137,7 @@ bajutsu record <out.yaml> --app <name> --goal "<natural-language goal>" [options
 | `--config` | `bajutsu.config.yaml` | config |
 
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
-- Output: `recorded <N> steps -> <out>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
+- Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
 
 ## `codegen`
 
@@ -148,16 +158,20 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] 
 ## `serve`
 
 A local web UI to **run a scenario and view its report** — a Tier-1 convenience, **not part
-of the CI gate**. Lists the scenarios + apps, spawns `python -m bajutsu run ...` per request on
-a background thread, streams its output, and serves the produced `runs/<id>/` tree so the
-report's relative asset links resolve. Stdlib only (no web framework); binds `127.0.0.1`.
+of the CI gate**. Lists each app's scenarios (from `apps.<name>.scenarios`), spawns
+`python -m bajutsu run ...` per request on a background thread, streams its output, and serves
+the produced `runs/<id>/` tree so the report's relative asset links resolve. Stdlib only (no web
+framework); binds `127.0.0.1`.
 
 ```bash
-bajutsu serve [--port 8765] [--scenarios demos/features/app/scenarios] [--config bajutsu.config.yaml] [--runs runs]
+bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs]
 ```
 
-- Pick a scenario file + app, set backend / udid / erase / `disable alert-dismiss`, hit **Run**;
-  the output streams live and the `report.html` embeds on completion.
+- `--config` is **optional**. Omit it and open a `config.yml` from the UI's file browser (an
+  "Open config" button); the browser is confined to `--root` (default: the current directory).
+  `--scenarios <dir>` is available as an override of the selected app's configured dir.
+- Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
+  alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
   `apps.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features

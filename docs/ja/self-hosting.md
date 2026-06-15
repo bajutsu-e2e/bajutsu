@@ -49,7 +49,7 @@ Aqua セッション）が要る —— ヘッダレスな daemon では**動か
 
 **1) serve を LaunchAgent で常駐** — `127.0.0.1` バインドのまま（生公開しない）。
 `~/Library/LaunchAgents/com.bajutsu.serve.plist` で
-`python -m bajutsu serve --host 127.0.0.1 --port 8765 --scenarios <dir>` を `RunAtLoad` +
+`python -m bajutsu serve --host 127.0.0.1 --port 8765 --config <config.yml>` を `RunAtLoad` +
 `KeepAlive` 付きで実行。`ANTHROPIC_API_KEY` を `EnvironmentVariables` に（`--dismiss-alerts` 用）、
 stdout/stderr は `~/Library/Logs/` へ。`launchctl bootstrap gui/$(id -u) …` でロード。GUI
 セッションが要るため **LaunchAgent**（LaunchDaemon ではない）であること。

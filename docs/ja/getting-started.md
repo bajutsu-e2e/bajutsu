@@ -136,7 +136,7 @@ make -C demos/features e2e
 または CLI を直接叩く（同じことを書き下したもの）:
 
 ```bash
-uv run bajutsu run demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
+uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
 ```
 
 各フラグの意味:
@@ -200,7 +200,7 @@ uv run bajutsu trace               # runs/ 下の最新実行
 - **AI でオーサリング。** Claude にゴールへ向けて探索させ、シナリオを書かせる（Tier 1）。
   `.env` ファイルに `ANTHROPIC_API_KEY=sk-ant-…` を置いてから:
   ```bash
-  uv run bajutsu record out.yaml --app sample --goal "log in and increment the counter to 3"
+  uv run bajutsu record --app sample --goal "log in and increment the counter to 3"   # アプリのシナリオディレクトリへ書く
   ```
   オーサリングループとシステムアラートガードの仕組み: [recording](recording.md)。
 - **ネイティブ XCUITest を吐く。** シナリオを Swift へ変換する（テスト時に Bajutsu ランタイム・AI は

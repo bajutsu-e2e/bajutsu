@@ -64,6 +64,43 @@ def app_build_info(config_path: Path, app: str) -> tuple[str | None, str | None]
     return (eff.app_path, eff.build)
 
 
+def app_scenarios_dir(config_path: Path, app: str) -> Path | None:
+    """The configured ``scenarios`` dir for *app*, or None (unset, or any load/resolve error).
+    Mirrors ``app_build_info``; resolved relative to the run's working directory."""
+    try:
+        eff = resolve(load_config(config_path.read_text(encoding="utf-8")), app)
+    except (OSError, ValueError, KeyError):
+        return None
+    return Path(eff.scenarios) if eff.scenarios else None
+
+
+def list_fs(root: Path, sub: str | None) -> dict[str, Any]:
+    """One directory listing for the UI's config picker: subdirectories and ``*.yml``/``*.yaml``
+    files under *sub* (default *root*), confined to *root*.  Raises ValueError if *sub* escapes
+    *root*.  ``parent`` is the dir to go up to, or None at *root* (the browse ceiling)."""
+    base = root.resolve()
+    here = (base / sub).resolve() if sub else base
+    if here != base and base not in here.parents:
+        raise ValueError("outside root")
+    if not here.is_dir():
+        raise ValueError("not a directory")
+    dirs: list[str] = []
+    files: list[str] = []
+    for entry in sorted(here.iterdir(), key=lambda p: p.name.lower()):
+        if entry.name.startswith("."):
+            continue
+        if entry.is_dir():
+            dirs.append(entry.name)
+        elif entry.suffix in (".yml", ".yaml"):
+            files.append(entry.name)
+    return {
+        "cwd": str(here),
+        "parent": None if here == base else str(here.parent),
+        "dirs": dirs,
+        "files": files,
+    }
+
+
 def list_simulators(simctl: env.RunFn = env._real_run) -> list[dict[str, Any]]:
     """Available simulators for the device picker (booted first): udid, name, runtime, booted.
     A run boots any picked-but-shut-down device first, so the UI can start from a cold list."""
@@ -151,6 +188,7 @@ def run_command(
         "-m",
         "bajutsu",
         "run",
+        "--scenario",
         scenario,
         "--app",
         app,
@@ -187,7 +225,7 @@ def record_command(
     dismiss_alerts: bool | None = None,
     config: str = "bajutsu.config.yaml",
 ) -> list[str]:
-    """The ``python -m bajutsu record OUT --app … --goal …`` argv for an authoring request —
+    """The ``python -m bajutsu record --out OUT --app … --goal …`` argv for an authoring request —
     the Tier-1 record loop the Record tab drives.  ``agent`` picks the brain ("api" /
     "claude-code"); ``erase`` / ``dismiss_alerts`` mirror ``run_command`` (None leaves the CLI
     default — record erases and dismisses by default), and ``out`` is the ``*.yaml`` the
@@ -197,6 +235,7 @@ def record_command(
         "-m",
         "bajutsu",
         "record",
+        "--out",
         out,
         "--app",
         app,

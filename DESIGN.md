@@ -389,8 +389,8 @@ result.row.<recordId>       # 動的行: 末尾は「データ由来の安定キ
 ツール本体はアプリ非依存。**アプリ固有の差分はすべて config に寄せ**、同じバイナリ・同じドライバで複数アプリを回す。
 
 ```
-bajutsu run <scenario.yaml> --app <name> [--backend idb] [--udid booted] [--workers N]
-bajutsu record <scenario.yaml> --app <name>   # AI で探索しつつ操作・証跡指示を記録
+bajutsu run --app <name> [--scenario file.yaml] [--backend idb] [--udid booted] [--workers N]   # 既定は config の scenarios ディレクトリ全体
+bajutsu record --app <name> [--out file.yaml]   # AI で探索しつつ操作・証跡指示を記録（既定は config の scenarios へ自動命名）
 bajutsu doctor --app <name>                   # 環境/権限/接続 + §7 規約の充足を検証
 bajutsu trace open <runId>                    # 証跡ビューア
 bajutsu trace --explain <scenario>            # 証跡ルールの発火回数を事前提示（ドライラン）

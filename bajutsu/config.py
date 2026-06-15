@@ -66,6 +66,9 @@ class AppConfig(_Model):
     # scenario if the binary is missing (so the Web UI builds on demand). Run from the run's
     # working directory; e.g. "make -C demos/features sample-build".
     build: str | None = None
+    # Directory of this app's scenario *.yaml files. `run` reads them all; `record` writes new
+    # ones here. Relative to the run's working directory (like app_path/build).
+    scenarios: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
 
@@ -104,6 +107,9 @@ class Effective:
     # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary
     # is missing. None = no on-demand build.
     build: str | None = None
+    # Directory of this app's scenario *.yaml files (config-driven `run`/`record`). None =
+    # unset (the caller must pass an explicit scenario path).
+    scenarios: str | None = None
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -141,6 +147,7 @@ def resolve(config: Config, app: str) -> Effective:
         secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
         app_path=a.app_path,
         build=a.build,
+        scenarios=a.scenarios,
     )
 
 

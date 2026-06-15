@@ -206,6 +206,7 @@ def test_rerun_command_builder() -> None:
         "-m",
         "bajutsu",
         "run",
+        "--scenario",
         "s.yaml",
         "--app",
         "demo",
@@ -259,7 +260,7 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     )
     assert r.exit_code == 0
     assert "wrote" in r.output and "fix verified" in r.output
-    assert captured["cmd"][2:7] == ["bajutsu", "run", str(src), "--app", "demo"]
+    assert captured["cmd"][2:8] == ["bajutsu", "run", "--scenario", str(src), "--app", "demo"]
     assert "home.titel" not in src.read_text(encoding="utf-8")  # the fix was written
 
 

@@ -34,7 +34,8 @@ apps:
     deeplinkScheme: bajutsusample
     idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
     launchEnv:      { SAMPLE_UITEST: "1" }
-    # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer
+    scenarios:      demos/features/app/scenarios   # this app's scenarios dir (run reads it; record writes here)
+    # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 ```
 
 ### Resolution (`resolve` → `Effective`)
@@ -53,6 +54,7 @@ An undefined app raises `KeyError` (the CLI exits with code 2).
 | `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |
 | `mock_server` | app | ⚠️ schema only · not wired |
 | `setup` | app | default reusable prelude (a scenario whose steps run before each scenario's own) |
+| `scenarios` | app | this app's scenarios dir — `run --app` loads every `*.yaml` here; `record` writes new ones here. Relative to the run's cwd. `run --scenario` / `record --out` override it |
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |

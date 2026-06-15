@@ -79,11 +79,11 @@ make -C demos/features e2e                             # run the smoke scenario 
 Minimal CLI:
 
 ```bash
-bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
-bajutsu doctor               --app <name>                # convention score
-bajutsu record <out.yaml>    --app <name> --goal "..."   # AI explore + record (needs API key)
+bajutsu run    --app <name> [--scenario file.yaml]      # default: the app's whole scenarios dir
+bajutsu doctor --app <name>                             # convention score
+bajutsu record --app <name> --goal "..." [--out file]   # AI explore + record (needs API key)
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift
-bajutsu serve                                            # local web UI (Tier 1; not for CI)
+bajutsu serve                                           # local web UI (Tier 1; not for CI)
 ```
 
 Details in [cli](cli.md).

@@ -30,7 +30,7 @@ The goal comes from the first non-comment line of [`goals.txt`](goals.txt) (over
    the live screen (screenshot + accessibility tree) on the booted app and proposes each step,
    writing the executed steps out as `generated.yaml` (gitignored). For an offline, no-key run
    the keyword stand-in [`generate_from_nl.py`](generate_from_nl.py) authors the same flow.
-2. **Execute** — `bajutsu run generated.yaml --app sample2 --config demo.config.yaml` on the
+2. **Execute** — `bajutsu run --scenario generated.yaml --app sample2 --config demo.config.yaml` on the
    booted Simulator. The counter flow passes.
 3. **Modify** — edit the expected count to a wrong value → re-run → the run **fails** (the
    assertion catches it) → fix it back → it **passes** again. That is the edit-and-re-run loop
@@ -89,7 +89,7 @@ To author against the running sample2 app with real Claude instead of the determ
 stand-in (needs `ANTHROPIC_API_KEY`):
 
 ```bash
-uv run bajutsu record demos/record/generated.yaml --app sample2 \
+uv run bajutsu record --out demos/record/generated.yaml --app sample2 \
   --config demos/record/demo.config.yaml --backend idb \
   --goal "increment the counter twice and check it reads 2"
 ```

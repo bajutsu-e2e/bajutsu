@@ -160,11 +160,11 @@ uv sync --extra dev      # creates .venv (Python 3.13) and installs deps + dev t
 The CLI surface (full reference in [`docs/cli.md`](docs/cli.md)):
 
 ```bash
-bajutsu run    <scenario.yaml> --app <name> [--backend idb] [--udid booted]
-bajutsu record <out.yaml>      --app <name> --goal "..."   # explore + record (Tier 1, needs API key)
-bajutsu doctor                 --app <name>                # convention score for the current screen
+bajutsu run    --app <name> [--scenario file.yaml]        # default: the app's whole scenarios dir
+bajutsu record --app <name> --goal "..." [--out file]     # explore + record (Tier 1, needs API key)
+bajutsu doctor --app <name>                               # convention score for the current screen
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift   # emit a native XCUITest
-bajutsu serve                  [--port 8765]                # local web UI: run scenarios + view reports (Tier 1)
+bajutsu serve  [--port 8765] [--config c.yaml]            # local web UI: run scenarios + view reports (Tier 1)
 ```
 
 > `make serve` (or `scripts/serve.sh`) wraps `bajutsu serve` and installs the idb
