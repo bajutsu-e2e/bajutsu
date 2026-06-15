@@ -183,14 +183,17 @@ def _await_ready(
     and subsequent intervals double up to `poll_max`, reducing wasted subprocess calls
     when the app takes longer to start."""
     deadline = time.monotonic() + timeout
-    poll = poll_init
+    poll = min(poll_init, poll_max)
     while time.monotonic() < deadline:
         try:
             if len(driver.query()) >= 2:
                 return
         except (OSError, subprocess.CalledProcessError, ValueError):
             pass
-        time.sleep(poll)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(poll, remaining))
         poll = min(poll * 2, poll_max)
 
 

@@ -654,3 +654,58 @@ def test_await_ready_returns_immediately_when_already_ready() -> None:
         runner_mod.time.sleep = orig_sleep
 
     assert sleeps == []
+
+
+def test_await_ready_respects_timeout_on_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Total sleep time must not exceed the timeout."""
+    sleeps: list[float] = []
+    clock = 0.0
+
+    def fake_sleep(s: float) -> None:
+        nonlocal clock
+        sleeps.append(s)
+        clock += s
+
+    monkeypatch.setattr("bajutsu.runner.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.time.monotonic", lambda: clock)
+
+    class NeverReadyDriver:
+        name = "never"
+
+        def query(self) -> list[base.Element]:
+            return [_el("a", "A")]
+
+    _await_ready(NeverReadyDriver(), timeout=1.0)  # type: ignore[arg-type]
+
+    total_slept = sum(sleeps)
+    assert total_slept <= 1.0, f"slept {total_slept}s which exceeds timeout 1.0s"
+
+
+def test_await_ready_caps_poll_init_to_poll_max(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When poll_init > poll_max, the first sleep should still respect poll_max."""
+    sleeps: list[float] = []
+    clock = 0.0
+
+    def fake_sleep(s: float) -> None:
+        nonlocal clock
+        sleeps.append(s)
+        clock += s
+
+    monkeypatch.setattr("bajutsu.runner.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.time.monotonic", lambda: clock)
+
+    query_count = 0
+
+    class SlowDriver:
+        name = "slow"
+
+        def query(self) -> list[base.Element]:
+            nonlocal query_count
+            query_count += 1
+            if query_count >= 3:
+                return [_el("a", "A"), _el("b", "B")]
+            return [_el("a", "A")]
+
+    _await_ready(SlowDriver(), poll_init=2.0, poll_max=0.3)  # type: ignore[arg-type]
+
+    assert all(s <= 0.3 for s in sleeps), f"sleep exceeded poll_max: {sleeps}"
