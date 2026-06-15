@@ -4,11 +4,11 @@
 
 > Forward-looking — the **shape** of where Bajutsu is going, and the one constraint every
 > direction must respect. This page is the strategic umbrella over the individual forward-looking
-> pages; the granular, prioritized backlog lives in [roadmap](roadmap.md), and the *why* behind
+> pages; the granular, prioritized backlog lives in [roadmap](roadmap/README.md), and the *why* behind
 > today's design is [`DESIGN.md`](../DESIGN.md). Read this to understand **how the pieces add up**,
 > then follow the links for each plan.
 
-Related: [concepts](concepts.md) · [roadmap](roadmap.md) · [multi-platform](multi-platform.md) · [cloud-hosting](cloud-hosting.md) · [self-hosting](self-hosting.md)
+Related: [concepts](concepts.md) · [roadmap](roadmap/README.md) · [multi-platform](multi-platform.md) · [cloud-hosting](cloud-hosting.md) · [self-hosting](self-hosting.md)
 
 ---
 
@@ -19,7 +19,8 @@ Every future direction is evaluated against the **prime directives**
 fixed point the whole vision rotates around:
 
 1. **AI is the author and the failure investigator, never the judge.** No future feature may put
-   an LLM into the Tier-2 `run`/CI gate. Pass/fail stays machine-checkable, always.
+   an LLM (large language model) into the Tier-2 `run`/CI (continuous integration) gate. Pass/fail
+   stays machine-checkable, always.
 2. **Determinism first.** No fixed sleeps; an ambiguous selector fails fast. Every new platform,
    host, or authoring tool inherits this — it is not negotiable for reach or convenience.
 3. **App-agnostic / backend-agnostic.** Per-app and per-platform differences live in config and
@@ -57,7 +58,7 @@ The vision: **the same deterministic core drives iOS, Android, and the Web**, wi
 adding only its own actuator + environment + stable-id convention. The full concrete plan —
 selector-portability mapping, per-platform backends, phasing (Web first, because it runs on the
 existing Linux gate) — is in **[multi-platform](multi-platform.md)**. A second iOS actuator
-(XCUITest) is the same move within one OS ([roadmap](roadmap.md), §5).
+(XCUITest) is the same move within one OS ([roadmap → Backend expansion](roadmap/README.md#backend-expansion-ios-actuators)).
 
 ### 2. Scale & collaboration — from local tool to shared service
 
@@ -70,7 +71,7 @@ expensive device-worker pool, so a team runs and reviews from a browser.
   exposure mandates.
 - **[self-hosting](self-hosting.md)** — your own Mac(s): a today-ready single-Mac setup and a
   fully self-hosted multi-tenant topology.
-- **MCP integration** ([roadmap](roadmap.md), §4) — expose `run`/`doctor`/`record`/
+- **MCP (Model Context Protocol) integration** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)) — expose `run`/`doctor`/`record`/
   `codegen` as MCP tools and evidence as MCP resources, so agents drive Bajutsu directly. This
   rides the Tier-1 boundary cleanly: agents *author and investigate*, the gate stays deterministic.
 
@@ -79,13 +80,13 @@ expensive device-worker pool, so a team runs and reviews from a browser.
 The scenario is just YAML owned by humans; this axis makes *writing and keeping* it cheap without
 ever softening the gate.
 
-- **GUI editor & non-AI action capture** ([roadmap](roadmap.md), §3) —
+- **GUI (graphical user interface) editor & non-AI action capture** ([roadmap → Authoring experience](roadmap/README.md#authoring-experience-record--gui-editor)) —
   visually edit scenarios, pick selectors on a screenshot, and capture real taps/types into a
   scenario without an LLM. `bajutsu serve` is the first step.
-- **Visual-regression assertions** ([roadmap §10.1](roadmap.md#101-取り込む決定的思想に合致)) — a new
+- **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)) — a new
   *deterministic* assertion type (baseline diff). It fits precisely because it is machine-checked,
   not AI-judged.
-- **Self-healing triage** ([roadmap §6](roadmap.md#6-自己修復トリアージm4)) — already shipped: AI reads
+- **Self-healing triage** ([roadmap: BE-0021](roadmap/BE-0021-ai-triage/BE-0021-ai-triage.md)) — already shipped: AI reads
   failure evidence and proposes a **minimal diff**, which a human reviews and applies with
   `--write`. The guardrail — *never auto-soften a committed test* — is what keeps this inside the
   directives.
@@ -100,7 +101,7 @@ never the core.
 
 | Fixed core | Where |
 |---|---|
-| Scenario DSL & grammar | [scenarios](scenarios.md) · [dsl-grammar](dsl-grammar.md) |
+| Scenario DSL (domain-specific language) & grammar | [scenarios](scenarios.md) · [dsl-grammar](dsl-grammar.md) |
 | Selector model & deterministic resolution | [selectors](selectors.md) |
 | Machine assertions (the only judges) | `assertions.py` · [concepts](concepts.md) |
 | observe → act → verify orchestrator | [run-loop](run-loop.md) |
@@ -121,16 +122,16 @@ the lowest cost — are:
 1. **Web via Playwright** ([multi-platform](multi-platform.md), Phase 1). It proves the core is
    truly platform-neutral **inside the existing Linux gate** ([ci](ci.md)) — no Mac, no emulator —
    and exercises the rich end of the capability model (native network/video/semantic).
-2. **MCP server** ([roadmap](roadmap.md), §4). Low surface area, high leverage for
+2. **MCP server** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)). Low surface area, high leverage for
    the Tier-1 authoring loop, and it does not touch the gate.
-3. **Visual-regression assertions** ([roadmap §10.1](roadmap.md#101-取り込む決定的思想に合致)). A
+3. **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)). A
    deterministic capability competitors gate behind AI — a differentiator that *strengthens* the
    directives instead of straining them.
 
 The hosting axis ([cloud-hosting](cloud-hosting.md) / [self-hosting](self-hosting.md)) is a larger,
 separable investment; pursue it when the demand is collaborative rather than individual.
 
-> **How this relates to [roadmap](roadmap.md):** this page is the *why and the shape* (the north
+> **How this relates to [roadmap](roadmap/README.md):** this page is the *why and the shape* (the north
 > star); the roadmap is the *prioritized, living backlog* (the next concrete items). When an item
 > here becomes actionable, it appears there with a priority and status; when it ships, it moves to
 > the [architecture status table](architecture.md#implementation-status). Keep the three in sync.

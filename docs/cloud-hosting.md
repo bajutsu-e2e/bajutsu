@@ -9,7 +9,7 @@
 > ([cli](cli.md#serve) · [reporting](reporting.md)). Going public changes the shape of the
 > system, not just its address.
 
-Related: [architecture](architecture.md) · [ci](ci.md) · [roadmap](roadmap.md)
+Related: [architecture](architecture.md) · [ci](ci.md) · [roadmap](roadmap/README.md)
 
 ---
 
@@ -47,18 +47,18 @@ workers.**
 
 | Layer | Selected | Why this one | Notable alternatives |
 |---|---|---|---|
-| **API / web** | **FastAPI** on **Uvicorn** (prod: Gunicorn + uvicorn workers) | Async (SSE/WebSocket for live logs), Pydantic is **already a dependency** ([pyproject](../pyproject.toml)), OpenAPI for free, same Python as the core | Django (heavier, sync-first), Litestar, keep stdlib (won't scale to auth/multi-user) |
+| **API / web** | **FastAPI** on **Uvicorn** (prod: Gunicorn + uvicorn workers) | Async (SSE — server-sent events — / WebSocket for live logs), Pydantic is **already a dependency** ([pyproject](../pyproject.toml)), OpenAPI for free, same Python as the core | Django (heavier, sync-first), Litestar, keep stdlib (won't scale to auth/multi-user) |
 | **Frontend** | Keep the **single-page UI** from `serve.py`, served by the API; add auth + project pickers | The UI is one HTML string already; no SPA build step needed for v1 | React/Svelte SPA later if the UI grows |
-| **Reverse proxy + TLS** | **Caddy** | Automatic HTTPS (Let's Encrypt) with near-zero config; clean reverse proxy + headers | nginx + certbot (more knobs, more setup), Traefik |
-| **AuthN/Z** | **OAuth2 — GitHub provider** via **Authlib**, signed-cookie sessions; per-org RBAC | Audience is developers (they have GitHub); no passwords to store; org model maps to GitHub orgs | oauth2-proxy at the edge, Auth0/Clerk/WorkOS (managed, paid), Google OAuth |
+| **Reverse proxy + TLS** (Transport Layer Security) | **Caddy** | Automatic HTTPS (Let's Encrypt) with near-zero config; clean reverse proxy + headers | nginx + certbot (more knobs, more setup), Traefik |
+| **AuthN/Z** (authentication / authorization) | **OAuth2 — GitHub provider** via **Authlib**, signed-cookie sessions; per-org RBAC (role-based access control) | Audience is developers (they have GitHub); no passwords to store; org model maps to GitHub orgs | oauth2-proxy at the edge, Auth0/Clerk/WorkOS (managed, paid), Google OAuth |
 | **System of record** | **PostgreSQL 16** + **SQLAlchemy 2.0** + **Alembic** | Relational core (orgs/users/projects/runs) with **JSONB** for manifest summaries; managed everywhere (RDS, Cloud SQL, Neon, Supabase) | SQLite (no concurrency for multi-user), MySQL |
 | **Queue / cache / pub-sub** | **Redis 7** | One component does three jobs: **job broker**, cache, and **pub/sub fan-out** for live logs (worker → Redis → SSE) | RabbitMQ/NATS (broker only), SQS (broker only, no pub/sub) |
 | **Task framework** | **RQ** (Redis Queue) to start | Tiny, Redis-native, easy to read; matches "enqueue a `bajutsu run`, a worker consumes it" | Celery (more features: routing/retries/beat — adopt when needed), Dramatiq |
 | **Artifact storage** | **Cloudflare R2** (S3-compatible) | Run trees (`report.html`, screenshots, **video**, `network.json`) are large binaries — keep them **out of Postgres**; R2 has **no egress fees** | AWS S3 (egress costs), MinIO (self-host), GCS |
 | **macOS workers** | **MacStadium Orka** | Purpose-built macOS-VM orchestration ("k8s for Mac") — the only option that gives a **scalable, schedulable pool** of clean Macs | AWS EC2 Mac (24h min allocation, pricey), Scaleway Apple silicon, self-hosted Mac minis |
-| **Secrets** | Cloud secret manager (**Doppler** or platform-native: Fly/AWS Secrets Manager) | Centralized rotation; per-org **BYO `ANTHROPIC_API_KEY`** (bounds cost/abuse for `--dismiss-alerts` and `record`) | Vault (heavier), env files (don't, for public) |
+| **Secrets** | Cloud secret manager (**Doppler** or platform-native: Fly/AWS Secrets Manager) | Centralized rotation; per-org **BYO (bring-your-own) `ANTHROPIC_API_KEY`** (bounds cost/abuse for `--dismiss-alerts` and `record`) | Vault (heavier), env files (don't, for public) |
 | **Observability** | **Sentry** (errors) + **Prometheus/Grafana** (metrics) + structured JSON logs | Standard, cheap, hosted tiers exist | OpenTelemetry collector, Datadog (paid) |
-| **IaC + CI/CD** | **Terraform** + **GitHub Actions** → **GHCR** images | Reproducible infra; the repo already lives in Actions ([ci](ci.md)) | Pulumi, manual (don't) |
+| **IaC (infrastructure as code) + CI/CD** (continuous integration / continuous delivery) | **Terraform** + **GitHub Actions** → **GHCR** (GitHub Container Registry) images | Reproducible infra; the repo already lives in Actions ([ci](ci.md)) | Pulumi, manual (don't) |
 
 ---
 
@@ -96,7 +96,7 @@ A small Python agent (launchd service) on each Orka-provisioned Mac:
 
 ## Deployment plan (phased)
 
-### Phase 1 — MVP, ship fast
+### Phase 1 — MVP (minimum viable product), ship fast
 - **Control plane** containerized → **Fly.io** (or Render). Managed **Fly Postgres** + **Upstash
   Redis**. Artifacts on **Cloudflare R2**. TLS via the platform / Caddy. **GitHub OAuth**.
 - **Workers**: a **single MacStadium Orka** node running the agent. Scenarios + app configs stored
@@ -108,7 +108,7 @@ A small Python agent (launchd service) on each Orka-provisioned Mac:
 ### Phase 2 — scale
 - Control plane → **Kubernetes** (GKE/EKS), managed **Cloud SQL/RDS** + **ElastiCache/Upstash**.
 - **Orka autoscaling** Mac pool keyed off Redis queue depth; per-org **concurrency quotas**.
-- Artifact **CDN** in front of R2; multi-region control plane if needed.
+- Artifact **CDN** (content delivery network) in front of R2; multi-region control plane if needed.
 - Full observability (Sentry + Grafana dashboards + alerting on queue depth / worker health).
 
 ### Cost shape (the honest part)
@@ -134,7 +134,8 @@ both assumptions, so these are not optional:
   abuse to the org that owns the key.
 - **Worker sandboxing.** A scenario is effectively *untrusted code driving a device*: run each on an
   **ephemeral Mac/Simulator**, with an **egress allowlist** and **no cross-tenant secret reuse**.
-- **Signed, expiring artifact URLs**; **CORS/CSRF** protection; standard security headers; an
+- **Signed, expiring artifact URLs**; **CORS/CSRF** (cross-origin resource sharing /
+  cross-site request forgery) protection; standard security headers; an
   **audit log** of who ran what, when.
 - **Quotas / concurrency caps per org** so one tenant can't starve the (scarce, expensive) Mac pool.
 

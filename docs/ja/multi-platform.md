@@ -5,7 +5,7 @@
 > 将来構想 —— **未実装**。現状の Bajutsu は **iOS Simulator 限定**にスコープを切っている
 > （[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）。本ページは、既存の抽象をそのまま活かして
 > **Android**（エミュレータ）と **Web**（ブラウザ）も操作対象に広げるための、具体的な方針と設計を述べる
-> —— 何が不変で、各バックエンドが何を足し、どの順で作るか。[roadmap §2](roadmap.md) の詳細版。
+> —— 何が不変で、各バックエンドが何を足し、どの順で作るか。[roadmap → プラットフォーム拡張](../roadmap/README-ja.md#プラットフォーム拡張android--flutter) の詳細版。
 
 関連: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [configuration](configuration.md) · [vision](vision.md)
 
@@ -194,14 +194,14 @@ apps:
 | 段階 | 範囲 | この順の理由 |
 |---|---|---|
 | **0 — 継ぎ目を抽象化** | `Environment` Protocol を抽出（今は `simctl` が具体）、config に `platform` + プラットフォームスコープの backend レジストリを追加、`runner.py`/`orchestrator.py` の iOS 臭を監査 | 一般化コストをデバイス抜きで一度だけ払う |
-| **1 — Web（Playwright）** | 最初の本物の 2 つ目 | **Linux で動く —— Mac 不要**。つまり *既存の* `make check` / CI ゲート（[ci](ci.md)）にその日から収まる。ネイティブ network + video + 意味的操作が `capabilities()` の **豊かな端**を行使。摩擦最小・到達範囲最大・コアがプラットフォーム中立である最安の証明 |
+| **1 — Web（Playwright）** | 最初の本物の 2 つ目 | **Linux で動く —— Mac 不要**。つまり *既存の* `make check` / CI（継続的インテグレーション）ゲート（[ci](ci.md)）にその日から収まる。ネイティブ network + video + 意味的操作が `capabilities()` の **豊かな端**を行使。摩擦最小・到達範囲最大・コアがプラットフォーム中立である最安の証明 |
 | **2 — Android（adb + UI Automator）** | idb の双子 | 座標モデルが idb をほぼ完全に映すので新しい形が少ない。エミュレータは Linux CI（KVM）で動く。`capabilities()` の **痩せた端**を行使 |
 | **3 — ハイブリッド/クロスレンダ** | Flutter / React Native / WebView | 新 OS actuator ではなく semantics ブリッジが要る —— 2 つのネイティブツリーが固まるまで後回し |
 | **横断** | プラットフォーム別 `doctor` スコア、プラットフォーム別 codegen エミッタ、**スコープ文の更新** | 各段階と並走 |
 
 **Android が構造的に近い双子なのに、なぜ Web を先にするか**: Web は **macOS もデバイスエミュレータも不要**な
 唯一のプラットフォームなので、動いた日に現行 Linux ゲートの内側に着地する —— 「コアは本当に
-プラットフォーム中立か？」という問いを最小コストで de-risk する。Android はその後、すでに一般化された
+プラットフォーム中立か？」という問いのリスクを最小コストで下げる。Android はその後、すでに一般化された
 コアの上で *痩せた/座標* 経路を確認する。
 
 ---
@@ -217,7 +217,7 @@ apps:
 - **docs ナビ** —— [`docs/README.md`](../README.md) と [`docs/ja/README.md`](README.md) の両方。
 
 **Prime directive は不変に保つ**: 決定性ファースト・app-agnostic・*AI は判定者にならない* は Android でも
-Web でも同一に適用される。どの新プラットフォームも Tier-2 ゲートに LLM を持ち込んではならない。
+Web でも同一に適用される。どの新プラットフォームも Tier-2 ゲートに LLM（大規模言語モデル）を持ち込んではならない。
 
 ---
 

@@ -9,7 +9,7 @@ Two distinct things, kept separate:
 
 | Workflow | Runner | When | What |
 |---|---|---|---|
-| [`ci.yml`](../.github/workflows/ci.yml) | Linux | push to `main`, every PR | `ruff` + `mypy` + `pytest` on Python 3.13 (the logic layer needs no Simulator — fast, cheap) |
+| [`ci.yml`](../.github/workflows/ci.yml) | Linux | push to `main`, every PR (pull request) | `ruff` + `mypy` + `pytest` on Python 3.13 (the logic layer needs no Simulator — fast, cheap) |
 | [`e2e.yml`](../.github/workflows/e2e.yml) | macOS | manual + PRs touching the app/SDK/runtime | two jobs: **smoke (idb)** builds the sample, boots a Simulator, and runs `smoke.yaml` through the idb backend (driver + simctl + idb); **xcuitest (codegen)** generates a native XCUITest from a scenario (`make -C demos/features ui-test`) and runs it with `xcodebuild` (no bajutsu / idb / AI at test time) |
 
 The dev tools live in the `dev` extra, so the Linux job runs `uv sync --extra dev` then

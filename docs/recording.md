@@ -68,7 +68,7 @@ scenario self-sufficient without adding implicit timing to `run`.
 
 ## ClaudeAgent
 
-Implements `agent.Agent` with Claude (the Anthropic SDK) (`claude_agent.py`).
+Implements `agent.Agent` with Claude (the Anthropic SDK, software development kit) (`claude_agent.py`).
 
 - **Forced tool use**: `tool_choice={"type": "any"}` forces **exactly one** tool call per turn.
   - `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`.

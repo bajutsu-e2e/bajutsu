@@ -153,7 +153,7 @@ uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app samp
 PASS  runs/20260610-120000/manifest.json
 ```
 
-`run` は **全シナリオ合格で終了コード 0、いずれか失敗で 1** —— この終了コードが CI ゲート
+`run` は **全シナリオ合格で終了コード 0、いずれか失敗で 1** —— この終了コードが CI（継続的インテグレーション）ゲート
 （[run-loop](run-loop.md)）。
 
 > 環境の問題（booted Simulator が無い・idb 未インストール）に当たったら、まず

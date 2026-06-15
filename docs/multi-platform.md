@@ -6,7 +6,7 @@
 > Simulator only** ([DESIGN §1](../DESIGN.md), [README](../README.md)). This page lays out a
 > concrete strategy and design for reusing the existing abstractions to also drive **Android**
 > (emulator) and **Web** (browser) — what stays unchanged, what each new backend adds, and the
-> order to build it in. It is the long-form of [roadmap §2](roadmap.md#2-プラットフォーム拡張android--flutter).
+> order to build it in. It is the long-form of [roadmap → Platform expansion](roadmap/README.md#platform-expansion-android--flutter).
 
 Related: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [configuration](configuration.md) · [vision](vision.md)
 
@@ -15,9 +15,9 @@ Related: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concep
 ## The thesis: the abstraction is already platform-shaped
 
 Bajutsu's core was built behind a backend-agnostic `Driver` interface on purpose
-([drivers](drivers.md), [DESIGN §5](../DESIGN.md)). The deterministic spine — scenario DSL,
-selector resolution, machine assertions, the orchestrator loop, the evidence subsystem, the
-reporter — never names iOS. Only **three seams** are iOS-specific today:
+([drivers](drivers.md), [DESIGN §5](../DESIGN.md)). The deterministic spine — scenario DSL
+(domain-specific language), selector resolution, machine assertions, the orchestrator loop, the
+evidence subsystem, the reporter — never names iOS. Only **three seams** are iOS-specific today:
 
 1. **The actuator** (`drivers/idb.py`) — drives the UI via `idb` + frame-center coordinate taps.
 2. **The environment manager** (`env.py`) — `simctl` boot / erase / launch / openurl.
@@ -61,7 +61,7 @@ data-derived** handle — and the per-platform id convention ([§7.3](../DESIGN.
 |---|---|---|---|
 | `id` (primary) | `accessibilityIdentifier` | `resource-id` (Compose: `Modifier.testTag` + `testTagsAsResourceId`) | `data-testid` |
 | `label` (auxiliary) | `accessibilityLabel` | `content-desc` / `text` | accessible name / `aria-label` / text |
-| `traits` (role filter) | UI traits (`button`, `link`, …) | widget class (`android.widget.Button`) | ARIA `role` (`button`, `link`, `textbox`) |
+| `traits` (role filter) | UI traits (`button`, `link`, …) | widget class (`android.widget.Button`) | ARIA (Accessible Rich Internet Applications) `role` (`button`, `link`, `textbox`) |
 | `value` | accessibility value | `text` / checked state | input `value` / `aria-*` |
 
 The key property: **the YAML selector `{ id: settings.reindex }` is already platform-neutral.**
@@ -101,7 +101,7 @@ the cheapest place to prove the abstraction.
 | Seam | Choice |
 |---|---|
 | **Actuator** | **`adb` + `uiautomator dump`** — `uiautomator dump` yields an XML tree; actuation is `adb shell input tap x y` at the element's bounds center. **Coordinate-based, no semantic tap — a near-exact twin of idb.** (A richer Appium UiAutomator2 path could add semantic actions later) |
-| **Environment** | `adb`: clean state = `pm clear <package>` (the `erase` equivalent); boot via emulator/AVD; launch = `am start`; deeplink = `am start -a android.intent.action.VIEW -d <url>`; launch args = intent extras |
+| **Environment** | `adb`: clean state = `pm clear <package>` (the `erase` equivalent); boot via emulator/AVD (Android Virtual Device); launch = `am start`; deeplink = `am start -a android.intent.action.VIEW -d <url>`; launch args = intent extras |
 | **id convention** | `resource-id` (XML `android:id`; Jetpack Compose `Modifier.testTag` surfaced as `resource-id` via `testTagsAsResourceId`). `content-desc`/`text` → `label`; widget class → `traits` |
 | **Evidence providers** | screenshot = `adb exec-out screencap`; video = `adb shell screenrecord`; `deviceLog` = `adb logcat` (filtered by tag/pid); `network` = no native monitor → same mock story as iOS |
 | **codegen target** | Espresso or UI Automator (Kotlin/Java) |
@@ -114,9 +114,9 @@ three seams, with almost no new shape.
 ### Flutter / React Native / WebView hybrids (later)
 
 Cross-rendered UIs (Flutter draws its own pixels; hybrids embed a WebView) often don't surface
-elements in the OS a11y tree. These need a **semantics bridge** rather than a new OS actuator:
-Flutter's semantics tree (`integration_test` / VM Service / Flutter Driver), or a WebView→DOM
-bridge for the embedded-web case. Treat these as a **third phase**, after the two native trees
+elements in the OS a11y (accessibility) tree. These need a **semantics bridge** rather than a new
+OS actuator: Flutter's semantics tree (`integration_test` / VM Service / Flutter Driver), or a
+WebView→DOM (Document Object Model) bridge for the embedded-web case. Treat these as a **third phase**, after the two native trees
 prove the abstraction.
 
 ### Extended capability matrix
@@ -201,8 +201,8 @@ the common `Element`.
 | Phase | Scope | Why this order |
 |---|---|---|
 | **0 — Abstract the seams** | Extract an `Environment` Protocol (today `simctl` is concrete); add `platform` to config + platform-scoped backend registry; audit `runner.py`/`orchestrator.py` for leaked iOS-isms | Pays the generalization cost once, with no device involved |
-| **1 — Web (Playwright)** | First real second platform | **Runs on Linux — no Mac needed**, so it fits the *existing* `make check` / CI gate ([ci](ci.md)). Native network + video + semantic actions exercise the **rich** end of `capabilities()`. Lowest friction, broadest reach, cheapest proof that the core is platform-neutral |
-| **2 — Android (adb + UI Automator)** | The idb twin | Coordinate model mirrors idb almost exactly, so little new shape; emulator runs on Linux CI (KVM). Exercises the **lean** end of `capabilities()` |
+| **1 — Web (Playwright)** | First real second platform | **Runs on Linux — no Mac needed**, so it fits the *existing* `make check` / CI (continuous integration) gate ([ci](ci.md)). Native network + video + semantic actions exercise the **rich** end of `capabilities()`. Lowest friction, broadest reach, cheapest proof that the core is platform-neutral |
+| **2 — Android (adb + UI Automator)** | The idb twin | Coordinate model mirrors idb almost exactly, so little new shape; emulator runs on Linux CI (KVM, the Linux Kernel Virtual Machine). Exercises the **lean** end of `capabilities()` |
 | **3 — Hybrid/cross-rendered** | Flutter / React Native / WebView | Needs a semantics bridge, not a new OS actuator — defer until the two native trees are solid |
 | **Cross-cutting** | per-platform `doctor` score, per-platform codegen emitter, **scope-statement updates** | Done alongside each phase |
 

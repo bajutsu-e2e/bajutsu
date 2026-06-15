@@ -2,15 +2,15 @@
 
 # Bajutsu documentation
 
-> Implementation-grounded reference for the natural-language-driven iOS E2E testing tool
+> Implementation-grounded reference for the natural-language-driven iOS E2E (end-to-end) testing tool
 > (iOS Simulator only). Where [`README.md`](../README.md) is the pitch and [`DESIGN.md`](../DESIGN.md)
 > is the design rationale (the *why*), this set of pages explains **what the code actually
 > does today**, feature by feature. Forward-looking work (what we want to build next) lives
-> in [roadmap.md](roadmap.md).
+> in [the roadmap](roadmap/README.md).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives an app
 on the iOS Simulator (tap / type / swipe / wait), and verifies the result with
-**machine-checkable assertions**. The central idea is to **keep AI out of the CI gate**: AI
+**machine-checkable assertions**. The central idea is to **keep AI out of the CI (continuous integration) gate**: AI
 is the scenario *author* and the failure *investigator*, never the pass/fail *judge*
 (see [concepts](concepts.md)).
 
@@ -47,7 +47,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 1 | [concepts](concepts.md) | Design philosophy & core principles (determinism, two tiers, stability ladder, the AI boundary) |
 | 2 | [architecture](architecture.md) | Module layout, dependencies, and the **implementation status** (implemented / unwired) |
 | 3 | [scenarios](scenarios.md) | Scenario YAML grammar (steps / waits / assertions / capture tokens) = the authoring reference |
-| 4 | [dsl-grammar](dsl-grammar.md) | The **formal grammar** of the scenario DSL (EBNF + every validation constraint) — the normative spec behind [scenarios](scenarios.md) |
+| 4 | [dsl-grammar](dsl-grammar.md) | The **formal grammar** of the scenario DSL (domain-specific language) — EBNF + every validation constraint — the normative spec behind [scenarios](scenarios.md) |
 | 5 | [selectors](selectors.md) | Selector model and deterministic resolution (0/1/2+ matches); how assertions evaluate = the determinism core |
 | 6 | [drivers](drivers.md) | Driver abstraction · idb / fake · capability differences · the simctl environment |
 | 7 | [run-loop](run-loop.md) | Orchestrator (observe → act → verify) · waits · retries · run results |

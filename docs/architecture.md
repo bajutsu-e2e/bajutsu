@@ -96,7 +96,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `trace.py` | Text timeline over a saved run (the `trace` command) | [cli](cli.md) |
 | `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
 | `claude_triage.py` | Claude-backed `TriageAgent` (`--ai`, failure screenshot) | [cli](cli.md) |
-| `github.py` | GitHub helpers (CI) | [ci](ci.md) |
+| `github.py` | GitHub helpers (CI, continuous integration) | [ci](ci.md) |
 | `serve.py` | Local web UI (the `serve` command) | [cli](cli.md) |
 | `cli.py` | Typer-based CLI (`run`/`record`/`doctor`/`codegen`/`trace`/`triage`/`serve`) | [cli](cli.md) |
 | `dotenv.py` | Minimal `.env` loader (never overrides an existing var) | [cli](cli.md#environment-variables-env) |

@@ -7,7 +7,7 @@
 > UI on **your own Mac(s)**. It documents two tiers: **(A)** what runs *today* with the existing
 > stdlib `bajutsu serve` ([serve.py](../bajutsu/serve.py)), and **(B)** a fully self-hosted version
 > of the future multi-tenant system from [cloud-hosting](cloud-hosting.md), with every managed
-> service replaced by self-hosted OSS.
+> service replaced by self-hosted OSS (open-source software).
 
 Related: [cloud-hosting](cloud-hosting.md) · [cli](cli.md#serve) · [ci](ci.md)
 
@@ -88,7 +88,7 @@ together over a **Tailscale tailnet**; the only public surface is Caddy's `:443`
 | Fly Postgres | **postgres** container |
 | Upstash Redis | **redis** container |
 | Cloudflare R2 (artifacts) | **MinIO** (S3-compatible, self-hosted) |
-| GitHub OAuth (Authlib) | **Authelia** or **Keycloak** (self-hosted IdP), or oauth2-proxy |
+| GitHub OAuth (Authlib) | **Authelia** or **Keycloak** (self-hosted IdP — identity provider), or oauth2-proxy |
 | Caddy / TLS | **Caddy** (Let's Encrypt or an internal CA) |
 | MacStadium Orka (Mac pool) | Your own **Mac mini pool (1…N)** + worker agent as a `LaunchAgent` |
 | Doppler (secrets) | **SOPS + age** or Vault (or a permission-locked `.env`) |
@@ -125,11 +125,12 @@ pool** (scarce, low-concurrency, slow) need **opposite** techniques.
 **Control-plane load balancing (easy, standard).** Run **N replicas** of the FastAPI app behind
 **Caddy/HAProxy**:
 
-- Prefer **least-conn** over round-robin (SSE connections are long-lived); health-check upstreams.
-- **No sticky sessions** — use signed-cookie/JWT auth or keep sessions in Redis, so any replica
-  serves any request.
+- Prefer **least-conn** over round-robin (SSE — server-sent events — connections are long-lived);
+  health-check upstreams.
+- **No sticky sessions** — use signed-cookie/JWT (JSON Web Token) auth or keep sessions in Redis,
+  so any replica serves any request.
 - **SSE is naturally shardable**: live logs come from Redis pub/sub, so *any* replica can stream
-  *any* run's logs. Configure the LB to **not buffer** SSE (flush / no-buffering). Async uvicorn
+  *any* run's logs. Configure the LB (load balancer) to **not buffer** SSE (flush / no-buffering). Async uvicorn
   handles many SSE on few workers, but size worker concurrency to the expected live viewers.
 
 **Worker "load balancing" = job scheduling (the real problem).** A Mac runs only **K** concurrent
@@ -150,7 +151,7 @@ Simulators (small — RAM-bound, often 1–3), and a run takes minutes. The rule
 Four axes:
 
 - **Data isolation.** Shared Postgres with an `org_id` on every table, **org-scoped on every query**
-  in the app layer, with **Postgres RLS** policies as defense-in-depth. MinIO uses a **tenant
+  in the app layer, with **Postgres RLS** (row-level security) policies as defense-in-depth. MinIO uses a **tenant
   prefix** (`artifacts/<org_id>/runs/…`) served only through **org-scoped signed URLs**. Shared
   schema + `org_id` + RLS beats schema/DB-per-tenant for self-host ops.
 - **Execution isolation** (a scenario is effectively untrusted code driving a device). Use an
@@ -161,19 +162,20 @@ Four axes:
   tenants' Simulators on one Mac — utilization vs isolation. Add **per-job egress controls**.
 - **Fairness / noisy-neighbor.** Enforce **per-tenant concurrency quotas** at enqueue time (count an
   org's in-flight jobs; hold the rest in a per-org pending queue) so one tenant can't monopolize the
-  scarce Macs. Replace pure FIFO with **weighted-fair scheduling**: per-tenant queues + a dispatcher
+  scarce Macs. Replace pure FIFO (first-in, first-out) with **weighted-fair scheduling**: per-tenant queues + a dispatcher
   that round-robins across orgs with pending work (respecting quotas) into the worker-facing queue.
   Priority tiers ride the same mechanism.
 - **Authorization boundary.** Every request carries its org (the OAuth/Authelia claim); enforce org
-  scope on every endpoint, RBAC within the org, and hand workers **only that job's org context and
+  scope on every endpoint, RBAC (role-based access control) within the org, and hand workers **only that job's org context and
   scoped secrets**.
 
-### Self-host SPOFs once you scale out
+### Self-host SPOFs (single points of failure) once you scale out
 
 Horizontal scale makes **Redis and Postgres single points of failure** (Redis now holds the queue,
-pub/sub, *and* quota state). Make **Redis HA with Sentinel**, **Postgres** primary+replica (Patroni)
-or at least a solid backup (a single node is acceptable for self-host **if** flagged as a SPOF), and
-the **LB itself** redundant via keepalived/VRRP or DNS.
+pub/sub, *and* quota state). Make **Redis HA (highly available) with Sentinel**, **Postgres**
+primary+replica (Patroni) or at least a solid backup (a single node is acceptable for self-host
+**if** flagged as a SPOF), and the **LB itself** redundant via keepalived/VRRP (Virtual Router
+Redundancy Protocol) or DNS.
 
 ```
 [DNS] → [HAProxy ×2 (VRRP)] → [FastAPI ×N] ─┬─ Postgres (primary+replica)

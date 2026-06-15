@@ -3,7 +3,7 @@
 # Reporting (manifest.json / JUnit / HTML)
 
 > One run executes one or more scenarios (`list[RunResult]`). Their results are written in three
-> formats. `manifest.json` is the **single source of truth** for the report and for CI.
+> formats. `manifest.json` is the **single source of truth** for the report and for CI (continuous integration).
 >
 > Implementation: `bajutsu/report.py`.
 

@@ -3,7 +3,7 @@
 # レポート（manifest.json / JUnit / HTML）
 
 > 1 回の run は 1 つ以上のシナリオ（`list[RunResult]`）を実行する。その結果を 3 つの形式で
-> 書き出す。`manifest.json` がレポートと CI の **単一の真実**。
+> 書き出す。`manifest.json` がレポートと CI（継続的インテグレーション）の **単一の真実**。
 >
 > 実装: `bajutsu/report.py`。
 
