@@ -10,6 +10,7 @@
 | Workflow | ランナー | タイミング | 内容 |
 |---|---|---|---|
 | [`ci.yml`](../../.github/workflows/ci.yml) | Linux | `main` への push・全 PR | `make check` ゲート一式（Python 3.13）— ロックの鮮度（`uv lock --check`）・整形（`ruff format --check`）・lint（`ruff`）・シェル lint（`shellcheck`）・ワークフロー lint（`actionlint`）・型（`mypy bajutsu demos`）・カバレッジ下限つき `pytest`（`--cov-fail-under=85`）。ロジック層はシミュレータ不要で速い・安い |
+| [`swift.yml`](../../.github/workflows/swift.yml) | macOS | `main` への push + `BajutsuKit/**` を触る PR | [BajutsuKit](../../BajutsuKit) の `swift build` + `swift test`。純 Foundation のロジック（リクエスト照合 / モック解析）をシミュレータ無しで単体テスト——実機でのインターセプトそのものは `e2e.yml` がカバー |
 | [`e2e.yml`](../../.github/workflows/e2e.yml) | macOS | 手動 + アプリ/SDK/ランタイムを触る PR | 2 ジョブ: **smoke (idb)** はサンプルをビルド → シミュレータ起動 → idb バックエンドで `smoke.yaml` 実行（driver + simctl + idb）。**xcuitest (codegen)** はシナリオからネイティブ XCUITest を生成し（`make -C demos/features ui-test`）`xcodebuild` で実行（テスト時に bajutsu / idb / AI は不要） |
 
 dev ツールは `dev` 依存グループにあるため、Linux ジョブは `uv sync --group dev` → `uv run

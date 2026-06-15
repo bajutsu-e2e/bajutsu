@@ -10,6 +10,7 @@ Two distinct things, kept separate:
 | Workflow | Runner | When | What |
 |---|---|---|---|
 | [`ci.yml`](../.github/workflows/ci.yml) | Linux | push to `main`, every PR (pull request) | the full `make check` gate on Python 3.13 — lockfile freshness (`uv lock --check`), formatting (`ruff format --check`), lint (`ruff`), shell lint (`shellcheck`), workflow lint (`actionlint`), types (`mypy bajutsu demos`), and `pytest` with a coverage floor (`--cov-fail-under=85`). The logic layer needs no Simulator, so it's fast and cheap |
+| [`swift.yml`](../.github/workflows/swift.yml) | macOS | push to `main` + PRs touching `BajutsuKit/**` | `swift build` + `swift test` for [BajutsuKit](../BajutsuKit). Unit-tests the pure-Foundation logic (request matching / mock parsing) with no Simulator — the on-device interception itself is covered by `e2e.yml` |
 | [`e2e.yml`](../.github/workflows/e2e.yml) | macOS | manual + PRs touching the app/SDK/runtime | two jobs: **smoke (idb)** builds the sample, boots a Simulator, and runs `smoke.yaml` through the idb backend (driver + simctl + idb); **xcuitest (codegen)** generates a native XCUITest from a scenario (`make -C demos/features ui-test`) and runs it with `xcodebuild` (no bajutsu / idb / AI at test time) |
 
 The dev tools live in the `dev` dependency group, so the Linux job runs `uv sync --group
