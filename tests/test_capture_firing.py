@@ -25,8 +25,12 @@ class RecordingSink:
         self.scenario_intervals: list[tuple[str, list[str]]] = []
 
     def capture(
-        self, driver: base.Driver, step_id: str, kinds: list[str],
-        *, elements: list[base.Element] | None = None,
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
@@ -174,8 +178,12 @@ class IntervalSink:
         self.finished: list[str] = []
 
     def capture(
-        self, driver: base.Driver, step_id: str, kinds: list[str],
-        *, elements: list[base.Element] | None = None,
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
     ) -> list[Artifact]:
         return []
 
@@ -243,11 +251,15 @@ def test_screen_changed_shares_query_with_evidence(tmp_path: Path) -> None:
     sink = FileSink(tmp_path / "run1")
     result = run_scenario(
         driver,
-        _scn({
-            "name": "x",
-            "steps": [{"tap": {"id": "go"}}],
-            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}],
-        }),
+        _scn(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "go"}}],
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
+            }
+        ),
         sink=sink,
     )
     assert result.ok

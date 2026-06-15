@@ -92,9 +92,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         self._json({"yaml": target.read_text(encoding="utf-8")})
                 case _ if path.startswith("/api/jobs/"):
                     job = state.jobs.get(path[len("/api/jobs/") :])
-                    self._json(
-                        job.view() if job else {"error": "no such job"}, 200 if job else 404
-                    )
+                    self._json(job.view() if job else {"error": "no such job"}, 200 if job else 404)
                 case _ if path.startswith("/runs/"):
                     self._serve_run_file(unquote(path[len("/runs/") :]))
                 case _:
@@ -181,9 +179,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 baselines=str(state.baselines_dir),
             )
             app_path, build = app_build_info(cfg, body["app"])
-            job = state.new_job(
-                cmd, udids=self._boot_targets(udid), app_path=app_path, build=build
-            )
+            job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id})
 
@@ -292,9 +288,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def make_server(
-    state: ServeState, host: str = "127.0.0.1", port: int = 0
-) -> ThreadingHTTPServer:
+def make_server(state: ServeState, host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
     return ThreadingHTTPServer((host, port), _make_handler(state))
 
 
@@ -325,4 +319,3 @@ def _index_html() -> str:
             js=_asset("serve.js"),
         )
     )
-

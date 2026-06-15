@@ -122,7 +122,9 @@ def test_locator_normalizes_pixel_coordinates() -> None:
 
 
 def test_locator_absent_decision() -> None:
-    decision = ClaudeAlertLocator(client=_resolve_alert({"present": False})).locate(_png(10, 10), None)
+    decision = ClaudeAlertLocator(client=_resolve_alert({"present": False})).locate(
+        _png(10, 10), None
+    )
     assert decision.present is False
 
 

@@ -45,7 +45,9 @@ def test_type_text_proposal() -> None:
 
 
 def test_wait_proposal() -> None:
-    agent = ClaudeAgent(client=FakeAnthropic(FakeBlock("wait_for", {"id": "spinner", "timeout": 5})))
+    agent = ClaudeAgent(
+        client=FakeAnthropic(FakeBlock("wait_for", {"id": "spinner", "timeout": 5}))
+    )
     step = agent.next_action(_obs()).step
     assert step is not None and step.wait is not None
     assert step.wait.for_ is not None and step.wait.for_.id == "spinner"
@@ -206,7 +208,9 @@ def test_authored_valueless_selectors_resolve_uniquely() -> None:
         _vel(None, ["textField"], value="Email"),
         _vel(None, ["textField"], value="Password"),
     ]
-    plus = ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"label": "+"}))).next_action(_obs()).step
+    plus = (
+        ClaudeAgent(client=FakeAnthropic(FakeBlock("tap", {"label": "+"}))).next_action(_obs()).step
+    )
     email = (
         ClaudeAgent(
             client=FakeAnthropic(

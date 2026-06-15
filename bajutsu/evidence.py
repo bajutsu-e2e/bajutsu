@@ -93,8 +93,12 @@ class EvidenceSink(Protocol):
     whole scenario."""
 
     def capture(
-        self, driver: base.Driver, step_id: str, kinds: list[str],
-        *, elements: list[base.Element] | None = None,
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
     ) -> list[Artifact]: ...
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]
@@ -108,8 +112,12 @@ class NullSink:
     """Default sink: capture nothing (keeps runs side-effect free unless asked)."""
 
     def capture(
-        self, driver: base.Driver, step_id: str, kinds: list[str],
-        *, elements: list[base.Element] | None = None,
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
     ) -> list[Artifact]:
         return []
 
@@ -149,8 +157,12 @@ class FileSink:
         self.redactor = Redactor(redact, values=secrets)
 
     def capture(
-        self, driver: base.Driver, step_id: str, kinds: list[str],
-        *, elements: list[base.Element] | None = None,
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
     ) -> list[Artifact]:
         # Re-root each artifact name under step_id so it is relative to the run dir
         # (e.g. "00-slug/step0/after.png") and the HTML report can reference it.
