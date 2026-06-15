@@ -18,6 +18,23 @@ def _safe_run_path(runs_dir: Path, run_id: str, filename: str) -> Path:
     return target
 
 
+def _safe_artifact_path(runs_dir: Path, run_id: str, rel_path: str) -> Path:
+    """Resolve a nested artifact path, rejecting path traversal."""
+    target = (runs_dir / run_id / rel_path).resolve()
+    base = runs_dir.resolve()
+    if base not in target.parents:
+        raise ValueError(f"invalid artifact path: {rel_path}")
+    return target
+
+
+def _read_text_or_binary(path: Path) -> str | bytes:
+    """Read a file as text (JSON/XML/YAML/HTML) or binary (images, video)."""
+    text_suffixes = {".json", ".xml", ".yaml", ".yml", ".html", ".log", ".txt"}
+    if path.suffix in text_suffixes:
+        return path.read_text(encoding="utf-8")
+    return path.read_bytes()
+
+
 def register_resources(mcp: FastMCP, runs_dir: Path) -> None:
 
     @mcp.resource("bajutsu://runs/{run_id}/manifest.json")
@@ -36,13 +53,31 @@ def register_resources(mcp: FastMCP, runs_dir: Path) -> None:
             raise ValueError(f"no report for run {run_id}")
         return path.read_text(encoding="utf-8")
 
+    @mcp.resource("bajutsu://runs/{run_id}/junit.xml")
+    def run_junit(run_id: str) -> str:
+        """The JUnit XML for a completed run (CI integration)."""
+        path = _safe_run_path(runs_dir, run_id, "junit.xml")
+        if not path.is_file():
+            raise ValueError(f"no junit.xml for run {run_id}")
+        return path.read_text(encoding="utf-8")
+
+    @mcp.resource("bajutsu://runs/{run_id}/artifact/{path*}")
+    def run_artifact(run_id: str, path: str) -> str | bytes:
+        """Any artifact under a run directory (screenshots, elements.json,
+        network.json, video, etc.). Text files are returned as strings;
+        binary files (images, video) as bytes."""
+        target = _safe_artifact_path(runs_dir, run_id, path)
+        if not target.is_file():
+            raise ValueError(f"artifact not found: {run_id}/{path}")
+        return _read_text_or_binary(target)
+
     @mcp.resource("bajutsu://runs/latest/manifest.json")
     def latest_manifest() -> str:
         """The manifest.json for the most recent run."""
-        path = latest_run(runs_dir)
-        if path is None:
+        run = latest_run(runs_dir)
+        if run is None:
             raise ValueError("no runs found")
-        manifest = path / "manifest.json"
+        manifest = run / "manifest.json"
         if not manifest.is_file():
-            raise ValueError(f"no manifest in latest run {path.name}")
+            raise ValueError(f"no manifest in latest run {run.name}")
         return manifest.read_text(encoding="utf-8")
