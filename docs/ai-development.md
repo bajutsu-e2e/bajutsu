@@ -63,10 +63,16 @@ Two agents must never edit the same checkout. Give each session its own
 
 ```bash
 # from the main checkout
+git fetch origin            # always sync main first — branch off the latest, not a stale ref
 git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main
 cd ../bajutsu-<topic>
 make setup                   # uv sync --group dev + wire the hooks for this worktree
 ```
+
+The `git fetch origin` is not optional: `origin/main` is a local tracking ref that only
+advances when you fetch, so skipping it branches the new worktree off whatever main looked like
+last time — re-introducing conflicts that other sessions already merged away. Fetch, then branch
+off the fresh `origin/main`.
 
 When the branch is merged (or abandoned), clean up:
 
