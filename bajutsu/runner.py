@@ -171,9 +171,19 @@ def launch_driver(
     return driver
 
 
-def _await_ready(driver: base.Driver, timeout: float = 10.0, poll: float = 0.2) -> None:
-    """Poll until the launched app has rendered a UI (more than the app root element)."""
+def _await_ready(
+    driver: base.Driver,
+    timeout: float = 10.0,
+    poll_init: float = 0.1,
+    poll_max: float = 0.5,
+) -> None:
+    """Poll until the launched app has rendered a UI (more than the app root element).
+
+    Uses exponential backoff: the first poll is short (the app is often ready quickly)
+    and subsequent intervals double up to `poll_max`, reducing wasted subprocess calls
+    when the app takes longer to start."""
     deadline = time.monotonic() + timeout
+    poll = poll_init
     while time.monotonic() < deadline:
         try:
             if len(driver.query()) >= 2:
@@ -181,6 +191,7 @@ def _await_ready(driver: base.Driver, timeout: float = 10.0, poll: float = 0.2) 
         except (OSError, subprocess.CalledProcessError, ValueError):
             pass
         time.sleep(poll)
+        poll = min(poll * 2, poll_max)
 
 
 def run_all(
