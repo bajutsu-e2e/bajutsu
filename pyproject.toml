@@ -73,6 +73,8 @@ ignore = [
 
 [tool.pytest.ini_options]
 addopts = "-n auto"
+# Collect only the project's own suite; ignore local git worktrees under worktree/.
+testpaths = ["tests"]
 
 [tool.mypy]
 python_version = "3.13"
