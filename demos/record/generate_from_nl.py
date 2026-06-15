@@ -44,9 +44,7 @@ DEFAULT_GOAL = (
 # --- A tiny mock app: onboarding -> login -> home, scripted via FakeDriver.react ---
 
 
-def _el(
-    identifier: str, label: str, traits: list[str], value: str | None = None
-) -> base.Element:
+def _el(identifier: str, label: str, traits: list[str], value: str | None = None) -> base.Element:
     return {
         "identifier": identifier,
         "label": label,
@@ -101,7 +99,10 @@ _TAP_VERBS = {"tap", "press", "click", "open"}
 _CHECK_VERBS = ("check", "verify", "confirm", "expect", "ensure")
 _COUNTS = {"once", "twice", "thrice", "times", "time"}
 _STOP = {"the", "that", "it", "a", "an"}
-_TAP_FILLER = {"button", "buttons"}  # UI-noun noise in a tap clause; the trait filter already scopes to buttons
+_TAP_FILLER = {
+    "button",
+    "buttons",
+}  # UI-noun noise in a tap clause; the trait filter already scopes to buttons
 
 
 def _clauses(goal: str) -> list[str]:
@@ -137,7 +138,11 @@ def _tap_target(clause: str) -> str:
     words = clause.split()
     if words and words[0].lower() in _TAP_VERBS:
         words = words[1:]
-    kept = [w for w in words if w.lower() not in _COUNTS and w.lower() not in _TAP_FILLER and not w.isdigit()]
+    kept = [
+        w
+        for w in words
+        if w.lower() not in _COUNTS and w.lower() not in _TAP_FILLER and not w.isdigit()
+    ]
     return " ".join(kept).strip(" .") or clause
 
 
@@ -177,8 +182,12 @@ def plan_from_goal(goal: str) -> tuple[Plan, list[tuple[str, str]]]:
 
 
 def _ground(
-    screen: list[base.Element], hint: str, *, button: bool = False,
-    field: bool = False, valued: bool = False,
+    screen: list[base.Element],
+    hint: str,
+    *,
+    button: bool = False,
+    field: bool = False,
+    valued: bool = False,
 ) -> str:
     """The id of the visible element best matching `hint` (id substring, then label)."""
     hint = hint.lower().strip()
@@ -207,13 +216,21 @@ class KeywordAgent:
     def __init__(self, goal: str) -> None:
         self._plan, self._expects = plan_from_goal(goal)
 
+    def plan(self, goal: str) -> list[str]:
+        # No up-front plan: the record loop treats [] as "decide step by step".
+        return []
+
     def next_action(self, obs: Observation) -> Proposal:
         i = len(obs.history)
         if i >= len(self._plan):
             expect = [
                 Assertion.model_validate(
-                    {"value": {"sel": {"id": _ground(obs.screen, hint, valued=True)},
-                               "equals": value}}
+                    {
+                        "value": {
+                            "sel": {"id": _ground(obs.screen, hint, valued=True)},
+                            "equals": value,
+                        }
+                    }
                 )
                 for hint, value in self._expects
             ]
@@ -261,7 +278,7 @@ def run_verbose(goal: str, out: Path | None = None, name: str | None = None) -> 
     typed = [arg for kind, arg in driver.actions if kind == "type"]
     print(f"Deterministic replay: [{'PASS' if result.ok else 'FAIL'}] {result.failure or ''}")
     print(f"  driver received types: {typed}")
-    print("\nIn production this same loop uses ClaudeAgent — `bajutsu record --goal \"...\"`.")
+    print('\nIn production this same loop uses ClaudeAgent — `bajutsu record --goal "..."`.')
     return result.ok
 
 
@@ -287,12 +304,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate a scenario from a natural-language goal (offline demo)."
     )
-    parser.add_argument("goal", nargs="*", help="the goal sentence (quote it); omit for the default")
     parser.add_argument(
-        "-f", "--file", type=Path,
+        "goal", nargs="*", help="the goal sentence (quote it); omit for the default"
+    )
+    parser.add_argument(
+        "-f",
+        "--file",
+        type=Path,
         help="read goals from a text file (one per line; # comments allowed) and run each",
     )
-    parser.add_argument("-o", "--out", type=Path, help="write the generated scenario YAML to this file")
+    parser.add_argument(
+        "-o", "--out", type=Path, help="write the generated scenario YAML to this file"
+    )
     parser.add_argument("--name", help="scenario name in the output (default: the goal sentence)")
     args = parser.parse_args(argv)
 

@@ -31,7 +31,13 @@ _PNG = base64.b64decode(
 def _el(
     identifier: str | None, label: str, traits: list[str], value: str | None, frame: base.Frame
 ) -> base.Element:
-    return {"identifier": identifier, "label": label, "traits": traits, "value": value, "frame": frame}
+    return {
+        "identifier": identifier,
+        "label": label,
+        "traits": traits,
+        "value": value,
+        "frame": frame,
+    }
 
 
 # A varied screen so the element viewer has something interesting to show.
@@ -56,15 +62,17 @@ class ShotFakeDriver(FakeDriver):
         Path(path).write_bytes(_PNG)
 
 
-SCENARIO = Scenario.model_validate({
-    "name": "search coffee",
-    "steps": [
-        {"tap": {"id": "search.field"}, "name": "focus the search field"},
-        {"tap": {"id": "search.button"}, "name": "run the search"},
-        {"tap": {"id": "nav.tab.home"}, "name": "back to home"},
-    ],
-    "expect": [{"exists": {"id": "home.title"}}],
-})
+SCENARIO = Scenario.model_validate(
+    {
+        "name": "search coffee",
+        "steps": [
+            {"tap": {"id": "search.field"}, "name": "focus the search field"},
+            {"tap": {"id": "search.button"}, "name": "run the search"},
+            {"tap": {"id": "nav.tab.home"}, "name": "back to home"},
+        ],
+        "expect": [{"exists": {"id": "home.title"}}],
+    }
+)
 
 
 def main() -> None:
@@ -73,8 +81,11 @@ def main() -> None:
     sink = FileSink(run_dir)
     result = run_scenario(ShotFakeDriver(screen=list(SCREEN)), SCENARIO, sink=sink)
     manifest = write_report(
-        run_dir, run_id, [result],
-        definitions=[scenario_dict(SCENARIO)], sources=[dump_scenarios([SCENARIO])],
+        run_dir,
+        run_id,
+        [result],
+        definitions=[scenario_dict(SCENARIO)],
+        sources=[dump_scenarios([SCENARIO])],
     )
     report = manifest.parent / "report.html"
     print(f"[{'PASS' if result.ok else 'FAIL'}] {SCENARIO.name} -> {report}")

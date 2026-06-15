@@ -63,7 +63,15 @@ def test_run_missing_scenario(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     r = runner.invoke(
         app,
-        ["run", "--scenario", str(tmp_path / "missing.yaml"), "--app", "demo", "--config", str(cfg)],
+        [
+            "run",
+            "--scenario",
+            str(tmp_path / "missing.yaml"),
+            "--app",
+            "demo",
+            "--config",
+            str(cfg),
+        ],
     )
     assert r.exit_code == 2
     assert "scenario not found" in r.output
@@ -144,7 +152,17 @@ def test_record_unknown_app(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     r = runner.invoke(
         app,
-        ["record", "--out", str(tmp_path / "rec.yaml"), "--app", "ghost", "--goal", "x", "--config", str(cfg)],
+        [
+            "record",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--app",
+            "ghost",
+            "--goal",
+            "x",
+            "--config",
+            str(cfg),
+        ],
     )
     assert r.exit_code == 2
 

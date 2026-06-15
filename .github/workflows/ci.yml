@@ -29,11 +29,30 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      # Mirrors `make check`. The uv-native steps run identically to the local gate
+      # and the pre-push hook; actionlint is the lone separately-installed binary.
+      - name: Lockfile up to date (uv lock --check)
+        run: uv lock --check
+
+      - name: Format (ruff format --check)
+        run: uv run --no-sync ruff format --check .
+
       - name: Lint (ruff)
         run: uv run --no-sync ruff check .
 
-      - name: Typecheck (mypy)
-        run: uv run --no-sync mypy bajutsu
+      - name: Lint shell scripts (shellcheck)
+        run: uv run --no-sync shellcheck .githooks/pre-push scripts/serve.sh .claude/hooks/session-start.sh demos/record/demo.sh
 
-      - name: Test (pytest)
-        run: uv run --no-sync pytest -q
+      # actionlint is a standalone Go binary, not pip/uv-installable — the one gate check
+      # not covered by `uv sync`. Pinned to a tagged release of the official installer.
+      - name: Install actionlint
+        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+
+      - name: Lint workflows (actionlint)
+        run: ./actionlint -color
+
+      - name: Typecheck (mypy)
+        run: uv run --no-sync mypy bajutsu demos
+
+      - name: Test (pytest + coverage)
+        run: uv run --no-sync pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-fail-under=85

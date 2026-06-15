@@ -570,9 +570,7 @@ def expand_components(
 
     def expand(steps: list[Step], stack: list[str]) -> list[Step]:
         if len(stack) > max_depth:
-            raise ValueError(
-                f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}"
-            )
+            raise ValueError(f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}")
         out: list[Step] = []
         for st in steps:
             if st.use is None:

@@ -28,11 +28,15 @@ The Python core needs no Simulator, so the gate is fast and runs anywhere (Linux
 **Run this before you call a change done, and again before you push:**
 
 ```bash
-make check        # = ruff check . + mypy bajutsu + pytest -q   (mirrors CI exactly)
+make check        # lock-check + format-check + lint + lint-sh + lint-actions
+                  #   + typecheck + test (coverage floor)   — mirrors CI exactly
 ```
 
-Individual steps: `make lint` · `make typecheck` · `make test`. CI
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same three on every PR —
+Individual steps: `make format-check` · `make lint` · `make lint-sh` · `make lint-actions`
+· `make lock-check` · `make typecheck` · `make test`. (`make format` rewrites; the gate only
+checks.) Every step is uv-native and runs on a fresh clone — except `actionlint`, a standalone
+binary CI installs and `make` skips with a notice when it's absent. CI
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same steps on every PR —
 keeping the local bar identical is what makes "green locally" predict "green in CI".
 
 On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** part of this

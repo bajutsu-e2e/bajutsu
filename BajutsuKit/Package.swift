@@ -9,5 +9,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "BajutsuKit"),
+        .testTarget(name: "BajutsuKitTests", dependencies: ["BajutsuKit"]),
     ]
 )

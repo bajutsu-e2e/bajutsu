@@ -145,8 +145,7 @@ def _record_out_path(eff: Effective, out: str, name: str, goal: str, app_name: s
         return Path(out)
     if eff.scenarios is None:
         typer.echo(
-            f"app '{app_name}' has no scenarios dir "
-            f"(set apps.{app_name}.scenarios, or pass --out)"
+            f"app '{app_name}' has no scenarios dir (set apps.{app_name}.scenarios, or pass --out)"
         )
         raise typer.Exit(2)
     from bajutsu.serve import scenario_out_path, unique_scenario_path

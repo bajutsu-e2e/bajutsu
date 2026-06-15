@@ -452,6 +452,7 @@ def test_run_job_terminates_process_on_output_error(tmp_path: Path) -> None:
             def _boom():
                 yield "line 1\n"
                 raise OSError("broken pipe")
+
             return _boom()
 
         def wait(self) -> None:
@@ -461,7 +462,10 @@ def test_run_job_terminates_process_on_output_error(tmp_path: Path) -> None:
             terminated.append(True)
 
     state = srv.ServeState(
-        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
         popen=lambda *_a, **_kw: _ExplodingProc(),
     )
     job = state.new_job(["run"])
@@ -484,6 +488,7 @@ def test_build_app_terminates_process_on_output_error(tmp_path: Path) -> None:
             def _boom():
                 yield "compiling…\n"
                 raise OSError("broken pipe")
+
             return _boom()
 
         def wait(self) -> None:
@@ -493,7 +498,10 @@ def test_build_app_terminates_process_on_output_error(tmp_path: Path) -> None:
             terminated.append(True)
 
     state = srv.ServeState(
-        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path,
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
         popen=lambda *_a, **_kw: _ExplodingProc(),
     )
     job = state.new_job(["run"], app_path="Missing.app", build="make build")
@@ -637,9 +645,7 @@ def test_http_record_authors_scenario(tmp_path: Path) -> None:
         cmd = captured[0]
         assert cmd[1:6] == ["-m", "bajutsu", "record", "--out", str(scn_dir / "authored.yaml")]
         assert cmd[cmd.index("--goal") + 1] == "tap x"
-        got = _get_json(
-            port, "/api/scenario?app=demo&path=" + urllib.parse.quote(resp["path"])
-        )
+        got = _get_json(port, "/api/scenario?app=demo&path=" + urllib.parse.quote(resp["path"]))
         assert got["yaml"] == SCENARIO  # the authored scenario is served back for the editor
     finally:
         server.shutdown()

@@ -21,6 +21,7 @@ def _compile(pattern: str) -> re.Pattern[str]:
     """Cached re.compile — avoids recompiling the same pattern on every poll iteration."""
     return re.compile(pattern)
 
+
 # Coordinates in points: x, y.
 Point = tuple[float, float]
 # frame: x, y, w, h in points.
