@@ -100,6 +100,16 @@ detail 中の識別子（`#home.title`）と定数リテラル（`“text”`・
 `#counter.value`）/ `comparison`（例 `== “2”`）/ `reason`（同じ id/定数トークン）。**Rich / YAML
 トグル**で同じタブを構造化ビューと生のシナリオ YAML に切り替えられる。
 
+`visual` の expectation は行の下に **baseline と actual のインタラクティブ比較ビュー**を描画する。
+4 モード: **Swipe**（仕切りをドラッグして左右にワイプ）/ **Onion**（スライダーで actual を
+baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: difference` — 同一画素は黒、差分が
+ライブに光る）/ **Diff**（マシンが算出した確定ピクセル diff。アサーションの `exclude` 領域は
+マスク済み。失敗時のみ表示）。`diff <pct>%` バッジ、初回実行（actual だけ）では `no baseline yet`
+バッジが付く。チェックが合格しなかった場合は **Approve as baseline** ボタンが出て、撮影スクショを
+ベースラインディレクトリへ昇格させる。これは `/api/approve` への `POST` なので `bajutsu serve`
+経由で開いたときだけ機能する（ディスクから直接開いたレポートでは非表示）。CLI 版は
+[`bajutsu approve`](cli.md#approve)。
+
 失敗行は赤背景。ステップをクリックすると録画をその時刻にシークするが**自動再生はしない**
 （停止中なら停止のまま・再生中なら再生継続）。ステップのスクショをクリックすると原寸ライトボックスが
 開き、**← / →**（または画面上の矢印）で run 内の全スクショを**シナリオをまたいで**順送りできる

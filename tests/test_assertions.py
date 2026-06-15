@@ -134,10 +134,17 @@ def test_visual_assertion_pass(tmp_path):
         screenshot_path=screenshot,
         baselines_dir=baselines,
         diff_dir=tmp_path / "diffs",
+        run_dir=tmp_path,
     )
     result = evaluate_one(SCREEN, _a({"visual": {"baseline": "red.png"}}), visual_context=ctx)
     assert result.ok
     assert result.kind == "visual"
+    assert result.visual is not None
+    assert result.visual.diff_pct == 0.0
+    assert result.visual.diff is None  # identical → no diff image
+    assert result.visual.actual == "screenshot.png"  # run-dir-relative
+    assert result.visual.baseline is not None  # baseline copied into the run dir
+    assert (tmp_path / result.visual.baseline).is_file()
 
 
 def test_visual_assertion_fail(tmp_path):
@@ -156,23 +163,34 @@ def test_visual_assertion_fail(tmp_path):
         screenshot_path=screenshot,
         baselines_dir=baselines,
         diff_dir=tmp_path / "diffs",
+        run_dir=tmp_path,
     )
     result = evaluate_one(SCREEN, _a({"visual": {"baseline": "red.png"}}), visual_context=ctx)
     assert not result.ok
     assert "diff" in result.reason
+    assert result.visual is not None
+    assert result.visual.diff_pct == 100.0  # every pixel differs
+    assert result.visual.diff is not None and (tmp_path / result.visual.diff).is_file()
+    assert not result.visual.missing
 
 
 def test_visual_assertion_missing_baseline(tmp_path):
     from bajutsu.assertions import VisualContext
 
     ctx = VisualContext(
-        screenshot_path=tmp_path / "screenshot.png",
+        screenshot_path=tmp_path / "00-home" / "visual-actual.png",
         baselines_dir=tmp_path / "baselines",
-        diff_dir=tmp_path / "diffs",
+        diff_dir=tmp_path / "00-home",
+        run_dir=tmp_path,
     )
     result = evaluate_one(SCREEN, _a({"visual": {"baseline": "missing.png"}}), visual_context=ctx)
     assert not result.ok
     assert "baseline not found" in result.reason
+    assert result.visual is not None
+    assert result.visual.missing
+    assert result.visual.baseline is None
+    assert result.visual.actual == "00-home/visual-actual.png"  # run-dir-relative
+    assert result.visual.baseline_name == "missing.png"
 
 
 def test_visual_assertion_no_context():

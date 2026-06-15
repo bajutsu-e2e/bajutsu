@@ -135,6 +135,12 @@ def test_run_command_parallel_pool() -> None:
     assert "--workers" not in srv.run_command("s.yaml", "demo", workers=1)  # single-device omits it
 
 
+def test_run_command_includes_baselines() -> None:
+    cmd = srv.run_command("s.yaml", "demo", baselines="/b/dir")
+    assert cmd[cmd.index("--baselines") + 1] == "/b/dir"
+    assert "--baselines" not in srv.run_command("s.yaml", "demo")  # omitted when empty
+
+
 def test_record_command_builder() -> None:
     cmd = srv.record_command(
         "out.yaml",
@@ -871,6 +877,65 @@ def test_http_serves_run_artifacts_and_blocks_traversal(tmp_path: Path) -> None:
         assert status == 200 and b"hi" in body and "text/html" in ctype
         with pytest.raises(urllib.error.HTTPError, match="404"):
             _get(port, "/runs/../secret.txt")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _post_json(port: int, path: str, payload: dict[str, Any]) -> tuple[int, Any]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_http_approve_promotes_screenshot(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    sid_dir = runs / "20260610-1" / "00-home"
+    sid_dir.mkdir(parents=True)
+    (sid_dir / "visual-actual.png").write_bytes(b"PNGDATA")
+    server, port = _serve(
+        srv.ServeState(
+            scenarios_dir=scn_dir, config=cfg, runs_dir=runs, baselines_dir=baselines, cwd=tmp_path
+        )
+    )
+    try:
+        code, body = _post_json(
+            port, "/api/approve", {"runId": "20260610-1", "sid": "00-home", "baseline": "home.png"}
+        )
+        assert code == 200 and body["ok"] is True
+        assert (baselines / "home.png").read_bytes() == b"PNGDATA"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_approve_rejects_traversal(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    sid_dir = runs / "r1" / "00-home"
+    sid_dir.mkdir(parents=True)
+    (sid_dir / "visual-actual.png").write_bytes(b"X")
+    server, port = _serve(
+        srv.ServeState(
+            scenarios_dir=scn_dir, config=cfg, runs_dir=runs, baselines_dir=baselines, cwd=tmp_path
+        )
+    )
+    try:
+        code, body = _post_json(
+            port, "/api/approve", {"runId": "r1", "sid": "00-home", "baseline": "../escape.png"}
+        )
+        assert code == 400 and "escape" in body["error"]
+        assert not (tmp_path / "escape.png").exists()
     finally:
         server.shutdown()
         server.server_close()

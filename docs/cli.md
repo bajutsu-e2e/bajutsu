@@ -46,6 +46,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
 | `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app) |
 | `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` (capped to the pool size). Each device carries its own network collector, interval recordings, and device control, so network / video / `setLocation` / `push` work the same as a single-device run |
+| `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
@@ -155,6 +156,27 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] 
 - Config's `launchEnv` goes into the generated test's `app.launchEnvironment`.
 - On file output: `wrote <N> scenario(s) -> <out>`.
 
+## `approve`
+
+Promotes a run's captured screenshots into `visual` **baselines** — the second half of the
+visual-regression loop (run → review → approve → re-run). Reads `manifest.json`, so it needs
+**no Simulator** and runs headless in CI; it is the CLI twin of the WebUI's **Approve** button.
+
+```bash
+bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs runs]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `<run_dir>` | latest under `runs/` | the run to approve from |
+| `--baselines` | (required) | where to write the promoted baseline PNGs |
+| `--scenario` | "" | only this scenario id (e.g. `00-home`, as in the run dir) |
+| `--all` | off | also refresh baselines whose comparison already passed (default: only failing / missing) |
+| `--runs` | `runs` | runs root, used when `<run_dir>` is omitted |
+
+- Copies each visual check's captured `visual-actual.png` to `<dir>/<baseline>`. **Exits 0**
+  when ≥1 baseline was promoted, **1** when there was nothing to approve.
+
 ## `serve`
 
 A local web UI to **run a scenario and view its report** — a Tier-1 convenience, **not part
@@ -164,12 +186,15 @@ the produced `runs/<id>/` tree so the report's relative asset links resolve. Std
 framework); binds `127.0.0.1`.
 
 ```bash
-bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs]
+bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
 ```
 
 - `--config` is **optional**. Omit it and open a `config.yml` from the UI's file browser (an
   "Open config" button); the browser is confined to `--root` (default: the current directory).
   `--scenarios <dir>` is available as an override of the selected app's configured dir.
+- `--baselines` sets the visual-regression baselines dir (default: a `baselines/` folder under
+  the app's scenarios dir); runs launched from the UI use it, and the report's **Approve** button
+  promotes the captured screenshot into it via `POST /api/approve`.
 - Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
   alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first

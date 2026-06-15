@@ -15,6 +15,63 @@
       else { det.setAttribute('hidden',''); row.classList.remove('open'); }
     }
   });
+  // Visual-regression baseline approval. Only works when the report is served (so the
+  // POST can reach the bajutsu serve endpoint); a report opened from disk hides the button.
+  if (location.protocol === 'file:') {
+    document.querySelectorAll('.vapprove').forEach(function(b){ b.hidden = true; });
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest('.vapprove'); if(!b || b.disabled) return;
+    var runId = document.body.getAttribute('data-run-id');
+    var sid = b.getAttribute('data-sid'), baseline = b.getAttribute('data-baseline');
+    if(!runId || !sid || !baseline) return;
+    b.disabled = true; var label = b.textContent; b.textContent = 'Approving…';
+    fetch('/api/approve', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({runId: runId, sid: sid, baseline: baseline})})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.ok){ b.textContent = 'Approved ✓'; b.classList.add('done'); }
+        else { b.textContent = (d && d.error) ? ('Failed: '+d.error) : 'Failed'; b.disabled = false; }
+      })
+      .catch(function(){ b.textContent = label; b.disabled = false; });
+  });
+  // Visual-regression comparator: swipe / onion / mix-blend (+ the precomputed pixel diff).
+  // The mode lives as a class on the widget; the range means "wipe position" (swipe) or
+  // "actual opacity" (onion); blend/diff need no slider. The handle is draggable in swipe.
+  function initComparator(c){
+    var stage = c.querySelector('.vcmp-stage'),
+        over = c.querySelector('.vcmp-over'),
+        range = c.querySelector('.vcmp-range');
+    function mode(){ var m = c.className.match(/mode-(\w+)/); return m ? m[1] : 'swipe'; }
+    function setMode(m){
+      c.className = 'vcmp mode-' + m;
+      over.style.opacity = (m === 'onion') ? (range.value / 100) : '';
+      range.style.display = (m === 'swipe' || m === 'onion') ? '' : 'none';
+      if(m === 'swipe') c.style.setProperty('--p', range.value + '%');
+    }
+    c.querySelectorAll('.vcmp-mode').forEach(function(b){
+      b.addEventListener('click', function(){
+        c.querySelectorAll('.vcmp-mode').forEach(function(x){ x.classList.toggle('active', x === b); });
+        setMode(b.getAttribute('data-mode'));
+      });
+    });
+    range.addEventListener('input', function(){
+      var m = mode();
+      if(m === 'swipe') c.style.setProperty('--p', range.value + '%');
+      else if(m === 'onion') over.style.opacity = range.value / 100;
+    });
+    function wipeTo(e){
+      var r = stage.getBoundingClientRect();
+      var p = Math.max(0, Math.min(100, (e.clientX - r.left) / r.width * 100));
+      range.value = p; c.style.setProperty('--p', p + '%');
+    }
+    var dragging = false;
+    stage.addEventListener('pointerdown', function(e){ if(mode() !== 'swipe') return; dragging = true; wipeTo(e); e.preventDefault(); });
+    window.addEventListener('pointermove', function(e){ if(dragging) wipeTo(e); });
+    window.addEventListener('pointerup', function(){ dragging = false; });
+    setMode('swipe');
+  }
+  document.querySelectorAll('.vcmp').forEach(initComparator);
   // Rich / YAML toggle within the merged Result tab.
   document.addEventListener('click', function(e){
     var t = e.target.closest('.vt'); if(!t) return;

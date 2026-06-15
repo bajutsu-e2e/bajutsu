@@ -177,6 +177,7 @@ def run_command(
     erase: bool | None = None,
     dismiss_alerts: bool | None = None,
     config: str = "bajutsu.config.yaml",
+    baselines: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
@@ -210,6 +211,8 @@ def run_command(
         cmd += ["--dismiss-alerts"]
     elif dismiss_alerts is False:
         cmd += ["--no-dismiss-alerts"]
+    if baselines:
+        cmd += ["--baselines", baselines]
     return cmd
 
 

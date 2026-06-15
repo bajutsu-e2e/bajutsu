@@ -247,6 +247,12 @@ def _assert_parts(a: dict[str, Any]) -> tuple[str, list[Part], list[Part]]:
     if "request" in a:
         target, comp = _request_parts(a["request"])
         return "request", target, comp
+    if "visual" in a:
+        m = a["visual"]
+        vcomp: list[Part] = [("", "≤ "), ("num", f"{_gnum(m.get('threshold', 0))}%")]
+        if m.get("exclude"):
+            vcomp += [("", " · "), ("kw", f"{len(m['exclude'])} excluded")]
+        return "visual", [("str", str(m.get("baseline", "?")))], vcomp
     return "?", [], []
 
 
@@ -583,6 +589,25 @@ def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, st
     return rows
 
 
+def _visual_row(ev: Any, ok: bool) -> dict[str, Any] | None:
+    """The baseline/actual/diff image strip for a `visual` expectation. `ev` is the
+    AssertionResult.visual evidence (run-dir-relative image paths). The Approve button
+    (functional only under `serve`) is offered whenever the comparison did not pass."""
+    if ev is None:
+        return None
+    sid = ev.actual.rsplit("/", 1)[0] if "/" in ev.actual else ""
+    return {
+        "baseline": ev.baseline,
+        "actual": ev.actual,
+        "diff": ev.diff,
+        "diff_pct": f"{ev.diff_pct:.2f}%" if ev.diff_pct is not None else None,
+        "missing": ev.missing,
+        "approvable": not ok,
+        "baseline_name": ev.baseline_name,
+        "sid": sid,
+    }
+
+
 def _expects_data(r: RunResult, definition: dict[str, Any] | None) -> dict[str, Any] | None:
     planned = (definition or {}).get("expect") or []
     if r.expect_results:
@@ -602,6 +627,7 @@ def _expects_data(r: RunResult, definition: dict[str, Any] | None) -> dict[str, 
                     "target": target,
                     "comp": comp,
                     "reason": a.reason if not a.ok else None,
+                    "visual": _visual_row(a.visual, a.ok),
                 }
             )
         return {

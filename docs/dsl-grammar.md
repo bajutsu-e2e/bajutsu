@@ -176,9 +176,17 @@ Assertion ::=
   | { disabled: <Selector> }
   | { selected: <Selector> }
   | { request:  <RequestMatch> }
+  | { visual:   <VisualMatch> }
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
+
+VisualMatch ::= {                  # pixel-compare the screen against a baseline image
+  baseline:   string,             # filename resolved inside --baselines (default: baselines/ beside the scenario)
+  threshold?: number,             # max allowed diff, % of pixels (default 0.0 = exact)
+  exclude?:   list(<ExcludeRegion>),  # regions masked before comparing (status bar, clock, …)
+}
+ExcludeRegion ::= { x: number, y: number, w: number, h: number }   # screenshot pixels
 
 RequestMatch ::= {              # ≥1 of the match fields below
   method?:      string,
@@ -242,7 +250,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Swipe` | **exactly one** form: `{on,direction}` **or** `{from,to}` — never mixed, never half-specified | `scenario.py:129` |
 | `Pinch` | `scale` **> 0** | `scenario.py:103` |
 | `Wait` | **exactly one** of `for` / `until` | `scenario.py:190` |
-| `Assertion` | **exactly one** kind (`exists` … `request`) | `scenario.py:277` |
+| `Assertion` | **exactly one** kind (`exists` … `request` … `visual`) | `scenario.py:277` |
 | `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario.py:243` |
 | `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario.py:258` |
 | `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` (`count` is not a match field) | `scenario.py:160` |

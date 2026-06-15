@@ -235,6 +235,7 @@ def run_all(
                     screenshot_path=run_dir / sid / "visual-actual.png",
                     baselines_dir=baselines_dir,
                     diff_dir=run_dir / sid,
+                    run_dir=run_dir,
                 )
             result = run_scenario(
                 lz.driver,
@@ -287,8 +288,12 @@ def run_and_report(
     source_name: str | None = None,
     description: str | None = None,
     progress: ProgressFn | None = None,
+    baselines_dir: Path | None = None,
 ) -> tuple[list[RunResult], Path]:
-    """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id."""
+    """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id.
+
+    When `baselines_dir` is given, `visual` assertions compare each scenario's end-state
+    screenshot against a baseline image in that directory (see run_all)."""
     run_dir = runs_dir / run_id
     results = run_all(
         eff,
@@ -302,6 +307,7 @@ def run_and_report(
         bindings=bindings,
         secret_values=secret_values,
         progress=progress,
+        baselines_dir=baselines_dir,
     )
     # The merged Result tab renders each scenario as a structured view (definitions)
     # with a toggle to the raw YAML (sources).

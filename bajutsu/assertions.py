@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import functools
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,21 +36,40 @@ def _compile(pattern: str) -> re.Pattern[str]:
 
 
 @dataclass(frozen=True)
+class VisualEvidence:
+    """Image evidence for a visual assertion, carried into the manifest/report.
+
+    Paths are *run-dir-relative* (the same scheme as artifacts), so the self-contained
+    report and the serve UI can reference them. `baseline_name` is the YAML key into the
+    baselines dir — what `approve` promotes the actual screenshot to."""
+
+    baseline_name: str
+    actual: str  # the captured screenshot
+    baseline: str | None = None  # the baseline copy in the run dir (None if missing)
+    diff: str | None = None  # the diff visualization (None when identical / missing)
+    diff_pct: float | None = None
+    missing: bool = False  # baseline did not exist yet (first run)
+
+
+@dataclass(frozen=True)
 class AssertionResult:
     ok: bool
     kind: str
     detail: str  # what was checked (for the report)
     reason: str = ""  # failure reason (empty when ok)
+    visual: VisualEvidence | None = None  # set only for `visual` assertions
 
 
 @dataclass(frozen=True)
 class VisualContext:
     """Context needed by visual assertions — paths to the current screenshot,
-    the baselines directory, and where to write diff images."""
+    the baselines directory, where to write diff images, and the run dir root
+    (so image paths can be expressed run-dir-relative for the report)."""
 
     screenshot_path: Path
     baselines_dir: Path
     diff_dir: Path
+    run_dir: Path
 
 
 def _sel_str(sel: Selector) -> str:
@@ -243,14 +263,25 @@ def _eval_visual(ctx: VisualContext | None, a: VisualMatch) -> AssertionResult:
     detail = f"visual ≈ {a.baseline}"
     if ctx is None:
         return AssertionResult(False, "visual", detail, "no visual context provided")
+    actual_rel = _rel(ctx.run_dir, ctx.screenshot_path)
     baseline_path = ctx.baselines_dir / a.baseline
+    # Flatten any path separators in the baseline key for the in-run copy/diff filenames.
+    name = Path(a.baseline).name
     if not baseline_path.is_file():
-        return AssertionResult(False, "visual", detail, f"baseline not found: {a.baseline}")
+        # First run (or a brand-new screen): nothing to compare against. Report the actual
+        # so it can be reviewed and approved into a baseline.
+        ev = VisualEvidence(baseline_name=a.baseline, actual=actual_rel, missing=True)
+        return AssertionResult(
+            False, "visual", detail, f"baseline not found: {a.baseline}", visual=ev
+        )
 
     from bajutsu.visual import compare_images
 
     ctx.diff_dir.mkdir(parents=True, exist_ok=True)
-    diff_path = ctx.diff_dir / f"diff-{a.baseline}"
+    diff_path = ctx.diff_dir / f"diff-{name}"
+    # Copy the baseline into the run dir so the report (and serve) are self-contained.
+    baseline_copy = ctx.diff_dir / f"baseline-{name}"
+    shutil.copyfile(baseline_path, baseline_copy)
     result = compare_images(
         ctx.screenshot_path,
         baseline_path,
@@ -258,7 +289,22 @@ def _eval_visual(ctx: VisualContext | None, a: VisualMatch) -> AssertionResult:
         exclude=a.exclude,
         diff_path=diff_path,
     )
-    return AssertionResult(result.ok, "visual", detail, result.reason)
+    ev = VisualEvidence(
+        baseline_name=a.baseline,
+        actual=actual_rel,
+        baseline=_rel(ctx.run_dir, baseline_copy),
+        diff=_rel(ctx.run_dir, diff_path) if (not result.ok and diff_path.is_file()) else None,
+        diff_pct=result.diff_pct,
+    )
+    return AssertionResult(result.ok, "visual", detail, result.reason, visual=ev)
+
+
+def _rel(run_dir: Path, p: Path) -> str:
+    """A run-dir-relative POSIX path for the report; falls back to the name if unrelated."""
+    try:
+        return p.relative_to(run_dir).as_posix()
+    except ValueError:
+        return p.name
 
 
 def evaluate_one(
