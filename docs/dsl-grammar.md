@@ -117,7 +117,8 @@ DismissAlerts ::= boolean                                   # shorthand for { en
 
 # ── Step = exactly one Action + optional modifiers ─────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), name?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string }
+Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
 Action    ::=
     { tap:         <Selector> }
   | { doubleTap:   <Selector> }
@@ -132,6 +133,11 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}
   | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2)
+  | { if:          <If> }                                               # conditional (no capture/extract)
+  | { forEach:     <ForEach> }                                          # loop (no capture/extract)
+
+If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
+ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right") }   # selector form  ┐ XOR

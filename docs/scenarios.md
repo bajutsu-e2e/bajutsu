@@ -421,6 +421,43 @@ Each `extract` entry specifies a `sel` (selector, resolved via `resolve_unique`)
 optional `prop` (`value` | `label` | `identifier`; default `value`). If the selector
 cannot be uniquely resolved or the property is `None`, the step fails.
 
+### Conditional steps (`if`)
+
+A step can evaluate a condition (using the same assertion DSL) and branch:
+
+```yaml
+steps:
+  - if:
+      condition: { exists: { id: dialog.alert } }
+      then:
+        - tap: { id: dialog.dismiss }
+      else:
+        - tap: { id: home.start }
+```
+
+The condition is evaluated against the current element tree (with `${...}` interpolation).
+If it passes, `then` steps run; otherwise `else` steps run (or nothing if `else` is omitted).
+Nested steps share the same `vars.*` bindings as the enclosing scenario. `capture` and
+`extract` modifiers are not allowed on `if` steps.
+
+### Iterating over elements (`forEach`)
+
+A step can iterate over all elements matching a selector:
+
+```yaml
+steps:
+  - forEach:
+      sel: { idMatches: "item.*" }
+      as: current
+      steps:
+        - tap: { id: "${vars.current}" }
+```
+
+The element list is snapshotted once at loop start. Each matched element's `identifier` is
+stored as `vars.<as>` for the nested steps. An element with no identifier fails the step.
+Zero matches is a no-op (success). The selector supports `${...}` interpolation. `capture`
+and `extract` modifiers are not allowed on `forEach` steps.
+
 ## capture token grammar
 
 Shared by `capture:` (per-step) and `capturePolicy[].capture` (rules). The form is
