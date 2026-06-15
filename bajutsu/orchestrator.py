@@ -297,6 +297,11 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
     the manifest/report, so the recorded scenario shows the token, never the secret."""
     if not bindings:
         return step
+    # Fast path: model_dump_json() is Rust-backed in Pydantic v2 and much cheaper than
+    # model_dump() (which builds Python dicts). Most steps contain no tokens at all, so
+    # a quick substring check on the JSON avoids the heavier serialisation + walk.
+    if "${" not in step.model_dump_json(by_alias=True, exclude_none=True):
+        return step
     dumped = step.model_dump(by_alias=True, exclude_none=True)
     if not interp.find_tokens(dumped) & bindings.keys():
         return step
@@ -306,6 +311,9 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
 def _interp_asserts(asserts: list[Assertion], bindings: Mapping[str, str]) -> list[Assertion]:
     """Substitute ${...} tokens in a list of assertions (for scenario-level `expect`)."""
     if not bindings:
+        return asserts
+    # Fast path: if no assertion contains a token marker, skip the whole list.
+    if not any("${" in a.model_dump_json(by_alias=True, exclude_none=True) for a in asserts):
         return asserts
     return [
         Assertion.model_validate(
