@@ -83,10 +83,10 @@ ever softening the gate.
 - **GUI (graphical user interface) editor & non-AI action capture** ([roadmap → Authoring experience](roadmap/README.md#authoring-experience-record--gui-editor)) —
   visually edit scenarios, pick selectors on a screenshot, and capture real taps/types into a
   scenario without an LLM. `bajutsu serve` is the first step.
-- **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions.md)) — a new
+- **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)) — a new
   *deterministic* assertion type (baseline diff). It fits precisely because it is machine-checked,
   not AI-judged.
-- **Self-healing triage** ([roadmap: BE-0021](roadmap/BE-0021-ai-triage.md)) — already shipped: AI reads
+- **Self-healing triage** ([roadmap: BE-0021](roadmap/BE-0021-ai-triage/BE-0021-ai-triage.md)) — already shipped: AI reads
   failure evidence and proposes a **minimal diff**, which a human reviews and applies with
   `--write`. The guardrail — *never auto-soften a committed test* — is what keeps this inside the
   directives.
@@ -124,7 +124,7 @@ the lowest cost — are:
    and exercises the rich end of the capability model (native network/video/semantic).
 2. **MCP server** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)). Low surface area, high leverage for
    the Tier-1 authoring loop, and it does not touch the gate.
-3. **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions.md)). A
+3. **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)). A
    deterministic capability competitors gate behind AI — a differentiator that *strengthens* the
    directives instead of straining them.
 

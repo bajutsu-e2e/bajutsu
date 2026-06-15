@@ -5,7 +5,7 @@
 > 将来構想 —— **未実装**。現状の Bajutsu は **iOS Simulator 限定**にスコープを切っている
 > （[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）。本ページは、既存の抽象をそのまま活かして
 > **Android**（エミュレータ）と **Web**（ブラウザ）も操作対象に広げるための、具体的な方針と設計を述べる
-> —— 何が不変で、各バックエンドが何を足し、どの順で作るか。[roadmap → プラットフォーム拡張](roadmap/README.md#プラットフォーム拡張android--flutter) の詳細版。
+> —— 何が不変で、各バックエンドが何を足し、どの順で作るか。[roadmap → プラットフォーム拡張](../roadmap/README-ja.md#プラットフォーム拡張android--flutter) の詳細版。
 
 関連: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [configuration](configuration.md) · [vision](vision.md)
 

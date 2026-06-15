@@ -84,11 +84,13 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   each document must be self-contained — spell out abbreviations on first use and give the context
   a reader needs, without assuming they read another page first. Full guidance:
   [`docs/ai-development.md`](docs/ai-development.md).
-- **Roadmap items use BE IDs (strict).** Every roadmap item is one file
-  `docs/roadmap/BE-NNNN-<slug>.md` — `BE` = *Bajutsu Evolution*, `NNNN` a zero-padded 4-digit
-  monotonically increasing ID — with a Japanese mirror in `docs/ja/roadmap/`. When you add one:
-  allocate the next ID (`ls docs/roadmap/BE-*.md | sort | tail -1`, then +1; never reuse, skip,
-  or guess), create **both** language files, and add a row to **both** `README.md` indexes.
+- **Roadmap items use BE IDs (strict).** Every roadmap item is a directory
+  `docs/roadmap/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md` and its Japanese
+  version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*, `NNNN` a zero-padded 4-digit
+  monotonically increasing ID. When you add one: allocate the next ID
+  (`ls -d docs/roadmap/BE-*/ | sort | tail -1`, then +1; never reuse, skip, or guess), create
+  **both** language files in that directory, and add a row to **both** index pages
+  (`docs/roadmap/README.md` and `docs/roadmap/README-ja.md`).
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
   Motivation / Detailed design / Alternatives considered / References); its `Status` files it
   under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /

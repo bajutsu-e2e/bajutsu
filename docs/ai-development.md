@@ -104,22 +104,22 @@ rebased, and parallel work composes.
 
 ## Roadmap items: BE IDs (strict)
 
-The roadmap is **one file per item** under [`roadmap/`](roadmap/README.md). Each item's filename
-is `BE-NNNN-<slug>.md`, where **BE** stands for *Bajutsu Evolution* and `NNNN` is a
-**zero-padded, 4-digit, monotonically increasing** ID. The English file lives in `docs/roadmap/`;
-its Japanese mirror lives in `docs/ja/roadmap/` (same ID and slug).
+The roadmap is **one directory per item** under [`roadmap/`](roadmap/README.md). Each item lives in
+`docs/roadmap/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its Japanese
+version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
+is a **zero-padded, 4-digit, monotonically increasing** ID.
 
 When you add a roadmap item:
 
 1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1. Find the current max with:
    ```bash
-   ls docs/roadmap/BE-*.md | sort | tail -1
+   ls -d docs/roadmap/BE-*/ | sort | tail -1
    ```
    Never reuse, skip, or guess a number.
-2. **Create both language files** — `docs/roadmap/BE-NNNN-<slug>.md` (English) and
-   `docs/ja/roadmap/BE-NNNN-<slug>.md` (Japanese mirror, same ID & slug) — and add a row for it
-   to the matching topic table in **both** `README.md` indexes
-   ([en](roadmap/README.md), [ja](ja/roadmap/README.md)).
+2. **Create the item directory and both language files** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
+   (English) and `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug) — and add
+   a row for it to the matching topic table in **both** index pages
+   ([en](roadmap/README.md), [ja](roadmap/README-ja.md)).
 3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.

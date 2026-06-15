@@ -101,21 +101,22 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
 
 ## ロードマップ項目: BE ID（厳守）
 
-ロードマップは [`roadmap/`](roadmap/README.md) 配下に**1 項目 1 ファイル**で置く。各項目のファイル名は
-`BE-NNNN-<slug>.md`。**BE** は *Bajutsu Evolution*、`NNNN` は**ゼロ詰め 4 桁・単調増加**の ID。
-英語版は `docs/roadmap/`、日本語ミラーは `docs/ja/roadmap/` に置く（ID と slug は同一）。
+ロードマップは [`roadmap/`](../roadmap/README-ja.md) 配下に**1 項目 1 ディレクトリ**で置く。各項目は
+`docs/roadmap/BE-NNNN-<slug>/` ディレクトリに、英語版 `BE-NNNN-<slug>.md` と日本語版
+`BE-NNNN-<slug>-ja.md`（ID・slug は同一）を入れる。**BE** は *Bajutsu Evolution*、`NNNN` は
+**ゼロ詰め 4 桁・単調増加**の ID。
 
 ロードマップ項目を追加するとき:
 
 1. **次の ID を採番** = 既存の最大 `BE-NNNN` + 1。現在の最大は次で確認する:
    ```bash
-   ls docs/roadmap/BE-*.md | sort | tail -1
+   ls -d docs/roadmap/BE-*/ | sort | tail -1
    ```
    番号の再利用・飛ばし・当て推量は禁止。
-2. **両言語のファイルを作成** — `docs/roadmap/BE-NNNN-<slug>.md`（英語）と
-   `docs/ja/roadmap/BE-NNNN-<slug>.md`（日本語ミラー・同一 ID & slug）— そして**両方**の
-   `README.md` インデックスの該当トピック表に行を追加する
-   （[en](../roadmap/README.md) / [ja](roadmap/README.md)）。
+2. **項目ディレクトリと両言語のファイルを作成** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
+   （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）— そして
+   **両方**のインデックスページの該当トピック表に行を追加する
+   （[en](../roadmap/README.md) / [ja](../roadmap/README-ja.md)）。
 3. **ID は不変**。既存項目を採番し直さない —— 状態が変わっても、完了しても、表から削除しても。
    一度割り当てた BE ID は、その項目を永遠に指す。
 
