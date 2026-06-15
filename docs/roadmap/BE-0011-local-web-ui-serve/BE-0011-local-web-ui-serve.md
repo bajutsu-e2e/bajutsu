@@ -9,7 +9,7 @@
 
 ## Introduction
 
-A small launcher for the scenario / app list, one-click runs, streaming run logs, and in-browser report display (stdlib only). A Tier 1 convenience that stays out of the CI gate. The first step toward a GUI editor (visual editing, element picker).
+A small launcher that lists scenarios and apps, runs them with a single click, streams run logs, and displays the report in the browser (stdlib only). It is a Tier 1 convenience feature and is not part of the CI gate. It also serves as the foundation for a planned GUI editor (visual editing and element picker).
 
 ## Motivation
 

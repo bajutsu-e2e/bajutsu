@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Repeat one scenario over multiple rows via `data` (inline) / `dataFile` (CSV). Substitute `${row.*}` per row (`expand_data`). Effective for multilingual / boundary-value testing.
+Repeat one scenario over multiple rows via `data` (inline) / `dataFile` (CSV). Substitute `${row.*}` per row (`expand_data`). Useful for multilingual and boundary-value testing.
 
 ## Motivation
 

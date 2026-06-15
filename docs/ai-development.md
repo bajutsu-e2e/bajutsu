@@ -7,7 +7,7 @@
 > this page is the full operational guide.
 
 The whole design rests on one property: **the deterministic gate is cheap, runs anywhere, and
-mirrors CI exactly.** That is what lets work fan out safely — every branch is independently
+mirrors CI exactly.** This is what lets work fan out safely — every branch is independently
 verifiable, so "green locally" reliably predicts "green in CI", and the test suite is a
 regression net that catches one session breaking another's feature.
 

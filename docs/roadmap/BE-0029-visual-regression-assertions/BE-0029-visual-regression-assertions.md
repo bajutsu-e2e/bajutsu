@@ -10,7 +10,7 @@
 
 ## Introduction
 
-A **new assertion type** that diffs a screenshot against a baseline. Supports exclusion regions and per-device / per-locale baselines. Because it is a deterministic machine check rather than AI, it fits "pass/fail by machine assertions only".
+A new assertion type that diffs a screenshot against a baseline. Supports exclusion regions and per-device / per-locale baselines. Because it is a deterministic machine check rather than AI, it fits "pass/fail by machine assertions only".
 
 ## Motivation
 

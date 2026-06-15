@@ -4,7 +4,7 @@
 
 > Tier 1 = AI live operation. From a natural-language goal, the AI explores and operates the app,
 > then writes out a **deterministic scenario**. AI is involved only here (at record time). The
-> resulting YAML is AI-independent, and from then on humans own it.
+> resulting YAML is AI-independent and is owned by the user from that point forward.
 >
 > Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent.py` (the abstraction) ·
 > `bajutsu/claude_agent.py` (Claude) · `bajutsu/alerts.py` (system-alert handling).
@@ -16,7 +16,7 @@ Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · 
 ## The Agent abstraction
 
 A thin Protocol that separates the loop from the model (`agent.py`). Tests use a scripted fake;
-production plugs in Claude.
+production uses Claude.
 
 ```python
 @dataclass
@@ -92,7 +92,7 @@ ClaudeAgent(client=fake_client)    # tests
 
 idb's accessibility query is scoped to the foreground app, so **SpringBoard-level prompts** (e.g.
 iOS "Save Password?") are invisible to it; the app's element tree collapses to a single window node
-and the run is silently blocked. The safety net that clears these is `alerts.py`.
+and the run is silently blocked. `alerts.py` handles clearing these.
 
 ```python
 class AlertLocator(Protocol):
@@ -106,7 +106,7 @@ class SystemAlertGuard:
   to tap," and multiplies the **normalized coordinates [0,1]** by the screen point size (the largest
   element frame = the app window) to tap via `driver.tap_point`. The point size is derived from the
   app-window node spanning the whole screen even when the tree has collapsed.
-- `ClaudeAlertLocator`: the production "eyes." It passes the PNG to Claude vision and forces the tool
+- `ClaudeAlertLocator`: the production implementation. It passes the PNG to Claude vision and forces the tool
   `resolve_alert`. By default it picks the **least-destructive (dismissive) button** ("Not Now" /
   "Don't Allow" / "Cancel", etc.). Given an `instruction`, it taps that button instead. Coordinates
   are returned in pixels and normalized to [0,1] using the image size obtained from the PNG IHDR.

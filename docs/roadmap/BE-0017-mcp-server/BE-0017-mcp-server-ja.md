@@ -9,7 +9,7 @@
 
 ## はじめに
 
-`run` / `doctor` / `record` / `codegen` を MCP（Model Context Protocol）ツールとして公開し、Claude 等のエージェントから直接駆動。Tier 1（AI オーサリング）と相性が良い。
+`run`・`doctor`・`record`・`codegen` を MCP（Model Context Protocol）ツールとして公開し、Claude 等のエージェントから直接呼び出せるようにします。Tier 1（AI オーサリング）との統合に適した機能です。
 
 ## 動機
 

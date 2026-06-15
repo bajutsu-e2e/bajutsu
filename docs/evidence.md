@@ -2,13 +2,9 @@
 
 # The evidence (Evidence/Trace) subsystem
 
-> Treat the request "capture evidence every time a particular action happens" as a
-> **repeatedly-firing rule** rather than a one-shot instruction. This way the same evidence
-> reproduces without AI on the second run onward.
->
-> Implementation: `bajutsu/evidence.py` (instant + Sinks) · `bajutsu/intervals.py` (interval:
-> video / deviceLog). Firing is decided on the orchestrator side
-> ([run-loop](run-loop.md#evidence-rule-firing)).
+Evidence capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. This ensures the same evidence is collected without AI on every subsequent run.
+
+Implementation: `bajutsu/evidence.py` (instant + Sinks) · `bajutsu/intervals.py` (interval: video / deviceLog). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
 
 Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) · [reporting](reporting.md)
 
@@ -141,9 +137,7 @@ class Artifact:
 
 ## Masking (redact)
 
-Because screenshots / logs / network can capture PII (personally identifiable information) and tokens, declare what to mask before
-writing. Implementation: `scenario.py` `Redact`. Config's `redact` and the scenario's `redact` are
-merged (union) ([configuration](configuration.md#merging-redact)).
+Screenshots, logs, and network data can capture PII (personally identifiable information) and tokens. Declare what to mask before writing. Implementation: `scenario.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).
 
 ```yaml
 redact:

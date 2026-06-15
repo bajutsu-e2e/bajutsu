@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Run a subset of scenarios by `tags` with `--tag`/`--exclude` (include/exclude, exclude wins, `select_scenarios`). Effective for staged CI runs.
+Run a subset of scenarios by `tags` with `--tag`/`--exclude` (include/exclude, exclude wins, `select_scenarios`). Useful for staged CI runs.
 
 ## Motivation
 

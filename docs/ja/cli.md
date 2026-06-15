@@ -19,14 +19,14 @@
 
 ## `run`
 
-シナリオを **決定的に実行**。合否は機械判定のみ。唯一の AI は**アラートガード**（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトを片付けるためだけに発火する —— [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード) 参照。
+シナリオを **決定的に実行**します。合否は機械判定のみです。唯一の AI コンポーネントは**アラートガード**（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトを片付けるためだけに動作します。[`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード) を参照してください。
 
 ```bash
 bajutsu run --app <name> [--scenario <file.yaml>] [options]
 ```
 
 既定では、そのアプリの設定済みシナリオディレクトリ（`apps.<name>.scenarios`、[configuration](configuration.md) 参照）内の
-**すべての `*.yaml`** を読み込んで実行する —— config だけで実行できる。単一ファイルだけ実行するには `--scenario <file>` を渡す。
+**すべての `*.yaml`** を読み込んで実行します。config だけで実行できます。単一ファイルだけ実行するには `--scenario <file>` を渡してください。
 
 | オプション | 既定 | 説明 |
 |---|---|---|
@@ -37,7 +37,7 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | シナリオ準拠 | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの指定に従う。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--dismiss-alerts / --no-dismiss-alerts` | シナリオ準拠（ON） | 各シナリオの `dismissAlerts` を上書き —— idb から見えないシステムアラートを視覚で消すガード。省略時は各シナリオの指定に従う（要 API キー・[recording](recording.md#システムアラートの自動対処)） |
+| `--dismiss-alerts / --no-dismiss-alerts` | シナリオ準拠（ON） | 各シナリオの `dismissAlerts` を上書きします。idb から見えないシステムアラートを視覚で消すガードです。省略時は各シナリオの指定に従います（要 API キー・[recording](recording.md#システムアラートの自動対処)） |
 | `--alert-instruction` | "" | 既定のボタン指示（シナリオ自身の `dismissAlerts.instruction` が勝つ） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
@@ -46,7 +46,7 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
-- 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書く（[evidence](evidence.md#sink証跡の出力先)）。
+- 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
 
@@ -64,13 +64,13 @@ bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
 ```
 
 - まず env ゲート（`preflight.py`）: actuator が必要とする CLI（`xcrun`、idb なら `idb` /
-  `idb_companion`）と**起動済みシミュレータ**を ✓/✗ チェックリストで表示。不足があれば**終了 1**（直し方ヒント付きで即失敗）。
-- 次に actuator で `query()` し、`score(elements, idNamespaces)` を表示。**grade が Blocked で 1、それ以外 0**。
+  `idb_companion`）と**起動済みシミュレータ**を ✓/✗ チェックリストで表示します。不足があれば**終了 1**（直し方ヒント付きで即失敗）。
+- 次に actuator で `query()` し、`score(elements, idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
 
 ## `trace`
 
-完了した run を**テキストタイムライン**で検査する。シナリオごとに、ステップと観測した通信を
-時系列で交互に並べ、続けて expectations・app-trace 区間・証跡サマリを出す。読み取り専用
+完了した run を**テキストタイムライン**で検査します。シナリオごとに、ステップと観測した通信を
+時系列で交互に並べ、続けて expectations・app-trace 区間・証跡サマリを出力します。読み取り専用
 （保存済みの `manifest.json` / `network.json` / `appTrace.json` を読む）。
 
 ```bash
@@ -82,17 +82,17 @@ bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
 
 ## `triage`
 
-run 内の最初の**失敗**シナリオを診断し、最小の修正案を出す — **助言のみ**で pass/fail は判定しない
-（AI 境界）。失敗コンテキスト（落ちたステップ＋理由、失敗 expectation、失敗時の要素ツリー、シナリオ）
-を組み立て `TriageAgent` に渡す。既定はルールベース（`HeuristicTriageAgent`、API キー不要）: 失敗を
+run 内の最初の**失敗**シナリオを診断し、最小の修正案を提示します。**助言のみ**で pass/fail は判定しません
+（AI 境界）。失敗コンテキスト（落ちたステップと理由、失敗 expectation、失敗時の要素ツリー、シナリオ）
+を組み立て `TriageAgent` に渡します。既定はルールベース（`HeuristicTriageAgent`、API キー不要）で、失敗を
 分類（selector / timing / assertion）し、対象 id が画面に無く似た id があれば「もしかして…?」を提案
-（id リネームの自己修復）。`--ai` は同じコンテキストに失敗**スクショ**を加えて推論する Claude 版に差し替え
+します（id リネームの自己修復）。`--ai` は同じコンテキストに失敗**スクショ**を加えて推論する Claude 版に差し替えます
 （`ANTHROPIC_API_KEY` が必要）。
 
 エージェントは適用可能な**構造化 fix**（`renameId` / `addIndex` 曖昧一致の一意化 / `raiseTimeout`）も
-返せる。`--apply <scenario-file>` が **dry-run diff** を表示、`--write` が source に適用、`--rerun --app
-<name>` が patched シナリオを再実行（`--no-erase`）して緑になったか報告する。境界は保たれる: fix は人間が
-diff をレビューして opt-in した時のみ適用、断片が source に一致しなければ安全に no-op。
+返せます。`--apply <scenario-file>` が **dry-run diff** を表示、`--write` が source に適用、`--rerun --app
+<name>` が patched シナリオを再実行（`--no-erase`）して緑になったか報告します。境界は保たれます: fix はユーザーが
+diff をレビューして opt-in した時のみ適用され、断片が source に一致しなければ安全に no-op です。
 
 ```bash
 bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs] [--ai]
@@ -105,9 +105,9 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 
 ## `record`
 
-AI でゴールに向けて探索し、**記録したシナリオを書き出す**（Tier 1・[recording](recording.md)）。
-既定ではアプリの設定済みシナリオディレクトリ（`apps.<name>.scenarios`）配下に自動命名の `*.yaml` を書く。
-特定パスに書くには `--out` を渡す。
+AI でゴールに向けて探索し、**記録したシナリオを書き出します**（Tier 1・[recording](recording.md)）。
+既定ではアプリの設定済みシナリオディレクトリ（`apps.<name>.scenarios`）配下に自動命名の `*.yaml` を書きます。
+特定パスに書くには `--out` を渡してください。
 
 ```bash
 bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>] [options]
@@ -126,12 +126,12 @@ bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>]
 | `--alert-instruction` | "" | 同上の押下指示 |
 | `--config` | `bajutsu.config.yaml` | config |
 
-- 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出す。
+- 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
 
 ## `codegen`
 
-シナリオから **ネイティブ XCUITest** を生成（AI 非依存・構造マッピング・[codegen](codegen.md)）。
+シナリオから **ネイティブ XCUITest** を生成します（AI 非依存・構造マッピング・[codegen](codegen.md)）。
 
 ```bash
 bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] [--config ...]
@@ -142,14 +142,14 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] 
 | `--emit` | `xcuitest` | 出力形式（現状 `xcuitest` のみ。他は終了コード 2） |
 | `-o, --out` | `-` | 出力ファイル。`-` で標準出力 |
 
-- config の `launchEnv` が生成テストの `app.launchEnvironment` に入る。
+- config の `launchEnv` が生成テストの `app.launchEnvironment` に入ります。
 - ファイル出力時は `wrote <N> scenario(s) -> <out>`。
 
 ## `approve`
 
-実行で撮影したスクリーンショットを `visual` の**ベースライン**へ昇格させる — ビジュアル
-リグレッションのループ（run → 確認 → approve → 再run）の後半。`manifest.json` を読むだけなので
-**Simulator 不要**で CI でもヘッドレスに動き、WebUI の **Approve** ボタンの CLI 版にあたる。
+実行で撮影したスクリーンショットを `visual` の**ベースライン**へ昇格させます。これはビジュアル
+リグレッションのループ（run → 確認 → approve → 再 run）の後半にあたります。`manifest.json` を読むだけなので
+**Simulator 不要**で CI でもヘッドレスに動作し、WebUI の **Approve** ボタンの CLI 版です。
 
 ```bash
 bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs runs]
@@ -163,44 +163,44 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 | `--all` | off | 既に合格したベースラインも更新（既定: 失敗 / 不在のみ） |
 | `--runs` | `runs` | `<run_dir>` 省略時に使う runs ルート |
 
-- 各 visual チェックの `visual-actual.png` を `<dir>/<baseline>` へコピー。1 件以上昇格すれば
+- 各 visual チェックの `visual-actual.png` を `<dir>/<baseline>` へコピーします。1 件以上昇格すれば
   **終了 0**、対象が無ければ **1**。
 
 ## `serve`
 
-**シナリオを実行してレポートを見る**ローカル Web UI — Tier 1 の利便機能で、**CI ゲートには入らない**。
+**シナリオを実行してレポートを見る**ローカル Web UI です。Tier 1 の利便機能で、**CI ゲートには含まれません**。
 各アプリのシナリオ（`apps.<name>.scenarios` から）を一覧し、リクエストごとに `python -m bajutsu run ...` を
-バックグラウンドスレッドで起動、出力をストリーム、生成された `runs/<id>/` ツリーを配信する（report の相対資産リンクが解決する）。
+バックグラウンドスレッドで起動し、出力をストリームし、生成された `runs/<id>/` ツリーを配信します（report の相対アセットリンクが解決します）。
 stdlib のみ（Web フレームワーク不要）、`127.0.0.1` バインド。
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
 ```
 
-- `--config` は**任意**。省略すると UI のファイルブラウザ（「Open config」ボタン）から `config.yml` を開ける。
-  ブラウザの走査は `--root`（既定: カレントディレクトリ）配下に限定。`--scenarios <dir>` は選択アプリの設定済み
-  ディレクトリの上書きとして使える。
-- `--baselines` でビジュアルリグレッションのベースラインディレクトリを指定（既定: アプリのシナリオ
+- `--config` は**任意**です。省略すると UI のファイルブラウザ（「Open config」ボタン）から `config.yml` を開けます。
+  ブラウザの走査は `--root`（既定: カレントディレクトリ）配下に限定されます。`--scenarios <dir>` は選択アプリの設定済み
+  ディレクトリの上書きとして使えます。
+- `--baselines` でビジュアルリグレッションのベースラインディレクトリを指定します（既定: アプリのシナリオ
   ディレクトリ配下の `baselines/`）。UI から起動した実行はこれを使い、レポートの **Approve** ボタンが
-  `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させる。
-- app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run**。
-  出力がライブ表示され、完了で `report.html` が埋め込まれる。
+  `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させます。
+- app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run** を押します。
+  出力がライブ表示され、完了で `report.html` が埋め込まれます。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
-  実行（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止する。`apps.<name>.build`
+  実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`apps.<name>.build`
   に `appPath` を生成するシェルコマンド（例: `make -C demos/features sample-build`）を設定すると、
-  手動ビルド無しに UI からオンデマンドでビルドできる。
+  手動ビルド無しに UI からオンデマンドでビルドできます。
 - 操作 UI の下の **History** リストに過去の run（新しい順・pass/fail ドット・シナリオ要約）が並び、
-  クリックでそのレポートを再表示。`GET /api/runs` が裏側。
-- run サブプロセスは起動環境を継承（venv の `bin` を `PATH` 先頭に付与し `idb` クライアントを解決）。
-  `bajutsu.config.yaml` が解決するようプロジェクトルートから実行する。
+  クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
+- run サブプロセスは起動環境を継承します（venv の `bin` を `PATH` 先頭に付与し `idb` クライアントを解決）。
+  `bajutsu.config.yaml` が解決するようプロジェクトルートから実行してください。
 
 ## 環境変数（.env）
 
-`_bootstrap`（`@app.callback`）が全コマンドの前に `.env` を読む（実装: `bajutsu/dotenv.py`）。
+`_bootstrap`（`@app.callback`）が全コマンドの前に `.env` を読みます（実装: `bajutsu/dotenv.py`）。
 
 - `KEY=VALUE` 形式。`#` コメント・空行・`export ` 接頭・クォートに対応。
-- **既存の環境変数を上書きしない**（実環境の値が常に勝つ）。`.env` はフォールバック。
-- 読み先は既定 `.env`、`BAJUTSU_DOTENV` で変更可。`.gitignore` 済み。
+- **既存の環境変数を上書きしません**（実環境の値が常に勝つ）。`.env` はフォールバックです。
+- 読み先は既定 `.env`、`BAJUTSU_DOTENV` で変更可能。`.gitignore` 済み。
 - 主な用途: `ANTHROPIC_API_KEY`（`record` と、既定で動くアラートガード）。
 
 ```bash

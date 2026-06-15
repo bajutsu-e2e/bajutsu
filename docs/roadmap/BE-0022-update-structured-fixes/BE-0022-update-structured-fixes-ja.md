@@ -9,7 +9,7 @@
 
 ## はじめに
 
-壊れたシナリオを全体再記録せず最小差分で更新。triage が構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）を提案 → `--apply`(dry-run diff)/`--write` で source に適用、`--rerun` で再実行検証。実機で rename・addIndex の閉ループ実証済み。
+壊れたシナリオを全体再記録せず最小差分で更新します。triage が構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）を提案し、`--apply`（dry-run diff）/`--write` で source に適用、`--rerun` で再実行検証を行います。実機で rename・addIndex の閉ループは実証済みです。
 
 ## 動機
 

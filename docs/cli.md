@@ -21,7 +21,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 ## `run`
 
-Runs a scenario **deterministically**; pass/fail is machine-only. The sole AI is the **alert guard** (on by default per scenario), which fires only to clear an OS prompt that blocked a step — see [`dismissAlerts`](scenarios.md#dismissalerts-the-system-alert-guard).
+Runs a scenario **deterministically**; pass/fail is machine-only. The only AI component is the **alert guard** (on by default per scenario), which fires only to clear an OS prompt that blocked a step — see [`dismissAlerts`](scenarios.md#dismissalerts-the-system-alert-guard).
 
 ```bash
 bajutsu run --app <name> [--scenario <file.yaml>] [options]
@@ -76,8 +76,8 @@ bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
 
 ## `trace`
 
-Inspects a finished run as a **text timeline** — per scenario, steps and observed network
-exchanges interleaved chronologically, then expectations, app-trace intervals, and an evidence
+Inspects a finished run as a **text timeline**: per scenario, steps and observed network
+exchanges interleaved chronologically, followed by expectations, app-trace intervals, and an evidence
 summary. Read-only (reads the saved `manifest.json` / `network.json` / `appTrace.json`).
 
 ```bash
@@ -89,8 +89,8 @@ bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
 
 ## `triage`
 
-Diagnoses the first **failed** scenario in a run and suggests a minimal fix — **advisory**, it
-never judges pass/fail (the AI boundary). Assembles the failure context (the failing step + its
+Diagnoses the first **failed** scenario in a run and suggests a minimal fix. This is **advisory** — it
+never judges pass/fail (the AI boundary). It assembles failure context (the failing step and its
 reason, failed expectations, the element tree nearest the failure, the scenario) and runs a
 `TriageAgent`. The default is rule-based (`HeuristicTriageAgent`, no API key): it categorizes the
 failure (selector / timing / assertion) and, when a target id is absent but a similar id is on
@@ -98,11 +98,11 @@ screen, suggests "did you mean …?" (the classic renamed-id self-heal). `--ai` 
 Claude-backed agent (needs `ANTHROPIC_API_KEY`) that reasons over the same context plus the
 failure **screenshot** for richer diagnoses.
 
-An agent may also return a **structured fix** the tool can apply — `renameId`, `addIndex`
+An agent may also return a **structured fix** the tool can apply: `renameId`, `addIndex`
 (disambiguate an ambiguous match), or `raiseTimeout`. `--apply <scenario-file>` prints it as a
 **dry-run diff**; `--write` applies it to the source; `--rerun --app <name>` then re-runs the
 patched scenario (`--no-erase`) and reports whether it now passes. The boundary holds: a fix
-lands only when you opt in after reviewing the diff, and a fragment that no longer matches the
+is applied only when the user opts in after reviewing the diff, and a fragment that no longer matches the
 source is a safe no-op.
 
 ```bash

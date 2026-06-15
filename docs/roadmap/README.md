@@ -2,15 +2,15 @@
 
 # Bajutsu roadmap / backlog
 
-> A **living document** that gathers the features we want to build next. Each item is its own
-> file (one BE ID per item); drop half-formed thoughts into [Unsorted ideas](#unsorted-ideas)
-> first, then promote them into a numbered item once they firm up.
+> This document tracks features planned for future implementation. Each item has its own file
+> (one BE ID per item). Add unformed thoughts to [Unsorted ideas](#unsorted-ideas) first, then
+> promote them to a numbered item once the scope is clear.
 >
-> - **The accurate list of what exists today (implemented / unwired)** lives in
+> - **The accurate list of what exists today (implemented / unwired)** is in
 >   [architecture.md#implementation-status](../architecture.md#implementation-status) — the source
->   of truth. This page is about what's *next*.
-> - The design background (the *why*) is in [`DESIGN.md`](../../DESIGN.md).
-> - The **strategic shape of the whole (the north star)** is in [vision.md](../vision.md).
+>   of truth. This page covers what is planned next.
+> - The design rationale is in [`DESIGN.md`](../../DESIGN.md).
+> - **The overall strategic direction** is in [vision.md](../vision.md).
 
 ## Legend
 
@@ -65,7 +65,7 @@ Coarse delivery milestones (M1–M4) — the project's **decision & implementati
 
 ### Authoring experience (record / GUI editor)
 
-The AI-driven `record` (Tier 1) is implemented ([recording.md](../recording.md)). The aim here is **non-AI action capture** and **visual editing of scenarios**, to make the record → edit → re-run round trip easy for humans. The local web UI launcher `bajutsu serve` is the first step toward this.
+The AI-driven `record` (Tier 1) is implemented ([recording.md](../recording.md)). The items here cover **non-AI action capture** and **visual editing of scenarios**, to make the record → edit → re-run cycle easier for humans. The local web UI launcher `bajutsu serve` is the first step toward this.
 
 | ID | Item | Status |
 |---|---|---|
@@ -83,7 +83,7 @@ Lower the maintenance cost of regressions while keeping AI out of the judge role
 
 ### Candidates from competitive research (MagicPod / Autify)
 
-MagicPod and Autify have **AI self-healing + no-code + cloud device farm + visual testing** in their DNA. Both companies' flagship feature is "AI auto-corrects locators / tap positions during a run", which collides head-on with Bajutsu's core ([DESIGN §2](../../DESIGN.md): **keep AI out of the CI gate / determinism first**). So we evaluated them split into what we can adopt deterministically and what we can adopt only outside the gate.
+MagicPod and Autify are built around **AI self-healing + no-code + cloud device farm + visual testing**. Both tools' flagship feature is "AI auto-corrects locators / tap positions during a run", which conflicts directly with Bajutsu's core principle ([DESIGN §2](../../DESIGN.md): **keep AI out of the CI gate / determinism first**). Features were evaluated by separating what can be adopted deterministically from what can be adopted only outside the gate.
 
 | ID | Item | Status | Origin |
 |---|---|---|---|
@@ -109,7 +109,7 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 
 ### Platform expansion (Android / Flutter)
 
-The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESIGN.md)). This is the broad direction of going multi-platform by leveraging the driver / backend abstractions — a strategic decision that entails updating the core scope statement. The concrete approach and design are detailed in [multi-platform.md](../multi-platform.md).
+The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESIGN.md)). This section covers the direction of going multi-platform by leveraging the driver / backend abstractions — a strategic decision that entails updating the core scope statement. The concrete approach and design are detailed in [multi-platform.md](../multi-platform.md).
 
 | ID | Item | Status |
 |---|---|---|
@@ -186,6 +186,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESI
 
 ## Unsorted ideas
 
-> Drop half-formed thoughts here. Promote them into a numbered BE item later.
+> Add unformed thoughts here. Promote them to a numbered BE item later.
 
 -

@@ -111,7 +111,7 @@ A small Python agent (launchd service) on each Orka-provisioned Mac:
 - Artifact **CDN** (content delivery network) in front of R2; multi-region control plane if needed.
 - Full observability (Sentry + Grafana dashboards + alerting on queue depth / worker health).
 
-### Cost shape (the honest part)
+### Cost shape
 The Linux control plane, Postgres, Redis, and R2 are **cheap and elastic**. The **Macs dominate the
 bill** and don't scale to zero cleanly (Orka nodes / EC2 Mac 24 h minimums). Design the pool around
 **queue depth with a small warm floor**, and push the deterministic *gate* to ephemeral CI
@@ -121,7 +121,7 @@ bill** and don't scale to zero cleanly (Orka nodes / EC2 Mac 24 h minimums). Des
 
 ## Security hardening (mandatory before any public exposure)
 
-Today's `serve.py` is safe *because* it's localhost-only and single-user. Public hosting removes
+Today's `serve.py` is safe because it's localhost-only and single-user. Public hosting removes
 both assumptions, so these are not optional:
 
 - **Auth on every endpoint** (OAuth + per-org RBAC); **rate-limit** run dispatch per user/org.
@@ -132,7 +132,7 @@ both assumptions, so these are not optional:
   and `backend`/`udid` are validated against an allowlist, not passed as free text.
 - **Per-org BYO `ANTHROPIC_API_KEY`** so AI features (`--dismiss-alerts`, `record`) bound cost and
   abuse to the org that owns the key.
-- **Worker sandboxing.** A scenario is effectively *untrusted code driving a device*: run each on an
+- **Worker sandboxing.** A scenario is effectively untrusted code driving a device: run each on an
   **ephemeral Mac/Simulator**, with an **egress allowlist** and **no cross-tenant secret reuse**.
 - **Signed, expiring artifact URLs**; **CORS/CSRF** (cross-origin resource sharing /
   cross-site request forgery) protection; standard security headers; an

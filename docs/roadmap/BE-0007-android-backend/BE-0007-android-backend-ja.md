@@ -9,7 +9,7 @@
 
 ## はじめに
 
-Android エミュレータ向け driver。adb + UIAutomator 等で操作。セレクタは `resource-id` / `content-desc` を id ファーストに対応づけ。
+Android エミュレータ向け driver です。adb + UIAutomator 等で操作します。セレクタは `resource-id` / `content-desc` を id ファーストで対応づけます。
 
 ## 動機
 
@@ -17,7 +17,7 @@ TBD。
 
 ## 詳細設計
 
-TBD —— 採用が決まった時点で具体化する。
+TBD — 採用が決まった時点で具体化します。
 
 ## 検討した代替案
 

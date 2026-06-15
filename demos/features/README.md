@@ -33,8 +33,8 @@ PASSWORD='s3cr3t' uv run bajutsu run --scenario demos/features/sample_features.y
 `${secrets.PASSWORD}` resolves from the environment; its literal value is masked in every
 run artifact.
 
-> **Why the Home screen and not a login flow?** idb's `describe-all` can momentarily
-> return an empty accessibility tree *during* a screen transition (e.g. right after a
-> login submit), which makes a `wait`/`expect` on the destination flaky — unrelated to the
-> features above. Asserting on a settled screen avoids that. Hardening the idb driver to
-> retry on an empty tree is tracked as M1 on-device work.
+> **Note on the Home screen:** idb's `describe-all` can momentarily return an empty
+> accessibility tree during a screen transition (e.g. right after a login submit), making
+> a `wait`/`expect` on the destination flaky — unrelated to the features above. Asserting
+> on a settled screen avoids that. Hardening the idb driver to retry on an empty tree is
+> tracked as M1 on-device work.

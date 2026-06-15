@@ -2,12 +2,7 @@
 
 # Scenario DSL grammar (formal reference)
 
-> The **normative grammar** of the scenario DSL (domain-specific language) — every production, type, default, and
-> validation constraint, derived directly from the pydantic models in `bajutsu/scenario.py`
-> (`extra="forbid"`, so unknown keys are rejected). Where [scenarios](scenarios.md) is the prose
-> *authoring guide* (how to write a scenario, with examples), this page is the *language spec*
-> (what parses and what is rejected). It also covers the templating + macro layer — components,
-> data-driven rows, and `setup` preludes — that surrounds the core grammar.
+This page is the **normative grammar** of the scenario DSL (domain-specific language): every production, type, default, and validation constraint, derived directly from the pydantic models in `bajutsu/scenario.py` (`extra="forbid"`, so unknown keys are rejected). Where [scenarios](scenarios.md) is the authoring guide (how to write a scenario, with examples), this page is the language spec (what parses and what is rejected). It also covers the templating and macro layer — components, data-driven rows, and `setup` preludes — that surrounds the core grammar.
 
 Related: [scenarios](scenarios.md) (authoring guide) · [selectors](selectors.md) (how selectors/assertions evaluate) · [evidence](evidence.md) · [getting-started](getting-started.md)
 
@@ -40,11 +35,7 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario.py:41`).
 
 ## 2. Grammar at a glance
 
-First, the **reference graph** — which non-terminal references which. It surfaces the recursion
-and sharing that the EBNF (extended Backus–Naur form) text below makes hard to trace: `Selector`'s `within` self-loop, and
-how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and
-`Mock.match`. (`relaunch` / `setLocation` / `push` carry only scalars, so they reference no
-shared non-terminal and are omitted.)
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that is harder to trace in the EBNF text: `Selector`'s `within` self-loop, and how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`. (`relaunch` / `setLocation` / `push` carry only scalars and reference no shared non-terminal, so they are omitted.)
 
 ```mermaid
 graph LR
@@ -399,6 +390,4 @@ load_scenarios        # parse + validate against this grammar
   dict for readability and emitting alias keys (`idMatches`, `launchEnv`, …). The output **reloads
   cleanly** — this is the round-trip `record` relies on (`scenario.py:601`).
 
-For the *semantics* behind the shapes — how a selector resolves to 0/1/2+ elements, how each
-assertion compares, how waits time out — continue to [selectors](selectors.md) and
-[run-loop](run-loop.md). To start writing scenarios by example, see [scenarios](scenarios.md).
+For the semantics behind the shapes — how a selector resolves to 0/1/2+ elements, how each assertion compares, how waits time out — see [selectors](selectors.md) and [run-loop](run-loop.md). To start writing scenarios by example, see [scenarios](scenarios.md).

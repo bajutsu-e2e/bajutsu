@@ -9,7 +9,7 @@
 
 ## Introduction
 
-Document the division of roles between "AI explores and writes" and "transcribe a human's operations", plus conversion between them.
+Document the division of roles between AI-driven exploration and writing versus direct capture of human operations, and specify how to convert between the two forms.
 
 ## Motivation
 

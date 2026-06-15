@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Both companies auto-correct during a run. Bajutsu stays with the self-healing triage's **propose a minimal diff → human reviews the diff → explicitly applies with `--write`** (no implicit in-run correction = the "making tests laxer" guard, [DESIGN §11](../../../DESIGN.md)).
+Both companies auto-correct selectors during a run. Bajutsu stays with the self-healing triage approach: propose a minimal diff, have a human review it, and apply it explicitly with `--write`. There is no implicit in-run correction, which guards against silently relaxing test constraints (see "making tests laxer" in [DESIGN §11](../../../DESIGN.md)).
 
 ## Motivation
 

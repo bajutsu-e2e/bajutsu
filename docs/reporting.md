@@ -94,8 +94,8 @@ descriptions throughout. The scenario definition and its execution are **merged 
 column) / `action` (a colored badge) / `detail` (the target description) / `at` / `view` (screenshot +
 an **in-report element-tree viewer**: the captured elements open in an in-page overlay, no new tab) /
 `reason`. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
-numbers) are rendered as subtly-styled inline tokens — deliberately a different tone from the solid
-action/assert badges, so variables and constants are identifiable at a glance. An `assert` step's
+numbers) are rendered as subtly-styled inline tokens — visually distinct from the solid
+action/assert badges, so variables and constants are distinguishable at a glance. An `assert` step's
 checks become a **nested table**, one row per assertion split into `kind` / `target` / `comparison`
 cells (instead of a hard-to-read `a; b; c` line). Steps that never ran (execution stops at the first
 failure) still appear, marked as skipped. **Observed network exchanges are interleaved into the
@@ -111,8 +111,8 @@ scenario YAML.
 
 A `visual` expectation renders an **interactive baseline-vs-actual comparator** beneath its row,
 with four modes: **Swipe** (drag a divider to wipe between the two), **Onion** (a slider cross-fades
-actual over baseline), **Blend** (`mix-blend-mode: difference` — identical pixels go black, changes
-glow live), and **Diff** (the machine's precomputed pixel diff, with the assertion's `exclude`
+actual over baseline), **Blend** (`mix-blend-mode: difference` — identical pixels go black, changed pixels are highlighted),
+and **Diff** (the machine's precomputed pixel diff, with the assertion's `exclude`
 regions masked — present only when the check failed). A `diff <pct>%` badge accompanies it, or a
 `no baseline yet` badge on a first run (when only the actual screenshot exists). When the check did
 not pass, an **Approve as baseline** button promotes the captured screenshot into the baselines dir;

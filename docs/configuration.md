@@ -2,12 +2,9 @@
 
 # Configuration, onboarding an app, and doctor
 
-> The tool core is app-agnostic. **Push all app-specific differences into config** and run
-> multiple apps with the same binary and the same drivers. Adding an app = adding one
-> `apps.<name>` entry.
->
-> Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score) · the
-> root [`bajutsu.config.yaml`](../bajutsu.config.yaml).
+The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding an app means adding one `apps.<name>` entry.
+
+Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score) · the root [`bajutsu.config.yaml`](../bajutsu.config.yaml).
 
 Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-into-config) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -85,8 +82,7 @@ config with `--config` (default `bajutsu.config.yaml`). `--backend idb` override
 
 ## Onboarding a new app
 
-The unit of generalization is "the app." You add **app-side preparation + one config entry**, not
-tool changes.
+To add a new app, add **app-side preparation and one config entry**. No changes to the tool itself are required.
 
 1. **Apply the implementation convention** — `accessibilityIdentifier` on key elements (in the
    app's namespace), expose state in label / traits / value, launch hooks, disable animations.

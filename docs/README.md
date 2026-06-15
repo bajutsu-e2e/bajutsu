@@ -3,16 +3,15 @@
 # Bajutsu documentation
 
 > Implementation-grounded reference for the natural-language-driven iOS E2E (end-to-end) testing tool
-> (iOS Simulator only). Where [`README.md`](../README.md) is the pitch and [`DESIGN.md`](../DESIGN.md)
-> is the design rationale (the *why*), this set of pages explains **what the code actually
-> does today**, feature by feature. Forward-looking work (what we want to build next) lives
-> in [the roadmap](roadmap/README.md).
+> (iOS Simulator only). [`README.md`](../README.md) is the introduction and [`DESIGN.md`](../DESIGN.md)
+> covers the design rationale; this set of pages explains **what the code actually
+> does today**, feature by feature. Planned work is in [the roadmap](roadmap/README.md).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives an app
 on the iOS Simulator (tap / type / swipe / wait), and verifies the result with
-**machine-checkable assertions**. The central idea is to **keep AI out of the CI (continuous integration) gate**: AI
-is the scenario *author* and the failure *investigator*, never the pass/fail *judge*
-(see [concepts](concepts.md)).
+**machine-checkable assertions**. The central idea is to keep AI out of the CI (continuous
+integration) gate: AI is the scenario author and the failure investigator, never the pass/fail
+judge (see [concepts](concepts.md)).
 
 ## The big picture (data flow)
 
@@ -38,8 +37,8 @@ Which module owns each box, and how they depend on each other, is in [architectu
 
 ## Pages (suggested reading order)
 
-> **New here? Start with the [Getting started tutorial](getting-started.md)** — a hands-on,
-> zero-to-green walkthrough (install → unit tests → scenario → device run → report). Then come
+> **New here? Start with the [Getting started tutorial](getting-started.md)** — a hands-on
+> walkthrough (install → unit tests → scenario → device run → report). Then come
 > back to the reference pages below.
 
 | # | Page | What it covers |
@@ -59,7 +58,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 13 | [cli](cli.md) | Full reference for CLI commands and options |
 | 14 | [sample-app](sample-app.md) | The bundled `BajutsuSample` fixture (exercises every primitive) |
 | 15 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
-| 16 | [vision](vision.md) | **Forward-looking** — the north star: the three axes of growth (reach / scale / authoring) and the invariant they all respect |
+| 16 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect |
 | 17 | [multi-platform](multi-platform.md) | **Forward-looking** — concrete plan & design for extending to Android (emulator) and Web (browser) behind the existing driver abstraction |
 | 18 | [cloud-hosting](cloud-hosting.md) | **Forward-looking** — hosting the web UI as a shared, public service (server/DB/storage/deploy selection) |
 | 19 | [self-hosting](self-hosting.md) | **Forward-looking** — running the web UI on your own Mac(s): a today-ready single-Mac setup + a fully self-hosted multi-tenant topology |

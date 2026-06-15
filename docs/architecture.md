@@ -2,7 +2,7 @@
 
 # Architecture and module relationships
 
-> Which module does what, where it depends, and — crucially — **which features described in
+> Which module does what, where it depends, and **which features described in
 > the design ([`DESIGN.md`](../DESIGN.md)) are not yet wired up** in the current code.
 
 Related: [concepts](concepts.md) · the per-feature pages (linked below)
@@ -11,10 +11,8 @@ Related: [concepts](concepts.md) · the per-feature pages (linked below)
 
 ## Overview (data flow)
 
-The end-to-end shape: a scenario (authored by AI or by hand) is the shared hub, `run` replays it
-deterministically with no AI in the gate, and `codegen` / `triage` branch off the same artifact.
-Tier 1 (AI — yellow) only ever *authors and investigates*; Tier 2 (deterministic — blue) decides
-pass/fail from machine assertions alone.
+A scenario (authored by AI or by hand) is the shared artifact. `run` replays it deterministically with no AI in the gate. `codegen` and `triage` also consume the scenario.
+Tier 1 (AI — yellow) authors and investigates only; Tier 2 (deterministic — blue) decides pass/fail from machine assertions alone.
 
 ```mermaid
 flowchart TB
@@ -130,7 +128,7 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 - `orchestrator.py` depends only on `base.Driver` and **is not coupled to any concrete driver**.
   That is why it can be tested with `FakeDriver` without a device, while in production the same
   loop drives idb.
-- `runner.py` provides the factory that "launches the app and returns a ready driver,"
+- `runner.py` provides the factory that launches the app and returns a ready driver,
   decoupling the loop from a real device.
 - `scenario.py` (the pydantic authoring model) and `drivers/base.py` (the runtime TypedDict)
   are different things. `Selector.as_selector()` converts the former to the latter.

@@ -2,11 +2,9 @@
 
 # 証跡（Evidence/Trace）サブシステム
 
-> 「特定の動作のたびに証跡を取る」要求を、単発指示ではなく **繰り返し発火するルール** として
-> 扱う。これにより二度目以降は AI なしで同じ証跡が再現する。
->
-> 実装: `bajutsu/evidence.py`（瞬時 + Sink）・`bajutsu/intervals.py`（区間: video / deviceLog）。
-> 発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）。
+繰り返し発生する動作に対する証跡取得は、単発指示ではなく **繰り返し発火するルール**として表現します。これにより、2 回目以降も AI なしで同じ証跡が収集されます。
+
+実装: `bajutsu/evidence.py`（瞬時 + Sink）・`bajutsu/intervals.py`（区間: video / deviceLog）。発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）で行われます。
 
 関連: [scenarios の capture トークン](scenarios.md#capture-トークン文法) ・ [reporting](reporting.md)
 
@@ -20,9 +18,7 @@
 | **B. ステップ単体（`capture:`）** | この 1 ステップだけ | 特定の wait 後に video + deviceLog |
 | **C. 既定ポリシー** | 全体の最低保証 | config の `capture: [screenshot.after, elements, actionLog]` |
 
-> C（config 既定）の `capture` は `Effective.capture` に解決される（[configuration](configuration.md)）が、
-> 現状 run ループはシナリオの `capturePolicy` とステップ `capture` のみを発火源にしている。config の
-> 既定 capture を全ステップに自動適用する配線は入っていない点に注意。
+> C（config 既定）の `capture` は `Effective.capture` に解決されます（[configuration](configuration.md)）。ただし現状、run ループはシナリオの `capturePolicy` とステップ `capture` のみを発火源にしています。config の既定 capture を全ステップに自動適用する配線は入っていません。
 
 ## 証跡種別と取得タイミング
 
@@ -38,16 +34,13 @@
 | `network` | アプリ内 collector（BajutsuKit → `network.json`） | 区間 | ✅ 取得（`--network` フラグ） |
 | `appTrace` | `simctl spawn log stream`（アプリの os_log subsystem） | 区間 | ✅ 取得（要 udid + subsystem） |
 
-> `appTrace` はアプリの `os_signpost` / `os_log` の `<name> started` / `<name> finished` マーカーを
-> 区間にペアリングする（`intervals.parse_app_trace`）。`network` は区間システムではなく request
-> collector が生成し、各 exchange を `<sid>/network.json` に書き出す（`--network` フラグ）。
+> `appTrace` はアプリの `os_signpost` / `os_log` の `<name> started` / `<name> finished` マーカーを区間にペアリングします（`intervals.parse_app_trace`）。`network` は区間システムではなく request collector が生成し、各 exchange を `<sid>/network.json` に書き出します（`--network` フラグ）。
 
-**修飾子の既定**: 瞬時系（`screenshot`/`elements`）は `after`、区間系（`video`/`deviceLog`）は `around`
-（操作前に開始しステップ後に停止）。`screenshot.before` のように明示すると `before.png` 等のファイル名になる。
+**修飾子の既定**: 瞬時系（`screenshot`/`elements`）は `after`、区間系（`video`/`deviceLog`）は `around`（操作前に開始しステップ後に停止）です。`screenshot.before` のように明示すると `before.png` 等のファイル名になります。
 
 ## A. `capturePolicy`（ルール方式）
 
-繰り返し発火するルール。シナリオ単位で書く（実装: `scenario.py` `CaptureRule` / `Trigger`）。
+繰り返し発火するルールです。シナリオ単位で記述します（実装: `scenario.py` `CaptureRule` / `Trigger`）。
 
 ```yaml
 capturePolicy:
@@ -66,18 +59,17 @@ capturePolicy:
 
 （[`demos/features/app/scenarios/settings.yaml`](../../demos/features/app/scenarios/settings.yaml) に実例）
 
-トリガー `on` は **`action` / `event` / `result` のいずれか 1 つ**:
+トリガー `on` は **`action` / `event` / `result` のいずれか 1 つ**です。
 
-- `action: <tap|longPress|type|swipe|...>` — 任意で `idMatches`（主対象の `id` に glob 一致）を併用。
-  `idMatches` は `action` とのみ併用可。
-- `event: screenChanged` — そのステップで `query()` が変化したら発火。
-- `result: error` — ステップが失敗したら発火（安全網）。
+- `action: <tap|longPress|type|swipe|...>` — 任意で `idMatches`（主対象の `id` に glob 一致）を併用できます。`idMatches` は `action` とのみ併用可能です。
+- `event: screenChanged` — そのステップで `query()` が変化したら発火します。
+- `result: error` — ステップが失敗したら発火します（安全網）。
 
-発火の詳細ロジックは [run-loop](run-loop.md#証跡ルールの発火)。
+発火の詳細ロジックは [run-loop](run-loop.md#証跡ルールの発火) にあります。
 
 ## B. インライン証跡
 
-そのステップだけ取りたいとき、ステップに直接 `capture:` を付ける。
+特定の 1 ステップだけ証跡を取りたい場合は、そのステップに直接 `capture:` を付けます。
 
 ```yaml
 - tap: { id: settings.reindex }
@@ -89,18 +81,16 @@ capturePolicy:
 
 ## 区間証跡（video / deviceLog）
 
-実装: `bajutsu/intervals.py`。どちらも **バックエンド非依存の `simctl` 子プロセス**で、操作前に
-開始し、ステップが落ち着いてから停止する。プロセス起動は注入可能（`Spawn`）でテスト可能。
+実装: `bajutsu/intervals.py`。どちらも **バックエンド非依存の `simctl` 子プロセス**で、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）でテスト可能です。
 
 | 種別 | 開始コマンド | 停止シグナル | ファイル名 |
 |---|---|---|---|
 | `video` | `simctl io <udid> recordVideo --codec h264` | **SIGINT**（強制 kill だと mp4 が壊れる） | `segment.mp4` |
 | `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` | SIGTERM | `device.log` |
 
-- `start_video` / `start_device_log` が `Interval` を返し、`Interval.stop()` でシグナルを送って
-  ファイルを確定する。停止は最大 10s 待ち、超えたら kill。
-- deviceLog は `--predicate`（NSPredicate）でサブシステム等に絞れる（CLI の `--log-predicate`）。
-- `INTERVAL_KINDS = {"video", "deviceLog"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分ける。
+- `start_video` / `start_device_log` が `Interval` を返し、`Interval.stop()` でシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。
+- deviceLog は `--predicate`（NSPredicate）でサブシステム等に絞れます（CLI の `--log-predicate`）。
+- `INTERVAL_KINDS = {"video", "deviceLog"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
 
 ## Sink（証跡の出力先）
 
@@ -115,13 +105,11 @@ class EvidenceSink(Protocol):
 | `NullSink`（既定） | 何も書かない（run を副作用フリーに保つ） |
 | `FileSink(run_dir, udid, log_predicate)` | `run_dir/<step_id>/` 配下に書き出す |
 
-`FileSink` は `udid` が無いと区間証跡をスキップする（simctl が要るため）。CLI の `run` は
-`FileSink(runs/<runId>, udid=..., log_predicate=...)` を使う（[cli](cli.md#run)）。
+`FileSink` は `udid` が無いと区間証跡をスキップします（simctl が必要なため）。CLI の `run` は `FileSink(runs/<runId>, udid=..., log_predicate=...)` を使用します（[cli](cli.md#run)）。
 
 ## アーティファクトの来歴（provider）
 
-すべての証跡は `Artifact(name, kind, provider)` として記録され、**どの provider から来たか**を
-manifest に残す。
+すべての証跡は `Artifact(name, kind, provider)` として記録され、**どの provider から来たか**を manifest に残します。
 
 ```python
 @dataclass
@@ -133,9 +121,7 @@ class Artifact:
 
 ## マスキング（redact）
 
-スクショ / ログ / ネットワークに PII（個人情報）・トークンが写り得るため、保存前にマスクする対象を宣言する。
-実装: `scenario.py` `Redact`。config の `redact` とシナリオの `redact` はマージ（union）される
-（[configuration](configuration.md#redact-のマージ)）。
+スクリーンショット・ログ・ネットワークデータには PII（個人情報）やトークンが含まれる可能性があります。保存前にマスクする対象を宣言してください。実装: `scenario.py` `Redact`。config の `redact` とシナリオの `redact` はマージ（union）されます（[configuration](configuration.md#redact-のマージ)）。
 
 ```yaml
 redact:
@@ -144,13 +130,6 @@ redact:
   fields: ["token", "password"]    # JSON/body フィールド名
 ```
 
-> redact は証跡の書き出し前に **適用される**（`redaction.py` `Redactor`）: device log / app trace は
-> key→value パターンでスクラブ、要素ツリーは label が設定済みなら value をマスク（または埋め込まれた
-> secret をスクラブ）、各 network exchange は構造的にマスクする — ヘッダ値は名前で、url / request /
-> response の body はフリーテキストとして（クエリパラメータや `token` / `password` の body フィールドも
-> 捕捉）。画像（スクショ / video）はマスクできず素のまま残る。
+> redact は証跡の書き出し前に **適用されます**（`redaction.py` `Redactor`）。device log / app trace は key→value パターンでスクラブされ、要素ツリーは label が設定済みの場合に value をマスクします（または埋め込まれた secret をスクラブします）。各 network exchange は構造的にマスクされます。ヘッダ値は名前で、url / request / response の body はフリーテキストとして処理されるため、クエリパラメータや `token` / `password` の body フィールドも捕捉されます。画像（スクリーンショット / video）はマスクできず、そのまま残ります。
 >
-> redact は **secret の入力値** にも及ぶ: `${secrets.X}` の背後にある実値（環境から解決、config の
-> `secrets:` で宣言・[configuration](configuration.md#シークレットsecrets)）は、設定済みの
-> `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクされる。長い値から先に
-> マスクするため、ある値が別の値の部分文字列でも部分的な漏れは残らない。
+> redact は **secret の入力値** にも適用されます。`${secrets.X}` の背後にある実値（環境から解決、config の `secrets:` で宣言・[configuration](configuration.md#シークレットsecrets)）は、設定済みの `labels` / `headers` / `fields` だけでなく、証跡に現れる箇所すべてでマスクされます。長い値から先にマスクするため、ある値が別の値の部分文字列であっても部分的な漏れは発生しません。

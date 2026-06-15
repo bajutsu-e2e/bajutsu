@@ -9,7 +9,7 @@
 
 ## はじめに
 
-ローカル `serve` を共有・公開サービス化。コントロールプレーン（Linux: FastAPI + Postgres + Redis + R2）と macOS ワーカープール（Orka）に分離し、認証・隔離・per-run Simulator を追加。`subprocess.Popen` をジョブキュー化する中核リファクタを伴う。
+ローカルの `serve` を共有・公開サービスへ移行します。コントロールプレーン（Linux: FastAPI + Postgres + Redis + R2）と macOS ワーカープール（Orka）に分離し、認証・隔離・per-run Simulator を追加します。`subprocess.Popen` をジョブキューに置き換える中核部分のリファクタリングが必要です。
 
 ## 動機
 

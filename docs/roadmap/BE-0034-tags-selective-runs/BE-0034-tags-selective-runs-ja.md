@@ -10,7 +10,7 @@
 
 ## はじめに
 
-シナリオ `tags` を `--tag`/`--exclude` でサブセット実行（include/exclude、exclude 優先・`select_scenarios`）。CI の段階実行に有効。
+シナリオの `tags` を `--tag`/`--exclude` でサブセット実行します（include/exclude、exclude 優先・`select_scenarios`）。CI の段階的な実行に利用できます。
 
 ## 動機
 

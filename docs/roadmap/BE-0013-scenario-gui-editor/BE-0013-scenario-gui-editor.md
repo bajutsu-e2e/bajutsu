@@ -9,7 +9,7 @@
 
 ## Introduction
 
-Visually edit the scenario YAML / assertion DSL (domain-specific language). Pick an element on a screenshot → settle on a selector, integrated with the doctor score.
+Visually edit the scenario YAML and assertion DSL (domain-specific language). Select an element on a screenshot to resolve a selector, with integration to the doctor score.
 
 ## Motivation
 

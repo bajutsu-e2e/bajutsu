@@ -2,10 +2,10 @@
 
 # Getting started
 
-> A hands-on, zero-to-green walkthrough. By the end you will have installed Bajutsu, run the
+> A hands-on walkthrough. By the end you will have installed Bajutsu, run the
 > unit suite, read a scenario, driven the bundled sample app on a Simulator, and opened the
-> HTML report. Where the other pages are a *reference* (what each feature does), this one is a
-> *tutorial* (do these steps, in order).
+> HTML report. The other pages are a reference (what each feature does); this one is a
+> tutorial (do these steps, in order).
 
 Related: [cli](cli.md) · [scenarios](scenarios.md) · [sample-app](sample-app.md) · [run-loop](run-loop.md) · [reporting](reporting.md)
 
@@ -24,7 +24,7 @@ You can do **Steps 1–3 on any machine** (no Simulator). Steps 4–6 need a Mac
 > **Status note.** Bajutsu is pre-alpha. The deterministic core, the AI authoring loop, the
 > evidence subsystem, and codegen are all implemented and unit-tested; on-device execution via
 > the idb backend works through the `make` targets but is still being hardened. If a device step
-> misbehaves, fall back to the unit tests — they are the stable ground.
+> misbehaves, fall back to the unit tests, which are stable.
 
 ---
 
@@ -60,7 +60,7 @@ uv run pytest -q          # the test suite
 make check                # or: ruff (lint) + mypy (strict types) + pytest, together
 ```
 
-Green here means the engine is sound on this machine. Everything from Step 4 on builds on top of
+Green here means the engine works on this machine. Everything from Step 4 on builds on top of
 it.
 
 ---
@@ -89,15 +89,15 @@ A scenario is plain YAML: a list of named tests, each with optional `preconditio
     - value:  { sel: { id: counter.value }, equals: "2" }
 ```
 
-The shape to internalize:
+The key points:
 
 - **Steps act; `expect` judges.** A `run` performs the steps, then the assertions in `expect`
-  alone decide pass/fail — no AI, no human, no "looks right." This is the determinism boundary
+  alone decide pass/fail, with no AI and no human judgment. This is the determinism boundary
   ([concepts](concepts.md)).
 - **Selectors are `accessibilityIdentifier`-first** (`{ id: home.title }`). They are stable and
-  non-localized. An *ambiguous* selector fails immediately rather than tapping whatever matched
+  non-localized. An ambiguous selector fails immediately rather than tapping whatever matched
   first ([selectors](selectors.md)).
-- **Waits are conditions, not sleeps** (`wait: { for: …, timeout: 5 }`) — Bajutsu polls until the
+- **Waits are conditions, not sleeps** (`wait: { for: …, timeout: 5 }`): Bajutsu polls until the
   element exists, up to the timeout.
 
 The full grammar (every step kind, wait, and assertion) is in [scenarios](scenarios.md); the
@@ -137,7 +137,7 @@ scenario plus a `doctor` check on the booted device:
 make -C demos/features e2e
 ```
 
-Or drive the CLI directly (the same thing, spelled out):
+Or drive the CLI directly (the same steps, written out):
 
 ```bash
 uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
@@ -157,7 +157,7 @@ On success you'll see a line like:
 PASS  runs/20260610-120000/manifest.json
 ```
 
-`run` **exits 0 when every scenario passes, 1 on any failure** — that exit code is the CI (continuous integration) gate
+`run` **exits 0 when every scenario passes, 1 on any failure**, and that exit code is the CI (continuous integration) gate
 ([run-loop](run-loop.md)).
 
 > Hit an environment problem (no booted Simulator, idb not installed)? Run
@@ -199,7 +199,7 @@ Details on each format and the `runs/` layout: [reporting](reporting.md).
 ## Where to go next
 
 You now have the full loop: install → unit tests → scenario → device run → report. Two more
-entry points share the same scenario format:
+entry points use the same scenario format:
 
 - **Author with AI.** Let Claude explore toward a goal and write the scenario for you (Tier 1).
   Put `ANTHROPIC_API_KEY=sk-ant-…` in a `.env` file, then:
@@ -213,6 +213,6 @@ entry points share the same scenario format:
   ```
   The structural mapping: [codegen](codegen.md). Run it end-to-end with `make -C demos/features ui-test`.
 
-From here, the reference pages go deep on each piece — start with [concepts](concepts.md) for the
-*why*, then follow the suggested reading order in the [docs index](README.md). To onboard your own
+From here, the reference pages cover each piece in depth. Start with [concepts](concepts.md) for the
+rationale, then follow the suggested reading order in the [docs index](README.md). To onboard your own
 app (not the sample), see [configuration](configuration.md#onboarding-a-new-app).

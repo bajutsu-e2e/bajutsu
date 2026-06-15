@@ -9,7 +9,7 @@
 
 ## Introduction
 
-Turn the local `serve` into a shared, public service. Split into a control plane (Linux: FastAPI + Postgres + Redis + R2) and a macOS worker pool (Orka), adding auth, isolation, and per-run Simulators. Entails a core refactor turning `subprocess.Popen` into a job queue.
+Convert the local `serve` into a shared, publicly accessible service. The architecture splits into a control plane (Linux: FastAPI + Postgres + Redis + R2) and a macOS worker pool (Orka), with auth, isolation, and per-run Simulators. This requires a core refactor that replaces `subprocess.Popen` with a job queue.
 
 ## Motivation
 

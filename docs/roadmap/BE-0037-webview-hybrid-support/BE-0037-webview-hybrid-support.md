@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Currently assumes a native a11y tree. Bridge into the DOM (Document Object Model) inside a WebView.
+The current implementation assumes a native a11y tree. This proposal adds support for accessing the DOM (Document Object Model) inside a WebView.
 
 ## Motivation
 
