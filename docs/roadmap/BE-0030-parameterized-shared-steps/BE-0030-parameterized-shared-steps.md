@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Define and call **reusable components with arguments** via the `use` step, expanding `${params.*}` (`expand_components`). Usable alongside the `setup` prelude (no args). Removes duplication in common steps like login.
+Define and call reusable components with arguments via the `use` step, expanding `${params.*}` (`expand_components`). Usable alongside the `setup` prelude (no args). Removes duplication in common steps like login.
 
 ## Motivation
 

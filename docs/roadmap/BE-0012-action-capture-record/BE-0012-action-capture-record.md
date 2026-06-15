@@ -9,7 +9,7 @@
 
 ## Introduction
 
-Record real operations on the Simulator (tap / type / swipe) into a scenario (AI-independent). Needs idb event capture or accessibility-event monitoring.
+Record real user operations on the Simulator (tap / type / swipe) directly into a scenario, without relying on AI. This requires idb event capture or accessibility-event monitoring.
 
 ## Motivation
 

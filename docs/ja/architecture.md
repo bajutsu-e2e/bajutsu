@@ -2,8 +2,8 @@
 
 # アーキテクチャとモジュール関係
 
-> どのモジュールが何を担当し、どこに依存するか。そして **設計（[`DESIGN.md`](../../DESIGN.md)）に
-> あるが現状まだ配線されていない機能** を明示する。
+> どのモジュールが何を担当し、どこに依存するか。また **設計（[`DESIGN.md`](../../DESIGN.md)）に
+> あるが現状まだ配線されていない機能** を明示します。
 
 関連: [concepts](concepts.md) ・ 各機能ページ（下のリンク）
 
@@ -11,9 +11,8 @@
 
 ## 全体像（データフロー）
 
-エンドツーエンドの形: シナリオ（AI または人手で作成）が共有ハブで、`run` はそれを決定的にリプレイし
-（ゲートに AI なし）、`codegen` / `triage` は同じ成果物から分岐する。Tier 1（AI・黄）は *書く / 調べる*
-だけ、Tier 2（決定的・青）は機械アサーションのみで合否を決める。
+シナリオ（AI または人手で作成）が共有の成果物です。`run` はそれをゲートに AI なしで決定的にリプレイします。`codegen` と `triage` もシナリオを入力として使います。
+Tier 1（AI・黄）はオーサリングと調査のみを担い、Tier 2（決定的・青）は機械アサーションのみで合否を決めます。
 
 ```mermaid
 flowchart TB
@@ -58,7 +57,7 @@ flowchart TB
     class tier2 det
 ```
 
-下の[依存レイヤ図](#依存関係レイヤ)は、同じシステムをデータフローではなくモジュール層として見たもの。
+下の[依存レイヤ図](#依存関係レイヤ)は、同じシステムをデータフローではなくモジュール層として見たものです。
 
 ---
 
@@ -102,8 +101,7 @@ flowchart TB
 
 ## 依存関係（レイヤ）
 
-下層ほど安定で、上層が下層に依存する。中核は `drivers/base.py`（セレクタ解決）であり、すべての
-実行系がここに依存する。
+下層ほど安定で、上層が下層に依存します。中核は `drivers/base.py`（セレクタ解決）で、すべての実行系がここに依存します。
 
 ```
                        cli.py            ← ユーザ接点（Typer）: run / record / doctor / codegen / trace / triage / serve
@@ -125,24 +123,20 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
    drivers/fake                   drivers/idb
 ```
 
-- `orchestrator.py` は `base.Driver` にのみ依存し、**どの具象ドライバとも結合しない**。だから
-  `FakeDriver` で実機なしにテストでき、本番では同じループが idb を駆動する。
-- `runner.py` が「アプリを起動して準備済みドライバを返す」factory を担い、ループを実機から分離する。
-- `scenario.py`（オーサリング表現の pydantic モデル）と `drivers/base.py`（実行時の TypedDict）は
-  別物。`Selector.as_selector()` が前者を後者へ変換する。
+- `orchestrator.py` は `base.Driver` にのみ依存し、**どの具象ドライバとも結合しません**。そのため `FakeDriver` で実機なしにテストでき、本番では同じループが idb を駆動します。
+- `runner.py` はアプリを起動して準備済みドライバを返す factory を提供し、ループを実機から分離します。
+- `scenario.py`（オーサリング表現の pydantic モデル）と `drivers/base.py`（実行時の TypedDict）は別物です。`Selector.as_selector()` が前者を後者へ変換します。
 
 ## テスト構成
 
-`tests/` に **405 のユニットテスト**（`uv run pytest -q`）。すべて実機 Simulator を必要としない:
-コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`・`Spawn`・`Clock`）で
-検証する。サンプルアプリに対する実機 E2E は `make -C demos/features e2e` / `make -C demos/features ui-test`（[sample-app](sample-app.md)）。
+`tests/` に **405 のユニットテスト**（`uv run pytest -q`）があります。すべて実機 Simulator を必要としません。コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`・`Spawn`・`Clock`）で検証します。サンプルアプリに対する実機 E2E は `make -C demos/features e2e` / `make -C demos/features ui-test` です（[sample-app](sample-app.md)）。
 
 ---
 
 ## 実装状況
 
-> 設計（[`DESIGN.md`](../../DESIGN.md)）には将来像も含まれる。**現状のコードが実際に動かすもの**と
-> **まだ配線されていないもの**を区別する。
+> 設計（[`DESIGN.md`](../../DESIGN.md)）には将来像も含まれます。**現状のコードが実際に動かすもの**と
+> **まだ配線されていないもの**を区別します。
 
 ### 実装済み（テストあり・経路が通っている）
 
@@ -150,33 +144,22 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 - シナリオスキーマ（厳格検証）と YAML ラウンドトリップ
 - 8 種のアサーション評価
 - Tier 2 run ループ（act → wait → verify）、`FakeDriver` で検証
-- DSL（ドメイン固有言語）: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、
-  起動時の `locale` 適用、デバイスプール上の並列実行（`--workers`）
-- DSL のオーサリング再利用: 再利用可能なパラメータ化コンポーネント（`use` / `${params.*}`）、
-  データ駆動シナリオ（`data` / `dataFile` と `${row.*}`）、シークレット変数（`${secrets.X}`・値マスク）、
-  シナリオタグ + `--tag` / `--exclude` 選択、`setLocation` / `push` デバイスステップ、`doubleTap` アクション、
-  ファイル単位 + シナリオ単位の `description`
-- 証跡: 瞬時（`screenshot`/`elements`）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク
-  collector（`network.json`）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用**
-- ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）:
-  `request` アサーション、`wait: { until: request }`、オフラインのスタブ応答
+- DSL（ドメイン固有言語）: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、起動時の `locale` 適用、デバイスプール上の並列実行（`--workers`）
+- DSL のオーサリング再利用: 再利用可能なパラメータ化コンポーネント（`use` / `${params.*}`）、データ駆動シナリオ（`data` / `dataFile` と `${row.*}`）、シークレット変数（`${secrets.X}`・値マスク）、シナリオタグ + `--tag` / `--exclude` 選択、`setLocation` / `push` デバイスステップ、`doubleTap` アクション、ファイル単位 + シナリオ単位の `description`
+- 証跡: 瞬時（`screenshot`/`elements`）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク collector（`network.json`）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用**
+- ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）: `request` アサーション、`wait: { until: request }`、オフラインのスタブ応答
 - レポート（`manifest.json` / `junit.xml` / `report.html`）
 - config 解決（defaults × apps、redact マージ）と actuator 選択
 - `simctl` コマンド層・idb の出力パーサ・`doctor` スコア + 実行可能ゲート（`preflight.py`: 必須 CLI + 起動済みシミュレータ）
 - `trace` コマンド（`trace.py`）: 保存済み run のテキストタイムライン（steps + network + appTrace）
-- M4 自己修復トリアージ（`triage.py` + `claude_triage.py`）: 失敗 run のコンテキスト組み立て +
-  `TriageAgent` 診断（ルールベース `HeuristicTriageAgent`、または `--ai` の Claude・失敗スクショ込み）。
-  エージェントは構造化 fix（`renameId` / `addIndex` / `raiseTimeout`）を提案でき、`--apply`/`--write` で
-  シナリオ source に適用（diff プレビュー・opt-in）、`--rerun` で再実行検証
+- M4 自己修復トリアージ（`triage.py` + `claude_triage.py`）: 失敗 run のコンテキスト組み立て + `TriageAgent` 診断（ルールベース `HeuristicTriageAgent`、または `--ai` の Claude・失敗スクショ込み）。エージェントは構造化 fix（`renameId` / `addIndex` / `raiseTimeout`）を提案でき、`--apply`/`--write` でシナリオ source に適用（diff プレビュー・opt-in）、`--rerun` で再実行検証
 - CLI `run` / `doctor` / `codegen` / `trace` / `triage` / `serve`、および `record`（AI オーサリング）+ alert guard
 - `serve` ローカル Web UI（Tier 1）: ブラウザからシナリオを実行しレポートを閲覧（CI 用ではない）
 - XCUITest コード生成
 
 ### 実機 Simulator で検証済み（iPhone 17 Pro・近年の iOS）
 
-- idb バックエンドの subprocess 実行 — `describe-all` パース、フレーム中心の tap / text / swipe、
-  `simctl` launch 手順 — を、インストール済みの `idb` / `idb_companion` に対し sample シナリオ実行・
-  証跡取得・triage 自己修復ループを実機で走らせて確認済み（`make -C demos/features e2e`。`e2e.yml` CI も idb smoke を実行）。
+- idb バックエンドの subprocess 実行 — `describe-all` パース、フレーム中心の tap / text / swipe、`simctl` launch 手順 — を、インストール済みの `idb` / `idb_companion` に対し sample シナリオ実行・証跡取得・triage 自己修復ループを実機で走らせて確認しています（`make -C demos/features e2e`。`e2e.yml` CI も idb smoke を実行します）。
 
 ### 未配線（スキーマ/フラグはあるが実行時に効かない）
 
@@ -184,4 +167,4 @@ assertions.py  evidence.py ── intervals.py · network.py · redaction.py
 |---|---|---|
 | `mockServer`（外部モックコマンド） | config スキーマのみ。`cmd`/`port` の外部サーバは**未実装** — シナリオ `mocks`（宣言的なプロトコル内スタブ、実装済み）で代替 | `config.py` `MockServer` |
 
-これらは各機能ページでも該当箇所に「未実装」と注記している。
+これらは各機能ページでも該当箇所に「未実装」と注記しています。

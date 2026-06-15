@@ -10,7 +10,7 @@
 
 ## Introduction
 
-Resolve `${secrets.X}` from environment variables for use in input, and **automatically mask their real values in evidence** (extending the existing `redact` down to input values). Declared in config under `secrets:`.
+Resolve `${secrets.X}` from environment variables for use in input, and automatically mask their real values in evidence (extending the existing `redact` down to input values). Declared in config under `secrets:`.
 
 ## Motivation
 

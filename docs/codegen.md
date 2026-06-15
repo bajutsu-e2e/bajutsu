@@ -2,9 +2,9 @@
 
 # XCUITest code generation (codegen)
 
-> A passing scenario is the deterministic source of truth. Generating a **native XCUITest (Swift)**
-> from it lets a team run the same flow in their existing Xcode / XCTest CI (continuous integration) — with no bajutsu
-> runtime, idb, or AI at test time, and XCUITest waits for hittability itself. The mapping is
+> A passing scenario can be used to generate a **native XCUITest (Swift)**, letting a team run the
+> same flow in their existing Xcode / XCTest CI (continuous integration) — with no bajutsu
+> runtime, idb, or AI at test time. XCUITest waits for hittability itself. The mapping is
 > **purely structural** (AI-independent).
 >
 > Implementation: `bajutsu/codegen.py`.

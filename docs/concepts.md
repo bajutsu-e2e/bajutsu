@@ -2,8 +2,8 @@
 
 # Core concepts and design principles
 
-> Every module in Bajutsu follows from a small set of principles. Read this before diving
-> into implementation details, to understand *why* things are shaped the way they are. The
+> Every module in Bajutsu follows from a small set of principles. Read this before the
+> implementation details to understand why things are shaped the way they are. The
 > full design rationale is in [`DESIGN.md`](../DESIGN.md).
 
 Related: [architecture](architecture.md) · [selectors](selectors.md) · [run-loop](run-loop.md)
@@ -23,8 +23,8 @@ two-tier structure (below).
 | `codegen` | — | none | structural mapping of a scenario to XCUITest ([codegen](codegen.md)) |
 
 The `run` path contains no `anthropic` call at all. The single exception is `--dismiss-alerts`
-(a safety net that visually dismisses OS system alerts); that is "tidying the environment,"
-not "judging pass/fail," and runs only when explicitly opted in
+(it visually dismisses OS system alerts); that prepares the environment rather than deciding
+pass/fail, and runs only when explicitly opted in
 ([the alert guard](recording.md#dismissing-system-alerts-automatically)).
 
 ## 2. Two tiers (Tier 1 / Tier 2)
@@ -34,7 +34,7 @@ not "judging pass/fail," and runs only when explicitly opted in
 - **Tier 2 = deterministic runner**: CI regression. The same scenario follows the same path
   every time.
 
-Both are the same `observe → act → verify` loop, but the layer where AI participates is
+Both use the same `observe → act → verify` loop, but the layer where AI participates is
 strictly separated.
 
 > The scenario is just YAML, so humans extend it with authoring features that never involve
@@ -44,22 +44,22 @@ strictly separated.
 
 ## 3. Determinism first (four concrete mechanisms)
 
-Bajutsu's "deterministic" is not a slogan; it is enforced by the structure of the code.
+Bajutsu's "deterministic" behavior is enforced by the structure of the code.
 
 1. **An ambiguous selector fails immediately.** When a single action's target matches 2+
-   elements, Bajutsu raises `AmbiguousSelector` instead of "tapping whatever matched first"
-   ([selectors](selectors.md#resolution-semantics)). This — ruling out non-determinism
-   *structurally* — is the single most important point.
+   elements, Bajutsu raises `AmbiguousSelector` instead of tapping whatever matched first
+   ([selectors](selectors.md#resolution-semantics)). Ruling out non-determinism structurally
+   is the most important of these four mechanisms.
 2. **Condition waits only; no fixed sleep.** Waiting polls `query()` until a condition holds.
    A `timeout` is mandatory (no infinite waits) ([run-loop](run-loop.md#waits-condition-waits-only)).
 3. **Start from a clean environment.** Each test, by default, `simctl erase`s before boot/launch,
    cutting off contamination from the previous test. State is injected via launch env / deeplink
    ([drivers](drivers.md#environment-management-simctl)).
-4. **Pass/fail is machine-checkable only.** No "feels like it passed." The eight machine
-   assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`
+4. **Pass/fail is machine-checkable only.** There is no "looks like it passed" judgment. The
+   eight machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`
    ([selectors](selectors.md#assertion-evaluation)).
 
-> A distinction: accessibility identifiers only stabilize the **determinism of selection**.
+> Note the scope: accessibility identifiers only stabilize the **determinism of selection**.
 > Flakiness from timing, state, or the network is handled separately by waits, the environment,
 > and (in the future) mocks.
 
@@ -74,7 +74,7 @@ convention (`<namespace>.<element>`) is in
 
 ## 5. The stability ladder
 
-UI actions are attempted **most-stable-first** — but "most stable" is about **selection** (which
+UI actions are attempted **most-stable-first**, where "most stable" refers to selection (which
 element), not actuation. idb actuates by coordinate tap at the frame center regardless, so what
 changes between rungs is how the element is chosen. The lower the rung, the more fragile.
 

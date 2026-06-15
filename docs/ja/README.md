@@ -2,14 +2,14 @@
 
 # Bajutsu ドキュメント
 
-> 自然言語駆動 iOS E2E テストツール（iOS Simulator 限定）の実装ベースの体系ドキュメント。
-> [`README.md`](../../README.md) が紹介、[`DESIGN.md`](../../DESIGN.md) が設計指針（思想）であるのに対し、
-> このドキュメント群は **現状のコードが実際に何をするか** を機能単位で説明する。
+> 自然言語駆動 iOS E2E テストツール（iOS Simulator 限定）の実装ベースの体系ドキュメントです。
+> [`README.md`](../../README.md) が紹介、[`DESIGN.md`](../../DESIGN.md) が設計指針であるのに対し、
+> このドキュメント群は **現状のコードが実際に何をするか** を機能単位で説明します。
 
 Bajutsu は、自然言語で書かれた（または記録された）テストシナリオを受け取り、iOS Simulator
 上のアプリを操作（tap / type / swipe / wait）し、**機械チェック可能なアサーション**で結果を
-検証する。中心思想は「**AI を CI（継続的インテグレーション）ゲートに持ち込まない**」こと —— AI はシナリオの *著者* と失敗時の
-*調査役* であって、合否の *判定者* にはならない（[concepts](concepts.md) 参照）。
+検証します。中心となる考え方は、AI を CI（継続的インテグレーション）ゲートに持ち込まないことです。AI はシナリオの著者と失敗時の
+調査役であって、合否の判定者にはなりません（[concepts](concepts.md) 参照）。
 
 ## 全体像（データフロー）
 
@@ -31,13 +31,13 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
                                   codegen ──▶ 同等の XCUITest (Swift)
 ```
 
-各ボックスの担当モジュールと依存関係は [architecture](architecture.md) を参照。
+各ボックスの担当モジュールと依存関係は [architecture](architecture.md) を参照してください。
 
 ## トピック一覧（推奨の読む順）
 
-> **はじめての人は [Getting started チュートリアル](getting-started.md) から。** インストールから
-> 「テストが green になる」までを手を動かして辿る（インストール → ユニットテスト → シナリオ →
-> 実機実行 → レポート）。その後で下のリファレンス各ページへ。
+> **はじめての人は [Getting started チュートリアル](getting-started.md) から始めてください。** インストールから
+> テストが green になるまでを手を動かして辿ります（インストール → ユニットテスト → シナリオ →
+> 実機実行 → レポート）。その後で下のリファレンス各ページに進んでください。
 
 | # | ページ | 何を説明するか |
 |---|---|---|
@@ -56,7 +56,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 | 13 | [cli](cli.md) | CLI コマンド・オプションの完全リファレンス |
 | 14 | [sample-app](sample-app.md) | 同梱フィクスチャ `BajutsuSample`（全プリミティブを網羅） |
 | 15 | [ci](ci.md) | CI で動かす — リポ自身の workflow + 再利用可能な `bajutsu-e2e` アクション |
-| 16 | [vision](vision.md) | **将来構想** — north star: 成長の 3 軸（reach / scale / authoring）と、すべてが守る不変条件 |
+| 16 | [vision](vision.md) | **将来構想** — 成長の 3 軸（reach / scale / authoring）と、すべてが守る制約 |
 | 17 | [multi-platform](multi-platform.md) | **将来構想** — 既存の driver 抽象の背後で Android（エミュレータ）と Web（ブラウザ）へ拡張する具体的な計画と設計 |
 | 18 | [cloud-hosting](cloud-hosting.md) | **将来構想** — Web UI を共有・公開サービスとしてホスティング（サーバ/DB/ストレージ/デプロイ選定） |
 | 19 | [self-hosting](self-hosting.md) | **将来構想** — Web UI を自前の Mac で稼働: 今日使える単一 Mac 構成 + 完全セルフホストのマルチテナント構成 |
@@ -83,12 +83,12 @@ bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift
 bajutsu serve                                         # ローカル Web UI（Tier 1・CI 用ではない）
 ```
 
-詳細は [cli](cli.md)。
+詳細は [cli](cli.md) を参照してください。
 
 ## このドキュメントの方針
 
-- **コードが正**: 記述は現在の実装（`bajutsu/`）に対応づけ、要所で `file.py:line` を示す。
+- **コードが正**: 記述は現在の実装（`bajutsu/`）に対応づけ、要所で `file.py:line` を示します。
 - **設計と実装の差を明示**: [`DESIGN.md`](../../DESIGN.md) に書かれていてもまだ配線されていない機能
-  （外部 `mockServer` コマンド —— シナリオ `mocks` で代替）は、各ページと
-  [architecture の実装状況](architecture.md#実装状況) で「未実装」と明記する。
-- **言語**: 散文は日本語（[`DESIGN.md`](../../DESIGN.md) に合わせる）。コード内のコメント / docstring は英語。
+  （外部 `mockServer` コマンド。シナリオ `mocks` で代替）は、各ページと
+  [architecture の実装状況](architecture.md#実装状況) で「未実装」と明記します。
+- **言語**: 散文は日本語（[`DESIGN.md`](../../DESIGN.md) に合わせます）。コード内のコメント / docstring は英語です。

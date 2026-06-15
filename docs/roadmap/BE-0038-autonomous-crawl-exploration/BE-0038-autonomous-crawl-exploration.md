@@ -10,7 +10,7 @@
 
 ## Introduction
 
-AI **autonomously crawls screen transitions to generate a screen map + reports crashes / unreachable states**. Strengthens Tier 1 `record`. Fits "AI = explorer".
+AI autonomously crawls screen transitions, generates a screen map, and reports crashes and unreachable states. This extends Tier 1 `record` capability.
 
 ## Motivation
 

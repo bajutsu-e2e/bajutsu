@@ -13,7 +13,7 @@ Related: [cloud-hosting](cloud-hosting.md) · [cli](cli.md#serve) · [ci](ci.md)
 
 ---
 
-## The macOS gotcha that shapes self-hosting
+## The macOS requirement that shapes self-hosting
 
 The runner drives an **iOS Simulator**, and the Simulator needs a **GUI login session**
 (WindowServer / the Aqua session) — it will **not** run from a headless daemon. Every
@@ -119,8 +119,8 @@ tailnet, runs `bajutsu run --erase` on a fresh Simulator, streams logs back, and
 
 ### Load balancing — two separate problems
 
-Don't treat this as one "load balancer." The control plane (HTTP, cheap, scales out) and the **Mac
-pool** (scarce, low-concurrency, slow) need **opposite** techniques.
+The control plane (HTTP, cheap, scales out) and the **Mac pool** (scarce, low-concurrency, slow)
+need **opposite** techniques. Don't treat this as one "load balancer" problem.
 
 **Control-plane load balancing (easy, standard).** Run **N replicas** of the FastAPI app behind
 **Caddy/HAProxy**:

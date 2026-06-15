@@ -9,7 +9,7 @@
 
 ## Introduction
 
-A brake against the risk of self-healing loosening pass/fail. A fix is **always reviewed by a human as a diff and explicitly applied with `--write`** (never auto-applied); a fragment mismatch is a safe no-op.
+This proposal addresses the risk that self-healing could weaken pass/fail criteria. A fix is **always reviewed by a human as a diff and explicitly applied with `--write`** (never auto-applied); a fragment mismatch is a safe no-op.
 
 ## Motivation
 

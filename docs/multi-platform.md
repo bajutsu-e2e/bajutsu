@@ -3,7 +3,7 @@
 # Extending to Android and Web (multi-platform)
 
 > Forward-looking design — **not implemented yet**. Today Bajutsu is scoped to the **iOS
-> Simulator only** ([DESIGN §1](../DESIGN.md), [README](../README.md)). This page lays out a
+> Simulator only** ([DESIGN §1](../DESIGN.md), [README](../README.md)). This page describes a
 > concrete strategy and design for reusing the existing abstractions to also drive **Android**
 > (emulator) and **Web** (browser) — what stays unchanged, what each new backend adds, and the
 > order to build it in. It is the long-form of [roadmap → Platform expansion](roadmap/README.md#platform-expansion-android--flutter).
@@ -12,9 +12,9 @@ Related: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concep
 
 ---
 
-## The thesis: the abstraction is already platform-shaped
+## The abstraction is already platform-shaped
 
-Bajutsu's core was built behind a backend-agnostic `Driver` interface on purpose
+Bajutsu's core was built behind a backend-agnostic `Driver` interface intentionally
 ([drivers](drivers.md), [DESIGN §5](../DESIGN.md)). The deterministic spine — scenario DSL
 (domain-specific language), selector resolution, machine assertions, the orchestrator loop, the
 evidence subsystem, the reporter — never names iOS. Only **three seams** are iOS-specific today:
@@ -24,7 +24,7 @@ evidence subsystem, the reporter — never names iOS. Only **three seams** are i
 3. **The stable-id convention** (`accessibilityIdentifier`, [§7](../DESIGN.md)) — the app-side
    source that makes `Selector.id` resolution deterministic.
 
-Going multi-platform means **adding a new triple** (actuator + environment + id convention) per
+Adding multi-platform support means **adding a new triple** (actuator + environment + id convention) per
 platform, while the deterministic core stays byte-for-byte the same. This is the same move the
 design already anticipates for a second iOS actuator (XCUITest) — generalized across OSes.
 
@@ -44,9 +44,7 @@ design already anticipates for a second iOS actuator (XCUITest) — generalized 
 | **doctor convention checks** (`doctor.py`) | **New per platform** — the §7-equivalent score |
 | **codegen emitter** (`codegen.py`) | **New per platform** — the native test it transpiles to |
 
-> The bet is that the **first** new platform is the expensive one (it forces any latent iOS-ism
-> in the "unchanged" column out into the open); the second is cheap. We therefore sequence the
-> rollout to pay that cost where it is smallest — see [Phasing](#phasing-build-web-first).
+The first new platform is the most expensive to add because it forces any latent iOS-specific assumptions in the "unchanged" column out into the open. The second platform is cheaper. The rollout order is chosen to pay that cost where it is smallest — see [Phasing](#phasing-build-web-first).
 
 ---
 
@@ -73,9 +71,8 @@ screens, so the realistic model is **per-platform scenarios that share one DSL, 
 one toolchain** — not one YAML run thrice. Cross-platform *reuse* is then an **opt-in** for the
 slices that genuinely match, expressed through the existing **reserved/shared id namespaces**
 (`auth.*`, `nav.*`, [§7.3](../DESIGN.md)): a login `setup:` component ([scenarios](scenarios.md))
-can run on all three platforms iff those ids are kept in parity. We promise *portable tooling*,
-and offer *portable scenarios* only where the team maintains an id contract — we do not pretend a
-single YAML is automatically a tri-platform test.
+can run on all three platforms iff those ids are kept in parity. The tool provides *portable tooling*
+and *portable scenarios* only where the team maintains an id contract — a single YAML is not automatically a tri-platform test.
 
 ---
 
@@ -91,10 +88,10 @@ single YAML is automatically a tri-platform test.
 | **Evidence providers** | screenshot = `page.screenshot`; video = context video recording; **`network` = native route interception** (first backend with it); `deviceLog` ≈ console logs / page errors |
 | **codegen target** | Playwright test (TypeScript) or `pytest-playwright` |
 
-Why Playwright leads the capability gradient: it advertises `semanticTap`, native `conditionWait`
+Playwright's capabilities lead the capability gradient: it provides `semanticTap`, native `conditionWait`
 (auto-waiting), `network` (request stubbing **and** observation in one API), and emulated
-`multiTouch`. This both raises the ceiling of the capability model and — see below — makes Web
-the cheapest place to prove the abstraction.
+`multiTouch`. This raises the ceiling of the capability model and — see below — makes Web
+the lowest-cost place to prove the abstraction.
 
 ### Android — adb + UI Automator
 
@@ -108,7 +105,7 @@ the cheapest place to prove the abstraction.
 
 Android is the **architectural twin of idb**: subprocess-driven, coordinate actuation, a
 transiently-empty tree during transitions (so it reuses idb's *resolve-with-retry, fail-ambiguity-fast*
-pattern, [drivers](drivers.md#idb)). It validates that the iOS-isms really were isolated to the
+pattern, [drivers](drivers.md#idb)). It validates that the iOS-specific parts were really isolated to the
 three seams, with almost no new shape.
 
 ### Flutter / React Native / WebView hybrids (later)
@@ -133,8 +130,8 @@ the new backends slot in without inventing concepts:
 | `multiTouch` | — | — | ✅ (emulated) | ✅ |
 
 idb and Android sit at the lean end (coordinate actuation, mocked network); Playwright at the rich
-end (semantic, native network). That an unmodified capability model spans both extremes is itself
-evidence the abstraction holds.
+end (semantic, native network). That an unmodified capability model spans both extremes is evidence
+the abstraction holds.
 
 ---
 
@@ -190,7 +187,7 @@ on every backend — only their *implementation* differs:
 | Clean environment per test | `simctl erase` | `pm clear` | fresh `new_context()` |
 | Pass/fail machine-checkable only | normalized `Element` | normalized `Element` | normalized `Element` |
 
-`resolve_unique` and `assertions.py` are literally shared code — the determinism guarantees are
+`resolve_unique` and `assertions.py` are shared code — the determinism guarantees are
 not re-implemented per platform, which is the whole point of normalizing every backend's tree into
 the common `Element`.
 
@@ -207,8 +204,8 @@ the common `Element`.
 | **Cross-cutting** | per-platform `doctor` score, per-platform codegen emitter, **scope-statement updates** | Done alongside each phase |
 
 **Why Web before Android**, even though Android is the closer architectural twin: Web is the only
-platform that needs **no macOS and no device emulator**, so it lands inside the current Linux gate
-the day it works — de-risking the "is the core truly platform-neutral?" question at the lowest
+platform that needs **no macOS and no device emulator**, so it fits inside the current Linux gate
+from day one — reducing the risk of the question "is the core truly platform-neutral?" at the lowest
 possible cost. Android then confirms the *lean/coordinate* path on top of an already-generalized
 core.
 

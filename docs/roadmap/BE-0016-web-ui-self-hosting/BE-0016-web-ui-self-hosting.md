@@ -9,7 +9,7 @@
 
 ## Introduction
 
-A setup that runs on your own Mac. Stage A (Tailscale + LaunchAgent to run the current `serve` immediately) and Stage B (Docker Compose: Postgres/Redis/MinIO/Authelia + your own Mac worker pool). An operations guide covering the fact that the Simulator requires a GUI session.
+A configuration for running the web UI on a personal Mac. Stage A uses Tailscale and a LaunchAgent to expose the current `serve` immediately. Stage B uses Docker Compose (Postgres / Redis / MinIO / Authelia) with a personal Mac worker pool. An operations guide will cover the requirement that the Simulator needs a GUI session.
 
 ## Motivation
 

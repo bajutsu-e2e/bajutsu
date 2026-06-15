@@ -2,11 +2,9 @@
 
 # 設定・アプリのオンボーディング・doctor
 
-> ツール本体はアプリ非依存。**アプリ固有の差分はすべて config に寄せ**、同じバイナリ・同じドライバで
-> 複数アプリを回す。アプリを増やす = `apps.<name>` を 1 つ足すだけ。
->
-> 実装: `bajutsu/config.py`（解決） ・ `bajutsu/doctor.py`（規約充足度スコア） ・ ルートの
-> [`bajutsu.config.yaml`](../../bajutsu.config.yaml)。
+ツール本体はアプリ非依存です。アプリ固有の差分はすべて config に置き、同じバイナリ・同じドライバで複数のアプリを実行できます。アプリを追加する場合は `apps.<name>` を 1 つ追加するだけです。
+
+実装: `bajutsu/config.py`（解決） ・ `bajutsu/doctor.py`（規約充足度スコア） ・ ルートの [`bajutsu.config.yaml`](../../bajutsu.config.yaml)。
 
 関連: [concepts のアプリ非依存](concepts.md#6-アプリ非依存差分は-config-に寄せる) ・ [drivers](drivers.md) ・ [scenarios](scenarios.md)
 
@@ -14,7 +12,7 @@
 
 ## 設定の階層（defaults × apps）
 
-`bajutsu.config.yaml` を 2 層で持つ。値の解決順は **既定 < アプリ < シナリオ**（テストに近い方が勝つ）。
+`bajutsu.config.yaml` は 2 層で構成されています。値の解決順は **既定 < アプリ < シナリオ**（テストに近い方が優先）です。
 
 ```yaml
 defaults:                       # 全アプリ共通の既定
@@ -38,8 +36,7 @@ apps:
 
 ### 解決（`resolve` → `Effective`）
 
-`resolve(config, app)` が 1 アプリ分の有効値 `Effective`（frozen dataclass）を作る。アプリ未定義なら
-`KeyError`（CLI は終了コード 2）。
+`resolve(config, app)` が 1 アプリ分の有効値 `Effective`（frozen dataclass）を構築します。アプリが未定義の場合は `KeyError` となり、CLI は終了コード 2 で終了します。
 
 | `Effective` フィールド | 由来 | 備考 |
 |---|---|---|
@@ -57,30 +54,23 @@ apps:
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
 
-`backend` フィールド検証で `_norm` が「単一文字列 → 1 要素リスト」に正規化する（defaults / app 双方）。
+`backend` フィールドの検証で `_norm` が「単一文字列 → 1 要素リスト」に正規化します（defaults / app の両方に適用）。
 
 ### redact のマージ
 
-config の `defaults.redact` と `apps.<name>.redact` は **union** される（`_merge_redact`、
-`labels`/`headers`/`fields` を個別に和集合）。さらにシナリオの `redact`（[evidence](evidence.md#マスキングredact)）が
-重なる。
+config の `defaults.redact` と `apps.<name>.redact` は **union** されます（`_merge_redact`、`labels`/`headers`/`fields` を個別に和集合）。さらにシナリオの `redact`（[evidence](evidence.md#マスキングredact)）が重なります。
 
 ### シークレット（`secrets:`）
 
-`secrets:` は **環境変数名のリスト**（`defaults` と `apps.<name>` の双方で宣言でき、`resolve` が和集合に
-する）で、シナリオが入力に使える `${secrets.X}` 変数の宣言元。`bajutsu run` は実行時に宣言された各名前を
-環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値を
-マスク**する（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンが
-残り、実値は残らない。
+`secrets:` は **環境変数名のリスト**です（`defaults` と `apps.<name>` の両方で宣言でき、`resolve` が和集合にします）。シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンが残り、実値は残りません。
 
 ## CLI からの選択
 
-すべてのコマンドが `--app <name>` で 1 アプリを選び、`--config`（既定 `bajutsu.config.yaml`）で
-config を指す。`--backend idb` で actuator 順を上書きできる（[cli](cli.md)）。
+すべてのコマンドは `--app <name>` で 1 つのアプリを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend idb` で actuator の順序を上書きできます（[cli](cli.md)）。
 
 ## 新しいアプリのオンボーディング
 
-汎用化の単位は「アプリ」。ツールではなく **アプリ側の準備 + config 1 エントリ**を足す。
+新しいアプリを追加するには、**アプリ側の準備と config への 1 エントリ追加**を行います。ツール本体への変更は不要です。
 
 1. **実装規約を適用** — 主要要素に `accessibilityIdentifier`（アプリの名前空間で）、状態を
    label / traits / value に露出、launch hook、アニメ無効化。
@@ -91,8 +81,7 @@ config を指す。`--backend idb` で actuator 順を上書きできる（[cli]
 
 ## 識別子の命名規約
 
-`accessibilityIdentifier` は **`<namespace>.<element>` のドット区切り**。全て小文字、各セグメントは
-`[a-z0-9-]`。先頭セグメント = 名前空間で、`idNamespaces` に宣言した集合のいずれか。
+`accessibilityIdentifier` は **`<namespace>.<element>` のドット区切り**です。すべて小文字で、各セグメントは `[a-z0-9-]` の形式です。先頭セグメントが名前空間で、`idNamespaces` に宣言した集合のいずれかである必要があります。
 
 ```
 settings.reindex            # <namespace=settings>.<element=reindex>
@@ -111,17 +100,13 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 ## doctor（規約充足度スコア）
 
-実装: `bajutsu/doctor.py`。**AI 非依存・決定的**。1 画面の `query()`（CLI は actuator で取得した
-現在画面）を解析してスコアを出す。
+実装: `bajutsu/doctor.py`。**AI 非依存・決定的**。1 画面の `query()`（CLI は actuator で取得した現在画面）を解析してスコアを出します。
 
-> `doctor` はまず**実行可能ゲート**（`preflight.py`: actuator が必要とする CLI — `xcrun`、idb なら
-> `idb` / `idb_companion` — と起動済みシミュレータ）を確認し、その後スコアを出す。スコアは現在表示
-> されている画面のみが対象（入口/現在画面のみで、全画面は網羅しない）。
+> `doctor` はまず**実行可能ゲート**（`preflight.py`: actuator が必要とする CLI — `xcrun`、idb なら `idb` / `idb_companion` — と起動済みシミュレータ）を確認し、その後スコアを出します。スコアは現在表示されている画面のみが対象です（入口/現在画面のみで、全画面は網羅しません）。
 
 ### 指標（`Score`）
 
-操作可能要素（trait ∈ `ACTIONABLE_TRAITS` = button / link / textField / searchField / textView /
-switch / slider / tab / cell）を母数に測る。
+操作可能要素（trait ∈ `ACTIONABLE_TRAITS` = button / link / textField / searchField / textView / switch / slider / tab / cell）を母数として測定します。
 
 | 指標 | 定義 | しきい値 |
 |---|---|---|
@@ -137,7 +122,7 @@ switch / slider / tab / cell）を母数に測る。
 
 ### 出力
 
-`render(score)` が人間向けサマリを返す。不足要素は **実体を列挙**して「どこに id を足すか」を直に示す:
+`render(score)` が人間向けサマリを返します。不足要素は **実体を列挙**して「どこに id を追加するか」を直接示します。
 
 ```
 grade: Partial
@@ -147,4 +132,4 @@ duplicateIds: 0
   missing id: label='Close' traits=['button'] frame=(...)
 ```
 
-CLI の `doctor` は Blocked のとき終了コード 1（[cli](cli.md#doctor)）。
+CLI の `doctor` は Blocked のとき終了コード 1 で終了します（[cli](cli.md#doctor)）。

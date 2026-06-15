@@ -83,38 +83,36 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 
 ## report.html
 
-人間が見る自己完結 HTML（インライン CSS、外部アセット無し）。ヘッダには run id と全体 PASS/FAIL、
+人間が見る自己完結 HTML（インライン CSS、外部アセット無し）です。ヘッダには run id と全体 PASS/FAIL、
 その下に **シナリオファイル名**（`source_name`）、さらにファイルレベルの **`description`** があれば
-表示する。各シナリオ行のサマリには **シナリオ名** と、設定があれば横に **シナリオレベルの
-`description`** を表示する。こうして run 全体でシナリオ名 + ファイル名 + description を提示する。
+表示します。各シナリオ行のサマリには **シナリオ名** と、設定があれば横に **シナリオレベルの
+`description`** を表示します。こうして run 全体でシナリオ名 + ファイル名 + description を提示します。
 シナリオ定義とその実行結果は **1 つの Steps タブに統合**され、ラベル付きセクション
-（preconditions / **steps** / **expectations**）ごとにテーブルで描画する。**steps** テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
+（preconditions / **steps** / **expectations**）ごとにテーブルで描画されます。**steps** テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
 `action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクショ＋**レポート内 element tree
 ビューア**: キャプチャした要素を別タブではなくページ内オーバーレイで開く）/ `reason`。
-detail 中の識別子（`#home.title`）と定数リテラル（`“text”`・数値）は控えめなインライントークンで
-描画し、ソリッドな action/assert バッジとは**異なるトンマナ**にして、変数と定数を一目で識別できる
-ようにしている。`assert` ステップの複数チェックは**ネストしたテーブル**になり、1 アサーション 1 行で
-`kind` / `target` / `comparison` のセルに分割する（読みにくい `a; b; c` を解消）。実行されなかった
-ステップ（失敗で停止）も skipped として残る。**観測した通信を時系列で steps に差し込む**（各々シナリオ開始からのオフセットで配置）: HTTP メソッドを中立バッジ、ステータスを `result` 列に置き、通信の設定（method / endpoint / status / duration / ヘッダ）を detail セル内の**ネストしたテーブル**で表示する。どの通信を出すかはシナリオの `network.filter.domains`（URL ホスト）で絞る。Network タブは引き続き全件を載せる。**preconditions** テーブルは折りたたみ可（key / value）。
-**expectations** テーブルは並行カラム `result` / `kind`（バッジ）/ `target`（検査対象セレクタ＝例
-`#counter.value`）/ `comparison`（例 `== “2”`）/ `reason`（同じ id/定数トークン）。**Rich / YAML
-トグル**で同じタブを構造化ビューと生のシナリオ YAML に切り替えられる。
+detail 中の識別子（`#home.title`）と定数リテラル（`”text”`・数値）は控えめなインライントークンで
+描画します。ソリッドな action/assert バッジと視覚的に区別されるため、変数と定数を一目で識別できます。`assert` ステップの複数チェックは**ネストしたテーブル**になり、1 アサーション 1 行で
+`kind` / `target` / `comparison` のセルに分割します（読みにくい `a; b; c` 形式を解消）。実行されなかった
+ステップ（失敗で停止）も skipped として残ります。**観測した通信を時系列で steps に差し込みます**（各々シナリオ開始からのオフセットで配置）。HTTP メソッドを中立バッジ、ステータスを `result` 列に置き、通信の設定（method / endpoint / status / duration / ヘッダ）を detail セル内の**ネストしたテーブル**で表示します。どの通信を出すかはシナリオの `network.filter.domains`（URL ホスト）で絞ります。Network タブは引き続き全件を載せます。**preconditions** テーブルは折りたたみ可（key / value）。
+**expectations** テーブルは並行カラム `result` / `kind`（バッジ）/ `target`（検査対象セレクタ。例:
+`#counter.value`）/ `comparison`（例 `== “2”`）/ `reason`（同じ id/定数トークン）です。**Rich / YAML
+トグル**で同じタブを構造化ビューと生のシナリオ YAML に切り替えられます。
 
-`visual` の expectation は行の下に **baseline と actual のインタラクティブ比較ビュー**を描画する。
+`visual` の expectation は行の下に **baseline と actual のインタラクティブ比較ビュー**を描画します。
 4 モード: **Swipe**（仕切りをドラッグして左右にワイプ）/ **Onion**（スライダーで actual を
-baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: difference` — 同一画素は黒、差分が
-ライブに光る）/ **Diff**（マシンが算出した確定ピクセル diff。アサーションの `exclude` 領域は
-マスク済み。失敗時のみ表示）。`diff <pct>%` バッジ、初回実行（actual だけ）では `no baseline yet`
-バッジが付く。チェックが合格しなかった場合は **Approve as baseline** ボタンが出て、撮影スクショを
-ベースラインディレクトリへ昇格させる。これは `/api/approve` への `POST` なので `bajutsu serve`
-経由で開いたときだけ機能する（ディスクから直接開いたレポートでは非表示）。CLI 版は
+baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: difference` — 同一画素は黒、差分画素は強調表示）/ **Diff**（マシンが算出した確定ピクセル diff。アサーションの `exclude` 領域は
+マスク済み。失敗時のみ表示）。`diff <pct>%` バッジが付き、初回実行（actual のみ存在）では `no baseline yet`
+バッジになります。チェックが合格しなかった場合は **Approve as baseline** ボタンが表示され、撮影スクショを
+ベースラインディレクトリへ昇格させます。これは `/api/approve` への `POST` なので `bajutsu serve`
+経由で開いたときだけ機能します（ディスクから直接開いたレポートでは非表示）。CLI 版は
 [`bajutsu approve`](cli.md#approve)。
 
-失敗行は赤背景。ステップをクリックすると録画をその時刻にシークするが**自動再生はしない**
+失敗行は赤背景です。ステップをクリックすると録画をその時刻にシークしますが**自動再生はしません**
 （停止中なら停止のまま・再生中なら再生継続）。ステップのスクショをクリックすると原寸ライトボックスが
-開き、**← / →**（または画面上の矢印）で run 内の全スクショを**シナリオをまたいで**順送りできる
+開き、**← / →**（または画面上の矢印）で run 内の全スクショを**シナリオをまたいで**順送りできます
 （キャプションにシナリオ・ステップ・位置を表示）。run のアクチュエータはヘッダの `driver: <backend>`
-チップと各シナリオ行の小バッジで表示する。Device Log / App Trace は別タブのまま。
+チップと各シナリオ行の小バッジで表示します。Device Log / App Trace は別タブのままです。
 
 ## 書き出し API
 
@@ -125,5 +123,5 @@ def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 ```
 
-`runner.run_and_report` がこの `write_report` を呼び、CLI に `(results, manifest_path)` を返す
-（[run-loop](run-loop.md#runner実行パイプライン)）。CLI は全シナリオ成功なら終了コード 0、失敗で 1。
+`runner.run_and_report` がこの `write_report` を呼び、CLI に `(results, manifest_path)` を返します
+（[run-loop](run-loop.md#runner実行パイプライン)）。CLI は全シナリオ成功なら終了コード 0、失敗で 1 です。

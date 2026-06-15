@@ -12,9 +12,9 @@ via the `BAJUTSU_COLLECTOR` launch env. BajutsuKit installs a `URLProtocol` that
 each exchange (method / url / path / status / headers / bodies / timing) and POSTs it to
 the collector.
 
-This beats a proxy: it sees traffic **after TLS** (no CA install, no pinning fight), it
-is **backend-agnostic** (works under idb), and it is **programmatic** (bajutsu reads the
-exchanges, unlike RocketSim's GUI-only network inspector).
+Compared to a proxy: it sees traffic after TLS (no CA install, no certificate-pinning
+conflict), it works under idb (backend-agnostic), and bajutsu reads the exchanges
+programmatically (unlike RocketSim's GUI-only network inspector).
 
 ## Integrate
 

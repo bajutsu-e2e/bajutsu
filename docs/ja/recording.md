@@ -2,8 +2,8 @@
 
 # AI オーサリング（record / Tier 1）
 
-> Tier 1 = AI ライブ操作。自然言語のゴールから、AI がアプリを探索しながら操作し、**決定的シナリオ**
-> を書き出す。AI が関与するのはここ（記録時）だけ。成果物の YAML は AI 非依存で、以後は人間が所有する。
+> Tier 1 = AI ライブ操作です。自然言語のゴールから AI がアプリを探索しながら操作し、**決定的シナリオ**
+> を書き出します。AI が関与するのはここ（記録時）だけです。生成された YAML は AI 非依存で、以後はユーザーが管理します。
 >
 > 実装: `bajutsu/record.py`（ループ）・`bajutsu/agent.py`（抽象）・`bajutsu/claude_agent.py`（Claude）・
 > `bajutsu/alerts.py`（システムアラート対処）。
@@ -14,8 +14,8 @@
 
 ## Agent 抽象
 
-ループとモデルを分離するための薄い Protocol（`agent.py`）。テストではスクリプト化した fake を、
-本番では Claude を差す。
+ループとモデルを分離するための薄い Protocol です（`agent.py`）。テストではスクリプト化した fake を使い、
+本番では Claude を使います。
 
 ```python
 @dataclass
@@ -39,7 +39,7 @@ class Agent(Protocol):
 ## record ループ
 
 `record(driver, goal, agent, *, name, max_steps=30, alert_guard=None, ...) -> Scenario`
-（`record.py`）。observe → 提案 → 実行 を `max_steps` まで繰り返す。
+（`record.py`）。observe → 提案 → 実行 を `max_steps` まで繰り返します。
 
 ```
 1. （alert_guard があれば）アプリを覆うもの（システムアラート等）を片付ける
@@ -55,29 +55,29 @@ class Agent(Protocol):
 5. Scenario(name, steps, expect) を返す
 ```
 
-出力は `dump_scenarios` を通して YAML 化される（[scenarios](scenarios.md#ラウンドトリップ読込--書出)）。
+出力は `dump_scenarios` を通して YAML 化されます（[scenarios](scenarios.md#ラウンドトリップ読込--書出)）。
 
 ### settle ステップの自動挿入
 
-`_settle_step`: エージェントはターン間に「落ち着いた画面」を見るが、決定的リプレイは速く、
-非同期遷移（シート等）が描画される前に検証してしまうことがある。そこで **expect の最初の
-「存在を要する要素」へ向けた `wait`** を、アサーションの直前に記録しておく。これで `run` に
-暗黙のタイミングを足さずに、記録シナリオが自己完結する。
+`_settle_step`: エージェントはターン間に「落ち着いた画面」を見ますが、決定的リプレイは速く、
+非同期遷移（シート等）が描画される前に検証してしまうことがあります。そのため **expect の最初の
+「存在を要する要素」への `wait`** を、アサーションの直前に記録します。これにより `run` に
+暗黙のタイミングを追加せず、記録シナリオが自己完結します。
 
 ## ClaudeAgent
 
-`agent.Agent` を Claude（Anthropic SDK）で実装（`claude_agent.py`）。
+`agent.Agent` を Claude（Anthropic SDK）で実装しています（`claude_agent.py`）。
 
-- **ツール強制呼び出し**: `tool_choice={"type": "any"}` で、毎ターン **ちょうど 1 つ**のツールを呼ばせる。
+- **ツール強制呼び出し**: `tool_choice={"type": "any"}` で、毎ターン **ちょうど 1 つ**のツールを呼び出します。
   - `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`。
   - `finish` の `assertions` は `exists` / `notExists` / `valueEquals` / `labelContains` を
-    `Assertion` に変換（`_to_assertion`）。
-- **prompt cache**: システムプロンプトとツール定義は静的で `cache_control: ephemeral` を付ける。
-  ターンごとに変わるのは観測（要素 + スクショ）の user メッセージだけ。
-- **視覚 + 要素の併用**: スクショで見た目・状態を読み、**操作は必ず要素リストの `id`** で行う
-  （id を発明させない）。要素リストには id を持つ要素だけを出す。
-- モデルは `claude-opus-4-8`。`anthropic` は遅延インポート（API キー無しでもモジュールは読める）。
-  クライアントは注入可能（テスト用）。
+    `Assertion` に変換します（`_to_assertion`）。
+- **prompt cache**: システムプロンプトとツール定義は静的で `cache_control: ephemeral` を付けます。
+  ターンごとに変わるのは観測（要素 + スクショ）の user メッセージだけです。
+- **視覚 + 要素の併用**: スクショで見た目・状態を読み、**操作は必ず要素リストの `id`** で行います
+  （id を生成させません）。要素リストには id を持つ要素だけを出します。
+- モデルは `claude-opus-4-8` です。`anthropic` は遅延インポートです（API キー無しでもモジュールは読み込めます）。
+  クライアントは注入可能です（テスト用）。
 
 ```python
 ClaudeAgent()                      # 本番（環境の ANTHROPIC_API_KEY を使う）
@@ -88,7 +88,7 @@ ClaudeAgent(client=fake_client)    # テスト
 
 idb のアクセシビリティクエリは前面アプリにスコープされるため、**SpringBoard レベルのプロンプト**
 （iOS の「パスワードを保存しますか?」等）は見えず、アプリの要素ツリーが 1 つの window ノードに
-崩壊して run が静かにブロックされる。これを片付ける保険が `alerts.py`。
+縮退して run が静かにブロックされます。`alerts.py` がこれを片付けます。
 
 ```python
 class AlertLocator(Protocol):
@@ -99,26 +99,26 @@ class SystemAlertGuard:
 ```
 
 - `SystemAlertGuard.dismiss`: スクショを撮り、ロケータに「プロンプトがあるか・どこを押すか」を
-  尋ね、**正規化座標 [0,1]** を画面の point サイズ（最大要素 frame = アプリ window）に掛けて
-  `driver.tap_point` で叩く。画面の point サイズは、ツリーが崩壊してもアプリ window ノードが
-  全画面を張ることから求める。
-- `ClaudeAlertLocator`: 本番の「目」。Claude vision に PNG を渡し、ツール `resolve_alert` を強制呼び。
-  既定は **最も無害な（dismiss 系の）ボタン**（"Not Now" / "Don't Allow" / "Cancel" 等）を選ぶ。
-  `instruction` を与えると代わりにそのボタンを押す。座標はピクセルで返させ、PNG の IHDR から得た
-  画像サイズで [0,1] に正規化する。
-- ロケータは注入可能。テスト・オフラインでは決定的なロケータを差す。
+  問い合わせ、**正規化座標 [0,1]** を画面の point サイズ（最大要素 frame = アプリ window）に掛けて
+  `driver.tap_point` でタップします。画面の point サイズは、ツリーが縮退してもアプリ window ノードが
+  全画面に広がることから求めます。
+- `ClaudeAlertLocator`: 本番の実装です。Claude vision に PNG を渡し、ツール `resolve_alert` を強制呼び出しします。
+  既定は **最も無害な（dismiss 系の）ボタン**（"Not Now" / "Don't Allow" / "Cancel" 等）を選びます。
+  `instruction` を与えると代わりにそのボタンをタップします。座標はピクセルで返させ、PNG の IHDR から得た
+  画像サイズで [0,1] に正規化します。
+- ロケータは注入可能です。テスト・オフライン実行では決定的なロケータを使います。
 
 ### run / record での使い方
 
-- `run`: ガードはシナリオごとに**既定 ON**。CLI は [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード)
-  が有効な各シナリオに `SystemAlertGuard(...).dismiss` を `on_blocked` として渡す。ステップ失敗時に
-  プロンプトを片付け、**そのステップを 1 回だけ再試行**する（[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。
-  シナリオ側で `dismissAlerts: false` で無効化、`{ instruction: "tap Allow" }` でボタンを指定。
-  `--dismiss-alerts`/`--no-dismiss-alerts` は全シナリオを上書きし、`--alert-instruction "..."` は既定指示。
-- `record --dismiss-alerts`: opt-in（オーサリング時はまだシナリオが無い）。割り込むプロンプトを片付け、
-  エージェントに常にクリーンな画面を見せる。**dismissal は環境操作であって記録ステップにはしない**
-  （リプレイ側は各シナリオの `dismissAlerts` で対処する）。
+- `run`: ガードはシナリオごとに**既定 ON** です。CLI は [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード)
+  が有効な各シナリオに `SystemAlertGuard(...).dismiss` を `on_blocked` として渡します。ステップ失敗時に
+  プロンプトを片付け、**そのステップを 1 回だけ再試行**します（[run-loop](run-loop.md#run_scenario1-シナリオの実行)）。
+  シナリオ側で `dismissAlerts: false` で無効化、`{ instruction: "tap Allow" }` でボタンを指定できます。
+  `--dismiss-alerts`/`--no-dismiss-alerts` は全シナリオを上書きし、`--alert-instruction "..."` は既定指示を設定します。
+- `record --dismiss-alerts`: opt-in です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
+  エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
+  （リプレイ側は各シナリオの `dismissAlerts` で対処します）。
 
-> ガードは視覚モデルを使うため `ANTHROPIC_API_KEY` が要る（[cli の .env](cli.md#環境変数env)）。
-> 無くても**ベストエフォート**で単に no-op し、run を失敗させない。ガードはブロックしたプロンプトを
-> 片付けるためだけに発火し、合否は機械判定のみで AI 非依存（[concepts](concepts.md#1-ai-は著者と調査役であり判定者ではない)）。
+> ガードは視覚モデルを使うため `ANTHROPIC_API_KEY` が必要です（[cli の .env](cli.md#環境変数env)）。
+> 無くても**ベストエフォート**で単に no-op し、run を失敗させません。ガードはブロックしたプロンプトを
+> 片付けるためだけに動作し、合否は機械判定のみで AI 非依存です（[concepts](concepts.md#1-ai-は著者と調査役であり判定者ではない)）。

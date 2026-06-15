@@ -9,7 +9,7 @@
 
 ## はじめに
 
-自前 Mac で稼働させる構成。段階 A（Tailscale + LaunchAgent で現 `serve` を即時稼働）と段階 B（Docker Compose: Postgres/Redis/MinIO/Authelia + 自前 Mac ワーカープール）。Simulator が GUI セッション必須な点を含む運用ガイド。
+個人の Mac 上で Web UI を稼働させるための構成です。段階 A では Tailscale と LaunchAgent を使って現行の `serve` をすぐに外部公開します。段階 B では Docker Compose（Postgres / Redis / MinIO / Authelia）と自前の Mac ワーカープールを組み合わせます。Simulator に GUI セッションが必要な点を含む運用ガイドも作成します。
 
 ## 動機
 

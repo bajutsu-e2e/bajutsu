@@ -2,9 +2,9 @@
 
 # Selectors and deterministic resolution (the determinism core)
 
-> How you specify "which element to act on or verify," and how that is narrowed to exactly one.
-> Bajutsu's determinism is concentrated **here**. Every execution path (orchestrator / drivers /
-> assertions) depends on this module.
+> This module defines how you specify which element to act on or verify, and how that specification
+> is narrowed to exactly one match. Every execution path (orchestrator / drivers /
+> assertions) depends on this module. Bajutsu's determinism logic is implemented here.
 >
 > Implementation: `bajutsu/drivers/base.py`.
 

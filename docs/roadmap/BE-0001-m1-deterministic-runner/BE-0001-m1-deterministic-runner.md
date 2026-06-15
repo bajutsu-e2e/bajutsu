@@ -13,7 +13,7 @@ The deterministic Tier 2 runner: environment (simctl) + drivers + scenarios + as
 
 ## Motivation
 
-A test's pass/fail must be reproducible and AI-free. M1 establishes the deterministic spine everything else hangs off: stable selector resolution, condition-based waits (no fixed sleeps), and a clean per-run environment.
+A test's pass/fail must be reproducible and AI-free. M1 establishes the deterministic foundation that all other components depend on: stable selector resolution, condition-based waits (no fixed sleeps), and a clean per-run environment.
 
 ## Detailed design
 

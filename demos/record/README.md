@@ -5,9 +5,9 @@ live screen, proposes one action at a time, and the loop writes the executed ste
 deterministic scenario. `run` later replays that scenario with **no AI**
 ([recording](../../docs/recording.md), [concepts](../../docs/concepts.md)).
 
-This folder lets you experience the whole lifecycle against the bundled **`sample2`** app
-(`demos/record/app/`) — generate a scenario from a goal, run it on a Simulator, then modify it and
-watch the deterministic check respond.
+This folder demonstrates the full lifecycle against the bundled **`sample2`** app
+(`demos/record/app/`): generate a scenario from a goal, run it on a Simulator, modify it,
+and observe the deterministic runner respond.
 
 ## The guided demo (`demo.sh`)
 
@@ -33,8 +33,8 @@ The goal comes from the first non-comment line of [`goals.txt`](goals.txt) (over
 2. **Execute** — `bajutsu run --scenario generated.yaml --app sample2 --config demo.config.yaml` on the
    booted Simulator. The counter flow passes.
 3. **Modify** — edit the expected count to a wrong value → re-run → the run **fails** (the
-   assertion catches it) → fix it back → it **passes** again. That is the edit-and-re-run loop
-   you use to maintain an AI-authored scenario.
+   assertion catches it) → fix it back → it **passes** again. This is the edit-and-re-run loop
+   for maintaining an AI-authored scenario.
 4. **Diagnose** — change a selector label (`Log in` → `Log In`) to simulate a selector that
    drifted out from under the test → re-run → the tap **fails** to resolve → `bajutsu triage`
    reads the failed run and **diagnoses** it (category + the likely fix from the captured

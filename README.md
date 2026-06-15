@@ -16,14 +16,14 @@ Bajutsu takes test scenarios written in (or recorded from) natural language and 
 them against an app on the iOS Simulator: it performs taps / typing / swipes / waits and
 verifies the result with **machine-checkable assertions**.
 
-> **The name.** *Bajutsu* (馬術) is Japanese for *horsemanship / equestrianism* — the
-> art of mastering a horse. Here the unruly horse is the **iOS Simulator**: flaky timing,
-> async transitions, and surprise system alerts that buck a test off course. Bajutsu is
-> about taming that — riding the Simulator through a scenario with a steady, deterministic
-> hand so it goes exactly where you point it, every time.
+> **The name.** *Bajutsu* (馬術) is Japanese for *horsemanship / equestrianism*. The
+> name refers to the sources of test instability that the tool addresses on the **iOS
+> Simulator**: flaky timing, async transitions, and unexpected system alerts. Bajutsu
+> drives the Simulator through a scenario deterministically so that each run produces the
+> same result.
 
-The guiding idea is to keep the LLM (large language model) out of the CI (continuous
-integration) gate:
+The central design decision is to keep the LLM (large language model) out of the CI
+(continuous integration) gate:
 
 - **AI is the author and the failure investigator, never the judge.** It helps *write*
   scenarios (explore + record) and *investigate* failures, but a `run` is fully

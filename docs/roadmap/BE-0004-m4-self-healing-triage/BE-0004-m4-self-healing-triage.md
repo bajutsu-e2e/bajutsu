@@ -13,7 +13,7 @@ Self-healing triage: `bajutsu triage` assembles a failed run's context and diagn
 
 ## Motivation
 
-Regressions are expensive to maintain. M4 lowers that cost by letting AI investigate failures and propose minimal fixes, while the determinism boundary holds: a fix is applied only when a human opts in after reviewing the diff.
+Regressions are expensive to maintain. M4 lowers that cost by letting AI investigate failures and propose minimal fixes, while keeping the determinism boundary intact: a fix is applied only when a human opts in after reviewing the diff.
 
 ## Detailed design
 

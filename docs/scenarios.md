@@ -2,14 +2,11 @@
 
 # Scenario specification (authoring reference)
 
-> A scenario is Bajutsu's **only persisted artifact**. It is plain YAML — version-controlled
-> in git, reviewable in a PR. `record` (AI) writes it the first time only; from then on humans
-> own and edit it. `run` executes this structure **without AI**.
->
-> Implementation: `bajutsu/scenario.py` (pydantic, `extra="forbid"` rejects unknown keys).
->
-> The **normative grammar** — every production, type, default, and validation rule — lives in
-> [dsl-grammar](dsl-grammar.md). This page is the authoring guide: how to write a scenario, by example.
+A scenario is Bajutsu's **only persisted artifact**: plain YAML, version-controlled in git and reviewable in a PR. `record` (AI) writes it the first time; humans own and edit it afterward. `run` executes this structure without AI.
+
+Implementation: `bajutsu/scenario.py` (pydantic, `extra="forbid"` rejects unknown keys).
+
+The **normative grammar** — every production, type, default, and validation rule — is in [dsl-grammar](dsl-grammar.md). This page is the authoring guide: how to write a scenario, by example.
 
 Related: [dsl-grammar](dsl-grammar.md) (formal grammar) · [selectors](selectors.md) (how selectors and assertions evaluate) · [evidence](evidence.md) · [run-loop](run-loop.md) (execution)
 
@@ -97,15 +94,9 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 ## dismissAlerts (the system-alert guard)
 
-idb can't see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request,
-"Allow Paste") — they cover the app and collapse its element tree, silently blocking a step. The
-**alert guard** is a vision-based safety net (`alerts.py`): on a blocked step it screenshots, asks
-Claude where to tap, taps the prompt away, and retries the step once
-([details](recording.md#dismissing-system-alerts-automatically)).
+idb cannot see or tap **SpringBoard-level prompts** (iOS "Save Password?", a permission request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** is a vision-based fallback (`alerts.py`): when a step is blocked, it takes a screenshot, asks Claude where to tap, clears the prompt, and retries the step once ([details](recording.md#dismissing-system-alerts-automatically)).
 
-It is **on by default** and fires **only when a step (or `expect`) is blocked**, so a passing
-scenario never calls the model. It needs `ANTHROPIC_API_KEY`; without one it simply no-ops (the run
-is unaffected). Use `dismissAlerts` to change it per scenario:
+It is **on by default** and fires **only when a step (or `expect`) is blocked**, so a passing scenario never calls the model. It requires `ANTHROPIC_API_KEY`; without one it no-ops and the run continues unaffected. Use `dismissAlerts` to change the behavior per scenario:
 
 | Form | Meaning |
 |---|---|
@@ -129,10 +120,7 @@ scenario's own `instruction` overrides. (real file:
 
 ## Selectors (addressing an element)
 
-A selector says **which element** to act on or assert against. Provide one or more fields; multiple
-fields are **AND**-ed (all must hold), and at least one is required. How a selector narrows to exactly
-one element — and why an *ambiguous* selector fails rather than picking the first match — is in
-[selectors](selectors.md); the formal shape is in [dsl-grammar](dsl-grammar.md#2-grammar-at-a-glance).
+A selector identifies **which element** to act on or assert against. Provide one or more fields; multiple fields are **AND**-ed (all must hold), and at least one is required. How a selector resolves to exactly one element, and why an ambiguous selector fails instead of picking the first match, is covered in [selectors](selectors.md). The formal shape is in [dsl-grammar](dsl-grammar.md#2-grammar-at-a-glance).
 
 | Field | Type | Description |
 |---|---|---|
@@ -152,8 +140,7 @@ one element — and why an *ambiguous* selector fails rather than picking the fi
 - tap: { labelMatches: "^Item ", traits: [button], index: 0 }  # first matching button, fields AND-ed
 ```
 
-> Prefer `id`. For a *set* of elements (count / existence) use `idMatches`; reach for `index` only as a
-> last resort — it breaks when order changes. Full resolution semantics: [selectors](selectors.md).
+> Prefer `id`. For a set of elements (count / existence) use `idMatches`. Use `index` only as a last resort — it breaks when order changes. Full resolution semantics: [selectors](selectors.md).
 
 ## Step grammar (`steps`)
 
@@ -216,14 +203,11 @@ is a validation error).
 - rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 clockwise (radians)
 ```
 
-`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` need multi-touch: on the idb
-backend they fail with a clear "needs multiTouch" reason — their on-device home is the generated
-XCUITest (`pinch(withScale:)` / `rotate(_:)`); `doubleTap` runs on idb (two taps). (real file:
-[`demos/features/app/scenarios/gestures.yaml`](../demos/features/app/scenarios/gestures.yaml))
+`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch: on the idb backend they fail with a "needs multiTouch" reason. Their primary target is the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`). `doubleTap` runs on idb (two taps). (real file: [`demos/features/app/scenarios/gestures.yaml`](../demos/features/app/scenarios/gestures.yaml))
 
 ### `wait` (condition wait)
 
-There is no fixed-sleep grammar. **`timeout` is mandatory** (no infinite waits).
+Fixed sleeps are not supported. **`timeout` is mandatory** (no infinite waits).
 
 ```yaml
 - wait: { for: { id: home.title }, timeout: 5 }            # until an element appears
@@ -348,19 +332,11 @@ shape is in [dsl-grammar](dsl-grammar.md#2-grammar-at-a-glance).
 
 ## Reuse, data, and tags
 
-A small templating + macro layer wraps the core grammar. It runs **at load time, before the
-deterministic run**, so the runner only ever sees plain, fully-expanded scenarios. The normative rules
-(expansion order, `${ns.key}` interpolation, depth limits) are in
-[dsl-grammar](dsl-grammar.md#6-the-templating--macro-layer); this is the authoring view.
+A small templating and macro layer wraps the core grammar. It runs **at load time, before the deterministic run**, so the runner only ever sees plain, fully-expanded scenarios. The normative rules (expansion order, `${ns.key}` interpolation, depth limits) are in [dsl-grammar](dsl-grammar.md#6-the-templating--macro-layer). This section covers the authoring perspective.
 
 ### Components (`use` → reusable steps)
 
-A **component** is a separate file: a list of `params` and a list of `steps` that reference them as
-`${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**
-— `expand_components` (`scenario.py:474`) replaces it with the component's substituted steps before the
-run (recursive — a component may itself `use` another, depth ≤ 25). It errors on a missing or unknown
-param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` survives
-into the run, so determinism is unaffected.
+A **component** is a separate file containing a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario.py:474`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected.
 
 ```yaml
 # login.component.yaml — a component file (a single mapping, loaded separately)
@@ -380,10 +356,7 @@ steps:
 
 ### Data-driven scenarios (`data` / `dataFile`)
 
-A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is
-expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:537`).
-Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions (so
-every row reinstalls the app fresh, and inherits the template's `erase` / `reinstall`).
+A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:537`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`.
 
 ```yaml
 - name: search returns a result
@@ -420,11 +393,7 @@ uv run bajutsu run --app sample --tag smoke --exclude wip   # run @smoke, skip a
 
 ### Secrets (`${secrets.X}`)
 
-Declare secret environment-variable names in config (`secrets: [API_TOKEN, ...]`). Each declared name
-`X` is resolved from the environment and substituted into the executed step **at action time** as
-`${secrets.X}`. The scenario file keeps the **token**, never the value, and the literal values are
-**auto-masked** in evidence — so a secret is safe to commit and review. Unlike `${params.*}` /
-`${row.*}` (load-time expansion), this namespace is resolved by the run loop.
+Declare secret environment-variable names in config (`secrets: [API_TOKEN, ...]`). Each declared name `X` is resolved from the environment and substituted into the executed step **at action time** as `${secrets.X}`. The scenario file stores the **token**, never the value, and literal values are **auto-masked** in evidence, making secrets safe to commit and review. Unlike `${params.*}` / `${row.*}` (load-time expansion), this namespace is resolved by the run loop.
 
 ```yaml
 # config declares: secrets: [API_TOKEN]

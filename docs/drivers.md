@@ -4,7 +4,7 @@
 
 > One `Driver` interface, behind which sit the backends (idb, plus the in-memory `fake` for
 > tests), with capability differences absorbed on the abstraction side. idb is the only real
-> backend today, but the interface keeps the door open for others. Launching the app
+> backend today, but the interface is designed to accommodate additional backends. Launching the app
 > (boot/launch) is handled by a `simctl` wrapper.
 >
 > Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `fake.py`) ·

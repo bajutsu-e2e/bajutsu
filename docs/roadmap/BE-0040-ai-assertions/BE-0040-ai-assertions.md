@@ -10,7 +10,7 @@
 
 ## Introduction
 
-AI judges a natural-language expectation. **Never put into the CI gate** (it breaks determinism). Limited to draft assistance in record / triage.
+AI evaluates a natural-language expectation against the current screen state. This must never be part of the CI gate, because it is non-deterministic. Use is limited to draft assistance in record and triage.
 
 ## Motivation
 

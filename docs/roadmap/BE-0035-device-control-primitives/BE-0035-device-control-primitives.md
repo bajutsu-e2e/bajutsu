@@ -10,7 +10,7 @@
 
 ## Introduction
 
-**Location (`setLocation`) and push notifications (`push`) are implemented.** What remains is timezone / clipboard / foreground-background transitions / shake, etc. (`rotate`/`swipe`/`pinch` already exist).
+Location (`setLocation`) and push notifications (`push`) are implemented. Timezone, clipboard, foreground-background transitions, and shake remain unimplemented (`rotate`/`swipe`/`pinch` already exist).
 
 ## Motivation
 

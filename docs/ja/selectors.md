@@ -2,9 +2,7 @@
 
 # セレクタと決定的解決（決定性の核）
 
-> 「どの要素を操作・検証するか」をどう指定し、どう一意に確定するか。Bajutsu の決定性は
-> **ここ** に集約される。すべての実行系（orchestrator / drivers / assertions）がこのモジュールに
-> 依存する。
+> 「どの要素を操作・検証するか」をどう指定し、どう一意に確定するかを説明します。Bajutsu の決定性はこのモジュールに集約されています。すべての実行系（orchestrator / drivers / assertions）がここに依存します。
 >
 > 実装: `bajutsu/drivers/base.py`。
 
@@ -14,8 +12,7 @@
 
 ## 正規化された要素（`Element`）
 
-idb の出力を、ドライバが共通の `Element`（TypedDict）へ正規化する。
-解決とアサーションはこの正規化形だけを見る（バックエンド差はドライバ側で吸収済み）。
+ドライバはバックエンドの出力を共通の `Element`（TypedDict）へ正規化します。解決とアサーションはこの正規化形だけを参照します（バックエンド差はドライバ側で吸収済みです）。
 
 ```python
 class Element(TypedDict):
@@ -28,7 +25,7 @@ class Element(TypedDict):
 
 ### 正規化トレイト（`Trait`）
 
-状態アサーションが見る共通トークン。ドライバは少なくとも次を正規化する:
+状態アサーションが参照する共通トークンです。ドライバは少なくとも次を正規化します:
 
 | トークン | 意味 | 使うアサーション |
 |---|---|---|
@@ -36,12 +33,11 @@ class Element(TypedDict):
 | `notEnabled` | 無効状態 | `enabled` / `disabled` |
 | `selected` | 選択 / トグル ON | `selected` |
 
-（idb は `enabled: false` → `notEnabled`、`selected: true` → `selected` に正規化する。
-種別文字列は `AX` 接頭辞を外し先頭小文字化: `AXButton` → `button`。`drivers/idb.py` 参照）
+（idb は `enabled: false` → `notEnabled`、`selected: true` → `selected` に正規化します。種別文字列は `AX` 接頭辞を外して先頭を小文字化します: `AXButton` → `button`。詳細は `drivers/idb.py` を参照してください）
 
 ## セレクタ（`Selector`）
 
-要素のアドレス指定。**指定したフィールドはすべて AND** で適用される。
+要素のアドレス指定に使います。**指定したフィールドはすべて AND** で適用されます。
 
 | フィールド | 意味 | 安定性 |
 |---|---|---|
@@ -54,31 +50,29 @@ class Element(TypedDict):
 | `within` | コンテナでスコープ限定（幾何: 候補の frame が `within` の解決先の内側にあること。ネスト可） | 一意化 |
 | `index` | 複数マッチ時の n 番目（負数可） | 最終手段・フレーキー |
 
-> `id` / `idMatches` のマッチは `fnmatch.fnmatchcase`（大小区別あり glob）、`labelMatches` は
-> `re.search`（正規表現・部分一致）、`traits` は「指定集合 ⊆ 要素のトレイト集合」。
+> `id` / `idMatches` のマッチは `fnmatch.fnmatchcase`（大小区別あり glob）、`labelMatches` は `re.search`（正規表現・部分一致）、`traits` は「指定集合 ⊆ 要素のトレイト集合」です。
 
 ### オーサリング表現と実行時表現
 
-- シナリオ YAML 側のセレクタは `scenario.py` の `Selector`（pydantic、`idMatches` 等の alias を持つ）。
-- 解決に渡るのは `drivers/base.py` の `Selector`（TypedDict）。
-- 変換は `Selector.as_selector()`（`None` を除いて TypedDict 化）。
+- シナリオ YAML 側のセレクタは `scenario.py` の `Selector`（pydantic、`idMatches` 等の alias を持つ）です。
+- 解決に渡るのは `drivers/base.py` の `Selector`（TypedDict）です。
+- 変換は `Selector.as_selector()` で行います（`None` を除いて TypedDict 化）。
 
 ## 解決セマンティクス
 
-`query()` で得た要素リストにセレクタを適用して候補を絞る。3 つの公開関数がある。
+`query()` で得た要素リストにセレクタを適用して候補を絞ります。3 つの公開関数があります。
 
 ### `matches(el, sel) -> bool`
 
-1 要素が要素単位の条件を満たすか（AND）。`within` は要素横断（空間）の制約で、`find_all` 側で解決する。
+1 要素が要素単位の条件を満たすかを返します（AND）。`within` は要素横断（空間）の制約で、`find_all` 側で解決します。
 
 ### `find_all(elements, sel) -> list[Element]`
 
-一致する **すべて** の要素。`idMatches` トリガーや `count` アサーション、`exists` 判定に使う
-（複数マッチを許す）。
+一致する **すべて** の要素を返します。`idMatches` トリガーや `count` アサーション、`exists` 判定に使います（複数マッチを許容します）。
 
 ### `resolve_unique(elements, sel) -> Element`
 
-**単一アクション用に、ちょうど 1 件へ確定する**。Bajutsu の決定性で最も重要な関数。
+**単一アクション用に、ちょうど 1 件へ確定します。** Bajutsu の決定性で最も重要な関数です。
 
 | 候補数 | 挙動 |
 |---|---|
@@ -86,8 +80,7 @@ class Element(TypedDict):
 | 1 件 | 解決成功 |
 | 2 件以上 | `AmbiguousSelector` を送出 — 「たまたま最初の一致を叩く」非決定性を**構造的に排除** |
 
-例外として `index` が指定されたときだけ、複数候補から n 番目を選ぶ（範囲外は `ElementNotFound`）。
-`index` は順序変化で壊れるため最終手段。集合を扱いたいときは `idMatches` + `count`（[scenarios](scenarios.md#アサーション-dsl)）。
+例外として `index` が指定されたときだけ、複数候補から n 番目を選びます（範囲外は `ElementNotFound`）。`index` は順序変化で壊れるため最終手段です。集合を扱う場合は `idMatches` + `count` を使ってください（[scenarios](scenarios.md#アサーション-dsl)）。
 
 ```python
 # drivers/base.py（抜粋）
@@ -102,24 +95,17 @@ def resolve_unique(elements, sel):
     return candidates[0]
 ```
 
-例外階層: `SelectorError`（基底） ← `ElementNotFound` / `AmbiguousSelector`。
-orchestrator と assertions はこれを捕捉して「ステップ失敗」「アサーション失敗」に翻訳する
-（例外を上に投げない）。
+例外階層: `SelectorError`（基底） ← `ElementNotFound` / `AmbiguousSelector`。orchestrator と assertions はこれを捕捉して「ステップ失敗」「アサーション失敗」に変換します（例外を上に投げません）。
 
 ### バックエンドに依らず一元化される
 
-idb は使える semantic tap を持たないため、抽象側は **常に `query()` で
-候補数を検証してから** 操作し、確定した要素の frame 中心をタップする。これで「曖昧なら失敗」の
-挙動が idb / fake で同一になる（各ドライバの `tap` 実装は [drivers](drivers.md) 参照）。
+idb は使える semantic tap を持たないため、抽象側は **常に `query()` で候補数を検証してから**操作し、確定した要素の frame 中心をタップします。これにより「曖昧なら失敗」の挙動が idb / fake で同一になります（各ドライバの `tap` 実装は [drivers](drivers.md) を参照してください）。
 
-`id` は idb の要素ツリー（`AXUniqueId`）から直接得られ、`Element.identifier` に正規化される。
-そのため `id` セレクタは正規化形に対して直接解決できる。
+`id` は idb の要素ツリー（`AXUniqueId`）から直接得られ、`Element.identifier` に正規化されます。そのため `id` セレクタは正規化形に対して直接解決できます。
 
 ## アサーション評価
 
-実装: `bajutsu/assertions.py`。`evaluate(elements, assertions) -> list[AssertionResult]` が
-各アサーションを評価し、`passed(results)` が AND を取る。**評価は総関数**で、解決失敗（not-found /
-ambiguous）も例外でなく「失敗した `AssertionResult`」として返す（そのままレポートに載る）。
+実装: `bajutsu/assertions.py`。`evaluate(elements, assertions) -> list[AssertionResult]` が各アサーションを評価し、`passed(results)` が AND を取ります。**評価は総関数**で、解決失敗（not-found / ambiguous）も例外でなく「失敗した `AssertionResult`」として返します（そのままレポートに載ります）。
 
 ```python
 @dataclass(frozen=True)
@@ -143,6 +129,4 @@ class AssertionResult:
 | `selected` | `resolve_unique` | `selected` トレイトが有る |
 | `request` | 観測した通信を照合（要素ツリーではない） | `count` 指定時は `equals`/`atLeast`/…、無指定なら 1 件以上（[network](network.md)） |
 
-> `exists` だけ `find_all`（複数許容）で、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）。
-> つまり「2 件あるのに値を検証しようとした」場合も決定的に失敗する。`request` だけが非 UI の
-> アサーションで、要素ではなくキャプチャした HTTP(S) 通信を検査する（全 8 種別）。
+> `exists` だけ `find_all`（複数許容）を使い、他の単一要素アサーションは `resolve_unique`（曖昧は失敗）を使います。「2 件あるのに値を検証しようとした」場合も決定的に失敗します。`request` だけが非 UI のアサーションで、要素ではなくキャプチャした HTTP(S) 通信を検査します（全 8 種別）。

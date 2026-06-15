@@ -1,6 +1,6 @@
 # Continuous integration
 
-Two distinct things, kept separate:
+This covers two separate topics:
 
 1. **CI for this repo** — guard the tool itself (`.github/workflows/`).
 2. **Running bajutsu in *your* app's CI** — a composite action + recipe you reuse.
@@ -26,7 +26,7 @@ identically on a fresh clone via `uv` alone, which is what makes "green locally"
 > checkout) and run the action from that checkout — the action runs `uv sync` against
 > bajutsu's `pyproject.toml`.
 
-bajutsu produces CI-ready output already: a `junit.xml`, a self-contained `report.html`,
+bajutsu produces CI-ready output: a `junit.xml`, a self-contained `report.html`,
 a `0` / `1` exit code, and — inside Actions — failure **annotations** + a job **summary**
 (see below). On a macOS runner:
 

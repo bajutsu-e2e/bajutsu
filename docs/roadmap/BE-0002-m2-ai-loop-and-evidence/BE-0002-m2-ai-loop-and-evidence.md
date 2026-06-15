@@ -13,7 +13,7 @@ The Tier 1 AI authoring loop (`record`) plus the evidence subsystem: `capturePol
 
 ## Motivation
 
-Authoring scenarios by hand is slow, and failures are hard to investigate without evidence. M2 lets AI *write* scenarios (Tier 1) and normalizes "capture on every X" into reusable rules so a deterministic re-run reproduces the same evidence without AI.
+Authoring scenarios by hand is slow, and failures are hard to investigate without evidence. M2 lets AI write scenarios (Tier 1) and normalizes "capture on every X" into reusable rules so a deterministic re-run reproduces the same evidence without AI.
 
 ## Detailed design
 

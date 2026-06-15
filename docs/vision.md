@@ -1,11 +1,11 @@
 **English** · [日本語](ja/vision.md)
 
-# Future vision (the north star)
+# Future vision
 
-> Forward-looking — the **shape** of where Bajutsu is going, and the one constraint every
-> direction must respect. This page is the strategic umbrella over the individual forward-looking
-> pages; the granular, prioritized backlog lives in [roadmap](roadmap/README.md), and the *why* behind
-> today's design is [`DESIGN.md`](../DESIGN.md). Read this to understand **how the pieces add up**,
+> Forward-looking — the overall direction Bajutsu is heading, and the one constraint every
+> direction must respect. This page gives the strategic overview across the individual forward-looking
+> pages; the granular, prioritized backlog is in [roadmap](roadmap/README.md), and the rationale behind
+> today's design is in [`DESIGN.md`](../DESIGN.md). Read this to understand how the pieces fit together,
 > then follow the links for each plan.
 
 Related: [concepts](concepts.md) · [roadmap](roadmap/README.md) · [multi-platform](multi-platform.md) · [cloud-hosting](cloud-hosting.md) · [self-hosting](self-hosting.md)
@@ -15,8 +15,8 @@ Related: [concepts](concepts.md) · [roadmap](roadmap/README.md) · [multi-platf
 ## The invariant: what never changes
 
 Every future direction is evaluated against the **prime directives**
-([CLAUDE.md](../CLAUDE.md) · [concepts](concepts.md) · [DESIGN §2](../DESIGN.md)). They are the
-fixed point the whole vision rotates around:
+([CLAUDE.md](../CLAUDE.md) · [concepts](concepts.md) · [DESIGN §2](../DESIGN.md)). They stay fixed
+across every direction below:
 
 1. **AI is the author and the failure investigator, never the judge.** No future feature may put
    an LLM (large language model) into the Tier-2 `run`/CI (continuous integration) gate. Pass/fail
@@ -26,15 +26,15 @@ fixed point the whole vision rotates around:
 3. **App-agnostic / backend-agnostic.** Per-app and per-platform differences live in config and
    behind the `Driver` / environment seams; the deterministic core stays the same everywhere.
 
-> The test of any roadmap item is simple: *does it keep AI out of the gate and the gate
-> deterministic?* If not, it belongs in **Tier 1 (authoring) or triage (investigation)** —
-> outside the gate — or it does not belong in Bajutsu.
+> The test of any roadmap item is whether it keeps AI out of the gate and the gate
+> deterministic. If not, it belongs in **Tier 1 (authoring) or triage (investigation)**,
+> outside the gate, or it does not belong in Bajutsu.
 
 ---
 
 ## Three axes of growth
 
-Bajutsu expands along three independent axes. They compose — none blocks the others — and each
+Bajutsu expands along three independent axes. They compose (none blocks the others), and each
 maps to concrete pages.
 
 ```
@@ -54,15 +54,15 @@ maps to concrete pages.
 ### 1. Reach — more platforms and surfaces
 
 The `Driver` / environment / id-convention seams were built to be replaced, not just configured.
-The vision: **the same deterministic core drives iOS, Android, and the Web**, with each platform
-adding only its own actuator + environment + stable-id convention. The full concrete plan —
-selector-portability mapping, per-platform backends, phasing (Web first, because it runs on the
-existing Linux gate) — is in **[multi-platform](multi-platform.md)**. A second iOS actuator
-(XCUITest) is the same move within one OS ([roadmap → Backend expansion](roadmap/README.md#backend-expansion-ios-actuators)).
+The goal is for **the same deterministic core to drive iOS, Android, and the Web**, with each platform
+adding only its own actuator + environment + stable-id convention. The full concrete plan
+(selector-portability mapping, per-platform backends, phasing — Web first, because it runs on the
+existing Linux gate) is in **[multi-platform](multi-platform.md)**. A second iOS actuator
+(XCUITest) is the same change within one OS ([roadmap → Backend expansion](roadmap/README.md#backend-expansion-ios-actuators)).
 
 ### 2. Scale & collaboration — from local tool to shared service
 
-`bajutsu serve` is a local, single-user launcher today. The vision is a **shared service**: a
+`bajutsu serve` is a local, single-user launcher today. The goal is a **shared service**: a
 cheap Linux control plane (auth, history, queue, report viewer) split from an
 expensive device-worker pool, so a team runs and reviews from a browser.
 
@@ -73,31 +73,31 @@ expensive device-worker pool, so a team runs and reviews from a browser.
   fully self-hosted multi-tenant topology.
 - **MCP (Model Context Protocol) integration** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)) — expose `run`/`doctor`/`record`/
   `codegen` as MCP tools and evidence as MCP resources, so agents drive Bajutsu directly. This
-  rides the Tier-1 boundary cleanly: agents *author and investigate*, the gate stays deterministic.
+  stays on the Tier-1 side of the boundary: agents author and investigate, the gate stays deterministic.
 
 ### 3. Authoring & maintenance — lower the cost of owning tests
 
-The scenario is just YAML owned by humans; this axis makes *writing and keeping* it cheap without
-ever softening the gate.
+The scenario is just YAML owned by humans; this axis makes writing and maintaining it cheaper without
+softening the gate.
 
 - **GUI (graphical user interface) editor & non-AI action capture** ([roadmap → Authoring experience](roadmap/README.md#authoring-experience-record--gui-editor)) —
   visually edit scenarios, pick selectors on a screenshot, and capture real taps/types into a
   scenario without an LLM. `bajutsu serve` is the first step.
 - **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)) — a new
-  *deterministic* assertion type (baseline diff). It fits precisely because it is machine-checked,
+  deterministic assertion type (baseline diff). It fits because it is machine-checked,
   not AI-judged.
 - **Self-healing triage** ([roadmap: BE-0021](roadmap/BE-0021-ai-triage/BE-0021-ai-triage.md)) — already shipped: AI reads
   failure evidence and proposes a **minimal diff**, which a human reviews and applies with
-  `--write`. The guardrail — *never auto-soften a committed test* — is what keeps this inside the
+  `--write`. The guardrail (never auto-soften a committed test) is what keeps this inside the
   directives.
 
 ---
 
 ## What stays fixed across all three
 
-Everything in the table below is **shared, deterministic, and platform-/host-neutral** — it does
+Everything in the table below is **shared, deterministic, and platform-/host-neutral**, and it does
 not fork as Bajutsu grows. This is what makes the three axes independent: they extend the edges,
-never the core.
+not the core.
 
 | Fixed core | Where |
 |---|---|
@@ -109,29 +109,29 @@ never the core.
 | Reporter (manifest / JUnit / HTML) | [reporting](reporting.md) |
 | Config layering (`defaults × apps`) | [configuration](configuration.md) |
 
-New platforms add backends behind the `Driver` seam; new hosting moves *where `run` is invoked*,
-not *what it does*; new authoring produces the same YAML. The core is the constant.
+New platforms add backends behind the `Driver` seam; new hosting changes where `run` is invoked,
+not what it does; new authoring produces the same YAML. The core stays constant.
 
 ---
 
-## Near-term north star (a recommendation, not a commitment)
+## Recommended near-term sequence (a recommendation, not a commitment)
 
-If forced to sequence the vision, the highest-leverage next steps — each de-risking a later one at
-the lowest cost — are:
+If the vision has to be sequenced, the highest-leverage next steps, each reducing the risk of a
+later one at low cost, are:
 
-1. **Web via Playwright** ([multi-platform](multi-platform.md), Phase 1). It proves the core is
-   truly platform-neutral **inside the existing Linux gate** ([ci](ci.md)) — no Mac, no emulator —
-   and exercises the rich end of the capability model (native network/video/semantic).
+1. **Web via Playwright** ([multi-platform](multi-platform.md), Phase 1). It demonstrates that the
+   core is platform-neutral **inside the existing Linux gate** ([ci](ci.md)), with no Mac and no
+   emulator, and exercises the rich end of the capability model (native network/video/semantic).
 2. **MCP server** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)). Low surface area, high leverage for
    the Tier-1 authoring loop, and it does not touch the gate.
 3. **Visual-regression assertions** ([roadmap: BE-0029](roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)). A
-   deterministic capability competitors gate behind AI — a differentiator that *strengthens* the
-   directives instead of straining them.
+   deterministic capability that competitors gate behind AI; it strengthens the
+   directives rather than straining them.
 
 The hosting axis ([cloud-hosting](cloud-hosting.md) / [self-hosting](self-hosting.md)) is a larger,
 separable investment; pursue it when the demand is collaborative rather than individual.
 
-> **How this relates to [roadmap](roadmap/README.md):** this page is the *why and the shape* (the north
-> star); the roadmap is the *prioritized, living backlog* (the next concrete items). When an item
+> **How this relates to [roadmap](roadmap/README.md):** this page covers the rationale and the overall
+> direction; the roadmap is the prioritized, living backlog (the next concrete items). When an item
 > here becomes actionable, it appears there with a priority and status; when it ships, it moves to
 > the [architecture status table](architecture.md#implementation-status). Keep the three in sync.

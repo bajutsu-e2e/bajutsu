@@ -9,7 +9,7 @@
 
 ## はじめに
 
-doctor の実行可能性ゲート（CLI 群 + 起動済み Simulator の有無チェック）は実装済み（[architecture.md](../../ja/architecture.md#実装状況)）。本トピックはプレースホルダ —— 新しいオンボーディング系の候補が出たらここに追加する。
+doctor の実行可能性ゲート（CLI 群 + 起動済み Simulator の有無チェック）は実装済みです（[architecture.md](../../ja/architecture.md#実装状況)）。本トピックはプレースホルダであり、新しいオンボーディング系の候補が出たらここに追加します。
 
 ## 動機
 

@@ -9,7 +9,7 @@
 
 ## はじめに
 
-Flutter は独自レンダリングで OS の a11y ツリーに要素が出にくい。Flutter の semantics ツリー（`integration_test` / VM Service / Flutter Driver）経由の解決を検討。
+Flutter は独自レンダリングを使用するため、OS の a11y（アクセシビリティ）ツリーに要素が現れにくいです。Flutter の semantics ツリー（`integration_test` / VM Service / Flutter Driver）経由での解決を検討します。
 
 ## 動機
 
@@ -17,7 +17,7 @@ TBD。
 
 ## 詳細設計
 
-TBD —— 採用が決まった時点で具体化する。
+TBD — 採用が決まった時点で具体化します。
 
 ## 検討した代替案
 

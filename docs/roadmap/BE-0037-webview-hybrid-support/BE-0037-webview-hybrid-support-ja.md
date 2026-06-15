@@ -10,7 +10,7 @@
 
 ## はじめに
 
-現状はネイティブ a11y ツリー前提。WebView 内 DOM（Document Object Model）への橋渡し。
+現状の実装はネイティブ a11y ツリーを前提としています。本提案では、WebView 内の DOM（Document Object Model）へのアクセスをサポートします。
 
 ## 動機
 

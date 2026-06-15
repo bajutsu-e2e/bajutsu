@@ -10,7 +10,7 @@
 
 ## Introduction
 
-The `${...}` interpolation primitive (`interp.py`, handling params/row/secrets uniformly) is implemented. What remains is **capturing UI values → reusing them later (`vars.*`)** and conditionals / loops within bounds that don't break determinism.
+The `${...}` interpolation primitive (`interp.py`, handling params/row/secrets uniformly) is implemented. What remains is capturing UI values for later reuse via `vars.*`, and conditionals and loops within bounds that preserve determinism.
 
 ## Motivation
 
