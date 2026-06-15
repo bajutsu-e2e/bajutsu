@@ -61,10 +61,15 @@ make check                  # rebase 後に再検証
 
 ```bash
 # メインのチェックアウトから
+git fetch origin            # まず必ず main を追従 —— 古い ref ではなく最新から派生する
 git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main
 cd ../bajutsu-<topic>
 make setup                   # uv sync --group dev + この worktree のフック有効化
 ```
+
+`git fetch origin` は省略不可。`origin/main` は fetch したときだけ進むローカルの追跡 ref なので、
+これを飛ばすと前回 fetch した時点の古い main から worktree を切ってしまい、他セッションが既に
+マージで解消したはずの衝突を再び持ち込む。fetch してから、新しい `origin/main` を基点に派生する。
 
 ブランチがマージ（または破棄）されたら片付ける:
 

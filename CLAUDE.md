@@ -66,8 +66,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 - **Stay in your lane.** Touch only the files your task needs. If a change must cut across many
   modules (e.g. a driver-API change), say so up front so others can avoid that surface.
 - **Isolate concurrent sessions with worktrees.** Run each session in its own
-  `git worktree` + branch so two agents never edit the same checkout. See the guide for the
-  one-liner. Generated/scratch output (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way.
+  `git worktree` + branch so two agents never edit the same checkout. Always `git fetch origin`
+  first so the worktree branches off the latest `origin/main`, never a stale ref. See the guide
+  for the one-liner. Generated/scratch output (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way.
 - **Don't create PRs unless asked.** Push to your branch; let the human open the PR.
 
 ## Conventions
