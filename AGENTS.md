@@ -14,3 +14,8 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
   Full guide: [`docs/ai-development.md`](docs/ai-development.md).
 - **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the idb
   backend's deps on demand; pass flags via `ARGS`.
+- **Write docs as plain technical prose.** State facts and reasons directly, in the register of
+  good technical documentation. No literary, story-like, or metaphorical writing, and no
+  colloquial filler. Convert rhetorical questions into statements and avoid dramatic punctuation
+  or emphasis used for effect. Japanese documentation uses です・ます調. This applies to English
+  and Japanese alike, in every doc and every update.
