@@ -33,8 +33,11 @@ The goal comes from the first non-comment line of [`goals.txt`](goals.txt) (over
 
 1. **Author (AI)** — `bajutsu record` runs the real Tier-1 loop: **Claude** reads the goal plus
    the live screen (screenshot + accessibility tree) on the booted app and proposes each step,
-   writing the executed steps out as `generated.yaml` (gitignored). For an offline, no-key run
-   the keyword stand-in [`generate_from_nl.py`](generate_from_nl.py) authors the same flow.
+   writing the executed steps out as `generated.yaml` (gitignored). Every stage is narrated to
+   stderr so you can follow along — installing/launching the app, 🧭 thinking about the goal,
+   the 🗺️ up-front plan, then each turn (observe → 💭 reasoning → action). For an offline,
+   no-key run the keyword stand-in [`generate_from_nl.py`](generate_from_nl.py) authors the
+   same flow.
 2. **Execute** — `bajutsu run --scenario generated.yaml --app sample2 --config demo.config.yaml` on the
    booted Simulator. The counter flow passes.
 3. **Modify** — edit the expected count to a wrong value → re-run → the run **fails** (the

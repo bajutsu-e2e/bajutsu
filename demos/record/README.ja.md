@@ -31,8 +31,10 @@ make -C demos record                 # または直接:
 
 1. **著作（AI）** — `bajutsu record` が本物の Tier-1 ループを実行します: **Claude** が、起動中のアプリ上で
    目標とライブ画面（スクリーンショット＋アクセシビリティツリー）を読み、各ステップを提案し、実行された
-   ステップを `generated.yaml`（gitignore 済み）として書き出します。オフライン・キー無しで動かすには、
-   キーワードの代役 [`generate_from_nl.py`](generate_from_nl.py) が同じ流れを著作します。
+   ステップを `generated.yaml`（gitignore 済み）として書き出します。各段階は stderr に逐次表示されるので
+   進行を追えます — アプリのインストール／起動、🧭 目標の検討、🗺️ 事前プラン、その後は各ターン
+   （観測 → 💭 推論 → アクション）。オフライン・キー無しで動かすには、キーワードの代役
+   [`generate_from_nl.py`](generate_from_nl.py) が同じ流れを著作します。
 2. **実行（Execute）** — 起動中の Simulator で
    `bajutsu run --scenario generated.yaml --app sample2 --config demo.config.yaml`。カウンターの流れは
    PASS します。
