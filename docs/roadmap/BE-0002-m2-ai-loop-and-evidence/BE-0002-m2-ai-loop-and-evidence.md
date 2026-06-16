@@ -4,6 +4,7 @@
 
 * Proposal: [BE-0002](BE-0002-m2-ai-loop-and-evidence.md)
 * Status: **Implemented**
+* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
 * Track: [Accepted](../README.md#accepted)
 * Topic: Milestones (M1–M4)
 

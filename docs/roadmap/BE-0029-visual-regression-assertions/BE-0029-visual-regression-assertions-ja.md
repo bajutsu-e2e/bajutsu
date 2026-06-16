@@ -3,8 +3,9 @@
 # BE-0029 — ビジュアル回帰アサーション
 
 * 提案: [BE-0029](BE-0029-visual-regression-assertions-ja.md)
-* 状態: **提案**
-* トラック: [提案](../README-ja.md#提案)
+* 状態: **実装済み**
+* 実装 PR: [#30](https://github.com/bajutsu-e2e/bajutsu/pull/30), [#34](https://github.com/bajutsu-e2e/bajutsu/pull/34)
+* トラック: [可決済み](../README-ja.md#可決済み)
 * トピック: 競合調査（MagicPod / Autify）由来の候補
 * 由来: 両社
 
@@ -18,12 +19,45 @@ TBD。
 
 ## 詳細設計
 
-TBD — 採用が決まった時点で具体化します。
+シナリオレベルの `expect:` ブロックで使う決定的な `visual` アサーション種別として実装しました。
+キャプチャしたスクリーンショットを保存済みのベースライン画像と差分比較します。除外領域で動的な内容
+（時計・ステータスバー）をマスクし、`threshold` で許容差分率を指定できます（既定 `0` ＝完全一致）。
+画像が異なる場合は、確認用の差分画像を run と並べて出力します。
+
+```yaml
+expect:
+  - visual:
+      baseline: counter-2.png     # ベースラインディレクトリからの相対パス
+      threshold: 0.1              # 許容差分率（既定 0 ＝完全一致）
+      exclude:                    # 動的領域をマスク
+        - { x: 0, y: 0, w: 390, h: 54 }
+```
+
+- スキーマ: `bajutsu/scenario.py` の `ExcludeRegion` / `VisualMatch` モデルと `Assertion.visual`
+  フィールド。
+- 比較エンジン: `bajutsu/visual.py` — Pillow の `ImageChops.difference` によるピクセル単位の差分、
+  除外領域のマスク、しきい値の許容、差分画像の出力。Pillow はオプション依存です
+  （`pip install bajutsu[visual]`）。
+- 評価: `bajutsu/assertions.py` の `VisualContext`（スクリーンショットのパス・ベースラインディレクトリ・
+  差分出力ディレクトリ）と `_eval_visual`。
+- オーケストレーション: expect 評価の前にスクリーンショットをキャプチャし、`VisualContext` を
+  `run_scenario` に引き渡します（`bajutsu/orchestrator.py`・`bajutsu/runner.py`）。
+
+評価は AI を介さない純粋な機械チェックであるため、プライムディレクティブを損なうのではなく強化します。
 
 ## 検討した代替案
 
-TBD。
+Python レベルのピクセルループは、C レベルで高速な `ImageChops.difference` を採るために見送りました。
 
 ## 参考
 
-[DESIGN §6.4](../../../DESIGN.md)、[evidence.md](../../ja/evidence.md)
+[PR #30](https://github.com/bajutsu-e2e/bajutsu/pull/30)、`bajutsu/visual.py`、
+`bajutsu/assertions.py`、`bajutsu/scenario.py`、[DESIGN §6.4](../../../DESIGN.md)、
+[evidence.md](../../ja/evidence.md)
+
+### フォローアップ（未実装）
+
+- 現在のスクリーンショットを新しいベースラインとして保存する `--update-baselines` CLI フラグ
+- ビジュアル差分の HTML レポート描画（ベースライン / 実際 / 差分の横並び）
+- `bajutsu.config.yaml` での `baselines_dir` 設定
+- per-device / per-locale のベースライン亜種
