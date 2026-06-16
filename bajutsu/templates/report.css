@@ -119,8 +119,9 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
 .tv-body{flex:1 1 auto;min-height:0;overflow:auto;padding:.3rem .6rem .6rem;display:flex;gap:.7rem;align-items:flex-start}
 .tv-shot{flex:none;position:sticky;top:0;align-self:flex-start}
 .tv-shotframe{position:relative;display:inline-block;line-height:0}
-/* ◀ / ▶ step controls, centered directly under the screenshot. */
-.tv-shotnav{display:flex;justify-content:center;gap:.6rem;margin-top:.45rem}
+/* ◀ N/M ▶ step controls, centered directly under the screenshot. */
+.tv-shotnav{display:flex;align-items:center;justify-content:center;gap:.6rem;margin-top:.45rem}
+.tv-pos{font:600 .78rem/1 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);min-width:2.6em;text-align:center}
 .tv-shot img{display:block;width:auto;max-width:300px;max-height:72vh;border:1px solid var(--line);
  border-radius:6px;background:#fafafa}
 /* Highlight box overlaying the screenshot, sized as a % of the screen rect so it tracks

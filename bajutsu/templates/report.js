@@ -195,14 +195,20 @@
       frame.appendChild(imEl); frame.appendChild(hl); sd.appendChild(frame);
     }
     var nav = document.createElement('div'); nav.className = 'tv-shotnav';
-    [['tv-prev', '◀', 'previous step', -1], ['tv-next', '▶', 'next step', 1]].forEach(function(s){
+    function navBtn(cls, glyph, label, delta){
       var btn = document.createElement('button'); btn.type = 'button';
-      btn.className = 'tv-nav ' + s[0]; btn.textContent = s[1];
-      btn.setAttribute('aria-label', s[2]); btn.title = s[2] + ' (' + (s[3] < 0 ? '←' : '→') + ')';
+      btn.className = 'tv-nav ' + cls; btn.textContent = glyph;
+      btn.setAttribute('aria-label', label); btn.title = label + ' (' + (delta < 0 ? '←' : '→') + ')';
       btn.disabled = tvScope.length < 2;  // nothing to loop through in a single-step scenario
-      btn.addEventListener('click', function(){ tvGo(s[3]); });
-      nav.appendChild(btn);
-    });
+      btn.addEventListener('click', function(){ tvGo(delta); });
+      return btn;
+    }
+    nav.appendChild(navBtn('tv-prev', '◀', 'previous step', -1));
+    // current position / total steps in this scenario, between the arrows
+    var pos = document.createElement('span'); pos.className = 'tv-pos';
+    pos.textContent = (tvIndex + 1) + '/' + tvScope.length;
+    nav.appendChild(pos);
+    nav.appendChild(navBtn('tv-next', '▶', 'next step', 1));
     sd.appendChild(nav);
     tvBody.appendChild(sd);
     var tree = document.createElement('div'); tree.className = 'tv-tree';
