@@ -22,7 +22,8 @@ make -C demos record                 # または直接:
 - 起動中の Simulator（`open -a Simulator`）、
 - idb クライアント（`brew install facebook/fb/idb-companion && uv sync --extra idb`）、
 - ビルド済みの sample2 アプリ（`make -C demos/record sample2-build`）、
-- `ANTHROPIC_API_KEY`（環境変数か gitignore された `.env`）— ステップ1は Claude で著作します。
+- `ANTHROPIC_API_KEY`（環境変数か gitignore された `.env`）— ステップ1は Claude で著作します。未設定なら、
+  起動時に `y/N` で確認し、`y` の場合は伏せ字のプロンプトでキーを受け取り、その実行限りで使います（ディスクには保存しません）。
 
 目標は [`goals.txt`](goals.txt) の最初の非コメント行から取ります（`GOAL="..." ./demo.sh` で上書き可）。
 そして [`demo.config.yaml`](demo.config.yaml)（idb バックエンド上の `sample2` アプリ。`appPath` 指定で

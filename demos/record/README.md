@@ -23,7 +23,9 @@ make -C demos record                 # or, directly:
 - a booted Simulator (`open -a Simulator`),
 - the idb client (`brew install facebook/fb/idb-companion && uv sync --extra idb`),
 - the sample2 app built (`make -C demos/record sample2-build`),
-- `ANTHROPIC_API_KEY` (env or a gitignored `.env`) — step 1 authors with Claude.
+- `ANTHROPIC_API_KEY` (env or a gitignored `.env`) — step 1 authors with Claude. If it isn't
+  set, the demo asks `y/N` at startup and, on `y`, reads the key from a hidden prompt and uses
+  it for that run only (nothing is written to disk).
 
 The goal comes from the first non-comment line of [`goals.txt`](goals.txt) (override with
 `GOAL="..." ./demo.sh`). It then walks four phases, using [`demo.config.yaml`](demo.config.yaml)
