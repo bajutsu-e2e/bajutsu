@@ -7,7 +7,7 @@
 > [roadmap](../roadmap/README-ja.md)、今日の設計の根拠は [`DESIGN.md`](../../DESIGN.md) にあります。
 > ここを読んで各ピースがどう積み上がるかを掴み、各計画の詳細はリンク先を参照してください。
 
-関連: [concepts](concepts.md) · [roadmap](../roadmap/README-ja.md) · [roadmap → プラットフォーム拡張](../roadmap/README-ja.md#プラットフォーム拡張android--web--flutter) · [roadmap → ホスティング](../roadmap/README-ja.md#web-ui-のホスティングクラウド--セルフホスト)
+関連: [concepts](concepts.md) · [roadmap](../roadmap/README-ja.md) · [multi-platform](multi-platform.md) · [roadmap → ホスティング](../roadmap/README-ja.md#web-ui-のホスティングクラウド--セルフホスト)
 
 ---
 
@@ -37,7 +37,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 ```
                  ▲ REACH（より多くのプラットフォーム / 面）
                  │   Web · Android · Flutter / ハイブリッド
-                 │   → roadmap: プラットフォーム拡張
+                 │   → multi-platform.md
                  │
    AUTHORING ────┼───────────────▶ SCALE & COLLABORATION
    & MAINTENANCE │                 ホスト / セルフホストのサービス · MCP
@@ -53,7 +53,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 `Driver` / 環境 / id 規約の継ぎ目は、設定だけでなく **差し替え**られるよう作ってあります。目標は
 **同じ決定的コアが iOS・Android・Web を駆動する**ことです。各プラットフォームは自分の actuator + 環境 +
 安定 id 規約だけを足します。完全な具体計画（セレクタ可搬性の写像、プラットフォーム別バックエンド、
-展開順は既存の Linux ゲートで動くので Web を最初に）は、ロードマップの **[プラットフォーム拡張](../roadmap/README-ja.md#プラットフォーム拡張android--web--flutter)** の各項目（Web は [BE-0041](../roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）にあります。
+展開順は既存の Linux ゲートで動くので Web を最初に）は **[multi-platform](multi-platform.md)** にあります。
 2 つ目の iOS actuator（XCUITest）は、1 つの OS 内での同じ変更です（[roadmap → バックエンド拡張](../roadmap/README-ja.md#バックエンド拡張ios-actuator)）。
 
 ### 2. Scale & Collaboration —— ローカルツールから共有サービスへ
@@ -109,7 +109,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 構想に順序を付けるなら、最もレバレッジの高い次の一手（それぞれが後段のリスクを低コストで下げます）
 は次のとおりです。
 
-1. **Playwright による Web**（[BE-0041](../roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) 段階 1）。コアが
+1. **Playwright による Web**（[multi-platform](multi-platform.md) 段階 1）。コアが
    プラットフォーム中立であることを **既存の Linux ゲートの内側**（[ci](ci.md)）で示せます。Mac も
    エミュレータも不要で、同時に、能力モデルの豊かな端（ネイティブ network/video/意味的操作）を行使します。
 2. **MCP サーバ**（[roadmap → 統合・自動化](../roadmap/README-ja.md#統合自動化mcp-化)）。表面積が小さく、Tier-1 オーサリングループへの

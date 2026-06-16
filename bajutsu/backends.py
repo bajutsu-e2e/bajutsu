@@ -10,8 +10,7 @@ a richer iOS actuator (XCUITest) when one lands — without the scenario or conf
 requesting them fails with a clear "not implemented yet" pointing at the design. Unknown tokens
 are skipped (forward-compat: an older build can run a config that lists a future backend).
 
-See the "Platform expansion" items under `docs/roadmap/` for the per-platform
-actuator/environment/id design.
+See `docs/multi-platform.md` for the per-platform actuator/environment/id design.
 """
 
 from __future__ import annotations
@@ -78,7 +77,7 @@ def select_actuator(
     if planned:
         raise RuntimeError(
             f"backend(s) {planned} are recognized but not implemented yet "
-            f"(see the Platform expansion items under docs/roadmap/); requested {backends}"
+            f"(see docs/multi-platform.md); requested {backends}"
         )
     raise RuntimeError(f"no available actuator among {actuators} (requested {backends})")
 
@@ -90,7 +89,6 @@ def make_driver(actuator: str, udid: str) -> base.Driver:
         return FakeDriver([])
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
-            f"backend {actuator!r} is planned but not implemented yet "
-            f"(see the Platform expansion items under docs/roadmap/)"
+            f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
         )
     raise ValueError(f"unknown backend: {actuator!r}")

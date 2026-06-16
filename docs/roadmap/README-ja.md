@@ -119,7 +119,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 
 ### プラットフォーム拡張（Android / Web / Flutter）
 
-現状はスコープを **iOS Simulator 限定**としています（[DESIGN §1](../../DESIGN.md)）。このセクションは driver / backend 抽象を活用したマルチプラットフォーム化の方向性を扱います。コアのスコープ文の更新を伴う戦略的な判断です。プラットフォーム別の actuator / environment / id の設計は以下の各項目にあります: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) が共有の抽象、続いて Web（既存の Linux ゲートで動くため最初に推奨）・Android・Flutter です。最初のスライス —— プラットフォーム対応の backend レジストリ —— はすでに着手済みです（[BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)、可決済み）。
+現状はスコープを **iOS Simulator 限定**としています（[DESIGN §1](../../DESIGN.md)）。このセクションは driver / backend 抽象を活用したマルチプラットフォーム化の方向性を扱います。コアのスコープ文の更新を伴う戦略的な判断です。全体像（大枠）は [multi-platform.md](../ja/multi-platform.md) にあり、**プラットフォーム別の具体的な設計**は以下の各項目にあります: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) が共有の抽象、続いて Web（既存の Linux ゲートで動くため最初に推奨）・Android・Flutter です。最初のスライス —— プラットフォーム対応の backend レジストリ —— はすでに着手済みです（[BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)、可決済み）。
 
 | ID | 項目 | 状態 |
 |---|---|---|

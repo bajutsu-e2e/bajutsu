@@ -124,7 +124,7 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 
 ### Platform expansion (Android / Web / Flutter)
 
-The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESIGN.md)). This section covers the direction of going multi-platform by leveraging the driver / backend abstractions — a strategic decision that entails updating the core scope statement. The per-platform actuator / environment / id design lives in the items below: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first, runs on the existing Linux gate), Android, and Flutter. The first slice — a platform-aware backend registry — has already landed ([BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), under Accepted).
+The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESIGN.md)). This section covers the direction of going multi-platform by leveraging the driver / backend abstractions — a strategic decision that entails updating the core scope statement. The big-picture overview is in [multi-platform.md](../multi-platform.md); the **concrete per-platform design** lives in the items below: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first, runs on the existing Linux gate), Android, and Flutter. The first slice — a platform-aware backend registry — has already landed ([BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), under Accepted).
 
 | ID | Item | Status |
 |---|---|---|

@@ -8,7 +8,7 @@
 > today's design is in [`DESIGN.md`](../DESIGN.md). Read this to understand how the pieces fit together,
 > then follow the links for each plan.
 
-Related: [concepts](concepts.md) · [roadmap](roadmap/README.md) · [roadmap → Platform expansion](roadmap/README.md#platform-expansion-android--web--flutter) · [roadmap → Hosting](roadmap/README.md#hosting-the-web-ui-cloud--self-hosted)
+Related: [concepts](concepts.md) · [roadmap](roadmap/README.md) · [multi-platform](multi-platform.md) · [roadmap → Hosting](roadmap/README.md#hosting-the-web-ui-cloud--self-hosted)
 
 ---
 
@@ -40,7 +40,7 @@ maps to concrete pages.
 ```
                  ▲ REACH (more platforms / surfaces)
                  │   Web · Android · Flutter / hybrid
-                 │   → roadmap: Platform expansion
+                 │   → multi-platform.md
                  │
    AUTHORING ────┼───────────────▶ SCALE & COLLABORATION
    & MAINTENANCE │                 hosted / self-hosted service · MCP
@@ -57,7 +57,7 @@ The `Driver` / environment / id-convention seams were built to be replaced, not 
 The goal is for **the same deterministic core to drive iOS, Android, and the Web**, with each platform
 adding only its own actuator + environment + stable-id convention. The full concrete plan
 (selector-portability mapping, per-platform backends, phasing — Web first, because it runs on the
-existing Linux gate) is in the roadmap's **[Platform expansion](roadmap/README.md#platform-expansion-android--web--flutter)** items (Web is [BE-0041](roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)). A second iOS actuator
+existing Linux gate) is in **[multi-platform](multi-platform.md)**. A second iOS actuator
 (XCUITest) is the same change within one OS ([roadmap → Backend expansion](roadmap/README.md#backend-expansion-ios-actuators)).
 
 ### 2. Scale & collaboration — from local tool to shared service
@@ -119,7 +119,7 @@ not what it does; new authoring produces the same YAML. The core stays constant.
 If the vision has to be sequenced, the highest-leverage next steps, each reducing the risk of a
 later one at low cost, are:
 
-1. **Web via Playwright** ([BE-0041](roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), Phase 1). It demonstrates that the
+1. **Web via Playwright** ([multi-platform](multi-platform.md), Phase 1). It demonstrates that the
    core is platform-neutral **inside the existing Linux gate** ([ci](ci.md)), with no Mac and no
    emulator, and exercises the rich end of the capability model (native network/video/semantic).
 2. **MCP server** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)). Low surface area, high leverage for

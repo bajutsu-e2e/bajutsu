@@ -58,8 +58,9 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 13 | [cli](cli.md) | Full reference for CLI commands and options |
 | 14 | [sample-app](sample-app.md) | The bundled `BajutsuSample` fixture (exercises every primitive) |
 | 15 | [ci](ci.md) | Running in CI — the repo's own workflows + the reusable `bajutsu-e2e` action |
-| 16 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect; the concrete plans now live as items in the [roadmap](roadmap/README.md) |
-| 17 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
+| 16 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect |
+| 17 | [multi-platform](multi-platform.md) | **Forward-looking** — big-picture overview of extending to Android (emulator) and Web (browser) behind the existing driver abstraction; the concrete per-platform plans live in the [roadmap](roadmap/README.md#platform-expansion-android--web--flutter) |
+| 18 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
 
 ## Quick start
 
