@@ -183,8 +183,8 @@
     tvBuildStep(host);
     tvBody.innerHTML = '';
     // Show the step's screenshot beside its elements so the two can be read together;
-    // hovering an element row highlights its frame on the shot (tv-hl overlay). The ◀ / ▶
-    // step controls sit directly under the screenshot.
+    // hovering an element row highlights its frame on the shot (tv-hl overlay). The screenshot
+    // stays fixed; only the element list scrolls, with the ◀ / ▶ controls pinned beneath it.
     var shot = host.querySelector('img.shot'), imEl = null;
     var sd = document.createElement('div'); sd.className = 'tv-shot';
     if(shot){
@@ -194,7 +194,15 @@
       var hl = document.createElement('div'); hl.className = 'tv-hl'; hl.hidden = true;
       frame.appendChild(imEl); frame.appendChild(hl); sd.appendChild(frame);
     }
-    var nav = document.createElement('div'); nav.className = 'tv-shotnav';
+    tvBody.appendChild(sd);
+    // Element list (scrolls internally) with the step-nav bar pinned below it.
+    var main = document.createElement('div'); main.className = 'tv-main';
+    var tree = document.createElement('div'); tree.className = 'tv-tree';
+    tree.innerHTML = tpl.innerHTML;
+    tree.addEventListener('mouseover', function(e){ var tr = e.target.closest('tr.tvrow'); if(tr) tvHighlight(tr); });
+    tree.addEventListener('mouseleave', tvUnhighlight);
+    main.appendChild(tree);
+    var nav = document.createElement('div'); nav.className = 'tv-treenav';
     function navBtn(cls, glyph, label, delta){
       var btn = document.createElement('button'); btn.type = 'button';
       btn.className = 'tv-nav ' + cls; btn.textContent = glyph;
@@ -209,13 +217,8 @@
     pos.textContent = (tvIndex + 1) + '/' + tvScope.length;
     nav.appendChild(pos);
     nav.appendChild(navBtn('tv-next', '▶', 'next step', 1));
-    sd.appendChild(nav);
-    tvBody.appendChild(sd);
-    var tree = document.createElement('div'); tree.className = 'tv-tree';
-    tree.innerHTML = tpl.innerHTML;
-    tree.addEventListener('mouseover', function(e){ var tr = e.target.closest('tr.tvrow'); if(tr) tvHighlight(tr); });
-    tree.addEventListener('mouseleave', tvUnhighlight);
-    tvBody.appendChild(tree);
+    main.appendChild(nav);
+    tvBody.appendChild(main);
     // Seed the screen extent from the element bounding box, then refine: derive the
     // device scale from the width (which rarely scrolls) and recompute the height.
     var tbl = tree.querySelector('.tvtbl');
@@ -233,7 +236,7 @@
     }
     if(tvInput) tvInput.value = '';
     tvFilter('');
-    tvBody.scrollTop = 0;
+    tree.scrollTop = 0;
     tv.classList.add('open');
   }
   document.addEventListener('click', function(e){

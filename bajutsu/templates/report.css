@@ -118,19 +118,24 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
 .tv-stepnum{font:700 .78rem -apple-system,system-ui,sans-serif;color:var(--mut)}
 .tv-stepdesc{font:.82rem/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--ink);word-break:break-word}
 .tv-stepat{margin-left:auto;font:600 .72rem/1 ui-monospace,Menlo,Consolas,monospace}
-.tv-body{flex:1 1 auto;min-height:0;overflow:auto;padding:.3rem .6rem .6rem;display:flex;gap:.7rem;align-items:flex-start}
-.tv-shot{flex:none;position:sticky;top:0;align-self:flex-start}
+/* The viewer body itself never scrolls: the screenshot stays fixed and only the element
+   list (.tv-tree) scrolls, so the ◀ N/M ▶ bar pinned under it is always visible. */
+.tv-body{flex:1 1 auto;min-height:0;overflow:hidden;padding:.3rem .6rem .6rem;display:flex;gap:.7rem}
+.tv-shot{flex:none;align-self:flex-start}
 .tv-shotframe{position:relative;display:inline-block;line-height:0}
-/* ◀ N/M ▶ step controls, centered directly under the screenshot. */
-.tv-shotnav{display:flex;align-items:center;justify-content:center;gap:.6rem;margin-top:.45rem}
-.tv-pos{font:600 .78rem/1 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);min-width:2.6em;text-align:center}
 .tv-shot img{display:block;width:auto;max-width:300px;max-height:72vh;border:1px solid var(--line);
  border-radius:6px;background:#fafafa}
+/* Element list column: the table scrolls internally; the step-nav bar is pinned beneath it. */
+.tv-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+/* ◀ N/M ▶ step controls, centered below the element list and always visible. */
+.tv-treenav{flex:none;display:flex;align-items:center;justify-content:center;gap:.6rem;
+ margin-top:.45rem;padding-top:.45rem;border-top:1px solid var(--line)}
+.tv-pos{font:600 .78rem/1 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);min-width:2.6em;text-align:center}
 /* Highlight box overlaying the screenshot, sized as a % of the screen rect so it tracks
    the displayed image at any scale. Positioned on row hover (tv-hl), updated in JS. */
 .tv-hl{position:absolute;border:2px solid #0a6cff;background:rgba(10,108,255,.18);
  border-radius:2px;pointer-events:none;box-shadow:0 0 0 1px rgba(255,255,255,.7);box-sizing:border-box}
-.tv-tree{flex:1;min-width:0}
+.tv-tree{flex:1;min-width:0;min-height:0;overflow:auto}
 .tvtbl tr.tvrow:hover td{background:#eef4ff}
 .tvtbl{border-collapse:collapse;width:100%;font:.8rem/1.5 ui-monospace,Menlo,Consolas,monospace}
 .tvtbl th{position:sticky;top:0;background:var(--card);text-align:left;padding:.3rem .4rem;

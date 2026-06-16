@@ -659,9 +659,9 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     # info above the table instead.
     assert 'id="lb"' not in out and "openLightbox" not in out
     assert 'class="tv-step"' in out
-    # the ◀ N/M ▶ step controls are built under the screenshot (in JS), and the element filter
+    # the ◀ N/M ▶ step controls are built below the element list (in JS), and the element filter
     # sits in its own band below the step info (not in the head).
-    assert "tv-shotnav" in out and "tv-prev" in out and "tv-next" in out
+    assert "tv-treenav" in out and "tv-prev" in out and "tv-next" in out
     assert "tv-pos" in out and "(tvIndex + 1) + '/' + tvScope.length" in out  # the N/M counter
     assert 'class="tv-filter"' in out
 
