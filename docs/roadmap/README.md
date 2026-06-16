@@ -29,7 +29,13 @@ When you add a roadmap item:
    ```bash
    ls -d docs/roadmap/BE-*/ | sort | tail -1
    ```
-   Never reuse, skip, or guess a number.
+   Never reuse, skip, or guess a number. **Or leave it undetermined:** name the item
+   `BE-XXXX-<slug>` (the literal placeholder) and let CI assign the number — the
+   [`roadmap-id`](../../.github/workflows/roadmap-id.yml) workflow runs
+   [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py) on every PR
+   touching `docs/roadmap/**`, allocates the next free IDs, and pushes the rename back to
+   the branch. This is what the `roadmap-brainstorm` skill does, and it avoids two
+   in-flight branches racing for the same number.
 2. **Create the item directory and both language files** —
    `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md` (English) and
    `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug) — and add a row to
