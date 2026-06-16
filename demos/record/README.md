@@ -1,5 +1,7 @@
 # Generate → run → modify a scenario against the sample2 app
 
+**English** · [日本語](README.ja.md)
+
 `record` is Bajutsu's authoring path: an **agent** reads a natural-language *goal* plus the
 live screen, proposes one action at a time, and the loop writes the executed steps out as a
 deterministic scenario. `run` later replays that scenario with **no AI**
@@ -12,6 +14,7 @@ and observe the deterministic runner respond.
 ## The guided demo (`demo.sh`)
 
 ```bash
+make -C demos record                 # or, directly:
 ./demos/record/demo.sh
 ```
 

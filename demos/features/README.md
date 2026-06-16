@@ -1,5 +1,7 @@
 # Feature examples
 
+**English** · [日本語](README.ja.md)
+
 > **Looking for the Web UI tour?** To drive a real Simulator from the browser and collect every
 > evidence type (screenshots, video, logs, network, visual regression, system alerts), see
 > **[WEBUI.md](WEBUI.md)** — the headline demo for iOS developers. The map of all demos is in
@@ -14,6 +16,7 @@ Drives the real `load → expand → run` pipeline against the in-memory FakeDri
 prints what each feature did — no Simulator or idb needed:
 
 ```bash
+make -C demos features               # or, directly:
 uv run python demos/features/run_demo.py
 ```
 

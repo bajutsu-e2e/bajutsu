@@ -1,5 +1,7 @@
 # The Web UI tour — drive a real Simulator, collect every kind of evidence
 
+**English** · [日本語](WEBUI.ja.md)
+
 This is the demo for an **iOS developer evaluating Bajutsu on a real Simulator**. It uses the
 local Web UI ([`bajutsu serve`](../../docs/cli.md)) to boot a Simulator, run scenarios against
 the bundled sample app, and browse the evidence each run captures — screenshots, video, device
@@ -23,8 +25,10 @@ installs the `.app` on the picked device the first time it's missing.
 ## Launch it
 
 ```bash
-make -C demos/features serve         # http://127.0.0.1:8765  (PORT=8766 to change)
+make -C demos webui                  # http://127.0.0.1:8765  (PORT=8766 to change)
 ```
+
+(`make -C demos webui` delegates to `make -C demos/features serve` — either works.)
 
 This wraps the repo-root `make serve` and binds [`demo.config.yaml`](demo.config.yaml), which
 points the Web UI at the `sample` app and its scenarios in

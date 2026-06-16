@@ -1,10 +1,13 @@
 # The 60-second tour (zero setup)
 
+**English** · [日本語](README.ja.md)
+
 The whole Bajutsu story in one command — **no Simulator, no idb, no API key, no Mac**. It
 runs anywhere the Python core runs (Linux, CI, a fresh clone) in a couple of seconds, and is
 the fastest way to *see* what the tool does before committing to an on-device setup.
 
 ```bash
+make -C demos tour                  # or, directly:
 uv run python demos/tour/tour.py
 ```
 

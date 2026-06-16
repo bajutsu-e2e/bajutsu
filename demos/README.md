@@ -1,15 +1,32 @@
 # Bajutsu demos
 
+**English** · [日本語](README.ja.md)
+
 Three runnable demos, ordered by how much setup they need. Each tells the same core story —
 **a natural-language goal becomes a deterministic scenario; a run decides pass/fail with
 machine assertions only, never an LLM** — at a different depth. Start at the top and go as deep
 as your setup allows.
 
-| Demo | What it proves | What it needs | Audience |
+Every demo runs the same way, through one entry point — `make -C demos <target>`:
+
+```bash
+make -C demos            # the menu (same as `make -C demos help`)
+make -C demos tour       # zero setup: the whole lifecycle on a fake device
+make -C demos features   # zero setup: the scenario-feature showcase
+make -C demos offline    # both zero-setup demos at once
+make -C demos webui      # on-device: the Web UI tour (macOS + Simulator)
+make -C demos record     # on-device: AI authoring -> run -> modify -> triage
+```
+
+| Demo | Command | What it proves | What it needs |
 |---|---|---|---|
-| **[tour](tour/README.md)** — `uv run python demos/tour/tour.py` | The whole lifecycle (author → run → modify → diagnose) end to end, on the real pipeline | **Nothing.** No Simulator, no idb, no API key — runs on Linux/CI in seconds | Anyone evaluating the tool; the 60-second first look |
-| **[features](features/WEBUI.md)** — `make -C demos/features serve` | The **Web UI** driving a real Simulator and collecting every evidence type: screenshots, video, device logs, network (observed + mocked), visual regression, system-alert handling | macOS + Simulator (idb auto-installs); an API key for the system-alert part only | **iOS developers** evaluating on a real device |
-| **[record](record/README.md)** — `./demos/record/demo.sh` | AI authoring with **real Claude** against a booted app, then the modify-and-self-heal loop (`triage`) on the CLI | macOS + Simulator + idb + Claude (CLI or API key) | Anyone wanting to see the AI authoring loop on-device |
+| **[tour](tour/README.md)** | `make -C demos tour` | The whole lifecycle (author → run → modify → diagnose) end to end, on the real pipeline | **Nothing** — no Simulator, idb, or API key; runs on Linux/CI in seconds |
+| **[features](features/WEBUI.md)** | `make -C demos webui` | The **Web UI** driving a real Simulator and collecting every evidence type: screenshots, video, logs, network (observed + mocked), visual regression, system-alert handling | macOS + Simulator (idb auto-installs); an API key for the system-alert part only |
+| **[record](record/README.md)** | `make -C demos record` | AI authoring with **real Claude** against a booted app, then the modify-and-self-heal loop (`triage`) on the CLI | macOS + Simulator + idb + Claude (CLI or API key) |
+
+The [features](features/README.md) folder also has a **zero-setup feature showcase** — the
+scenario-authoring features (tags, shared steps, data-driven runs, secrets, device control) run
+against the FakeDriver: `make -C demos features`.
 
 ## Which one should I run?
 
