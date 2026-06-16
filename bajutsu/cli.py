@@ -698,5 +698,28 @@ def serve(
     )
 
 
+@app.command()
+def lint(
+    scenario: str = typer.Argument(..., help="Path to a scenario *.yaml file"),
+) -> None:
+    """Validate a scenario file without running it."""
+    from bajutsu.lint import lint_file
+
+    errors = lint_file(Path(scenario))
+    if errors:
+        for e in errors:
+            typer.echo(e)
+        raise typer.Exit(1)
+    typer.echo("ok")
+
+
+@app.command()
+def schema() -> None:
+    """Print the JSON Schema for scenario files (for editor integration)."""
+    from bajutsu.lint import scenario_json_schema
+
+    typer.echo(scenario_json_schema())
+
+
 if __name__ == "__main__":
     app()

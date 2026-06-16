@@ -12,6 +12,9 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 - **Work in parallel safely:** one topic per `claude/<topic>` branch, keep changes small, never
   push red (the pre-push hook enforces the gate), rebase on `origin/main` before pushing.
   Full guide: [`docs/ai-development.md`](docs/ai-development.md).
+- **Link the PR back to the roadmap.** When a PR implements a roadmap item (`docs/roadmap/BE-NNNN-*`),
+  always add a link to that PR in the item's markdown (both the English and Japanese files) so the
+  roadmap entry and its implementing PR are cross-referenced.
 - **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the idb
   backend's deps on demand; pass flags via `ARGS`.
 - **Write docs as plain technical prose.** State facts and reasons directly, in the register of
