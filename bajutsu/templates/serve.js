@@ -16,20 +16,28 @@ function setStatus(el,t,c){el.textContent=t;el.className='status '+c}
 
 // ---- dark / light toggle (matching CSS-variable blocks live in serve.themes.css) ----
 // Two themes only, driven by a checkbox switch: checked == daylight (light), else midnight (dark).
+// Default behaviour follows the OS and updates live; a manual flip persists until the OS changes.
+const SYS_MQ=matchMedia('(prefers-color-scheme: light)');
+function systemTheme(){return SYS_MQ.matches?'daylight':'midnight'}
 function currentTheme(){
   return document.documentElement.getAttribute('data-theme')
     ||localStorage.getItem('bajutsu-theme')
-    ||(matchMedia('(prefers-color-scheme: light)').matches?'daylight':'midnight');
+    ||systemTheme();
 }
-function applyTheme(t){
+function applyTheme(t,persist){
   document.documentElement.setAttribute('data-theme',t);
-  try{localStorage.setItem('bajutsu-theme',t)}catch(e){}
+  try{if(persist)localStorage.setItem('bajutsu-theme',t)}catch(e){}
   const sw=$('#theme');if(sw)sw.checked=(t==='daylight');
 }
 function initTheme(){
   const sw=$('#theme');
-  applyTheme(currentTheme());
-  sw.addEventListener('change',()=>applyTheme(sw.checked?'daylight':'midnight'));
+  applyTheme(currentTheme(),false);
+  // Manual flip wins for now and is remembered.
+  sw.addEventListener('change',()=>applyTheme(sw.checked?'daylight':'midnight',true));
+  // An OS theme change drops any manual override and adopts the new system mode.
+  const onSys=()=>{try{localStorage.removeItem('bajutsu-theme')}catch(e){}applyTheme(systemTheme(),false)};
+  if(SYS_MQ.addEventListener)SYS_MQ.addEventListener('change',onSys);
+  else if(SYS_MQ.addListener)SYS_MQ.addListener(onSys);
 }
 
 // ---- top-level Record / Replay views ----
