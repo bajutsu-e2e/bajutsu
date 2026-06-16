@@ -659,6 +659,10 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     # info above the table instead.
     assert 'id="lb"' not in out and "openLightbox" not in out
     assert 'class="tv-step"' in out
+    # prev / next buttons walk to the neighbouring step's screenshot + elements, and the
+    # element filter sits in its own band below the step info (not in the head).
+    assert 'class="tv-nav tv-prev"' in out and 'class="tv-nav tv-next"' in out
+    assert 'class="tv-filter"' in out
 
 
 def test_html_tree_rows_carry_frame_for_screenshot_highlight(tmp_path: Path) -> None:

@@ -96,7 +96,14 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
 .tv-box{background:var(--card);color:var(--ink);width:min(94vw,1040px);max-height:84vh;border-radius:10px;
  box-shadow:0 10px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}
 .tv-head{display:flex;gap:.5rem;align-items:center;padding:.55rem .7rem;border-bottom:1px solid var(--line)}
-.tv-title{font:600 .9rem -apple-system,system-ui,sans-serif}
+.tv-title{flex:1;font:600 .9rem -apple-system,system-ui,sans-serif}
+/* ◀ / ▶ walk to the previous / next step's screenshot + elements (same as the arrow keys). */
+.tv-nav{flex:none;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;
+ padding:.18rem .5rem;font-size:.8rem;line-height:1;cursor:pointer}
+.tv-nav:hover:not(:disabled){border-color:#0a6cff;color:#0a6cff}
+.tv-nav:disabled{opacity:.35;cursor:default}
+/* Element filter, on its own row below the step-info band. */
+.tv-filter{flex:none;display:flex;gap:.5rem;align-items:center;padding:.45rem .7rem;border-bottom:1px solid var(--line)}
 .tvfilter{flex:1;padding:.32rem .55rem;border:1px solid var(--line);border-radius:6px;font:inherit;
  font-size:.84rem;background:var(--bg);color:var(--ink)}
 .tvcount{flex:none}
@@ -303,6 +310,7 @@ tr.visrow>td{background:#fafafb}
  .nxmock{color:#c79bea;background:#2a2140;border-color:#42305e}
  details.pre>summary{background:#2a2b2f}
  .tv-step{background:#1b1c1f}
+ .tv-nav:hover:not(:disabled){border-color:#5b9cff;color:#5b9cff}
  tr.ng{background:#3a2422}
  tr.srow:hover td,tr.xrow:hover td,.tvtbl tr.tvrow:hover td{background:#2a2f3a}
  tr.srow.playing td{background:#3a3520}

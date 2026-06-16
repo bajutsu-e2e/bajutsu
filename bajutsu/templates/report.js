@@ -117,6 +117,8 @@
   var tvStep = tv && tv.querySelector('.tv-step');
   var tvInput = tv && tv.querySelector('.tvfilter');
   var tvCount = tv && tv.querySelector('.tvcount');
+  var tvPrev = tv && tv.querySelector('.tv-prev');
+  var tvNext = tv && tv.querySelector('.tv-next');
   // Every step "view" cell carrying embedded element data, in document order — the walk
   // order for the ← / → keys.
   var tvHosts = Array.prototype.slice.call(document.querySelectorAll('td.ev')).filter(function(td){
@@ -150,6 +152,12 @@
     if(tvCount) tvCount.textContent = n + (n === 1 ? ' element' : ' elements');
   }
   function tvClose(){ if(tv){ tv.classList.remove('open'); if(tvBody) tvBody.innerHTML = ''; tvIndex = -1; } }
+  function tvCanGo(delta){ var i = tvIndex + delta; return tvIndex >= 0 && i >= 0 && i < tvHosts.length; }
+  function tvGo(delta){ if(tvCanGo(delta)) tvOpen(tvHosts[tvIndex + delta]); }
+  function tvUpdateNav(){
+    if(tvPrev) tvPrev.disabled = !tvCanGo(-1);
+    if(tvNext) tvNext.disabled = !tvCanGo(1);
+  }
   // The step-info band above the element table: step number, result/action badges and
   // the tokenized detail, cloned from the step's own row.
   function tvBuildStep(host){
@@ -206,6 +214,7 @@
     }
     if(tvInput) tvInput.value = '';
     tvFilter('');
+    tvUpdateNav();
     tvBody.scrollTop = 0;
     tv.classList.add('open');
   }
@@ -216,14 +225,16 @@
   if(tv){
     tv.addEventListener('click', function(e){ if(e.target === tv) tvClose(); });  // backdrop only
     var tvX = tv.querySelector('.tv-close'); if(tvX) tvX.addEventListener('click', tvClose);
+    if(tvPrev) tvPrev.addEventListener('click', function(){ tvGo(-1); });
+    if(tvNext) tvNext.addEventListener('click', function(){ tvGo(1); });
     if(tvInput) tvInput.addEventListener('input', function(){ tvFilter(this.value); });
     document.addEventListener('keydown', function(e){
       if(!tv.classList.contains('open')) return;
       if(e.key === 'Escape'){ tvClose(); return; }
       // While typing in the filter, let ← / → move the text cursor instead of navigating.
       if(document.activeElement === tvInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
-      if(e.key === 'ArrowLeft' && tvIndex > 0){ e.preventDefault(); tvOpen(tvHosts[tvIndex - 1]); }
-      else if(e.key === 'ArrowRight' && tvIndex >= 0 && tvIndex < tvHosts.length - 1){ e.preventDefault(); tvOpen(tvHosts[tvIndex + 1]); }
+      if(e.key === 'ArrowLeft' && tvCanGo(-1)){ e.preventDefault(); tvGo(-1); }
+      else if(e.key === 'ArrowRight' && tvCanGo(1)){ e.preventDefault(); tvGo(1); }
     });
   }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
