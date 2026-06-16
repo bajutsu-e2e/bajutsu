@@ -15,13 +15,13 @@ help:
 	@echo "Bajutsu demos — pick one (full map: demos/README.md):"
 	@echo ""
 	@echo "  Zero setup (no Simulator, runs anywhere):"
-	@echo "    make -C demos tour       The whole story end to end — author, run, modify, diagnose."
-	@echo "    make -C demos features   The scenario-feature showcase (tags, shared steps, data, secrets)."
-	@echo "    make -C demos offline    Both of the above."
+	@echo "    make tour       The whole story end to end — author, run, modify, diagnose."
+	@echo "    make features   The scenario-feature showcase (tags, shared steps, data, secrets)."
+	@echo "    make offline    Both of the above."
 	@echo ""
 	@echo "  On-device (macOS + Simulator; idb auto-installs):"
-	@echo "    make -C demos webui      The Web UI tour — boot a Simulator, collect every evidence type."
-	@echo "    make -C demos record     AI authoring with real Claude, then the modify + triage loop."
+	@echo "    make webui      The Web UI tour — boot a Simulator, collect every evidence type."
+	@echo "    make record     AI authoring with real Claude, then the modify + triage loop."
 
 # --- Zero setup --------------------------------------------------------------
 tour:
