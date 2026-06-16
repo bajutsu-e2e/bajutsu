@@ -136,10 +136,10 @@ jobs:
 
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
-  # failure or cancellation fails the gate. Make `e2e` the required check, not the
+  # failure or cancellation fails the gate. Make `E2E` the required check, not the
   # path-gated macOS jobs.
   e2e:
-    name: e2e
+    name: E2E
     needs: [changes, smoke, xcuitest]
     if: always()
     runs-on: ubuntu-latest
