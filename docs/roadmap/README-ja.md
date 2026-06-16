@@ -28,7 +28,13 @@
    ```bash
    ls -d docs/roadmap/BE-*/ | sort | tail -1
    ```
-   番号の再利用・飛ばし・当て推量は禁止です。
+   番号の再利用・飛ばし・当て推量は禁止です。**または未定のままにする:** 項目を
+   `BE-XXXX-<slug>`（リテラルのプレースホルダ）と名付け、採番は CI に任せます ——
+   [`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローが `docs/roadmap/**`
+   に触れる PR ごとに [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)
+   を実行し、空いている次の ID を採番してブランチへリネームを push し返します。
+   `ideation` skill はこの方式を使い、進行中の 2 つのブランチが同じ番号を
+   取り合うのを防ぎます。
 2. **項目ディレクトリと両言語のファイルを作成** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
    （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）— そして
    **両方**のインデックスページの該当トピック表に行を追加します。
