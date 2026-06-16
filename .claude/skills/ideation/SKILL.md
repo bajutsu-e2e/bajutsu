@@ -1,7 +1,7 @@
 ---
 name: ideation
 description: >-
-  Sounding board (壁打ち) for Bajutsu feature ideation. Use when the user wants to
+  Sounding board for Bajutsu feature ideation. Use when the user wants to
   brainstorm potential features, explore what Bajutsu could do next, or turn a rough
   idea into a roadmap (BE) item. Grounds the conversation in the existing roadmap,
   proposes new items or seeds, folds overlapping ideas into existing items, and — when
@@ -9,7 +9,7 @@ description: >-
   BE ID is allocated by CI (scripts/allocate_roadmap_ids.py), never guessed by hand.
 ---
 
-# Ideation (壁打ち)
+# Ideation
 
 A sounding board for ideating Bajutsu features and shaping them into roadmap (BE) items.
 You are the author and the thinking partner — **not** the judge. Converse in the user's
