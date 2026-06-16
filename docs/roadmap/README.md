@@ -168,6 +168,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESI
 |---|---|---|
 | [BE-0027](BE-0027-mock-server-external/BE-0027-mock-server-external.md) | `mockServer` (external mock) | Deferred |
 | [BE-0028](BE-0028-evidence-rule-overmatch-guard/BE-0028-evidence-rule-overmatch-guard.md) | Guard against over-matching evidence rules | Proposal |
+| [BE-0041](BE-0041-roadmap-id-selftest/BE-0041-roadmap-id-selftest.md) | Roadmap ID allocation self-test | Proposal |
 
 ### Candidates from competitive research (MagicPod / Autify)
 
