@@ -1,5 +1,5 @@
 # Allocate permanent BE IDs to roadmap items authored with the BE-XXXX placeholder.
-# The roadmap-brainstorm skill leaves the ID undetermined so concurrent branches never
+# The ideation skill leaves the ID undetermined so concurrent branches never
 # race for a number; this workflow assigns the next free IDs at PR time and pushes the
 # rename back onto the branch.
 name: roadmap-id

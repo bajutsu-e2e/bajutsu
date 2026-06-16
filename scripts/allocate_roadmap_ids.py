@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Allocate real BE IDs to placeholder roadmap items.
 
-The ``roadmap-brainstorm`` skill drafts new roadmap items with the literal placeholder
+The ``ideation`` skill drafts new roadmap items with the literal placeholder
 ID ``BE-XXXX`` so authors never guess a number — IDs are permanent and monotonic, and
 picking by hand races between concurrent branches. This script, run by the ``roadmap-id``
 workflow on a pull request, allocates the next free IDs deterministically and rewrites the

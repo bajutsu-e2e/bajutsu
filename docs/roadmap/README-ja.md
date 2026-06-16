@@ -33,7 +33,7 @@
    [`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローが `docs/roadmap/**`
    に触れる PR ごとに [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)
    を実行し、空いている次の ID を採番してブランチへリネームを push し返します。
-   `roadmap-brainstorm` skill はこの方式を使い、進行中の 2 つのブランチが同じ番号を
+   `ideation` skill はこの方式を使い、進行中の 2 つのブランチが同じ番号を
    取り合うのを防ぎます。
 2. **項目ディレクトリと両言語のファイルを作成** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
    （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）— そして
