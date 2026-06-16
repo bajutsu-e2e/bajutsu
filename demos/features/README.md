@@ -1,5 +1,10 @@
 # Feature examples
 
+> **Looking for the Web UI tour?** To drive a real Simulator from the browser and collect every
+> evidence type (screenshots, video, logs, network, visual regression, system alerts), see
+> **[WEBUI.md](WEBUI.md)** — the headline demo for iOS developers. The map of all demos is in
+> [`demos/README.md`](../README.md).
+
 Runnable demos for the scenario-authoring features (tags, parameterized shared steps,
 data-driven runs, secret variables, device control).
 

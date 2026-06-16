@@ -2,11 +2,19 @@
 # Invoke from anywhere with `make -C demos/features <target>` (or from inside this folder).
 # ROOT resolves to the repo root so the paths match demos/features/demo.config.yaml, the
 # purpose-built config for these scenarios (passed explicitly via --config below).
-.PHONY: sample-gen sample-build e2e ui-test vrt vrt-approve
+.PHONY: sample-gen sample-build e2e ui-test vrt vrt-approve serve
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 SAMPLE := $(ROOT)/demos/features/app
 CONFIG := $(ROOT)/demos/features/demo.config.yaml
+
+# Launch the Web UI bound to this demo's config — the guided tour in WEBUI.md.
+# Wraps the repo-root `make serve` (installs the idb backend's deps on demand). The
+# Web UI builds + installs the app itself when its binary is missing, so this is the
+# only command you need to start the on-device tour. Override the port via PORT=8766.
+PORT ?= 8765
+serve:
+	cd $(ROOT) && $(MAKE) serve ARGS="--config $(CONFIG) --port $(PORT)"
 
 sample-gen:
 	cd $(SAMPLE) && xcodegen generate

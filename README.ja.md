@@ -175,6 +175,19 @@ apps:
     idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
 ```
 
+## デモ
+
+セットアップの軽い順に3本（[`demos/`](demos/README.md)）:
+
+- **[tour](demos/tour/README.md)** — `uv run python demos/tour/tour.py`。著作 → 実行 → 改変 →
+  診断のライフサイクル全体を本物のパイプラインで通す、**セットアップ不要**のデモ。Simulator も
+  idb も API キーも要らず、Linux/CI で数秒で動く最初の一歩。
+- **[features](demos/features/WEBUI.md)** — `make -C demos/features serve`。**Web UI** ツアー:
+  実機 Simulator を操作し、あらゆる証跡（スクリーンショット・動画・ログ・通信・ビジュアル
+  リグレッション・システムアラート突破）をブラウザで辿る。iOS 開発者向けの目玉デモ。
+- **[record](demos/record/README.md)** — `./demos/record/demo.sh`。起動中アプリに対する本物の
+  Claude による著作と、改変 → 自己修復（`triage`）ループ。
+
 ## 開発
 
 ```bash
