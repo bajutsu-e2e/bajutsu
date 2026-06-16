@@ -110,3 +110,6 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
 - **PR titles and bodies are always in English**, regardless of the language used in the
   session. This keeps the project history readable for every contributor.
+- **Prefix the PR title with the roadmap ID** when the PR is tied to a roadmap item: start the
+  title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap
+  item keep the plain scoped title.

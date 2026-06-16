@@ -15,6 +15,9 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 - **Link the PR back to the roadmap.** When a PR implements a roadmap item (`docs/roadmap/BE-NNNN-*`),
   always add a link to that PR in the item's markdown (both the English and Japanese files) so the
   roadmap entry and its implementing PR are cross-referenced.
+- **Prefix the PR title with the roadmap ID.** When a PR is tied to a roadmap item, begin its title
+  with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap item keep
+  the plain scoped title (`feat(...)`, `fix(...)`, `docs: …`). PR titles stay in English.
 - **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the idb
   backend's deps on demand; pass flags via `ARGS`.
 - **Write docs as plain technical prose.** State facts and reasons directly, in the register of
