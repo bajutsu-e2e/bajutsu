@@ -139,7 +139,7 @@
       <button class="keyclear" id="keyclear">Clear</button>
       <span class="keystatus" id="keystatus"></span>
     </div>
-    <div class="fshint">Stored in the project's gitignored <code>.env</code>. Only the AI paths need it: <b>Record</b> and Replay with <code>--dismiss-alerts</code>. A real <code>ANTHROPIC_API_KEY</code> in your shell still takes precedence.</div>
+    <div class="fshint">Kept in the running server's memory for this session only — <b>not written to disk</b>, so it is cleared when <code>serve</code> restarts. Only the AI paths need it: <b>Record</b> and Replay with <code>--dismiss-alerts</code>. For a value that survives restarts, put <code>ANTHROPIC_API_KEY</code> in your shell or a <code>.env</code> before launching <code>serve</code>.</div>
   </div>
 </div>
 <script>{{ js|safe }}</script>

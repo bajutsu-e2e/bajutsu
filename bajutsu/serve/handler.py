@@ -16,7 +16,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu import dotenv
 from bajutsu.config import load_config
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.helpers import (
@@ -167,20 +166,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             state.config = target
             self._json({"ok": True, "config": str(target), "apps": list_apps(target)})
 
-        def _effective_api_key(self) -> str | None:
-            """The Claude API key a spawned job would use: the project ``.env`` wins (the WebUI
-            manages it there), else whatever is already in the serve process's environment."""
-            env_file = dotenv.dotenv_path(state.cwd)
-            if env_file.exists():
-                val = dotenv.parse_dotenv(env_file.read_text(encoding="utf-8")).get(_API_KEY_VAR)
-                if val:
-                    return val
-            return os.environ.get(_API_KEY_VAR) or None
-
         def _get_api_key(self, reveal: bool) -> None:
-            """Report whether a key is set, with a redacted preview.  ``?reveal=1`` adds the
-            full value — only on explicit request, and this server binds to localhost."""
-            key = self._effective_api_key()
+            """Report whether a key is set in the serve process's environment, with a redacted
+            preview.  ``?reveal=1`` adds the full value — only on explicit request, and this
+            server binds to localhost."""
+            key = os.environ.get(_API_KEY_VAR) or None
             payload: dict[str, Any] = {"set": key is not None}
             if key is not None:
                 payload["masked"] = mask_secret(key)
@@ -189,14 +179,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self._json(payload)
 
         def _post_api_key(self, body: dict[str, Any]) -> None:
-            """Persist the Claude API key to the project ``.env`` (an empty value clears it) and
-            mirror it into the serve process's environment so the change takes effect at once."""
+            """Set the Claude API key in the serve process's environment for this session (an
+            empty value clears it).  It is held in memory only — never written to disk — and
+            spawned record/run jobs inherit it via the process environment.  It is not persisted,
+            so it must be re-entered after a restart (or set a real ``ANTHROPIC_API_KEY`` /
+            ``.env`` for the serve process to pick up at startup)."""
             value = str(body.get("value", "") or "").strip()
             if value and any(c.isspace() for c in value):
                 self._json({"error": "the API key must not contain whitespace"}, 400)
                 return
-            env_file = dotenv.dotenv_path(state.cwd)
-            dotenv.upsert_dotenv(_API_KEY_VAR, value or None, env_file)
             if value:
                 os.environ[_API_KEY_VAR] = value
                 self._json({"ok": True, "set": True, "masked": mask_secret(value)})

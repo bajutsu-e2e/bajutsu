@@ -4,6 +4,7 @@ HTTP endpoints (a real ThreadingHTTPServer on an ephemeral port)."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -959,8 +960,9 @@ def test_http_approve_rejects_traversal(tmp_path: Path) -> None:
 
 
 def test_http_api_key_set_reveal_and_clear(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Round-trip the Claude API key through the WebUI: unset → set (redacted) → reveal → clear,
-    landing in the project .env so a spawned job picks it up."""
+    """Round-trip the Claude API key through the WebUI: unset → set (redacted) → reveal → clear.
+    The key is held in the serve process's environment only (in memory) — never written to disk —
+    so a spawned job inherits it via os.environ."""
     scn_dir, cfg, runs = _project(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # clean start + auto-restore at teardown
     server, port = _serve(
@@ -968,11 +970,12 @@ def test_http_api_key_set_reveal_and_clear(tmp_path: Path, monkeypatch: pytest.M
     )
     try:
         assert _get_json(port, "/api/apikey") == {"set": False}
-        # Set it: the response redacts the value, and it is written to .env.
+        # Set it: the response redacts the value, and it lands in the process env (not on disk).
         code, body = _post(port, "/api/apikey", {"value": "sk-ant-secret-12345"})
         assert code == 200 and body["set"] is True
         assert body["masked"] == "sk-a…2345" and "secret" not in body["masked"]
-        assert "ANTHROPIC_API_KEY=sk-ant-secret-12345" in (tmp_path / ".env").read_text()
+        assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-secret-12345"
+        assert not (tmp_path / ".env").exists()  # nothing is persisted to disk
         # GET is redacted by default; ?reveal=1 returns the full value.
         assert _get_json(port, "/api/apikey") == {"set": True, "masked": "sk-a…2345"}
         assert _get_json(port, "/api/apikey?reveal=1")["value"] == "sk-ant-secret-12345"
@@ -980,7 +983,7 @@ def test_http_api_key_set_reveal_and_clear(tmp_path: Path, monkeypatch: pytest.M
         code, body = _post(port, "/api/apikey", {"value": ""})
         assert code == 200 and body["set"] is False
         assert _get_json(port, "/api/apikey") == {"set": False}
-        assert "ANTHROPIC_API_KEY" not in (tmp_path / ".env").read_text()
+        assert "ANTHROPIC_API_KEY" not in os.environ
     finally:
         server.shutdown()
         server.server_close()

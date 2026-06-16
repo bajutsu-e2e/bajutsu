@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from bajutsu import dotenv, env
+from bajutsu import env
 from bajutsu.serve.helpers import app_scenarios_dir
 
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
@@ -103,18 +103,13 @@ def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:
     return app_scenarios_dir(state.config, app)
 
 
-def _spawn_env(state: ServeState) -> dict[str, str]:
+def _spawn_env() -> dict[str, str]:
     """The child env for a spawned run/record: the venv bin dir (where the ``idb`` client lives)
-    on PATH, plus ``ANTHROPIC_API_KEY`` from the project ``.env`` overlaid so a key just set in
-    the WebUI wins — even when the serve process itself started without one."""
+    on PATH.  Inherits the serve process's environment, so an ``ANTHROPIC_API_KEY`` set from the
+    WebUI (which writes only into ``os.environ``) is carried through to the job."""
     e = dict(os.environ)
     bindir = str(Path(sys.executable).parent)
     e["PATH"] = bindir + os.pathsep + e.get("PATH", "")
-    env_file = dotenv.dotenv_path(state.cwd)
-    if env_file.exists():
-        key = dotenv.parse_dotenv(env_file.read_text(encoding="utf-8")).get("ANTHROPIC_API_KEY")
-        if key:
-            e["ANTHROPIC_API_KEY"] = key
     return e
 
 
@@ -207,7 +202,7 @@ def _build_app(state: ServeState, job: Job) -> bool:
         proc = state.popen(
             shlex.split(job.build),
             cwd=str(state.cwd),
-            env=_spawn_env(state),
+            env=_spawn_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -248,7 +243,7 @@ def run_job(state: ServeState, job: Job) -> None:
     proc = state.popen(
         job.cmd,
         cwd=str(state.cwd),
-        env=_spawn_env(state),
+        env=_spawn_env(),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
