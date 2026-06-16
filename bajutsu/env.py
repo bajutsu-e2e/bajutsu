@@ -99,8 +99,8 @@ def home_cmd(udid: str) -> list[str]:
 
 
 def status_bar_override_cmd(udid: str, **kwargs: str | int) -> list[str]:
-    """Override status bar fields. Supported keys: time, batteryLevel, batteryState,
-    cellularBars, wifiBars."""
+    """Override status bar fields. Supported keys (snake_case): time, battery_level,
+    battery_state, cellular_bars, wifi_bars."""
     cmd = ["xcrun", "simctl", "status_bar", udid, "override"]
     key_map = {
         "time": "--time",
