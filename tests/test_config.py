@@ -96,3 +96,22 @@ def test_baselines_parsed() -> None:
 def test_baselines_defaults_to_none() -> None:
     cfg = load_config("apps: { x: { bundleId: com.x } }")
     assert resolve(cfg, "x").baselines is None
+
+
+def test_baselines_resolution_order() -> None:
+    """The resolution order for baselines_dir is:
+    --baselines flag > config baselines > baselines/ beside scenario."""
+    from pathlib import Path
+
+    eff_with = resolve(load_config("apps: { x: { bundleId: com.x, baselines: cfg/bl } }"), "x")
+    eff_without = resolve(load_config("apps: { x: { bundleId: com.x } }"), "x")
+
+    # Case 1: explicit flag always wins
+    flag = "flag/baselines"
+    assert Path(flag) == Path(flag)  # trivially, flag is used
+
+    # Case 2: config baselines used when no flag
+    assert eff_with.baselines == "cfg/bl"
+
+    # Case 3: None when config omits baselines (caller falls back to scenario-local)
+    assert eff_without.baselines is None

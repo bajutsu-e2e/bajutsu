@@ -203,7 +203,7 @@ def run(
         "",
         "--baselines",
         help="directory of baseline images for `visual` assertions "
-        "(default: a `baselines` folder beside the scenario)",
+        "(default: config baselines, then baselines/ beside the scenario)",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
@@ -292,13 +292,12 @@ def run(
         for s in scenarios:
             if s.mocks:
                 s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
-    baselines_dir = (
-        Path(baselines)
-        if baselines
-        else Path(eff.baselines)
-        if eff.baselines
-        else files[0].parent / "baselines"
-    )
+    if baselines:
+        baselines_dir = Path(baselines)
+    elif eff.baselines:
+        baselines_dir = Path(eff.baselines)
+    else:
+        baselines_dir = files[0].parent / "baselines"
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # A pool of one-or-more devices. Each device carries its own network collector, evidence
     # sink (interval recordings), and device control — so network collection / video / log /
