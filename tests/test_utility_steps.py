@@ -92,6 +92,7 @@ def test_http_step_succeeds_with_matching_status() -> None:
         assert handler_calls == ["/test"]
     finally:
         server.shutdown()
+        server.server_close()
 
 
 def test_http_step_fails_on_status_mismatch() -> None:
@@ -122,6 +123,7 @@ def test_http_step_fails_on_status_mismatch() -> None:
         assert "status" in (result.failure or "").lower()
     finally:
         server.shutdown()
+        server.server_close()
 
 
 def test_http_step_saves_body_to_vars() -> None:
@@ -156,6 +158,27 @@ def test_http_step_saves_body_to_vars() -> None:
         assert result.ok, result.failure
     finally:
         server.shutdown()
+        server.server_close()
+
+
+def test_http_step_rejects_non_http_scheme() -> None:
+    result = run_scenario(
+        FakeDriver([el("x", "X")]),
+        _scenario({"name": "http file", "steps": [{"http": {"url": "file:///etc/passwd"}}]}),
+        clock=FakeClock(),
+    )
+    assert not result.ok
+    assert "http/https" in (result.failure or "").lower()
+
+
+def test_http_step_handles_connection_error() -> None:
+    result = run_scenario(
+        FakeDriver([el("x", "X")]),
+        _scenario({"name": "http err", "steps": [{"http": {"url": "http://127.0.0.1:1/nope"}}]}),
+        clock=FakeClock(),
+    )
+    assert not result.ok
+    assert "request failed" in (result.failure or "").lower()
 
 
 # --- clearKeychain / clearClipboard runtime ---

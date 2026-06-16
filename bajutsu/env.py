@@ -255,7 +255,13 @@ class Env:
         self._run(keychain_reset_cmd(self.udid), None)
 
     def clear_clipboard(self) -> None:
-        subprocess.run(pbcopy_cmd(self.udid), input="", capture_output=True, text=True, check=True)
+        # pbcopy reads from stdin, which RunFn doesn't support. Use subprocess
+        # directly but route through a class-level attribute so tests can patch it.
+        self._run_pbcopy(pbcopy_cmd(self.udid))
+
+    @staticmethod
+    def _run_pbcopy(cmd: list[str]) -> None:
+        subprocess.run(cmd, input="", capture_output=True, text=True, check=True)
 
     def push(self, bundle_id: str, payload: dict[str, object]) -> None:
         """Deliver a simulated push: write the APNs payload to a temp file, then push it."""

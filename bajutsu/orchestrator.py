@@ -334,6 +334,9 @@ def _do_http(http: HttpRequest, bindings: dict[str, str] | None) -> None:
     import urllib.error
     import urllib.request
 
+    if not http.url.startswith(("http://", "https://")):
+        raise base.SelectorError(f"http: only http/https URLs are allowed, got {http.url!r}")
+
     req = urllib.request.Request(
         http.url,
         data=http.body.encode("utf-8") if http.body else None,
@@ -347,6 +350,8 @@ def _do_http(http: HttpRequest, bindings: dict[str, str] | None) -> None:
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         status = e.code
+    except urllib.error.URLError as e:
+        raise base.SelectorError(f"http: request failed: {e.reason}") from e
     if http.status is not None and status != http.status:
         raise base.SelectorError(f"http: expected status {http.status}, got {status}")
     if http.save_body is not None and bindings is not None:
