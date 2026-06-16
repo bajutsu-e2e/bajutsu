@@ -11,7 +11,7 @@ make -C demos tour                   # または直接:
 ./demos/tour/demo.sh
 ```
 
-専用の [`demo` アプリ](../app/README.md)（onboarding → login → カウンター）に対して動き、3つのフェーズを
+専用の [`demo` アプリ](../app/README.ja.md)（onboarding → login → カウンター）に対して動き、3つのフェーズを
 辿ります:
 
 1. **Run** — 著作済みシナリオ [`counter.yaml`](../app/scenarios/counter.yaml) を Simulator 上で実行。

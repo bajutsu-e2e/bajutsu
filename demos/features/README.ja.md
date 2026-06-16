@@ -12,7 +12,7 @@
 
 ## 実機 Simulator で（`make -C demos features`）
 
-機能シナリオを、専用の [`demo` アプリ](../app/README.md) に対して起動中の Simulator 上で idb 経由で
+機能シナリオを、専用の [`demo` アプリ](../app/README.ja.md) に対して起動中の Simulator 上で idb 経由で
 実行します — タグ＋パラメータ化された共有 `login` コンポーネント＋シークレット変数。決定論的で、
 **APIキー不要**:
 

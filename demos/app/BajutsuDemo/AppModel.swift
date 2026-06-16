@@ -39,6 +39,12 @@ final class AppModel: ObservableObject {
             loginError = true
         } else {
             loginError = false
+            // Clear the password before the field resigns: with no text left in the secure
+            // field, iOS has nothing to offer to save, so its SpringBoard "Save Password?"
+            // prompt never fires. That matters because the deterministic tour/features runs
+            // carry no API key, so the vision-based alert guard can't clear it, and while
+            // it's up idb sees only the app's root node (Home becomes unqueryable).
+            password = ""
             // Dismiss the keyboard so Home's accessibility tree is clean for the query.
             UIApplication.shared.sendAction(
                 #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)

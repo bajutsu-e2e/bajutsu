@@ -52,9 +52,9 @@ struct AuthView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("auth.email")
-            // A real SecureField: iOS offers to save the password on submit. That system
-            // "Save Password?" prompt lives in SpringBoard (invisible to the idb query),
-            // and Bajutsu's alert guard is expected to dismiss it during a run.
+            // A real, masked SecureField — the secret stays dots in every screenshot. iOS's
+            // "Save Password?" prompt is suppressed by clearing the field on successful
+            // login (see AppModel.login), not by weakening the field.
             SecureField("Password", text: $model.password)
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.asciiCapable)

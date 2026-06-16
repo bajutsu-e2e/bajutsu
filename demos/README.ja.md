@@ -53,7 +53,7 @@ make -C demos record     # 本物の Claude による著作、続けて改変 + 
 
 ## アプリ
 
-- **`demo`**（[`app/`](app/README.md)）— onboarding → login → カウンターに絞った、物語全体を語る最小の
+- **`demo`**（[`app/`](app/README.ja.md)）— onboarding → login → カウンターに絞った、物語全体を語る最小の
   アプリ。`tour` と `features` デモがこれを対象にします。
 - **`sample`**（[`features/app/`](features/app/README.md)）— サポートする*あらゆる*操作と証跡の種類を
   網羅するために作られた SwiftUI のフィクスチャ。`webui` ツアーと実機 CI ワークフローがこれを対象に
