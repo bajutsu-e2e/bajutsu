@@ -86,3 +86,13 @@ def test_app_path_parsed() -> None:
 def test_scenarios_parsed() -> None:
     cfg = load_config("apps: { x: { bundleId: com.x, scenarios: scn/dir } }")
     assert resolve(cfg, "x").scenarios == "scn/dir"
+
+
+def test_baselines_parsed() -> None:
+    cfg = load_config("apps: { x: { bundleId: com.x, baselines: baselines/x } }")
+    assert resolve(cfg, "x").baselines == "baselines/x"
+
+
+def test_baselines_defaults_to_none() -> None:
+    cfg = load_config("apps: { x: { bundleId: com.x } }")
+    assert resolve(cfg, "x").baselines is None

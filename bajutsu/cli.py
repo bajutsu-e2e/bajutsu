@@ -292,9 +292,13 @@ def run(
         for s in scenarios:
             if s.mocks:
                 s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
-    # Visual assertions resolve `baseline: <name>` within this directory; default to a
-    # `baselines` folder beside the scenario(s) so the demo / common case needs no flag.
-    baselines_dir = Path(baselines) if baselines else files[0].parent / "baselines"
+    baselines_dir = (
+        Path(baselines)
+        if baselines
+        else Path(eff.baselines)
+        if eff.baselines
+        else files[0].parent / "baselines"
+    )
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # A pool of one-or-more devices. Each device carries its own network collector, evidence
     # sink (interval recordings), and device control — so network collection / video / log /
