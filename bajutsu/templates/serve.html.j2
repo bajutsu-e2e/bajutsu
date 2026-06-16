@@ -8,15 +8,19 @@
 <style>{{ themes_css|safe }}{{ css|safe }}</style></head>
 <body>
 <header>
-  <span class="brand">bajutsu</span>
-  <span class="mut">natural-language authoring · deterministic replay (Tier 1 — not the CI gate)</span>
+  <div class="brandcol">
+    <span class="brand">bajutsu</span>
+    <div class="toptabs">
+      <button class="toptab active" data-view="record">Record</button>
+      <button class="toptab" data-view="replay">Replay</button>
+    </div>
+  </div>
   <button class="cfgbtn" id="opencfg">Open config</button>
   <span class="cfgname" id="cfgname"></span>
-  <div class="toptabs">
-    <button class="toptab active" data-view="record">Record</button>
-    <button class="toptab" data-view="replay">Replay</button>
-  </div>
-  <select class="themepick" id="theme" title="theme" aria-label="theme"></select>
+  <label class="themeswitch" title="dark / light mode">
+    <input type="checkbox" id="theme" aria-label="toggle dark / light mode">
+    <span class="track"><span class="thumb"></span></span>
+  </label>
 </header>
 
 <!-- ===== Record: author a scenario from a natural-language goal ===== -->

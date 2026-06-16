@@ -555,7 +555,7 @@ def test_http_index_inlines_assets(tmp_path: Path) -> None:
         assert '[data-theme="daylight"]' in text  # from serve.themes.css
         assert "--bg2" in text  # from serve.css (theme-aware inset color)
         assert "function showView" in text  # from serve.js
-        assert "const THEMES" in text  # the theme registry
+        assert "function applyTheme" in text  # the dark / light toggle logic
         assert "browseFs" in text  # config-browser JS survives the split
     finally:
         server.shutdown()

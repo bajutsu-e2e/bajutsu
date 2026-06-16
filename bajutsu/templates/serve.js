@@ -14,10 +14,8 @@ async function cancelJob(id,stop){
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function setStatus(el,t,c){el.textContent=t;el.className='status '+c}
 
-// ---- theme picker (matching CSS-variable blocks live in serve.themes.css) ----
-// Add a theme: add a [data-theme="…"] block in serve.themes.css, then add one entry
-// here — the <select> is rendered from THEMES, so it shows up automatically.
-const THEMES=[{value:'midnight',label:'Midnight (dark)'},{value:'daylight',label:'Daylight (light)'}];
+// ---- dark / light toggle (matching CSS-variable blocks live in serve.themes.css) ----
+// Two themes only, driven by a checkbox switch: checked == daylight (light), else midnight (dark).
 function currentTheme(){
   return document.documentElement.getAttribute('data-theme')
     ||localStorage.getItem('bajutsu-theme')
@@ -26,13 +24,12 @@ function currentTheme(){
 function applyTheme(t){
   document.documentElement.setAttribute('data-theme',t);
   try{localStorage.setItem('bajutsu-theme',t)}catch(e){}
-  const sel=$('#theme');if(sel)sel.value=t;
+  const sw=$('#theme');if(sw)sw.checked=(t==='daylight');
 }
 function initTheme(){
-  const sel=$('#theme');
-  sel.innerHTML=THEMES.map(t=>`<option value="${esc(t.value)}">${esc(t.label)}</option>`).join('');
+  const sw=$('#theme');
   applyTheme(currentTheme());
-  sel.addEventListener('change',()=>applyTheme(sel.value));
+  sw.addEventListener('change',()=>applyTheme(sw.checked?'daylight':'midnight'));
 }
 
 // ---- top-level Record / Replay views ----
