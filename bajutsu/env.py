@@ -93,6 +93,15 @@ def push_cmd(udid: str, bundle_id: str, payload_path: str) -> list[str]:
     return ["xcrun", "simctl", "push", udid, bundle_id, payload_path]
 
 
+def keychain_reset_cmd(udid: str) -> list[str]:
+    return ["xcrun", "simctl", "keychain", udid, "reset"]
+
+
+def pbcopy_cmd(udid: str) -> list[str]:
+    """Clear the pasteboard by writing empty data via simctl pbcopy."""
+    return ["xcrun", "simctl", "pbcopy", udid]
+
+
 def install_cmd(udid: str, app_path: str) -> list[str]:
     return ["xcrun", "simctl", "install", udid, app_path]
 
@@ -241,6 +250,12 @@ class Env:
 
     def clear_location(self) -> None:
         self._run(clear_location_cmd(self.udid), None)
+
+    def clear_keychain(self) -> None:
+        self._run(keychain_reset_cmd(self.udid), None)
+
+    def clear_clipboard(self) -> None:
+        subprocess.run(pbcopy_cmd(self.udid), input="", capture_output=True, text=True, check=True)
 
     def push(self, bundle_id: str, payload: dict[str, object]) -> None:
         """Deliver a simulated push: write the APNs payload to a temp file, then push it."""

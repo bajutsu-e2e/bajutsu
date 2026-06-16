@@ -118,6 +118,12 @@ def demo_device() -> None:
         def push(self, payload: dict[str, object]) -> None:
             self.pushes.append(payload)
 
+        def clear_keychain(self) -> None:
+            pass
+
+        def clear_clipboard(self) -> None:
+            pass
+
     ctrl = RecordingControl()
     s = _load("device.yaml")[0]
     r = run_scenario(_driver(), s, control=ctrl)
