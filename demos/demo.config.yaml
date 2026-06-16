@@ -4,7 +4,7 @@
 # automatically (clean reinstall) before each scenario — and `bajutsu serve` builds it on
 # demand when the binary is missing.
 defaults:
-  backend: [idb]
+  backend: [ios]   # platform token -> the idb actuator today (see docs/drivers.md)
   device: "iPhone 15"
   capture: [screenshot.after, elements, actionLog]
 apps:

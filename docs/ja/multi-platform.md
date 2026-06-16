@@ -162,9 +162,16 @@ apps:
 ```
 
 `platform` がどの **環境マネージャ**と **backend レジストリ**を使うかを決めます。スキーマの残り
-（名前空間・redact・setup・capture）は共有のままです。`backends.KNOWN` はプラットフォームスコープになり
-（`{ios: ("idb","xcuitest"), android: ("adb",), web: ("playwright",)}`）、`make_driver` /
-`select_actuator` は解決済みの platform で分岐します。
+（名前空間・redact・setup・capture）は共有のままです。
+
+> **すでに実装済み（選択層のスライス）。** `bajutsu/backends.py` はプラットフォームレジストリで分岐します:
+> `PLATFORMS = {ios: (idb,), android: (adb,), web: (playwright,), fake: (fake,)}`。`--backend` /
+> `backend:` は、素の actuator だけでなく**プラットフォームトークン**（`ios`/`android`/`web`/`fake`）も
+> 受け付けます。プラットフォームは actuator 列へ展開され、`select_actuator` は最初の「実装済み かつ
+> 利用可能」なもの（今日は `idb` / `fake`）を返し、`android` / `web` は明確な「未実装」エラーになります。
+> 実際の第2プラットフォームに残るのは三つ組の残り — プラットフォーム別の**環境マネージャ**（`simctl` の
+> 相当物）と **actuator ドライバ**（`adb` / `playwright`）— と、任意の明示的な `platform` 設定フィールド
+> です。[drivers → バックエンド選択](drivers.md#バックエンド選択と-actuator)を参照。
 
 ---
 

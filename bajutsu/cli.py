@@ -161,7 +161,10 @@ def run(
         "--scenario",
         help="run only this one *.yaml (overrides the app's configured scenarios dir)",
     ),
-    backend: str = typer.Option("", help="comma list; first available is the actuator"),
+    backend: str = typer.Option(
+        "",
+        help="comma list of platforms (ios/android/web/fake) or actuators (idb); first available wins",
+    ),
     tag: str = typer.Option(
         "", "--tag", help="comma list; run only scenarios with any of these tags"
     ),

@@ -1,8 +1,16 @@
 """Backend selection and driver construction.
 
-The backend list is ordered most-stable-first; the actuator is the first one that
-is available in this environment. idb is the only backend today, but the selection
-machinery is kept so another backend can be registered later.
+A backend token names either a **platform** (`ios` / `android` / `web` / `fake`) or a
+concrete **actuator** (e.g. `idb`). A platform expands to its actuators in stability order;
+the chosen actuator is the first one that is implemented and available in this environment.
+
+So `--backend ios` (or `backend: [ios]` in config) resolves to `idb` today, and will pick up
+a richer iOS actuator (XCUITest) when one lands — without the scenario or config changing.
+`android` / `web` are declared so they can be requested now and slot in when built; until then
+requesting them fails with a clear "not implemented yet" pointing at the design. Unknown tokens
+are skipped (forward-compat: an older build can run a config that lists a future backend).
+
+See `docs/multi-platform.md` for the per-platform actuator/environment/id design.
 """
 
 from __future__ import annotations
@@ -11,31 +19,76 @@ import shutil
 from collections.abc import Callable
 
 from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
 from bajutsu.drivers.idb import IdbDriver
 
-KNOWN = ("idb",)
+# Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
+# either a platform token (these keys) or a bare actuator name (the values below).
+PLATFORMS: dict[str, tuple[str, ...]] = {
+    "ios": ("idb",),  # later: ("xcuitest", "idb")
+    "android": ("adb",),
+    "web": ("playwright",),
+    "fake": ("fake",),
+}
 
-# Which executable backs each backend (used by the default availability check).
-_EXECUTABLE = {"idb": "idb"}
+# Every actuator the registry knows about (implemented or planned), de-duplicated in order.
+KNOWN_ACTUATORS: tuple[str, ...] = tuple(
+    dict.fromkeys(a for actuators in PLATFORMS.values() for a in actuators)
+)
+
+# Actuators with a driver today. Requesting a planned-but-absent one (adb / playwright) gives
+# a "not implemented yet" error instead of a generic failure.
+IMPLEMENTED: frozenset[str] = frozenset({"idb", "fake"})
+
+# Which executable backs each actuator (the coarse availability check). `fake` needs none.
+_EXECUTABLE = {"idb": "idb", "adb": "adb", "playwright": "playwright"}
 
 
-def default_available(backend: str) -> bool:
-    """Available if the backend's executable is on PATH (a coarse first check)."""
-    exe = _EXECUTABLE.get(backend)
+def default_available(actuator: str) -> bool:
+    """Available if implemented and its executable is on PATH. `fake` is always available."""
+    if actuator not in IMPLEMENTED:
+        return False
+    if actuator == "fake":
+        return True
+    exe = _EXECUTABLE.get(actuator)
     return exe is not None and shutil.which(exe) is not None
+
+
+def _expand(token: str) -> tuple[str, ...]:
+    """A platform token expands to its actuators; a bare actuator stands for itself."""
+    return PLATFORMS.get(token, (token,))
+
+
+def resolve_actuators(backends: list[str]) -> list[str]:
+    """Expand each backend token (platform alias or actuator) to actuator names, in order."""
+    return [a for token in backends for a in _expand(token)]
 
 
 def select_actuator(
     backends: list[str], available: Callable[[str], bool] = default_available
 ) -> str:
-    """First available backend in stability order."""
-    for b in backends:
-        if b in KNOWN and available(b):
-            return b
-    raise RuntimeError(f"no available actuator among {backends}")
+    """First implemented + available actuator for the requested platforms/actuators."""
+    actuators = resolve_actuators(backends)
+    for a in actuators:
+        if a in KNOWN_ACTUATORS and available(a):
+            return a
+    # Distinguish "recognized but not built yet" from "available but absent" for a useful error.
+    planned = sorted({a for a in actuators if a in KNOWN_ACTUATORS and a not in IMPLEMENTED})
+    if planned:
+        raise RuntimeError(
+            f"backend(s) {planned} are recognized but not implemented yet "
+            f"(see docs/multi-platform.md); requested {backends}"
+        )
+    raise RuntimeError(f"no available actuator among {actuators} (requested {backends})")
 
 
-def make_driver(backend: str, udid: str) -> base.Driver:
-    if backend == "idb":
+def make_driver(actuator: str, udid: str) -> base.Driver:
+    if actuator == "idb":
         return IdbDriver(udid)
-    raise ValueError(f"unknown backend: {backend!r}")
+    if actuator == "fake":
+        return FakeDriver([])
+    if actuator in KNOWN_ACTUATORS:
+        raise NotImplementedError(
+            f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
+        )
+    raise ValueError(f"unknown backend: {actuator!r}")

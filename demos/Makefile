@@ -51,7 +51,7 @@ tour:
 features: app-build
 	cd $(ROOT) && PASSWORD="$${PASSWORD:-s3cr3t}" uv run bajutsu run \
 		--scenario demos/app/scenarios/features.yaml --app demo --config $(CONFIG) \
-		--backend idb --no-network --tag smoke --exclude slow
+		--backend ios --no-network --tag smoke --exclude slow
 
 offline: tour features
 
