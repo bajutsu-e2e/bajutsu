@@ -52,6 +52,9 @@ class DeviceControl(Protocol):
 
     def set_location(self, lat: float, lon: float) -> None: ...
     def push(self, payload: dict[str, object]) -> None: ...
+    def home(self) -> None: ...
+    def override_status_bar(self, **kwargs: str | int) -> None: ...
+    def clear_status_bar(self) -> None: ...
 
 
 def _no_network() -> list[NetworkExchange]:
@@ -151,6 +154,9 @@ def _action_of(step: Step) -> str:
         "relaunch",
         "set_location",
         "push",
+        "background",
+        "override_status_bar",
+        "clear_status_bar",
     ):
         if getattr(step, a) is not None:
             return a
@@ -380,6 +386,39 @@ def _do_action(
         if control is None:
             raise base.UnsupportedAction("push にはデバイス環境が必要（fake driver では実行不可）")
         control.push(step.push.payload)
+        return
+    if step.background is not None:
+        if control is None:
+            raise base.UnsupportedAction(
+                "background にはデバイス環境が必要（fake driver では実行不可）"
+            )
+        control.home()
+        return
+    if step.override_status_bar is not None:
+        if control is None:
+            raise base.UnsupportedAction(
+                "overrideStatusBar にはデバイス環境が必要（fake driver では実行不可）"
+            )
+        osb = step.override_status_bar
+        kwargs: dict[str, str | int] = {}
+        if osb.time is not None:
+            kwargs["time"] = osb.time
+        if osb.battery_level is not None:
+            kwargs["battery_level"] = osb.battery_level
+        if osb.battery_state is not None:
+            kwargs["battery_state"] = osb.battery_state
+        if osb.cellular_bars is not None:
+            kwargs["cellular_bars"] = osb.cellular_bars
+        if osb.wifi_bars is not None:
+            kwargs["wifi_bars"] = osb.wifi_bars
+        control.override_status_bar(**kwargs)
+        return
+    if step.clear_status_bar is not None:
+        if control is None:
+            raise base.UnsupportedAction(
+                "clearStatusBar にはデバイス環境が必要（fake driver では実行不可）"
+            )
+        control.clear_status_bar()
         return
     raise AssertionError("未対応アクション")
 
