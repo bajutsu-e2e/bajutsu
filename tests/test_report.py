@@ -295,13 +295,13 @@ def test_manifest_records_dismissed_alerts() -> None:
 
 def test_screenshot_opens_element_viewer_and_arrows_navigate_steps() -> None:
     # The full-size screenshot preview (lightbox) is gone: clicking a step's screenshot
-    # opens the element viewer, and ← / → walk through every step's elements across the run.
+    # opens the element viewer, and ← / → walk the steps of the current scenario, looping.
     out = html_report("run1", [_passing()])
     assert 'id="lb"' not in out and "lb-nav" not in out and "openLightbox" not in out
     assert "tvOpen(shot.closest('td.ev'))" in out  # the screenshot opens the element viewer
-    assert (
-        "ArrowLeft" in out and "ArrowRight" in out and "tvHosts" in out
-    )  # arrow keys walk the steps
+    assert "ArrowLeft" in out and "ArrowRight" in out  # arrow keys walk the steps
+    # navigation is scoped to one scenario (details.scn) and wraps at the ends
+    assert "tvScopeFor" in out and "details.scn" in out and "% tvScope.length" in out
 
 
 def test_step_click_seeks_without_autoplay() -> None:
@@ -659,9 +659,9 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     # info above the table instead.
     assert 'id="lb"' not in out and "openLightbox" not in out
     assert 'class="tv-step"' in out
-    # prev / next buttons walk to the neighbouring step's screenshot + elements, and the
-    # element filter sits in its own band below the step info (not in the head).
-    assert 'class="tv-nav tv-prev"' in out and 'class="tv-nav tv-next"' in out
+    # the ◀ / ▶ step controls are built under the screenshot (in JS), and the element filter
+    # sits in its own band below the step info (not in the head).
+    assert "tv-shotnav" in out and "tv-prev" in out and "tv-next" in out
     assert 'class="tv-filter"' in out
 
 
