@@ -73,6 +73,61 @@ function closeFs(){$('#fsmodal').hidden=true}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
+
+// ---- Claude API key: shown redacted; reveal fetches the full value on demand ----
+let keyState={set:false,masked:'',full:null,shown:false};
+function setKeyStatus(t,c){const st=$('#keystatus');st.textContent=t;st.className='keystatus '+(c||'')}
+function renderKey(){
+  const cur=$('#keycur'),inp=$('#apikey');
+  if(keyState.set){
+    const disp=(keyState.shown&&keyState.full!=null)?keyState.full:keyState.masked;
+    cur.innerHTML='Current key: <code>'+esc(disp)+'</code>';
+    inp.placeholder='Enter a new key to replace it';
+  }else{cur.textContent='No key set yet.';inp.placeholder='sk-ant-…'}
+  inp.type=keyState.shown?'text':'password';
+  $('#keyreveal').classList.toggle('on',keyState.shown);
+}
+async function loadKey(){
+  let d;try{d=await (await fetch('/api/apikey')).json()}catch(e){d={set:false}}
+  keyState={set:!!d.set,masked:d.masked||'',full:null,shown:false};
+  renderKey();
+}
+async function toggleReveal(){
+  keyState.shown=!keyState.shown;
+  if(keyState.shown&&keyState.set&&keyState.full==null){
+    try{const d=await (await fetch('/api/apikey?reveal=1')).json();keyState.full=d.value||''}catch(e){}
+  }
+  renderKey();
+}
+async function postKey(value){
+  const r=await fetch('/api/apikey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({value})});
+  return r.json();
+}
+async function saveKey(){
+  const inp=$('#apikey'),v=inp.value.trim();
+  if(!v){setKeyStatus('enter a key, or use Clear to remove it','ng');return}
+  setKeyStatus('saving…','');
+  let d;try{d=await postKey(v)}catch(e){d={error:'request failed'}}
+  if(d.error){setKeyStatus(d.error,'ng');return}
+  inp.value='';keyState={set:true,masked:d.masked||'',full:null,shown:false};renderKey();
+  setKeyStatus('saved','ok');
+}
+async function clearKey(){
+  if(!keyState.set){setKeyStatus('no key to clear','ng');return}
+  setKeyStatus('clearing…','');
+  let d;try{d=await postKey('')}catch(e){d={error:'request failed'}}
+  if(d.error){setKeyStatus(d.error,'ng');return}
+  $('#apikey').value='';keyState={set:false,masked:'',full:null,shown:false};renderKey();
+  setKeyStatus('cleared','ok');
+}
+function openKeyModal(){$('#keymodal').hidden=false;$('#apikey').value='';setKeyStatus('','');loadKey()}
+function closeKeyModal(){$('#keymodal').hidden=true}
+$('#openkey').addEventListener('click',openKeyModal);
+$('#keyclose').addEventListener('click',closeKeyModal);
+$('#keymodal').addEventListener('click',e=>{if(e.target===$('#keymodal'))closeKeyModal()});
+$('#keyreveal').addEventListener('click',toggleReveal);
+$('#keysave').addEventListener('click',saveKey);
+$('#keyclear').addEventListener('click',clearKey);
 async function chooseConfig(path){
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
   const d=await r.json();

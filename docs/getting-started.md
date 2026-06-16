@@ -206,7 +206,9 @@ entry points use the same scenario format:
   ```bash
   uv run bajutsu record --app sample --goal "log in and increment the counter to 3"   # writes into the app's scenarios dir
   ```
-  How the authoring loop and the system-alert guard work: [recording](recording.md).
+  In the web UI (`make serve`) the **API key** button does the same: it writes the key to that
+  `.env`, showing it redacted with a reveal toggle. How the authoring loop and the system-alert
+  guard work: [recording](recording.md).
 - **Emit a native XCUITest.** Convert a scenario to Swift (no Bajutsu runtime / AI at test time):
   ```bash
   uv run bajutsu codegen demos/features/app/scenarios/smoke.yaml --app sample -o UITests/Smoke.swift

@@ -14,9 +14,10 @@
       <button class="toptab active" data-view="record">Record</button>
       <button class="toptab" data-view="replay">Replay</button>
       <button class="cfgbtn" id="opencfg">Open config</button>
+      <span class="cfgname" id="cfgname"></span>
+      <button class="cfgbtn" id="openkey">API key</button>
     </div>
   </div>
-  <span class="cfgname" id="cfgname"></span>
   <label class="themeswitch" title="dark / light mode (follows your system by default)">
     <svg class="ico moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     <input type="checkbox" id="theme" aria-label="toggle dark / light mode">
@@ -120,6 +121,25 @@
     <div class="fspath" id="fspath"></div>
     <ul class="fslist" id="fslist"></ul>
     <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>
+  </div>
+</div>
+
+<!-- ===== Claude API key: set/clear the key the AI paths read (record, --dismiss-alerts) ===== -->
+<div class="modal" id="keymodal" hidden>
+  <div class="fsbox">
+    <div class="fshead"><span class="ttl">Claude API key</span><button class="fsclose" id="keyclose">&#10005;</button></div>
+    <div class="keycur" id="keycur"></div>
+    <label class="keylabel" for="apikey">New key</label>
+    <div class="keyrow">
+      <input type="password" id="apikey" class="keyinput" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+      <button class="keyreveal" id="keyreveal" type="button" title="show / hide" aria-label="show / hide the key">&#128065;</button>
+    </div>
+    <div class="keyactions">
+      <button class="cfgbtn keysave" id="keysave">Save</button>
+      <button class="keyclear" id="keyclear">Clear</button>
+      <span class="keystatus" id="keystatus"></span>
+    </div>
+    <div class="fshint">Stored in the project's gitignored <code>.env</code>. Only the AI paths need it: <b>Record</b> and Replay with <code>--dismiss-alerts</code>. A real <code>ANTHROPIC_API_KEY</code> in your shell still takes precedence.</div>
   </div>
 </div>
 <script>{{ js|safe }}</script>

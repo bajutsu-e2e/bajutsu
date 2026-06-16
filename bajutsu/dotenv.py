@@ -53,3 +53,32 @@ def load_dotenv(
             environ[key] = value
             applied.append(key)
     return applied
+
+
+def dotenv_path(base: str | Path = ".") -> Path:
+    """Resolve the .env path: ``DEFAULT_PATH`` as-is if absolute, else under *base*."""
+    p = Path(DEFAULT_PATH)
+    return p if p.is_absolute() else (Path(base) / p)
+
+
+def upsert_dotenv(key: str, value: str | None, path: str | Path = DEFAULT_PATH) -> None:
+    """Set ``key=value`` in the .env at *path*, preserving other lines and comments;
+    ``value=None`` removes the assignment.  Creates the file when a value is given."""
+    file = Path(path)
+    if value is None and not file.exists():
+        return
+    lines = file.read_text(encoding="utf-8").splitlines() if file.exists() else []
+    out: list[str] = []
+    written = False
+    for raw in lines:
+        stripped = raw.strip().removeprefix("export ").strip()
+        if stripped.partition("=")[0].strip() == key:
+            if value is not None and not written:
+                out.append(f"{key}={value}")  # replace the first assignment in place
+                written = True
+            continue  # drop the old assignment (and any later duplicates)
+        out.append(raw)
+    if value is not None and not written:
+        out.append(f"{key}={value}")
+    text = "\n".join(out)
+    file.write_text(text + "\n" if text else "", encoding="utf-8")

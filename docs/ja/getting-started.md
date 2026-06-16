@@ -202,7 +202,9 @@ uv run bajutsu trace               # runs/ 下の最新実行
   ```bash
   uv run bajutsu record --app sample --goal "log in and increment the counter to 3"   # アプリのシナリオディレクトリへ書く
   ```
-  オーサリングループとシステムアラートガードの仕組みは [recording](recording.md) を参照してください。
+  Web UI（`make serve`）の **API key** ボタンでも同じことができます。キーをこの `.env` に書き込み、
+  伏字（redact）表示と表示切り替え（reveal）を備えています。オーサリングループとシステムアラートガードの
+  仕組みは [recording](recording.md) を参照してください。
 - **ネイティブ XCUITest を吐く。** シナリオを Swift へ変換します（テスト時に Bajutsu ランタイム・AI は
   不要です）。
   ```bash

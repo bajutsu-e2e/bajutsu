@@ -17,6 +17,15 @@ from bajutsu import env
 from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenario_file
 
+
+def mask_secret(value: str) -> str:
+    """Redact a secret for display: keep a short head and tail, hide the rest.  Short values
+    (≤8 chars) are fully masked so nothing useful leaks."""
+    if len(value) <= 8:
+        return "•" * len(value)
+    return f"{value[:4]}…{value[-4:]}"
+
+
 # --- query helpers ---
 
 

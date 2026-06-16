@@ -56,6 +56,17 @@ def test_list_apps(tmp_path: Path) -> None:
     assert srv.list_apps(cfg) == ["demo", "other"]
 
 
+def test_mask_secret_keeps_head_and_tail() -> None:
+    masked = srv.mask_secret("sk-ant-api03-abcdefXYZ")
+    assert masked == "sk-a…fXYZ"  # head 4 + … + tail 4
+    assert "abcdef" not in masked
+
+
+def test_mask_secret_fully_hides_short_values() -> None:
+    assert srv.mask_secret("short") == "•••••"
+    assert srv.mask_secret("") == ""
+
+
 def test_list_scenarios_includes_descriptions(tmp_path: Path) -> None:
     d = tmp_path / "scn"
     d.mkdir()
@@ -942,6 +953,49 @@ def test_http_approve_rejects_traversal(tmp_path: Path) -> None:
         )
         assert code == 400 and "escape" in body["error"]
         assert not (tmp_path / "escape.png").exists()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_api_key_set_reveal_and_clear(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Round-trip the Claude API key through the WebUI: unset → set (redacted) → reveal → clear,
+    landing in the project .env so a spawned job picks it up."""
+    scn_dir, cfg, runs = _project(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)  # clean start + auto-restore at teardown
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        assert _get_json(port, "/api/apikey") == {"set": False}
+        # Set it: the response redacts the value, and it is written to .env.
+        code, body = _post(port, "/api/apikey", {"value": "sk-ant-secret-12345"})
+        assert code == 200 and body["set"] is True
+        assert body["masked"] == "sk-a…2345" and "secret" not in body["masked"]
+        assert "ANTHROPIC_API_KEY=sk-ant-secret-12345" in (tmp_path / ".env").read_text()
+        # GET is redacted by default; ?reveal=1 returns the full value.
+        assert _get_json(port, "/api/apikey") == {"set": True, "masked": "sk-a…2345"}
+        assert _get_json(port, "/api/apikey?reveal=1")["value"] == "sk-ant-secret-12345"
+        # An empty value clears it.
+        code, body = _post(port, "/api/apikey", {"value": ""})
+        assert code == 200 and body["set"] is False
+        assert _get_json(port, "/api/apikey") == {"set": False}
+        assert "ANTHROPIC_API_KEY" not in (tmp_path / ".env").read_text()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_api_key_rejects_whitespace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    scn_dir, cfg, runs = _project(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        code, body = _post(port, "/api/apikey", {"value": "sk ant with spaces"})
+        assert code == 400 and "whitespace" in body["error"]
+        assert _get_json(port, "/api/apikey") == {"set": False}
     finally:
         server.shutdown()
         server.server_close()

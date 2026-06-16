@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.dotenv import load_dotenv, parse_dotenv
+from bajutsu.dotenv import load_dotenv, parse_dotenv, upsert_dotenv
 
 
 def test_parse_basic_pairs() -> None:
@@ -55,3 +55,31 @@ def test_load_missing_file_is_noop(tmp_path: Path) -> None:
     environ: dict[str, str] = {}
     assert load_dotenv(tmp_path / "nope.env", environ) == []
     assert environ == {}
+
+
+def test_upsert_creates_file_and_adds_key(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    upsert_dotenv("ANTHROPIC_API_KEY", "sk-ant-new", env_file)
+    assert parse_dotenv(env_file.read_text(encoding="utf-8")) == {"ANTHROPIC_API_KEY": "sk-ant-new"}
+
+
+def test_upsert_replaces_in_place_and_keeps_other_lines(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("# secrets\nANTHROPIC_API_KEY=old\nOTHER=keep\n", encoding="utf-8")
+    upsert_dotenv("ANTHROPIC_API_KEY", "new", env_file)
+    text = env_file.read_text(encoding="utf-8")
+    assert "# secrets" in text and "OTHER=keep" in text
+    assert parse_dotenv(text) == {"ANTHROPIC_API_KEY": "new", "OTHER": "keep"}
+
+
+def test_upsert_none_removes_key_only(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("ANTHROPIC_API_KEY=old\nOTHER=keep\n", encoding="utf-8")
+    upsert_dotenv("ANTHROPIC_API_KEY", None, env_file)
+    assert parse_dotenv(env_file.read_text(encoding="utf-8")) == {"OTHER": "keep"}
+
+
+def test_upsert_none_on_missing_file_is_noop(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    upsert_dotenv("ANTHROPIC_API_KEY", None, env_file)
+    assert not env_file.exists()

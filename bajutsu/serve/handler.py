@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import json
 import mimetypes
+import os
 import shutil
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu import dotenv
 from bajutsu.config import load_config
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.helpers import (
@@ -26,12 +28,16 @@ from bajutsu.serve.helpers import (
     list_runs,
     list_scenarios,
     list_simulators,
+    mask_secret,
     record_command,
     run_command,
     scenario_out_path,
     unique_scenario_path,
 )
 from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job, run_job
+
+# The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
+_API_KEY_VAR = "ANTHROPIC_API_KEY"
 
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
@@ -74,6 +80,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         self._json(list_fs(state.root, next(iter(qs.get("dir") or []), None)))
                     except (ValueError, OSError) as e:
                         self._json({"error": str(e)}, 400)
+                case "/api/apikey":
+                    qs = parse_qs(urlparse(self.path).query)
+                    self._get_api_key(reveal=bool(next(iter(qs.get("reveal") or []), "")))
                 case "/api/simulators":
                     self._json(list_simulators(state.simctl))
                 case "/api/runs":
@@ -109,6 +118,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             match path:
                 case "/api/config":
                     self._post_config(body)
+                case "/api/apikey":
+                    self._post_api_key(body)
                 case "/api/run":
                     self._post_run(body)
                 case "/api/record":
@@ -155,6 +166,43 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             state.config = target
             self._json({"ok": True, "config": str(target), "apps": list_apps(target)})
+
+        def _effective_api_key(self) -> str | None:
+            """The Claude API key a spawned job would use: the project ``.env`` wins (the WebUI
+            manages it there), else whatever is already in the serve process's environment."""
+            env_file = dotenv.dotenv_path(state.cwd)
+            if env_file.exists():
+                val = dotenv.parse_dotenv(env_file.read_text(encoding="utf-8")).get(_API_KEY_VAR)
+                if val:
+                    return val
+            return os.environ.get(_API_KEY_VAR) or None
+
+        def _get_api_key(self, reveal: bool) -> None:
+            """Report whether a key is set, with a redacted preview.  ``?reveal=1`` adds the
+            full value — only on explicit request, and this server binds to localhost."""
+            key = self._effective_api_key()
+            payload: dict[str, Any] = {"set": key is not None}
+            if key is not None:
+                payload["masked"] = mask_secret(key)
+                if reveal:
+                    payload["value"] = key
+            self._json(payload)
+
+        def _post_api_key(self, body: dict[str, Any]) -> None:
+            """Persist the Claude API key to the project ``.env`` (an empty value clears it) and
+            mirror it into the serve process's environment so the change takes effect at once."""
+            value = str(body.get("value", "") or "").strip()
+            if value and any(c.isspace() for c in value):
+                self._json({"error": "the API key must not contain whitespace"}, 400)
+                return
+            env_file = dotenv.dotenv_path(state.cwd)
+            dotenv.upsert_dotenv(_API_KEY_VAR, value or None, env_file)
+            if value:
+                os.environ[_API_KEY_VAR] = value
+                self._json({"ok": True, "set": True, "masked": mask_secret(value)})
+            else:
+                os.environ.pop(_API_KEY_VAR, None)
+                self._json({"ok": True, "set": False})
 
         def _post_run(self, body: dict[str, Any]) -> None:
             cfg = state.config
