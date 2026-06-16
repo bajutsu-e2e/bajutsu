@@ -8,6 +8,7 @@ in the real environment, so the file is a fallback, not an override.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import MutableMapping
 from pathlib import Path
@@ -82,3 +83,8 @@ def upsert_dotenv(key: str, value: str | None, path: str | Path = DEFAULT_PATH) 
         out.append(f"{key}={value}")
     text = "\n".join(out)
     file.write_text(text + "\n" if text else "", encoding="utf-8")
+    # A .env stores secrets in clear text by design — it is gitignored and the loader reads it
+    # verbatim as KEY=VALUE, so there is no key to encrypt against. Restrict it to the owner so
+    # other local accounts can't read the secret (best effort; chmod is a no-op on some FSes).
+    with contextlib.suppress(OSError):
+        file.chmod(0o600)

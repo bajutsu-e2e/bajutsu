@@ -83,3 +83,9 @@ def test_upsert_none_on_missing_file_is_noop(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     upsert_dotenv("ANTHROPIC_API_KEY", None, env_file)
     assert not env_file.exists()
+
+
+def test_upsert_restricts_file_to_owner(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env"
+    upsert_dotenv("ANTHROPIC_API_KEY", "sk-ant-secret", env_file)
+    assert env_file.stat().st_mode & 0o777 == 0o600  # owner read/write only
