@@ -163,6 +163,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 |---|---|---|
 | [BE-0027](BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md) | `mockServer`（外部モック） | 保留 |
 | [BE-0028](BE-0028-evidence-rule-overmatch-guard/BE-0028-evidence-rule-overmatch-guard-ja.md) | 証跡ルールの過剰マッチ対策 | 提案 |
+| [BE-XXXX](BE-XXXX-roadmap-id-selftest/BE-XXXX-roadmap-id-selftest-ja.md) | ロードマップ ID 採番のセルフテスト | 提案 |
 
 ### 競合調査（MagicPod / Autify）由来の候補
 
