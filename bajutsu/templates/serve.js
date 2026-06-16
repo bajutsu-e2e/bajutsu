@@ -14,25 +14,30 @@ async function cancelJob(id,stop){
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function setStatus(el,t,c){el.textContent=t;el.className='status '+c}
 
-// ---- theme picker (matching CSS-variable blocks live in serve.themes.css) ----
-// Add a theme: add a [data-theme="…"] block in serve.themes.css, then add one entry
-// here — the <select> is rendered from THEMES, so it shows up automatically.
-const THEMES=[{value:'midnight',label:'Midnight (dark)'},{value:'daylight',label:'Daylight (light)'}];
+// ---- dark / light toggle (matching CSS-variable blocks live in serve.themes.css) ----
+// Two themes only, driven by a checkbox switch: checked == daylight (light), else midnight (dark).
+// Default behaviour follows the OS and updates live; a manual flip persists until the OS changes.
+const SYS_MQ=matchMedia('(prefers-color-scheme: light)');
+function systemTheme(){return SYS_MQ.matches?'daylight':'midnight'}
 function currentTheme(){
   return document.documentElement.getAttribute('data-theme')
     ||localStorage.getItem('bajutsu-theme')
-    ||(matchMedia('(prefers-color-scheme: light)').matches?'daylight':'midnight');
+    ||systemTheme();
 }
-function applyTheme(t){
+function applyTheme(t,persist){
   document.documentElement.setAttribute('data-theme',t);
-  try{localStorage.setItem('bajutsu-theme',t)}catch(e){}
-  const sel=$('#theme');if(sel)sel.value=t;
+  try{if(persist)localStorage.setItem('bajutsu-theme',t)}catch(e){}
+  const sw=$('#theme');if(sw)sw.checked=(t==='daylight');
 }
 function initTheme(){
-  const sel=$('#theme');
-  sel.innerHTML=THEMES.map(t=>`<option value="${esc(t.value)}">${esc(t.label)}</option>`).join('');
-  applyTheme(currentTheme());
-  sel.addEventListener('change',()=>applyTheme(sel.value));
+  const sw=$('#theme');
+  applyTheme(currentTheme(),false);
+  // Manual flip wins for now and is remembered.
+  sw.addEventListener('change',()=>applyTheme(sw.checked?'daylight':'midnight',true));
+  // An OS theme change drops any manual override and adopts the new system mode.
+  const onSys=()=>{try{localStorage.removeItem('bajutsu-theme')}catch(e){}applyTheme(systemTheme(),false)};
+  if(SYS_MQ.addEventListener)SYS_MQ.addEventListener('change',onSys);
+  else if(SYS_MQ.addListener)SYS_MQ.addListener(onSys);
 }
 
 // ---- top-level Record / Replay views ----
@@ -68,6 +73,61 @@ function closeFs(){$('#fsmodal').hidden=true}
 $('#opencfg').addEventListener('click',openFs);
 $('#fsclose').addEventListener('click',closeFs);
 $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()});
+
+// ---- Claude API key: shown redacted; reveal fetches the full value on demand ----
+let keyState={set:false,masked:'',full:null,shown:false};
+function setKeyStatus(t,c){const st=$('#keystatus');st.textContent=t;st.className='keystatus '+(c||'')}
+function renderKey(){
+  const cur=$('#keycur'),inp=$('#apikey');
+  if(keyState.set){
+    const disp=(keyState.shown&&keyState.full!=null)?keyState.full:keyState.masked;
+    cur.innerHTML='Current key: <code>'+esc(disp)+'</code>';
+    inp.placeholder='Enter a new key to replace it';
+  }else{cur.textContent='No key set yet.';inp.placeholder='sk-ant-…'}
+  inp.type=keyState.shown?'text':'password';
+  $('#keyreveal').classList.toggle('on',keyState.shown);
+}
+async function loadKey(){
+  let d;try{d=await (await fetch('/api/apikey')).json()}catch(e){d={set:false}}
+  keyState={set:!!d.set,masked:d.masked||'',full:null,shown:false};
+  renderKey();
+}
+async function toggleReveal(){
+  keyState.shown=!keyState.shown;
+  if(keyState.shown&&keyState.set&&keyState.full==null){
+    try{const d=await (await fetch('/api/apikey?reveal=1')).json();keyState.full=d.value||''}catch(e){}
+  }
+  renderKey();
+}
+async function postKey(value){
+  const r=await fetch('/api/apikey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({value})});
+  return r.json();
+}
+async function saveKey(){
+  const inp=$('#apikey'),v=inp.value.trim();
+  if(!v){setKeyStatus('enter a key, or use Clear to remove it','ng');return}
+  setKeyStatus('saving…','');
+  let d;try{d=await postKey(v)}catch(e){d={error:'request failed'}}
+  if(d.error){setKeyStatus(d.error,'ng');return}
+  inp.value='';keyState={set:true,masked:d.masked||'',full:null,shown:false};renderKey();
+  setKeyStatus('saved','ok');
+}
+async function clearKey(){
+  if(!keyState.set){setKeyStatus('no key to clear','ng');return}
+  setKeyStatus('clearing…','');
+  let d;try{d=await postKey('')}catch(e){d={error:'request failed'}}
+  if(d.error){setKeyStatus(d.error,'ng');return}
+  $('#apikey').value='';keyState={set:false,masked:'',full:null,shown:false};renderKey();
+  setKeyStatus('cleared','ok');
+}
+function openKeyModal(){$('#keymodal').hidden=false;$('#apikey').value='';setKeyStatus('','');loadKey()}
+function closeKeyModal(){$('#keymodal').hidden=true}
+$('#openkey').addEventListener('click',openKeyModal);
+$('#keyclose').addEventListener('click',closeKeyModal);
+$('#keymodal').addEventListener('click',e=>{if(e.target===$('#keymodal'))closeKeyModal()});
+$('#keyreveal').addEventListener('click',toggleReveal);
+$('#keysave').addEventListener('click',saveKey);
+$('#keyclear').addEventListener('click',clearKey);
 async function chooseConfig(path){
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
   const d=await r.json();

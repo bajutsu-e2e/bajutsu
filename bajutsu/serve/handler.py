@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import json
 import mimetypes
+import os
 import shutil
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,12 +27,16 @@ from bajutsu.serve.helpers import (
     list_runs,
     list_scenarios,
     list_simulators,
+    mask_secret,
     record_command,
     run_command,
     scenario_out_path,
     unique_scenario_path,
 )
 from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job, run_job
+
+# The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
+_API_KEY_VAR = "ANTHROPIC_API_KEY"
 
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
@@ -74,6 +79,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         self._json(list_fs(state.root, next(iter(qs.get("dir") or []), None)))
                     except (ValueError, OSError) as e:
                         self._json({"error": str(e)}, 400)
+                case "/api/apikey":
+                    qs = parse_qs(urlparse(self.path).query)
+                    self._get_api_key(reveal=bool(next(iter(qs.get("reveal") or []), "")))
                 case "/api/simulators":
                     self._json(list_simulators(state.simctl))
                 case "/api/runs":
@@ -109,6 +117,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             match path:
                 case "/api/config":
                     self._post_config(body)
+                case "/api/apikey":
+                    self._post_api_key(body)
                 case "/api/run":
                     self._post_run(body)
                 case "/api/record":
@@ -155,6 +165,35 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             state.config = target
             self._json({"ok": True, "config": str(target), "apps": list_apps(target)})
+
+        def _get_api_key(self, reveal: bool) -> None:
+            """Report whether a key is set in the serve process's environment, with a redacted
+            preview.  ``?reveal=1`` adds the full value — only on explicit request, and this
+            server binds to localhost."""
+            key = os.environ.get(_API_KEY_VAR) or None
+            payload: dict[str, Any] = {"set": key is not None}
+            if key is not None:
+                payload["masked"] = mask_secret(key)
+                if reveal:
+                    payload["value"] = key
+            self._json(payload)
+
+        def _post_api_key(self, body: dict[str, Any]) -> None:
+            """Set the Claude API key in the serve process's environment for this session (an
+            empty value clears it).  It is held in memory only — never written to disk — and
+            spawned record/run jobs inherit it via the process environment.  It is not persisted,
+            so it must be re-entered after a restart (or set a real ``ANTHROPIC_API_KEY`` /
+            ``.env`` for the serve process to pick up at startup)."""
+            value = str(body.get("value", "") or "").strip()
+            if value and any(c.isspace() for c in value):
+                self._json({"error": "the API key must not contain whitespace"}, 400)
+                return
+            if value:
+                os.environ[_API_KEY_VAR] = value
+                self._json({"ok": True, "set": True, "masked": mask_secret(value)})
+            else:
+                os.environ.pop(_API_KEY_VAR, None)
+                self._json({"ok": True, "set": False})
 
         def _post_run(self, body: dict[str, Any]) -> None:
             cfg = state.config
