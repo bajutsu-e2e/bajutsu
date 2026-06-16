@@ -189,6 +189,19 @@ apps:
     idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
 ```
 
+## Demos
+
+Three runnable demos, ordered by setup ([`demos/`](demos/README.md)):
+
+- **[tour](demos/tour/README.md)** — `uv run python demos/tour/tour.py`. The whole lifecycle
+  (author → run → modify → diagnose) on the real pipeline, with **zero setup**: no Simulator,
+  no idb, no API key. The 60-second first look.
+- **[features](demos/features/WEBUI.md)** — `make -C demos/features serve`. The **Web UI** tour:
+  drive a real Simulator and browse every evidence type (screenshots, video, logs, network,
+  visual regression, system-alert handling). The headline demo for iOS developers.
+- **[record](demos/record/README.md)** — `./demos/record/demo.sh`. AI authoring with real
+  Claude on a booted app, then the modify-and-self-heal (`triage`) loop.
+
 ## Development
 
 ```bash

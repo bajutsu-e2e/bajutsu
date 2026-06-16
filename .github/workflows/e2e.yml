@@ -8,20 +8,10 @@ name: E2E (Simulator)
 
 on:
   workflow_dispatch:
-  # Only on PRs that touch what an on-device run actually exercises — the app, the SDK,
-  # the runtime, the build/deps, or this workflow itself. Docs-only PRs skip the (metered)
-  # macOS run.
+  # Trigger on every PR so the `e2e` gate job always reports a status (required checks
+  # that never run stay pending and block merges). The metered macOS jobs themselves are
+  # path-gated by the `changes` job below — docs-only PRs skip them and the gate passes.
   pull_request:
-    paths:
-      - "bajutsu/**"
-      - "BajutsuKit/**"
-      - "demos/features/app/**"
-      - "demos/features/demo.config.yaml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "Makefile"
-      - ".github/workflows/e2e.yml"
-      - ".github/actions/bajutsu-e2e/**"
 
 permissions:
   contents: read
@@ -31,8 +21,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide whether an on-device run is warranted. The macOS jobs only fire when the PR
+  # touches what they exercise — the app, the SDK, the runtime, the build/deps, or the E2E
+  # workflow/action itself. Manual runs (no PR context) always count as relevant.
+  changes:
+    name: detect relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          fetch-depth: 0
+      - name: Detect relevant paths
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -z "$BASE_SHA" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$changed"
+          if echo "$changed" | grep -qE '^(bajutsu/|BajutsuKit/|demos/features/app/|demos/features/demo\.config\.yaml|pyproject\.toml|uv\.lock|Makefile|\.github/workflows/e2e\.yml|\.github/actions/bajutsu-e2e/)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
   smoke:
     name: smoke (idb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -74,6 +97,8 @@ jobs:
   # has to exercise the generated Swift natively (not just the idb runtime above).
   xcuitest:
     name: xcuitest (codegen)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -108,3 +133,26 @@ jobs:
           name: xcuitest-result
           path: demos/features/app/build/dd/Logs/Test/*.xcresult
           if-no-files-found: ignore
+
+  # Single required status check for E2E. Always runs so it reports even when the macOS
+  # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
+  # failure or cancellation fails the gate. Make `E2E` the required check, not the
+  # path-gated macOS jobs.
+  e2e:
+    name: E2E
+    needs: [changes, smoke, xcuitest]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check E2E results
+        env:
+          SMOKE: ${{ needs.smoke.result }}
+          XCUITEST: ${{ needs.xcuitest.result }}
+        run: |
+          echo "smoke=$SMOKE xcuitest=$XCUITEST"
+          if [ "$SMOKE" = "failure" ] || [ "$SMOKE" = "cancelled" ] || \
+             [ "$XCUITEST" = "failure" ] || [ "$XCUITEST" = "cancelled" ]; then
+            echo "E2E failed"
+            exit 1
+          fi
+          echo "E2E passed (or skipped — no on-device change)"

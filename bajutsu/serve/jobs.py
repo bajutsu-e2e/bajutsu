@@ -104,7 +104,9 @@ def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:
 
 
 def _spawn_env() -> dict[str, str]:
-    """Ensure the venv bin dir (where the ``idb`` client lives) is on PATH for the run."""
+    """The child env for a spawned run/record: the venv bin dir (where the ``idb`` client lives)
+    on PATH.  Inherits the serve process's environment, so an ``ANTHROPIC_API_KEY`` set from the
+    WebUI (which writes only into ``os.environ``) is carried through to the job."""
     e = dict(os.environ)
     bindir = str(Path(sys.executable).parent)
     e["PATH"] = bindir + os.pathsep + e.get("PATH", "")

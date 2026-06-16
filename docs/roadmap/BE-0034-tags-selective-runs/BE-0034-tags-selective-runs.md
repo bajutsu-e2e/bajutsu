@@ -4,6 +4,7 @@
 
 * Proposal: [BE-0034](BE-0034-tags-selective-runs.md)
 * Status: **Implemented**
+* Implementing PR: [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6)
 * Track: [Accepted](../README.md#accepted)
 * Topic: Candidates from competitive research (MagicPod / Autify)
 * Origin: MagicPod

@@ -185,6 +185,9 @@ def _plan_goal(agent: Agent, goal: str, say: Reporter) -> list[str]:
     planner = getattr(agent, "plan", None)
     if planner is None:
         return []
+    # Announce before the call, not after: planning is a (slow) LLM round-trip, so without
+    # this the watcher stares at a silent screen between the goal and the plan appearing.
+    say("\U0001f9ed thinking about how to approach the goal …")
     try:
         plan = [str(step) for step in planner(goal)]
     except Exception as exc:

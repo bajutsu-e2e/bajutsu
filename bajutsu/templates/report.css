@@ -93,32 +93,49 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
 .tv{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;
  justify-content:center;z-index:50}
 .tv.open{display:flex}
-.tv-box{background:var(--card);color:var(--ink);width:min(94vw,1040px);max-height:84vh;border-radius:10px;
+.tv-box{position:relative;background:var(--card);color:var(--ink);width:min(94vw,1040px);max-height:84vh;border-radius:10px;
  box-shadow:0 10px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}
-.tv-head{display:flex;gap:.5rem;align-items:center;padding:.55rem .7rem;border-bottom:1px solid var(--line)}
-.tv-title{font:600 .9rem -apple-system,system-ui,sans-serif}
+/* ◀ / ▶ walk to the previous / next step's screenshot + elements (same as the arrow keys). */
+.tv-nav{flex:none;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;
+ padding:.18rem .5rem;font-size:.8rem;line-height:1;cursor:pointer}
+.tv-nav:hover:not(:disabled){border-color:#0a6cff;color:#0a6cff}
+.tv-nav:disabled{opacity:.35;cursor:default}
+/* Element filter, on its own row below the step-info band. */
+.tv-filter{flex:none;display:flex;gap:.5rem;align-items:center;padding:.45rem .7rem;border-bottom:1px solid var(--line)}
 .tvfilter{flex:1;padding:.32rem .55rem;border:1px solid var(--line);border-radius:6px;font:inherit;
  font-size:.84rem;background:var(--bg);color:var(--ink)}
 .tvcount{flex:none}
-.tv-close{flex:none;border:0;background:transparent;color:var(--mut);font-size:1.05rem;line-height:1;cursor:pointer}
+/* Close floats in the box's top-right corner; the step band is the topmost row, so each
+   top row reserves a little right padding to clear it. */
+.tv-close{position:absolute;top:.35rem;right:.5rem;z-index:1;border:0;background:transparent;
+ color:var(--mut);font-size:1.05rem;line-height:1;cursor:pointer}
+.tv-close:hover{color:var(--ink)}
 /* Step-info band above the element table: the step's number, result/action badges and
    tokenized detail, cloned from the step's own row so the elements read in context. */
 .tv-step{flex:none;display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;
- padding:.45rem .7rem;border-bottom:1px solid var(--line);background:#fafafb}
+ padding:.45rem 2rem .45rem .7rem;border-bottom:1px solid var(--line);background:#fafafb}
 .tv-step[hidden]{display:none}
 .tv-stepnum{font:700 .78rem -apple-system,system-ui,sans-serif;color:var(--mut)}
 .tv-stepdesc{font:.82rem/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--ink);word-break:break-word}
 .tv-stepat{margin-left:auto;font:600 .72rem/1 ui-monospace,Menlo,Consolas,monospace}
-.tv-body{flex:1 1 auto;min-height:0;overflow:auto;padding:.3rem .6rem .6rem;display:flex;gap:.7rem;align-items:flex-start}
-.tv-shot{flex:none;position:sticky;top:0;align-self:flex-start}
+/* The viewer body itself never scrolls: the screenshot stays fixed and only the element
+   list (.tv-tree) scrolls, so the ◀ N/M ▶ bar pinned under it is always visible. */
+.tv-body{flex:1 1 auto;min-height:0;overflow:hidden;padding:.3rem .6rem .6rem;display:flex;gap:.7rem}
+.tv-shot{flex:none;align-self:flex-start}
 .tv-shotframe{position:relative;display:inline-block;line-height:0}
 .tv-shot img{display:block;width:auto;max-width:300px;max-height:72vh;border:1px solid var(--line);
  border-radius:6px;background:#fafafa}
+/* Element list column: the table scrolls internally; the step-nav bar is pinned beneath it. */
+.tv-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+/* ◀ N/M ▶ step controls, centered below the element list and always visible. */
+.tv-treenav{flex:none;display:flex;align-items:center;justify-content:center;gap:.6rem;
+ margin-top:.45rem;padding-top:.45rem;border-top:1px solid var(--line)}
+.tv-pos{font:600 .78rem/1 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);min-width:2.6em;text-align:center}
 /* Highlight box overlaying the screenshot, sized as a % of the screen rect so it tracks
    the displayed image at any scale. Positioned on row hover (tv-hl), updated in JS. */
 .tv-hl{position:absolute;border:2px solid #0a6cff;background:rgba(10,108,255,.18);
  border-radius:2px;pointer-events:none;box-shadow:0 0 0 1px rgba(255,255,255,.7);box-sizing:border-box}
-.tv-tree{flex:1;min-width:0}
+.tv-tree{flex:1;min-width:0;min-height:0;overflow:auto}
 .tvtbl tr.tvrow:hover td{background:#eef4ff}
 .tvtbl{border-collapse:collapse;width:100%;font:.8rem/1.5 ui-monospace,Menlo,Consolas,monospace}
 .tvtbl th{position:sticky;top:0;background:var(--card);text-align:left;padding:.3rem .4rem;
@@ -303,6 +320,7 @@ tr.visrow>td{background:#fafafb}
  .nxmock{color:#c79bea;background:#2a2140;border-color:#42305e}
  details.pre>summary{background:#2a2b2f}
  .tv-step{background:#1b1c1f}
+ .tv-nav:hover:not(:disabled){border-color:#5b9cff;color:#5b9cff}
  tr.ng{background:#3a2422}
  tr.srow:hover td,tr.xrow:hover td,.tvtbl tr.tvrow:hover td{background:#2a2f3a}
  tr.srow.playing td{background:#3a3520}

@@ -74,6 +74,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "demos/**" = ["ANN", "T20"]
 "tests/**" = ["ANN", "T20"]
+"scripts/**" = ["T20"]  # CLI helper scripts print progress to stdout
 
 [tool.pytest.ini_options]
 addopts = "-n auto"

@@ -110,18 +110,21 @@
   };
   // Element viewer: clicking a step's screenshot (or its "tree" button) opens that step's
   // captured accessibility elements in an overlay — embedded inline, so it works offline
-  // (no new tab). The step's own info is shown above the element table, and ← / → walk
-  // through every step's elements across the run.
+  // (no new tab). The step's own info is shown above the element table; ◀ / ▶ (and the
+  // ← / → keys) walk the steps of the *current scenario only*, wrapping around at the ends.
   var tv = document.getElementById('tv');
   var tvBody = tv && tv.querySelector('.tv-body');
   var tvStep = tv && tv.querySelector('.tv-step');
   var tvInput = tv && tv.querySelector('.tvfilter');
   var tvCount = tv && tv.querySelector('.tvcount');
-  // Every step "view" cell carrying embedded element data, in document order — the walk
-  // order for the ← / → keys.
-  var tvHosts = Array.prototype.slice.call(document.querySelectorAll('td.ev')).filter(function(td){
-    return td.querySelector('template.treedata');
-  });
+  // The step "view" cells with embedded element data within one scenario, in document order.
+  function tvScopeFor(host){
+    var scn = host.closest('details.scn') || document;
+    return Array.prototype.slice.call(scn.querySelectorAll('td.ev')).filter(function(td){
+      return td.querySelector('template.treedata');
+    });
+  }
+  var tvScope = [];   // hosts in the currently shown scenario — the loop the arrows walk
   var tvIndex = -1;
   // Screen extent (points) of the currently shown step, used to map an element's frame
   // onto the screenshot. Seeded from the element bounding box, refined from the shot's
@@ -149,7 +152,12 @@
     });
     if(tvCount) tvCount.textContent = n + (n === 1 ? ' element' : ' elements');
   }
-  function tvClose(){ if(tv){ tv.classList.remove('open'); if(tvBody) tvBody.innerHTML = ''; tvIndex = -1; } }
+  function tvClose(){ if(tv){ tv.classList.remove('open'); if(tvBody) tvBody.innerHTML = ''; tvScope = []; tvIndex = -1; } }
+  // Step by ±1 within the scenario, wrapping at the ends (no-op for a single-step scenario).
+  function tvGo(delta){
+    if(tvScope.length < 2) return;
+    tvOpen(tvScope[(tvIndex + delta + tvScope.length) % tvScope.length]);
+  }
   // The step-info band above the element table: step number, result/action badges and
   // the tokenized detail, cloned from the step's own row.
   function tvBuildStep(host){
@@ -170,25 +178,47 @@
   function tvOpen(host){
     if(!host || !tv || !tvBody) return;
     var tpl = host.querySelector('template.treedata'); if(!tpl) return;
-    tvIndex = tvHosts.indexOf(host);
+    tvScope = tvScopeFor(host);
+    tvIndex = tvScope.indexOf(host);
     tvBuildStep(host);
     tvBody.innerHTML = '';
     // Show the step's screenshot beside its elements so the two can be read together;
-    // hovering an element row highlights its frame on the shot (tv-hl overlay).
+    // hovering an element row highlights its frame on the shot (tv-hl overlay). The screenshot
+    // stays fixed; only the element list scrolls, with the ◀ / ▶ controls pinned beneath it.
     var shot = host.querySelector('img.shot'), imEl = null;
+    var sd = document.createElement('div'); sd.className = 'tv-shot';
     if(shot){
-      var sd = document.createElement('div'); sd.className = 'tv-shot';
       var frame = document.createElement('div'); frame.className = 'tv-shotframe';
       imEl = document.createElement('img'); imEl.alt = 'step screenshot';
       imEl.src = shot.getAttribute('src');
       var hl = document.createElement('div'); hl.className = 'tv-hl'; hl.hidden = true;
-      frame.appendChild(imEl); frame.appendChild(hl); sd.appendChild(frame); tvBody.appendChild(sd);
+      frame.appendChild(imEl); frame.appendChild(hl); sd.appendChild(frame);
     }
+    tvBody.appendChild(sd);
+    // Element list (scrolls internally) with the step-nav bar pinned below it.
+    var main = document.createElement('div'); main.className = 'tv-main';
     var tree = document.createElement('div'); tree.className = 'tv-tree';
     tree.innerHTML = tpl.innerHTML;
     tree.addEventListener('mouseover', function(e){ var tr = e.target.closest('tr.tvrow'); if(tr) tvHighlight(tr); });
     tree.addEventListener('mouseleave', tvUnhighlight);
-    tvBody.appendChild(tree);
+    main.appendChild(tree);
+    var nav = document.createElement('div'); nav.className = 'tv-treenav';
+    function navBtn(cls, glyph, label, delta){
+      var btn = document.createElement('button'); btn.type = 'button';
+      btn.className = 'tv-nav ' + cls; btn.textContent = glyph;
+      btn.setAttribute('aria-label', label); btn.title = label + ' (' + (delta < 0 ? '←' : '→') + ')';
+      btn.disabled = tvScope.length < 2;  // nothing to loop through in a single-step scenario
+      btn.addEventListener('click', function(){ tvGo(delta); });
+      return btn;
+    }
+    nav.appendChild(navBtn('tv-prev', '◀', 'previous step', -1));
+    // current position / total steps in this scenario, between the arrows
+    var pos = document.createElement('span'); pos.className = 'tv-pos';
+    pos.textContent = (tvIndex + 1) + '/' + tvScope.length;
+    nav.appendChild(pos);
+    nav.appendChild(navBtn('tv-next', '▶', 'next step', 1));
+    main.appendChild(nav);
+    tvBody.appendChild(main);
     // Seed the screen extent from the element bounding box, then refine: derive the
     // device scale from the width (which rarely scrolls) and recompute the height.
     var tbl = tree.querySelector('.tvtbl');
@@ -206,7 +236,7 @@
     }
     if(tvInput) tvInput.value = '';
     tvFilter('');
-    tvBody.scrollTop = 0;
+    tree.scrollTop = 0;
     tv.classList.add('open');
   }
   document.addEventListener('click', function(e){
@@ -222,8 +252,8 @@
       if(e.key === 'Escape'){ tvClose(); return; }
       // While typing in the filter, let ← / → move the text cursor instead of navigating.
       if(document.activeElement === tvInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
-      if(e.key === 'ArrowLeft' && tvIndex > 0){ e.preventDefault(); tvOpen(tvHosts[tvIndex - 1]); }
-      else if(e.key === 'ArrowRight' && tvIndex >= 0 && tvIndex < tvHosts.length - 1){ e.preventDefault(); tvOpen(tvHosts[tvIndex + 1]); }
+      if(e.key === 'ArrowLeft'){ e.preventDefault(); tvGo(-1); }
+      else if(e.key === 'ArrowRight'){ e.preventDefault(); tvGo(1); }
     });
   }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),

@@ -4,6 +4,7 @@
 
 * Proposal: [BE-0032](BE-0032-secret-variables.md)
 * Status: **Implemented**
+* Implementing PR: [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6)
 * Track: [Accepted](../README.md#accepted)
 * Topic: Candidates from competitive research (MagicPod / Autify)
 * Origin: MagicPod

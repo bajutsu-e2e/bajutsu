@@ -28,7 +28,13 @@
    ```bash
    ls -d docs/roadmap/BE-*/ | sort | tail -1
    ```
-   番号の再利用・飛ばし・当て推量は禁止です。
+   番号の再利用・飛ばし・当て推量は禁止です。**または未定のままにする:** 項目を
+   `BE-XXXX-<slug>`（リテラルのプレースホルダ）と名付け、採番は CI に任せます ——
+   [`roadmap-id`](../../.github/workflows/roadmap-id.yml) ワークフローが `docs/roadmap/**`
+   に触れる PR ごとに [`scripts/allocate_roadmap_ids.py`](../../scripts/allocate_roadmap_ids.py)
+   を実行し、空いている次の ID を採番してブランチへリネームを push し返します。
+   `ideation` skill はこの方式を使い、進行中の 2 つのブランチが同じ番号を
+   取り合うのを防ぎます。
 2. **項目ディレクトリと両言語のファイルを作成** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
    （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）— そして
    **両方**のインデックスページの該当トピック表に行を追加します。
@@ -82,6 +88,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
+| [BE-0029](BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md) | ビジュアル回帰アサーション | 実装済み | 両社 |
 | [BE-0030](BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md) | パラメータ化シェアドステップ | 実装済み | MagicPod |
 | [BE-0031](BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md) | データ駆動シナリオ | 実装済み | MagicPod |
 | [BE-0032](BE-0032-secret-variables/BE-0032-secret-variables-ja.md) | シークレット変数 | 実装済み | MagicPod |
@@ -161,7 +168,6 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
-| [BE-0029](BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md) | ビジュアル回帰アサーション | 提案 | 両社 |
 | [BE-0035](BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md) | デバイス制御プリミティブ拡張 | 提案 | MagicPod |
 | [BE-0036](BE-0036-utility-steps/BE-0036-utility-steps-ja.md) | ユーティリティステップ | 提案 | MagicPod |
 | [BE-0037](BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) | WebView / ハイブリッド対応 | 提案 | MagicPod |

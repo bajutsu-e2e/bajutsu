@@ -32,7 +32,7 @@ serve:
 	@./scripts/serve.sh $(ARGS)
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh .claude/hooks/session-start.sh demos/record/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 test:

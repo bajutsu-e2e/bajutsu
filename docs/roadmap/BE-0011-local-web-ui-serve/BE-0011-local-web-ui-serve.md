@@ -4,6 +4,7 @@
 
 * Proposal: [BE-0011](BE-0011-local-web-ui-serve.md)
 * Status: **Implemented**
+* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
 * Track: [Accepted](../README.md#accepted)
 * Topic: Authoring experience (record / GUI editor)
 
