@@ -87,9 +87,32 @@ if [ "$AGENT" = "claude-code" ]; then
     || { echo "claude CLI not found (needed for --agent claude-code). Install Claude Code, or run with AGENT=api."; exit 1; }
 fi
 # The API key is still needed for the login "Save Password" alert guard (vision), even when
-# authoring runs on the claude-code agent.
-[ -n "${ANTHROPIC_API_KEY:-}" ] || grep -q '^[[:space:]]*ANTHROPIC_API_KEY=' .env 2>/dev/null \
-  || { echo "ANTHROPIC_API_KEY not set — needed for the alert guard. Export it or add it to .env."; exit 1; }
+# authoring runs on the claude-code agent. If it isn't already in the environment or .env,
+# offer to type it in now — the key is read hidden and used only for this run (not persisted).
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && ! grep -q '^[[:space:]]*ANTHROPIC_API_KEY=' .env 2>/dev/null; then
+  if [ -t 0 ]; then
+    printf 'ANTHROPIC_API_KEY is not set (needed for the alert guard). Enter it now? [y/N] '
+    read -r reply
+    case "$reply" in
+      [yY] | [yY][eE][sS])
+        printf 'Paste your Claude API key (input hidden): '
+        read -rs ANTHROPIC_API_KEY
+        printf '\n'
+        [ -n "$ANTHROPIC_API_KEY" ] || { echo "No key entered — aborting."; exit 1; }
+        export ANTHROPIC_API_KEY
+        echo "ok: API key accepted (hidden) — using it for this run only."
+        echo "    (to skip this prompt next time, add ANTHROPIC_API_KEY=... to .env)"
+        ;;
+      *)
+        echo "Skipped. Export ANTHROPIC_API_KEY or add it to .env, then retry."
+        exit 1
+        ;;
+    esac
+  else
+    echo "ANTHROPIC_API_KEY not set — needed for the alert guard. Export it or add it to .env."
+    exit 1
+  fi
+fi
 echo "ok: idb, a booted Simulator, the built sample2 app, the $AGENT agent, and an API key are present."
 
 # --- 1) AUTHOR (AI) ----------------------------------------------------------

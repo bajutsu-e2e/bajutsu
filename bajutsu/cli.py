@@ -161,7 +161,10 @@ def run(
         "--scenario",
         help="run only this one *.yaml (overrides the app's configured scenarios dir)",
     ),
-    backend: str = typer.Option("", help="comma list; first available is the actuator"),
+    backend: str = typer.Option(
+        "",
+        help="comma list of platforms (ios/android/web/fake) or actuators (idb); first available wins",
+    ),
     tag: str = typer.Option(
         "", "--tag", help="comma list; run only scenarios with any of these tags"
     ),
@@ -391,18 +394,29 @@ def record(
 
         alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
     udid = _env.resolve_udid(udid)
+
+    # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher
+    # knows what's happening before the agent takes over. Progress goes to stderr, like the
+    # record loop's own stream, leaving stdout for the final result line.
+    def say(msg: str) -> None:
+        typer.echo(msg, err=True)
+
+    say(
+        f"⚙️  preparing the simulator — installing and launching {app_name} (this can take a moment) …"
+    )
     try:
         driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
     except _env.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    say(f"✅ app is up — authoring toward the goal: {goal!r}")
     scenario = record_loop(
         driver,
         goal,
         authoring_agent,
         name=goal,
         alert_guard=alert_guard,
-        report=lambda msg: typer.echo(msg, err=True),
+        report=say,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(dump_scenarios([scenario]), encoding="utf-8")

@@ -1,0 +1,26 @@
+# Self-contained config for the on-device demos (the `tour` and `features` targets in
+# demos/Makefile). Runs the dedicated demo app (demos/app/) on a booted Simulator via idb,
+# and pins `appPath` so `bajutsu run` installs the freshly-built app on the device
+# automatically (clean reinstall) before each scenario — and `bajutsu serve` builds it on
+# demand when the binary is missing.
+defaults:
+  backend: [ios]   # platform token -> the idb actuator today (see docs/drivers.md)
+  device: "iPhone 15"
+  capture: [screenshot.after, elements, actionLog]
+apps:
+  demo:
+    bundleId: com.bajutsu.demo
+    deeplinkScheme: bajutsudemo
+    idNamespaces: [onboarding, auth, home, counter]
+    # The app reads DEMO_UITEST to disable animations; with no DEMO_LOGGED_IN it starts at
+    # onboarding, so the onboarding -> login -> home flow the scenarios walk applies.
+    launchEnv: { DEMO_UITEST: "1" }
+    # `${secrets.PASSWORD}` in features.yaml resolves from the environment; its literal
+    # value is masked in every run artifact.
+    secrets: [PASSWORD]
+    # Built by `make -C demos app-build`; path is relative to the repo root (the run's cwd).
+    appPath: demos/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuDemo.app
+    build: make -C demos app-build
+    # `bajutsu run --app demo` runs every *.yaml directly in this dir (the _components/
+    # subdir is not globbed, so the shared component is never run as a standalone scenario).
+    scenarios: demos/app/scenarios

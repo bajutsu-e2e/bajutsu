@@ -17,7 +17,7 @@ one closer to the test wins).
 
 ```yaml
 defaults:                       # shared across all apps
-  backend: [idb]                # ordered list; idb is the only backend today. A single string is also OK
+  backend: [ios]                # ordered list of platforms (ios/android/web/fake) or actuators (idb); a single string is also OK
   device:  "iPhone 15"
   locale:  en_US
   capture: [screenshot.after, elements, actionLog]
@@ -44,7 +44,7 @@ An undefined app raises `KeyError` (the CLI exits with code 2).
 |---|---|---|
 | `bundle_id` | app | required |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
-| `backend` | app ?? defaults | stability-ordered list (a single string is listified) |
+| `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | ⚠️ `locale` is currently not applied at launch |
 | `launch_env` / `launch_args` | app | merged/appended by preconditions at run time |
 | `id_namespaces` | app | referenced by doctor |
@@ -77,8 +77,8 @@ token, never the value.
 ## Selecting from the CLI
 
 Every command in the CLI (command-line interface) selects one app with `--app <name>` and points at
-config with `--config` (default `bajutsu.config.yaml`). `--backend idb` overrides the actuator order
-([cli](cli.md)).
+config with `--config` (default `bajutsu.config.yaml`). `--backend ios` (or a comma list of
+platforms/actuators) overrides the resolved order ([cli](cli.md)).
 
 ## Onboarding a new app
 

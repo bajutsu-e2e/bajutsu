@@ -100,19 +100,31 @@ FakeDriver(screen=[...], react=react)
 Implementation: `bajutsu/backends.py`.
 
 ```python
-KNOWN = ("idb",)                           # fake is test-only; not listed here
+PLATFORMS = {                              # a platform token expands to its actuators
+    "ios":     ("idb",),                   #   later: ("xcuitest", "idb")
+    "android": ("adb",),                   #   planned
+    "web":     ("playwright",),            #   planned
+    "fake":    ("fake",),                  #   the in-memory test/demo driver
+}
+IMPLEMENTED = {"idb", "fake"}              # actuators with a driver today
 
-def default_available(backend) -> bool:    # is the executable on PATH (a coarse first check)
-def select_actuator(backends, available) -> str:  # the first available in stability order
-def make_driver(backend, udid) -> Driver:  # "idb" → IdbDriver
+def default_available(actuator) -> bool:   # implemented and its executable on PATH (fake: always)
+def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators
+def select_actuator(backends, available) -> str:  # first implemented + available, in order
+def make_driver(actuator, udid) -> Driver: # "idb" → IdbDriver, "fake" → FakeDriver
 ```
 
+- A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
+  **actuator** (e.g. `idb`). `--backend ios` (or `backend: [ios]`) resolves to `idb` today, and would
+  pick up a richer iOS actuator (XCUITest) when one lands — the scenario and config never change.
 - `backend` is an **ordered list** (most-stable-first; [concepts](concepts.md#5-the-stability-ladder)).
-  idb is the only registered backend today, so the list has one element, but selection is kept so
-  another backend can be added without touching scenarios.
-- The **actuator = the first available backend in the list**. If none is available, `RuntimeError`
-  (the CLI exits with code 2).
-- The availability check `available` is injectable (swappable in tests). The default is `shutil.which`.
+  Each token is expanded to its actuators, in order; the **actuator = the first implemented and
+  available** one. If none is available, `RuntimeError` (the CLI exits with code 2).
+- `android` / `web` are **declared but not implemented yet** ([multi-platform](multi-platform.md)):
+  requesting them raises a clear "not implemented yet" rather than a generic failure. Truly unknown
+  tokens are skipped (forward-compat: an older build can run a config that lists a future backend).
+- The availability check `available` is injectable (swappable in tests). The default is `shutil.which`
+  (and `fake` needs no executable, so it is always available).
 - The actuator is fixed once at the start of a run and held for the whole run (so two drivers never
   operate one device).
 

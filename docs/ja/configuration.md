@@ -16,7 +16,7 @@
 
 ```yaml
 defaults:                       # 全アプリ共通の既定
-  backend: [idb]                # 順序付きリスト。現状 idb が唯一のバックエンド。単一文字列も可
+  backend: [ios]                # 順序付きリスト。プラットフォーム(ios/android/web/fake)か actuator(idb)。単一文字列も可
   device:  "iPhone 15"
   locale:  en_US
   capture: [screenshot.after, elements, actionLog]
@@ -42,7 +42,7 @@ apps:
 |---|---|---|
 | `bundle_id` | app | 必須 |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
-| `backend` | app ?? defaults | 安定度順リスト（単一文字列はリスト化） |
+| `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | ⚠️ `locale` は現状 launch で未適用 |
 | `launch_env` / `launch_args` | app | preconditions が run 時にマージ追記 |
 | `id_namespaces` | app | doctor が参照 |
@@ -66,7 +66,7 @@ config の `defaults.redact` と `apps.<name>.redact` は **union** されます
 
 ## CLI からの選択
 
-すべてのコマンドは `--app <name>` で 1 つのアプリを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend idb` で actuator の順序を上書きできます（[cli](cli.md)）。
+すべてのコマンドは `--app <name>` で 1 つのアプリを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend ios`（またはプラットフォーム/actuator のカンマ区切り）で解決順序を上書きできます（[cli](cli.md)）。
 
 ## 新しいアプリのオンボーディング
 

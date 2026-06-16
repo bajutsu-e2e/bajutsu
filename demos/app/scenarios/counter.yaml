@@ -1,0 +1,14 @@
+description: The Bajutsu tour flow — onboarding, login, then the counter.
+scenarios:
+  - name: counter
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { into: { id: auth.email }, text: demo@bajutsu.dev }
+      - type: { into: { id: auth.password }, text: hunter2 }
+      - tap: { id: auth.submit }
+      # Survive the login -> home transition on a real device (the cover dismisses async).
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - tap: { id: counter.increment }
+      - tap: { id: counter.increment }
+    expect:
+      - value: { sel: { id: counter.value }, equals: "2" }

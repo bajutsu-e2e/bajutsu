@@ -169,9 +169,17 @@ apps:
 ```
 
 `platform` selects which **environment manager** and **backend registry** are in play; the rest of
-the schema (namespaces, redact, setup, capture) stays shared. `backends.KNOWN` becomes
-platform-scoped (`{ios: ("idb","xcuitest"), android: ("adb",), web: ("playwright",)}`), and
-`make_driver` / `select_actuator` key off the resolved platform.
+the schema (namespaces, redact, setup, capture) stays shared.
+
+> **Landed already (the selector slice).** `bajutsu/backends.py` now keys off a platform
+> registry: `PLATFORMS = {ios: (idb,), android: (adb,), web: (playwright,), fake: (fake,)}`, and
+> `--backend` / `backend:` accept a **platform token** (`ios`/`android`/`web`/`fake`) as well as a
+> bare actuator. A platform expands to its actuators; `select_actuator` returns the first
+> *implemented and available* one (`idb` / `fake` today), and `android` / `web` raise a clear
+> "not implemented yet". What remains for a real second platform is the rest of the triple — the
+> per-platform **environment manager** (a `simctl` peer) and the **actuator driver** (`adb` /
+> `playwright`) — plus an optional explicit `platform` config field. See
+> [drivers → backend selection](drivers.md#backend-selection-and-the-actuator).
 
 ---
 
