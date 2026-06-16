@@ -4,6 +4,7 @@
 
 * Proposal: [BE-0022](BE-0022-update-structured-fixes.md)
 * Status: **Implemented**
+* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
 * Track: [Accepted](../README.md#accepted)
 * Topic: Self-healing triage (M4)
 

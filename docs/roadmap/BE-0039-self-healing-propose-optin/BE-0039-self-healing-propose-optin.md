@@ -4,6 +4,7 @@
 
 * Proposal: [BE-0039](BE-0039-self-healing-propose-optin.md)
 * Status: **Implemented**
+* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
 * Track: [Accepted](../README.md#accepted)
 * Topic: Candidates from competitive research (MagicPod / Autify)
 * Origin: Both

@@ -4,6 +4,7 @@
 
 * Proposal: [BE-0021](BE-0021-ai-triage.md)
 * Status: **Implemented**
+* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
 * Track: [Accepted](../README.md#accepted)
 * Topic: Self-healing triage (M4)
 

@@ -4,6 +4,7 @@
 
 * Proposal: [BE-0023](BE-0023-self-healing-guards.md)
 * Status: **Implemented**
+* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
 * Track: [Accepted](../README.md#accepted)
 * Topic: Self-healing triage (M4)
 
