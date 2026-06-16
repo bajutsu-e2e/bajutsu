@@ -3,12 +3,12 @@
 # Future vision
 
 > Forward-looking — the overall direction Bajutsu is heading, and the one constraint every
-> direction must respect. This page gives the strategic overview across the individual forward-looking
-> pages; the granular, prioritized backlog is in [roadmap](roadmap/README.md), and the rationale behind
+> direction must respect. This page gives the strategic overview across the individual roadmap
+> items; the granular, prioritized backlog is in [roadmap](roadmap/README.md), and the rationale behind
 > today's design is in [`DESIGN.md`](../DESIGN.md). Read this to understand how the pieces fit together,
 > then follow the links for each plan.
 
-Related: [concepts](concepts.md) · [roadmap](roadmap/README.md) · [multi-platform](multi-platform.md) · [cloud-hosting](cloud-hosting.md) · [self-hosting](self-hosting.md)
+Related: [concepts](concepts.md) · [roadmap](roadmap/README.md) · [roadmap → Platform expansion](roadmap/README.md#platform-expansion-android--web--flutter) · [roadmap → Hosting](roadmap/README.md#hosting-the-web-ui-cloud--self-hosted)
 
 ---
 
@@ -40,11 +40,11 @@ maps to concrete pages.
 ```
                  ▲ REACH (more platforms / surfaces)
                  │   Web · Android · Flutter / hybrid
-                 │   → multi-platform.md
+                 │   → roadmap: Platform expansion
                  │
    AUTHORING ────┼───────────────▶ SCALE & COLLABORATION
    & MAINTENANCE │                 hosted / self-hosted service · MCP
-   GUI editor ·  │                 → cloud-hosting.md · self-hosting.md
+   GUI editor ·  │                 → roadmap: Hosting (BE-0015 / BE-0016)
    capture ·     │
    visual-regression ·
    self-healing triage
@@ -57,7 +57,7 @@ The `Driver` / environment / id-convention seams were built to be replaced, not 
 The goal is for **the same deterministic core to drive iOS, Android, and the Web**, with each platform
 adding only its own actuator + environment + stable-id convention. The full concrete plan
 (selector-portability mapping, per-platform backends, phasing — Web first, because it runs on the
-existing Linux gate) is in **[multi-platform](multi-platform.md)**. A second iOS actuator
+existing Linux gate) is in the roadmap's **[Platform expansion](roadmap/README.md#platform-expansion-android--web--flutter)** items (Web is [BE-0041](roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)). A second iOS actuator
 (XCUITest) is the same change within one OS ([roadmap → Backend expansion](roadmap/README.md#backend-expansion-ios-actuators)).
 
 ### 2. Scale & collaboration — from local tool to shared service
@@ -66,10 +66,10 @@ existing Linux gate) is in **[multi-platform](multi-platform.md)**. A second iOS
 cheap Linux control plane (auth, history, queue, report viewer) split from an
 expensive device-worker pool, so a team runs and reviews from a browser.
 
-- **[cloud-hosting](cloud-hosting.md)** — public / multi-tenant: control-plane ⇄ macOS worker pool
+- **[BE-0015 — public / cloud hosting](roadmap/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)** — public / multi-tenant: control-plane ⇄ macOS worker pool
   split, the `subprocess.Popen` → job-queue refactor, and the security hardening that public
   exposure mandates.
-- **[self-hosting](self-hosting.md)** — your own Mac(s): a today-ready single-Mac setup and a
+- **[BE-0016 — self-hosting](roadmap/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)** — your own Mac(s): a today-ready single-Mac setup and a
   fully self-hosted multi-tenant topology.
 - **MCP (Model Context Protocol) integration** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)) — expose `run`/`doctor`/`record`/
   `codegen` as MCP tools and evidence as MCP resources, so agents drive Bajutsu directly. This
@@ -119,7 +119,7 @@ not what it does; new authoring produces the same YAML. The core stays constant.
 If the vision has to be sequenced, the highest-leverage next steps, each reducing the risk of a
 later one at low cost, are:
 
-1. **Web via Playwright** ([multi-platform](multi-platform.md), Phase 1). It demonstrates that the
+1. **Web via Playwright** ([BE-0041](roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), Phase 1). It demonstrates that the
    core is platform-neutral **inside the existing Linux gate** ([ci](ci.md)), with no Mac and no
    emulator, and exercises the rich end of the capability model (native network/video/semantic).
 2. **MCP server** ([roadmap → Integration & automation](roadmap/README.md#integration--automation-mcp)). Low surface area, high leverage for
@@ -128,7 +128,7 @@ later one at low cost, are:
    deterministic capability that competitors gate behind AI; it strengthens the
    directives rather than straining them.
 
-The hosting axis ([cloud-hosting](cloud-hosting.md) / [self-hosting](self-hosting.md)) is a larger,
+The hosting axis ([BE-0015](roadmap/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](roadmap/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) is a larger,
 separable investment; pursue it when the demand is collaborative rather than individual.
 
 > **How this relates to [roadmap](roadmap/README.md):** this page covers the rationale and the overall

@@ -69,6 +69,14 @@ Coarse delivery milestones (M1–M4) — the project's **decision & implementati
 | [BE-0003](BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md) | codegen, traces, network & CI (M3) | Implemented |
 | [BE-0004](BE-0004-m4-self-healing-triage/BE-0004-m4-self-healing-triage.md) | Self-healing triage (M4) | Implemented |
 
+### Platform expansion (landed slices)
+
+The first slice of the multi-platform direction has landed: a **platform-aware backend registry** so `--backend` / `backend:` accept a platform token (`ios` / `android` / `web` / `fake`) as well as a bare actuator, expanding to the first implemented-and-available actuator. The rest of each platform's triple (per-platform environment manager + actuator driver) is tracked under [Platform expansion](#platform-expansion-android--web--flutter) in Proposals.
+
+| ID | Item | Status |
+|---|---|---|
+| [BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) | Platform-aware backend registry & selection | Implemented |
+
 ### Authoring experience (record / GUI editor)
 
 The AI-driven `record` (Tier 1) is implemented ([recording.md](../recording.md)). The items here cover **non-AI action capture** and **visual editing of scenarios**, to make the record → edit → re-run cycle easier for humans. The local web UI launcher `bajutsu serve` is the first step toward this.
@@ -114,9 +122,9 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 | [BE-0005](BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Proposal |
 | [BE-0006](BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Proposal |
 
-### Platform expansion (Android / Flutter)
+### Platform expansion (Android / Web / Flutter)
 
-The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESIGN.md)). This section covers the direction of going multi-platform by leveraging the driver / backend abstractions — a strategic decision that entails updating the core scope statement. The concrete approach and design are detailed in [multi-platform.md](../multi-platform.md).
+The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESIGN.md)). This section covers the direction of going multi-platform by leveraging the driver / backend abstractions — a strategic decision that entails updating the core scope statement. The per-platform actuator / environment / id design lives in the items below: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first, runs on the existing Linux gate), Android, and Flutter. The first slice — a platform-aware backend registry — has already landed ([BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), under Accepted).
 
 | ID | Item | Status |
 |---|---|---|
@@ -124,6 +132,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESI
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Proposal |
 | [BE-0010](BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Proposal |
+| [BE-0041](BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | Proposal |
 
 ### Authoring experience (record / GUI editor)
 
@@ -132,7 +141,14 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESI
 | [BE-0012](BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | Proposal |
 | [BE-0013](BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Proposal |
 | [BE-0014](BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
-| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
+
+### Hosting the web UI (cloud / self-hosted)
+
+Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s) — a today-ready single-Mac path on the existing `serve`, plus a fully self-hosted multi-tenant topology.
+
+| ID | Item | Status |
+|---|---|---|
+| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public / cloud hosting of the web UI | Proposal |
 | [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
 
 ### Integration & automation (MCP)

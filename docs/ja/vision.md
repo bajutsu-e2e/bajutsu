@@ -7,7 +7,7 @@
 > [roadmap](../roadmap/README-ja.md)、今日の設計の根拠は [`DESIGN.md`](../../DESIGN.md) にあります。
 > ここを読んで各ピースがどう積み上がるかを掴み、各計画の詳細はリンク先を参照してください。
 
-関連: [concepts](concepts.md) · [roadmap](../roadmap/README-ja.md) · [multi-platform](multi-platform.md) · [cloud-hosting](cloud-hosting.md) · [self-hosting](self-hosting.md)
+関連: [concepts](concepts.md) · [roadmap](../roadmap/README-ja.md) · [roadmap → プラットフォーム拡張](../roadmap/README-ja.md#プラットフォーム拡張android--web--flutter) · [roadmap → ホスティング](../roadmap/README-ja.md#web-ui-のホスティングクラウド--セルフホスト)
 
 ---
 
@@ -37,11 +37,11 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 ```
                  ▲ REACH（より多くのプラットフォーム / 面）
                  │   Web · Android · Flutter / ハイブリッド
-                 │   → multi-platform.md
+                 │   → roadmap: プラットフォーム拡張
                  │
    AUTHORING ────┼───────────────▶ SCALE & COLLABORATION
    & MAINTENANCE │                 ホスト / セルフホストのサービス · MCP
-   GUI エディタ · │                 → cloud-hosting.md · self-hosting.md
+   GUI エディタ · │                 → roadmap: ホスティング（BE-0015 / BE-0016）
    操作キャプチャ ·│
    ビジュアル回帰 ·
    自己修復 triage
@@ -53,7 +53,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 `Driver` / 環境 / id 規約の継ぎ目は、設定だけでなく **差し替え**られるよう作ってあります。目標は
 **同じ決定的コアが iOS・Android・Web を駆動する**ことです。各プラットフォームは自分の actuator + 環境 +
 安定 id 規約だけを足します。完全な具体計画（セレクタ可搬性の写像、プラットフォーム別バックエンド、
-展開順は既存の Linux ゲートで動くので Web を最初に）は **[multi-platform](multi-platform.md)** にあります。
+展開順は既存の Linux ゲートで動くので Web を最初に）は、ロードマップの **[プラットフォーム拡張](../roadmap/README-ja.md#プラットフォーム拡張android--web--flutter)** の各項目（Web は [BE-0041](../roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）にあります。
 2 つ目の iOS actuator（XCUITest）は、1 つの OS 内での同じ変更です（[roadmap → バックエンド拡張](../roadmap/README-ja.md#バックエンド拡張ios-actuator)）。
 
 ### 2. Scale & Collaboration —— ローカルツールから共有サービスへ
@@ -62,9 +62,9 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 コントロールプレーン（認証・履歴・キュー・レポートビューア）を、高価なデバイスワーカープールから
 分離し、チームがブラウザから実行・レビューできるようにします。
 
-- **[cloud-hosting](cloud-hosting.md)** —— 公開 / マルチテナント: control-plane ⇄ macOS ワーカープールの
+- **[BE-0015（公開 / クラウドホスティング）](../roadmap/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)** —— 公開 / マルチテナント: control-plane ⇄ macOS ワーカープールの
   分離、`subprocess.Popen` → ジョブキューのリファクタ、公開時に必須となるセキュリティ堅牢化。
-- **[self-hosting](self-hosting.md)** —— 自前 Mac: 今日使える単一 Mac 構成と、完全セルフホストの
+- **[BE-0016（セルフホスティング）](../roadmap/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)** —— 自前 Mac: 今日使える単一 Mac 構成と、完全セルフホストの
   マルチテナント構成。
 - **MCP（Model Context Protocol）統合**（[roadmap → 統合・自動化](../roadmap/README-ja.md#統合自動化mcp-化)）—— `run`/`doctor`/`record`/`codegen` を MCP ツールとして、
   証跡を MCP リソースとして公開し、エージェントが直接 Bajutsu を駆動します。これは Tier-1 の境界の内側に収まります。
@@ -109,7 +109,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 構想に順序を付けるなら、最もレバレッジの高い次の一手（それぞれが後段のリスクを低コストで下げます）
 は次のとおりです。
 
-1. **Playwright による Web**（[multi-platform](multi-platform.md) 段階 1）。コアが
+1. **Playwright による Web**（[BE-0041](../roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) 段階 1）。コアが
    プラットフォーム中立であることを **既存の Linux ゲートの内側**（[ci](ci.md)）で示せます。Mac も
    エミュレータも不要で、同時に、能力モデルの豊かな端（ネイティブ network/video/意味的操作）を行使します。
 2. **MCP サーバ**（[roadmap → 統合・自動化](../roadmap/README-ja.md#統合自動化mcp-化)）。表面積が小さく、Tier-1 オーサリングループへの
@@ -117,7 +117,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 3. **ビジュアル回帰アサーション**（[roadmap: BE-0029](../roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）。競合が
    AI でゲートする決定的な能力で、directive を緊張させるどころか強める差別化要素です。
 
-ホスティング軸（[cloud-hosting](cloud-hosting.md) / [self-hosting](self-hosting.md)）はより大きく
+ホスティング軸（[BE-0015](../roadmap/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../roadmap/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）はより大きく
 分離可能な投資です。需要が個人ではなく協働になったときに進めます。
 
 > **[roadmap](../roadmap/README-ja.md) との関係:** 本ページは根拠と全体的な方向を扱い、ロードマップは

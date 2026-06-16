@@ -120,7 +120,7 @@ def make_driver(actuator, udid) -> Driver: # "idb" → IdbDriver, "fake" → Fak
 - `backend` is an **ordered list** (most-stable-first; [concepts](concepts.md#5-the-stability-ladder)).
   Each token is expanded to its actuators, in order; the **actuator = the first implemented and
   available** one. If none is available, `RuntimeError` (the CLI exits with code 2).
-- `android` / `web` are **declared but not implemented yet** ([multi-platform](multi-platform.md)):
+- `android` / `web` are **declared but not implemented yet** ([BE-0042](roadmap/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)):
   requesting them raises a clear "not implemented yet" rather than a generic failure. Truly unknown
   tokens are skipped (forward-compat: an older build can run a config that lists a future backend).
 - The availability check `available` is injectable (swappable in tests). The default is `shutil.which`
