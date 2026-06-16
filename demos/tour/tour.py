@@ -21,8 +21,9 @@ the same assertion engine, the same report writer, the same heuristic triage. Ru
 
     uv run python demos/tour/tour.py
 
-The on-device version of this exact story — real Claude authoring against a booted
-Simulator through idb — is `demos/record/demo.sh`. See `demos/README.md` for the map.
+The on-device version of this exact story — the same run -> modify -> diagnose on a real
+Simulator, also deterministic and key-free — is `demos/tour/demo.sh` (`make -C demos tour`).
+See `demos/README.md` for the map.
 """
 
 from __future__ import annotations
@@ -182,7 +183,7 @@ def main() -> int:
     print(
         f"The generated scenario is at {SCENARIO} (gitignored). Edit the goal or YAML and re-run."
     )
-    print("The on-device version of this story (real Claude + Simulator): demos/record/demo.sh")
+    print("Run this same story on a real Simulator (deterministic, no API key): make -C demos tour")
     return 0
 
 

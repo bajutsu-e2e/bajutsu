@@ -1,51 +1,57 @@
 [English](README.md) · **日本語**
 
-# 60秒ツアー（セットアップ不要）
+# ツアー — 実機 Simulator で run・改変・診断
 
-Bajutsu の物語の全体を、コマンド一つで — **Simulator も idb も API キーも Mac も不要**。Python
-コアが動く環境ならどこでも（Linux、CI、クローン直後）数秒で動き、実機セットアップに踏み込む前に、この
-ツールが何をするのかを*見る*いちばん速い方法です。
+Bajutsu のライフサイクル全体を、コマンド一つで、実機 iOS Simulator 上で — しかも**完全に決定論的:
+LLM も APIキーも不要**。`run` と `triage` は AI を一切使わないので、必要なのは起動中の Simulator のある
+Mac だけです（idb は自動インストール）。
 
 ```bash
-make -C demos tour                  # または直接:
+make -C demos tour                   # または直接:
+./demos/tour/demo.sh
+```
+
+専用の [`demo` アプリ](../app/README.md)（onboarding → login → カウンター）に対して動き、3つのフェーズを
+辿ります:
+
+1. **Run** — 著作済みシナリオ [`counter.yaml`](../app/scenarios/counter.yaml) を Simulator 上で実行。
+   本物の実行ディレクトリ（manifest、JUnit、`report.html`）を書き出し、**PASS** します。
+2. **改変（Modify）** — 期待するカウンター値を誤った値に変える → 決定論的なチェックが **FAIL**（LLM
+   ではなく機械的なアサーションが捕捉）→ 戻す → 再び **PASS**。
+3. **診断（Diagnose）** — セレクタを解決できないように改名する（テストの足元でセレクタがずれた状況）→
+   実行が **FAIL** → [`triage`](../../bajutsu/triage.py) が失敗した実行を読み、診断します: カテゴリ
+   （`selector`）に加え、捕捉した要素ツリーから引いた *「`counter.increment` のことでは？」* という
+   修正案 → セレクタを戻す → **PASS**。
+
+スクリプトは gitignore された作業コピー（`demos/tour/scenario.yaml`）を編集し、追跡対象の `counter.yaml`
+には手を触れないので、リポジトリは汚れません。実機の `record` デモとの唯一の違いは、シナリオが既に
+著作済みである点です — Claude のステップが無いので APIキーも要りません。
+
+## Mac が無い場合は？ 同じ物語を仮想デバイスで（セットアップ不要）
+
+まったく同じ 著作 → run → 改変 → 診断 のライフサイクルが、メモリ上の
+[`FakeDriver`](../../bajutsu/drivers/fake.py) に対しても動きます — Simulator も idb も APIキーも要らず、
+Linux/CI で数秒:
+
+```bash
 uv run python demos/tour/tour.py
 ```
 
-実機デモ（[`demos/record/demo.sh`](../record/README.ja.md)）と同じ4フェーズを辿りますが、外部依存が
-何も要らないように、メモリ上の [`FakeDriver`](../../bajutsu/drivers/fake.py) に対して動かします:
+こちらは加えて**著作**も見せます: 自然言語の目標が、本物の [`record`](../../bajutsu/record.py) ループで
+シナリオになります（Claude の代役 [`KeywordAgent`](../record/generate_from_nl.py) を使うのでキー不要）。
+この代役の頭脳を除けば、すべて本番のコードパス — 実際の実行が使うのと同じオーケストレータ、アサーション
+エンジン、レポート出力、ヒューリスティック triage です。`demos/tour/runs/` の下に開ける本物の
+`report.html` も書き出します。いちばん速い最初の一歩で、上の実機 `make -C demos tour` がデバイス上の
+本番です。
 
-1. **著作（Author）** — 自然言語の目標が決定論的なシナリオ（YAML）になります。本物の
-   [`record`](../../bajutsu/record.py) ループを動かし、API キーが要らないように「頭脳」だけを
-   キーワードの代役（[`KeywordAgent`](../record/generate_from_nl.py)）に差し替えています。
-2. **実行（Execute）** — [`run`](../../bajutsu/runner.py) が本物のパイプラインで再生し、本物の実行
-   ディレクトリ（`manifest.json`、JUnit XML、そしてブラウザで開ける自己完結の **`report.html`**）を
-   書き出します。**PASS** します。
-3. **改変（Modify）** — 期待するカウンター値を誤った値に変える → 決定論的なチェックが **FAIL**（LLM
-   ではなく機械的なアサーションが捕捉）→ 戻す → 再び **PASS**。
-4. **診断（Diagnose）** — セレクタを解決できないように改名する（テストの足元でセレクタがずれた状況）→
-   実行が **FAIL** → [`triage`](../../bajutsu/triage.py) が失敗した実行を読み、診断します:
-   カテゴリ（`selector`）に加え、捕捉した要素ツリーから引いた *「`counter.increment` のことでは？」*
-   という修正案 → セレクタを戻す → 再び **PASS**。
+## ステータス
 
-フェーズ1の頭脳を除けば、すべて本番のコードパスです — 実際の実行が使うのと同じオーケストレータ、
-アサーションエンジン、レポート出力、ヒューリスティック triage。そこが要点です。これは作り直したおもちゃ
-ではなく、下に仮想デバイスを敷いた本物のパイプラインです。
+> `demo` アプリと `counter.yaml` は iOS Simulator のアクセシビリティモデルに合わせて著作し、シナリオを
+> 本物のパイプラインで仮想ドライバ上で再生して検証しましたが、**まだ実機でビルド・実行していません** —
+> Mac 上で `make -C demos tour` で確認してください。
 
-## 得られるもの
+## 次にどこへ
 
-- 生成されたシナリオ `demos/tour/generated.yaml`（gitignore 済み）— スクリプト内の目標か YAML を直接
-  編集して再実行できます。
-- 各フェーズの本物のレポート `demos/tour/runs/<phase>/report.html`（gitignore 済み）—
-  `runs/02-pass/report.html` を開くと、手順・スクリーンショット・アサーションが、Web UI と同じ見た目で
-  表示されます。
-
-## 次の一歩: 同じ物語を実機で
-
-このツアーは意図的に FakeDriver の境界で止まっています。**本物の Claude** が **起動中の Simulator** に
-対して idb バックエンド経由で著作する*まったく同じ*ライフサイクルを — 証跡一式（動画、通信ログ、
-システムアラート処理、ビジュアルリグレッション）込みで — 見るには、以下を参照してください:
-
-- [`demos/record/`](../record/README.ja.md) — AI 著作 → 実行 → 改変 → triage を実機で。
-- [`demos/features/`](../features/README.ja.md) — Web UI ですべての証跡タイプを巡るツアー。
-
-3本のデモの地図は [`demos/README.ja.md`](../README.ja.md) にあります。
+- [`demos/features/`](../features/WEBUI.ja.md) — Web UI ですべての証跡タイプを巡るツアー。
+- [`demos/record/`](../record/README.ja.md) — 実機での本物の Claude による著作。
+- すべてのデモの地図: [`demos/README.ja.md`](../README.ja.md)。

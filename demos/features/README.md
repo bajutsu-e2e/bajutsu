@@ -7,16 +7,32 @@
 > **[WEBUI.md](WEBUI.md)** — the headline demo for iOS developers. The map of all demos is in
 > [`demos/README.md`](../README.md).
 
-Runnable demos for the scenario-authoring features (tags, parameterized shared steps,
-data-driven runs, secret variables, device control).
+The scenario-authoring features — tags, parameterized shared steps, data-driven runs, secret
+variables, device control — shown in three ways.
 
-## Run without a Simulator (FakeDriver)
+## On a real Simulator (`make -C demos features`)
 
-Drives the real `load → expand → run` pipeline against the in-memory FakeDriver and
-prints what each feature did — no Simulator or idb needed:
+Runs the feature scenarios against the dedicated [`demo` app](../app/README.md) on a booted
+Simulator via idb — tags + a parameterized shared `login` component + a secret variable.
+Deterministic, **no API key**:
 
 ```bash
-make -C demos features               # or, directly:
+make -C demos features
+```
+
+This runs the `smoke`-tagged scenarios of
+[`demos/app/scenarios/features.yaml`](../app/scenarios/features.yaml) (excluding the `slow`
+one), expanding the shared [`_components/login.yaml`](../app/scenarios/_components/login.yaml)
+and resolving `${secrets.PASSWORD}` from the environment (the literal value is masked in every
+run artifact). Try `--tag` / `--exclude` to pick a different subset.
+
+## No Mac? The full catalog on a fake device (FakeDriver)
+
+Drives the real `load → expand → run` pipeline against the in-memory FakeDriver and prints what
+each feature did — no Simulator or idb needed, and it covers the **full** set (tags, shared
+steps, data-driven, secrets, device control):
+
+```bash
 uv run python demos/features/run_demo.py
 ```
 
@@ -25,7 +41,7 @@ The per-feature scenario files it loads: [`tags.yaml`](tags.yaml),
 [`data_driven.yaml`](data_driven.yaml), [`secrets.yaml`](secrets.yaml),
 [`device.yaml`](device.yaml).
 
-## Run on a real Simulator (idb backend)
+## On the sample app (idb)
 
 [`sample_features.yaml`](sample_features.yaml) runs against the bundled `BajutsuSample`
 app. It exercises shared steps + secret input + device control entirely on the **settled

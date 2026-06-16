@@ -7,16 +7,31 @@
 > **[WEBUI.ja.md](WEBUI.ja.md)** を参照してください — iOS 開発者向けの目玉デモです。すべてのデモの地図は
 > [`demos/README.ja.md`](../README.ja.md) にあります。
 
-シナリオ著作の機能（タグ、パラメータ化された共有ステップ、データ駆動の実行、シークレット変数、
-デバイス制御）の、実行できるデモです。
+シナリオ著作の機能 — タグ、パラメータ化された共有ステップ、データ駆動の実行、シークレット変数、
+デバイス制御 — を3通りで見せます。
 
-## Simulator なしで実行（FakeDriver）
+## 実機 Simulator で（`make -C demos features`）
 
-本物の `load → expand → run` パイプラインをメモリ上の FakeDriver に対して動かし、各機能が何をしたかを
-出力します — Simulator も idb も不要です:
+機能シナリオを、専用の [`demo` アプリ](../app/README.md) に対して起動中の Simulator 上で idb 経由で
+実行します — タグ＋パラメータ化された共有 `login` コンポーネント＋シークレット変数。決定論的で、
+**APIキー不要**:
 
 ```bash
-make -C demos features               # または直接:
+make -C demos features
+```
+
+これは [`demos/app/scenarios/features.yaml`](../app/scenarios/features.yaml) の `smoke` タグ付き
+シナリオ（`slow` のものを除く）を実行し、共有 [`_components/login.yaml`](../app/scenarios/_components/login.yaml)
+を展開し、`${secrets.PASSWORD}` を環境変数から解決します（実際の値はすべての実行成果物でマスク）。
+`--tag` / `--exclude` で別の部分集合を選べます。
+
+## Mac が無い場合は？ 全カタログを仮想デバイスで（FakeDriver）
+
+本物の `load → expand → run` パイプラインをメモリ上の FakeDriver に対して動かし、各機能が何をしたかを
+出力します — Simulator も idb も不要で、**全種類**（タグ、共有ステップ、データ駆動、シークレット、
+デバイス制御）を網羅します:
+
+```bash
 uv run python demos/features/run_demo.py
 ```
 
@@ -25,7 +40,7 @@ uv run python demos/features/run_demo.py
 [`data_driven.yaml`](data_driven.yaml)、[`secrets.yaml`](secrets.yaml)、
 [`device.yaml`](device.yaml)。
 
-## 実機 Simulator で実行（idb バックエンド）
+## sample アプリで（idb）
 
 [`sample_features.yaml`](sample_features.yaml) は同梱の `BajutsuSample` アプリに対して動きます。共有
 ステップ＋シークレット入力＋デバイス制御を、すべて**落ち着いた Home 画面**（`SAMPLE_LOGGED_IN=1`）で
