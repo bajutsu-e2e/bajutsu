@@ -87,6 +87,7 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 
 | ID | Item | Status | Origin |
 |---|---|---|---|
+| [BE-0029](BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) | Visual-regression assertions | Implemented | Both |
 | [BE-0030](BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md) | Parameterized shared steps | Implemented | MagicPod |
 | [BE-0031](BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md) | Data-driven scenarios | Implemented | MagicPod |
 | [BE-0032](BE-0032-secret-variables/BE-0032-secret-variables.md) | Secret variables | Implemented | MagicPod |
@@ -166,7 +167,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESI
 
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0029](BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) | Visual-regression assertions | Proposal | Both |
 | [BE-0035](BE-0035-device-control-primitives/BE-0035-device-control-primitives.md) | Extended device-control primitives | Proposal | MagicPod |
 | [BE-0036](BE-0036-utility-steps/BE-0036-utility-steps.md) | Utility steps | Proposal | MagicPod |
 | [BE-0037](BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
