@@ -3,9 +3,16 @@
 # BE-0043 — コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生）
 
 * 提案: [BE-0043](BE-0043-conflict-resistant-file-flow-ja.md)
-* 状態: **提案**
-* トラック: [提案](../README-ja.md#提案)
+* 状態: **可決・実装中**
+* トラック: [可決済み](../README-ja.md#可決済み)
 * トピック: 開発基盤（コントリビュータ体験）
+
+> **実装状況。** 仕組み 1（ロードマップ索引の生成 —— `scripts/build_roadmap_index.py`、
+> `make roadmap-index-check` で検証）と仕組み 3（git 側の防御 —— `.gitattributes` + `uv.lock` の
+> マージドライバ `scripts/uv-lock-merge.sh`、および `rerere`。いずれも `make hooks` で配線）は着手済みで、
+> 計測された上位の衝突源をカバーします。仕組み 2（`cli.py` を `bajutsu/commands/` へ分割し、単一ファイルの
+> テストスイートを分割）と仕組み 4（GitHub のマージキュー / squash-rebase のポリシー化）は補強であり、
+> 今後の課題として残っています。
 
 ## はじめに
 

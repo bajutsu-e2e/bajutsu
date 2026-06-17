@@ -1,6 +1,6 @@
 [English](BE-0008-flutter-support.md) · **日本語**
 
-# BE-0008 — Flutter support
+# BE-0008 — Flutter 対応
 
 * 提案: [BE-0008](BE-0008-flutter-support-ja.md)
 * 状態: **提案**

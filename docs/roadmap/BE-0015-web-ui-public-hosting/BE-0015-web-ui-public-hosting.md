@@ -1,6 +1,6 @@
 **English** · [日本語](BE-0015-web-ui-public-hosting-ja.md)
 
-# BE-0015 — Public hosting of the web UI
+# BE-0015 — Public / cloud hosting of the web UI
 
 * Proposal: [BE-0015](BE-0015-web-ui-public-hosting.md)
 * Status: **Proposal**

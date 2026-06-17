@@ -1,0 +1,5 @@
+# uv.lock is a fully-derived artifact of pyproject.toml (the most-churned file in the repo's
+# history). A textual 3-way merge of it produces noise and false conflicts, so resolve it by
+# regenerating instead — the `uv-lock` driver runs `uv lock`. The driver is registered per-clone
+# by `make setup` / `make hooks` (clone/pull never carry git config over). See BE-0043.
+uv.lock merge=uv-lock

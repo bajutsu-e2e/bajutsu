@@ -54,6 +54,15 @@ make check                  # rebase 後に再検証
 こまめに rebase すれば、他セッションのマージ済み作業に早く出会えます。衝突が 1〜2 行のうちに解消でき、
 最後にまとめて絡まったマージを解く必要がなくなります。
 
+`make setup` / `make hooks` は、clone が引き継がない 2 つのクローンごとの git 防御（BE-0043）も
+設定します。`make check` のたびに自己修復します:
+
+- **`rerere`** は一度解決した衝突を記録し、同じ衝突が再び現れたときに自動で再適用します —— 長命ブランチが
+  同じハンクに繰り返しぶつかるときに有用です。
+- **`uv.lock` のマージドライバ**（[`scripts/uv-lock-merge.sh`](../../scripts/uv-lock-merge.sh)、
+  [`.gitattributes`](../../.gitattributes) で配線）。`uv.lock` はリポジトリで最も変更頻度が高く、完全な
+  生成物なので、衝突時にはドライバが意味のない行単位マージを試みる代わりに `uv lock` で再生成します。
+
 ## worktree で同時セッションを隔離する
 
 2 つのエージェントが同じチェックアウトを編集してはいけません。各セッションに専用の
@@ -118,9 +127,12 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
    ```
    番号の再利用・飛ばし・当て推量は禁止です。
 2. **項目ディレクトリと両言語のファイルを作成する** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）— そして
-   **両方**のインデックスページの該当トピック表に行を追加します
-   （[en](../roadmap/README.md) / [ja](../roadmap/README-ja.md)）。
+   （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）。
+   インデックス表（[en](../roadmap/README.md) / [ja](../roadmap/README-ja.md)）は項目メタデータから
+   **生成**されます（[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)、BE-0043）。
+   行を手編集しないでください —— 既存トピックなら `make roadmap-index` を実行するだけ。新規トピックの
+   ときだけ、該当する `## 可決済み` / `## 提案` セクションの下に `###` 見出しと空の表を両ページに手で
+   追加します。ゲートの `make roadmap-index-check` が差分を検出すると fail します。
 3. **ID は不変**。既存項目を採番し直しません —— 状態が変わっても、完了しても、表から削除しても。
    一度割り当てた BE ID は、その項目を永遠に指します。
 
@@ -134,8 +146,8 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
 | `実装済み`・`可決・実装中` | **可決済み** —— 意思決定・実装の記録 |
 | `提案`・`提案（保留）` | **提案** —— 検討中 |
 
-項目が進んだら、ファイル名を変えるのではなく**状態を更新**します（index のグループ間で行を移します）。
-マイルストーン M1–M4 は `BE-0001`–`BE-0004`（可決・実装済み）です。
+項目が進んだら、ファイル名を変えるのではなく**状態を更新**します。次の `make roadmap-index` で生成
+インデックスが行を正しいグループへ移します。マイルストーン M1–M4 は `BE-0001`–`BE-0004`（可決・実装済み）です。
 
 これはエージェントが従うべき厳格なルールです。短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
 

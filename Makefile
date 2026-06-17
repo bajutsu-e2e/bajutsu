@@ -1,16 +1,21 @@
 .PHONY: setup hooks deps deps-check serve test lint format format-check typecheck \
-        lock-check lint-sh lint-actions check
+        lock-check lint-sh lint-actions roadmap-index roadmap-index-check check
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
 setup: hooks
 	uv sync --group dev
 
-# Wire the tracked pre-push gate into this clone. `core.hooksPath` is a per-clone
-# local setting that clone/pull never carry over, so this self-heals existing
-# clones too — `check` runs it before every gate, right when it matters. Idempotent.
+# Wire the per-clone git settings that clone/pull never carry over, so they self-heal on
+# every `check` — right when they matter. All idempotent:
+#   - core.hooksPath: the tracked pre-push gate;
+#   - rerere: replay a once-resolved conflict automatically;
+#   - merge.uv-lock: regenerate uv.lock on conflict instead of line-merging it (.gitattributes).
 hooks:
 	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
+	@git rev-parse --git-dir >/dev/null 2>&1 && git config rerere.enabled true || true
+	@git rev-parse --git-dir >/dev/null 2>&1 && git config merge.uv-lock.name "uv.lock regenerate-on-conflict driver" || true
+	@git rev-parse --git-dir >/dev/null 2>&1 && git config merge.uv-lock.driver "scripts/uv-lock-merge.sh %A" || true
 
 # Install the external tools the idb backend needs (idempotent).
 #   - Homebrew tools (idb_companion / xcodegen) from the Brewfile
@@ -32,7 +37,7 @@ serve:
 	@./scripts/serve.sh $(ARGS)
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/uv-lock-merge.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 test:
@@ -66,10 +71,19 @@ lint-sh:
 lint-actions:
 	@command -v actionlint >/dev/null 2>&1 && actionlint -color || echo "lint-actions: actionlint not installed — skipping (CI enforces it)"
 
+# Regenerate the roadmap index tables (docs/roadmap/README*.md) from the per-item BE files.
+roadmap-index:
+	uv run python scripts/build_roadmap_index.py
+
+# Verify the committed roadmap index is up to date — fails the gate on drift, so a roadmap
+# PR can never leave the index stale. Mirrors the freshness check CI runs.
+roadmap-index-check:
+	uv run python scripts/build_roadmap_index.py --check
+
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-sh lint-actions lock-check typecheck test
+check: hooks format-check lint lint-sh lint-actions lock-check roadmap-index-check typecheck test
 
 # Sample-app build / E2E targets live with their demos:
 #   make -C demos/features sample-gen|sample-build|e2e|ui-test   (demos/features/app)

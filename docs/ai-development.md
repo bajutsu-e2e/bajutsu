@@ -56,6 +56,16 @@ make check                  # re-verify after the rebase
 Rebasing frequently means you meet other sessions' merged work early, when conflicts are a line
 or two — not at the end as a tangled merge.
 
+`make setup` / `make hooks` also wires two per-clone git defenses (BE-0043) that clone never
+carries over, so they self-heal on every `make check`:
+
+- **`rerere`** records how you resolve a conflict and replays it automatically the next time the
+  same conflict reappears — useful when a long-lived branch keeps re-hitting the same hunk.
+- **A `uv.lock` merge driver** ([`scripts/uv-lock-merge.sh`](../scripts/uv-lock-merge.sh), wired
+  via [`.gitattributes`](../.gitattributes)). `uv.lock` is the repo's most-churned file and a
+  fully-derived artifact, so on conflict the driver regenerates it with `uv lock` instead of
+  attempting a meaningless line-by-line merge.
+
 ## Isolate concurrent sessions with worktrees
 
 Two agents must never edit the same checkout. Give each session its own
@@ -123,9 +133,12 @@ When you add a roadmap item:
    ```
    Never reuse, skip, or guess a number.
 2. **Create the item directory and both language files** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   (English) and `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug) — and add
-   a row for it to the matching topic table in **both** index pages
-   ([en](roadmap/README.md), [ja](roadmap/README-ja.md)).
+   (English) and `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). The
+   index tables ([en](roadmap/README.md), [ja](roadmap/README-ja.md)) are **generated** from the
+   item metadata ([`scripts/build_roadmap_index.py`](../scripts/build_roadmap_index.py), BE-0043),
+   so don't hand-edit a row — for an existing topic just run `make roadmap-index`; only a brand-new
+   topic needs a hand-added `###` heading + empty table under the right `## Accepted` / `## Proposals`
+   section in both pages. `make roadmap-index-check` (in the gate) fails on drift.
 3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
@@ -141,8 +154,9 @@ section the item appears in:
 | `Implemented` · `Accepted, in progress` | **Accepted** — a decision & implementation record |
 | `Proposal` · `Proposal (deferred)` | **Proposals** — under consideration |
 
-As an item advances, **update its Status** (and move its row to the right index group) rather than
-renaming the file. Milestones M1–M4 are `BE-0001`–`BE-0004` (accepted & implemented).
+As an item advances, **update its Status** rather than renaming the file; the generated index moves
+its row to the right group on the next `make roadmap-index`. Milestones M1–M4 are
+`BE-0001`–`BE-0004` (accepted & implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
 
