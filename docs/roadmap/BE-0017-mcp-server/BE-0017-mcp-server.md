@@ -3,26 +3,36 @@
 # BE-0017 — MCP server
 
 * Proposal: [BE-0017](BE-0017-mcp-server.md)
-* Status: **Proposal**
-* Track: [Proposals](../README.md#proposals)
+* Status: **Implemented**
+* Track: [Accepted](../README.md#accepted)
 * Topic: Integration & automation (MCP)
 
 ## Introduction
 
-Expose `run`, `doctor`, `record`, and `codegen` as MCP (Model Context Protocol) tools so that agents such as Claude can invoke them directly. This integrates with Tier 1 (AI authoring).
-
-## Motivation
-
-TBD.
+Expose Bajutsu commands as MCP (Model Context Protocol) tools so that AI agents (Claude Desktop / Code) can invoke them directly. This integrates with Tier 1 (AI authoring and investigation) — the deterministic gate stays unchanged.
 
 ## Detailed design
 
-TBD — to be specified when this proposal is taken up.
+The MCP server lives in `bajutsu/mcp/` (optional dependency `fastmcp>=2.0.0`).
+
+**Tools:**
+- `bajutsu_doctor(app, udid)` — score the current screen's accessibility readiness (in-process)
+- `bajutsu_run(app, scenario, ...)` — execute scenarios deterministically (subprocess)
+
+**Resources:**
+- `bajutsu://runs/{run_id}/manifest.json` — structured run result
+- `bajutsu://runs/{run_id}/report.html` — self-contained HTML report
+- `bajutsu://runs/latest/manifest.json` — most recent run
+
+**Entry point:** `bajutsu mcp [--config ...] [--runs ...] [--transport stdio|sse]`
+
+Install: `uv pip install bajutsu[mcp]`
 
 ## Alternatives considered
 
-TBD.
+- In-process execution for `run` (rejected: device pool management is complex; subprocess is simpler and matches the `serve` pattern)
+- HTTP transport as default (rejected: stdio is the standard for Claude Desktop / Code integration)
 
 ## References
 
-[cli.md](../../cli.md), `bajutsu/agent.py` / `claude_agent.py`
+`bajutsu/mcp/`, [cli.md](../../cli.md)

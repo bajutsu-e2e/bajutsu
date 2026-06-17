@@ -96,7 +96,9 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `claude_triage.py` | Claude-backed `TriageAgent` (`--ai`, failure screenshot) | [cli](cli.md) |
 | `github.py` | GitHub helpers (CI, continuous integration) | [ci](ci.md) |
 | `serve.py` | Local web UI (the `serve` command) | [cli](cli.md) |
-| `cli.py` | Typer-based CLI (`run`/`record`/`doctor`/`codegen`/`trace`/`triage`/`serve`) | [cli](cli.md) |
+| `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources | [cli](cli.md) |
+| `lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
+| `cli.py` | Typer-based CLI (`run`/`record`/`doctor`/`codegen`/`trace`/`triage`/`serve`/`mcp`/`lint`/`schema`) | [cli](cli.md) |
 | `dotenv.py` | Minimal `.env` loader (never overrides an existing var) | [cli](cli.md#environment-variables-env) |
 | `_yaml.py` | YAML loader that keeps `on`/`off`/`yes`/`no` as strings | [scenarios](scenarios.md#yaml-caveat) |
 
@@ -174,8 +176,10 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
-- The CLI `run` / `doctor` / `codegen` / `trace` / `triage` / `serve`, plus `record` (AI authoring) + the alert guard
+- The CLI `run` / `doctor` / `codegen` / `trace` / `triage` / `serve` / `mcp` / `lint` / `schema`, plus `record` (AI authoring) + the alert guard
 - The `serve` local web UI (Tier 1): run scenarios and view their reports from a browser (not for CI)
+- **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
+- **Scenario linter** (`bajutsu lint` / `bajutsu schema`): validate scenarios without running them; JSON Schema output for editor integration
 - XCUITest code generation
 
 ### Validated on a real Simulator (iPhone 17 Pro, recent iOS)
