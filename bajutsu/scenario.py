@@ -46,6 +46,9 @@ _STEP_ACTIONS = (
     "http",
     "clear_keychain",
     "clear_clipboard",
+    "background",
+    "override_status_bar",
+    "clear_status_bar",
 )
 _ASSERTION_KINDS = (
     "exists",
@@ -284,6 +287,26 @@ class ClearClipboard(_Model):
     """Clear the Simulator's pasteboard."""
 
 
+class Background(_Model):
+    """Send the app to the background by pressing the Home button (simctl ui home)."""
+
+
+class OverrideStatusBar(_Model):
+    """Override the Simulator's status bar for deterministic screenshots.
+
+    All fields are optional; only the provided fields are overridden."""
+
+    time: str | None = None
+    battery_level: int | None = Field(default=None, alias="batteryLevel")
+    battery_state: str | None = Field(default=None, alias="batteryState")
+    cellular_bars: int | None = Field(default=None, alias="cellularBars")
+    wifi_bars: int | None = Field(default=None, alias="wifiBars")
+
+
+class ClearStatusBar(_Model):
+    """Remove any status bar overrides (restore the live status bar)."""
+
+
 # --- Assertions ---
 
 
@@ -400,6 +423,9 @@ class Step(_Model):
     http: HttpRequest | None = None
     clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
     clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")
+    background: Background | None = None
+    override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
+    clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
     capture: list[str] | None = None
     name: str | None = None
 

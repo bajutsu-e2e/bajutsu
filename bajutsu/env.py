@@ -102,6 +102,33 @@ def pbcopy_cmd(udid: str) -> list[str]:
     return ["xcrun", "simctl", "pbcopy", udid]
 
 
+def home_cmd(udid: str) -> list[str]:
+    """Press the Home button (sends the foreground app to the background)."""
+    return ["xcrun", "simctl", "ui", udid, "home"]
+
+
+def status_bar_override_cmd(udid: str, **kwargs: str | int) -> list[str]:
+    """Override status bar fields. Supported keys (snake_case): time, battery_level,
+    battery_state, cellular_bars, wifi_bars."""
+    cmd = ["xcrun", "simctl", "status_bar", udid, "override"]
+    key_map = {
+        "time": "--time",
+        "battery_level": "--batteryLevel",
+        "battery_state": "--batteryState",
+        "cellular_bars": "--cellularBars",
+        "wifi_bars": "--wifiBars",
+    }
+    for key, flag in key_map.items():
+        val = kwargs.get(key)
+        if val is not None:
+            cmd.extend([flag, str(val)])
+    return cmd
+
+
+def status_bar_clear_cmd(udid: str) -> list[str]:
+    return ["xcrun", "simctl", "status_bar", udid, "clear"]
+
+
 def install_cmd(udid: str, app_path: str) -> list[str]:
     return ["xcrun", "simctl", "install", udid, app_path]
 
@@ -262,6 +289,15 @@ class Env:
     @staticmethod
     def _run_pbcopy(cmd: list[str]) -> None:
         subprocess.run(cmd, input="", capture_output=True, text=True, check=True)
+
+    def home(self) -> None:
+        self._run(home_cmd(self.udid), None)
+
+    def override_status_bar(self, **kwargs: str | int) -> None:
+        self._run(status_bar_override_cmd(self.udid, **kwargs), None)
+
+    def clear_status_bar(self) -> None:
+        self._run(status_bar_clear_cmd(self.udid), None)
 
     def push(self, bundle_id: str, payload: dict[str, object]) -> None:
         """Deliver a simulated push: write the APNs payload to a temp file, then push it."""

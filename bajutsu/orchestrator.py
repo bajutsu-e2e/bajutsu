@@ -55,6 +55,9 @@ class DeviceControl(Protocol):
     def push(self, payload: dict[str, object]) -> None: ...
     def clear_keychain(self) -> None: ...
     def clear_clipboard(self) -> None: ...
+    def home(self) -> None: ...
+    def override_status_bar(self, **kwargs: str | int) -> None: ...
+    def clear_status_bar(self) -> None: ...
 
 
 def _no_network() -> list[NetworkExchange]:
@@ -157,10 +160,13 @@ def _action_of(step: Step) -> str:
         "http",
         "clear_keychain",
         "clear_clipboard",
+        "background",
+        "override_status_bar",
+        "clear_status_bar",
     ):
         if getattr(step, a) is not None:
             return a
-    raise AssertionError("step has no valid action (guaranteed by scenario validation)")
+    raise AssertionError("no valid action on step (guaranteed by scenario validation)")
 
 
 def _selector_hint(obj: object) -> str:
@@ -401,21 +407,21 @@ def _do_action(
     if step.relaunch is not None:
         if relaunch is None:
             raise base.UnsupportedAction(
-                "relaunch requires a device environment (not available with the fake driver)"
+                "relaunch requires a real device environment (not supported on fake driver)"
             )
         relaunch(step.relaunch)
         return
     if step.set_location is not None:
         if control is None:
             raise base.UnsupportedAction(
-                "setLocation requires a device environment (not available with the fake driver)"
+                "setLocation requires a real device environment (not supported on fake driver)"
             )
         control.set_location(step.set_location.lat, step.set_location.lon)
         return
     if step.push is not None:
         if control is None:
             raise base.UnsupportedAction(
-                "push requires a device environment (not available with the fake driver)"
+                "push requires a real device environment (not supported on fake driver)"
             )
         control.push(step.push.payload)
         return
@@ -425,18 +431,51 @@ def _do_action(
     if step.clear_keychain is not None:
         if control is None:
             raise base.UnsupportedAction(
-                "clearKeychain requires a device environment (not available with the fake driver)"
+                "clearKeychain requires a real device environment (not supported on fake driver)"
             )
         control.clear_keychain()
         return
     if step.clear_clipboard is not None:
         if control is None:
             raise base.UnsupportedAction(
-                "clearClipboard requires a device environment (not available with the fake driver)"
+                "clearClipboard requires a real device environment (not supported on fake driver)"
             )
         control.clear_clipboard()
         return
-    raise AssertionError("unsupported action")
+    if step.background is not None:
+        if control is None:
+            raise base.UnsupportedAction(
+                "background requires a real device environment (not supported on fake driver)"
+            )
+        control.home()
+        return
+    if step.override_status_bar is not None:
+        if control is None:
+            raise base.UnsupportedAction(
+                "overrideStatusBar requires a real device environment (not supported on fake driver)"
+            )
+        osb = step.override_status_bar
+        kwargs: dict[str, str | int] = {}
+        if osb.time is not None:
+            kwargs["time"] = osb.time
+        if osb.battery_level is not None:
+            kwargs["battery_level"] = osb.battery_level
+        if osb.battery_state is not None:
+            kwargs["battery_state"] = osb.battery_state
+        if osb.cellular_bars is not None:
+            kwargs["cellular_bars"] = osb.cellular_bars
+        if osb.wifi_bars is not None:
+            kwargs["wifi_bars"] = osb.wifi_bars
+        control.override_status_bar(**kwargs)
+        return
+    if step.clear_status_bar is not None:
+        if control is None:
+            raise base.UnsupportedAction(
+                "clearStatusBar requires a real device environment (not supported on fake driver)"
+            )
+        control.clear_status_bar()
+        return
+    raise AssertionError("unhandled action")
 
 
 def _require_multi_touch(driver: base.Driver, action: str) -> None:

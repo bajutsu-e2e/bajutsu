@@ -124,6 +124,15 @@ def demo_device() -> None:
         def clear_clipboard(self) -> None:
             pass
 
+        def home(self) -> None:
+            pass
+
+        def override_status_bar(self, **kwargs: str | int) -> None:
+            pass
+
+        def clear_status_bar(self) -> None:
+            pass
+
     ctrl = RecordingControl()
     s = _load("device.yaml")[0]
     r = run_scenario(_driver(), s, control=ctrl)
