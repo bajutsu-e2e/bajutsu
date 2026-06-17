@@ -99,19 +99,23 @@ def test_baselines_defaults_to_none() -> None:
 
 
 def test_baselines_resolution_order() -> None:
-    """The resolution order for baselines_dir is:
-    --baselines flag > config baselines > baselines/ beside scenario."""
+    """_resolve_baselines_dir respects: --baselines flag > config > scenario-local default."""
     from pathlib import Path
+
+    from bajutsu.cli import _resolve_baselines_dir
 
     eff_with = resolve(load_config("apps: { x: { bundleId: com.x, baselines: cfg/bl } }"), "x")
     eff_without = resolve(load_config("apps: { x: { bundleId: com.x } }"), "x")
+    scenario_file = Path("/scenarios/app/smoke.yaml")
 
-    # Case 1: explicit flag always wins
-    flag = "flag/baselines"
-    assert Path(flag) == Path(flag)  # trivially, flag is used
+    # flag wins over everything
+    assert _resolve_baselines_dir("flag/bl", eff_with, scenario_file) == Path("flag/bl")
+    assert _resolve_baselines_dir("flag/bl", eff_without, scenario_file) == Path("flag/bl")
 
-    # Case 2: config baselines used when no flag
-    assert eff_with.baselines == "cfg/bl"
+    # config used when no flag
+    assert _resolve_baselines_dir("", eff_with, scenario_file) == Path("cfg/bl")
 
-    # Case 3: None when config omits baselines (caller falls back to scenario-local)
-    assert eff_without.baselines is None
+    # scenario-local default when neither flag nor config
+    assert _resolve_baselines_dir("", eff_without, scenario_file) == Path(
+        "/scenarios/app/baselines"
+    )
