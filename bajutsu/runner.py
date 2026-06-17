@@ -435,8 +435,8 @@ def device_pool(
 
 
 def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run) -> DeviceControl:
-    """A DeviceControl bound to one device, backing `setLocation` / `push` steps via
-    simctl."""
+    """A DeviceControl bound to one device, backing `setLocation` / `push` /
+    `background` / `overrideStatusBar` / `clearStatusBar` steps via simctl."""
     e = env.Env(udid, run=env_run)
 
     class _Control:
@@ -445,6 +445,15 @@ def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
 
         def push(self, payload: dict[str, object]) -> None:
             e.push(bundle_id, payload)
+
+        def home(self) -> None:
+            e.home()
+
+        def override_status_bar(self, **kwargs: str | int) -> None:
+            e.override_status_bar(**kwargs)
+
+        def clear_status_bar(self) -> None:
+            e.clear_status_bar()
 
     return _Control()
 
