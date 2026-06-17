@@ -38,8 +38,13 @@ When you add a roadmap item:
    in-flight branches racing for the same number.
 2. **Create the item directory and both language files** —
    `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md` (English) and
-   `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug) — and add a row to
-   the matching topic table in **both** index pages (`README.md` and `README-ja.md`).
+   `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **The index
+   tables below are generated** ([`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py),
+   BE-0043) — don't hand-edit a row. For an item in an **existing topic**, just run
+   `make roadmap-index` (or let CI's allocator regenerate it) and the row appears. Only a
+   **brand-new topic** needs a hand edit: add its `###` heading + an empty table (header +
+   separator row) under the right `## Accepted` / `## Proposals` section in **both** index pages,
+   then run `make roadmap-index`. `make roadmap-index-check` (in the gate) fails on any drift.
 3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
@@ -114,6 +119,14 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | ID | Item | Status |
 |---|---|---|
 | [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server.md) | MCP server | Implemented |
+
+### Development infrastructure (contributor workflow)
+
+Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
+
+| ID | Item | Status |
+|---|---|---|
+| [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | In progress |
 
 ## Proposals
 
@@ -199,14 +212,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0037](BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
 | [BE-0038](BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | Proposal | Autify VAX |
 | [BE-0040](BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
-
-### Development infrastructure (contributor workflow)
-
-Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
-
-| ID | Item | Status |
-|---|---|---|
-| [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Proposal |
 
 ## Not adopting (already covered / out of scope)
 
