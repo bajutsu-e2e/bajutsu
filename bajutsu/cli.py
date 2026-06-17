@@ -74,6 +74,23 @@ def _backends(backend: str, fallback: list[str]) -> list[str]:
     return [b.strip() for b in backend.split(",") if b.strip()] if backend else fallback
 
 
+def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
+    """Resolve the baseline images directory for visual assertions.
+
+    Resolution order (highest to lowest priority):
+    1. --baselines flag: explicit path on the command line
+    2. config baselines: apps.<name>.baselines in the config file
+    3. scenario-local default: baselines/ beside the scenario file
+    """
+    # flag > config > scenario-local default
+    if flag:
+        return Path(flag)
+    elif eff.baselines:
+        return Path(eff.baselines)
+    else:
+        return scenario_file.parent / "baselines"
+
+
 def _scenario_files(eff: Effective, scenario: str, app_name: str) -> tuple[list[Path], bool]:
     """The scenario files `run` should load: `[--scenario]` when given (an explicit override),
     else every `*.yaml` in the app's configured `scenarios` dir. Returns `(files, single)` where
@@ -206,7 +223,7 @@ def run(
         "",
         "--baselines",
         help="directory of baseline images for `visual` assertions "
-        "(default: a `baselines` folder beside the scenario)",
+        "(default: config baselines, then baselines/ beside the scenario)",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
@@ -295,9 +312,9 @@ def run(
         for s in scenarios:
             if s.mocks:
                 s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
-    # Visual assertions resolve `baseline: <name>` within this directory; default to a
-    # `baselines` folder beside the scenario(s) so the demo / common case needs no flag.
-    baselines_dir = Path(baselines) if baselines else files[0].parent / "baselines"
+    # Visual assertions resolve `baseline: <name>` within this directory.
+    # Resolution order: --baselines flag > config baselines > baselines/ beside the scenario.
+    baselines_dir = _resolve_baselines_dir(baselines, eff, files[0])
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # A pool of one-or-more devices. Each device carries its own network collector, evidence
     # sink (interval recordings), and device control — so network collection / video / log /

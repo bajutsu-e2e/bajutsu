@@ -69,6 +69,9 @@ class AppConfig(_Model):
     # Directory of this app's scenario *.yaml files. `run` reads them all; `record` writes new
     # ones here. Relative to the run's working directory (like app_path/build).
     scenarios: str | None = None
+    # Directory of baseline images for `visual` assertions. Relative to the run's
+    # working directory. Overrides the default (baselines/ beside the scenario file).
+    baselines: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
 
@@ -110,6 +113,9 @@ class Effective:
     # Directory of this app's scenario *.yaml files (config-driven `run`/`record`). None =
     # unset (the caller must pass an explicit scenario path).
     scenarios: str | None = None
+    # Baseline images directory for `visual` assertions. None = fall back to
+    # baselines/ beside the scenario file (or --baselines CLI flag).
+    baselines: str | None = None
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -148,6 +154,7 @@ def resolve(config: Config, app: str) -> Effective:
         app_path=a.app_path,
         build=a.build,
         scenarios=a.scenarios,
+        baselines=a.baselines,
     )
 
 
