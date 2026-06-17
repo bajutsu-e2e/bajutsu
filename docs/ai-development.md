@@ -125,7 +125,7 @@ When you add a roadmap item:
 2. **Create the item directory and both language files** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
    (English) and `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
    hand-edit the index tables** — they are generated from each item's own metadata. Run
-   `make roadmap-index` (or `python scripts/build_roadmap_index.py`) to regenerate the rows between the
+   `make roadmap-index` (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the
    `<!-- GENERATED:* -->` markers in **both** index pages ([en](roadmap/README.md), [ja](roadmap/README-ja.md)).
    The item's `Track` + `Topic` decide which section it lands in, so an item in an existing topic needs no
    manual table edit; `tests/test_roadmap_index.py` (run by `make test`) fails if the committed index drifts.
