@@ -121,7 +121,7 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
    （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）。**インデックス表は
    手で編集しません** —— 各項目自身のメタデータから生成されます。`make roadmap-index`（または
    `python scripts/build_roadmap_index.py`）を実行して、**両方**のインデックスページ
-   （[en](../roadmap/README.md) / [ja](../roadmap/README-ja.md)）の `<!-- GENERATED:* -->` マーカー間の行を
+   （[en](../roadmap/README.md) / [ja](../roadmap/README-ja.md)）の `<!-- GENERATED:* -->` マーカー間の表を
    再生成してください。項目の `Track` + `Topic` が並ぶセクションを決めるので、既存トピックの項目なら表の手編集は
    不要です。コミット済みインデックスがズレると `tests/test_roadmap_index.py`（`make test` が実行）が落ちます。
    まったく新しいトピックの場合は、マーカー付きセクションとスクリプトの `Section` エントリも追加します。
