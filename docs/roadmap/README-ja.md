@@ -64,6 +64,14 @@
 | [BE-0003](BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci-ja.md) | codegen・トレース・ネットワーク・CI（M3） | 実装済み |
 | [BE-0004](BE-0004-m4-self-healing-triage/BE-0004-m4-self-healing-triage-ja.md) | 自己修復トリアージ（M4） | 実装済み |
 
+### プラットフォーム拡張（着手済みスライス）
+
+マルチプラットフォーム化の最初のスライスは着手済みです: **プラットフォーム対応の backend レジストリ**により、`--backend` / `backend:` は bare な actuator に加えてプラットフォームトークン（`ios` / `android` / `web` / `fake`）を受け付け、実装済みかつ利用可能な最初の actuator へ展開します。各プラットフォームの三点セットの残り（プラットフォーム別 environment manager + actuator driver）は、提案の[プラットフォーム拡張](#プラットフォーム拡張android--web--flutter)で扱います。
+
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md) | プラットフォーム対応の backend レジストリと選択 | 実装済み |
+
 ### オーサリング体験（record / GUI エディタ）
 
 AI 駆動の `record`（Tier 1）は実装済みです（[recording.md](../ja/recording.md)）。このセクションの目的は **AI に依らない操作キャプチャ**と**シナリオの視覚的編集**で、記録 → 編集 → 再実行のサイクルを人が扱いやすくすることです。ローカル Web UI ランチャ `bajutsu serve` はその最初のステップです。
@@ -115,9 +123,9 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0005](BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring-ja.md) | `idb_companion` バージョン監視 | 提案 |
 | [BE-0006](BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization-ja.md) | idb 要素ツリー正規化の精度 | 提案 |
 
-### プラットフォーム拡張（Android / Flutter）
+### プラットフォーム拡張（Android / Web / Flutter）
 
-現状はスコープを **iOS Simulator 限定**としています（[DESIGN §1](../../DESIGN.md)）。このセクションは driver / backend 抽象を活用したマルチプラットフォーム化の方向性を扱います。コアのスコープ文の更新を伴う戦略的な判断です。具体的な方針・設計は [multi-platform.md](../ja/multi-platform.md) に詳述しています。
+現状はスコープを **iOS Simulator 限定**としています（[DESIGN §1](../../DESIGN.md)）。このセクションは driver / backend 抽象を活用したマルチプラットフォーム化の方向性を扱います。コアのスコープ文の更新を伴う戦略的な判断です。全体像（大枠）は [multi-platform.md](../ja/multi-platform.md) にあり、**プラットフォーム別の具体的な設計**は以下の各項目にあります: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) が共有の抽象、続いて Web（既存の Linux ゲートで動くため最初に推奨）・Android・Flutter です。最初のスライス —— プラットフォーム対応の backend レジストリ —— はすでに着手済みです（[BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)、可決済み）。
 
 | ID | 項目 | 状態 |
 |---|---|---|
@@ -125,6 +133,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0008](BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
 | [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 提案 |
 | [BE-0010](BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md) | スコープ文の更新 | 提案 |
+| [BE-0041](BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) | Web（Playwright）backend | 提案 |
 
 ### オーサリング体験（record / GUI エディタ）
 
@@ -133,7 +142,14 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0012](BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) | 操作キャプチャ record | 提案 |
 | [BE-0013](BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md) | シナリオ GUI エディタ | 提案 |
 | [BE-0014](BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) | 既存 AI record との棲み分け | 提案 |
-| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開ホスティング | 提案 |
+
+### Web UI のホスティング（クラウド / セルフホスト）
+
+ローカルの `bajutsu serve` ランチャを共有サービスにします。ランナーは iOS Simulator を駆動するため Mac が必要で、コントロールプレーン（Linux）⇄ macOS ワーカーの分離を強います。[BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) はマネージドなマルチテナント公開スタックを選定し、[BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) は自前の Mac での運用 —— 既存 `serve` で今日から使える単一 Mac 構成と、完全セルフホストのマルチテナント構成 —— を扱います。
+
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開 / クラウドホスティング | 提案 |
 | [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) | Web UI のセルフホスティング | 提案 |
 
 ### 統合・自動化（MCP 化）
