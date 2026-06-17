@@ -160,7 +160,7 @@ def _action_of(step: Step) -> str:
     ):
         if getattr(step, a) is not None:
             return a
-    raise AssertionError("step に有効なアクションがない（scenario 検証で保証済み）")
+    raise AssertionError("step has no valid action (guaranteed by scenario validation)")
 
 
 def _selector_hint(obj: object) -> str:
@@ -401,20 +401,22 @@ def _do_action(
     if step.relaunch is not None:
         if relaunch is None:
             raise base.UnsupportedAction(
-                "relaunch にはデバイス環境が必要（fake driver では実行不可）"
+                "relaunch requires a device environment (not available with the fake driver)"
             )
         relaunch(step.relaunch)
         return
     if step.set_location is not None:
         if control is None:
             raise base.UnsupportedAction(
-                "setLocation にはデバイス環境が必要（fake driver では実行不可）"
+                "setLocation requires a device environment (not available with the fake driver)"
             )
         control.set_location(step.set_location.lat, step.set_location.lon)
         return
     if step.push is not None:
         if control is None:
-            raise base.UnsupportedAction("push にはデバイス環境が必要（fake driver では実行不可）")
+            raise base.UnsupportedAction(
+                "push requires a device environment (not available with the fake driver)"
+            )
         control.push(step.push.payload)
         return
     if step.http is not None:
@@ -423,18 +425,18 @@ def _do_action(
     if step.clear_keychain is not None:
         if control is None:
             raise base.UnsupportedAction(
-                "clearKeychain にはデバイス環境が必要（fake driver では実行不可）"
+                "clearKeychain requires a device environment (not available with the fake driver)"
             )
         control.clear_keychain()
         return
     if step.clear_clipboard is not None:
         if control is None:
             raise base.UnsupportedAction(
-                "clearClipboard にはデバイス環境が必要（fake driver では実行不可）"
+                "clearClipboard requires a device environment (not available with the fake driver)"
             )
         control.clear_clipboard()
         return
-    raise AssertionError("未対応アクション")
+    raise AssertionError("unsupported action")
 
 
 def _require_multi_touch(driver: base.Driver, action: str) -> None:
@@ -442,7 +444,7 @@ def _require_multi_touch(driver: base.Driver, action: str) -> None:
     (e.g. idb), rather than emitting a single-touch approximation that silently passes."""
     if base.Capability.MULTI_TOUCH not in driver.capabilities():
         raise base.UnsupportedAction(
-            f"{action} は multiTouch 対応 backend が必要（idb は単一タッチ; codegen→XCUITest で実行可）"
+            f"{action} requires a multi-touch capable backend (idb supports single touch only; use codegen→XCUITest instead)"
         )
 
 
