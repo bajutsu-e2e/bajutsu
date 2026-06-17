@@ -1,5 +1,5 @@
 .PHONY: setup hooks deps deps-check serve test lint format format-check typecheck \
-        lock-check lint-sh lint-actions check
+        lock-check lint-sh lint-actions check roadmap-index
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -65,6 +65,12 @@ lint-sh:
 # anywhere. Install locally: https://github.com/rhysd/actionlint/blob/main/docs/install.md
 lint-actions:
 	@command -v actionlint >/dev/null 2>&1 && actionlint -color || echo "lint-actions: actionlint not installed — skipping (CI enforces it)"
+
+# Regenerate the roadmap index tables (README.md / README-ja.md) from each BE item's own
+# metadata, so a roadmap PR only touches its own directory (BE-0043). The committed result is
+# enforced by tests/test_roadmap_index.py — part of `make test`, so the gate fails on drift.
+roadmap-index:
+	uv run python scripts/build_roadmap_index.py
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
