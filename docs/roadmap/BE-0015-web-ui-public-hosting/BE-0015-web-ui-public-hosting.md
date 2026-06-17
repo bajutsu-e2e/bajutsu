@@ -23,6 +23,27 @@ Related: [architecture](../../architecture.md) · [ci](../../ci.md) · the self-
 
 ## Motivation
 
+The local web UI (`bajutsu serve`, [bajutsu/serve/](../../../bajutsu/serve/)) is a Tier-1 authoring
+convenience: it binds `127.0.0.1`, has no authentication, and shells out to `bajutsu run` on the same
+host. That makes it a single-machine, single-user tool, with three limitations that public hosting is
+meant to lift:
+
+- **No sharing.** Authoring a scenario and investigating a failure are collaborative activities, but
+  the run tree, the live log, and the report all stay on one laptop. A teammate cannot open a
+  colleague's report, watch an authoring session in progress, or review a result without copying
+  files by hand.
+- **Every author needs a configured Mac.** A run drives an iOS Simulator, which only exists on macOS.
+  So today only people with a set-up macOS machine can author or run at all. A shared service lets
+  anyone with a browser do so against a managed Mac pool.
+- **The UI is bound to its host.** Each request spawns a subprocess on the serving machine
+  ([jobs.py](../../../bajutsu/serve/jobs.py) `run_job`), so the tool cannot scale past one host or
+  isolate one user's run from another's.
+
+Public hosting turns this per-laptop convenience into shared infrastructure: a logged-in user picks a
+project and a scenario, runs it on a managed Mac pool, watches live logs, and shares the resulting
+report by URL. This is squarely the *authoring experience* topic — it removes the macOS-on-every-desk
+requirement and makes runs and reports first-class, shareable artifacts.
+
 The web UI is a **thin launcher**. `/api/run` spawns `python -m bajutsu run …`, which drives an
 **iOS Simulator** through `idb` + `simctl` — and the Simulator only exists on **macOS**. So
 "host the web UI" really means "host the **runner**," and the runner needs a Mac. No general
@@ -48,6 +69,11 @@ expensive macOS-only part is reduced to a stateless worker that pulls a job, run
 Simulator, streams logs, and uploads artifacts. This is the central refactor: **`serve.py`'s
 in-process `subprocess.Popen` becomes a job enqueued onto a broker and consumed by remote
 workers.**
+
+It must do so without touching the prime directives ([CLAUDE.md](../../../CLAUDE.md)): `run` stays
+fully deterministic, with no large language model (LLM) anywhere in the pass/fail path, and the
+deterministic gate stays on ephemeral continuous-integration (CI) runners. The hosted Mac pool
+carries only interactive authoring, never regression volume.
 
 ## Detailed design
 
