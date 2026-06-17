@@ -101,7 +101,7 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   monotonically increasing ID. When you add one: allocate the next ID
   (`ls -d docs/roadmap/BE-*/ | sort | tail -1`, then +1; never reuse, skip, or guess) and create
   **both** language files in that directory. Don't hand-edit the index tables — run
-  `make roadmap-index` to regenerate the rows in **both** index pages
+  `make roadmap-index` to regenerate the tables in **both** index pages
   (`docs/roadmap/README.md` and `docs/roadmap/README-ja.md`) from each item's metadata;
   `make test` fails if the committed index drifts.
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
