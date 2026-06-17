@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-conflict-resistant-file-flow-ja.md)
+**English** · [日本語](BE-0043-conflict-resistant-file-flow-ja.md)
 
-# BE-XXXX — Conflict-resistant file flow (generated indexes, modular files, git hygiene)
+# BE-0043 — Conflict-resistant file flow (generated indexes, modular files, git hygiene)
 
-* Proposal: [BE-XXXX](BE-XXXX-conflict-resistant-file-flow.md)
+* Proposal: [BE-0043](BE-0043-conflict-resistant-file-flow.md)
 * Status: **Proposal**
 * Track: [Proposals](../README.md#proposals)
 * Topic: Development infrastructure (contributor workflow)
@@ -33,7 +33,7 @@ The repo also carries **no git-side defenses**: no `.gitattributes` (no merge dr
 disabled (not wired into `make setup`), and the history is full of `Merge branch 'main' into
 <branch>` commits — long-lived branches drift and integrate late, so conflicts surface large.
 
-The BE-ID allocation race is already solved (the `BE-XXXX` placeholder + `scripts/allocate_roadmap_ids.py`
+The BE-ID allocation race is already solved (the `BE-0043` placeholder + `scripts/allocate_roadmap_ids.py`
 run by the [`roadmap-id`](../../../.github/workflows/roadmap-id.yml) workflow), but the **index
 tables that carry those IDs are still hand-edited**, so they remain the single largest conflict
 source. This proposal closes that gap and generalizes the lesson.

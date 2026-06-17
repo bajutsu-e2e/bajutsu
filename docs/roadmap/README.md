@@ -206,7 +206,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 
 | ID | Item | Status |
 |---|---|---|
-| [BE-XXXX](BE-XXXX-conflict-resistant-file-flow/BE-XXXX-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Proposal |
+| [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Proposal |
 
 ## Not adopting (already covered / out of scope)
 

@@ -201,7 +201,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-XXXX](BE-XXXX-conflict-resistant-file-flow/BE-XXXX-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 提案 |
+| [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 提案 |
 
 ## 取り込まない（既に充足 / スコープ外）
 
