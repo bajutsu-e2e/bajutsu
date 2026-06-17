@@ -304,10 +304,9 @@ trimmed). Substitution is **type-preserving at the edges**:
 - A token whose namespace isn't being substituted **right now is left intact**, so each layer fills
   only its own namespace.
 
-Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), and `secrets.*` (declared
-via config `secrets:`, resolved from the environment by the run loop at action time, §6.4). (UI-value
-capture via `vars.*` is **not yet implemented** — the interpolation primitive would support it, but the
-run loop never binds `vars.*`.)
+Namespaces: `params.*` (components, §6.2), `row.*` (data-driven, §6.3), `secrets.*` (declared
+via config `secrets:`, resolved from the environment by the run loop at action time, §6.4), and
+`vars.*` (runtime capture via `extract`, §6.5).
 
 ### 6.2 Components (`use` → reusable steps)
 

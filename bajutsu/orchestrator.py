@@ -25,6 +25,7 @@ from bajutsu.network import NetworkExchange
 from bajutsu.scenario import (
     Assertion,
     CaptureRule,
+    Extract,
     Gone,
     Relaunch,
     Scenario,
@@ -449,8 +450,10 @@ def _run_step_body(
     bindings: Mapping[str, str] | None = None,
     control: DeviceControl | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
-    """Execute one step's effect, returning (ok, reason, assertion_results)."""
-    step = _interp_step(step, bindings or {})
+    """Execute one step's effect, returning (ok, reason, assertion_results).
+
+    The caller is responsible for interpolation (``_interp_step``) before
+    calling this function."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -525,6 +528,24 @@ def _kind_of(token: str) -> str:
     return token.partition(".")[0]
 
 
+def _run_extract(
+    elements: list[base.Element],
+    extracts: Mapping[str, Extract],
+    live_bindings: dict[str, str],
+) -> tuple[bool, str]:
+    """Resolve each extract selector and store the property value in live_bindings."""
+    for name, ext in extracts.items():
+        try:
+            el = base.resolve_unique(elements, ext.sel.as_selector())
+        except base.SelectorError as e:
+            return False, f"extract '{name}': {e}"
+        raw: str | None = el.get(ext.prop)
+        if raw is None:
+            return False, f"extract '{name}': {ext.prop} is None on the matched element"
+        live_bindings[f"vars.{name}"] = str(raw)
+    return True, ""
+
+
 def _collect_captures(
     scenario: Scenario, step: Step, kind: str, ok: bool, screen_changed: bool
 ) -> list[str]:
@@ -572,6 +593,9 @@ def run_scenario(
     failure: str | None = None
     artifacts: list[Artifact] = []
     scenario_start = clock.now()  # ~video start; step offsets are measured from here
+    # Mutable bindings: extract steps populate vars.* during the run; scenario-level
+    # expect sees the accumulated values.
+    live_bindings: dict[str, str] = dict(bindings or {})
 
     try:
         failure = _run_steps(
@@ -586,12 +610,12 @@ def run_scenario(
             sid,
             network,
             relaunch,
-            bindings,
+            live_bindings,
             control,
             progress,
         )
         if failure is None and scenario.expect:
-            expect = _interp_asserts(scenario.expect, bindings or {})
+            expect = _interp_asserts(scenario.expect, live_bindings)
             if visual_context is not None:
                 driver.screenshot(str(visual_context.screenshot_path))
             expect_results = assertions.evaluate(
@@ -636,11 +660,14 @@ def _run_steps(
     sid: str,
     network: NetworkSource,
     relaunch: RelaunchFn | None = None,
-    bindings: Mapping[str, str] | None = None,
+    bindings: dict[str, str] | None = None,
     control: DeviceControl | None = None,
     progress: ProgressFn | None = None,
 ) -> str | None:
-    """Run the step loop, appending outcomes; return the failure string or None."""
+    """Run the step loop, appending outcomes; return the failure string or None.
+
+    ``bindings`` is a mutable dict — extract steps add ``vars.*`` entries so that
+    subsequent steps and scenario-level ``expect`` can reference them."""
     failure: str | None = None
     total = len(scenario.steps)
     for i, step in enumerate(scenario.steps):
@@ -648,29 +675,32 @@ def _run_steps(
         outcome = StepOutcome(index=i, action=kind)
         if progress is not None:
             progress(f"{sid} · step {i + 1}/{total}: {_step_label(step, kind)}")
-        # Per-step instant evidence lives under the scenario's dir so multi-scenario
-        # runs don't share (and overwrite) a flat step0/ at the run root.
+        interp = _interp_step(step, bindings or {})
         step_id = f"{sid}/{step.name or f'step{i}'}"
         before = driver.query() if wants_screen_changed else None
         start = clock.now()
         outcome.started_at = max(0.0, start - scenario_start)
         ok, reason, results = _run_step_body(
-            driver, step, kind, clock, network, relaunch, bindings, control
+            driver, interp, kind, clock, network, relaunch, bindings, control
         )
         if not ok and on_blocked is not None:
             event = on_blocked(driver)
             if event is not None:
                 outcome.alerts.append(event)
                 ok, reason, results = _run_step_body(
-                    driver, step, kind, clock, network, relaunch, bindings, control
+                    driver, interp, kind, clock, network, relaunch, bindings, control
                 )  # retry
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = clock.now() - start
 
-        # Query once after the step: reuse for both screen_changed detection and
-        # evidence capture (elements.json), avoiding a redundant subprocess call.
         after = driver.query()
         screen_changed = before is not None and after != before
+
+        if outcome.ok and interp.extract and bindings is not None:
+            ext_ok, ext_reason = _run_extract(after, interp.extract, bindings)
+            if not ext_ok:
+                outcome.ok, outcome.reason = False, ext_reason
+
         fired = _collect_captures(scenario, step, kind, outcome.ok, screen_changed)
         # Interval kinds are recorded scenario-wide (run_scenario), so only the
         # instant kinds are captured per step here.
