@@ -95,7 +95,9 @@ flowchart TB
 | `claude_triage.py` | Claude ベースの `TriageAgent`（`--ai`・失敗スクショ） | [cli](cli.md) |
 | `github.py` | GitHub ヘルパ（CI） | [ci](ci.md) |
 | `serve.py` | ローカル Web UI（`serve` コマンド） | [cli](cli.md) |
-| `cli.py` | Typer ベース CLI（`run`/`record`/`doctor`/`codegen`/`trace`/`triage`/`serve`） | [cli](cli.md) |
+| `mcp/` | MCP サーバ: `run`/`doctor` をツール + 実行証跡をリソースとして公開 | [cli](cli.md) |
+| `lint.py` | シナリオ linter + JSON Schema 生成（`lint` / `schema` コマンド） | [cli](cli.md) |
+| `cli.py` | Typer ベース CLI（`run`/`record`/`doctor`/`codegen`/`trace`/`triage`/`serve`/`mcp`/`lint`/`schema`） | [cli](cli.md) |
 | `dotenv.py` | `.env` の最小ローダ（既存環境変数を上書きしない） | [cli](cli.md#環境変数env) |
 | `_yaml.py` | `on`/`off`/`yes`/`no` を文字列のまま読む YAML ローダ | [scenarios](scenarios.md#yaml-の注意点) |
 
