@@ -15,7 +15,19 @@ A new assertion type that diffs a screenshot against a baseline. Supports exclus
 
 ## Motivation
 
-TBD.
+The existing assertion kinds check the *structure* of a screen — an element's value, its
+presence, the text it carries. None of them catch a purely *visual* regression: a layout that
+shifts, a color that changes, an icon that goes missing, a font that renders wrong. These are
+exactly the failures a human notices at a glance but that pass every structural check, because
+the accessibility tree is unchanged. Competitors (MagicPod, Autify) offer screenshot comparison
+for this reason, and it is a frequent ask.
+
+A visual check has to stay inside Bajutsu's prime directives. The risk is that "does this look
+right?" sounds like a judgement call — the kind of thing one might hand to an LLM. It is not: a
+pixel diff against a stored baseline is a deterministic machine check. The same input produces
+the same pass/fail every time, with no model in the loop. That makes visual regression a natural
+fit for the Tier-2 run/CI gate, and the reason this proposal could be accepted rather than
+shelved as "too fuzzy".
 
 ## Detailed design
 
