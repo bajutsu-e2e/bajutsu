@@ -81,7 +81,7 @@ def test_pinch_fails_without_multitouch_capability() -> None:
     ]
     result = run_scenario(driver, scenario)
     assert not result.ok
-    assert "multiTouch" in (result.failure or "")
+    assert "multi-touch" in (result.failure or "")
 
 
 def test_idb_double_tap_is_two_taps() -> None:

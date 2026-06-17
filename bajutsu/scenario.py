@@ -43,6 +43,9 @@ _STEP_ACTIONS = (
     "set_location",
     "push",
     "use",
+    "background",
+    "override_status_bar",
+    "clear_status_bar",
 )
 _ASSERTION_KINDS = (
     "exists",
@@ -258,6 +261,26 @@ class Push(_Model):
     payload: dict[str, Any]
 
 
+class Background(_Model):
+    """Send the app to the background by pressing the Home button (simctl ui home)."""
+
+
+class OverrideStatusBar(_Model):
+    """Override the Simulator's status bar for deterministic screenshots.
+
+    All fields are optional; only the provided fields are overridden."""
+
+    time: str | None = None
+    battery_level: int | None = Field(default=None, alias="batteryLevel")
+    battery_state: str | None = Field(default=None, alias="batteryState")
+    cellular_bars: int | None = Field(default=None, alias="cellularBars")
+    wifi_bars: int | None = Field(default=None, alias="wifiBars")
+
+
+class ClearStatusBar(_Model):
+    """Remove any status bar overrides (restore the live status bar)."""
+
+
 # --- Assertions ---
 
 
@@ -378,6 +401,9 @@ class Step(_Model):
     set_location: SetLocation | None = Field(default=None, alias="setLocation")
     push: Push | None = None
     use: Use | None = None
+    background: Background | None = None
+    override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
+    clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
     capture: list[str] | None = None
     extract: dict[str, Extract] | None = None
     name: str | None = None
