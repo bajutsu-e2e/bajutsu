@@ -1,0 +1,104 @@
+"""MCP tool definitions: bajutsu_run and bajutsu_doctor."""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+from fastmcp import FastMCP
+
+from bajutsu.backends import select_actuator
+from bajutsu.config import Effective, load_config, resolve
+from bajutsu.doctor import render, score
+from bajutsu.drivers.base import Driver
+
+
+def _load_effective(config_path: Path, app: str) -> Effective:
+    """Load config and resolve effective settings. Raises ValueError on failure."""
+    if not config_path.exists():
+        raise ValueError(f"config not found: {config_path}")
+    cfg = load_config(config_path.read_text(encoding="utf-8"))
+    try:
+        return resolve(cfg, app)
+    except KeyError as e:
+        raise ValueError(e.args[0] if e.args else str(e)) from None
+
+
+def make_driver(actuator: str, udid: str) -> Driver:
+    from bajutsu.backends import make_driver as _make
+
+    return _make(actuator, udid)
+
+
+def register_tools(mcp: FastMCP, config_path: Path) -> None:
+
+    @mcp.tool()
+    def bajutsu_doctor(app: str, udid: str = "booted") -> str:
+        """Score the current screen's accessibility convention readiness.
+
+        Returns the grade (Ready / Partial / Blocked) and a breakdown of
+        id coverage, namespace conformance, and duplicates."""
+        eff = _load_effective(config_path, app)
+        backends = eff.backend
+        actuator = select_actuator(backends)
+        driver = make_driver(actuator, udid)
+        elements = driver.query()
+        s = score(elements, eff.id_namespaces)
+        return render(s)
+
+    @mcp.tool()
+    def bajutsu_run(
+        app: str,
+        scenario: str = "",
+        udid: str = "booted",
+        tag: str = "",
+        exclude: str = "",
+        erase: bool = False,
+        workers: int = 1,
+    ) -> str:
+        """Run E2E scenarios deterministically. Pass/fail is machine-only.
+
+        Returns a summary with the manifest path. The scenario parameter is
+        a path to a *.yaml file; if omitted, all scenarios in the app's
+        configured directory are run."""
+        cmd = [
+            sys.executable,
+            "-m",
+            "bajutsu",
+            "run",
+            "--app",
+            app,
+            "--config",
+            str(config_path),
+            "--udid",
+            udid,
+            "--workers",
+            str(workers),
+        ]
+        if scenario:
+            cmd.extend(["--scenario", scenario])
+        if tag:
+            cmd.extend(["--tag", tag])
+        if exclude:
+            cmd.extend(["--exclude", exclude])
+        if erase:
+            cmd.append("--erase")
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+
+        manifest_lines = [
+            line.strip()
+            for line in result.stdout.splitlines()
+            if "manifest" in line.lower() and ".json" in line
+        ]
+        manifest_path = manifest_lines[0] if manifest_lines else ""
+
+        ok = result.returncode == 0
+        parts = ["PASS" if ok else "FAIL"]
+        if manifest_path:
+            parts.append(manifest_path)
+        if not ok and result.stderr:
+            parts.append(result.stderr.strip())
+
+        return "  ".join(parts[:2]) + ("\n" + parts[2] if len(parts) > 2 else "")

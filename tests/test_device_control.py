@@ -61,12 +61,24 @@ class _RecordingControl:
     def __init__(self) -> None:
         self.locations: list[tuple[float, float]] = []
         self.pushes: list[dict[str, object]] = []
+        self.home_calls: int = 0
+        self.status_bar_overrides: list[dict[str, str | int]] = []
+        self.clear_status_bar_calls: int = 0
 
     def set_location(self, lat: float, lon: float) -> None:
         self.locations.append((lat, lon))
 
     def push(self, payload: dict[str, object]) -> None:
         self.pushes.append(payload)
+
+    def home(self) -> None:
+        self.home_calls += 1
+
+    def override_status_bar(self, **kwargs: str | int) -> None:
+        self.status_bar_overrides.append(dict(kwargs))
+
+    def clear_status_bar(self) -> None:
+        self.clear_status_bar_calls += 1
 
 
 def test_steps_dispatch_to_control() -> None:
@@ -84,8 +96,40 @@ def test_steps_dispatch_to_control() -> None:
     assert ctrl.pushes == [{"aps": {"alert": "ping"}}]
 
 
+def test_background_dispatches_to_control() -> None:
+    from bajutsu.scenario import Background
+
+    ctrl = _RecordingControl()
+    scn = Scenario(name="s", steps=[Step(background=Background())])
+    result = run_scenario(FakeDriver(), scn, control=ctrl)
+    assert result.ok
+    assert ctrl.home_calls == 1
+
+
+def test_override_status_bar_dispatches_to_control() -> None:
+    from bajutsu.scenario import OverrideStatusBar
+
+    ctrl = _RecordingControl()
+    scn = Scenario(
+        name="s",
+        steps=[Step(override_status_bar=OverrideStatusBar(time="9:41", battery_level=100))],
+    )
+    result = run_scenario(FakeDriver(), scn, control=ctrl)
+    assert result.ok
+    assert ctrl.status_bar_overrides == [{"time": "9:41", "battery_level": 100}]
+
+
+def test_clear_status_bar_dispatches_to_control() -> None:
+    from bajutsu.scenario import ClearStatusBar
+
+    ctrl = _RecordingControl()
+    scn = Scenario(name="s", steps=[Step(clear_status_bar=ClearStatusBar())])
+    result = run_scenario(FakeDriver(), scn, control=ctrl)
+    assert result.ok
+    assert ctrl.clear_status_bar_calls == 1
+
+
 def test_device_step_without_control_fails_cleanly() -> None:
-    # No control injected (e.g. fake driver / parallel): the step fails, not crashes.
     scn = Scenario(name="s", steps=[Step(set_location=SetLocation(lat=1.0, lon=2.0))])
     result = run_scenario(FakeDriver(), scn)
     assert not result.ok

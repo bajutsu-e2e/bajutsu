@@ -86,3 +86,36 @@ def test_app_path_parsed() -> None:
 def test_scenarios_parsed() -> None:
     cfg = load_config("apps: { x: { bundleId: com.x, scenarios: scn/dir } }")
     assert resolve(cfg, "x").scenarios == "scn/dir"
+
+
+def test_baselines_parsed() -> None:
+    cfg = load_config("apps: { x: { bundleId: com.x, baselines: baselines/x } }")
+    assert resolve(cfg, "x").baselines == "baselines/x"
+
+
+def test_baselines_defaults_to_none() -> None:
+    cfg = load_config("apps: { x: { bundleId: com.x } }")
+    assert resolve(cfg, "x").baselines is None
+
+
+def test_baselines_resolution_order() -> None:
+    """_resolve_baselines_dir respects: --baselines flag > config > scenario-local default."""
+    from pathlib import Path
+
+    from bajutsu.cli import _resolve_baselines_dir
+
+    eff_with = resolve(load_config("apps: { x: { bundleId: com.x, baselines: cfg/bl } }"), "x")
+    eff_without = resolve(load_config("apps: { x: { bundleId: com.x } }"), "x")
+    scenario_file = Path("/scenarios/app/smoke.yaml")
+
+    # flag wins over everything
+    assert _resolve_baselines_dir("flag/bl", eff_with, scenario_file) == Path("flag/bl")
+    assert _resolve_baselines_dir("flag/bl", eff_without, scenario_file) == Path("flag/bl")
+
+    # config used when no flag
+    assert _resolve_baselines_dir("", eff_with, scenario_file) == Path("cfg/bl")
+
+    # scenario-local default when neither flag nor config
+    assert _resolve_baselines_dir("", eff_without, scenario_file) == Path(
+        "/scenarios/app/baselines"
+    )
