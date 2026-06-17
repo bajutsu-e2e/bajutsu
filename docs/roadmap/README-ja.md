@@ -195,6 +195,14 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0038](BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) | 自律クロール探索（App Explorer 風） | 提案 | Autify VAX |
 | [BE-0040](BE-0040-ai-assertions/BE-0040-ai-assertions-ja.md) | AI アサーション | 保留 | MagicPod |
 
+### 開発基盤（コントリビュータ体験）
+
+このリポジトリで並行作業する多数のセッションの摩擦を減らす — マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直す。
+
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-XXXX](BE-XXXX-conflict-resistant-file-flow/BE-XXXX-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 提案 |
+
 ## 取り込まない（既に充足 / スコープ外）
 
 - **変更履歴・バージョン管理** — シナリオは YAML で git 管理されるため既に充足しています。
