@@ -56,6 +56,19 @@ make check                  # re-verify after the rebase
 Rebasing frequently means you meet other sessions' merged work early, when conflicts are a line
 or two — not at the end as a tangled merge.
 
+`make hooks` also self-heals two local git settings that take the sting out of the conflicts that
+remain (BE-0043), so you don't have to configure them by hand:
+
+- a **`uv.lock` merge driver** ([`scripts/merge-uv-lock.sh`](../scripts/merge-uv-lock.sh), mapped via
+  [`.gitattributes`](../.gitattributes)) that **regenerates the lockfile from `pyproject.toml`** on a
+  conflict instead of line-merging resolver output. If `pyproject.toml` itself conflicts, `uv lock`
+  fails and git leaves `uv.lock` conflicted — resolve `pyproject.toml` first, then re-merge.
+- **`rerere`** (reuse recorded resolution), so a conflict you have resolved once replays
+  automatically the next time the same conflict appears.
+
+Like `core.hooksPath`, these are per-clone local git settings that clone/pull never carry over, so
+`make check` / `make setup` re-wire them every time.
+
 ## Isolate concurrent sessions with worktrees
 
 Two agents must never edit the same checkout. Give each session its own

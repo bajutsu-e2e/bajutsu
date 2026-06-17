@@ -71,6 +71,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   re-wires it on every run — the gate self-heals, no manual `git config` needed. Run `make setup`
   once on a fresh clone; web sessions get it automatically. The deterministic test suite is the
   regression net — if you change behavior, a test should change with it.
+- **Git defenses are wired the same way (BE-0043).** `make hooks` also self-heals two local git
+  settings that ease parallel work: a `uv.lock` merge driver that **regenerates the lockfile from
+  `pyproject.toml` on conflict** (via [`scripts/merge-uv-lock.sh`](scripts/merge-uv-lock.sh) +
+  [`.gitattributes`](.gitattributes)) instead of line-merging resolver output, and `rerere` so a
+  once-resolved conflict replays automatically. No manual `git config` needed.
 - **Rebase, don't drift.** Before pushing, `git fetch origin && git rebase origin/main` so you
   integrate others' merged work early and surface conflicts while they're small.
 - **Stay in your lane.** Touch only the files your task needs. If a change must cut across many
