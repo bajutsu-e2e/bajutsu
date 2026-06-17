@@ -395,3 +395,40 @@ def test_visual_assertion_with_exclude_and_threshold() -> None:
 def test_visual_assertion_requires_baseline() -> None:
     with pytest.raises(ValidationError):
         Assertion.model_validate({"visual": {}})
+
+
+# --- extract (vars.*) ---
+
+
+def test_extract_on_step() -> None:
+    step = Step.model_validate(
+        {"tap": {"id": "counter.inc"}, "extract": {"count": {"sel": {"id": "counter.value"}}}}
+    )
+    assert step.extract is not None
+    assert "count" in step.extract
+    assert step.extract["count"].sel.id == "counter.value"
+    assert step.extract["count"].prop == "value"
+
+
+def test_extract_with_explicit_prop() -> None:
+    step = Step.model_validate(
+        {"tap": {"id": "ok"}, "extract": {"title": {"sel": {"id": "header"}, "prop": "label"}}}
+    )
+    assert step.extract is not None and step.extract["title"].prop == "label"
+
+
+def test_extract_rejects_invalid_prop() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate(
+            {"tap": {"id": "ok"}, "extract": {"x": {"sel": {"id": "f"}, "prop": "color"}}}
+        )
+
+
+def test_extract_requires_sel() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate({"tap": {"id": "ok"}, "extract": {"x": {"prop": "value"}}})
+
+
+def test_step_without_extract() -> None:
+    step = Step.model_validate({"tap": {"id": "ok"}})
+    assert step.extract is None

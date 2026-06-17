@@ -367,7 +367,21 @@ steps:
   - type: { text: "${secrets.API_TOKEN}", into: { id: auth.token } }   # 実値が入力され、レポートにはトークンが残る
 ```
 
-> `vars.*`（UI 値を実行時に取り込む）は **未実装**です。`${...}` プリミティブは対応可能ですが、run ループは `vars.*` を束縛しません。
+### ランタイム変数 (`${vars.*}`)
+
+ステップの `extract` 修飾子は、ステップ実行後に UI 要素のプロパティを `vars.*` に取り込みます。後続のステップやシナリオレベルの `expect` で `${vars.<name>}` として参照できます。
+
+```yaml
+steps:
+  - tap: { id: counter.inc }
+    extract:
+      count: { sel: { id: counter.value } }          # vars.count ← 要素の value（既定）
+      heading: { sel: { id: header }, prop: label }   # vars.heading ← 要素の label
+  - assert:
+      - value: { sel: { id: other.field }, equals: "${vars.count}" }
+```
+
+各 `extract` エントリは `sel`（セレクタ、`resolve_unique` で一意解決）と、省略可能な `prop`（`value` | `label` | `identifier`、既定 `value`）を指定します。セレクタが一意に解決できない場合やプロパティが `None` の場合、ステップは失敗します。
 
 ## capture トークン文法
 

@@ -16,6 +16,7 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
 from bajutsu.runner import (
     Lease,
+    _await_ready,
     device_pool,
     device_relauncher,
     launch_driver,
@@ -596,3 +597,115 @@ def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> N
     run_dir = tmp_path / "runs" / "run1"
     for name in ("manifest.json", "junit.xml", "scenario.yaml"):
         assert secret not in (run_dir / name).read_text(encoding="utf-8")
+
+
+def test_await_ready_uses_exponential_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_await_ready should use exponential backoff rather than a fixed poll interval,
+    so early polls are short and later polls grow up to a cap."""
+    sleeps: list[float] = []
+    clock = 0.0
+
+    def fake_sleep(s: float) -> None:
+        nonlocal clock
+        sleeps.append(s)
+        clock += s
+
+    monkeypatch.setattr("bajutsu.runner.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.time.monotonic", lambda: clock)
+
+    query_count = 0
+
+    class SlowStartDriver:
+        name = "slow"
+
+        def query(self) -> list[base.Element]:
+            nonlocal query_count
+            query_count += 1
+            if query_count >= 6:
+                return [_el("a", "A"), _el("b", "B")]
+            return [_el("a", "A")]  # only 1 element — not ready
+
+    _await_ready(SlowStartDriver())  # type: ignore[arg-type]
+
+    # Sleep intervals should increase (exponential backoff).
+    assert len(sleeps) >= 3
+    assert sleeps[1] > sleeps[0], f"expected increasing intervals, got {sleeps}"
+    # All intervals should be capped at a reasonable maximum.
+    assert all(s <= 1.0 for s in sleeps), f"sleep exceeded cap: {sleeps}"
+
+
+def test_await_ready_returns_immediately_when_already_ready() -> None:
+    """If the app is already rendered (>=2 elements), no sleep at all."""
+    sleeps: list[float] = []
+
+    class ReadyDriver:
+        name = "ready"
+
+        def query(self) -> list[base.Element]:
+            return [_el("a", "A"), _el("b", "B")]
+
+    import bajutsu.runner as runner_mod
+
+    orig_sleep = runner_mod.time.sleep
+    runner_mod.time.sleep = lambda s: sleeps.append(s)
+    try:
+        _await_ready(ReadyDriver())  # type: ignore[arg-type]
+    finally:
+        runner_mod.time.sleep = orig_sleep
+
+    assert sleeps == []
+
+
+def test_await_ready_respects_timeout_on_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Total sleep time must not exceed the timeout."""
+    sleeps: list[float] = []
+    clock = 0.0
+
+    def fake_sleep(s: float) -> None:
+        nonlocal clock
+        sleeps.append(s)
+        clock += s
+
+    monkeypatch.setattr("bajutsu.runner.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.time.monotonic", lambda: clock)
+
+    class NeverReadyDriver:
+        name = "never"
+
+        def query(self) -> list[base.Element]:
+            return [_el("a", "A")]
+
+    _await_ready(NeverReadyDriver(), timeout=1.0)  # type: ignore[arg-type]
+
+    total_slept = sum(sleeps)
+    assert total_slept <= 1.0, f"slept {total_slept}s which exceeds timeout 1.0s"
+
+
+def test_await_ready_caps_poll_init_to_poll_max(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When poll_init > poll_max, the first sleep should still respect poll_max."""
+    sleeps: list[float] = []
+    clock = 0.0
+
+    def fake_sleep(s: float) -> None:
+        nonlocal clock
+        sleeps.append(s)
+        clock += s
+
+    monkeypatch.setattr("bajutsu.runner.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.time.monotonic", lambda: clock)
+
+    query_count = 0
+
+    class SlowDriver:
+        name = "slow"
+
+        def query(self) -> list[base.Element]:
+            nonlocal query_count
+            query_count += 1
+            if query_count >= 3:
+                return [_el("a", "A"), _el("b", "B")]
+            return [_el("a", "A")]
+
+    _await_ready(SlowDriver(), poll_init=2.0, poll_max=0.3)  # type: ignore[arg-type]
+
+    assert all(s <= 0.3 for s in sleeps), f"sleep exceeded poll_max: {sleeps}"

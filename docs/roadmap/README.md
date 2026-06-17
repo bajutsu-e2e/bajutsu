@@ -200,6 +200,14 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0038](BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | Proposal | Autify VAX |
 | [BE-0040](BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
 
+### Development infrastructure (contributor workflow)
+
+Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
+
+| ID | Item | Status |
+|---|---|---|
+| [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Proposal |
+
 ## Not adopting (already covered / out of scope)
 
 - **Change history / version management** — already covered, since scenarios are YAML under git.
