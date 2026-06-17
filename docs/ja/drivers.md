@@ -97,7 +97,7 @@ def make_driver(actuator, udid) -> Driver: # "idb" → IdbDriver, "fake" → Fak
 
 - **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `idb`）のどちらかです。`--backend ios`（または `backend: [ios]`）は今日 `idb` に解決され、より高機能な iOS actuator（XCUITest）が入ればそれを拾います — シナリオも config も変わりません。
 - `backend` は **安定度順のリスト**です（先頭ほど安定。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）。各トークンは順に actuator 列へ展開され、**actuator = 最初の「実装済み かつ 利用可能」**なものです。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
-- `android` / `web` は**宣言済みだが未実装**です（[multi-platform](multi-platform.md)）: 要求すると汎用の失敗ではなく明確な「未実装」エラーになります。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも将来のバックエンドを列挙した config を実行できる）。
+- `android` / `web` は**宣言済みだが未実装**です（[multi-platform](multi-platform.md)）: 要求すると汎用の失敗ではなく明確な「未実装」エラーになります。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも将来のバックエンドを列挙した config を実行できる）。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも将来のバックエンドを列挙した config を実行できる）。
 - 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。
 - actuator は run 開始時に 1 つ確定し、run 中は固定です（2 ドライバが同一デバイスを操作しません）。
 
