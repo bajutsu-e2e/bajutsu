@@ -1,4 +1,4 @@
-**English** · [日本語](docs/ja/security.md)
+**English** · [日本語](SECURITY.ja.md)
 
 # Security Policy
 
