@@ -7,9 +7,14 @@ file instead of appending to a 1000-line monolith)."""
 from __future__ import annotations
 
 import json
+import threading
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+from bajutsu import serve as srv
 
 SCENARIO = "- name: alpha\n  steps:\n    - tap: { id: home.title }\n- name: beta\n  steps:\n    - tap: { id: x }\n"
 
@@ -65,3 +70,36 @@ def fake_popen(lines: list[str], code: int = 0):  # type: ignore[no-untyped-def]
         return FakeProc(lines, code)
 
     return popen
+
+
+def _serve(state: srv.ServeState):  # type: ignore[no-untyped-def]
+    """Start the serve HTTP handler on an ephemeral port; return (server, port)."""
+    server = srv.make_server(state, port=0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, server.server_address[1]
+
+
+def _get(port: int, path: str) -> tuple[int, bytes, str]:
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}") as r:
+        return r.status, r.read(), r.headers.get("Content-Type", "")
+
+
+def _get_json(port: int, path: str) -> Any:
+    return json.loads(_get(port, path)[1])
+
+
+def _post(port: int, path: str, payload: dict[str, Any]) -> tuple[int, Any]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+# Historic alias — `_post` already returns parsed JSON, so the two are identical.
+_post_json = _post
