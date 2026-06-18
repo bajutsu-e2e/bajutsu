@@ -102,7 +102,7 @@ def test_baselines_resolution_order() -> None:
     """_resolve_baselines_dir respects: --baselines flag > config > scenario-local default."""
     from pathlib import Path
 
-    from bajutsu.cli import _resolve_baselines_dir
+    from bajutsu.cli.commands.run import _resolve_baselines_dir
 
     eff_with = resolve(load_config("apps: { x: { bundleId: com.x, baselines: cfg/bl } }"), "x")
     eff_without = resolve(load_config("apps: { x: { bundleId: com.x } }"), "x")

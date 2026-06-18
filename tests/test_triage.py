@@ -9,7 +9,8 @@ import pytest
 from typer.testing import CliRunner
 
 from bajutsu import triage
-from bajutsu.cli import _rerun_command, app
+from bajutsu.cli import app
+from bajutsu.cli.commands.triage import _rerun_command
 from bajutsu.triage import FailedStep, Fix, HeuristicTriageAgent, TriageContext, apply_fix, diff_fix
 
 runner = CliRunner()
@@ -242,7 +243,7 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         captured["cmd"] = cmd
         return 0
 
-    monkeypatch.setattr("bajutsu.cli.subprocess.call", fake_call)
+    monkeypatch.setattr("bajutsu.cli.commands.triage.subprocess.call", fake_call)
     r = runner.invoke(
         app,
         [

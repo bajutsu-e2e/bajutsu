@@ -1,0 +1,117 @@
+"""`bajutsu record` — explore the app with AI toward a goal and author a scenario."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import typer
+
+from bajutsu import env as _env
+from bajutsu.agents import make_agent
+from bajutsu.backends import select_actuator
+from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.config import Effective
+from bajutsu.record import record as record_loop
+from bajutsu.runner import launch_driver
+from bajutsu.scenario import Preconditions, dump_scenarios
+
+
+def _record_out_path(eff: Effective, out: str, name: str, goal: str, app_name: str) -> Path:
+    """Where `record` writes the authored scenario: `--out` when given, else an auto-named,
+    never-overwriting `*.yaml` under the app's configured `scenarios` dir (same naming as the
+    web UI's Record tab)."""
+    if out:
+        return Path(out)
+    if eff.scenarios is None:
+        typer.echo(
+            f"app '{app_name}' has no scenarios dir (set apps.{app_name}.scenarios, or pass --out)"
+        )
+        raise typer.Exit(2)
+    from bajutsu.serve import scenario_out_path, unique_scenario_path
+
+    return unique_scenario_path(scenario_out_path(Path(eff.scenarios), name or goal))
+
+
+def record(
+    app_name: str = typer.Option(..., "--app"),
+    goal: str = typer.Option(..., "--goal", help="natural-language goal to author"),
+    out: str = typer.Option(
+        "", "--out", help="explicit output path (overrides the app's configured scenarios dir)"
+    ),
+    name: str = typer.Option(
+        "", "--name", help="file name for the authored scenario (auto-named from the goal if blank)"
+    ),
+    udid: str = typer.Option("booted"),
+    backend: str = typer.Option(""),
+    erase: bool = typer.Option(
+        True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
+    ),
+    dismiss_alerts: bool = typer.Option(
+        True,
+        "--dismiss-alerts/--no-dismiss-alerts",
+        help="dismiss unexpected OS prompts while authoring (on by default; uses the same API key)",
+    ),
+    alert_instruction: str = typer.Option(
+        "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
+    ),
+    agent: str = typer.Option(
+        "",
+        "--agent",
+        help="authoring agent: 'api' (Anthropic API, pay-per-token) or 'claude-code' "
+        "(the `claude` CLI, billed to your Claude subscription). Defaults to $BAJUTSU_AGENT or 'api'.",
+    ),
+    config: str = typer.Option(DEFAULT_CONFIG),
+) -> None:
+    """Explore the app with AI toward a goal and write the recorded scenario. With `--out` it
+    writes there; otherwise it auto-names a file under the app's configured `scenarios` dir."""
+    eff = _load_effective(config, app_name)
+    out_path = _record_out_path(eff, out, name, goal, app_name)
+    kind = agent or os.environ.get("BAJUTSU_AGENT") or "api"
+    try:
+        authoring_agent = make_agent(kind)
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    try:
+        actuator = select_actuator(_backends(backend, eff.backend))
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    alert_guard = None
+    if dismiss_alerts:
+        from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
+
+        alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
+    udid = _env.resolve_udid(udid)
+
+    # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher
+    # knows what's happening before the agent takes over. Progress goes to stderr, like the
+    # record loop's own stream, leaving stdout for the final result line.
+    def say(msg: str) -> None:
+        typer.echo(msg, err=True)
+
+    say(
+        f"⚙️  preparing the simulator — installing and launching {app_name} (this can take a moment) …"
+    )
+    try:
+        driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
+    except _env.DeviceError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    say(f"✅ app is up — authoring toward the goal: {goal!r}")
+    scenario = record_loop(
+        driver,
+        goal,
+        authoring_agent,
+        name=goal,
+        alert_guard=alert_guard,
+        report=say,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(dump_scenarios([scenario]), encoding="utf-8")
+    typer.echo(f"recorded {len(scenario.steps)} steps ({kind} agent) -> {out_path}")
+
+
+def register(app: typer.Typer) -> None:
+    app.command()(record)
