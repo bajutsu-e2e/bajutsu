@@ -16,6 +16,7 @@ from bajutsu.scenario.expand import (
 )
 from bajutsu.scenario.load import load_component, load_scenario_file, load_scenarios
 from bajutsu.scenario.models import (
+    STEP_ACTIONS,
     Assertion,
     Background,
     CaptureRule,
@@ -69,6 +70,7 @@ from bajutsu.scenario.serialize import (
 )
 
 __all__ = [
+    "STEP_ACTIONS",
     "Assertion",
     "Background",
     "CaptureRule",

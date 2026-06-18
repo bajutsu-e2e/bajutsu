@@ -64,9 +64,11 @@ from bajutsu.scenario.models.scenario import (
     ScenarioFile,
 )
 from bajutsu.scenario.models.selector import Selector
+from bajutsu.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
 from bajutsu.scenario.models.steps import Extract, ForEach, If, Step, Use
 
 __all__ = [
+    "STEP_ACTIONS",
     "Assertion",
     "Background",
     "CaptureRule",
