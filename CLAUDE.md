@@ -1,7 +1,8 @@
 # CLAUDE.md — working agreement for AI sessions
 
 > The shared premise every session (human or agent) starts from. Read this first.
-> Deeper rationale lives in [`DESIGN.md`](DESIGN.md) (ja) and [`docs/`](docs/README.md).
+> Deeper rationale lives in [`DESIGN.md`](DESIGN.md) (ja) and [`docs/`](docs/README.md);
+> human contributors start from [`CONTRIBUTING.md`](CONTRIBUTING.md) (ja: [`CONTRIBUTING.ja.md`](CONTRIBUTING.ja.md)).
 
 ## What this is
 
