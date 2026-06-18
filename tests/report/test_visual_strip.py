@@ -9,7 +9,7 @@ from bajutsu.report import html_report
 
 
 def test_assert_parts_visual() -> None:
-    from bajutsu.report import _assert_parts
+    from bajutsu.report.richtext import _assert_parts
 
     kind, target, comp = _assert_parts(
         {"visual": {"baseline": "home.png", "threshold": 0.5, "exclude": [{"x": 0}, {"x": 1}]}}

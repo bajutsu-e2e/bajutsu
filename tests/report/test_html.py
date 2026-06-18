@@ -88,7 +88,7 @@ def test_expectations_request_kind_rendered() -> None:
 
 
 def test_fmt_duration_compact() -> None:
-    from bajutsu.report import _fmt_duration
+    from bajutsu.report.format import _fmt_duration
 
     assert _fmt_duration(0.0) == "0.0s"
     assert _fmt_duration(0.84) == "0.8s"
