@@ -1,0 +1,92 @@
+name: Bug report
+description: Report a defect in Bajutsu (the runner, drivers, recorder, or web UI).
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The more of the reproduction we can run ourselves, the
+        faster it gets fixed. The **scenario YAML** and the **exact command** you ran are
+        the two most useful things you can give us.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: A clear, concise description of the bug — expected behavior vs. what actually happened.
+      placeholder: |
+        Expected: `run` passes the `login` assertion.
+        Actual: it fails with "no available actuator".
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which command / surface
+      description: Where does the bug occur? This tells us whether it's an AI path or the deterministic Tier-2 gate.
+      options:
+        - "run (deterministic gate)"
+        - "record (AI authoring)"
+        - "serve (web UI)"
+        - "make check (Python core gate)"
+        - "Other / not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Minimal scenario (YAML)
+      description: The smallest scenario that reproduces the bug. The scenario is the shared hub, so this is almost always needed.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command to reproduce
+      description: The exact command(s) you ran.
+      render: shell
+      placeholder: |
+        make serve ARGS="--config demos/features/demo.config.yaml --port 8766"
+        # or
+        make -C demos/features e2e
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Fill in what's relevant. If this is a Python-core bug it likely reproduces on Linux too —
+        noting that helps us narrow it down fast.
+      value: |
+        - OS: (e.g. macOS 15.4 / Linux)
+        - iOS Simulator: (e.g. iOS 18.2)
+        - idb / idb_companion: (version, if known)
+        - Python / uv: (e.g. 3.13 / uv 0.5.x)
+        - Target app (`apps.<name>`):
+        - Bajutsu version / commit:
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence (logs, screenshots, run artifacts)
+      description: Logs, screenshots, or files from `runs/`. Drag-and-drop images directly here.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: gate
+    attributes:
+      label: Checks
+      options:
+        - label: "`make check` reflects this bug (it's red), or this bug is not covered by the deterministic gate."
+          required: false
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
