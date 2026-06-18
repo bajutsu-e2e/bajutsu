@@ -277,3 +277,52 @@ def test_extract_requires_sel() -> None:
 def test_step_without_extract() -> None:
     step = Step.model_validate({"tap": {"id": "ok"}})
     assert step.extract is None
+
+
+# --- if / forEach schema ---
+
+
+def test_if_step_parses() -> None:
+    step = Step.model_validate(
+        {
+            "if": {
+                "condition": {"exists": {"id": "dialog"}},
+                "then": [{"tap": {"id": "dialog.dismiss"}}],
+                "else": [{"tap": {"id": "home.start"}}],
+            },
+        }
+    )
+    assert step.if_ is not None and len(step.if_.then) == 1 and step.if_.else_ is not None
+
+
+def test_foreach_step_parses() -> None:
+    step = Step.model_validate(
+        {
+            "forEach": {
+                "sel": {"idMatches": "item.*"},
+                "as": "current",
+                "steps": [{"tap": {"id": "${vars.current}"}}],
+            },
+        }
+    )
+    assert step.for_each is not None and step.for_each.as_ == "current"
+
+
+def test_if_rejects_capture_modifier() -> None:
+    with pytest.raises(ValidationError, match="capture"):
+        Step.model_validate(
+            {
+                "if": {"condition": {"exists": {"id": "x"}}, "then": []},
+                "capture": ["screenshot.after"],
+            }
+        )
+
+
+def test_foreach_rejects_extract_modifier() -> None:
+    with pytest.raises(ValidationError, match="extract"):
+        Step.model_validate(
+            {
+                "forEach": {"sel": {"id": "x"}, "as": "y", "steps": []},
+                "extract": {"v": {"sel": {"id": "z"}}},
+            }
+        )

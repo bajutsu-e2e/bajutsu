@@ -33,6 +33,8 @@ def _action_of(step: Step) -> str:
         "background",
         "override_status_bar",
         "clear_status_bar",
+        "if_",
+        "for_each",
     ):
         if getattr(step, a) is not None:
             return a

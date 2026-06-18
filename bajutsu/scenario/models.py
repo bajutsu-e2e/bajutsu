@@ -48,7 +48,10 @@ _STEP_ACTIONS = (
     "background",
     "override_status_bar",
     "clear_status_bar",
+    "if_",
+    "for_each",
 )
+_CONTROL_FLOW_ACTIONS = ("if_", "for_each")
 _ASSERTION_KINDS = (
     "exists",
     "value",
@@ -410,6 +413,24 @@ class Extract(_Model):
     prop: Literal["value", "label", "identifier"] = "value"
 
 
+class If(_Model):
+    """Conditional execution: evaluate an assertion as the condition, then run
+    ``then`` steps if it passes or ``else`` steps otherwise."""
+
+    condition: Assertion
+    then: list[Step] = Field(default_factory=list)
+    else_: list[Step] | None = Field(default=None, alias="else")
+
+
+class ForEach(_Model):
+    """Iterate over elements matching a selector. Each element's identifier is
+    stored as ``vars.<as>`` and the nested steps are executed."""
+
+    sel: Selector
+    as_: str = Field(alias="as")
+    steps: list[Step] = Field(default_factory=list)
+
+
 class Step(_Model):
     """One action plus optional modifiers (capture / name / extract)."""
 
@@ -432,6 +453,8 @@ class Step(_Model):
     background: Background | None = None
     override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
     clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
+    if_: If | None = Field(default=None, alias="if")
+    for_each: ForEach | None = Field(default=None, alias="forEach")
     capture: list[str] | None = None
     extract: dict[str, Extract] | None = None
     name: str | None = None
@@ -445,6 +468,20 @@ class Step(_Model):
     def _one_action(self) -> Self:
         _exactly_one(self, _STEP_ACTIONS, "§6.2")
         return self
+
+    @model_validator(mode="after")
+    def _no_modifiers_on_control_flow(self) -> Self:
+        action = next((a for a in _CONTROL_FLOW_ACTIONS if getattr(self, a) is not None), None)
+        if action is not None:
+            if self.capture is not None:
+                raise ValueError(f"capture is not supported on {action} steps")
+            if self.extract is not None:
+                raise ValueError(f"extract is not supported on {action} steps")
+        return self
+
+
+If.model_rebuild()
+ForEach.model_rebuild()
 
 
 # --- Evidence rules ---

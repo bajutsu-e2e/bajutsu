@@ -383,6 +383,37 @@ steps:
 
 各 `extract` エントリは `sel`（セレクタ、`resolve_unique` で一意解決）と、省略可能な `prop`（`value` | `label` | `identifier`、既定 `value`）を指定します。セレクタが一意に解決できない場合やプロパティが `None` の場合、ステップは失敗します。
 
+### 条件分岐 (`if`)
+
+ステップでアサーション DSL と同じ条件を評価し、分岐できます。
+
+```yaml
+steps:
+  - if:
+      condition: { exists: { id: dialog.alert } }
+      then:
+        - tap: { id: dialog.dismiss }
+      else:
+        - tap: { id: home.start }
+```
+
+条件は現在の要素ツリーに対して評価されます（`${...}` 補間あり）。通過すれば `then` のステップ群が、そうでなければ `else` のステップ群が実行されます（`else` 省略時は何もしません）。ネストしたステップは外側のシナリオと同じ `vars.*` バインディングを共有します。`capture` / `extract` 修飾子は `if` ステップでは使用できません。
+
+### 要素のイテレーション (`forEach`)
+
+セレクタにマッチする全要素に対してステップを繰り返し実行できます。
+
+```yaml
+steps:
+  - forEach:
+      sel: { idMatches: "item.*" }
+      as: current
+      steps:
+        - tap: { id: "${vars.current}" }
+```
+
+要素リストはループ開始時に1回スナップショットされます。各要素の `identifier` が `vars.<as>` に格納され、ネストしたステップで参照できます。`identifier` のない要素はエラーになります。0件マッチは成功（空ループ）です。セレクタは `${...}` 補間に対応しています。`capture` / `extract` 修飾子は `forEach` ステップでは使用できません。
+
 ## capture トークン文法
 
 `capture:`（ステップ単体）と `capturePolicy[].capture`（ルール）で共通です。形は `<種別>[.<修飾子>]` です。
