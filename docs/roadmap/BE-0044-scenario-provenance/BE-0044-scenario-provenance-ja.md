@@ -2,11 +2,11 @@
 
 # BE-0044 — シナリオの来歴（`from:` — ステップ ↔ 自然言語の対応）
 
-* Proposal: [BE-0044](BE-0044-scenario-provenance.md)
-* Status: **Proposal**
-* Track: [Proposals](../README-ja.md#proposals)
-* Topic: オーサリング体験（record / GUI エディタ）
-* Origin: BE-0002 の follow-up（来歴はそこで「軽いままの後続作業」として先送りされた）
+* 提案: [BE-0044](BE-0044-scenario-provenance-ja.md)
+* 状態: **提案**
+* トラック: [提案](../README-ja.md#提案)
+* トピック: オーサリング体験（record / GUI エディタ）
+* 由来: BE-0002 の follow-up（来歴はそこで「軽いままの後続作業」として先送りされた）
 
 ## Introduction
 
