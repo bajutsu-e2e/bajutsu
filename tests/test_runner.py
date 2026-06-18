@@ -213,7 +213,7 @@ def test_launch_driver_shuts_down_before_erase(monkeypatch: pytest.MonkeyPatch) 
         return ""
 
     ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
-    monkeypatch.setattr("bajutsu.runner.make_driver", lambda actuator, udid: ready)
+    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: ready)
 
     launch_driver("UDID-1", _eff(), "idb", Preconditions(erase=True), env_run=fake_run)
 
@@ -231,7 +231,7 @@ def test_launch_driver_injects_extra_env(monkeypatch: pytest.MonkeyPatch) -> Non
         return ""
 
     ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])
-    monkeypatch.setattr("bajutsu.runner.make_driver", lambda actuator, udid: ready)
+    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: ready)
 
     launch_driver(
         "UDID-1",
@@ -259,7 +259,7 @@ def _launch_recording(
 ) -> list[list[str]]:
     calls: list[list[str]] = []
     monkeypatch.setattr(
-        "bajutsu.runner.make_driver",
+        "bajutsu.runner.launch.make_driver",
         lambda actuator, udid: FakeDriver([_el("home.title", "H"), _el("ok", "OK")]),
     )
     launch_driver(
@@ -308,7 +308,7 @@ def test_launch_driver_erase_skips_uninstall(
 def test_launch_driver_errors_on_missing_app_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """A configured appPath that doesn't exist fails with a clear, actionable DeviceError."""
     eff = replace(_eff(), app_path="/nope/X.app")
-    monkeypatch.setattr("bajutsu.runner.make_driver", lambda actuator, udid: FakeDriver([]))
+    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: FakeDriver([]))
     with pytest.raises(env.DeviceError) as excinfo:
         launch_driver("UDID-1", eff, "idb", Preconditions(erase=False), env_run=_recording_run([]))
     assert "appPath not found" in str(excinfo.value)
@@ -349,7 +349,7 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.runner.make_driver",
+        "bajutsu.runner.launch.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
 
@@ -413,7 +413,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
         return catalog if args == env.list_devices_cmd() else ""
 
     monkeypatch.setattr(
-        "bajutsu.runner.make_driver",
+        "bajutsu.runner.launch.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -434,7 +434,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
 def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.MonkeyPatch) -> None:
     """A pool of one is the single-device path: collector + interval sink + control, all on."""
     monkeypatch.setattr(
-        "bajutsu.runner.make_driver",
+        "bajutsu.runner.launch.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -467,7 +467,7 @@ def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.runner.make_driver",
+        "bajutsu.runner.launch.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -512,8 +512,8 @@ def test_device_pool_stops_started_collectors_when_one_fails(
         def stop(self) -> None:
             self.stopped = True
 
-    monkeypatch.setattr("bajutsu.runner.NetworkCollector", FlakyCollector)
-    monkeypatch.setattr("bajutsu.runner.make_driver", lambda actuator, udid: FakeDriver([]))
+    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", FlakyCollector)
+    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: FakeDriver([]))
 
     with pytest.raises(OSError, match="port in use"):
         device_pool(
@@ -610,8 +610,8 @@ def test_await_ready_uses_exponential_backoff(monkeypatch: pytest.MonkeyPatch) -
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.runner.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.runner.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: clock)
 
     query_count = 0
 
@@ -644,14 +644,14 @@ def test_await_ready_returns_immediately_when_already_ready() -> None:
         def query(self) -> list[base.Element]:
             return [_el("a", "A"), _el("b", "B")]
 
-    import bajutsu.runner as runner_mod
+    import bajutsu.runner.launch as launch_mod
 
-    orig_sleep = runner_mod.time.sleep
-    runner_mod.time.sleep = lambda s: sleeps.append(s)
+    orig_sleep = launch_mod.time.sleep
+    launch_mod.time.sleep = lambda s: sleeps.append(s)
     try:
         _await_ready(ReadyDriver())  # type: ignore[arg-type]
     finally:
-        runner_mod.time.sleep = orig_sleep
+        launch_mod.time.sleep = orig_sleep
 
     assert sleeps == []
 
@@ -666,8 +666,8 @@ def test_await_ready_respects_timeout_on_sleep(monkeypatch: pytest.MonkeyPatch) 
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.runner.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.runner.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: clock)
 
     class NeverReadyDriver:
         name = "never"
@@ -691,8 +691,8 @@ def test_await_ready_caps_poll_init_to_poll_max(monkeypatch: pytest.MonkeyPatch)
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.runner.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.runner.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: clock)
 
     query_count = 0
 
