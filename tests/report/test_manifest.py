@@ -1,0 +1,85 @@
+"""Tests for the report manifest.json and JUnit XML."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from _report import _failing, _passing
+
+from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
+from bajutsu.report import junit_xml, manifest_dict, write_report
+
+
+def test_manifest_structure() -> None:
+    m = manifest_dict("run1", [_passing()])
+    assert m["runId"] == "run1"
+    assert m["ok"] is True
+    scenarios = m["scenarios"]
+    assert isinstance(scenarios, list)
+    assert scenarios[0]["scenario"] == "s1"
+    assert scenarios[0]["ok"] is True
+    assert scenarios[0]["steps"][0]["action"] == "tap"
+
+
+def test_manifest_overall_ok_is_and() -> None:
+    assert manifest_dict("r", [_passing(), _failing()])["ok"] is False
+
+
+def test_manifest_records_backend() -> None:
+    # run_scenario stamps each result with the driver it ran (here the fake driver),
+    # and the manifest summarizes the run's actuator at top level.
+    m = manifest_dict("run1", [_passing()])
+    assert m["backend"] == "fake"
+    assert m["scenarios"][0]["backend"] == "fake"
+
+
+def test_junit_pass_and_fail() -> None:
+    ok_xml = junit_xml([_passing()])
+    assert 'tests="1"' in ok_xml
+    assert 'failures="0"' in ok_xml
+    assert "<failure" not in ok_xml
+
+    bad_xml = junit_xml([_failing()])
+    assert 'failures="1"' in bad_xml
+    assert "<failure" in bad_xml
+
+
+def test_write_report(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "run3"
+    manifest_path = write_report(run_dir, "run3", [_passing(), _failing()])
+    assert manifest_path.exists()
+    assert (run_dir / "junit.xml").exists()
+    assert (run_dir / "report.html").exists()
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["runId"] == "run3"
+    assert data["ok"] is False
+    assert len(data["scenarios"]) == 2
+
+
+def test_manifest_records_scenario_duration() -> None:
+    r = RunResult(scenario="s1", ok=True, steps=[], duration_s=2.5)
+    assert manifest_dict("run1", [r])["scenarios"][0]["duration_s"] == 2.5
+
+
+def test_manifest_records_device_environment() -> None:
+    r = _passing()
+    r.device, r.device_name, r.device_runtime = "SIM-1", "iPhone 15", "iOS 17.2"
+    scenario = manifest_dict("run1", [r])["scenarios"][0]
+    assert scenario["device"] == "SIM-1"
+    assert scenario["device_name"] == "iPhone 15"
+    assert scenario["device_runtime"] == "iOS 17.2"
+
+
+def test_manifest_records_dismissed_alerts() -> None:
+    # asdict captures the dismissals so the manifest (the source of truth) carries them too.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[StepOutcome(index=0, action="tap", ok=True, alerts=[AlertEvent(label="Not Now")])],
+        expect_alerts=[AlertEvent(label="Allow")],
+    )
+    m = manifest_dict("run1", [r])
+    scenario = m["scenarios"][0]
+    assert scenario["steps"][0]["alerts"] == [{"label": "Not Now"}]
+    assert scenario["expect_alerts"] == [{"label": "Allow"}]
