@@ -17,6 +17,7 @@ dist/
 .ruff_cache/
 .pytest_cache/
 .coverage
+coverage.json
 htmlcov/
 
 # Secrets (loaded by bajutsu at startup; .env.example is the tracked template)

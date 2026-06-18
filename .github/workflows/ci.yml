@@ -55,4 +55,11 @@ jobs:
         run: uv run --no-sync mypy bajutsu demos
 
       - name: Test (pytest + coverage)
-        run: uv run --no-sync pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-fail-under=85
+        run: uv run --no-sync pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=85
+
+      # Render coverage.json into the run's job summary. Runs even when the floor above fails,
+      # so a coverage regression shows the numbers rather than only a red step. Presentation
+      # only — pass/fail is already decided by --cov-fail-under; the script never fails the run.
+      - name: Coverage summary
+        if: always()
+        run: uv run --no-sync python scripts/coverage_summary.py --floor 85 coverage.json
