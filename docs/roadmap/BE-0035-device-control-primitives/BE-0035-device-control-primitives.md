@@ -88,4 +88,4 @@ Prime directives preserved:
 
 ## References
 
-[DESIGN §6.2](../../../DESIGN.md), `bajutsu/scenario.py`
+[DESIGN §6.2](../../../DESIGN.md), `bajutsu/scenario/`

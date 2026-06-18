@@ -19,7 +19,7 @@ Most scenarios share a few common prefixes — log in, accept onboarding, naviga
 
 ## Detailed design
 
-A *component* is a reusable, parameterized sequence of steps defined in its own file as a single mapping: a `params` list naming the arguments a caller must supply, and the `steps` that reference them as `${params.<name>}` (`Component` in `bajutsu/scenario.py`). A scenario invokes one with the `use` step — `use: { component: <file>, with: { <name>: <value>, … } }` — passing each declared param a value through `with`.
+A *component* is a reusable, parameterized sequence of steps defined in its own file as a single mapping: a `params` list naming the arguments a caller must supply, and the `steps` that reference them as `${params.<name>}` (`Component` in `bajutsu/scenario/`). A scenario invokes one with the `use` step — `use: { component: <file>, with: { <name>: <value>, … } }` — passing each declared param a value through `with`.
 
 Expansion is a pure compile-time macro, not a runtime action. Before the run, `expand_components` walks every scenario and replaces each `use` step in place with the referenced component's steps, substituting the `with` values through the shared `${...}` interpolation primitive (`interp.interpolate`, keyed `params.<name>`). A component may itself `use` another, so expansion recurses; a reference cycle, missing or unknown param, or a residual `${params.*}` token that maps to no declared param is a hard error, as is nesting beyond `max_depth`. After expansion no `use` steps remain — the deterministic runner only ever sees plain, fully-expanded steps, so determinism is unaffected. `use` composes with the no-argument `setup` prelude: the prelude is prepended (`apply_setups`) and components expanded in the same load-time pass.
 
@@ -31,4 +31,4 @@ Expansion is a pure compile-time macro, not a runtime action. Before the run, `e
 
 ## References
 
-`bajutsu/scenario.py` (`use`/`expand_components`), [scenarios.md](../../scenarios.md)
+`bajutsu/scenario/` (`use`/`expand_components`), [scenarios.md](../../scenarios.md)

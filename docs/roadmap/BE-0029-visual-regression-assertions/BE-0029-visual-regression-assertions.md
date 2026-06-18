@@ -46,14 +46,14 @@ expect:
 ```
 
 - Schema: `ExcludeRegion` / `VisualMatch` models and the `Assertion.visual` field in
-  `bajutsu/scenario.py`.
+  `bajutsu/scenario/`.
 - Comparison engine: `bajutsu/visual.py` — pixel-level diff via Pillow `ImageChops.difference`,
   exclude-region masking, threshold tolerance, diff-image output. Pillow is an optional dependency
   (`pip install bajutsu[visual]`).
 - Evaluation: `VisualContext` (screenshot path, baselines dir, diff output dir) and `_eval_visual`
   in `bajutsu/assertions.py`.
 - Orchestration: the screenshot is captured before expect evaluation and the `VisualContext` is
-  threaded through `run_scenario` (`bajutsu/orchestrator.py`, `bajutsu/runner.py`).
+  threaded through `run_scenario` (`bajutsu/orchestrator/`, `bajutsu/runner/`).
 
 Because evaluation is a pure machine check with no AI involved, it strengthens the prime
 directives rather than straining them.
@@ -65,7 +65,7 @@ A Python-level pixel loop was rejected in favor of `ImageChops.difference` for C
 ## References
 
 [PR #30](https://github.com/bajutsu-e2e/bajutsu/pull/30), `bajutsu/visual.py`,
-`bajutsu/assertions.py`, `bajutsu/scenario.py`, [DESIGN §6.4](../../../DESIGN.md),
+`bajutsu/assertions.py`, `bajutsu/scenario/`, [DESIGN §6.4](../../../DESIGN.md),
 [evidence.md](../../evidence.md)
 
 ### Follow-ups (not yet implemented)

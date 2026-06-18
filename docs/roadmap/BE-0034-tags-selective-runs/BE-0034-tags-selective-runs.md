@@ -19,7 +19,7 @@ As a suite grows, not every run should execute every scenario. A pre-merge gate 
 
 ## Detailed design
 
-Each scenario carries an optional `tags` list (`Scenario` in `bajutsu/scenario.py`) — free-form labels such as `smoke` or `checkout`. The CLI exposes `--tag` and `--exclude`, each a comma-separated list, applied after the full set of scenarios has been loaded and expanded (so selection sees every data-driven and component-expanded scenario). `select_scenarios` keeps a scenario when it carries at least one `--tag` (or no `--tag` was given) **and** none of its tags appear in `--exclude`; `--exclude` wins over `--tag`. Filtering is pure metadata selection — it preserves declaration order and never mutates a scenario — and when the filters select nothing the CLI exits cleanly with a clear message rather than running an empty suite. Selection happens entirely before the deterministic run loop, so it has no effect on how the chosen scenarios execute or on their pass/fail; tags carry no semantics beyond selection.
+Each scenario carries an optional `tags` list (`Scenario` in `bajutsu/scenario/`) — free-form labels such as `smoke` or `checkout`. The CLI exposes `--tag` and `--exclude`, each a comma-separated list, applied after the full set of scenarios has been loaded and expanded (so selection sees every data-driven and component-expanded scenario). `select_scenarios` keeps a scenario when it carries at least one `--tag` (or no `--tag` was given) **and** none of its tags appear in `--exclude`; `--exclude` wins over `--tag`. Filtering is pure metadata selection — it preserves declaration order and never mutates a scenario — and when the filters select nothing the CLI exits cleanly with a clear message rather than running an empty suite. Selection happens entirely before the deterministic run loop, so it has no effect on how the chosen scenarios execute or on their pass/fail; tags carry no semantics beyond selection.
 
 ## Alternatives considered
 
@@ -31,4 +31,4 @@ Each scenario carries an optional `tags` list (`Scenario` in `bajutsu/scenario.p
 
 ## References
 
-`bajutsu/scenario.py` (`select_scenarios`), [cli.md](../../cli.md)
+`bajutsu/scenario/` (`select_scenarios`), [cli.md](../../cli.md)

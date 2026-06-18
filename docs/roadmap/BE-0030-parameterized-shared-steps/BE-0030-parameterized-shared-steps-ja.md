@@ -19,7 +19,7 @@
 
 ## 詳細設計
 
-*コンポーネント* は、再利用可能でパラメータ化されたステップ列で、単一マッピングとして独立したファイルに定義します。呼び出し側が渡すべき引数名を並べた `params` リストと、それらを `${params.<name>}` として参照する `steps` から成ります（`bajutsu/scenario.py` の `Component`）。シナリオは `use` ステップ（`use: { component: <file>, with: { <name>: <value>, … } }`）で呼び出し、宣言された各 param に `with` で値を渡します。
+*コンポーネント* は、再利用可能でパラメータ化されたステップ列で、単一マッピングとして独立したファイルに定義します。呼び出し側が渡すべき引数名を並べた `params` リストと、それらを `${params.<name>}` として参照する `steps` から成ります（`bajutsu/scenario/` の `Component`）。シナリオは `use` ステップ（`use: { component: <file>, with: { <name>: <value>, … } }`）で呼び出し、宣言された各 param に `with` で値を渡します。
 
 展開はランタイムのアクションではなく、純粋なコンパイル時マクロです。run の前に `expand_components` が全シナリオを走査し、各 `use` ステップをその場で参照先コンポーネントの steps に置き換え、`with` の値を共通の `${...}` 補間プリミティブ（`interp.interpolate`、キーは `params.<name>`）で置換します。コンポーネントはそれ自体がさらに別のコンポーネントを `use` できるため、展開は再帰します。参照の循環、不足・未知の param、宣言されていない param を指す未解決の `${params.*}` トークンはいずれもハードエラーで、`max_depth` を超えるネストも同様です。展開後は `use` ステップが一切残らないため、決定的なランナーは常に展開済みのプレーンなステップだけを見ることになり、決定性は損なわれません。`use` は引数なしの `setup` プレリュードと併用できます。プレリュードは前置（`apply_setups`）され、コンポーネントは同じロード時のパスで展開されます。
 
@@ -31,4 +31,4 @@
 
 ## 参考
 
-`bajutsu/scenario.py`（`use`/`expand_components`）、[scenarios.md](../../ja/scenarios.md)
+`bajutsu/scenario/`（`use`/`expand_components`）、[scenarios.md](../../ja/scenarios.md)

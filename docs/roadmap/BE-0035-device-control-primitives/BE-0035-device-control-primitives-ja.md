@@ -89,4 +89,4 @@ prime directive の保持：
 
 ## 参考
 
-[DESIGN §6.2](../../../DESIGN.md)、`bajutsu/scenario.py`
+[DESIGN §6.2](../../../DESIGN.md)、`bajutsu/scenario/`

@@ -43,7 +43,7 @@ expect:
         - { x: 0, y: 0, w: 390, h: 54 }
 ```
 
-- スキーマ: `bajutsu/scenario.py` の `ExcludeRegion` / `VisualMatch` モデルと `Assertion.visual`
+- スキーマ: `bajutsu/scenario/` の `ExcludeRegion` / `VisualMatch` モデルと `Assertion.visual`
   フィールド。
 - 比較エンジン: `bajutsu/visual.py` — Pillow の `ImageChops.difference` によるピクセル単位の差分、
   除外領域のマスク、しきい値の許容、差分画像の出力。Pillow はオプション依存です
@@ -51,7 +51,7 @@ expect:
 - 評価: `bajutsu/assertions.py` の `VisualContext`（スクリーンショットのパス・ベースラインディレクトリ・
   差分出力ディレクトリ）と `_eval_visual`。
 - オーケストレーション: expect 評価の前にスクリーンショットをキャプチャし、`VisualContext` を
-  `run_scenario` に引き渡します（`bajutsu/orchestrator.py`・`bajutsu/runner.py`）。
+  `run_scenario` に引き渡します（`bajutsu/orchestrator/`・`bajutsu/runner/`）。
 
 評価は AI を介さない純粋な機械チェックであるため、プライムディレクティブを損なうのではなく強化します。
 
@@ -62,7 +62,7 @@ Python レベルのピクセルループは、C レベルで高速な `ImageChop
 ## 参考
 
 [PR #30](https://github.com/bajutsu-e2e/bajutsu/pull/30)、`bajutsu/visual.py`、
-`bajutsu/assertions.py`、`bajutsu/scenario.py`、[DESIGN §6.4](../../../DESIGN.md)、
+`bajutsu/assertions.py`、`bajutsu/scenario/`、[DESIGN §6.4](../../../DESIGN.md)、
 [evidence.md](../../ja/evidence.md)
 
 ### フォローアップ（未実装）

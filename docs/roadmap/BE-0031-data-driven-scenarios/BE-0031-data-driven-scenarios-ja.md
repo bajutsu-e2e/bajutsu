@@ -19,7 +19,7 @@
 
 ## 詳細設計
 
-シナリオは入力を `data`（インラインの行マッピングのリスト）か `dataFile`（CSV パス）として持ちます。両者は排他です（`bajutsu/scenario.py` の `Scenario` は両方の指定を拒否します）。run の前に `expand_data` が、そうしたシナリオを 1 行 1 シナリオに置き換え、`${row.<column>}` を共通の `${...}` 補間プリミティブ（`interp.interpolate`、キーは `row.<column>`）で置換します。CSV の `dataFile` は列名を並べたヘッダ行を持ち、`read_csv` で読み込まれます。どちらのフィールドも持たないシナリオはそのまま素通りします。
+シナリオは入力を `data`（インラインの行マッピングのリスト）か `dataFile`（CSV パス）として持ちます。両者は排他です（`bajutsu/scenario/` の `Scenario` は両方の指定を拒否します）。run の前に `expand_data` が、そうしたシナリオを 1 行 1 シナリオに置き換え、`${row.<column>}` を共通の `${...}` 補間プリミティブ（`interp.interpolate`、キーは `row.<column>`）で置換します。CSV の `dataFile` は列名を並べたヘッダ行を持ち、`read_csv` で読み込まれます。どちらのフィールドも持たないシナリオはそのまま素通りします。
 
 派生シナリオは `"<name> [row N: col=val, …]"` に改名され、レポートや JUnit のテストケースが区別できるようになります。また元の preconditions を保つため（`erase` のデフォルトも含む）、各行ともアプリは fresh に再インストールされ、それぞれが独自のクリーンな環境で実行されます。補間は型を保ちます。ちょうど 1 つのトークンだけの文字列（`"${row.id}"`）は束縛された生の値を取り、より大きな文字列に埋め込まれたトークンはテキストとして差し込まれます。展開は完全にロード時に行われ `data`/`dataFile` フィールドを取り除くため、決定的なランナーは常にリテラルが埋まったプレーンなシナリオだけを見ます。決定性と行ごとの分離の両方が保たれます。
 
@@ -31,4 +31,4 @@
 
 ## 参考
 
-`bajutsu/scenario.py`（`expand_data`）、[scenarios.md](../../ja/scenarios.md)
+`bajutsu/scenario/`（`expand_data`）、[scenarios.md](../../ja/scenarios.md)

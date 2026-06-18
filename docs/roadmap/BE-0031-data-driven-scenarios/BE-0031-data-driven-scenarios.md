@@ -19,7 +19,7 @@ The same flow often needs running against many inputs — a search across severa
 
 ## Detailed design
 
-A scenario carries its inputs as `data` (a list of inline row mappings) or `dataFile` (a CSV path); the two are mutually exclusive (`Scenario` in `bajutsu/scenario.py` rejects both). Before the run, `expand_data` replaces each such scenario with one derived scenario per row, substituting `${row.<column>}` through the shared `${...}` interpolation primitive (`interp.interpolate`, keyed `row.<column>`). A CSV `dataFile` has a header row naming the columns and is read by `read_csv`; a scenario with neither field passes through untouched.
+A scenario carries its inputs as `data` (a list of inline row mappings) or `dataFile` (a CSV path); the two are mutually exclusive (`Scenario` in `bajutsu/scenario/` rejects both). Before the run, `expand_data` replaces each such scenario with one derived scenario per row, substituting `${row.<column>}` through the shared `${...}` interpolation primitive (`interp.interpolate`, keyed `row.<column>`). A CSV `dataFile` has a header row naming the columns and is read by `read_csv`; a scenario with neither field passes through untouched.
 
 Each derived scenario is renamed `"<name> [row N: col=val, …]"` so reports and JUnit testcases stay distinct, and keeps the original's preconditions — including the `erase` default — so every row reinstalls the app fresh and runs in its own clean environment. Interpolation preserves types: a string that is exactly one token (`"${row.id}"`) takes the raw bound value, while a token embedded in a larger string is spliced in as text. Expansion is purely load-time and removes the `data`/`dataFile` fields, so the deterministic runner only ever sees plain scenarios with literals in place — determinism and per-row isolation are both preserved.
 
@@ -31,4 +31,4 @@ Each derived scenario is renamed `"<name> [row N: col=val, …]"` so reports and
 
 ## References
 
-`bajutsu/scenario.py` (`expand_data`), [scenarios.md](../../scenarios.md)
+`bajutsu/scenario/` (`expand_data`), [scenarios.md](../../scenarios.md)
