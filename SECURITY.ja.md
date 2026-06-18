@@ -1,4 +1,4 @@
-[English](../../SECURITY.md) · **日本語**
+[English](SECURITY.md) · **日本語**
 
 # セキュリティポリシー
 
