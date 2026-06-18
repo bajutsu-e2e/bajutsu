@@ -1,6 +1,6 @@
 [English](BE-0041-web-playwright-backend.md) · **日本語**
 
-# BE-0041 — Web（Playwright）backend
+# BE-0041 — Web (Playwright) backend
 
 * 提案: [BE-0041](BE-0041-web-playwright-backend-ja.md)
 * 状態: **提案**
