@@ -85,6 +85,9 @@ def _await_ready(
             if len(driver.query()) >= 2:
                 return
         except (OSError, subprocess.CalledProcessError, ValueError):
+            # The app is still coming up: a query before the UI exists can fail (no device
+            # yet / empty tree / CLI hiccup). These are expected transient startup errors —
+            # swallow them and keep polling until the deadline below.
             pass
         remaining = deadline - time.monotonic()
         if remaining <= 0:
