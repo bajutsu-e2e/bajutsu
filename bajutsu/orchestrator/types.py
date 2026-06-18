@@ -1,0 +1,122 @@
+"""Shared types for the orchestrator: protocols, result dataclasses, and injected callables.
+
+These carry no run logic, so they can be imported by every other orchestrator module (and by
+the runner) without a cycle.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Protocol
+
+from bajutsu.assertions import AssertionResult
+from bajutsu.drivers import base
+from bajutsu.evidence import Artifact
+from bajutsu.network import NetworkExchange
+from bajutsu.scenario import Relaunch
+
+# Returns the network exchanges observed so far (for `request` assertions / waits).
+NetworkSource = Callable[[], list[NetworkExchange]]
+# Performs an in-scenario app relaunch (terminate + launch). Injected by the runner so the
+# orchestrator stays backend-agnostic; None means relaunch is unavailable (e.g. fake driver).
+RelaunchFn = Callable[[Relaunch], None]
+# Receives a human-readable progress line (e.g. "step 2/5: tap home.title") as the run advances.
+# Injected from the CLI (`--progress`) so the web UI can stream per-scenario/step progress; None
+# (the default everywhere) keeps the pipeline silent.
+ProgressFn = Callable[[str], None]
+
+
+class DeviceControl(Protocol):
+    """Device-environment operations a step may trigger (simctl-backed). Injected by the
+    runner so the orchestrator stays backend-agnostic; None means unavailable (the fake
+    driver, or parallel runs which don't pin a single device)."""
+
+    def set_location(self, lat: float, lon: float) -> None: ...
+    def push(self, payload: dict[str, object]) -> None: ...
+    def clear_keychain(self) -> None: ...
+    def clear_clipboard(self) -> None: ...
+    def home(self) -> None: ...
+    def override_status_bar(self, **kwargs: str | int) -> None: ...
+    def clear_status_bar(self) -> None: ...
+
+
+def _no_network() -> list[NetworkExchange]:
+    return []
+
+
+class Clock(Protocol):
+    """Time and sleep (swappable in tests to make waits deterministic)."""
+
+    def now(self) -> float: ...
+    def sleep(self, seconds: float) -> None: ...
+
+
+class RealClock:
+    def now(self) -> float:
+        return time.monotonic()
+
+    def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
+
+
+@dataclass
+class AlertEvent:
+    """A system prompt the guard dismissed so a blocked step/expect could proceed.
+
+    Recorded on the outcome (StepOutcome.alerts / RunResult.expect_alerts) and surfaced in
+    the report, so a step that only passed on a retry isn't shown as if nothing had blocked
+    it. `label` is the button the guard tapped (e.g. "Not Now"); empty when the locator
+    named none."""
+
+    label: str = ""
+
+
+@dataclass
+class StepOutcome:
+    index: int
+    action: str
+    ok: bool = True
+    reason: str = ""
+    duration_s: float = 0.0
+    started_at: float = 0.0  # offset (s) from the scenario video's start, for video sync
+    assertion_results: list[AssertionResult] = field(default_factory=list)
+    artifacts: list[Artifact] = field(default_factory=list)
+    # System prompts the guard cleared before this step succeeded (usually 0 or 1).
+    alerts: list[AlertEvent] = field(default_factory=list)
+
+
+@dataclass
+class RunResult:
+    scenario: str
+    ok: bool
+    steps: list[StepOutcome]
+    expect_results: list[AssertionResult] = field(default_factory=list)
+    failure: str | None = None
+    # Scenario-level artifacts (the always-on screen recording, etc.).
+    artifacts: list[Artifact] = field(default_factory=list)
+    # Which backend (actuator) drove this scenario: "idb" / "fake".
+    backend: str = ""
+    # The simulator udid this scenario ran on — shows how a parallel pool split the work.
+    device: str = ""
+    # The simulator's device model / OS runtime (e.g. "iPhone 15" / "iOS 17.2"), for the
+    # report's Environment tab; empty when not resolvable (e.g. the fake driver).
+    device_name: str = ""
+    device_runtime: str = ""
+    # Wall-clock the scenario took end to end (steps + verification), for the report.
+    duration_s: float = 0.0
+    # System prompts the guard cleared before the scenario-level `expect` re-checked.
+    expect_alerts: list[AlertEvent] = field(default_factory=list)
+
+
+# on_blocked(driver) -> the AlertEvent it dismissed if it cleared a blocking condition
+# (e.g. a system alert), so the step/expect is worth retrying; else None.
+BlockedHandler = Callable[[base.Driver], "AlertEvent | None"]
+
+
+def scenario_slug(name: str) -> str:
+    """A filesystem-safe id derived from a scenario name (for its evidence dir)."""
+    slug = re.sub(r"[^0-9a-zA-Z]+", "-", name).strip("-").lower()
+    return slug or "scenario"
