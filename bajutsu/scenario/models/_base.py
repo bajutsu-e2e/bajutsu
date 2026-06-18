@@ -20,29 +20,9 @@ _CAPTURE_KINDS = {
 }
 _CAPTURE_MODS = {"before", "after", "around", "onError"}
 
-_STEP_ACTIONS = (
-    "tap",
-    "double_tap",
-    "long_press",
-    "type",
-    "swipe",
-    "pinch",
-    "rotate",
-    "wait",
-    "assert_",
-    "relaunch",
-    "set_location",
-    "push",
-    "use",
-    "http",
-    "clear_keychain",
-    "clear_clipboard",
-    "background",
-    "override_status_bar",
-    "clear_status_bar",
-    "if_",
-    "for_each",
-)
+# The list of step-action field names is derived from the Step model itself (see
+# models/steps.py), so adding an action edits exactly one place — the model — instead of also
+# appending here. Only the control-flow subset, which the Step validator needs, is named.
 _CONTROL_FLOW_ACTIONS = ("if_", "for_each")
 _ASSERTION_KINDS = (
     "exists",

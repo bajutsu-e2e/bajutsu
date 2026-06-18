@@ -10,7 +10,6 @@ from pydantic import Field, field_validator, model_validator
 
 from bajutsu.scenario.models._base import (
     _CONTROL_FLOW_ACTIONS,
-    _STEP_ACTIONS,
     _exactly_one,
     _Model,
     _validate_capture,
@@ -120,3 +119,9 @@ class Step(_Model):
 
 If.model_rebuild()
 ForEach.model_rebuild()
+
+# The action field names, derived from the model so a new action is declared in exactly one
+# place — adding a `Step` field — instead of also appending to a parallel hand-maintained tuple
+# (a per-action merge-conflict point). `_MODIFIERS` are the non-action fields.
+_MODIFIERS = ("capture", "extract", "name")
+_STEP_ACTIONS = tuple(f for f in Step.model_fields if f not in _MODIFIERS)
