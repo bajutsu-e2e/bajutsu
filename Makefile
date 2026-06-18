@@ -6,11 +6,17 @@
 setup: hooks
 	uv sync --group dev
 
-# Wire the tracked pre-push gate into this clone. `core.hooksPath` is a per-clone
-# local setting that clone/pull never carry over, so this self-heals existing
-# clones too — `check` runs it before every gate, right when it matters. Idempotent.
+# Wire per-clone local git settings that clone/pull never carry over, so this self-heals
+# existing clones too — `check` runs it before every gate, right when it matters. Idempotent:
+#   - core.hooksPath -> the tracked pre-push gate
+#   - merge.uv-lock  -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
+#   - rerere         -> replay a once-resolved conflict automatically (BE-0043)
 hooks:
 	@[ -d .githooks ] && git config core.hooksPath .githooks && echo "hooks: core.hooksPath -> .githooks" || true
+	@git config merge.uv-lock.name "regenerate uv.lock from pyproject.toml" \
+	  && git config merge.uv-lock.driver "./scripts/merge-uv-lock.sh %A" \
+	  && git config rerere.enabled true \
+	  && echo "hooks: uv.lock merge driver + rerere wired"
 
 # Install the external tools the idb backend needs (idempotent).
 #   - Homebrew tools (idb_companion / xcodegen) from the Brewfile
@@ -32,7 +38,7 @@ serve:
 	@./scripts/serve.sh $(ARGS)
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 test:

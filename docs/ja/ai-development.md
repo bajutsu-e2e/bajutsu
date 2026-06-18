@@ -54,6 +54,18 @@ make check                  # rebase 後に再検証
 こまめに rebase すれば、他セッションのマージ済み作業に早く出会えます。衝突が 1〜2 行のうちに解消でき、
 最後にまとめて絡まったマージを解く必要がなくなります。
 
+`make hooks` は、それでも残る衝突の痛みを和らげる 2 つのローカル git 設定も自己修復します（BE-0043）。手で
+設定する必要はありません。
+
+- **`uv.lock` のマージドライバ**（[`scripts/merge-uv-lock.sh`](../../scripts/merge-uv-lock.sh)、
+  [`.gitattributes`](../../.gitattributes) でマッピング）。競合時に resolver の出力を行マージするのではなく
+  **`pyproject.toml` から `uv.lock` を再生成**します。`pyproject.toml` 自体が競合している場合は `uv lock` が
+  失敗し、git は `uv.lock` を競合のまま残します —— 先に `pyproject.toml` を解決してから再マージしてください。
+- **`rerere`**（記録した解決の再利用）。一度解決した衝突は、同じ衝突が次に現れたときに自動で再適用されます。
+
+`core.hooksPath` と同様、これらは clone/pull が引き継がないクローンごとのローカル git 設定なので、
+`make check` / `make setup` が毎回再配線します。
+
 ## worktree で同時セッションを隔離する
 
 2 つのエージェントが同じチェックアウトを編集してはいけません。各セッションに専用の
