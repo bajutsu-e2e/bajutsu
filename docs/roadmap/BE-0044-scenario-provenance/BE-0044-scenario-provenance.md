@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-scenario-provenance-ja.md)
+**English** · [日本語](BE-0044-scenario-provenance-ja.md)
 
-# BE-XXXX — Scenario provenance (`from:` — step ↔ natural-language origin)
+# BE-0044 — Scenario provenance (`from:` — step ↔ natural-language origin)
 
-* Proposal: [BE-XXXX](BE-XXXX-scenario-provenance.md)
+* Proposal: [BE-0044](BE-0044-scenario-provenance.md)
 * Status: **Proposal**
 * Track: [Proposals](../README.md#proposals)
 * Topic: Authoring experience (record / GUI editor)

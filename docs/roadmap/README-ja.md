@@ -142,7 +142,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0012](BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) | 操作キャプチャ record | 提案 |
 | [BE-0013](BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md) | シナリオ GUI エディタ | 提案 |
 | [BE-0014](BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) | 既存 AI record との棲み分け | 提案 |
-| [BE-XXXX](BE-XXXX-scenario-provenance/BE-XXXX-scenario-provenance-ja.md) | シナリオの来歴（`from:` — ステップ ↔ 自然言語の対応） | 提案 |
+| [BE-0044](BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md) | シナリオの来歴（`from:` — ステップ ↔ 自然言語の対応） | 提案 |
 
 ### Web UI のホスティング（クラウド / セルフホスト）
 
