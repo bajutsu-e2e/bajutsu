@@ -116,7 +116,8 @@ DismissAlerts ::= boolean                                   # { enabled: <bool> 
 
 # ── Step = ちょうど 1 アクション + 任意の修飾子 ─────────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), name?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string }
+Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
 Action    ::=
     { tap:         <Selector> }
   | { doubleTap:   <Selector> }
@@ -131,6 +132,11 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs ペイロード 例 {aps:{alert:"…"}}
   | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2）
+  | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
+  | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
+
+If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
+ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right") }   # セレクタ形  ┐ XOR
