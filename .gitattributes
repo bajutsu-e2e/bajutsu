@@ -1,0 +1,4 @@
+# Regenerate uv.lock from pyproject.toml on a merge conflict instead of line-merging the
+# resolver output (BE-0043). The `uv-lock` driver is wired by `make hooks` / `make setup`
+# (scripts/merge-uv-lock.sh); without it git falls back to the default merge, which is harmless.
+uv.lock merge=uv-lock

@@ -93,6 +93,15 @@ def push_cmd(udid: str, bundle_id: str, payload_path: str) -> list[str]:
     return ["xcrun", "simctl", "push", udid, bundle_id, payload_path]
 
 
+def keychain_reset_cmd(udid: str) -> list[str]:
+    return ["xcrun", "simctl", "keychain", udid, "reset"]
+
+
+def pbcopy_cmd(udid: str) -> list[str]:
+    """Clear the pasteboard by writing empty data via simctl pbcopy."""
+    return ["xcrun", "simctl", "pbcopy", udid]
+
+
 def home_cmd(udid: str) -> list[str]:
     """Press the Home button (sends the foreground app to the background)."""
     return ["xcrun", "simctl", "ui", udid, "home"]
@@ -268,6 +277,18 @@ class Env:
 
     def clear_location(self) -> None:
         self._run(clear_location_cmd(self.udid), None)
+
+    def clear_keychain(self) -> None:
+        self._run(keychain_reset_cmd(self.udid), None)
+
+    def clear_clipboard(self) -> None:
+        # pbcopy reads from stdin, which RunFn doesn't support. Use subprocess
+        # directly but route through a class-level attribute so tests can patch it.
+        self._run_pbcopy(pbcopy_cmd(self.udid))
+
+    @staticmethod
+    def _run_pbcopy(cmd: list[str]) -> None:
+        subprocess.run(cmd, input="", capture_output=True, text=True, check=True)
 
     def home(self) -> None:
         self._run(home_cmd(self.udid), None)

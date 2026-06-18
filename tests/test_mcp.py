@@ -159,6 +159,111 @@ def test_safe_run_path_rejects_traversal(tmp_path: Path) -> None:
         _safe_run_path(runs_dir, "../secret", "manifest.json")
 
 
+def test_artifact_resource_reads_screenshot(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    step_dir = runs_dir / "run1" / "00-scenario" / "step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "after.png").write_bytes(b"\x89PNG fake")
+
+    from fastmcp import FastMCP
+
+    from bajutsu.mcp.resources import register_resources
+
+    mcp = FastMCP("test")
+    register_resources(mcp, runs_dir)
+
+    result = _run(mcp.read_resource("bajutsu://runs/run1/artifact/00-scenario/step0/after.png"))
+    assert result.contents[0].content is not None
+
+
+def test_artifact_resource_reads_elements_json(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    step_dir = runs_dir / "run1" / "00-scenario" / "step0"
+    step_dir.mkdir(parents=True)
+    elements = [{"identifier": "ok", "label": "OK"}]
+    (step_dir / "elements.json").write_text(json.dumps(elements), encoding="utf-8")
+
+    from fastmcp import FastMCP
+
+    from bajutsu.mcp.resources import register_resources
+
+    mcp = FastMCP("test")
+    register_resources(mcp, runs_dir)
+
+    result = _run(mcp.read_resource("bajutsu://runs/run1/artifact/00-scenario/step0/elements.json"))
+    text = result.contents[0].content
+    assert json.loads(text) == elements
+
+
+def test_artifact_resource_reads_network_json(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    sid_dir = runs_dir / "run1" / "00-scenario"
+    sid_dir.mkdir(parents=True)
+    (sid_dir / "network.json").write_text("[]", encoding="utf-8")
+
+    from fastmcp import FastMCP
+
+    from bajutsu.mcp.resources import register_resources
+
+    mcp = FastMCP("test")
+    register_resources(mcp, runs_dir)
+
+    result = _run(mcp.read_resource("bajutsu://runs/run1/artifact/00-scenario/network.json"))
+    assert result.contents[0].content == "[]"
+
+
+def test_artifact_resource_rejects_traversal(tmp_path: Path) -> None:
+    from bajutsu.mcp.resources import _safe_artifact_path
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    with pytest.raises(ValueError, match="invalid artifact path"):
+        _safe_artifact_path(runs_dir, "run1", "../../etc/passwd")
+
+
+def test_safe_artifact_path_rejects_cross_run(tmp_path: Path) -> None:
+    from bajutsu.mcp.resources import _safe_artifact_path
+
+    runs_dir = tmp_path / "runs"
+    (runs_dir / "run1").mkdir(parents=True)
+    (runs_dir / "run2").mkdir(parents=True)
+    (runs_dir / "run2" / "secret.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid artifact path"):
+        _safe_artifact_path(runs_dir, "run1", "../run2/secret.json")
+
+
+def test_artifact_resource_missing_file(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    (runs_dir / "run1").mkdir(parents=True)
+
+    from fastmcp import FastMCP
+
+    from bajutsu.mcp.resources import register_resources
+
+    mcp = FastMCP("test")
+    register_resources(mcp, runs_dir)
+
+    with pytest.raises(Exception, match="not found"):
+        _run(mcp.read_resource("bajutsu://runs/run1/artifact/nonexistent.json"))
+
+
+def test_junit_resource_reads_file(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "junit.xml").write_text("<testsuites/>", encoding="utf-8")
+
+    from fastmcp import FastMCP
+
+    from bajutsu.mcp.resources import register_resources
+
+    mcp = FastMCP("test")
+    register_resources(mcp, runs_dir)
+
+    result = _run(mcp.read_resource("bajutsu://runs/run1/junit.xml"))
+    assert "<testsuites/>" in result.contents[0].content
+
+
 def test_latest_manifest_finds_newest(tmp_path: Path) -> None:
     runs_dir = tmp_path / "runs"
     for name in ["20260101T000000", "20260616T120000"]:

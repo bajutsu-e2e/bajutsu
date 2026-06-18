@@ -41,7 +41,7 @@ jobs:
         run: uv run --no-sync ruff check .
 
       - name: Lint shell scripts (shellcheck)
-        run: uv run --no-sync shellcheck .githooks/pre-push scripts/serve.sh .claude/hooks/session-start.sh demos/record/demo.sh
+        run: uv run --no-sync shellcheck .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh .claude/hooks/session-start.sh demos/record/demo.sh
 
       # actionlint is a standalone Go binary, not pip/uv-installable — the one gate check
       # not covered by `uv sync`. Pinned to a tagged release of the official installer.

@@ -71,6 +71,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   re-wires it on every run — the gate self-heals, no manual `git config` needed. Run `make setup`
   once on a fresh clone; web sessions get it automatically. The deterministic test suite is the
   regression net — if you change behavior, a test should change with it.
+- **Git defenses are wired the same way (BE-0043).** `make hooks` also self-heals two local git
+  settings that ease parallel work: a `uv.lock` merge driver that **regenerates the lockfile from
+  `pyproject.toml` on conflict** (via [`scripts/merge-uv-lock.sh`](scripts/merge-uv-lock.sh) +
+  [`.gitattributes`](.gitattributes)) instead of line-merging resolver output, and `rerere` so a
+  once-resolved conflict replays automatically. No manual `git config` needed.
 - **Rebase, don't drift.** Before pushing, `git fetch origin && git rebase origin/main` so you
   integrate others' merged work early and surface conflicts while they're small.
 - **Stay in your lane.** Touch only the files your task needs. If a change must cut across many
@@ -99,9 +104,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   `docs/roadmap/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md` and its Japanese
   version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*, `NNNN` a zero-padded 4-digit
   monotonically increasing ID. When you add one: allocate the next ID
-  (`ls -d docs/roadmap/BE-*/ | sort | tail -1`, then +1; never reuse, skip, or guess), create
-  **both** language files in that directory, and add a row to **both** index pages
-  (`docs/roadmap/README.md` and `docs/roadmap/README-ja.md`).
+  (`ls -d docs/roadmap/BE-*/ | sort | tail -1`, then +1; never reuse, skip, or guess) and create
+  **both** language files in that directory. Don't hand-edit the index tables — run
+  `make roadmap-index` to regenerate the tables in **both** index pages
+  (`docs/roadmap/README.md` and `docs/roadmap/README-ja.md`) from each item's metadata;
+  `make test` fails if the committed index drifts.
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
   Motivation / Detailed design / Alternatives considered / References); its `Status` files it
   under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /

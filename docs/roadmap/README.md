@@ -38,8 +38,13 @@ When you add a roadmap item:
    in-flight branches racing for the same number.
 2. **Create the item directory and both language files** —
    `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md` (English) and
-   `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug) — and add a row to
-   the matching topic table in **both** index pages (`README.md` and `README-ja.md`).
+   `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Don't hand-edit the
+   index tables below** — they are generated from each item's own metadata. Run `make roadmap-index`
+   (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the `<!-- GENERATED:* -->`
+   markers in **both** index pages. The item's `Track` + `Topic` decide its section, so an item in an
+   existing topic needs no manual table edit; the gate (`tests/test_roadmap_index.py`, run by `make test`)
+   fails if the committed index drifts. A brand-new topic also needs a marked section plus a `Section`
+   entry in the script.
 3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
@@ -62,43 +67,52 @@ Decisions that have been made — already implemented, or accepted and to be imp
 
 Coarse delivery milestones (M1–M4) — the project's **decision & implementation record**. All four are accepted and shipped; the finer-grained features they decomposed into live in the topic sections below.
 
+<!-- GENERATED:accepted-milestones -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0001](BE-0001-m1-deterministic-runner/BE-0001-m1-deterministic-runner.md) | Deterministic runner (M1) | Implemented |
 | [BE-0002](BE-0002-m2-ai-loop-and-evidence/BE-0002-m2-ai-loop-and-evidence.md) | AI authoring loop & evidence (M2) | Implemented |
 | [BE-0003](BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md) | codegen, traces, network & CI (M3) | Implemented |
 | [BE-0004](BE-0004-m4-self-healing-triage/BE-0004-m4-self-healing-triage.md) | Self-healing triage (M4) | Implemented |
+<!-- /GENERATED:accepted-milestones -->
 
 ### Platform expansion (landed slices)
 
 The first slice of the multi-platform direction has landed: a **platform-aware backend registry** so `--backend` / `backend:` accept a platform token (`ios` / `android` / `web` / `fake`) as well as a bare actuator, expanding to the first implemented-and-available actuator. The rest of each platform's triple (per-platform environment manager + actuator driver) is tracked under [Platform expansion](#platform-expansion-android--web--flutter) in Proposals.
 
+<!-- GENERATED:accepted-platform-landed -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) | Platform-aware backend registry & selection | Implemented |
+<!-- /GENERATED:accepted-platform-landed -->
 
 ### Authoring experience (record / GUI editor)
 
 The AI-driven `record` (Tier 1) is implemented ([recording.md](../recording.md)). The items here cover **non-AI action capture** and **visual editing of scenarios**, to make the record → edit → re-run cycle easier for humans. The local web UI launcher `bajutsu serve` is the first step toward this.
 
+<!-- GENERATED:accepted-authoring -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0011](BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) | Local web UI (`bajutsu serve`) | Implemented |
+<!-- /GENERATED:accepted-authoring -->
 
 ### Self-healing triage (M4)
 
 Lower the maintenance cost of regressions while keeping AI out of the judge role and limited to an investigator.
 
+<!-- GENERATED:accepted-self-healing -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0021](BE-0021-ai-triage/BE-0021-ai-triage.md) | AI triage (root-cause summary, fix suggestions) | Implemented |
 | [BE-0022](BE-0022-update-structured-fixes/BE-0022-update-structured-fixes.md) | `update` (minimal-diff proposals = applying structured fixes) | Implemented |
 | [BE-0023](BE-0023-self-healing-guards/BE-0023-self-healing-guards.md) | Guards against "making tests laxer" | Implemented |
+<!-- /GENERATED:accepted-self-healing -->
 
 ### Candidates from competitive research (MagicPod / Autify)
 
 MagicPod and Autify are built around **AI self-healing + no-code + cloud device farm + visual testing**. Both tools' flagship feature is "AI auto-corrects locators / tap positions during a run", which conflicts directly with Bajutsu's core principle ([DESIGN §2](../../DESIGN.md): **keep AI out of the CI gate / determinism first**). Features were evaluated by separating what can be adopted deterministically from what can be adopted only outside the gate.
 
+<!-- GENERATED:accepted-competitive -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0029](BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md) | Visual-regression assertions | Implemented | Both |
@@ -108,12 +122,15 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0033](BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md) | Scenario variables + light control flow | In progress | MagicPod |
 | [BE-0034](BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md) | Tags / labels + selective runs | Implemented | MagicPod |
 | [BE-0039](BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
+<!-- /GENERATED:accepted-competitive -->
 
 ### Integration & automation (MCP)
 
+<!-- GENERATED:accepted-mcp -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server.md) | MCP server | Implemented |
+<!-- /GENERATED:accepted-mcp -->
 
 ## Proposals
 
@@ -123,15 +140,18 @@ Under consideration — not yet decided. Promote an item to *Accepted* once a de
 
 The deterministic core runs end-to-end on the FakeDriver, and the idb backend's subprocess execution (`describe-all` parsing, frame-center tap/text/swipe) and the simctl launch sequence are validated on a real device (iPhone 17 Pro / latest iOS). What remains is only ongoing maintenance monitoring.
 
+<!-- GENERATED:proposals-on-device -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0005](BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Proposal |
 | [BE-0006](BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Proposal |
+<!-- /GENERATED:proposals-on-device -->
 
 ### Platform expansion (Android / Web / Flutter)
 
 The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESIGN.md)). This section covers the direction of going multi-platform by leveraging the driver / backend abstractions — a strategic decision that entails updating the core scope statement. The big-picture overview is in [multi-platform.md](../multi-platform.md); the **concrete per-platform design** lives in the items below: [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) holds the shared abstractions, then Web (recommended first, runs on the existing Linux gate), Android, and Flutter. The first slice — a platform-aware backend registry — has already landed ([BE-0042](BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md), under Accepted).
 
+<!-- GENERATED:proposals-platform -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0007](BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | Proposal |
@@ -139,59 +159,75 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../../DESI
 | [BE-0009](BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Proposal |
 | [BE-0010](BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Proposal |
 | [BE-0041](BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | Proposal |
+<!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
 
+<!-- GENERATED:proposals-authoring -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0012](BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | Proposal |
 | [BE-0013](BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Proposal |
 | [BE-0014](BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
+| [BE-0044](BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Proposal |
 
 ### Hosting the web UI (cloud / self-hosted)
 
 Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s) — a today-ready single-Mac path on the existing `serve`, plus a fully self-hosted multi-tenant topology.
 
+<!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public / cloud hosting of the web UI | Proposal |
+| [BE-0015](BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
 | [BE-0016](BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
+<!-- /GENERATED:proposals-hosting -->
 
 ### Integration & automation (MCP)
 
+<!-- GENERATED:proposals-mcp -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0018](BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) | Return evidence as MCP resources | Proposal |
+<!-- /GENERATED:proposals-mcp -->
 
 ### Backend expansion (iOS actuators)
 
+<!-- GENERATED:proposals-backend -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0019](BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | Proposal |
 | [BE-0020](BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Proposal |
+<!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding
 
+<!-- GENERATED:proposals-doctor -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0024](BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Proposal |
+<!-- /GENERATED:proposals-doctor -->
 
 ### codegen coverage
 
+<!-- GENERATED:proposals-codegen -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0025](BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
 | [BE-0026](BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
+<!-- /GENERATED:proposals-codegen -->
 
 ### Miscellaneous / on hold
 
+<!-- GENERATED:proposals-misc -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0027](BE-0027-mock-server-external/BE-0027-mock-server-external.md) | `mockServer` (external mock) | Deferred |
 | [BE-0028](BE-0028-evidence-rule-overmatch-guard/BE-0028-evidence-rule-overmatch-guard.md) | Guard against over-matching evidence rules | Proposal |
+<!-- /GENERATED:proposals-misc -->
 
 ### Candidates from competitive research (MagicPod / Autify)
 
+<!-- GENERATED:proposals-competitive -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0035](BE-0035-device-control-primitives/BE-0035-device-control-primitives.md) | Extended device-control primitives | Proposal | MagicPod |
@@ -199,14 +235,17 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0037](BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
 | [BE-0038](BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | Proposal | Autify VAX |
 | [BE-0040](BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
+<!-- /GENERATED:proposals-competitive -->
 
 ### Development infrastructure (contributor workflow)
 
 Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
 
+<!-- GENERATED:proposals-dev-infra -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Proposal |
+<!-- /GENERATED:proposals-dev-infra -->
 
 ## Not adopting (already covered / out of scope)
 
