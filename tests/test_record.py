@@ -5,7 +5,7 @@ from __future__ import annotations
 from bajutsu.agent import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.record import _shows_app_ui, record
+from bajutsu.record import record, shows_app_ui
 from bajutsu.scenario import Assertion, Step, dump_scenarios, load_scenarios
 
 
@@ -137,11 +137,11 @@ def _vel(label: str | None, traits: list[str]) -> base.Element:
 def test_shows_app_ui_recognizes_label_only_screen() -> None:
     # An app without accessibility identifiers (sample2): label-only elements are still app UI.
     app = _vel("BajutsuSample", ["application"])
-    assert _shows_app_ui([app, _vel("Get Started", ["button"])]) is True
-    assert _shows_app_ui([_el("onboarding.start", "Get Started")]) is True  # id-only also counts
+    assert shows_app_ui([app, _vel("Get Started", ["button"])]) is True
+    assert shows_app_ui([_el("onboarding.start", "Get Started")]) is True  # id-only also counts
     # A tree collapsed under a system alert — only the bare app window, nothing actionable.
-    assert _shows_app_ui([app]) is False
-    assert _shows_app_ui([]) is False
+    assert shows_app_ui([app]) is False
+    assert shows_app_ui([]) is False
 
 
 class _NoSleep:

@@ -3,9 +3,9 @@
 Breadth-first exploration of an app over the `Driver` abstraction, producing a screen map of
 the reachable screens and the transitions between them. This is the deterministic engine only —
 no AI and no Simulator wiring (those land in later slices). The determinism boundary is the
-whole point: a screen's *identity* (its fingerprint) and the *order* candidate actions are tried
-are pure functions of the element tree, so a crawl of an unchanged app explores the same way as
-far as the app's own non-determinism allows. AI never decides anything here.
+whole point: a screen's *identity* (its fingerprint) and the *order* in which candidate actions
+are tried are both pure functions of the element tree, so a crawl of an unchanged app explores
+the same way as far as the app's own non-determinism allows. AI never decides anything here.
 
 Traversal is by **deterministic replay**, not in-place backtracking: app transitions are usually
 irreversible, so to revisit a known screen the engine resets to a clean state and replays the
@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from bajutsu.drivers import base
-from bajutsu.record import _shows_app_ui
+from bajutsu.record import shows_app_ui
 
 # Elements worth acting on. Tapping these can change the screen; static text / images do not.
 ACTIONABLE_TRAITS = frozenset({"button", "link", "textField", "searchField"})
@@ -131,27 +131,31 @@ def _frame_bucket(element: base.Element) -> tuple[int, int, int, int]:
 
 
 def _hash(parts: list[str]) -> str:
-    return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()[:12]
+    # Full digest: a crawl may visit many screens across runs, so keep collision risk negligible.
+    return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()
 
 
 def candidate_actions(elements: list[base.Element]) -> list[Action]:
     """Actionable, id-bearing elements as replayable tap actions, in deterministic id order.
 
     Id-less actionable elements are skipped in this slice: replay needs a stable selector, and
-    an id is the only one the engine can re-resolve after an erase/replay.
+    an id is the only one the engine can re-resolve after an erase/replay. Identifiers are
+    de-duplicated so a repeated id doesn't bloat the frontier or the node's action list.
     """
     targets = sorted(
-        i
-        for el in elements
-        if (i := _id_of(el)) and ACTIONABLE_TRAITS & set(el.get("traits") or [])
+        {
+            i
+            for el in elements
+            if (i := _id_of(el)) and ACTIONABLE_TRAITS & set(el.get("traits") or [])
+        }
     )
     return [Action("tap", t) for t in targets]
 
 
 def is_app_alive(elements: list[base.Element]) -> bool:
     """Whether the app's own UI is showing (not collapsed under a system overlay or crashed).
-    Reuses record's check so "app UI vs. collapsed tree" has a single definition."""
-    return _shows_app_ui(elements)
+    Reuses record's public check so "app UI vs. collapsed tree" has a single definition."""
+    return shows_app_ui(elements)
 
 
 def _node_of(fp: Fingerprint, elements: list[base.Element]) -> Node:
