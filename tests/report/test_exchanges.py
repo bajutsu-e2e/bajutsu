@@ -106,7 +106,7 @@ def test_html_exchanges_filtered_by_domain(tmp_path: Path) -> None:
     # + response rows = two act-net badges)...
     assert out.count('class="act act-net"') == 2 and "https://api.example.com/x" in out
     # ...but the filtered-out request still appears in the (unfiltered) Network tab.
-    assert "tracker.io" in out
+    assert "https://tracker.io/log" in out
 
 
 def test_html_wait_request_detail_is_rich() -> None:
