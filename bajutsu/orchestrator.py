@@ -27,6 +27,7 @@ from bajutsu.scenario import (
     CaptureRule,
     Extract,
     Gone,
+    HttpRequest,
     Relaunch,
     Scenario,
     Selector,
@@ -53,6 +54,8 @@ class DeviceControl(Protocol):
 
     def set_location(self, lat: float, lon: float) -> None: ...
     def push(self, payload: dict[str, object]) -> None: ...
+    def clear_keychain(self) -> None: ...
+    def clear_clipboard(self) -> None: ...
     def home(self) -> None: ...
     def override_status_bar(self, **kwargs: str | int) -> None: ...
     def clear_status_bar(self) -> None: ...
@@ -155,6 +158,9 @@ def _action_of(step: Step) -> str:
         "relaunch",
         "set_location",
         "push",
+        "http",
+        "clear_keychain",
+        "clear_clipboard",
         "background",
         "override_status_bar",
         "clear_status_bar",
@@ -330,14 +336,44 @@ def _interp_asserts(asserts: list[Assertion], bindings: Mapping[str, str]) -> li
     ]
 
 
+def _do_http(http: HttpRequest, bindings: dict[str, str] | None) -> None:
+    """Execute an HTTP request and optionally save the response body to vars.*."""
+    import urllib.error
+    import urllib.request
+
+    if not http.url.startswith(("http://", "https://")):
+        raise base.SelectorError(f"http: only http/https URLs are allowed, got {http.url!r}")
+
+    req = urllib.request.Request(
+        http.url,
+        data=http.body.encode("utf-8") if http.body else None,
+        headers=dict(http.headers or {}),
+        method=http.method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            status = resp.status
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        status = e.code
+    except urllib.error.URLError as e:
+        raise base.SelectorError(f"http: request failed: {e.reason}") from e
+    if http.status is not None and status != http.status:
+        raise base.SelectorError(f"http: expected status {http.status}, got {status}")
+    if http.save_body is not None and bindings is not None:
+        bindings[f"vars.{http.save_body}"] = body
+
+
 def _do_action(
     driver: base.Driver,
     step: Step,
     relaunch: RelaunchFn | None = None,
     control: DeviceControl | None = None,
+    bindings: dict[str, str] | None = None,
 ) -> None:
-    """Run tap / longPress / type / swipe / relaunch / device control (wait and assert live
-    in the run loop)."""
+    """Run tap / longPress / type / swipe / relaunch / device control / http (wait and
+    assert live in the run loop)."""
     if step.tap is not None:
         driver.tap(step.tap.as_selector())
         return
@@ -389,6 +425,23 @@ def _do_action(
                 "push requires a real device environment (not supported on fake driver)"
             )
         control.push(step.push.payload)
+        return
+    if step.http is not None:
+        _do_http(step.http, bindings)
+        return
+    if step.clear_keychain is not None:
+        if control is None:
+            raise base.UnsupportedAction(
+                "clearKeychain requires a real device environment (not supported on fake driver)"
+            )
+        control.clear_keychain()
+        return
+    if step.clear_clipboard is not None:
+        if control is None:
+            raise base.UnsupportedAction(
+                "clearClipboard requires a real device environment (not supported on fake driver)"
+            )
+        control.clear_clipboard()
         return
     if step.background is not None:
         if control is None:
@@ -447,7 +500,7 @@ def _run_step_body(
     clock: Clock,
     network: NetworkSource,
     relaunch: RelaunchFn | None = None,
-    bindings: Mapping[str, str] | None = None,
+    bindings: dict[str, str] | None = None,
     control: DeviceControl | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results).
@@ -464,7 +517,7 @@ def _run_step_body(
             results = assertions.evaluate(driver.query(), step.assert_, network())
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results
-        _do_action(driver, step, relaunch, control)
+        _do_action(driver, step, relaunch, control, bindings)
         return True, "", []
     except (base.SelectorError, base.UnsupportedAction, NotImplementedError) as e:
         return False, str(e), []

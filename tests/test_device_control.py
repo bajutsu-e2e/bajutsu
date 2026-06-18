@@ -71,6 +71,12 @@ class _RecordingControl:
     def push(self, payload: dict[str, object]) -> None:
         self.pushes.append(payload)
 
+    def clear_keychain(self) -> None:
+        pass
+
+    def clear_clipboard(self) -> None:
+        pass
+
     def home(self) -> None:
         self.home_calls += 1
 

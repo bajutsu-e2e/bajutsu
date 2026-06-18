@@ -43,6 +43,9 @@ _STEP_ACTIONS = (
     "set_location",
     "push",
     "use",
+    "http",
+    "clear_keychain",
+    "clear_clipboard",
     "background",
     "override_status_bar",
     "clear_status_bar",
@@ -261,6 +264,29 @@ class Push(_Model):
     payload: dict[str, Any]
 
 
+class HttpRequest(_Model):
+    """Issue an HTTP request (for test-data setup, webhook triggers, API calls).
+
+    The response status is checked against ``status`` (if given); a mismatch
+    fails the step. ``saveBody`` stores the response body text as
+    ``vars.<saveBody>`` for subsequent ``${vars.*}`` interpolation."""
+
+    method: str = "GET"
+    url: str
+    headers: dict[str, str] | None = None
+    body: str | None = None
+    status: int | None = None
+    save_body: str | None = Field(default=None, alias="saveBody")
+
+
+class ClearKeychain(_Model):
+    """Reset the Simulator's keychain (saved passwords, certificates)."""
+
+
+class ClearClipboard(_Model):
+    """Clear the Simulator's pasteboard."""
+
+
 class Background(_Model):
     """Send the app to the background by pressing the Home button (simctl ui home)."""
 
@@ -401,6 +427,9 @@ class Step(_Model):
     set_location: SetLocation | None = Field(default=None, alias="setLocation")
     push: Push | None = None
     use: Use | None = None
+    http: HttpRequest | None = None
+    clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
+    clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")
     background: Background | None = None
     override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
     clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
