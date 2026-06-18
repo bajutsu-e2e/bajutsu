@@ -1,0 +1,100 @@
+"""The top-level shapes a scenario file is made of: preconditions, the alert-guard control, the
+scenario and its reusable component, and the scenario-file wrapper that ties them together."""
+
+from __future__ import annotations
+
+from typing import Any, Literal, Self
+
+from pydantic import Field, model_validator
+
+from bajutsu.scenario.models._base import _Model
+from bajutsu.scenario.models.assertions import Assertion
+from bajutsu.scenario.models.evidence import CaptureRule, Network, Redact
+from bajutsu.scenario.models.mocks import Mock
+from bajutsu.scenario.models.steps import Step
+
+
+class Preconditions(_Model):
+    """Per-test environment setup."""
+
+    # Wipe the whole simulator (simctl erase) before the test — apps, data, settings. Off by
+    # default: the app is reinstalled fresh each run (see `reinstall`), so a full wipe is only
+    # needed when a test wants a pristine device (no other apps / default settings).
+    erase: bool = False
+    # How the app is (re)installed before each run, when the app config gives an `appPath`:
+    #   clean     — uninstall then install (fresh app + data; the default)
+    #   overwrite — install over the existing app (keeps its data container)
+    reinstall: Literal["clean", "overwrite"] = "clean"
+    launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
+    launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
+    deeplink: str | None = None
+    locale: str | None = None
+    setup: str | None = None
+
+
+class DismissAlerts(_Model):
+    """Per-scenario control of the system-alert guard — the vision-based dismissal of OS
+    prompts (e.g. iOS "Save Password?", a permission request) that idb cannot see or tap.
+
+    The guard is ON by default and fires only when a step (or `expect`) is blocked: it
+    screenshots, asks the locator where to tap, taps the prompt away, and retries once.
+    Two on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
+        dismissAlerts: false                  — disable the guard for this scenario
+        dismissAlerts: { instruction: "..." } — keep it on, but tap the named button
+                                                 (e.g. "tap Allow" to grant a prompt)
+    """
+
+    enabled: bool = True
+    # When set, the locator taps the button this names instead of the default dismissive one
+    # (e.g. "tap Allow"); a per-scenario instruction wins over the CLI `--alert-instruction`.
+    instruction: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_bool(cls, data: Any) -> Any:
+        return {"enabled": data} if isinstance(data, bool) else data
+
+
+class Scenario(_Model):
+    """One scenario."""
+
+    name: str
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    data: list[dict[str, str]] | None = None
+    data_file: str | None = Field(default=None, alias="dataFile")
+    preconditions: Preconditions = Field(default_factory=Preconditions)
+    steps: list[Step]
+    expect: list[Assertion] = Field(default_factory=list)
+    capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
+    network: Network | None = None
+    mocks: list[Mock] = Field(default_factory=list)
+    redact: Redact | None = None
+    # The alert guard runs on by default; unset means "on, dismiss the prompt" (see
+    # DismissAlerts). Kept None when unset so a dumped scenario stays clean.
+    dismiss_alerts: DismissAlerts | None = Field(default=None, alias="dismissAlerts")
+
+    @model_validator(mode="after")
+    def _one_data_source(self) -> Self:
+        if self.data is not None and self.data_file is not None:
+            raise ValueError("data and dataFile are mutually exclusive")
+        return self
+
+
+class Component(_Model):
+    """A reusable, parameterized sequence of steps. `params` are the names a caller must
+    supply via `use: { with: {...} }`; the steps reference them as `${params.<name>}`."""
+
+    params: list[str] = Field(default_factory=list)
+    steps: list[Step]
+
+
+class ScenarioFile(_Model):
+    """A scenario file: an optional file-level `description` plus the scenarios it defines.
+
+    Two on-disk forms are accepted: the bare list of scenarios (no file description), or a
+    `{description: "...", scenarios: [...]}` mapping.
+    """
+
+    description: str | None = None
+    scenarios: list[Scenario]

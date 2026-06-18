@@ -1,0 +1,243 @@
+"""Tests for the device pool and the per-device relauncher."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from _runner import _eff, _el
+
+from bajutsu import env
+from bajutsu.drivers.fake import FakeDriver
+from bajutsu.runner import (
+    device_pool,
+    device_relauncher,
+)
+from bajutsu.scenario import Relaunch, Scenario
+
+
+def test_relauncher_relaunches_with_locale_and_overrides() -> None:
+    calls: list[tuple[list[str], object]] = []
+
+    def fake_run(args: list[str], env: object = None) -> str:
+        calls.append((args, env))
+        return ""
+
+    # Scenario locale (ja_JP) overrides the app/config default (en_US from _eff()).
+    scn = Scenario.model_validate(
+        {"name": "a", "preconditions": {"locale": "ja_JP"}, "steps": [{"tap": {"id": "ok"}}]}
+    )
+    driver = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
+    # extra_env (the device's collector url) must survive the relaunch.
+    relaunch = device_relauncher(
+        "UDID-1", env_run=fake_run, extra_env={"BAJUTSU_COLLECTOR": "http://127.0.0.1:9"}
+    )(_eff(), scn, driver)
+    relaunch(Relaunch(env={"K": "V"}, args=["--fresh"]))
+
+    assert any(
+        c[0] == ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] for c in calls
+    )
+    launch, launch_env = next(c for c in calls if "launch" in c[0])
+    assert "--fresh" in launch  # per-relaunch arg
+    # Locale forced via app launch args, scenario locale winning.
+    assert launch[launch.index("-AppleLocale") + 1] == "ja_JP"
+    assert "(ja)" in launch
+    # The collector url survives the relaunch and the per-relaunch env override is applied
+    # (both reach the app via the SIMCTL_CHILD_ child-env channel).
+    assert launch_env.get("SIMCTL_CHILD_BAJUTSU_COLLECTOR") == "http://127.0.0.1:9"
+    assert launch_env.get("SIMCTL_CHILD_K") == "V"
+
+
+def _scn(name: str) -> Scenario:
+    return Scenario.model_validate({"name": name, "steps": [{"tap": {"id": "ok"}}]})
+
+
+def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pool of >1 devices gives each leased scenario its own collector (distinct url),
+    interval-recording sink (bound to the udid), and device control — the three features
+    that used to drop in parallel."""
+    calls: list[tuple[list[str], object]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        calls.append((args, extra_env))
+        return ""
+
+    monkeypatch.setattr(
+        "bajutsu.runner.launch.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+
+    lease, shutdown = device_pool(
+        ["UDID-A", "UDID-B"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=fake_run,
+    )
+    la = lb = None
+    try:
+        la = lease(_eff(), _scn("a"))
+        lb = lease(_eff(), _scn("b"))
+        # Distinct collectors on distinct ports (no shared single-loopback receiver).
+        assert la.collector is not None and lb.collector is not None
+        assert la.collector is not lb.collector
+        assert la.collector.port != lb.collector.port
+        # Per-device sink bound to the leased udid -> interval evidence works in parallel.
+        assert la.sink.udid == "UDID-A" and lb.sink.udid == "UDID-B"
+        # Device control present per device, routing to the leased udid.
+        assert la.control is not None and lb.control is not None
+        la.control.set_location(35.0, 139.0)
+        assert any(
+            c[0] == ["xcrun", "simctl", "location", "UDID-A", "set", "35.0,139.0"] for c in calls
+        )
+        # Each app launched pointing at its own device's collector url.
+        launch_envs = [e for args, e in calls if "launch" in args]
+        urls = {e.get("SIMCTL_CHILD_BAJUTSU_COLLECTOR") for e in launch_envs}
+        assert urls == {
+            f"http://127.0.0.1:{la.collector.port}",
+            f"http://127.0.0.1:{lb.collector.port}",
+        }
+    finally:
+        if la is not None:
+            la.release()
+        if lb is not None:
+            lb.release()
+        shutdown()
+    # shutdown() stops every device's collector.
+    assert la is not None and lb is not None
+    assert la.collector._server is None and lb.collector._server is None
+
+
+def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The pool reads the simulator catalog once and tags each lease with its device model /
+    # OS runtime, so the report's Environment tab can name the simulator a scenario ran on.
+    catalog = json.dumps(
+        {
+            "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-17-2": [
+                    {"udid": "UDID-A", "name": "iPhone 15"}
+                ],
+            }
+        }
+    )
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        return catalog if args == env.list_devices_cmd() else ""
+
+    monkeypatch.setattr(
+        "bajutsu.runner.launch.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        available=lambda b: True,
+        env_run=fake_run,
+    )
+    try:
+        lz = lease(_eff(), _scn("a"))
+        assert lz.device_name == "iPhone 15" and lz.device_runtime == "iOS 17.2"
+    finally:
+        shutdown()
+
+
+def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pool of one is the single-device path: collector + interval sink + control, all on."""
+    monkeypatch.setattr(
+        "bajutsu.runner.launch.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-1"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        log_subsystem="com.example.demo",
+        available=lambda b: True,
+        env_run=lambda args, extra_env=None: "",
+    )
+    try:
+        lz = lease(_eff(), _scn("a"))
+        assert lz.collector is not None  # network collection in a pool of one
+        assert lz.sink.udid == "UDID-1"  # interval evidence bound to the device
+        assert lz.control is not None  # device control available
+        assert lz.relaunch is not None  # relaunch wired to the device
+        lz.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--no-network: the pool builds no collectors and injects no collector url."""
+    calls: list[tuple[list[str], object]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        calls.append((args, extra_env))
+        return ""
+
+    monkeypatch.setattr(
+        "bajutsu.runner.launch.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-1"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=fake_run,
+    )
+    try:
+        lz = lease(_eff(), _scn("a"))
+        assert lz.collector is None
+        launch_envs = [e for args, e in calls if "launch" in args]
+        assert all("SIMCTL_CHILD_BAJUTSU_COLLECTOR" not in (e or {}) for e in launch_envs)
+        lz.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_stops_started_collectors_when_one_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If a collector fails to start mid-setup, the ones already started must be stopped so
+    the pool doesn't leak listening sockets."""
+    started: list[object] = []
+
+    class FlakyCollector:
+        count = 0
+
+        def __init__(self) -> None:
+            FlakyCollector.count += 1
+            self._idx = FlakyCollector.count
+            self.stopped = False
+
+        def start(self) -> None:
+            if self._idx == 2:  # the second device's collector fails to bind
+                raise OSError("port in use")
+            started.append(self)
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", FlakyCollector)
+    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: FakeDriver([]))
+
+    with pytest.raises(OSError, match="port in use"):
+        device_pool(
+            ["UDID-A", "UDID-B"],
+            ["idb"],
+            _eff(),
+            Path("runs"),
+            network=True,
+            available=lambda b: True,
+            env_run=lambda args, extra_env=None: "",
+        )
+    assert len(started) == 1 and started[0].stopped  # type: ignore[attr-defined]

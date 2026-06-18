@@ -1,0 +1,184 @@
+"""The device pool: lease a device per scenario (a single-device run is a pool of one), and the
+per-device relaunch / device-control bound to a leased udid."""
+
+from __future__ import annotations
+
+import queue
+from collections.abc import Callable, Mapping
+from pathlib import Path
+
+from bajutsu import env
+from bajutsu.backends import default_available, select_actuator
+from bajutsu.config import Effective
+from bajutsu.drivers import base
+from bajutsu.evidence import FileSink
+from bajutsu.network import NetworkCollector
+from bajutsu.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.runner.launch import _await_ready, launch_driver
+from bajutsu.runner.types import Lease, LeaseFn, RelaunchFactory
+from bajutsu.scenario import Relaunch, Scenario
+
+
+def device_pool(
+    udids: list[str],
+    backends: list[str],
+    eff: Effective,
+    run_dir: Path,
+    *,
+    network: bool = False,
+    log_predicate: str | None = None,
+    log_subsystem: str | None = None,
+    secret_values: list[str] | None = None,
+    available: Callable[[str], bool] = default_available,
+    env_run: env.RunFn = env._real_run,
+) -> tuple[LeaseFn, Callable[[], None]]:
+    """A pool of N>=1 devices for (parallel) runs.
+
+    `lease(eff, scenario)` leases a free udid (blocking until one frees up), launches the app
+    pointed at that device's own network collector, and returns a Lease whose evidence sink
+    (interval recordings under `run_dir`), relaunch, and device control are all bound to the
+    leased device. The Lease's `release()` terminates the app and returns the udid to the
+    pool. `shutdown()` stops every device's collector.
+
+    A single-device run is just a pool of one, so network collection / interval evidence /
+    device control work the same whether `workers` is 1 or N. The only shared state is the
+    free-device queue (thread-safe) and the read-only collectors map, so leases need no lock.
+
+    Returns (lease, shutdown).
+    """
+    actuator = select_actuator(backends, available)
+    # Resolve the device model / OS once up front (static per device) so each result can name
+    # the simulator it ran on in the report; best-effort, so a missing catalog just omits it.
+    catalog = env.device_catalog(env_run)
+    free: queue.Queue[str] = queue.Queue()
+    for udid in udids:
+        free.put(udid)
+    # One collector per device (its own ephemeral port), started up front and reused across
+    # leases (cleared per scenario by the run loop). If a start fails mid-setup, stop the
+    # ones already started so we don't leak listening sockets.
+    collectors: dict[str, NetworkCollector] = {}
+    if network:
+        started: list[NetworkCollector] = []
+        try:
+            for udid in udids:
+                collector = NetworkCollector()
+                collector.start()
+                collectors[udid] = collector
+                started.append(collector)
+        except Exception:
+            for collector in started:
+                collector.stop()
+            raise
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        udid = free.get()
+        collector = collectors.get(udid)
+        # Point the app at this device's collector (survives a relaunch via the relauncher).
+        extra_env = (
+            {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
+            if collector is not None
+            else None
+        )
+        driver = launch_driver(udid, eff, actuator, scenario.preconditions, env_run, extra_env)
+        sink = FileSink(
+            run_dir,
+            udid=udid,
+            log_predicate=log_predicate,
+            log_subsystem=log_subsystem,
+            redact=eff.redact,
+            secrets=secret_values,
+        )
+        relaunch = device_relauncher(udid, env_run, extra_env)(eff, scenario, driver)
+        control = device_control(udid, eff.bundle_id, env_run)
+
+        def release() -> None:
+            env.Env(udid, run=env_run).terminate(eff.bundle_id)
+            free.put(udid)
+
+        meta = catalog.get(udid, {})
+        return Lease(
+            driver=driver,
+            sink=sink,
+            relaunch=relaunch,
+            control=control,
+            collector=collector,
+            release=release,
+            udid=udid,
+            device_name=meta.get("name", ""),
+            device_runtime=meta.get("runtime", ""),
+        )
+
+    def shutdown() -> None:
+        for collector in collectors.values():
+            collector.stop()
+
+    return lease, shutdown
+
+
+def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run) -> DeviceControl:
+    """A DeviceControl bound to one device, backing `setLocation` / `push` /
+    `clearKeychain` / `clearClipboard` / `background` / `overrideStatusBar` /
+    `clearStatusBar` steps via simctl."""
+    e = env.Env(udid, run=env_run)
+
+    class _Control:
+        def set_location(self, lat: float, lon: float) -> None:
+            e.set_location(lat, lon)
+
+        def push(self, payload: dict[str, object]) -> None:
+            e.push(bundle_id, payload)
+
+        def clear_keychain(self) -> None:
+            e.clear_keychain()
+
+        def clear_clipboard(self) -> None:
+            e.clear_clipboard()
+
+        def home(self) -> None:
+            e.home()
+
+        def override_status_bar(self, **kwargs: str | int) -> None:
+            e.override_status_bar(**kwargs)
+
+        def clear_status_bar(self) -> None:
+            e.clear_status_bar()
+
+    return _Control()
+
+
+def device_relauncher(
+    udid: str, env_run: env.RunFn = env._real_run, extra_env: Mapping[str, str] | None = None
+) -> RelaunchFactory:
+    """A relauncher for a `relaunch` step: terminate the app and launch it again (re-applying
+    the scenario's launch env/args, plus any per-relaunch overrides), then wait until ready.
+    The device is not erased/rebooted — only the app process restarts.
+
+    `extra_env` (e.g. the device's collector url) is re-applied so it survives the relaunch;
+    an explicit per-relaunch `env` override still wins over it.
+    """
+    e = env.Env(udid, run=env_run)
+
+    def for_scenario(eff: Effective, scenario: Scenario, driver: base.Driver) -> RelaunchFn:
+        pre = scenario.preconditions
+
+        def relaunch(opts: Relaunch) -> None:
+            e.terminate(eff.bundle_id)
+            launch_env = {
+                **eff.launch_env,
+                **pre.launch_env,
+                **(extra_env or {}),
+                **(opts.env or {}),
+            }
+            locale = pre.locale or eff.locale
+            launch_args = [
+                *eff.launch_args,
+                *pre.launch_args,
+                *(opts.args or []),
+                *env.locale_args(locale),
+            ]
+            e.launch(eff.bundle_id, launch_args, launch_env)
+            _await_ready(driver)
+
+        return relaunch
+
+    return for_scenario

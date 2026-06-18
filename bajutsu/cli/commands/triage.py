@@ -1,0 +1,149 @@
+"""`bajutsu triage` — diagnose a failed run and suggest a minimal fix (advisory only)."""
+
+from __future__ import annotations
+
+import contextlib
+import subprocess
+import sys
+from dataclasses import replace
+from pathlib import Path
+
+import typer
+
+from bajutsu import trace as _trace
+from bajutsu import triage as _triage
+from bajutsu.cli._shared import DEFAULT_CONFIG
+
+
+def triage(
+    run_dir: str = typer.Argument("", help="run directory (default: the latest under runs/)"),
+    scenario: str = typer.Option(
+        "", "--scenario", help="only the scenario whose name contains this"
+    ),
+    runs: str = typer.Option("runs", help="runs root (used when run_dir is omitted)"),
+    ai: bool = typer.Option(
+        False,
+        "--ai",
+        help="diagnose with Claude (needs ANTHROPIC_API_KEY) instead of the rule-based agent",
+    ),
+    apply: str = typer.Option(
+        "",
+        "--apply",
+        help="scenario source file to patch with the suggested fix (shows a dry-run diff)",
+    ),
+    write: bool = typer.Option(
+        False,
+        "--write",
+        help="with --apply, write the patched file instead of only showing the diff",
+    ),
+    rerun: bool = typer.Option(
+        False,
+        "--rerun",
+        help="after --write, re-run the patched scenario to verify the fix (needs --app + a device)",
+    ),
+    app_name: str = typer.Option("", "--app", help="app key, for --rerun"),
+    backend: str = typer.Option("", "--backend", help="actuator backend, for --rerun"),
+    udid: str = typer.Option("booted", "--udid", help="simulator udid, for --rerun"),
+    config: str = typer.Option(DEFAULT_CONFIG, "--config", help="config path, for --rerun"),
+) -> None:
+    """Diagnose a failed run and suggest a minimal fix (advisory — never the pass/fail judge)."""
+    path = Path(run_dir) if run_dir else _trace.latest_run(Path(runs))
+    if path is None or not (path / "manifest.json").exists():
+        typer.echo(f"no run found{f': {run_dir}' if run_dir else f' under {runs}/'}")
+        raise typer.Exit(2)
+    context = _triage.assemble(path, scenario or None)
+    if context is None:
+        typer.echo("no failed scenario to triage in this run")
+        raise typer.Exit(0)
+    # When patching a source file, diagnose against *its* text (not the run's normalized dump)
+    # so a fix's `find` fragment matches the file that --apply edits — otherwise float/flow-style
+    # normalization (`timeout: 2.0`, block selectors) makes fragment fixes miss.
+    if apply:
+        with contextlib.suppress(OSError):
+            # _apply_fix reports the read failure below
+            context = replace(context, scenario_yaml=Path(apply).read_text(encoding="utf-8"))
+    agent: _triage.TriageAgent
+    if ai:
+        from bajutsu.claude_triage import ClaudeTriageAgent
+
+        agent = ClaudeTriageAgent()
+    else:
+        agent = _triage.HeuristicTriageAgent()
+    result = agent.triage(context)
+    typer.echo(_triage.render(context, result))
+    if not apply:
+        return
+    wrote = _apply_fix(result, apply, write)
+    if rerun:
+        if not wrote:
+            typer.echo("\n--rerun needs --write (nothing was applied to re-run).")
+        elif not app_name:
+            typer.echo("\n--rerun needs --app to run the patched scenario.")
+        else:
+            _verify_rerun(apply, app_name, backend, udid, config)
+
+
+def _apply_fix(result: _triage.Triage, target: str, write: bool) -> bool:
+    """Render (and optionally write) the suggested fix. Returns True only when a file was written."""
+    if result.fix is None:
+        typer.echo("\nno applicable structured fix for this failure (advisory only).")
+        return False
+    try:
+        src = Path(target).read_text(encoding="utf-8")
+    except OSError as exc:
+        typer.echo(f"\ncannot read {target}: {exc}")
+        raise typer.Exit(2) from None
+    patched, count = _triage.apply_fix(src, result.fix)
+    if count == 0:
+        typer.echo(
+            f"\nfix: {result.fix.summary} — `{result.fix.find}` not found in {target} (no-op)"
+        )
+        return False
+    typer.echo(
+        f"\nfix: {result.fix.summary} ({count} occurrence{'' if count == 1 else 's'} in {target})"
+    )
+    typer.echo(_triage.diff_fix(src, patched, target))
+    if not write:
+        typer.echo("dry-run — re-run with --write to apply.")
+        return False
+    Path(target).write_text(patched, encoding="utf-8")
+    typer.echo(f"wrote {target}")
+    return True
+
+
+def _rerun_command(target: str, app_name: str, backend: str, udid: str, config: str) -> list[str]:
+    """The `bajutsu run` invocation that re-checks a patched scenario (kept --no-erase to reuse
+    the current device state). Built as a list so it is easy to assert in tests."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "bajutsu",
+        "run",
+        "--scenario",
+        target,
+        "--app",
+        app_name,
+        "--config",
+        config,
+        "--no-erase",
+    ]
+    if backend:
+        cmd += ["--backend", backend]
+    if udid:
+        cmd += ["--udid", udid]
+    return cmd
+
+
+def _verify_rerun(target: str, app_name: str, backend: str, udid: str, config: str) -> None:
+    cmd = _rerun_command(target, app_name, backend, udid, config)
+    typer.echo(f"\nre-running {target} to verify the fix ...")
+    code = subprocess.call(cmd)
+    typer.echo(
+        "fix verified — the scenario now passes."
+        if code == 0
+        else "the scenario still fails after the fix; further diagnosis needed."
+    )
+
+
+def register(app: typer.Typer) -> None:
+    app.command()(triage)

@@ -1,0 +1,160 @@
+"""Machine-checkable assertions and the wait conditions that reuse them: the network-traffic
+matcher, existence/text/count/state checks, visual regression, and the `Assertion` aggregator
+that selects exactly one kind."""
+
+from __future__ import annotations
+
+from typing import Any, Literal, Self
+
+from pydantic import Field, model_validator
+
+from bajutsu.scenario.models._base import _ASSERTION_KINDS, _exactly_one, _Model
+from bajutsu.scenario.models.selector import Selector
+
+
+class RequestMatch(_Model):
+    """Network-traffic matcher, shared by the `request` assertion and the
+    `until: { request: ... }` wait. The fields (method / url / urlMatches / path /
+    pathMatches / status / bodyMatches) are AND-ed; `count` is how many exchanges matched
+    — exact for the assertion, a lower bound for the wait. The endpoint can be pinned by
+    `url` (exact full URL) or `urlMatches` (regex/substring; query strings live here), or
+    just the `path`; `bodyMatches` checks the request body. At least one match field is
+    required."""
+
+    method: str | None = None
+    url: str | None = None  # exact full URL (the endpoint)
+    url_matches: str | None = Field(
+        default=None, alias="urlMatches"
+    )  # regex/substring over the URL
+    path: str | None = None  # exact path (query ignored)
+    path_matches: str | None = Field(default=None, alias="pathMatches")  # regex over path
+    status: int | None = None
+    body_matches: str | None = Field(
+        default=None, alias="bodyMatches"
+    )  # regex/substring over request body
+    count: int | None = None
+
+    @model_validator(mode="after")
+    def _has_criterion(self) -> Self:
+        if all(
+            v is None
+            for v in (
+                self.method,
+                self.url,
+                self.url_matches,
+                self.path,
+                self.path_matches,
+                self.status,
+                self.body_matches,
+            )
+        ):
+            raise ValueError(
+                "request requires at least one of method/url/urlMatches/path/pathMatches/status/bodyMatches"
+            )
+        return self
+
+
+class Gone(_Model):
+    gone: Selector
+
+
+class WaitRequest(_Model):
+    """`until: { request: <RequestMatch> }` — wait until a matching network exchange has
+    been observed by the collector (needs the run's network collector active)."""
+
+    request: RequestMatch
+
+
+class Wait(_Model):
+    for_: Selector | None = Field(default=None, alias="for")
+    # settled = wait until the screen stops changing (best-effort; for transition settle)
+    until: Literal["screenChanged", "settled"] | Gone | WaitRequest | None = None
+    timeout: float
+
+    @model_validator(mode="after")
+    def _one(self) -> Self:
+        if (self.for_ is None) == (self.until is None):
+            raise ValueError("wait requires exactly one of 'for' or 'until' (§6.3)")
+        return self
+
+
+class Exists(_Model):
+    """`exists: { <selector>, negate? }` (selector inline, optional negate)."""
+
+    sel: Selector
+    negate: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _inline(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "sel" not in data:
+            d = dict(data)
+            negate = d.pop("negate", False)
+            return {"sel": d, "negate": negate}
+        return data
+
+
+class TextMatch(_Model):
+    """`value` / `label`: exactly one of equals / contains / matches."""
+
+    sel: Selector
+    equals: str | None = None
+    contains: str | None = None
+    matches: str | None = None
+
+    @model_validator(mode="after")
+    def _one_op(self) -> Self:
+        if sum(o is not None for o in (self.equals, self.contains, self.matches)) != 1:
+            raise ValueError("value/label requires exactly one of equals/contains/matches (§6.4)")
+        return self
+
+
+class CountMatch(_Model):
+    """`count`: exactly one of equals / atLeast / atMost."""
+
+    sel: Selector
+    equals: int | None = None
+    at_least: int | None = Field(default=None, alias="atLeast")
+    at_most: int | None = Field(default=None, alias="atMost")
+
+    @model_validator(mode="after")
+    def _one_op(self) -> Self:
+        if sum(o is not None for o in (self.equals, self.at_least, self.at_most)) != 1:
+            raise ValueError("count requires exactly one of equals/atLeast/atMost (§6.4)")
+        return self
+
+
+class ExcludeRegion(_Model):
+    """A rectangular region to ignore during visual comparison (e.g. status bar, clock)."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class VisualMatch(_Model):
+    """Visual regression assertion — compare a screenshot to a baseline image."""
+
+    baseline: str
+    threshold: float = 0.0  # allowed diff percentage (0.0 = exact match)
+    exclude: list[ExcludeRegion] | None = None
+
+
+class Assertion(_Model):
+    """One machine check. Exactly one kind may be set."""
+
+    exists: Exists | None = None
+    value: TextMatch | None = None
+    label: TextMatch | None = None
+    count: CountMatch | None = None
+    enabled: Selector | None = None
+    disabled: Selector | None = None
+    selected: Selector | None = None
+    request: RequestMatch | None = None
+    visual: VisualMatch | None = None
+
+    @model_validator(mode="after")
+    def _one_kind(self) -> Self:
+        _exactly_one(self, _ASSERTION_KINDS, "§6.4")
+        return self
