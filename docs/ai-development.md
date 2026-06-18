@@ -136,9 +136,13 @@ When you add a roadmap item:
    ```
    Never reuse, skip, or guess a number.
 2. **Create the item directory and both language files** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   (English) and `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug) — and add
-   a row for it to the matching topic table in **both** index pages
-   ([en](roadmap/README.md), [ja](roadmap/README-ja.md)).
+   (English) and `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
+   hand-edit the index tables** — they are generated from each item's own metadata. Run
+   `make roadmap-index` (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the
+   `<!-- GENERATED:* -->` markers in **both** index pages ([en](roadmap/README.md), [ja](roadmap/README-ja.md)).
+   The item's `Track` + `Topic` decide which section it lands in, so an item in an existing topic needs no
+   manual table edit; `tests/test_roadmap_index.py` (run by `make test`) fails if the committed index drifts.
+   A brand-new topic also needs its own marked section and a `Section` entry in the script.
 3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
@@ -154,8 +158,9 @@ section the item appears in:
 | `Implemented` · `Accepted, in progress` | **Accepted** — a decision & implementation record |
 | `Proposal` · `Proposal (deferred)` | **Proposals** — under consideration |
 
-As an item advances, **update its Status** (and move its row to the right index group) rather than
-renaming the file. Milestones M1–M4 are `BE-0001`–`BE-0004` (accepted & implemented).
+As an item advances, **update its Status** and regenerate the index (the row moves to the right group
+automatically) rather than renaming the file. Milestones M1–M4 are `BE-0001`–`BE-0004` (accepted &
+implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
 

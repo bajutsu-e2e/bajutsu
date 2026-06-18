@@ -104,9 +104,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   `docs/roadmap/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md` and its Japanese
   version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*, `NNNN` a zero-padded 4-digit
   monotonically increasing ID. When you add one: allocate the next ID
-  (`ls -d docs/roadmap/BE-*/ | sort | tail -1`, then +1; never reuse, skip, or guess), create
-  **both** language files in that directory, and add a row to **both** index pages
-  (`docs/roadmap/README.md` and `docs/roadmap/README-ja.md`).
+  (`ls -d docs/roadmap/BE-*/ | sort | tail -1`, then +1; never reuse, skip, or guess) and create
+  **both** language files in that directory. Don't hand-edit the index tables — run
+  `make roadmap-index` to regenerate the tables in **both** index pages
+  (`docs/roadmap/README.md` and `docs/roadmap/README-ja.md`) from each item's metadata;
+  `make test` fails if the committed index drifts.
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
   Motivation / Detailed design / Alternatives considered / References); its `Status` files it
   under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /
