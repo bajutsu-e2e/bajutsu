@@ -36,13 +36,8 @@
    `ideation` skill はこの方式を使い、進行中の 2 つのブランチが同じ番号を
    取り合うのを防ぎます。
 2. **項目ディレクトリと両言語のファイルを作成** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）。**以下の
-   インデックス表は生成物です**（[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)、
-   BE-0043）— 行を手編集しないでください。**既存トピック**の項目なら `make roadmap-index` を実行する
-   （または CI の採番ワークフローに再生成させる）だけで行が現れます。手編集が要るのは**新規トピック**の
-   ときだけです: 該当する `## 可決済み` / `## 提案` セクションの下にその `###` 見出しと空の表
-   （ヘッダ + 区切り行）を**両方**のインデックスページに追加し、`make roadmap-index` を実行します。
-   ゲートの `make roadmap-index-check` が差分を検出すると fail します。
+   （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）— そして
+   **両方**のインデックスページの該当トピック表に行を追加します。
 3. **ID は不変**です。既存項目を採番し直してはいけません — 状態が変わっても、完了しても、表から削除しても。
    一度割り当てた BE ID は、その項目を永遠に指します。
 
@@ -109,19 +104,11 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0034](BE-0034-tags-selective-runs/BE-0034-tags-selective-runs-ja.md) | タグ / ラベル + 選択実行 | 実装済み | MagicPod |
 | [BE-0039](BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin-ja.md) | 自己修復は「提案＋opt-in 適用」に限定 | 実装済み | 両社 |
 
-### 統合・自動化（MCP 化）
+### 統合・自動化（MCP）
 
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0017](BE-0017-mcp-server/BE-0017-mcp-server-ja.md) | MCP サーバ化 | 実装済み |
-
-### 開発基盤（コントリビュータ体験）
-
-このリポジトリで並行作業する多数のセッションの摩擦を減らす — マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直す。
-
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 実装中 |
 
 ## 提案
 
@@ -207,6 +194,14 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0037](BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) | WebView / ハイブリッド対応 | 提案 | MagicPod |
 | [BE-0038](BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) | 自律クロール探索（App Explorer 風） | 提案 | Autify VAX |
 | [BE-0040](BE-0040-ai-assertions/BE-0040-ai-assertions-ja.md) | AI アサーション | 保留 | MagicPod |
+
+### 開発基盤（コントリビュータ体験）
+
+このリポジトリで並行作業する多数のセッションの摩擦を減らす — マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直す。
+
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0043](BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 提案 |
 
 ## 取り込まない（既に充足 / スコープ外）
 

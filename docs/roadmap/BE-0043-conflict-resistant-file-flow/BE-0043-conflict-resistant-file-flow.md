@@ -3,16 +3,9 @@
 # BE-0043 — Conflict-resistant file flow (generated indexes, modular files, git hygiene)
 
 * Proposal: [BE-0043](BE-0043-conflict-resistant-file-flow.md)
-* Status: **Accepted, in progress**
-* Track: [Accepted](../README.md#accepted)
+* Status: **Proposal**
+* Track: [Proposals](../README.md#proposals)
 * Topic: Development infrastructure (contributor workflow)
-
-> **Implementation status.** Mechanisms 1 (generated roadmap index — `scripts/build_roadmap_index.py`,
-> gated by `make roadmap-index-check`) and 3 (git-side defenses — `.gitattributes` + the `uv.lock`
-> merge driver `scripts/uv-lock-merge.sh`, and `rerere`, wired by `make hooks`) have landed; they
-> cover the measured top conflict sources. Mechanism 2 (split `cli.py` into `bajutsu/commands/` and
-> split single-file test suites) and mechanism 4 (a GitHub merge queue / squash-rebase policy) are
-> reinforcement and remain to be done.
 
 ## Introduction
 
