@@ -282,12 +282,14 @@ def crawl_command(
     max_screens: int = 50,
     max_steps: int = 200,
     erase: bool | None = None,
+    guide: str = "",
     config: str = "bajutsu.config.yaml",
 ) -> list[str]:
-    """The ``python -m bajutsu crawl --app … --out …`` argv for a crawl request — the deterministic
-    explorer the Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
+    """The ``python -m bajutsu crawl --app … --out …`` argv for a crawl request — the explorer the
+    Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
     (``<out>/screenmap.json``, which the UI polls live); ``erase`` mirrors ``run_command`` (None
-    leaves the CLI default — crawl erases by default)."""
+    leaves the CLI default — crawl erases by default); ``guide`` is ``ai`` to let Claude propose
+    operations/inputs (needs an API key), else the deterministic default."""
     cmd = [
         sys.executable,
         "-m",
@@ -312,6 +314,8 @@ def crawl_command(
         cmd += ["--erase"]
     elif erase is False:
         cmd += ["--no-erase"]
+    if guide:
+        cmd += ["--guide", guide]
     return cmd
 
 

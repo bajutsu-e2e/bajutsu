@@ -9,6 +9,7 @@ engine ([`crawl.py`](../../crawl.py)), and streams the growing screen map to
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from bajutsu import crawl as crawl_engine
 from bajutsu import env as _env
 from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
 from bajutsu.runner import _await_ready, launch_driver
 from bajutsu.scenario import Preconditions
@@ -43,20 +45,35 @@ def crawl(
     erase: bool = typer.Option(
         True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
     ),
+    guide: str = typer.Option(
+        "off",
+        "--guide",
+        help="exploration guide: 'off' (deterministic, no AI) or 'ai' (Claude proposes operations "
+        "and realistic inputs to enable gated controls; needs ANTHROPIC_API_KEY)",
+    ),
     out: str = typer.Option(
         "", "--out", help="run dir for the screen map (default: runs/<timestamp>)"
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Explore the app breadth-first over the deterministic crawl engine — no AI — writing a
-    screen map (`screenmap.json`) of the reachable screens and the transitions between them.
-    This is a discovery tool, never a pass/fail gate."""
+    """Explore the app breadth-first and write a screen map (`screenmap.json`) of the reachable
+    screens and the transitions between them. The engine is deterministic (screen identity,
+    transitions, crashes); with `--guide ai` an LLM only proposes *what to try*. A discovery tool,
+    never a pass/fail gate."""
     eff = _load_effective(config, app_name)
+    try:
+        crawl_guide = make_guide(guide)
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
     try:
         actuator = select_actuator(_backends(backend, eff.backend))
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    if crawl_guide is not None and not os.environ.get("ANTHROPIC_API_KEY"):
+        typer.echo("note: --guide ai needs ANTHROPIC_API_KEY — set it (or use --guide off)")
+        raise typer.Exit(2)
 
     out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -115,6 +132,7 @@ def crawl(
             reset,
             max_screens=max_screens,
             max_steps=max_steps,
+            guide=crawl_guide,
             on_event=on_event,
             on_node=on_node,
         )
