@@ -78,6 +78,15 @@ def crawl(
     out: str = typer.Option(
         "", "--out", help="run dir for the screen map (default: runs/<timestamp>)"
     ),
+    resume_src: str = typer.Option(
+        "",
+        "--resume-src",
+        help="resume exploring a pruned branch: the screen fingerprint it was "
+        "pruned on (with --resume-key and --out pointing at the existing run)",
+    ),
+    resume_key: str = typer.Option(
+        "", "--resume-key", help="resume: the pruned operation's replay key (see --resume-src)"
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app breadth-first and write a screen map (`screenmap.json`) of the reachable
@@ -121,9 +130,28 @@ def crawl(
     screens_dir = out_dir / "screens"
     screens_dir.mkdir(exist_ok=True)
     screenmap_path = out_dir / "screenmap.json"
-    _write_screenmap(
-        screenmap_path, crawl_engine.ScreenMap()
-    )  # an empty map the UI can poll at once
+
+    # Resume mode: continue from the existing map, exploring one pruned branch. Else start fresh.
+    base_map = seed_path = seed_ops = None
+    if resume_src and resume_key:
+        try:
+            data = json.loads(screenmap_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            typer.echo(f"resume: cannot read {screenmap_path}: {e}")
+            raise typer.Exit(2) from None
+        base_map = crawl_engine.screenmap_from_dict(data)
+        match = next(
+            (p for p in base_map.pruned if p.src == resume_src and p.key == resume_key), None
+        )
+        if match is None or not match.path:
+            typer.echo(f"resume: no pruned branch {resume_key!r} on {resume_src[:7]}")
+            raise typer.Exit(2)
+        seed_path = list(match.path[:-1])  # replay to the screen
+        seed_ops = [match.path[-1]]  # then the pruned op
+        base_map.pruned = [p for p in base_map.pruned if p is not match]  # it's being explored now
+        say(f"↩  resuming pruned branch: {match.action} on {resume_src[:7]}")
+    else:
+        _write_screenmap(screenmap_path, crawl_engine.ScreenMap())  # empty map the UI can poll now
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
     udid = _env.resolve_udid(udid)
@@ -186,7 +214,10 @@ def crawl(
             max_steps=max_steps,
             clear_blocking=clear_blocking,
             guide=crawl_guide,
-            prune_global=prune_global,
+            prune_global=prune_global and base_map is None,  # resume explores the branch fully
+            base_map=base_map,
+            seed_path=seed_path,
+            seed_ops=seed_ops,
             on_event=on_event,
             on_node=on_node,
         )

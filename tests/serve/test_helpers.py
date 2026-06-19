@@ -154,6 +154,12 @@ def test_crawl_command_builder() -> None:
     assert "--no-dismiss-alerts" in srv.crawl_command("demo", out="o", dismiss_alerts=False)
     bare = srv.crawl_command("demo", out="o")  # no backend/udid/guide → those flags omitted
     assert "--backend" not in bare and "--udid" not in bare and "--guide" not in bare
+    # Resume passes the pruned branch's coordinates and never erases (it continues the same run).
+    res = srv.crawl_command("demo", out="o", resume_src="abc123", resume_key="tab.x")
+    assert res[res.index("--resume-src") + 1] == "abc123"
+    assert res[res.index("--resume-key") + 1] == "tab.x"
+    assert "--no-erase" in res
+    assert "--resume-src" not in bare  # omitted for a normal crawl
 
 
 def test_scenario_out_path_sanitizes(tmp_path: Path) -> None:

@@ -285,12 +285,16 @@ def crawl_command(
     dismiss_alerts: bool | None = None,
     guide: str = "",
     config: str = "bajutsu.config.yaml",
+    resume_src: str = "",
+    resume_key: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu crawl --app … --out …`` argv for a crawl request — the explorer the
     Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
     (``<out>/screenmap.json``, which the UI polls live); ``erase`` mirrors ``run_command`` (None
     leaves the CLI default — crawl erases by default); ``guide`` is ``ai`` to let Claude propose
-    operations/inputs (needs an API key), else the deterministic default."""
+    operations/inputs (needs an API key), else the deterministic default. When ``resume_src`` /
+    ``resume_key`` are set, ``out`` points at an existing run and the crawl resumes one pruned
+    branch, appending to that run's map instead of starting a fresh one."""
     cmd = [
         sys.executable,
         "-m",
@@ -321,6 +325,9 @@ def crawl_command(
         cmd += ["--no-dismiss-alerts"]
     if guide:
         cmd += ["--guide", guide]
+    if resume_src and resume_key:
+        # Resuming appends to the existing run: don't erase the device's app state mid-walk.
+        cmd += ["--resume-src", resume_src, "--resume-key", resume_key, "--no-erase"]
     return cmd
 
 

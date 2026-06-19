@@ -197,6 +197,23 @@ def test_resume_a_pruned_branch_explores_it_and_appends_to_the_map() -> None:
     assert any(e.dst == crawl.fingerprint(extra).value for e in resumed.edges)
 
 
+def test_screenmap_round_trips_through_dict_for_resume() -> None:
+    """A saved map reloads with its nodes, edges and pruned replay paths intact, so a resume can use
+    it as the base."""
+    react, home = _tabbed_app()
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    original = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, prune_global=True)
+    back = crawl.screenmap_from_dict(crawl.screenmap_dict(original))
+    assert set(back.nodes) == set(original.nodes)
+    assert len(back.edges) == len(original.edges)
+    assert [(p.src, p.key, p.path) for p in back.pruned] == [
+        (p.src, p.key, p.path) for p in original.pruned
+    ]
+
+
 def test_action_dict_round_trips_every_kind() -> None:
     for a in [
         crawl.Action("tap", target="a"),

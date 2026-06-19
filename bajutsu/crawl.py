@@ -656,6 +656,51 @@ def action_from_dict(d: dict[str, Any]) -> Action:
     )
 
 
+def screenmap_from_dict(data: dict[str, Any]) -> ScreenMap:
+    """Rebuild a ScreenMap from `screenmap_dict` output — so a saved map can be loaded as the base
+    for a resume (continue exploring a pruned branch and append to it)."""
+    nodes: dict[str, Node] = {}
+    for n in data.get("nodes") or []:
+        targets = tuple(
+            (desc, (float(r[0]), float(r[1]), float(r[2]), float(r[3])))
+            for desc, r in (n.get("targets") or {}).items()
+        )
+        node = Node(
+            fingerprint=str(n["fingerprint"]),
+            kind=str(n.get("kind") or "id"),
+            ids=tuple(n.get("ids") or []),
+            actions=tuple(n.get("actions") or []),
+            blocked=tuple(n.get("blocked") or []),
+            targets=targets,
+        )
+        nodes[node.fingerprint] = node
+    pruned = [
+        Pruned(
+            str(p["src"]),
+            str(p["action"]),
+            str(p["key"]),
+            str(p["owner"]),
+            tuple(action_from_dict(a) for a in (p.get("path") or [])),
+        )
+        for p in data.get("pruned") or []
+    ]
+    return ScreenMap(
+        nodes=nodes,
+        edges=[
+            Edge(str(e["src"]), str(e["action"]), str(e["dst"]), tuple(e.get("alert") or []))
+            for e in data.get("edges") or []
+        ],
+        crashes=[Crash(tuple(c.get("path") or [])) for c in data.get("crashes") or []],
+        alerts=[
+            Alert(tuple(a.get("path") or []), tuple(a.get("buttons") or []))
+            for a in data.get("alerts") or []
+        ],
+        plan={str(fp): list(ops) for fp, ops in (data.get("plan") or {}).items()},
+        pruned=pruned,
+        stop_reason=str(data.get("stop_reason") or ""),
+    )
+
+
 def _replay(
     driver: base.Driver,
     path: list[Action],

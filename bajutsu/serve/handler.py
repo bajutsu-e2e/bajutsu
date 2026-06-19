@@ -280,7 +280,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not body.get("app"):
                 self._json({"error": "app is required"}, 400)
                 return
-            run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+            # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
+            resume_src = str(body.get("resumeSrc", "") or "")
+            resume_key = str(body.get("resumeKey", "") or "")
+            resuming = bool(resume_src and resume_key and body.get("runId"))
+            run_id = (
+                str(body["runId"]) if resuming else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+            )
             udid = str(body.get("udid", "") or "")
             cmd = crawl_command(
                 str(body["app"]),
@@ -295,6 +301,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 else None,
                 guide=str(body["guide"]) if body.get("guide") in ("ai", "off") else "",
                 config=str(cfg),
+                resume_src=resume_src if resuming else "",
+                resume_key=resume_key if resuming else "",
             )
             app_path, build = app_build_info(cfg, str(body["app"]))
             job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
