@@ -307,10 +307,11 @@ const gview={x:0,y:0,k:1};  // pan (px) + zoom (scale), applied as a transform o
 function shotURL(runId,fp){return `/runs/${encodeURIComponent(runId)}/screens/${encodeURIComponent(fp)}.png`}
 function renderGraph(data,runId){
   crawlGraphData=data;crawlGraphRunId=runId;
-  const nodes=data.nodes||[],edges=data.edges||[],crashes=data.crashes||[];
+  const nodes=data.nodes||[],edges=data.edges||[],crashes=data.crashes||[],alerts=data.alerts||[];
   // The reason the crawl stopped (set only once it finishes); shown after the counts.
   const why={completed:'completed',max_screens:'screen limit reached',max_steps:'step limit reached'}[data.stop_reason];
-  $('#crawl-counts').textContent=`${nodes.length} screens · ${edges.length} transitions · ${crashes.length} crashes`+(why?' · '+why:'');
+  $('#crawl-counts').textContent=`${nodes.length} screens · ${edges.length} transitions · ${crashes.length} crashes`+
+    (alerts.length?` · ${alerts.length} alerts dismissed`:'')+(why?' · '+why:'');
   const box=$('#crawl-graph');
   if(!nodes.length){box.innerHTML='<div class="empty">Reaching the first screen…</div>';return}
   const idx=new Map(nodes.map(n=>[n.fingerprint,n]));

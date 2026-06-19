@@ -45,20 +45,26 @@ class ActionProposer(Protocol):
         elements: list[base.Element],
         screenshot: bytes | None,
         candidates: list[crawl.Action],
+        dismissed: tuple[str, ...],
     ) -> Proposal: ...
 
 
 def ai_guide(proposer: ActionProposer, report: Report | None = None) -> crawl.Guide:
     """Adapt an `ActionProposer` to the crawl `Guide` signature, running the BE-0038 pipeline:
     first **inspect deterministically** (`candidate_actions`), then hand those operations + the
-    screen to the proposer so it can reason about what's possible and **combine** them (realistic
-    inputs, multi-field fills, id-less elements); finally union the proposal with the deterministic
-    baseline (proposer first, so its values win on de-dup), narrating its reasoning via `report`."""
+    screen (and any OS prompt just dismissed to reach it) to the proposer so it can reason about
+    what's possible and **combine** them (realistic inputs, multi-field fills, id-less elements);
+    finally union the proposal with the deterministic baseline (proposer first, so its values win
+    on de-dup), narrating its reasoning via `report`."""
 
-    def guide(driver: base.Driver, elements: list[base.Element]) -> list[crawl.Action]:
+    def guide(
+        driver: base.Driver, elements: list[base.Element], context: crawl.GuideContext
+    ) -> list[crawl.Action]:
         shot = _screenshot_bytes(driver)
         candidates = crawl.candidate_actions(elements)  # deterministic inspection, fed to the AI
-        proposal = proposer.propose(elements, shot, candidates)
+        if report is not None and context.dismissed:
+            report(f"🛡️  factoring in a just-dismissed OS prompt: {', '.join(context.dismissed)}")
+        proposal = proposer.propose(elements, shot, candidates, context.dismissed)
         if report is not None:
             if proposal.thought:
                 report(f"🤔 {proposal.thought}")
@@ -109,6 +115,8 @@ validates, since a button can stay disabled until the whole form is valid.
 common rules, a plausible name/number) — this is how you enable a control the placeholder can't.
 - Add any operation the inspector skipped (e.g. an element with no id, addressed by `label`).
 - Address each element by `id` when it has one (most stable), else by `label` (+ `index`).
+- If an OS prompt was just dismissed to reach this screen (noted below), take it into account — \
+the app asked for something (a permission, to save a password); pick what makes sense next.
 - You only choose what to TRY. You never decide pass/fail and never judge results."""
 
 _PROPOSE_TOOL: dict[str, Any] = {
@@ -186,7 +194,10 @@ def _render_elements(elements: list[base.Element]) -> str:
 
 
 def _content(
-    elements: list[base.Element], screenshot: bytes | None, candidates: list[crawl.Action]
+    elements: list[base.Element],
+    screenshot: bytes | None,
+    candidates: list[crawl.Action],
+    dismissed: tuple[str, ...],
 ) -> list[dict[str, Any]]:
     content: list[dict[str, Any]] = []
     if screenshot:
@@ -205,6 +216,8 @@ def _content(
         f"Screen elements:\n{_render_elements(elements)}\n\n"
         f"Operations the deterministic inspector already found here:\n{found}"
     )
+    if dismissed:
+        text += f"\n\nAn OS prompt was just dismissed to reach this screen (tapped: {', '.join(dismissed)})."
     content.append({"type": "text", "text": text})
     return content
 
@@ -275,6 +288,7 @@ class ClaudeActionProposer:
         elements: list[base.Element],
         screenshot: bytes | None,
         candidates: list[crawl.Action],
+        dismissed: tuple[str, ...],
     ) -> Proposal:
         message = self._ensure_client().messages.create(
             model=self._model,
@@ -282,7 +296,9 @@ class ClaudeActionProposer:
             system=[{"type": "text", "text": _SYSTEM, "cache_control": {"type": "ephemeral"}}],
             tools=[_PROPOSE_TOOL],
             tool_choice={"type": "tool", "name": "propose_actions"},
-            messages=[{"role": "user", "content": _content(elements, screenshot, candidates)}],
+            messages=[
+                {"role": "user", "content": _content(elements, screenshot, candidates, dismissed)}
+            ],
         )
         block = next((b for b in message.content if b.type == "tool_use"), None)
         if block is None:

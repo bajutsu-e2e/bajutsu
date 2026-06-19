@@ -136,11 +136,21 @@ class Crash:
     path: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class Alert:
+    """An OS prompt that appeared mid-crawl and was dismissed by the alert guard: `path` is the
+    action sequence that triggered it, `buttons` the dismiss button(s) tapped to clear it."""
+
+    path: tuple[str, ...]
+    buttons: tuple[str, ...]
+
+
 @dataclass
 class ScreenMap:
     nodes: dict[str, Node] = field(default_factory=dict)
     edges: list[Edge] = field(default_factory=list)
     crashes: list[Crash] = field(default_factory=list)
+    alerts: list[Alert] = field(default_factory=list)
     # Why the crawl stopped: "completed" (frontier exhausted — everything reachable in the model
     # was explored), "max_screens", or "max_steps" (a budget was hit, so screens may remain).
     stop_reason: str = ""
@@ -289,14 +299,28 @@ def is_app_alive(elements: list[base.Element]) -> bool:
     return shows_app_ui(elements)
 
 
-# A guide proposes the replayable actions to try from a screen. The default is the deterministic
-# `candidate_actions`; an AI guide (BE-0038 `--guide ai`) proposes richer operations and realistic
-# inputs. Either way the guide only chooses *what to try* — screen identity, transition/crash
-# detection, and the screen map stay deterministic and AI-free, so the crawl is never a verdict.
-Guide = Callable[[base.Driver, list[base.Element]], list[Action]]
+@dataclass(frozen=True)
+class GuideContext:
+    """Side information for the guide about how this screen was reached — currently the OS-alert
+    button(s) just dismissed to get here, so an AI guide can factor them into its next moves."""
+
+    dismissed: tuple[str, ...] = ()
 
 
-def _deterministic_guide(_driver: base.Driver, elements: list[base.Element]) -> list[Action]:
+# A guide proposes the replayable actions to try from a screen, given how it was reached
+# (`GuideContext`). The default is the deterministic `candidate_actions`; an AI guide (BE-0038
+# `--guide ai`) proposes richer operations and realistic inputs. Either way the guide only chooses
+# *what to try* — screen identity, transition/crash detection, and the screen map stay
+# deterministic and AI-free, so the crawl is never a verdict.
+Guide = Callable[[base.Driver, list[base.Element], GuideContext], list[Action]]
+
+# Dismisses anything covering the app (an OS alert) and returns the button label(s) it tapped.
+ClearBlocking = Callable[[base.Driver], list[str]]
+
+
+def _deterministic_guide(
+    _driver: base.Driver, elements: list[base.Element], _context: GuideContext
+) -> list[Action]:
     return candidate_actions(elements)
 
 
@@ -317,7 +341,7 @@ def crawl(
     max_screens: int = 50,
     max_steps: int = 200,
     settle: Settle | None = None,
-    clear_blocking: Settle | None = None,
+    clear_blocking: ClearBlocking | None = None,
     guide: Guide | None = None,
     on_event: OnEvent | None = None,
     on_node: OnNode | None = None,
@@ -338,22 +362,26 @@ def crawl(
     """
     guide = guide or _deterministic_guide
     screen_map = ScreenMap()
+    dismissed: list[str] = []  # OS-alert buttons cleared during the most recent observe()
 
     def observe() -> list[base.Element]:
         if settle is not None:
             settle(driver)
-        if clear_blocking is not None:
-            clear_blocking(driver)  # dismiss an OS alert so it isn't read as a crash
+        # Dismiss an OS alert (so it isn't read as a crash) and remember what was tapped, so the
+        # caller can record it and feed it to the guide's next strategy.
+        dismissed[:] = clear_blocking(driver) if clear_blocking is not None else []
         return driver.query()
 
     def emit() -> None:
         if on_event is not None:
             on_event(screen_map)
 
-    def discover(fp: Fingerprint, elements: list[base.Element]) -> list[Action]:
-        # Driver is on this screen; ask the guide for its actions (once), record the node, and let
-        # the on_node hook capture its screenshot — all before the next reset moves the app away.
-        actions = guide(driver, elements)
+    def discover(
+        fp: Fingerprint, elements: list[base.Element], context: GuideContext
+    ) -> list[Action]:
+        # Driver is on this screen; ask the guide for its actions (once, given how we got here),
+        # record the node, and let the on_node hook capture its screenshot — all before reset.
+        actions = guide(driver, elements, context)
         node = _node_of(fp, elements, actions)
         screen_map.nodes[fp.value] = node
         if on_node is not None:
@@ -362,10 +390,13 @@ def crawl(
 
     reset(driver)
     start = observe()
+    if dismissed:
+        screen_map.alerts.append(Alert((), tuple(dismissed)))
     start_fp = fingerprint(start)
     shortest_path: dict[str, list[Action]] = {start_fp.value: []}
     frontier: deque[tuple[str, Action]] = deque(
-        (start_fp.value, action) for action in discover(start_fp, start)
+        (start_fp.value, action)
+        for action in discover(start_fp, start, GuideContext(tuple(dismissed)))
     )
     emit()
     tried: set[tuple[str, str]] = set()
@@ -391,6 +422,11 @@ def crawl(
         except base.SelectorError:
             continue
         landed = observe()
+        # An OS prompt cleared while landing is recorded against the triggering path, and fed to
+        # the destination's guide as context for its next strategy.
+        reached = GuideContext(tuple(dismissed))
+        if dismissed:
+            screen_map.alerts.append(Alert(tuple(a.describe() for a in path), tuple(dismissed)))
 
         if not is_app_alive(landed):
             screen_map.crashes.append(Crash(tuple(a.describe() for a in path)))
@@ -401,7 +437,7 @@ def crawl(
         screen_map.edges.append(Edge(src_fp, action.describe(), dst_fp.value))
         if dst_fp.value not in screen_map.nodes:
             shortest_path[dst_fp.value] = path
-            for next_action in discover(dst_fp, landed):
+            for next_action in discover(dst_fp, landed, reached):
                 frontier.append((dst_fp.value, next_action))
         emit()
 
@@ -445,5 +481,6 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
         ],
         "edges": [{"src": e.src, "action": e.action, "dst": e.dst} for e in screen_map.edges],
         "crashes": [{"path": list(c.path)} for c in screen_map.crashes],
+        "alerts": [{"path": list(a.path), "buttons": list(a.buttons)} for a in screen_map.alerts],
         "stop_reason": screen_map.stop_reason,
     }
