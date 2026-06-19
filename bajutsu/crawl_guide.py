@@ -117,7 +117,7 @@ _PROPOSE_TOOL: dict[str, Any] = {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "action": {"type": "string", "enum": ["tap", "type"]},
+                        "action": {"type": "string", "enum": ["tap", "type", "fill"]},
                         "id": {
                             "type": "string",
                             "description": "accessibility identifier (preferred)",
@@ -130,6 +130,20 @@ _PROPOSE_TOOL: dict[str, Any] = {
                         "value": {
                             "type": "string",
                             "description": "text to enter (for a type action)",
+                        },
+                        "fields": {
+                            "type": "array",
+                            "description": "for a `fill`: every field to enter at once, with a "
+                            "realistic value — use this when a control activates only after several "
+                            "fields are valid (e.g. email + password)",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "value": {"type": "string"},
+                                },
+                                "required": ["id", "value"],
+                            },
                         },
                     },
                     "required": ["action"],
@@ -185,21 +199,31 @@ def _actions_from(payload: dict[str, Any], cap: int) -> list[crawl.Action]:
     for item in payload.get("actions") or []:
         if not isinstance(item, dict):
             continue
-        kind = "type" if item.get("action") == "type" else "tap"
-        target = str(item.get("id") or "")
-        label = item.get("label")
-        if not target and not label:
-            continue  # need a stable selector to replay
-        index = item.get("index")
-        out.append(
-            crawl.Action(
-                kind,
-                target=target,
-                label=str(label) if label is not None else None,
-                index=int(index) if isinstance(index, int) else None,
-                value=str(item["value"]) if kind == "type" and item.get("value") else None,
+        action = item.get("action")
+        if action == "fill":
+            pairs = tuple(
+                (str(f["id"]), str(f.get("value") or ""))
+                for f in (item.get("fields") or [])
+                if isinstance(f, dict) and f.get("id")
             )
-        )
+            if pairs:
+                out.append(crawl.Action("fill", fields=pairs))
+        else:
+            kind = "type" if action == "type" else "tap"
+            target = str(item.get("id") or "")
+            label = item.get("label")
+            if not target and not label:
+                continue  # need a stable selector to replay
+            index = item.get("index")
+            out.append(
+                crawl.Action(
+                    kind,
+                    target=target,
+                    label=str(label) if label is not None else None,
+                    index=int(index) if isinstance(index, int) else None,
+                    value=str(item["value"]) if kind == "type" and item.get("value") else None,
+                )
+            )
         if len(out) >= cap:
             break
     return out

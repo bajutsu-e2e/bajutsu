@@ -225,21 +225,85 @@ def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:
 # --- disabled controls + input filling (enabling a gated button) ---------------------------
 
 
-def test_candidate_actions_skip_disabled_and_fill_first_empty_field() -> None:
+def test_candidate_actions_offer_each_empty_field_and_a_compound_fill() -> None:
     elements = [
-        el(identifier="f.user", traits=["textField"]),  # empty input -> a type action
-        el(identifier="f.pass", traits=["secureTextField"]),  # also empty (earlier in id order)
+        el(identifier="f.user", traits=["textField"]),  # empty input
+        el(identifier="f.pass", traits=["secureTextField"]),  # empty input
         el(identifier="f.submit", traits=["button", "notEnabled"]),  # disabled -> skipped
         el(identifier="f.cancel", traits=["button"]),  # enabled -> tapped
     ]
     actions = crawl.candidate_actions(elements)
-    pairs = {(a.kind, a.target) for a in actions}
+    pairs = {(a.kind, a.target) for a in actions if a.kind != "fill"}
     assert ("tap", "f.cancel") in pairs
     assert ("tap", "f.submit") not in pairs  # disabled control is not a candidate
-    types = [a for a in actions if a.kind == "type"]
-    assert len(types) == 1  # one field at a time keeps the fill linear
-    assert types[0].target == "f.pass"  # the first empty field in id order ("f.pass" < "f.user")
-    assert types[0].value == "Test1234!"  # secure field placeholder
+    # A type action for EACH empty field (the cross-product of fills), not just the first.
+    assert ("type", "f.user") in pairs and ("type", "f.pass") in pairs
+    # Plus one compound fill of both, to cross a gate that needs several fields at once.
+    fills = [a for a in actions if a.kind == "fill"]
+    assert len(fills) == 1 and {i for i, _ in fills[0].fields} == {"f.user", "f.pass"}
+
+
+def test_action_fill_types_into_every_field() -> None:
+    driver = FakeDriver(
+        screen=[el(identifier="a", traits=["textField"]), el(identifier="b", traits=["textField"])]
+    )
+    crawl.Action("fill", fields=(("a", "x"), ("b", "y"))).perform(driver)
+    assert ("tap", {"id": "a"}) in driver.actions and ("type", "x") in driver.actions
+    assert ("tap", {"id": "b"}) in driver.actions and ("type", "y") in driver.actions
+
+
+def test_fingerprint_distinguishes_selected_toggle() -> None:
+    off = [el(identifier="s", traits=["switch"]), el(identifier="t", traits=["staticText"])]
+    on = [
+        el(identifier="s", traits=["switch", "selected"]),
+        el(identifier="t", traits=["staticText"]),
+    ]
+    assert crawl.fingerprint(off).value != crawl.fingerprint(on).value
+
+
+def test_crawl_crosses_a_two_field_gate_via_compound_fill() -> None:
+    """Two masked (secure) fields gate a submit button; neither exposes its value, so filling one
+    at a time is invisible and the BFS can't reach the all-filled state. The compound fill crosses
+    the gate in one observable step (submit flips enabled) and the crawl presses it."""
+    s: dict[str, object] = {"a": False, "b": False, "focus": None}
+
+    def form() -> list[dict]:
+        on = bool(s["a"]) and bool(s["b"])
+        return [
+            el(identifier="f.a", traits=["secureTextField"]),  # value never exposed (masked)
+            el(identifier="f.b", traits=["secureTextField"]),
+            el(identifier="f.go", traits=["button"] if on else ["button", "notEnabled"]),
+        ]
+
+    home = [
+        el(identifier="home.t", traits=["staticText"]),
+        el(identifier="home.b", traits=["button"]),
+    ]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict):
+            s["focus"] = arg.get("id")
+            if arg.get("id") == "f.go" and s["a"] and s["b"]:
+                d.screen = list(home)
+        elif kind == "type":
+            if s["focus"] == "f.a":
+                s["a"] = True
+            elif s["focus"] == "f.b":
+                s["b"] = True
+            d.screen = form()
+
+    driver = FakeDriver(screen=form(), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        s.update(a=False, b=False, focus=None)
+        d.screen = form()
+
+    screen_map = crawl.crawl(driver, reset, max_screens=50, max_steps=50)
+    assert any(
+        e.action.startswith("fill") for e in screen_map.edges
+    )  # the compound fill crossed it
+    assert any(e.action == "tap f.go" for e in screen_map.edges)  # pressed once enabled
+    assert crawl.fingerprint(home).value in screen_map.nodes  # reached the screen behind it
 
 
 def test_blocked_controls_lists_only_disabled_actionable_ids() -> None:

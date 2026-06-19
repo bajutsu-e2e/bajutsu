@@ -23,8 +23,8 @@ from dataclasses import dataclass, field
 from bajutsu.drivers import base
 from bajutsu.record import shows_app_ui
 
-# Controls a tap drives forward (navigation / activation).
-TAP_TRAITS = frozenset({"button", "link"})
+# Controls a tap drives forward (navigation / activation / toggling a switch's state).
+TAP_TRAITS = frozenset({"button", "link", "switch"})
 # Text inputs the crawl fills to satisfy a precondition (e.g. enabling a disabled submit button).
 INPUT_TRAITS = frozenset({"textField", "searchField", "secureTextField"})
 # Any interactive control — used by the structural fingerprint and blocked-control detection.
@@ -53,20 +53,26 @@ class Fingerprint:
 
 @dataclass(frozen=True)
 class Action:
-    """A replayable action against a screen. `kind` is "tap" or "type" (text input). The element
-    is named by `target` (its accessibility identifier — stable, preferred) or, for an id-less
-    element, by `label` (+ `index` to disambiguate duplicates). A "type" action carries the text
-    to enter in `value`. All fields are hashable so an Action can key the frontier / tried set."""
+    """A replayable action against a screen. `kind` is "tap", "type" (text input), or "fill"
+    (enter several fields in one step, to cross a precondition that needs more than one field).
+    The element is named by `target` (its accessibility identifier — stable, preferred) or, for an
+    id-less element, by `label` (+ `index` to disambiguate duplicates); a "type" action carries the
+    text in `value`, a "fill" carries its (id, value) pairs in `fields`. All fields are hashable so
+    an Action can key the frontier / tried set."""
 
     kind: str
     target: str = ""
     label: str | None = None
     index: int | None = None
     value: str | None = None
+    fields: tuple[tuple[str, str], ...] = ()
 
     @property
     def key(self) -> str:
-        """Stable identity for de-duplication and the frontier: the id, else the label[#index]."""
+        """Stable identity for de-duplication and the frontier: the id, the label[#index], or the
+        fill's field set."""
+        if self.kind == "fill":
+            return "fill:" + ",".join(i for i, _ in self.fields)
         return self.target or f"@{self.label}#{0 if self.index is None else self.index}"
 
     def as_selector(self) -> base.Selector:
@@ -80,6 +86,8 @@ class Action:
         return sel
 
     def describe(self) -> str:
+        if self.kind == "fill":
+            return f"fill {len(self.fields)} fields"
         what = self.target or (self.label or "?")
         if self.kind == "type" and self.value:
             return f"type {what}={self.value!r}"
@@ -87,7 +95,13 @@ class Action:
 
     def perform(self, driver: base.Driver) -> None:
         """Execute against the live screen: a type action focuses the field (tap) then enters its
-        value; a tap just taps. Replayable because the selector is id- or label-based."""
+        value; a fill does that for each of its fields in order; a tap just taps. Replayable because
+        every selector is id- or label-based."""
+        if self.kind == "fill":
+            for fid, val in self.fields:
+                driver.tap({"id": fid})
+                driver.type_text(val)
+            return
         driver.tap(self.as_selector())
         if self.kind == "type":
             driver.type_text(self.value or "")
@@ -167,16 +181,20 @@ def _input_value(element: base.Element) -> str:
 
 def _fingerprint_token(element: base.Element) -> str:
     """An id-bearing element's contribution to the screen fingerprint: its id, plus a marker when
-    its *interactive* state differs — disabled (`!`) or a filled input (`=`). An enabled,
-    empty/non-input element contributes just its id, so screens with no such state hash exactly as
-    the plain id set did. Folding these in makes "form empty / submit disabled" and "form filled /
-    submit enabled" distinct screens, so the crawl explores behind a control it just enabled."""
+    its *interactive* state differs — disabled (`!`), a filled input (`=`), or a selected/toggled
+    control (`+`). An enabled, empty, unselected element contributes just its id, so screens with
+    no such state hash exactly as the plain id set did. Folding these in makes the reachable
+    states distinct (form empty vs filled, switch off vs on), so the crawl explores the
+    combinations of control states — and can act on a control it just enabled."""
     ident = _id_of(element) or ""
+    traits = _traits(element)
     suffix = ""
-    if not _is_enabled(element):
+    if base.Trait.NOT_ENABLED in traits:
         suffix += "!"
-    if INPUT_TRAITS & _traits(element) and (element.get("value") or ""):
+    if INPUT_TRAITS & traits and (element.get("value") or ""):
         suffix += "="
+    if base.Trait.SELECTED in traits:
+        suffix += "+"
     return ident + suffix
 
 
@@ -218,15 +236,19 @@ def _hash(parts: list[str]) -> str:
 
 
 def candidate_actions(elements: list[base.Element]) -> list[Action]:
-    """The deterministic guide (`--guide off`): tap each enabled, id-bearing button/link, and —
-    to satisfy a precondition like a disabled submit — type a placeholder into the first empty,
-    enabled text field (id order).
+    """The deterministic guide (`--guide off`): the replayable operations to try from a screen.
 
-    Disabled controls (`notEnabled`) are skipped: tapping them is a no-op; they're reported
-    separately as blocked. Id-less controls are skipped: replay needs a stable selector. Filling
-    one field at a time (the first empty in id order) keeps the chain linear instead of exploring
-    every fill-order permutation — once a field has a value it drops out and the next empty one
-    becomes the candidate, until the form is complete and the gated control enables.
+    - Tap each enabled, id-bearing button / link / switch (a switch tap toggles its state).
+    - Type a placeholder into **each** empty, enabled text field — exploring the combinations of
+      fill states, since a transition can depend on which fields are set (e.g. a per-field
+      validation message), not just on all of them.
+    - When two or more fields are empty, also offer one **compound fill** of them all. A single
+      fill at a time can't cross a gate that needs several fields when an intermediate fill isn't
+      observable (a masked password exposes no value, so filling it alone doesn't change the
+      screen) — filling them together flips the gate in one observable step.
+
+    Disabled controls (`notEnabled`) are skipped (tapping them is a no-op; they're reported as
+    blocked instead); id-less controls are skipped (replay needs a stable selector).
     """
     taps = sorted(
         {i for el in elements if (i := _id_of(el)) and _is_enabled(el) and TAP_TRAITS & _traits(el)}
@@ -240,9 +262,9 @@ def candidate_actions(elements: list[base.Element]) -> list[Action]:
         and INPUT_TRAITS & _traits(el)
         and not (el.get("value") or "")
     )
-    if empty_fields:
-        fid, val = empty_fields[0]
-        actions.append(Action("type", target=fid, value=val))
+    actions += [Action("type", target=fid, value=val) for fid, val in empty_fields]
+    if len(empty_fields) >= 2:
+        actions.append(Action("fill", fields=tuple(empty_fields)))
     return actions
 
 
