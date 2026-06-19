@@ -16,15 +16,17 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bajutsu.intervals import INTERVAL_KINDS
-from bajutsu.orchestrator import _action_of
-from bajutsu.orchestrator.evidence_rules import _kind_of, _primary_selector, _rule_fires
-from bajutsu.scenario import CaptureRule, Scenario, Step
+
+if TYPE_CHECKING:
+    from bajutsu.scenario import CaptureRule, Scenario, Step
 
 # Captures expensive enough to warn about on a broad rule: the scenario-wide interval
 # recordings plus the network collector. (screenshot / elements / actionLog are cheap instants.)
+# The run loop's matcher (`_rule_fires`, `_action_of`, …) is imported lazily inside the `--explain`
+# helpers below, so plain `bajutsu trace <run-dir>` (the timeline) never pulls in the orchestrator.
 _HEAVY_KINDS = INTERVAL_KINDS | {"network"}
 
 
@@ -51,10 +53,12 @@ def _step_label(step: Step, index: int) -> str:
     """A short, stable identifier for a step in the report (its name, or action + primary id)."""
     if step.name:
         return f"#{index} {step.name}"
-    kind = _action_of(step)
+    from bajutsu.orchestrator.actions._registry import _action_of
+    from bajutsu.orchestrator.evidence_rules import _primary_selector
+
     primary = _primary_selector(step)
     target = primary.id if primary is not None and primary.id is not None else ""
-    return f"#{index} {kind}{f' {target}' if target else ''}"
+    return f"#{index} {_action_of(step)}{f' {target}' if target else ''}"
 
 
 def _trigger_desc(rule: CaptureRule) -> str:
@@ -80,7 +84,8 @@ def explain_capture(scenario: Scenario) -> list[RuleExplain]:
     """Statically classify how each of a scenario's capturePolicy rules would fire."""
     out: list[RuleExplain] = []
     for rule in scenario.capture_policy:
-        heavy = [k for k in rule.capture if _kind_of(k) in _HEAVY_KINDS]
+        # a capture token is `<kind>[.<modifier>]`; the kind decides whether it is heavy
+        heavy = [k for k in rule.capture if k.partition(".")[0] in _HEAVY_KINDS]
         broad = _is_broad(rule)
         if rule.on.action is None:
             # event / result: the run loop decides at runtime; we can't count statically.
@@ -114,6 +119,9 @@ def explain_capture(scenario: Scenario) -> list[RuleExplain]:
 def _step_fires(rule: CaptureRule, step: Step) -> bool:
     """Whether an action-triggered `rule` fires on `step`, using the run loop's own matcher with
     neutral runtime signals so the count matches what a real run would record."""
+    from bajutsu.orchestrator.actions._registry import _action_of
+    from bajutsu.orchestrator.evidence_rules import _primary_selector, _rule_fires
+
     primary = _primary_selector(step)
     primary_id = primary.id if primary is not None else None
     return _rule_fires(rule, _action_of(step), primary_id, screen_changed=False, ok=True)
