@@ -237,6 +237,50 @@ def test_crawl_exposes_the_live_plan_via_on_event() -> None:
     assert screen_map.plan == {}  # fully explored -> nothing left to try
 
 
+def test_crawl_plans_and_explores_a_vision_located_tab() -> None:
+    """A SwiftUI tab bar idb can't address is reached via a coordinate tab tap from the guide (the
+    vision fallback). That planned tab must surface in the live plan (the frontier a watcher sees)
+    and drive a real transition edge — exactly like an id-based action, since a coordinate tap is
+    deterministic to replay."""
+    home = [
+        el(label="Tab Bar", traits=["group"], frame=(0, 800, 400, 80)),
+        el(identifier="home.title", traits=["staticText"]),
+        el(identifier="home.body", traits=["staticText"]),
+    ]
+    search = [
+        el(identifier="search.title", traits=["staticText"]),
+        el(identifier="search.body", traits=["staticText"]),
+    ]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap_point":
+            d.screen = list(search)
+
+    driver = FakeDriver(screen=list(home), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    def guide(
+        _drv: FakeDriver, elements: list[dict], _ctx: crawl.GuideContext
+    ) -> list[crawl.Action]:
+        # Mimic the vision fallback: a coordinate tab tap only while the un-addressable bar is shown.
+        if any((e.get("label") or "") == "Tab Bar" for e in elements):
+            return [crawl.Action("tap_point", label="Search", point=(0.5, 0.95))]
+        return []
+
+    plans: list[list[str]] = []
+
+    def on_event(sm: crawl.ScreenMap) -> None:
+        plans.append([op for ops in sm.plan.values() for op in ops])
+
+    screen_map = crawl.crawl(driver, reset, guide=guide, on_event=on_event)
+    # The vision tab was queued as an exploration target (the frontier), then explored into an edge.
+    assert any("tap tab 'Search'" in op for ops in plans for op in ops)
+    assert any(e.action == "tap tab 'Search'" for e in screen_map.edges)
+    assert any(n for n in screen_map.nodes.values() if "search.body" in n.ids)
+
+
 def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:
     """`on_node` fires once per discovered screen — the hook the CLI uses to screenshot each one
     while the driver is still positioned on it. Here we capture a screenshot per node and assert

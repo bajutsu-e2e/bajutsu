@@ -314,17 +314,20 @@ function shotURL(runId,fp){return `/runs/${encodeURIComponent(runId)}/screens/${
 // them by that set so they group. A screen with no ids stands alone (keyed by its fingerprint).
 function groupKeyOf(node){return (node.ids&&node.ids.length)?('ids:'+node.ids.join('')):('fp:'+node.fingerprint)}
 function redrawGraph(){if(crawlGraphData)renderGraph(crawlGraphData,crawlGraphRunId)}
-// Untried operations the plan still holds for a unit (sum over a group's member states).
-function plannedFor(u,plan){
+// Untried operations the plan still holds for a unit (a group sums its member states) — the live
+// exploration frontier, e.g. a vision-located tab queued to be tapped next.
+function plannedOps(u,plan){
   return u.kind==='group'
-    ?u.members.reduce((s,m)=>s+((plan[m.fingerprint]||[]).length),0)
-    :(plan[u.node.fingerprint]||[]).length;
+    ?u.members.reduce((a,m)=>a.concat(plan[m.fingerprint]||[]),[])
+    :(plan[u.node.fingerprint]||[]).slice();
 }
 // One unit box: a collapsed group (▸, click to expand), an expanded member (▾ to collapse), or a
 // lone screen — each showing a short id label, an info line, a plan badge, and a thumbnail.
 function unitHTML(u,p,plan,runId,NW,NH){
-  const planned=plannedFor(u,plan);
-  const badge=planned?`<span class="gplan" title="${planned} untried operation(s) — the live frontier">⏳ ${planned}</span>`:'';
+  const ops=plannedOps(u,plan),planned=ops.length;
+  // Tooltip lists the queued operations (a vision-located tab shows as "tap tab '…'").
+  const tip=planned?`${planned} untried operation(s) — the live frontier:\n`+ops.join('\n'):'';
+  const badge=planned?`<span class="gplan" title="${esc(tip)}">⏳ ${planned}</span>`:'';
   if(u.kind==='group'){
     const ids=u.members[0].ids||[];
     const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):'screen';
@@ -453,6 +456,11 @@ function openShot(fp){
   $('#shotprev').disabled=!inc.length;$('#shotfwd').disabled=!out.length;
   let h=`<div class="nexthd${out.length?'':' muted'}">Goes to ${out.length} screen(s) →</div>`+transitionRows(out,'dst');
   h+=`<div class="nexthd${inc.length?'':' muted'}">← Comes from ${inc.length} screen(s)</div>`+transitionRows(inc,'src');
+  // Planned (untried) operations queued from this screen — the frontier the crawl will try next,
+  // including a vision-located tab ("tap tab '…'") for a tab bar the tree couldn't address.
+  const planned=(crawlGraphData.plan||{})[fp]||[];
+  if(planned.length)h+=`<div class="nexthd">⏳ Planned next (${planned.length} untried)</div>`+
+    planned.map(op=>`<div class="planrow">${esc(op)}</div>`).join('');
   $('#shotnext').innerHTML=h;
   $('#shotmodal').hidden=false;
 }
