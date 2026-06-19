@@ -30,21 +30,44 @@ main[hidden]{display:none}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
 #view-crawl{grid-template-columns:340px 1fr}
 .crawlpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
-.crawlhead{flex:0 0 auto;display:flex;align-items:baseline;gap:.6rem;margin-bottom:.5rem}
+.crawlhead{flex:0 0 auto;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
 .crawlhead .ttl{font-weight:600}
 .crawlcounts{color:var(--mut);font-size:.82em}
-.crawlgraph{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px}
+.zoomctl{margin-left:auto;display:inline-flex;gap:.25rem}
+.zbtn{width:1.7rem;height:1.7rem;display:inline-flex;align-items:center;justify-content:center;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;cursor:pointer;font-size:1em;line-height:1;padding:0}
+.zbtn:hover{border-color:var(--acc);color:var(--acc)}
+/* The graph viewport: pans (drag) and zooms (wheel / buttons) via a transform on .graphwrap. */
+.crawlgraph{flex:1;min-height:0;overflow:hidden;position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:8px;cursor:grab}
+.crawlgraph.panning{cursor:grabbing}
 .crawlgraph .empty{height:100%}
 .crawllog{flex:0 0 8rem;height:8rem}
-/* The graph itself: rounded-rect nodes laid out in BFS layers, curved edges with arrowheads.
-   `structural` nodes (the less-stable fingerprint fallback) are dashed to flag the difference. */
-.graphsvg{display:block;font:11px system-ui,sans-serif}
+.graphwrap{position:absolute;left:0;top:0;transform-origin:0 0}
+/* Edges are one SVG layer; nodes are HTML <img> tiles on top, in BFS layers. structural-
+   fingerprint nodes (the less-stable fallback) are dashed to flag the difference. */
+.graphsvg{position:absolute;left:0;top:0;overflow:visible}
 .graphsvg .edge{fill:none;stroke:var(--mut);stroke-width:1.5}
 .graphsvg .edge.selfloop{stroke-dasharray:3 2}
-.graphsvg .node rect{fill:var(--bg);stroke:var(--acc);stroke-width:1.5}
-.graphsvg .node.structural rect{stroke:var(--mut);stroke-dasharray:4 3}
-.graphsvg .node image{background:var(--bg2)}
-.graphsvg .node .nlab{fill:var(--fg);font-weight:600;font-size:10.5px}
+.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;overflow:hidden;cursor:pointer}
+.gnode.structural{border-style:dashed;border-color:var(--mut)}
+.gnode:hover{box-shadow:0 0 0 2px var(--acc)}
+.gshot{display:block;width:100%;height:150px;object-fit:contain;background:var(--bg2);pointer-events:none}
+.gshot.missing{opacity:0}
+.glabel{padding:3px 7px;font-size:10.5px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+/* Screenshot lightbox: the enlarged shot beside the screens it transitions to next. */
+.shotbox{position:relative;display:flex;gap:1rem;width:min(960px,94vw);max-height:88vh;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem}
+.shotclose{position:absolute;top:.5rem;right:.6rem;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
+.shotmain{flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.shotmain img{max-height:80vh;max-width:46vw;border-radius:10px;border:1px solid var(--line);background:#fff}
+.shotside{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.shottitle{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;margin:.2rem 1.5rem .6rem 0;word-break:break-all}
+.shotnext{overflow:auto;display:flex;flex-direction:column;gap:.4rem}
+.nexthd{color:var(--mut);font-size:.82em;margin-bottom:.2rem}
+.nextrow{display:flex;align-items:center;gap:.6rem;width:100%;text-align:left;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.35rem .5rem;cursor:pointer;color:var(--fg);font:inherit}
+.nextrow:hover{border-color:var(--acc)}
+.nextrow img{width:34px;height:46px;object-fit:contain;background:var(--bg);border-radius:4px;flex:0 0 auto}
+.nxtxt{display:flex;flex-direction:column;min-width:0}
+.nxa{font-size:.85em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nxf{color:var(--mut);font-size:.78em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
 label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
 select,input[type=text],input[type=number],textarea{width:100%;padding:.45rem;background:var(--bg2);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}
