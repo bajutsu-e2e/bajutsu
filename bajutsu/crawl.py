@@ -122,11 +122,14 @@ class Node:
 
 @dataclass(frozen=True)
 class Edge:
-    """A transition: taking `action` from screen `src` landed on screen `dst`."""
+    """A transition: taking `action` from screen `src` landed on screen `dst`. `alert` holds the
+    OS-prompt button(s) the guard dismissed during this transition (empty when none) — so the
+    graph can show that the step required tapping through a system alert."""
 
     src: str
     action: str
     dst: str
+    alert: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -409,10 +412,12 @@ def crawl(
             continue
         tried.add(key)
 
-        # Reach the source screen by replaying the shortest known path from a clean start.
+        # Reach the source screen by replaying the shortest known path from a clean start —
+        # dismissing any OS prompt that pops along the way, so a path that goes through a system
+        # alert stays replayable and the screen behind it can be explored further.
         reset(driver)
         observe()
-        if not _replay(driver, shortest_path[src_fp], settle):
+        if not _replay(driver, shortest_path[src_fp], settle, clear_blocking):
             continue
 
         steps += 1
@@ -434,7 +439,7 @@ def crawl(
             continue
 
         dst_fp = fingerprint(landed)
-        screen_map.edges.append(Edge(src_fp, action.describe(), dst_fp.value))
+        screen_map.edges.append(Edge(src_fp, action.describe(), dst_fp.value, tuple(dismissed)))
         if dst_fp.value not in screen_map.nodes:
             shortest_path[dst_fp.value] = path
             for next_action in discover(dst_fp, landed, reached):
@@ -453,8 +458,14 @@ def crawl(
     return screen_map
 
 
-def _replay(driver: base.Driver, path: list[Action], settle: Settle | None) -> bool:
-    """Re-walk a recorded path from the current (clean) state. Returns False if a step no longer
+def _replay(
+    driver: base.Driver,
+    path: list[Action],
+    settle: Settle | None,
+    clear_blocking: ClearBlocking | None,
+) -> bool:
+    """Re-walk a recorded path from the current (clean) state, dismissing any OS prompt that pops
+    between steps (so a path through a system alert replays). Returns False if a step no longer
     resolves — the app changed under us — so the caller skips this frontier entry."""
     for action in path:
         try:
@@ -463,6 +474,8 @@ def _replay(driver: base.Driver, path: list[Action], settle: Settle | None) -> b
             return False
         if settle is not None:
             settle(driver)
+        if clear_blocking is not None:
+            clear_blocking(driver)
     return True
 
 
@@ -479,7 +492,10 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
             }
             for node in sorted(screen_map.nodes.values(), key=lambda n: n.fingerprint)
         ],
-        "edges": [{"src": e.src, "action": e.action, "dst": e.dst} for e in screen_map.edges],
+        "edges": [
+            {"src": e.src, "action": e.action, "dst": e.dst, "alert": list(e.alert)}
+            for e in screen_map.edges
+        ],
         "crashes": [{"path": list(c.path)} for c in screen_map.crashes],
         "alerts": [{"path": list(a.path), "buttons": list(a.buttons)} for a in screen_map.alerts],
         "stop_reason": screen_map.stop_reason,
