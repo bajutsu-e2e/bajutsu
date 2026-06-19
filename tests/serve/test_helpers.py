@@ -147,13 +147,10 @@ def test_crawl_command_builder() -> None:
     # erase defaults to None (the CLI default — crawl erases): no flag forced either way.
     assert "--erase" not in cmd and "--no-erase" not in cmd
     assert "--no-erase" in srv.crawl_command("demo", out="o", erase=False)  # explicit override
-    ai = srv.crawl_command("demo", out="o", guide="ai")
-    assert ai[ai.index("--guide") + 1] == "ai"
-    off = srv.crawl_command("demo", out="o", guide="off")  # explicit off is honored
-    assert off[off.index("--guide") + 1] == "off"
     assert "--no-dismiss-alerts" in srv.crawl_command("demo", out="o", dismiss_alerts=False)
-    bare = srv.crawl_command("demo", out="o")  # no backend/udid/guide → those flags omitted
-    assert "--backend" not in bare and "--udid" not in bare and "--guide" not in bare
+    bare = srv.crawl_command("demo", out="o")  # no backend/udid → those flags omitted
+    assert "--backend" not in bare and "--udid" not in bare
+    assert "--guide" not in bare  # crawl is AI-driven; there is no guide toggle
     # Resume passes the pruned branch's coordinates and never erases (it continues the same run).
     res = srv.crawl_command("demo", out="o", resume_src="abc123", resume_key="tab.x")
     assert res[res.index("--resume-src") + 1] == "abc123"

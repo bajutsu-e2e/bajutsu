@@ -147,8 +147,7 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
-| `--guide` | `ai` | 探索ガイド: `ai`（既定。Claude が操作と現実的な入力を提案）/ `off`（決定的・AIなし） |
-| `--agent` | `api` | `--guide ai` の AI バックエンド: `api`（Anthropic API・従量課金。`ANTHROPIC_API_KEY` 必須）/ `claude-code`（Claude Code CLI。サブスクリプションを利用・テキストのみ。`record --agent claude-code` と同様） |
+| `--agent` | `api` | クロールガイドの AI バックエンド: `api`（Anthropic API・従量課金。`ANTHROPIC_API_KEY` 必須）/ `claude-code`（Claude Code CLI。サブスクリプションを利用・テキストのみ。`record --agent claude-code` と同様） |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
@@ -163,11 +162,11 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   crawl は操作要素の状態の**組合せ**を探索します：各空テキスト欄を個別に入力し（スイッチは個別にトグル、タブバーは各タブに切り替え）、
   空欄が複数あるときは**一括入力（compound fill）**も試します。一括入力が重要なのは、操作要素が *複数* の欄が
   揃って初めて有効化される場合があり、かつ途中の単独入力が不可視（マスクされたパスワードは値を公開しない）な
-  ことが多く、1つずつ埋めても全充足状態へ到達できないためです。`--guide off` は決定的なプレースホルダを入力。
-  **`--guide ai`** はパイプラインで動きます——まず画面を決定的に検査し、その操作を Claude に渡して**組合せ**を
+  ことが多く、1つずつ埋めても全充足状態へ到達できないためです。クロールは **AI 駆動**です——
+  まず画面を決定的に検査し、その操作を Claude に渡して**組合せ**を
   考えさせ、有効化条件が自明でない操作要素のために**現実的な入力**（正しいメール形式、規約を満たすパスワード、
   フォーム全欄の一括入力など）や id 無し要素への操作を提案し、その推論を run ログに流します。
-  `--guide ai` は**個々のタブをツリーで指定できないタブバー**にも対応します——idb は SwiftUI の TabView を
+  AI は**個々のタブをツリーで指定できないタブバー**にも対応します——idb は SwiftUI の TabView を
   「Tab Bar」というラベルの group 1個（タブごとの id 無し）として返すため、バーは見えてもタブをセレクタで
   タップできません。そうしたバーがあり（かつ id で指定できるタブが無い）場合に、システムアラートガードと同じ要領で
   画像認識（vision）から位置を割り出し、各タブを座標でタップします（タブを優先して切り替えてから深掘りする方針は同じ）。

@@ -193,12 +193,12 @@ def test_crawl_unknown_app(tmp_path: Path) -> None:
     assert r.exit_code == 2
 
 
-def test_crawl_unknown_guide(tmp_path: Path) -> None:
-    # An invalid --guide is rejected before any device work (clean exit 2).
+def test_crawl_unknown_agent(tmp_path: Path) -> None:
+    # An invalid --agent is rejected before any device work (clean exit 2).
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["crawl", "--app", "demo", "--guide", "bad", "--config", str(cfg)])
+    r = runner.invoke(app, ["crawl", "--app", "demo", "--agent", "bad", "--config", str(cfg)])
     assert r.exit_code == 2
-    assert "unknown crawl guide" in r.output
+    assert "unknown --agent" in r.output
 
 
 def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
