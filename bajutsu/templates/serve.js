@@ -397,8 +397,16 @@ function renderGraph(data,runId){
   const planned=Object.values(plan).reduce((s,ops)=>s+ops.length,0);
   // The reason the crawl stopped (set only once it finishes); shown after the counts.
   const why={completed:'completed',max_screens:'screen limit reached',max_steps:'step limit reached'}[data.stop_reason];
+  // Progress against the plan: explored operations (each transition or crash is one tried) over the
+  // total (explored + still-pending). 100% once nothing is pending (the frontier is exhausted).
+  const explored=edges.length+crashes.length,totalOps=explored+planned;
+  const pct=totalOps?Math.round(explored/totalOps*100):(data.stop_reason?100:0);
   $('#crawl-counts').textContent=`${nodes.length} screens · ${edges.length} transitions · ${crashes.length} crashes`+
-    (alerts.length?` · ${alerts.length} alerts dismissed`:'')+(planned?` · ${planned} planned`:'')+(why?' · '+why:'');
+    (alerts.length?` · ${alerts.length} alerts dismissed`:'')+(planned?` · ${planned} planned`:'')+
+    (nodes.length?` · ${pct}% explored`:'')+(why?' · '+why:'');
+  const pf=$('#crawl-planfill'),pp=$('#crawl-planpct');
+  if(pf)pf.style.width=pct+'%';
+  if(pp)pp.textContent=pct+'%';
   const box=$('#crawl-graph');
   if(!nodes.length){box.innerHTML='<div class="empty">Reaching the first screen…</div>';return}
   // Group screens by UI, then resolve to laid-out units: a collapsed group is one unit; an expanded
