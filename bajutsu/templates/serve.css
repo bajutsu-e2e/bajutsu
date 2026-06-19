@@ -98,7 +98,12 @@ main[hidden]{display:none}
 .shotnav:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
 .shotnav:disabled{opacity:.3;cursor:default}
 .shotmain{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center}
-.shotmain img{max-height:80vh;max-width:46vw;border-radius:10px;border:1px solid var(--line);background:#fff}
+/* The frame shrink-wraps the image so the tap-location highlight, positioned in screen fractions,
+   overlays it exactly. */
+.shotframe{position:relative;display:inline-block;line-height:0}
+.shotmain img{display:block;max-height:80vh;max-width:46vw;border-radius:10px;border:1px solid var(--line);background:#fff}
+/* Hover a transition/planned row to highlight where its tap lands on the screenshot. */
+.shothi{position:absolute;border:2px solid var(--run);border-radius:5px;background:color-mix(in srgb,var(--run) 25%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--run) 40%,transparent),0 0 12px color-mix(in srgb,var(--run) 60%,transparent);pointer-events:none;transition:all .12s ease}
 .shotside{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .shottitle{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;margin:.2rem 1.5rem .6rem 0;word-break:break-all}
 .shotnext{overflow:auto;display:flex;flex-direction:column;gap:.4rem}
