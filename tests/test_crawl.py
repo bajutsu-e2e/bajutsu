@@ -174,3 +174,27 @@ def test_crawl_settles_after_every_observation() -> None:
 
     crawl.crawl(driver, reset, settle=settle)
     assert calls > 0
+
+
+# --- live event stream ---------------------------------------------------------------------
+
+
+def test_crawl_streams_the_growing_map_via_on_event() -> None:
+    """`on_event` fires as the map grows (the web UI's live graph), each call seeing more of it
+    than the last — and the final snapshot matches the returned map."""
+    react, home = _three_screen_app()
+    driver = FakeDriver(screen=list(home), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    sizes: list[tuple[int, int]] = []
+
+    def on_event(sm: crawl.ScreenMap) -> None:
+        sizes.append((len(sm.nodes), len(sm.edges)))
+
+    screen_map = crawl.crawl(driver, reset, on_event=on_event)
+    assert sizes  # fired at least once (the start node), then again as edges/nodes were found
+    assert sizes[0] == (1, 0)  # first event is the start screen, before any transition
+    assert sizes[-1] == (len(screen_map.nodes), len(screen_map.edges))  # ends on the full map
+    assert max(n for n, _ in sizes) == len(screen_map.nodes)  # never exceeds the final node count

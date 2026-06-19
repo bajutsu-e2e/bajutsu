@@ -140,6 +140,39 @@ bajutsu record --app <name> --goal "<natural-language goal>" [--out <file.yaml>]
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
 - Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
 
+## `crawl`
+
+Explores the app **breadth-first** and writes a **screen map** of the reachable screens and the
+transitions between them (Tier 1; [BE-0038](roadmap/README.md)). Unlike `record`, which is
+*goal-directed* — AI explores toward one natural-language goal and writes one scenario — `crawl`
+is *systematic discovery*: it visits the screens it can reach and reports what it found. The
+exploration engine is **deterministic** (a screen's identity and the order candidate actions are
+tried are pure functions of the element tree); **no AI** is involved, and it is **never a
+pass/fail gate**.
+
+```bash
+bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--app` | (required) | the target app |
+| `--max-screens` | `50` | stop after discovering this many distinct screens |
+| `--max-steps` | `200` | stop after taking this many actions |
+| `--udid` | `booted` | the target Simulator |
+| `--backend` | config | actuator order |
+| `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
+| `--out` | `runs/<timestamp>` | run dir the screen map is written into |
+| `--config` | `bajutsu.config.yaml` | config |
+
+- Traversal is by **deterministic replay**, not in-place backtracking: to revisit a known screen
+  the crawl relaunches the app to a clean start and replays the shortest recorded path to it,
+  then takes the next untried action — the same way `run` reaches any state.
+- Output: `<out>/screenmap.json`, a JSON graph of `nodes` (screens — fingerprint, kind, ids,
+  candidate actions), `edges` (transitions), and `crashes` (action paths that collapsed the app
+  UI). The file is rewritten as the crawl advances, so a reader (the **Crawl** tab in `serve`) can
+  draw the map live. Stops at the first of `--max-screens` / `--max-steps`.
+
 ## `codegen`
 
 Generates a **native XCUITest** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)).
@@ -179,11 +212,14 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 
 ## `serve`
 
-A local web UI to **run a scenario and view its report** — a Tier-1 convenience, **not part
-of the CI gate**. Lists each app's scenarios (from `apps.<name>.scenarios`), spawns
-`python -m bajutsu run ...` per request on a background thread, streams its output, and serves
-the produced `runs/<id>/` tree so the report's relative asset links resolve. Stdlib only (no web
-framework); binds `127.0.0.1`.
+A local web UI to **author, run, and explore** — a Tier-1 convenience, **not part of the CI
+gate**. Three top-level tabs over the CLI: **Record** authors a scenario from a goal
+(`python -m bajutsu record ...`), **Replay** runs a scenario and shows its report
+(`python -m bajutsu run ...`), and **Crawl** explores the app and draws its screen map live
+(`python -m bajutsu crawl ...`). Each request spawns the CLI per request on a background thread,
+streams its output, and serves the produced `runs/<id>/` tree so the report's relative asset
+links (and the crawl's `screenmap.json`) resolve. Stdlib only (no web framework); binds
+`127.0.0.1`.
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
@@ -197,6 +233,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   promotes the captured screenshot into it via `POST /api/approve`.
 - Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
   alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
+- The **Crawl** tab picks an app, device, and budget (max screens / steps), then `POST /api/crawl`
+  spawns the crawl; the returned run id lets the UI poll `runs/<id>/screenmap.json` and draw the
+  screen map as it grows (screens laid out in breadth-first layers, transitions as arrows). The
+  **Stop** button aborts it, like Replay.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
   `apps.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features

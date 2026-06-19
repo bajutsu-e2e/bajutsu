@@ -128,6 +128,29 @@ def test_record_command_builder() -> None:
     assert "--agent" not in bare and "--backend" not in bare
 
 
+def test_crawl_command_builder() -> None:
+    cmd = srv.crawl_command(
+        "demo",
+        out="runs/20260619-1",
+        backend="idb",
+        udid="U",
+        max_screens=10,
+        max_steps=30,
+        config="c.yaml",
+    )
+    assert cmd[:6] == [sys.executable, "-m", "bajutsu", "crawl", "--app", "demo"]
+    assert cmd[cmd.index("--out") + 1] == "runs/20260619-1"
+    assert cmd[cmd.index("--config") + 1] == "c.yaml"
+    assert cmd[cmd.index("--max-screens") + 1] == "10"
+    assert cmd[cmd.index("--max-steps") + 1] == "30"
+    assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
+    # erase defaults to None (the CLI default — crawl erases): no flag forced either way.
+    assert "--erase" not in cmd and "--no-erase" not in cmd
+    assert "--no-erase" in srv.crawl_command("demo", out="o", erase=False)  # explicit override
+    bare = srv.crawl_command("demo", out="o")  # no backend/udid → those flags omitted
+    assert "--backend" not in bare and "--udid" not in bare
+
+
 def test_scenario_out_path_sanitizes(tmp_path: Path) -> None:
     d = tmp_path / "scn"
     assert srv.scenario_out_path(d, "login") == d / "login.yaml"

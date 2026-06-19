@@ -27,6 +27,24 @@ main[hidden]{display:none}
 #view-record{grid-template-columns:340px 1fr}
 .rec-stack{display:flex;flex-direction:column;gap:1rem;height:calc(100vh - 6rem)}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{flex:1;min-height:0;height:auto}
+/* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
+#view-crawl{grid-template-columns:340px 1fr}
+.crawlpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
+.crawlhead{flex:0 0 auto;display:flex;align-items:baseline;gap:.6rem;margin-bottom:.5rem}
+.crawlhead .ttl{font-weight:600}
+.crawlcounts{color:var(--mut);font-size:.82em}
+.crawlgraph{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px}
+.crawlgraph .empty{height:100%}
+.crawllog{flex:0 0 8rem;height:8rem}
+/* The graph itself: rounded-rect nodes laid out in BFS layers, curved edges with arrowheads.
+   `structural` nodes (the less-stable fingerprint fallback) are dashed to flag the difference. */
+.graphsvg{display:block;font:11px system-ui,sans-serif}
+.graphsvg .edge{fill:none;stroke:var(--mut);stroke-width:1.5}
+.graphsvg .edge.selfloop{stroke-dasharray:3 2}
+.graphsvg .node rect{fill:var(--card);stroke:var(--acc);stroke-width:1.5}
+.graphsvg .node.structural rect{stroke:var(--mut);stroke-dasharray:4 3}
+.graphsvg .node .nlab{fill:var(--fg);font-weight:600}
+.graphsvg .node .nsub{fill:var(--mut);font-size:9.5px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
 label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
 select,input[type=text],input[type=number],textarea{width:100%;padding:.45rem;background:var(--bg2);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}

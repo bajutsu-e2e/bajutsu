@@ -129,6 +129,38 @@ bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>]
 - 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
 
+## `crawl`
+
+アプリを**幅優先**で探索し、到達できる画面と画面間の遷移の**画面マップ**を書き出します
+（Tier 1・[BE-0038](roadmap/README-ja.md)）。`record` が *目的指向* —— 1 つの自然言語ゴールに
+向かって AI が探索し、1 本のシナリオを書き出す —— であるのに対し、`crawl` は *体系的な発見* です。
+到達できる画面を巡り、見つけたものを報告します。探索エンジンは**決定的**で（画面の識別子と候補
+アクションを試す順序は、どちらも要素ツリーの純粋な関数です）、**AI は関与せず**、**合否ゲートには
+決してなりません**。
+
+```bash
+bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [options]
+```
+
+| オプション | 既定 | 説明 |
+|---|---|---|
+| `--app` | （必須） | 対象アプリ |
+| `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
+| `--max-steps` | `200` | この数のアクションを実行したら停止 |
+| `--udid` | `booted` | 対象 Simulator |
+| `--backend` | config | actuator 順 |
+| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
+| `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
+| `--config` | `bajutsu.config.yaml` | config |
+
+- 走査は**決定的リプレイ**で行い、その場での後戻りはしません。既知の画面を再訪するには、アプリを
+  クリーンな状態に再起動し、そこへの最短経路を再生してから次の未試行アクションを取ります ——
+  `run` が任意の状態へ到達するのと同じやり方です。
+- 出力: `<out>/screenmap.json`。`nodes`（画面 —— fingerprint・種別・id・候補アクション）、
+  `edges`（遷移）、`crashes`（アプリ UI を崩壊させたアクション経路）からなる JSON グラフです。
+  クロールの進行に合わせて書き直されるので、読み手（`serve` の **Crawl** タブ）はマップをリアルタイムに
+  描けます。`--max-screens` / `--max-steps` のいずれか早い方で停止します。
+
 ## `codegen`
 
 シナリオから **ネイティブ XCUITest** を生成します（AI 非依存・構造マッピング・[codegen](codegen.md)）。
@@ -168,10 +200,13 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 
 ## `serve`
 
-**シナリオを実行してレポートを見る**ローカル Web UI です。Tier 1 の利便機能で、**CI ゲートには含まれません**。
-各アプリのシナリオ（`apps.<name>.scenarios` から）を一覧し、リクエストごとに `python -m bajutsu run ...` を
-バックグラウンドスレッドで起動し、出力をストリームし、生成された `runs/<id>/` ツリーを配信します（report の相対アセットリンクが解決します）。
-stdlib のみ（Web フレームワーク不要）、`127.0.0.1` バインド。
+**オーサリング・実行・探索**のためのローカル Web UI です。Tier 1 の利便機能で、**CI ゲートには含まれません**。
+CLI を覆う 3 つのトップレベルタブがあります。**Record** はゴールからシナリオを著し（`python -m bajutsu
+record ...`）、**Replay** はシナリオを実行してレポートを表示し（`python -m bajutsu run ...`）、**Crawl** は
+アプリを探索して画面マップをリアルタイムに描きます（`python -m bajutsu crawl ...`）。リクエストごとに CLI を
+バックグラウンドスレッドで起動し、出力をストリームし、生成された `runs/<id>/` ツリーを配信します（report の
+相対アセットリンクと crawl の `screenmap.json` が解決します）。stdlib のみ（Web フレームワーク不要）、
+`127.0.0.1` バインド。
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
@@ -185,6 +220,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させます。
 - app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run** を押します。
   出力がライブ表示され、完了で `report.html` が埋め込まれます。
+- **Crawl** タブは app・デバイス・予算（max screens / steps）を選び、`POST /api/crawl` で crawl を起動します。
+  返ってきた run id で UI が `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に合わせて描きます
+  （画面は幅優先の層に配置し、遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
   実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`apps.<name>.build`
   に `appPath` を生成するシェルコマンド（例: `make -C demos/features sample-build`）を設定すると、
