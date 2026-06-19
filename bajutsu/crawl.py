@@ -314,6 +314,7 @@ def crawl(
     max_screens: int = 50,
     max_steps: int = 200,
     settle: Settle | None = None,
+    clear_blocking: Settle | None = None,
     guide: Guide | None = None,
     on_event: OnEvent | None = None,
     on_node: OnNode | None = None,
@@ -323,10 +324,12 @@ def crawl(
     `reset` returns the app to a clean starting state (erase/boot/launch on a real device; in
     tests, restoring the start screen). `settle`, if given, waits for the screen to stabilize
     after an action (a condition wait — never a fixed sleep); it is omitted when the driver is
-    synchronous. `guide` proposes the actions to try from a screen (default: the deterministic
-    `candidate_actions`; an AI guide proposes richer operations) — it only chooses *what to try*,
-    never what happened. `on_event`, if given, fires after each new node, edge, or crash so a
-    caller can stream the growing screen map. `on_node`, if given, fires once per newly discovered
+    synchronous. `clear_blocking`, if given, dismisses anything covering the app (e.g. an OS
+    alert) at each observation, so a system prompt isn't mistaken for a crash. `guide` proposes
+    the actions to try from a screen (default: the deterministic `candidate_actions`; an AI guide
+    proposes richer operations) — it only chooses *what to try*, never what happened. `on_event`,
+    if given, fires after each new node, edge, or crash so a caller can stream the growing screen
+    map. `on_node`, if given, fires once per newly discovered
     screen while the driver is still on it (to capture a screenshot). Stops at `max_screens`
     distinct screens or `max_steps` actions, whichever first.
     """
@@ -336,6 +339,8 @@ def crawl(
     def observe() -> list[base.Element]:
         if settle is not None:
             settle(driver)
+        if clear_blocking is not None:
+            clear_blocking(driver)  # dismiss an OS alert so it isn't read as a crash
         return driver.query()
 
     def emit() -> None:

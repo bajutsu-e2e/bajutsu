@@ -290,7 +290,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 max_screens=_int(body.get("maxScreens"), 50),
                 max_steps=_int(body.get("maxSteps"), 200),
                 erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
-                guide="ai" if body.get("guide") == "ai" else "",
+                dismiss_alerts=body["dismissAlerts"]
+                if isinstance(body.get("dismissAlerts"), bool)
+                else None,
+                guide=str(body["guide"]) if body.get("guide") in ("ai", "off") else "",
                 config=str(cfg),
             )
             app_path, build = app_build_info(cfg, str(body["app"]))

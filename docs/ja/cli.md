@@ -147,10 +147,11 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
-| `--guide` | `off` | 探索ガイド: `off`（決定的・AIなし）/ `ai`（Claude が操作と現実的な入力を提案。`ANTHROPIC_API_KEY` 必須） |
+| `--guide` | `ai` | 探索ガイド: `ai`（既定。Claude が操作と現実的な入力を提案。`ANTHROPIC_API_KEY` 必須）/ `off`（決定的・AIなし） |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
+| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。要 API キー） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
 | `--config` | `bajutsu.config.yaml` | config |
 

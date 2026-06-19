@@ -159,10 +159,11 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | (required) | the target app |
 | `--max-screens` | `50` | stop after discovering this many distinct screens |
 | `--max-steps` | `200` | stop after taking this many actions |
-| `--guide` | `off` | exploration guide: `off` (deterministic, no AI) or `ai` (Claude proposes operations and realistic inputs; needs `ANTHROPIC_API_KEY`) |
+| `--guide` | `ai` | exploration guide: `ai` (default; Claude proposes operations and realistic inputs, needs `ANTHROPIC_API_KEY`) or `off` (deterministic, no AI) |
 | `--udid` | `booted` | the target Simulator |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
+| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; needs an API key) |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--config` | `bajutsu.config.yaml` | config |
 

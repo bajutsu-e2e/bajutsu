@@ -375,6 +375,36 @@ def test_crawl_fills_a_form_to_enable_and_press_a_disabled_button() -> None:
     assert crawl.fingerprint(home).value in screen_map.nodes  # reached the screen behind it
 
 
+def test_crawl_clears_a_blocking_alert_instead_of_recording_a_crash() -> None:
+    """Tapping a control pops an OS alert that collapses the app UI (looks like a crash). The
+    `clear_blocking` hook dismisses it before the alive check, so the screen behind it is explored
+    and no crash is recorded."""
+    home = [el(identifier="home.go", traits=["button"])]
+    alert = [el(traits=["application"])]  # collapsed tree — indistinguishable from a crash
+    behind = [el(identifier="b.one", traits=["button"]), el(identifier="b.two", traits=["button"])]
+    s = {"alerting": False}
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict) and arg.get("id") == "home.go":
+            s["alerting"] = True
+            d.screen = list(alert)
+
+    driver = FakeDriver(screen=list(home), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        s["alerting"] = False
+        d.screen = list(home)
+
+    def clear_blocking(d: FakeDriver) -> None:
+        if s["alerting"]:  # the guard dismisses the prompt, revealing the screen behind it
+            s["alerting"] = False
+            d.screen = list(behind)
+
+    screen_map = crawl.crawl(driver, reset, clear_blocking=clear_blocking, max_steps=50)
+    assert not screen_map.crashes  # the alert was dismissed, not mistaken for a crash
+    assert crawl.fingerprint(behind).value in screen_map.nodes  # the screen behind it was explored
+
+
 def test_crawl_uses_a_custom_guide_for_label_based_actions() -> None:
     """The guide chooses what to try: an AI-style guide proposing a label-based tap drives a
     transition off an id-less control, which the deterministic guide would skip."""

@@ -1,9 +1,10 @@
 """`bajutsu crawl` — explore the app breadth-first and build a screen map (BE-0038).
 
-The deterministic (`--guide off`) slice of BE-0038: no AI, no judgment. It drives the same
-`launch_driver` / actuator path as `run` and `record`, hands the live driver to the crawl
-engine ([`crawl.py`](../../crawl.py)), and streams the growing screen map to
-`runs/<id>/screenmap.json` so the web UI can render it live. Discovery only — never a gate.
+Drives the same `launch_driver` / actuator path as `run` and `record`, hands the live driver to
+the crawl engine ([`crawl.py`](../../crawl.py)), and streams the growing screen map to
+`runs/<id>/screenmap.json` so the web UI can render it live. The engine is deterministic (screen
+identity, transitions, crashes); `--guide ai` (default) lets an LLM only propose *what to try*,
+and the alert guard dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
+from bajutsu.record import _clear_blocking
 from bajutsu.runner import _await_ready, launch_driver
 from bajutsu.scenario import Preconditions
 
@@ -45,11 +47,19 @@ def crawl(
     erase: bool = typer.Option(
         True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
     ),
+    dismiss_alerts: bool = typer.Option(
+        True,
+        "--dismiss-alerts/--no-dismiss-alerts",
+        help="dismiss unexpected OS prompts while crawling (on by default; uses the same API key)",
+    ),
+    alert_instruction: str = typer.Option(
+        "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
+    ),
     guide: str = typer.Option(
-        "off",
+        "ai",
         "--guide",
-        help="exploration guide: 'off' (deterministic, no AI) or 'ai' (Claude proposes operations "
-        "and realistic inputs to enable gated controls; needs ANTHROPIC_API_KEY)",
+        help="exploration guide: 'ai' (default; Claude proposes operations and realistic inputs to "
+        "enable gated controls — needs ANTHROPIC_API_KEY) or 'off' (deterministic, no AI)",
     ),
     out: str = typer.Option(
         "", "--out", help="run dir for the screen map (default: runs/<timestamp>)"
@@ -127,6 +137,23 @@ def crawl(
         except (OSError, subprocess.CalledProcessError) as exc:
             say(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
+    # The alert guard (Claude vision) dismisses unexpected OS prompts the crawl would otherwise
+    # read as a crash. Best-effort: with no API key it no-ops, so the crawl still runs.
+    clear_blocking = None
+    if dismiss_alerts:
+        from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
+        from bajutsu.orchestrator import RealClock
+
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            say(
+                "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard no-ops"
+            )
+        guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
+        clock = RealClock()
+
+        def clear_blocking(d: base.Driver) -> None:
+            _clear_blocking(d, guard, clock, report=say)
+
     say("✅ app is up — crawling…")
     try:
         screen_map = crawl_engine.crawl(
@@ -134,6 +161,7 @@ def crawl(
             reset,
             max_screens=max_screens,
             max_steps=max_steps,
+            clear_blocking=clear_blocking,
             guide=crawl_guide,
             on_event=on_event,
             on_node=on_node,
