@@ -334,16 +334,15 @@ function renderPlan(data){
     outs.forEach(e=>{const alert=(e.alert||[]).length?' 🛡️':'';
       h+=`<div class="plrow op done" style="--d:${depth+1}"><span class="pls">✅</span>${esc(e.action)}${alert} <span class="plarrow">→</span></div>`;
       h+=branch(e.dst,depth+2)});
-    let pruned=0;
     pend.forEach(op=>{
       const cnt=opCount.get(op)||1,global=cnt>1;
-      // A global op already kept once is a pruned duplicate (when pruning is on).
-      if(prunePlan&&global&&planShown.has(op)){pruned++;return}
-      planShown.add(op);
+      // A global op already kept once is a pruned duplicate (when pruning is on): show it struck
+      // through rather than hidden, so it stays visible as a deliberately skipped branch.
+      const dup=prunePlan&&global&&planShown.has(op);
+      if(!dup)planShown.add(op);
       const tag=global?` <span class="plglobal" title="global operation — queued on ${cnt} screens">🌐 ×${cnt}</span>`:'';
-      h+=`<div class="plrow op pend${global?' global':''}" style="--d:${depth+1}"><span class="pls">⏳</span>${esc(op)}${tag}</div>`;
+      h+=`<div class="plrow op pend${global?' global':''}${dup?' pruned':''}" style="--d:${depth+1}"${dup?' title="pruned — the same global operation is kept once elsewhere"':''}><span class="pls">${dup?'✂':'⏳'}</span>${esc(op)}${tag}</div>`;
     });
-    if(pruned)h+=`<div class="plrow op pruned" style="--d:${depth+1}"><span class="pls">⤴</span><span class="plmut">${pruned} duplicate global op(s) pruned — kept once</span></div>`;
     return h;
   }
   let html='';roots.forEach(r=>html+=branch(r,0));
@@ -510,11 +509,19 @@ function renderGraph(data,runId){
   });
   // Unit boxes (HTML, absolutely positioned over the edges and group frames).
   let tiles='';units.forEach(u=>{tiles+=unitHTML(u,pos.get(u.id),plan,runId,NW,NH)});
-  box.innerHTML=`<div class="graphwrap" style="width:${W}px;height:${H}px">${svg}${frames}${tiles}</div>`;
+  box.innerHTML=`<div class="graphpan"><div class="graphwrap" style="width:${W}px;height:${H}px">${svg}${frames}${tiles}</div></div>`;
   applyView();
 }
-// ---- zoom / pan: a transform on the graph layer, re-applied after each re-render ----
-function applyView(){const w=$('.graphwrap');if(w)w.style.transform=`translate(${gview.x}px,${gview.y}px) scale(${gview.k})`}
+// ---- zoom / pan ----
+// Pan is a translate on the outer layer (GPU-composited, so dragging stays smooth); zoom is CSS
+// `zoom` on the inner layer, not `transform: scale`, so the browser re-lays-out and re-rasterizes
+// text and borders at the target magnification — crisp instead of a blurred upscaled bitmap. The two
+// compose to the same mapping (screen = pan + zoom·content), so the zoomBy/pan math is unchanged.
+function applyView(){
+  const pan=$('.graphpan'),w=$('.graphwrap');
+  if(pan)pan.style.transform=`translate(${gview.x}px,${gview.y}px)`;
+  if(w)w.style.zoom=gview.k;
+}
 function zoomBy(factor,cx,cy){
   const r=$('#crawl-graph').getBoundingClientRect();
   // Keep the point under (cx,cy) fixed while scaling about it.

@@ -48,11 +48,13 @@ main[hidden]{display:none}
 .planfill{height:100%;width:0;background:var(--ok);transition:width .3s ease}
 .crawlplan{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.35rem}
 .crawlplan .empty{height:100%}
-/* The graph viewport: pans (drag) and zooms (wheel / buttons) via a transform on .graphwrap. */
+/* The graph viewport: the outer .graphpan layer translates (drag-pan, GPU-composited); the inner
+   .graphwrap layer uses CSS `zoom` so text/borders re-rasterize crisply at any magnification. */
 .crawlgraph{flex:1;min-height:0;overflow:hidden;position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:8px;cursor:grab;user-select:none;-webkit-user-select:none}
 .crawlgraph.panning{cursor:grabbing}
 .crawlgraph .empty{height:100%}
 .crawlside .crawllog{flex:1;min-height:0;height:auto}
+.graphpan{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 .graphwrap{position:absolute;left:0;top:0;transform-origin:0 0}
 /* Edges are one SVG layer; unit boxes are HTML label+info cards on top, in BFS layers. structural-
    fingerprint nodes (the less-stable fallback) are dashed to flag the difference. */
@@ -137,7 +139,7 @@ main[hidden]{display:none}
 .plrow.scr.full .pls{color:var(--ok)}
 .plrow.op.done{color:var(--fg)}
 .plrow.op.pend{color:var(--run)}
-.plrow.op.pruned{color:var(--mut);font-style:italic}
+.plrow.op.pruned{color:var(--mut);text-decoration:line-through}
 .plrow.seen{color:var(--mut)}
 .plcov{color:var(--mut);font-weight:400;font-size:.92em}
 .pls{display:inline-block;width:1.2em}
