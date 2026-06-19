@@ -8,6 +8,6 @@
 set -euo pipefail
 
 if ! uv run --quiet python scripts/merge-roadmap-index.py "$@"; then
-	echo "merge-roadmap-index: row merge failed — resolve docs/roadmap/ index by hand" >&2
+	echo "merge-roadmap-index: row merge failed — resolve roadmaps/ index by hand" >&2
 	exit 1
 fi

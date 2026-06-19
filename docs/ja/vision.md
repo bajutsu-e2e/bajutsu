@@ -4,10 +4,10 @@
 
 > 将来構想です。Bajutsu がどこへ向かうかの全体的な方向と、すべての方向が守るべき唯一の制約を扱います。本ページは
 > 個別の将来構想ページを横断する戦略的な概観で、粒度の細かい優先順位付きバックログは
-> [roadmap](../roadmap/README-ja.md)、今日の設計の根拠は [`DESIGN.md`](../../DESIGN.md) にあります。
+> [roadmap](../../roadmaps/README-ja.md)、今日の設計の根拠は [`DESIGN.md`](../../DESIGN.md) にあります。
 > ここを読んで各ピースがどう積み上がるかを掴み、各計画の詳細はリンク先を参照してください。
 
-関連: [concepts](concepts.md) · [roadmap](../roadmap/README-ja.md) · [multi-platform](multi-platform.md) · [roadmap → ホスティング](../roadmap/README-ja.md#web-ui-のホスティングクラウド--セルフホスト)
+関連: [concepts](concepts.md) · [roadmap](../../roadmaps/README-ja.md) · [multi-platform](multi-platform.md) · [roadmap → ホスティング](../../roadmaps/README-ja.md#web-ui-のホスティングクラウド--セルフホスト)
 
 ---
 
@@ -54,7 +54,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 **同じ決定的コアが iOS・Android・Web を駆動する**ことです。各プラットフォームは自分の actuator + 環境 +
 安定 id 規約だけを足します。完全な具体計画（セレクタ可搬性の写像、プラットフォーム別バックエンド、
 展開順は既存の Linux ゲートで動くので Web を最初に）は **[multi-platform](multi-platform.md)** にあります。
-2 つ目の iOS actuator（XCUITest）は、1 つの OS 内での同じ変更です（[roadmap → バックエンド拡張](../roadmap/README-ja.md#バックエンド拡張ios-actuator)）。
+2 つ目の iOS actuator（XCUITest）は、1 つの OS 内での同じ変更です（[roadmap → バックエンド拡張](../../roadmaps/README-ja.md#バックエンド拡張ios-actuator)）。
 
 ### 2. Scale & Collaboration —— ローカルツールから共有サービスへ
 
@@ -62,11 +62,11 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 コントロールプレーン（認証・履歴・キュー・レポートビューア）を、高価なデバイスワーカープールから
 分離し、チームがブラウザから実行・レビューできるようにします。
 
-- **[BE-0015（公開 / クラウドホスティング）](../roadmap/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)** —— 公開 / マルチテナント: control-plane ⇄ macOS ワーカープールの
+- **[BE-0015（公開 / クラウドホスティング）](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)** —— 公開 / マルチテナント: control-plane ⇄ macOS ワーカープールの
   分離、`subprocess.Popen` → ジョブキューのリファクタ、公開時に必須となるセキュリティ堅牢化。
-- **[BE-0016（セルフホスティング）](../roadmap/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)** —— 自前 Mac: 今日使える単一 Mac 構成と、完全セルフホストの
+- **[BE-0016（セルフホスティング）](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)** —— 自前 Mac: 今日使える単一 Mac 構成と、完全セルフホストの
   マルチテナント構成。
-- **MCP（Model Context Protocol）統合**（[roadmap → 統合・自動化](../roadmap/README-ja.md#統合自動化mcp-化)）—— `run`/`doctor`/`record`/`codegen` を MCP ツールとして、
+- **MCP（Model Context Protocol）統合**（[roadmap → 統合・自動化](../../roadmaps/README-ja.md#統合自動化mcp-化)）—— `run`/`doctor`/`record`/`codegen` を MCP ツールとして、
   証跡を MCP リソースとして公開し、エージェントが直接 Bajutsu を駆動します。これは Tier-1 の境界の内側に収まります。
   エージェントは著者・調査役であり、ゲートは決定的なままです。
 
@@ -74,11 +74,11 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 
 シナリオは人間が所有するただの YAML です。この軸は、ゲートを一切緩めずに、書く・保つコストを下げます。
 
-- **GUI エディタ & 非 AI 操作キャプチャ**（[roadmap → オーサリング体験](../roadmap/README-ja.md#オーサリング体験record--gui-エディタ)）—— シナリオを可視編集し、
+- **GUI エディタ & 非 AI 操作キャプチャ**（[roadmap → オーサリング体験](../../roadmaps/README-ja.md#オーサリング体験record--gui-エディタ)）—— シナリオを可視編集し、
   スクショ上でセレクタを選び、実操作（tap/type）を LLM なしでシナリオ化します。`bajutsu serve` はその第一歩です。
-- **ビジュアル回帰アサーション**（[roadmap: BE-0029](../roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）——
+- **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）——
   新しい決定的アサーション種別（ベースライン差分）です。AI 判定ではなく機械チェックなので、適合します。
-- **自己修復 triage**（[roadmap: BE-0021](../roadmap/BE-0021-ai-triage/BE-0021-ai-triage-ja.md)）—— 既に出荷済みです。AI が
+- **自己修復 triage**（[roadmap: BE-0021](../../roadmaps/implemented/BE-0021-ai-triage/BE-0021-ai-triage-ja.md)）—— 既に出荷済みです。AI が
   失敗証跡を読み **最小差分**を提案し、人間がレビューして `--write` で適用します。ガードレール
   （コミット済みテストを自動で緩めない）が、これを directive の内側に保ちます。
 
@@ -112,14 +112,14 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 1. **Playwright による Web**（[multi-platform](multi-platform.md) 段階 1）。コアが
    プラットフォーム中立であることを **既存の Linux ゲートの内側**（[ci](ci.md)）で示せます。Mac も
    エミュレータも不要で、同時に、能力モデルの豊かな端（ネイティブ network/video/意味的操作）を行使します。
-2. **MCP サーバ**（[roadmap → 統合・自動化](../roadmap/README-ja.md#統合自動化mcp-化)）。表面積が小さく、Tier-1 オーサリングループへの
+2. **MCP サーバ**（[roadmap → 統合・自動化](../../roadmaps/README-ja.md#統合自動化mcp-化)）。表面積が小さく、Tier-1 オーサリングループへの
    レバレッジが大きく、ゲートに触れません。
-3. **ビジュアル回帰アサーション**（[roadmap: BE-0029](../roadmap/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）。競合が
+3. **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）。競合が
    AI でゲートする決定的な能力で、directive を緊張させるどころか強める差別化要素です。
 
-ホスティング軸（[BE-0015](../roadmap/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../roadmap/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）はより大きく
+ホスティング軸（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）はより大きく
 分離可能な投資です。需要が個人ではなく協働になったときに進めます。
 
-> **[roadmap](../roadmap/README-ja.md) との関係:** 本ページは根拠と全体的な方向を扱い、ロードマップは
+> **[roadmap](../../roadmaps/README-ja.md) との関係:** 本ページは根拠と全体的な方向を扱い、ロードマップは
 > 優先順位付きの生きたバックログ（次の具体項目）です。ここの項目が着手可能になるとロードマップに優先度・
 > 状態付きで現れ、出荷されると [architecture 実装状況](architecture.md#実装状況) へ移ります。3 者を同期させます。

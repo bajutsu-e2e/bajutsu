@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Roadmap & feature proposals (BE items)
-    url: https://github.com/bajutsu-e2e/bajutsu/tree/main/docs/roadmap
+    url: https://github.com/bajutsu-e2e/bajutsu/tree/main/roadmaps
     about: Substantial features are tracked as roadmap items (BE IDs), not issues. Browse what's planned or open one here.
   - name: Getting started & docs
     url: https://github.com/bajutsu-e2e/bajutsu/tree/main/docs

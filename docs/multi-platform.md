@@ -9,7 +9,7 @@
 > and the implementation plan live in the roadmap** — each item is linked below. Read this for the
 > direction; follow the roadmap items for the specifics.
 
-Related: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [vision](vision.md) · [roadmap → Platform expansion](roadmap/README.md#platform-expansion-android--web--flutter)
+Related: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [vision](vision.md) · [roadmap → Platform expansion](../roadmaps/README.md#platform-expansion-android--web--flutter)
 
 ---
 
@@ -55,12 +55,12 @@ already landed, and the rest is sequenced to pay the generalization cost where i
 
 | Step | Scope | Status / roadmap item |
 |---|---|---|
-| **Landed** | Platform-aware backend registry (`--backend` / `backend:` accept `ios`/`android`/`web`/`fake`) | Implemented — [BE-0042](roadmap/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) |
-| **Shared abstractions** | Extract an `Environment` Protocol; audit for leaked iOS-isms; the selector / config / determinism design | Planned — [BE-0009](roadmap/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) |
-| **Phase 1 — Web** | Playwright; **runs on the existing Linux gate, no Mac / emulator**; exercises the rich end of the capability model. Recommended first | Planned — [BE-0041](roadmap/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) |
-| **Phase 2 — Android** | adb + UI Automator; the coordinate-driven twin of idb | Planned — [BE-0007](roadmap/BE-0007-android-backend/BE-0007-android-backend.md) |
-| **Phase 3 — Flutter / hybrids** | Cross-rendered UIs need a semantics bridge, not a new OS actuator | Planned — [BE-0008](roadmap/BE-0008-flutter-support/BE-0008-flutter-support.md) |
-| **Cross-cutting** | Multi-platform is a strategic scope change (DESIGN / README / docs) | Planned — [BE-0010](roadmap/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) |
+| **Landed** | Platform-aware backend registry (`--backend` / `backend:` accept `ios`/`android`/`web`/`fake`) | Implemented — [BE-0042](../roadmaps/implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) |
+| **Shared abstractions** | Extract an `Environment` Protocol; audit for leaked iOS-isms; the selector / config / determinism design | Planned — [BE-0009](../roadmaps/proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) |
+| **Phase 1 — Web** | Playwright; **runs on the existing Linux gate, no Mac / emulator**; exercises the rich end of the capability model. Recommended first | Planned — [BE-0041](../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) |
+| **Phase 2 — Android** | adb + UI Automator; the coordinate-driven twin of idb | Planned — [BE-0007](../roadmaps/proposals/BE-0007-android-backend/BE-0007-android-backend.md) |
+| **Phase 3 — Flutter / hybrids** | Cross-rendered UIs need a semantics bridge, not a new OS actuator | Planned — [BE-0008](../roadmaps/proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) |
+| **Cross-cutting** | Multi-platform is a strategic scope change (DESIGN / README / docs) | Planned — [BE-0010](../roadmaps/proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) |
 
 **Why Web before Android**, even though Android is the closer architectural twin of idb: Web is the
 only platform that needs no macOS and no device emulator, so it fits inside the current
@@ -79,6 +79,6 @@ determinism-first, app-agnostic, and **AI is never the judge** — no new platfo
 the Tier-2 `run` / CI gate.
 
 > **How this relates to the roadmap.** This page is the overview; the prioritized, concrete plans are
-> the [Platform expansion](roadmap/README.md#platform-expansion-android--web--flutter) items above.
+> the [Platform expansion](../roadmaps/README.md#platform-expansion-android--web--flutter) items above.
 > When a platform ships, it also moves to the
 > [architecture status table](architecture.md#implementation-status).

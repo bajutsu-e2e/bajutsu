@@ -7,7 +7,7 @@ picking by hand races between concurrent branches. This script, run by the ``roa
 workflow on a pull request, allocates the next free IDs deterministically and rewrites the
 directories, files, and index tables.
 
-For each ``docs/roadmap/BE-XXXX-<slug>/`` placeholder (sorted by slug, so the order is
+For each ``roadmaps/proposals/BE-XXXX-<slug>/`` placeholder (sorted by slug, so the order is
 stable across runs and machines) it:
 
 1. allocates the next ID — ``max existing BE-NNNN + 1``, incrementing per item;
@@ -29,17 +29,22 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROADMAP = Path("docs/roadmap")
+ROADMAP = Path("roadmaps")
+# New items are proposals, so placeholders land here; IDs are global across both subdirs.
+CATEGORIES = ("implemented", "proposals")
+PLACEHOLDER_CATEGORY = "proposals"
 PLACEHOLDER = "BE-XXXX"
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-")
 INDEX_FILES = ("README.md", "README-ja.md")
 
 
 def existing_max_id() -> int:
-    """Highest already-allocated BE number, or 0 if there are none."""
+    """Highest already-allocated BE number across both categories, or 0 if there are none."""
     ids = [
         int(m.group(1))
-        for d in ROADMAP.iterdir()
+        for category in CATEGORIES
+        if (ROADMAP / category).is_dir()
+        for d in (ROADMAP / category).iterdir()
         if d.is_dir() and (m := NUMBERED_DIR_RE.match(d.name))
     ]
     return max(ids, default=0)
@@ -47,8 +52,11 @@ def existing_max_id() -> int:
 
 def placeholder_dirs() -> list[Path]:
     """Placeholder item directories, sorted by name for deterministic allocation."""
+    proposals = ROADMAP / PLACEHOLDER_CATEGORY
+    if not proposals.is_dir():
+        return []
     return sorted(
-        d for d in ROADMAP.iterdir() if d.is_dir() and d.name.startswith(f"{PLACEHOLDER}-")
+        d for d in proposals.iterdir() if d.is_dir() and d.name.startswith(f"{PLACEHOLDER}-")
     )
 
 
@@ -64,7 +72,7 @@ def allocate() -> list[tuple[str, str]]:
     for src_dir in placeholder_dirs():
         slug = src_dir.name[len(PLACEHOLDER) + 1 :]
         new_token = f"BE-{next_id:04d}"
-        new_dir = ROADMAP / f"{new_token}-{slug}"
+        new_dir = ROADMAP / PLACEHOLDER_CATEGORY / f"{new_token}-{slug}"
 
         git_mv(src_dir, new_dir)
         for f in sorted(new_dir.iterdir()):

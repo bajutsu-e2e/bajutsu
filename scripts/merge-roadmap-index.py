@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Git merge driver for the generated roadmap index pages (BE-0043).
 
-``docs/roadmap/README.md`` and ``README-ja.md`` carry marker-delimited tables that are
+``roadmaps/README.md`` and ``README-ja.md`` carry marker-delimited tables that are
 GENERATED from each ``BE-NNNN`` item's metadata (``scripts/build_roadmap_index.py``). Two
 branches that each add a roadmap item regenerate the same table and collide textually, even
 though the items are independent.

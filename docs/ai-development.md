@@ -123,23 +123,26 @@ rebased, and parallel work composes.
 
 ## Roadmap items: BE IDs (strict)
 
-The roadmap is **one directory per item** under [`roadmap/`](roadmap/README.md). Each item lives in
-`docs/roadmap/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its Japanese
-version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
-is a **zero-padded, 4-digit, monotonically increasing** ID.
+The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
+`roadmaps/<implemented|proposals>/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
+Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
+is a **zero-padded, 4-digit, monotonically increasing** ID. Shipped items (`Status: Implemented`) live under
+`roadmaps/implemented/`; everything still in flight lives under `roadmaps/proposals/`.
 
 When you add a roadmap item:
 
-1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1. Find the current max with:
+1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, counting both folders. Find the current
+   max with:
    ```bash
-   ls -d docs/roadmap/BE-*/ | sort | tail -1
+   ls -d roadmaps/{implemented,proposals}/BE-*/ | sort | tail -1
    ```
    Never reuse, skip, or guess a number.
-2. **Create the item directory and both language files** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   (English) and `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
+2. **Create the item directory and both language files** under `roadmaps/proposals/` (a new item is always a
+   proposal first) — `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
+   (English) and `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Do not
    hand-edit the index tables** — they are generated from each item's own metadata. Run
    `make roadmap-index` (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the
-   `<!-- GENERATED:* -->` markers in **both** index pages ([en](roadmap/README.md), [ja](roadmap/README-ja.md)).
+   `<!-- GENERATED:* -->` markers in **both** index pages ([en](../roadmaps/README.md), [ja](../roadmaps/README-ja.md)).
    The item's `Track` + `Topic` decide which section it lands in, so an item in an existing topic needs no
    manual table edit; `tests/test_roadmap_index.py` (run by `make test`) fails if the committed index drifts.
    A brand-new topic also needs its own marked section and a `Section` entry in the script.
@@ -159,8 +162,9 @@ section the item appears in:
 | `Proposal` · `Proposal (deferred)` | **Proposals** — under consideration |
 
 As an item advances, **update its Status** and regenerate the index (the row moves to the right group
-automatically) rather than renaming the file. Milestones M1–M4 are `BE-0001`–`BE-0004` (accepted &
-implemented).
+automatically). When it ships, set `Status: Implemented` and **move its directory** from
+`roadmaps/proposals/` to `roadmaps/implemented/`, keeping the same ID and slug. Milestones M1–M4 are
+`BE-0001`–`BE-0004` (accepted & implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
 

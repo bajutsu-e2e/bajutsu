@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate the roadmap index tables in README.md / README-ja.md from per-item metadata.
 
-Every ``docs/roadmap/BE-NNNN-<slug>/`` item already carries the metadata an index row needs
-(``Status`` / ``Track`` / ``Topic`` / ``Origin``) plus its H1 title. This script reads that
+Every ``roadmaps/<implemented|proposals>/BE-NNNN-<slug>/`` item already carries the metadata an
+index row needs (``Status`` / ``Track`` / ``Topic`` / ``Origin``) plus its H1 title. This reads
 metadata and regenerates the **marker-delimited** table bodies in both index pages, so a
 roadmap PR only ever touches its own directory — the shared index never needs a hand-edit,
 removing the single largest merge-conflict source (BE-0043). The hand-written section prose
@@ -26,7 +26,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-ROADMAP = Path("docs/roadmap")
+ROADMAP = Path("roadmaps")
+CATEGORIES = ("implemented", "proposals")  # each item lives under one; it prefixes its links
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
 FIELD_RE = re.compile(r"^\* ([^:]+): (.+)$", re.MULTILINE)
@@ -143,6 +144,7 @@ class Entry:
 
     id: str
     slug: str
+    category: str  # subdirectory the item lives in ("implemented" / "proposals")
     title: str
     status: str  # raw status, before display mapping
     origin: str | None
@@ -190,7 +192,7 @@ def status_display(raw: str, lang_code: str) -> str:
 def render_row(entry: Entry, lang_code: str, has_origin: bool) -> str:
     """Render one Markdown table row for an item in the given language."""
     lang = LANG_BY_CODE[lang_code]
-    href = f"{entry.id}-{entry.slug}/{entry.id}-{entry.slug}{lang.suffix}.md"
+    href = f"{entry.category}/{entry.id}-{entry.slug}/{entry.id}-{entry.slug}{lang.suffix}.md"
     cells = [f"[{entry.id}]({href})", entry.title, status_display(entry.status, lang_code)]
     if has_origin:
         cells.append(entry.origin or "")
@@ -225,33 +227,42 @@ def replace_region(text: str, key: str, body: str) -> str:
 
 
 def load_items(roadmap: Path) -> list[Item]:
-    """Read every BE item directory into an Item with per-language render fields."""
+    """Read every BE item directory into an Item with per-language render fields.
+
+    Items live under ``roadmaps/<category>/BE-NNNN-<slug>/`` — the category (the directory the
+    item was filed in by its Status) prefixes every link the index renders to it.
+    """
     items: list[Item] = []
-    for d in sorted(roadmap.iterdir()):
-        if not d.is_dir():
+    for category in CATEGORIES:
+        category_dir = roadmap / category
+        if not category_dir.is_dir():
             continue
-        match = NUMBERED_DIR_RE.match(d.name)
-        if not match:
-            continue
-        item_id, slug = f"BE-{match.group(1)}", match.group(2)
+        for d in sorted(category_dir.iterdir()):
+            if not d.is_dir():
+                continue
+            match = NUMBERED_DIR_RE.match(d.name)
+            if not match:
+                continue
+            item_id, slug = f"BE-{match.group(1)}", match.group(2)
 
-        by_lang: dict[str, Entry] = {}
-        track = topic = ""
-        for lang in LANGS:
-            path = d / f"{item_id}-{slug}{lang.suffix}.md"
-            title, fields = parse_metadata(path.read_text(encoding="utf-8"))
-            by_lang[lang.code] = Entry(
-                id=item_id,
-                slug=slug,
-                title=title,
-                status=fields[lang.field_status],
-                origin=fields.get(lang.field_origin),
-            )
-            if lang.code == "en":
-                track = track_label(fields[lang.field_track])
-                topic = fields[lang.field_topic]
+            by_lang: dict[str, Entry] = {}
+            track = topic = ""
+            for lang in LANGS:
+                path = d / f"{item_id}-{slug}{lang.suffix}.md"
+                title, fields = parse_metadata(path.read_text(encoding="utf-8"))
+                by_lang[lang.code] = Entry(
+                    id=item_id,
+                    slug=slug,
+                    category=category,
+                    title=title,
+                    status=fields[lang.field_status],
+                    origin=fields.get(lang.field_origin),
+                )
+                if lang.code == "en":
+                    track = track_label(fields[lang.field_track])
+                    topic = fields[lang.field_topic]
 
-        items.append(Item(id=item_id, slug=slug, track=track, topic=topic, by_lang=by_lang))
+            items.append(Item(id=item_id, slug=slug, track=track, topic=topic, by_lang=by_lang))
     return items
 
 
