@@ -133,8 +133,8 @@
         </div>
         <div class="subhint">Crawl explores the app breadth-first over the deterministic engine &mdash; no AI &mdash; discovering screens and the transitions between them. It is a tool for discovery, never a pass/fail gate. Stops at the first of Max screens / Max steps.</div>
         <div class="checks">
-          <label><input type="checkbox" id="crawl-erase" checked> erase device first
-            <span class="hint">Wipe the simulator before crawling so the app starts from onboarding (on by default). Uncheck to crawl from the app's current state.</span></label>
+          <label><input type="checkbox" id="crawl-erase"> erase device first
+            <span class="hint">Wipe the simulator before crawling so the app starts from onboarding. Off by default — the app is reinstalled fresh either way; check to also wipe all apps / data / settings first.</span></label>
         </div>
         <button class="run" id="crawl-go" data-idle="Start crawl">Start crawl</button>
         <button class="stop" id="crawl-stop" hidden>Stop</button>
