@@ -40,23 +40,31 @@ class Proposal:
 
 
 class ActionProposer(Protocol):
-    def propose(self, elements: list[base.Element], screenshot: bytes | None) -> Proposal: ...
+    def propose(
+        self,
+        elements: list[base.Element],
+        screenshot: bytes | None,
+        candidates: list[crawl.Action],
+    ) -> Proposal: ...
 
 
 def ai_guide(proposer: ActionProposer, report: Report | None = None) -> crawl.Guide:
-    """Adapt an `ActionProposer` to the crawl `Guide` signature: capture the screen, ask the
-    proposer, narrate its reasoning + chosen operations (via `report`), then union its actions
-    with the deterministic ones (proposer first, so its realistic input values win on de-dup)."""
+    """Adapt an `ActionProposer` to the crawl `Guide` signature, running the BE-0038 pipeline:
+    first **inspect deterministically** (`candidate_actions`), then hand those operations + the
+    screen to the proposer so it can reason about what's possible and **combine** them (realistic
+    inputs, multi-field fills, id-less elements); finally union the proposal with the deterministic
+    baseline (proposer first, so its values win on de-dup), narrating its reasoning via `report`."""
 
     def guide(driver: base.Driver, elements: list[base.Element]) -> list[crawl.Action]:
         shot = _screenshot_bytes(driver)
-        proposal = proposer.propose(elements, shot)
+        candidates = crawl.candidate_actions(elements)  # deterministic inspection, fed to the AI
+        proposal = proposer.propose(elements, shot, candidates)
         if report is not None:
             if proposal.thought:
                 report(f"🤔 {proposal.thought}")
             for a in proposal.actions:
                 report(f"   → try {a.describe()}")
-        return _dedup([*proposal.actions, *crawl.candidate_actions(elements)])
+        return _dedup([*proposal.actions, *candidates])
 
     return guide
 
@@ -88,17 +96,19 @@ def make_guide(kind: str, report: Report | None = None) -> crawl.Guide | None:
 # --- Claude-backed proposer ---------------------------------------------------------------
 
 _SYSTEM = """You drive a breadth-first crawl of an iOS app to discover as many distinct screens \
-as possible. Given the current screen (a screenshot and its element list), propose the set of \
-operations most likely to reveal a NEW screen or to unblock a disabled control whose enabling \
-condition is not obvious.
+as possible. You are given the current screen (a screenshot and its element list) and the \
+operations a DETERMINISTIC inspector already found here. Reason about what is possible and \
+propose the operations most likely to reveal a NEW screen or to unblock a disabled control whose \
+enabling condition is not obvious.
 
 Rules:
-- Address each element by `id` when it has one (most stable), else by `label` (+ `index` to \
-disambiguate duplicates).
-- For a text field, propose a `type` with a realistic value for what it asks (a valid email, a \
-password meeting common rules, a plausible name/number) — this is how you enable a submit button \
-that stays disabled until the form is valid.
-- Prefer operations that change the screen; skip pure navigation you've clearly already covered.
+- Build on the inspector's operations: keep the useful ones, and **combine** them when a single \
+operation isn't enough — e.g. a `fill` that enters several fields at once so a submit button \
+validates, since a button can stay disabled until the whole form is valid.
+- For a text field, supply a realistic value for what it asks (a valid email, a password meeting \
+common rules, a plausible name/number) — this is how you enable a control the placeholder can't.
+- Add any operation the inspector skipped (e.g. an element with no id, addressed by `label`).
+- Address each element by `id` when it has one (most stable), else by `label` (+ `index`).
 - You only choose what to TRY. You never decide pass/fail and never judge results."""
 
 _PROPOSE_TOOL: dict[str, Any] = {
@@ -175,7 +185,9 @@ def _render_elements(elements: list[base.Element]) -> str:
     return "\n".join(lines) or "(no addressable elements)"
 
 
-def _content(elements: list[base.Element], screenshot: bytes | None) -> list[dict[str, Any]]:
+def _content(
+    elements: list[base.Element], screenshot: bytes | None, candidates: list[crawl.Action]
+) -> list[dict[str, Any]]:
     content: list[dict[str, Any]] = []
     if screenshot:
         content.append(
@@ -188,7 +200,12 @@ def _content(elements: list[base.Element], screenshot: bytes | None) -> list[dic
                 },
             }
         )
-    content.append({"type": "text", "text": "Screen elements:\n" + _render_elements(elements)})
+    found = "\n".join(f"- {a.describe()}" for a in candidates) or "(none)"
+    text = (
+        f"Screen elements:\n{_render_elements(elements)}\n\n"
+        f"Operations the deterministic inspector already found here:\n{found}"
+    )
+    content.append({"type": "text", "text": text})
     return content
 
 
@@ -253,14 +270,19 @@ class ClaudeActionProposer:
             self._client = anthropic.Anthropic()
         return self._client
 
-    def propose(self, elements: list[base.Element], screenshot: bytes | None) -> Proposal:
+    def propose(
+        self,
+        elements: list[base.Element],
+        screenshot: bytes | None,
+        candidates: list[crawl.Action],
+    ) -> Proposal:
         message = self._ensure_client().messages.create(
             model=self._model,
             max_tokens=self._max_tokens,
             system=[{"type": "text", "text": _SYSTEM, "cache_control": {"type": "ephemeral"}}],
             tools=[_PROPOSE_TOOL],
             tool_choice={"type": "tool", "name": "propose_actions"},
-            messages=[{"role": "user", "content": _content(elements, screenshot)}],
+            messages=[{"role": "user", "content": _content(elements, screenshot, candidates)}],
         )
         block = next((b for b in message.content if b.type == "tool_use"), None)
         if block is None:

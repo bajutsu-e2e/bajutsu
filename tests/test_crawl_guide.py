@@ -19,9 +19,23 @@ class _FakeProposer:
     def __init__(self, actions: list[crawl.Action], thought: str = "") -> None:
         self._actions = actions
         self._thought = thought
+        self.seen_candidates: list[crawl.Action] | None = None  # what the inspector fed us
 
-    def propose(self, elements: list[dict], screenshot: bytes | None) -> Proposal:
+    def propose(
+        self, elements: list[dict], screenshot: bytes | None, candidates: list[crawl.Action]
+    ) -> Proposal:
+        self.seen_candidates = candidates
         return Proposal(actions=list(self._actions), thought=self._thought)
+
+
+def test_ai_guide_feeds_the_deterministic_candidates_to_the_proposer() -> None:
+    """The pipeline inspects deterministically first, then hands those operations to the AI so it
+    can reason about and combine them."""
+    elements = [el(identifier="a", traits=["button"]), el(identifier="f", traits=["textField"])]
+    proposer = _FakeProposer([])
+    ai_guide(proposer)(FakeDriver(screen=elements), elements)
+    keys = {a.key for a in (proposer.seen_candidates or [])}
+    assert "a" in keys and "f" in keys  # the deterministic tap + type were fed to the AI
 
 
 def test_ai_guide_unions_proposer_with_deterministic_and_dedups() -> None:
