@@ -63,6 +63,9 @@ main[hidden]{display:none}
 .gnode.structural{border-style:dashed;border-color:var(--mut)}
 .gnode.member{border-color:var(--mut);border-left:3px solid var(--acc)}
 .gnode.ggroup{border-style:double;border-width:3px}
+/* Frontier units — the leading edge of exploration (untried operations remain): an amber border
+   and glow so where the crawl is still working stands out from fully-explored screens. */
+.gnode.frontier{border-color:var(--run);box-shadow:0 0 0 2px var(--run)}
 .gnode:hover{box-shadow:0 0 0 2px var(--acc)}
 /* The screenshot fills the card's full width on top (cropped to the top of the screen); hides
    itself when the shot is missing so the label+info takes over. */

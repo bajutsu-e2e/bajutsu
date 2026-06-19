@@ -367,20 +367,22 @@ function unitHTML(u,p,plan,runId,NW,NH){
   // Tooltip lists the queued operations (a vision-located tab shows as "tap tab '…'").
   const tip=planned?`${planned} untried operation(s) — the live frontier:\n`+ops.join('\n'):'';
   const badge=planned?`<span class="gplan" title="${esc(tip)}">⏳ ${planned}</span>`:'';
+  // A frontier unit still has untried operations — the leading edge of exploration, coloured apart.
+  const front=planned?' frontier':'';
   const style=`left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px`;
   // A real <img> (auto-hiding on error) so the screenshot loads reliably and reads at a glance.
   const shotImg=fp=>`<img class="gshot" src="${shotURL(runId,fp)}" alt="" loading="lazy" onerror="this.classList.add('missing')">`;
   if(u.kind==='group'){
     const ids=u.members[0].ids||[];
     const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):'screen';
-    return `<div class="gnode ggroup" data-group="${esc(u.key)}" style="${style}" title="Same UI in ${u.members.length} states — click to expand">`+
+    return `<div class="gnode ggroup${front}" data-group="${esc(u.key)}" style="${style}" title="Same UI in ${u.members.length} states — click to expand">`+
       shotImg(u.members[0].fingerprint)+  // the first state's shot, as a representative preview
       `<button class="gexpand" type="button" data-group="${esc(u.key)}">▸ Expand ${u.members.length} states</button>`+
       `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}</span>${badge}</div>`+
       `<div class="gsub">${u.members.length} states · ${ids.length} ids</div></div></div>`;
   }
   const n=u.node,ids=n.ids||[];
-  const cls='gnode'+(n.kind==='structural'?' structural':'')+(u.kind==='member'?' member':'');
+  const cls='gnode'+(n.kind==='structural'?' structural':'')+(u.kind==='member'?' member':'')+front;
   const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):n.fingerprint.slice(0,7);
   const info=`${ids.length} ids · ${(n.actions||[]).length} actions`+((n.blocked||[]).length?` · 🔒 ${n.blocked.length}`:'');
   const collapse=u.kind==='member'?`<button class="gcollapse" type="button" data-group="${esc(u.key)}">▾ Collapse group</button>`:'';
