@@ -377,7 +377,6 @@ function openShot(fp){
   if(!crawlGraphData)return;
   const nodes=crawlGraphData.nodes||[],edges=crawlGraphData.edges||[];
   const node=nodes.find(n=>n.fingerprint===fp);if(!node)return;
-  const byFp=new Map(nodes.map(n=>[n.fingerprint,n]));
   $('#shotimg').src=shotURL(crawlGraphRunId,fp);
   $('#shottitle').textContent=`${fp.slice(0,7)}${node.kind==='structural'?' (structural)':''} · ${(node.ids||[]).length} ids · ${(node.actions||[]).length} actions`;
   const out=edges.filter(e=>e.src===fp);
