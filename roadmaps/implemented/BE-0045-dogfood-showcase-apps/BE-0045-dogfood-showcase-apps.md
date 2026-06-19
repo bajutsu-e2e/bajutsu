@@ -3,8 +3,9 @@
 # BE-0045 — Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired)
 
 * Proposal: [BE-0045](BE-0045-dogfood-showcase-apps.md)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
+* Status: **Implemented**
+* Implementing PR: [#85](https://github.com/bajutsu-e2e/bajutsu/pull/85)
+* Track: [Accepted](../../README.md#accepted)
 * Topic: Dogfood fixtures (demo apps)
 * Origin: Dogfooding
 
@@ -12,7 +13,7 @@
 
 A purpose-built fixture suite that becomes Bajutsu's primary dogfood target — the practice
 ground where `record` (Tier 1 authoring), `crawl` (Tier 1 exploration,
-[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
+[BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
 and `run` (Tier 2 deterministic gate) are all exercised against one realistic app. The suite
 ships **the same app written twice** — once in UIKit, once in SwiftUI — and **each in two
 accessibility variants** (identifiers on / off), for four installable products from two
@@ -54,7 +55,7 @@ value of accessibility work — a demo no single-variant fixture can give.
 
 **3. The toolkit axis catches element-tree differences early.** idb's element-tree
 normalization is a known risk area, especially for SwiftUI standard controls
-([DESIGN §11](../../../DESIGN.md); [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
+([DESIGN §11](../../../DESIGN.md); [BE-0006](../../proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
 A UIKit twin that exposes the *same* identifier contract as the SwiftUI twin lets us run the
 *same* scenario set across both and surface where the two toolkits' a11y trees diverge — a
 regression net for the driver, free, as a byproduct of the fixture existing.
@@ -62,9 +63,9 @@ regression net for the driver, free, as a byproduct of the fixture existing.
 **4. A stable base for practising future features.** Because per-app differences live entirely
 in config ([DESIGN §8](../../../DESIGN.md)), the showcase is the natural target to try new
 capabilities against without inventing a throwaway app each time: visual-regression baselines
-([BE-0029](../../implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)),
+([BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)),
 data-driven runs, secret redaction, the crawl screen-map, and `doctor`'s whole-app coverage
-([BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)) all have a ready,
+([BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)) all have a ready,
 representative subject.
 
 This respects every prime directive ([CLAUDE.md](../../../CLAUDE.md)): it is purely a test
@@ -104,7 +105,7 @@ The shape:
   set, and the demo wiring (`Makefile`, READMEs). `run` and `doctor` work against this fixture
   today; `record` works today against the `-noax` apps.
 - **Forward-looking:** `crawl` is itself a proposal
-  ([BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
+  ([BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
   and not yet implemented — the showcase is built to be its first real target (the seed config
   and expected screen-map notes ship as `crawl/` test data), but the crawl demo lands when
   BE-0038 does.
@@ -127,13 +128,13 @@ The shape:
   actually means. A build-time condition produces an honestly identifier-free product.
 - **Skip UIKit, SwiftUI only.** Rejected: UIKit is still the larger installed base, and the
   toolkit axis is precisely where idb's element-tree normalization differences surface
-  ([BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
+  ([BE-0006](../../proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
 
 ## References
 
 - [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md) ([ja](../../../demos/showcase/SPEC.ja.md)) — the screen-by-screen contract
 - [DESIGN §2 / §5 / §7.1 / §7.3 / §8 / §11](../../../DESIGN.md) — determinism, stability ladder, per-app onboarding, identifier naming, config, risks
-- [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — autonomous crawl exploration (this fixture's forward-looking target)
-- [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — doctor / onboarding (consumes this fixture's coverage)
-- [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — idb element-tree normalization (the toolkit axis stresses this)
+- [BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — autonomous crawl exploration (this fixture's forward-looking target)
+- [BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — doctor / onboarding (consumes this fixture's coverage)
+- [BE-0006](../../proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — idb element-tree normalization (the toolkit axis stresses this)
 - [`demos/features/app`](../../../demos/features/app) — the `sample` fixture this supersedes

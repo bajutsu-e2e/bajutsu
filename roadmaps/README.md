@@ -148,6 +148,16 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Implemented |
 <!-- /GENERATED:accepted-dev-infra -->
 
+### Dogfood fixtures (demo apps)
+
+Purpose-built test subjects that exercise the commands end-to-end. The showcase suite is the next-generation dogfood target — the same app written in UIKit and SwiftUI, each in an accessibility-on / accessibility-off variant (four products, two codebases), so `run` (id-based), `record` (no-id fallback), `doctor` (Ready vs Blocked), and the forthcoming `crawl` ([BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) all have one rich, representative subject. The screen-by-screen contract lives in [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md).
+
+<!-- GENERATED:accepted-dogfood -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
+<!-- /GENERATED:accepted-dogfood -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *Accepted* once a decision is made.
@@ -253,16 +263,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | Proposal | Autify VAX |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
-
-### Dogfood fixtures (demo apps)
-
-Purpose-built test subjects that exercise the commands end-to-end. The showcase suite is the next-generation dogfood target — the same app written in UIKit and SwiftUI, each in an accessibility-on / accessibility-off variant (four products, two codebases), so `run` (id-based), `record` (no-id fallback), `doctor` (Ready vs Blocked), and the forthcoming `crawl` ([BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) all have one rich, representative subject. The screen-by-screen contract lives in [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md).
-
-<!-- GENERATED:proposals-dogfood -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0045](proposals/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Proposal | Dogfooding |
-<!-- /GENERATED:proposals-dogfood -->
 
 ## Not adopting (already covered / out of scope)
 

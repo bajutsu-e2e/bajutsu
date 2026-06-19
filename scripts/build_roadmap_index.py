@@ -116,6 +116,7 @@ SECTIONS: tuple[Section, ...] = (
         "Development infrastructure (contributor workflow)",
         False,
     ),
+    Section("accepted-dogfood", "Accepted", "Dogfood fixtures (demo apps)", True),
     Section("proposals-on-device", "Proposals", "On-device validation (M1 close-out)", False),
     Section(
         "proposals-platform", "Proposals", "Platform expansion (Android / Web / Flutter)", False
@@ -135,7 +136,6 @@ SECTIONS: tuple[Section, ...] = (
         "Candidates from competitive research (MagicPod / Autify)",
         True,
     ),
-    Section("proposals-dogfood", "Proposals", "Dogfood fixtures (demo apps)", True),
 )
 
 
