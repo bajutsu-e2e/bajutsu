@@ -448,7 +448,7 @@ function renderGraph(data,runId){
   if(pf)pf.style.width=pct+'%';
   if(pp)pp.textContent=pct+'%';
   const box=$('#crawl-graph');
-  if(!nodes.length){box.innerHTML='<div class="empty">Reaching the first screen…</div>';return}
+  if(!nodes.length){box.innerHTML='<div class="empty">Reaching the first screen…</div>';return;}
   // Group same-screen states by UI, then resolve to laid-out units: a collapsed group is one unit; an
   // expanded group (or a lone screen) contributes one unit per state. unitOf maps each fingerprint to
   // its unit. Re-run every render so the graph re-optimizes as the plan grows.
@@ -569,6 +569,16 @@ function openShot(fp){
     planned.map(op=>{const rect=targets[op],rd=rect?` data-rect="${rect.join(',')}"`:'';
       return `<div class="planrow"${rd}>${esc(op)}</div>`}).join('');
   $('#shotnext').innerHTML=h;
+  // Overlay every actionable spot on the shot (revealed on hover): one taps to a known destination
+  // (an outgoing edge — clickable to step there), the rest are still-pending operations. So the shot
+  // itself is navigable, the reverse of hovering a transition row to find its tap location.
+  const outBy=new Map(out.map(e=>[e.action,e]));
+  $('#shothots').innerHTML=Object.entries(targets).map(([desc,r])=>{
+    const e=outBy.get(desc),go=!!e;
+    const st=`left:${r[0]*100}%;top:${r[1]*100}%;width:${r[2]*100}%;height:${r[3]*100}%`;
+    const tip=go?`${desc} → ${e.dst.slice(0,7)}`:`${desc} · not yet explored`;
+    return `<div class="hot${go?' go':' pend'}" style="${st}"${go?` data-dst="${esc(e.dst)}"`:''} title="${esc(tip)}"></div>`;
+  }).join('');
   $('#shotmodal').hidden=false;
 }
 // Show / hide the tap-location highlight over the screenshot. The rect is [x,y,w,h] as fractions
@@ -587,9 +597,11 @@ function shotStep(dir){
   const e=dir==='fwd'?edges.find(x=>x.src===shotFp&&x.dst!==shotFp):edges.find(x=>x.dst===shotFp&&x.src!==shotFp);
   if(e)openShot(dir==='fwd'?e.dst:e.src);
 }
-function closeShot(){$('#shotmodal').hidden=true;$('#shotimg').removeAttribute('src');shotFp=null;hideHi()}
+function closeShot(){$('#shotmodal').hidden=true;$('#shotimg').removeAttribute('src');$('#shothots').innerHTML='';shotFp=null;hideHi()}
 $('#shotmodal').addEventListener('click',e=>{if(e.target===$('#shotmodal')||e.target===$('#shotclose'))closeShot()});
 $('#shotnext').addEventListener('click',e=>{const b=e.target.closest('.nextrow');if(b&&b.dataset.fp)openShot(b.dataset.fp)});
+// Click an actionable spot on the shot that has a known destination to step there.
+$('#shothots').addEventListener('click',e=>{const h=e.target.closest('.hot.go');if(h&&h.dataset.dst)openShot(h.dataset.dst)});
 // Hovering a transition / planned row with a known tap location highlights it on the screenshot.
 $('#shotnext').addEventListener('mouseover',e=>{const r=e.target.closest('[data-rect]');if(r)showHi(r.dataset.rect)});
 $('#shotnext').addEventListener('mouseout',e=>{if(e.target.closest('[data-rect]'))hideHi()});
