@@ -329,6 +329,23 @@ def test_action_fill_types_into_every_field() -> None:
     assert ("tap", {"id": "b"}) in driver.actions and ("type", "y") in driver.actions
 
 
+def test_action_tap_point_scales_a_normalized_coordinate_to_the_screen() -> None:
+    """A vision-located tab is stored normalized [0,1] and replayed against the live screen size
+    (the largest element frame), so the same Action taps the same point regardless of pixel scale."""
+    driver = FakeDriver(screen=[el(identifier="root", frame=(0, 0, 400, 800))])
+    crawl.Action("tap_point", label="Search", point=(0.5, 0.95)).perform(driver)
+    assert ("tap_point", (200.0, 760.0)) in driver.actions
+
+
+def test_action_tap_point_describe_and_key() -> None:
+    a = crawl.Action("tap_point", label="Home", point=(0.1, 0.9))
+    b = crawl.Action("tap_point", point=(0.1, 0.9))  # same coordinate, no label
+    assert a.describe() == "tap tab 'Home'"
+    assert b.describe() == "tap point (0.10, 0.90)"
+    # The coordinate keys de-dup, so the labelled and unlabelled taps at the same point collapse.
+    assert a.key == b.key
+
+
 def test_fingerprint_distinguishes_selected_toggle() -> None:
     off = [el(identifier="s", traits=["switch"]), el(identifier="t", traits=["staticText"])]
     on = [

@@ -7,12 +7,22 @@ deterministic baseline (proposer wins), the tool-call parsing, and guide selecti
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from conftest import el
 
-from bajutsu import crawl
+from bajutsu import crawl, crawl_tabs
 from bajutsu.crawl_guide import Proposal, _actions_from, _proposal_from, ai_guide, make_guide
 from bajutsu.drivers.fake import FakeDriver
+
+
+class _ShotDriver(FakeDriver):
+    """FakeDriver whose screenshot writes real bytes, so the guide's vision path has an image."""
+
+    def screenshot(self, path: str) -> None:
+        Path(path).write_bytes(b"\x89PNG\r\n\x1a\n fake")
+        self.actions.append(("screenshot", path))
 
 
 class _FakeProposer:
@@ -83,6 +93,44 @@ def test_ai_guide_falls_back_to_deterministic_when_proposer_is_empty() -> None:
     elements = [el(identifier="a", traits=["button"]), el(identifier="b", traits=["button"])]
     actions = ai_guide(_FakeProposer([]))(FakeDriver(screen=elements), elements, _ctx())
     assert {a.target for a in actions} == {"a", "b"}  # the deterministic baseline still drives
+
+
+class _FakeTabLocator:
+    """A scripted tab locator: returns its preset tabs and records that it was asked."""
+
+    def __init__(self, tabs: list[crawl_tabs.TabTarget]) -> None:
+        self._tabs = tabs
+        self.calls = 0
+
+    def locate(self, screenshot_png: bytes) -> list[crawl_tabs.TabTarget]:
+        self.calls += 1
+        return list(self._tabs)
+
+
+def test_ai_guide_uses_vision_tabs_only_when_the_tree_exposes_none() -> None:
+    """When idb can't address the tab bar (no `tab`-trait element), the vision locator supplies a
+    coordinate tap per tab, ordered first so the crawl switches tabs before drilling in. When the
+    tree already exposes tabs, the locator is skipped entirely."""
+    no_tabs = [el(identifier="home.start", traits=["button"])]
+    locator = _FakeTabLocator(
+        [crawl_tabs.TabTarget(0.2, 0.95, "Home"), crawl_tabs.TabTarget(0.8, 0.95, "Me")]
+    )
+    actions = ai_guide(_FakeProposer([]), tab_locator=locator)(
+        _ShotDriver(screen=no_tabs), no_tabs, _ctx()
+    )
+    assert locator.calls == 1
+    taps = [a for a in actions if a.kind == "tap_point"]
+    assert [a.label for a in taps] == ["Home", "Me"]  # both tabs, left to right
+    assert actions[0].kind == "tap_point"  # tabs first
+    assert taps[0].point == (0.2, 0.95)
+
+    has_tabs = [el(identifier="tab.home", traits=["tab"]), el(identifier="tab.me", traits=["tab"])]
+    locator2 = _FakeTabLocator([crawl_tabs.TabTarget(0.5, 0.95, "X")])
+    actions2 = ai_guide(_FakeProposer([]), tab_locator=locator2)(
+        FakeDriver(screen=has_tabs), has_tabs, _ctx()
+    )
+    assert locator2.calls == 0  # the deterministic tab taps already cover it
+    assert not any(a.kind == "tap_point" for a in actions2)
 
 
 def test_actions_from_parses_skips_malformed_and_caps() -> None:
