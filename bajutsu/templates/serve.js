@@ -372,27 +372,49 @@ $('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBo
 $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomreset').addEventListener('click',resetView);
 
-// ---- lightbox: enlarge a screen's shot and list where it transitions next ----
+// ---- lightbox: enlarge a screen's shot and step through the transitions (before / after) ----
+let shotFp=null;  // the screen currently shown, so prev/next can walk the graph from it
+// One row per transition: the action and the other screen's thumbnail, clickable to step there.
+function transitionRows(list,field){
+  return list.map(e=>{const fp=e[field];
+    return `<button class="nextrow" data-fp="${esc(fp)}">`+
+      `<img src="${shotURL(crawlGraphRunId,fp)}" alt="" onerror="this.style.visibility='hidden'">`+
+      `<span class="nxtxt"><span class="nxa">${esc(e.action)}</span>`+
+      `<span class="nxf">${field==='dst'?'→':'←'} ${esc(fp.slice(0,7))}${fp===shotFp?' (self)':''}</span></span></button>`;
+  }).join('');
+}
 function openShot(fp){
   if(!crawlGraphData)return;
   const nodes=crawlGraphData.nodes||[],edges=crawlGraphData.edges||[];
   const node=nodes.find(n=>n.fingerprint===fp);if(!node)return;
+  shotFp=fp;
   $('#shotimg').src=shotURL(crawlGraphRunId,fp);
   $('#shottitle').textContent=`${fp.slice(0,7)}${node.kind==='structural'?' (structural)':''} · ${(node.ids||[]).length} ids · ${(node.actions||[]).length} actions`;
-  const out=edges.filter(e=>e.src===fp);
-  let h=out.length?`<div class="nexthd">Goes to ${out.length} screen(s):</div>`:'<div class="nexthd muted">No outgoing transitions discovered.</div>';
-  h+=out.map(e=>{const self=e.dst===fp;
-    return `<button class="nextrow" data-fp="${esc(e.dst)}">`+
-      `<img src="${shotURL(crawlGraphRunId,e.dst)}" alt="" onerror="this.style.visibility='hidden'">`+
-      `<span class="nxtxt"><span class="nxa">${esc(e.action)}</span>`+
-      `<span class="nxf">→ ${esc(e.dst.slice(0,7))}${self?' (self)':''}</span></span></button>`;
-  }).join('');
+  const out=edges.filter(e=>e.src===fp),inc=edges.filter(e=>e.dst===fp);
+  // Arrows step to the first transition before / after this screen (the lists below pick a specific one).
+  $('#shotprev').disabled=!inc.length;$('#shotfwd').disabled=!out.length;
+  let h=`<div class="nexthd${out.length?'':' muted'}">Goes to ${out.length} screen(s) →</div>`+transitionRows(out,'dst');
+  h+=`<div class="nexthd${inc.length?'':' muted'}">← Comes from ${inc.length} screen(s)</div>`+transitionRows(inc,'src');
   $('#shotnext').innerHTML=h;
   $('#shotmodal').hidden=false;
 }
-function closeShot(){$('#shotmodal').hidden=true;$('#shotimg').removeAttribute('src')}
+// Step to the screen after (a transition out of) or before (a transition into) the current one.
+function shotStep(dir){
+  if(!crawlGraphData||shotFp==null)return;
+  const edges=crawlGraphData.edges||[];
+  const e=dir==='fwd'?edges.find(x=>x.src===shotFp&&x.dst!==shotFp):edges.find(x=>x.dst===shotFp&&x.src!==shotFp);
+  if(e)openShot(dir==='fwd'?e.dst:e.src);
+}
+function closeShot(){$('#shotmodal').hidden=true;$('#shotimg').removeAttribute('src');shotFp=null}
 $('#shotmodal').addEventListener('click',e=>{if(e.target===$('#shotmodal')||e.target===$('#shotclose'))closeShot()});
 $('#shotnext').addEventListener('click',e=>{const b=e.target.closest('.nextrow');if(b&&b.dataset.fp)openShot(b.dataset.fp)});
+$('#shotprev').addEventListener('click',()=>shotStep('prev'));
+$('#shotfwd').addEventListener('click',()=>shotStep('fwd'));
+// Arrow keys walk the transitions; Esc closes — only while the lightbox is open.
+document.addEventListener('keydown',e=>{
+  if($('#shotmodal').hidden)return;
+  if(e.key==='ArrowRight')shotStep('fwd');else if(e.key==='ArrowLeft')shotStep('prev');else if(e.key==='Escape')closeShot();
+});
 
 initTheme();
 loadConfig();
