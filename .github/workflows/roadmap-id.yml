@@ -1,7 +1,7 @@
 # Allocate permanent BE IDs to roadmap items authored with the BE-XXXX placeholder.
 # The ideation skill leaves the ID undetermined so concurrent branches never
-# race for a number; this workflow assigns the next free IDs at PR time and pushes the
-# rename back onto the branch.
+# race for a number; this workflow assigns the next free IDs at PR time, pushes the
+# rename back onto the branch, and rewrites the PR title's BE-XXXX to the allocated ID.
 name: roadmap-id
 
 on:
@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write   # to rewrite the PR title's BE-XXXX placeholder
 
 concurrency:
   group: roadmap-id-${{ github.head_ref }}
@@ -29,7 +30,16 @@ jobs:
           fetch-depth: 0
 
       - name: Allocate placeholder IDs
-        run: python3 scripts/allocate_roadmap_ids.py
+        id: allocate
+        run: |
+          out="$(python3 scripts/allocate_roadmap_ids.py)"
+          echo "$out"
+          # The script prints "Allocated BE-NNNN for <slug>" per item; collect the IDs
+          # (space-separated) so the title step can rewrite the placeholder. Empty when
+          # there were no placeholders — a no-op run.
+          tokens="$(printf '%s\n' "$out" \
+            | sed -n 's/^Allocated \(BE-[0-9]\{4\}\) for .*/\1/p' | paste -sd' ' -)"
+          echo "tokens=$tokens" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push if changed
         env:
@@ -44,3 +54,25 @@ jobs:
           git add -A
           git commit -m "docs(roadmap): allocate BE IDs for placeholder items"
           git push origin "HEAD:$HEAD_REF"
+
+      - name: Rewrite the PR title's BE-XXXX to the allocated ID
+        if: steps.allocate.outputs.tokens != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          TOKENS: ${{ steps.allocate.outputs.tokens }}
+        run: |
+          if ! printf '%s' "$PR_TITLE" | grep -q 'BE-XXXX'; then
+            echo "PR title carries no BE-XXXX placeholder; leaving it unchanged."
+            exit 0
+          fi
+          # A title holds a single [BE-XXXX] prefix; map it to the first allocated ID
+          # (allocation is sorted by slug, so this is deterministic).
+          first="${TOKENS%% *}"
+          if [ "$first" != "$TOKENS" ]; then
+            echo "::notice::Multiple IDs allocated ($TOKENS); rewriting the title's BE-XXXX to the first ($first)."
+          fi
+          new_title="${PR_TITLE//BE-XXXX/$first}"
+          echo "Updating PR #$PR_NUMBER title to: $new_title"
+          gh pr edit "$PR_NUMBER" --title "$new_title"
