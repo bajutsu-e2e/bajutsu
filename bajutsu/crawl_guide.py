@@ -61,9 +61,10 @@ def ai_guide(
     finally union the proposal with the deterministic baseline (proposer first, so its values win
     on de-dup), narrating its reasoning via `report`.
 
-    When `tab_locator` is set and the accessibility tree exposes no tabs (a custom tab bar idb
-    can't address), it locates the tab bar by vision — the same fallback the alert guard uses — and
-    prepends a coordinate tap per tab, so the crawl still switches tabs first."""
+    When `tab_locator` is set and a tab bar is present whose individual tabs the tree can't address
+    (idb surfaces a SwiftUI TabView as one "Tab Bar" group with no per-tab ids), it locates the
+    tabs by vision — the same fallback the alert guard uses — and prepends a coordinate tap per tab,
+    so the crawl still switches tabs first."""
 
     def guide(
         driver: base.Driver, elements: list[base.Element], context: crawl.GuideContext
@@ -93,14 +94,16 @@ def _locate_tabs(
     report: Report | None,
 ) -> list[crawl.Action]:
     """Vision fallback for an un-addressable tab bar: only when a locator is set, a screenshot
-    exists, and the tree exposes no tabs. Returns a coordinate tap per located tab."""
-    if tab_locator is None or shot is None or crawl_tabs.tree_exposes_tabs(elements):
+    exists, and a tab bar is present whose tabs the tree can't address. A coordinate tap per tab."""
+    if tab_locator is None or shot is None or not crawl_tabs.needs_vision_tabs(elements):
         return []
     targets = tab_locator.locate(shot)
     actions = [crawl.Action("tap_point", label=t.label, point=(t.x, t.y)) for t in targets]
     if report is not None and actions:
         named = ", ".join(t.label or f"({t.x:.2f},{t.y:.2f})" for t in targets)
-        report(f"👁️  no tab bar in the tree — vision found {len(actions)} tab(s): {named}")
+        report(
+            f"👁️  tab bar not addressable in the tree — vision found {len(actions)} tab(s): {named}"
+        )
     return actions
 
 

@@ -43,11 +43,42 @@ class TabLocator(Protocol):
     def locate(self, screenshot_png: bytes) -> list[TabTarget]: ...
 
 
-def tree_exposes_tabs(elements: list[base.Element]) -> bool:
-    """Whether the accessibility tree already exposes tab controls (a `tab`-trait element). When it
-    does, the deterministic `candidate_actions` taps them directly and the vision locator is
-    skipped; when it doesn't, an app with a custom tab bar needs the vision fallback."""
-    return any("tab" in (el.get("traits") or []) for el in elements)
+# The accessibility label iOS auto-assigns a tab bar. idb surfaces a SwiftUI `TabView` as a single
+# container carrying this label (observed: no identifier, trait `group`) with no per-tab children —
+# so the bar is on screen and tappable, but its individual tabs can't be addressed from the tree.
+_TAB_BAR_LABEL = "tab bar"
+
+
+def _is_tab(element: base.Element) -> bool:
+    """Whether an element is a tab control idb named as such (`tab`, or a `tabBar` container)."""
+    traits = element.get("traits") or []
+    return "tab" in traits or "tabBar" in traits
+
+
+def addressable_tabs(elements: list[base.Element]) -> bool:
+    """Whether individual tabs are already tappable from the tree — a tab element carrying an
+    identifier, which the deterministic `candidate_actions` taps directly. When true, no vision is
+    needed (and firing it would just duplicate those taps)."""
+    return any(_is_tab(el) and el.get("identifier") for el in elements)
+
+
+def tab_bar_present(elements: list[base.Element]) -> bool:
+    """Whether a tab bar is on screen at all: a tab / tabBar element, or the container iOS labels
+    "Tab Bar" (its auto-assigned accessibility label) — how idb surfaces a SwiftUI TabView, as a
+    lone `group` with that label and no addressable per-tab children."""
+    for el in elements:
+        if _is_tab(el):
+            return True
+        if (el.get("label") or "").strip().lower() == _TAB_BAR_LABEL:
+            return True
+    return False
+
+
+def needs_vision_tabs(elements: list[base.Element]) -> bool:
+    """The one case the vision locator should fire: a tab bar is present but its individual tabs
+    can't be addressed from the tree. This keeps vision off an ordinary screen (no tab bar) and off
+    a bar whose tabs are already tappable by id."""
+    return tab_bar_present(elements) and not addressable_tabs(elements)
 
 
 # --- Claude vision locator (the production brain) ---
