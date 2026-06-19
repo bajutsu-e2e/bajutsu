@@ -1,0 +1,4 @@
+# XcodeGen-generated project + build output (project.yml is the source of truth)
+*.xcodeproj/
+build/
+DerivedData/

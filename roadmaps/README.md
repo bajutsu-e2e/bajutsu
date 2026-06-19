@@ -254,6 +254,15 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 
+### Dogfood fixtures (demo apps)
+
+Purpose-built test subjects that exercise the commands end-to-end. The showcase suite is the next-generation dogfood target — the same app written in UIKit and SwiftUI, each in an accessibility-on / accessibility-off variant (four products, two codebases), so `run` (id-based), `record` (no-id fallback), `doctor` (Ready vs Blocked), and the forthcoming `crawl` ([BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) all have one rich, representative subject. The screen-by-screen contract lives in [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md).
+
+<!-- GENERATED:proposals-dogfood -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+<!-- /GENERATED:proposals-dogfood -->
+
 ## Not adopting (already covered / out of scope)
 
 - **Change history / version management** — already covered, since scenarios are YAML under git.

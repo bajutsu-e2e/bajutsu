@@ -1,0 +1,22 @@
+# Deterministic networking: BajutsuKit answers the Log submit's POST from a canned stub
+# instead of hitting the network, so the test is offline and stable. The stub returns 201
+# (httpbin would return 200) — proof the mock served it. On success the app shows the
+# transient toast, which the scenario then watches disappear (`wait until gone`).
+#
+# The request deliberately carries Authorization + a `password` body field; with a `redact`
+# policy those are masked in the captured evidence (SPEC §6 / DESIGN §9).
+- name: log submit answered by a mock, toast appears and clears
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+  mocks:
+    - match: { method: POST, pathMatches: "/post$" }
+      respond: { status: 201, body: "{\"ok\":true}" }
+  steps:
+    - wait: { for: { id: log.submit }, timeout: 10 }
+    - tap: { id: log.submit }
+    - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
+    - wait: { for: { id: log.toast }, timeout: 4 }
+    - wait: { until: { gone: { id: log.toast } }, timeout: 5 }
+  expect:
+    - request: { method: POST, path: /post, status: 201 }
+    - value: { sel: { id: log.status }, equals: "done" }

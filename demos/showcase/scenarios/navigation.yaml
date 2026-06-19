@@ -1,0 +1,39 @@
+# Navigation: tap a catalog row to push Horse Detail, toggle the favorite, then pop
+# back via the explicit nav.back button (the system back button carries that id).
+#
+# These scenarios use launchEnv + taps only (no literal-scheme deeplinks), so the one
+# file drives both showcase-swiftui and showcase-uikit unchanged. Deeplinks are
+# per-app (their schemes differ); see ../README.md for the per-scheme `openurl` form.
+- name: push horse detail and pop back
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
+  steps:
+    - wait: { for: { id: stable.row.3 }, timeout: 10 }
+    - tap: { id: stable.row.3 }
+    - wait: { for: { id: horse.title }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: horse.id.value }, equals: "3" }
+        - value: { sel: { id: horse.favorite.value }, equals: "off" }
+    - tap: { id: horse.favorite }
+    - assert:
+        - value: { sel: { id: horse.favorite.value }, equals: "on" }
+    - tap: { id: nav.back }
+    - wait: { for: { id: stable.title }, timeout: 5 }
+  expect:
+    - exists: { id: stable.title }
+    - exists: { id: horse.title, negate: true }
+
+# Navigation depth in another tab: Profile pushes the About sub-screen, then pops back.
+- name: profile pushes About and pops back
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: profile }
+  steps:
+    - wait: { for: { id: profile.title }, timeout: 10 }
+    - tap: { id: profile.openAbout }
+    - wait: { for: { id: about.title }, timeout: 5 }
+    - assert:
+        - exists: { id: about.version.value }
+    - tap: { id: nav.back }
+    - wait: { for: { id: profile.title }, timeout: 5 }
+  expect:
+    - exists: { id: profile.title }

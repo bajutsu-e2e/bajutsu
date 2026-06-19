@@ -1,0 +1,16 @@
+# Natural-language goals for the `record` demo. The first non-comment line is the goal
+# (override with GOAL=…). The point of the showcase record demo is the A/B comparison:
+# author the SAME goal against the no-a11y app and the a11y app, and diff the output.
+#
+#   bajutsu record --app showcase-swiftui-noax --config demos/showcase/showcase.config.yaml
+#   bajutsu record --app showcase-swiftui      --config demos/showcase/showcase.config.yaml
+#
+# Against the no-a11y build the agent has no identifiers to anchor on, so the recorded
+# steps fall down the stability ladder (label / traits / coordinates — DESIGN §5) and the
+# manifest flags the degradation. Against the a11y build the same goal records as clean
+# id-based selectors. The diff is the value of accessibility work, made concrete.
+
+メールアドレス rider@example.com、パスワード hunter2 でログインします。Stable タブで一覧が表示されるまで待機し、3 番目の馬の行をタップして詳細画面を開き、「Favorite」をオンにして、お気に入りの状態がオンになっていることを確認してください。
+
+# A second goal (run with GOAL="$(sed -n 2p ...)" or just paste it):
+# Log タブを開き、メモ欄に「morning ride」と入力してから「Submit」をタップし、「Logged」のトーストが表示されることを確認してください。

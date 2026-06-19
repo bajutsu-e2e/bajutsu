@@ -1,0 +1,55 @@
+# Modals: the Log tab exercises all four presentation styles — a detented sheet, a
+# full-screen cover, an action sheet (confirmationDialog), and the form controls.
+# In-app modals are visible to idb (unlike the OS alerts in permission.yaml).
+- name: open and dismiss the detented sheet
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.openFilter }, timeout: 10 }
+    - tap: { id: log.openFilter }
+    - wait: { for: { id: log.sheet.title }, timeout: 5 }
+    - assert:
+        - exists: { id: log.sheet.apply }
+    - tap: { id: log.sheet.close }
+    - wait: { until: { gone: { id: log.sheet.title } }, timeout: 5 }
+  expect:
+    - exists: { id: log.openFilter }
+    - exists: { id: log.sheet.title, negate: true }
+
+- name: open and dismiss the full-screen cover
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.openGallery }, timeout: 10 }
+    - tap: { id: log.openGallery }
+    - wait: { for: { id: log.cover.title }, timeout: 5 }
+    - tap: { id: log.cover.close }
+    - wait: { until: { gone: { id: log.cover.title } }, timeout: 5 }
+  expect:
+    - exists: { id: log.cover.title, negate: true }
+
+- name: action sheet records its choice
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.openDelete }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: log.dialog.value }, equals: "none" }
+    - tap: { id: log.openDelete }
+    - wait: { for: { id: log.dialog.delete }, timeout: 5 }
+    - tap: { id: log.dialog.delete }
+    - wait: { until: { gone: { id: log.dialog.delete } }, timeout: 5 }
+  expect:
+    - value: { sel: { id: log.dialog.value }, equals: "delete" }
+
+# Form controls: the stepper and toggle mirror their state to a11y values.
+- name: stepper and toggle mirror state
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.intense }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: log.intense.value }, equals: "off" }
+    - tap: { id: log.intense }
+  expect:
+    - value: { sel: { id: log.intense.value }, equals: "on" }

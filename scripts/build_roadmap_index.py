@@ -135,6 +135,7 @@ SECTIONS: tuple[Section, ...] = (
         "Candidates from competitive research (MagicPod / Autify)",
         True,
     ),
+    Section("proposals-dogfood", "Proposals", "Dogfood fixtures (demo apps)", True),
 )
 
 

@@ -1,0 +1,25 @@
+# Search: type into the search field to filter the catalog; the match count is mirrored
+# to an a11y value, and a no-match query shows the empty state. Seed is "Horse 1".."Horse 5".
+- name: filter narrows the catalog
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: search, SHOWCASE_SEED: "5" }
+  steps:
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - type: { text: "Horse 3", into: { id: search.field } }
+    - wait: { for: { id: search.row.3 }, timeout: 5 }
+  expect:
+    - count: { sel: { idMatches: "search.row.*" }, equals: 1 }
+    - value: { sel: { id: search.count }, equals: "1" }
+    - exists: { id: search.results-empty, negate: true }
+
+- name: no match shows the empty state
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: search, SHOWCASE_SEED: "5" }
+  steps:
+    - wait: { for: { id: search.field }, timeout: 10 }
+    - type: { text: "zzz", into: { id: search.field } }
+    - wait: { for: { id: search.results-empty }, timeout: 5 }
+  expect:
+    - exists: { id: search.results-empty }
+    - count: { sel: { idMatches: "search.row.*" }, equals: 0 }
+    - value: { sel: { id: search.count }, equals: "0" }
