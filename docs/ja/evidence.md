@@ -83,6 +83,13 @@ capturePolicy:
 
 実装: `bajutsu/intervals.py`。どちらも **バックエンド非依存の `simctl` 子プロセス**で、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）でテスト可能です。
 
+> **区間証跡は opt-in です（BE-0028）。** `video` / `deviceLog` / `appTrace` は重いため、シナリオは
+> **そのkindを要求したときだけ**記録します —— インライン `capture:` か `capturePolicy` ルール
+> （例: `video` を取得する `result: error` ルール）経由です。何も要求しなければ何も記録せず、通常ケースを
+> 安価に保ちます。軽量な瞬時baseline（`screenshot` + `elements`）は常に取得するので、失敗時も証跡が
+> 残ります（DESIGN §10）。何が記録されるかは `bajutsu trace --explain` で事前確認できます
+> （[cli](cli.md#trace) 参照）。
+
 | 種別 | 開始コマンド | 停止シグナル | ファイル名 |
 |---|---|---|---|
 | `video` | `simctl io <udid> recordVideo --codec h264` | **SIGINT**（強制 kill だと mp4 が壊れる） | `segment.mp4` |

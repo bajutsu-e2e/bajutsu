@@ -94,6 +94,13 @@ Implementation: `bajutsu/intervals.py`. Both are **backend-independent `simctl` 
 started before the action and stopped after the step settles. Process spawning is injectable
 (`Spawn`) and testable.
 
+> **Interval kinds are opt-in (BE-0028).** `video` / `deviceLog` / `appTrace` are heavy, so a
+> scenario records an interval **only when it asks for that kind** — through an inline `capture:`
+> or a `capturePolicy` rule (e.g. a `result: error` rule that captures `video`). A scenario that
+> requests none records none, keeping the common case cheap; the lightweight instant baseline
+> (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
+> Preview what a scenario would record with `bajutsu trace --explain` (see [cli](cli.md#trace)).
+
 | Kind | Start command | Stop signal | Filename |
 |---|---|---|---|
 | `video` | `simctl io <udid> recordVideo --codec h264` | **SIGINT** (a hard kill would corrupt the mp4) | `segment.mp4` |

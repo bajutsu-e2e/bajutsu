@@ -14,7 +14,12 @@ from bajutsu.assertions import AssertionResult, VisualContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.orchestrator.actions import _action_of, _do_action, _step_label
-from bajutsu.orchestrator.evidence_rules import _collect_captures, _kind_of, _run_extract
+from bajutsu.orchestrator.evidence_rules import (
+    _collect_captures,
+    _kind_of,
+    _run_extract,
+    requested_intervals,
+)
 from bajutsu.orchestrator.substitution import _interp_asserts, _interp_step
 from bajutsu.orchestrator.types import (
     AlertEvent,
@@ -32,8 +37,6 @@ from bajutsu.orchestrator.types import (
 )
 from bajutsu.orchestrator.waits import _wait
 from bajutsu.scenario import ForEach, If, Scenario, Selector, Step
-
-_SCENARIO_INTERVALS = ("video", "deviceLog", "appTrace")
 
 
 def _fail_reason(results: list[AssertionResult]) -> str:
@@ -95,7 +98,7 @@ def run_scenario(
     clock = clock or RealClock()
     sink = sink or NullSink()
     sid = scenario_id or scenario_slug(scenario.name)
-    recordings = sink.start_scenario_intervals(sid, list(_SCENARIO_INTERVALS))
+    recordings = sink.start_scenario_intervals(sid, requested_intervals(scenario))
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
     expect_results: list[AssertionResult] = []
