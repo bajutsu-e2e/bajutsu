@@ -146,6 +146,68 @@ def test_prune_global_explores_a_shared_control_once_and_records_the_rest() -> N
     assert crawl.screenmap_dict(pruned_off)["pruned"] == []
 
 
+def test_resume_a_pruned_branch_explores_it_and_appends_to_the_map() -> None:
+    """A pruned op carries a replayable `path`; feeding it back as a resume seed (base_map +
+    seed_path/ops) re-walks to the screen, performs the op, and continues exploring — merging new
+    findings into the existing map. Here, resuming a pruned tab op from `detail` reaches a screen
+    only reachable that way, proving the pruned branch can be explored on demand."""
+    tabs = [
+        el(identifier="tab.home", traits=["button"]),
+        el(identifier="tab.extra", traits=["button"]),
+    ]
+    home = [*tabs, el(identifier="home.detail", traits=["button"])]
+    detail = [*tabs, el(identifier="detail.mark", traits=["button"])]
+    # From detail, the (globally-pruned) tab.extra leads somewhere new — a screen no other path hits.
+    extra = [
+        el(identifier="extra.a", traits=["button"]),
+        el(identifier="extra.b", traits=["button"]),
+    ]
+    screens = {"home": home, "detail": detail, "extra": extra}
+    here = {"v": "home"}
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind != "tap" or not isinstance(arg, dict):
+            return
+        tgt = str(arg.get("id"))
+        dest = {"tab.home": "home", "home.detail": "detail"}.get(tgt)
+        if tgt == "tab.extra":  # tab.extra only opens `extra` once you're on `detail`
+            dest = "extra" if here["v"] == "detail" else "home"
+        if dest is not None:
+            here["v"] = dest
+            d.screen = list(screens[dest])
+
+    def reset(d: FakeDriver) -> None:
+        here["v"] = "home"
+        d.screen = list(home)
+
+    base = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, prune_global=True)
+    # tab.extra got pruned somewhere (claimed by home), and `extra` was never reached.
+    pruned = next(p for p in base.pruned if p.key == "tab.extra")
+    assert crawl.fingerprint(extra).value not in base.nodes
+
+    resumed = crawl.crawl(
+        FakeDriver(screen=list(home), react=react),
+        reset,
+        base_map=base,
+        seed_path=list(pruned.path[:-1]),  # replay to the screen the op was pruned on
+        seed_ops=[pruned.path[-1]],  # the pruned op itself, now explored
+    )
+    # Resuming reached the previously-unreachable screen and added it to the same map.
+    assert crawl.fingerprint(extra).value in resumed.nodes
+    assert any(e.dst == crawl.fingerprint(extra).value for e in resumed.edges)
+
+
+def test_action_dict_round_trips_every_kind() -> None:
+    for a in [
+        crawl.Action("tap", target="a"),
+        crawl.Action("type", target="f", value="v"),
+        crawl.Action("tap", label="L", index=2),
+        crawl.Action("fill", fields=(("a", "1"), ("b", "2"))),
+        crawl.Action("tap_point", label="Home", point=(0.5, 0.9)),
+    ]:
+        assert crawl.action_from_dict(crawl.action_to_dict(a)) == a
+
+
 def test_crawl_discovers_every_reachable_screen() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
