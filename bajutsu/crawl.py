@@ -580,7 +580,8 @@ def crawl(
                 pending[src_fp] = []  # the path no longer resolves — drop this screen
                 current_fp = None
                 continue
-            current_fp = src_fp
+            # we are now on src_fp; the action's outcome below sets current_fp (dst, or None on a
+            # crash / unresolved selector), so no assignment is needed here.
 
         action = pending[src_fp].pop(0)  # deterministic order
         steps += 1
