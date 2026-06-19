@@ -92,6 +92,60 @@ def _three_screen_app() -> tuple[Callable[[FakeDriver, str, object], None], list
     return react, home
 
 
+def _tabbed_app() -> tuple[Callable[[FakeDriver, str, object], None], list[dict]]:
+    """Two tab buttons (tab.home / tab.settings) sit on every screen — a global control — plus a
+    screen-specific button. tab.settings -> settings, tab.home -> home, settings.detail -> detail."""
+    tabs = [
+        el(identifier="tab.home", traits=["button"]),
+        el(identifier="tab.settings", traits=["button"]),
+    ]
+    home = [*tabs]
+    settings = [*tabs, el(identifier="settings.detail", traits=["button"])]
+    detail = [*tabs, el(identifier="detail.go", traits=["button"])]
+    screens = {"home": home, "settings": settings, "detail": detail}
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind != "tap" or not isinstance(arg, dict):
+            return
+        dest = {"tab.settings": "settings", "tab.home": "home", "settings.detail": "detail"}.get(
+            str(arg.get("id"))
+        )
+        if dest is not None:
+            d.screen = list(screens[dest])
+
+    return react, home
+
+
+def test_prune_global_explores_a_shared_control_once_and_records_the_rest() -> None:
+    """With pruning on, the first screen to offer a global op (the tab buttons, reused across
+    screens) explores it; later screens skip it and record a Pruned entry pointing at the owner —
+    so the same op isn't re-explored from every screen, and the WebUI can show / resume it."""
+    react, home = _tabbed_app()
+    fp_home = crawl.fingerprint(home).value
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    pruned_on = crawl.crawl(
+        FakeDriver(screen=list(home), react=react), reset, prune_global=True, max_steps=100
+    )
+    # The tab buttons are claimed by home; from settings they're pruned, not re-explored.
+    assert any(p.key == "tab.home" and p.owner == fp_home for p in pruned_on.pruned), (
+        pruned_on.pruned
+    )
+    assert not any(e.action == "tap tab.home" and e.src != fp_home for e in pruned_on.edges), (
+        "a pruned global op must not be explored from another screen"
+    )
+
+    # Without pruning, every screen re-explores the tabs, so the tab op fires from more than home.
+    pruned_off = crawl.crawl(FakeDriver(screen=list(home), react=react), reset, max_steps=100)
+    assert not pruned_off.pruned
+    assert any(e.action == "tap tab.home" and e.src != fp_home for e in pruned_off.edges)
+    # Serialized maps carry the pruned list (empty when pruning is off).
+    assert crawl.screenmap_dict(pruned_on)["pruned"]
+    assert crawl.screenmap_dict(pruned_off)["pruned"] == []
+
+
 def test_crawl_discovers_every_reachable_screen() -> None:
     react, home = _three_screen_app()
     driver = FakeDriver(screen=list(home), react=react)
@@ -150,7 +204,7 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
         d.screen = list(home)
 
     data = crawl.screenmap_dict(crawl.crawl(driver, reset))
-    assert set(data) == {"nodes", "edges", "crashes", "alerts", "plan", "stop_reason"}
+    assert set(data) == {"nodes", "edges", "crashes", "alerts", "plan", "pruned", "stop_reason"}
     assert isinstance(data["nodes"], list) and data["nodes"]
     assert all({"fingerprint", "kind", "ids", "actions"} <= set(n) for n in data["nodes"])
     assert all({"src", "action", "dst", "alert"} == set(e) for e in data["edges"])

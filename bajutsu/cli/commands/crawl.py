@@ -45,6 +45,12 @@ def crawl(
         50, "--max-screens", help="stop after discovering this many distinct screens"
     ),
     max_steps: int = typer.Option(200, "--max-steps", help="stop after taking this many actions"),
+    prune_global: bool = typer.Option(
+        True,
+        "--prune-global/--no-prune-global",
+        help="explore a global control (a tab/nav reused across screens) once instead of from every "
+        "screen that shows it (on by default; the WebUI lets you resume a pruned branch on demand)",
+    ),
     erase: bool = typer.Option(
         True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
     ),
@@ -180,6 +186,7 @@ def crawl(
             max_steps=max_steps,
             clear_blocking=clear_blocking,
             guide=crawl_guide,
+            prune_global=prune_global,
             on_event=on_event,
             on_node=on_node,
         )

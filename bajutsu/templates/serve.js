@@ -308,12 +308,11 @@ function renderPlan(data){
   const box=$('#crawl-plan');
   const nodes=data.nodes||[],edges=data.edges||[],plan=data.plan||{};
   if(!nodes.length){box.innerHTML='<div class="empty">The plan tree grows as the crawl explores.</div>';return}
-  // How many screens still plan each operation: an op queued on 2+ screens is a global duplicate
-  // (e.g. a tab switch present on every tab's screen). With pruning on, keep it once and collapse the
-  // repeats into a count; toggle off to reveal every occurrence (the crawl explores them regardless).
-  const opCount=new Map();
-  Object.values(plan).forEach(ops=>ops.forEach(op=>opCount.set(op,(opCount.get(op)||0)+1)));
-  const planShown=new Set();
+  // Operations the engine pruned as duplicate global controls (a tab/nav explored once from its
+  // owner screen), grouped by the screen where they were skipped — shown struck through, and tappable
+  // to resume exploring that branch.
+  const prunedBy=new Map();
+  (data.pruned||[]).forEach(p=>{(prunedBy.get(p.src)||prunedBy.set(p.src,[]).get(p.src)).push(p)});
   const idx=new Map(nodes.map(n=>[n.fingerprint,n]));
   const out=new Map(nodes.map(n=>[n.fingerprint,[]]));
   edges.forEach(e=>{if(out.has(e.src))out.get(e.src).push(e)});
@@ -334,14 +333,11 @@ function renderPlan(data){
     outs.forEach(e=>{const alert=(e.alert||[]).length?' 🛡️':'';
       h+=`<div class="plrow op done" style="--d:${depth+1}"><span class="pls">✅</span>${esc(e.action)}${alert} <span class="plarrow">→</span></div>`;
       h+=branch(e.dst,depth+2)});
-    pend.forEach(op=>{
-      const cnt=opCount.get(op)||1,global=cnt>1;
-      // A global op already kept once is a pruned duplicate (when pruning is on): show it struck
-      // through rather than hidden, so it stays visible as a deliberately skipped branch.
-      const dup=prunePlan&&global&&planShown.has(op);
-      if(!dup)planShown.add(op);
-      const tag=global?` <span class="plglobal" title="global operation — queued on ${cnt} screens">🌐 ×${cnt}</span>`:'';
-      h+=`<div class="plrow op pend${global?' global':''}${dup?' pruned':''}" style="--d:${depth+1}"${dup?' title="pruned — the same global operation is kept once elsewhere"':''}><span class="pls">${dup?'✂':'⏳'}</span>${esc(op)}${tag}</div>`;
+    pend.forEach(op=>{h+=`<div class="plrow op pend" style="--d:${depth+1}"><span class="pls">⏳</span>${esc(op)}</div>`});
+    // Pruned global ops: struck through, with the owner screen they were explored from. Tapping one
+    // resumes exploring that branch from this screen (data-src/data-key drive the resume request).
+    if(prunePlan)(prunedBy.get(fp)||[]).forEach(p=>{
+      h+=`<div class="plrow op pruned" data-src="${esc(fp)}" data-key="${esc(p.key)}" style="--d:${depth+1}" title="pruned — explored once from ${esc((p.owner||'').slice(0,7))}; tap to resume exploring this branch from here"><span class="pls">✂</span>${esc(p.action)} <span class="plmut">↩ ${esc((p.owner||'').slice(0,7))}</span></div>`;
     });
     return h;
   }
