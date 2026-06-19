@@ -56,10 +56,26 @@ def _is_tab(element: base.Element) -> bool:
 
 
 def addressable_tabs(elements: list[base.Element]) -> bool:
-    """Whether individual tabs are already tappable from the tree — a tab element carrying an
-    identifier, which the deterministic `candidate_actions` taps directly. When true, no vision is
-    needed (and firing it would just duplicate those taps)."""
-    return any(_is_tab(el) and el.get("identifier") for el in elements)
+    """Whether individual tabs are already tappable from the tree — so no vision is needed (and
+    firing it would just duplicate those taps). Today: a tab element carrying an identifier, which
+    the deterministic `candidate_actions` taps directly. UIKit support is provisional — see
+    `_uikit_addressable_tabs`."""
+    return any(_is_tab(el) and el.get("identifier") for el in elements) or _uikit_addressable_tabs(
+        elements
+    )
+
+
+def _uikit_addressable_tabs(_elements: list[base.Element]) -> bool:
+    """UIKit tab bar — provisional stub, the single place to complete once we have real idb data.
+
+    Unlike SwiftUI's opaque "Tab Bar" group, a UIKit `UITabBar` exposes each tab as its own element
+    (likely a `button` with the tab's title as its label, possibly an identifier), so its tabs are
+    usually addressable by selector and the deterministic guide / proposer can tap them without
+    vision. We haven't yet confirmed idb's exact representation, so this recognizes nothing for now
+    (leaving the vision fallback in charge). To complete UIKit support: capture an
+    `idb ui describe-all` of a UIKit tab bar, then recognize its tab elements here (by trait / label
+    / id) — `addressable_tabs` and `needs_vision_tabs` pick the result up automatically."""
+    return False  # TODO(BE-0038): recognize UIKit UITabBarButton elements once idb output is known
 
 
 def tab_bar_present(elements: list[base.Element]) -> bool:
