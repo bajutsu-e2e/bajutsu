@@ -149,6 +149,9 @@ def test_crawl_command_builder() -> None:
     assert "--no-erase" in srv.crawl_command("demo", out="o", erase=False)  # explicit override
     ai = srv.crawl_command("demo", out="o", guide="ai")
     assert ai[ai.index("--guide") + 1] == "ai"
+    off = srv.crawl_command("demo", out="o", guide="off")  # explicit off is honored
+    assert off[off.index("--guide") + 1] == "off"
+    assert "--no-dismiss-alerts" in srv.crawl_command("demo", out="o", dismiss_alerts=False)
     bare = srv.crawl_command("demo", out="o")  # no backend/udid/guide → those flags omitted
     assert "--backend" not in bare and "--udid" not in bare and "--guide" not in bare
 

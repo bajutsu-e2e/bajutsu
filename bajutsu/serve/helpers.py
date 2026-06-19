@@ -282,6 +282,7 @@ def crawl_command(
     max_screens: int = 50,
     max_steps: int = 200,
     erase: bool | None = None,
+    dismiss_alerts: bool | None = None,
     guide: str = "",
     config: str = "bajutsu.config.yaml",
 ) -> list[str]:
@@ -314,6 +315,10 @@ def crawl_command(
         cmd += ["--erase"]
     elif erase is False:
         cmd += ["--no-erase"]
+    if dismiss_alerts is True:
+        cmd += ["--dismiss-alerts"]
+    elif dismiss_alerts is False:
+        cmd += ["--no-dismiss-alerts"]
     if guide:
         cmd += ["--guide", guide]
     return cmd
