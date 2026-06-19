@@ -170,9 +170,14 @@ def crawl(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     _write_screenmap(screenmap_path, screen_map)
+    why = {
+        "completed": "explored everything reachable",
+        "max_screens": f"reached the --max-screens limit ({max_screens})",
+        "max_steps": f"reached the --max-steps limit ({max_steps})",
+    }.get(screen_map.stop_reason, screen_map.stop_reason or "stopped")
     typer.echo(
         f"crawled {len(screen_map.nodes)} screens, {len(screen_map.edges)} transitions, "
-        f"{len(screen_map.crashes)} crashes -> {screenmap_path}"
+        f"{len(screen_map.crashes)} crashes ({why}) -> {screenmap_path}"
     )
 
 

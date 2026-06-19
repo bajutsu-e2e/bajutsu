@@ -141,6 +141,9 @@ class ScreenMap:
     nodes: dict[str, Node] = field(default_factory=dict)
     edges: list[Edge] = field(default_factory=list)
     crashes: list[Crash] = field(default_factory=list)
+    # Why the crawl stopped: "completed" (frontier exhausted — everything reachable in the model
+    # was explored), "max_screens", or "max_steps" (a budget was hit, so screens may remain).
+    stop_reason: str = ""
 
 
 # Fires after each change to the map (a new node, edge, or crash). Pure observation so a caller
@@ -402,6 +405,15 @@ def crawl(
                 frontier.append((dst_fp.value, next_action))
         emit()
 
+    # Why we stopped: an empty frontier means everything reachable (in the model) was explored;
+    # otherwise a budget was hit and untried actions remain.
+    if not frontier:
+        screen_map.stop_reason = "completed"
+    elif len(screen_map.nodes) >= max_screens:
+        screen_map.stop_reason = "max_screens"
+    else:
+        screen_map.stop_reason = "max_steps"
+    emit()
     return screen_map
 
 
@@ -433,4 +445,5 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
         ],
         "edges": [{"src": e.src, "action": e.action, "dst": e.dst} for e in screen_map.edges],
         "crashes": [{"path": list(c.path)} for c in screen_map.crashes],
+        "stop_reason": screen_map.stop_reason,
     }
