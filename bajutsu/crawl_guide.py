@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from bajutsu import crawl
+from bajutsu import crawl, crawl_tabs
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
 
@@ -49,19 +49,28 @@ class ActionProposer(Protocol):
     ) -> Proposal: ...
 
 
-def ai_guide(proposer: ActionProposer, report: Report | None = None) -> crawl.Guide:
+def ai_guide(
+    proposer: ActionProposer,
+    report: Report | None = None,
+    tab_locator: crawl_tabs.TabLocator | None = None,
+) -> crawl.Guide:
     """Adapt an `ActionProposer` to the crawl `Guide` signature, running the BE-0038 pipeline:
     first **inspect deterministically** (`candidate_actions`), then hand those operations + the
     screen (and any OS prompt just dismissed to reach it) to the proposer so it can reason about
     what's possible and **combine** them (realistic inputs, multi-field fills, id-less elements);
     finally union the proposal with the deterministic baseline (proposer first, so its values win
-    on de-dup), narrating its reasoning via `report`."""
+    on de-dup), narrating its reasoning via `report`.
+
+    When `tab_locator` is set and the accessibility tree exposes no tabs (a custom tab bar idb
+    can't address), it locates the tab bar by vision — the same fallback the alert guard uses — and
+    prepends a coordinate tap per tab, so the crawl still switches tabs first."""
 
     def guide(
         driver: base.Driver, elements: list[base.Element], context: crawl.GuideContext
     ) -> list[crawl.Action]:
         shot = _screenshot_bytes(driver)
         candidates = crawl.candidate_actions(elements)  # deterministic inspection, fed to the AI
+        tabs = _locate_tabs(tab_locator, elements, shot, report)
         if report is not None and context.dismissed:
             report(f"🛡️  factoring in a just-dismissed OS prompt: {', '.join(context.dismissed)}")
         proposal = proposer.propose(elements, shot, candidates, context.dismissed)
@@ -70,9 +79,29 @@ def ai_guide(proposer: ActionProposer, report: Report | None = None) -> crawl.Gu
                 report(f"🤔 {proposal.thought}")
             for a in proposal.actions:
                 report(f"   → try {a.describe()}")
-        return _dedup([*proposal.actions, *candidates])
+        # Tabs first (switch the whole view before drilling in), then the proposal, then the
+        # deterministic baseline; de-dup keeps the earliest, so a vision tab beats a later duplicate.
+        return _dedup([*tabs, *proposal.actions, *candidates])
 
     return guide
+
+
+def _locate_tabs(
+    tab_locator: crawl_tabs.TabLocator | None,
+    elements: list[base.Element],
+    shot: bytes | None,
+    report: Report | None,
+) -> list[crawl.Action]:
+    """Vision fallback for an un-addressable tab bar: only when a locator is set, a screenshot
+    exists, and the tree exposes no tabs. Returns a coordinate tap per located tab."""
+    if tab_locator is None or shot is None or crawl_tabs.tree_exposes_tabs(elements):
+        return []
+    targets = tab_locator.locate(shot)
+    actions = [crawl.Action("tap_point", label=t.label, point=(t.x, t.y)) for t in targets]
+    if report is not None and actions:
+        named = ", ".join(t.label or f"({t.x:.2f},{t.y:.2f})" for t in targets)
+        report(f"👁️  no tab bar in the tree — vision found {len(actions)} tab(s): {named}")
+    return actions
 
 
 def _dedup(actions: list[crawl.Action]) -> list[crawl.Action]:
@@ -95,7 +124,11 @@ def make_guide(kind: str, report: Report | None = None) -> crawl.Guide | None:
     if kind in ("", "off"):
         return None
     if kind == "ai":
-        return ai_guide(ClaudeActionProposer(), report=report)
+        return ai_guide(
+            ClaudeActionProposer(),
+            report=report,
+            tab_locator=crawl_tabs.ClaudeTabLocator(),
+        )
     raise ValueError(f"unknown crawl guide: {kind!r} (use 'off' or 'ai')")
 
 

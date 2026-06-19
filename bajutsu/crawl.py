@@ -54,12 +54,14 @@ class Fingerprint:
 
 @dataclass(frozen=True)
 class Action:
-    """A replayable action against a screen. `kind` is "tap", "type" (text input), or "fill"
-    (enter several fields in one step, to cross a precondition that needs more than one field).
-    The element is named by `target` (its accessibility identifier — stable, preferred) or, for an
-    id-less element, by `label` (+ `index` to disambiguate duplicates); a "type" action carries the
-    text in `value`, a "fill" carries its (id, value) pairs in `fields`. All fields are hashable so
-    an Action can key the frontier / tried set."""
+    """A replayable action against a screen. `kind` is "tap", "type" (text input), "fill" (enter
+    several fields in one step, to cross a precondition that needs more than one field), or
+    "tap_point" (tap a normalized [0,1] coordinate — for a control the accessibility tree can't
+    address, e.g. a custom tab bar a vision guide located). The element is named by `target` (its
+    accessibility identifier — stable, preferred) or, for an id-less element, by `label` (+ `index`
+    to disambiguate duplicates); a "type" carries the text in `value`, a "fill" its (id, value)
+    pairs in `fields`, a "tap_point" its (x, y) in `point` (`label` optional, for logging). All
+    fields are hashable so an Action can key the frontier / tried set."""
 
     kind: str
     target: str = ""
@@ -67,13 +69,16 @@ class Action:
     index: int | None = None
     value: str | None = None
     fields: tuple[tuple[str, str], ...] = ()
+    point: tuple[float, float] | None = None
 
     @property
     def key(self) -> str:
-        """Stable identity for de-duplication and the frontier: the id, the label[#index], or the
-        fill's field set."""
+        """Stable identity for de-duplication and the frontier: the id, the label[#index], the
+        fill's field set, or the normalized coordinate."""
         if self.kind == "fill":
             return "fill:" + ",".join(i for i, _ in self.fields)
+        if self.kind == "tap_point" and self.point is not None:
+            return f"@@{self.point[0]:.4f},{self.point[1]:.4f}"
         return self.target or f"@{self.label}#{0 if self.index is None else self.index}"
 
     def as_selector(self) -> base.Selector:
@@ -89,6 +94,10 @@ class Action:
     def describe(self) -> str:
         if self.kind == "fill":
             return f"fill {len(self.fields)} fields"
+        if self.kind == "tap_point" and self.point is not None:
+            if self.label:
+                return f"tap tab {self.label!r}"
+            return f"tap point ({self.point[0]:.2f}, {self.point[1]:.2f})"
         what = self.target or (self.label or "?")
         if self.kind == "type" and self.value:
             return f"type {what}={self.value!r}"
@@ -96,12 +105,17 @@ class Action:
 
     def perform(self, driver: base.Driver) -> None:
         """Execute against the live screen: a type action focuses the field (tap) then enters its
-        value; a fill does that for each of its fields in order; a tap just taps. Replayable because
-        every selector is id- or label-based."""
+        value; a fill does that for each of its fields in order; a tap_point taps a coordinate (the
+        normalized point scaled to the live screen size); a tap just taps. Replayable because every
+        selector is id- or label-based and every coordinate is normalized to the screen."""
         if self.kind == "fill":
             for fid, val in self.fields:
                 driver.tap({"id": fid})
                 driver.type_text(val)
+            return
+        if self.kind == "tap_point" and self.point is not None:
+            w, h = _screen_size(driver)
+            driver.tap_point((self.point[0] * w, self.point[1] * h))
             return
         driver.tap(self.as_selector())
         if self.kind == "type":
@@ -171,6 +185,14 @@ OnEvent = Callable[[ScreenMap], None]
 # Fires once per newly discovered screen, while the driver is still positioned on it — the moment
 # to capture a per-screen artifact (a screenshot). Pure observation, like `OnEvent`.
 OnNode = Callable[["Node"], None]
+
+
+def _screen_size(driver: base.Driver) -> tuple[float, float]:
+    """Full-screen size in points: the largest element frame (the app window). A vision-located
+    coordinate is stored normalized to [0,1] and replayed against this, so it maps to point-space
+    regardless of the device's pixel scale."""
+    frames = [f for el in driver.query() if (f := el.get("frame"))]
+    return (max((f[2] for f in frames), default=0.0), max((f[3] for f in frames), default=0.0))
 
 
 def _id_of(element: base.Element) -> str | None:
