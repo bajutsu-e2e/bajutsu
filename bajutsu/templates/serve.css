@@ -104,6 +104,14 @@ main[hidden]{display:none}
 .shotmain img{display:block;max-height:80vh;max-width:46vw;border-radius:10px;border:1px solid var(--line);background:#fff}
 /* Hover a transition/planned row to highlight where its tap lands on the screenshot. */
 .shothi{position:absolute;border:2px solid var(--run);border-radius:5px;background:color-mix(in srgb,var(--run) 25%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--run) 40%,transparent),0 0 12px color-mix(in srgb,var(--run) 60%,transparent);pointer-events:none;transition:all .12s ease}
+/* Every actionable spot on the shot, revealed on hover: a `go` spot has a known destination (an
+   outgoing edge, clickable to step there); a `pend` spot is a still-pending operation. */
+.shothots{position:absolute;inset:0;pointer-events:none}
+.hot{position:absolute;border-radius:4px;opacity:0;transition:opacity .12s ease,background .12s ease;pointer-events:none}
+.shotframe:hover .hot{opacity:1;pointer-events:auto}
+.hot.go{border:2px solid var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent);cursor:pointer}
+.hot.go:hover{background:color-mix(in srgb,var(--acc) 36%,transparent);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 60%,transparent)}
+.hot.pend{border:2px dashed var(--run);background:color-mix(in srgb,var(--run) 10%,transparent)}
 .shotside{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .shottitle{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;margin:.2rem 1.5rem .6rem 0;word-break:break-all}
 .shotnext{overflow:auto;display:flex;flex-direction:column;gap:.4rem}
