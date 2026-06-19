@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from bajutsu.drivers import base
 from bajutsu.record import shows_app_ui
@@ -171,13 +172,15 @@ class Pruned:
     """A candidate operation skipped because the same operation was already claimed by another
     screen — a *global* control (e.g. a tab switch) the crawl explores once instead of from every
     screen that shows it. `src` is the screen where it was skipped, `action` its description, `key`
-    its replay identity, and `owner` the screen that did explore it. The WebUI shows these struck
-    through, and a viewer can tap one to resume exploring that branch from `src`."""
+    its replay identity, `owner` the screen that did explore it, and `path` the replayable action
+    sequence to reach `src` and perform the op (so a resume can re-walk to here). The WebUI shows
+    these struck through, and a viewer can tap one to resume exploring that branch from `src`."""
 
     src: str
     action: str
     key: str
     owner: str
+    path: tuple[Action, ...] = ()
 
 
 @dataclass
@@ -460,6 +463,9 @@ def crawl(
     clear_blocking: ClearBlocking | None = None,
     guide: Guide | None = None,
     prune_global: bool = False,
+    base_map: ScreenMap | None = None,
+    seed_path: list[Action] | None = None,
+    seed_ops: list[Action] | None = None,
     on_event: OnEvent | None = None,
     on_node: OnNode | None = None,
 ) -> ScreenMap:
@@ -478,7 +484,9 @@ def crawl(
     distinct screens or `max_steps` actions, whichever first.
     """
     guide = guide or _deterministic_guide
-    screen_map = ScreenMap()
+    # Resume continues an existing map (`base_map`): replay `seed_path` back to a pruned branch's
+    # screen, then explore from it with `seed_ops` as that screen's frontier, appending findings.
+    screen_map = base_map if base_map is not None else ScreenMap()
     dismissed: list[str] = []  # OS-alert buttons cleared during the most recent observe()
 
     def observe() -> list[base.Element]:
@@ -518,25 +526,40 @@ def crawl(
         for a in actions:
             owner = claimed.get(a.key)
             if owner is not None and owner != fp.value:
-                screen_map.pruned.append(Pruned(fp.value, a.describe(), a.key, owner))
+                path = (*path_to.get(fp.value, []), a)  # replay to src, then the pruned op
+                screen_map.pruned.append(Pruned(fp.value, a.describe(), a.key, owner, path))
             else:
                 claimed.setdefault(a.key, fp.value)
                 kept.append(a)
         return kept
 
-    reset(driver)
-    start = observe()
-    if dismissed:
-        screen_map.alerts.append(Alert((), tuple(dismissed)))
-    start_fp = fingerprint(start)
     # A known replayable path to each discovered screen (from a clean reset), and the still-untried
     # actions per screen. The strategy is a *forward walk*: keep acting on the screen the driver is
     # already on until it has no untried action left, and only reset + replay to reach another
     # screen when the current one is exhausted — so we don't pay a reset/replay for every action.
-    path_to: dict[str, list[Action]] = {start_fp.value: []}
-    pending: dict[str, list[Action]] = {
-        start_fp.value: discover(start_fp, start, GuideContext(tuple(dismissed)))
-    }
+    path_to: dict[str, list[Action]] = {}
+    pending: dict[str, list[Action]] = {}
+
+    reset(driver)
+    start = observe()
+    if dismissed:
+        screen_map.alerts.append(Alert((), tuple(dismissed)))
+    if seed_path is not None:
+        # Resume: walk back to the pruned branch's screen, then explore onward from it.
+        if not _replay(driver, seed_path, settle, clear_blocking):
+            screen_map.stop_reason = "completed"
+            emit()
+            return screen_map
+        landed = observe()
+        start_fp = fingerprint(landed)
+        path_to[start_fp.value] = list(seed_path)
+        if start_fp.value not in screen_map.nodes:
+            discover(start_fp, landed, GuideContext(tuple(dismissed)))
+        pending[start_fp.value] = list(seed_ops or [])
+    else:
+        start_fp = fingerprint(start)
+        path_to[start_fp.value] = []
+        pending[start_fp.value] = discover(start_fp, start, GuideContext(tuple(dismissed)))
     emit()
     current_fp: str | None = start_fp.value  # the screen the driver is on (None ⇒ needs a reset)
     steps = 0
@@ -600,6 +623,39 @@ def crawl(
     return screen_map
 
 
+def action_to_dict(a: Action) -> dict[str, object]:
+    """A JSON-friendly dict of an Action, omitting empty fields — so a replayable path can be
+    persisted (in `pruned`) and reconstructed for a resume."""
+    d: dict[str, object] = {"kind": a.kind}
+    if a.target:
+        d["target"] = a.target
+    if a.label is not None:
+        d["label"] = a.label
+    if a.index is not None:
+        d["index"] = a.index
+    if a.value is not None:
+        d["value"] = a.value
+    if a.fields:
+        d["fields"] = [list(f) for f in a.fields]
+    if a.point is not None:
+        d["point"] = list(a.point)
+    return d
+
+
+def action_from_dict(d: dict[str, Any]) -> Action:
+    """Rebuild an Action from `action_to_dict` (tolerant of missing keys)."""
+    point = d.get("point")
+    return Action(
+        kind=str(d.get("kind") or "tap"),
+        target=str(d.get("target") or ""),
+        label=d.get("label"),
+        index=d.get("index"),
+        value=d.get("value"),
+        fields=tuple((str(f[0]), str(f[1])) for f in (d.get("fields") or [])),
+        point=(float(point[0]), float(point[1])) if point else None,
+    )
+
+
 def _replay(
     driver: base.Driver,
     path: list[Action],
@@ -643,7 +699,13 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
         "alerts": [{"path": list(a.path), "buttons": list(a.buttons)} for a in screen_map.alerts],
         "plan": {fp: list(ops) for fp, ops in sorted(screen_map.plan.items())},
         "pruned": [
-            {"src": p.src, "action": p.action, "key": p.key, "owner": p.owner}
+            {
+                "src": p.src,
+                "action": p.action,
+                "key": p.key,
+                "owner": p.owner,
+                "path": [action_to_dict(a) for a in p.path],
+            }
             for p in screen_map.pruned
         ],
         "stop_reason": screen_map.stop_reason,
