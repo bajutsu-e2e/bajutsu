@@ -3,8 +3,8 @@
 # BE-0035 — デバイス制御プリミティブ拡張
 
 * 提案: [BE-0035](BE-0035-device-control-primitives-ja.md)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
+* 状態: **可決・実装中**
+* トラック: [可決済み](../../README-ja.md#可決済み)
 * トピック: 競合調査（MagicPod / Autify）由来の候補
 * 由来: MagicPod
 

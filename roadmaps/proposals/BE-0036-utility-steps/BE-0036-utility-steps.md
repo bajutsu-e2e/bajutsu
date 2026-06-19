@@ -3,8 +3,8 @@
 # BE-0036 — Utility steps
 
 * Proposal: [BE-0036](BE-0036-utility-steps.md)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
+* Status: **Accepted, in progress**
+* Track: [Accepted](../../README.md#accepted)
 * Topic: Candidates from competitive research (MagicPod / Autify)
 * Origin: MagicPod
 

@@ -3,8 +3,8 @@
 # BE-0035 — Extended device-control primitives
 
 * Proposal: [BE-0035](BE-0035-device-control-primitives.md)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
+* Status: **Accepted, in progress**
+* Track: [Accepted](../../README.md#accepted)
 * Topic: Candidates from competitive research (MagicPod / Autify)
 * Origin: MagicPod
 
