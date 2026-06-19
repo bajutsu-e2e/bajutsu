@@ -41,6 +41,8 @@ demos/record/app/*.xcodeproj/
 demos/record/app/build/
 demos/app/*.xcodeproj/
 demos/app/build/
+demos/showcase/*/*.xcodeproj/
+demos/showcase/*/build/
 DerivedData/
 *.xcuserstate
 

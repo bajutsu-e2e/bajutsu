@@ -62,6 +62,10 @@ an in-memory driver so you can see the seam with nothing installed.
   workflows run against it.
 - **`sample2`** ([`record/app/`](record/README.md)) — a minimal onboarding → login → counter
   app used by the `record` AI-authoring demo.
+- **`showcase`** ([`showcase/`](showcase/README.md)) — the next-generation dogfood suite: the
+  *same* app in UIKit and SwiftUI, each in an accessibility-on / -off variant (four products,
+  two codebases), built to exercise `record`, `crawl`, and `run` together. Supersedes `sample`
+  (kept until the showcase covers its CI / Web UI tours).
 
 Generated scenarios, working copies (`*/generated.yaml`, `tour/scenario.yaml`), Xcode projects,
 and run artifacts (`runs/`) are gitignored — the demos regenerate them.

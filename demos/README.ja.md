@@ -60,6 +60,10 @@ make -C demos record     # 本物の Claude による著作、続けて改変 + 
   します。
 - **`sample2`**（[`record/app/`](record/README.ja.md)）— `record` の AI 著作デモが使う、最小限の
   onboarding → login → カウンターのアプリ。
+- **`showcase`**（[`showcase/`](showcase/README.ja.md)）— 次世代の dogfood 群：*同じ*アプリを UIKit と
+  SwiftUI で書き、各々をアクセシビリティ有/無の変種にしたもの（2 コードベースで 4 プロダクト）。
+  `record`・`crawl`・`run` を一度に行使するために作られています。`sample` を置き換えます（showcase が
+  その CI / Web UI ツアーをカバーするまでは `sample` を残します）。
 
 生成シナリオ・作業コピー（`*/generated.yaml`、`tour/scenario.yaml`）、Xcode プロジェクト、実行成果物
 （`runs/`）は gitignore されています — デモが再生成します。

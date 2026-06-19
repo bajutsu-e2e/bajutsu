@@ -1,0 +1,52 @@
+# Bajutsu config for the showcase dogfood suite — four products from two codebases
+# (UIKit × SwiftUI, each in an accessibility-on / -off variant). See SPEC.md.
+#
+# The two `-a11y` apps expose an identical identifier contract, so the shared
+# `scenarios/` directory runs unchanged against either toolkit:
+#   bajutsu run --app showcase-swiftui --config demos/showcase/showcase.config.yaml ...
+#   bajutsu run --app showcase-uikit   --config demos/showcase/showcase.config.yaml ...
+# The `-noax` apps carry no identifiers (idNamespaces: []) — the `record` / `doctor`
+# "missing accessibility" demo. `make -C demos/showcase <target>-build` builds each.
+defaults:
+  backend: [idb]
+  device: "iPhone 17 Pro"
+  reservedNamespaces: [nav]   # shared flows / nav (DESIGN §7.3)
+
+apps:
+  # ---- SwiftUI, accessibility ON (the `run` / `doctor`-Ready target) -------------
+  showcase-swiftui:
+    bundleId: com.bajutsu.showcase.swiftui
+    deeplinkScheme: showcaseswiftui
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [nav, stable, horse, search, log, notice, perm, net]
+    appPath: demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
+    build: make -C demos/showcase swiftui-build
+    scenarios: demos/showcase/scenarios
+
+  # ---- SwiftUI, accessibility OFF (the `record` / `doctor`-Blocked target) -------
+  showcase-swiftui-noax:
+    bundleId: com.bajutsu.showcase.swiftui.noax
+    deeplinkScheme: showcaseswiftuinoax
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: []   # honest: this build exposes no identifiers
+    appPath: demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
+    build: make -C demos/showcase swiftui-noax-build
+
+  # ---- UIKit, accessibility ON (same identifier contract as showcase-swiftui) ----
+  showcase-uikit:
+    bundleId: com.bajutsu.showcase.uikit
+    deeplinkScheme: showcaseuikit
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [nav, stable, horse, search, log, notice, perm, net]
+    appPath: demos/showcase/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
+    build: make -C demos/showcase uikit-build
+    scenarios: demos/showcase/scenarios
+
+  # ---- UIKit, accessibility OFF -------------------------------------------------
+  showcase-uikit-noax:
+    bundleId: com.bajutsu.showcase.uikit.noax
+    deeplinkScheme: showcaseuikitnoax
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: []
+    appPath: demos/showcase/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
+    build: make -C demos/showcase uikit-noax-build

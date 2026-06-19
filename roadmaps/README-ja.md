@@ -145,6 +145,16 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 実装済み |
 <!-- /GENERATED:accepted-dev-infra -->
 
+### Dogfood フィクスチャ（デモアプリ）
+
+コマンドを端から端まで行使するための目的特化のテスト対象です。showcase 群は次世代の dogfood 対象 — 同じアプリを UIKit と SwiftUI で書き、各々をアクセシビリティ有/無の変種で出す（2 コードベースで 4 プロダクト）ので、`run`（id ベース）、`record`（id 無しフォールバック）、`doctor`（Ready vs Blocked）、そして来たる `crawl`（[BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）が、1 つの豊かで代表的な対象を持ちます。画面ごとの契約は [`demos/showcase/SPEC.md`](../demos/showcase/SPEC.md) にあります。
+
+<!-- GENERATED:accepted-dogfood -->
+| ID | 項目 | 状態 | 由来 |
+|---|---|---|---|
+| [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md) | Dogfood ショーケースアプリ群（UIKit × SwiftUI、アクセシビリティ対比） | 実装済み | Dogfooding |
+<!-- /GENERATED:accepted-dogfood -->
+
 ## 提案
 
 検討中 — まだ決定していません。決定したら *可決済み* に昇格してください。
