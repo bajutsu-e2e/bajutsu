@@ -564,7 +564,28 @@ $('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBo
 $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomreset').addEventListener('click',resetView);
 // A screen row in the plan tree opens that screen's lightbox, same as a graph node.
-$('#crawl-plan').addEventListener('click',e=>{const r=e.target.closest('.plrow.scr');if(r&&r.dataset.fp)openShot(r.dataset.fp)});
+$('#crawl-plan').addEventListener('click',e=>{
+  // A struck-through pruned op: resume exploring that branch (re-crawl from its screen).
+  const pr=e.target.closest('.plrow.op.pruned');
+  if(pr&&pr.dataset.src&&pr.dataset.key){resumePruned(pr.dataset.src,pr.dataset.key);return}
+  const r=e.target.closest('.plrow.scr');if(r&&r.dataset.fp)openShot(r.dataset.fp)});
+// Tap a pruned branch to resume exploring it: re-launch the crawl against the SAME run, seeded to
+// replay to that screen and perform the pruned op, appending whatever it finds to the live map.
+async function resumePruned(src,key){
+  if(!crawlRunId){setStatus($('#crawl-status'),'no active run to resume','ng');return}
+  if(crawlPoll)clearInterval(crawlPoll);
+  setBusy($('#crawl-go'),$('#crawl-stop'),true,'Resuming…');
+  setStatus($('#crawl-status'),'','run');
+  const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
+    maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
+    guide:$('#crawl-guide').value,dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,
+    runId:crawlRunId,resumeSrc:src,resumeKey:key})});
+  const {jobId,runId,error}=await r.json();
+  if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
+  crawlJobId=jobId;crawlRunId=runId;
+  crawlPoll=setInterval(()=>crawlCheck(jobId),1000);crawlCheck(jobId);
+}
 // Toggle pruning of duplicate global ops in the plan tree, re-rendering it in place.
 (function(){const t=$('#crawl-prune');if(t)t.addEventListener('change',()=>{prunePlan=t.checked;if(crawlGraphData)renderPlan(crawlGraphData)})})();
 
