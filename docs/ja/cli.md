@@ -201,6 +201,12 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
 - run サブプロセスは起動環境を継承します（venv の `bin` を `PATH` 先頭に付与し `idb` クライアントを解決）。
   `bajutsu.config.yaml` が解決するようプロジェクトルートから実行してください。
+- **`/api/run` の入力検証。** scenario は**選択中アプリの scenarios dir 内**に実在する `*.yaml` でなければ
+  なりません（任意のホストパスや `..` トラバーサル不可）。`backend` / `udid` も既知のトークンに限定され、
+  自由入力は拒否されます —— リクエストが任意ファイルを実行したり想定外の argv を紛れ込ませることを防ぎます。
+  これは `serve` を loopback を越えてホスティングするための前提です
+  （[BE-0015 / BE-0016](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)）。
+  現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
 
 ## 環境変数（.env）
 

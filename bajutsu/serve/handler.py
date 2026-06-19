@@ -32,6 +32,8 @@ from bajutsu.serve.helpers import (
     run_command,
     scenario_out_path,
     unique_scenario_path,
+    valid_backend,
+    valid_udid,
 )
 from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job, run_job
 
@@ -203,11 +205,32 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not body.get("scenario") or not body.get("app"):
                 self._json({"error": "scenario and app are required"}, 400)
                 return
+            app = str(body["app"])
+            # Confine the scenario to the app's own scenarios dir: a serve client must not be able
+            # to run an arbitrary file path on the host (BE-0015/BE-0016 hosting prerequisite).
+            scn_dir = _scenarios_dir_for(state, app)
+            if scn_dir is None:
+                self._json({"error": f"app '{app}' has no scenarios dir"}, 400)
+                return
+            target = _scenario_path(scn_dir, str(body["scenario"]))
+            if target is None or not target.is_file():
+                self._json(
+                    {"error": "scenario must be an existing .yaml inside the app's scenarios dir"},
+                    400,
+                )
+                return
+            backend = str(body.get("backend", "") or "")
+            if backend and not valid_backend(backend):
+                self._json({"error": f"unknown backend: {backend}"}, 400)
+                return
             udid = str(body.get("udid", "") or "")
+            if udid and not valid_udid(udid):
+                self._json({"error": "invalid udid"}, 400)
+                return
             cmd = run_command(
-                body["scenario"],
-                body["app"],
-                backend=body.get("backend", ""),
+                str(target),
+                app,
+                backend=backend,
                 udid=udid,
                 workers=_int(body.get("workers"), 1),
                 erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
@@ -217,7 +240,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 config=str(cfg),
                 baselines=str(state.baselines_dir),
             )
-            app_path, build = app_build_info(cfg, body["app"])
+            app_path, build = app_build_info(cfg, app)
             job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id})

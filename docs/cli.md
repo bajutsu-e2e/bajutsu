@@ -212,6 +212,12 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
 - The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH` so
   the `idb` client resolves). Run it from the project root so `bajutsu.config.yaml` resolves.
+- **Input validation on `/api/run`.** The scenario must be an existing `*.yaml` **inside the
+  selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
+  must be known tokens, not free text — so a request can't run an arbitrary file or smuggle
+  surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
+  ([BE-0015 / BE-0016](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md));
+  it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
 
 ## Environment variables (.env)
 
