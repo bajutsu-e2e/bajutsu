@@ -153,7 +153,7 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
     assert set(data) == {"nodes", "edges", "crashes", "alerts", "stop_reason"}
     assert isinstance(data["nodes"], list) and data["nodes"]
     assert all({"fingerprint", "kind", "ids", "actions"} <= set(n) for n in data["nodes"])
-    assert all({"src", "action", "dst"} == set(e) for e in data["edges"])
+    assert all({"src", "action", "dst", "alert"} == set(e) for e in data["edges"])
     assert data["stop_reason"] == "completed"  # the small app is fully explored
 
 
@@ -389,40 +389,51 @@ def test_crawl_fills_a_form_to_enable_and_press_a_disabled_button() -> None:
     assert crawl.fingerprint(home).value in screen_map.nodes  # reached the screen behind it
 
 
-def test_crawl_clears_a_blocking_alert_instead_of_recording_a_crash() -> None:
-    """Tapping a control pops an OS alert that collapses the app UI (looks like a crash). The
-    `clear_blocking` hook dismisses it before the alive check, so the screen behind it is explored
-    and no crash is recorded."""
-    home = [el(identifier="home.go", traits=["button"])]
+def test_crawl_taps_through_an_alert_marks_the_edge_and_replays_through_it() -> None:
+    """Tapping `home.go` pops an OS alert that collapses the app UI (looks like a crash). The
+    guard dismisses it, revealing `mid`; the home→mid edge is marked with the dismissed button and
+    no crash is recorded. To explore `mid.next` the crawl must *replay* `tap home.go`, which pops
+    the alert again — so the screen behind it (`end`) is only reached if replay dismisses it too."""
+    home = [
+        el(identifier="home.go", traits=["button"]),
+        el(identifier="home.t", traits=["staticText"]),
+    ]
     alert = [el(traits=["application"])]  # collapsed tree — indistinguishable from a crash
-    behind = [el(identifier="b.one", traits=["button"]), el(identifier="b.two", traits=["button"])]
-    s = {"alerting": False}
+    mid = [
+        el(identifier="mid.next", traits=["button"]),
+        el(identifier="mid.t", traits=["staticText"]),
+    ]
+    end = [el(identifier="end.a", traits=["button"]), el(identifier="end.b", traits=["button"])]
+    s = {"screen": "home"}
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
-        if kind == "tap" and isinstance(arg, dict) and arg.get("id") == "home.go":
-            s["alerting"] = True
-            d.screen = list(alert)
+        if kind == "tap" and isinstance(arg, dict):
+            if arg.get("id") == "home.go":
+                s["screen"] = "alert"
+                d.screen = list(alert)
+            elif arg.get("id") == "mid.next":
+                s["screen"] = "end"
+                d.screen = list(end)
 
     driver = FakeDriver(screen=list(home), react=react)
 
     def reset(d: FakeDriver) -> None:
-        s["alerting"] = False
+        s["screen"] = "home"
         d.screen = list(home)
 
     def clear_blocking(d: FakeDriver) -> list[str]:
-        if s["alerting"]:  # the guard dismisses the prompt, revealing the screen behind it
-            s["alerting"] = False
-            d.screen = list(behind)
-            return ["Allow"]  # the dismiss button tapped
+        if s["screen"] == "alert":  # the guard dismisses the prompt, revealing `mid`
+            s["screen"] = "mid"
+            d.screen = list(mid)
+            return ["Allow"]
         return []
 
     screen_map = crawl.crawl(driver, reset, clear_blocking=clear_blocking, max_steps=50)
     assert not screen_map.crashes  # the alert was dismissed, not mistaken for a crash
-    assert crawl.fingerprint(behind).value in screen_map.nodes  # the screen behind it was explored
-    # The dismissal is recorded: which action triggered it and the button tapped to clear it.
-    assert len(screen_map.alerts) == 1
-    assert screen_map.alerts[0].buttons == ("Allow",)
-    assert screen_map.alerts[0].path[-1] == "tap home.go"
+    assert any(e.alert == ("Allow",) for e in screen_map.edges)  # the home→mid edge is marked
+    assert screen_map.alerts and screen_map.alerts[0].path[-1] == "tap home.go"  # recorded
+    # `end` sits behind `mid`, reachable only by replaying `tap home.go` through the alert again.
+    assert crawl.fingerprint(end).value in screen_map.nodes
 
 
 def test_crawl_uses_a_custom_guide_for_label_based_actions() -> None:

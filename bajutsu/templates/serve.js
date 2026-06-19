@@ -334,12 +334,18 @@ function renderGraph(data,runId){
   // Edge layer (SVG), sized to the same coordinate space the node tiles are positioned in.
   let svg=`<svg class="graphsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
   svg+=`<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--mut)"/></marker></defs>`;
+  // Transitions that required tapping through an OS alert (any edge for the pair carries one).
+  const alertPairs=new Set(edges.filter(e=>(e.alert||[]).length).map(e=>e.src+'>'+e.dst));
   const seen=new Set();
   edges.forEach(e=>{const k=e.src+'>'+e.dst;if(seen.has(k))return;seen.add(k);
     const a=pos.get(e.src),b=pos.get(e.dst);if(!a||!b)return;
-    if(e.src===e.dst){const x=a.x+NW,y=a.y+NH/2;svg+=`<path class="edge selfloop" d="M${x},${y-8} C${x+34},${y-26} ${x+34},${y+26} ${x},${y+8}" marker-end="url(#arrow)"/>`;return}
+    const cls='edge'+(alertPairs.has(k)?' alert':'');
+    if(e.src===e.dst){const x=a.x+NW,y=a.y+NH/2;svg+=`<path class="${cls} selfloop" d="M${x},${y-8} C${x+34},${y-26} ${x+34},${y+26} ${x},${y+8}" marker-end="url(#arrow)"/>`;
+      if(alertPairs.has(k))svg+=`<text class="edgealert" x="${x+30}" y="${y}">🛡️</text>`;return}
     const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
-    svg+=`<path class="edge" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" marker-end="url(#arrow)"/>`;
+    svg+=`<path class="${cls}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" marker-end="url(#arrow)"/>`;
+    // Mark the midpoint with a shield so it's clear the step taps through a system alert.
+    if(alertPairs.has(k))svg+=`<text class="edgealert" x="${mx}" y="${(y1+y2)/2-4}">🛡️</text>`;
   });
   svg+='</svg>';
   // Node tiles (HTML, absolutely positioned), each a real <img> so the screenshot reliably loads.
@@ -380,11 +386,11 @@ $('#crawl-zoomreset').addEventListener('click',resetView);
 let shotFp=null;  // the screen currently shown, so prev/next can walk the graph from it
 // One row per transition: the action and the other screen's thumbnail, clickable to step there.
 function transitionRows(list,field){
-  return list.map(e=>{const fp=e[field];
+  return list.map(e=>{const fp=e[field],alert=(e.alert||[]).length?' 🛡️':'';
     return `<button class="nextrow" data-fp="${esc(fp)}">`+
       `<img src="${shotURL(crawlGraphRunId,fp)}" alt="" onerror="this.style.visibility='hidden'">`+
-      `<span class="nxtxt"><span class="nxa">${esc(e.action)}</span>`+
-      `<span class="nxf">${field==='dst'?'→':'←'} ${esc(fp.slice(0,7))}${fp===shotFp?' (self)':''}</span></span></button>`;
+      `<span class="nxtxt"><span class="nxa">${esc(e.action)}${alert}</span>`+
+      `<span class="nxf">${field==='dst'?'→':'←'} ${esc(fp.slice(0,7))}${fp===shotFp?' (self)':''}${alert?' · via OS alert':''}</span></span></button>`;
   }).join('');
 }
 function openShot(fp){

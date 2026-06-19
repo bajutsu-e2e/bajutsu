@@ -47,6 +47,9 @@ main[hidden]{display:none}
 .graphsvg{position:absolute;left:0;top:0;overflow:visible}
 .graphsvg .edge{fill:none;stroke:var(--mut);stroke-width:1.5}
 .graphsvg .edge.selfloop{stroke-dasharray:3 2}
+/* A transition that taps through an OS alert: amber edge + a shield at its midpoint. */
+.graphsvg .edge.alert{stroke:var(--run);stroke-width:2}
+.graphsvg .edgealert{text-anchor:middle;dominant-baseline:middle;font-size:13px}
 .gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;overflow:hidden;cursor:pointer}
 .gnode.structural{border-style:dashed;border-color:var(--mut)}
 .gnode:hover{box-shadow:0 0 0 2px var(--acc)}
