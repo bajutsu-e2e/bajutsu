@@ -72,6 +72,6 @@ Prime directives preserved:
 ## References
 
 The OTP/2FA and email side-channel steps (`totp`, `email`) are tracked separately in
-[OTP &amp; email side-channel steps](../../proposals/BE-XXXX-otp-email-steps/BE-XXXX-otp-email-steps.md).
+[OTP &amp; email side-channel steps](../../proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md).
 
 [scenarios.md](../../../docs/scenarios.md), `bajutsu/orchestrator/actions/handlers/http.py`

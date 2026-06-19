@@ -245,7 +245,26 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 |---|---|---|---|
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) | WebView / ハイブリッド対応 | 提案 | MagicPod |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions-ja.md) | AI アサーション | 保留 | MagicPod |
+| [BE-0045](proposals/BE-0045-device-state-timezone-clipboard-shake/BE-0045-device-state-timezone-clipboard-shake-ja.md) | デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク | 提案 | MagicPod |
+| [BE-0046](proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) | OTP・メールの側方チャネルステップ | 提案 | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
+
+### 競合調査（Maestro）由来の候補
+
+Maestro（mobile.dev）はオープンソースのクロスプラットフォーム UI E2E ツールで、2026 年の方向性は
+幅・ホストされた端末クラウド（Robin）・*既定では optional ／助言的*でベンダー管理クラウドを経由する
+AI 機能に傾いています。これらの項目は、Bajutsu の逆の立場 —— 契約としての決定性、UI より下の層での
+検証、ユーザーの管理下に厳密に置かれた AI —— を、UI 層・計装なしの競合には容易に追随できない具体的
+な機能へと尖らせます。
+
+<!-- GENERATED:proposals-competitive-maestro -->
+| ID | 項目 | 状態 | 由来 |
+|---|---|---|---|
+| [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) | AI データ主権（プロバイダ非依存・秘匿化された AI 経路） | 提案 | Maestro |
+| [BE-0048](proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md) | 振る舞い／プロトコルアサーション | 提案 | Maestro |
+| [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) | 決定性／フレーキネス監査 | 提案 | Maestro |
+| [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 提案 | Maestro |
+<!-- /GENERATED:proposals-competitive-maestro -->
 
 ## 取り込まない（既に充足 / スコープ外）
 

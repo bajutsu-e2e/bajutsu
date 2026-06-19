@@ -34,6 +34,15 @@
 
 これらがないと、こうしたフローは非決定的な回避策に頼るか、そもそも自動化できません。
 
+**競合の文脈（Maestro）。** これらを埋めることは Maestro に対する前提でもあります。Maestro は標準で
+幅広いデバイス制御の語彙を備えています —— `setAirplaneMode` / `toggleAirplaneMode`、
+`setOrientation`、`setLocation` / `travel`、`setPermissions`、`clearKeychain`、`clearState`、
+`pressKey`、`hideKeyboard`、`openLink`。Bajutsu は中核部分を BE-0035 で実装済みです。残るこれらの
+プリミティブ（タイムゾーン、クリップボードの仕込み／読み戻し、シェイク、アプリのレジューム）を埋めれ
+ば、「Maestro はできるが Bajutsu はできない」という安易な反論を取り除けます。差別化は*やり方*にあり
+ます。各プリミティブは、落ち着き待ちの sleep も AI もない決定的な `simctl` レベルの副作用のままです。
+したがって Bajutsu は、決定性の契約を手放さずに能力面のパリティへ到達します。
+
 ## 詳細設計
 
 各プリミティブは、`setLocation` / `push` / `background` がすでに確立したパターンに従い、既存の
