@@ -179,7 +179,8 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   then takes the next untried action — the same way `run` reaches any state.
 - Disabled controls (`notEnabled`) are reported per screen as `blocked` rather than tapped. To
   enumerate transitions the crawl explores the **combinations** of control states: it tries each
-  empty text field (and toggles each switch) independently, and — when several fields are empty —
+  empty text field (and toggles each switch, and switches each tab of a tab bar) independently,
+  and — when several fields are empty —
   also a **compound fill** of them at once. The compound matters because a control can stay
   disabled until *several* fields are valid, and an intermediate single fill is often invisible (a
   masked password exposes no value), so filling one at a time can't reach the all-filled state.
