@@ -4,7 +4,7 @@
 
 Evidence capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. This ensures the same evidence is collected without AI on every subsequent run.
 
-Implementation: `bajutsu/evidence.py` (instant + Sinks) · `bajutsu/intervals.py` (interval: video / deviceLog). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
+Implementation: `bajutsu/evidence.py` (instant + Sinks) · `bajutsu/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
 
 Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) · [reporting](reporting.md)
 
@@ -88,11 +88,12 @@ To capture just one step, attach `capture:` directly to the step.
 
 (real example in [`demos/features/app/scenarios/evidence.yaml`](../demos/features/app/scenarios/evidence.yaml))
 
-## Interval evidence (video / deviceLog)
+## Interval evidence (video / deviceLog / appTrace)
 
-Implementation: `bajutsu/intervals.py`. Both are **backend-independent `simctl` child processes**:
+Implementation: `bajutsu/intervals.py`. These are **backend-independent `simctl` child processes**:
 started before the action and stopped after the step settles. Process spawning is injectable
-(`Spawn`) and testable.
+(`Spawn`) and testable. (`appTrace` is an interval too — a `log stream` over the app's os_log
+subsystem, paired into timed intervals by `parse_app_trace`.)
 
 > **Interval kinds are opt-in (BE-0028).** `video` / `deviceLog` / `appTrace` are heavy, so a
 > scenario records an interval **only when it asks for that kind** — through an inline `capture:`
@@ -110,8 +111,8 @@ started before the action and stopped after the step settles. Process spawning i
   and finalizes the file. Stop waits up to 10s, then kills.
 - deviceLog can be narrowed by `--predicate` (NSPredicate) to a subsystem, etc. (the CLI's
   `--log-predicate`).
-- `INTERVAL_KINDS = {"video", "deviceLog"}`. The orchestrator uses this set to split "interval /
-  instant."
+- `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`. The orchestrator uses this set to split
+  "interval / instant."
 
 ## Sinks (where evidence goes)
 

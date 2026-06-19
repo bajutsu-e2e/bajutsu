@@ -89,8 +89,10 @@ def run_scenario(
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
-    The whole scenario is screen-recorded (always on): the sink starts a video before
-    the first step and finalizes it after verification, attaching it to the result.
+    Heavy scenario-wide intervals (video / deviceLog / appTrace) are opt-in (BE-0028): the sink
+    starts only the interval kinds the scenario actually requests (`requested_intervals`) before
+    the first step and finalizes them after verification, attaching them to the result. A scenario
+    that requests none records no intervals; the instant baseline still fires every step.
 
     If a step fails and `on_blocked` clears a blocking condition (e.g. dismisses a
     system alert), the step is retried once before being recorded as a failure.

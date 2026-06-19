@@ -4,7 +4,7 @@
 
 繰り返し発生する動作に対する証跡取得は、単発指示ではなく **繰り返し発火するルール**として表現します。これにより、2 回目以降も AI なしで同じ証跡が収集されます。
 
-実装: `bajutsu/evidence.py`（瞬時 + Sink）・`bajutsu/intervals.py`（区間: video / deviceLog）。発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）で行われます。
+実装: `bajutsu/evidence.py`（瞬時 + Sink）・`bajutsu/intervals.py`（区間: video / deviceLog / appTrace）。発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）で行われます。
 
 関連: [scenarios の capture トークン](scenarios.md#capture-トークン文法) ・ [reporting](reporting.md)
 
@@ -79,9 +79,9 @@ capturePolicy:
 
 （[`demos/features/app/scenarios/evidence.yaml`](../../demos/features/app/scenarios/evidence.yaml) に実例）
 
-## 区間証跡（video / deviceLog）
+## 区間証跡（video / deviceLog / appTrace）
 
-実装: `bajutsu/intervals.py`。どちらも **バックエンド非依存の `simctl` 子プロセス**で、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）でテスト可能です。
+実装: `bajutsu/intervals.py`。これらは **バックエンド非依存の `simctl` 子プロセス**で、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）でテスト可能です。（`appTrace` も区間で、アプリの os_log subsystem に対する `log stream` を `parse_app_trace` が時間区間にペアリングします。）
 
 > **区間証跡は opt-in です（BE-0028）。** `video` / `deviceLog` / `appTrace` は重いため、シナリオは
 > **そのkindを要求したときだけ**記録します —— インライン `capture:` か `capturePolicy` ルール
@@ -97,7 +97,7 @@ capturePolicy:
 
 - `start_video` / `start_device_log` が `Interval` を返し、`Interval.stop()` でシグナルを送ってファイルを確定します。停止は最大 10s 待ち、超えたら kill します。
 - deviceLog は `--predicate`（NSPredicate）でサブシステム等に絞れます（CLI の `--log-predicate`）。
-- `INTERVAL_KINDS = {"video", "deviceLog"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
+- `INTERVAL_KINDS = {"video", "deviceLog", "appTrace"}`。orchestrator はこの集合で「区間 / 瞬時」を振り分けます。
 
 ## Sink（証跡の出力先）
 
