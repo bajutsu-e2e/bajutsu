@@ -295,6 +295,45 @@ async function crawlCheck(id){
 async function loadGraph(runId){
   let data;try{data=await (await fetch('/runs/'+runId+'/screenmap.json')).json()}catch(e){return}
   renderGraph(data,runId);
+  renderPlan(data);  // the right-column plan tree, kept in step with the transition graph
+}
+// The exploration-plan tree (right column), a separate view from the transition graph: each screen
+// branches into its operations, marked explored (✅, already traversed) or pending (⏳, the frontier
+// — e.g. a vision-located tab queued to tap). It grows live as the crawl discovers screens and the
+// frontier shrinks, so a watcher sees coverage build up and which paths have been walked. Rooted at
+// the entry screen and recursing through explored edges; a screen is expanded once (a later
+// reference shows "↩ shown above") so the tree stays finite despite cycles.
+function shortLabel(n){const ids=n.ids||[];return ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):n.fingerprint.slice(0,7)}
+function renderPlan(data){
+  const box=$('#crawl-plan');
+  const nodes=data.nodes||[],edges=data.edges||[],plan=data.plan||{};
+  if(!nodes.length){box.innerHTML='<div class="empty">The plan tree grows as the crawl explores.</div>';return}
+  const idx=new Map(nodes.map(n=>[n.fingerprint,n]));
+  const out=new Map(nodes.map(n=>[n.fingerprint,[]]));
+  edges.forEach(e=>{if(out.has(e.src))out.get(e.src).push(e)});
+  const incoming=new Set(edges.filter(e=>e.src!==e.dst).map(e=>e.dst));
+  let roots=nodes.filter(n=>!incoming.has(n.fingerprint)).map(n=>n.fingerprint);
+  if(!roots.length)roots=[nodes[0].fingerprint];
+  const seen=new Set();
+  function branch(fp,depth){
+    const n=idx.get(fp);if(!n)return '';
+    if(seen.has(fp))
+      return `<div class="plrow seen" style="--d:${depth}"><span class="pls">↩</span>${esc(shortLabel(n))} <span class="plmut">(shown above)</span></div>`;
+    seen.add(fp);
+    const outs=out.get(fp)||[],pend=plan[fp]||[],total=outs.length+pend.length;
+    // ● fully explored vs ◔ frontier remaining — whether this screen has been fully traversed.
+    const full=pend.length===0;
+    let h=`<div class="plrow scr${full?' full':''}" data-fp="${esc(fp)}" style="--d:${depth}" title="${esc(fp.slice(0,7))} — click to enlarge">`+
+      `<span class="pls">${full?'●':'◔'}</span><b>${esc(shortLabel(n))}</b> <span class="plcov">${outs.length}/${total}</span></div>`;
+    outs.forEach(e=>{const alert=(e.alert||[]).length?' 🛡️':'';
+      h+=`<div class="plrow op done" style="--d:${depth+1}"><span class="pls">✅</span>${esc(e.action)}${alert} <span class="plarrow">→</span></div>`;
+      h+=branch(e.dst,depth+2)});
+    pend.forEach(op=>{h+=`<div class="plrow op pend" style="--d:${depth+1}"><span class="pls">⏳</span>${esc(op)}</div>`});
+    return h;
+  }
+  let html='';roots.forEach(r=>html+=branch(r,0));
+  nodes.forEach(n=>{if(!seen.has(n.fingerprint))html+=branch(n.fingerprint,0)});  // unrooted, just in case
+  box.innerHTML=`<div class="plantree">${html}</div>`;
 }
 // Lay the screen map out as a BFS-layered graph of *units*. A unit is a label+info box — the
 // screen's identifiers / action / blocked / planned counts, with a small screenshot thumbnail that
@@ -328,23 +367,27 @@ function unitHTML(u,p,plan,runId,NW,NH){
   // Tooltip lists the queued operations (a vision-located tab shows as "tap tab '…'").
   const tip=planned?`${planned} untried operation(s) — the live frontier:\n`+ops.join('\n'):'';
   const badge=planned?`<span class="gplan" title="${esc(tip)}">⏳ ${planned}</span>`:'';
+  const style=`left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px`;
+  // A real <img> (auto-hiding on error) so the screenshot loads reliably and reads at a glance.
+  const shotImg=fp=>`<img class="gshot" src="${shotURL(runId,fp)}" alt="" loading="lazy" onerror="this.classList.add('missing')">`;
   if(u.kind==='group'){
     const ids=u.members[0].ids||[];
     const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):'screen';
-    return `<div class="gnode ggroup" data-group="${esc(u.key)}" style="left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px" title="Same UI in ${u.members.length} states — click to expand">`+
-      `<div class="ghead"><span class="gtitle">▸ ${esc(label)}</span>${badge}</div>`+
+    return `<div class="gnode ggroup" data-group="${esc(u.key)}" style="${style}" title="Same UI in ${u.members.length} states — click to expand">`+
+      shotImg(u.members[0].fingerprint)+  // the first state's shot, as a representative preview
+      `<div class="gmeta"><div class="ghead"><span class="gtitle">▸ ${esc(label)}</span>${badge}</div>`+
       `<div class="gsub">${u.members.length} states · ${ids.length} ids</div>`+
-      `<div class="gstates">grouped — click to expand</div></div>`;
+      `<div class="gstates">grouped — click to expand</div></div></div>`;
   }
   const n=u.node,ids=n.ids||[];
   const cls='gnode'+(n.kind==='structural'?' structural':'')+(u.kind==='member'?' member':'');
   const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):n.fingerprint.slice(0,7);
   const info=`${ids.length} ids · ${(n.actions||[]).length} actions`+((n.blocked||[]).length?` · 🔒 ${n.blocked.length}`:'');
   const collapse=u.kind==='member'?`<span class="gcollapse" data-group="${esc(u.key)}" title="Collapse this group">▾</span>`:'';
-  return `<div class="${cls}" data-fp="${esc(n.fingerprint)}" style="left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px" title="${esc(n.fingerprint.slice(0,7))} — click to enlarge">`+
-    `<img class="gthumb" src="${shotURL(runId,n.fingerprint)}" alt="" loading="lazy" onerror="this.classList.add('missing')">`+
-    `<div class="ghead"><span class="gtitle">${esc(label)}${n.kind==='structural'?' ~':''}</span>${collapse}${badge}</div>`+
-    `<div class="gsub">${esc(info)}</div></div>`;
+  return `<div class="${cls}" data-fp="${esc(n.fingerprint)}" style="${style}" title="${esc(n.fingerprint.slice(0,7))} — click to enlarge">`+
+    shotImg(n.fingerprint)+
+    `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}${n.kind==='structural'?' ~':''}</span>${collapse}${badge}</div>`+
+    `<div class="gsub">${esc(info)}</div></div></div>`;
 }
 function renderGraph(data,runId){
   crawlGraphData=data;crawlGraphRunId=runId;
@@ -384,8 +427,8 @@ function renderGraph(data,runId){
   while(q.length){const f=q.shift(),d=depth.get(f);(adj.get(f)||[]).forEach(t=>{if(!depth.has(t)){depth.set(t,d+1);q.push(t)}})}
   units.forEach(u=>{if(!depth.has(u.id))depth.set(u.id,0)});
   const layers=[];units.forEach(u=>{const d=depth.get(u.id);(layers[d]||(layers[d]=[])).push(u)});
-  // Layout: label+info boxes are wider and shorter than the old shot tiles.
-  const NW=184,NH=86,COLW=250,ROWH=NH+30,PAD=24;
+  // Layout: cards pair a prominent portrait screenshot (left) with the label+info (right).
+  const NW=224,NH=132,COLW=300,ROWH=NH+30,PAD=24;
   const pos=new Map();let maxRows=1;
   layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((u,i)=>pos.set(u.id,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
   const W=PAD*2+(layers.length-1)*COLW+NW,H=PAD*2+(maxRows-1)*ROWH+NH;
@@ -432,6 +475,8 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
 $('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomreset').addEventListener('click',resetView);
+// A screen row in the plan tree opens that screen's lightbox, same as a graph node.
+$('#crawl-plan').addEventListener('click',e=>{const r=e.target.closest('.plrow.scr');if(r&&r.dataset.fp)openShot(r.dataset.fp)});
 
 // ---- lightbox: enlarge a screen's shot and step through the transitions (before / after) ----
 let shotFp=null;  // the screen currently shown, so prev/next can walk the graph from it

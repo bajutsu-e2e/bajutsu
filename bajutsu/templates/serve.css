@@ -36,11 +36,18 @@ main[hidden]{display:none}
 .zoomctl{margin-left:auto;display:inline-flex;gap:.25rem}
 .zbtn{width:1.7rem;height:1.7rem;display:inline-flex;align-items:center;justify-content:center;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;cursor:pointer;font-size:1em;line-height:1;padding:0}
 .zbtn:hover{border-color:var(--acc);color:var(--acc)}
+/* Body splits into the full-height transition graph (left) and a right column whose top half is
+   the live exploration-plan tree and bottom half the console. */
+.crawlbody{flex:1;min-height:0;display:flex;gap:.5rem}
+.crawlside{flex:0 0 22rem;min-width:0;display:flex;flex-direction:column;gap:.3rem}
+.crawlsub{flex:0 0 auto;font-weight:600;font-size:.78em;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.crawlplan{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.35rem}
+.crawlplan .empty{height:100%}
 /* The graph viewport: pans (drag) and zooms (wheel / buttons) via a transform on .graphwrap. */
 .crawlgraph{flex:1;min-height:0;overflow:hidden;position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:8px;cursor:grab;user-select:none;-webkit-user-select:none}
 .crawlgraph.panning{cursor:grabbing}
 .crawlgraph .empty{height:100%}
-.crawllog{flex:0 0 8rem;height:8rem}
+.crawlside .crawllog{flex:1;min-height:0;height:auto}
 .graphwrap{position:absolute;left:0;top:0;transform-origin:0 0}
 /* Edges are one SVG layer; unit boxes are HTML label+info cards on top, in BFS layers. structural-
    fingerprint nodes (the less-stable fallback) are dashed to flag the difference. */
@@ -52,13 +59,16 @@ main[hidden]{display:none}
 .graphsvg .edgealert{text-anchor:middle;dominant-baseline:middle;font-size:13px}
 /* A unit box: a screen (or a collapsed group of same-UI states) as a label+info card. The
    screenshot is a small thumbnail in the corner that hides itself when the shot is missing. */
-.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;padding:6px 8px;overflow:hidden;cursor:pointer}
+.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;padding:7px;overflow:hidden;cursor:pointer;display:flex;gap:8px}
 .gnode.structural{border-style:dashed;border-color:var(--mut)}
 .gnode.member{border-color:var(--mut);border-left:3px solid var(--acc)}
 .gnode.ggroup{border-style:double;border-width:3px}
 .gnode:hover{box-shadow:0 0 0 2px var(--acc)}
-.gthumb{position:absolute;right:5px;bottom:5px;width:26px;height:34px;object-fit:cover;border-radius:3px;opacity:.5;background:var(--bg2);pointer-events:none}
-.gthumb.missing{display:none}
+/* A prominent portrait screenshot preview on the left; hides itself when the shot is missing so
+   the label+info reflows to the full width. */
+.gshot{flex:0 0 auto;width:72px;height:100%;object-fit:contain;border-radius:4px;background:var(--bg2);border:1px solid var(--line);pointer-events:none}
+.gshot.missing{display:none}
+.gmeta{flex:1;min-width:0;display:flex;flex-direction:column}
 .ghead{display:flex;align-items:center;gap:5px}
 .gtitle{flex:1;font-size:11px;font-weight:700;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .gsub{margin-top:3px;font-size:10px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -88,6 +98,19 @@ main[hidden]{display:none}
 .nxf{color:var(--mut);font-size:.78em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 /* A queued (untried) operation — the live frontier, e.g. a vision-located tab to tap next. */
 .planrow{background:var(--bg2);border:1px dashed var(--run);border-radius:8px;padding:.3rem .5rem;font-size:.82em;color:var(--fg)}
+/* The live exploration-plan tree: screens branch into their operations, each marked explored
+   (✅, already traversed) or pending (⏳, the frontier). Depth is indented via the --d variable. */
+.plantree{font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.plrow{padding:1px 4px 1px calc(4px + var(--d) * 14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:4px}
+.plrow.scr{font-weight:600;margin-top:3px;color:var(--fg);cursor:pointer}
+.plrow.scr:hover{background:var(--bg)}
+.plrow.scr.full .pls{color:var(--ok)}
+.plrow.op.done{color:var(--fg)}
+.plrow.op.pend{color:var(--run)}
+.plrow.seen{color:var(--mut)}
+.plcov{color:var(--mut);font-weight:400;font-size:.92em}
+.pls{display:inline-block;width:1.2em}
+.plmut,.plarrow{color:var(--mut)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
 label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
 select,input[type=text],input[type=number],textarea{width:100%;padding:.45rem;background:var(--bg2);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}
