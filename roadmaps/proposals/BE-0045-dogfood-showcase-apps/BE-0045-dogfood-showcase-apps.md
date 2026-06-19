@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-dogfood-showcase-apps-ja.md)
+**English** · [日本語](BE-0045-dogfood-showcase-apps-ja.md)
 
-# BE-XXXX — Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired)
+# BE-0045 — Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired)
 
-* Proposal: [BE-XXXX](BE-XXXX-dogfood-showcase-apps.md)
+* Proposal: [BE-0045](BE-0045-dogfood-showcase-apps.md)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Dogfood fixtures (demo apps)
