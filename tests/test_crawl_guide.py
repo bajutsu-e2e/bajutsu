@@ -20,12 +20,22 @@ class _FakeProposer:
         self._actions = actions
         self._thought = thought
         self.seen_candidates: list[crawl.Action] | None = None  # what the inspector fed us
+        self.seen_dismissed: tuple[str, ...] = ()  # OS prompt dismissed to reach the screen
 
     def propose(
-        self, elements: list[dict], screenshot: bytes | None, candidates: list[crawl.Action]
+        self,
+        elements: list[dict],
+        screenshot: bytes | None,
+        candidates: list[crawl.Action],
+        dismissed: tuple[str, ...],
     ) -> Proposal:
         self.seen_candidates = candidates
+        self.seen_dismissed = dismissed
         return Proposal(actions=list(self._actions), thought=self._thought)
+
+
+def _ctx(dismissed: tuple[str, ...] = ()) -> crawl.GuideContext:
+    return crawl.GuideContext(dismissed=dismissed)
 
 
 def test_ai_guide_feeds_the_deterministic_candidates_to_the_proposer() -> None:
@@ -33,9 +43,17 @@ def test_ai_guide_feeds_the_deterministic_candidates_to_the_proposer() -> None:
     can reason about and combine them."""
     elements = [el(identifier="a", traits=["button"]), el(identifier="f", traits=["textField"])]
     proposer = _FakeProposer([])
-    ai_guide(proposer)(FakeDriver(screen=elements), elements)
+    ai_guide(proposer)(FakeDriver(screen=elements), elements, _ctx())
     keys = {a.key for a in (proposer.seen_candidates or [])}
     assert "a" in keys and "f" in keys  # the deterministic tap + type were fed to the AI
+
+
+def test_ai_guide_feeds_a_dismissed_os_prompt_to_the_proposer() -> None:
+    """A just-dismissed OS prompt is passed to the AI so it factors it into the next strategy."""
+    elements = [el(identifier="a", traits=["button"])]
+    proposer = _FakeProposer([])
+    ai_guide(proposer)(FakeDriver(screen=elements), elements, _ctx(("Allow",)))
+    assert proposer.seen_dismissed == ("Allow",)
 
 
 def test_ai_guide_unions_proposer_with_deterministic_and_dedups() -> None:
@@ -50,7 +68,7 @@ def test_ai_guide_unions_proposer_with_deterministic_and_dedups() -> None:
             crawl.Action("tap", label="Skip"),
         ]
     )
-    actions = ai_guide(proposer)(FakeDriver(screen=elements), elements)
+    actions = ai_guide(proposer)(FakeDriver(screen=elements), elements, _ctx())
 
     # The proposer's typed value wins over the deterministic placeholder (deduped by kind+key).
     typed = [a for a in actions if a.kind == "type" and a.target == "f.user"]
@@ -63,7 +81,7 @@ def test_ai_guide_unions_proposer_with_deterministic_and_dedups() -> None:
 
 def test_ai_guide_falls_back_to_deterministic_when_proposer_is_empty() -> None:
     elements = [el(identifier="a", traits=["button"]), el(identifier="b", traits=["button"])]
-    actions = ai_guide(_FakeProposer([]))(FakeDriver(screen=elements), elements)
+    actions = ai_guide(_FakeProposer([]))(FakeDriver(screen=elements), elements, _ctx())
     assert {a.target for a in actions} == {"a", "b"}  # the deterministic baseline still drives
 
 
@@ -96,7 +114,7 @@ def test_ai_guide_narrates_the_models_thought_and_choices() -> None:
         thought="A login form; I'll fill the email to enable Sign In.",
     )
     log: list[str] = []
-    ai_guide(proposer, report=log.append)(FakeDriver(screen=elements), elements)
+    ai_guide(proposer, report=log.append)(FakeDriver(screen=elements), elements, _ctx())
     assert any("A login form" in line for line in log)  # the thought is shown
     assert any("login.user" in line and "a@b.com" in line for line in log)  # the chosen input
 

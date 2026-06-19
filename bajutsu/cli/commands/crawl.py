@@ -127,7 +127,7 @@ def crawl(
         _write_screenmap(screenmap_path, screen_map)
         say(
             f"🔭 screens={len(screen_map.nodes)} transitions={len(screen_map.edges)} "
-            f"crashes={len(screen_map.crashes)}"
+            f"crashes={len(screen_map.crashes)} alerts={len(screen_map.alerts)}"
         )
 
     def on_node(node: crawl_engine.Node) -> None:
@@ -151,8 +151,8 @@ def crawl(
         guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
         clock = RealClock()
 
-        def clear_blocking(d: base.Driver) -> None:
-            _clear_blocking(d, guard, clock, report=say)
+        def clear_blocking(d: base.Driver) -> list[str]:
+            return _clear_blocking(d, guard, clock, report=say)
 
     say("✅ app is up — crawling…")
     try:
@@ -177,7 +177,8 @@ def crawl(
     }.get(screen_map.stop_reason, screen_map.stop_reason or "stopped")
     typer.echo(
         f"crawled {len(screen_map.nodes)} screens, {len(screen_map.edges)} transitions, "
-        f"{len(screen_map.crashes)} crashes ({why}) -> {screenmap_path}"
+        f"{len(screen_map.crashes)} crashes, {len(screen_map.alerts)} alerts dismissed "
+        f"({why}) -> {screenmap_path}"
     )
 
 

@@ -150,7 +150,7 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
         d.screen = list(home)
 
     data = crawl.screenmap_dict(crawl.crawl(driver, reset))
-    assert set(data) == {"nodes", "edges", "crashes", "stop_reason"}
+    assert set(data) == {"nodes", "edges", "crashes", "alerts", "stop_reason"}
     assert isinstance(data["nodes"], list) and data["nodes"]
     assert all({"fingerprint", "kind", "ids", "actions"} <= set(n) for n in data["nodes"])
     assert all({"src", "action", "dst"} == set(e) for e in data["edges"])
@@ -409,14 +409,20 @@ def test_crawl_clears_a_blocking_alert_instead_of_recording_a_crash() -> None:
         s["alerting"] = False
         d.screen = list(home)
 
-    def clear_blocking(d: FakeDriver) -> None:
+    def clear_blocking(d: FakeDriver) -> list[str]:
         if s["alerting"]:  # the guard dismisses the prompt, revealing the screen behind it
             s["alerting"] = False
             d.screen = list(behind)
+            return ["Allow"]  # the dismiss button tapped
+        return []
 
     screen_map = crawl.crawl(driver, reset, clear_blocking=clear_blocking, max_steps=50)
     assert not screen_map.crashes  # the alert was dismissed, not mistaken for a crash
     assert crawl.fingerprint(behind).value in screen_map.nodes  # the screen behind it was explored
+    # The dismissal is recorded: which action triggered it and the button tapped to clear it.
+    assert len(screen_map.alerts) == 1
+    assert screen_map.alerts[0].buttons == ("Allow",)
+    assert screen_map.alerts[0].path[-1] == "tap home.go"
 
 
 def test_crawl_uses_a_custom_guide_for_label_based_actions() -> None:
@@ -437,7 +443,9 @@ def test_crawl_uses_a_custom_guide_for_label_based_actions() -> None:
     def reset(d: FakeDriver) -> None:
         d.screen = list(start)
 
-    def guide(_driver: FakeDriver, elements: list[dict]) -> list[crawl.Action]:
+    def guide(
+        _driver: FakeDriver, elements: list[dict], _ctx: crawl.GuideContext
+    ) -> list[crawl.Action]:
         return [
             crawl.Action("tap", label=e["label"])
             for e in elements

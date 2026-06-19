@@ -191,9 +191,11 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   — screen identity, transitions and crashes stay deterministic, so the crawl is never a verdict
   (it never gates CI).
 - Output: `<out>/screenmap.json`, a JSON graph of `nodes` (screens — fingerprint, kind, ids,
-  candidate actions), `edges` (transitions), and `crashes` (action paths that collapsed the app
-  UI), plus `<out>/screens/<fingerprint>.png` — a screenshot captured for each discovered screen
-  (while the crawl is on it). The map is rewritten as the crawl advances, so a reader (the
+  candidate actions, plus `blocked` disabled controls), `edges` (transitions), `crashes` (action
+  paths that collapsed the app UI), `alerts` (OS prompts the guard dismissed mid-crawl — the
+  triggering path + the button tapped), and `stop_reason` (`completed` / `max_screens` /
+  `max_steps`), plus `<out>/screens/<fingerprint>.png` — a screenshot captured for each discovered
+  screen (while the crawl is on it). The map is rewritten as the crawl advances, so a reader (the
   **Crawl** tab in `serve`) can draw it live, each node showing its screenshot. Stops at the first
   of `--max-screens` / `--max-steps`.
 

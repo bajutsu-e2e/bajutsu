@@ -176,11 +176,12 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   フォーム全欄の一括入力など）や id 無し要素への操作を提案し、その推論を run ログに流します。
   AI は「何を試すか」を選ぶだけで、画面同一性・遷移・クラッシュ判定は決定的のまま——よって crawl は合否を下さず、
   CI ゲートにもなりません。
-- 出力: `<out>/screenmap.json`。`nodes`（画面 —— fingerprint・種別・id・候補アクション）、
-  `edges`（遷移）、`crashes`（アプリ UI を崩壊させたアクション経路）からなる JSON グラフです。
-  あわせて `<out>/screens/<fingerprint>.png` —— 発見した各画面のスクリーンショット（その画面にいる間に撮影）
-  も出力します。クロールの進行に合わせて書き直されるので、読み手（`serve` の **Crawl** タブ）はマップを
-  リアルタイムに描け、各ノードにスクリーンショットが表示されます。`--max-screens` / `--max-steps` の
+- 出力: `<out>/screenmap.json`。`nodes`（画面 —— fingerprint・種別・id・候補アクション・`blocked` 無効操作要素）、
+  `edges`（遷移）、`crashes`（アプリ UI を崩壊させたアクション経路）、`alerts`（クロール中にガードが閉じた OS
+  プロンプト —— 誘発した経路＋タップしたボタン）、`stop_reason`（`completed` / `max_screens` / `max_steps`）からなる
+  JSON グラフです。あわせて `<out>/screens/<fingerprint>.png` —— 発見した各画面のスクリーンショット（その画面に
+  いる間に撮影）も出力します。クロールの進行に合わせて書き直されるので、読み手（`serve` の **Crawl** タブ）は
+  マップをリアルタイムに描け、各ノードにスクリーンショットが表示されます。`--max-screens` / `--max-steps` の
   いずれか早い方で停止します。
 
 ## `codegen`
