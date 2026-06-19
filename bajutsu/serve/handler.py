@@ -212,12 +212,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if scn_dir is None:
                 self._json({"error": f"app '{app}' has no scenarios dir"}, 400)
                 return
-            # Reduce the client value to a bare filename before building the path: a basename can't
-            # traverse out of the dir, so an arbitrary host path can never be reached (and the UI's
-            # value works whether it sends the file name or its full path).
+            # Match the client value against the dir's actual scenario files by name: the path we
+            # use comes from enumerating the dir (trusted), never from the client string, so no
+            # client-controlled value reaches a filesystem path. The UI's value works whether it
+            # sends the file name or its full path (we compare on the basename).
             name = Path(str(body["scenario"])).name
-            target = scn_dir / name
-            if not name.endswith(".yaml") or not target.is_file():
+            target = next(
+                (p for p in scn_dir.glob("*.yaml") if p.name == name and p.is_file()), None
+            )
+            if target is None:
                 self._json(
                     {"error": "scenario must be an existing .yaml inside the app's scenarios dir"},
                     400,
