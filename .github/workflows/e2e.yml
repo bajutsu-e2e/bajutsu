@@ -12,6 +12,10 @@ on:
   # that never run stay pending and block merges). The metered macOS jobs themselves are
   # path-gated by the `changes` job below — docs-only PRs skip them and the gate passes.
   pull_request:
+  # Also run in the merge queue: `E2E` is a required check, and a required check that
+  # never reports on `merge_group` leaves the queue entry pending until it times out.
+  # The `changes` job uses the merge group's SHAs so path-gating still applies here.
+  merge_group:
 
 permissions:
   contents: read
@@ -36,8 +40,8 @@ jobs:
       - name: Detect relevant paths
         id: filter
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           if [ -z "$BASE_SHA" ]; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
