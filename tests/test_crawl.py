@@ -381,6 +381,28 @@ def test_action_tap_point_scales_a_normalized_coordinate_to_the_screen() -> None
     assert ("tap_point", (200.0, 760.0)) in driver.actions
 
 
+def test_node_targets_normalize_tap_rectangles() -> None:
+    """Each candidate action carries the on-screen rectangle it taps, normalized to [0,1] of the
+    screen and keyed by the action's description — what the web UI overlays on the screenshot to
+    show where a transition's tap lands. A coordinate (vision) tab yields a small box at its point."""
+    elements = [
+        el(traits=["application"], frame=(0, 0, 200, 400)),  # the window spans the screen
+        el(identifier="a", traits=["button"], frame=(40, 100, 120, 50)),
+        el(identifier="b", traits=["button"], frame=(40, 300, 120, 50)),
+    ]
+    actions = [*crawl.candidate_actions(elements), crawl.Action("tap_point", point=(0.5, 0.9))]
+    node = crawl._node_of(crawl.fingerprint(elements), elements, actions)
+    t = dict(node.targets)
+    # Screen size = the window frame (200 x 400); a frame normalizes to that.
+    assert t["tap a"] == (40 / 200, 100 / 400, 120 / 200, 50 / 400)
+    # The coordinate tab maps to a small box centred on its normalized point.
+    x, y, w, h = t["tap point (0.50, 0.90)"]
+    assert x < 0.5 < x + w and y < 0.9 < y + h
+    # Serialized as a plain {description: [x, y, w, h]} object.
+    data = crawl.screenmap_dict(crawl.ScreenMap(nodes={node.fingerprint: node}))
+    assert data["nodes"][0]["targets"]["tap b"] == [40 / 200, 300 / 400, 120 / 200, 50 / 400]
+
+
 def test_action_tap_point_describe_and_key() -> None:
     a = crawl.Action("tap_point", label="Home", point=(0.1, 0.9))
     b = crawl.Action("tap_point", point=(0.1, 0.9))  # same coordinate, no label

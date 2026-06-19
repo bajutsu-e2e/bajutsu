@@ -492,9 +492,12 @@ $('#crawl-plan').addEventListener('click',e=>{const r=e.target.closest('.plrow.s
 // ---- lightbox: enlarge a screen's shot and step through the transitions (before / after) ----
 let shotFp=null;  // the screen currently shown, so prev/next can walk the graph from it
 // One row per transition: the action and the other screen's thumbnail, clickable to step there.
-function transitionRows(list,field){
+// For outgoing transitions a `targets` map carries the tap rectangle on *this* screen, attached as
+// data-rect so hovering the row highlights where the tap lands on the screenshot.
+function transitionRows(list,field,targets){
   return list.map(e=>{const fp=e[field],alert=(e.alert||[]).length?' 🛡️':'';
-    return `<button class="nextrow" data-fp="${esc(fp)}">`+
+    const rect=targets&&targets[e.action],rd=rect?` data-rect="${rect.join(',')}"`:'';
+    return `<button class="nextrow" data-fp="${esc(fp)}"${rd}>`+
       `<img src="${shotURL(crawlGraphRunId,fp)}" alt="" onerror="this.style.visibility='hidden'">`+
       `<span class="nxtxt"><span class="nxa">${esc(e.action)}${alert}</span>`+
       `<span class="nxf">${field==='dst'?'→':'←'} ${esc(fp.slice(0,7))}${fp===shotFp?' (self)':''}${alert?' · via OS alert':''}</span></span></button>`;
@@ -504,22 +507,36 @@ function openShot(fp){
   if(!crawlGraphData)return;
   const nodes=crawlGraphData.nodes||[],edges=crawlGraphData.edges||[];
   const node=nodes.find(n=>n.fingerprint===fp);if(!node)return;
-  shotFp=fp;
+  shotFp=fp;hideHi();
   $('#shotimg').src=shotURL(crawlGraphRunId,fp);
   $('#shottitle').textContent=`${fp.slice(0,7)}${node.kind==='structural'?' (structural)':''} · ${(node.ids||[]).length} ids · ${(node.actions||[]).length} actions`;
   const out=edges.filter(e=>e.src===fp),inc=edges.filter(e=>e.dst===fp);
+  // Where each operation taps on this screen, normalized to the screenshot — for the hover highlight.
+  const targets=node.targets||{};
   // Arrows step to the first transition before / after this screen (the lists below pick a specific one).
   $('#shotprev').disabled=!inc.length;$('#shotfwd').disabled=!out.length;
-  let h=`<div class="nexthd${out.length?'':' muted'}">Goes to ${out.length} screen(s) →</div>`+transitionRows(out,'dst');
+  // Outgoing transitions carry the tap rect (the tap happens on this screen); incoming don't (their
+  // tap was on the source screen, not shown here).
+  let h=`<div class="nexthd${out.length?'':' muted'}">Goes to ${out.length} screen(s) →</div>`+transitionRows(out,'dst',targets);
   h+=`<div class="nexthd${inc.length?'':' muted'}">← Comes from ${inc.length} screen(s)</div>`+transitionRows(inc,'src');
   // Planned (untried) operations queued from this screen — the frontier the crawl will try next,
   // including a vision-located tab ("tap tab '…'") for a tab bar the tree couldn't address.
   const planned=(crawlGraphData.plan||{})[fp]||[];
   if(planned.length)h+=`<div class="nexthd">⏳ Planned next (${planned.length} untried)</div>`+
-    planned.map(op=>`<div class="planrow">${esc(op)}</div>`).join('');
+    planned.map(op=>{const rect=targets[op],rd=rect?` data-rect="${rect.join(',')}"`:'';
+      return `<div class="planrow"${rd}>${esc(op)}</div>`}).join('');
   $('#shotnext').innerHTML=h;
   $('#shotmodal').hidden=false;
 }
+// Show / hide the tap-location highlight over the screenshot. The rect is [x,y,w,h] as fractions
+// of the screen, so it positions directly as percentages over the tightly-wrapped image.
+function showHi(rectStr){
+  const r=(rectStr||'').split(',').map(Number);if(r.length!==4||r.some(isNaN))return;
+  const hi=$('#shothi');if(!hi)return;
+  hi.style.left=(r[0]*100)+'%';hi.style.top=(r[1]*100)+'%';hi.style.width=(r[2]*100)+'%';hi.style.height=(r[3]*100)+'%';
+  hi.hidden=false;
+}
+function hideHi(){const hi=$('#shothi');if(hi)hi.hidden=true}
 // Step to the screen after (a transition out of) or before (a transition into) the current one.
 function shotStep(dir){
   if(!crawlGraphData||shotFp==null)return;
@@ -527,9 +544,12 @@ function shotStep(dir){
   const e=dir==='fwd'?edges.find(x=>x.src===shotFp&&x.dst!==shotFp):edges.find(x=>x.dst===shotFp&&x.src!==shotFp);
   if(e)openShot(dir==='fwd'?e.dst:e.src);
 }
-function closeShot(){$('#shotmodal').hidden=true;$('#shotimg').removeAttribute('src');shotFp=null}
+function closeShot(){$('#shotmodal').hidden=true;$('#shotimg').removeAttribute('src');shotFp=null;hideHi()}
 $('#shotmodal').addEventListener('click',e=>{if(e.target===$('#shotmodal')||e.target===$('#shotclose'))closeShot()});
 $('#shotnext').addEventListener('click',e=>{const b=e.target.closest('.nextrow');if(b&&b.dataset.fp)openShot(b.dataset.fp)});
+// Hovering a transition / planned row with a known tap location highlights it on the screenshot.
+$('#shotnext').addEventListener('mouseover',e=>{const r=e.target.closest('[data-rect]');if(r)showHi(r.dataset.rect)});
+$('#shotnext').addEventListener('mouseout',e=>{if(e.target.closest('[data-rect]'))hideHi()});
 $('#shotprev').addEventListener('click',()=>shotStep('prev'));
 $('#shotfwd').addEventListener('click',()=>shotStep('fwd'));
 // Arrow keys walk the transitions; Esc closes — only while the lightbox is open.

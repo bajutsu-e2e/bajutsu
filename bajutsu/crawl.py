@@ -125,14 +125,17 @@ class Action:
 @dataclass(frozen=True)
 class Node:
     """A discovered screen: its fingerprint, the identifiers present, the candidate action keys
-    leaving it, and `blocked` — actionable controls present but disabled (known but un-pressable
-    until a precondition is met)."""
+    leaving it, `blocked` — actionable controls present but disabled (known but un-pressable until a
+    precondition is met) — and `targets`: per candidate action, the on-screen rectangle it taps,
+    normalized to [0,1] of the screen and keyed by the action's description, so the web UI can
+    highlight on the screenshot where a transition's tap lands."""
 
     fingerprint: str
     kind: str
     ids: tuple[str, ...]
     actions: tuple[str, ...]
     blocked: tuple[str, ...] = ()
+    targets: tuple[tuple[str, tuple[float, float, float, float]], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -367,7 +370,68 @@ def _node_of(fp: Fingerprint, elements: list[base.Element], actions: list[Action
         ids=tuple(sorted({i for el in elements if (i := _id_of(el))})),
         actions=tuple(a.key for a in actions),
         blocked=tuple(blocked_controls(elements)),
+        targets=_action_targets(elements, actions),
     )
+
+
+def _bbox(
+    frames: list[tuple[float, float, float, float]],
+) -> tuple[float, float, float, float]:
+    """The bounding box covering several element frames (used for a multi-field fill)."""
+    x = min(f[0] for f in frames)
+    y = min(f[1] for f in frames)
+    return (x, y, max(f[0] + f[2] for f in frames) - x, max(f[1] + f[3] for f in frames) - y)
+
+
+def _action_rect(
+    elements: list[base.Element], action: Action
+) -> tuple[float, float, float, float] | None:
+    """The point-space rectangle the action taps: the target element's frame (by id, or by
+    label + index for an id-less element), or the bounding box of a fill's fields. None when the
+    element can't be located."""
+    if action.kind == "fill":
+        frames = [
+            f
+            for fid, _ in action.fields
+            for el in elements
+            if _id_of(el) == fid and (f := el.get("frame"))
+        ]
+        return _bbox(frames) if frames else None
+    if action.target:
+        return next(
+            (f for el in elements if _id_of(el) == action.target and (f := el.get("frame"))), None
+        )
+    if action.label is not None:
+        matches = [
+            f for el in elements if el.get("label") == action.label and (f := el.get("frame"))
+        ]
+        idx = action.index or 0
+        return matches[idx] if idx < len(matches) else None
+    return None
+
+
+def _action_targets(
+    elements: list[base.Element], actions: list[Action]
+) -> tuple[tuple[str, tuple[float, float, float, float]], ...]:
+    """For each action, the rectangle it taps normalized to [0,1] of the screen, keyed by the
+    action's description (matching the edge/plan strings the web UI shows) — so the UI can highlight
+    where a transition's tap lands on the screenshot. A coordinate tap (a vision-located tab) yields
+    a small box around its point; a tap/type/fill yields its element frame over the screen size."""
+    w = max((f[2] for el in elements if (f := el.get("frame"))), default=0.0)
+    h = max((f[3] for el in elements if (f := el.get("frame"))), default=0.0)
+    if w <= 0 or h <= 0:
+        return ()
+    out: list[tuple[str, tuple[float, float, float, float]]] = []
+    for a in actions:
+        if a.kind == "tap_point" and a.point is not None:
+            px, py = a.point
+            out.append((a.describe(), (max(0.0, px - 0.06), max(0.0, py - 0.035), 0.12, 0.07)))
+            continue
+        rect = _action_rect(elements, a)
+        if rect is not None:
+            x, y, fw, fh = rect
+            out.append((a.describe(), (x / w, y / h, fw / w, fh / h)))
+    return tuple(out)
 
 
 def crawl(
@@ -534,6 +598,7 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
                 "ids": list(node.ids),
                 "actions": list(node.actions),
                 "blocked": list(node.blocked),
+                "targets": {desc: list(rect) for desc, rect in node.targets},
             }
             for node in sorted(screen_map.nodes.values(), key=lambda n: n.fingerprint)
         ],
