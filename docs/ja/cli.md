@@ -49,6 +49,9 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
+- run 内で唯一 AI を使うアラートガードが実際に発火したときは、結果の後に消費トークン量を示す
+  `AI usage:` 行を **stderr** に出力します（stdout は機械可読の結果 1 行のままです）。AI を使わな
+  かった run では何も出力しません。
 
 ```bash
 bajutsu run --app sample --udid <UDID> --backend idb --no-erase            # アプリのシナリオディレクトリ全体
@@ -102,6 +105,8 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 
 - 既定は `runs/` 直下の最新 run。失敗シナリオが無ければ**終了 0**。
 - `--rerun` は `--write` と `--app` が必要。
+- `--ai` のときは、診断後に消費トークン量を示す `AI usage:` 行を stderr に出力します。既定のルール
+  ベースは AI を使わないので何も出力しません。
 
 ## `record`
 
@@ -128,6 +133,9 @@ bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>]
 
 - 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
+- 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
+  stderr に出力します。`claude-code` エージェントはここで API トークンを消費しないため、何も表示
+  されません。
 
 ## `codegen`
 

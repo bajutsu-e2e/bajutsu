@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import env as _env
+from bajutsu import usage as _usage
 from bajutsu.agents import make_agent
 from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
@@ -67,6 +68,7 @@ def record(
     writes there; otherwise it auto-names a file under the app's configured `scenarios` dir."""
     eff = _load_effective(config, app_name)
     out_path = _record_out_path(eff, out, name, goal, app_name)
+    before = _usage.snapshot()
     kind = agent or os.environ.get("BAJUTSU_AGENT") or "api"
     try:
         authoring_agent = make_agent(kind)
@@ -111,6 +113,12 @@ def record(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(dump_scenarios([scenario]), encoding="utf-8")
     typer.echo(f"recorded {len(scenario.steps)} steps ({kind} agent) -> {out_path}")
+    # Report what the authoring (and alert-guard) AI consumed; to stderr, like the progress
+    # narration, so stdout stays the single result line. The claude-code agent bills no tokens
+    # here, so its delta is empty and nothing is shown.
+    spent = _usage.snapshot() - before
+    if spent.calls:
+        typer.echo(spent.render(), err=True)
 
 
 def register(app: typer.Typer) -> None:

@@ -53,6 +53,9 @@ to run. Pass `--scenario <file>` to run a single file instead.
   ([evidence](evidence.md#sinks-where-evidence-goes)).
 - `runId` is `YYYYMMDD-HHMMSS`.
 - Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
+- When the alert guard actually fires (it is the run's only AI), an `AI usage:` line with the
+  token totals it consumed is printed to **stderr** after the result, leaving stdout the single
+  machine-readable result line. A run that used no AI prints nothing.
 
 ```bash
 bajutsu run --app sample --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
@@ -113,6 +116,8 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 
 - Defaults to the latest run under `runs/`. **Exits 0** when the run has no failed scenario.
 - `--rerun` requires `--write` (nothing to verify otherwise) and `--app`.
+- With `--ai`, an `AI usage:` line of the tokens the diagnosis consumed is printed to stderr after
+  the diagnosis. The rule-based default uses no AI, so it prints nothing.
 
 ## `record`
 
@@ -139,6 +144,8 @@ bajutsu record --app <name> --goal "<natural-language goal>" [--out <file.yaml>]
 
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
 - Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
+- An `AI usage:` line with the tokens the authoring (and any alert-guard) AI consumed follows on
+  stderr. The `claude-code` agent bills no API tokens here, so it shows nothing.
 
 ## `codegen`
 

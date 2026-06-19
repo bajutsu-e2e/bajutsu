@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 from typing import Any
 
+from bajutsu import usage
 from bajutsu.agent import Observation, Proposal
 from bajutsu.scenario import Assertion, Step
 
@@ -313,6 +314,7 @@ class ClaudeAgent:
             tool_choice={"type": "any"},  # force one tool call; no thinking with forced choice
             messages=[{"role": "user", "content": _user_content(observation)}],
         )
+        usage.record(getattr(message, "usage", None))
         return _to_proposal(message)
 
     def plan(self, goal: str) -> list[str]:
@@ -325,6 +327,7 @@ class ClaudeAgent:
             tool_choice={"type": "tool", "name": "plan"},  # force the plan call
             messages=[{"role": "user", "content": f"Goal: {goal}"}],
         )
+        usage.record(getattr(message, "usage", None))
         block = next((b for b in message.content if b.type == "tool_use"), None)
         if block is None:
             return []

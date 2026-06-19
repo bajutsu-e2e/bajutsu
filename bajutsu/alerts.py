@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from bajutsu import usage
 from bajutsu.drivers import base
 from bajutsu.orchestrator import AlertEvent
 
@@ -206,4 +207,5 @@ class ClaudeAlertLocator:
                 }
             ],
         )
+        usage.record(getattr(message, "usage", None))
         return _decision_of(message, width, height)

@@ -38,9 +38,31 @@ class FakeBlock:
         self.input = inp
 
 
+class FakeUsage:
+    """Mimics an Anthropic response's `usage` block (the token accounting)."""
+
+    def __init__(
+        self,
+        input_tokens: int = 10,
+        output_tokens: int = 5,
+        cache_creation_input_tokens: int = 0,
+        cache_read_input_tokens: int = 3,
+    ) -> None:
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+        self.cache_creation_input_tokens = cache_creation_input_tokens
+        self.cache_read_input_tokens = cache_read_input_tokens
+
+
+# Per-call token total of the default FakeUsage (10 in + 5 out + 3 cache-read), so tests that
+# assert on the usage tracker can compute the expected sum from the number of create() calls.
+FAKE_USAGE_PER_CALL = 18
+
+
 class _FakeMessage:
     def __init__(self, blocks: list[FakeBlock]) -> None:
         self.content = list(blocks)
+        self.usage = FakeUsage()
 
 
 class FakeAnthropic:
