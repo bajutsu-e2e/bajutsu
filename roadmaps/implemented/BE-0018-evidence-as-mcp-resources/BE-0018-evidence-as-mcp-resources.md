@@ -3,8 +3,9 @@
 # BE-0018 — Return evidence as MCP resources
 
 * Proposal: [BE-0018](BE-0018-evidence-as-mcp-resources.md)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
+* Status: **Implemented**
+* Implementing PR: [#68](https://github.com/bajutsu-e2e/bajutsu/pull/68)
+* Track: [Accepted](../../README.md#accepted)
 * Topic: Integration & automation (MCP)
 
 ## Introduction

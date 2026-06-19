@@ -125,8 +125,11 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0030](implemented/BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md) | Parameterized shared steps | Implemented | MagicPod |
 | [BE-0031](implemented/BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios.md) | Data-driven scenarios | Implemented | MagicPod |
 | [BE-0032](implemented/BE-0032-secret-variables/BE-0032-secret-variables.md) | Secret variables | Implemented | MagicPod |
-| [BE-0033](proposals/BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md) | Scenario variables + light control flow | In progress | MagicPod |
+| [BE-0033](implemented/BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md) | Scenario variables + light control flow | Implemented | MagicPod |
 | [BE-0034](implemented/BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md) | Tags / labels + selective runs | Implemented | MagicPod |
+| [BE-0035](implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives.md) | Device-control steps (background, status-bar override) | Implemented | MagicPod |
+| [BE-0036](implemented/BE-0036-utility-steps/BE-0036-utility-steps.md) | HTTP utility step | Implemented | MagicPod |
+| [BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | In progress | Autify VAX |
 | [BE-0039](implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
 <!-- /GENERATED:accepted-competitive -->
 
@@ -136,6 +139,7 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | ID | Item | Status |
 |---|---|---|
 | [BE-0017](implemented/BE-0017-mcp-server/BE-0017-mcp-server.md) | MCP server | Implemented |
+| [BE-0018](implemented/BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) | Return evidence as MCP resources | Implemented |
 <!-- /GENERATED:accepted-mcp -->
 
 ### Development infrastructure (contributor workflow)
@@ -204,7 +208,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 <!-- GENERATED:proposals-mcp -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0018](proposals/BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md) | Return evidence as MCP resources | Proposal |
 <!-- /GENERATED:proposals-mcp -->
 
 ### Backend expansion (iOS actuators)
@@ -247,10 +250,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 <!-- GENERATED:proposals-competitive -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0035](proposals/BE-0035-device-control-primitives/BE-0035-device-control-primitives.md) | Extended device-control primitives | Proposal | MagicPod |
-| [BE-0036](proposals/BE-0036-utility-steps/BE-0036-utility-steps.md) | Utility steps | Proposal | MagicPod |
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
-| [BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | Proposal | Autify VAX |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 

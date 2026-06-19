@@ -118,8 +118,11 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0030](implemented/BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md) | パラメータ化シェアドステップ | 実装済み | MagicPod |
 | [BE-0031](implemented/BE-0031-data-driven-scenarios/BE-0031-data-driven-scenarios-ja.md) | データ駆動シナリオ | 実装済み | MagicPod |
 | [BE-0032](implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md) | シークレット変数 | 実装済み | MagicPod |
-| [BE-0033](proposals/BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md) | シナリオ変数 + 軽い制御フロー | 実装中 | MagicPod |
+| [BE-0033](implemented/BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md) | シナリオ変数 + 軽い制御フロー | 実装済み | MagicPod |
 | [BE-0034](implemented/BE-0034-tags-selective-runs/BE-0034-tags-selective-runs-ja.md) | タグ / ラベル + 選択実行 | 実装済み | MagicPod |
+| [BE-0035](implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md) | デバイス制御ステップ（background・ステータスバー上書き） | 実装済み | MagicPod |
+| [BE-0036](implemented/BE-0036-utility-steps/BE-0036-utility-steps-ja.md) | HTTP ユーティリティステップ | 実装済み | MagicPod |
+| [BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) | 自律クロール探索（App Explorer 風） | 実装中 | Autify VAX |
 | [BE-0039](implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin-ja.md) | 自己修復は「提案＋opt-in 適用」に限定 | 実装済み | 両社 |
 <!-- /GENERATED:accepted-competitive -->
 
@@ -129,6 +132,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0017](implemented/BE-0017-mcp-server/BE-0017-mcp-server-ja.md) | MCP サーバ化 | 実装済み |
+| [BE-0018](implemented/BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources-ja.md) | 証跡を MCP リソースで返す | 実装済み |
 <!-- /GENERATED:accepted-mcp -->
 
 ### 開発基盤（コントリビュータ体験）
@@ -197,7 +201,6 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 <!-- GENERATED:proposals-mcp -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0018](proposals/BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources-ja.md) | 証跡を MCP リソースで返す | 提案 |
 <!-- /GENERATED:proposals-mcp -->
 
 ### バックエンド拡張（iOS actuator）
@@ -240,10 +243,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 <!-- GENERATED:proposals-competitive -->
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
-| [BE-0035](proposals/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md) | デバイス制御プリミティブ拡張 | 提案 | MagicPod |
-| [BE-0036](proposals/BE-0036-utility-steps/BE-0036-utility-steps-ja.md) | ユーティリティステップ | 提案 | MagicPod |
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) | WebView / ハイブリッド対応 | 提案 | MagicPod |
-| [BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) | 自律クロール探索（App Explorer 風） | 提案 | Autify VAX |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions-ja.md) | AI アサーション | 保留 | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 

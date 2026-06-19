@@ -3,14 +3,15 @@
 # BE-0033 — Scenario variables + light control flow
 
 * Proposal: [BE-0033](BE-0033-scenario-variables-control-flow.md)
-* Status: **Accepted, in progress**
+* Status: **Implemented**
+* Implementing PR: [#42](https://github.com/bajutsu-e2e/bajutsu/pull/42), [#67](https://github.com/bajutsu-e2e/bajutsu/pull/67)
 * Track: [Accepted](../../README.md#accepted)
 * Topic: Candidates from competitive research (MagicPod / Autify)
 * Origin: MagicPod
 
 ## Introduction
 
-The `${...}` interpolation primitive (`interp.py`, handling params/row/secrets uniformly) is implemented. What remains is capturing UI values for later reuse via `vars.*`, and conditionals and loops within bounds that preserve determinism.
+The `${...}` interpolation primitive (`interp.py`, handling params/row/secrets uniformly), runtime value capture via `vars.*`, and bounded conditionals and loops that preserve determinism are all implemented.
 
 ## Motivation
 
@@ -22,7 +23,7 @@ The shared interpolation primitive is implemented: `${...}` tokens are resolved 
 
 **Runtime variables (`vars.*`) — implemented.** A step's `extract` modifier captures a UI element's property into a runtime variable after the step executes: each entry names a variable and gives a `sel` (selector) plus optional `prop` (`value` | `label` | `identifier`, default `value`). `_run_extract` (`bajutsu/orchestrator/`) resolves the selector via `resolve_unique` and stores the result under `vars.<name>` in a mutable bindings map carried through the run; if the selector is not uniquely resolved or the property is `None`, the step fails. Subsequent steps and the scenario-level `expect` then interpolate `${vars.<name>}` from that map (`_interp_step` / `_interp_asserts`). Because capture is just a deterministic property read and substitution, the run/CI verdict stays machine-only — no LLM is involved.
 
-**Bounded control flow — remaining.** What is still to be designed, at proposal altitude: a conditional that runs steps only when a machine-checkable predicate over the live UI (e.g. an element exists, a `vars.*` value equals something) holds, and a loop that repeats a block a statically bounded number of times (a fixed count, or "until a condition, capped at N"). The guiding constraints are the prime directives: every predicate must be deterministic and machine-evaluated (never an LLM judgment); every loop must have a hard upper bound so a run always terminates; and a skipped or short-circuited branch must be reported transparently so the report still reflects exactly what executed. Expansion-time resolution is preferred where a branch depends only on load-time data; only genuinely runtime-dependent branching needs to live in the run loop.
+**Bounded control flow — implemented.** Two deterministic control-flow steps are now available. `if` takes a `condition` — a machine-checkable assertion over the live UI (an element exists, a `vars.*` value equals something) — and runs its `then` steps when the condition holds or its optional `else` steps otherwise. `forEach` iterates over the elements matching a selector, binding each matched element's identifier to `vars.<as>` and running the nested `steps` once per element, so the loop is bounded by the statically resolved match set and always terminates. Both preserve the prime directives: the predicate is a deterministic assertion evaluated by machine (never an LLM judgment), the loop has a hard upper bound from the match set, and a skipped or short-circuited branch is reported transparently so the report reflects exactly what executed. Control-flow steps carry no `capture`/`extract` modifiers, keeping them pure structure.
 
 ## Alternatives considered
 
