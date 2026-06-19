@@ -10,7 +10,8 @@
 ## はじめに
 
 stdlib の `bajutsu serve`（`bajutsu/serve/`）が今安全なのは、**localhost 限定・単一ユーザー**だからです。
-認証は無く、`/api/run` はクライアント指定の scenario パスを受け付けていました。ホスティングの 2 提案 ——
+認証は無く、`/api/run` は（下記スライス 1（#92）が封じ込めるまで）クライアント指定の scenario パスを
+受け付けていました。ホスティングの 2 提案 ——
 公開/クラウドの [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) と
 セルフホストの [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) —— はいずれも、
 `serve` を loopback の外へ到達させる前に**必須**となる一連のセキュリティ修正を挙げています。本項目は、それらを
@@ -41,14 +42,15 @@ macOS ワーカープール・OAuth・オブジェクトストレージ）を記
 既存 `bajutsu/serve/` サーバ上の、独立して出荷可能なスライス列。いずれも pass/fail や決定的コアに触れず、serve の
 HTTP ハーネスで Simulator 無しにテストできます。
 
-1. **`/api/run` の入力検証**（実装済み）—— scenario を選択中アプリの scenarios dir 内に限定（既存の
-   `_scenario_path` トラバーサルガードを再利用）し、実在する `.yaml` を要求。既知トークンでない `backend` /
-   `udid` を拒否。任意パス実行の面を排除する。他のエンドポイント（`/api/config`・`/api/scenario`・
+1. **`/api/run` の入力検証**（#92 で実装）—— 要求された scenario を選択中アプリの scenarios dir の
+   ファイル名と突き合わせ（実行に使うパスは dir 列挙由来で、クライアント文字列は使わない）、既知トークンでない
+   `backend` / `udid` を拒否。任意パス実行の面を排除する。他のエンドポイント（`/api/config`・`/api/scenario`・
    `/api/approve`・`/runs/...` 配信）は既にパスを封じ込め済み。
-2. **トークン認証 + 非 loopback ガード**（次）—— 任意の共有トークン（`--token` / `BAJUTSU_SERVE_TOKEN`）。
-   設定時は全リクエストが提示必須（`Bearer` ヘッダ／ HttpOnly Cookie を仕込む `?token=` クエリ／その Cookie）で、
-   定数時間比較。**非 loopback host をトークン無しで bind するのは起動時に拒否**するので、無認証で誤って公開
-   されることがない。ブラウザ UI は Cookie でそのまま動く。
+2. **トークン認証 + 非 loopback ガード**（次）—— 任意の共有トークン（`--token` / `BAJUTSU_SERVE_TOKEN`）を
+   定数時間比較。API クライアントは `Bearer` ヘッダで提示し、ブラウザは **POST のログインエンドポイント経由で
+   HttpOnly・SameSite Cookie を確立**します（トークンは URL に載せない —— クエリ文字列は履歴・ログ・`Referer`
+   から漏えいするため）。**非 loopback host をトークン無しで bind するのは起動時に拒否**するので、無認証で誤って
+   公開されることがない。
 3. **同じ入力検証を他の run 起動エンドポイントにも適用**（`/api/record`、将来の `/api/crawl`）—— スライス 1 と
    同様に `backend` / `udid` のトークン検証。
 4. **CSRF 対策 + 標準セキュリティヘッダ** —— Cookie 認証が入ったら、状態変更 POST を保護（CSRF トークン、または

@@ -10,7 +10,8 @@
 ## Introduction
 
 The stdlib `bajutsu serve` (`bajutsu/serve/`) is safe today only because it is **localhost-only and
-single-user**: it has no authentication and `/api/run` accepted a client-supplied scenario path.
+single-user**: it has no authentication and, until slice 1 below (#92) confined it, `/api/run`
+accepted a client-supplied scenario path.
 Both hosting proposals — public/cloud [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
 and self-hosted [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — name a set of
 **mandatory** security fixes before `serve` may be reached beyond loopback. This item collects those
@@ -43,16 +44,17 @@ A sequence of independently-shippable slices on the existing `bajutsu/serve/` se
 pass/fail or the deterministic core; all are testable through the serve HTTP harness without a
 Simulator.
 
-1. **Input validation on `/api/run`** *(implemented)* — confine the scenario to the selected app's
-   scenarios dir (reusing the existing `_scenario_path` traversal guard) and require it to be an
-   existing `.yaml`; reject a `backend` / `udid` that isn't a known token. Eliminates the
+1. **Input validation on `/api/run`** *(implemented in #92)* — match the requested scenario against
+   the selected app's scenarios dir by name (the run uses the path from the dir listing, never the
+   client string) and reject a `backend` / `udid` that isn't a known token. Eliminates the
    arbitrary-path execution surface. The other endpoints (`/api/config`, `/api/scenario`,
    `/api/approve`, `/runs/...` serving) already confine their paths.
 2. **Token authentication + non-loopback guard** *(next)* — an optional shared token
-   (`--token` / `BAJUTSU_SERVE_TOKEN`). When set, every request must present it (a `Bearer` header,
-   a `?token=` query that seeds an HttpOnly cookie, or that cookie), compared in constant time.
-   **Binding a non-loopback host without a token is refused at startup**, so the server can never be
-   exposed unauthenticated by accident. The browser UI keeps working unchanged via the cookie.
+   (`--token` / `BAJUTSU_SERVE_TOKEN`), compared in constant time. API clients present it as a
+   `Bearer` header; the browser establishes an **HttpOnly, SameSite cookie via a POST login
+   endpoint** (the token is never put in a URL — query strings leak through history, logs, and
+   `Referer`). **Binding a non-loopback host without a token is refused at startup**, so the server
+   can never be exposed unauthenticated by accident.
 3. **Apply the same input validation to the other run-spawning endpoints** (`/api/record`, and any
    future `/api/crawl`): the `backend` / `udid` token checks, mirroring slice 1.
 4. **CSRF protection + standard security headers** — once cookie auth exists, protect state-changing
