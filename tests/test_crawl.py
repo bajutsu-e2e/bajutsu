@@ -391,29 +391,29 @@ def test_crawl_fills_a_form_to_enable_and_press_a_disabled_button() -> None:
 
 def test_crawl_taps_through_an_alert_marks_the_edge_and_replays_through_it() -> None:
     """Tapping `home.go` pops an OS alert that collapses the app UI (looks like a crash). The
-    guard dismisses it, revealing `mid`; the home→mid edge is marked with the dismissed button and
-    no crash is recorded. To explore `mid.next` the crawl must *replay* `tap home.go`, which pops
-    the alert again — so the screen behind it (`end`) is only reached if replay dismisses it too."""
+    guard dismisses it, revealing `mid` (two buttons); the home→mid edge is marked and no crash
+    is recorded. The forward walk explores `mid.a` → `screen_a` (which returns home), exhausting
+    that branch; to try `mid.b` it must *backtrack* — reset and replay `tap home.go`, popping the
+    alert again — so `screen_b` is reached only if replay dismisses the alert too."""
     home = [
         el(identifier="home.go", traits=["button"]),
         el(identifier="home.t", traits=["staticText"]),
     ]
     alert = [el(traits=["application"])]  # collapsed tree — indistinguishable from a crash
-    mid = [
-        el(identifier="mid.next", traits=["button"]),
-        el(identifier="mid.t", traits=["staticText"]),
+    mid = [el(identifier="mid.a", traits=["button"]), el(identifier="mid.b", traits=["button"])]
+    screen_a = [
+        el(identifier="a.back", traits=["button"]),
+        el(identifier="a.t", traits=["staticText"]),
     ]
-    end = [el(identifier="end.a", traits=["button"]), el(identifier="end.b", traits=["button"])]
+    screen_b = [el(identifier="b.x", traits=["button"]), el(identifier="b.y", traits=["button"])]
     s = {"screen": "home"}
+    nav = {"home.go": "alert", "mid.a": "a", "mid.b": "b", "a.back": "home"}
+    screens = {"home": home, "alert": alert, "mid": mid, "a": screen_a, "b": screen_b}
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
-        if kind == "tap" and isinstance(arg, dict):
-            if arg.get("id") == "home.go":
-                s["screen"] = "alert"
-                d.screen = list(alert)
-            elif arg.get("id") == "mid.next":
-                s["screen"] = "end"
-                d.screen = list(end)
+        if kind == "tap" and isinstance(arg, dict) and (dst := nav.get(str(arg.get("id")))):
+            s["screen"] = dst
+            d.screen = list(screens[dst])
 
     driver = FakeDriver(screen=list(home), react=react)
 
@@ -428,12 +428,46 @@ def test_crawl_taps_through_an_alert_marks_the_edge_and_replays_through_it() -> 
             return ["Allow"]
         return []
 
-    screen_map = crawl.crawl(driver, reset, clear_blocking=clear_blocking, max_steps=50)
+    screen_map = crawl.crawl(driver, reset, clear_blocking=clear_blocking, max_steps=100)
     assert not screen_map.crashes  # the alert was dismissed, not mistaken for a crash
     assert any(e.alert == ("Allow",) for e in screen_map.edges)  # the home→mid edge is marked
-    assert screen_map.alerts and screen_map.alerts[0].path[-1] == "tap home.go"  # recorded
-    # `end` sits behind `mid`, reachable only by replaying `tap home.go` through the alert again.
-    assert crawl.fingerprint(end).value in screen_map.nodes
+    assert screen_map.alerts and screen_map.alerts[0].path[-1] == "tap home.go"  # recorded once
+    assert crawl.fingerprint(screen_a).value in screen_map.nodes  # explored forward
+    # `screen_b` is reached only by backtracking — replaying `tap home.go` through the alert again.
+    assert crawl.fingerprint(screen_b).value in screen_map.nodes
+
+
+def test_crawl_walks_forward_without_resetting_on_a_linear_chain() -> None:
+    """The forward walk reaches the end of a linear chain with a single reset (the initial one)
+    instead of resetting + replaying for each screen — the efficiency the strategy buys."""
+    chain = ["home", "a", "b", "c"]
+    screens = {
+        name: [
+            el(identifier=f"{name}.go", traits=["button"]),
+            el(identifier=f"{name}.t", traits=["staticText"]),
+        ]
+        for name in chain
+    }
+    nav = {"home.go": "a", "a.go": "b", "b.go": "c"}  # c.go leads nowhere (a leaf self-loop)
+    s = {"screen": "home"}
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict) and (dst := nav.get(str(arg.get("id")))):
+            s["screen"] = dst
+            d.screen = list(screens[dst])
+
+    driver = FakeDriver(screen=list(screens["home"]), react=react)
+    resets = 0
+
+    def reset(d: FakeDriver) -> None:
+        nonlocal resets
+        resets += 1
+        s["screen"] = "home"
+        d.screen = list(screens["home"])
+
+    screen_map = crawl.crawl(driver, reset, max_steps=100)
+    assert len(screen_map.nodes) == 4  # home, a, b, c all discovered
+    assert resets == 1  # only the initial reset — the walk continued forward, never backtracked
 
 
 def test_crawl_uses_a_custom_guide_for_label_based_actions() -> None:
