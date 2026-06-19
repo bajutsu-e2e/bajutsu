@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-device-state-timezone-clipboard-shake-ja.md)
+**English** · [日本語](BE-0045-device-state-timezone-clipboard-shake-ja.md)
 
-# BE-XXXX — Device-state primitives: timezone, clipboard, shake
+# BE-0045 — Device-state primitives: timezone, clipboard, shake
 
-* Proposal: [BE-XXXX](BE-XXXX-device-state-timezone-clipboard-shake.md)
+* Proposal: [BE-0045](BE-0045-device-state-timezone-clipboard-shake.md)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Candidates from competitive research (MagicPod / Autify)

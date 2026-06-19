@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-otp-email-steps-ja.md)
+**English** · [日本語](BE-0046-otp-email-steps-ja.md)
 
-# BE-XXXX — OTP & email side-channel steps
+# BE-0046 — OTP & email side-channel steps
 
-* Proposal: [BE-XXXX](BE-XXXX-otp-email-steps.md)
+* Proposal: [BE-0046](BE-0046-otp-email-steps.md)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Candidates from competitive research (MagicPod / Autify)
