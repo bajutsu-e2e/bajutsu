@@ -37,6 +37,22 @@ def test_needs_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
     assert crawl_tabs.needs_vision_tabs([]) is False
 
 
+def test_uikit_tab_bar_is_provisional_and_routes_to_vision_for_now() -> None:
+    """UIKit support is a stub: `_uikit_addressable_tabs` recognizes nothing yet, so a UIKit tab bar
+    (its tabs exposed as their own button elements) currently falls back to vision. When the stub is
+    completed to recognize those tabs, `addressable_tabs` flips True and vision is skipped — this
+    test then documents the change."""
+    assert crawl_tabs._uikit_addressable_tabs([el(label="Home", traits=["button"])]) is False
+    uikit = [
+        el(traits=["tabBar"], frame=(0, 800, 400, 80)),  # the bar container
+        el(label="Home", traits=["button"], frame=(0, 800, 200, 80)),
+        el(label="Me", traits=["button"], frame=(200, 800, 200, 80)),
+    ]
+    assert crawl_tabs.tab_bar_present(uikit) is True
+    assert crawl_tabs.addressable_tabs(uikit) is False  # provisional: not yet recognized
+    assert crawl_tabs.needs_vision_tabs(uikit) is True
+
+
 def test_locator_normalizes_pixel_coordinates() -> None:
     client = FakeAnthropic(
         FakeBlock(
