@@ -439,7 +439,7 @@ function renderGraph(data,runId){
   const layers=[];units.forEach(u=>{const d=depth.get(u.id);(layers[d]||(layers[d]=[])).push(u)});
   // Layout: vertical cards — a large screenshot on top, label+info (and any group button) below.
   // Wider than tall-text needs so labels wrap rather than truncate.
-  const NW=176,NH=212,COLW=250,ROWH=NH+30,PAD=24;
+  const NW=176,NH=290,COLW=250,ROWH=NH+30,PAD=24;
   const pos=new Map();let maxRows=1;
   layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((u,i)=>pos.set(u.id,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
   const W=PAD*2+(layers.length-1)*COLW+NW,H=PAD*2+(maxRows-1)*ROWH+NH;
