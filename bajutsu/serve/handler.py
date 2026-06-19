@@ -207,13 +207,17 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             app = str(body["app"])
             # Confine the scenario to the app's own scenarios dir: a serve client must not be able
-            # to run an arbitrary file path on the host (BE-0015/BE-0016 hosting prerequisite).
+            # to run an arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite).
             scn_dir = _scenarios_dir_for(state, app)
             if scn_dir is None:
                 self._json({"error": f"app '{app}' has no scenarios dir"}, 400)
                 return
-            target = _scenario_path(scn_dir, str(body["scenario"]))
-            if target is None or not target.is_file():
+            # Reduce the client value to a bare filename before building the path: a basename can't
+            # traverse out of the dir, so an arbitrary host path can never be reached (and the UI's
+            # value works whether it sends the file name or its full path).
+            name = Path(str(body["scenario"])).name
+            target = scn_dir / name
+            if not name.endswith(".yaml") or not target.is_file():
                 self._json(
                     {"error": "scenario must be an existing .yaml inside the app's scenarios dir"},
                     400,
