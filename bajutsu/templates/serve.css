@@ -76,12 +76,16 @@ main[hidden]{display:none}
    hides itself when the shot is missing so the label+info takes over. */
 .gshot{flex:0 0 auto;width:100%;height:222px;object-fit:contain;object-position:center;background:var(--bg2);border-bottom:1px solid var(--line);pointer-events:none}
 .gshot.missing{display:none}
-/* Expand (a collapsed group) / collapse (an expanded member) — a clear, full-width labelled button. */
-.gexpand,.gcollapse{flex:0 0 auto;width:100%;box-sizing:border-box;border:0;padding:6px;font:inherit;font-size:11px;font-weight:700;cursor:pointer;text-align:center}
+/* Expand (a collapsed group) / collapse (an expanded member): a small chip in the node's top-left
+   corner, floated out of the flow so it never pushes the screenshot or info line off the card. */
+.gexpand,.gcollapse{position:absolute;top:5px;left:5px;z-index:2;box-sizing:border-box;border:0;border-radius:6px;padding:2px 7px;font:inherit;font-size:11px;font-weight:700;line-height:1.4;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .gexpand{background:var(--acc);color:var(--on-acc)}
 .gexpand:hover{filter:brightness(1.08)}
-.gcollapse{background:var(--bg2);color:var(--mut);border-bottom:1px solid var(--line)}
+.gcollapse{background:var(--bg2);color:var(--mut)}
 .gcollapse:hover{color:var(--acc)}
+/* A frame drawn around the member states of an expanded group, so they read as one screen. */
+.gframe{position:absolute;box-sizing:border-box;border:2px dashed var(--acc);border-radius:14px;background:color-mix(in srgb,var(--acc) 7%,transparent);pointer-events:none}
+.gframelbl{position:absolute;top:-9px;left:12px;background:var(--card);color:var(--acc);font-size:11px;font-weight:700;padding:0 6px;border-radius:6px;white-space:nowrap}
 .gmeta{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-start;padding:5px 7px;gap:2px;overflow:hidden}
 .ghead{display:flex;align-items:flex-start;gap:5px}
 /* Labels wrap (and break long identifiers) instead of truncating eagerly — up to a couple of lines
