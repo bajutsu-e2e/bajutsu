@@ -273,7 +273,7 @@ $('#crawl-go').addEventListener('click',async()=>{
   $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
+    app:$('#crawl-app').value,agent:$('#crawl-agent').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     erase:$('#crawl-erase').checked,
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined})});
@@ -577,7 +577,7 @@ async function resumePruned(src,key){
   setBusy($('#crawl-go'),$('#crawl-stop'),true,'Resuming…');
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
+    app:$('#crawl-app').value,agent:$('#crawl-agent').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,
     runId:crawlRunId,resumeSrc:src,resumeKey:key})});

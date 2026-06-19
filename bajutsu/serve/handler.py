@@ -291,6 +291,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             cmd = crawl_command(
                 str(body["app"]),
                 out=str(state.runs_dir / run_id),
+                agent=body.get("agent", ""),
                 backend=body.get("backend", ""),
                 udid=udid,
                 max_screens=_int(body.get("maxScreens"), 50),

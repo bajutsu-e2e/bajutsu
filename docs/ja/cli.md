@@ -272,9 +272,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させます。
 - app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run** を押します。
   出力がライブ表示され、完了で `report.html` が埋め込まれます。
-- **Crawl** タブは app・デバイス・予算（max screens / steps）を選び、`POST /api/crawl` で crawl を起動します。
-  返ってきた run id で UI が `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に合わせて描きます
-  （画面は幅優先の層に配置し、遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
+- **Crawl** タブは app・AI ガイドを動かす **Agent**（`api` または `claude-code`。`crawl --agent` や
+  Record タブと同じ選択肢）・デバイス・予算（max screens / steps）を選び、`POST /api/crawl` で crawl を
+  起動します。返ってきた run id で UI が `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に
+  合わせて描きます（画面は幅優先の層に配置し、遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
   実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`apps.<name>.build`
   に `appPath` を生成するシェルコマンド（例: `make -C demos/features sample-build`）を設定すると、
