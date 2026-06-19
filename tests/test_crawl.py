@@ -220,3 +220,122 @@ def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:
     assert sorted(seen) == sorted(screen_map.nodes)  # one call per distinct screen, no repeats
     shots = [a for a in driver.actions if a[0] == "screenshot"]
     assert len(shots) == len(screen_map.nodes)  # a screenshot was taken for every node
+
+
+# --- disabled controls + input filling (enabling a gated button) ---------------------------
+
+
+def test_candidate_actions_skip_disabled_and_fill_first_empty_field() -> None:
+    elements = [
+        el(identifier="f.user", traits=["textField"]),  # empty input -> a type action
+        el(identifier="f.pass", traits=["secureTextField"]),  # also empty (earlier in id order)
+        el(identifier="f.submit", traits=["button", "notEnabled"]),  # disabled -> skipped
+        el(identifier="f.cancel", traits=["button"]),  # enabled -> tapped
+    ]
+    actions = crawl.candidate_actions(elements)
+    pairs = {(a.kind, a.target) for a in actions}
+    assert ("tap", "f.cancel") in pairs
+    assert ("tap", "f.submit") not in pairs  # disabled control is not a candidate
+    types = [a for a in actions if a.kind == "type"]
+    assert len(types) == 1  # one field at a time keeps the fill linear
+    assert types[0].target == "f.pass"  # the first empty field in id order ("f.pass" < "f.user")
+    assert types[0].value == "Test1234!"  # secure field placeholder
+
+
+def test_blocked_controls_lists_only_disabled_actionable_ids() -> None:
+    elements = [
+        el(identifier="a", traits=["button", "notEnabled"]),  # disabled button -> blocked
+        el(identifier="b", traits=["button"]),  # enabled -> not blocked
+        el(identifier="c", traits=["staticText", "notEnabled"]),  # not actionable -> ignored
+    ]
+    assert crawl.blocked_controls(elements) == ["a"]
+
+
+def test_fingerprint_distinguishes_enabled_from_disabled() -> None:
+    """The same ids hash differently when a control's interactive state differs, so a screen whose
+    submit just became enabled is explored rather than mistaken for the empty form."""
+    empty = [
+        el(identifier="x.field", traits=["textField"]),
+        el(identifier="x.go", traits=["button", "notEnabled"]),
+    ]
+    filled = [
+        el(identifier="x.field", traits=["textField"], value="hi"),
+        el(identifier="x.go", traits=["button"]),
+    ]
+    assert crawl.fingerprint(empty).value != crawl.fingerprint(filled).value
+
+
+def _login_form(filled: bool) -> list[dict]:
+    """A field + a submit button that is disabled until the field is filled."""
+    return [
+        el(identifier="login.user", traits=["textField"], value="abc" if filled else None),
+        el(identifier="login.submit", traits=["button"] if filled else ["button", "notEnabled"]),
+    ]
+
+
+def test_crawl_fills_a_form_to_enable_and_press_a_disabled_button() -> None:
+    """End to end: the crawl types into the field, the submit enables (a distinct screen via the
+    enabling-aware fingerprint), and the crawl then presses the once-disabled button to reach the
+    screen behind it."""
+    home = [
+        el(identifier="home.title", traits=["staticText"]),
+        el(identifier="home.ok", traits=["button"]),
+    ]
+    focus: dict[str, object] = {"id": None}
+
+    def submit_enabled(screen: list[dict]) -> bool:
+        return any(
+            e.get("identifier") == "login.submit" and "notEnabled" not in (e.get("traits") or [])
+            for e in screen
+        )
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict):
+            focus["id"] = arg.get("id")
+            if arg.get("id") == "login.submit" and submit_enabled(d.screen):
+                d.screen = list(home)
+        elif kind == "type" and focus["id"] == "login.user":
+            d.screen = list(_login_form(filled=True))
+
+    driver = FakeDriver(screen=list(_login_form(False)), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        focus["id"] = None
+        d.screen = list(_login_form(filled=False))
+
+    screen_map = crawl.crawl(driver, reset, max_screens=50, max_steps=50)
+
+    start_fp = crawl.fingerprint(_login_form(False)).value
+    assert screen_map.nodes[start_fp].blocked == ("login.submit",)  # reported as gated
+    assert any(e.action == "tap login.submit" for e in screen_map.edges)  # pressed once enabled
+    assert crawl.fingerprint(home).value in screen_map.nodes  # reached the screen behind it
+
+
+def test_crawl_uses_a_custom_guide_for_label_based_actions() -> None:
+    """The guide chooses what to try: an AI-style guide proposing a label-based tap drives a
+    transition off an id-less control, which the deterministic guide would skip."""
+    start = [
+        el(label="Start", traits=["button"], frame=(0, 0, 80, 40)),
+        el(label="hint", traits=["staticText"]),
+    ]
+    second = [el(identifier="s.a", traits=["button"]), el(identifier="s.b", traits=["button"])]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict) and arg.get("label") == "Start":
+            d.screen = list(second)
+
+    driver = FakeDriver(screen=list(start), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(start)
+
+    def guide(_driver: FakeDriver, elements: list[dict]) -> list[crawl.Action]:
+        return [
+            crawl.Action("tap", label=e["label"])
+            for e in elements
+            if "button" in (e.get("traits") or []) and not e.get("identifier")
+        ]
+
+    screen_map = crawl.crawl(driver, reset, guide=guide)
+    assert any(e.action == "tap Start" for e in screen_map.edges)
+    assert crawl.fingerprint(second).value in screen_map.nodes
