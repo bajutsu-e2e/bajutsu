@@ -11,16 +11,17 @@ import pytest
 from conftest import el
 
 from bajutsu import crawl
-from bajutsu.crawl_guide import _actions_from, ai_guide, make_guide
+from bajutsu.crawl_guide import Proposal, _actions_from, _proposal_from, ai_guide, make_guide
 from bajutsu.drivers.fake import FakeDriver
 
 
 class _FakeProposer:
-    def __init__(self, actions: list[crawl.Action]) -> None:
+    def __init__(self, actions: list[crawl.Action], thought: str = "") -> None:
         self._actions = actions
+        self._thought = thought
 
-    def propose(self, elements: list[dict], screenshot: bytes | None) -> list[crawl.Action]:
-        return list(self._actions)
+    def propose(self, elements: list[dict], screenshot: bytes | None) -> Proposal:
+        return Proposal(actions=list(self._actions), thought=self._thought)
 
 
 def test_ai_guide_unions_proposer_with_deterministic_and_dedups() -> None:
@@ -70,6 +71,28 @@ def test_actions_from_parses_skips_malformed_and_caps() -> None:
     ]
     assert acts[1].value == "x" and acts[2].index == 1
     assert len(_actions_from(payload, cap=1)) == 1  # capped
+
+
+def test_ai_guide_narrates_the_models_thought_and_choices() -> None:
+    """The AI's reasoning + chosen operations are surfaced live through `report` (the crawl log /
+    web UI) so a watcher can see what the model is thinking."""
+    elements = [el(identifier="login.go", traits=["button", "notEnabled"])]
+    proposer = _FakeProposer(
+        [crawl.Action("type", target="login.user", value="a@b.com")],
+        thought="A login form; I'll fill the email to enable Sign In.",
+    )
+    log: list[str] = []
+    ai_guide(proposer, report=log.append)(FakeDriver(screen=elements), elements)
+    assert any("A login form" in line for line in log)  # the thought is shown
+    assert any("login.user" in line and "a@b.com" in line for line in log)  # the chosen input
+
+
+def test_proposal_from_parses_thought_and_actions() -> None:
+    payload = {"thought": "looks like a form", "actions": [{"action": "tap", "id": "x"}]}
+    proposal = _proposal_from(payload, cap=10)
+    assert proposal.thought == "looks like a form"
+    assert [a.target for a in proposal.actions] == ["x"]
+    assert _proposal_from({"actions": []}, cap=10).thought == ""  # missing thought -> empty
 
 
 def test_make_guide_selects_off_ai_or_errors() -> None:
