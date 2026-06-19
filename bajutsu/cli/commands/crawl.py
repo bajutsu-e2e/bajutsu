@@ -19,6 +19,7 @@ import typer
 
 from bajutsu import crawl as crawl_engine
 from bajutsu import env as _env
+from bajutsu.agents import AGENT_KINDS
 from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.crawl_guide import make_guide
@@ -59,7 +60,14 @@ def crawl(
         "ai",
         "--guide",
         help="exploration guide: 'ai' (default; Claude proposes operations and realistic inputs to "
-        "enable gated controls — needs ANTHROPIC_API_KEY) or 'off' (deterministic, no AI)",
+        "enable gated controls) or 'off' (deterministic, no AI)",
+    ),
+    agent: str = typer.Option(
+        "api",
+        "--agent",
+        help="AI backend for --guide ai: 'api' (Anthropic API, pay-per-token; needs "
+        "ANTHROPIC_API_KEY) or 'claude-code' (the Claude Code CLI, drawing on your subscription; "
+        "text-only)",
     ),
     out: str = typer.Option(
         "", "--out", help="run dir for the screen map (default: runs/<timestamp>)"
@@ -77,8 +85,11 @@ def crawl(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
+    if agent not in AGENT_KINDS:
+        typer.echo(f"unknown --agent {agent!r} (use {' or '.join(AGENT_KINDS)})")
+        raise typer.Exit(2)
     try:
-        crawl_guide = make_guide(guide, report=say)
+        crawl_guide = make_guide(guide, report=say, agent=agent)
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -87,8 +98,14 @@ def crawl(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    if crawl_guide is not None and not os.environ.get("ANTHROPIC_API_KEY"):
-        typer.echo("note: --guide ai needs ANTHROPIC_API_KEY — set it (or use --guide off)")
+    # The API proposer needs a key; the Claude Code CLI uses its own auth (subscription), so only the
+    # API path hard-fails. (For claude-code, the vision tab locator would still use the API if a tab
+    # bar can't be addressed — but that's optional and only when it triggers.)
+    if crawl_guide is not None and agent == "api" and not os.environ.get("ANTHROPIC_API_KEY"):
+        typer.echo(
+            "note: --guide ai --agent api needs ANTHROPIC_API_KEY — set it, use --guide off,"
+        )
+        typer.echo("      or --agent claude-code to use the Claude Code CLI instead")
         raise typer.Exit(2)
 
     out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")

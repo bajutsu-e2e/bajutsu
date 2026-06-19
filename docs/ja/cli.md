@@ -155,7 +155,8 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
-| `--guide` | `ai` | 探索ガイド: `ai`（既定。Claude が操作と現実的な入力を提案。`ANTHROPIC_API_KEY` 必須）/ `off`（決定的・AIなし） |
+| `--guide` | `ai` | 探索ガイド: `ai`（既定。Claude が操作と現実的な入力を提案）/ `off`（決定的・AIなし） |
+| `--agent` | `api` | `--guide ai` の AI バックエンド: `api`（Anthropic API・従量課金。`ANTHROPIC_API_KEY` 必須）/ `claude-code`（Claude Code CLI。サブスクリプションを利用・テキストのみ。`record --agent claude-code` と同様） |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
