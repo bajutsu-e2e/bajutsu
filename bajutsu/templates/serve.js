@@ -417,7 +417,7 @@ function unitHTML(u,p,plan,runId,NW,NH){
     const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):'screen';
     return `<div class="gnode ggroup${front}" data-group="${esc(u.key)}" style="${style}" title="Same UI in ${u.members.length} states — click to expand">`+
       shotImg(u.members[0].fingerprint)+  // the first state's shot, as a representative preview
-      `<button class="gexpand" type="button" data-group="${esc(u.key)}">▸ Expand ${u.members.length} states</button>`+
+      `<button class="gexpand" type="button" data-group="${esc(u.key)}" title="Expand ${u.members.length} states">▸ ${u.members.length}</button>`+
       `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}</span>${badge}</div>`+
       `<div class="gsub">${u.members.length} states · ${ids.length} ids</div></div></div>`;
   }
@@ -425,7 +425,7 @@ function unitHTML(u,p,plan,runId,NW,NH){
   const cls='gnode'+(n.kind==='structural'?' structural':'')+(u.kind==='member'?' member':'')+front;
   const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):n.fingerprint.slice(0,7);
   const info=`${ids.length} ids · ${(n.actions||[]).length} actions`+((n.blocked||[]).length?` · 🔒 ${n.blocked.length}`:'');
-  const collapse=u.kind==='member'?`<button class="gcollapse" type="button" data-group="${esc(u.key)}">▾ Collapse group</button>`:'';
+  const collapse=u.kind==='member'?`<button class="gcollapse" type="button" data-group="${esc(u.key)}" title="Collapse group">▾</button>`:'';
   return `<div class="${cls}" data-fp="${esc(n.fingerprint)}" style="${style}" title="${esc(n.fingerprint.slice(0,7))} — click to enlarge">`+
     shotImg(n.fingerprint)+collapse+
     `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}${n.kind==='structural'?' ~':''}</span>${badge}</div>`+
@@ -495,9 +495,22 @@ function renderGraph(data,runId){
     // Mark the midpoint with a shield so it's clear the step taps through a system alert.
     if(e.alert)svg+=`<text class="edgealert" x="${mx}" y="${(y1+y2)/2-4}">🛡️</text>`});
   svg+='</svg>';
-  // Unit boxes (HTML, absolutely positioned over the edges).
+  // Frame the member states of each expanded group, so it reads as one screen even when its states
+  // land in different layers. Drawn behind the unit boxes; a small chip labels the screen + count.
+  const memberGroups=new Map();
+  units.forEach(u=>{if(u.kind==='member')(memberGroups.get(u.key)||memberGroups.set(u.key,[]).get(u.key)).push(u)});
+  let frames='';
+  memberGroups.forEach(ms=>{
+    if(ms.length<2)return;
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    ms.forEach(u=>{const p=pos.get(u.id);if(!p)return;x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x+NW);y1=Math.max(y1,p.y+NH)});
+    if(!isFinite(x0))return;
+    const F=14,lbl=(ms[0].node.ids||[])[0]||ms[0].node.fingerprint.slice(0,7);
+    frames+=`<div class="gframe" style="left:${x0-F}px;top:${y0-F}px;width:${x1-x0+F*2}px;height:${y1-y0+F*2}px"><span class="gframelbl">${esc(lbl)} · ${ms.length} states</span></div>`;
+  });
+  // Unit boxes (HTML, absolutely positioned over the edges and group frames).
   let tiles='';units.forEach(u=>{tiles+=unitHTML(u,pos.get(u.id),plan,runId,NW,NH)});
-  box.innerHTML=`<div class="graphwrap" style="width:${W}px;height:${H}px">${svg}${tiles}</div>`;
+  box.innerHTML=`<div class="graphwrap" style="width:${W}px;height:${H}px">${svg}${frames}${tiles}</div>`;
   applyView();
 }
 // ---- zoom / pan: a transform on the graph layer, re-applied after each re-render ----
