@@ -3,8 +3,8 @@
 Drives the same `launch_driver` / actuator path as `run` and `record`, hands the live driver to
 the crawl engine ([`crawl.py`](../../crawl.py)), and streams the growing screen map to
 `runs/<id>/screenmap.json` so the web UI can render it live. The engine is deterministic (screen
-identity, transitions, crashes); `--guide ai` (default) lets an LLM only propose *what to try*,
-and the alert guard dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
+identity, transitions, crashes); the AI guide only proposes *what to try*, and the alert guard
+dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
 """
 
 from __future__ import annotations
@@ -62,16 +62,10 @@ def crawl(
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
     ),
-    guide: str = typer.Option(
-        "ai",
-        "--guide",
-        help="exploration guide: 'ai' (default; Claude proposes operations and realistic inputs to "
-        "enable gated controls) or 'off' (deterministic, no AI)",
-    ),
     agent: str = typer.Option(
         "api",
         "--agent",
-        help="AI backend for --guide ai: 'api' (Anthropic API, pay-per-token; needs "
+        help="AI backend for the crawl guide: 'api' (Anthropic API, pay-per-token; needs "
         "ANTHROPIC_API_KEY) or 'claude-code' (the Claude Code CLI, drawing on your subscription; "
         "text-only)",
     ),
@@ -91,8 +85,8 @@ def crawl(
 ) -> None:
     """Explore the app breadth-first and write a screen map (`screenmap.json`) of the reachable
     screens and the transitions between them. The engine is deterministic (screen identity,
-    transitions, crashes); with `--guide ai` an LLM only proposes *what to try*. A discovery tool,
-    never a pass/fail gate."""
+    transitions, crashes); the AI guide only proposes *what to try*. A discovery tool, never a
+    pass/fail gate."""
     eff = _load_effective(config, app_name)
 
     # Progress (device work + the AI guide's reasoning) goes to stderr, like record's stream; the
@@ -103,24 +97,17 @@ def crawl(
     if agent not in AGENT_KINDS:
         typer.echo(f"unknown --agent {agent!r} (use {' or '.join(AGENT_KINDS)})")
         raise typer.Exit(2)
-    try:
-        crawl_guide = make_guide(guide, report=say, agent=agent)
-    except ValueError as e:
-        typer.echo(str(e))
-        raise typer.Exit(2) from None
+    # Crawl is AI-driven: the AI proposes what to try (the engine keeps identity/transitions/crashes
+    # deterministic). The default backend needs an API key; --agent claude-code uses its own auth.
+    crawl_guide = make_guide(report=say, agent=agent)
     try:
         actuator = select_actuator(_backends(backend, eff.backend))
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    # The API proposer needs a key; the Claude Code CLI uses its own auth (subscription), so only the
-    # API path hard-fails. (For claude-code, the vision tab locator would still use the API if a tab
-    # bar can't be addressed — but that's optional and only when it triggers.)
-    if crawl_guide is not None and agent == "api" and not os.environ.get("ANTHROPIC_API_KEY"):
-        typer.echo(
-            "note: --guide ai --agent api needs ANTHROPIC_API_KEY — set it, use --guide off,"
-        )
-        typer.echo("      or --agent claude-code to use the Claude Code CLI instead")
+    if agent == "api" and not os.environ.get("ANTHROPIC_API_KEY"):
+        typer.echo("note: crawl needs ANTHROPIC_API_KEY for --agent api — set it,")
+        typer.echo("      or use --agent claude-code to drive the AI via the Claude Code CLI")
         raise typer.Exit(2)
 
     out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")

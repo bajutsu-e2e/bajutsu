@@ -299,7 +299,6 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 dismiss_alerts=body["dismissAlerts"]
                 if isinstance(body.get("dismissAlerts"), bool)
                 else None,
-                guide=str(body["guide"]) if body.get("guide") in ("ai", "off") else "",
                 config=str(cfg),
                 resume_src=resume_src if resuming else "",
                 resume_key=resume_key if resuming else "",

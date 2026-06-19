@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 from conftest import el
 
 from bajutsu import crawl, crawl_tabs
@@ -203,12 +202,10 @@ def test_proposal_from_parses_thought_and_actions() -> None:
     assert _proposal_from({"actions": []}, cap=10).thought == ""  # missing thought -> empty
 
 
-def test_make_guide_selects_off_ai_or_errors() -> None:
-    assert make_guide("off") is None and make_guide("") is None  # deterministic default
-    assert callable(make_guide("ai"))  # built without needing an API key (lazy client)
-    assert callable(make_guide("ai", agent="claude-code"))  # Claude Code CLI backend, lazy runner
-    with pytest.raises(ValueError, match="unknown crawl guide"):
-        make_guide("nonsense")
+def test_make_guide_builds_the_ai_guide_for_either_backend() -> None:
+    # Crawl is AI-driven; the guide is always the AI guide, built lazily (no API key / CLI needed).
+    assert callable(make_guide())  # default API backend
+    assert callable(make_guide(agent="claude-code"))  # Claude Code CLI backend, lazy runner
 
 
 def test_claude_code_proposer_maps_structured_output_to_actions() -> None:

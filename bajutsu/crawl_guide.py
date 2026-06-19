@@ -1,4 +1,4 @@
-"""AI guide for the autonomous crawl (BE-0038 ``--guide ai``).
+"""AI guide for the autonomous crawl (BE-0038).
 
 The guide proposes which replayable actions to try from a screen — taps and *realistic* text
 inputs that may open a new screen or enable a disabled control whose precondition isn't obvious
@@ -121,22 +121,19 @@ def _dedup(actions: list[crawl.Action]) -> list[crawl.Action]:
     return out
 
 
-def make_guide(kind: str, report: Report | None = None, agent: str = "api") -> crawl.Guide | None:
-    """The crawl guide for `kind`: ``""``/``off`` → deterministic (None lets the engine use its
-    default `candidate_actions`); ``ai`` → the Claude-backed guide, narrating its reasoning through
-    `report`. Any other value is an error.
+def make_guide(report: Report | None = None, agent: str = "api") -> crawl.Guide:
+    """The AI crawl guide, narrating its reasoning through `report`. `agent` picks the backend:
+    ``api`` (the Anthropic API, pay-per-token) or ``claude-code`` (the Claude Code CLI, drawing on a
+    subscription — text-only). The vision tab locator stays on the API either way; it only runs for
+    a tab bar the tree can't address.
 
-    `agent` picks the AI backend for the ``ai`` guide: ``api`` (the Anthropic API, pay-per-token) or
-    ``claude-code`` (the Claude Code CLI, drawing on a subscription — text-only). The vision tab
-    locator stays on the API either way; it only runs for a tab bar the tree can't address."""
-    if kind in ("", "off"):
-        return None
-    if kind == "ai":
-        proposer: ActionProposer = (
-            ClaudeCodeActionProposer() if agent == "claude-code" else ClaudeActionProposer()
-        )
-        return ai_guide(proposer, report=report, tab_locator=crawl_tabs.ClaudeTabLocator())
-    raise ValueError(f"unknown crawl guide: {kind!r} (use 'off' or 'ai')")
+    (Crawl is AI-driven: the AI proposes *what to try* while the engine keeps screen identity,
+    transitions and crashes deterministic. The deterministic `candidate_actions` is still the
+    baseline the AI builds on and the engine's test default — it just isn't a standalone mode.)"""
+    proposer: ActionProposer = (
+        ClaudeCodeActionProposer() if agent == "claude-code" else ClaudeActionProposer()
+    )
+    return ai_guide(proposer, report=report, tab_locator=crawl_tabs.ClaudeTabLocator())
 
 
 # --- Claude-backed proposer ---------------------------------------------------------------
