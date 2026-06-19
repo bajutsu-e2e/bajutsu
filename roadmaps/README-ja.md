@@ -120,8 +120,8 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0032](implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md) | シークレット変数 | 実装済み | MagicPod |
 | [BE-0033](implemented/BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md) | シナリオ変数 + 軽い制御フロー | 実装済み | MagicPod |
 | [BE-0034](implemented/BE-0034-tags-selective-runs/BE-0034-tags-selective-runs-ja.md) | タグ / ラベル + 選択実行 | 実装済み | MagicPod |
-| [BE-0035](proposals/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md) | デバイス制御プリミティブ拡張 | 実装中 | MagicPod |
-| [BE-0036](proposals/BE-0036-utility-steps/BE-0036-utility-steps-ja.md) | ユーティリティステップ | 実装中 | MagicPod |
+| [BE-0035](implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md) | デバイス制御ステップ（background・ステータスバー上書き） | 実装済み | MagicPod |
+| [BE-0036](implemented/BE-0036-utility-steps/BE-0036-utility-steps-ja.md) | HTTP ユーティリティステップ | 実装済み | MagicPod |
 | [BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) | 自律クロール探索（App Explorer 風） | 実装中 | Autify VAX |
 | [BE-0039](implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin-ja.md) | 自己修復は「提案＋opt-in 適用」に限定 | 実装済み | 両社 |
 <!-- /GENERATED:accepted-competitive -->
