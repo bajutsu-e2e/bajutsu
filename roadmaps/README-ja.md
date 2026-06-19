@@ -204,6 +204,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 |---|---|---|
 | [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開ホスティング | 提案 |
 | [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) | Web UI のセルフホスティング | 提案 |
+| [BE-0051](proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) | ホスティングのための serve ハードニング（認証・入力検証） | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
 ### 統合・自動化（MCP 化）
