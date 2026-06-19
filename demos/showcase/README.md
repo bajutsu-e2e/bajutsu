@@ -9,8 +9,8 @@ five tabs, navigation-stack pushes, all four modal styles, text entry, async loa
 networking (live + mockable), and a screen that deliberately raises OS-level alerts — into the
 smallest app that still exercises `record`, `crawl`, and `run` together.
 
-- **The screens:** a 15-screen inventory (5 tabs + pushes + 3 modals) is in
-  [`SPEC.md` §5](SPEC.md#screen-inventory); the tabs are **Stable · Search · Log · Notices · Profile**.
+- **The screens:** a 10-screen inventory (5 tabs + pushes + 3 modals) is in
+  [`SPEC.md` §5](SPEC.md#screen-inventory); the tabs are **Stable · Search · Log · Notices · Permissions**.
 - **The contract:** [`SPEC.md`](SPEC.md) ([ja](SPEC.ja.md)) — every screen, identifier,
   launch-env hook, deeplink, and the OS-alert placement. The two `-a11y` apps expose an
   identical identifier contract, so the one [`scenarios/`](scenarios) set drives both.

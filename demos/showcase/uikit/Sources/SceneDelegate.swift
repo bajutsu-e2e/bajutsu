@@ -1,8 +1,7 @@
 import UIKit
 
-/// Owns the window, the auth gate (modal over the tab controller while not logged in),
-/// and deeplink routing (SPEC §4). The tab controller stays mounted underneath so a
-/// deeplink can both dismiss the gate and route into a tab.
+/// Owns the window and deeplink routing (SPEC §4). The app launches directly into the
+/// tab UI; a deeplink dismisses any modal, pops to tab roots, then routes into a tab.
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -23,8 +22,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = tabController
         window.makeKeyAndVisible()
 
-        presentAuthGateIfNeeded(animated: false)
-
         // A deeplink delivered at launch arrives here, not via openURLContexts.
         if let url = connectionOptions.urlContexts.first?.url {
             handle(url: url)
@@ -34,20 +31,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         guard let url = URLContexts.first?.url else { return }
         handle(url: url)
-    }
-
-    // MARK: - Auth gate
-
-    /// While `screen != home`, cover the tab UI with a full-screen onboarding→login flow,
-    /// exactly like the sample app's AuthFlowView (SPEC §5.0).
-    private func presentAuthGateIfNeeded(animated: Bool) {
-        guard model.screen != .home else { return }
-        let auth = AuthFlowController(model: model) { [weak self] in
-            guard let self else { return }
-            tabController.dismiss(animated: !model.animationsDisabled)
-        }
-        auth.modalPresentationStyle = .fullScreen
-        tabController.present(auth, animated: animated)
     }
 
     // MARK: - Deeplinks (SPEC §4)
@@ -62,7 +45,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         case "search": tabController.selectedIndex = AppModel.Tab.search.rawValue
         case "log": tabController.selectedIndex = AppModel.Tab.log.rawValue
         case "notices": tabController.selectedIndex = AppModel.Tab.notices.rawValue
-        case "profile": tabController.selectedIndex = AppModel.Tab.profile.rawValue
+        case "permissions": tabController.selectedIndex = AppModel.Tab.permissions.rawValue
         case "horse":
             // …://horse/<id> — Stable tab, push Horse Detail for <id>.
             tabController.selectedIndex = AppModel.Tab.stable.rawValue
@@ -75,10 +58,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             if let id = Int(url.lastPathComponent) {
                 tabController.pushNoticeDetail(id: id, model: model)
             }
-        case "permissions":
-            // …://permissions — Profile tab, push the OS-alert screen.
-            tabController.selectedIndex = AppModel.Tab.profile.rawValue
-            tabController.pushPermissions()
         default:
             break
         }

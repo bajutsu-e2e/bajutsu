@@ -3,7 +3,7 @@
 # In-app modals are visible to idb (unlike the OS alerts in permission.yaml).
 - name: open and dismiss the detented sheet
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
   steps:
     - wait: { for: { id: log.openFilter }, timeout: 10 }
     - tap: { id: log.openFilter }
@@ -18,7 +18,7 @@
 
 - name: open and dismiss the full-screen cover
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
   steps:
     - wait: { for: { id: log.openGallery }, timeout: 10 }
     - tap: { id: log.openGallery }
@@ -30,7 +30,7 @@
 
 - name: action sheet records its choice
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
   steps:
     - wait: { for: { id: log.openDelete }, timeout: 10 }
     - assert:
@@ -45,7 +45,7 @@
 # Form controls: the stepper and toggle mirror their state to a11y values.
 - name: stepper and toggle mirror state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: log }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
   steps:
     - wait: { for: { id: log.intense }, timeout: 10 }
     - assert:

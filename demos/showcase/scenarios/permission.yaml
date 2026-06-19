@@ -1,18 +1,16 @@
-# OS alerts (the deliberate ones): the Permissions screen raises the SpringBoard
-# notification prompt, which is out-of-process — idb's app-scoped query cannot see or tap
-# it. The run's vision alert guard handles it; `dismissAlerts.instruction` here taps
-# "Allow" (granting) instead of dismissing. Needs ANTHROPIC_API_KEY for the guard.
+# OS alerts (the deliberate ones): the Permissions tab raises the SpringBoard notification
+# prompt, which is out-of-process — idb's app-scoped query cannot see or tap it. The run's
+# vision alert guard handles it; `dismissAlerts.instruction` here taps "Allow" (granting)
+# instead of dismissing. Needs ANTHROPIC_API_KEY for the guard.
 #
 # The prompt only appears while authorization is notDetermined; a clean reinstall (the
 # default) resets it, so each run sees the prompt afresh.
 - name: grant notification permission
   dismissAlerts: { instruction: "tap Allow" }   # grant the prompt instead of dismissing it
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: profile }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: permissions }
   steps:
-    - wait: { for: { id: profile.openPermissions }, timeout: 10 }
-    - tap: { id: profile.openPermissions }
-    - wait: { for: { id: perm.title }, timeout: 5 }
+    - wait: { for: { id: perm.title }, timeout: 10 }
     - assert:
         - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }
     - tap: { id: perm.requestNotif }

@@ -10,7 +10,7 @@
 defaults:
   backend: [idb]
   device: "iPhone 17 Pro"
-  reservedNamespaces: [auth, nav]   # shared flows / nav (DESIGN §7.3)
+  reservedNamespaces: [nav]   # shared flows / nav (DESIGN §7.3)
 
 apps:
   # ---- SwiftUI, accessibility ON (the `run` / `doctor`-Ready target) -------------
@@ -18,7 +18,7 @@ apps:
     bundleId: com.bajutsu.showcase.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [onboarding, auth, nav, stable, horse, search, log, notice, profile, account, perm, about, net]
+    idNamespaces: [nav, stable, horse, search, log, notice, perm, net]
     appPath: demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
     scenarios: demos/showcase/scenarios
@@ -37,7 +37,7 @@ apps:
     bundleId: com.bajutsu.showcase.uikit
     deeplinkScheme: showcaseuikit
     launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [onboarding, auth, nav, stable, horse, search, log, notice, profile, account, perm, about, net]
+    idNamespaces: [nav, stable, horse, search, log, notice, perm, net]
     appPath: demos/showcase/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
     build: make -C demos/showcase uikit-build
     scenarios: demos/showcase/scenarios

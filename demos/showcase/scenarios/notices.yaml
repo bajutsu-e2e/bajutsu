@@ -4,7 +4,7 @@
 # (no literal-scheme deeplinks), so this drives both a11y apps.
 - name: the list has off-screen rows
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: notices }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: notices }
   steps:
     - wait: { for: { id: notice.row.1 }, timeout: 10 }
   expect:
@@ -14,7 +14,7 @@
 
 - name: tap a visible notice to open its detail, then pop back
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: notices }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: notices }
   steps:
     - wait: { for: { id: notice.row.2 }, timeout: 10 }
     - tap: { id: notice.row.2 }
@@ -34,7 +34,7 @@
 # screen may need one more.)
 - name: scroll to an off-screen notice and open it
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: notices }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: notices }
   steps:
     - wait: { for: { id: notice.row.1 }, timeout: 10 }
     - assert:

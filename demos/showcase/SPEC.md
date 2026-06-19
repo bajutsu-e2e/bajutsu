@@ -55,15 +55,13 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 | Variable | Effect | Default |
 |---|---|---|
 | `SHOWCASE_UITEST` | disable animations (tight condition waits) | unset |
-| `SHOWCASE_SKIP_ONBOARDING` | start at login instead of onboarding | unset |
-| `SHOWCASE_LOGGED_IN` | start logged-in, on Home | unset |
-| `SHOWCASE_TAB` | initial tab: `stable`/`search`/`log`/`notices`/`profile` | `stable` |
+| `SHOWCASE_TAB` | initial tab: `stable`/`search`/`log`/`notices`/`permissions` | `stable` |
 | `SHOWCASE_SEED` | number of seeded catalog rows (offline) | `5` |
 | `SHOWCASE_API_URL` | base URL for the catalog GET (`/horses`) | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | base for the echo POST/DELETE endpoints | `https://httpbin.org` |
 
-> Onboarding and login are **suppressible** so most scenarios start at the screen under test —
-> the same clean-state injection the `sample` fixture uses.
+> There is **no auth gate**: the app launches straight into the tab UI, so a scenario lands
+> on its tab via `SHOWCASE_TAB` (the same clean-state injection the `sample` fixture uses).
 
 ## 4. Deeplinks
 
@@ -72,15 +70,14 @@ modals and pops navigation to the tab root.
 
 | Deeplink (host) | Effect |
 |---|---|
-| `…://stable` / `search` / `log` / `notices` / `profile` | select that tab |
+| `…://stable` / `search` / `log` / `notices` / `permissions` | select that tab |
 | `…://horse/<id>` | select Stable tab, push Horse Detail for `<id>` |
 | `…://notice/<id>` | select Notices tab, push Notice Detail for `<id>` |
-| `…://permissions` | select Profile tab, push the Permissions screen (the OS-alert screen) |
 
 ## 5. Screen-by-screen specification
 
-**Onboarding → Login** (modal gate), then a five-tab main UI. Every actionable element's
-identifier is listed; the `-noax` variants omit all of them. Identifiers follow
+A **five-tab main UI, no auth gate** — the app launches straight into the tabs. Every actionable
+element's identifier is listed; the `-noax` variants omit all of them. Identifiers follow
 [DESIGN §7.3](../../DESIGN.md): `<namespace>.<element>`, lowercase, data-derived, unique per
 screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions read it.
 
@@ -88,38 +85,18 @@ screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions rea
 
 | # | Screen | Reached via | Kind | Namespace(s) | Spec |
 |---|---|---|---|---|---|
-| 1 | Onboarding | launch (cold) | modal gate | `onboarding` | §5.0 |
-| 2 | Login | after onboarding | modal gate | `auth` | §5.0 |
-| 3 | Stable (catalog list) | `stable` tab | tab · list | `stable` | §5.1 |
-| 4 | Horse Detail | Stable row / `…://horse/<id>` | push | `horse`, `nav` | §5.1 |
-| 5 | Search | `search` tab | tab · filter list | `search` | §5.2 |
-| 6 | Log | `log` tab | tab · form + modals | `log` | §5.3 |
-| 7 | — Filter sheet | `log.openFilter` | sheet (detents) | `log` | §5.3 |
-| 8 | — Gallery cover | `log.openGallery` | full-screen cover | `log` | §5.3 |
-| 9 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
-| 10 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
-| 11 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice`, `nav` | §5.5 |
-| 12 | Profile | `profile` tab | tab · grouped list | `profile` | §5.4 |
-| 13 | Account | `profile.openAccount` | push | `account` | §5.4 |
-| 14 | Permissions | `profile.openPermissions` / `…://permissions` | push · **OS alerts** | `perm` | §5.4 |
-| 15 | About | `profile.openAbout` | push | `about` | §5.4 |
+| 1 | Stable (catalog list) | `stable` tab | tab · list | `stable` | §5.1 |
+| 2 | Horse Detail | Stable row / `…://horse/<id>` | push | `horse`, `nav` | §5.1 |
+| 3 | Search | `search` tab | tab · filter list | `search` | §5.2 |
+| 4 | Log | `log` tab | tab · form + modals | `log` | §5.3 |
+| 5 | — Filter sheet | `log.openFilter` | sheet (detents) | `log` | §5.3 |
+| 6 | — Gallery cover | `log.openGallery` | full-screen cover | `log` | §5.3 |
+| 7 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
+| 8 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
+| 9 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice`, `nav` | §5.5 |
+| 10 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** | `perm` | §5.4 |
 
-Tabs, top to bottom: **Stable · Search · Log · Notices · Profile**.
-
-### 5.0 Auth gate — `onboarding`, `auth` namespaces
-
-A `fullScreenCover`/modal over the main UI while `screen != home`, exactly like the `sample`
-app's `AuthFlowView`.
-
-**Onboarding** (skipped when `SHOWCASE_SKIP_ONBOARDING`/`SHOWCASE_LOGGED_IN` set):
-- `onboarding.title` — heading "Welcome"
-- `onboarding.continue` — button → advances to Login
-
-**Login:**
-- `auth.email` — email text field
-- `auth.password` — secure text field. **Must NOT set `textContentType = .password`/`.newPassword`** — that is what suppresses the iOS "Save Password?" system sheet (§7).
-- `auth.submit` — button. Empty email or password → show `auth.error`; otherwise dismiss keyboard and go Home.
-- `auth.error` — validation message (only when present)
+Tabs, left to right: **Stable · Search · Log · Notices · Permissions**.
 
 ### 5.1 Tab: Stable — `stable`, `horse` namespaces
 
@@ -166,30 +143,18 @@ Modals reachable from Log (the four presentation styles):
 - `log.openDelete` → **confirmationDialog / action sheet**: choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
 - `log.toast` — the transient toast described above
 
-### 5.4 Tab: Profile — `profile`, `account`, `perm`, `about` namespaces (navigation + OS alerts)
+### 5.4 Tab: Permissions — `perm` namespace (**the OS-alert screen**)
 
-A `Form`/grouped list that pushes sub-screens — the navigation-depth showcase.
+A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). **The one screen that
+intentionally raises OS-level alerts** (§7) — promoted to a top-level tab so the alert-guard
+flow is reached directly.
 
-- `profile.title` — nav title "Profile"
-- `profile.normalize` — toggle "Normalize"; `profile.normalize.value` = `on`/`off`; flipping sets `profile.changed`
-- `profile.changed` — text shown after any settings change
-- `profile.openAccount` → push **Account**
-- `profile.openPermissions` → push **Permissions** (the OS-alert screen)
-- `profile.openAbout` → push **About**
-
-**Account** (`account`):
-- `account.title`, `account.email.value` (the logged-in email, mirrored), `account.logout` (→ returns to Login gate)
-
-**Permissions** (`perm`) — **the one screen that intentionally raises OS-level alerts** (§7):
-- `perm.title`
+- `perm.title` — nav title "Permissions"
 - `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; idb cannot see it — cleared by the run's vision alert guard, or tapped "Allow" via `dismissAlerts`).
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
 - `perm.notif.authorized` — element shown only once granted (gives the run a positive condition to wait for)
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
-
-**About** (`about`):
-- `about.title`, `about.version.value`, `nav.back`
 
 ### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)
 
@@ -226,18 +191,15 @@ Mirrors the `sample` fixture's BajutsuKit integration:
 
 ## 7. OS-alert policy (deliberate, scoped)
 
-> Requirement: OS alerts (push-notification permission, password-save) are **off by default**,
+> Requirement: OS alerts (push-notification permission, location) are **off by default**,
 > and present **only on a specific screen**.
 
 - **No launch-time prompts.** The app never requests notification/location authorization at
-  startup — only on explicit taps inside the **Permissions** screen (§5.4).
-- **No password-save sheet.** The login secure field does **not** set
-  `textContentType = .password`/`.newPassword` and the form is not an AutoFill-recognized
-  login, so iOS does not offer "Save Password?". This is the deliberate *suppression*.
-- **The deliberate alerts** live only on **Permissions**: the notification prompt and the
+  startup — only on explicit taps inside the **Permissions** tab (§5.4).
+- **The deliberate alerts** live only on the **Permissions** tab: the notification prompt and the
   location prompt. Both are SpringBoard (out-of-process) — invisible to idb's app-scoped query —
   so they are the canonical fixture for the run's **vision alert guard** / `dismissAlerts`
-  ([`permission.yaml`](../features/app/scenarios/permission.yaml) is the existing precedent).
+  ([`permission.yaml`](scenarios/permission.yaml) is this fixture's scenario).
 
 ## 8. The `ACCESSIBLE` build flag (how the variants share one codebase)
 
@@ -296,10 +258,10 @@ skipped accessibility ships, and exactly what `record` must cope with and `docto
 ## 9. Identifier namespace summary (`idNamespaces`)
 
 For the `-a11y` apps' `apps.<name>.idNamespaces` ([DESIGN §7.3](../../DESIGN.md)). Reserved
-shared namespaces `auth` and `nav` come from `defaults.reservedNamespaces`.
+the shared namespace `nav` comes from `defaults.reservedNamespaces`.
 
 ```
-onboarding, auth, nav, stable, horse, search, log, notice, profile, account, perm, about, net
+nav, stable, horse, search, log, notice, perm, net
 ```
 
 The `-noax` apps declare an **empty** `idNamespaces: []` — an honest declaration that the build

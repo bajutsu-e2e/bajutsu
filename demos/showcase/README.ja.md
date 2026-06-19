@@ -8,8 +8,8 @@ showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 
 テキスト入力、非同期ロード、通信（実通信＋モック可能）、そして意図的に OS レベルのアラートを上げる
 画面——を、`record`・`crawl`・`run` を一度に行使できる最小のアプリに収めています。
 
-- **画面：** 全 15 画面の一覧（5 タブ＋push＋3 モーダル）は [`SPEC.md` §5](SPEC.md#画面一覧) に。
-  タブは **Stable・Search・Log・Notices・Profile**。
+- **画面：** 全 10 画面の一覧（5 タブ＋push＋3 モーダル）は [`SPEC.md` §5](SPEC.md#画面一覧) に。
+  タブは **Stable・Search・Log・Notices・Permissions**。
 - **契約：** [`SPEC.md`](SPEC.md)（[en](SPEC.md)）— すべての画面・識別子・launch-env フック・deeplink・
   OS アラートの配置。2 つの `-a11y` アプリは同一の識別子契約を露出するので、1 つの
   [`scenarios/`](scenarios) 集が両方を駆動します。

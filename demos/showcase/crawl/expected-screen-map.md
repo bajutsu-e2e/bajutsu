@@ -12,7 +12,7 @@
 >     --seed showcaseswiftui://permissions
 > ```
 
-The showcase is built to be a genuinely branchy crawl target: 4 tabs × navigation pushes ×
+The showcase is built to be a genuinely branchy crawl target: 5 tabs × navigation pushes ×
 4 modal styles. Because every identifier is data-derived and stable (SPEC §5), the id-based
 **state fingerprint** (the sorted set of on-screen identifiers, hashed —
 [BE-0038](../../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
@@ -22,9 +22,7 @@ is stable across runs.
 
 | Node | Reached from | Fingerprint anchor (representative id) |
 |---|---|---|
-| Onboarding | launch (cold) | `onboarding.title` |
-| Login | Onboarding → continue | `auth.submit` |
-| Stable (list) | login / `stable` tab | `stable.title`, `stable.row.*` |
+| Stable (list) | launch / `stable` tab | `stable.title`, `stable.row.*` |
 | Horse Detail | Stable row tap / `…://horse/<id>` | `horse.title` |
 | Search | `search` tab | `search.field` |
 | Search (empty) | Search + no-match query | `search.results-empty` |
@@ -34,14 +32,11 @@ is stable across runs.
 | Log → Delete dialog | `log.openDelete` | `log.dialog.delete` |
 | Notices (list) | `notices` tab | `notice.title`, `notice.row.*` |
 | Notice Detail | Notices row / `…://notice/<id>` | `notice.detail.title` |
-| Profile | `profile` tab | `profile.title` |
-| Account | `profile.openAccount` | `account.title` |
-| Permissions | `profile.openPermissions` / `…://permissions` | `perm.title` |
-| About | `profile.openAbout` | `about.title` |
+| Permissions | `permissions` tab / `…://permissions` | `perm.title` |
 
 ## Edges worth noting
 
-- **Tab switches** are four edges out of every main node (the tab bar is always present).
+- **Tab switches** are five edges out of every main node (the tab bar is always present).
 - **Modals** are reached-and-dismissed cycles off the Log node — a crawl should record the
   open edge and recognize the returned-to state by fingerprint rather than re-exploring it.
 - **Permissions** is the one node whose actions raise out-of-process OS alerts (SPEC §7).

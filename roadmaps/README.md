@@ -261,6 +261,7 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 <!-- GENERATED:proposals-dogfood -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
+| [BE-0045](proposals/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
 
 ## Not adopting (already covered / out of scope)

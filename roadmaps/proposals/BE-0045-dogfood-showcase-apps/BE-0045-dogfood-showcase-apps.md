@@ -29,10 +29,10 @@ should stress.
 
 **1. A fixture rich enough to exercise every command at once.** Today the story is split
 across three apps (`demo`, `sample`, `sample2`). The showcase packs the full interaction
-surface — four tabs, navigation-stack pushes, all four modal styles (detented sheet,
+surface — five tabs, navigation-stack pushes, all four modal styles (detented sheet,
 full-screen cover, action sheet, transient toast), text entry, async loading, networking
-(live + mockable via BajutsuKit), and a screen that deliberately raises OS-level alerts — into
-one coherent app. A genuinely branchy app (4 tabs × pushes × 4 modal styles) is also what makes
+(live + mockable via BajutsuKit), and a tab that deliberately raises OS-level alerts — into
+one coherent app. A genuinely branchy app (5 tabs × pushes × 4 modal styles) is also what makes
 `crawl`'s breadth-first traversal meaningful: there is a real graph to map.
 
 **2. The accessibility pairing is a controlled experiment, not just a fixture.** Selector
@@ -91,11 +91,10 @@ The shape:
   tree, gated by `#if ACCESSIBLE`; the `-noax` build therefore compiles to a tree with no
   identifiers and no mirrored state values.
 - **OS alerts, deliberate and scoped** ([SPEC §7](../../../demos/showcase/SPEC.md)) — no
-  permission prompts at launch and no AutoFill "Save Password?" sheet (the login secure field
-  omits `textContentType`); the notification and location prompts appear *only* on the
-  Permissions screen, where they serve as the canonical fixture for the run's vision alert
-  guard / `dismissAlerts` (the existing [`permission.yaml`](../../../demos/features/app/scenarios/permission.yaml)
-  precedent, generalized).
+  permission prompts at launch; the notification and location prompts appear *only* on the
+  **Permissions tab**, where they serve as the canonical fixture for the run's vision alert
+  guard / `dismissAlerts` (the showcase's own [`permission.yaml`](../../../demos/showcase/scenarios/permission.yaml)
+  scenario).
 - **Networking** reuses the `sample` app's BajutsuKit integration unchanged, so `network`
   evidence and `mocks` work with no app-side change ([DESIGN §3.2](../../../DESIGN.md)).
 

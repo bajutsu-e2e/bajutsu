@@ -2,7 +2,7 @@
 # are present. Runs identically against showcase-swiftui and showcase-uikit (same ids).
 - name: stable catalog smoke
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
   steps:
     - wait: { for: { id: stable.title }, timeout: 10 }
   expect:
@@ -13,7 +13,7 @@
 
 - name: empty catalog shows the empty state
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "0" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "0" }
   steps:
     - wait: { for: { id: stable.title }, timeout: 10 }
   expect:

@@ -254,6 +254,7 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 <!-- GENERATED:proposals-dogfood -->
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
+| [BE-0045](proposals/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md) | Dogfood ショーケースアプリ群（UIKit × SwiftUI、アクセシビリティ対比） | 提案 | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
 
 ## 取り込まない（既に充足 / スコープ外）

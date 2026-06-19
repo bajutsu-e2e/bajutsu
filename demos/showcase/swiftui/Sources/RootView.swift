@@ -1,18 +1,8 @@
 import SwiftUI
 
 struct RootView: View {
-    @EnvironmentObject var model: AppModel
-
-    // The auth flow (onboarding -> login) is a modal over the always-present main UI, so
-    // the tabs and their NavigationStacks are built once at launch and stay live. A tap
-    // right after logging in no longer races a rebuilt-from-scratch view tree.
-    private var authPresented: Binding<Bool> {
-        Binding(get: { model.screen != .home }, set: { _ in })
-    }
-
     var body: some View {
         MainTabView()
-            .fullScreenCover(isPresented: authPresented) { AuthFlowView() }
     }
 }
 
@@ -33,9 +23,9 @@ struct MainTabView: View {
             NoticesView()
                 .tabItem { Label("Notices", systemImage: "bell") }
                 .tag(AppModel.Tab.notices)
-            ProfileView()
-                .tabItem { Label("Profile", systemImage: "person.crop.circle") }
-                .tag(AppModel.Tab.profile)
+            PermissionsView()
+                .tabItem { Label("Permissions", systemImage: "lock.shield") }
+                .tag(AppModel.Tab.permissions)
         }
     }
 }
