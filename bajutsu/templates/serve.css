@@ -57,26 +57,31 @@ main[hidden]{display:none}
 /* A transition that taps through an OS alert: amber edge + a shield at its midpoint. */
 .graphsvg .edge.alert{stroke:var(--run);stroke-width:2}
 .graphsvg .edgealert{text-anchor:middle;dominant-baseline:middle;font-size:13px}
-/* A unit box: a screen (or a collapsed group of same-UI states) as a label+info card. The
-   screenshot is a small thumbnail in the corner that hides itself when the shot is missing. */
-.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;padding:7px;overflow:hidden;cursor:pointer;display:flex;gap:8px}
+/* A unit card: a large screenshot on top, the label+info below. Grouped screens add a prominent
+   full-width expand/collapse button so the merged state is obvious. */
+.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}
 .gnode.structural{border-style:dashed;border-color:var(--mut)}
 .gnode.member{border-color:var(--mut);border-left:3px solid var(--acc)}
 .gnode.ggroup{border-style:double;border-width:3px}
 .gnode:hover{box-shadow:0 0 0 2px var(--acc)}
-/* A prominent portrait screenshot preview on the left; hides itself when the shot is missing so
-   the label+info reflows to the full width. */
-.gshot{flex:0 0 auto;width:72px;height:100%;object-fit:contain;border-radius:4px;background:var(--bg2);border:1px solid var(--line);pointer-events:none}
+/* The screenshot fills the card's full width on top (cropped to the top of the screen); hides
+   itself when the shot is missing so the label+info takes over. */
+.gshot{flex:0 0 auto;width:100%;height:150px;object-fit:cover;object-position:top center;background:var(--bg2);border-bottom:1px solid var(--line);pointer-events:none}
 .gshot.missing{display:none}
-.gmeta{flex:1;min-width:0;display:flex;flex-direction:column}
-.ghead{display:flex;align-items:center;gap:5px}
-.gtitle{flex:1;font-size:11px;font-weight:700;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.gsub{margin-top:3px;font-size:10px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gstates{margin-top:2px;font-size:9.5px;color:var(--acc)}
+/* Expand (a collapsed group) / collapse (an expanded member) — a clear, full-width labelled button. */
+.gexpand,.gcollapse{flex:0 0 auto;width:100%;box-sizing:border-box;border:0;padding:6px;font:inherit;font-size:11px;font-weight:700;cursor:pointer;text-align:center}
+.gexpand{background:var(--acc);color:var(--on-acc)}
+.gexpand:hover{filter:brightness(1.08)}
+.gcollapse{background:var(--bg2);color:var(--mut);border-bottom:1px solid var(--line)}
+.gcollapse:hover{color:var(--acc)}
+.gmeta{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-start;padding:5px 7px;gap:2px;overflow:hidden}
+.ghead{display:flex;align-items:flex-start;gap:5px}
+/* Labels wrap (and break long identifiers) instead of truncating eagerly — up to a couple of lines
+   so most ids show in full; only genuinely long text clips. */
+.gtitle{flex:1;min-width:0;font-size:11px;font-weight:700;color:var(--fg);overflow-wrap:anywhere;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.gsub{font-size:10px;color:var(--mut);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* Plan badge: still-untried operations for this unit (the live frontier), dashed to read as "todo". */
 .gplan{flex:0 0 auto;font-size:9.5px;color:var(--run);border:1px dashed var(--run);border-radius:4px;padding:0 3px}
-.gcollapse{flex:0 0 auto;font-size:11px;color:var(--mut);cursor:pointer;padding:0 2px}
-.gcollapse:hover{color:var(--acc)}
 /* Screenshot lightbox: the enlarged shot beside the screens it transitions to next. */
 .shotbox{position:relative;display:flex;gap:1rem;width:min(960px,94vw);max-height:88vh;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem}
 .shotclose{position:absolute;top:.5rem;right:.6rem;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
