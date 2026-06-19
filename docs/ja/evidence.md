@@ -67,6 +67,12 @@ capturePolicy:
 
 発火の詳細ロジックは [run-loop](run-loop.md#証跡ルールの発火) にあります。
 
+> **実行前に発火を確認する（BE-0028）。** 緩い glob や `screenChanged` ルールは意図より多くの
+> ステップで発火しがちで、そこに heavy capture（`video` / `network`）を付けると気づかぬうちに
+> ギガバイト級の証跡を生みます。`bajutsu trace --explain <scenario.yaml>` は読み取り専用のドライランで、
+> 各ルールが何回（どのステップで）発火するかを数え、広くマッチするルールの heavy capture を ⚠ で
+> 警告します。コストを払う前にマッチを絞り込めます。詳細は [cli](cli.md#trace)。
+
 ## B. インライン証跡
 
 特定の 1 ステップだけ証跡を取りたい場合は、そのステップに直接 `capture:` を付けます。

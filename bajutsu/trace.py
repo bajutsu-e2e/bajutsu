@@ -1,16 +1,143 @@
-"""`bajutsu trace` — inspect a finished run as a text timeline.
+"""`bajutsu trace` — inspect a finished run as a text timeline, or `--explain` a scenario.
 
 A read-only view over a run directory: per scenario, the steps and observed network
 exchanges interleaved chronologically (by offset from the scenario's start), then the
 expectations, app-trace intervals, and an evidence summary. Reads the persisted
 manifest.json (+ network.json / appTrace.json), so it works on any saved run.
+
+The `--explain` dry run is the pre-run counterpart (BE-0028): given a scenario, it previews how
+each `capturePolicy` rule would fire — counting action-triggered rules exactly (reusing the run
+loop's own matcher) and flagging heavy captures on broadly-matching rules — so an author can
+tighten a glob before a run quietly produces gigabytes. Advisory only; never touches pass/fail.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from bajutsu.intervals import INTERVAL_KINDS
+from bajutsu.orchestrator import _action_of
+from bajutsu.orchestrator.evidence_rules import _kind_of, _primary_selector, _rule_fires
+from bajutsu.scenario import CaptureRule, Scenario, Step
+
+# Captures expensive enough to warn about on a broad rule: the scenario-wide interval
+# recordings plus the network collector. (screenshot / elements / actionLog are cheap instants.)
+_HEAVY_KINDS = INTERVAL_KINDS | {"network"}
+
+
+@dataclass(frozen=True)
+class RuleExplain:
+    """How one capturePolicy rule would fire. `countable` action rules carry an exact `count`
+    and the `steps` they match; `event`/`result` rules are runtime-dependent (reported, not
+    counted). `warn` = a heavy capture on a broadly-matching rule."""
+
+    trigger: str
+    capture: list[str]
+    countable: bool
+    count: int = 0
+    steps: list[str] = field(default_factory=list)
+    heavy: list[str] = field(default_factory=list)
+    broad: bool = False
+
+    @property
+    def warn(self) -> bool:
+        return bool(self.heavy) and self.broad
+
+
+def _step_label(step: Step, index: int) -> str:
+    """A short, stable identifier for a step in the report (its name, or action + primary id)."""
+    if step.name:
+        return f"#{index} {step.name}"
+    kind = _action_of(step)
+    primary = _primary_selector(step)
+    target = primary.id if primary is not None and primary.id is not None else ""
+    return f"#{index} {kind}{f' {target}' if target else ''}"
+
+
+def _trigger_desc(rule: CaptureRule) -> str:
+    on = rule.on
+    if on.action is not None:
+        return f"action={on.action}" + (f" idMatches={on.id_matches}" if on.id_matches else "")
+    if on.event is not None:
+        return f"event={on.event}"
+    return f"result={on.result}"
+
+
+def _is_broad(rule: CaptureRule) -> bool:
+    """A rule matches broadly when it isn't pinned to a specific element: an action rule with no
+    `idMatches` (every step of that action) or a leading-`*` glob, or a `screenChanged` event.
+    `result: error` is the safety net — rare by design, so not broad."""
+    on = rule.on
+    if on.action is not None:
+        return on.id_matches is None or on.id_matches.startswith("*")
+    return on.event == "screenChanged"
+
+
+def explain_capture(scenario: Scenario) -> list[RuleExplain]:
+    """Statically classify how each of a scenario's capturePolicy rules would fire."""
+    out: list[RuleExplain] = []
+    for rule in scenario.capture_policy:
+        heavy = [k for k in rule.capture if _kind_of(k) in _HEAVY_KINDS]
+        broad = _is_broad(rule)
+        if rule.on.action is None:
+            # event / result: the run loop decides at runtime; we can't count statically.
+            out.append(
+                RuleExplain(
+                    trigger=_trigger_desc(rule),
+                    capture=list(rule.capture),
+                    countable=False,
+                    heavy=heavy,
+                    broad=broad,
+                )
+            )
+            continue
+        steps = [
+            _step_label(step, i) for i, step in enumerate(scenario.steps) if _step_fires(rule, step)
+        ]
+        out.append(
+            RuleExplain(
+                trigger=_trigger_desc(rule),
+                capture=list(rule.capture),
+                countable=True,
+                count=len(steps),
+                steps=steps,
+                heavy=heavy,
+                broad=broad,
+            )
+        )
+    return out
+
+
+def _step_fires(rule: CaptureRule, step: Step) -> bool:
+    """Whether an action-triggered `rule` fires on `step`, using the run loop's own matcher with
+    neutral runtime signals so the count matches what a real run would record."""
+    primary = _primary_selector(step)
+    primary_id = primary.id if primary is not None else None
+    return _rule_fires(rule, _action_of(step), primary_id, screen_changed=False, ok=True)
+
+
+def render_explain(scenarios: list[Scenario]) -> str:
+    """Render the dry-run report for one or more scenarios."""
+    lines: list[str] = []
+    for scenario in scenarios:
+        lines.append(f"scenario: {scenario.name}")
+        rules = explain_capture(scenario)
+        if not rules:
+            lines.append("  (no capturePolicy rules)")
+            continue
+        for rule in rules:
+            heavy = f" [heavy: {', '.join(rule.heavy)}]" if rule.heavy else ""
+            warn = " ⚠ heavy capture on a broad rule — tighten the match" if rule.warn else ""
+            if rule.countable:
+                lines.append(f"  {rule.trigger}: fires {rule.count}×{heavy}{warn}")
+                lines.extend(f"      {s}" for s in rule.steps)
+            else:
+                lines.append(f"  {rule.trigger}: fires at runtime (conditional){heavy}{warn}")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def latest_run(runs_root: Path) -> Path | None:
