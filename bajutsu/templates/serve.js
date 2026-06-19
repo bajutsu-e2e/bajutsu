@@ -414,7 +414,7 @@ function unitHTML(u,p,plan,runId,NW,NH){
   if(u.kind==='group'){
     const ids=u.members[0].ids||[];
     const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):'screen';
-    return `<div class="gnode ggroup${front}" data-group="${esc(u.key)}" style="${style}" title="Same UI in ${u.members.length} states — click to expand">`+
+    return `<div class="gnode ggroup${front}" data-group="${esc(u.key)}" data-uid="${esc(u.id)}" style="${style}" title="Same UI in ${u.members.length} states — click to expand">`+
       shotImg(u.members[0].fingerprint)+  // the first state's shot, as a representative preview
       `<button class="gexpand" type="button" data-group="${esc(u.key)}" title="Expand ${u.members.length} states">▸ ${u.members.length}</button>`+
       `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}</span>${badge}</div>`+
@@ -425,7 +425,7 @@ function unitHTML(u,p,plan,runId,NW,NH){
   const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):n.fingerprint.slice(0,7);
   const info=`${ids.length} ids · ${(n.actions||[]).length} actions`+((n.blocked||[]).length?` · 🔒 ${n.blocked.length}`:'');
   const collapse=u.kind==='member'?`<button class="gcollapse" type="button" data-group="${esc(u.key)}" title="Collapse group">▾</button>`:'';
-  return `<div class="${cls}" data-fp="${esc(n.fingerprint)}" style="${style}" title="${esc(n.fingerprint.slice(0,7))} — click to enlarge">`+
+  return `<div class="${cls}" data-fp="${esc(n.fingerprint)}" data-uid="${esc(u.id)}" style="${style}" title="${esc(n.fingerprint.slice(0,7))} — click to enlarge">`+
     shotImg(n.fingerprint)+collapse+
     `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}${n.kind==='structural'?' ~':''}</span>${badge}</div>`+
     `<div class="gsub">${esc(info)}</div></div></div>`;
@@ -486,11 +486,12 @@ function renderGraph(data,runId){
   // Edge layer (SVG), sized to the same coordinate space the unit boxes are positioned in.
   let svg=`<svg class="graphsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
   svg+=`<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--mut)"/></marker></defs>`;
-  uedges.forEach(e=>{const a=pos.get(e.src),b=pos.get(e.dst);if(!a||!b)return;const cls='edge'+(e.alert?' alert':'');
-    if(e.src===e.dst){const x=a.x+NW,y=a.y+NH/2;svg+=`<path class="${cls} selfloop" d="M${x},${y-8} C${x+34},${y-26} ${x+34},${y+26} ${x},${y+8}" marker-end="url(#arrow)"/>`;
+  uedges.forEach(e=>{const a=pos.get(e.src),b=pos.get(e.dst);if(!a||!b)return;
+    const cls='edge'+(e.alert?' alert':''),ends=`data-a="${esc(e.src)}" data-b="${esc(e.dst)}"`;
+    if(e.src===e.dst){const x=a.x+NW,y=a.y+NH/2;svg+=`<path class="${cls} selfloop" ${ends} d="M${x},${y-8} C${x+34},${y-26} ${x+34},${y+26} ${x},${y+8}" marker-end="url(#arrow)"/>`;
       if(e.alert)svg+=`<text class="edgealert" x="${x+30}" y="${y}">🛡️</text>`;return}
     const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
-    svg+=`<path class="${cls}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" marker-end="url(#arrow)"/>`;
+    svg+=`<path class="${cls}" ${ends} d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" marker-end="url(#arrow)"/>`;
     // Mark the midpoint with a shield so it's clear the step taps through a system alert.
     if(e.alert)svg+=`<text class="edgealert" x="${mx}" y="${(y1+y2)/2-4}">🛡️</text>`});
   svg+='</svg>';
@@ -543,7 +544,26 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
     const grp=e.target.closest('.ggroup');
     if(grp){expandedGroups.add(grp.dataset.group);redrawGraph();return}
     const node=e.target.closest('.gnode');if(node&&node.dataset.fp)openShot(node.dataset.fp)});
+  // Hovering a node lights up only the edges touching it and dims the rest, so a busy web of lines
+  // becomes readable on demand. Edges carry data-a/data-b (their endpoint unit ids); the node carries
+  // data-uid. Skipped while dragging so a pan doesn't flicker the highlight.
+  box.addEventListener('mouseover',e=>{if(drag)return;const n=e.target.closest('.gnode');if(!n||!n.dataset.uid)return;
+    const wrap=$('.graphwrap');if(!wrap)return;const uid=n.dataset.uid;
+    wrap.classList.add('hl');
+    wrap.querySelectorAll('.edge').forEach(p=>p.classList.toggle('hot',p.dataset.a===uid||p.dataset.b===uid));
+    wrap.querySelectorAll('.gnode').forEach(g=>g.classList.toggle('faded',g!==n&&!isAdjacent(wrap,uid,g.dataset.uid)))});
+  box.addEventListener('mouseout',e=>{const n=e.target.closest('.gnode');if(!n)return;
+    const wrap=$('.graphwrap');if(!wrap)return;
+    wrap.classList.remove('hl');wrap.querySelectorAll('.edge.hot').forEach(p=>p.classList.remove('hot'));
+    wrap.querySelectorAll('.gnode.faded').forEach(g=>g.classList.remove('faded'))});
 })();
+// Whether unit `other` is directly connected to `uid` by some edge (either direction).
+function isAdjacent(wrap,uid,other){
+  if(!other)return false;
+  for(const p of wrap.querySelectorAll('.edge'))
+    if((p.dataset.a===uid&&p.dataset.b===other)||(p.dataset.b===uid&&p.dataset.a===other))return true;
+  return false;
+}
 $('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomreset').addEventListener('click',resetView);

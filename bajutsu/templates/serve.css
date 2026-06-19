@@ -59,10 +59,16 @@ main[hidden]{display:none}
 /* Edges are one SVG layer; unit boxes are HTML label+info cards on top, in BFS layers. structural-
    fingerprint nodes (the less-stable fallback) are dashed to flag the difference. */
 .graphsvg{position:absolute;left:0;top:0;overflow:visible}
-.graphsvg .edge{fill:none;stroke:var(--mut);stroke-width:1.5}
+/* Edges are light by default so a dense graph doesn't read as a tangle; hovering a node lifts only
+   its own edges (`.hl .hot`) and dims the rest, the on-demand declutter. */
+.graphsvg .edge{fill:none;stroke:var(--mut);stroke-width:1.3;stroke-opacity:.45;transition:stroke-opacity .12s,stroke-width .12s}
 .graphsvg .edge.selfloop{stroke-dasharray:3 2}
+.graphwrap.hl .edge{stroke-opacity:.07}
+.graphwrap.hl .edge.hot{stroke-opacity:1;stroke:var(--acc);stroke-width:2.5}
+.graphwrap.hl .edge.hot.alert{stroke:var(--run)}
+.gnode.faded{opacity:.32;transition:opacity .12s}
 /* A transition that taps through an OS alert: amber edge + a shield at its midpoint. */
-.graphsvg .edge.alert{stroke:var(--run);stroke-width:2}
+.graphsvg .edge.alert{stroke:var(--run);stroke-width:1.8;stroke-opacity:.6}
 .graphsvg .edgealert{text-anchor:middle;dominant-baseline:middle;font-size:13px}
 /* A unit card: a large screenshot on top, the label+info below. Grouped screens add a prominent
    full-width expand/collapse button so the merged state is obvious. */
