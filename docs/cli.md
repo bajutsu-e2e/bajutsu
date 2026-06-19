@@ -303,10 +303,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   promotes the captured screenshot into it via `POST /api/approve`.
 - Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
   alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
-- The **Crawl** tab picks an app, device, and budget (max screens / steps), then `POST /api/crawl`
-  spawns the crawl; the returned run id lets the UI poll `runs/<id>/screenmap.json` and draw the
-  screen map as it grows (screens laid out in breadth-first layers, transitions as arrows). The
-  **Stop** button aborts it, like Replay.
+- The **Crawl** tab picks an app, the **Agent** that drives the AI guide (`api` or `claude-code`,
+  the same choice as `crawl --agent` / the Record tab), device, and budget (max screens / steps),
+  then `POST /api/crawl` spawns the crawl; the returned run id lets the UI poll
+  `runs/<id>/screenmap.json` and draw the screen map as it grows (screens laid out in breadth-first
+  layers, transitions as arrows). The **Stop** button aborts it, like Replay.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
   `apps.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features

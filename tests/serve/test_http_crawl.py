@@ -49,7 +49,9 @@ def test_http_crawl_explores_and_streams_the_map(tmp_path: Path) -> None:
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen)
     )
     try:
-        body = json.dumps({"app": "demo", "maxScreens": 10, "maxSteps": 30}).encode()
+        body = json.dumps(
+            {"app": "demo", "agent": "claude-code", "maxScreens": 10, "maxSteps": 30}
+        ).encode()
         req = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/crawl",
             data=body,
@@ -67,6 +69,7 @@ def test_http_crawl_explores_and_streams_the_map(tmp_path: Path) -> None:
         assert cmd[1:5] == ["-m", "bajutsu", "crawl", "--app"]
         # The run dir passed to the CLI sits under the served runs dir, named by the returned id.
         assert cmd[cmd.index("--out") + 1] == str(runs / resp["runId"])
+        assert cmd[cmd.index("--agent") + 1] == "claude-code"  # the Agent picked in the Crawl tab
         assert cmd[cmd.index("--max-screens") + 1] == "10"
         # The streamed screen map is served back so the UI can draw the graph.
         status, raw, _ = _get(port, "/runs/" + resp["runId"] + "/screenmap.json")

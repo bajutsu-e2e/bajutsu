@@ -277,6 +277,7 @@ def crawl_command(
     app: str,
     *,
     out: str,
+    agent: str = "",
     backend: str = "",
     udid: str = "",
     max_screens: int = 50,
@@ -290,10 +291,10 @@ def crawl_command(
     """The ``python -m bajutsu crawl --app … --out …`` argv for a crawl request — the explorer the
     Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
     (``<out>/screenmap.json``, which the UI polls live); ``erase`` mirrors ``run_command`` (None
-    leaves the CLI default — crawl erases by default). Crawl is AI-driven, so the backend is the
-    ``--agent`` choice (API key or the Claude Code CLI), not a guide toggle. When ``resume_src`` /
-    ``resume_key`` are set, ``out`` points at an existing run and the crawl resumes one pruned
-    branch, appending to that run's map instead of starting a fresh one."""
+    leaves the CLI default — crawl erases by default). Crawl is AI-driven, so ``agent`` is the
+    brain that proposes what to try ("api" / "claude-code"); blank leaves the CLI default. When
+    ``resume_src`` / ``resume_key`` are set, ``out`` points at an existing run and the crawl
+    resumes one pruned branch, appending to that run's map instead of starting a fresh one."""
     cmd = [
         sys.executable,
         "-m",
@@ -310,6 +311,8 @@ def crawl_command(
         "--max-steps",
         str(max_steps),
     ]
+    if agent:
+        cmd += ["--agent", agent]
     if backend:
         cmd += ["--backend", backend]
     if udid:
