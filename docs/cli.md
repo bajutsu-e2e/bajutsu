@@ -176,13 +176,18 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 - Traversal is by **deterministic replay**, not in-place backtracking: to revisit a known screen
   the crawl relaunches the app to a clean start and replays the shortest recorded path to it,
   then takes the next untried action — the same way `run` reaches any state.
-- Disabled controls (`notEnabled`) are reported per screen as `blocked` rather than tapped; to
-  enable a gated control the crawl fills text fields. `--guide off` types a deterministic
-  placeholder (clears "must be non-empty"); **`--guide ai`** lets Claude propose the operations
-  and **realistic inputs** (a valid email, a password meeting the rules) needed to enable controls
-  whose precondition isn't obvious, plus operations on id-less elements. The AI only chooses *what
-  to try* — screen identity, transitions and crashes stay deterministic, so the crawl is never a
-  verdict (it never gates CI).
+- Disabled controls (`notEnabled`) are reported per screen as `blocked` rather than tapped. To
+  enumerate transitions the crawl explores the **combinations** of control states: it tries each
+  empty text field (and toggles each switch) independently, and — when several fields are empty —
+  also a **compound fill** of them at once. The compound matters because a control can stay
+  disabled until *several* fields are valid, and an intermediate single fill is often invisible (a
+  masked password exposes no value), so filling one at a time can't reach the all-filled state.
+  `--guide off` types a deterministic placeholder; **`--guide ai`** lets Claude propose the
+  operations and **realistic inputs** (a valid email, a password meeting the rules, all of a form's
+  fields in one fill) needed to enable controls whose precondition isn't obvious, plus operations
+  on id-less elements, narrating its reasoning into the run log. The AI only chooses *what to try*
+  — screen identity, transitions and crashes stay deterministic, so the crawl is never a verdict
+  (it never gates CI).
 - Output: `<out>/screenmap.json`, a JSON graph of `nodes` (screens — fingerprint, kind, ids,
   candidate actions), `edges` (transitions), and `crashes` (action paths that collapsed the app
   UI), plus `<out>/screens/<fingerprint>.png` — a screenshot captured for each discovered screen

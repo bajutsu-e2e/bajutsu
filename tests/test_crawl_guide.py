@@ -87,6 +87,20 @@ def test_ai_guide_narrates_the_models_thought_and_choices() -> None:
     assert any("login.user" in line and "a@b.com" in line for line in log)  # the chosen input
 
 
+def test_actions_from_parses_a_compound_fill() -> None:
+    payload = {
+        "actions": [
+            {
+                "action": "fill",
+                "fields": [{"id": "email", "value": "a@b.com"}, {"id": "pw", "value": "P1!"}],
+            }
+        ]
+    }
+    acts = _actions_from(payload, cap=10)
+    assert len(acts) == 1 and acts[0].kind == "fill"
+    assert acts[0].fields == (("email", "a@b.com"), ("pw", "P1!"))
+
+
 def test_proposal_from_parses_thought_and_actions() -> None:
     payload = {"thought": "looks like a form", "actions": [{"action": "tap", "id": "x"}]}
     proposal = _proposal_from(payload, cap=10)
