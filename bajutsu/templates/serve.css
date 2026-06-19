@@ -86,6 +86,8 @@ main[hidden]{display:none}
 .nxtxt{display:flex;flex-direction:column;min-width:0}
 .nxa{font-size:.85em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nxf{color:var(--mut);font-size:.78em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+/* A queued (untried) operation — the live frontier, e.g. a vision-located tab to tap next. */
+.planrow{background:var(--bg2);border:1px dashed var(--run);border-radius:8px;padding:.3rem .5rem;font-size:.82em;color:var(--fg)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
 label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
 select,input[type=text],input[type=number],textarea{width:100%;padding:.45rem;background:var(--bg2);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}
