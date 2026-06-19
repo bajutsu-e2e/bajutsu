@@ -375,18 +375,18 @@ function unitHTML(u,p,plan,runId,NW,NH){
     const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):'screen';
     return `<div class="gnode ggroup" data-group="${esc(u.key)}" style="${style}" title="Same UI in ${u.members.length} states — click to expand">`+
       shotImg(u.members[0].fingerprint)+  // the first state's shot, as a representative preview
-      `<div class="gmeta"><div class="ghead"><span class="gtitle">▸ ${esc(label)}</span>${badge}</div>`+
-      `<div class="gsub">${u.members.length} states · ${ids.length} ids</div>`+
-      `<div class="gstates">grouped — click to expand</div></div></div>`;
+      `<button class="gexpand" type="button" data-group="${esc(u.key)}">▸ Expand ${u.members.length} states</button>`+
+      `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}</span>${badge}</div>`+
+      `<div class="gsub">${u.members.length} states · ${ids.length} ids</div></div></div>`;
   }
   const n=u.node,ids=n.ids||[];
   const cls='gnode'+(n.kind==='structural'?' structural':'')+(u.kind==='member'?' member':'');
   const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):n.fingerprint.slice(0,7);
   const info=`${ids.length} ids · ${(n.actions||[]).length} actions`+((n.blocked||[]).length?` · 🔒 ${n.blocked.length}`:'');
-  const collapse=u.kind==='member'?`<span class="gcollapse" data-group="${esc(u.key)}" title="Collapse this group">▾</span>`:'';
+  const collapse=u.kind==='member'?`<button class="gcollapse" type="button" data-group="${esc(u.key)}">▾ Collapse group</button>`:'';
   return `<div class="${cls}" data-fp="${esc(n.fingerprint)}" style="${style}" title="${esc(n.fingerprint.slice(0,7))} — click to enlarge">`+
-    shotImg(n.fingerprint)+
-    `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}${n.kind==='structural'?' ~':''}</span>${collapse}${badge}</div>`+
+    shotImg(n.fingerprint)+collapse+
+    `<div class="gmeta"><div class="ghead"><span class="gtitle">${esc(label)}${n.kind==='structural'?' ~':''}</span>${badge}</div>`+
     `<div class="gsub">${esc(info)}</div></div></div>`;
 }
 function renderGraph(data,runId){
@@ -427,8 +427,9 @@ function renderGraph(data,runId){
   while(q.length){const f=q.shift(),d=depth.get(f);(adj.get(f)||[]).forEach(t=>{if(!depth.has(t)){depth.set(t,d+1);q.push(t)}})}
   units.forEach(u=>{if(!depth.has(u.id))depth.set(u.id,0)});
   const layers=[];units.forEach(u=>{const d=depth.get(u.id);(layers[d]||(layers[d]=[])).push(u)});
-  // Layout: cards pair a prominent portrait screenshot (left) with the label+info (right).
-  const NW=224,NH=132,COLW=300,ROWH=NH+30,PAD=24;
+  // Layout: vertical cards — a large screenshot on top, label+info (and any group button) below.
+  // Wider than tall-text needs so labels wrap rather than truncate.
+  const NW=176,NH=212,COLW=250,ROWH=NH+30,PAD=24;
   const pos=new Map();let maxRows=1;
   layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((u,i)=>pos.set(u.id,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
   const W=PAD*2+(layers.length-1)*COLW+NW,H=PAD*2+(maxRows-1)*ROWH+NH;
