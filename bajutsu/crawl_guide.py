@@ -15,6 +15,8 @@ still advances if the model proposes nothing useful.
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from bajutsu import crawl
@@ -23,22 +25,38 @@ from bajutsu.record import _screenshot_bytes
 
 MODEL = "claude-opus-4-8"
 
+# Receives the AI's reasoning as it explores, so a watcher (the crawl log / the web UI) can see
+# what the model is thinking and which operations it chose.
+Report = Callable[[str], None]
+
+
+@dataclass
+class Proposal:
+    """The proposer's output for one screen: the operations to try, plus `thought` — the model's
+    short reasoning, surfaced live so a watcher sees what the AI is doing."""
+
+    actions: list[crawl.Action] = field(default_factory=list)
+    thought: str = ""
+
 
 class ActionProposer(Protocol):
-    def propose(
-        self, elements: list[base.Element], screenshot: bytes | None
-    ) -> list[crawl.Action]: ...
+    def propose(self, elements: list[base.Element], screenshot: bytes | None) -> Proposal: ...
 
 
-def ai_guide(proposer: ActionProposer) -> crawl.Guide:
+def ai_guide(proposer: ActionProposer, report: Report | None = None) -> crawl.Guide:
     """Adapt an `ActionProposer` to the crawl `Guide` signature: capture the screen, ask the
-    proposer, and union its actions with the deterministic ones (proposer first, so its realistic
-    input values win on de-duplication)."""
+    proposer, narrate its reasoning + chosen operations (via `report`), then union its actions
+    with the deterministic ones (proposer first, so its realistic input values win on de-dup)."""
 
     def guide(driver: base.Driver, elements: list[base.Element]) -> list[crawl.Action]:
         shot = _screenshot_bytes(driver)
-        proposed = proposer.propose(elements, shot)
-        return _dedup([*proposed, *crawl.candidate_actions(elements)])
+        proposal = proposer.propose(elements, shot)
+        if report is not None:
+            if proposal.thought:
+                report(f"🤔 {proposal.thought}")
+            for a in proposal.actions:
+                report(f"   → try {a.describe()}")
+        return _dedup([*proposal.actions, *crawl.candidate_actions(elements)])
 
     return guide
 
@@ -56,13 +74,14 @@ def _dedup(actions: list[crawl.Action]) -> list[crawl.Action]:
     return out
 
 
-def make_guide(kind: str) -> crawl.Guide | None:
+def make_guide(kind: str, report: Report | None = None) -> crawl.Guide | None:
     """The crawl guide for `kind`: ``""``/``off`` → deterministic (None lets the engine use its
-    default `candidate_actions`); ``ai`` → the Claude-backed guide. Any other value is an error."""
+    default `candidate_actions`); ``ai`` → the Claude-backed guide, narrating its reasoning through
+    `report`. Any other value is an error."""
     if kind in ("", "off"):
         return None
     if kind == "ai":
-        return ai_guide(ClaudeActionProposer())
+        return ai_guide(ClaudeActionProposer(), report=report)
     raise ValueError(f"unknown crawl guide: {kind!r} (use 'off' or 'ai')")
 
 
@@ -88,6 +107,11 @@ _PROPOSE_TOOL: dict[str, Any] = {
     "input_schema": {
         "type": "object",
         "properties": {
+            "thought": {
+                "type": "string",
+                "description": "one short sentence: what this screen is and why you'll try these "
+                "operations (shown live to the watcher)",
+            },
             "actions": {
                 "type": "array",
                 "items": {
@@ -110,9 +134,9 @@ _PROPOSE_TOOL: dict[str, Any] = {
                     },
                     "required": ["action"],
                 },
-            }
+            },
         },
-        "required": ["actions"],
+        "required": ["thought", "actions"],
     },
 }
 
@@ -181,6 +205,11 @@ def _actions_from(payload: dict[str, Any], cap: int) -> list[crawl.Action]:
     return out
 
 
+def _proposal_from(payload: dict[str, Any], cap: int) -> Proposal:
+    """Build a `Proposal` (actions + the model's `thought`) from the tool call's input."""
+    return Proposal(actions=_actions_from(payload, cap), thought=str(payload.get("thought") or ""))
+
+
 class ClaudeActionProposer:
     """Asks Claude (Anthropic SDK) for the screen's candidate operations via a forced tool call.
     `anthropic` is lazy-imported so the module loads without the SDK or an API key."""
@@ -200,7 +229,7 @@ class ClaudeActionProposer:
             self._client = anthropic.Anthropic()
         return self._client
 
-    def propose(self, elements: list[base.Element], screenshot: bytes | None) -> list[crawl.Action]:
+    def propose(self, elements: list[base.Element], screenshot: bytes | None) -> Proposal:
         message = self._ensure_client().messages.create(
             model=self._model,
             max_tokens=self._max_tokens,
@@ -211,5 +240,5 @@ class ClaudeActionProposer:
         )
         block = next((b for b in message.content if b.type == "tool_use"), None)
         if block is None:
-            return []
-        return _actions_from(block.input, self._max_actions)
+            return Proposal()
+        return _proposal_from(block.input, self._max_actions)

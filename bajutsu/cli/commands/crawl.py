@@ -61,8 +61,14 @@ def crawl(
     transitions, crashes); with `--guide ai` an LLM only proposes *what to try*. A discovery tool,
     never a pass/fail gate."""
     eff = _load_effective(config, app_name)
+
+    # Progress (device work + the AI guide's reasoning) goes to stderr, like record's stream; the
+    # web UI merges it into the crawl log so a watcher sees what the AI is thinking, turn by turn.
+    def say(msg: str) -> None:
+        typer.echo(msg, err=True)
+
     try:
-        crawl_guide = make_guide(guide)
+        crawl_guide = make_guide(guide, report=say)
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -88,10 +94,6 @@ def crawl(
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
     udid = _env.resolve_udid(udid)
-
-    # Narrate the otherwise-silent device work (reinstall + boot + launch) on stderr, like record.
-    def say(msg: str) -> None:
-        typer.echo(msg, err=True)
 
     say(
         f"⚙️  preparing the simulator — installing and launching {app_name} (this can take a moment) …"
