@@ -146,6 +146,11 @@
     <div class="crawlhead">
       <span class="ttl">Screen map</span>
       <span class="crawlcounts" id="crawl-counts"></span>
+      <span class="zoomctl">
+        <button class="zbtn" id="crawl-zoomout" title="zoom out">&minus;</button>
+        <button class="zbtn" id="crawl-zoomreset" title="reset view">&#9678;</button>
+        <button class="zbtn" id="crawl-zoomin" title="zoom in">+</button>
+      </span>
     </div>
     <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
     <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
@@ -178,6 +183,17 @@
       <span class="keystatus" id="keystatus"></span>
     </div>
     <div class="fshint">Kept in the running server's memory for this session only — <b>not written to disk</b>, so it is cleared when <code>serve</code> restarts. Only the AI paths need it: <b>Record</b> and Replay with <code>--dismiss-alerts</code>. For a value that survives restarts, put <code>ANTHROPIC_API_KEY</code> in your shell or a <code>.env</code> before launching <code>serve</code>.</div>
+  </div>
+</div>
+<!-- ===== Screenshot lightbox: the enlarged screen + where it goes next (Crawl tab) ===== -->
+<div class="modal" id="shotmodal" hidden>
+  <div class="shotbox">
+    <button class="fsclose shotclose" id="shotclose">&#10005;</button>
+    <div class="shotmain"><img id="shotimg" alt="screen screenshot"></div>
+    <div class="shotside">
+      <div class="shottitle" id="shottitle"></div>
+      <div class="shotnext" id="shotnext"></div>
+    </div>
   </div>
 </div>
 <script>{{ js|safe }}</script>

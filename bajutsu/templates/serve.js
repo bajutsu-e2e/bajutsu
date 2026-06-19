@@ -296,10 +296,16 @@ async function loadGraph(runId){
   renderGraph(data,runId);
 }
 // Lay the screen map out as a BFS-layered graph: screens become columns by depth, transitions
-// curved edges with arrowheads. Each node shows the screen's screenshot (streamed to
-// runs/<id>/screens/<fingerprint>.png) above a short fingerprint label. Recomputed on every poll,
-// deterministic so nodes stay put as the map grows. structural-fingerprint nodes are dashed.
+// curved edges with arrowheads. Each node shows the screen's screenshot (captured to
+// runs/<id>/screens/<fingerprint>.png) above a short fingerprint label; click a node to enlarge
+// it and see where it goes next. Edges are one SVG layer; nodes are HTML <img> tiles on top (an
+// HTML <img> loads reliably, where an SVG <image> set via innerHTML does not). The view (zoom /
+// pan) and the data are kept across the per-poll re-render so nodes stay put as the map grows.
+let crawlGraphData=null,crawlGraphRunId=null;
+const gview={x:0,y:0,k:1};  // pan (px) + zoom (scale), applied as a transform on the graph layer
+function shotURL(runId,fp){return `/runs/${encodeURIComponent(runId)}/screens/${encodeURIComponent(fp)}.png`}
 function renderGraph(data,runId){
+  crawlGraphData=data;crawlGraphRunId=runId;
   const nodes=data.nodes||[],edges=data.edges||[],crashes=data.crashes||[];
   $('#crawl-counts').textContent=`${nodes.length} screens · ${edges.length} transitions · ${crashes.length} crashes`;
   const box=$('#crawl-graph');
@@ -316,12 +322,13 @@ function renderGraph(data,runId){
   while(q.length){const f=q.shift(),d=depth.get(f);(adj.get(f)||[]).forEach(t=>{if(!depth.has(t)){depth.set(t,d+1);q.push(t)}})}
   nodes.forEach(n=>{if(!depth.has(n.fingerprint))depth.set(n.fingerprint,0)});
   const layers=[];nodes.forEach(n=>{const d=depth.get(n.fingerprint);(layers[d]||(layers[d]=[])).push(n)});
-  // Node = a screenshot thumbnail (IMGH tall) + a label strip; sized for the portrait shot.
+  // Node = a screenshot tile (IMGH tall) + a label strip; sized for the portrait shot.
   const NW=120,IMGH=150,NH=IMGH+26,COLW=190,ROWH=NH+30,PAD=24;
   const pos=new Map();let maxRows=1;
   layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((n,i)=>pos.set(n.fingerprint,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
   const W=PAD*2+(layers.length-1)*COLW+NW,H=PAD*2+(maxRows-1)*ROWH+NH;
-  let svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="graphsvg">`;
+  // Edge layer (SVG), sized to the same coordinate space the node tiles are positioned in.
+  let svg=`<svg class="graphsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
   svg+=`<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--mut)"/></marker></defs>`;
   const seen=new Set();
   edges.forEach(e=>{const k=e.src+'>'+e.dst;if(seen.has(k))return;seen.add(k);
@@ -330,16 +337,63 @@ function renderGraph(data,runId){
     const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
     svg+=`<path class="edge" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" marker-end="url(#arrow)"/>`;
   });
-  nodes.forEach(n=>{const p=pos.get(n.fingerprint),cls='node'+(n.kind==='structural'?' structural':'');
+  svg+='</svg>';
+  // Node tiles (HTML, absolutely positioned), each a real <img> so the screenshot reliably loads.
+  let tiles='';
+  nodes.forEach(n=>{const p=pos.get(n.fingerprint),cls='gnode'+(n.kind==='structural'?' structural':'');
     const sub=(n.ids&&n.ids.length?n.ids.length+' ids':'no ids')+' · '+((n.actions||[]).length)+' actions';
-    const shot=`/runs/${encodeURIComponent(runId)}/screens/${encodeURIComponent(n.fingerprint)}.png`;
-    svg+=`<g class="${cls}" transform="translate(${p.x},${p.y})"><title>${esc(n.fingerprint.slice(0,7))} — ${esc(sub)}\n${esc((n.ids||[]).join(', '))}</title>`+
-      `<rect width="${NW}" height="${NH}" rx="8"/>`+
-      `<image href="${shot}" x="5" y="5" width="${NW-10}" height="${IMGH}" preserveAspectRatio="xMidYMid meet"/>`+
-      `<text class="nlab" x="8" y="${NH-8}">${esc(n.fingerprint.slice(0,7))}${n.kind==='structural'?' ~':''}</text></g>`;
+    tiles+=`<div class="${cls}" data-fp="${esc(n.fingerprint)}" style="left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px" title="${esc(n.fingerprint.slice(0,7))} — ${esc(sub)}">`+
+      `<img class="gshot" src="${shotURL(runId,n.fingerprint)}" alt="" loading="lazy" onerror="this.classList.add('missing')">`+
+      `<div class="glabel">${esc(n.fingerprint.slice(0,7))}${n.kind==='structural'?' ~':''}</div></div>`;
   });
-  svg+='</svg>';box.innerHTML=svg;
+  box.innerHTML=`<div class="graphwrap" style="width:${W}px;height:${H}px">${svg}${tiles}</div>`;
+  applyView();
 }
+// ---- zoom / pan: a transform on the graph layer, re-applied after each re-render ----
+function applyView(){const w=$('.graphwrap');if(w)w.style.transform=`translate(${gview.x}px,${gview.y}px) scale(${gview.k})`}
+function zoomBy(factor,cx,cy){
+  const r=$('#crawl-graph').getBoundingClientRect();
+  // Keep the point under (cx,cy) fixed while scaling about it.
+  const px=(cx-r.left-gview.x)/gview.k,py=(cy-r.top-gview.y)/gview.k;
+  gview.k=Math.min(3,Math.max(0.2,gview.k*factor));
+  gview.x=cx-r.left-px*gview.k;gview.y=cy-r.top-py*gview.k;applyView();
+}
+function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
+(function(){
+  const box=$('#crawl-graph');let drag=null,moved=false;
+  box.addEventListener('wheel',e=>{if(!$('.graphwrap'))return;e.preventDefault();zoomBy(e.deltaY<0?1.1:1/1.1,e.clientX,e.clientY)},{passive:false});
+  box.addEventListener('mousedown',e=>{if(!$('.graphwrap'))return;drag={x:e.clientX,y:e.clientY,ox:gview.x,oy:gview.y};moved=false;box.classList.add('panning')});
+  window.addEventListener('mousemove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=drag.ox+dx;gview.y=drag.oy+dy;applyView()});
+  window.addEventListener('mouseup',()=>{if(drag){drag=null;box.classList.remove('panning')}});
+  // A click that wasn't a drag opens the node's lightbox.
+  box.addEventListener('click',e=>{if(moved){moved=false;return}const node=e.target.closest('.gnode');if(node&&node.dataset.fp)openShot(node.dataset.fp)});
+})();
+$('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1.2,r.left+r.width/2,r.top+r.height/2)});
+$('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});
+$('#crawl-zoomreset').addEventListener('click',resetView);
+
+// ---- lightbox: enlarge a screen's shot and list where it transitions next ----
+function openShot(fp){
+  if(!crawlGraphData)return;
+  const nodes=crawlGraphData.nodes||[],edges=crawlGraphData.edges||[];
+  const node=nodes.find(n=>n.fingerprint===fp);if(!node)return;
+  const byFp=new Map(nodes.map(n=>[n.fingerprint,n]));
+  $('#shotimg').src=shotURL(crawlGraphRunId,fp);
+  $('#shottitle').textContent=`${fp.slice(0,7)}${node.kind==='structural'?' (structural)':''} · ${(node.ids||[]).length} ids · ${(node.actions||[]).length} actions`;
+  const out=edges.filter(e=>e.src===fp);
+  let h=out.length?`<div class="nexthd">Goes to ${out.length} screen(s):</div>`:'<div class="nexthd muted">No outgoing transitions discovered.</div>';
+  h+=out.map(e=>{const self=e.dst===fp;
+    return `<button class="nextrow" data-fp="${esc(e.dst)}">`+
+      `<img src="${shotURL(crawlGraphRunId,e.dst)}" alt="" onerror="this.style.visibility='hidden'">`+
+      `<span class="nxtxt"><span class="nxa">${esc(e.action)}</span>`+
+      `<span class="nxf">→ ${esc(e.dst.slice(0,7))}${self?' (self)':''}</span></span></button>`;
+  }).join('');
+  $('#shotnext').innerHTML=h;
+  $('#shotmodal').hidden=false;
+}
+function closeShot(){$('#shotmodal').hidden=true;$('#shotimg').removeAttribute('src')}
+$('#shotmodal').addEventListener('click',e=>{if(e.target===$('#shotmodal')||e.target===$('#shotclose'))closeShot()});
+$('#shotnext').addEventListener('click',e=>{const b=e.target.closest('.nextrow');if(b&&b.dataset.fp)openShot(b.dataset.fp)});
 
 initTheme();
 loadConfig();
