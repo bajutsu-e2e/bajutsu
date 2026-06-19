@@ -57,7 +57,7 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 | `SHOWCASE_UITEST` | disable animations (tight condition waits) | unset |
 | `SHOWCASE_SKIP_ONBOARDING` | start at login instead of onboarding | unset |
 | `SHOWCASE_LOGGED_IN` | start logged-in, on Home | unset |
-| `SHOWCASE_TAB` | initial tab: `stable`/`search`/`log`/`profile` | `stable` |
+| `SHOWCASE_TAB` | initial tab: `stable`/`search`/`log`/`notices`/`profile` | `stable` |
 | `SHOWCASE_SEED` | number of seeded catalog rows (offline) | `5` |
 | `SHOWCASE_API_URL` | base URL for the catalog GET (`/horses`) | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | base for the echo POST/DELETE endpoints | `https://httpbin.org` |
@@ -72,16 +72,39 @@ modals and pops navigation to the tab root.
 
 | Deeplink (host) | Effect |
 |---|---|
-| `…://stable` / `search` / `log` / `profile` | select that tab |
+| `…://stable` / `search` / `log` / `notices` / `profile` | select that tab |
 | `…://horse/<id>` | select Stable tab, push Horse Detail for `<id>` |
+| `…://notice/<id>` | select Notices tab, push Notice Detail for `<id>` |
 | `…://permissions` | select Profile tab, push the Permissions screen (the OS-alert screen) |
 
 ## 5. Screen-by-screen specification
 
-Five flows: **Onboarding → Login** (modal gate), then a four-tab main UI. Every actionable
-element's identifier is listed; the `-noax` variants omit all of them. Identifiers follow
+**Onboarding → Login** (modal gate), then a five-tab main UI. Every actionable element's
+identifier is listed; the `-noax` variants omit all of them. Identifiers follow
 [DESIGN §7.3](../../DESIGN.md): `<namespace>.<element>`, lowercase, data-derived, unique per
 screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions read it.
+
+### Screen inventory
+
+| # | Screen | Reached via | Kind | Namespace(s) | Spec |
+|---|---|---|---|---|---|
+| 1 | Onboarding | launch (cold) | modal gate | `onboarding` | §5.0 |
+| 2 | Login | after onboarding | modal gate | `auth` | §5.0 |
+| 3 | Stable (catalog list) | `stable` tab | tab · list | `stable` | §5.1 |
+| 4 | Horse Detail | Stable row / `…://horse/<id>` | push | `horse`, `nav` | §5.1 |
+| 5 | Search | `search` tab | tab · filter list | `search` | §5.2 |
+| 6 | Log | `log` tab | tab · form + modals | `log` | §5.3 |
+| 7 | — Filter sheet | `log.openFilter` | sheet (detents) | `log` | §5.3 |
+| 8 | — Gallery cover | `log.openGallery` | full-screen cover | `log` | §5.3 |
+| 9 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
+| 10 | Notices (list) | `notices` tab | tab · list | `notice` | §5.5 |
+| 11 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice`, `nav` | §5.5 |
+| 12 | Profile | `profile` tab | tab · grouped list | `profile` | §5.4 |
+| 13 | Account | `profile.openAccount` | push | `account` | §5.4 |
+| 14 | Permissions | `profile.openPermissions` / `…://permissions` | push · **OS alerts** | `perm` | §5.4 |
+| 15 | About | `profile.openAbout` | push | `about` | §5.4 |
+
+Tabs, top to bottom: **Stable · Search · Log · Notices · Profile**.
 
 ### 5.0 Auth gate — `onboarding`, `auth` namespaces
 
@@ -168,6 +191,21 @@ A `Form`/grouped list that pushes sub-screens — the navigation-depth showcase.
 **About** (`about`):
 - `about.title`, `about.version.value`, `nav.back`
 
+### 5.5 Tab: Notices — `notice` namespace (plain list → detail)
+
+A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit) holding a plain vertical list
+of **three** static notices. The smallest list → detail flow — distinct from the data-loading
+Stable catalog — and a clean target for navigation scenarios and crawl. The three notices are
+seeded identically in both apps (ids `1`/`2`/`3`).
+
+- `notice.title` — nav title "Notices"
+- `notice.row.<id>` — one per notice (`notice.row.1`/`2`/`3`), `<id>` data-derived. Tapping pushes Notice Detail. Use `idMatches: "notice.row.*"` + `count` for set assertions.
+
+**Notice Detail** (pushed; also reachable via `…://notice/<id>`):
+- `notice.detail.title` — the notice's title (the screen's identifying element; the nav title carries no id)
+- `notice.detail.body` — the notice's body text
+- `nav.back` — back button (reserved `nav` namespace)
+
 ## 6. Networking
 
 Mirrors the `sample` fixture's BajutsuKit integration:
@@ -201,14 +239,27 @@ Mirrors the `sample` fixture's BajutsuKit integration:
 
 A single Swift active-compilation condition, `ACCESSIBLE`, set on the `-a11y` target only.
 
-**SwiftUI** — a `View` helper applies the identifier only when the flag is set:
+The helpers are named to echo Apple's own API (`accessibilityIdentifier` / `accessibilityValue`)
+without shadowing it: `accessibilityID(_:)` attaches the identifier, `accessibilityStateValue(_:)`
+mirrors state into `accessibilityValue`.
+
+**SwiftUI** — `View` helpers apply the identifier / value only when the flag is set:
 
 ```swift
 extension View {
     /// Attach a stable accessibility identifier in the a11y build; no-op otherwise.
-    func aid(_ id: String) -> some View {
+    func accessibilityID(_ id: String) -> some View {
         #if ACCESSIBLE
         return AnyView(self.accessibilityIdentifier(id))
+        #else
+        return AnyView(self)
+        #endif
+    }
+
+    /// Mirror state into accessibilityValue (a11y build only) so assertions can read it.
+    func accessibilityStateValue(_ value: String) -> some View {
+        #if ACCESSIBLE
+        return AnyView(self.accessibilityValue(value))
         #else
         return AnyView(self)
         #endif
@@ -216,12 +267,13 @@ extension View {
 }
 ```
 
-**UIKit** — an extension on `UIAccessibilityIdentification` (which `UIView`/`UIBarItem` conform to):
+**UIKit** — an extension on `UIAccessibilityIdentification` (which `UIView`/`UIBarItem` conform to),
+plus an `accessibilityStateValue(_:)` on `UIView`/`UIBarItem`:
 
 ```swift
 extension UIAccessibilityIdentification {
     /// Set a stable accessibility identifier in the a11y build; no-op otherwise.
-    @discardableResult func aid(_ id: String) -> Self {
+    @discardableResult func accessibilityID(_ id: String) -> Self {
         #if ACCESSIBLE
         accessibilityIdentifier = id
         #endif
@@ -230,9 +282,10 @@ extension UIAccessibilityIdentification {
 }
 ```
 
-Every identifier in §5 is applied through `aid(...)`. `accessibilityValue`/`accessibilityLabel`
-that mirror **state for assertions** are likewise gated behind `#if ACCESSIBLE`; labels that
-exist purely for VoiceOver semantics may stay unconditional. The `-noax` build therefore
+Every identifier in §5 is applied through `accessibilityID(...)`. The state-mirroring
+`accessibilityStateValue(...)` (and any `accessibilityLabel` that exists **for assertions**) is
+likewise gated behind `#if ACCESSIBLE`; labels that exist purely for VoiceOver semantics may stay
+unconditional. The `-noax` build therefore
 presents a tree with no identifiers and no mirrored values — exactly the app a team that
 skipped accessibility ships, and exactly what `record` must cope with and `doctor` must flag.
 
@@ -242,7 +295,7 @@ For the `-a11y` apps' `apps.<name>.idNamespaces` ([DESIGN §7.3](../../DESIGN.md
 shared namespaces `auth` and `nav` come from `defaults.reservedNamespaces`.
 
 ```
-onboarding, auth, nav, stable, horse, search, log, profile, account, perm, about, net
+onboarding, auth, nav, stable, horse, search, log, notice, profile, account, perm, about, net
 ```
 
 The `-noax` apps declare an **empty** `idNamespaces: []` — an honest declaration that the build
@@ -256,4 +309,4 @@ exposes no identifiers, which is what makes `doctor --app showcase-…-noax` gra
 | `run` | `-a11y` | Deterministic replay of every scenario in `scenarios/` — tabs, push nav, all four modal styles, networking (live + mocked), and the alert-guarded Permissions flow. |
 | `doctor --app` | both | `-a11y` → **Ready**; `-noax` → **Blocked** (`idCoverage` ≈ 0). The pair quantifies accessibility debt. |
 | `record` | `-noax` | AI authors a scenario for a natural-language goal against an app with no identifiers, falling to label/traits/coordinates — the stability-ladder cost made visible. The `-a11y` twin shows the clean id-based output for the same goal. |
-| `crawl` ([BE-0038](../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (4 tabs × pushes × 4 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |
+| `crawl` ([BE-0038](../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (5 tabs × pushes × 4 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |

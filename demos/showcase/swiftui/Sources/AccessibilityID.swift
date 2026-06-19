@@ -5,7 +5,8 @@ import SwiftUI
 // the honest "we skipped accessibility" app that `record` must cope with.
 extension View {
     /// Attach a stable accessibility identifier in the a11y build; no-op otherwise.
-    func aid(_ id: String) -> some View {
+    /// Named to echo SwiftUI's own `.accessibilityIdentifier(_:)` without shadowing it.
+    func accessibilityID(_ id: String) -> some View {
         #if ACCESSIBLE
         return AnyView(self.accessibilityIdentifier(id))
         #else
@@ -13,9 +14,9 @@ extension View {
         #endif
     }
 
-    /// Mirror state to accessibilityValue in the a11y build so assertions can read it;
+    /// Mirror state into `accessibilityValue` in the a11y build so assertions can read it;
     /// no-op otherwise (the -noax tree exposes no mirrored values).
-    func aidValue(_ value: String) -> some View {
+    func accessibilityStateValue(_ value: String) -> some View {
         #if ACCESSIBLE
         return AnyView(self.accessibilityValue(value))
         #else

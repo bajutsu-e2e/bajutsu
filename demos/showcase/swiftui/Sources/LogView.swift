@@ -25,59 +25,59 @@ struct LogView: View {
                 Section("Entry") {
                     TextField("Note", text: $note, axis: .vertical)
                         .lineLimit(3 ... 6)
-                        .aid("log.note")
+                        .accessibilityID("log.note")
 
                     Stepper("Count: \(count)", value: $count, in: 0 ... 99)
-                        .aid("log.count")
+                        .accessibilityID("log.count")
                     Text("Count: \(count)")
                         .foregroundStyle(.secondary)
-                        .aid("log.count.value")
-                        .aidValue(String(count))
+                        .accessibilityID("log.count.value")
+                        .accessibilityStateValue(String(count))
 
                     Toggle("Intense", isOn: $intense)
-                        .aid("log.intense")
+                        .accessibilityID("log.intense")
                     Text(intense ? "Intense" : "Easy")
                         .foregroundStyle(.secondary)
-                        .aid("log.intense.value")
-                        .aidValue(intense ? "on" : "off")
+                        .accessibilityID("log.intense.value")
+                        .accessibilityStateValue(intense ? "on" : "off")
 
                     Button("Submit") { submit() }
-                        .aid("log.submit")
+                        .accessibilityID("log.submit")
                     Text("Status: \(status)")
                         .foregroundStyle(.secondary)
-                        .aid("log.status")
-                        .aidValue(status)
+                        .accessibilityID("log.status")
+                        .accessibilityStateValue(status)
                 }
 
                 Section("Modals") {
                     Button("Open Filter") { showSheet = true }
-                        .aid("log.openFilter")
+                        .accessibilityID("log.openFilter")
                     Button("Open Gallery") { showCover = true }
-                        .aid("log.openGallery")
+                        .accessibilityID("log.openGallery")
                     Button("Open Delete") { showDialog = true }
-                        .aid("log.openDelete")
+                        .accessibilityID("log.openDelete")
                     Text("Dialog: \(dialogResult)")
                         .foregroundStyle(.secondary)
-                        .aid("log.dialog.value")
-                        .aidValue(dialogResult)
+                        .accessibilityID("log.dialog.value")
+                        .accessibilityStateValue(dialogResult)
                 }
 
                 Section("Entries") {
                     ForEach(rows, id: \.self) { n in
                         Text("Entry \(n)")
-                            .aid("log.row.\(n)")
+                            .accessibilityID("log.row.\(n)")
                     }
                 }
             }
             .navigationTitle("Log")
         }
-        .aid("log.title")
+        .accessibilityID("log.title")
         .overlay(alignment: .top) {
             if showToast {
                 Text("Saved")
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(.thinMaterial, in: Capsule())
-                    .aid("log.toast")
+                    .accessibilityID("log.toast")
             }
         }
         // Sheet with detents (SPEC §5.3).
@@ -85,12 +85,12 @@ struct LogView: View {
             VStack(spacing: 16) {
                 Text("Filter")
                     .font(.title)
-                    .aid("log.sheet.title")
+                    .accessibilityID("log.sheet.title")
                 Button("Apply") { showSheet = false }
                     .buttonStyle(.borderedProminent)
-                    .aid("log.sheet.apply")
+                    .accessibilityID("log.sheet.apply")
                 Button("Close") { showSheet = false }
-                    .aid("log.sheet.close")
+                    .accessibilityID("log.sheet.close")
             }
             .padding()
             .presentationDetents([.medium, .large])
@@ -100,20 +100,20 @@ struct LogView: View {
             VStack(spacing: 16) {
                 Text("Gallery")
                     .font(.title)
-                    .aid("log.cover.title")
+                    .accessibilityID("log.cover.title")
                 Button("Close") { showCover = false }
-                    .aid("log.cover.close")
+                    .accessibilityID("log.cover.close")
             }
             .padding()
         }
         // Action sheet (confirmationDialog); result mirrors to log.dialog.value.
         .confirmationDialog("Delete entry", isPresented: $showDialog, titleVisibility: .visible) {
             Button("Archive") { dialogResult = "archive" }
-                .aid("log.dialog.archive")
+                .accessibilityID("log.dialog.archive")
             Button("Delete", role: .destructive) { dialogResult = "delete" }
-                .aid("log.dialog.delete")
+                .accessibilityID("log.dialog.delete")
             Button("Cancel", role: .cancel) {}
-                .aid("log.dialog.cancel")
+                .accessibilityID("log.dialog.cancel")
         }
     }
 

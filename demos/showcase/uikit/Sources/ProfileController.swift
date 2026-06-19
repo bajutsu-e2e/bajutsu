@@ -21,12 +21,12 @@ final class ProfileController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         title = "Profile"
-        navigationItem.titleView = makeTitleView("Profile").aid("profile.title")
+        navigationItem.titleView = makeTitleView("Profile").accessibilityID("profile.title")
 
         normalizeSwitch.isOn = true
         normalizeSwitch.addAction(UIAction { [weak self] _ in self?.normalizeChanged() }, for: .valueChanged)
-        normalizeSwitch.aid("profile.normalize")
-        normalizeSwitch.mirror(value: "on")
+        normalizeSwitch.accessibilityID("profile.normalize")
+        normalizeSwitch.accessibilityStateValue("on")
         let normalizeLabel = UILabel()
         normalizeLabel.text = "Normalize"
         let normalizeRow = UIStackView(arrangedSubviews: [normalizeLabel, normalizeSwitch])
@@ -37,7 +37,7 @@ final class ProfileController: UIViewController {
         changedLabel.font = .preferredFont(forTextStyle: .footnote)
         changedLabel.textColor = .secondaryLabel
         changedLabel.isHidden = true
-        changedLabel.aid("profile.changed")
+        changedLabel.accessibilityID("profile.changed")
 
         let account = makeRow("Account", "profile.openAccount") { [weak self] in self?.openAccount() }
         let permissions = makeRow("Permissions", "profile.openPermissions") { [weak self] in self?.openPermissions() }
@@ -61,12 +61,12 @@ final class ProfileController: UIViewController {
         config.contentInsets = .init(top: 8, leading: 0, bottom: 8, trailing: 0)
         let button = UIButton(configuration: config, primaryAction: UIAction { _ in action() })
         button.contentHorizontalAlignment = .leading
-        button.aid(id)
+        button.accessibilityID(id)
         return button
     }
 
     private func normalizeChanged() {
-        normalizeSwitch.mirror(value: normalizeSwitch.isOn ? "on" : "off")
+        normalizeSwitch.accessibilityStateValue(normalizeSwitch.isOn ? "on" : "off")
         changedLabel.isHidden = false
     }
 
@@ -103,18 +103,18 @@ final class AccountController: UIViewController {
         view.backgroundColor = .systemBackground
         title = "Account"
         installBackButton()
-        navigationItem.titleView = makeTitleView("Account").aid("account.title")
+        navigationItem.titleView = makeTitleView("Account").accessibilityID("account.title")
 
         let emailLabel = UILabel()
         emailLabel.text = "Email: \(model.email)"
-        emailLabel.aid("account.email.value")
-        emailLabel.mirror(value: model.email)
+        emailLabel.accessibilityID("account.email.value")
+        emailLabel.accessibilityStateValue(model.email)
 
         let logout = UIButton(type: .system, primaryAction: UIAction(title: "Log out") { [weak self] _ in
             self?.logout()
         })
         logout.configuration = .bordered()
-        logout.aid("account.logout")
+        logout.accessibilityID("account.logout")
 
         let stack = UIStackView(arrangedSubviews: [emailLabel, logout])
         stack.axis = .vertical
@@ -148,13 +148,13 @@ final class AboutController: UIViewController {
         view.backgroundColor = .systemBackground
         title = "About"
         installBackButton()
-        navigationItem.titleView = makeTitleView("About").aid("about.title")
+        navigationItem.titleView = makeTitleView("About").accessibilityID("about.title")
 
         let version = UILabel()
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         version.text = "Version \(v)"
-        version.aid("about.version.value")
-        version.mirror(value: v)
+        version.accessibilityID("about.version.value")
+        version.accessibilityStateValue(v)
 
         version.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(version)

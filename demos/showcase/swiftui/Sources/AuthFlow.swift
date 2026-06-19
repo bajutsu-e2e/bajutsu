@@ -27,10 +27,10 @@ struct OnboardingView: View {
         VStack(spacing: 16) {
             Text("Welcome")
                 .font(.largeTitle)
-                .aid("onboarding.title")
+                .accessibilityID("onboarding.title")
             Button("Continue") { model.finishOnboarding() }
                 .buttonStyle(.borderedProminent)
-                .aid("onboarding.continue")
+                .accessibilityID("onboarding.continue")
         }
         .padding()
         .toolbar(.hidden, for: .navigationBar)
@@ -44,13 +44,13 @@ struct AuthView: View {
         VStack(spacing: 16) {
             Text("Sign in")
                 .font(.title)
-                .aid("auth.title")
+                .accessibilityID("auth.title")
             TextField("Email", text: $model.email)
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.asciiCapable)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .aid("auth.email")
+                .accessibilityID("auth.email")
             // A plain SecureField. SPEC §7: it deliberately does NOT set
             // textContentType = .password/.newPassword — that omission is what keeps
             // iOS from offering the "Save Password?" sheet, so no OS alert at login.
@@ -59,15 +59,15 @@ struct AuthView: View {
                 .keyboardType(.asciiCapable)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .aid("auth.password")
+                .accessibilityID("auth.password")
             if model.loginError {
                 Text("Enter an email and password")
                     .foregroundStyle(.red)
-                    .aid("auth.error")
+                    .accessibilityID("auth.error")
             }
             Button("Log in") { model.login() }
                 .buttonStyle(.borderedProminent)
-                .aid("auth.submit")
+                .accessibilityID("auth.submit")
         }
         .padding()
         .toolbar(.hidden, for: .navigationBar)

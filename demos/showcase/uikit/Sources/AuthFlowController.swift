@@ -49,13 +49,13 @@ final class OnboardingController: UIViewController {
         title.text = "Welcome"
         title.font = .preferredFont(forTextStyle: .largeTitle)
         title.textAlignment = .center
-        title.aid("onboarding.title")
+        title.accessibilityID("onboarding.title")
 
         let cont = UIButton(type: .system, primaryAction: UIAction(title: "Continue") { [weak self] _ in
             self?.onContinue()
         })
         cont.configuration = .borderedProminent()
-        cont.aid("onboarding.continue")
+        cont.accessibilityID("onboarding.continue")
 
         let stack = UIStackView(arrangedSubviews: [title, cont])
         stack.axis = .vertical
@@ -101,26 +101,26 @@ final class LoginController: UIViewController {
         emailField.autocapitalizationType = .none
         emailField.autocorrectionType = .no
         emailField.textContentType = .emailAddress
-        emailField.aid("auth.email")
+        emailField.accessibilityID("auth.email")
 
         passwordField.placeholder = "Password"
         passwordField.borderStyle = .roundedRect
         passwordField.isSecureTextEntry = true
         // textContentType intentionally left unset (SPEC §7).
-        passwordField.aid("auth.password")
+        passwordField.accessibilityID("auth.password")
 
         let submit = UIButton(type: .system, primaryAction: UIAction(title: "Sign In") { [weak self] _ in
             self?.attemptLogin()
         })
         submit.configuration = .borderedProminent()
-        submit.aid("auth.submit")
+        submit.accessibilityID("auth.submit")
 
         errorLabel.text = "Email and password are required"
         errorLabel.textColor = .systemRed
         errorLabel.font = .preferredFont(forTextStyle: .footnote)
         errorLabel.numberOfLines = 0
         errorLabel.isHidden = true
-        errorLabel.aid("auth.error")
+        errorLabel.accessibilityID("auth.error")
 
         let stack = UIStackView(arrangedSubviews: [emailField, passwordField, submit, errorLabel])
         stack.axis = .vertical

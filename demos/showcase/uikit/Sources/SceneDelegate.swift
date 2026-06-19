@@ -61,12 +61,19 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         case "stable": tabController.selectedIndex = AppModel.Tab.stable.rawValue
         case "search": tabController.selectedIndex = AppModel.Tab.search.rawValue
         case "log": tabController.selectedIndex = AppModel.Tab.log.rawValue
+        case "notices": tabController.selectedIndex = AppModel.Tab.notices.rawValue
         case "profile": tabController.selectedIndex = AppModel.Tab.profile.rawValue
         case "horse":
             // …://horse/<id> — Stable tab, push Horse Detail for <id>.
             tabController.selectedIndex = AppModel.Tab.stable.rawValue
             if let id = Int(url.lastPathComponent) {
                 tabController.pushHorseDetail(id: id, model: model)
+            }
+        case "notice":
+            // …://notice/<id> — Notices tab, push Notice Detail for <id>.
+            tabController.selectedIndex = AppModel.Tab.notices.rawValue
+            if let id = Int(url.lastPathComponent) {
+                tabController.pushNoticeDetail(id: id, model: model)
             }
         case "permissions":
             // …://permissions — Profile tab, push the OS-alert screen.

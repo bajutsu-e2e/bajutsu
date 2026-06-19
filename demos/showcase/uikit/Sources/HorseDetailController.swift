@@ -25,25 +25,25 @@ final class HorseDetailController: UIViewController {
         view.backgroundColor = .systemBackground
         title = horse.name
         installBackButton()
-        navigationItem.titleView = makeTitleView(horse.name).aid("horse.title")
+        navigationItem.titleView = makeTitleView(horse.name).accessibilityID("horse.title")
 
         let idLabel = UILabel()
         idLabel.text = "ID: \(horse.id)"
-        idLabel.aid("horse.id.value")
-        idLabel.mirror(value: String(horse.id))
+        idLabel.accessibilityID("horse.id.value")
+        idLabel.accessibilityStateValue(String(horse.id))
 
         let fetch = UIButton(type: .system, primaryAction: UIAction(title: "Fetch detail") { [weak self] _ in
             self?.fetch()
         })
         fetch.configuration = .bordered()
-        fetch.aid("horse.fetch")
+        fetch.accessibilityID("horse.fetch")
 
-        statusLabel.aid("horse.status")
+        statusLabel.accessibilityID("horse.status")
         setStatus(.idle)
 
         updateFavoriteUI()
         favoriteButton.addAction(UIAction { [weak self] _ in self?.toggleFavorite() }, for: .primaryActionTriggered)
-        favoriteButton.aid("horse.favorite")
+        favoriteButton.accessibilityID("horse.favorite")
 
         let stack = UIStackView(arrangedSubviews: [idLabel, fetch, statusLabel, favoriteButton])
         stack.axis = .vertical
@@ -66,7 +66,7 @@ final class HorseDetailController: UIViewController {
 
     private func setStatus(_ status: ShowcaseNet.Status) {
         statusLabel.text = "Status: \(status.rawValue)"
-        statusLabel.mirror(value: status.rawValue)
+        statusLabel.accessibilityStateValue(status.rawValue)
     }
 
     private func toggleFavorite() {
@@ -82,6 +82,6 @@ final class HorseDetailController: UIViewController {
         } else {
             favoriteButton.accessibilityTraits.remove(.selected)
         }
-        favoriteButton.mirror(value: isFavorite ? "on" : "off")
+        favoriteButton.accessibilityStateValue(isFavorite ? "on" : "off")
     }
 }

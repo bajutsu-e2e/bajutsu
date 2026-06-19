@@ -1,0 +1,26 @@
+# Notices: a plain vertical list of three notices; tapping a row pushes its detail.
+# launchEnv + taps only (no literal-scheme deeplinks), so this drives both a11y apps.
+- name: notices list shows three rows
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: notices }
+  steps:
+    - wait: { for: { id: notice.title }, timeout: 10 }
+  expect:
+    - count: { sel: { idMatches: "notice.row.*" }, equals: 3 }
+    - exists: { id: notice.row.1 }
+    - exists: { id: notice.row.3 }
+
+- name: tap a notice to open its detail, then pop back
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: notices }
+  steps:
+    - wait: { for: { id: notice.row.2 }, timeout: 10 }
+    - tap: { id: notice.row.2 }
+    - wait: { for: { id: notice.detail.title }, timeout: 5 }
+    - assert:
+        - exists: { id: notice.detail.body }
+    - tap: { id: nav.back }
+    - wait: { for: { id: notice.title }, timeout: 5 }
+  expect:
+    - exists: { id: notice.title }
+    - exists: { id: notice.detail.title, negate: true }

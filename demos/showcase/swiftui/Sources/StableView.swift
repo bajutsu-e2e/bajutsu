@@ -11,13 +11,13 @@ struct StableView: View {
                 if model.horses.isEmpty {
                     Text("No horses")
                         .foregroundStyle(.secondary)
-                        .aid("stable.empty")
+                        .accessibilityID("stable.empty")
                 } else {
                     ForEach(model.horses) { horse in
                         NavigationLink(value: horse.id) {
                             Text(horse.name)
                         }
-                        .aid("stable.row.\(horse.id)")
+                        .accessibilityID("stable.row.\(horse.id)")
                     }
                 }
             }
@@ -28,7 +28,7 @@ struct StableView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Refresh") { refresh() }
-                        .aid("stable.refresh")
+                        .accessibilityID("stable.refresh")
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -36,11 +36,11 @@ struct StableView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(8)
-                    .aid("stable.status")
-                    .aidValue(status)
+                    .accessibilityID("stable.status")
+                    .accessibilityStateValue(status)
             }
         }
-        .aid("stable.title")
+        .accessibilityID("stable.title")
     }
 
     // GET SHOWCASE_API_URL + "/horses". Status mirrors to stable.status so a scenario can
@@ -73,18 +73,18 @@ struct HorseDetailView: View {
             Section {
                 Text(horse?.name ?? "Horse \(id)")
                     .font(.title2)
-                    .aid("horse.title")
+                    .accessibilityID("horse.title")
                 Text("ID: \(id)")
-                    .aid("horse.id.value")
-                    .aidValue(String(id))
+                    .accessibilityID("horse.id.value")
+                    .accessibilityStateValue(String(id))
             }
             Section {
                 Button("Fetch detail") { fetch() }
-                    .aid("horse.fetch")
+                    .accessibilityID("horse.fetch")
                 Text("Status: \(status)")
                     .foregroundStyle(.secondary)
-                    .aid("horse.status")
-                    .aidValue(status)
+                    .accessibilityID("horse.status")
+                    .accessibilityStateValue(status)
             }
             Section {
                 // selected trait reflects the toggle; value mirrors on/off for assertions.
@@ -94,11 +94,11 @@ struct HorseDetailView: View {
                     Label("Favorite", systemImage: favorite ? "star.fill" : "star")
                 }
                 .accessibilityAddTraits(favorite ? .isSelected : [])
-                .aid("horse.favorite")
+                .accessibilityID("horse.favorite")
                 Text(favorite ? "Favorited" : "Not favorited")
                     .foregroundStyle(.secondary)
-                    .aid("horse.favorite.value")
-                    .aidValue(favorite ? "on" : "off")
+                    .accessibilityID("horse.favorite.value")
+                    .accessibilityStateValue(favorite ? "on" : "off")
             }
         }
         .navigationTitle(horse?.name ?? "Horse \(id)")
@@ -111,7 +111,7 @@ struct HorseDetailView: View {
                 } label: {
                     Label("Back", systemImage: "chevron.backward")
                 }
-                .aid("nav.back")
+                .accessibilityID("nav.back")
             }
         }
         .navigationBarBackButtonHidden()

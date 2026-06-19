@@ -86,7 +86,7 @@ The shape:
   sit alongside.
 - **One identifier contract, four products.** The two `-a11y` apps expose byte-for-byte
   identical identifiers / launch hooks / deeplinks, so `scenarios/*.yaml` runs unchanged
-  against either toolkit. The `aid(...)` helper (a `View` extension in SwiftUI, a
+  against either toolkit. The `accessibilityID(...)` helper (a `View` extension in SwiftUI, a
   `UIAccessibilityIdentification` extension in UIKit) is the *only* place identifiers enter the
   tree, gated by `#if ACCESSIBLE`; the `-noax` build therefore compiles to a tree with no
   identifiers and no mirrored state values.

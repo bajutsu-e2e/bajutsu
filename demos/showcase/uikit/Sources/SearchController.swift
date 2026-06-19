@@ -25,29 +25,29 @@ final class SearchController: UIViewController, UITableViewDataSource, UITableVi
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         title = "Search"
-        navigationItem.titleView = makeTitleView("Search").aid("search.title")
+        navigationItem.titleView = makeTitleView("Search").accessibilityID("search.title")
 
         searchBar.placeholder = "Filter horses"
         searchBar.delegate = self
         searchBar.showsCancelButton = false
         searchBar.autocapitalizationType = .none
-        searchBar.searchTextField.aid("search.field")
+        searchBar.searchTextField.accessibilityID("search.field")
         // The bar's built-in clear button doubles as the spec's clear control.
         searchBar.searchTextField.clearButtonMode = .whileEditing
 
         let clear = UIButton(type: .system, primaryAction: UIAction(title: "Clear") { [weak self] _ in
             self?.clearQuery()
         })
-        clear.aid("search.clear")
+        clear.accessibilityID("search.clear")
 
         countLabel.font = .preferredFont(forTextStyle: .footnote)
         countLabel.textColor = .secondaryLabel
-        countLabel.aid("search.count")
+        countLabel.accessibilityID("search.count")
 
         emptyLabel.text = "No matches"
         emptyLabel.textColor = .secondaryLabel
         emptyLabel.textAlignment = .center
-        emptyLabel.aid("search.results-empty")
+        emptyLabel.accessibilityID("search.results-empty")
 
         tableView.dataSource = self
         tableView.delegate = self
@@ -88,7 +88,7 @@ final class SearchController: UIViewController, UITableViewDataSource, UITableVi
             ? model.horses
             : model.horses.filter { $0.name.localizedCaseInsensitiveContains(query) }
         countLabel.text = "\(results.count) matches"
-        countLabel.mirror(value: String(results.count))
+        countLabel.accessibilityStateValue(String(results.count))
         tableView.backgroundView = (results.isEmpty && !query.isEmpty) ? emptyLabel : nil
         tableView.reloadData()
     }
@@ -115,7 +115,7 @@ final class SearchController: UIViewController, UITableViewDataSource, UITableVi
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
         let horse = results[indexPath.row]
         cell.textLabel?.text = horse.name
-        cell.aid("search.row.\(horse.id)")  // same id scheme as Stable, search. namespace
+        cell.accessibilityID("search.row.\(horse.id)")  // same id scheme as Stable, search. namespace
         return cell
     }
 }

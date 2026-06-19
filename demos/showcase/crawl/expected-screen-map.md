@@ -32,6 +32,8 @@ is stable across runs.
 | Log → Filter sheet | `log.openFilter` | `log.sheet.title` |
 | Log → Gallery cover | `log.openGallery` | `log.cover.title` |
 | Log → Delete dialog | `log.openDelete` | `log.dialog.delete` |
+| Notices (list) | `notices` tab | `notice.title`, `notice.row.*` |
+| Notice Detail | Notices row / `…://notice/<id>` | `notice.detail.title` |
 | Profile | `profile` tab | `profile.title` |
 | Account | `profile.openAccount` | `account.title` |
 | Permissions | `profile.openPermissions` / `…://permissions` | `perm.title` |

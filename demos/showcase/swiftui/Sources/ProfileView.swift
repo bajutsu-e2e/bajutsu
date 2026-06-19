@@ -14,15 +14,15 @@ struct ProfileView: View {
                         get: { model.normalize },
                         set: { _ in model.toggleNormalize() }
                     ))
-                    .aid("profile.normalize")
+                    .accessibilityID("profile.normalize")
                     Text(model.normalize ? "Normalize on" : "Normalize off")
                         .foregroundStyle(.secondary)
-                        .aid("profile.normalize.value")
-                        .aidValue(model.normalize ? "on" : "off")
+                        .accessibilityID("profile.normalize.value")
+                        .accessibilityStateValue(model.normalize ? "on" : "off")
                     if model.profileChanged {
                         Text("Settings changed")
                             .foregroundStyle(.secondary)
-                            .aid("profile.changed")
+                            .accessibilityID("profile.changed")
                     }
                 }
 
@@ -30,15 +30,15 @@ struct ProfileView: View {
                     NavigationLink(value: ProfileRoute.account) {
                         Text("Account")
                     }
-                    .aid("profile.openAccount")
+                    .accessibilityID("profile.openAccount")
                     NavigationLink(value: ProfileRoute.permissions) {
                         Text("Permissions")
                     }
-                    .aid("profile.openPermissions")
+                    .accessibilityID("profile.openPermissions")
                     NavigationLink(value: ProfileRoute.about) {
                         Text("About")
                     }
-                    .aid("profile.openAbout")
+                    .accessibilityID("profile.openAbout")
                 }
             }
             .navigationTitle("Profile")
@@ -50,7 +50,7 @@ struct ProfileView: View {
                 }
             }
         }
-        .aid("profile.title")
+        .accessibilityID("profile.title")
     }
 }
 
@@ -61,13 +61,13 @@ struct AccountView: View {
         Form {
             Text("Account")
                 .font(.title2)
-                .aid("account.title")
+                .accessibilityID("account.title")
             Text(model.accountEmail)
                 .foregroundStyle(.secondary)
-                .aid("account.email.value")
-                .aidValue(model.accountEmail)
+                .accessibilityID("account.email.value")
+                .accessibilityStateValue(model.accountEmail)
             Button("Log out", role: .destructive) { model.logout() }
-                .aid("account.logout")
+                .accessibilityID("account.logout")
         }
         .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.inline)
@@ -85,29 +85,29 @@ struct PermissionsView: View {
         Form {
             Text("Permissions")
                 .font(.title2)
-                .aid("perm.title")
+                .accessibilityID("perm.title")
 
             Section("Notifications") {
                 Button("Request Notifications") { requestNotifications() }
-                    .aid("perm.requestNotif")
+                    .accessibilityID("perm.requestNotif")
                 Text("Notifications: \(notifStatus)")
                     .foregroundStyle(.secondary)
-                    .aid("perm.notif.value")
-                    .aidValue(notifStatus)
+                    .accessibilityID("perm.notif.value")
+                    .accessibilityStateValue(notifStatus)
                 if notifStatus == "authorized" {
                     // A positive condition the run can wait for once granted.
                     Text("Granted")
-                        .aid("perm.notif.authorized")
+                        .accessibilityID("perm.notif.authorized")
                 }
             }
 
             Section("Location") {
                 Button("Request Location") { location.request() }
-                    .aid("perm.requestLocation")
+                    .accessibilityID("perm.requestLocation")
                 Text("Location: \(location.status)")
                     .foregroundStyle(.secondary)
-                    .aid("perm.location.value")
-                    .aidValue(location.status)
+                    .accessibilityID("perm.location.value")
+                    .accessibilityStateValue(location.status)
             }
         }
         .navigationTitle("Permissions")
@@ -160,11 +160,11 @@ struct AboutView: View {
         Form {
             Text("About")
                 .font(.title2)
-                .aid("about.title")
+                .accessibilityID("about.title")
             Text("Version 1.0")
                 .foregroundStyle(.secondary)
-                .aid("about.version.value")
-                .aidValue("1.0")
+                .accessibilityID("about.version.value")
+                .accessibilityStateValue("1.0")
         }
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
@@ -188,6 +188,6 @@ private struct BackButton: View {
         } label: {
             Label("Back", systemImage: "chevron.backward")
         }
-        .aid("nav.back")
+        .accessibilityID("nav.back")
     }
 }

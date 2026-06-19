@@ -5,10 +5,12 @@
 The showcase is Bajutsu's next-generation dogfood target: **the same app written twice**
 (UIKit and SwiftUI) and **each in two accessibility variants** (identifiers on / off) — four
 installable products from two codebases. It packs the interaction surface a real app has —
-four tabs, navigation-stack pushes, all four modal styles, text entry, async loading,
+five tabs, navigation-stack pushes, all four modal styles, text entry, async loading,
 networking (live + mockable), and a screen that deliberately raises OS-level alerts — into the
 smallest app that still exercises `record`, `crawl`, and `run` together.
 
+- **The screens:** a 15-screen inventory (5 tabs + pushes + 3 modals) is in
+  [`SPEC.md` §5](SPEC.md#screen-inventory); the tabs are **Stable · Search · Log · Notices · Profile**.
 - **The contract:** [`SPEC.md`](SPEC.md) ([ja](SPEC.ja.md)) — every screen, identifier,
   launch-env hook, deeplink, and the OS-alert placement. The two `-a11y` apps expose an
   identical identifier contract, so the one [`scenarios/`](scenarios) set drives both.

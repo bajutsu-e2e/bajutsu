@@ -29,22 +29,22 @@ final class LogController: UIViewController, UITableViewDataSource {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         title = "Log"
-        navigationItem.titleView = makeTitleView("Log").aid("log.title")
+        navigationItem.titleView = makeTitleView("Log").accessibilityID("log.title")
 
         noteField.placeholder = "Note"
         noteField.borderStyle = .roundedRect
-        noteField.aid("log.note")
+        noteField.accessibilityID("log.note")
 
         stepper.minimumValue = 0
         stepper.maximumValue = 99
         stepper.addAction(UIAction { [weak self] _ in self?.stepperChanged() }, for: .valueChanged)
-        stepper.aid("log.count")
+        stepper.accessibilityID("log.count")
 
         countLabel.text = "Count: 0"
         updateCountMirror()
 
         intenseSwitch.addAction(UIAction { [weak self] _ in self?.intenseChanged() }, for: .valueChanged)
-        intenseSwitch.aid("log.intense")
+        intenseSwitch.accessibilityID("log.intense")
         updateIntenseMirror()
         let intenseLabel = UILabel()
         intenseLabel.text = "Intense"
@@ -58,11 +58,11 @@ final class LogController: UIViewController, UITableViewDataSource {
             self?.submit()
         })
         submit.configuration = .borderedProminent()
-        submit.aid("log.submit")
+        submit.accessibilityID("log.submit")
 
         statusLabel.font = .preferredFont(forTextStyle: .footnote)
         statusLabel.textColor = .secondaryLabel
-        statusLabel.aid("log.status")
+        statusLabel.accessibilityID("log.status")
         setStatus(.idle)
 
         // The four modal triggers.
@@ -73,8 +73,8 @@ final class LogController: UIViewController, UITableViewDataSource {
         dialogResultLabel.font = .preferredFont(forTextStyle: .footnote)
         dialogResultLabel.textColor = .secondaryLabel
         dialogResultLabel.text = "Choice: none"
-        dialogResultLabel.aid("log.dialog.value")
-        dialogResultLabel.mirror(value: "none")
+        dialogResultLabel.accessibilityID("log.dialog.value")
+        dialogResultLabel.accessibilityStateValue("none")
 
         tableView.dataSource = self
         tableView.translatesAutoresizingMaskIntoConstraints = false
@@ -105,7 +105,7 @@ final class LogController: UIViewController, UITableViewDataSource {
     private func makeModalButton(_ title: String, _ id: String, _ action: @escaping () -> Void) -> UIButton {
         let button = UIButton(type: .system, primaryAction: UIAction(title: title) { _ in action() })
         button.configuration = .bordered()
-        button.aid(id)
+        button.accessibilityID(id)
         return button
     }
 
@@ -118,7 +118,7 @@ final class LogController: UIViewController, UITableViewDataSource {
     }
 
     private func updateCountMirror() {
-        countLabel.mirror(value: String(count))
+        countLabel.accessibilityStateValue(String(count))
     }
 
     private func intenseChanged() {
@@ -126,12 +126,12 @@ final class LogController: UIViewController, UITableViewDataSource {
     }
 
     private func updateIntenseMirror() {
-        intenseSwitch.mirror(value: intenseSwitch.isOn ? "on" : "off")
+        intenseSwitch.accessibilityStateValue(intenseSwitch.isOn ? "on" : "off")
     }
 
     private func setStatus(_ status: ShowcaseNet.Status) {
         statusLabel.text = "Status: \(status.rawValue)"
-        statusLabel.mirror(value: status.rawValue)
+        statusLabel.accessibilityStateValue(status.rawValue)
     }
 
     // MARK: - Submit (networking + toast)
@@ -159,7 +159,7 @@ final class LogController: UIViewController, UITableViewDataSource {
         toast.backgroundColor = UIColor.label.withAlphaComponent(0.85)
         toast.layer.cornerRadius = 10
         toast.layer.masksToBounds = true
-        toast.aid("log.toast")
+        toast.accessibilityID("log.toast")
         toast.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(toast)
         NSLayoutConstraint.activate([
@@ -199,13 +199,13 @@ final class LogController: UIViewController, UITableViewDataSource {
         let archive = UIAlertAction(title: "Archive", style: .default) { [weak self] _ in
             self?.setDialogResult("archive")
         }
-        archive.aid("log.dialog.archive")
+        archive.accessibilityID("log.dialog.archive")
         let delete = UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
             self?.setDialogResult("delete")
         }
-        delete.aid("log.dialog.delete")
+        delete.accessibilityID("log.dialog.delete")
         let cancel = UIAlertAction(title: "Cancel", style: .cancel)
-        cancel.aid("log.dialog.cancel")
+        cancel.accessibilityID("log.dialog.cancel")
         alert.addAction(archive)
         alert.addAction(delete)
         alert.addAction(cancel)
@@ -219,7 +219,7 @@ final class LogController: UIViewController, UITableViewDataSource {
 
     private func setDialogResult(_ value: String) {
         dialogResultLabel.text = "Choice: \(value)"
-        dialogResultLabel.mirror(value: value)
+        dialogResultLabel.accessibilityStateValue(value)
     }
 
     // MARK: - Table
@@ -231,7 +231,7 @@ final class LogController: UIViewController, UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
         cell.textLabel?.text = entries[indexPath.row]
-        cell.aid("log.row.\(indexPath.row + 1)")  // 1-based entry index (SPEC §5.3)
+        cell.accessibilityID("log.row.\(indexPath.row + 1)")  // 1-based entry index (SPEC §5.3)
         return cell
     }
 }

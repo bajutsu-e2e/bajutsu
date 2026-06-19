@@ -17,7 +17,7 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
         view.backgroundColor = .systemBackground
         title = "Permissions"
         installBackButton()
-        navigationItem.titleView = makeTitleView("Permissions").aid("perm.title")
+        navigationItem.titleView = makeTitleView("Permissions").accessibilityID("perm.title")
 
         locationManager.delegate = self
 
@@ -25,24 +25,24 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
             self?.requestNotifications()
         })
         requestNotif.configuration = .bordered()
-        requestNotif.aid("perm.requestNotif")
+        requestNotif.accessibilityID("perm.requestNotif")
 
-        notifValueLabel.aid("perm.notif.value")
+        notifValueLabel.accessibilityID("perm.notif.value")
 
         // Shown only once notifications are granted — a positive condition the run can
         // wait for (SPEC §5.4). Hidden until then.
         notifAuthorizedLabel.text = "Notifications authorized"
         notifAuthorizedLabel.textColor = .systemGreen
         notifAuthorizedLabel.isHidden = true
-        notifAuthorizedLabel.aid("perm.notif.authorized")
+        notifAuthorizedLabel.accessibilityID("perm.notif.authorized")
 
         let requestLocation = UIButton(type: .system, primaryAction: UIAction(title: "Request location") { [weak self] _ in
             self?.requestLocation()
         })
         requestLocation.configuration = .bordered()
-        requestLocation.aid("perm.requestLocation")
+        requestLocation.accessibilityID("perm.requestLocation")
 
-        locationValueLabel.aid("perm.location.value")
+        locationValueLabel.accessibilityID("perm.location.value")
 
         let stack = UIStackView(arrangedSubviews: [
             requestNotif, notifValueLabel, notifAuthorizedLabel,
@@ -86,7 +86,7 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
         default: text = "notDetermined"
         }
         notifValueLabel.text = "Notifications: \(text)"
-        notifValueLabel.mirror(value: text)
+        notifValueLabel.accessibilityStateValue(text)
         notifAuthorizedLabel.isHidden = (text != "authorized")
     }
 
@@ -109,6 +109,6 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
         default: text = "notDetermined"
         }
         locationValueLabel.text = "Location: \(text)"
-        locationValueLabel.mirror(value: text)
+        locationValueLabel.accessibilityStateValue(text)
     }
 }

@@ -5,6 +5,23 @@ struct Horse: Identifiable {
     let name: String
 }
 
+/// A stable notice. Three are seeded; `id` drives the `notice.row.<id>` identifiers.
+struct Notice: Identifiable {
+    let id: Int
+    let title: String
+    let body: String
+}
+
+/// The three seeded notices (shared verbatim with the SwiftUI app — SPEC §5.5).
+let showcaseNotices: [Notice] = [
+    Notice(id: 1, title: "Stable closed Monday",
+           body: "The stable is closed this Monday for scheduled maintenance."),
+    Notice(id: 2, title: "New horse arriving",
+           body: "A new horse joins the stable next week. Introductions on Saturday."),
+    Notice(id: 3, title: "Vaccination schedule",
+           body: "Annual vaccinations are due by the end of the month."),
+]
+
 /// Launch-env configuration plus the small amount of cross-screen state the showcase
 /// shares (auth, catalog seed, logged-in email). All env reads happen once at launch
 /// from ProcessInfo (SPEC §3). Per-screen state lives in the view controllers.
@@ -16,7 +33,7 @@ final class AppModel {
     }
 
     enum Tab: Int {
-        case stable, search, log, profile
+        case stable, search, log, notices, profile
     }
 
     private(set) var screen: Screen
@@ -29,6 +46,9 @@ final class AppModel {
 
     /// The offline catalog, seeded from SHOWCASE_SEED. Network rows would extend this.
     private(set) var horses: [Horse]
+
+    /// The seeded notices (Notices tab list → detail).
+    let notices = showcaseNotices
 
     init(env: [String: String]) {
         animationsDisabled = env["SHOWCASE_UITEST"] != nil
@@ -55,6 +75,7 @@ final class AppModel {
         case "stable": return .stable
         case "search": return .search
         case "log": return .log
+        case "notices": return .notices
         case "profile": return .profile
         default: return nil
         }
@@ -62,6 +83,10 @@ final class AppModel {
 
     func horse(id: Int) -> Horse? {
         horses.first { $0.id == id }
+    }
+
+    func notice(id: Int) -> Notice? {
+        notices.first { $0.id == id }
     }
 
     func advanceToLogin() {

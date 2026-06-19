@@ -9,18 +9,18 @@ final class FilterSheetController: UIViewController {
         let title = UILabel()
         title.text = "Filter"
         title.font = .preferredFont(forTextStyle: .title2)
-        title.aid("log.sheet.title")
+        title.accessibilityID("log.sheet.title")
 
         let apply = UIButton(type: .system, primaryAction: UIAction(title: "Apply") { [weak self] _ in
             self?.dismiss(animated: true)
         })
         apply.configuration = .borderedProminent()
-        apply.aid("log.sheet.apply")
+        apply.accessibilityID("log.sheet.apply")
 
         let close = UIButton(type: .system, primaryAction: UIAction(title: "Close") { [weak self] _ in
             self?.dismiss(animated: true)
         })
-        close.aid("log.sheet.close")
+        close.accessibilityID("log.sheet.close")
 
         let stack = UIStackView(arrangedSubviews: [title, apply, close])
         stack.axis = .vertical
@@ -44,13 +44,13 @@ final class GalleryCoverController: UIViewController {
         let title = UILabel()
         title.text = "Gallery"
         title.font = .preferredFont(forTextStyle: .title2)
-        title.aid("log.cover.title")
+        title.accessibilityID("log.cover.title")
 
         let close = UIButton(type: .system, primaryAction: UIAction(title: "Close") { [weak self] _ in
             self?.dismiss(animated: true)
         })
         close.configuration = .borderedProminent()
-        close.aid("log.cover.close")
+        close.accessibilityID("log.cover.close")
 
         let stack = UIStackView(arrangedSubviews: [title, close])
         stack.axis = .vertical

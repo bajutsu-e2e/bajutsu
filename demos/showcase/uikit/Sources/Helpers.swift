@@ -23,7 +23,7 @@ extension UIViewController {
                 self?.navigationController?.popViewController(animated: true)
             })
         back.title = "Back"
-        back.aid("nav.back")
+        back.accessibilityID("nav.back")
         navigationItem.leftBarButtonItem = back
     }
 }

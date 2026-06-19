@@ -23,17 +23,17 @@ final class StableController: UITableViewController {
         title = "Stable"
 
         // Nav title carries the id (SPEC lists stable.title as the nav title "Stable").
-        navigationItem.titleView = makeTitleView("Stable").aid("stable.title")
+        navigationItem.titleView = makeTitleView("Stable").accessibilityID("stable.title")
 
         let refresh = UIBarButtonItem(
             image: UIImage(systemName: "arrow.clockwise"),
             primaryAction: UIAction { [weak self] _ in self?.reload() })
-        refresh.aid("stable.refresh")
+        refresh.accessibilityID("stable.refresh")
         navigationItem.rightBarButtonItem = refresh
 
         statusLabel.font = .preferredFont(forTextStyle: .footnote)
         statusLabel.textColor = .secondaryLabel
-        statusLabel.aid("stable.status")
+        statusLabel.accessibilityID("stable.status")
         setStatus(.idle)
         let header = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: 36))
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -47,7 +47,7 @@ final class StableController: UITableViewController {
         emptyLabel.text = "No horses in the stable"
         emptyLabel.textColor = .secondaryLabel
         emptyLabel.textAlignment = .center
-        emptyLabel.aid("stable.empty")
+        emptyLabel.accessibilityID("stable.empty")
 
         // Async load (SPEC §5.1): show the seeded catalog after a short delay.
         loadCatalog()
@@ -71,7 +71,7 @@ final class StableController: UITableViewController {
 
     private func setStatus(_ status: ShowcaseNet.Status) {
         statusLabel.text = "Status: \(status.rawValue)"
-        statusLabel.mirror(value: status.rawValue)
+        statusLabel.accessibilityStateValue(status.rawValue)
     }
 
     private func updateEmptyState() {
@@ -90,7 +90,7 @@ final class StableController: UITableViewController {
         let horse = horses[indexPath.row]
         cell.textLabel?.text = horse.name
         cell.accessoryType = .disclosureIndicator
-        cell.aid("stable.row.\(horse.id)")  // data-derived, unique per row (SPEC §5.1)
+        cell.accessibilityID("stable.row.\(horse.id)")  // data-derived, unique per row (SPEC §5.1)
         return cell
     }
 

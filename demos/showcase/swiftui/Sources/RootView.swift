@@ -30,6 +30,9 @@ struct MainTabView: View {
             LogView()
                 .tabItem { Label("Log", systemImage: "square.and.pencil") }
                 .tag(AppModel.Tab.log)
+            NoticesView()
+                .tabItem { Label("Notices", systemImage: "bell") }
+                .tag(AppModel.Tab.notices)
             ProfileView()
                 .tabItem { Label("Profile", systemImage: "person.crop.circle") }
                 .tag(AppModel.Tab.profile)
