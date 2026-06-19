@@ -239,14 +239,16 @@ def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:
 # --- disabled controls + input filling (enabling a gated button) ---------------------------
 
 
-def test_candidate_actions_tab_bar_items_are_tap_candidates() -> None:
+def test_candidate_actions_tab_bar_items_are_tap_candidates_first() -> None:
     elements = [
+        el(identifier="content.a", traits=["button"]),
         el(identifier="tab.home", traits=["tab", "selected"]),  # the active tab
         el(identifier="tab.settings", traits=["tab"]),
-        el(identifier="content.x", traits=["button"]),
     ]
-    targets = {(a.kind, a.target) for a in crawl.candidate_actions(elements)}
-    assert ("tap", "tab.home") in targets and ("tap", "tab.settings") in targets
+    actions = crawl.candidate_actions(elements)
+    targets = [a.target for a in actions]
+    # Tabs come first (switch the whole view before drilling into content), then other taps.
+    assert targets == ["tab.home", "tab.settings", "content.a"]
 
 
 def test_crawl_switches_tabs_and_explores_each_tab() -> None:

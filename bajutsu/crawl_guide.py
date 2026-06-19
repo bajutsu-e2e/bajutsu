@@ -113,6 +113,7 @@ operation isn't enough — e.g. a `fill` that enters several fields at once so a
 validates, since a button can stay disabled until the whole form is valid.
 - For a text field, supply a realistic value for what it asks (a valid email, a password meeting \
 common rules, a plausible name/number) — this is how you enable a control the placeholder can't.
+- Switch through a tab bar's tabs before drilling into a tab's own content.
 - Add any operation the inspector skipped (e.g. an element with no id, addressed by `label`).
 - Address each element by `id` when it has one (most stable), else by `label` (+ `index`).
 - If an OS prompt was just dismissed to reach this screen (noted below), take it into account — \

@@ -255,8 +255,8 @@ def _hash(parts: list[str]) -> str:
 def candidate_actions(elements: list[base.Element]) -> list[Action]:
     """The deterministic guide (`--guide off`): the replayable operations to try from a screen.
 
-    - Tap each enabled, id-bearing button / link / switch / tab (toggling a switch or switching
-      tabs counts), so the crawl also explores each tab of a tab bar.
+    - Tap each enabled, id-bearing tab / button / link / switch, **tabs first** so the crawl
+      switches through a tab bar before drilling into a tab's own content.
     - Type a placeholder into **each** empty, enabled text field — exploring the combinations of
       fill states, since a transition can depend on which fields are set (e.g. a per-field
       validation message), not just on all of them.
@@ -268,9 +268,15 @@ def candidate_actions(elements: list[base.Element]) -> list[Action]:
     Disabled controls (`notEnabled`) are skipped (tapping them is a no-op; they're reported as
     blocked instead); id-less controls are skipped (replay needs a stable selector).
     """
-    taps = sorted(
-        {i for el in elements if (i := _id_of(el)) and _is_enabled(el) and TAP_TRAITS & _traits(el)}
-    )
+    # Order taps tabs-first, then the other controls: switching the whole view (a tab) is explored
+    # before drilling into a tab's own content. Within each priority class, deterministic id order.
+    tap_priority: dict[str, int] = {}
+    for el in elements:
+        i = _id_of(el)
+        if i and _is_enabled(el) and TAP_TRAITS & _traits(el):
+            pri = 0 if "tab" in _traits(el) else 1
+            tap_priority[i] = min(tap_priority.get(i, 2), pri)
+    taps = sorted(tap_priority, key=lambda i: (tap_priority[i], i))
     actions = [Action("tap", target=t) for t in taps]
     empty_fields = sorted(
         (i, _input_value(el))
