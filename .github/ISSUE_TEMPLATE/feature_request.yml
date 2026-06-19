@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Substantial features in Bajutsu are tracked as **roadmap items (BE IDs)** under
-        [`docs/roadmap/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/docs/roadmap),
+        [`roadmaps/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/roadmaps),
         not as long-lived issues. If your idea is already well-formed, consider opening a
         roadmap item directly (the `ideation` flow drafts one for you). Use this issue for a
         lightweight request or to start the conversation.

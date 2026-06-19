@@ -117,23 +117,25 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
 
 ## ロードマップ項目: BE ID（厳守）
 
-ロードマップは [`roadmap/`](../roadmap/README-ja.md) 配下に**1 項目 1 ディレクトリ**で置きます。各項目は
-`docs/roadmap/BE-NNNN-<slug>/` ディレクトリに、英語版 `BE-NNNN-<slug>.md` と日本語版
+ロードマップは [`roadmaps/`](../../roadmaps/README-ja.md) 配下に**1 項目 1 ディレクトリ**で置きます。各項目は
+`roadmaps/<implemented|proposals>/BE-NNNN-<slug>/` ディレクトリに、英語版 `BE-NNNN-<slug>.md` と日本語版
 `BE-NNNN-<slug>-ja.md`（ID・slug は同一）を入れます。**BE** は *Bajutsu Evolution*、`NNNN` は
-**ゼロ詰め 4 桁・単調増加**の ID です。
+**ゼロ詰め 4 桁・単調増加**の ID です。出荷済み（`状態: 実装済み`）の項目は `roadmaps/implemented/`、
+それ以外の進行中のものは `roadmaps/proposals/` に置きます。
 
 ロードマップ項目を追加するとき:
 
-1. **次の ID を採番する** = 既存の最大 `BE-NNNN` + 1。現在の最大は次で確認します。
+1. **次の ID を採番する** = 既存の最大 `BE-NNNN` + 1（両方のフォルダを数えます）。現在の最大は次で確認します。
    ```bash
-   ls -d docs/roadmap/BE-*/ | sort | tail -1
+   ls -d roadmaps/{implemented,proposals}/BE-*/ | sort | tail -1
    ```
    番号の再利用・飛ばし・当て推量は禁止です。
-2. **項目ディレクトリと両言語のファイルを作成する** — `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
-   （英語）と `docs/roadmap/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）。**インデックス表は
+2. **項目ディレクトリと両言語のファイルを作成する**（新規項目はまず提案なので `roadmaps/proposals/` の下に）
+   — `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
+   （英語）と `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID & slug）。**インデックス表は
    手で編集しません** —— 各項目自身のメタデータから生成されます。`make roadmap-index`（または
    `python scripts/build_roadmap_index.py`）を実行して、**両方**のインデックスページ
-   （[en](../roadmap/README.md) / [ja](../roadmap/README-ja.md)）の `<!-- GENERATED:* -->` マーカー間の表を
+   （[en](../../roadmaps/README.md) / [ja](../../roadmaps/README-ja.md)）の `<!-- GENERATED:* -->` マーカー間の表を
    再生成してください。項目の `Track` + `Topic` が並ぶセクションを決めるので、既存トピックの項目なら表の手編集は
    不要です。コミット済みインデックスがズレると `tests/test_roadmap_index.py`（`make test` が実行）が落ちます。
    まったく新しいトピックの場合は、マーカー付きセクションとスクリプトの `Section` エントリも追加します。
@@ -150,8 +152,9 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
 | `実装済み`・`可決・実装中` | **可決済み** —— 意思決定・実装の記録 |
 | `提案`・`提案（保留）` | **提案** —— 検討中 |
 
-項目が進んだら、ファイル名を変えるのではなく**状態を更新**してインデックスを再生成します（行は自動で正しい
-グループへ移ります）。マイルストーン M1–M4 は `BE-0001`–`BE-0004`（可決・実装済み）です。
+項目が進んだら**状態を更新**してインデックスを再生成します（行は自動で正しいグループへ移ります）。出荷時には
+`状態: 実装済み` にし、ディレクトリを `roadmaps/proposals/` から `roadmaps/implemented/` へ（同じ ID・slug の
+まま）**移動**します。マイルストーン M1–M4 は `BE-0001`–`BE-0004`（可決・実装済み）です。
 
 これはエージェントが従うべき厳格なルールです。短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
 

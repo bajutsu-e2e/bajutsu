@@ -7,5 +7,5 @@ uv.lock merge=uv-lock
 # of line-merging the generated tables (BE-0043). The `roadmap-index` driver is wired by
 # `make hooks` / `make setup` (scripts/merge-roadmap-index.sh); without it git falls back to the
 # default merge, which is harmless.
-docs/roadmap/README.md merge=roadmap-index
-docs/roadmap/README-ja.md merge=roadmap-index
+roadmaps/README.md merge=roadmap-index
+roadmaps/README-ja.md merge=roadmap-index

@@ -17,7 +17,7 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
   work touches disjoint files. New CLI commands go in `bajutsu/cli/commands/<name>.py`, new tests in
   the matching `tests/<area>/` module — adding a file conflicts far less than appending to a large
   shared one (BE-0043).
-- **Link the PR back to the roadmap.** When a PR implements a roadmap item (`docs/roadmap/BE-NNNN-*`),
+- **Link the PR back to the roadmap.** When a PR implements a roadmap item (`roadmaps/**/BE-NNNN-*`),
   always add a link to that PR in the item's markdown (both the English and Japanese files) so the
   roadmap entry and its implementing PR are cross-referenced.
 - **Prefix the PR title with the roadmap ID.** When a PR is tied to a roadmap item, begin its title

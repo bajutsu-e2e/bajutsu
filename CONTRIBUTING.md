@@ -59,7 +59,8 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
 ## Roadmap items (BE IDs)
 
 Larger features are tracked as **Bajutsu Evolution** items under
-[`docs/roadmap/`](docs/roadmap/README.md): one directory `docs/roadmap/BE-NNNN-<slug>/` per item,
+[`roadmaps/`](roadmaps/README.md): one directory `roadmaps/<implemented|proposals>/BE-NNNN-<slug>/`
+per item (shipped items under `implemented/`, the rest under `proposals/`),
 holding an English file and its Japanese version, in Swift-Evolution proposal format. IDs are
 permanent and monotonically increasing; the index tables are generated, not hand-edited. Follow
 the exact procedure (ID allocation, both language files, `make roadmap-index`) in

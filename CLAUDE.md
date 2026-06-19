@@ -102,19 +102,23 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   a reader needs, without assuming they read another page first. Full guidance:
   [`docs/ai-development.md`](docs/ai-development.md).
 - **Roadmap items use BE IDs (strict).** Every roadmap item is a directory
-  `docs/roadmap/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md` and its Japanese
-  version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*, `NNNN` a zero-padded 4-digit
-  monotonically increasing ID. When you add one: allocate the next ID
-  (`ls -d docs/roadmap/BE-*/ | sort | tail -1`, then +1; never reuse, skip, or guess) and create
-  **both** language files in that directory. Don't hand-edit the index tables — run
-  `make roadmap-index` to regenerate the tables in **both** index pages
-  (`docs/roadmap/README.md` and `docs/roadmap/README-ja.md`) from each item's metadata;
+  `roadmaps/<implemented|proposals>/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md`
+  and its Japanese version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*, `NNNN` a
+  zero-padded 4-digit monotonically increasing ID. Shipped items live under
+  `roadmaps/implemented/`, everything still in flight under `roadmaps/proposals/`. When you add
+  one: allocate the next ID (`ls -d roadmaps/{implemented,proposals}/BE-*/ | sort | tail -1`,
+  then +1; never reuse, skip, or guess) and create **both** language files in a new directory
+  under `roadmaps/proposals/` (a new item is always a proposal first). Don't hand-edit the index
+  tables — run `make roadmap-index` to regenerate the tables in **both** index pages
+  (`roadmaps/README.md` and `roadmaps/README-ja.md`) from each item's metadata;
   `make test` fails if the committed index drifts.
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
   Motivation / Detailed design / Alternatives considered / References); its `Status` files it
   under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /
-  `Proposal (deferred)`). **IDs are permanent — never renumber an existing item.** Full rule:
-  [`docs/roadmap/README.md`](docs/roadmap/README.md) · [`docs/ai-development.md`](docs/ai-development.md).
+  `Proposal (deferred)`). When an item ships, set `Status: Implemented` and **move its directory**
+  from `roadmaps/proposals/` to `roadmaps/implemented/`. **IDs are permanent — never renumber an
+  existing item.** Full rule:
+  [`roadmaps/README.md`](roadmaps/README.md) · [`docs/ai-development.md`](docs/ai-development.md).
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
 - **PR titles and bodies are always in English**, regardless of the language used in the
   session. This keeps the project history readable for every contributor.

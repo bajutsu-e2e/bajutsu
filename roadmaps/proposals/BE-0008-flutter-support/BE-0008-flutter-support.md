@@ -1,0 +1,71 @@
+**English** · [日本語](BE-0008-flutter-support-ja.md)
+
+# BE-0008 — Flutter support
+
+* Proposal: [BE-0008](BE-0008-flutter-support.md)
+* Status: **Proposal**
+* Track: [Proposals](../../README.md#proposals)
+* Topic: Platform expansion (Android / Web / Flutter)
+
+## Introduction
+
+Support for cross-rendered UIs — Flutter, and the related React Native / WebView hybrid cases — by
+reaching into the framework's own semantics tree rather than adding a new OS-level actuator. These
+UIs draw their own pixels (Flutter) or embed a WebView (hybrids), so their elements often do not
+surface in the OS accessibility (a11y) tree the native backends rely on. The answer is a
+**semantics bridge**, not a new OS actuator.
+
+## Motivation
+
+The native iOS and Android backends read the OS accessibility tree to resolve selectors. Flutter
+draws its own pixels and does not, by default, surface its widgets into that tree; WebView-based
+hybrids embed web content whose DOM is invisible to the OS a11y layer. So a coordinate or
+a11y-tree actuator alone cannot reliably resolve `id` selectors against a cross-rendered UI. What
+these frameworks expose instead is their *own* semantics tree, reachable through the framework's
+tooling. Bridging to that tree — rather than inventing yet another OS actuator — keeps the
+selector model, machine assertions, and the orchestrator loop unchanged while extending coverage to
+cross-rendered apps.
+
+## Detailed design
+
+Cross-rendered UIs (Flutter draws its own pixels; hybrids embed a WebView) often don't surface
+elements in the OS a11y tree. These need a **semantics bridge** rather than a new OS actuator:
+
+- **Flutter** — read the framework's semantics tree via `integration_test` / the VM Service /
+  Flutter Driver, and normalize it into the common `Element` tree the rest of the system already
+  consumes.
+- **WebView / embedded-web hybrids** — a WebView→DOM (Document Object Model) bridge for the
+  embedded-web case, so DOM nodes inside the WebView become resolvable elements. This overlaps with
+  the dedicated WebView/hybrid item [BE-0037](../../proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md);
+  the two should be designed together so the bridge story is shared rather than duplicated.
+
+The key design stance: this is a **semantics bridge layered onto the existing native backends**,
+not a new OS-level actuator. The selector model (`resolve_unique`), machine assertions, the
+orchestrator loop, and the reporter all stay unchanged — only the source the backend reads to
+build the normalized `Element` tree changes.
+
+### Phasing — Phase 3, after the two native trees
+
+Treat cross-rendered support as the **third phase**, taken up only after the two native trees
+(iOS via idb and Android via adb) have proven the abstraction. The native backends are the cheapest,
+most direct way to confirm that the iOS-specific assumptions were really confined to the three seams
+(actuator, environment manager, id convention); a semantics bridge is a harder, framework-specific
+problem that is best attempted once the core has been shown to be genuinely platform-neutral. Defer
+until the two native trees are solid.
+
+## Alternatives considered
+
+- **A new OS-level actuator for Flutter (coordinate taps over rendered pixels).** Rejected: without
+  a stable, developer-assigned id surfaced into *some* tree, coordinate actuation cannot resolve
+  selectors deterministically, and ambiguous-fails-fast cannot be honored. The framework's own
+  semantics tree is the right source.
+- **Building the bridge before the native trees land.** Deferred to Phase 3: cross-rendered support
+  is framework-specific and harder; attempting it before the two native trees prove the abstraction
+  would conflate two risks. See the phasing note above.
+
+## References
+
+[DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
+[BE-0037 — WebView / hybrid support](../../proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md),
+[BE-0007 — Android backend](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md),
+[BE-0041 — Web (Playwright) backend](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)

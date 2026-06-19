@@ -37,8 +37,8 @@ silently drop it — surface the conflict, then reshape it into something that f
 
 Before ideating, read:
 
-- [`docs/roadmap/README.md`](../../../docs/roadmap/README.md) and
-  [`README-ja.md`](../../../docs/roadmap/README-ja.md) — the index of every BE item, its
+- [`roadmaps/README.md`](../../../roadmaps/README.md) and
+  [`README-ja.md`](../../../roadmaps/README-ja.md) — the index of every BE item, its
   topic, status, and track.
 - [`docs/architecture.md#implementation-status`](../../../docs/architecture.md) — the
   source of truth for what already exists (so you don't "propose" something shipped).
@@ -71,10 +71,11 @@ which you're choosing and why:
 **Never invent a BE number.** Allocation is CI's job (step 6). Use the literal placeholder
 token `BE-XXXX`; uniqueness between several new items in one PR comes from the slug.
 
-Create the directory and **both** language files:
+Create the directory and **both** language files under `roadmaps/proposals/` (new items are
+proposals):
 
-- `docs/roadmap/BE-XXXX-<slug>/BE-XXXX-<slug>.md` (English)
-- `docs/roadmap/BE-XXXX-<slug>/BE-XXXX-<slug>-ja.md` (Japanese, same slug)
+- `roadmaps/proposals/BE-XXXX-<slug>/BE-XXXX-<slug>.md` (English)
+- `roadmaps/proposals/BE-XXXX-<slug>/BE-XXXX-<slug>-ja.md` (Japanese, same slug)
 
 Match the existing format exactly (see any `BE-00NN-*` file as a template): the bilingual
 header link, a metadata block (`* Proposal: [BE-XXXX](BE-XXXX-<slug>.md)`, `* Status`,
@@ -85,7 +86,7 @@ Fill what the discussion produced; mark the rest `TBD`. New items are normally
 
 Then add a row for the item to the matching topic table in **both** index pages
 (`README.md` and `README-ja.md`), using `BE-XXXX` in the link text and the path — e.g.
-`| [BE-XXXX](BE-XXXX-<slug>/BE-XXXX-<slug>.md) | … | Proposal |`. Create a new topic
+`| [BE-XXXX](proposals/BE-XXXX-<slug>/BE-XXXX-<slug>.md) | … | Proposal |`. Create a new topic
 subsection if none fits. Use the literal `BE-XXXX` everywhere; CI rewrites it.
 
 > Why a placeholder and not a real number: IDs are permanent and monotonic, and several
@@ -110,7 +111,7 @@ and push the rename back onto the branch. Don't hand-edit the numbers afterward.
 
 [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py), run by the
 [`roadmap-id`](../../../.github/workflows/roadmap-id.yml) workflow on every PR touching
-`docs/roadmap/**`, finds each `BE-XXXX-<slug>/` placeholder, allocates the next IDs
+`roadmaps/**`, finds each `BE-XXXX-<slug>/` placeholder, allocates the next IDs
 (`max existing BE-NNNN + 1`, sorted by slug for determinism), renames the directory and
 files, rewrites `BE-XXXX` → `BE-NNNN` inside them, fixes the index-table rows by slug, and
 pushes the result back to the PR branch. If there are no placeholders it's a no-op.

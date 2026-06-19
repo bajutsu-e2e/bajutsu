@@ -7,7 +7,7 @@ name: roadmap-id
 on:
   pull_request:
     paths:
-      - 'docs/roadmap/**'
+      - 'roadmaps/**'
 
 permissions:
   contents: write
