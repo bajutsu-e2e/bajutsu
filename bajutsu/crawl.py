@@ -101,6 +101,10 @@ class ScreenMap:
 # screen is explored next or how a screen is identified, so the crawl stays deterministic.
 OnEvent = Callable[[ScreenMap], None]
 
+# Fires once per newly discovered screen, while the driver is still positioned on it — the moment
+# to capture a per-screen artifact (a screenshot). Pure observation, like `OnEvent`.
+OnNode = Callable[["Node"], None]
+
 
 def _id_of(element: base.Element) -> str | None:
     return element.get("identifier")
@@ -181,6 +185,7 @@ def crawl(
     max_steps: int = 200,
     settle: Settle | None = None,
     on_event: OnEvent | None = None,
+    on_node: OnNode | None = None,
 ) -> ScreenMap:
     """Breadth-first crawl by deterministic replay.
 
@@ -188,8 +193,9 @@ def crawl(
     tests, restoring the start screen). `settle`, if given, waits for the screen to stabilize
     after an action (a condition wait — never a fixed sleep); it is omitted when the driver is
     synchronous. `on_event`, if given, fires after each new node, edge, or crash so a caller can
-    stream the growing screen map. Stops at `max_screens` distinct screens or `max_steps`
-    actions, whichever first.
+    stream the growing screen map. `on_node`, if given, fires once per newly discovered screen
+    while the driver is still on it (to capture a screenshot). Stops at `max_screens` distinct
+    screens or `max_steps` actions, whichever first.
     """
     screen_map = ScreenMap()
 
@@ -202,10 +208,17 @@ def crawl(
         if on_event is not None:
             on_event(screen_map)
 
+    def discovered(node: Node) -> None:
+        # Driver is on `node`'s screen here; the hook captures its screenshot before any reset.
+        if on_node is not None:
+            on_node(node)
+
     reset(driver)
     start = observe()
     start_fp = fingerprint(start)
-    screen_map.nodes[start_fp.value] = _node_of(start_fp, start)
+    start_node = _node_of(start_fp, start)
+    screen_map.nodes[start_fp.value] = start_node
+    discovered(start_node)
     emit()
 
     shortest_path: dict[str, list[Action]] = {start_fp.value: []}
@@ -244,10 +257,12 @@ def crawl(
         dst_fp = fingerprint(landed)
         screen_map.edges.append(Edge(src_fp, action.describe(), dst_fp.value))
         if dst_fp.value not in screen_map.nodes:
-            screen_map.nodes[dst_fp.value] = _node_of(dst_fp, landed)
+            dst_node = _node_of(dst_fp, landed)
+            screen_map.nodes[dst_fp.value] = dst_node
             shortest_path[dst_fp.value] = path
             for next_action in candidate_actions(landed):
                 frontier.append((dst_fp.value, next_action))
+            discovered(dst_node)
         emit()
 
     return screen_map

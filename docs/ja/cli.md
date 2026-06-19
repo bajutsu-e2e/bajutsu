@@ -166,8 +166,10 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   `run` が任意の状態へ到達するのと同じやり方です。
 - 出力: `<out>/screenmap.json`。`nodes`（画面 —— fingerprint・種別・id・候補アクション）、
   `edges`（遷移）、`crashes`（アプリ UI を崩壊させたアクション経路）からなる JSON グラフです。
-  クロールの進行に合わせて書き直されるので、読み手（`serve` の **Crawl** タブ）はマップをリアルタイムに
-  描けます。`--max-screens` / `--max-steps` のいずれか早い方で停止します。
+  あわせて `<out>/screens/<fingerprint>.png` —— 発見した各画面のスクリーンショット（その画面にいる間に撮影）
+  も出力します。クロールの進行に合わせて書き直されるので、読み手（`serve` の **Crawl** タブ）はマップを
+  リアルタイムに描け、各ノードにスクリーンショットが表示されます。`--max-screens` / `--max-steps` の
+  いずれか早い方で停止します。
 
 ## `codegen`
 

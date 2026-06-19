@@ -41,10 +41,10 @@ main[hidden]{display:none}
 .graphsvg{display:block;font:11px system-ui,sans-serif}
 .graphsvg .edge{fill:none;stroke:var(--mut);stroke-width:1.5}
 .graphsvg .edge.selfloop{stroke-dasharray:3 2}
-.graphsvg .node rect{fill:var(--card);stroke:var(--acc);stroke-width:1.5}
+.graphsvg .node rect{fill:var(--bg);stroke:var(--acc);stroke-width:1.5}
 .graphsvg .node.structural rect{stroke:var(--mut);stroke-dasharray:4 3}
-.graphsvg .node .nlab{fill:var(--fg);font-weight:600}
-.graphsvg .node .nsub{fill:var(--mut);font-size:9.5px}
+.graphsvg .node image{background:var(--bg2)}
+.graphsvg .node .nlab{fill:var(--fg);font-weight:600;font-size:10.5px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
 label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
 select,input[type=text],input[type=number],textarea{width:100%;padding:.45rem;background:var(--bg2);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}

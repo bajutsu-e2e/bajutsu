@@ -177,8 +177,10 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   then takes the next untried action — the same way `run` reaches any state.
 - Output: `<out>/screenmap.json`, a JSON graph of `nodes` (screens — fingerprint, kind, ids,
   candidate actions), `edges` (transitions), and `crashes` (action paths that collapsed the app
-  UI). The file is rewritten as the crawl advances, so a reader (the **Crawl** tab in `serve`) can
-  draw the map live. Stops at the first of `--max-screens` / `--max-steps`.
+  UI), plus `<out>/screens/<fingerprint>.png` — a screenshot captured for each discovered screen
+  (while the crawl is on it). The map is rewritten as the crawl advances, so a reader (the
+  **Crawl** tab in `serve`) can draw it live, each node showing its screenshot. Stops at the first
+  of `--max-screens` / `--max-steps`.
 
 ## `codegen`
 
