@@ -133,7 +133,11 @@ main[hidden]{display:none}
 /* The live exploration-plan tree: screens branch into their operations, each marked explored
    (✅, already traversed) or pending (⏳, the frontier). Depth is indented via the --d variable. */
 .plantree{font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.plrow{padding:1px 4px 1px calc(4px + var(--d) * 14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:4px}
+/* Indent per depth, but capped (min(--d, 10)) and with a slightly smaller step so a deep branch
+   can't run off the panel; rows wrap with a hanging indent (text-indent pulls the marker left, the
+   matching left padding aligns wrapped lines under the text) instead of being clipped with an
+   ellipsis — so nothing is cut off however deep the tree goes. */
+.plrow{padding:1px 4px 1px calc(4px + min(var(--d), 10) * 12px + 1.3em);text-indent:-1.3em;overflow-wrap:anywhere;border-radius:4px}
 .plrow.scr{font-weight:600;margin-top:3px;color:var(--fg);cursor:pointer}
 .plrow.scr:hover{background:var(--bg)}
 .plrow.scr.full .pls{color:var(--ok)}
