@@ -239,6 +239,44 @@ def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:
 # --- disabled controls + input filling (enabling a gated button) ---------------------------
 
 
+def test_candidate_actions_tab_bar_items_are_tap_candidates() -> None:
+    elements = [
+        el(identifier="tab.home", traits=["tab", "selected"]),  # the active tab
+        el(identifier="tab.settings", traits=["tab"]),
+        el(identifier="content.x", traits=["button"]),
+    ]
+    targets = {(a.kind, a.target) for a in crawl.candidate_actions(elements)}
+    assert ("tap", "tab.home") in targets and ("tap", "tab.settings") in targets
+
+
+def test_crawl_switches_tabs_and_explores_each_tab() -> None:
+    """Tab bar items are tap candidates, so the crawl switches tabs and explores each tab's view."""
+
+    def view(active: str) -> list[dict]:
+        return [
+            el(identifier="tab.a", traits=["tab", *(["selected"] if active == "a" else [])]),
+            el(identifier="tab.b", traits=["tab", *(["selected"] if active == "b" else [])]),
+            el(identifier=f"{active}.content", traits=["button"]),
+        ]
+
+    s = {"tab": "a"}
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict) and str(arg.get("id")) in ("tab.a", "tab.b"):
+            s["tab"] = str(arg.get("id")).split(".")[1]
+            d.screen = list(view(s["tab"]))
+
+    driver = FakeDriver(screen=list(view("a")), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        s["tab"] = "a"
+        d.screen = list(view("a"))
+
+    screen_map = crawl.crawl(driver, reset, max_steps=100)
+    assert any(e.action == "tap tab.b" for e in screen_map.edges)  # switched to the second tab
+    assert crawl.fingerprint(view("b")).value in screen_map.nodes  # explored the second tab's view
+
+
 def test_candidate_actions_offer_each_empty_field_and_a_compound_fill() -> None:
     elements = [
         el(identifier="f.user", traits=["textField"]),  # empty input

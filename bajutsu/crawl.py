@@ -24,8 +24,8 @@ from dataclasses import dataclass, field
 from bajutsu.drivers import base
 from bajutsu.record import shows_app_ui
 
-# Controls a tap drives forward (navigation / activation / toggling a switch's state).
-TAP_TRAITS = frozenset({"button", "link", "switch"})
+# Controls a tap drives forward: navigation / activation, toggling a switch, or switching tabs.
+TAP_TRAITS = frozenset({"button", "link", "switch", "tab"})
 # Text inputs the crawl fills to satisfy a precondition (e.g. enabling a disabled submit button).
 INPUT_TRAITS = frozenset({"textField", "searchField", "secureTextField"})
 # Any interactive control — used by the structural fingerprint and blocked-control detection.
@@ -255,7 +255,8 @@ def _hash(parts: list[str]) -> str:
 def candidate_actions(elements: list[base.Element]) -> list[Action]:
     """The deterministic guide (`--guide off`): the replayable operations to try from a screen.
 
-    - Tap each enabled, id-bearing button / link / switch (a switch tap toggles its state).
+    - Tap each enabled, id-bearing button / link / switch / tab (toggling a switch or switching
+      tabs counts), so the crawl also explores each tab of a tab bar.
     - Type a placeholder into **each** empty, enabled text field — exploring the combinations of
       fill states, since a transition can depend on which fields are set (e.g. a per-field
       validation message), not just on all of them.
