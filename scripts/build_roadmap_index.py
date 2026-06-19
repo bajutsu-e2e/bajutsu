@@ -110,6 +110,12 @@ SECTIONS: tuple[Section, ...] = (
         True,
     ),
     Section("accepted-mcp", "Accepted", "Integration & automation (MCP)", False),
+    Section(
+        "accepted-dev-infra",
+        "Accepted",
+        "Development infrastructure (contributor workflow)",
+        False,
+    ),
     Section("proposals-on-device", "Proposals", "On-device validation (M1 close-out)", False),
     Section(
         "proposals-platform", "Proposals", "Platform expansion (Android / Web / Flutter)", False
@@ -128,12 +134,6 @@ SECTIONS: tuple[Section, ...] = (
         "Proposals",
         "Candidates from competitive research (MagicPod / Autify)",
         True,
-    ),
-    Section(
-        "proposals-dev-infra",
-        "Proposals",
-        "Development infrastructure (contributor workflow)",
-        False,
     ),
 )
 

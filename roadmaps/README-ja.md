@@ -131,6 +131,16 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0017](implemented/BE-0017-mcp-server/BE-0017-mcp-server-ja.md) | MCP サーバ化 | 実装済み |
 <!-- /GENERATED:accepted-mcp -->
 
+### 開発基盤（コントリビュータ体験）
+
+このリポジトリで並行作業する多数のセッションの摩擦を減らす — マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直す。
+
+<!-- GENERATED:accepted-dev-infra -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 実装済み |
+<!-- /GENERATED:accepted-dev-infra -->
+
 ## 提案
 
 検討中 — まだ決定していません。決定したら *可決済み* に昇格してください。
@@ -236,16 +246,6 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0038](proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) | 自律クロール探索（App Explorer 風） | 提案 | Autify VAX |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions-ja.md) | AI アサーション | 保留 | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
-
-### 開発基盤（コントリビュータ体験）
-
-このリポジトリで並行作業する多数のセッションの摩擦を減らす — マージコンフリクトを設計の臭いとして扱い、独立した変更が互いに素なファイルだけに触れるようファイル流動を見直す。
-
-<!-- GENERATED:proposals-dev-infra -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0043](proposals/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 提案 |
-<!-- /GENERATED:proposals-dev-infra -->
 
 ## 取り込まない（既に充足 / スコープ外）
 
