@@ -102,7 +102,7 @@ def _execute(driver: base.Driver, step: Step, clock: Clock) -> None:
         _do_action(driver, step)
 
 
-def _shows_app_ui(elements: list[base.Element]) -> bool:
+def shows_app_ui(elements: list[base.Element]) -> bool:
     """Whether the tree shows the app's own UI (rather than being collapsed under a system
     overlay). A SpringBoard alert collapses the app's tree to a bare window; a live app screen
     has actionable content. "Actionable" = any non-application element carrying an `id` OR a
@@ -132,7 +132,7 @@ def _clear_blocking(
     say = report or (lambda _msg: None)
     announced = False
     for _ in range(max_tries):
-        if _shows_app_ui(driver.query()):
+        if shows_app_ui(driver.query()):
             return  # the app is showing actionable elements; nothing blocking
         if not announced:
             say(
@@ -232,7 +232,7 @@ def record(
         if alert_guard is not None:
             _clear_blocking(driver, alert_guard, clock, report=report)
         elements = driver.query()
-        if alert_guard is not None and not _shows_app_ui(elements):
+        if alert_guard is not None and not shows_app_ui(elements):
             # A prompt slipped in after the last clear: don't ask the agent to act on a
             # dead screen (it would hallucinate ids); re-clear on the next iteration.
             clock.sleep(0.3)
