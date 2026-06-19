@@ -194,8 +194,16 @@ framework); binds `127.0.0.1`.
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
+              [--host 127.0.0.1] [--token <t>]
 ```
 
+- **`--token` (or `$BAJUTSU_SERVE_TOKEN`) — authentication (BE-0051).** With a token set, every
+  request must authenticate: API clients send `Authorization: Bearer <token>`; the browser exchanges
+  the token once via `POST /api/login` (the UI prompts on a 401), which sets an HttpOnly, SameSite
+  session cookie — the token is never put in a URL. **Binding a non-loopback `--host` (e.g. `0.0.0.0`)
+  requires a token**, so the server is never exposed unauthenticated (it exits otherwise). With no
+  token the server is open, as before — only safe on loopback. Full multi-user auth (OAuth/RBAC) is
+  out of scope here ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 - `--config` is **optional**. Omit it and open a `config.yml` from the UI's file browser (an
   "Open config" button); the browser is confined to `--root` (default: the current directory).
   `--scenarios <dir>` is available as an override of the selected app's configured dir.

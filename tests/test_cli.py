@@ -173,6 +173,13 @@ def test_doctor_unknown_app(tmp_path: Path) -> None:
     assert r.exit_code == 2
 
 
+def test_serve_refuses_non_loopback_without_token() -> None:
+    # Binding a non-loopback host with no token would expose an unauthenticated server (BE-0051).
+    r = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
+    assert r.exit_code == 2
+    assert "without a token" in r.output
+
+
 def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
     import json
 

@@ -183,8 +183,15 @@ stdlib のみ（Web フレームワーク不要）、`127.0.0.1` バインド。
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
+              [--host 127.0.0.1] [--token <t>]
 ```
 
+- **`--token`（または `$BAJUTSU_SERVE_TOKEN`）— 認証（BE-0051）。** トークン設定時は全リクエストが認証必須です。
+  API クライアントは `Authorization: Bearer <token>` を送り、ブラウザは `POST /api/login` で一度だけトークンを
+  交換し（401 で UI が入力を促す）、HttpOnly・SameSite のセッション Cookie を受け取ります —— トークンは URL に
+  載せません。**非 loopback の `--host`（例 `0.0.0.0`）への bind はトークン必須**で、無認証での公開を防ぎます
+  （無ければ起動を中止）。トークン未設定なら従来どおり全開放で、loopback でのみ安全です。完全なマルチユーザー認証
+  （OAuth/RBAC）は対象外です（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)）。
 - `--config` は**任意**です。省略すると UI のファイルブラウザ（「Open config」ボタン）から `config.yml` を開けます。
   ブラウザの走査は `--root`（既定: カレントディレクトリ）配下に限定されます。`--scenarios <dir>` は選択アプリの設定済み
   ディレクトリの上書きとして使えます。
