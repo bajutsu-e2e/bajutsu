@@ -20,11 +20,21 @@ def _png(width: int, height: int) -> bytes:
     return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + ihdr
 
 
-def test_tree_exposes_tabs_detects_a_tab_trait() -> None:
-    assert crawl_tabs.tree_exposes_tabs([el(identifier="t", traits=["tab"])]) is True
-    # A plain button bar (no `tab` trait) is not addressable as tabs -> needs the vision fallback.
-    assert crawl_tabs.tree_exposes_tabs([el(identifier="b", traits=["button"])]) is False
-    assert crawl_tabs.tree_exposes_tabs([]) is False
+def test_needs_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
+    # SwiftUI TabView as idb surfaces it: a lone group labelled "Tab Bar", no id, no per-tab child.
+    bar = [el(label="Tab Bar", traits=["group"]), el(identifier="home.start", traits=["button"])]
+    assert crawl_tabs.tab_bar_present(bar) is True
+    assert crawl_tabs.addressable_tabs(bar) is False
+    assert crawl_tabs.needs_vision_tabs(bar) is True
+    # Tabs already addressable (a `tab` element with an id) -> no vision needed.
+    addr = [el(identifier="tab.home", traits=["tab"]), el(identifier="tab.me", traits=["tab"])]
+    assert crawl_tabs.addressable_tabs(addr) is True
+    assert crawl_tabs.needs_vision_tabs(addr) is False
+    # No tab bar at all -> vision never fires on an ordinary screen.
+    plain = [el(identifier="b", traits=["button"])]
+    assert crawl_tabs.tab_bar_present(plain) is False
+    assert crawl_tabs.needs_vision_tabs(plain) is False
+    assert crawl_tabs.needs_vision_tabs([]) is False
 
 
 def test_locator_normalizes_pixel_coordinates() -> None:

@@ -107,30 +107,36 @@ class _FakeTabLocator:
         return list(self._tabs)
 
 
-def test_ai_guide_uses_vision_tabs_only_when_the_tree_exposes_none() -> None:
-    """When idb can't address the tab bar (no `tab`-trait element), the vision locator supplies a
-    coordinate tap per tab, ordered first so the crawl switches tabs before drilling in. When the
-    tree already exposes tabs, the locator is skipped entirely."""
-    no_tabs = [el(identifier="home.start", traits=["button"])]
+def test_ai_guide_uses_vision_tabs_only_for_an_unaddressable_tab_bar() -> None:
+    """When idb surfaces the tab bar as one opaque container (a `group` labelled "Tab Bar", no
+    per-tab ids), the vision locator supplies a coordinate tap per tab, ordered first so the crawl
+    switches tabs before drilling in. When the tabs are already addressable by id — or there is no
+    tab bar — the locator is skipped entirely."""
+    bar = [el(label="Tab Bar", traits=["group"]), el(identifier="home.start", traits=["button"])]
     locator = _FakeTabLocator(
         [crawl_tabs.TabTarget(0.2, 0.95, "Home"), crawl_tabs.TabTarget(0.8, 0.95, "Me")]
     )
-    actions = ai_guide(_FakeProposer([]), tab_locator=locator)(
-        _ShotDriver(screen=no_tabs), no_tabs, _ctx()
-    )
+    actions = ai_guide(_FakeProposer([]), tab_locator=locator)(_ShotDriver(screen=bar), bar, _ctx())
     assert locator.calls == 1
     taps = [a for a in actions if a.kind == "tap_point"]
     assert [a.label for a in taps] == ["Home", "Me"]  # both tabs, left to right
     assert actions[0].kind == "tap_point"  # tabs first
     assert taps[0].point == (0.2, 0.95)
 
-    has_tabs = [el(identifier="tab.home", traits=["tab"]), el(identifier="tab.me", traits=["tab"])]
+    # Tabs already addressable by id -> the deterministic taps cover them, no vision.
+    addr = [el(identifier="tab.home", traits=["tab"]), el(identifier="tab.me", traits=["tab"])]
     locator2 = _FakeTabLocator([crawl_tabs.TabTarget(0.5, 0.95, "X")])
     actions2 = ai_guide(_FakeProposer([]), tab_locator=locator2)(
-        FakeDriver(screen=has_tabs), has_tabs, _ctx()
+        _ShotDriver(screen=addr), addr, _ctx()
     )
-    assert locator2.calls == 0  # the deterministic tab taps already cover it
+    assert locator2.calls == 0
     assert not any(a.kind == "tap_point" for a in actions2)
+
+    # No tab bar at all -> vision never fires on an ordinary screen.
+    plain = [el(identifier="only", traits=["button"])]
+    locator3 = _FakeTabLocator([crawl_tabs.TabTarget(0.5, 0.95, "X")])
+    ai_guide(_FakeProposer([]), tab_locator=locator3)(_ShotDriver(screen=plain), plain, _ctx())
+    assert locator3.calls == 0
 
 
 def test_actions_from_parses_skips_malformed_and_caps() -> None:

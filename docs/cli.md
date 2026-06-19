@@ -189,11 +189,12 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   **combine**, proposing **realistic inputs** (a valid email, a password meeting the rules, all of
   a form's fields in one fill) to enable controls whose precondition isn't obvious, plus operations
   on id-less elements, narrating its reasoning into the run log. `--guide ai` also handles a **tab
-  bar the accessibility tree can't address** (a custom bar of images with no `tab` trait): when no
-  tabs are exposed in the tree, it locates them by vision — the same fallback the alert guard uses
-  — and taps each by coordinate, still switching tabs before drilling in. The AI only chooses *what
-  to try* — screen identity, transitions and crashes stay deterministic, so the crawl is never a
-  verdict (it never gates CI).
+  bar whose individual tabs the accessibility tree can't address** — idb surfaces a SwiftUI TabView
+  as a single "Tab Bar" group with no per-tab identifiers, so the bar is visible but its tabs can't
+  be tapped by selector. When that bar is present (and no tab is already addressable by id), it
+  locates the tabs by vision — the same fallback the alert guard uses — and taps each by coordinate,
+  still switching tabs before drilling in. The AI only chooses *what to try* — screen identity,
+  transitions and crashes stay deterministic, so the crawl is never a verdict (it never gates CI).
 - Output: `<out>/screenmap.json`, a JSON graph of `nodes` (screens — fingerprint, kind, ids,
   candidate actions, plus `blocked` disabled controls), `edges` (transitions), `crashes` (action
   paths that collapsed the app UI), `alerts` (OS prompts the guard dismissed mid-crawl — the
