@@ -14,15 +14,12 @@ struct Notice: Identifiable, Hashable {
     let body: String
 }
 
-/// The three seeded notices (shared verbatim with the UIKit app — SPEC §5.5).
-let showcaseNotices: [Notice] = [
-    Notice(id: 1, title: "Stable closed Monday",
-           body: "The stable is closed this Monday for scheduled maintenance."),
-    Notice(id: 2, title: "New horse arriving",
-           body: "A new horse joins the stable next week. Introductions on Saturday."),
-    Notice(id: 3, title: "Vaccination schedule",
-           body: "Annual vaccinations are due by the end of the month."),
-]
+/// The seeded notices (shared verbatim with the UIKit app — SPEC §5.5). Intentionally
+/// longer than one screen so the bottom rows start *off-screen*: reaching `notice.row.20`
+/// requires scrolling, the canonical scroll-to-element target.
+let showcaseNotices: [Notice] = (1 ... 20).map {
+    Notice(id: $0, title: "Notice \($0)", body: "Details for stable notice number \($0).")
+}
 
 /// App state plus the launch-env hooks Bajutsu drives (SPEC §3). Plain ObservableObject;
 /// delayed mutations hop to the main actor. Tabs and the auth gate both read from here so

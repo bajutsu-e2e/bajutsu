@@ -1,16 +1,18 @@
-# Notices: a plain vertical list of three notices; tapping a row pushes its detail.
-# launchEnv + taps only (no literal-scheme deeplinks), so this drives both a11y apps.
-- name: notices list shows three rows
+# Notices: a long vertical list (20 rows) whose bottom rows start off-screen. With lazy
+# row rendering, an off-screen row is not in the accessibility tree at all until scrolled
+# into view — so reaching it genuinely requires a scroll. launchEnv + taps/swipes only
+# (no literal-scheme deeplinks), so this drives both a11y apps.
+- name: the list has off-screen rows
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: notices }
   steps:
-    - wait: { for: { id: notice.title }, timeout: 10 }
+    - wait: { for: { id: notice.row.1 }, timeout: 10 }
   expect:
-    - count: { sel: { idMatches: "notice.row.*" }, equals: 3 }
-    - exists: { id: notice.row.1 }
-    - exists: { id: notice.row.3 }
+    - exists: { id: notice.row.1 }     # top rows are on-screen
+    - exists: { id: notice.row.2 }
+    - exists: { id: notice.row.20, negate: true }   # the last row starts below the fold
 
-- name: tap a notice to open its detail, then pop back
+- name: tap a visible notice to open its detail, then pop back
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: notices }
   steps:
@@ -24,3 +26,25 @@
   expect:
     - exists: { id: notice.title }
     - exists: { id: notice.detail.title, negate: true }
+
+# The headline: scroll an off-screen target into view, then tap it. Each swipe scrolls
+# ~100pt (the fixed swipe distance, DESIGN §5/§6.2) and is anchored on a row that stays
+# visible as the list scrolls down; the condition wait stops once the target appears.
+# (The number of swipes is sized for the configured device — iPhone 17 Pro; a shorter
+# screen may need one more.)
+- name: scroll to an off-screen notice and open it
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_LOGGED_IN: "1", SHOWCASE_TAB: notices }
+  steps:
+    - wait: { for: { id: notice.row.1 }, timeout: 10 }
+    - assert:
+        - exists: { id: notice.row.20, negate: true }   # off-screen before scrolling
+    - swipe: { on: { id: notice.row.4 }, direction: up }
+    - swipe: { on: { id: notice.row.8 }, direction: up }
+    - swipe: { on: { id: notice.row.12 }, direction: up }
+    - swipe: { on: { id: notice.row.16 }, direction: up }
+    - wait: { for: { id: notice.row.20 }, timeout: 5 }   # now scrolled into view
+    - tap: { id: notice.row.20 }
+    - wait: { for: { id: notice.detail.title }, timeout: 5 }
+  expect:
+    - exists: { id: notice.detail.title }

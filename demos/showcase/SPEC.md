@@ -97,7 +97,7 @@ screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions rea
 | 7 | — Filter sheet | `log.openFilter` | sheet (detents) | `log` | §5.3 |
 | 8 | — Gallery cover | `log.openGallery` | full-screen cover | `log` | §5.3 |
 | 9 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
-| 10 | Notices (list) | `notices` tab | tab · list | `notice` | §5.5 |
+| 10 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
 | 11 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice`, `nav` | §5.5 |
 | 12 | Profile | `profile` tab | tab · grouped list | `profile` | §5.4 |
 | 13 | Account | `profile.openAccount` | push | `account` | §5.4 |
@@ -191,15 +191,19 @@ A `Form`/grouped list that pushes sub-screens — the navigation-depth showcase.
 **About** (`about`):
 - `about.title`, `about.version.value`, `nav.back`
 
-### 5.5 Tab: Notices — `notice` namespace (plain list → detail)
+### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)
 
-A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit) holding a plain vertical list
-of **three** static notices. The smallest list → detail flow — distinct from the data-loading
-Stable catalog — and a clean target for navigation scenarios and crawl. The three notices are
-seeded identically in both apps (ids `1`/`2`/`3`).
+A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit) holding a plain vertical list of
+**20** static notices, seeded identically in both apps (ids `1…20`, title "Notice `<id>`"). The
+list is **intentionally longer than one screen**: the bottom rows start *off-screen*, and because
+rows render lazily an off-screen row is **not in the accessibility tree at all** until scrolled
+into view. So `notice.row.20` is the canonical **scroll-to-element** target — a scenario must
+`swipe` the list (each swipe scrolls a fixed ~100pt, §6.2) until the row appears, then `tap` it.
+A plain list → detail flow distinct from the data-loading Stable catalog; a clean target for
+navigation, scroll, and crawl scenarios.
 
 - `notice.title` — nav title "Notices"
-- `notice.row.<id>` — one per notice (`notice.row.1`/`2`/`3`), `<id>` data-derived. Tapping pushes Notice Detail. Use `idMatches: "notice.row.*"` + `count` for set assertions.
+- `notice.row.<id>` — one per *visible* notice (`notice.row.1` … the off-screen tail appears only after scrolling), `<id>` data-derived. Tapping pushes Notice Detail. (Don't assert a fixed `count` over `notice.row.*` — only the on-screen rows are in the tree, which is device-dependent.)
 
 **Notice Detail** (pushed; also reachable via `…://notice/<id>`):
 - `notice.detail.title` — the notice's title (the screen's identifying element; the nav title carries no id)
