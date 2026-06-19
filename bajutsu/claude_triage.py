@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 from typing import Any
 
+from bajutsu import usage
 from bajutsu.triage import FIX_KINDS, Fix, Triage, TriageContext, fix_summary
 
 MODEL = "claude-opus-4-8"
@@ -213,4 +214,5 @@ class ClaudeTriageAgent:
             },  # force the one diagnose call; no thinking with forced choice
             messages=[{"role": "user", "content": _user_content(context)}],
         )
+        usage.record(getattr(message, "usage", None))
         return _to_triage(message)

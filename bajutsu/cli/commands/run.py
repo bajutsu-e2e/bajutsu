@@ -11,6 +11,7 @@ import typer
 
 from bajutsu import env as _env
 from bajutsu import github
+from bajutsu import usage as _usage
 from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
@@ -170,6 +171,7 @@ def run(
     alert guard (on by default per scenario), which only fires to clear an OS prompt that
     blocked a step — see each scenario's `dismissAlerts`."""
     eff = _load_effective(config, app_name)
+    before = _usage.snapshot()
     # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
     # is interpolated at action time, while their literal values are masked in evidence and
     # run-level artifacts (the scenario definition keeps the token, never the value).
@@ -295,6 +297,11 @@ def run(
     ok = all(r.ok for r in results)
     github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
+    # The only AI in `run` is the alert guard (when it actually fired). Report its token use on
+    # stderr so stdout stays the machine-readable PASS/FAIL line; silent when nothing fired.
+    spent = _usage.snapshot() - before
+    if spent.calls:
+        typer.echo(spent.render(), err=True)
     raise typer.Exit(0 if ok else 1)
 
 

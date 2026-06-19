@@ -12,6 +12,7 @@ import typer
 
 from bajutsu import trace as _trace
 from bajutsu import triage as _triage
+from bajutsu import usage as _usage
 from bajutsu.cli._shared import DEFAULT_CONFIG
 
 
@@ -69,8 +70,13 @@ def triage(
         agent = ClaudeTriageAgent()
     else:
         agent = _triage.HeuristicTriageAgent()
+    before = _usage.snapshot()
     result = agent.triage(context)
     typer.echo(_triage.render(context, result))
+    # Only `--ai` triage calls the model; the heuristic agent's delta is empty, so this is silent.
+    spent = _usage.snapshot() - before
+    if spent.calls:
+        typer.echo(spent.render(), err=True)
     if not apply:
         return
     wrote = _apply_fix(result, apply, write)
