@@ -202,6 +202,40 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   filled) collapse into one node you can expand in place. Stops at the first of `--max-screens` /
   `--max-steps`.
 
+### How a screen is identified (the fingerprint)
+
+Every screen is reduced to a **fingerprint** — a short, stable identity that lets the crawl tell a
+revisit from a genuinely new screen. This is a pure, deterministic function of the element tree (no
+AI, no screenshot pixels), which is what keeps the screen map reproducible: the same screen always
+hashes to the same value. Each node records both the fingerprint and its `kind`.
+
+- **Identifier fingerprint (`kind: "id"` — the normal case).** The sorted *set* of accessibility
+  identifiers present on the screen, hashed. Keying on *which* identifiers are present — not their
+  on-screen text — makes the identity stable across locales and data changes: a list showing
+  different rows, or a label in another language, is still the same screen. Each identifier is then
+  tagged with its **interactive state**, but only when that state departs from the default, so the
+  same layout in a different state hashes differently and the crawl explores the combinations:
+  - `!` — a **disabled** control (`notEnabled`),
+  - `=` — a **filled** text input (a field that now holds a value),
+  - `+` — a **selected / toggled** control (a switch on, a tab selected).
+
+  An enabled, empty, unselected screen contributes just the bare identifiers, so a screen with no
+  such state hashes exactly as its plain identifier set would. This is why filling a form or
+  flipping a switch yields a *new* node: it is a distinct, separately-explorable state, which is how
+  the crawl discovers an action that only becomes available once a precondition is met (e.g. a
+  submit button enabled after every field is filled).
+- **Structural fingerprint (`kind: "structural"` — the fallback).** When a screen carries fewer than
+  two accessibility identifiers, the id set is too thin to identify it reliably, so the crawl hashes
+  the **actionable elements' traits bucketed by coarse on-screen position** instead. This is less
+  stable — layout jitter can shift it, and unrelated screens with a similar control skeleton can
+  collide — so it is flagged as `structural` to signal the identity is approximate. Raising
+  accessibility-identifier coverage (see `doctor`) moves a screen back onto the stable id scheme.
+- **Display grouping is a separate, view-only step.** The fingerprint above is the exact, *per-state*
+  identity stored in the map. The **Crawl** tab additionally *groups* nodes that are the same screen
+  in a different transient state — an empty vs filled form, a toggle, or an alert/overlay that adds a
+  few elements — into one expandable unit, so the graph stays readable. That grouping never changes
+  the fingerprints or what the crawl explores; it only collapses the drawing.
+
 ## `codegen`
 
 Generates a **native XCUITest** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)).
