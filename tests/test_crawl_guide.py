@@ -7,13 +7,21 @@ deterministic baseline (proposer wins), the tool-call parsing, and guide selecti
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from conftest import el
 
 from bajutsu import crawl, crawl_tabs
-from bajutsu.crawl_guide import Proposal, _actions_from, _proposal_from, ai_guide, make_guide
+from bajutsu.crawl_guide import (
+    ClaudeCodeActionProposer,
+    Proposal,
+    _actions_from,
+    _proposal_from,
+    ai_guide,
+    make_guide,
+)
 from bajutsu.drivers.fake import FakeDriver
 
 
@@ -198,5 +206,52 @@ def test_proposal_from_parses_thought_and_actions() -> None:
 def test_make_guide_selects_off_ai_or_errors() -> None:
     assert make_guide("off") is None and make_guide("") is None  # deterministic default
     assert callable(make_guide("ai"))  # built without needing an API key (lazy client)
+    assert callable(make_guide("ai", agent="claude-code"))  # Claude Code CLI backend, lazy runner
     with pytest.raises(ValueError, match="unknown crawl guide"):
         make_guide("nonsense")
+
+
+def test_claude_code_proposer_maps_structured_output_to_actions() -> None:
+    """The Claude Code proposer asks the CLI for structured output (text-only, no screenshot) and
+    maps its envelope to crawl Actions plus the model's thought — the same proposer contract."""
+    seen: list[list[str]] = []
+
+    def runner(cmd: list[str]) -> str:
+        seen.append(cmd)
+        return json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "structured_output": {
+                    "thought": "a login form",
+                    "actions": [
+                        {"action": "type", "id": "login.email", "value": "a@b.com"},
+                        {"action": "tap", "id": "login.submit"},
+                    ],
+                },
+            }
+        )
+
+    proposal = ClaudeCodeActionProposer(runner=runner).propose(
+        [el(identifier="login.email", traits=["textField"])],
+        None,
+        [crawl.Action("tap", target="login.submit")],
+        (),
+    )
+    assert proposal.thought == "a login form"
+    assert [(a.kind, a.target) for a in proposal.actions] == [
+        ("type", "login.email"),
+        ("tap", "login.submit"),
+    ]
+    argv = seen[0]
+    assert "--json-schema" in argv and "--output-format" in argv  # structured-output flags
+    assert "login.submit" in argv[-1]  # the prompt carries the screen + candidate text
+
+
+def test_claude_code_proposer_tolerates_a_bad_envelope() -> None:
+    assert (
+        ClaudeCodeActionProposer(runner=lambda _c: "not json").propose([], None, [], ()).actions
+        == []
+    )
+    err = json.dumps({"is_error": True, "structured_output": {"actions": []}})
+    assert ClaudeCodeActionProposer(runner=lambda _c: err).propose([], None, [], ()).actions == []

@@ -15,6 +15,7 @@ still advances if the model proposes nothing useful.
 from __future__ import annotations
 
 import base64
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -120,18 +121,21 @@ def _dedup(actions: list[crawl.Action]) -> list[crawl.Action]:
     return out
 
 
-def make_guide(kind: str, report: Report | None = None) -> crawl.Guide | None:
+def make_guide(kind: str, report: Report | None = None, agent: str = "api") -> crawl.Guide | None:
     """The crawl guide for `kind`: ``""``/``off`` → deterministic (None lets the engine use its
     default `candidate_actions`); ``ai`` → the Claude-backed guide, narrating its reasoning through
-    `report`. Any other value is an error."""
+    `report`. Any other value is an error.
+
+    `agent` picks the AI backend for the ``ai`` guide: ``api`` (the Anthropic API, pay-per-token) or
+    ``claude-code`` (the Claude Code CLI, drawing on a subscription — text-only). The vision tab
+    locator stays on the API either way; it only runs for a tab bar the tree can't address."""
     if kind in ("", "off"):
         return None
     if kind == "ai":
-        return ai_guide(
-            ClaudeActionProposer(),
-            report=report,
-            tab_locator=crawl_tabs.ClaudeTabLocator(),
+        proposer: ActionProposer = (
+            ClaudeCodeActionProposer() if agent == "claude-code" else ClaudeActionProposer()
         )
+        return ai_guide(proposer, report=report, tab_locator=crawl_tabs.ClaudeTabLocator())
     raise ValueError(f"unknown crawl guide: {kind!r} (use 'off' or 'ai')")
 
 
@@ -230,6 +234,23 @@ def _render_elements(elements: list[base.Element]) -> str:
     return "\n".join(lines) or "(no addressable elements)"
 
 
+def _text_block(
+    elements: list[base.Element],
+    candidates: list[crawl.Action],
+    dismissed: tuple[str, ...],
+) -> str:
+    """The textual description of the screen for the model: its elements, the operations the
+    deterministic inspector already found, and any OS prompt just dismissed to reach it."""
+    found = "\n".join(f"- {a.describe()}" for a in candidates) or "(none)"
+    text = (
+        f"Screen elements:\n{_render_elements(elements)}\n\n"
+        f"Operations the deterministic inspector already found here:\n{found}"
+    )
+    if dismissed:
+        text += f"\n\nAn OS prompt was just dismissed to reach this screen (tapped: {', '.join(dismissed)})."
+    return text
+
+
 def _content(
     elements: list[base.Element],
     screenshot: bytes | None,
@@ -248,14 +269,7 @@ def _content(
                 },
             }
         )
-    found = "\n".join(f"- {a.describe()}" for a in candidates) or "(none)"
-    text = (
-        f"Screen elements:\n{_render_elements(elements)}\n\n"
-        f"Operations the deterministic inspector already found here:\n{found}"
-    )
-    if dismissed:
-        text += f"\n\nAn OS prompt was just dismissed to reach this screen (tapped: {', '.join(dismissed)})."
-    content.append({"type": "text", "text": text})
+    content.append({"type": "text", "text": _text_block(elements, candidates, dismissed)})
     return content
 
 
@@ -341,3 +355,76 @@ class ClaudeActionProposer:
         if block is None:
             return Proposal()
         return _proposal_from(block.input, self._max_actions)
+
+
+# --- Claude Code (CLI) proposer ----------------------------------------------------------
+
+# Appended to `_SYSTEM` for the CLI path: it runs non-interactively, text-only, and must emit the
+# proposal as one structured-output object (no screenshot, no tools) — mirroring the Claude Code
+# authoring agent.
+_CC_NOTE = (
+    "\n\nYou are running non-interactively with no screenshot — reason only from the element list "
+    "above. Do not use any tools or read any files. Emit exactly one object: `thought` (one "
+    "sentence, shown live to the watcher) and `actions` (the operations to try, most promising "
+    "first; each with an `action` of tap/type/fill and its target via id/label/index, `value` for "
+    "a type, `fields` for a fill)."
+)
+
+
+class ClaudeCodeActionProposer:
+    """Asks the Claude Code CLI (`claude -p`) for the screen's operations via structured output —
+    the same proposer contract as `ClaudeActionProposer`, but drawing on a Claude Code subscription
+    instead of the pay-per-token API. Text-only: it reasons from the element list (no screenshot),
+    like the Claude Code authoring agent."""
+
+    def __init__(
+        self,
+        model: str | None = None,
+        runner: Callable[[list[str]], str] | None = None,
+        binary: str = "claude",
+        max_actions: int = 8,
+    ) -> None:
+        self._model = model
+        self._runner = runner
+        self._binary = binary
+        self._max_actions = max_actions
+
+    def _ensure_runner(self) -> Callable[[list[str]], str]:
+        if self._runner is None:
+            from bajutsu.claude_code_agent import _default_runner
+
+            self._runner = _default_runner
+        return self._runner
+
+    def _command(self, prompt: str) -> list[str]:
+        cmd = [
+            self._binary,
+            "-p",
+            "--output-format",
+            "json",
+            "--json-schema",
+            json.dumps(_PROPOSE_TOOL["input_schema"]),
+            "--append-system-prompt",
+            _SYSTEM + _CC_NOTE,
+        ]
+        if self._model:
+            cmd += ["--model", self._model]
+        cmd.append(prompt)
+        return cmd
+
+    def propose(
+        self,
+        elements: list[base.Element],
+        screenshot: bytes | None,
+        candidates: list[crawl.Action],
+        dismissed: tuple[str, ...],
+    ) -> Proposal:
+        stdout = self._ensure_runner()(self._command(_text_block(elements, candidates, dismissed)))
+        try:
+            envelope = json.loads(stdout)
+        except json.JSONDecodeError:
+            return Proposal()
+        out = envelope.get("structured_output")
+        if envelope.get("is_error") or not isinstance(out, dict):
+            return Proposal()
+        return _proposal_from(out, self._max_actions)
