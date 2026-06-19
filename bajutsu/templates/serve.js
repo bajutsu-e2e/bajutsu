@@ -293,12 +293,13 @@ async function crawlCheck(id){
 }
 async function loadGraph(runId){
   let data;try{data=await (await fetch('/runs/'+runId+'/screenmap.json')).json()}catch(e){return}
-  renderGraph(data);
+  renderGraph(data,runId);
 }
 // Lay the screen map out as a BFS-layered graph: screens become columns by depth, transitions
-// curved edges with arrowheads. Recomputed on every poll, deterministic so nodes stay put as
-// the map grows. structural-fingerprint nodes are dashed (the less-stable identity).
-function renderGraph(data){
+// curved edges with arrowheads. Each node shows the screen's screenshot (streamed to
+// runs/<id>/screens/<fingerprint>.png) above a short fingerprint label. Recomputed on every poll,
+// deterministic so nodes stay put as the map grows. structural-fingerprint nodes are dashed.
+function renderGraph(data,runId){
   const nodes=data.nodes||[],edges=data.edges||[],crashes=data.crashes||[];
   $('#crawl-counts').textContent=`${nodes.length} screens · ${edges.length} transitions · ${crashes.length} crashes`;
   const box=$('#crawl-graph');
@@ -315,7 +316,8 @@ function renderGraph(data){
   while(q.length){const f=q.shift(),d=depth.get(f);(adj.get(f)||[]).forEach(t=>{if(!depth.has(t)){depth.set(t,d+1);q.push(t)}})}
   nodes.forEach(n=>{if(!depth.has(n.fingerprint))depth.set(n.fingerprint,0)});
   const layers=[];nodes.forEach(n=>{const d=depth.get(n.fingerprint);(layers[d]||(layers[d]=[])).push(n)});
-  const COLW=200,ROWH=72,NW=150,NH=44,PAD=24;
+  // Node = a screenshot thumbnail (IMGH tall) + a label strip; sized for the portrait shot.
+  const NW=120,IMGH=150,NH=IMGH+26,COLW=190,ROWH=NH+30,PAD=24;
   const pos=new Map();let maxRows=1;
   layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((n,i)=>pos.set(n.fingerprint,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
   const W=PAD*2+(layers.length-1)*COLW+NW,H=PAD*2+(maxRows-1)*ROWH+NH;
@@ -330,10 +332,11 @@ function renderGraph(data){
   });
   nodes.forEach(n=>{const p=pos.get(n.fingerprint),cls='node'+(n.kind==='structural'?' structural':'');
     const sub=(n.ids&&n.ids.length?n.ids.length+' ids':'no ids')+' · '+((n.actions||[]).length)+' actions';
-    svg+=`<g class="${cls}" transform="translate(${p.x},${p.y})"><title>${esc((n.ids||[]).join(', '))}</title>`+
+    const shot=`/runs/${encodeURIComponent(runId)}/screens/${encodeURIComponent(n.fingerprint)}.png`;
+    svg+=`<g class="${cls}" transform="translate(${p.x},${p.y})"><title>${esc(n.fingerprint.slice(0,7))} — ${esc(sub)}\n${esc((n.ids||[]).join(', '))}</title>`+
       `<rect width="${NW}" height="${NH}" rx="8"/>`+
-      `<text class="nlab" x="10" y="18">${esc(n.fingerprint.slice(0,7))}${n.kind==='structural'?' ~':''}</text>`+
-      `<text class="nsub" x="10" y="34">${esc(sub)}</text></g>`;
+      `<image href="${shot}" x="5" y="5" width="${NW-10}" height="${IMGH}" preserveAspectRatio="xMidYMid meet"/>`+
+      `<text class="nlab" x="8" y="${NH-8}">${esc(n.fingerprint.slice(0,7))}${n.kind==='structural'?' ~':''}</text></g>`;
   });
   svg+='</svg>';box.innerHTML=svg;
 }

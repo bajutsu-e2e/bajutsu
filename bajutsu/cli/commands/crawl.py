@@ -9,6 +9,7 @@ engine ([`crawl.py`](../../crawl.py)), and streams the growing screen map to
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -59,6 +60,10 @@ def crawl(
 
     out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Per-screen screenshots land here as `<fingerprint>.png`; the web UI shows each as a node
+    # thumbnail (it builds the URL from the run id + fingerprint, so the map needs no extra field).
+    screens_dir = out_dir / "screens"
+    screens_dir.mkdir(exist_ok=True)
     screenmap_path = out_dir / "screenmap.json"
     _write_screenmap(
         screenmap_path, crawl_engine.ScreenMap()
@@ -96,6 +101,13 @@ def crawl(
             f"crashes={len(screen_map.crashes)}"
         )
 
+    def on_node(node: crawl_engine.Node) -> None:
+        # Best-effort: a screenshot hiccup shouldn't abort the crawl (the node still maps fine).
+        try:
+            driver.screenshot(str(screens_dir / f"{node.fingerprint}.png"))
+        except (OSError, subprocess.CalledProcessError) as exc:
+            say(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
+
     say("✅ app is up — crawling…")
     try:
         screen_map = crawl_engine.crawl(
@@ -104,6 +116,7 @@ def crawl(
             max_screens=max_screens,
             max_steps=max_steps,
             on_event=on_event,
+            on_node=on_node,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

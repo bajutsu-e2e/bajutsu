@@ -198,3 +198,25 @@ def test_crawl_streams_the_growing_map_via_on_event() -> None:
     assert sizes[0] == (1, 0)  # first event is the start screen, before any transition
     assert sizes[-1] == (len(screen_map.nodes), len(screen_map.edges))  # ends on the full map
     assert max(n for n, _ in sizes) == len(screen_map.nodes)  # never exceeds the final node count
+
+
+def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:
+    """`on_node` fires once per discovered screen — the hook the CLI uses to screenshot each one
+    while the driver is still positioned on it. Here we capture a screenshot per node and assert
+    one shot per distinct screen."""
+    react, home = _three_screen_app()
+    driver = FakeDriver(screen=list(home), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    seen: list[str] = []
+
+    def on_node(node: crawl.Node) -> None:
+        seen.append(node.fingerprint)
+        driver.screenshot(f"{node.fingerprint}.png")
+
+    screen_map = crawl.crawl(driver, reset, on_node=on_node)
+    assert sorted(seen) == sorted(screen_map.nodes)  # one call per distinct screen, no repeats
+    shots = [a for a in driver.actions if a[0] == "screenshot"]
+    assert len(shots) == len(screen_map.nodes)  # a screenshot was taken for every node
