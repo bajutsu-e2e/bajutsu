@@ -182,9 +182,10 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   also a **compound fill** of them at once. The compound matters because a control can stay
   disabled until *several* fields are valid, and an intermediate single fill is often invisible (a
   masked password exposes no value), so filling one at a time can't reach the all-filled state.
-  `--guide off` types a deterministic placeholder; **`--guide ai`** lets Claude propose the
-  operations and **realistic inputs** (a valid email, a password meeting the rules, all of a form's
-  fields in one fill) needed to enable controls whose precondition isn't obvious, plus operations
+  `--guide off` types a deterministic placeholder; **`--guide ai`** runs a pipeline — it first
+  inspects the screen deterministically, then hands those operations to Claude to reason about and
+  **combine**, proposing **realistic inputs** (a valid email, a password meeting the rules, all of
+  a form's fields in one fill) to enable controls whose precondition isn't obvious, plus operations
   on id-less elements, narrating its reasoning into the run log. The AI only chooses *what to try*
   — screen identity, transitions and crashes stay deterministic, so the crawl is never a verdict
   (it never gates CI).
