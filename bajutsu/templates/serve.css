@@ -41,6 +41,11 @@ main[hidden]{display:none}
 .crawlbody{flex:1;min-height:0;display:flex;gap:.5rem}
 .crawlside{flex:0 0 22rem;min-width:0;display:flex;flex-direction:column;gap:.3rem}
 .crawlsub{flex:0 0 auto;font-weight:600;font-size:.78em;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+/* Plan progress: how much of the planned operations have been explored, as a percent + bar. */
+.planhd{display:flex;justify-content:space-between;align-items:baseline}
+.planpct{font-weight:700;color:var(--ok);text-transform:none}
+.planbar{flex:0 0 auto;height:5px;background:var(--bg);border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.planfill{height:100%;width:0;background:var(--ok);transition:width .3s ease}
 .crawlplan{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.35rem}
 .crawlplan .empty{height:100%}
 /* The graph viewport: pans (drag) and zooms (wheel / buttons) via a transform on .graphwrap. */
