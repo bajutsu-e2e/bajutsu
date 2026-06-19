@@ -96,6 +96,12 @@ class ScreenMap:
     crashes: list[Crash] = field(default_factory=list)
 
 
+# Fires after each change to the map (a new node, edge, or crash). Pure observation so a caller
+# can stream the screen map as it grows (the web UI's live graph) — it never influences which
+# screen is explored next or how a screen is identified, so the crawl stays deterministic.
+OnEvent = Callable[[ScreenMap], None]
+
+
 def _id_of(element: base.Element) -> str | None:
     return element.get("identifier")
 
@@ -174,13 +180,16 @@ def crawl(
     max_screens: int = 50,
     max_steps: int = 200,
     settle: Settle | None = None,
+    on_event: OnEvent | None = None,
 ) -> ScreenMap:
     """Breadth-first crawl by deterministic replay.
 
     `reset` returns the app to a clean starting state (erase/boot/launch on a real device; in
     tests, restoring the start screen). `settle`, if given, waits for the screen to stabilize
     after an action (a condition wait — never a fixed sleep); it is omitted when the driver is
-    synchronous. Stops at `max_screens` distinct screens or `max_steps` actions, whichever first.
+    synchronous. `on_event`, if given, fires after each new node, edge, or crash so a caller can
+    stream the growing screen map. Stops at `max_screens` distinct screens or `max_steps`
+    actions, whichever first.
     """
     screen_map = ScreenMap()
 
@@ -189,10 +198,15 @@ def crawl(
             settle(driver)
         return driver.query()
 
+    def emit() -> None:
+        if on_event is not None:
+            on_event(screen_map)
+
     reset(driver)
     start = observe()
     start_fp = fingerprint(start)
     screen_map.nodes[start_fp.value] = _node_of(start_fp, start)
+    emit()
 
     shortest_path: dict[str, list[Action]] = {start_fp.value: []}
     frontier: deque[tuple[str, Action]] = deque(
@@ -224,6 +238,7 @@ def crawl(
 
         if not is_app_alive(landed):
             screen_map.crashes.append(Crash(tuple(a.describe() for a in path)))
+            emit()
             continue
 
         dst_fp = fingerprint(landed)
@@ -233,6 +248,7 @@ def crawl(
             shortest_path[dst_fp.value] = path
             for next_action in candidate_actions(landed):
                 frontier.append((dst_fp.value, next_action))
+        emit()
 
     return screen_map
 

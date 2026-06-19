@@ -273,6 +273,48 @@ def record_command(
     return cmd
 
 
+def crawl_command(
+    app: str,
+    *,
+    out: str,
+    backend: str = "",
+    udid: str = "",
+    max_screens: int = 50,
+    max_steps: int = 200,
+    erase: bool | None = None,
+    config: str = "bajutsu.config.yaml",
+) -> list[str]:
+    """The ``python -m bajutsu crawl --app … --out …`` argv for a crawl request — the deterministic
+    explorer the Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
+    (``<out>/screenmap.json``, which the UI polls live); ``erase`` mirrors ``run_command`` (None
+    leaves the CLI default — crawl erases by default)."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "bajutsu",
+        "crawl",
+        "--app",
+        app,
+        "--out",
+        out,
+        "--config",
+        config,
+        "--max-screens",
+        str(max_screens),
+        "--max-steps",
+        str(max_steps),
+    ]
+    if backend:
+        cmd += ["--backend", backend]
+    if udid:
+        cmd += ["--udid", udid]
+    if erase is True:
+        cmd += ["--erase"]
+    elif erase is False:
+        cmd += ["--no-erase"]
+    return cmd
+
+
 # --- path helpers ---
 
 

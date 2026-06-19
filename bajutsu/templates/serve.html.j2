@@ -13,6 +13,7 @@
     <div class="toptabs">
       <button class="toptab active" data-view="record">Record</button>
       <button class="toptab" data-view="replay">Replay</button>
+      <button class="toptab" data-view="crawl">Crawl</button>
       <button class="cfgbtn" id="opencfg">Open config</button>
       <span class="cfgname" id="cfgname"></span>
       <button class="cfgbtn" id="openkey">API key</button>
@@ -112,6 +113,43 @@
     <pre class="out" id="out" data-empty="Run a scenario to see its output here."></pre>
   </div>
   <div class="report" id="report"><div class="empty">Run a scenario to see its report here.</div></div>
+</main>
+
+<!-- ===== Crawl: explore the app breadth-first and map its screens live ===== -->
+<main id="view-crawl" hidden>
+  <div class="left">
+    <div class="card">
+      <div class="panel" id="panel-crawl">
+        <label>App</label><select id="crawl-app"></select>
+        <label>Backend</label><input id="crawl-backend" type="text" placeholder="idb">
+        <label>Device</label>
+        <div class="row" style="align-items:flex-end">
+          <div><select id="crawl-device"></select></div>
+          <div style="flex:0 0 auto"><button class="refresh" id="crawl-simrefresh" title="refresh devices">&#8635;</button></div>
+        </div>
+        <div class="row">
+          <div><label>Max screens</label><input id="crawl-maxscreens" type="number" min="1" value="50"></div>
+          <div><label>Max steps</label><input id="crawl-maxsteps" type="number" min="1" value="200"></div>
+        </div>
+        <div class="subhint">Crawl explores the app breadth-first over the deterministic engine &mdash; no AI &mdash; discovering screens and the transitions between them. It is a tool for discovery, never a pass/fail gate. Stops at the first of Max screens / Max steps.</div>
+        <div class="checks">
+          <label><input type="checkbox" id="crawl-erase" checked> erase device first
+            <span class="hint">Wipe the simulator before crawling so the app starts from onboarding (on by default). Uncheck to crawl from the app's current state.</span></label>
+        </div>
+        <button class="run" id="crawl-go" data-idle="Start crawl">Start crawl</button>
+        <button class="stop" id="crawl-stop" hidden>Stop</button>
+        <div class="status" id="crawl-status"></div>
+      </div>
+    </div>
+  </div>
+  <div class="card crawlpanel">
+    <div class="crawlhead">
+      <span class="ttl">Screen map</span>
+      <span class="crawlcounts" id="crawl-counts"></span>
+    </div>
+    <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
+    <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
+  </div>
 </main>
 
 <!-- ===== Open config: a server-side file browser confined to the serve --root ===== -->

@@ -40,10 +40,10 @@ function initTheme(){
   else if(SYS_MQ.addListener)SYS_MQ.addListener(onSys);
 }
 
-// ---- top-level Record / Replay views ----
+// ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';
   if(name==='replay')loadHistory();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
@@ -139,7 +139,7 @@ async function chooseConfig(path){
 async function loadShared(){
   try{apps=await (await fetch('/api/apps')).json()}catch(e){apps=[]}
   const opts=apps.map(a=>`<option>${esc(a)}</option>`).join('');
-  $('#app').innerHTML=opts;$('#rec-app').innerHTML=opts;
+  $('#app').innerHTML=opts;$('#rec-app').innerHTML=opts;$('#crawl-app').innerHTML=opts;
   await loadScenarios();
 }
 // Scenarios come from the selected app's configured dir, so reload when the Replay app changes.
@@ -156,8 +156,10 @@ async function loadSims(){
   const el=$('#sims');
   el.innerHTML=sims.length?sims.map(s=>`<label><input type="checkbox" class="simck" value="${esc(s.udid)}"><span class="dot ${s.booted?'ok':'off'}" title="${s.booted?'booted':'shut down'}"></span><span>${esc(s.name)}</span><span class="rt">${esc(s.runtime)}${s.booted?'':' · off'}</span></label>`).join(''):'<div class="empty">no simulators found</div>';
   el.querySelectorAll('.simck').forEach(c=>c.addEventListener('change',onSimChange));
-  // Record: single-device dropdown ("booted" = whatever is already up).
-  $('#rec-device').innerHTML='<option value="booted">booted (already up)</option>'+sims.map(s=>`<option value="${esc(s.udid)}">${esc(s.name)} · ${esc(s.runtime)}${s.booted?'':' · off'}</option>`).join('');
+  // Record + Crawl: single-device dropdown ("booted" = whatever is already up). Crawl explores
+  // one app instance breadth-first, so it picks a single device rather than a parallel pool.
+  const single='<option value="booted">booted (already up)</option>'+sims.map(s=>`<option value="${esc(s.udid)}">${esc(s.name)} · ${esc(s.runtime)}${s.booted?'':' · off'}</option>`).join('');
+  $('#rec-device').innerHTML=single;$('#crawl-device').innerHTML=single;
 }
 
 // ---- Record: author a scenario from a goal ----
@@ -260,6 +262,81 @@ function showTab(name){
   if(name==='history')loadHistory();
 }
 document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
+
+// ---- Crawl: explore the app and watch the screen map grow live ----
+let crawlPoll=null,crawlJobId=null,crawlRunId=null;
+$('#crawl-simrefresh').addEventListener('click',loadSims);
+$('#crawl-go').addEventListener('click',async()=>{
+  if(crawlPoll)clearInterval(crawlPoll);
+  setBusy($('#crawl-go'),$('#crawl-stop'),true,'Crawling…');
+  $('#crawl-out').textContent='';$('#crawl-counts').textContent='';
+  $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
+  setStatus($('#crawl-status'),'','run');
+  const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
+    maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
+    erase:$('#crawl-erase').checked})});
+  const {jobId,runId,error}=await r.json();
+  if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
+  crawlJobId=jobId;crawlRunId=runId;
+  crawlPoll=setInterval(()=>crawlCheck(jobId),1000);crawlCheck(jobId);
+});
+$('#crawl-stop').addEventListener('click',()=>cancelJob(crawlJobId,$('#crawl-stop')));
+async function crawlCheck(id){
+  const j=await (await fetch('/api/jobs/'+id)).json();
+  $('#crawl-out').textContent=(j.lines||[]).join('\n');$('#crawl-out').scrollTop=$('#crawl-out').scrollHeight;
+  if(crawlRunId)await loadGraph(crawlRunId);  // poll the streamed screenmap.json and redraw
+  if(j.status==='running')return;
+  clearInterval(crawlPoll);crawlPoll=null;crawlJobId=null;setBusy($('#crawl-go'),$('#crawl-stop'),false);
+  if(j.cancelled){setStatus($('#crawl-status'),'stopped','ng');return}
+  setStatus($('#crawl-status'),j.ok?'done ✓':'failed', j.ok?'ok':'ng');
+}
+async function loadGraph(runId){
+  let data;try{data=await (await fetch('/runs/'+runId+'/screenmap.json')).json()}catch(e){return}
+  renderGraph(data);
+}
+// Lay the screen map out as a BFS-layered graph: screens become columns by depth, transitions
+// curved edges with arrowheads. Recomputed on every poll, deterministic so nodes stay put as
+// the map grows. structural-fingerprint nodes are dashed (the less-stable identity).
+function renderGraph(data){
+  const nodes=data.nodes||[],edges=data.edges||[],crashes=data.crashes||[];
+  $('#crawl-counts').textContent=`${nodes.length} screens · ${edges.length} transitions · ${crashes.length} crashes`;
+  const box=$('#crawl-graph');
+  if(!nodes.length){box.innerHTML='<div class="empty">Reaching the first screen…</div>';return}
+  const idx=new Map(nodes.map(n=>[n.fingerprint,n]));
+  const incoming=new Set(edges.map(e=>e.dst));
+  const adj=new Map(nodes.map(n=>[n.fingerprint,[]]));
+  edges.forEach(e=>{if(adj.has(e.src)&&idx.has(e.dst))adj.get(e.src).push(e.dst)});
+  // Depth = BFS distance from a root (a screen nothing leads into; fall back to the first node).
+  const depth=new Map();
+  let roots=nodes.filter(n=>!incoming.has(n.fingerprint)).map(n=>n.fingerprint);
+  if(!roots.length)roots=[nodes[0].fingerprint];
+  const q=[...roots];roots.forEach(r=>depth.set(r,0));
+  while(q.length){const f=q.shift(),d=depth.get(f);(adj.get(f)||[]).forEach(t=>{if(!depth.has(t)){depth.set(t,d+1);q.push(t)}})}
+  nodes.forEach(n=>{if(!depth.has(n.fingerprint))depth.set(n.fingerprint,0)});
+  const layers=[];nodes.forEach(n=>{const d=depth.get(n.fingerprint);(layers[d]||(layers[d]=[])).push(n)});
+  const COLW=200,ROWH=72,NW=150,NH=44,PAD=24;
+  const pos=new Map();let maxRows=1;
+  layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((n,i)=>pos.set(n.fingerprint,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
+  const W=PAD*2+(layers.length-1)*COLW+NW,H=PAD*2+(maxRows-1)*ROWH+NH;
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="graphsvg">`;
+  svg+=`<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--mut)"/></marker></defs>`;
+  const seen=new Set();
+  edges.forEach(e=>{const k=e.src+'>'+e.dst;if(seen.has(k))return;seen.add(k);
+    const a=pos.get(e.src),b=pos.get(e.dst);if(!a||!b)return;
+    if(e.src===e.dst){const x=a.x+NW,y=a.y+NH/2;svg+=`<path class="edge selfloop" d="M${x},${y-8} C${x+34},${y-26} ${x+34},${y+26} ${x},${y+8}" marker-end="url(#arrow)"/>`;return}
+    const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
+    svg+=`<path class="edge" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" marker-end="url(#arrow)"/>`;
+  });
+  nodes.forEach(n=>{const p=pos.get(n.fingerprint),cls='node'+(n.kind==='structural'?' structural':'');
+    const sub=(n.ids&&n.ids.length?n.ids.length+' ids':'no ids')+' · '+((n.actions||[]).length)+' actions';
+    svg+=`<g class="${cls}" transform="translate(${p.x},${p.y})"><title>${esc((n.ids||[]).join(', '))}</title>`+
+      `<rect width="${NW}" height="${NH}" rx="8"/>`+
+      `<text class="nlab" x="10" y="18">${esc(n.fingerprint.slice(0,7))}${n.kind==='structural'?' ~':''}</text>`+
+      `<text class="nsub" x="10" y="34">${esc(sub)}</text></g>`;
+  });
+  svg+='</svg>';box.innerHTML=svg;
+}
 
 initTheme();
 loadConfig();
