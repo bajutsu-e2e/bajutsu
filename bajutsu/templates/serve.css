@@ -56,7 +56,11 @@ main[hidden]{display:none}
 /* Screenshot lightbox: the enlarged shot beside the screens it transitions to next. */
 .shotbox{position:relative;display:flex;gap:1rem;width:min(960px,94vw);max-height:88vh;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem}
 .shotclose{position:absolute;top:.5rem;right:.6rem;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
-.shotmain{flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+/* Step through the transition chain: prev (a transition into this screen) / next (out of it). */
+.shotnav{flex:0 0 auto;align-self:center;width:2rem;height:2.6rem;display:flex;align-items:center;justify-content:center;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:8px;font-size:1.4em;line-height:1;cursor:pointer}
+.shotnav:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+.shotnav:disabled{opacity:.3;cursor:default}
+.shotmain{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center}
 .shotmain img{max-height:80vh;max-width:46vw;border-radius:10px;border:1px solid var(--line);background:#fff}
 .shotside{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 .shottitle{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;margin:.2rem 1.5rem .6rem 0;word-break:break-all}
