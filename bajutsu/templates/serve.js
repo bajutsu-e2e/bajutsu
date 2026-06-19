@@ -308,6 +308,12 @@ function renderPlan(data){
   const box=$('#crawl-plan');
   const nodes=data.nodes||[],edges=data.edges||[],plan=data.plan||{};
   if(!nodes.length){box.innerHTML='<div class="empty">The plan tree grows as the crawl explores.</div>';return}
+  // How many screens still plan each operation: an op queued on 2+ screens is a global duplicate
+  // (e.g. a tab switch present on every tab's screen). With pruning on, keep it once and collapse the
+  // repeats into a count; toggle off to reveal every occurrence (the crawl explores them regardless).
+  const opCount=new Map();
+  Object.values(plan).forEach(ops=>ops.forEach(op=>opCount.set(op,(opCount.get(op)||0)+1)));
+  const planShown=new Set();
   const idx=new Map(nodes.map(n=>[n.fingerprint,n]));
   const out=new Map(nodes.map(n=>[n.fingerprint,[]]));
   edges.forEach(e=>{if(out.has(e.src))out.get(e.src).push(e)});
@@ -328,7 +334,16 @@ function renderPlan(data){
     outs.forEach(e=>{const alert=(e.alert||[]).length?' 🛡️':'';
       h+=`<div class="plrow op done" style="--d:${depth+1}"><span class="pls">✅</span>${esc(e.action)}${alert} <span class="plarrow">→</span></div>`;
       h+=branch(e.dst,depth+2)});
-    pend.forEach(op=>{h+=`<div class="plrow op pend" style="--d:${depth+1}"><span class="pls">⏳</span>${esc(op)}</div>`});
+    let pruned=0;
+    pend.forEach(op=>{
+      const cnt=opCount.get(op)||1,global=cnt>1;
+      // A global op already kept once is a pruned duplicate (when pruning is on).
+      if(prunePlan&&global&&planShown.has(op)){pruned++;return}
+      planShown.add(op);
+      const tag=global?` <span class="plglobal" title="global operation — queued on ${cnt} screens">🌐 ×${cnt}</span>`:'';
+      h+=`<div class="plrow op pend${global?' global':''}" style="--d:${depth+1}"><span class="pls">⏳</span>${esc(op)}${tag}</div>`;
+    });
+    if(pruned)h+=`<div class="plrow op pruned" style="--d:${depth+1}"><span class="pls">⤴</span><span class="plmut">${pruned} duplicate global op(s) pruned — kept once</span></div>`;
     return h;
   }
   let html='';roots.forEach(r=>html+=branch(r,0));
@@ -346,12 +361,37 @@ function renderPlan(data){
 // are HTML on top. The view (zoom / pan), the data, and which groups are expanded all persist
 // across the per-poll re-render so the layout stays put as the map grows.
 let crawlGraphData=null,crawlGraphRunId=null;
+let prunePlan=true;  // collapse a global op (e.g. a tab switch) repeated across screens to one entry
 const expandedGroups=new Set();  // group keys the user expanded in the graph (kept across redraws)
 const gview={x:0,y:0,k:1};  // pan (px) + zoom (scale), applied as a transform on the graph layer
 function shotURL(runId,fp){return `/runs/${encodeURIComponent(runId)}/screens/${encodeURIComponent(fp)}.png`}
 // Screens with the same set of accessibility identifiers are the same UI in different states; key
 // them by that set so they group. A screen with no ids stands alone (keyed by its fingerprint).
-function groupKeyOf(node){return (node.ids&&node.ids.length)?('ids:'+node.ids.join('')):('fp:'+node.fingerprint)}
+// Two screens are "the same screen in a different transient state" — a form empty vs filled, a
+// switch toggled, or an alert/overlay adding a few elements — when their identifier sets overlap
+// almost entirely: the smaller set is nearly contained in the larger (>=90%) and they still share a
+// solid fraction overall (Jaccard >=40%, so a small screen isn't swallowed by a large superset).
+// Screens with too few ids (the structural-fingerprint fallback) never fuzzy-merge. The exact
+// fingerprints stay distinct — only the *display* groups them; the crawl still explores every state.
+function sameScreen(a,b){
+  const A=a.ids||[],B=b.ids||[];if(A.length<2||B.length<2)return false;
+  const sb=new Set(B);let inter=0;A.forEach(x=>{if(sb.has(x))inter++});
+  if(!inter)return false;
+  const uni=A.length+B.length-inter,mn=Math.min(A.length,B.length);
+  return inter/mn>=0.9&&inter/uni>=0.4;
+}
+// Group nodes by that relation (union-find), so the same screen's states collapse into one unit even
+// when an overlay or a value changes which ids are present. Each group is keyed by its smallest
+// fingerprint, a stable key so the expand/collapse state survives as more states are discovered.
+function buildGroups(nodes){
+  const parent=nodes.map((_,i)=>i);
+  const find=i=>{while(parent[i]!==i){parent[i]=parent[parent[i]];i=parent[i]}return i};
+  for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++)
+    if(sameScreen(nodes[i],nodes[j]))parent[find(i)]=find(j);
+  const byRoot=new Map();
+  nodes.forEach((n,i)=>{const r=find(i);(byRoot.get(r)||byRoot.set(r,[]).get(r)).push(n)});
+  return [...byRoot.values()];
+}
 function redrawGraph(){if(crawlGraphData)renderGraph(crawlGraphData,crawlGraphRunId)}
 // Untried operations the plan still holds for a unit (a group sums its member states) — the live
 // exploration frontier, e.g. a vision-located tab queued to be tapped next.
@@ -409,12 +449,13 @@ function renderGraph(data,runId){
   if(pp)pp.textContent=pct+'%';
   const box=$('#crawl-graph');
   if(!nodes.length){box.innerHTML='<div class="empty">Reaching the first screen…</div>';return}
-  // Group screens by UI, then resolve to laid-out units: a collapsed group is one unit; an expanded
-  // group (or a lone screen) contributes one unit per state. unitOf maps each fingerprint to its unit.
-  const groups=new Map();
-  nodes.forEach(n=>{const k=groupKeyOf(n);(groups.get(k)||groups.set(k,[]).get(k)).push(n)});
+  // Group same-screen states by UI, then resolve to laid-out units: a collapsed group is one unit; an
+  // expanded group (or a lone screen) contributes one unit per state. unitOf maps each fingerprint to
+  // its unit. Re-run every render so the graph re-optimizes as the plan grows.
   const units=[],unitOf=new Map();
-  groups.forEach((members,key)=>{
+  buildGroups(nodes).forEach(members=>{
+    members.sort((a,b)=>a.fingerprint<b.fingerprint?-1:1);
+    const key=members[0].fingerprint;  // stable group key (smallest fingerprint)
     if(members.length>1&&!expandedGroups.has(key)){
       const id='g:'+key;units.push({id,kind:'group',key,members});members.forEach(m=>unitOf.set(m.fingerprint,id));
     }else members.forEach(m=>{const id='n:'+m.fingerprint;
@@ -488,6 +529,8 @@ $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getB
 $('#crawl-zoomreset').addEventListener('click',resetView);
 // A screen row in the plan tree opens that screen's lightbox, same as a graph node.
 $('#crawl-plan').addEventListener('click',e=>{const r=e.target.closest('.plrow.scr');if(r&&r.dataset.fp)openShot(r.dataset.fp)});
+// Toggle pruning of duplicate global ops in the plan tree, re-rendering it in place.
+(function(){const t=$('#crawl-prune');if(t)t.addEventListener('change',()=>{prunePlan=t.checked;if(crawlGraphData)renderPlan(crawlGraphData)})})();
 
 // ---- lightbox: enlarge a screen's shot and step through the transitions (before / after) ----
 let shotFp=null;  // the screen currently shown, so prev/next can walk the graph from it

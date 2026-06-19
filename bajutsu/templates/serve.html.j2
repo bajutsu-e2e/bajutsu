@@ -162,7 +162,8 @@
     <div class="crawlbody">
       <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
       <div class="crawlside">
-        <div class="crawlsub planhd">Exploration plan<span class="planpct" id="crawl-planpct"></span></div>
+        <div class="crawlsub planhd"><span>Exploration plan<span class="planpct" id="crawl-planpct"></span></span>
+          <label class="prunetog" title="Collapse a global operation (e.g. a tab switch) that repeats across screens into one entry. Uncheck to show every occurrence."><input type="checkbox" id="crawl-prune" checked> prune duplicates</label></div>
         <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
         <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
         <div class="crawlsub">Console</div>
