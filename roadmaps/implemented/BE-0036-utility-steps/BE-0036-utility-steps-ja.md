@@ -75,7 +75,7 @@ prime directive の保持：
 ## 参考
 
 OTP／2FA・メールの側方チャネルステップ（`totp`・`email`）は、
-[OTP・メールの側方チャネルステップ](../../proposals/BE-XXXX-otp-email-steps/BE-XXXX-otp-email-steps-ja.md)
+[OTP・メールの側方チャネルステップ](../../proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)
 で別途扱います。
 
 [scenarios.md](../../../docs/ja/scenarios.md)、`bajutsu/orchestrator/actions/handlers/http.py`

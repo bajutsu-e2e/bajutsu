@@ -26,6 +26,16 @@ reset — can't be automated deterministically. Authors are forced either to dis
 builds (which then no longer exercises the real path) or to paste a value by hand (which isn't
 reproducible).
 
+**Competitive context (Maestro).** Maestro covers this same need by sending authors into its
+JavaScript escape hatch — `runScript` / `evalScript` to compute a code or poll a mailbox — which
+works but moves the logic out of the reviewable YAML and into general-purpose code whose effect on
+the flow is opaque to the report (the same trade-off
+[BE-0033](../../implemented/BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md)
+avoided for control flow). Bajutsu's bet is a few purpose-built, auditable steps (`totp` /
+`email`) that produce a value deterministically into `${vars.*}` and stay visible in the scenario
+and the report. The differentiator is delivering the login-flow capability **without** a scripting
+escape hatch and without an LLM, so the gate stays deterministic and the flow stays reviewable.
+
 ## Detailed design
 
 Add two steps that produce a value into the existing `${vars.*}` namespace

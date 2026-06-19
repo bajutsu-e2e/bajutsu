@@ -252,7 +252,26 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|---|
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
+| [BE-0045](proposals/BE-0045-device-state-timezone-clipboard-shake/BE-0045-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Proposal | MagicPod |
+| [BE-0046](proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Proposal | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
+
+### Candidates from competitive research (Maestro)
+
+Maestro (mobile.dev) is an open-source, cross-platform UI E2E tool whose 2026 direction leans into
+breadth, a hosted device cloud (Robin), and AI features that are *optional / advisory by default*
+and routed through a vendor-managed cloud. These items sharpen Bajutsu's opposite stance —
+determinism as a contract, verification below the UI, and AI strictly under the user's control —
+into concrete features that a UI-layer, no-instrumentation competitor cannot easily match.
+
+<!-- GENERATED:proposals-competitive-maestro -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Proposal | Maestro |
+| [BE-0048](proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Proposal | Maestro |
+| [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Proposal | Maestro |
+| [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Proposal | Maestro |
+<!-- /GENERATED:proposals-competitive-maestro -->
 
 ## Not adopting (already covered / out of scope)
 

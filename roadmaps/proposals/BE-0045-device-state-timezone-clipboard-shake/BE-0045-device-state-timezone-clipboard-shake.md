@@ -34,6 +34,15 @@ state cannot exercise the flow deterministically. The gaps that remain after BE-
 Without these, such flows fall back to non-deterministic workarounds or simply can't be
 automated.
 
+**Competitive context (Maestro).** Closing these is also table-stakes against Maestro, which ships
+a broad device-control vocabulary out of the box — `setAirplaneMode` / `toggleAirplaneMode`,
+`setOrientation`, `setLocation` / `travel`, `setPermissions`, `clearKeychain`, `clearState`,
+`pressKey`, `hideKeyboard`, `openLink`. Bajutsu already shipped the core set in BE-0035; these
+remaining primitives (timezone, clipboard seed/read, shake, app resume) remove an easy "Maestro
+can, Bajutsu can't" objection. The differentiator is *how*: each stays a deterministic
+`simctl`-level side effect with no settle-sleep and no AI, so Bajutsu reaches parity on capability
+without giving up the determinism contract.
+
 ## Detailed design
 
 Each primitive is a new step that drives the Simulator through the existing `simctl` /
