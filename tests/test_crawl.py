@@ -150,10 +150,24 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
         d.screen = list(home)
 
     data = crawl.screenmap_dict(crawl.crawl(driver, reset))
-    assert set(data) == {"nodes", "edges", "crashes"}
+    assert set(data) == {"nodes", "edges", "crashes", "stop_reason"}
     assert isinstance(data["nodes"], list) and data["nodes"]
     assert all({"fingerprint", "kind", "ids", "actions"} <= set(n) for n in data["nodes"])
     assert all({"src", "action", "dst"} == set(e) for e in data["edges"])
+    assert data["stop_reason"] == "completed"  # the small app is fully explored
+
+
+def test_crawl_reports_why_it_stopped() -> None:
+    react, home = _three_screen_app()
+    driver = FakeDriver(screen=list(home), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    # Frontier exhausted within budget -> completed; a tight budget -> the limit that was hit.
+    assert crawl.crawl(driver, reset, max_screens=50, max_steps=100).stop_reason == "completed"
+    assert crawl.crawl(driver, reset, max_screens=50, max_steps=1).stop_reason == "max_steps"
+    assert crawl.crawl(driver, reset, max_screens=1, max_steps=100).stop_reason == "max_screens"
 
 
 # --- settle hook ---------------------------------------------------------------------------
