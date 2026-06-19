@@ -149,7 +149,8 @@ main[hidden]{display:none}
 .plrow.scr.full .pls{color:var(--ok)}
 .plrow.op.done{color:var(--fg)}
 .plrow.op.pend{color:var(--run)}
-.plrow.op.pruned{color:var(--mut);text-decoration:line-through}
+.plrow.op.pruned{color:var(--mut);text-decoration:line-through;cursor:pointer}
+.plrow.op.pruned:hover{color:var(--acc);background:var(--bg)}
 .plrow.seen{color:var(--mut)}
 .plcov{color:var(--mut);font-weight:400;font-size:.92em}
 .pls{display:inline-block;width:1.2em}

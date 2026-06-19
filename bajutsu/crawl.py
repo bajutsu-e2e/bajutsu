@@ -166,6 +166,20 @@ class Alert:
     buttons: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class Pruned:
+    """A candidate operation skipped because the same operation was already claimed by another
+    screen — a *global* control (e.g. a tab switch) the crawl explores once instead of from every
+    screen that shows it. `src` is the screen where it was skipped, `action` its description, `key`
+    its replay identity, and `owner` the screen that did explore it. The WebUI shows these struck
+    through, and a viewer can tap one to resume exploring that branch from `src`."""
+
+    src: str
+    action: str
+    key: str
+    owner: str
+
+
 @dataclass
 class ScreenMap:
     nodes: dict[str, Node] = field(default_factory=dict)
@@ -175,6 +189,8 @@ class ScreenMap:
     # The exploration plan: still-untried operations per screen fingerprint (what the crawl will
     # try next), refreshed as it advances so a reader can visualize the frontier live.
     plan: dict[str, list[str]] = field(default_factory=dict)
+    # Operations pruned as duplicate global controls (explored once from their owner screen).
+    pruned: list[Pruned] = field(default_factory=list)
     # Why the crawl stopped: "completed" (frontier exhausted — everything reachable in the model
     # was explored), "max_screens", or "max_steps" (a budget was hit, so screens may remain).
     stop_reason: str = ""
@@ -443,6 +459,7 @@ def crawl(
     settle: Settle | None = None,
     clear_blocking: ClearBlocking | None = None,
     guide: Guide | None = None,
+    prune_global: bool = False,
     on_event: OnEvent | None = None,
     on_node: OnNode | None = None,
 ) -> ScreenMap:
@@ -479,6 +496,12 @@ def crawl(
         if on_event is not None:
             on_event(screen_map)
 
+    # When pruning global controls, the first screen to offer an operation (by replay key) claims
+    # and explores it; later screens that offer the same key skip it. A control with a stable id
+    # reused across screens — a tab bar, a nav button — collides and is pruned to one exploration;
+    # a screen-specific control has a unique key and never collides.
+    claimed: dict[str, str] = {}
+
     def discover(
         fp: Fingerprint, elements: list[base.Element], context: GuideContext
     ) -> list[Action]:
@@ -489,7 +512,17 @@ def crawl(
         screen_map.nodes[fp.value] = node
         if on_node is not None:
             on_node(node)
-        return actions
+        if not prune_global:
+            return actions
+        kept: list[Action] = []
+        for a in actions:
+            owner = claimed.get(a.key)
+            if owner is not None and owner != fp.value:
+                screen_map.pruned.append(Pruned(fp.value, a.describe(), a.key, owner))
+            else:
+                claimed.setdefault(a.key, fp.value)
+                kept.append(a)
+        return kept
 
     reset(driver)
     start = observe()
@@ -609,5 +642,9 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
         "crashes": [{"path": list(c.path)} for c in screen_map.crashes],
         "alerts": [{"path": list(a.path), "buttons": list(a.buttons)} for a in screen_map.alerts],
         "plan": {fp: list(ops) for fp, ops in sorted(screen_map.plan.items())},
+        "pruned": [
+            {"src": p.src, "action": p.action, "key": p.key, "owner": p.owner}
+            for p in screen_map.pruned
+        ],
         "stop_reason": screen_map.stop_reason,
     }
