@@ -7,16 +7,17 @@ whole point: a screen's *identity* (its fingerprint) and the *order* in which ca
 are tried are both pure functions of the element tree, so a crawl of an unchanged app explores
 the same way as far as the app's own non-determinism allows. AI never decides anything here.
 
-Traversal is by **deterministic replay**, not in-place backtracking: app transitions are usually
-irreversible, so to revisit a known screen the engine resets to a clean state and replays the
-shortest recorded path to it (the same way `run` reaches any state), then takes the next untried
-action. Every edge is therefore a replayable step, and every node already has a path to it.
+Traversal is a **forward walk with deterministic replay for backtracking**: app transitions are
+usually irreversible, so the engine keeps acting on the screen it is already on until that screen
+has no untried action left, then — only to reach another unexplored screen — resets to a clean
+state and replays a recorded path to it (the same way `run` reaches any state). Walking forward
+avoids paying a reset/replay for every single action. Every edge is still a replayable step, and
+every node keeps a recorded path to it.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -349,7 +350,7 @@ def crawl(
     on_event: OnEvent | None = None,
     on_node: OnNode | None = None,
 ) -> ScreenMap:
-    """Breadth-first crawl by deterministic replay.
+    """Crawl by a forward walk, resetting + replaying only to backtrack to an unexplored screen.
 
     `reset` returns the app to a clean starting state (erase/boot/launch on a real device; in
     tests, restoring the start screen). `settle`, if given, waits for the screen to stabilize
@@ -396,35 +397,43 @@ def crawl(
     if dismissed:
         screen_map.alerts.append(Alert((), tuple(dismissed)))
     start_fp = fingerprint(start)
-    shortest_path: dict[str, list[Action]] = {start_fp.value: []}
-    frontier: deque[tuple[str, Action]] = deque(
-        (start_fp.value, action)
-        for action in discover(start_fp, start, GuideContext(tuple(dismissed)))
-    )
+    # A known replayable path to each discovered screen (from a clean reset), and the still-untried
+    # actions per screen. The strategy is a *forward walk*: keep acting on the screen the driver is
+    # already on until it has no untried action left, and only reset + replay to reach another
+    # screen when the current one is exhausted — so we don't pay a reset/replay for every action.
+    path_to: dict[str, list[Action]] = {start_fp.value: []}
+    pending: dict[str, list[Action]] = {
+        start_fp.value: discover(start_fp, start, GuideContext(tuple(dismissed)))
+    }
     emit()
-    tried: set[tuple[str, str]] = set()
+    current_fp: str | None = start_fp.value  # the screen the driver is on (None ⇒ needs a reset)
     steps = 0
 
-    while frontier and len(screen_map.nodes) < max_screens and steps < max_steps:
-        src_fp, action = frontier.popleft()
-        key = (src_fp, action.key)
-        if key in tried:
-            continue
-        tried.add(key)
+    while any(pending.values()) and len(screen_map.nodes) < max_screens and steps < max_steps:
+        # Continue from the screen we're already on; else backtrack to the cheapest screen with an
+        # untried action (shortest known path) and replay to it, dismissing any OS prompt en route.
+        if current_fp is not None and pending.get(current_fp):
+            src_fp = current_fp
+        else:
+            src_fp = min(
+                (fp for fp, acts in pending.items() if acts),
+                key=lambda fp: (len(path_to[fp]), fp),
+            )
+            reset(driver)
+            observe()
+            if not _replay(driver, path_to[src_fp], settle, clear_blocking):
+                pending[src_fp] = []  # the path no longer resolves — drop this screen
+                current_fp = None
+                continue
+            current_fp = src_fp
 
-        # Reach the source screen by replaying the shortest known path from a clean start —
-        # dismissing any OS prompt that pops along the way, so a path that goes through a system
-        # alert stays replayable and the screen behind it can be explored further.
-        reset(driver)
-        observe()
-        if not _replay(driver, shortest_path[src_fp], settle, clear_blocking):
-            continue
-
+        action = pending[src_fp].pop(0)  # deterministic order
         steps += 1
-        path = [*shortest_path[src_fp], action]
+        path = [*path_to[src_fp], action]
         try:
             action.perform(driver)
         except base.SelectorError:
+            current_fp = None  # unknown state — force a reset before the next action
             continue
         landed = observe()
         # An OS prompt cleared while landing is recorded against the triggering path, and fed to
@@ -435,20 +444,21 @@ def crawl(
 
         if not is_app_alive(landed):
             screen_map.crashes.append(Crash(tuple(a.describe() for a in path)))
+            current_fp = None  # the app collapsed — reset to keep going
             emit()
             continue
 
         dst_fp = fingerprint(landed)
         screen_map.edges.append(Edge(src_fp, action.describe(), dst_fp.value, tuple(dismissed)))
         if dst_fp.value not in screen_map.nodes:
-            shortest_path[dst_fp.value] = path
-            for next_action in discover(dst_fp, landed, reached):
-                frontier.append((dst_fp.value, next_action))
+            path_to[dst_fp.value] = path
+            pending[dst_fp.value] = discover(dst_fp, landed, reached)
+        current_fp = dst_fp.value  # the driver is on dst now — keep walking forward from here
         emit()
 
-    # Why we stopped: an empty frontier means everything reachable (in the model) was explored;
-    # otherwise a budget was hit and untried actions remain.
-    if not frontier:
+    # Why we stopped: no screen has an untried action (everything reachable in the model was
+    # explored), or a budget was hit and untried actions remain.
+    if not any(pending.values()):
         screen_map.stop_reason = "completed"
     elif len(screen_map.nodes) >= max_screens:
         screen_map.stop_reason = "max_screens"
