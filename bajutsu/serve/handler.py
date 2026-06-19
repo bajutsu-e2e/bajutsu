@@ -270,13 +270,23 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             out = unique_scenario_path(
                 scenario_out_path(scn_dir, str(body.get("name") or "generated"))
             )
+            # Validate the device args the same way /api/run does (BE-0051): no free-text backend
+            # or udid reaches the spawned `bajutsu record` argv. The output path is already
+            # confined by scenario_out_path above.
+            backend = str(body.get("backend", "") or "")
+            if backend and not valid_backend(backend):
+                self._json({"error": f"unknown backend: {backend}"}, 400)
+                return
             udid = str(body.get("udid", "") or "")
+            if udid and not valid_udid(udid):
+                self._json({"error": "invalid udid"}, 400)
+                return
             cmd = record_command(
                 str(out),
                 body["app"],
                 str(body["goal"]),
                 agent=body.get("agent", ""),
-                backend=body.get("backend", ""),
+                backend=backend,
                 udid=udid,
                 erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
                 dismiss_alerts=body["dismissAlerts"]
