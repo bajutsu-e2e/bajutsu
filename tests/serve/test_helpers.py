@@ -147,8 +147,10 @@ def test_crawl_command_builder() -> None:
     # erase defaults to None (the CLI default — crawl erases): no flag forced either way.
     assert "--erase" not in cmd and "--no-erase" not in cmd
     assert "--no-erase" in srv.crawl_command("demo", out="o", erase=False)  # explicit override
-    bare = srv.crawl_command("demo", out="o")  # no backend/udid → those flags omitted
-    assert "--backend" not in bare and "--udid" not in bare
+    ai = srv.crawl_command("demo", out="o", guide="ai")
+    assert ai[ai.index("--guide") + 1] == "ai"
+    bare = srv.crawl_command("demo", out="o")  # no backend/udid/guide → those flags omitted
+    assert "--backend" not in bare and "--udid" not in bare and "--guide" not in bare
 
 
 def test_scenario_out_path_sanitizes(tmp_path: Path) -> None:

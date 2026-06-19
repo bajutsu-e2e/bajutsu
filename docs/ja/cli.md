@@ -147,6 +147,7 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
+| `--guide` | `off` | 探索ガイド: `off`（決定的・AIなし）/ `ai`（Claude が操作と現実的な入力を提案。`ANTHROPIC_API_KEY` 必須） |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
@@ -156,6 +157,12 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 - 走査は**決定的リプレイ**で行い、その場での後戻りはしません。既知の画面を再訪するには、アプリを
   クリーンな状態に再起動し、そこへの最短経路を再生してから次の未試行アクションを取ります ——
   `run` が任意の状態へ到達するのと同じやり方です。
+- 無効化された操作要素（`notEnabled`）はタップせず、画面ごとに `blocked` として報告します。ゲートされた
+  操作要素を有効化するには、テキスト欄を埋めます。`--guide off` は決定的なプレースホルダを入力（「空でない
+  こと」を満たす）。**`--guide ai`** は、有効化条件が自明でない操作要素のために、Claude が**現実的な入力**
+  （正しいメール形式、規約を満たすパスワードなど）や id 無し要素への操作を提案します。AI は「何を試すか」を
+  選ぶだけで、画面同一性・遷移・クラッシュ判定は決定的のまま——よって crawl は合否を下さず、CI ゲートにも
+  なりません。
 - 出力: `<out>/screenmap.json`。`nodes`（画面 —— fingerprint・種別・id・候補アクション）、
   `edges`（遷移）、`crashes`（アプリ UI を崩壊させたアクション経路）からなる JSON グラフです。
   あわせて `<out>/screens/<fingerprint>.png` —— 発見した各画面のスクリーンショット（その画面にいる間に撮影）

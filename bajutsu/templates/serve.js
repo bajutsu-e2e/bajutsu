@@ -275,7 +275,7 @@ $('#crawl-go').addEventListener('click',async()=>{
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
-    erase:$('#crawl-erase').checked})});
+    guide:$('#crawl-guide').value,erase:$('#crawl-erase').checked})});
   const {jobId,runId,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
   crawlJobId=jobId;crawlRunId=runId;
