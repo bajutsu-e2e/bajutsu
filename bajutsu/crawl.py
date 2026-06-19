@@ -155,6 +155,9 @@ class ScreenMap:
     edges: list[Edge] = field(default_factory=list)
     crashes: list[Crash] = field(default_factory=list)
     alerts: list[Alert] = field(default_factory=list)
+    # The exploration plan: still-untried operations per screen fingerprint (what the crawl will
+    # try next), refreshed as it advances so a reader can visualize the frontier live.
+    plan: dict[str, list[str]] = field(default_factory=dict)
     # Why the crawl stopped: "completed" (frontier exhausted — everything reachable in the model
     # was explored), "max_screens", or "max_steps" (a budget was hit, so screens may remain).
     stop_reason: str = ""
@@ -384,6 +387,9 @@ def crawl(
         return driver.query()
 
     def emit() -> None:
+        # Refresh the plan (the live frontier: still-untried operations per screen) before each
+        # notification, so a watcher sees what the crawl will try next as it advances.
+        screen_map.plan = {fp: [a.describe() for a in acts] for fp, acts in pending.items() if acts}
         if on_event is not None:
             on_event(screen_map)
 
@@ -515,5 +521,6 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
         ],
         "crashes": [{"path": list(c.path)} for c in screen_map.crashes],
         "alerts": [{"path": list(a.path), "buttons": list(a.buttons)} for a in screen_map.alerts],
+        "plan": {fp: list(ops) for fp, ops in sorted(screen_map.plan.items())},
         "stop_reason": screen_map.stop_reason,
     }

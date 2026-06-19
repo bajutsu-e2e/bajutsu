@@ -150,10 +150,12 @@ def test_screenmap_dict_round_trips_nodes_edges_crashes() -> None:
         d.screen = list(home)
 
     data = crawl.screenmap_dict(crawl.crawl(driver, reset))
-    assert set(data) == {"nodes", "edges", "crashes", "alerts", "stop_reason"}
+    assert set(data) == {"nodes", "edges", "crashes", "alerts", "plan", "stop_reason"}
     assert isinstance(data["nodes"], list) and data["nodes"]
     assert all({"fingerprint", "kind", "ids", "actions"} <= set(n) for n in data["nodes"])
     assert all({"src", "action", "dst", "alert"} == set(e) for e in data["edges"])
+    # A fully explored app has no pending operations left, so the plan is empty.
+    assert data["plan"] == {}
     assert data["stop_reason"] == "completed"  # the small app is fully explored
 
 
@@ -212,6 +214,27 @@ def test_crawl_streams_the_growing_map_via_on_event() -> None:
     assert sizes[0] == (1, 0)  # first event is the start screen, before any transition
     assert sizes[-1] == (len(screen_map.nodes), len(screen_map.edges))  # ends on the full map
     assert max(n for n, _ in sizes) == len(screen_map.nodes)  # never exceeds the final node count
+
+
+def test_crawl_exposes_the_live_plan_via_on_event() -> None:
+    """The plan (still-untried operations per screen) is refreshed on every event, so a watcher
+    can visualize the frontier as it shrinks. The start screen has pending operations early on,
+    and once the app is fully explored the plan is empty."""
+    react, home = _three_screen_app()
+    driver = FakeDriver(screen=list(home), react=react)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    plans: list[dict[str, list[str]]] = []
+
+    def on_event(sm: crawl.ScreenMap) -> None:
+        plans.append({fp: list(ops) for fp, ops in sm.plan.items()})
+
+    screen_map = crawl.crawl(driver, reset, on_event=on_event)
+    assert any(plans)  # at some point the frontier held untried operations
+    assert all(ops for plan in plans for ops in plan.values())  # only non-empty entries are kept
+    assert screen_map.plan == {}  # fully explored -> nothing left to try
 
 
 def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:

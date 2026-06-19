@@ -296,66 +296,109 @@ async function loadGraph(runId){
   let data;try{data=await (await fetch('/runs/'+runId+'/screenmap.json')).json()}catch(e){return}
   renderGraph(data,runId);
 }
-// Lay the screen map out as a BFS-layered graph: screens become columns by depth, transitions
-// curved edges with arrowheads. Each node shows the screen's screenshot (captured to
-// runs/<id>/screens/<fingerprint>.png) above a short fingerprint label; click a node to enlarge
-// it and see where it goes next. Edges are one SVG layer; nodes are HTML <img> tiles on top (an
-// HTML <img> loads reliably, where an SVG <image> set via innerHTML does not). The view (zoom /
-// pan) and the data are kept across the per-poll re-render so nodes stay put as the map grows.
+// Lay the screen map out as a BFS-layered graph of *units*. A unit is a label+info box — the
+// screen's identifiers / action / blocked / planned counts, with a small screenshot thumbnail that
+// hides itself when the shot is missing — not just a bare image. Screens that are the same UI in
+// different states (identical id set, but a form empty vs filled, a switch off vs on) are one
+// collapsible group: drawn as a single unit until clicked, then expanded into its individual state
+// nodes, with every transition still routed by correct arrows (intra-group state changes become a
+// self-loop while collapsed). The plan overlay marks each unit with its still-untried operation
+// count — the live exploration frontier, refreshed every poll. Edges are one SVG layer; unit boxes
+// are HTML on top. The view (zoom / pan), the data, and which groups are expanded all persist
+// across the per-poll re-render so the layout stays put as the map grows.
 let crawlGraphData=null,crawlGraphRunId=null;
+const expandedGroups=new Set();  // group keys the user expanded in the graph (kept across redraws)
 const gview={x:0,y:0,k:1};  // pan (px) + zoom (scale), applied as a transform on the graph layer
 function shotURL(runId,fp){return `/runs/${encodeURIComponent(runId)}/screens/${encodeURIComponent(fp)}.png`}
+// Screens with the same set of accessibility identifiers are the same UI in different states; key
+// them by that set so they group. A screen with no ids stands alone (keyed by its fingerprint).
+function groupKeyOf(node){return (node.ids&&node.ids.length)?('ids:'+node.ids.join('')):('fp:'+node.fingerprint)}
+function redrawGraph(){if(crawlGraphData)renderGraph(crawlGraphData,crawlGraphRunId)}
+// Untried operations the plan still holds for a unit (sum over a group's member states).
+function plannedFor(u,plan){
+  return u.kind==='group'
+    ?u.members.reduce((s,m)=>s+((plan[m.fingerprint]||[]).length),0)
+    :(plan[u.node.fingerprint]||[]).length;
+}
+// One unit box: a collapsed group (▸, click to expand), an expanded member (▾ to collapse), or a
+// lone screen — each showing a short id label, an info line, a plan badge, and a thumbnail.
+function unitHTML(u,p,plan,runId,NW,NH){
+  const planned=plannedFor(u,plan);
+  const badge=planned?`<span class="gplan" title="${planned} untried operation(s) — the live frontier">⏳ ${planned}</span>`:'';
+  if(u.kind==='group'){
+    const ids=u.members[0].ids||[];
+    const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):'screen';
+    return `<div class="gnode ggroup" data-group="${esc(u.key)}" style="left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px" title="Same UI in ${u.members.length} states — click to expand">`+
+      `<div class="ghead"><span class="gtitle">▸ ${esc(label)}</span>${badge}</div>`+
+      `<div class="gsub">${u.members.length} states · ${ids.length} ids</div>`+
+      `<div class="gstates">grouped — click to expand</div></div>`;
+  }
+  const n=u.node,ids=n.ids||[];
+  const cls='gnode'+(n.kind==='structural'?' structural':'')+(u.kind==='member'?' member':'');
+  const label=ids.length?ids[0]+(ids.length>1?' +'+(ids.length-1):''):n.fingerprint.slice(0,7);
+  const info=`${ids.length} ids · ${(n.actions||[]).length} actions`+((n.blocked||[]).length?` · 🔒 ${n.blocked.length}`:'');
+  const collapse=u.kind==='member'?`<span class="gcollapse" data-group="${esc(u.key)}" title="Collapse this group">▾</span>`:'';
+  return `<div class="${cls}" data-fp="${esc(n.fingerprint)}" style="left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px" title="${esc(n.fingerprint.slice(0,7))} — click to enlarge">`+
+    `<img class="gthumb" src="${shotURL(runId,n.fingerprint)}" alt="" loading="lazy" onerror="this.classList.add('missing')">`+
+    `<div class="ghead"><span class="gtitle">${esc(label)}${n.kind==='structural'?' ~':''}</span>${collapse}${badge}</div>`+
+    `<div class="gsub">${esc(info)}</div></div>`;
+}
 function renderGraph(data,runId){
   crawlGraphData=data;crawlGraphRunId=runId;
-  const nodes=data.nodes||[],edges=data.edges||[],crashes=data.crashes||[],alerts=data.alerts||[];
+  const nodes=data.nodes||[],edges=data.edges||[],crashes=data.crashes||[],alerts=data.alerts||[],plan=data.plan||{};
+  const planned=Object.values(plan).reduce((s,ops)=>s+ops.length,0);
   // The reason the crawl stopped (set only once it finishes); shown after the counts.
   const why={completed:'completed',max_screens:'screen limit reached',max_steps:'step limit reached'}[data.stop_reason];
   $('#crawl-counts').textContent=`${nodes.length} screens · ${edges.length} transitions · ${crashes.length} crashes`+
-    (alerts.length?` · ${alerts.length} alerts dismissed`:'')+(why?' · '+why:'');
+    (alerts.length?` · ${alerts.length} alerts dismissed`:'')+(planned?` · ${planned} planned`:'')+(why?' · '+why:'');
   const box=$('#crawl-graph');
   if(!nodes.length){box.innerHTML='<div class="empty">Reaching the first screen…</div>';return}
-  const idx=new Map(nodes.map(n=>[n.fingerprint,n]));
-  const incoming=new Set(edges.map(e=>e.dst));
-  const adj=new Map(nodes.map(n=>[n.fingerprint,[]]));
-  edges.forEach(e=>{if(adj.has(e.src)&&idx.has(e.dst))adj.get(e.src).push(e.dst)});
-  // Depth = BFS distance from a root (a screen nothing leads into; fall back to the first node).
+  // Group screens by UI, then resolve to laid-out units: a collapsed group is one unit; an expanded
+  // group (or a lone screen) contributes one unit per state. unitOf maps each fingerprint to its unit.
+  const groups=new Map();
+  nodes.forEach(n=>{const k=groupKeyOf(n);(groups.get(k)||groups.set(k,[]).get(k)).push(n)});
+  const units=[],unitOf=new Map();
+  groups.forEach((members,key)=>{
+    if(members.length>1&&!expandedGroups.has(key)){
+      const id='g:'+key;units.push({id,kind:'group',key,members});members.forEach(m=>unitOf.set(m.fingerprint,id));
+    }else members.forEach(m=>{const id='n:'+m.fingerprint;
+      units.push({id,kind:members.length>1?'member':'node',key,node:m});unitOf.set(m.fingerprint,id)});
+  });
+  // Aggregate transitions between units (intra-unit state changes collapse to a self-loop); a pair
+  // is amber if any of its underlying edges tapped through an OS alert.
+  const uedges=new Map();
+  edges.forEach(e=>{const su=unitOf.get(e.src),du=unitOf.get(e.dst);if(!su||!du)return;
+    const k=su+'>'+du,cur=uedges.get(k)||{src:su,dst:du,alert:false};
+    if((e.alert||[]).length)cur.alert=true;uedges.set(k,cur)});
+  // Depth = BFS distance over units from a root (a unit nothing leads into; fall back to the first).
+  const adj=new Map(units.map(u=>[u.id,[]]));
+  uedges.forEach(e=>{if(e.src!==e.dst&&adj.has(e.src))adj.get(e.src).push(e.dst)});
+  const incoming=new Set([...uedges.values()].filter(e=>e.src!==e.dst).map(e=>e.dst));
   const depth=new Map();
-  let roots=nodes.filter(n=>!incoming.has(n.fingerprint)).map(n=>n.fingerprint);
-  if(!roots.length)roots=[nodes[0].fingerprint];
+  let roots=units.filter(u=>!incoming.has(u.id)).map(u=>u.id);
+  if(!roots.length)roots=[units[0].id];
   const q=[...roots];roots.forEach(r=>depth.set(r,0));
   while(q.length){const f=q.shift(),d=depth.get(f);(adj.get(f)||[]).forEach(t=>{if(!depth.has(t)){depth.set(t,d+1);q.push(t)}})}
-  nodes.forEach(n=>{if(!depth.has(n.fingerprint))depth.set(n.fingerprint,0)});
-  const layers=[];nodes.forEach(n=>{const d=depth.get(n.fingerprint);(layers[d]||(layers[d]=[])).push(n)});
-  // Node = a screenshot tile (IMGH tall) + a label strip; sized for the portrait shot.
-  const NW=120,IMGH=150,NH=IMGH+26,COLW=190,ROWH=NH+30,PAD=24;
+  units.forEach(u=>{if(!depth.has(u.id))depth.set(u.id,0)});
+  const layers=[];units.forEach(u=>{const d=depth.get(u.id);(layers[d]||(layers[d]=[])).push(u)});
+  // Layout: label+info boxes are wider and shorter than the old shot tiles.
+  const NW=184,NH=86,COLW=250,ROWH=NH+30,PAD=24;
   const pos=new Map();let maxRows=1;
-  layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((n,i)=>pos.set(n.fingerprint,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
+  layers.forEach((layer,d)=>{if(!layer)return;maxRows=Math.max(maxRows,layer.length);layer.forEach((u,i)=>pos.set(u.id,{x:PAD+d*COLW,y:PAD+i*ROWH}))});
   const W=PAD*2+(layers.length-1)*COLW+NW,H=PAD*2+(maxRows-1)*ROWH+NH;
-  // Edge layer (SVG), sized to the same coordinate space the node tiles are positioned in.
+  // Edge layer (SVG), sized to the same coordinate space the unit boxes are positioned in.
   let svg=`<svg class="graphsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
   svg+=`<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--mut)"/></marker></defs>`;
-  // Transitions that required tapping through an OS alert (any edge for the pair carries one).
-  const alertPairs=new Set(edges.filter(e=>(e.alert||[]).length).map(e=>e.src+'>'+e.dst));
-  const seen=new Set();
-  edges.forEach(e=>{const k=e.src+'>'+e.dst;if(seen.has(k))return;seen.add(k);
-    const a=pos.get(e.src),b=pos.get(e.dst);if(!a||!b)return;
-    const cls='edge'+(alertPairs.has(k)?' alert':'');
+  uedges.forEach(e=>{const a=pos.get(e.src),b=pos.get(e.dst);if(!a||!b)return;const cls='edge'+(e.alert?' alert':'');
     if(e.src===e.dst){const x=a.x+NW,y=a.y+NH/2;svg+=`<path class="${cls} selfloop" d="M${x},${y-8} C${x+34},${y-26} ${x+34},${y+26} ${x},${y+8}" marker-end="url(#arrow)"/>`;
-      if(alertPairs.has(k))svg+=`<text class="edgealert" x="${x+30}" y="${y}">🛡️</text>`;return}
+      if(e.alert)svg+=`<text class="edgealert" x="${x+30}" y="${y}">🛡️</text>`;return}
     const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
     svg+=`<path class="${cls}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" marker-end="url(#arrow)"/>`;
     // Mark the midpoint with a shield so it's clear the step taps through a system alert.
-    if(alertPairs.has(k))svg+=`<text class="edgealert" x="${mx}" y="${(y1+y2)/2-4}">🛡️</text>`;
-  });
+    if(e.alert)svg+=`<text class="edgealert" x="${mx}" y="${(y1+y2)/2-4}">🛡️</text>`});
   svg+='</svg>';
-  // Node tiles (HTML, absolutely positioned), each a real <img> so the screenshot reliably loads.
-  let tiles='';
-  nodes.forEach(n=>{const p=pos.get(n.fingerprint),cls='gnode'+(n.kind==='structural'?' structural':'');
-    const sub=(n.ids&&n.ids.length?n.ids.length+' ids':'no ids')+' · '+((n.actions||[]).length)+' actions';
-    tiles+=`<div class="${cls}" data-fp="${esc(n.fingerprint)}" style="left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px" title="${esc(n.fingerprint.slice(0,7))} — ${esc(sub)}">`+
-      `<img class="gshot" src="${shotURL(runId,n.fingerprint)}" alt="" loading="lazy" onerror="this.classList.add('missing')">`+
-      `<div class="glabel">${esc(n.fingerprint.slice(0,7))}${n.kind==='structural'?' ~':''}</div></div>`;
-  });
+  // Unit boxes (HTML, absolutely positioned over the edges).
+  let tiles='';units.forEach(u=>{tiles+=unitHTML(u,pos.get(u.id),plan,runId,NW,NH)});
   box.innerHTML=`<div class="graphwrap" style="width:${W}px;height:${H}px">${svg}${tiles}</div>`;
   applyView();
 }
@@ -375,8 +418,13 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
   box.addEventListener('mousedown',e=>{if(!$('.graphwrap'))return;drag={x:e.clientX,y:e.clientY,ox:gview.x,oy:gview.y};moved=false;box.classList.add('panning')});
   window.addEventListener('mousemove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=drag.ox+dx;gview.y=drag.oy+dy;applyView()});
   window.addEventListener('mouseup',()=>{if(drag){drag=null;box.classList.remove('panning')}});
-  // A click that wasn't a drag opens the node's lightbox.
-  box.addEventListener('click',e=>{if(moved){moved=false;return}const node=e.target.closest('.gnode');if(node&&node.dataset.fp)openShot(node.dataset.fp)});
+  // A click that wasn't a drag either expands/collapses a group or opens a screen's lightbox.
+  box.addEventListener('click',e=>{if(moved){moved=false;return}
+    const col=e.target.closest('.gcollapse');
+    if(col){expandedGroups.delete(col.dataset.group);redrawGraph();return}
+    const grp=e.target.closest('.ggroup');
+    if(grp){expandedGroups.add(grp.dataset.group);redrawGraph();return}
+    const node=e.target.closest('.gnode');if(node&&node.dataset.fp)openShot(node.dataset.fp)});
 })();
 $('#crawl-zoomin').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1.2,r.left+r.width/2,r.top+r.height/2)});
 $('#crawl-zoomout').addEventListener('click',()=>{const r=$('#crawl-graph').getBoundingClientRect();zoomBy(1/1.2,r.left+r.width/2,r.top+r.height/2)});

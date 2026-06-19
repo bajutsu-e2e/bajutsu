@@ -178,11 +178,13 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   CI ゲートにもなりません。
 - 出力: `<out>/screenmap.json`。`nodes`（画面 —— fingerprint・種別・id・候補アクション・`blocked` 無効操作要素）、
   `edges`（遷移）、`crashes`（アプリ UI を崩壊させたアクション経路）、`alerts`（クロール中にガードが閉じた OS
-  プロンプト —— 誘発した経路＋タップしたボタン）、`stop_reason`（`completed` / `max_screens` / `max_steps`）からなる
-  JSON グラフです。あわせて `<out>/screens/<fingerprint>.png` —— 発見した各画面のスクリーンショット（その画面に
-  いる間に撮影）も出力します。クロールの進行に合わせて書き直されるので、読み手（`serve` の **Crawl** タブ）は
-  マップをリアルタイムに描け、各ノードにスクリーンショットが表示されます。`--max-screens` / `--max-steps` の
-  いずれか早い方で停止します。
+  プロンプト —— 誘発した経路＋タップしたボタン）、`plan`（探索フロンティア —— 画面ごとの未試行操作。クロールの
+  進行に合わせて更新されるので、読み手は次に何を試すか把握できます）、`stop_reason`（`completed` / `max_screens` /
+  `max_steps`）からなる JSON グラフです。あわせて `<out>/screens/<fingerprint>.png` —— 発見した各画面の
+  スクリーンショット（その画面にいる間に撮影）も出力します。クロールの進行に合わせて書き直されるので、読み手
+  （`serve` の **Crawl** タブ）はマップをリアルタイムに描けます。各画面はラベル＋情報のノードで表示され、同じ UI で
+  状態だけ違う画面（フォーム未入力と入力済みなど）は 1 つのノードにまとめられ、その場で展開できます。
+  `--max-screens` / `--max-steps` のいずれか早い方で停止します。
 
 ## `codegen`
 

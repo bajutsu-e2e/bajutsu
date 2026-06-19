@@ -42,7 +42,7 @@ main[hidden]{display:none}
 .crawlgraph .empty{height:100%}
 .crawllog{flex:0 0 8rem;height:8rem}
 .graphwrap{position:absolute;left:0;top:0;transform-origin:0 0}
-/* Edges are one SVG layer; nodes are HTML <img> tiles on top, in BFS layers. structural-
+/* Edges are one SVG layer; unit boxes are HTML label+info cards on top, in BFS layers. structural-
    fingerprint nodes (the less-stable fallback) are dashed to flag the difference. */
 .graphsvg{position:absolute;left:0;top:0;overflow:visible}
 .graphsvg .edge{fill:none;stroke:var(--mut);stroke-width:1.5}
@@ -50,12 +50,23 @@ main[hidden]{display:none}
 /* A transition that taps through an OS alert: amber edge + a shield at its midpoint. */
 .graphsvg .edge.alert{stroke:var(--run);stroke-width:2}
 .graphsvg .edgealert{text-anchor:middle;dominant-baseline:middle;font-size:13px}
-.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;overflow:hidden;cursor:pointer}
+/* A unit box: a screen (or a collapsed group of same-UI states) as a label+info card. The
+   screenshot is a small thumbnail in the corner that hides itself when the shot is missing. */
+.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;padding:6px 8px;overflow:hidden;cursor:pointer}
 .gnode.structural{border-style:dashed;border-color:var(--mut)}
+.gnode.member{border-color:var(--mut);border-left:3px solid var(--acc)}
+.gnode.ggroup{border-style:double;border-width:3px}
 .gnode:hover{box-shadow:0 0 0 2px var(--acc)}
-.gshot{display:block;width:100%;height:150px;object-fit:contain;background:var(--bg2);pointer-events:none}
-.gshot.missing{opacity:0}
-.glabel{padding:3px 7px;font-size:10.5px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.gthumb{position:absolute;right:5px;bottom:5px;width:26px;height:34px;object-fit:cover;border-radius:3px;opacity:.5;background:var(--bg2);pointer-events:none}
+.gthumb.missing{display:none}
+.ghead{display:flex;align-items:center;gap:5px}
+.gtitle{flex:1;font-size:11px;font-weight:700;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.gsub{margin-top:3px;font-size:10px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gstates{margin-top:2px;font-size:9.5px;color:var(--acc)}
+/* Plan badge: still-untried operations for this unit (the live frontier), dashed to read as "todo". */
+.gplan{flex:0 0 auto;font-size:9.5px;color:var(--run);border:1px dashed var(--run);border-radius:4px;padding:0 3px}
+.gcollapse{flex:0 0 auto;font-size:11px;color:var(--mut);cursor:pointer;padding:0 2px}
+.gcollapse:hover{color:var(--acc)}
 /* Screenshot lightbox: the enlarged shot beside the screens it transitions to next. */
 .shotbox{position:relative;display:flex;gap:1rem;width:min(960px,94vw);max-height:88vh;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem}
 .shotclose{position:absolute;top:.5rem;right:.6rem;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
