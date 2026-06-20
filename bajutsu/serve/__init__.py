@@ -66,6 +66,7 @@ __all__ = [
     "LocalScenarioScope",
     "LocalScenarioStore",
     "LogBus",
+    "MissingServerExtra",
     "Popen",
     "RunExecutor",
     "ScenarioScope",
@@ -100,6 +101,13 @@ __all__ = [
 # The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
 # `local` runs in-process; `server` wires the hosted seams (Redis queue/log bus + object storage).
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
+
+
+class MissingServerExtra(ImportError):
+    """A server-backend optional extra (Redis/RQ, object storage, the database) is not installed.
+
+    Carries the install hint and lets the CLI exit cleanly. Distinct from a plain ImportError so a
+    genuine `bajutsu.*` import bug is never mistaken for a missing dependency and swallowed."""
 
 
 def _build_state(
@@ -141,7 +149,11 @@ def _build_state(
                 token=token,
             )
         except ImportError as e:
-            raise ImportError(
+            # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is
+            # a real bug, not a missing dependency — re-raise it so its own traceback survives.
+            if e.name and e.name.split(".")[0] == "bajutsu":
+                raise
+            raise MissingServerExtra(
                 "the server backend needs its optional extras — "
                 "install with: pip install 'bajutsu[server,worker,db]'"
             ) from e

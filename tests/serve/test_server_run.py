@@ -181,7 +181,7 @@ def test_build_state_server_without_extras_raises_a_clear_install_hint(
 
     monkeypatch.setitem(sys.modules, "redis", None)
     _scn, cfg, runs = project(tmp_path)
-    with pytest.raises(ImportError, match="extra"):
+    with pytest.raises(srv.MissingServerExtra, match="extra"):
         srv._build_state(
             runs_dir=runs,
             config=cfg,
@@ -192,6 +192,32 @@ def test_build_state_server_without_extras_raises_a_clear_install_hint(
             token=None,
             backend="server",
         )
+
+
+def test_build_state_server_reraises_internal_import_bugs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A failed bajutsu.* import is a real bug, not a missing extra: it must surface unchanged rather
+    # than be rewritten into the install hint (which would hide the traceback). Only third-party
+    # extras get the hint.
+    def boom(**_kwargs: object) -> srv.ServeState:
+        raise ImportError("cannot import name 'X'", name="bajutsu.serve.server.db")
+
+    monkeypatch.setattr(srv, "_build_server_state", boom)
+    _scn, cfg, runs = project(tmp_path)
+    with pytest.raises(ImportError) as caught:
+        srv._build_state(
+            runs_dir=runs,
+            config=cfg,
+            scenarios_dir=None,
+            root=tmp_path,
+            baselines_dir=None,
+            max_concurrent=4,
+            token=None,
+            backend="server",
+        )
+    assert not isinstance(caught.value, srv.MissingServerExtra)
+    assert "extra" not in str(caught.value)
 
 
 def test_build_state_server_normalizes_a_prefix_without_a_slash(

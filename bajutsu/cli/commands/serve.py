@@ -74,7 +74,7 @@ def serve(
     and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
     over uvicorn (the transport the hosted backend will use); `--backend` selects which seams to
     assemble (only `local` for now)."""
-    from bajutsu.serve import SERVE_BACKENDS, launchagent_plist
+    from bajutsu.serve import SERVE_BACKENDS, MissingServerExtra, launchagent_plist
     from bajutsu.serve import serve as _serve
 
     resolved_token = token or os.environ.get("BAJUTSU_SERVE_TOKEN") or ""
@@ -123,9 +123,10 @@ def serve(
             asgi=asgi,
             backend=backend,
         )
-    except ImportError as e:
-        # A server backend (or --asgi) selected without its optional extras: show the install hint
-        # the seam assembly raised, and exit cleanly rather than dumping a traceback (mirrors worker).
+    except MissingServerExtra as e:
+        # The server backend was selected without its optional extras: show the install hint and
+        # exit cleanly rather than dumping a traceback (mirrors worker). Only this specific error is
+        # caught — a plain ImportError (e.g. a real internal bug) keeps its traceback.
         typer.echo(str(e))
         raise typer.Exit(2) from None
 
