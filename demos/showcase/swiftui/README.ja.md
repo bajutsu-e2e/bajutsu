@@ -1,9 +1,9 @@
 [English](README.md) · **日本語**
 
-# Showcase — SwiftUI
+# Showcase：SwiftUI
 
-Bajutsu showcase ドッグフード一式の SwiftUI 版です。挙動・identifier・起動時の環境変数フック・
-ディープリンク・OS アラートを出す画面は、すべて [`../SPEC.md`](../SPEC.ja.md) に一度だけ定義され、
+Bajutsu showcase ドッグフード一式の SwiftUI 版です。挙動、identifier、起動時の環境変数フック、
+ディープリンク、OS アラートを出す画面は、すべて [`../SPEC.md`](../SPEC.ja.md) に一度だけ定義され、
 ここでは identifier 単位でそのまま実装しています（UIKit 版も同じ仕様を実装します）。そのため、
 1 つのシナリオ集ですべての variant を駆動できます。
 

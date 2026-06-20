@@ -26,8 +26,8 @@ def run_scenario(driver, scenario, clock=None, sink=None, on_blocked=None) -> Ru
 
 各ステップ `i` について（`orchestrator.py` 内）:
 
-1. `kind = _action_of(step)` — どのアクションか判定します。
-2. `step_id = step.name or f"step{i}"` — 証跡の出力単位です。
+1. `kind = _action_of(step)`：どのアクションか判定します。
+2. `step_id = step.name or f"step{i}"`：証跡の出力単位です。
 3. （`capturePolicy` に `screenChanged` トリガーがあれば）操作前の `query()` を控えます。
 4. **区間証跡を開始**します（`video` / `deviceLog` のうち、操作前から始める必要があるもの）。`_pre_intervals` は「ステップ自身から判定可能なトリガー」だけを拾います（`screenChanged`/`error` は遅すぎるため対象外）。
 5. `_run_step_body` で **act**（or wait / assert）を実行し、`(ok, reason, assertion_results)` を得ます。

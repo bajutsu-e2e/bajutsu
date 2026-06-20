@@ -2,7 +2,7 @@
 
 # セレクタと決定的解決（決定性の核）
 
-> 「どの要素を操作・検証するか」をどう指定し、どう一意に確定するかを説明します。Bajutsu の決定性はこのモジュールに集約されています。すべての実行系（orchestrator / drivers / assertions）がここに依存します。
+> 「どの要素を操作または検証するか」をどう指定し、どう一意に確定するかを説明します。Bajutsu の決定性はこのモジュールに集約されています。すべての実行系（orchestrator / drivers / assertions）がここに依存します。
 >
 > 実装: `bajutsu/drivers/base.py`。
 
@@ -43,14 +43,14 @@ class Element(TypedDict):
 |---|---|---|
 | `id` | `accessibilityIdentifier` の完全一致 | ★ 第一候補 |
 | `idMatches` | id の glob パターン（複数マッチ前提。例 `"list.row.*"`） | 集合操作用 |
-| `label` | `accessibilityLabel` の完全一致 | 補助・曖昧解消のみ |
+| `label` | `accessibilityLabel` の完全一致 | 補助 / 曖昧解消のみ |
 | `labelMatches` | label の部分一致 / 正規表現（`re.search`） | 補助 |
 | `traits` | トレイトで絞る（部分集合判定。例 `["button"]`） | 補助 |
 | `value` | accessibility value の完全一致 | 補助 |
 | `within` | コンテナでスコープ限定（幾何: 候補の frame が `within` の解決先の内側にあること。ネスト可） | 一意化 |
 | `index` | 複数マッチ時の n 番目（負数可） | 最終手段・フレーキー |
 
-> `id` / `idMatches` のマッチは `fnmatch.fnmatchcase`（大小区別あり glob）、`labelMatches` は `re.search`（正規表現・部分一致）、`traits` は「指定集合 ⊆ 要素のトレイト集合」です。
+> `id` / `idMatches` のマッチは `fnmatch.fnmatchcase`（大小区別あり glob）、`labelMatches` は `re.search`（正規表現 / 部分一致）、`traits` は「指定集合 ⊆ 要素のトレイト集合」です。
 
 ### オーサリング表現と実行時表現
 
@@ -78,7 +78,7 @@ class Element(TypedDict):
 |---|---|
 | 0 件 | `ElementNotFound`（即時アクションは失敗、`wait_for` 経由はタイムアウト） |
 | 1 件 | 解決成功 |
-| 2 件以上 | `AmbiguousSelector` を送出 — 「たまたま最初の一致を叩く」非決定性を**構造的に排除** |
+| 2 件以上 | `AmbiguousSelector` を送出。「たまたま最初の一致を叩く」非決定性を**構造的に排除**する |
 
 例外として `index` が指定されたときだけ、複数候補から n 番目を選びます（範囲外は `ElementNotFound`）。`index` は順序変化で壊れるため最終手段です。集合を扱う場合は `idMatches` + `count` を使ってください（[scenarios](scenarios.md#アサーション-dsl)）。
 

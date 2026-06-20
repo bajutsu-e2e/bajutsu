@@ -2,8 +2,8 @@
 
 # レポート（manifest.json / JUnit / HTML）
 
-> 1 回の run は 1 つ以上のシナリオ（`list[RunResult]`）を実行する。その結果を 3 つの形式で
-> 書き出す。`manifest.json` がレポートと CI（継続的インテグレーション）の **単一の真実**。
+> 1 回の run は、1 つ以上のシナリオ（`list[RunResult]`）を実行します。その結果を 3 つの形式で
+> 書き出します。`manifest.json` が、レポートと CI（継続的インテグレーション）の **単一の真実**です。
 >
 > 実装: `bajutsu/report.py`。
 
@@ -25,11 +25,11 @@ runs/<runId>/
     └── device.log    # deviceLog（区間）
 ```
 
-`runId` は CLI が `YYYYMMDD-HHMMSS` で採番する（`cli.py`）。`stepId` は `step.name` または `step<i>`。
+`runId` は CLI が `YYYYMMDD-HHMMSS` で採番します（`cli.py`）。`stepId` は `step.name` または `step<i>` です。
 
 ## manifest.json
 
-`RunResult` 以下はすべて dataclass なので、`asdict()` でステップ / expect の結果がそのまま落ちる。
+`RunResult` 以下はすべて dataclass なので、`asdict()` でステップ / expect の結果がそのまま落ちます。
 
 ```json
 {
@@ -58,18 +58,18 @@ runs/<runId>/
 }
 ```
 
-- `ok` (トップ): 全シナリオが ok なら true。
-- `backend`: その run を操作したアクチュエータ（`idb`、テストでは `fake`）。アクチュエータは
-  run ごとに 1 つ固定なので、トップレベルは通常 1 つの名前。各シナリオも自分の `backend` を持つ
+- `ok`（トップ）: 全シナリオが ok なら true です。
+- `backend`: その run を操作したアクチュエータです（`idb`、テストでは `fake`）。アクチュエータは
+  run ごとに 1 つ固定なので、トップレベルは通常 1 つの名前です。各シナリオも自分の `backend` を持ちます
   （[drivers](drivers.md#バックエンド選択と-actuator)）。
-- `steps[].duration_s`: 各ステップの計時（`actionLog` 相当の情報）。
-- `steps[].artifacts`: そのステップで取れた証跡の来歴（[evidence](evidence.md#アーティファクトの来歴provider)）。
-- `failure`: 失敗時の要約（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null。
+- `steps[].duration_s`: 各ステップの計時です（`actionLog` 相当の情報）。
+- `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
+- `failure`: 失敗時の要約です（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null です。
 
 ## junit.xml
 
-CI 連携用。**1 シナリオ = 1 `<testcase>`**。失敗シナリオには `<failure>` が付き、その `text` に
-各ステップ / expect の ok/FAIL と理由が並ぶ。
+CI 連携用です。**1 シナリオ = 1 `<testcase>`**。失敗シナリオには `<failure>` が付き、その `text` に
+各ステップ / expect の ok/FAIL と理由が並びます。
 
 ```xml
 <testsuite name="bajutsu" tests="2" failures="1">
@@ -91,7 +91,7 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 （preconditions / **steps** / **expectations**）ごとにテーブルで描画されます。**steps** テーブル：`#` / `result`（PASS/FAIL ピルを独立カラムで）/
 `action`（色付きバッジ）/ `detail`（対象説明）/ `at` / `view`（スクショ＋**レポート内 element tree
 ビューア**: キャプチャした要素を別タブではなくページ内オーバーレイで開く）/ `reason`。
-detail 中の識別子（`#home.title`）と定数リテラル（`”text”`・数値）は控えめなインライントークンで
+detail 中の識別子（`#home.title`）と定数リテラル（`”text”` や数値）は、控えめなインライントークンで
 描画します。ソリッドな action/assert バッジと視覚的に区別されるため、変数と定数を一目で識別できます。`assert` ステップの複数チェックは**ネストしたテーブル**になり、1 アサーション 1 行で
 `kind` / `target` / `comparison` のセルに分割します（読みにくい `a; b; c` 形式を解消）。実行されなかった
 ステップ（失敗で停止）も skipped として残ります。**観測した通信を時系列で steps に差し込みます**（各々シナリオ開始からのオフセットで配置）。HTTP メソッドを中立バッジ、ステータスを `result` 列に置き、通信の設定（method / endpoint / status / duration / ヘッダ）を detail セル内の**ネストしたテーブル**で表示します。どの通信を出すかはシナリオの `network.filter.domains`（URL ホスト）で絞ります。Network タブは引き続き全件を載せます。**preconditions** テーブルは折りたたみ可（key / value）。
@@ -101,24 +101,24 @@ detail 中の識別子（`#home.title`）と定数リテラル（`”text”`・
 
 `visual` の expectation は行の下に **baseline と actual のインタラクティブ比較ビュー**を描画します。
 4 モード: **Swipe**（仕切りをドラッグして左右にワイプ）/ **Onion**（スライダーで actual を
-baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: difference` — 同一画素は黒、差分画素は強調表示）/ **Diff**（マシンが算出した確定ピクセル diff。アサーションの `exclude` 領域は
+baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: difference`。同一画素は黒、差分画素は強調表示）/ **Diff**（マシンが算出した確定ピクセル diff。アサーションの `exclude` 領域は
 マスク済み。失敗時のみ表示）。`diff <pct>%` バッジが付き、初回実行（actual のみ存在）では `no baseline yet`
 バッジになります。チェックが合格しなかった場合は **Approve as baseline** ボタンが表示され、撮影スクショを
 ベースラインディレクトリへ昇格させます。これは `/api/approve` への `POST` なので `bajutsu serve`
 経由で開いたときだけ機能します（ディスクから直接開いたレポートでは非表示）。CLI 版は
 [`bajutsu approve`](cli.md#approve)。
 
-失敗行は赤背景です。ステップをクリックすると録画をその時刻にシークしますが**自動再生はしません**
-（停止中なら停止のまま・再生中なら再生継続）。ステップのスクショをクリックすると原寸ライトボックスが
+失敗行は赤背景です。ステップをクリックすると録画をその時刻にシークしますが、**自動再生はしません**
+（停止中なら停止のまま、再生中なら再生を続けます）。ステップのスクショをクリックすると原寸ライトボックスが
 開き、**← / →**（または画面上の矢印）で run 内の全スクショを**シナリオをまたいで**順送りできます
-（キャプションにシナリオ・ステップ・位置を表示）。run のアクチュエータはヘッダの `driver: <backend>`
+（キャプションにシナリオ、ステップ、位置を表示）。run のアクチュエータはヘッダの `driver: <backend>`
 チップと各シナリオ行の小バッジで表示します。Device Log / App Trace は別タブのままです。
 
 ## 書き出し API
 
 ```python
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> Path  # 3 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名、description=ファイルレベルの説明
-def manifest_dict(run_id, results) -> dict            # manifest の素（テスト・検査用）
+def manifest_dict(run_id, results) -> dict            # manifest の素（テスト、検査用）
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 ```
