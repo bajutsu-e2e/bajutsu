@@ -78,6 +78,7 @@ def serve(
     runs_dir: Path,
     root: Path | None = None,
     baselines_dir: Path | None = None,
+    token: str | None = None,
 ) -> None:
     state = ServeState(
         runs_dir=runs_dir,
@@ -86,6 +87,7 @@ def serve(
         root=root or Path.cwd(),
         baselines_dir=baselines_dir
         or (scenarios_dir / "baselines" if scenarios_dir else Path("baselines")),
+        token=token,
     )
     server = make_server(state, host, port)
     bound = server.server_address[1]
