@@ -136,11 +136,11 @@ def test_redis_url_prefers_bajutsu_then_redis_then_default(
     )  # no in-process override; restored at teardown
     monkeypatch.delenv("BAJUTSU_REDIS_URL", raising=False)
     monkeypatch.delenv("REDIS_URL", raising=False)
-    assert worker_job._redis_url() == "redis://localhost:6379"
+    assert worker_job.redis_url() == "redis://localhost:6379"
     monkeypatch.setenv("REDIS_URL", "redis://r:6379")
-    assert worker_job._redis_url() == "redis://r:6379"
+    assert worker_job.redis_url() == "redis://r:6379"
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://b:6379")
-    assert worker_job._redis_url() == "redis://b:6379"  # BAJUTSU_REDIS_URL wins
+    assert worker_job.redis_url() == "redis://b:6379"  # BAJUTSU_REDIS_URL wins
 
 
 def test_set_broker_url_wins_over_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -149,7 +149,7 @@ def test_set_broker_url_wins_over_environment(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(worker_job, "_broker_url", None)  # restored at teardown
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://env:6379")
     worker_job.set_broker_url("redis://broker:6379")
-    assert worker_job._redis_url() == "redis://broker:6379"
+    assert worker_job.redis_url() == "redis://broker:6379"
 
 
 def test_execute_job_spec_records_terminal_status_on_the_bus(tmp_path: Path) -> None:
