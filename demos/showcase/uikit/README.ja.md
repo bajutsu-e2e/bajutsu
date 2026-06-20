@@ -1,12 +1,12 @@
 [English](README.md) · **日本語**
 
-# Showcase — UIKit
+# Showcase：UIKit
 
-Bajutsu showcase ドッグフード一式の UIKit 版です。挙動・identifier・起動時の環境変数フック・
-ディープリンク・OS アラートを出す画面は、すべて [`../SPEC.md`](../SPEC.ja.md) に一度だけ定義され、
+Bajutsu showcase ドッグフード一式の UIKit 版です。挙動、identifier、起動時の環境変数フック、
+ディープリンク、OS アラートを出す画面は、すべて [`../SPEC.md`](../SPEC.ja.md) に一度だけ定義され、
 ここでは identifier 単位でそのまま実装しています（SwiftUI 版も同じ仕様を実装します）。そのため、
 1 つのシナリオ集ですべての variant を駆動できます。画面はストーリーボードを使わずコードで組み立てて
-いますが、公開する accessibility identifier・起動時の環境変数フック・ディープリンクは SwiftUI 版と
+いますが、公開する accessibility identifier、起動時の環境変数フック、ディープリンクは SwiftUI 版と
 まったく同じです。
 
 ## 1 つのコードベース、2 つのビルド variant

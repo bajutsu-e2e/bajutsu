@@ -1,17 +1,17 @@
-# Showcase — dogfood アプリ群
+# Showcase：dogfood アプリ群
 
 [English](README.md) · **日本語**
 
 showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 回書き**（UIKit と SwiftUI）、**各々を
-アクセシビリティの 2 変種**（識別子の有/無）で出す——2 コードベースから 4 つのインストール可能な
-プロダクトです。実アプリが持つ操作面——5 タブ、ナビゲーションスタックの push、4 つのモーダル様式、
+アクセシビリティの 2 変種**（識別子の有/無）で出すので、2 コードベースから 4 つのインストール可能な
+プロダクトができます。実アプリが持つ操作面（5 タブ、ナビゲーションスタックの push、4 つのモーダル様式、
 テキスト入力、非同期ロード、通信（実通信＋モック可能）、そして意図的に OS レベルのアラートを上げる
-画面——を、`record`・`crawl`・`run` を一度に行使できる最小のアプリに収めています。
+画面）を、`record`、`crawl`、`run` を一度に行使できる最小のアプリに収めています。
 
-- **画面：** 全 10 画面の一覧（5 タブ＋push＋3 モーダル）は [`SPEC.md` §5](SPEC.md#画面一覧) に。
-  タブは **Stable・Search・Log・Notices・Permissions**。
-- **契約：** [`SPEC.md`](SPEC.md)（[en](SPEC.md)）— すべての画面・識別子・launch-env フック・deeplink・
-  OS アラートの配置。2 つの `-a11y` アプリは同一の識別子契約を露出するので、1 つの
+- **画面：** 全 10 画面の一覧（5 タブ＋push＋3 モーダル）は [`SPEC.md` §5](SPEC.ja.md#画面一覧) にあります。
+  タブは **Stable・Search・Log・Notices・Permissions** です。
+- **契約：** [`SPEC.md`](SPEC.md)（[en](SPEC.md)）に、すべての画面、識別子、launch-env フック、deeplink、
+  OS アラートの配置を記します。2 つの `-a11y` アプリは同一の識別子契約を露出するので、1 つの
   [`scenarios/`](scenarios) 集が両方を駆動します。
 - **ロードマップ項目：** [`roadmaps`](../../roadmaps/README-ja.md) の `dogfood-showcase-apps`
   BE 項目が根拠を記録します。
@@ -26,8 +26,8 @@ showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 
 | `showcase-uikit-noax` | UIKit | 無 | 同上、別ツールキット |
 
 変種の差は Swift のコンパイルフラグ `ACCESSIBLE` ただ 1 つ（SPEC §8）で、ソースの分岐はありません。
-`-noax` ビルドは識別子を **持たない** ツリーにコンパイルされます——アクセシビリティを省いたチームが
-出荷するアプリを、テスト可能にしたものです。
+`-noax` ビルドは識別子を **持たない** ツリーにコンパイルされます。アクセシビリティを省いたチームが
+出荷するアプリを、そのままテスト可能にしたものです。
 
 ## ビルド
 
@@ -80,9 +80,9 @@ bajutsu run --app showcase-swiftui --scenario demos/showcase/scenarios/modals.ya
 
 ## Deeplink
 
-deeplink scheme はプロダクトごと（2 つのインストール済みアプリが衝突しないように）：`showcaseswiftui`、
-`showcaseuikit`、および `…noax` 変種。`bajutsu` は URL をリテラルに開くので、共有シナリオは deeplink では
-なく `launchEnv` ＋ タップ（scheme 非依存）を使います。deeplink を直接行使するには:
+deeplink scheme はプロダクトごとに分けています（2 つのインストール済みアプリが衝突しないようにするため）：`showcaseswiftui`、
+`showcaseuikit`、および `…noax` 変種です。`bajutsu` は URL をリテラルに開くので、共有シナリオは deeplink では
+なく `launchEnv` ＋ タップ（scheme 非依存）を使います。deeplink を直接行使するには次のようにします:
 
 ```bash
 xcrun simctl openurl booted showcaseswiftui://horse/2
@@ -92,5 +92,5 @@ xcrun simctl openurl booted showcaseuikit://permissions
 ## `sample` との関係
 
 showcase は旧来の単一アプリ [`sample` フィクスチャ](../features/app/README.ja.md)を置き換えます。
-`sample` は showcase がその実機 CI と Web UI ツアーもカバーするまで残します。移行の注記は BE 項目を
+`sample` は、showcase がその実機 CI と Web UI ツアーもカバーするまで残します。移行の注記は BE 項目を
 参照してください。

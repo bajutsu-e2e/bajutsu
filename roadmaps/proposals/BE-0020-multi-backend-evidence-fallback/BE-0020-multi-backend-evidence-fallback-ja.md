@@ -10,22 +10,22 @@
 
 ## はじめに
 
-現状 actuator は単一です。証跡取得のみを別 backend に転送することで能力差を吸収します（§9 で設計済み・未配線）。
+現状 actuator は単一です。証跡取得のみを別 backend に転送することで能力差を吸収します（§9 で設計済み、未配線）。
 
 ## 動機
 
 単一の backend があらゆる種類の証跡を提供することはまれです。たとえば idb はネイティブのネットワーク監視を持たず（`capabilities()` は `network` を返しません）、それを必要とする取得は別の場所から来なければなりません。DESIGN §9 はこれを既に設計しています。`backend` は順序付きリストで、**actuator**（最初に利用可能な backend）が操作と解決をすべて行い、それ以外の*あらゆる* backend は、actuator に欠ける能力を供給する **read-only な証跡フォールバック**として働けます。各アーティファクトはどの provider から来たかを記録するので、manifest は各証跡の出所について正直であり続けます。
 
-設計は存在しますが、配線されていません。`docs/drivers.md` ははっきりこう述べています——「現在の実行経路は単一 actuator を使い、マルチ backend 証跡フォールバックはまだ配線されていない」。そのため今日は、actuator が要求された取得を生み出せない場合、たとえ別の宣言済み backend が read-only で供給できたとしても、証跡は単に skip されます。iOS が 2 つ目の actuator（XCUITest、BE-0019）を得て、プロジェクトが他プラットフォームへ向かうにつれ、この穴は広がります。ある backend が持ち別の backend が欠く能力は、まさに §9 の意図どおり、黙って落とすのではなく抽象側で吸収すべきです。本提案は既存の設計を run ループに接続します。
+設計は存在しますが、配線されていません。`docs/drivers.md` ははっきりこう述べています。「現在の実行経路は単一 actuator を使い、マルチ backend 証跡フォールバックはまだ配線されていない」。そのため今日は、actuator が要求された取得を生み出せない場合、たとえ別の宣言済み backend が read-only で供給できたとしても、証跡は単に skip されます。iOS が 2 つ目の actuator（XCUITest、BE-0019）を得て、プロジェクトが他プラットフォームへ向かうにつれ、この穴は広がります。ある backend が持ち別の backend が欠く能力は、まさに §9 の意図どおり、黙って落とすのではなく抽象側で吸収すべきです。本提案は既存の設計を run ループに接続します。
 
 ## 詳細設計
 
 仕組みは DESIGN §9 にそのまま従います。操作は 1 つの backend にとどまり、証跡の解決は他の backend を read-only で参照します。
 
 - **能力ごとの provider 解決。** run ループが取得を必要とするとき、`backend` リストを辿り、各 backend の `capabilities()` にそのトークンを問い合わせて provider を解決します。actuator は提供する能力（`screenshot`、`elements`）について試され、backend 非依存の取得（`video`、`deviceLog`）は今と同様 `simctl` から来て、actuator に欠ける能力（例: `network`）は、それを表明する最初の*別の* backend から、厳密に read-only で取得します。これは §9 が既に規定する解決表で、それが今や実挙動を駆動します。
-- **read-only を強制する。** `tap` / `type` / `swipe` / `wait` / `query` を行えるのは actuator のみです。フォールバック backend は証跡の取り出しだけに使われ、決して操作しません。これにより単一 actuator の保証（DESIGN §3.3 / §5）が保たれ——2 つのドライバが 1 つのデバイスを操作することはなく——決定性は何も変わりません。固定 sleep は依然なく、ambiguous なセレクタは依然失敗します。証跡取得は合否経路の完全に外側にあります。
-- **来歴となだらかな skip。** 各 `Artifact` は既に `provider` を持ちます。フォールバックが配線されれば、そのフィールドは取得を実際に供給した backend（または `simctl` / モックサーバ）を記録します——例: `network: mockServer（idb はネイティブ監視なし）`。リスト中のどの backend も要求された能力を提供できなければ、取得は skip され、その理由が capability フラグとともに manifest に記録されます——run を失敗させるのではなく、既存の劣化開示の規則に沿って。
-- **既存の backend リストで設定する。** 新しい config 面は不要です。順序付きの `backend` リスト（および `apps.<name>` 下の per-app backend 設定）は、actuator 選択に使うのと同じものです。ツールは app-agnostic のまま——どの backend が利用可能かは環境/config の事柄で、runner に埋め込まれません。Tier-2 ゲートは LLM フリーのままです。これは証跡のための配管であって、判定のためのものではありません。
+- **read-only を強制する。** `tap` / `type` / `swipe` / `wait` / `query` を行えるのは actuator のみです。フォールバック backend は証跡の取り出しだけに使われ、決して操作しません。これにより単一 actuator の保証（DESIGN §3.3 / §5）が保たれ、2 つのドライバが 1 つのデバイスを操作することはないので、決定性は何も変わりません。固定 sleep は依然なく、ambiguous なセレクタは依然失敗します。証跡取得は合否経路の完全に外側にあります。
+- **来歴となだらかな skip。** 各 `Artifact` は既に `provider` を持ちます。フォールバックが配線されれば、そのフィールドは取得を実際に供給した backend（または `simctl` / モックサーバ）を記録します。たとえば `network: mockServer（idb はネイティブ監視なし）` のようにです。リスト中のどの backend も要求された能力を提供できなければ、取得は skip されます。このとき run は失敗させず、既存の劣化開示の規則に沿って、その理由を capability フラグとともに manifest に記録します。
+- **既存の backend リストで設定する。** 新しい config 面は不要です。順序付きの `backend` リスト（および `apps.<name>` 下の per-app backend 設定）は、actuator 選択に使うのと同じものです。ツールは app-agnostic のままです。どの backend が利用可能かは環境/config の事柄で、runner に埋め込まれません。Tier-2 ゲートは LLM フリーのままです。これは証跡のための配管であって、判定のためのものではありません。
 
 ## 検討した代替案
 

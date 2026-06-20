@@ -26,8 +26,8 @@ Maestro をはじめ大半の UI 層 E2E ツールは、見える表面しか検
 れていても、画面上の検査はすべて通過してしまいます。
 
 この点で Bajutsu は際立って有利な位置にあります。すでにアプリ自身のトラフィックを観測しており
-（`bajutsu/network.py` + アプリ内コレクタ `BajutsuKit`）、`request` アサーション・
-`wait: { until: request }`・決定的な `mocks` を備えています。今日薄いのは、その捕捉データに対する
+（`bajutsu/network.py` + アプリ内コレクタ `BajutsuKit`）、`request` アサーション、
+`wait: { until: request }`、決定的な `mocks` を備えています。今日薄いのは、その捕捉データに対する
 *アサーションの表面*で、メソッド／URL／ステータス程度しか照合できません。これを深めることは、本
 プロジェクトの最も明確な堀です。Maestro は「コード計装ではなく UI 層の自動化」と明言しており、その
 創業前提を捨てない限り、アナリティクスのペイロードやレスポンス本文の形状を構造的に検証できません。
@@ -43,7 +43,7 @@ Maestro をはじめ大半の UI 層 E2E ツールは、見える表面しか検
 
 ```yaml
 expect:
-  # アナリティクス／テレメトリのイベントが送信された —— エンドポイント + 本文フィールドを回数付きで照合。
+  # アナリティクス／テレメトリのイベントが送信された。エンドポイント + 本文フィールドを回数付きで照合。
   - event:
       url: "https://t.example.com/track"
       body: { name: "purchase_completed", amount: "300" }   # 完全一致または ${vars.*} 一致
@@ -52,7 +52,7 @@ expect:
   - responseSchema:
       request: { method: GET, urlMatches: ".*/api/items" }
       schema: schemas/items.json        # アプリのスキーマディレクトリからの相対パス
-  # リクエストが期待した順序・多重度で発生した。
+  # リクエストが期待した順序と多重度で発生した。
   - requestSequence:
       - { method: POST, urlMatches: ".*/auth/refresh" }
       - { method: GET,  urlMatches: ".*/api/account" }
@@ -68,7 +68,7 @@ expect:
 - **アプリ非依存。** どのエンドポイントがアナリティクスを運ぶか、スキーマファイルがどこにあるかは、
   アプリごとの config（`apps.<name>`）に置きます。アサーション機構はアプリをまたいで同一です。
 - **兄弟項目との関係。** これは取得志向のユーティリティステップ
-  （[BE-0036](../../implemented/BE-0036-utility-steps/BE-0036-utility-steps-ja.md)）に対する*観測・
+  （[BE-0036](../../implemented/BE-0036-utility-steps/BE-0036-utility-steps-ja.md)）に対する*観測と
   検証*側の対です。あちらのステップは側方チャネルの値を `${vars.*}` へ*取得*し、こちらのアサーション
   はアプリ自身のトラフィックを*検証*します。また、決定的で非構造的な
   [BE-0029](../../implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)

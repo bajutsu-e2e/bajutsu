@@ -5,12 +5,12 @@
 * 提案: [BE-0017](BE-0017-mcp-server-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
-* トラック: [承認済み](../../README-ja.md#承認済み)
+* トラック: [承認済み](../../README-ja.md#可決済み)
 * トピック: 統合・自動化（MCP 化）
 
 ## はじめに
 
-Bajutsu のコマンドを MCP（Model Context Protocol）ツールとして公開し、AI エージェント（Claude Desktop / Code）から直接呼び出せるようにします。Tier 1（AI オーサリング・調査）との統合に適した機能で、決定的ゲートは変更しません。
+Bajutsu のコマンドを MCP（Model Context Protocol）ツールとして公開し、AI エージェント（Claude Desktop / Code）から直接呼び出せるようにします。Tier 1（AI オーサリングと調査）との統合に適した機能で、決定的ゲートは変更しません。
 
 ## 詳細設計
 

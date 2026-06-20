@@ -5,7 +5,7 @@
 > Tier 1 = AI ライブ操作です。自然言語のゴールから AI がアプリを探索しながら操作し、**決定的シナリオ**
 > を書き出します。AI が関与するのはここ（記録時）だけです。生成された YAML は AI 非依存で、以後はユーザーが管理します。
 >
-> 実装: `bajutsu/record.py`（ループ）・`bajutsu/agent.py`（抽象）・`bajutsu/claude_agent.py`（Claude）・
+> 実装: `bajutsu/record.py`（ループ）、`bajutsu/agent.py`（抽象）、`bajutsu/claude_agent.py`（Claude）、
 > `bajutsu/alerts.py`（システムアラート対処）。
 
 関連: [concepts の 2 層](concepts.md#2-2-層構成tier-1--tier-2) ・ [scenarios](scenarios.md) ・ [run-loop](run-loop.md)
@@ -66,7 +66,7 @@ class Agent(Protocol):
 
 ## ClaudeAgent
 
-`agent.Agent` を Claude（Anthropic SDK）で実装しています（`claude_agent.py`）。
+`agent.Agent` を Claude（Anthropic SDK、ソフトウェア開発キット）で実装しています（`claude_agent.py`）。
 
 - **ツール強制呼び出し**: `tool_choice={"type": "any"}` で、毎ターン **ちょうど 1 つ**のツールを呼び出します。
   - `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`。
@@ -74,7 +74,7 @@ class Agent(Protocol):
     `Assertion` に変換します（`_to_assertion`）。
 - **prompt cache**: システムプロンプトとツール定義は静的で `cache_control: ephemeral` を付けます。
   ターンごとに変わるのは観測（要素 + スクショ）の user メッセージだけです。
-- **視覚 + 要素の併用**: スクショで見た目・状態を読み、**操作は必ず要素リストの `id`** で行います
+- **視覚 + 要素の併用**: スクショで見た目と状態を読み、**操作は必ず要素リストの `id`** で行います
   （id を生成させません）。要素リストには id を持つ要素だけを出します。
 - モデルは `claude-opus-4-8` です。`anthropic` は遅延インポートです（API キー無しでもモジュールは読み込めます）。
   クライアントは注入可能です（テスト用）。
@@ -98,7 +98,7 @@ class SystemAlertGuard:
     def dismiss(self, driver) -> bool: ...   # プロンプトがあれば座標 tap して True
 ```
 
-- `SystemAlertGuard.dismiss`: スクショを撮り、ロケータに「プロンプトがあるか・どこを押すか」を
+- `SystemAlertGuard.dismiss`: スクショを撮り、ロケータに「プロンプトがあるか、どこを押すか」を
   問い合わせ、**正規化座標 [0,1]** を画面の point サイズ（最大要素 frame = アプリ window）に掛けて
   `driver.tap_point` でタップします。画面の point サイズは、ツリーが縮退してもアプリ window ノードが
   全画面に広がることから求めます。
@@ -106,7 +106,7 @@ class SystemAlertGuard:
   既定は **最も無害な（dismiss 系の）ボタン**（"Not Now" / "Don't Allow" / "Cancel" 等）を選びます。
   `instruction` を与えると代わりにそのボタンをタップします。座標はピクセルで返させ、PNG の IHDR から得た
   画像サイズで [0,1] に正規化します。
-- ロケータは注入可能です。テスト・オフライン実行では決定的なロケータを使います。
+- ロケータは注入可能です。テストやオフライン実行では決定的なロケータを使います。
 
 ### run / record での使い方
 

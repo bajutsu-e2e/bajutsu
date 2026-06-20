@@ -1,6 +1,6 @@
 [English](README.md) · **日本語**
 
-# BajutsuDemo — デモ専用アプリ
+# BajutsuDemo：デモ専用アプリ
 
 実機デモ（`make tour` / `make features`）のための、小さく的を絞った SwiftUI アプリです。あえて最小限に
 してあり、**オンボーディング → ログイン → ホーム（カウンター）** の流れだけを持ちます。これにより、余計な
@@ -27,10 +27,10 @@
 
 アプリは起動環境から次の変数を読みます（Bajutsu が config の `launchEnv` 経由で注入します）。
 
-- `DEMO_UITEST` — アニメーションを無効化し、条件待ちが間延びしないようにする
+- `DEMO_UITEST`：アニメーションを無効化し、条件待ちが間延びしないようにする
   （[`demos/demo.config.yaml`](../demo.config.yaml) で設定済み）。
-- `DEMO_SKIP_ONBOARDING` — ログイン画面から開始する。
-- `DEMO_LOGGED_IN` — ホームから開始する（オンボーディングとログインを飛ばす）。
+- `DEMO_SKIP_ONBOARDING`：ログイン画面から開始する。
+- `DEMO_LOGGED_IN`：ホームから開始する（オンボーディングとログインを飛ばす）。
 
 認証フローは、常に存在するホームの上に重なるモーダル（`fullScreenCover`）です。そのため、ログイン直後に
 ホームを操作しても、作り直されたビューと競合しません。画面を丸ごと切り替える方式だと、その遷移の瞬間を
@@ -49,9 +49,9 @@ make -C demos app-build        # xcodegen generate -> iOS Simulator 向けに xc
 ```
 
 これで `demos/app/build/…` の下に `BajutsuDemo.app` が生成されます（`.xcodeproj` と `build/` は
-gitignore 済み — 手元で再生成してください）。`bajutsu run` / `bajutsu serve` も config の `build`
+gitignore 済みなので、手元で再生成してください）。`bajutsu run` / `bajutsu serve` も config の `build`
 コマンド経由で必要に応じてビルドするので、バイナリが無ければデモ側がビルドしてくれます。
 
-このアプリとシナリオは、デモの一部として実機でビルド・実行されます。`make -C demos tour`
-（実行 → 改変 → 診断）と `make -C demos features`（タグ・共有ステップ・秘密情報のショーケース）は、
+このアプリとシナリオは、デモの一部として実機でビルドして実行されます。`make -C demos tour`
+（実行 → 改変 → 診断）と `make -C demos features`（タグ、共有ステップ、秘密情報のショーケース）は、
 どちらも起動中の Simulator 上で idb 経由でこのアプリを動かします。

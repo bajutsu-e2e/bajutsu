@@ -2,13 +2,13 @@
 
 # XCUITest コード生成（codegen）
 
-> 通過したシナリオから **ネイティブ XCUITest（Swift）** を生成できます。これにより、チームは
-> 既存の Xcode / XCTest CI で同じフローを実行できます。テスト時に bajutsu ランタイム・idb・AI は不要で、
+> 通過したシナリオから **ネイティブ XCUITest（Swift）** を生成できます。これによりチームは、既存の
+> Xcode / XCTest の CI（継続的インテグレーション）で同じフローを実行できます。テスト時に bajutsu ランタイム、idb、AI は不要で、
 > XCUITest 自身が hittability を待ちます。マッピングは **純粋に構造的**（AI 非依存）です。
 >
 > 実装: `bajutsu/codegen.py`。
 
-関連: [scenarios](scenarios.md) ・ [cli](cli.md#codegen) ・ [sample-app の UI テストターゲット](sample-app.md#ui-テストターゲットと-make-ターゲット)
+関連: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [sample-app の UI テストターゲット](sample-app.md#ui-テストターゲットと-make-ターゲット)
 
 ---
 
@@ -18,8 +18,8 @@
 bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>]
 ```
 
-`--emit` は現状 `xcuitest` のみです。`-o -`（既定）なら標準出力、ファイルパスなら書き出します。
-config の `launchEnv` がテストの `app.launchEnvironment` に反映されます（[cli](cli.md#codegen)）。
+`--emit` は現状 `xcuitest` のみです。`-o -`（既定）なら標準出力に、ファイルパスならそのファイルに書き出します。
+config の `launchEnv` はテストの `app.launchEnvironment` に反映されます（[cli](cli.md#codegen)）。
 
 ## 出力の形
 
@@ -51,10 +51,10 @@ final class ComponentsUITests: XCTestCase {
 }
 ```
 
-- ヘルパ `el(id)` / `byLabel(label)` / `matchingId(glob)` がセレクタの 3 形（id / label / idMatches）を
-  XCUIElement に変換します。
-- 各メソッド冒頭で `launchEnvironment` を設定し `app.launch()` を呼びます。env は **config の `launchEnv` <
-  シナリオの `preconditions.launchEnv`** のマージです（テスト側が勝つ）。
+- ヘルパ `el(id)` / `byLabel(label)` / `matchingId(glob)` が、セレクタの 3 形（id / label / idMatches）を
+  XCUIElement に橋渡しします。
+- 各メソッドは冒頭で `launchEnvironment` を設定してから `app.launch()` を呼びます。env は **config の `launchEnv` <
+  シナリオの `preconditions.launchEnv`** のマージで、テスト側が勝ちます。
 
 ## マッピング表
 
@@ -85,13 +85,13 @@ final class ComponentsUITests: XCTestCase {
 
 ## 未対応は TODO コメントに落とす
 
-未対応の構文（座標スワイプ、未知のセレクタ等）は**失敗させず `// TODO` 行**を出力します。出力は常に
-レビュー可能で、生成結果を壊しません。生成ファイル先頭にも「手で編集せず再生成せよ」と明記します。
+未対応の構文（座標スワイプ、未知のセレクタなど）は、**失敗させずに `// TODO` 行**を出力します。出力は常に
+レビューでき、生成結果を壊しません。生成ファイルの先頭にも「手で編集せず再生成せよ」と明記します。
 
 ## 名前の生成
 
-- メソッド名 `test_<sanitized>`（シナリオ名を `[^0-9a-zA-Z]+` → `_` に正規化、数字始まりは `_` 前置）。
-- クラス名 `class_name_for(stem)` = stem を Title ケースにして `UITests` を付加。CLI は出力ファイル名
-  （`-o` の stem）か、なければシナリオファイル名から決めます。
+- メソッド名は `test_<sanitized>` です（シナリオ名を `[^0-9a-zA-Z]+` → `_` に正規化し、数字始まりなら `_` を前置）。
+- クラス名は `class_name_for(stem)` で、stem を Title ケースにして `UITests` を付加します。CLI はこれを、出力ファイル名
+  （`-o` の stem）から、なければシナリオファイル名から決めます。
 
-サンプルでの実走（`make -C demos/features ui-test`）は [sample-app](sample-app.md#ui-テストターゲットと-make-ターゲット)。
+サンプルでの実走（`make -C demos/features ui-test`）は [sample-app](sample-app.md#ui-テストターゲットと-make-ターゲット) にあります。

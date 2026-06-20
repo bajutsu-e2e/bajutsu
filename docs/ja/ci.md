@@ -2,14 +2,14 @@
 
 2 つの別々のトピックを扱います。
 
-1. **このリポの CI** — ツール自体をガード（`.github/workflows/`）。
-2. **あなたのアプリの CI で bajutsu を回す** — 再利用可能な composite action とレシピ。
+1. **このリポの CI**。ツール自体をガードします（`.github/workflows/`）。
+2. **あなたのアプリの CI で bajutsu を回す**。再利用できる composite action とレシピです。
 
 ## このリポの CI
 
 | Workflow | ランナー | タイミング | 内容 |
 |---|---|---|---|
-| [`ci.yml`](../../.github/workflows/ci.yml) | Linux | `main` への push・全 PR | `make check` ゲート一式（Python 3.13）。ロックの鮮度（`uv lock --check`）・整形（`ruff format --check`）・lint（`ruff`）・シェル lint（`shellcheck`）・ワークフロー lint（`actionlint`）・型（`mypy bajutsu demos`）・カバレッジ下限つき `pytest`（`--cov-fail-under=85`）を実行します。ロジック層はシミュレータ不要なので速く安価です |
+| [`ci.yml`](../../.github/workflows/ci.yml) | Linux | `main` への push、全 PR（プルリクエスト） | Python 3.13 上で `make check` ゲート一式を実行します。ロックの鮮度（`uv lock --check`）、整形（`ruff format --check`）、lint（`ruff`）、シェル lint（`shellcheck`）、ワークフロー lint（`actionlint`）、型（`mypy bajutsu demos`）、カバレッジ下限つきの `pytest`（`--cov-fail-under=85`）です。ロジック層はシミュレータ不要なので速く安価です |
 | [`swift.yml`](../../.github/workflows/swift.yml) | macOS | `main` への push + `BajutsuKit/**` を触る PR | [BajutsuKit](../../BajutsuKit) の `swift build` + `swift test` を実行します。純 Foundation のロジック（リクエスト照合 / モック解析）をシミュレータ無しで単体テストします。実機でのインターセプトそのものは `e2e.yml` がカバーします |
 | [`e2e.yml`](../../.github/workflows/e2e.yml) | macOS | 手動 + アプリ/SDK/ランタイムを触る PR | 2 ジョブ: **smoke (idb)** はサンプルをビルドしてシミュレータを起動し、idb バックエンドで `smoke.yaml` を実行します（driver + simctl + idb）。**xcuitest (codegen)** はシナリオからネイティブ XCUITest を生成し（`make -C demos/features ui-test`）`xcodebuild` で実行します（テスト時に bajutsu / idb / AI は不要） |
 
@@ -25,14 +25,14 @@ dev ツールは `dev` 依存グループにあるため、Linux ジョブは `u
 > checkout からアクションを実行してください。アクションは bajutsu の `pyproject.toml` に対して
 > `uv sync` を実行します。
 
-bajutsu は CI 向け出力を持っています: `junit.xml`、自己完結の `report.html`、`0`/`1` 終了
-コード、そして Actions 内では失敗**アノテーション** + ジョブ**サマリ**です。macOS ランナーで:
+bajutsu は CI 向けの出力を生成します。`junit.xml`、自己完結の `report.html`、`0`/`1` 終了
+コード、そして Actions 内では失敗**アノテーション** + ジョブ**サマリ**です。macOS ランナーでは次のようにします。
 
-1. **アプリをビルドしてインストール**します（ビルドはアプリごとに異なるためあなたの担当 — `xcodebuild`
+1. 起動済みのシミュレータに **アプリをビルドしてインストール**します。これはアプリごとに異なるためあなたの担当です（`xcodebuild`
    + `xcrun simctl install`）。
 2. [`bajutsu-e2e`](../../.github/actions/bajutsu-e2e/action.yml) composite action で **bajutsu を実行**します。
-   `idb_companion` 導入・依存同期・`doctor` プリフライト（非ブロッキング）・シナリオ実行・成果物
-   （report / スクショ / 動画 / `network.json`）のアップロードを行います。
+   このアクションは `idb_companion` の導入、依存の同期、任意の `doctor` プリフライト（非ブロッキング）、シナリオの実行、そして
+   成果物（report、スクショ、動画、`network.json`）のアップロードを行います。
 
 ```yaml
 jobs:
@@ -68,7 +68,7 @@ jobs:
 
 ### 補足
 
-- **JUnit**: `junit.xml` を test-reporter 系アクション（例 `dorny/test-reporter`）に渡すとインライン表示できます。
-- **決定性**: シナリオ [`mocks`](../network.md#deterministic-mocks) で通信をスタブし、ライブサーバ依存を排除します。
-- **`doctor`**: 現状は規約*スコア*（非ブロッキングのプリフライト）です。env/権限の実行可能ゲート（idb /
+- **JUnit**：`junit.xml` はレポートの隣に書き出されます。これを test-reporter 系アクション（例 `dorny/test-reporter`）に渡すと、テスト結果をインライン表示できます。
+- **決定性**：シナリオの [`mocks`](../network.md#deterministic-mocks) で通信をスタブし、ライブサーバへの依存をなくします。
+- **`doctor`**：現状は規約の*スコア*（非ブロッキングのプリフライト）です。env や権限の実行可能性を判定するゲート（idb /
   idb_companion / Xcode の存在チェック）は今後の課題です。

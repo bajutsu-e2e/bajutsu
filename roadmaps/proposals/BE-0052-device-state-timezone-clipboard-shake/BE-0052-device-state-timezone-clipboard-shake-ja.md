@@ -12,7 +12,7 @@
 ## はじめに
 
 [BE-0035](../../implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md)
-の最初のスライス（`background`・`overrideStatusBar`・`clearStatusBar`）が出荷されたあとに切り出した、
+の最初のスライス（`background`、`overrideStatusBar`、`clearStatusBar`）が出荷されたあとに切り出した、
 残りのデバイス状態プリミティブです。タイムゾーンの固定、クリップボードへの値の仕込みと読み戻し、
 シェイクジェスチャ、そして背面化したアプリのレジュームを扱います。
 
@@ -31,18 +31,18 @@
 - **シェイク。** 一部のアプリは「取り消し」やデバッグメニューをシェイクジェスチャに結びつけて
   います。現状、これをトリガする手段がありません。
 - **アプリのレジューム。** BE-0035 の `background` はアプリを背面へ送ります。それをレジュームする
-  こと（および上限のある背面化区間）は、前面・背面遷移のもう半分であり、まだ未実装です。
+  こと（および上限のある背面化区間）は、前面と背面の遷移のもう半分であり、まだ未実装です。
 
 これらがないと、こうしたフローは非決定的な回避策に頼るか、そもそも自動化できません。
 
 **競合の文脈（Maestro）。** これらを埋めることは Maestro に対する前提でもあります。Maestro は標準で
-幅広いデバイス制御の語彙を備えています —— `setAirplaneMode` / `toggleAirplaneMode`、
-`setOrientation`、`setLocation` / `travel`、`setPermissions`、`clearKeychain`、`clearState`、
-`pressKey`、`hideKeyboard`、`openLink`。Bajutsu は中核部分を BE-0035 で実装済みです。残るこれらの
-プリミティブ（タイムゾーン、クリップボードの仕込み／読み戻し、シェイク、アプリのレジューム）を埋めれ
-ば、「Maestro はできるが Bajutsu はできない」という安易な反論を取り除けます。差別化は*やり方*にあり
-ます。各プリミティブは、落ち着き待ちの sleep も AI もない決定的な `simctl` レベルの副作用のままです。
-したがって Bajutsu は、決定性の契約を手放さずに能力面のパリティへ到達します。
+幅広いデバイス制御の語彙を備えています。`setAirplaneMode` / `toggleAirplaneMode`、`setOrientation`、
+`setLocation` / `travel`、`setPermissions`、`clearKeychain`、`clearState`、`pressKey`、
+`hideKeyboard`、`openLink` といった具合です。Bajutsu は中核部分を BE-0035 で実装済みです。残るこれ
+らのプリミティブ（タイムゾーン、クリップボードの仕込み／読み戻し、シェイク、アプリのレジューム）を
+埋めれば、「Maestro はできるが Bajutsu はできない」という安易な反論を取り除けます。違いは*やり方*に
+あります。各プリミティブは、落ち着き待ちの sleep も AI もない決定的な `simctl` レベルの副作用のまま
+です。こうして Bajutsu は、決定性の契約を手放さずに能力面のパリティへ到達します。
 
 ## 詳細設計
 
@@ -64,9 +64,9 @@
   `simctl status_bar`／`simctl spawn`、クリップボードは `simctl pbcopy`／`pbpaste`、シェイクは
   シェイク／デバイスイベント）。既存の `boot` / `launch` / `openurl` ビルダーと同様に純粋な
   コマンド関数として組み立て、注入可能な `RunFn` を通じて実行します。
-- `foreground` は、`background`（BE-0035）がサスペンドしたアプリをレジュームします。ここで重要な
-  のは、固定 sleep を再導入**しない**ことです。レジューム後の落ち着きは、シナリオが指定する条件
-  待機（要素の出現・消失）でゲートし、単なる時間指定は、明示的で上限のある「背面化していた区間」
+- `foreground` は、`background`（BE-0035）がサスペンドしたアプリをレジュームします。ここでは固定
+  sleep を再導入**しない**ことが肝心です。レジューム後の落ち着きは、シナリオが指定する条件待機
+  （要素の出現と消失）でゲートします。単なる時間指定は、明示的で上限のある「背面化していた区間」
   としてのみ許され、「アプリが落ち着くまで待つ」sleep には決してしません。
 - 既存のデバイス制御ステップと同様、これらはデバイスごとの制御チャネルを必要とするため、
   **fake ドライバと並列実行では利用不可**であり、クラッシュせずきれいに失敗します。
