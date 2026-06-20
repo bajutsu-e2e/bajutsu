@@ -126,17 +126,23 @@ jobs:
       - name: Install xcodegen
         run: brew install xcodegen
 
+      # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
+      # cause stale-artifact build failures. Capture the active Xcode build version for the cache key.
+      - name: Resolve Xcode version (for the cache key)
+        id: xcode
+        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+
       # Cache xcodebuild DerivedData so the UITest build is incremental across runs. Keyed on the
-      # Swift sources + project spec; the restore-keys fallback warms the cache (compiled modules)
-      # even when sources change, and a miss simply rebuilds cold — so the cache only ever speeds
-      # the build, never changes its result.
+      # Xcode version + Swift sources + project spec; the restore-keys fallback warms the cache
+      # (compiled modules) when only sources change, scoped to the same Xcode, and a miss simply
+      # rebuilds cold — so the cache only ever speeds the build, never changes its result.
       - name: Cache DerivedData
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: demos/features/app/build/dd
-          key: xcode-dd-${{ runner.os }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/features/app/**/*.swift', 'demos/features/app/**/project.yml') }}
+          key: xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/features/app/**/*.swift', 'demos/features/app/**/project.yml') }}
           restore-keys: |
-            xcode-dd-${{ runner.os }}-
+            xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
 
       - name: Boot a Simulator
         id: sim
