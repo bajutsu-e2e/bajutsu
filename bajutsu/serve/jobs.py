@@ -132,6 +132,10 @@ class ServeState:
     # OAuth-free. Identity from a successful login is bound to the session.
     oauth: OAuthClient | None = None
     oauth_allowed_users: frozenset[str] = frozenset()
+    # RBAC role policy (BE-0015 7c-2): logins to grant admin / viewer; everyone else allowed is an
+    # editor. Recomputed into each user's stored role on login.
+    oauth_admins: frozenset[str] = frozenset()
+    oauth_viewers: frozenset[str] = frozenset()
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 

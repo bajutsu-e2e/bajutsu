@@ -246,6 +246,9 @@ def oauth_callback(
             org_id=_DEFAULT_ORG,
             github_login=login,
             email=f"{login}@users.noreply.github.com",
+            # Recompute the role from the env policy on every login, so changing the policy takes
+            # effect on next login without a data migration (BE-0015 7c-2).
+            role=role_for(login, admins=state.oauth_admins, viewers=state.oauth_viewers),
         )
     return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
 
@@ -264,6 +267,52 @@ def _record_audit(
     state.repository.record_audit(
         org_id=_DEFAULT_ORG, actor_id=actor, action=action, target=target, detail=detail
     )
+
+
+# --- RBAC (BE-0015 7c-2): role-based access control over the mutating endpoints ---
+
+_ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
+_ADMIN_PATHS = frozenset({"/api/config", "/api/apikey", "/api/provider"})  # server-wide settings
+_EDITOR_PATHS = frozenset(
+    {"/api/run", "/api/record", "/api/crawl", "/api/scenario", "/api/approve"}
+)
+
+
+def role_for(login: str, *, admins: frozenset[str], viewers: frozenset[str]) -> str:
+    """The role for *login* under the env policy: admin if listed, viewer if listed, else editor
+    (the default — an allowlisted user can run). Recomputed on every login (BE-0015 7c-2)."""
+    if login in admins:
+        return "admin"
+    if login in viewers:
+        return "viewer"
+    return "editor"
+
+
+def required_role(method: str, path: str) -> str | None:
+    """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
+    Cancelling a job is an editor action (it stops a run)."""
+    if method != "POST":
+        return None
+    if path in _ADMIN_PATHS:
+        return "admin"
+    if path in _EDITOR_PATHS or (path.startswith("/api/jobs/") and path.endswith("/cancel")):
+        return "editor"
+    return None  # /api/login, /api/oauth/* — authenticated/guarded elsewhere, no role gate
+
+
+def role_allows(role: str, required: str) -> bool:
+    """Whether *role* meets the *required* minimum (viewer < editor < admin)."""
+    return _ROLE_RANK.get(role, 0) >= _ROLE_RANK.get(required, 0)
+
+
+def forbidden_for_role(state: ServeState, login: str, method: str, path: str) -> bool:
+    """Whether *login* lacks the role for this request — the transport gate calls it for an
+    OAuth-authenticated session when a database is wired. A user with no row defaults to viewer."""
+    required = required_role(method, path)
+    if required is None or state.repository is None:
+        return False  # reads, open endpoints, or no database wired (DB-less = full access)
+    role = state.repository.user_role(login) or "viewer"  # an unknown user defaults to viewer
+    return not role_allows(role, required)
 
 
 def _confined_config_path(root: Path, raw: str) -> Path | None:
