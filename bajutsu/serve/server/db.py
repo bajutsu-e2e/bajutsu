@@ -37,11 +37,14 @@ class RunRecord:
 class Repository(Protocol):
     """Persistence for the control plane. 7a covers runs; identity/audit land in 7b/7c."""
 
-    def record_run(self, run: RunRecord) -> None: ...
+    def record_run(self, run: RunRecord) -> None:
+        """Insert *run*, or update it in place when its id already exists (e.g. a status change)."""
 
-    def get_run(self, run_id: str) -> RunRecord | None: ...
+    def get_run(self, run_id: str) -> RunRecord | None:
+        """The run with *run_id*, or None if there is none."""
 
-    def list_runs(self, *, org_id: str, limit: int = 50) -> list[RunRecord]: ...
+    def list_runs(self, *, org_id: str, limit: int = 50) -> list[RunRecord]:
+        """An org's runs, newest first, capped at *limit*."""
 
 
 def _to_record(row: Run) -> RunRecord:
