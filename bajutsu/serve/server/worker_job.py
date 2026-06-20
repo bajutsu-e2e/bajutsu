@@ -5,17 +5,41 @@ The only difference is *where* it runs: locally on a thread, on the server on a 
 leased the job from the queue. `job_spec` captures the JSON-serializable fields a worker needs to
 reconstruct the job; `execute_job_spec` is the worker entrypoint that rebuilds it and runs it.
 
-No queue/Redis import lives here — this module is safe to import without the ``worker`` extra.
+The worker publishes the job's log to a **Redis** LogBus (built from the worker's redis URL), so a
+control-plane replica streaming the same job id over its own `RedisLogBus` replays the log
+cross-process — not into a private in-memory bus only the worker can see. `redis` is imported
+lazily (inside `_redis_log_bus`), so this module stays safe to import without the ``worker`` extra.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from bajutsu import env
 from bajutsu.serve.jobs import Job, ServeState, run_job
+from bajutsu.serve.logbus import LogBus
+
+
+def _redis_url() -> str:
+    """The worker's Redis URL — the same resolution `bajutsu worker` uses, so the log bus the
+    worker publishes to is the broker the control plane reads."""
+    return (
+        os.environ.get("BAJUTSU_REDIS_URL")
+        or os.environ.get("REDIS_URL")
+        or "redis://localhost:6379"
+    )
+
+
+def _redis_log_bus() -> LogBus:
+    """A `RedisLogBus` over the worker's Redis (redis imported lazily — the ``worker`` extra)."""
+    from redis import Redis
+
+    from bajutsu.serve.server.logbus import RedisLogBus
+
+    return RedisLogBus(Redis.from_url(_redis_url()))
 
 
 def job_spec(job: Job) -> dict[str, Any]:
@@ -38,16 +62,19 @@ def execute_job_spec(
     popen: Any = subprocess.Popen,
     simctl: env.RunFn = env._real_run,
     cwd: Path | None = None,
+    bus: LogBus | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec* and run the unchanged `run_job`.
 
-    Builds a minimal worker-side `ServeState` (its own working dir, real subprocess/simctl, and a
-    fresh in-memory LogBus) — `popen`/`simctl`/`cwd` are injectable so the run can be driven with a
-    fake subprocess on the gate. Returns the finished `Job`."""
+    Builds a minimal worker-side `ServeState` (its own working dir, real subprocess/simctl) whose
+    LogBus is the shared Redis bus, so the streamed log reaches the control plane. `popen` / `simctl`
+    / `cwd` / `bus` are injectable so the run can be driven with a fake subprocess and an in-memory
+    Redis on the gate. Returns the finished `Job`."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
-    state = ServeState(runs_dir=work / "runs", cwd=work, popen=popen, simctl=simctl)
+    log_bus = bus if bus is not None else _redis_log_bus()
+    state = ServeState(runs_dir=work / "runs", cwd=work, popen=popen, simctl=simctl, logbus=log_bus)
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
         cmd=list(spec["cmd"]),
