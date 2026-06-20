@@ -42,10 +42,13 @@ from bajutsu.serve.helpers import (
     valid_udid,
 )
 from bajutsu.serve.jobs import Job, Popen, ServeState, cancel_job, run_job
+from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 
 __all__ = [
+    "InMemoryLogBus",
     "Job",
     "LocalExecutor",
+    "LogBus",
     "Popen",
     "RunExecutor",
     "ServeState",
