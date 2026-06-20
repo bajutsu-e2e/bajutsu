@@ -44,7 +44,10 @@ def execute_job_spec(
     Builds a minimal worker-side `ServeState` (its own working dir, real subprocess/simctl, and a
     fresh in-memory LogBus) — `popen`/`simctl`/`cwd` are injectable so the run can be driven with a
     fake subprocess on the gate. Returns the finished `Job`."""
-    state = ServeState(runs_dir=Path("runs"), cwd=cwd or Path.cwd(), popen=popen, simctl=simctl)
+    # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
+    # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
+    work = cwd or Path.cwd()
+    state = ServeState(runs_dir=work / "runs", cwd=work, popen=popen, simctl=simctl)
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
         cmd=list(spec["cmd"]),

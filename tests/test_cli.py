@@ -418,7 +418,9 @@ def test_worker_without_extra_exits_cleanly() -> None:
     # a clear "install the extra" message and exit 2 — never a raw ImportError traceback.
     import importlib.util
 
-    if importlib.util.find_spec("rq") is not None:
+    # Skip only when the whole extra is present — `worker` imports both redis and rq, so with
+    # either missing it still hits the intended "install the extra" path (exit 2).
+    if importlib.util.find_spec("rq") is not None and importlib.util.find_spec("redis") is not None:
         pytest.skip("the worker extra is installed; the Redis-connect path isn't gate-testable")
     r = runner.invoke(app, ["worker"])
     assert r.exit_code == 2
