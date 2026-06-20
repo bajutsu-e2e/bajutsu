@@ -22,12 +22,26 @@ from bajutsu import env
 from bajutsu.serve.jobs import Job, ServeState, run_job
 from bajutsu.serve.logbus import LogBus
 
+# The worker's Redis URL, set in-process by `bajutsu worker` (see `set_broker_url`). Kept off the
+# environment so a credential-bearing URL never propagates into the `bajutsu run` subprocesses
+# `run_job` spawns (their env inherits os.environ via `_spawn_env`).
+_broker_url: str | None = None
+
+
+def set_broker_url(url: str) -> None:
+    """Record the worker's Redis URL in-process so the queued `execute_job_spec` (which RQ runs in
+    this worker, or a fork of it) discovers the broker — without exporting it to the environment."""
+    global _broker_url
+    _broker_url = url
+
 
 def _redis_url() -> str:
-    """The worker's Redis URL — the same resolution `bajutsu worker` uses, so the log bus the
-    worker publishes to is the broker the control plane reads."""
+    """The worker's Redis URL: the in-process value `bajutsu worker` set, else the environment, else
+    a localhost default — the same resolution `bajutsu worker` uses, so the log bus the worker
+    publishes to is the broker the control plane reads."""
     return (
-        os.environ.get("BAJUTSU_REDIS_URL")
+        _broker_url
+        or os.environ.get("BAJUTSU_REDIS_URL")
         or os.environ.get("REDIS_URL")
         or "redis://localhost:6379"
     )

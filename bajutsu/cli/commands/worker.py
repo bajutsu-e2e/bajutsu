@@ -30,9 +30,12 @@ def worker(
         or os.environ.get("REDIS_URL")
         or "redis://localhost:6379"
     )
-    # Export the resolved URL so the queued `execute_job_spec` (which RQ calls with only the spec)
-    # builds its RedisLogBus over the same broker — the worker's log then reaches the control plane.
-    os.environ["BAJUTSU_REDIS_URL"] = url
+    # Record the resolved URL in-process so the queued `execute_job_spec` (which RQ calls with only
+    # the spec) builds its RedisLogBus over the same broker — without exporting a credential-bearing
+    # URL to the environment, which the spawned `bajutsu run` subprocesses would inherit.
+    from bajutsu.serve.server.worker_job import set_broker_url
+
+    set_broker_url(url)
     try:
         from redis import Redis
         from rq import Queue, Worker
