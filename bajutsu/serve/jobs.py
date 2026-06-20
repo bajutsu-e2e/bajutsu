@@ -47,6 +47,7 @@ class Job:
     run_id: str | None = None  # the runs/<id> a `run` job produced, parsed from its output
     out_path: str | None = None  # the scenario a `record` job authored (so the UI can load it)
     cancelled: bool = False  # a /cancel request stopped this job (vs. a real pass/fail)
+    actor: str | None = None  # the GitHub login that started it, for per-user quota (BE-0015 7c-3)
     proc: Any = None  # the live subprocess (build or run), so a cancel can terminate it
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -118,6 +119,10 @@ class ServeState:
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
     max_concurrent: int = 4
+    # Per-user cap on concurrent jobs (BE-0015 7c-3), so one OAuth user can't starve the pool. <= 0
+    # means unlimited (the default); a server backend sets it from BAJUTSU_MAX_CONCURRENT_PER_USER.
+    # Applies only to jobs that carry an actor (an OAuth identity); token/anonymous jobs are exempt.
+    max_concurrent_per_user: int = 0
     # Optional shared token (BE-0051). None = open (loopback-only legacy behavior); when set, every
     # request must authenticate. Login exchanges it for an opaque session id held by the `sessions`
     # seam below — the shared token itself never lives in the browser.
@@ -174,6 +179,7 @@ class ServeState:
         materials: dict[str, str] | None,
         record_save: tuple[str, str] | None,
         materialize_baselines: bool,
+        actor: str | None,
     ) -> Job:
         """Create + register a job. Caller must hold ``self._lock``."""
         self._seq += 1
@@ -188,6 +194,7 @@ class ServeState:
             materials=dict(materials or {}),
             record_save=record_save,
             materialize_baselines=materialize_baselines,
+            actor=actor,
         )
         self.jobs[job.id] = job
         return job
@@ -202,10 +209,19 @@ class ServeState:
         materials: dict[str, str] | None = None,
         record_save: tuple[str, str] | None = None,
         materialize_baselines: bool = False,
+        actor: str | None = None,
     ) -> Job:
         with self._lock:
             return self._make_job(
-                cmd, udids, app_path, build, out_path, materials, record_save, materialize_baselines
+                cmd,
+                udids,
+                app_path,
+                build,
+                out_path,
+                materials,
+                record_save,
+                materialize_baselines,
+                actor,
             )
 
     def try_new_job(
@@ -218,16 +234,29 @@ class ServeState:
         materials: dict[str, str] | None = None,
         record_save: tuple[str, str] | None = None,
         materialize_baselines: bool = False,
+        actor: str | None = None,
     ) -> Job | None:
-        """Create a job only if under the concurrency cap, counting and inserting atomically under
-        the lock so two concurrent dispatches can't both slip past the cap (BE-0051). Returns None
-        at the cap."""
+        """Create a job only if under the concurrency caps, counting and inserting atomically under
+        the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
+        the global cap, or — for an identified *actor* — at the per-user cap (BE-0015 7c-3)."""
         with self._lock:
-            running = sum(1 for j in self.jobs.values() if j.status == "running")
-            if self.max_concurrent > 0 and running >= self.max_concurrent:
+            running = [j for j in self.jobs.values() if j.status == "running"]
+            if self.max_concurrent > 0 and len(running) >= self.max_concurrent:
                 return None
+            if actor and self.max_concurrent_per_user > 0:
+                mine = sum(1 for j in running if j.actor == actor)
+                if mine >= self.max_concurrent_per_user:
+                    return None
             return self._make_job(
-                cmd, udids, app_path, build, out_path, materials, record_save, materialize_baselines
+                cmd,
+                udids,
+                app_path,
+                build,
+                out_path,
+                materials,
+                record_save,
+                materialize_baselines,
+                actor,
             )
 
 

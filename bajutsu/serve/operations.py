@@ -439,6 +439,7 @@ def start_run(
         build=build,
         materials=materials,
         materialize_baselines=on_worker,
+        actor=actor,
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
@@ -499,6 +500,7 @@ def start_record(
         out_path=authored.out,
         materials=materials,
         record_save=authored.save,
+        actor=actor,
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
@@ -551,7 +553,9 @@ def start_crawl(
     )
     app_path, build = app_build_info(cfg, str(body["app"]))
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
-    job = state.try_new_job(cmd, udids=_boot_targets(udid), app_path=app_path, build=build)
+    job = state.try_new_job(
+        cmd, udids=_boot_targets(udid), app_path=app_path, build=build, actor=actor
+    )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)
