@@ -120,8 +120,9 @@ def _clear_blocking(
     clock: Clock,
     max_tries: int = 3,
     report: Reporter | None = None,
-) -> None:
-    """Dismiss anything covering the app (e.g. a system alert) before the agent observes.
+) -> list[str]:
+    """Dismiss anything covering the app (e.g. a system alert) before the agent observes; return
+    the dismiss-button label(s) tapped (empty if nothing was blocking).
 
     A SpringBoard alert has no queryable app content and collapses the tree to a bare
     window — leaving the agent nothing to act on. While the tree stays collapsed, keep
@@ -130,10 +131,11 @@ def _clear_blocking(
     so the watcher sees it stepping in.
     """
     say = report or (lambda _msg: None)
+    dismissed: list[str] = []
     announced = False
     for _ in range(max_tries):
         if shows_app_ui(driver.query()):
-            return  # the app is showing actionable elements; nothing blocking
+            break  # the app is showing actionable elements; nothing (more) blocking
         if not announced:
             say(
                 "⚠️  the app screen looks blocked by a system prompt — asking the alert guard to clear it …"
@@ -142,12 +144,14 @@ def _clear_blocking(
         event = guard(driver)  # try to dismiss whatever is covering the app
         if event is not None:
             label = getattr(event, "label", "")
+            dismissed.append(label)
             say(
                 f"🛡️  dismissed a system alert · tapped {label!r}"
                 if label
                 else "🛡️  dismissed a system alert"
             )
         clock.sleep(0.5)  # let it animate out before re-checking
+    return dismissed
 
 
 def _execute_with_recovery(

@@ -147,6 +147,102 @@ bajutsu record --app <name> --goal "<natural-language goal>" [--out <file.yaml>]
 - An `AI usage:` line with the tokens the authoring (and any alert-guard) AI consumed follows on
   stderr. The `claude-code` agent bills no API tokens here, so it shows nothing.
 
+## `crawl`
+
+Explores the app **breadth-first** and writes a **screen map** of the reachable screens and the
+transitions between them (Tier 1; [BE-0038](roadmap/README.md)). Unlike `record`, which is
+*goal-directed* — AI explores toward one natural-language goal and writes one scenario — `crawl`
+is *systematic discovery*: it visits the screens it can reach and reports what it found. The
+exploration engine is **deterministic** (a screen's identity and the order candidate actions are
+tried are pure functions of the element tree); **no AI** is involved, and it is **never a
+pass/fail gate**.
+
+```bash
+bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--app` | (required) | the target app |
+| `--max-screens` | `50` | stop after discovering this many distinct screens |
+| `--max-steps` | `200` | stop after taking this many actions |
+| `--agent` | `api` | AI backend for the crawl guide: `api` (Anthropic API, pay-per-token; needs `ANTHROPIC_API_KEY`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`) |
+| `--udid` | `booted` | the target Simulator |
+| `--backend` | config | actuator order |
+| `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
+| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; needs an API key) |
+| `--out` | `runs/<timestamp>` | run dir the screen map is written into |
+| `--config` | `bajutsu.config.yaml` | config |
+
+- Traversal is by **deterministic replay**, not in-place backtracking: to revisit a known screen
+  the crawl relaunches the app to a clean start and replays the shortest recorded path to it,
+  then takes the next untried action — the same way `run` reaches any state.
+- Disabled controls (`notEnabled`) are reported per screen as `blocked` rather than tapped. To
+  enumerate transitions the crawl explores the **combinations** of control states: it tries each
+  empty text field (and toggles each switch, and switches each tab of a tab bar) independently,
+  and — when several fields are empty —
+  also a **compound fill** of them at once. The compound matters because a control can stay
+  disabled until *several* fields are valid, and an intermediate single fill is often invisible (a
+  masked password exposes no value), so filling one at a time can't reach the all-filled state.
+  Crawl is **AI-driven**: it first inspects the screen deterministically, then hands those
+  operations to Claude to reason about and **combine**, proposing **realistic inputs** (a valid
+  email, a password meeting the rules, all of a form's fields in one fill) to enable controls whose
+  precondition isn't obvious, plus operations on id-less elements, narrating its reasoning into the
+  run log. The AI also handles a **tab
+  bar whose individual tabs the accessibility tree can't address** — idb surfaces a SwiftUI TabView
+  as a single "Tab Bar" group with no per-tab identifiers, so the bar is visible but its tabs can't
+  be tapped by selector. When that bar is present (and no tab is already addressable by id), it
+  locates the tabs by vision — the same fallback the alert guard uses — and taps each by coordinate,
+  still switching tabs before drilling in. (UIKit tab bars, whose tabs idb exposes as individual
+  elements, are a planned refinement — for now they fall back to the same vision path.) The AI only
+  chooses *what to try* — screen identity, transitions and crashes stay deterministic, so the crawl
+  is never a verdict (it never gates CI).
+- Output: `<out>/screenmap.json`, a JSON graph of `nodes` (screens — fingerprint, kind, ids,
+  candidate actions, plus `blocked` disabled controls), `edges` (transitions), `crashes` (action
+  paths that collapsed the app UI), `alerts` (OS prompts the guard dismissed mid-crawl — the
+  triggering path + the button tapped), `plan` (the live frontier: still-untried operations per
+  screen, refreshed as the crawl advances so a reader can see what it will try next), and
+  `stop_reason` (`completed` / `max_screens` / `max_steps`), plus `<out>/screens/<fingerprint>.png`
+  — a screenshot captured for each discovered screen (while the crawl is on it). The map is
+  rewritten as the crawl advances, so a reader (the **Crawl** tab in `serve`) can draw it live: each
+  screen is a label+info node, and screens that are the same UI in different states (a form empty vs
+  filled) collapse into one node you can expand in place. Stops at the first of `--max-screens` /
+  `--max-steps`.
+
+### How a screen is identified (the fingerprint)
+
+Every screen is reduced to a **fingerprint** — a short, stable identity that lets the crawl tell a
+revisit from a genuinely new screen. This is a pure, deterministic function of the element tree (no
+AI, no screenshot pixels), which is what keeps the screen map reproducible: the same screen always
+hashes to the same value. Each node records both the fingerprint and its `kind`.
+
+- **Identifier fingerprint (`kind: "id"` — the normal case).** The sorted *set* of accessibility
+  identifiers present on the screen, hashed. Keying on *which* identifiers are present — not their
+  on-screen text — makes the identity stable across locales and data changes: a list showing
+  different rows, or a label in another language, is still the same screen. Each identifier is then
+  tagged with its **interactive state**, but only when that state departs from the default, so the
+  same layout in a different state hashes differently and the crawl explores the combinations:
+  - `!` — a **disabled** control (`notEnabled`),
+  - `=` — a **filled** text input (a field that now holds a value),
+  - `+` — a **selected / toggled** control (a switch on, a tab selected).
+
+  An enabled, empty, unselected screen contributes just the bare identifiers, so a screen with no
+  such state hashes exactly as its plain identifier set would. This is why filling a form or
+  flipping a switch yields a *new* node: it is a distinct, separately-explorable state, which is how
+  the crawl discovers an action that only becomes available once a precondition is met (e.g. a
+  submit button enabled after every field is filled).
+- **Structural fingerprint (`kind: "structural"` — the fallback).** When a screen carries fewer than
+  two accessibility identifiers, the id set is too thin to identify it reliably, so the crawl hashes
+  the **actionable elements' traits bucketed by coarse on-screen position** instead. This is less
+  stable — layout jitter can shift it, and unrelated screens with a similar control skeleton can
+  collide — so it is flagged as `structural` to signal the identity is approximate. Raising
+  accessibility-identifier coverage (see `doctor`) moves a screen back onto the stable id scheme.
+- **Display grouping is a separate, view-only step.** The fingerprint above is the exact, *per-state*
+  identity stored in the map. The **Crawl** tab additionally *groups* nodes that are the same screen
+  in a different transient state — an empty vs filled form, a toggle, or an alert/overlay that adds a
+  few elements — into one expandable unit, so the graph stays readable. That grouping never changes
+  the fingerprints or what the crawl explores; it only collapses the drawing.
+
 ## `codegen`
 
 Generates a **native XCUITest** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)).
@@ -186,11 +282,14 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 
 ## `serve`
 
-A local web UI to **run a scenario and view its report** — a Tier-1 convenience, **not part
-of the CI gate**. Lists each app's scenarios (from `apps.<name>.scenarios`), spawns
-`python -m bajutsu run ...` per request on a background thread, streams its output, and serves
-the produced `runs/<id>/` tree so the report's relative asset links resolve. Stdlib only (no web
-framework); binds `127.0.0.1`.
+A local web UI to **author, run, and explore** — a Tier-1 convenience, **not part of the CI
+gate**. Three top-level tabs over the CLI: **Record** authors a scenario from a goal
+(`python -m bajutsu record ...`), **Replay** runs a scenario and shows its report
+(`python -m bajutsu run ...`), and **Crawl** explores the app and draws its screen map live
+(`python -m bajutsu crawl ...`). Each request spawns the CLI per request on a background thread,
+streams its output, and serves the produced `runs/<id>/` tree so the report's relative asset
+links (and the crawl's `screenmap.json`) resolve. Stdlib only (no web framework); binds
+`127.0.0.1`.
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
@@ -216,6 +315,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   promotes the captured screenshot into it via `POST /api/approve`.
 - Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
   alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
+- The **Crawl** tab picks an app, the **Agent** that drives the AI guide (`api` or `claude-code`,
+  the same choice as `crawl --agent` / the Record tab), device, and budget (max screens / steps),
+  then `POST /api/crawl` spawns the crawl; the returned run id lets the UI poll
+  `runs/<id>/screenmap.json` and draw the screen map as it grows (screens laid out in breadth-first
+  layers, transitions as arrows). The **Stop** button aborts it, like Replay.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
   `apps.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features

@@ -13,6 +13,7 @@
     <div class="toptabs">
       <button class="toptab active" data-view="record">Record</button>
       <button class="toptab" data-view="replay">Replay</button>
+      <button class="toptab" data-view="crawl">Crawl</button>
       <button class="cfgbtn" id="opencfg">Open config</button>
       <span class="cfgname" id="cfgname"></span>
       <button class="cfgbtn" id="openkey">API key</button>
@@ -114,6 +115,64 @@
   <div class="report" id="report"><div class="empty">Run a scenario to see its report here.</div></div>
 </main>
 
+<!-- ===== Crawl: explore the app breadth-first and map its screens live ===== -->
+<main id="view-crawl" hidden>
+  <div class="left">
+    <div class="card">
+      <div class="panel" id="panel-crawl">
+        <label>App</label><select id="crawl-app"></select>
+        <label>Agent</label><select id="crawl-agent">
+          <option value="">default (api)</option>
+          <option value="api">api (Anthropic API)</option>
+          <option value="claude-code">claude-code (claude CLI)</option>
+        </select>
+        <label>Backend</label><input id="crawl-backend" type="text" placeholder="idb">
+        <label>Device</label>
+        <div class="row" style="align-items:flex-end">
+          <div><select id="crawl-device"></select></div>
+          <div style="flex:0 0 auto"><button class="refresh" id="crawl-simrefresh" title="refresh devices">&#8635;</button></div>
+        </div>
+        <div class="row">
+          <div><label>Max screens</label><input id="crawl-maxscreens" type="number" min="1" value="50"></div>
+          <div><label>Max steps</label><input id="crawl-maxsteps" type="number" min="1" value="200"></div>
+        </div>
+        <div class="subhint">Crawl explores the app breadth-first, discovering screens and the transitions between them &mdash; a discovery tool, never a pass/fail gate. It is AI-driven: the engine (screen identity, transitions, crashes) is always deterministic, while the <b>AI</b> proposes <i>what to try</i> &mdash; richer operations and realistic inputs to enable controls whose precondition isn't obvious. Pick the <b>Agent</b>: <code>api</code> uses the Anthropic API (needs <code>ANTHROPIC_API_KEY</code>), <code>claude-code</code> drives the Claude Code CLI on your subscription instead. Stops at the first of Max screens / Max steps.</div>
+        <div class="checks">
+          <label><input type="checkbox" id="crawl-erase"> erase device first
+            <span class="hint">Wipe the simulator before crawling so the app starts from onboarding. Off by default — the app is reinstalled fresh either way; check to also wipe all apps / data / settings first.</span></label>
+          <label><input type="checkbox" id="crawl-nodismiss"> disable alert-dismiss
+            <span class="hint">The alert guard (Claude vision) dismisses unexpected OS prompts so they aren't read as crashes; on by default (needs ANTHROPIC_API_KEY). Check to force it off.</span></label>
+        </div>
+        <button class="run" id="crawl-go" data-idle="Start crawl">Start crawl</button>
+        <button class="stop" id="crawl-stop" hidden>Stop</button>
+        <div class="status" id="crawl-status"></div>
+      </div>
+    </div>
+  </div>
+  <div class="card crawlpanel">
+    <div class="crawlhead">
+      <span class="ttl">Screen map</span>
+      <span class="crawlcounts" id="crawl-counts"></span>
+      <span class="zoomctl">
+        <button class="zbtn" id="crawl-zoomout" title="zoom out">&minus;</button>
+        <button class="zbtn" id="crawl-zoomreset" title="reset view">&#9678;</button>
+        <button class="zbtn" id="crawl-zoomin" title="zoom in">+</button>
+      </span>
+    </div>
+    <div class="crawlbody">
+      <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
+      <div class="crawlside">
+        <div class="crawlsub planhd"><span>Exploration plan<span class="planpct" id="crawl-planpct"></span></span>
+          <label class="prunetog" title="Show the operations the crawl pruned as duplicate global controls (a tab/nav explored once), struck through and tappable to resume. Uncheck to hide them."><input type="checkbox" id="crawl-prune" checked> show pruned</label></div>
+        <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
+        <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
+        <div class="crawlsub">Console</div>
+        <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
+      </div>
+    </div>
+  </div>
+</main>
+
 <!-- ===== Open config: a server-side file browser confined to the serve --root ===== -->
 <div class="modal" id="fsmodal" hidden>
   <div class="fsbox">
@@ -140,6 +199,19 @@
       <span class="keystatus" id="keystatus"></span>
     </div>
     <div class="fshint">Kept in the running server's memory for this session only — <b>not written to disk</b>, so it is cleared when <code>serve</code> restarts. Only the AI paths need it: <b>Record</b> and Replay with <code>--dismiss-alerts</code>. For a value that survives restarts, put <code>ANTHROPIC_API_KEY</code> in your shell or a <code>.env</code> before launching <code>serve</code>.</div>
+  </div>
+</div>
+<!-- ===== Screenshot lightbox: the enlarged screen + where it goes next (Crawl tab) ===== -->
+<div class="modal" id="shotmodal" hidden>
+  <div class="shotbox">
+    <button class="fsclose shotclose" id="shotclose">&#10005;</button>
+    <button class="shotnav prev" id="shotprev" title="previous screen — a transition into this one (←)">&#8249;</button>
+    <div class="shotmain"><div class="shotframe"><img id="shotimg" alt="screen screenshot"><div class="shothots" id="shothots"></div><div class="shothi" id="shothi" hidden></div></div></div>
+    <button class="shotnav fwd" id="shotfwd" title="next screen — a transition out of this one (→)">&#8250;</button>
+    <div class="shotside">
+      <div class="shottitle" id="shottitle"></div>
+      <div class="shotnext" id="shotnext"></div>
+    </div>
   </div>
 </div>
 <script>{{ js|safe }}</script>
