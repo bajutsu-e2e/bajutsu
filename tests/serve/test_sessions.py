@@ -7,6 +7,8 @@ so a small in-memory fake drives the contract — no real Redis on the gate."""
 
 from __future__ import annotations
 
+import pytest
+
 from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore
 from bajutsu.serve.sessions import InMemorySessionStore
 
@@ -65,3 +67,17 @@ def test_redis_issue_uses_the_default_ttl() -> None:
     redis = FakeRedis()
     RedisSessionStore(redis).issue()
     assert list(redis.ttls.values()) == [_DEFAULT_TTL]
+
+
+def test_session_ttl_from_env_parses_and_validates() -> None:
+    from bajutsu.serve import _session_ttl_from_env
+
+    assert _session_ttl_from_env(None, 99) == 99  # unset -> default
+    assert _session_ttl_from_env("", 99) == 99  # empty -> default
+    assert _session_ttl_from_env("3600", 99) == 3600
+    for bad in ("7d", "abc", "1.5"):
+        with pytest.raises(ValueError, match="BAJUTSU_SESSION_TTL"):
+            _session_ttl_from_env(bad, 99)
+    for nonpos in ("0", "-5"):
+        with pytest.raises(ValueError, match="positive"):
+            _session_ttl_from_env(nonpos, 99)

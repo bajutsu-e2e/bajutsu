@@ -103,6 +103,23 @@ __all__ = [
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
 
 
+def _session_ttl_from_env(raw: str | None, default: int) -> int:
+    """Parse ``BAJUTSU_SESSION_TTL`` (seconds) defensively — operator-facing config deserves a clear
+    error, not a bare ValueError. Unset/empty falls back to *default*; non-integer or non-positive
+    values are rejected with a message naming the variable."""
+    if not raw:
+        return default
+    try:
+        ttl = int(raw)
+    except ValueError:
+        raise ValueError(
+            f"BAJUTSU_SESSION_TTL must be a whole number of seconds, got {raw!r}"
+        ) from None
+    if ttl <= 0:
+        raise ValueError(f"BAJUTSU_SESSION_TTL must be a positive number of seconds, got {ttl}")
+    return ttl
+
+
 class MissingServerExtra(ImportError):
     """A server-backend optional extra (Redis/RQ, object storage, the database) is not installed.
 
@@ -224,7 +241,7 @@ def _build_server_state(
         # Sessions in Redis (the same client) so they survive a restart and span replicas, with a
         # TTL from BAJUTSU_SESSION_TTL (default 7 days) — vs the in-memory default (BE-0015 7b).
         sessions=RedisSessionStore(
-            redis, ttl=int(os.environ.get("BAJUTSU_SESSION_TTL", _DEFAULT_TTL))
+            redis, ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL)
         ),
         # The system of record, when a database is configured (BAJUTSU_DATABASE_URL); None otherwise
         # so the server backend runs without one until 7b/7c need it (BE-0015 7a).

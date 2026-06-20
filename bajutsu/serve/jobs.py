@@ -118,8 +118,8 @@ class ServeState:
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
     max_concurrent: int = 4
     # Optional shared token (BE-0051). None = open (loopback-only legacy behavior); when set, every
-    # request must authenticate. `_sessions` holds the opaque ids issued at login (in-memory, so a
-    # restart simply requires re-login) — the shared token itself never lives in the browser.
+    # request must authenticate. Login exchanges it for an opaque session id held by the `sessions`
+    # seam below — the shared token itself never lives in the browser.
     token: str | None = None
     # Login sessions (BE-0051). Default in-memory (a restart drops them); a server backend swaps in
     # a Redis-backed store so sessions survive restarts and span control-plane processes (BE-0015
