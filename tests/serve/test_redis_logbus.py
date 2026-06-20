@@ -72,3 +72,16 @@ def test_channels_are_isolated_by_job_id() -> None:
     bus.close("b")
     assert list(bus.stream("a")) == ["for a"]
     assert list(bus.stream("b")) == ["for b"]
+
+
+def test_close_records_final_status_and_stream_still_ends() -> None:
+    # The terminal status rides the existing done key (its presence still ends the stream); `final`
+    # returns the payload, or None when close carried none (the bare "1" sentinel).
+    bus = RedisLogBus(FakeRedis())
+    bus.publish("j", "line")
+    bus.close("j", '{"status": "done", "ok": true}')
+    assert list(bus.stream("j")) == ["line"]  # presence of the done key still ends the stream
+    assert bus.final("j") == '{"status": "done", "ok": true}'
+    plain = RedisLogBus(FakeRedis())
+    plain.close("k")
+    assert plain.final("k") is None  # closed without a payload

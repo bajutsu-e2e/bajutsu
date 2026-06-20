@@ -123,7 +123,12 @@ def read_scenario(state: ServeState, app: str | None, path: str | None) -> tuple
 
 def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
     job = state.jobs.get(job_id)
-    return (job.view(), 200) if job else ({"error": "no such job"}, 404)
+    if job is None:
+        return {"error": "no such job"}, 404
+    # On the server backend the job ran on a worker, so its terminal status lives on the bus, not
+    # the control-plane Job (which stays "running"); prefer it when present (BE-0015 W2).
+    final = state.logbus.final(job_id)
+    return (json.loads(final) if final is not None else job.view()), 200
 
 
 # --- live-log SSE (shared event stream; each shell does its own framing/transport) ---
@@ -152,7 +157,10 @@ def job_log_events(state: ServeState, job_id: str) -> Iterator[tuple[str, str]] 
 def _job_event_pairs(state: ServeState, job: Job, job_id: str) -> Iterator[tuple[str, str]]:
     for line in state.logbus.stream(job_id):
         yield ("log", line)
-    yield ("done", json.dumps(job.view()))
+    # The terminal status: the worker-recorded view on the bus (server backend), else the local
+    # Job's (BE-0015 W2). The stream has ended, so `close` ran and any final payload is set.
+    final = state.logbus.final(job_id)
+    yield ("done", final if final is not None else json.dumps(job.view()))
 
 
 # --- POST (actions) ---

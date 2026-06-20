@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import secrets
@@ -328,7 +329,9 @@ def run_job(state: ServeState, job: Job) -> None:
         _run_job(state, job)
     finally:
         if job.bus is not None:  # run_job returning means the job finished — end the live stream
-            job.bus.close(job.id)
+            # Record the terminal status on the bus so a control-plane replica reading a
+            # worker-run job sees the real exit/run id (its own Job stays "running") (BE-0015 W2).
+            job.bus.close(job.id, json.dumps(job.view()))
 
 
 def _run_job(state: ServeState, job: Job) -> None:

@@ -148,3 +148,21 @@ def test_set_broker_url_wins_over_environment(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://env:6379")
     worker_job.set_broker_url("redis://broker:6379")
     assert worker_job._redis_url() == "redis://broker:6379"
+
+
+def test_execute_job_spec_records_terminal_status_on_the_bus(tmp_path: Path) -> None:
+    # The worker records the finished job's status on the bus (W2), so a control-plane replica
+    # reads the real exit/run id cross-process — its own Job stays "running".
+    project(tmp_path)
+    redis = _FakeRedis()
+    spec = {"job_id": "9", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
+    execute_job_spec(
+        spec,
+        popen=fake_popen(["PASS  runs/20260610-1/manifest.json\n"]),
+        cwd=tmp_path,
+        bus=RedisLogBus(redis),
+    )
+    final = RedisLogBus(redis).final("9")
+    assert final is not None
+    view = json.loads(final)
+    assert view["status"] == "done" and view["ok"] is True and view["runId"] == "20260610-1"
