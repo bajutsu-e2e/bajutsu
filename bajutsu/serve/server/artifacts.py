@@ -17,25 +17,10 @@ from __future__ import annotations
 import json
 import mimetypes
 from pathlib import PurePosixPath
-from typing import Any, Protocol
+from typing import Any
 
 from bajutsu.serve.artifacts import Artifact
-
-
-class ObjectStore(Protocol):
-    """The slice of an S3-compatible client `ObjectStorageArtifactStore` uses (so a fake fits)."""
-
-    def exists(self, key: str) -> bool:
-        """Whether an object exists at *key* (without downloading it)."""
-
-    def get_bytes(self, key: str) -> bytes | None:
-        """The object's bytes at *key*, or None if absent."""
-
-    def presigned_url(self, key: str) -> str:
-        """A short-lived signed GET URL for *key*."""
-
-    def list_keys(self, prefix: str) -> list[str]:
-        """Every object key under *prefix*."""
+from bajutsu.serve.server.object_store import ObjectStore
 
 
 class ObjectStorageArtifactStore:

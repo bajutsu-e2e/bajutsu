@@ -38,6 +38,10 @@ class _FakeS3:
             raise self._missing("GetObject")
         return {"Body": io.BytesIO(self._objects[Key])}
 
+    def put_object(self, Bucket: str, Key: str, Body: bytes) -> dict[str, object]:  # noqa: N803
+        self._objects[Key] = Body
+        return {}
+
     def generate_presigned_url(self, op: str, Params: dict[str, str], ExpiresIn: int) -> str:  # noqa: N803
         return f"https://signed.example/{Params['Bucket']}/{Params['Key']}?exp={ExpiresIn}"
 
@@ -65,6 +69,13 @@ def test_exists_and_get_bytes() -> None:
     assert store.exists("missing") is False
     assert store.get_bytes("r1/report.html") == b"<html>"
     assert store.get_bytes("missing") is None
+
+
+def test_put_bytes_writes_then_reads_back() -> None:
+    fake = _FakeS3({})
+    store = S3ObjectStore(fake, "bucket")
+    store.put_bytes("scenarios/demo/smoke.yaml", b"- name: a\n")
+    assert store.get_bytes("scenarios/demo/smoke.yaml") == b"- name: a\n"
 
 
 def test_presigned_url_signs_a_time_limited_get() -> None:

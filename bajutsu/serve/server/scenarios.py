@@ -17,11 +17,13 @@ fake and the default path stays server-free (#117 import guard).
 
 from __future__ import annotations
 
+from collections.abc import Callable, Collection
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
-from bajutsu.serve.helpers import valid_scenario_ref
+from bajutsu.serve.helpers import summarize_scenario, valid_scenario_ref
 from bajutsu.serve.scenarios import Runnable
+from bajutsu.serve.server.object_store import ObjectStore
 
 # Where a materialized scenario lands in the worker's workspace (and the `--scenario` arg used).
 _WORKSPACE_SCENARIOS = "scenarios"
@@ -93,3 +95,49 @@ class StorageScenarioStore:
         if not app or not self._storage.has_app(app):
             return None
         return StorageScenarioScope(self._storage, app)
+
+
+class ObjectScenarioStorage:
+    """`ScenarioStorage` backed by S3-compatible object storage (the roadmap's R2).
+
+    Scenarios live at ``<prefix>scenarios/<app>/<name>.yaml`` in one bucket; *prefix* is prepended
+    so a tenant prefix (``<org>/``) can scope a shared bucket later — multi-tenant slots in without
+    a contract change. The set of known projects comes from *apps* (the control plane's configured
+    apps), keeping a Postgres registry out of the single-tenant path. The object-store client is
+    injected (the `ObjectStore` slice), so a fake drives the gate."""
+
+    def __init__(
+        self, store: ObjectStore, apps: Callable[[], Collection[str]], *, prefix: str = ""
+    ) -> None:
+        self._store = store
+        self._apps = apps
+        self._prefix = prefix
+
+    def _dir(self, app: str) -> str:
+        return f"{self._prefix}{_WORKSPACE_SCENARIOS}/{app}/"
+
+    def has_app(self, app: str) -> bool:
+        return app in self._apps()
+
+    def list(self, app: str) -> list[dict[str, Any]]:
+        base = self._dir(app)
+        out: list[dict[str, Any]] = []
+        for key in sorted(self._store.list_keys(base)):
+            name = key[len(base) :]
+            if "/" in name or not name.endswith(".yaml"):  # only direct *.yaml children
+                continue
+            data = self._store.get_bytes(key)
+            out.append(summarize_scenario(name, name, data.decode("utf-8") if data else ""))
+        return out
+
+    def read(self, app: str, ref: str | None) -> str | None:
+        if not ref:
+            return None
+        data = self._store.get_bytes(f"{self._dir(app)}{ref}")
+        return data.decode("utf-8") if data is not None else None
+
+    def save(self, app: str, ref: str | None, text: str) -> str | None:
+        if not ref:
+            return None
+        self._store.put_bytes(f"{self._dir(app)}{ref}", text.encode("utf-8"))
+        return ref

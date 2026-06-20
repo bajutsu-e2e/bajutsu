@@ -11,7 +11,28 @@ safe to import without the ``server`` extra and the default path stays SDK-free 
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Protocol
+
+
+class ObjectStore(Protocol):
+    """The slice of an S3-compatible client the server seams use (so a fake fits): artifact reads
+    (exists / get_bytes / presigned_url / list_keys) plus scenario writes (put_bytes)."""
+
+    def exists(self, key: str) -> bool:
+        """Whether an object exists at *key* (without downloading it)."""
+
+    def get_bytes(self, key: str) -> bytes | None:
+        """The object's bytes at *key*, or None if absent."""
+
+    def put_bytes(self, key: str, data: bytes) -> None:
+        """Write *data* to the object at *key* (creating or overwriting)."""
+
+    def presigned_url(self, key: str) -> str:
+        """A short-lived signed GET URL for *key*."""
+
+    def list_keys(self, prefix: str) -> list[str]:
+        """Every object key under *prefix*."""
+
 
 _PRESIGN_TTL = 900  # seconds a signed GET URL stays valid (15 min)
 # S3/R2 error codes that mean "no such object" — treated as absent; anything else is surfaced.
@@ -56,6 +77,9 @@ class S3ObjectStore:
         finally:
             stream.close()  # release the HTTP connection/fd rather than leaking it under load
         return body
+
+    def put_bytes(self, key: str, data: bytes) -> None:
+        self._client.put_object(Bucket=self._bucket, Key=key, Body=data)
 
     def presigned_url(self, key: str) -> str:
         url: str = self._client.generate_presigned_url(
