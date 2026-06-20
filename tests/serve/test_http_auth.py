@@ -184,3 +184,20 @@ def test_security_headers_on_every_response(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_non_object_json_body_is_rejected(tmp_path: Path) -> None:
+    # A JSON array (not an object) must 400, not 500 on a downstream `.get(...)`.
+    server, port = _serve(_state(tmp_path, None))
+    try:
+        status, _, _ = _request(
+            port,
+            "/api/config",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+            body=[1, 2, 3],
+        )
+        assert status == 400
+    finally:
+        server.shutdown()
+        server.server_close()

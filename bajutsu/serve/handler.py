@@ -176,6 +176,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             except json.JSONDecodeError:
                 self._json({"error": "bad json"}, 400)
                 return
+            if not isinstance(body, dict):
+                # Handlers below treat the body as a mapping; reject a non-object JSON (a list,
+                # string, number) here rather than 500 on a `.get(...)`.
+                self._json({"error": "expected a JSON object"}, 400)
+                return
             match path:
                 case "/api/login":
                     self._post_login(body)

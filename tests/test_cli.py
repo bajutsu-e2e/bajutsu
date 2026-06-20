@@ -190,7 +190,7 @@ def test_serve_loopback_detection() -> None:
     assert _is_loopback("0:0:0:0:0:0:0:1")  # fully-expanded ::1
     assert not _is_loopback("0.0.0.0")
     assert not _is_loopback("192.168.1.10")
-    assert not _is_loopback("example.com")  # an unresolvable hostname -> treated as non-loopback
+    assert not _is_loopback("example.com")  # a non-IP literal (no DNS lookup) -> non-loopback
 
 
 def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
