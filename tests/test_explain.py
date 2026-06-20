@@ -34,9 +34,11 @@ SCENARIO = """
     - tap: { id: dialog.submit }
 """
 
+SCENARIO_OBJ = load_scenarios(SCENARIO)[0]
+
 
 def _rules() -> list[trace.RuleExplain]:
-    return trace.explain_capture(load_scenarios(SCENARIO)[0])
+    return trace.explain_capture(SCENARIO_OBJ)
 
 
 def test_action_rule_counts_matching_steps() -> None:
@@ -93,7 +95,7 @@ def test_narrow_action_rule_is_not_broad() -> None:
 
 
 def test_render_explain_reports_counts_and_warns() -> None:
-    out = trace.render_explain(load_scenarios(SCENARIO))
+    out = trace.render_explain([SCENARIO_OBJ])
     assert "demo" in out
     assert "2" in out  # the submit rule's firing count
     assert "⚠" in out  # at least one heavy+broad warning
@@ -107,6 +109,12 @@ def test_cli_trace_explain_reports_firing(tmp_path: Path) -> None:
     assert r.exit_code == 0
     assert "fires 2×" in r.output
     assert "⚠" in r.output
+    # Ensure the counted rule is the expected action trigger.
+    assert "tap" in r.output
+    assert "*.submit" in r.output
+    # Ensure the other expected conditional rules are also reported.
+    assert "screenChanged" in r.output
+    assert "error" in r.output
 
 
 def test_cli_trace_explain_missing_file() -> None:
