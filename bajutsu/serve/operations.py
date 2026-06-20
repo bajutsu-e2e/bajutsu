@@ -226,7 +226,12 @@ def oauth_callback(
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
         return {"error": "invalid oauth state"}, 403, None
-    login = state.oauth.fetch_login(code)
+    try:
+        login = state.oauth.fetch_login(code)
+    except Exception:
+        # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
+        # not a 500 — surface it as a clean 502 rather than a traceback.
+        return {"error": "oauth exchange failed"}, 502, None
     if not login:
         return {"error": "oauth exchange failed"}, 403, None
     if login not in state.oauth_allowed_users:

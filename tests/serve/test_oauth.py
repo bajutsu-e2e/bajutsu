@@ -72,3 +72,21 @@ def test_oauth_callback_rejects_a_failed_exchange(tmp_path: Path) -> None:
     _payload, status, sid = ops.oauth_callback(state, code="bad", state_param="s", state_cookie="s")
     assert status == 403
     assert sid is None
+
+
+class _RaisingOAuthClient:
+    """An OAuth client whose exchange raises (e.g. a network error or missing authlib)."""
+
+    def authorize_url(self, state: str) -> str:
+        return f"https://github.test/authorize?state={state}"
+
+    def fetch_login(self, code: str) -> str | None:
+        raise RuntimeError("github unreachable")
+
+
+def test_oauth_callback_surfaces_an_exchange_error_as_502(tmp_path: Path) -> None:
+    # A raising exchange (network / token parsing / missing dep) is an upstream error, not a 500.
+    state = _state(tmp_path, oauth=_RaisingOAuthClient(), allowed=frozenset({"alice"}))
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 502
+    assert sid is None

@@ -199,7 +199,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def oauth_callback(request: Request) -> Response:
         # `state` is the OAuth query param; read it via query_params to avoid shadowing the
         # ServeState closure. On success: session cookie + clear the state cookie + land on the app.
-        payload, status, sid = ops.oauth_callback(
+        # oauth_callback exchanges the code with GitHub (sync network I/O); run it off the event
+        # loop so a slow GitHub call can't block other requests (mirrors the SSE pull).
+        payload, status, sid = await run_in_threadpool(
+            ops.oauth_callback,
             state,
             request.query_params.get("code", ""),
             request.query_params.get("state", ""),

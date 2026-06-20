@@ -52,10 +52,13 @@ class GitHubOAuthClient:
     def fetch_login(self, code: str) -> str | None:
         from authlib.integrations.httpx_client import OAuth2Client
 
-        client = OAuth2Client(self._client_id, self._client_secret, redirect_uri=self._redirect_uri)
-        # GitHub returns form-encoded by default; ask for JSON so authlib parses the token.
-        client.fetch_token(_TOKEN, code=code, headers={"Accept": "application/json"})
-        resp = client.get(_USER, headers={"Accept": "application/vnd.github+json"})
+        # `with` closes the underlying httpx client, so connections/fds aren't leaked on a busy server.
+        with OAuth2Client(
+            self._client_id, self._client_secret, redirect_uri=self._redirect_uri
+        ) as client:
+            # GitHub returns form-encoded by default; ask for JSON so authlib parses the token.
+            client.fetch_token(_TOKEN, code=code, headers={"Accept": "application/json"})
+            resp = client.get(_USER, headers={"Accept": "application/vnd.github+json"})
         if resp.status_code != 200:
             return None
         login = resp.json().get("login")
