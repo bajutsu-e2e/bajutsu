@@ -98,9 +98,8 @@ __all__ = [
 
 
 # The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
-# Only the local backend exists today; the hosted ones land as their backings (Redis / object
-# store / DB) do (BE-0015).
-SERVE_BACKENDS: tuple[str, ...] = ("local",)
+# `local` runs in-process; `server` wires the hosted seams (Redis queue/log bus + object storage).
+SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
 
 
 def _build_state(
@@ -116,24 +115,96 @@ def _build_state(
 ) -> ServeState:
     """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
 
-    Today only the ``local`` backend exists (in-process executor, in-memory log bus, filesystem
-    artifacts, on-disk scenarios). The hosted backend (Redis / object-store / DB seams) is
-    assembled here as those backings land (BE-0015); an unknown backend fails loudly rather than
+    ``local`` runs in-process (thread executor, in-memory log bus, filesystem artifacts, on-disk
+    scenarios). ``server`` wires the hosted seams (Redis-backed queue + log bus, object-storage
+    artifacts + scenarios) from the environment. An unknown backend fails loudly rather than
     silently falling back to local. The transport (stdlib vs uvicorn) is a separate choice."""
     if backend not in SERVE_BACKENDS:
         raise ValueError(
             f"unknown serve backend: {backend!r} (available: {', '.join(SERVE_BACKENDS)})"
+        )
+    resolved_baselines = baselines_dir or (
+        scenarios_dir / "baselines" if scenarios_dir else Path("baselines")
+    )
+    if backend == "server":
+        return _build_server_state(
+            runs_dir=runs_dir,
+            config=config,
+            scenarios_dir=scenarios_dir,
+            root=root or Path.cwd(),
+            baselines_dir=resolved_baselines,
+            max_concurrent=max_concurrent,
+            token=token,
         )
     return ServeState(
         runs_dir=runs_dir,
         config=config,
         scenarios_dir=scenarios_dir,
         root=root or Path.cwd(),
-        baselines_dir=baselines_dir
-        or (scenarios_dir / "baselines" if scenarios_dir else Path("baselines")),
+        baselines_dir=resolved_baselines,
         max_concurrent=max_concurrent,
         token=token,
     )
+
+
+def _build_server_state(
+    *,
+    runs_dir: Path,
+    config: Path | None,
+    scenarios_dir: Path | None,
+    root: Path,
+    baselines_dir: Path,
+    max_concurrent: int,
+    token: str | None,
+) -> ServeState:
+    """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015).
+
+    Redis (``BAJUTSU_REDIS_URL`` / ``BAJUTSU_QUEUE``) backs the run queue + log bus; one
+    S3-compatible bucket (``BAJUTSU_S3_BUCKET`` / ``BAJUTSU_S3_ENDPOINT`` / ``BAJUTSU_S3_REGION``,
+    optional ``BAJUTSU_S3_PREFIX`` tenant prefix) holds artifacts (``<prefix>artifacts/``) and
+    scenarios (``<prefix>scenarios/<app>/``). Projects come from the bound config's apps — no
+    Postgres registry in this path. Redis/RQ/boto3 are imported lazily, only here, so the default
+    path and the import guard stay SDK-free."""
+    import os
+
+    from redis import Redis
+    from rq import Queue
+
+    from bajutsu.serve.helpers import list_apps
+    from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
+    from bajutsu.serve.server.executor import QueueExecutor
+    from bajutsu.serve.server.logbus import RedisLogBus
+    from bajutsu.serve.server.object_store import S3ObjectStore, s3_client_from_env
+    from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
+    from bajutsu.serve.server.worker_job import redis_url
+
+    # The real clients are wider than our minimal seam protocols (RedisLike / Queue), so hand them
+    # over as Any — the seam adapters use only the slice they declare.
+    redis: Any = Redis.from_url(redis_url())
+    queue: Any = Queue(os.environ.get("BAJUTSU_QUEUE", "bajutsu"), connection=redis)
+    store = S3ObjectStore(s3_client_from_env(), os.environ["BAJUTSU_S3_BUCKET"])
+    prefix = os.environ.get("BAJUTSU_S3_PREFIX", "")
+
+    state = ServeState(
+        runs_dir=runs_dir,
+        config=config,
+        scenarios_dir=scenarios_dir,
+        root=root,
+        baselines_dir=baselines_dir,
+        max_concurrent=max_concurrent,
+        token=token,
+        executor=QueueExecutor(queue),
+        logbus=RedisLogBus(redis),
+    )
+    # Override the filesystem seams (set local in __post_init__) with the object-storage ones. The
+    # scenario store reads the live config's apps, so a config opened later is reflected.
+    state.artifacts = ObjectStorageArtifactStore(store, prefix=f"{prefix}artifacts/")
+    state.scenarios = StorageScenarioStore(
+        ObjectScenarioStorage(
+            store, lambda: list_apps(state.config) if state.config else [], prefix=prefix
+        )
+    )
+    return state
 
 
 def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:

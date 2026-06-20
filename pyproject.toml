@@ -39,6 +39,10 @@ dev = [
     "fastapi>=0.110",
     "uvicorn>=0.27",
     "httpx>=0.27",
+    # The worker extra (Redis/RQ) so the gate can test the `--backend=server` assembly wires the
+    # queue/log-bus seams (clients construct offline; no connection on the gate).
+    "redis>=5",
+    "rq>=1.16",
     "fastmcp>=2.0.0",
     "mypy>=1.10",
     "pillow>=10.0",

@@ -35,7 +35,7 @@ def set_broker_url(url: str) -> None:
     _broker_url = url
 
 
-def _redis_url() -> str:
+def redis_url() -> str:
     """The worker's Redis URL: the in-process value `bajutsu worker` set, else the environment, else
     a localhost default — the same resolution `bajutsu worker` uses, so the log bus the worker
     publishes to is the broker the control plane reads."""
@@ -53,7 +53,8 @@ def _redis_log_bus() -> LogBus:
 
     from bajutsu.serve.server.logbus import RedisLogBus
 
-    return RedisLogBus(Redis.from_url(_redis_url()))
+    client: Any = Redis.from_url(redis_url())  # the real client is wider than the RedisLike slice
+    return RedisLogBus(client)
 
 
 def job_spec(job: Job) -> dict[str, Any]:

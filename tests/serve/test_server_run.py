@@ -52,8 +52,7 @@ def test_build_state_assembles_local_seams(tmp_path: Path) -> None:
 
 def test_build_state_rejects_unknown_backend(tmp_path: Path) -> None:
     _scn, cfg, runs = project(tmp_path)
-    # The hosted backend's seam backings (Redis / object store / DB) don't exist yet, so only the
-    # local backend assembles; an unknown one fails loudly rather than silently running local.
+    # An unknown backend fails loudly rather than silently running local.
     with pytest.raises(ValueError, match="backend"):
         srv._build_state(
             runs_dir=runs,
@@ -63,8 +62,41 @@ def test_build_state_rejects_unknown_backend(tmp_path: Path) -> None:
             baselines_dir=None,
             max_concurrent=4,
             token=None,
-            backend="server",
+            backend="bogus",
         )
+
+
+def test_build_state_server_wires_the_hosted_seams(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The server backend assembles the hosted seams from the environment. The Redis/RQ/boto3
+    # clients construct without connecting, so this checks the wiring (the seam types) on the gate.
+    from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
+    from bajutsu.serve.server.executor import QueueExecutor
+    from bajutsu.serve.server.logbus import RedisLogBus
+    from bajutsu.serve.server.scenarios import StorageScenarioStore
+
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert isinstance(state.executor, QueueExecutor)
+    assert isinstance(state.logbus, RedisLogBus)
+    assert isinstance(state.artifacts, ObjectStorageArtifactStore)
+    assert isinstance(state.scenarios, StorageScenarioStore)
+    # The scenario store reads the live config's apps (project registry comes from config here).
+    scope = state.scenarios.scope("demo")
+    assert scope is not None  # demo is an app in the bound config
 
 
 def test_asgi_server_serves_the_app_over_a_real_socket(tmp_path: Path) -> None:
