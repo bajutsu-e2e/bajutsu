@@ -38,7 +38,8 @@ class _FakeObjectStore:
 
 def test_local_baseline_store_round_trips_and_lists(tmp_path: Path) -> None:
     store = LocalBaselineStore(tmp_path / "baselines")
-    assert store.write("home.png", b"\x89PNG") == "home.png"
+    written = store.write("home.png", b"\x89PNG")  # keep the write out of the assert (-O strips it)
+    assert written == "home.png"
     assert (tmp_path / "baselines" / "home.png").read_bytes() == b"\x89PNG"
     assert store.open_bytes("home.png") == b"\x89PNG"
     assert store.open_bytes("missing.png") is None
@@ -48,7 +49,8 @@ def test_local_baseline_store_round_trips_and_lists(tmp_path: Path) -> None:
 def test_local_baseline_store_rejects_escapes(tmp_path: Path) -> None:
     store = LocalBaselineStore(tmp_path / "baselines")
     for bad in ("../evil.png", "/abs.png", "a\x00.png", ""):
-        assert store.write(bad, b"x") is None, bad
+        written = store.write(bad, b"x")
+        assert written is None, bad
         assert store.open_bytes(bad) is None, bad
     assert not (tmp_path / "evil.png").exists()
 
@@ -56,11 +58,13 @@ def test_local_baseline_store_rejects_escapes(tmp_path: Path) -> None:
 def test_object_baseline_store_round_trips_under_prefix() -> None:
     obj = _FakeObjectStore()
     store = ObjectBaselineStore(obj, prefix="tenant/")
-    assert store.write("home.png", b"\x89PNG") == "home.png"
+    written = store.write("home.png", b"\x89PNG")  # keep the write out of the assert (-O strips it)
+    assert written == "home.png"
     assert obj.objects["tenant/baselines/home.png"] == b"\x89PNG"
     assert store.open_bytes("home.png") == b"\x89PNG"
     assert store.names() == ["home.png"]
-    assert store.write("../evil.png", b"x") is None  # unsafe name rejected
+    rejected = store.write("../evil.png", b"x")  # unsafe name rejected
+    assert rejected is None
 
 
 def test_approve_writes_to_the_baseline_store(tmp_path: Path) -> None:
