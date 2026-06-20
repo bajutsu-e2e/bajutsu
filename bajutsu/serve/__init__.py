@@ -56,6 +56,7 @@ from bajutsu.serve.scenarios import (
 )
 
 __all__ = [
+    "SERVE_BACKENDS",
     "Artifact",
     "ArtifactStore",
     "InMemoryLogBus",
@@ -96,6 +97,12 @@ __all__ = [
 ]
 
 
+# The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
+# Only the local backend exists today; the hosted ones land as their backings (Redis / object
+# store / DB) do (BE-0015).
+SERVE_BACKENDS: tuple[str, ...] = ("local",)
+
+
 def _build_state(
     *,
     runs_dir: Path,
@@ -113,8 +120,10 @@ def _build_state(
     artifacts, on-disk scenarios). The hosted backend (Redis / object-store / DB seams) is
     assembled here as those backings land (BE-0015); an unknown backend fails loudly rather than
     silently falling back to local. The transport (stdlib vs uvicorn) is a separate choice."""
-    if backend != "local":
-        raise ValueError(f"unknown serve backend: {backend!r} (only 'local' is available)")
+    if backend not in SERVE_BACKENDS:
+        raise ValueError(
+            f"unknown serve backend: {backend!r} (available: {', '.join(SERVE_BACKENDS)})"
+        )
     return ServeState(
         runs_dir=runs_dir,
         config=config,
@@ -132,9 +141,15 @@ def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 876
     (FastAPI) are imported lazily — only when the ASGI transport is selected — so the default path
     and the import guard (#117) stay server-free. (Return type is Any so the module needn't import
     uvicorn to annotate it.)"""
-    import uvicorn
+    try:
+        import uvicorn
 
-    from bajutsu.serve.server.app import make_app
+        from bajutsu.serve.server.app import make_app
+    except ImportError as e:
+        raise ImportError(
+            "the 'server' extra is required for --asgi (FastAPI + uvicorn) — "
+            "install with: pip install 'bajutsu[server]'"
+        ) from e
 
     return uvicorn.Server(
         uvicorn.Config(make_app(state), host=host, port=port, log_level="warning")

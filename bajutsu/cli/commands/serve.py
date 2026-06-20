@@ -74,7 +74,7 @@ def serve(
     and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
     over uvicorn (the transport the hosted backend will use); `--backend` selects which seams to
     assemble (only `local` for now)."""
-    from bajutsu.serve import launchagent_plist
+    from bajutsu.serve import SERVE_BACKENDS, launchagent_plist
     from bajutsu.serve import serve as _serve
 
     resolved_token = token or os.environ.get("BAJUTSU_SERVE_TOKEN") or ""
@@ -84,6 +84,22 @@ def serve(
             "pass --token or set BAJUTSU_SERVE_TOKEN"
         )
         raise typer.Exit(2)
+
+    if backend not in SERVE_BACKENDS:
+        typer.echo(f"unknown --backend {backend!r} (available: {', '.join(SERVE_BACKENDS)})")
+        raise typer.Exit(2)
+
+    # `--asgi` needs the optional `server` extra (FastAPI + uvicorn); fail with an install hint
+    # rather than a raw ImportError traceback, mirroring `bajutsu worker`.
+    if asgi:
+        try:
+            import uvicorn  # noqa: F401
+        except ImportError:
+            typer.echo(
+                "the `server` extra is required for --asgi — "
+                "install with: pip install 'bajutsu[server]'"
+            )
+            raise typer.Exit(2) from None
 
     if emit_launchagent:
         typer.echo(

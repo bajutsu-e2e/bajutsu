@@ -23,11 +23,9 @@ from bajutsu import serve as srv
 
 
 def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = int(s.getsockname()[1])
-    s.close()
-    return port
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
 
 
 def _state(tmp_path: Path) -> srv.ServeState:
@@ -87,3 +85,4 @@ def test_asgi_server_serves_the_app_over_a_real_socket(tmp_path: Path) -> None:
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+        assert not thread.is_alive(), "uvicorn server did not shut down"
