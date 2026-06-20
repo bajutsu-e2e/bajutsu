@@ -3,6 +3,7 @@
 # BE-0016 — Web UI のセルフホスティング
 
 * 提案: [BE-0016](BE-0016-web-ui-self-hosting-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: Web UI のホスティング（クラウド / セルフホスト）

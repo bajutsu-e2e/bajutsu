@@ -3,6 +3,7 @@
 # BE-0036 — HTTP utility step
 
 * Proposal: [BE-0036](BE-0036-utility-steps.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
 * Implementing PR: [#58](https://github.com/bajutsu-e2e/bajutsu/pull/58)
 * Track: [Accepted](../../README.md#accepted)

@@ -3,6 +3,7 @@
 # BE-0034 — Tags / labels + selective runs
 
 * Proposal: [BE-0034](BE-0034-tags-selective-runs.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
 * Implementing PR: [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6)
 * Track: [Accepted](../../README.md#accepted)

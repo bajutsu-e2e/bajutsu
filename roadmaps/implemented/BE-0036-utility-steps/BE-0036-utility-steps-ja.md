@@ -3,6 +3,7 @@
 # BE-0036 — HTTP ユーティリティステップ
 
 * 提案: [BE-0036](BE-0036-utility-steps-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * 実装 PR: [#58](https://github.com/bajutsu-e2e/bajutsu/pull/58)
 * トラック: [可決済み](../../README-ja.md#可決済み)

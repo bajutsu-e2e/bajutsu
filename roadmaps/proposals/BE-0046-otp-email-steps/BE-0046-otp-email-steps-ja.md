@@ -3,6 +3,7 @@
 # BE-0046 — OTP・メールの側方チャネルステップ
 
 * 提案: [BE-0046](BE-0046-otp-email-steps-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: 競合調査（MagicPod / Autify）由来の候補

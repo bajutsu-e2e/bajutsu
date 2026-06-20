@@ -3,6 +3,7 @@
 # BE-0041 — Web (Playwright) backend
 
 * 提案: [BE-0041](BE-0041-web-playwright-backend-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: プラットフォーム拡張（Android / Web / Flutter）

@@ -3,6 +3,7 @@
 # BE-0008 — Flutter support
 
 * Proposal: [BE-0008](BE-0008-flutter-support.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Platform expansion (Android / Web / Flutter)

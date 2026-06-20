@@ -3,6 +3,7 @@
 # BE-0017 — MCP サーバ化
 
 * 提案: [BE-0017](BE-0017-mcp-server-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * トラック: [承認済み](../../README-ja.md#承認済み)
 * トピック: 統合・自動化（MCP 化）

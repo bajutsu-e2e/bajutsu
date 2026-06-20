@@ -3,6 +3,7 @@
 # BE-0013 — シナリオ GUI エディタ
 
 * 提案: [BE-0013](BE-0013-scenario-gui-editor-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: オーサリング体験（record / GUI エディタ）

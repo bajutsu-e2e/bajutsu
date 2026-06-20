@@ -3,6 +3,7 @@
 # BE-0027 — `mockServer`（外部モック）
 
 * 提案: [BE-0027](BE-0027-mock-server-external-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案（保留）**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: その他・保留

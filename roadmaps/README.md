@@ -55,9 +55,12 @@ When you add a roadmap item:
    item forever.
 
 Each file follows the **Swift-Evolution proposal format**: a metadata block (`* Proposal`,
-`* Status`, `* Track`, `* Topic`, …) then `## Introduction` / `## Motivation` /
+`* Author`, `* Status`, `* Track`, `* Topic`, …) then `## Introduction` / `## Motivation` /
 `## Detailed design` / `## Alternatives considered` / `## References` (fill what you can; mark
-unknowns `TBD`). The **Status** decides the track: `Implemented` or `Accepted, in progress` are
+unknowns `TBD`). **Name the author by GitHub handle** —
+`* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
+(for an AI-assisted draft, the person who drove and committed it). The **Status** decides the
+track: `Implemented` or `Accepted, in progress` are
 listed under **Accepted** (a decision/implementation record); `Proposal` or `Proposal (deferred)`
 under **Proposals** (under consideration). When an item ships, set its Status to `Implemented`
 and **move its directory** from `roadmaps/proposals/` to `roadmaps/implemented/` (keeping the

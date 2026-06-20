@@ -3,6 +3,7 @@
 # BE-0042 — プラットフォーム対応の backend レジストリと選択
 
 * 提案: [BE-0042](BE-0042-platform-backend-registry-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * 実装 PR: PR 単位の履歴より前（初期インポートの一部・単一 PR なし）
 * トラック: [可決済み](../../README-ja.md#可決済み)

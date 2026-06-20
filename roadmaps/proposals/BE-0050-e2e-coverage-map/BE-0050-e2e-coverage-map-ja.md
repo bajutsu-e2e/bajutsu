@@ -3,6 +3,7 @@
 # BE-0050 — E2E カバレッジマップ
 
 * 提案: [BE-0050](BE-0050-e2e-coverage-map-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: 競合調査（Maestro）由来の候補

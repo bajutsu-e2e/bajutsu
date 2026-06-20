@@ -3,6 +3,7 @@
 # BE-0051 — ホスティングのための serve ハードニング（認証・入力検証）
 
 * 提案: [BE-0051](BE-0051-serve-hardening-for-hosting-ja.md)
+* Author: [@hirosassa](https://github.com/hirosassa)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: Web UI のホスティング（クラウド / セルフホスト）

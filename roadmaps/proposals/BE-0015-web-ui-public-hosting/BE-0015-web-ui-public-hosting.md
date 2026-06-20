@@ -3,6 +3,7 @@
 # BE-0015 — Public hosting of the web UI
 
 * Proposal: [BE-0015](BE-0015-web-ui-public-hosting.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Hosting the web UI (cloud / self-hosted)

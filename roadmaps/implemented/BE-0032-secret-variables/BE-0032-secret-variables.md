@@ -3,6 +3,7 @@
 # BE-0032 — Secret variables
 
 * Proposal: [BE-0032](BE-0032-secret-variables.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
 * Implementing PR: [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6)
 * Track: [Accepted](../../README.md#accepted)

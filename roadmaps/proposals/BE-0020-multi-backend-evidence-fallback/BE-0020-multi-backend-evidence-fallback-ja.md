@@ -3,6 +3,7 @@
 # BE-0020 — マルチ backend 証跡フォールバック
 
 * 提案: [BE-0020](BE-0020-multi-backend-evidence-fallback-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: バックエンド拡張（iOS actuator）

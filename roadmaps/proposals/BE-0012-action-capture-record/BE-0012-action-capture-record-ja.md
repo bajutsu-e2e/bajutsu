@@ -3,6 +3,7 @@
 # BE-0012 — 操作キャプチャ record
 
 * 提案: [BE-0012](BE-0012-action-capture-record-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: オーサリング体験（record / GUI エディタ）
