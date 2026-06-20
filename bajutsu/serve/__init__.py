@@ -173,6 +173,7 @@ def _build_server_state(
     from bajutsu.serve.helpers import list_apps
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
+    from bajutsu.serve.server.db import repository_from_env
     from bajutsu.serve.server.executor import QueueExecutor
     from bajutsu.serve.server.logbus import RedisLogBus
     from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, s3_prefix
@@ -198,6 +199,9 @@ def _build_server_state(
         token=token,
         executor=QueueExecutor(queue),
         logbus=RedisLogBus(redis),
+        # The system of record, when a database is configured (BAJUTSU_DATABASE_URL); None otherwise
+        # so the server backend runs without one until 7b/7c need it (BE-0015 7a).
+        repository=repository_from_env(),
     )
     # Override the filesystem seams (set local in __post_init__) with the object-storage ones. The
     # scenario store reads the live config's apps, so a config opened later is reflected.
