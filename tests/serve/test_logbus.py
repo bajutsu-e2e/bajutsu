@@ -24,12 +24,12 @@ def test_inmemory_logbus_replays_backlog_then_ends_on_close() -> None:
 def test_inmemory_logbus_streams_live_lines() -> None:
     bus = srv.InMemoryLogBus()
     got: list[str] = []
-    err: list[BaseException] = []
+    err: list[Exception] = []
 
     def consume() -> None:
         try:
             got.extend(bus.stream("j2"))
-        except BaseException as exc:
+        except Exception as exc:
             err.append(exc)
 
     t = threading.Thread(target=consume, daemon=True)
