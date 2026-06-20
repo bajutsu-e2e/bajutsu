@@ -14,7 +14,9 @@ from _shared import (
     FakeProc,
     _get,
     _get_json,
+    _post,
     _serve,
+    fake_popen,
     project,
 )
 
@@ -94,6 +96,61 @@ def test_http_crawl_requires_app(tmp_path: Path) -> None:
         )
         with pytest.raises(urllib.error.HTTPError, match="400"):
             urllib.request.urlopen(req)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _crawl_server(tmp_path: Path):  # type: ignore[no-untyped-def]
+    scn_dir, cfg, runs = project(tmp_path)
+    return _serve(
+        srv.ServeState(
+            scenarios_dir=scn_dir,
+            config=cfg,
+            runs_dir=runs,
+            cwd=tmp_path,
+            popen=fake_popen(["done\n"]),
+        )
+    )
+
+
+def test_http_crawl_rejects_unknown_backend(tmp_path: Path) -> None:
+    # A free-text backend must not reach the spawned `crawl` argv (BE-0051 slice 3 parity).
+    server, port = _crawl_server(tmp_path)
+    try:
+        status, resp = _post(port, "/api/crawl", {"app": "demo", "backend": "rm -rf /"})
+        assert status == 400 and "unknown backend" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_crawl_rejects_invalid_udid(tmp_path: Path) -> None:
+    server, port = _crawl_server(tmp_path)
+    try:
+        status, resp = _post(port, "/api/crawl", {"app": "demo", "udid": "A;rm -rf /"})
+        assert status == 400 and "invalid udid" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_crawl_rejected_at_concurrency_cap(tmp_path: Path) -> None:
+    # Crawl is a long, device-heavy job, so it honours the same cap as run/record (BE-0051 slice 5).
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        max_concurrent=1,
+        popen=fake_popen(["done\n"]),
+    )
+    state.jobs["seed"] = srv.Job(id="seed", cmd=[], status="running")  # already at the cap
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/crawl", {"app": "demo"})
+        assert status == 429 and "too many concurrent jobs" in resp["error"]
     finally:
         server.shutdown()
         server.server_close()

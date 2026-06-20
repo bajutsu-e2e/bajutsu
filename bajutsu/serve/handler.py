@@ -498,12 +498,21 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             run_id = (
                 str(body["runId"]) if resuming else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
             )
+            # Validate the device args like /api/run and /api/record (BE-0051): no free-text
+            # backend or udid reaches the spawned `bajutsu crawl` argv.
+            backend = str(body.get("backend", "") or "")
+            if backend and not valid_backend(backend):
+                self._json({"error": f"unknown backend: {backend}"}, 400)
+                return
             udid = str(body.get("udid", "") or "")
+            if udid and not valid_udid(udid):
+                self._json({"error": "invalid udid"}, 400)
+                return
             cmd = crawl_command(
                 str(body["app"]),
                 out=str(state.runs_dir / run_id),
                 agent=body.get("agent", ""),
-                backend=body.get("backend", ""),
+                backend=backend,
                 udid=udid,
                 max_screens=_int(body.get("maxScreens"), 50),
                 max_steps=_int(body.get("maxSteps"), 200),
@@ -516,7 +525,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 resume_key=resume_key if resuming else "",
             )
             app_path, build = app_build_info(cfg, str(body["app"]))
-            job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
+            # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
+            job = state.try_new_job(
+                cmd, udids=self._boot_targets(udid), app_path=app_path, build=build
+            )
+            if job is None:
+                self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
+                return
             state.executor.dispatch(state, job)
             self._json({"jobId": job.id, "runId": run_id})
 
