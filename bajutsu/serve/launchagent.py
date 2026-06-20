@@ -30,6 +30,8 @@ def launchagent_plist(
     `python` defaults to the current interpreter (the venv's), so the agent uses the same
     environment. `working_dir` defaults to the current directory so a relative `bajutsu.config.yaml`
     resolves. A token, if given, is placed in EnvironmentVariables, not the program arguments.
+    Path values are expanded (`~` → home): launchd does not perform shell expansion, so the plist
+    must carry absolute paths or the agent's logs land nowhere.
     """
     args = [
         python or sys.executable,
@@ -44,14 +46,15 @@ def launchagent_plist(
     if config:
         args += ["--config", config]
 
+    logs = Path(log_dir).expanduser()
     plist: dict[str, object] = {
         "Label": LABEL,
         "ProgramArguments": args,
         "RunAtLoad": True,
         "KeepAlive": True,
-        "WorkingDirectory": working_dir or str(Path.cwd()),
-        "StandardOutPath": f"{log_dir}/bajutsu-serve.out.log",
-        "StandardErrorPath": f"{log_dir}/bajutsu-serve.err.log",
+        "WorkingDirectory": str(Path(working_dir).expanduser()) if working_dir else str(Path.cwd()),
+        "StandardOutPath": str(logs / "bajutsu-serve.out.log"),
+        "StandardErrorPath": str(logs / "bajutsu-serve.err.log"),
     }
     if token:
         plist["EnvironmentVariables"] = {"BAJUTSU_SERVE_TOKEN": token}

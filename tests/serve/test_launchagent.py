@@ -12,8 +12,8 @@ import plistlib
 from bajutsu import serve as srv
 
 
-def _plist(**kw: object) -> dict:
-    text = srv.launchagent_plist(**kw)  # type: ignore[arg-type]
+def _plist(*, host: str, port: int, config: str | None, token: str | None) -> dict[str, object]:
+    text = srv.launchagent_plist(host=host, port=port, config=config, token=token)
     return plistlib.loads(text.encode("utf-8"))
 
 
@@ -31,7 +31,10 @@ def test_plist_keepalive_and_logs() -> None:
     pl = _plist(host="127.0.0.1", port=8765, config=None, token=None)
     assert pl["RunAtLoad"] is True
     assert pl["KeepAlive"] is True
-    assert pl["StandardOutPath"].endswith(".log")
+    # launchd does not expand `~`, so the log paths must be absolute and tilde-free.
+    for key in ("StandardOutPath", "StandardErrorPath", "WorkingDirectory"):
+        assert not pl[key].startswith("~")
+    assert pl["StandardOutPath"].startswith("/") and pl["StandardOutPath"].endswith(".log")
     assert pl["StandardErrorPath"].endswith(".log")
     assert "--config" not in pl["ProgramArguments"]  # omitted when no config
 
