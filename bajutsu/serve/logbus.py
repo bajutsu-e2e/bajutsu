@@ -19,15 +19,14 @@ from typing import Protocol
 class LogBus(Protocol):
     """Carries a job's log lines from producer to live subscribers."""
 
-    def publish(self, job_id: str, line: str) -> None: ...
+    def publish(self, job_id: str, line: str) -> None:
+        """Append one log *line* to *job_id*'s channel."""
 
     def close(self, job_id: str) -> None:
         """Signal that no more lines will be published for *job_id* (the job finished)."""
-        ...
 
     def stream(self, job_id: str) -> Iterator[str]:
         """Yield the buffered backlog then any live lines, ending once the job is closed."""
-        ...
 
 
 @dataclass

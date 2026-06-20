@@ -19,7 +19,8 @@ if TYPE_CHECKING:
 class RunExecutor(Protocol):
     """Arranges for an already-created `Job` to be executed asynchronously."""
 
-    def dispatch(self, state: ServeState, job: Job) -> None: ...
+    def dispatch(self, state: ServeState, job: Job) -> None:
+        """Arrange for *job* to be executed asynchronously."""
 
 
 class LocalExecutor:
