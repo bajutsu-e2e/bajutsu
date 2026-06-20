@@ -81,10 +81,17 @@ class RedisLogBus:
                 for line in batch:
                     yield self._text(line)
                 continue
-            # `close` is set only after every line is published, so once it's set and we've drained
-            # the list (no new batch), the log is complete. Poll while waiting for live lines.
+            # `close` is set only after every line is published. But a producer can rpush the final
+            # lines and set the done flag between our (empty) lrange above and this check — so on
+            # seeing done, re-drain once and only end when that tail is empty, never dropping it.
             if self._redis.get(_DONE + job_id) is not None:
-                return
+                tail = self._redis.lrange(key, seen, -1)
+                if not tail:
+                    return
+                seen += len(tail)
+                for line in tail:
+                    yield self._text(line)
+                continue
             time.sleep(self._poll)
             if timeout is not None:
                 idle += self._poll

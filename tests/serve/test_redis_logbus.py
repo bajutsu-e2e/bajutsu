@@ -106,3 +106,23 @@ def test_stream_timeout_yields_heartbeat_then_line() -> None:
     assert not t.is_alive()
     assert None in got  # idle heartbeat
     assert "x" in got
+
+
+def test_stream_drains_tail_written_just_before_done() -> None:
+    # Race: a producer rpushes the final line and sets the done flag between the consumer's empty
+    # lrange and its done-check. The stream must re-drain on seeing done, not drop the tail.
+    class _RaceRedis(FakeRedis):
+        def __init__(self) -> None:
+            super().__init__()
+            self._armed = True
+
+        def get(self, key: str) -> bytes | None:
+            if self._armed and key.startswith("bajutsu:logdone:"):
+                self._armed = False  # exactly once, simulating the write landing just before this
+                jid = key[len("bajutsu:logdone:") :]
+                self.rpush("bajutsu:log:" + jid, "tail line")
+                self.set(key, "1")
+            return super().get(key)
+
+    got = list(RedisLogBus(_RaceRedis(), poll_interval=0.001).stream("j"))
+    assert got == ["tail line"]  # the tail written at the done boundary is not lost
