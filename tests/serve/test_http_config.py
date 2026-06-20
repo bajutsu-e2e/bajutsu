@@ -88,6 +88,25 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> None:
+    # An absolute path with `..` that resolves outside the browse root must be rejected, not read
+    # (CodeQL py/path-injection): the containment check resolves the path first, so the literal
+    # parent of the unresolved path can't slip it through.
+    root = tmp_path / "root"
+    root.mkdir()
+    secret = tmp_path / "secret.yaml"  # outside root, but inside tmp_path
+    secret.write_text("apps: {evil: {bundleId: x}}\n", encoding="utf-8")
+    _, _, runs = project(tmp_path)
+    server, port = _serve(srv.ServeState(runs_dir=runs, root=root, cwd=tmp_path))
+    try:
+        escape = str(root / ".." / "secret.yaml")  # absolute, resolves to tmp_path/secret.yaml
+        status, resp = _post(port, "/api/config", {"path": escape})
+        assert status == 400 and "outside the browse root" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_scenarios_by_app_from_config(tmp_path: Path) -> None:
     _, cfg, runs = project(tmp_path)
     # Config-driven (no --scenarios override): the dir comes from the selected app.

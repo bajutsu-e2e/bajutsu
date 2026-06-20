@@ -203,14 +203,23 @@ def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
     return {"ok": True}, 200, state.issue_session()
 
 
+def _confined_config_path(root: Path, raw: str) -> Path | None:
+    """Resolve *raw* (relative to *root*, or an absolute path) to a path confined to *root*, or None
+    if it escapes — the one barrier between client input and a filesystem read. Resolving **first**
+    normalizes any ``..`` so the containment check is sound: an absolute path left unresolved could
+    keep *root* as a literal parent while the real file lies outside it (a path-traversal read)."""
+    target = (Path(raw) if Path(raw).is_absolute() else root / raw).resolve()
+    base = root.resolve()
+    return target if (target == base or base in target.parents) else None
+
+
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
     validate it loads, then re-point ``state.config`` so apps/scenarios come from it."""
     if not raw:
         return {"error": "path is required"}, 400
-    target = (state.root / raw).resolve() if not Path(raw).is_absolute() else Path(raw)
-    base = state.root.resolve()
-    if target != base and base not in target.parents:
+    target = _confined_config_path(state.root, raw)
+    if target is None:
         return {"error": "path is outside the browse root"}, 400
     if not target.is_file():
         return {"error": "config not found"}, 404
