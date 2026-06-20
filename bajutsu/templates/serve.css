@@ -27,6 +27,140 @@ main[hidden]{display:none}
 #view-record{grid-template-columns:340px 1fr}
 .rec-stack{display:flex;flex-direction:column;gap:1rem;height:calc(100vh - 6rem)}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{flex:1;min-height:0;height:auto}
+/* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
+#view-crawl{grid-template-columns:340px 1fr}
+.crawlpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
+.crawlhead{flex:0 0 auto;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
+.crawlhead .ttl{font-weight:600}
+.crawlcounts{color:var(--mut);font-size:.82em}
+.zoomctl{margin-left:auto;display:inline-flex;gap:.25rem}
+.zbtn{width:1.7rem;height:1.7rem;display:inline-flex;align-items:center;justify-content:center;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:6px;cursor:pointer;font-size:1em;line-height:1;padding:0}
+.zbtn:hover{border-color:var(--acc);color:var(--acc)}
+/* Body splits into the full-height transition graph (left) and a right column whose top half is
+   the live exploration-plan tree and bottom half the console. */
+.crawlbody{flex:1;min-height:0;display:flex;gap:.5rem}
+.crawlside{flex:0 0 22rem;min-width:0;display:flex;flex-direction:column;gap:.3rem}
+.crawlsub{flex:0 0 auto;font-weight:600;font-size:.78em;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+/* Plan progress: how much of the planned operations have been explored, as a percent + bar. */
+.planhd{display:flex;justify-content:space-between;align-items:baseline}
+.planpct{font-weight:700;color:var(--ok);text-transform:none}
+.planbar{flex:0 0 auto;height:5px;background:var(--bg);border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.planfill{height:100%;width:0;background:var(--ok);transition:width .3s ease}
+.crawlplan{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.35rem}
+.crawlplan .empty{height:100%}
+/* The graph viewport: the outer .graphpan layer translates (drag-pan, GPU-composited); the inner
+   .graphwrap layer uses CSS `zoom` so text/borders re-rasterize crisply at any magnification. */
+.crawlgraph{flex:1;min-height:0;overflow:hidden;position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:8px;cursor:grab;user-select:none;-webkit-user-select:none}
+.crawlgraph.panning{cursor:grabbing}
+.crawlgraph .empty{height:100%}
+.crawlside .crawllog{flex:1;min-height:0;height:auto}
+.graphpan{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+.graphwrap{position:absolute;left:0;top:0;transform-origin:0 0}
+/* Edges are one SVG layer; unit boxes are HTML label+info cards on top, in BFS layers. structural-
+   fingerprint nodes (the less-stable fallback) are dashed to flag the difference. */
+.graphsvg{position:absolute;left:0;top:0;overflow:visible}
+/* Edges are light by default so a dense graph doesn't read as a tangle; hovering a node lifts only
+   its own edges (`.hl .hot`) and dims the rest, the on-demand declutter. */
+.graphsvg .edge{fill:none;stroke:var(--mut);stroke-width:1.3;stroke-opacity:.45;transition:stroke-opacity .12s,stroke-width .12s}
+.graphsvg .edge.selfloop{stroke-dasharray:3 2}
+.graphwrap.hl .edge{stroke-opacity:.07}
+.graphwrap.hl .edge.hot{stroke-opacity:1;stroke:var(--acc);stroke-width:2.5}
+.graphwrap.hl .edge.hot.alert{stroke:var(--run)}
+.gnode.faded{opacity:.32;transition:opacity .12s}
+/* A transition that taps through an OS alert: amber edge + a shield at its midpoint. */
+.graphsvg .edge.alert{stroke:var(--run);stroke-width:1.8;stroke-opacity:.6}
+.graphsvg .edgealert{text-anchor:middle;dominant-baseline:middle;font-size:13px}
+/* A unit card: a large screenshot on top, the label+info below. Grouped screens add a prominent
+   full-width expand/collapse button so the merged state is obvious. */
+.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}
+.gnode.structural{border-style:dashed;border-color:var(--mut)}
+.gnode.member{border-color:var(--mut);border-left:3px solid var(--acc)}
+.gnode.ggroup{border-style:double;border-width:3px}
+/* Frontier units — the leading edge of exploration (untried operations remain): an amber border
+   and glow so where the crawl is still working stands out from fully-explored screens. */
+.gnode.frontier{border-color:var(--run);box-shadow:0 0 0 2px var(--run)}
+.gnode:hover{box-shadow:0 0 0 2px var(--acc)}
+/* The screenshot sits on top of the card, shown whole (aspect-fit) so the screen isn't cropped;
+   hides itself when the shot is missing so the label+info takes over. */
+.gshot{flex:0 0 auto;width:100%;height:222px;object-fit:contain;object-position:center;background:var(--bg2);border-bottom:1px solid var(--line);pointer-events:none}
+.gshot.missing{display:none}
+/* Expand (a collapsed group) / collapse (an expanded member): a small chip in the node's top-left
+   corner, floated out of the flow so it never pushes the screenshot or info line off the card. */
+.gexpand,.gcollapse{position:absolute;top:5px;left:5px;z-index:2;box-sizing:border-box;border:0;border-radius:6px;padding:2px 7px;font:inherit;font-size:11px;font-weight:700;line-height:1.4;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.gexpand{background:var(--acc);color:var(--on-acc)}
+.gexpand:hover{filter:brightness(1.08)}
+.gcollapse{background:var(--bg2);color:var(--mut)}
+.gcollapse:hover{color:var(--acc)}
+/* A frame drawn around the member states of an expanded group, so they read as one screen. */
+.gframe{position:absolute;box-sizing:border-box;border:2px dashed var(--acc);border-radius:14px;background:color-mix(in srgb,var(--acc) 7%,transparent);pointer-events:none}
+.gframelbl{position:absolute;top:-9px;left:12px;background:var(--card);color:var(--acc);font-size:11px;font-weight:700;padding:0 6px;border-radius:6px;white-space:nowrap}
+.gmeta{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-start;padding:5px 7px;gap:2px;overflow:hidden}
+.ghead{display:flex;align-items:flex-start;gap:5px}
+/* Labels wrap (and break long identifiers) instead of truncating eagerly — up to a couple of lines
+   so most ids show in full; only genuinely long text clips. */
+.gtitle{flex:1;min-width:0;font-size:11px;font-weight:700;color:var(--fg);overflow-wrap:anywhere;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.gsub{font-size:10px;color:var(--mut);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* Plan badge: still-untried operations for this unit (the live frontier), dashed to read as "todo". */
+.gplan{flex:0 0 auto;font-size:9.5px;color:var(--run);border:1px dashed var(--run);border-radius:4px;padding:0 3px}
+/* Screenshot lightbox: the enlarged shot beside the screens it transitions to next. */
+.shotbox{position:relative;display:flex;gap:1rem;width:min(960px,94vw);max-height:88vh;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem}
+.shotclose{position:absolute;top:.5rem;right:.6rem;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
+/* Step through the transition chain: prev (a transition into this screen) / next (out of it). */
+.shotnav{flex:0 0 auto;align-self:center;width:2rem;height:2.6rem;display:flex;align-items:center;justify-content:center;background:var(--bg2);border:1px solid var(--line);color:var(--fg);border-radius:8px;font-size:1.4em;line-height:1;cursor:pointer}
+.shotnav:hover:not(:disabled){border-color:var(--acc);color:var(--acc)}
+.shotnav:disabled{opacity:.3;cursor:default}
+.shotmain{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center}
+/* The frame shrink-wraps the image so the tap-location highlight, positioned in screen fractions,
+   overlays it exactly. */
+.shotframe{position:relative;display:inline-block;line-height:0}
+.shotmain img{display:block;max-height:80vh;max-width:46vw;border-radius:10px;border:1px solid var(--line);background:#fff}
+/* Hover a transition/planned row to highlight where its tap lands on the screenshot. */
+.shothi{position:absolute;border:2px solid var(--run);border-radius:5px;background:color-mix(in srgb,var(--run) 25%,transparent);box-shadow:0 0 0 2px color-mix(in srgb,var(--run) 40%,transparent),0 0 12px color-mix(in srgb,var(--run) 60%,transparent);pointer-events:none;transition:all .12s ease}
+/* Every actionable spot on the shot, revealed on hover: a `go` spot has a known destination (an
+   outgoing edge, clickable to step there); a `pend` spot is a still-pending operation. */
+.shothots{position:absolute;inset:0;pointer-events:none}
+.hot{position:absolute;border-radius:4px;opacity:0;transition:opacity .12s ease,background .12s ease;pointer-events:none}
+.shotframe:hover .hot{opacity:1;pointer-events:auto}
+.hot.go{border:2px solid var(--acc);background:color-mix(in srgb,var(--acc) 16%,transparent);cursor:pointer}
+.hot.go:hover{background:color-mix(in srgb,var(--acc) 36%,transparent);box-shadow:0 0 10px color-mix(in srgb,var(--acc) 60%,transparent)}
+.hot.pend{border:2px dashed var(--run);background:color-mix(in srgb,var(--run) 10%,transparent)}
+.shotside{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.shottitle{font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;margin:.2rem 1.5rem .6rem 0;word-break:break-all}
+.shotnext{overflow:auto;display:flex;flex-direction:column;gap:.4rem}
+.nexthd{color:var(--mut);font-size:.82em;margin-bottom:.2rem}
+.nextrow{display:flex;align-items:center;gap:.6rem;width:100%;text-align:left;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.35rem .5rem;cursor:pointer;color:var(--fg);font:inherit}
+.nextrow:hover{border-color:var(--acc)}
+.nextrow img{width:34px;height:46px;object-fit:contain;background:var(--bg);border-radius:4px;flex:0 0 auto}
+.nxtxt{display:flex;flex-direction:column;min-width:0}
+.nxa{font-size:.85em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nxf{color:var(--mut);font-size:.78em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+/* A queued (untried) operation — the live frontier, e.g. a vision-located tab to tap next. */
+.planrow{background:var(--bg2);border:1px dashed var(--run);border-radius:8px;padding:.3rem .5rem;font-size:.82em;color:var(--fg)}
+/* The live exploration-plan tree: screens branch into their operations, each marked explored
+   (✅, already traversed) or pending (⏳, the frontier). Depth is indented via the --d variable. */
+.plantree{font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+/* Indent per depth, but capped (min(--d, 10)) and with a slightly smaller step so a deep branch
+   can't run off the panel; rows wrap with a hanging indent (text-indent pulls the marker left, the
+   matching left padding aligns wrapped lines under the text) instead of being clipped with an
+   ellipsis — so nothing is cut off however deep the tree goes. */
+.plrow{padding:1px 4px 1px calc(4px + min(var(--d), 10) * 12px + 1.3em);text-indent:-1.3em;overflow-wrap:anywhere;border-radius:4px}
+.plrow.scr{font-weight:600;margin-top:3px;color:var(--fg);cursor:pointer}
+.plrow.scr:hover{background:var(--bg)}
+.plrow.scr.full .pls{color:var(--ok)}
+.plrow.op.done{color:var(--fg)}
+.plrow.op.pend{color:var(--run)}
+.plrow.op.pruned{color:var(--mut);text-decoration:line-through;cursor:pointer}
+.plrow.op.pruned:hover{color:var(--acc);background:var(--bg)}
+.plrow.seen{color:var(--mut)}
+.plcov{color:var(--mut);font-weight:400;font-size:.92em}
+.pls{display:inline-block;width:1.2em}
+.plmut,.plarrow{color:var(--mut)}
+/* A global operation (queued on several screens, e.g. a tab switch) — tagged with its screen count. */
+.plglobal{color:var(--acc);font-size:.9em}
+/* "prune duplicates" toggle in the plan header — small, inline, overriding the block label default. */
+.planhd{align-items:center}
+.prunetog{display:inline-flex;align-items:center;gap:.3rem;margin:0;font-size:.72em;text-transform:none;letter-spacing:0;cursor:pointer;color:var(--mut)}
+.prunetog input{width:auto;margin:0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem}
 label{display:block;margin:.6rem 0 .2rem;color:var(--mut);font-size:.85em}
 select,input[type=text],input[type=number],textarea{width:100%;padding:.45rem;background:var(--bg2);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}
