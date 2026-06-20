@@ -127,15 +127,24 @@ def _build_state(
         scenarios_dir / "baselines" if scenarios_dir else Path("baselines")
     )
     if backend == "server":
-        return _build_server_state(
-            runs_dir=runs_dir,
-            config=config,
-            scenarios_dir=scenarios_dir,
-            root=root or Path.cwd(),
-            baselines_dir=resolved_baselines,
-            max_concurrent=max_concurrent,
-            token=token,
-        )
+        # The server backend's seams (Redis/RQ, object storage, the database) live behind the
+        # optional extras and import lazily. If any is missing, surface one clear install hint
+        # rather than a raw ImportError naming whichever module happened to load first.
+        try:
+            return _build_server_state(
+                runs_dir=runs_dir,
+                config=config,
+                scenarios_dir=scenarios_dir,
+                root=root or Path.cwd(),
+                baselines_dir=resolved_baselines,
+                max_concurrent=max_concurrent,
+                token=token,
+            )
+        except ImportError as e:
+            raise ImportError(
+                "the server backend needs its optional extras — "
+                "install with: pip install 'bajutsu[server,worker,db]'"
+            ) from e
     return ServeState(
         runs_dir=runs_dir,
         config=config,

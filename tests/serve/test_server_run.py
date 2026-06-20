@@ -172,6 +172,28 @@ def test_build_state_server_requires_a_bucket(
         )
 
 
+def test_build_state_server_without_extras_raises_a_clear_install_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With an extra missing (redis stood in here), the server assembly surfaces one install hint
+    # naming the extras — not a raw ImportError for whichever module loaded first.
+    import sys
+
+    monkeypatch.setitem(sys.modules, "redis", None)
+    _scn, cfg, runs = project(tmp_path)
+    with pytest.raises(ImportError, match="extra"):
+        srv._build_state(
+            runs_dir=runs,
+            config=cfg,
+            scenarios_dir=None,
+            root=tmp_path,
+            baselines_dir=None,
+            max_concurrent=4,
+            token=None,
+            backend="server",
+        )
+
+
 def test_build_state_server_normalizes_a_prefix_without_a_slash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

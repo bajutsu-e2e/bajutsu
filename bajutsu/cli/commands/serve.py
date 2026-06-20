@@ -109,19 +109,25 @@ def serve(
         )
         return
 
-    _serve(
-        host=host,
-        port=port,
-        scenarios_dir=Path(scenarios) if scenarios else None,
-        config=Path(config) if config else None,
-        runs_dir=Path(runs),
-        root=Path(root) if root else Path.cwd(),
-        baselines_dir=Path(baselines) if baselines else None,
-        max_concurrent=max_concurrent_runs,
-        token=resolved_token or None,
-        asgi=asgi,
-        backend=backend,
-    )
+    try:
+        _serve(
+            host=host,
+            port=port,
+            scenarios_dir=Path(scenarios) if scenarios else None,
+            config=Path(config) if config else None,
+            runs_dir=Path(runs),
+            root=Path(root) if root else Path.cwd(),
+            baselines_dir=Path(baselines) if baselines else None,
+            max_concurrent=max_concurrent_runs,
+            token=resolved_token or None,
+            asgi=asgi,
+            backend=backend,
+        )
+    except ImportError as e:
+        # A server backend (or --asgi) selected without its optional extras: show the install hint
+        # the seam assembly raised, and exit cleanly rather than dumping a traceback (mirrors worker).
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def register(app: typer.Typer) -> None:
