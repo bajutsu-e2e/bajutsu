@@ -18,9 +18,14 @@ dependencies = [
 idb = ["fb-idb>=1.1.0"]
 visual = ["pillow>=10.0"]
 mcp = ["fastmcp>=2.0.0"]
+# Amazon Bedrock provider for the AI paths (BAJUTSU_AI_PROVIDER=bedrock); pulls in boto3 for SigV4.
+bedrock = ["anthropic[bedrock]>=0.50"]
 
 [dependency-groups]
 dev = [
+    # The Bedrock extra (boto3) so the gate can import/test AnthropicBedrock and `make serve`
+    # offers the Bedrock provider out of the box, mirroring fastmcp/pillow below.
+    "anthropic[bedrock]>=0.50",
     "fastmcp>=2.0.0",
     "mypy>=1.10",
     "pillow>=10.0",

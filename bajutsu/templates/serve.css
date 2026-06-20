@@ -227,7 +227,7 @@ textarea.yaml{flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,
 header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .modal{position:fixed;inset:0;z-index:50;background:var(--scrim);display:flex;align-items:center;justify-content:center}
 .modal[hidden]{display:none}
-.fsbox{width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem}
+.fsbox{width:min(560px,92vw);max-height:80vh;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem;overflow-y:auto}
 .fshead{display:flex;align-items:center;margin-bottom:.6rem}.fshead .ttl{font-weight:700}
 .fshead .fsclose{margin-left:auto;background:none;border:0;color:var(--mut);font-size:1.1em;cursor:pointer}
 .fspath{color:var(--mut);font-size:.82em;margin-bottom:.4rem;word-break:break-all}
@@ -238,7 +238,10 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .fslist li.file .nm{color:var(--acc)}
 .fslist li.muted{color:var(--mut);cursor:default}.fslist li.muted:hover{background:none}
 .fshint{color:var(--mut);font-size:.78em;margin-top:.5rem}
-/* Claude API key modal */
+/* Settings modal (AI provider + Claude API key) */
+.setsection{padding-top:.85rem;margin-top:.85rem;border-top:1px solid var(--line)}
+.setsection:first-of-type{padding-top:0;margin-top:0;border-top:0}
+.setlabel{font-weight:700;font-size:.95em;margin-bottom:.55rem}
 .keycur{font-size:.85em;color:var(--mut);margin-bottom:.7rem}
 .keycur code{color:var(--fg);font-family:inherit}
 .keylabel{display:block;font-size:.78em;color:var(--mut);margin-bottom:.25rem}

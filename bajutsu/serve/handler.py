@@ -15,6 +15,12 @@ from urllib.parse import parse_qs, unquote, urlparse
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu.anthropic_client import (
+    BEDROCK_MODEL_ENV,
+    PROVIDER_ENV,
+    PROVIDERS,
+    provider,
+)
 from bajutsu.config import load_config
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.helpers import (
@@ -152,6 +158,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/apikey":
                     qs = parse_qs(urlparse(self.path).query)
                     self._get_api_key(reveal=bool(next(iter(qs.get("reveal") or []), "")))
+                case "/api/provider":
+                    self._get_provider()
                 case "/api/simulators":
                     self._json(list_simulators(state.simctl))
                 case "/api/runs":
@@ -215,6 +223,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._post_config(body)
                 case "/api/apikey":
                     self._post_api_key(body)
+                case "/api/provider":
+                    self._post_provider(body)
                 case "/api/run":
                     self._post_run(body)
                 case "/api/record":
@@ -310,6 +320,48 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             else:
                 os.environ.pop(_API_KEY_VAR, None)
                 self._json({"ok": True, "set": False})
+
+        def _get_provider(self) -> None:
+            """Report the AI provider spawned jobs will use, with the Bedrock region/model.  Read
+            from the serve process's environment (where ``_post_provider`` writes them), so it
+            reflects what a record/crawl job inherits."""
+            self._json(
+                {
+                    "provider": provider(),
+                    "region": os.environ.get("AWS_REGION", ""),
+                    "model": os.environ.get(BEDROCK_MODEL_ENV, ""),
+                }
+            )
+
+        def _post_provider(self, body: dict[str, Any]) -> None:
+            """Select the AI provider for spawned record/crawl jobs: the Anthropic API or Amazon
+            Bedrock.  Written into the serve process's environment for this session only — never to
+            disk — and inherited by jobs, mirroring the API-key handler.  Bedrock authenticates with
+            the standard AWS credential chain (env / profile / role), so only the provider, region,
+            and model id are set here; AWS credentials come from the serve environment."""
+            prov = str(body.get("provider", "") or "").strip().lower()
+            if prov not in PROVIDERS:
+                self._json({"error": f"unknown provider: {prov or '(empty)'}"}, 400)
+                return
+            if prov == "anthropic":
+                os.environ[PROVIDER_ENV] = "anthropic"
+                self._json({"ok": True, "provider": "anthropic"})
+                return
+            # Bedrock needs a provider-prefixed model id (the bare Anthropic id is invalid there);
+            # region is optional and falls back to AWS_REGION already in the environment.
+            model = str(body.get("model", "") or "").strip()
+            region = str(body.get("region", "") or "").strip()
+            if not model:
+                self._json({"error": "a Bedrock model id is required"}, 400)
+                return
+            if any(c.isspace() for c in model) or any(c.isspace() for c in region):
+                self._json({"error": "region and model must not contain whitespace"}, 400)
+                return
+            os.environ[PROVIDER_ENV] = "bedrock"
+            os.environ[BEDROCK_MODEL_ENV] = model
+            if region:
+                os.environ["AWS_REGION"] = region
+            self._json({"ok": True, "provider": "bedrock", "region": region, "model": model})
 
         def _post_run(self, body: dict[str, Any]) -> None:
             cfg = state.config

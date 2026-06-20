@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from bajutsu import crawl, crawl_tabs
+from bajutsu.anthropic_client import make_client, resolve_model
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
 
@@ -317,18 +318,20 @@ class ClaudeActionProposer:
     `anthropic` is lazy-imported so the module loads without the SDK or an API key."""
 
     def __init__(
-        self, client: Any = None, model: str = MODEL, max_tokens: int = 1024, max_actions: int = 8
+        self,
+        client: Any = None,
+        model: str | None = None,
+        max_tokens: int = 1024,
+        max_actions: int = 8,
     ) -> None:
         self._client = client
-        self._model = model
+        self._model = resolve_model(MODEL) if model is None else model
         self._max_tokens = max_tokens
         self._max_actions = max_actions
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            import anthropic
-
-            self._client = anthropic.Anthropic()
+            self._client = make_client()
         return self._client
 
     def propose(

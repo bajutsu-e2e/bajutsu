@@ -103,7 +103,7 @@ $('#fsmodal').addEventListener('click',e=>{if(e.target===$('#fsmodal'))closeFs()
 
 // ---- Claude API key: shown redacted; reveal fetches the full value on demand ----
 let keyState={set:false,masked:'',full:null,shown:false};
-function setKeyStatus(t,c){const st=$('#keystatus');st.textContent=t;st.className='keystatus '+(c||'')}
+function setSettingsStatus(t,c){const st=$('#setstatus');st.textContent=t;st.className='keystatus '+(c||'')}
 function renderKey(){
   const cur=$('#keycur'),inp=$('#apikey');
   if(keyState.set){
@@ -130,31 +130,59 @@ async function postKey(value){
   const r=await fetch('/api/apikey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({value})});
   return r.json();
 }
-async function saveKey(){
-  const inp=$('#apikey'),v=inp.value.trim();
-  if(!v){setKeyStatus('enter a key, or use Clear to remove it','ng');return}
-  setKeyStatus('saving…','');
-  let d;try{d=await postKey(v)}catch(e){d={error:'request failed'}}
-  if(d.error){setKeyStatus(d.error,'ng');return}
-  inp.value='';keyState={set:true,masked:d.masked||'',full:null,shown:false};renderKey();
-  setKeyStatus('saved','ok');
-}
 async function clearKey(){
-  if(!keyState.set){setKeyStatus('no key to clear','ng');return}
-  setKeyStatus('clearing…','');
+  if(!keyState.set){setSettingsStatus('no key to clear','ng');return}
+  setSettingsStatus('clearing…','');
   let d;try{d=await postKey('')}catch(e){d={error:'request failed'}}
-  if(d.error){setKeyStatus(d.error,'ng');return}
+  if(d.error){setSettingsStatus(d.error,'ng');return}
   $('#apikey').value='';keyState={set:false,masked:'',full:null,shown:false};renderKey();
-  setKeyStatus('cleared','ok');
+  setSettingsStatus('cleared','ok');
 }
-function openKeyModal(){$('#keymodal').hidden=false;$('#apikey').value='';setKeyStatus('','');loadKey()}
-function closeKeyModal(){$('#keymodal').hidden=true}
-$('#openkey').addEventListener('click',openKeyModal);
-$('#keyclose').addEventListener('click',closeKeyModal);
-$('#keymodal').addEventListener('click',e=>{if(e.target===$('#keymodal'))closeKeyModal()});
 $('#keyreveal').addEventListener('click',toggleReveal);
-$('#keysave').addEventListener('click',saveKey);
 $('#keyclear').addEventListener('click',clearKey);
+
+// ---- AI provider: Anthropic API (default) or Amazon Bedrock (AWS credentials) ----
+function renderProv(){
+  const bedrock=$('#provider').value==='bedrock';
+  $('#bedrockfields').hidden=!bedrock;       // region + model id (Bedrock only)
+  $('#apikeysection').hidden=bedrock;         // Claude API key (Anthropic only)
+}
+async function loadProv(){
+  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={provider:'anthropic'}}
+  $('#provider').value=(d.provider==='bedrock')?'bedrock':'anthropic';
+  $('#bedrock-region').value=d.region||'';
+  $('#bedrock-model').value=d.model||'';
+  renderProv();
+}
+// ---- Settings: one Save persists the provider, plus the API key when on the Anthropic path ----
+async function saveSettings(){
+  const provider=$('#provider').value,body={provider};
+  if(provider==='bedrock'){
+    body.region=$('#bedrock-region').value.trim();
+    body.model=$('#bedrock-model').value.trim();
+    if(!body.model){setSettingsStatus('enter a Bedrock model id','ng');return}
+  }
+  setSettingsStatus('saving…','');
+  let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}
+  if(d.error){setSettingsStatus(d.error,'ng');return}
+  if(provider==='anthropic'){
+    const v=$('#apikey').value.trim();
+    if(v){
+      let k;try{k=await postKey(v)}catch(e){k={error:'request failed'}}
+      if(k.error){setSettingsStatus(k.error,'ng');return}
+      $('#apikey').value='';keyState={set:true,masked:k.masked||'',full:null,shown:false};renderKey();
+    }
+  }
+  setSettingsStatus('saved','ok');
+}
+// ---- Settings modal: one panel for the provider + API-key controls ----
+function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';setSettingsStatus('','');loadKey();loadProv()}
+function closeSettings(){$('#settingsmodal').hidden=true}
+$('#opensettings').addEventListener('click',openSettings);
+$('#settingsclose').addEventListener('click',closeSettings);
+$('#settingsmodal').addEventListener('click',e=>{if(e.target===$('#settingsmodal'))closeSettings()});
+$('#provider').addEventListener('change',renderProv);
+$('#settingssave').addEventListener('click',saveSettings);
 async function chooseConfig(path){
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
   const d=await r.json();

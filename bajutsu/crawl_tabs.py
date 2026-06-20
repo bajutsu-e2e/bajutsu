@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from bajutsu.alerts import _fraction, _png_size
+from bajutsu.anthropic_client import make_client, resolve_model
 from bajutsu.drivers import base
 
 TAB_LOCATOR_MODEL = "claude-opus-4-8"
@@ -162,15 +163,13 @@ class ClaudeTabLocator:
     """TabLocator backed by Claude vision; `anthropic` is lazy-imported so the module loads without
     the SDK or an API key, like the alert locator."""
 
-    def __init__(self, client: Any = None, model: str = TAB_LOCATOR_MODEL) -> None:
+    def __init__(self, client: Any = None, model: str | None = None) -> None:
         self._client = client
-        self._model = model
+        self._model = resolve_model(TAB_LOCATOR_MODEL) if model is None else model
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            import anthropic
-
-            self._client = anthropic.Anthropic()
+            self._client = make_client()
         return self._client
 
     def locate(self, screenshot_png: bytes) -> list[TabTarget]:
