@@ -3,6 +3,7 @@
 # BE-0042 — Platform-aware backend registry & selection
 
 * Proposal: [BE-0042](BE-0042-platform-backend-registry.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
 * Implementing PR: predates the per-PR history (part of the initial import; no single PR)
 * Track: [Accepted](../../README.md#accepted)

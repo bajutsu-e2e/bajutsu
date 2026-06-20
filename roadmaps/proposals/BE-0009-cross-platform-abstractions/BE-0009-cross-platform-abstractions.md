@@ -3,6 +3,7 @@
 # BE-0009 — Cross-platform abstractions
 
 * Proposal: [BE-0009](BE-0009-cross-platform-abstractions.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Platform expansion (Android / Web / Flutter)

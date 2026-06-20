@@ -3,6 +3,7 @@
 # BE-0037 — WebView / ハイブリッド対応
 
 * 提案: [BE-0037](BE-0037-webview-hybrid-support-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: 競合調査（MagicPod / Autify）由来の候補

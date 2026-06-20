@@ -3,6 +3,7 @@
 # BE-0049 — 決定性／フレーキネス監査
 
 * 提案: [BE-0049](BE-0049-determinism-flakiness-audit-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: 競合調査（Maestro）由来の候補

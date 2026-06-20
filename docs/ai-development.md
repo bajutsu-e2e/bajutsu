@@ -151,9 +151,12 @@ When you add a roadmap item:
    item forever.
 
 Each file follows the **Swift-Evolution proposal format** — a metadata block (`* Proposal`,
-`* Status`, `* Track`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
+`* Author`, `* Status`, `* Track`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
 `## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`. Fill what
-you can and mark unknowns `TBD`. The **Status** field decides the management track and the index
+you can and mark unknowns `TBD`. **Name the author by GitHub handle** —
+`* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
+(for an AI-assisted draft, the person who drove and committed it). The **Status** field decides the
+management track and the index
 section the item appears in:
 
 | Status | Track |

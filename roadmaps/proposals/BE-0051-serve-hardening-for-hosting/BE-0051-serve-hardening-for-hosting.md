@@ -3,6 +3,7 @@
 # BE-0051 — Serve hardening for hosting (auth, input validation)
 
 * Proposal: [BE-0051](BE-0051-serve-hardening-for-hosting.md)
+* Author: [@hirosassa](https://github.com/hirosassa)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Hosting the web UI (cloud / self-hosted)

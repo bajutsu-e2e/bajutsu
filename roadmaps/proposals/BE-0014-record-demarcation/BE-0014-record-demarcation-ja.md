@@ -3,6 +3,7 @@
 # BE-0014 — 既存 AI record との棲み分け
 
 * 提案: [BE-0014](BE-0014-record-demarcation-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: オーサリング体験（record / GUI エディタ）

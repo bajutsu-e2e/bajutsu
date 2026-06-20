@@ -3,6 +3,7 @@
 # BE-0048 — 振る舞い／プロトコルアサーション
 
 * 提案: [BE-0048](BE-0048-behavioral-protocol-assertions-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: 競合調査（Maestro）由来の候補

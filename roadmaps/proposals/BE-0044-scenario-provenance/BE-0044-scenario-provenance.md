@@ -3,6 +3,7 @@
 # BE-0044 — Scenario provenance (`from:` — step ↔ natural-language origin)
 
 * Proposal: [BE-0044](BE-0044-scenario-provenance.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Authoring experience (record / GUI editor)

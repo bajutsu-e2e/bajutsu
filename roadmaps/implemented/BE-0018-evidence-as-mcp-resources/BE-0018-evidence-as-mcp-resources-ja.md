@@ -3,6 +3,7 @@
 # BE-0018 — 証跡を MCP リソースで返す
 
 * 提案: [BE-0018](BE-0018-evidence-as-mcp-resources-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * 実装 PR: [#68](https://github.com/bajutsu-e2e/bajutsu/pull/68)
 * トラック: [可決済み](../../README-ja.md#可決済み)

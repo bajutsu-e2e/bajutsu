@@ -3,6 +3,7 @@
 # BE-0033 — Scenario variables + light control flow
 
 * Proposal: [BE-0033](BE-0033-scenario-variables-control-flow.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
 * Implementing PR: [#42](https://github.com/bajutsu-e2e/bajutsu/pull/42), [#67](https://github.com/bajutsu-e2e/bajutsu/pull/67)
 * Track: [Accepted](../../README.md#accepted)

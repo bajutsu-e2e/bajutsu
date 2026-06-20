@@ -78,7 +78,8 @@ proposals):
 - `roadmaps/proposals/BE-XXXX-<slug>/BE-XXXX-<slug>-ja.md` (Japanese, same slug)
 
 Match the existing format exactly (see any `BE-00NN-*` file as a template): the bilingual
-header link, a metadata block (`* Proposal: [BE-XXXX](BE-XXXX-<slug>.md)`, `* Status`,
+header link, a metadata block (`* Proposal: [BE-XXXX](BE-XXXX-<slug>.md)`,
+`* Author: [@handle](https://github.com/handle)` for whoever is authoring the item, `* Status`,
 `* Track`, `* Topic`, and `* Origin` when relevant), then `## Introduction` /
 `## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`.
 Fill what the discussion produced; mark the rest `TBD`. New items are normally

@@ -49,8 +49,10 @@
    一度割り当てた BE ID は、その項目を永遠に指します。
 
 各ファイルは **Swift-Evolution の proposal フォーマット**に従います: メタデータブロック（`* 提案`・
-`* 状態`・`* トラック`・`* トピック` …）の後に `## はじめに` / `## 動機` / `## 詳細設計` /
-`## 検討した代替案` / `## 参考`（埋められる範囲だけ記入し、不明は `TBD`）。**状態**がトラックを
+`* Author`・`* 状態`・`* トラック`・`* トピック` …）の後に `## はじめに` / `## 動機` / `## 詳細設計` /
+`## 検討した代替案` / `## 参考`（埋められる範囲だけ記入し、不明は `TBD`）。**Author は GitHub のアカウント名で
+明記**します —— `* Author: [@handle](https://github.com/handle)`。最初にその項目を作成した人（AI 支援で
+書き起こした場合は、それを主導してコミットした人）のアカウントです。**状態**がトラックを
 決めます: `実装済み`・`可決・実装中` は **可決済み**（意思決定・実装の記録）に、`提案`・`提案（保留）`
 は **提案**（検討中）に並びます。項目が出荷されたら状態を `実装済み` にし、ディレクトリを
 `roadmaps/proposals/` から `roadmaps/implemented/` へ（同じ ID・slug のまま）**移動**して、
@@ -256,8 +258,8 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 |---|---|---|---|
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) | WebView / ハイブリッド対応 | 提案 | MagicPod |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions-ja.md) | AI アサーション | 保留 | MagicPod |
-| [BE-0045](proposals/BE-0045-device-state-timezone-clipboard-shake/BE-0045-device-state-timezone-clipboard-shake-ja.md) | デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク | 提案 | MagicPod |
 | [BE-0046](proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) | OTP・メールの側方チャネルステップ | 提案 | MagicPod |
+| [BE-0052](proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md) | デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク | 提案 | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 
 ### 競合調査（Maestro）由来の候補

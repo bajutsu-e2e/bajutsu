@@ -3,6 +3,7 @@
 # BE-0041 — Web (Playwright) backend
 
 * Proposal: [BE-0041](BE-0041-web-playwright-backend.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Platform expansion (Android / Web / Flutter)

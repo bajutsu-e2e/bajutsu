@@ -55,9 +55,12 @@ When you add a roadmap item:
    item forever.
 
 Each file follows the **Swift-Evolution proposal format**: a metadata block (`* Proposal`,
-`* Status`, `* Track`, `* Topic`, …) then `## Introduction` / `## Motivation` /
+`* Author`, `* Status`, `* Track`, `* Topic`, …) then `## Introduction` / `## Motivation` /
 `## Detailed design` / `## Alternatives considered` / `## References` (fill what you can; mark
-unknowns `TBD`). The **Status** decides the track: `Implemented` or `Accepted, in progress` are
+unknowns `TBD`). **Name the author by GitHub handle** —
+`* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
+(for an AI-assisted draft, the person who drove and committed it). The **Status** decides the
+track: `Implemented` or `Accepted, in progress` are
 listed under **Accepted** (a decision/implementation record); `Proposal` or `Proposal (deferred)`
 under **Proposals** (under consideration). When an item ships, set its Status to `Implemented`
 and **move its directory** from `roadmaps/proposals/` to `roadmaps/implemented/` (keeping the
@@ -263,8 +266,8 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|---|
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
-| [BE-0045](proposals/BE-0045-device-state-timezone-clipboard-shake/BE-0045-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Proposal | MagicPod |
 | [BE-0046](proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Proposal | MagicPod |
+| [BE-0052](proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Proposal | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)

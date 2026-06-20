@@ -3,6 +3,7 @@
 # BE-0003 — codegen, traces, network & CI (M3)
 
 * Proposal: [BE-0003](BE-0003-m3-codegen-traces-network-ci.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
 * Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
 * Track: [Accepted](../../README.md#accepted)

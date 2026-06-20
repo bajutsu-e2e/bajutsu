@@ -10,7 +10,9 @@ directories, files, and index tables.
 For each ``roadmaps/proposals/BE-XXXX-<slug>/`` placeholder (sorted by slug, so the order is
 stable across runs and machines) it:
 
-1. allocates the next ID — ``max existing BE-NNNN + 1``, incrementing per item;
+1. allocates the next ID — the smallest free number above every ID in the working tree
+   **and on ``origin/main``**, incrementing per item (so a branch cut from an older main
+   can't reuse a number a parallel branch has since merged);
 2. ``git mv``\\ s the directory and its files, replacing ``BE-XXXX`` with ``BE-NNNN``;
 3. rewrites ``BE-XXXX`` -> ``BE-NNNN`` inside those files;
 4. fixes the index-table rows in ``README.md`` / ``README-ja.md`` — any line that
@@ -35,19 +37,44 @@ CATEGORIES = ("implemented", "proposals")
 PLACEHOLDER_CATEGORY = "proposals"
 PLACEHOLDER = "BE-XXXX"
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-")
+PATH_ID_RE = re.compile(r"/BE-(\d{4})-")  # an item's id as it appears inside a git path
 INDEX_FILES = ("README.md", "README-ja.md")
 
 
-def existing_max_id() -> int:
-    """Highest already-allocated BE number across both categories, or 0 if there are none."""
-    ids = [
+def working_tree_ids() -> set[int]:
+    """BE numbers present in the working tree, across both categories."""
+    return {
         int(m.group(1))
         for category in CATEGORIES
         if (ROADMAP / category).is_dir()
         for d in (ROADMAP / category).iterdir()
         if d.is_dir() and (m := NUMBERED_DIR_RE.match(d.name))
-    ]
-    return max(ids, default=0)
+    }
+
+
+def ids_on_git_ref(ref: str) -> set[int]:
+    """BE numbers present under ``roadmaps/`` on a git ref; empty if the ref is unavailable.
+
+    A PR cut from an older ``main`` would otherwise recompute ``max + 1`` from a stale view and
+    re-hand-out a number a parallel branch has already merged — the exact race that produced a
+    duplicate BE-0045. Folding in ``origin/main`` closes that window. Degrades to empty when the
+    ref or git is unavailable (e.g. a shallow checkout), so local runs still work.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", ref, "--", str(ROADMAP)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return set()
+    return {int(m.group(1)) for line in out.splitlines() if (m := PATH_ID_RE.search(line))}
+
+
+def used_ids() -> set[int]:
+    """Every BE number to steer clear of: the working tree plus ``origin/main`` (best effort)."""
+    return working_tree_ids() | ids_on_git_ref("origin/main")
 
 
 def placeholder_dirs() -> list[Path]:
@@ -66,13 +93,18 @@ def git_mv(src: Path, dst: Path) -> None:
 
 def allocate() -> list[tuple[str, str]]:
     """Rename placeholder items and return the (slug, new-id-token) allocations."""
-    next_id = existing_max_id() + 1
+    used = used_ids()
+    next_id = max(used, default=0) + 1
     allocations: list[tuple[str, str]] = []
 
     for src_dir in placeholder_dirs():
         slug = src_dir.name[len(PLACEHOLDER) + 1 :]
+        while next_id in used:  # never hand out a number already taken (defence in depth)
+            next_id += 1
         new_token = f"BE-{next_id:04d}"
         new_dir = ROADMAP / PLACEHOLDER_CATEGORY / f"{new_token}-{slug}"
+        if new_dir.exists():
+            raise SystemExit(f"refusing to allocate {new_token}: {new_dir} already exists")
 
         git_mv(src_dir, new_dir)
         for f in sorted(new_dir.iterdir()):
@@ -83,6 +115,7 @@ def allocate() -> list[tuple[str, str]]:
             text = f.read_text(encoding="utf-8")
             f.write_text(text.replace(PLACEHOLDER, new_token), encoding="utf-8")
 
+        used.add(next_id)
         allocations.append((slug, new_token))
         print(f"Allocated {new_token} for {slug}")
         next_id += 1

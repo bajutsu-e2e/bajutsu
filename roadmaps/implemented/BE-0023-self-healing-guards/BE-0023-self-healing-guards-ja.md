@@ -3,6 +3,7 @@
 # BE-0023 — 「テストを甘くする」防止策
 
 * 提案: [BE-0023](BE-0023-self-healing-guards-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * 実装 PR: PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし）
 * トラック: [可決済み](../../README-ja.md#可決済み)

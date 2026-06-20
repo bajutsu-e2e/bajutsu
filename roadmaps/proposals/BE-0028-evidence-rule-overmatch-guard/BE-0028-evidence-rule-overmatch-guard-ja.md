@@ -3,6 +3,7 @@
 # BE-0028 — 証跡ルールの過剰マッチ対策
 
 * 提案: [BE-0028](BE-0028-evidence-rule-overmatch-guard-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: その他・保留

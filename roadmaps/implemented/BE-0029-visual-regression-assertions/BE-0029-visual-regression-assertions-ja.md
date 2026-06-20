@@ -3,6 +3,7 @@
 # BE-0029 — ビジュアル回帰アサーション
 
 * 提案: [BE-0029](BE-0029-visual-regression-assertions-ja.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * 実装 PR: [#30](https://github.com/bajutsu-e2e/bajutsu/pull/30), [#34](https://github.com/bajutsu-e2e/bajutsu/pull/34)
 * トラック: [可決済み](../../README-ja.md#可決済み)

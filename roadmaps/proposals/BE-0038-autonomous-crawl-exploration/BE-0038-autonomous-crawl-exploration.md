@@ -3,6 +3,7 @@
 # BE-0038 — Autonomous crawl exploration (App Explorer style)
 
 * Proposal: [BE-0038](BE-0038-autonomous-crawl-exploration.md)
+* Author: [@0x0c](https://github.com/0x0c)
 * Status: **Accepted, in progress**
 * Track: [Accepted](../../README.md#accepted)
 * Topic: Candidates from competitive research (MagicPod / Autify)
