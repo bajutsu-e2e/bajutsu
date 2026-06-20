@@ -174,23 +174,18 @@ def _build_server_state(
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.executor import QueueExecutor
     from bajutsu.serve.server.logbus import RedisLogBus
-    from bajutsu.serve.server.object_store import S3ObjectStore, s3_client_from_env
+    from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, s3_prefix
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
     from bajutsu.serve.server.worker_job import redis_url
 
-    bucket = os.environ.get("BAJUTSU_S3_BUCKET")
-    if not bucket:
+    store = object_store_from_env()
+    if store is None:
         raise ValueError("BAJUTSU_S3_BUCKET is required for --backend=server")
-    # Normalize the optional tenant prefix to end with "/" so "tenant" doesn't fuse into
-    # "tenantartifacts/"; an empty prefix stays empty (no leading slash).
-    prefix = os.environ.get("BAJUTSU_S3_PREFIX", "")
-    if prefix and not prefix.endswith("/"):
-        prefix += "/"
+    prefix = s3_prefix()
     # The real clients are wider than our minimal seam protocols (RedisLike / Queue), so hand them
     # over as Any — the seam adapters use only the slice they declare.
     redis: Any = Redis.from_url(redis_url())
     queue: Any = Queue(os.environ.get("BAJUTSU_QUEUE", "bajutsu"), connection=redis)
-    store = S3ObjectStore(s3_client_from_env(), bucket)
 
     state = ServeState(
         runs_dir=runs_dir,
@@ -205,7 +200,7 @@ def _build_server_state(
     )
     # Override the filesystem seams (set local in __post_init__) with the object-storage ones. The
     # scenario store reads the live config's apps, so a config opened later is reflected.
-    state.artifacts = ObjectStorageArtifactStore(store, prefix=f"{prefix}artifacts/")
+    state.artifacts = ObjectStorageArtifactStore(store, prefix=artifact_prefix(prefix))
     state.scenarios = StorageScenarioStore(
         ObjectScenarioStorage(
             store, lambda: list_apps(state.config) if state.config else [], prefix=prefix

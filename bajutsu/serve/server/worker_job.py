@@ -21,6 +21,12 @@ from typing import Any
 from bajutsu import env
 from bajutsu.serve.jobs import Job, ServeState, run_job
 from bajutsu.serve.logbus import LogBus
+from bajutsu.serve.server.object_store import (
+    ObjectStore,
+    artifact_prefix,
+    object_store_from_env,
+    s3_prefix,
+)
 
 # The worker's Redis URL, set in-process by `bajutsu worker` (see `set_broker_url`). Kept off the
 # environment so a credential-bearing URL never propagates into the `bajutsu run` subprocesses
@@ -86,6 +92,26 @@ def _materialize(work: Path, materials: dict[str, str]) -> None:
         dest.write_text(content, encoding="utf-8")
 
 
+def _upload_runs(work: Path, store: ObjectStore, prefix: str, run_id: str) -> None:
+    """Upload only this job's run tree (``work/runs/<run_id>/**``) to object storage, keyed by its
+    path relative to ``work/runs`` under *prefix* — the exact keys `ObjectStorageArtifactStore`
+    serves. Scoped to *run_id* because a worker's CWD is shared across jobs (don't re-upload old
+    runs); symlinks are skipped and resolved paths must stay under the run dir (no exfiltration).
+    Files stream from disk (`put_file`), so a large video doesn't load into memory."""
+    runs = work / "runs"
+    run_dir = runs / run_id
+    if not run_dir.is_dir():
+        return
+    base = run_dir.resolve()
+    for path in sorted(run_dir.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue  # skip symlinks (and non-files) so nothing outside the run dir is uploaded
+        if base != path.resolve().parent and base not in path.resolve().parents:
+            continue  # defensive: stay under the run dir
+        rel = path.relative_to(runs).as_posix()  # "<run_id>/..."
+        store.put_file(f"{prefix}{rel}", path)
+
+
 def execute_job_spec(
     spec: dict[str, Any],
     *,
@@ -93,13 +119,16 @@ def execute_job_spec(
     simctl: env.RunFn = env._real_run,
     cwd: Path | None = None,
     bus: LogBus | None = None,
+    store: ObjectStore | None = None,
 ) -> Job:
-    """Worker entrypoint: rebuild the job from *spec* and run the unchanged `run_job`.
+    """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
+    run tree to object storage.
 
     Builds a minimal worker-side `ServeState` (its own working dir, real subprocess/simctl) whose
-    LogBus is the shared Redis bus, so the streamed log reaches the control plane. `popen` / `simctl`
-    / `cwd` / `bus` are injectable so the run can be driven with a fake subprocess and an in-memory
-    Redis on the gate. Returns the finished `Job`."""
+    LogBus is the shared Redis bus, so the streamed log reaches the control plane. After the run, the
+    run tree is uploaded so the control plane's artifact store can serve it. `popen` / `simctl` /
+    `cwd` / `bus` / `store` are injectable so the run can be driven with a fake subprocess, an
+    in-memory Redis, and a fake object store on the gate. Returns the finished `Job`."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -117,4 +146,10 @@ def execute_job_spec(
         bus=state.logbus,
     )
     run_job(state, job)
+    # Upload this run's tree so the control plane can serve it — scoped to the produced run id (the
+    # worker's CWD is shared across jobs). Skip when no run was produced (job.run_id is None) or no
+    # object store is configured, rather than failing the finished run.
+    uploader = store if store is not None else object_store_from_env()
+    if uploader is not None and job.run_id:
+        _upload_runs(work, uploader, artifact_prefix(s3_prefix()), job.run_id)
     return job

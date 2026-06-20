@@ -14,7 +14,13 @@ import pytest
 from botocore.exceptions import ClientError
 
 from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
-from bajutsu.serve.server.object_store import S3ObjectStore, s3_client_from_env
+from bajutsu.serve.server.object_store import (
+    S3ObjectStore,
+    artifact_prefix,
+    object_store_from_env,
+    s3_client_from_env,
+    s3_prefix,
+)
 
 
 class _FakeS3:
@@ -148,3 +154,25 @@ def test_s3_client_from_env_uses_endpoint_and_region(monkeypatch: pytest.MonkeyP
     client = s3_client_from_env()
     assert client.meta.endpoint_url == "https://acct.r2.cloudflarestorage.com"
     assert client.meta.region_name == "auto"
+
+
+def test_s3_prefix_normalizes_a_trailing_slash(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BAJUTSU_S3_PREFIX", raising=False)
+    assert s3_prefix() == ""
+    monkeypatch.setenv("BAJUTSU_S3_PREFIX", "tenant")
+    assert s3_prefix() == "tenant/"
+    monkeypatch.setenv("BAJUTSU_S3_PREFIX", "tenant/")
+    assert s3_prefix() == "tenant/"
+
+
+def test_artifact_prefix_keys_under_base() -> None:
+    assert artifact_prefix("") == "artifacts/"
+    assert artifact_prefix("tenant/") == "tenant/artifacts/"
+
+
+def test_object_store_from_env_needs_a_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BAJUTSU_S3_BUCKET", raising=False)
+    assert object_store_from_env() is None  # no bucket -> caller decides (require or skip)
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    assert isinstance(object_store_from_env(), S3ObjectStore)

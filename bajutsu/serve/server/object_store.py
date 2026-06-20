@@ -11,6 +11,7 @@ safe to import without the ``server`` extra and the default path stays SDK-free 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -26,6 +27,10 @@ class ObjectStore(Protocol):
 
     def put_bytes(self, key: str, data: bytes) -> None:
         """Write *data* to the object at *key* (creating or overwriting)."""
+
+    def put_file(self, key: str, path: Path) -> None:
+        """Upload the file at *path* to *key*, streaming from disk (no full read into memory) — for
+        large run artifacts like videos."""
 
     def presigned_url(self, key: str) -> str:
         """A short-lived signed GET URL for *key*."""
@@ -81,6 +86,10 @@ class S3ObjectStore:
     def put_bytes(self, key: str, data: bytes) -> None:
         self._client.put_object(Bucket=self._bucket, Key=key, Body=data)
 
+    def put_file(self, key: str, path: Path) -> None:
+        # upload_file streams from disk (multipart for large files) — no full read into memory.
+        self._client.upload_file(str(path), self._bucket, key)
+
     def presigned_url(self, key: str) -> str:
         url: str = self._client.generate_presigned_url(
             "get_object", Params={"Bucket": self._bucket, "Key": key}, ExpiresIn=self._ttl
@@ -114,3 +123,24 @@ def s3_client_from_env() -> Any:
         endpoint_url=os.environ.get("BAJUTSU_S3_ENDPOINT") or None,
         region_name=os.environ.get("BAJUTSU_S3_REGION") or os.environ.get("AWS_REGION") or None,
     )
+
+
+def s3_prefix() -> str:
+    """The normalized tenant prefix from ``BAJUTSU_S3_PREFIX`` — trailing ``/`` when non-empty (so
+    ``tenant`` doesn't fuse into ``tenantartifacts/``), empty when unset."""
+    p = os.environ.get("BAJUTSU_S3_PREFIX", "")
+    return p if (not p or p.endswith("/")) else p + "/"
+
+
+def artifact_prefix(base: str = "") -> str:
+    """The object-key prefix for run artifacts under *base*. Shared by the control plane's artifact
+    store and the worker's upload so both agree on keys (``<base>artifacts/<runId>/…``)."""
+    return f"{base}artifacts/"
+
+
+def object_store_from_env() -> S3ObjectStore | None:
+    """An `S3ObjectStore` from the environment (``BAJUTSU_S3_BUCKET`` + endpoint/region), or None
+    when no bucket is configured — so a caller can require it (control plane) or skip (a worker with
+    no object storage)."""
+    bucket = os.environ.get("BAJUTSU_S3_BUCKET")
+    return S3ObjectStore(s3_client_from_env(), bucket) if bucket else None
