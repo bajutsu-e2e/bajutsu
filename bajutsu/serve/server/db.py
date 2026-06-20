@@ -121,18 +121,24 @@ class SqlRepository:
             return [_to_record(row) for row in session.scalars(stmt)]
 
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
+        from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import Org
 
         with Session(self._engine) as session:
-            if (
-                session.get(Org, org_id) is None
-            ):  # create-if-absent, leaving created_at to the default
-                session.add(Org(id=org_id, slug=slug, name=name))
+            if session.get(Org, org_id) is not None:
+                return
+            session.add(Org(id=org_id, slug=slug, name=name))  # leave created_at to the default
+            try:
                 session.commit()
+            except IntegrityError:
+                # A concurrent login inserted it between the check and the commit — that's the
+                # idempotent outcome we wanted, so swallow it.
+                session.rollback()
 
     def upsert_user(self, user_id: str, *, org_id: str, github_login: str, email: str) -> None:
+        from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import User
@@ -141,9 +147,17 @@ class SqlRepository:
             user = session.get(User, user_id)
             if user is None:
                 session.add(User(id=user_id, org_id=org_id, github_login=github_login, email=email))
-            else:  # update in place (an OAuth re-login) without disturbing created_at
+                try:
+                    session.commit()
+                    return
+                except IntegrityError:
+                    # A concurrent OAuth callback inserted the same user first; fall through to
+                    # update the now-existing row instead of failing the login.
+                    session.rollback()
+                    user = session.get(User, user_id)
+            if user is not None:  # update in place (a re-login) without disturbing created_at
                 user.org_id, user.github_login, user.email = org_id, github_login, email
-            session.commit()
+                session.commit()
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]
