@@ -125,7 +125,8 @@ flowchart TB
 - **simctl コマンド層**、**idb 出力パーサ**、**doctor** 規約スコア
 - **AI オーサリングループ**（`record`）: Agent 抽象 + Claude 実装 + システムアラートガード
 - **XCUITest codegen**（構造マッピング・テスト時 AI 不要）
-- 配線済み CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage` / `serve`
+- 配線済み CLI: `run` / `doctor` / `record` / `codegen` / `trace` / `triage` / `serve` / `mcp` / `lint` / `schema`
+- **MCP サーバ**（`bajutsu mcp`）: `run` と `doctor` を MCP ツールとして、run の証跡をリソースとして公開し、Claude Desktop / Code のエージェント連携に使えます
 
 実機 Simulator で検証済み（iPhone 17 Pro・近年の iOS）:
 
@@ -157,6 +158,9 @@ bajutsu record --app <name> --goal "..." [--out file]     # 探索 + 記録（Ti
 bajutsu doctor --app <name>                               # 現在画面の規約スコア
 bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift   # ネイティブ XCUITest を出力
 bajutsu serve  [--port 8765] [--config c.yaml]            # ローカル Web UI: シナリオ実行 + レポート閲覧（Tier 1）
+bajutsu mcp    [--config c.yaml] [--transport stdio]      # エージェント連携用 MCP サーバ（要 `bajutsu[mcp]`）
+bajutsu lint   <scenario.yaml>                            # 実行せずにシナリオを検証
+bajutsu schema                                            # エディタ連携用の JSON Schema を出力
 ```
 
 アプリ別設定は `bajutsu.config.yaml` に置きます（リポジトリ同梱の `sample` アプリ）:
@@ -219,6 +223,8 @@ bajutsu/
 ├── record.py              # record ループ: 探索 -> シナリオ出力
 ├── alerts.py              # システムアラートガード（視覚ロケータ）
 ├── codegen.py             # シナリオ -> XCUITest (Swift)
+├── lint.py                # シナリオ linter + JSON Schema 生成
+├── mcp/                   # MCP サーバ（エージェント連携用のツール + リソース）
 ├── dotenv.py              # 最小 .env ローダ
 ├── _yaml.py               # on/off を文字列のまま読む YAML ローダ
 └── cli.py                 # CLI (typer)
@@ -226,23 +232,8 @@ bajutsu/
 
 ## ロードマップ
 
-- **M1 — 完了（実機検証済み）。** 決定的ランナー: env (simctl) + ドライバ + シナリオ +
-  アサーション + 軽量証跡 + manifest + アプリ別 config + `run` / `doctor`。完了条件を実機で達成しました。
-  同一の id ファーストシナリオ（`demos/features/app/scenarios/cross_backend.yaml`）が idb 上で決定的に通り、
-  config だけで対象アプリを切り替えられます（idb は id ファーストセレクタをネイティブの `AXUniqueId`
-  から直接解決し、フレーム中心の座標で操作します）。
-- **M2 — ほぼ完了。** AI ループ（`record`）+ `capturePolicy` 証跡ルール + `video` / `deviceLog` +
-  レポーター（JUnit/HTML）。*（完了済みです。冪等な正規化 / 来歴コメントはまだ軽い状態です。）*
-- **M3 — 完了。** XCUITest codegen ✅、アプリトレース（`appTrace` / os_signpost）✅、
-  証跡への redaction 適用 ✅、ネットワーク**観測**（アプリ内 collector + `request` アサーション）✅、
-  **決定的モック**（シナリオ `mocks` → オフラインのプロトコル内スタブ）✅。いずれも実機検証済みです。
-  **CI** ✅: `ci.yml` が Linux で ruff + mypy + pytest（py3.13）、`e2e.yml` が macOS Simulator で
-  idb smoke と codegen→XCUITest 経路（`make -C demos/features ui-test`）を実行します。
-- **M4 — 実装済み。** 自己修復トリアージ: `bajutsu triage` が失敗 run のコンテキストを組み立てて
-  診断します（原因＋修正案。**助言のみ**で、合否は判定しません）。同じ `TriageAgent` プロトコルの裏で、既定の
-  ルールベース `HeuristicTriageAgent`（id リネームの「もしかして」、timing / assertion 分類）か
-  `triage --ai`（失敗**スクショ**も読む Claude 版）が診断します。エージェントは**構造化 fix**（`renameId` /
-  `addIndex` 曖昧一致の一意化 / `raiseTimeout`）を提案でき、`--apply <file>` が dry-run diff を表示し、
-  `--write` が source に適用し、`--rerun` が patched シナリオを再実行して緑を確認します。境界は保たれます。
-  fix は人間が diff をレビューして opt-in した時のみ適用されます。実機で rename・曖昧一致の閉ループ（診断→適用→
-  再実行→緑）を、timing は実 API で `raiseTimeout` 提案を実証済みです。
+マイルストーン M1–M4 は完了しています — 決定的ランナー、AI `record` ループ + `capturePolicy` 証跡ルール、
+XCUITest codegen + CI、自己修復トリアージのいずれも実機 Simulator で検証済みです（実装済みの範囲は上の
+[ステータス](#ステータス)を参照してください）。
+
+今後の優先順位付きバックログ（次に作りたいもの）は [`roadmaps/`](roadmaps/README-ja.md) にあります。
