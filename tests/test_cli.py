@@ -165,6 +165,7 @@ def test_record_unknown_app(tmp_path: Path) -> None:
         ],
     )
     assert r.exit_code == 2
+    assert "unknown app" in r.output
 
 
 def test_doctor_unknown_app(tmp_path: Path) -> None:
