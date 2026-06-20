@@ -50,7 +50,13 @@ jobs:
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           echo "Changed files:"
           echo "$changed"
-          if echo "$changed" | grep -qE '^(bajutsu/|BajutsuKit/|demos/features/app/|demos/features/demo\.config\.yaml|pyproject\.toml|uv\.lock|Makefile|\.github/workflows/e2e\.yml|\.github/actions/bajutsu-e2e/)'; then
+          # The on-device jobs exercise only the idb runtime (smoke) and codegen -> XCUITest
+          # (xcuitest); they never touch the serve control plane, the MCP server, or the linter,
+          # which the Linux gate already covers. Drop those (and tests/) before matching so a
+          # serve/mcp/lint-only PR skips the metered macOS jobs. Dependency/build changes
+          # (pyproject / uv.lock / Makefile) stay device-relevant — a runtime dep could move.
+          device=$(echo "$changed" | grep -vE '^(bajutsu/serve/|bajutsu/mcp/|bajutsu/lint\.py|tests/)' || true)
+          if echo "$device" | grep -qE '^(bajutsu/|BajutsuKit/|demos/features/app/|demos/features/demo\.config\.yaml|pyproject\.toml|uv\.lock|Makefile|\.github/workflows/e2e\.yml|\.github/actions/bajutsu-e2e/|\.github/actions/boot-simulator/)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -119,6 +125,18 @@ jobs:
 
       - name: Install xcodegen
         run: brew install xcodegen
+
+      # Cache xcodebuild DerivedData so the UITest build is incremental across runs. Keyed on the
+      # Swift sources + project spec; the restore-keys fallback warms the cache (compiled modules)
+      # even when sources change, and a miss simply rebuilds cold — so the cache only ever speeds
+      # the build, never changes its result.
+      - name: Cache DerivedData
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: demos/features/app/build/dd
+          key: xcode-dd-${{ runner.os }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/features/app/**/*.swift', 'demos/features/app/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-${{ runner.os }}-
 
       - name: Boot a Simulator
         id: sim
