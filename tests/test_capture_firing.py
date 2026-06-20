@@ -232,9 +232,7 @@ def test_multiple_inline_interval_tokens_are_recorded_scenario_wide() -> None:
         _scn(
             {
                 "name": "x",
-                "steps": [
-                    {"tap": {"id": "a"}, "capture": ["video", "deviceLog"]}
-                ],
+                "steps": [{"tap": {"id": "a"}, "capture": ["video", "deviceLog"]}],
             }
         ),
         sink=sink,
@@ -323,6 +321,7 @@ def test_requested_interval_recorded_even_when_a_step_fails() -> None:
 def test_screen_changed_shares_query_with_evidence(tmp_path: Path) -> None:
     """With screenChanged capturePolicy, the post-step query() is shared between
     screen_changed detection and evidence capture (elements.json), not called twice."""
+
     class _State:
         def __init__(self) -> None:
             self.queries_after_tap = 0
