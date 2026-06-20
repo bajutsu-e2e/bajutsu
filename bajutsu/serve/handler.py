@@ -25,22 +25,18 @@ from bajutsu.config import load_config
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.helpers import (
     _int,
-    _scenario_path,
     app_build_info,
     crawl_command,
     list_apps,
     list_fs,
-    list_scenarios,
     list_simulators,
     mask_secret,
     record_command,
     run_command,
-    scenario_out_path,
-    unique_scenario_path,
     valid_backend,
     valid_udid,
 )
-from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job
+from bajutsu.serve.jobs import ServeState, cancel_job
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
@@ -137,8 +133,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.wfile.write(body)
                 case "/api/scenarios":
                     qs = parse_qs(urlparse(self.path).query)
-                    scn_dir = _scenarios_dir_for(state, next(iter(qs.get("app") or []), None))
-                    self._json(list_scenarios(scn_dir) if scn_dir else [])
+                    scope = state.scenarios.scope(next(iter(qs.get("app") or []), None))
+                    self._json(scope.list() if scope else [])
                 case "/api/apps":
                     self._json(list_apps(state.config) if state.config else [])
                 case "/api/config":
@@ -166,16 +162,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(state.artifacts.list_runs())
                 case "/api/scenario":
                     qs = parse_qs(urlparse(self.path).query)
-                    scn_dir = _scenarios_dir_for(state, next(iter(qs.get("app") or []), None))
-                    target = (
-                        _scenario_path(scn_dir, next(iter(qs.get("path") or []), None))
-                        if scn_dir
-                        else None
-                    )
-                    if target is None or not target.is_file():
+                    scope = state.scenarios.scope(next(iter(qs.get("app") or []), None))
+                    text = scope.read(next(iter(qs.get("path") or []), None)) if scope else None
+                    if text is None:
                         self._json({"error": "not found"}, 404)
                     else:
-                        self._json({"yaml": target.read_text(encoding="utf-8")})
+                        self._json({"yaml": text})
                 case _ if path.startswith("/api/jobs/") and path.endswith("/events"):
                     self._sse_job(path[len("/api/jobs/") : -len("/events")])
                 case _ if path.startswith("/api/jobs/"):
@@ -374,18 +366,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             app = str(body["app"])
             # Confine the scenario to the app's own scenarios dir: a serve client must not be able
             # to run an arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite).
-            scn_dir = _scenarios_dir_for(state, app)
-            if scn_dir is None:
+            scope = state.scenarios.scope(app)
+            if scope is None:
                 self._json({"error": f"app '{app}' has no scenarios dir"}, 400)
                 return
-            # Match the client value against the dir's actual scenario files by name: the path we
-            # use comes from enumerating the dir (trusted), never from the client string, so no
-            # client-controlled value reaches a filesystem path. The UI's value works whether it
-            # sends the file name or its full path (we compare on the basename).
-            name = Path(str(body["scenario"])).name
-            target = next(
-                (p for p in scn_dir.glob("*.yaml") if p.name == name and p.is_file()), None
-            )
+            # The store matches the client value against the dir's actual files by basename and
+            # returns the trusted path from that listing — never the client string — so no
+            # client-controlled value reaches a filesystem path (BE-0051 arbitrary-path guard).
+            target = scope.resolve_runnable(str(body["scenario"]))
             if target is None:
                 self._json(
                     {"error": "scenario must be an existing .yaml inside the app's scenarios dir"},
@@ -434,17 +422,14 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not body.get("goal") or not body.get("app"):
                 self._json({"error": "goal and app are required"}, 400)
                 return
-            scn_dir = _scenarios_dir_for(state, str(body["app"]))
-            if scn_dir is None:
+            scope = state.scenarios.scope(str(body["app"]))
+            if scope is None:
                 self._json({"error": f"app '{body['app']}' has no scenarios dir"}, 400)
                 return
-            scn_dir.mkdir(parents=True, exist_ok=True)
-            out = unique_scenario_path(
-                scenario_out_path(scn_dir, str(body.get("name") or "generated"))
-            )
+            out = scope.out_path(str(body.get("name") or "generated"))
             # Validate the device args the same way /api/run does (BE-0051): no free-text backend
             # or udid reaches the spawned `bajutsu record` argv. The output path is already
-            # confined by scenario_out_path above.
+            # confined by the scenario store's out_path above.
             backend = str(body.get("backend", "") or "")
             if backend and not valid_backend(backend):
                 self._json({"error": f"unknown backend: {backend}"}, 400)
@@ -522,8 +507,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
             """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""
-            scn_dir = _scenarios_dir_for(state, str(body.get("app") or "") or None)
-            target = _scenario_path(scn_dir, body.get("path")) if scn_dir else None
+            scope = state.scenarios.scope(str(body.get("app") or "") or None)
+            ref = body.get("path")
+            target = (
+                scope.resolve_writable(ref if isinstance(ref, str) else None) if scope else None
+            )
             if target is None:
                 self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
                 return

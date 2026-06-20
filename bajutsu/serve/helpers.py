@@ -388,7 +388,10 @@ def _scenario_path(scenarios_dir: Path, p: str | None) -> Path | None:
     target = Path(p)
     if not target.is_absolute():
         target = scenarios_dir / target
-    target = target.resolve()
+    try:
+        target = target.resolve()
+    except ValueError:
+        return None  # an invalid client path (e.g. an embedded NUL) is simply not a scenario
     base = scenarios_dir.resolve()
     if target != base and base not in target.parents:
         return None
