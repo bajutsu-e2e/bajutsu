@@ -2,7 +2,8 @@
 
 Every step always captures an instant baseline (screenshot.after + elements);
 capturePolicy / inline `capture` add extra instant captures on top. Interval kinds
-(video / deviceLog / appTrace) are recorded once for the whole scenario.
+(video / deviceLog / appTrace) are heavy and opt-in (BE-0028): recorded once for the
+whole scenario, but only when the scenario actually requests that kind.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, FileSink
 from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.scenario import Scenario
 
 BASELINE = ["screenshot.after", "elements"]
@@ -68,6 +70,56 @@ def test_baseline_always_fires() -> None:
     sink = RecordingSink()
     run_scenario(driver, _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}), sink=sink)
     assert sink.calls == [("x/step0", BASELINE)]
+
+
+# --- requested_intervals: heavy intervals are opt-in (BE-0028 guard #2) --------------------
+
+
+def test_requested_intervals_empty_by_default() -> None:
+    scn = _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]})
+    assert requested_intervals(scn) == []
+
+
+def test_requested_intervals_from_inline_capture() -> None:
+    scn = _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["video"]}]})
+    assert requested_intervals(scn) == ["video"]
+
+
+def test_requested_intervals_from_capture_policy_in_canonical_order() -> None:
+    scn = _scn(
+        {
+            "name": "x",
+            "capturePolicy": [{"on": {"result": "error"}, "capture": ["deviceLog", "video"]}],
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    # ordered video, deviceLog, appTrace regardless of request order
+    assert requested_intervals(scn) == ["video", "deviceLog"]
+
+
+def test_requested_intervals_recurses_into_nested_steps() -> None:
+    scn = _scn(
+        {
+            "name": "x",
+            "steps": [
+                {
+                    "forEach": {
+                        "sel": {"idMatches": "row.*"},
+                        "as": "r",
+                        "steps": [{"tap": {"id": "${vars.r}"}, "capture": ["appTrace"]}],
+                    }
+                }
+            ],
+        }
+    )
+    assert requested_intervals(scn) == ["appTrace"]
+
+
+def test_requested_intervals_ignores_instant_kinds() -> None:
+    scn = _scn(
+        {"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["screenshot", "elements"]}]}
+    )
+    assert requested_intervals(scn) == []
 
 
 def test_action_trigger_adds_to_baseline() -> None:
@@ -167,7 +219,7 @@ def test_inline_interval_token_is_recorded_scenario_wide_not_per_step() -> None:
         sink=sink,
     )
     assert sink.calls == [("x/step0", BASELINE)]
-    assert sink.scenario_intervals == [("x", ["video", "deviceLog", "appTrace"])]
+    assert sink.scenario_intervals == [("x", ["deviceLog"])]  # opt-in: only the requested kind
 
 
 class IntervalSink:
@@ -203,26 +255,48 @@ class IntervalSink:
         return [Artifact(name=str(i.path), kind=i.kind, provider="simctl") for i in started]
 
 
-def test_scenario_intervals_always_recorded() -> None:
+def test_scenario_intervals_opt_in_only() -> None:
+    # No capture asks for an interval -> none recorded (BE-0028: heavy intervals are opt-in).
     driver = FakeDriver([_el("a", "A")])
     sink = IntervalSink()
     result = run_scenario(
         driver, _scn({"name": "My Scn", "steps": [{"tap": {"id": "a"}}]}), sink=sink
     )
-    assert sink.started == [("my-scn", ["video", "deviceLog", "appTrace"])]
+    assert sink.started == [("my-scn", [])]
     assert sink.finished == ["my-scn"]
-    assert sorted(a.kind for a in result.artifacts) == ["appTrace", "deviceLog", "video"]
+    assert [a.kind for a in result.artifacts] == []
 
 
-def test_scenario_intervals_recorded_even_when_a_step_fails() -> None:
+def test_scenario_records_only_the_requested_interval() -> None:
     driver = FakeDriver([_el("a", "A")])
     sink = IntervalSink()
     result = run_scenario(
-        driver, _scn({"name": "x", "steps": [{"tap": {"id": "missing"}}]}), sink=sink
+        driver,
+        _scn({"name": "x", "steps": [{"tap": {"id": "a"}, "capture": ["video"]}]}),
+        sink=sink,
+    )
+    assert sink.started == [("x", ["video"])]
+    assert [a.kind for a in result.artifacts] == ["video"]
+
+
+def test_requested_interval_recorded_even_when_a_step_fails() -> None:
+    # An opted-in interval is still finalized on failure (the finally block).
+    driver = FakeDriver([_el("a", "A")])
+    sink = IntervalSink()
+    result = run_scenario(
+        driver,
+        _scn(
+            {
+                "name": "x",
+                "capturePolicy": [{"on": {"result": "error"}, "capture": ["video"]}],
+                "steps": [{"tap": {"id": "missing"}}],
+            }
+        ),
+        sink=sink,
     )
     assert not result.ok
-    assert sink.finished == ["x"]  # finalized in the finally block despite the failure
-    assert [a.kind for a in result.artifacts] == ["video", "deviceLog", "appTrace"]
+    assert sink.finished == ["x"]
+    assert [a.kind for a in result.artifacts] == ["video"]
 
 
 def test_screen_changed_shares_query_with_evidence(tmp_path: Path) -> None:

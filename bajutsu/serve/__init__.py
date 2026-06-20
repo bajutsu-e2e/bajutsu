@@ -26,6 +26,7 @@ from bajutsu.serve.helpers import (
     _scenario_path,
     app_build_info,
     app_scenarios_dir,
+    crawl_command,
     list_apps,
     list_fs,
     list_runs,
@@ -36,6 +37,8 @@ from bajutsu.serve.helpers import (
     run_command,
     scenario_out_path,
     unique_scenario_path,
+    valid_backend,
+    valid_udid,
 )
 from bajutsu.serve.jobs import Job, Popen, ServeState, cancel_job, run_job
 
@@ -48,6 +51,7 @@ __all__ = [
     "app_build_info",
     "app_scenarios_dir",
     "cancel_job",
+    "crawl_command",
     "list_apps",
     "list_fs",
     "list_runs",
@@ -61,6 +65,8 @@ __all__ = [
     "scenario_out_path",
     "serve",
     "unique_scenario_path",
+    "valid_backend",
+    "valid_udid",
 ]
 
 

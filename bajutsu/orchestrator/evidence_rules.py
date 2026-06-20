@@ -4,7 +4,7 @@ element properties into runtime vars.*."""
 from __future__ import annotations
 
 import fnmatch
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 
 from bajutsu.drivers import base
 from bajutsu.scenario import CaptureRule, Extract, Scenario, Selector, Step
@@ -12,6 +12,10 @@ from bajutsu.scenario import CaptureRule, Extract, Scenario, Selector, Step
 # Always captured, regardless of capturePolicy: an after-screenshot and the element
 # tree per step (instant); interval recordings for the whole scenario live in the run loop.
 _BASELINE_INSTANT = ("screenshot.after", "elements")
+
+# Scenario-wide interval recordings, in canonical order. These are heavy, so they are opt-in
+# (BE-0028): recorded only when a scenario actually requests the kind (see requested_intervals).
+_SCENARIO_INTERVALS = ("video", "deviceLog", "appTrace")
 
 _DSL_ACTION = {"long_press": "longPress", "double_tap": "doubleTap", "assert_": "assert"}
 
@@ -81,6 +85,30 @@ def _run_extract(
             return False, f"extract '{name}': {ext.prop} is None on the matched element"
         live_bindings[f"vars.{name}"] = str(raw)
     return True, ""
+
+
+def _all_steps(steps: list[Step]) -> Iterator[Step]:
+    """Every step, descending into the nested bodies of `if` / `forEach` so a nested step's
+    inline `capture` is seen too."""
+    for step in steps:
+        yield step
+        if step.if_ is not None:
+            yield from _all_steps(step.if_.then)
+            if step.if_.else_ is not None:
+                yield from _all_steps(step.if_.else_)
+        if step.for_each is not None:
+            yield from _all_steps(step.for_each.steps)
+
+
+def requested_intervals(scenario: Scenario) -> list[str]:
+    """The scenario-wide interval kinds (video / deviceLog / appTrace) the scenario actually
+    asks for — via a `capturePolicy` rule or any step's inline `capture`, nested steps included.
+    Empty by default, so a scenario that requests no heavy capture records none (BE-0028)."""
+    requested = {_kind_of(token) for rule in scenario.capture_policy for token in rule.capture}
+    requested.update(
+        _kind_of(token) for step in _all_steps(scenario.steps) for token in (step.capture or [])
+    )
+    return [kind for kind in _SCENARIO_INTERVALS if kind in requested]
 
 
 def _collect_captures(

@@ -8,6 +8,7 @@ import mimetypes
 import os
 import shutil
 import threading
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from bajutsu.serve.helpers import (
     _int,
     _scenario_path,
     app_build_info,
+    crawl_command,
     list_apps,
     list_fs,
     list_runs,
@@ -32,6 +34,8 @@ from bajutsu.serve.helpers import (
     run_command,
     scenario_out_path,
     unique_scenario_path,
+    valid_backend,
+    valid_udid,
 )
 from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job, run_job
 
@@ -123,6 +127,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._post_run(body)
                 case "/api/record":
                     self._post_record(body)
+                case "/api/crawl":
+                    self._post_crawl(body)
                 case "/api/scenario":
                     self._post_scenario(body)
                 case "/api/approve":
@@ -203,11 +209,39 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not body.get("scenario") or not body.get("app"):
                 self._json({"error": "scenario and app are required"}, 400)
                 return
+            app = str(body["app"])
+            # Confine the scenario to the app's own scenarios dir: a serve client must not be able
+            # to run an arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite).
+            scn_dir = _scenarios_dir_for(state, app)
+            if scn_dir is None:
+                self._json({"error": f"app '{app}' has no scenarios dir"}, 400)
+                return
+            # Match the client value against the dir's actual scenario files by name: the path we
+            # use comes from enumerating the dir (trusted), never from the client string, so no
+            # client-controlled value reaches a filesystem path. The UI's value works whether it
+            # sends the file name or its full path (we compare on the basename).
+            name = Path(str(body["scenario"])).name
+            target = next(
+                (p for p in scn_dir.glob("*.yaml") if p.name == name and p.is_file()), None
+            )
+            if target is None:
+                self._json(
+                    {"error": "scenario must be an existing .yaml inside the app's scenarios dir"},
+                    400,
+                )
+                return
+            backend = str(body.get("backend", "") or "")
+            if backend and not valid_backend(backend):
+                self._json({"error": f"unknown backend: {backend}"}, 400)
+                return
             udid = str(body.get("udid", "") or "")
+            if udid and not valid_udid(udid):
+                self._json({"error": "invalid udid"}, 400)
+                return
             cmd = run_command(
-                body["scenario"],
-                body["app"],
-                backend=body.get("backend", ""),
+                str(target),
+                app,
+                backend=backend,
                 udid=udid,
                 workers=_int(body.get("workers"), 1),
                 erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
@@ -217,7 +251,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 config=str(cfg),
                 baselines=str(state.baselines_dir),
             )
-            app_path, build = app_build_info(cfg, body["app"])
+            app_path, build = app_build_info(cfg, app)
             # Atomic count + create so concurrent dispatches can't both slip past the cap.
             job = state.try_new_job(
                 cmd, udids=self._boot_targets(udid), app_path=app_path, build=build
@@ -246,13 +280,23 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             out = unique_scenario_path(
                 scenario_out_path(scn_dir, str(body.get("name") or "generated"))
             )
+            # Validate the device args the same way /api/run does (BE-0051): no free-text backend
+            # or udid reaches the spawned `bajutsu record` argv. The output path is already
+            # confined by scenario_out_path above.
+            backend = str(body.get("backend", "") or "")
+            if backend and not valid_backend(backend):
+                self._json({"error": f"unknown backend: {backend}"}, 400)
+                return
             udid = str(body.get("udid", "") or "")
+            if udid and not valid_udid(udid):
+                self._json({"error": "invalid udid"}, 400)
+                return
             cmd = record_command(
                 str(out),
                 body["app"],
                 str(body["goal"]),
                 agent=body.get("agent", ""),
-                backend=body.get("backend", ""),
+                backend=backend,
                 udid=udid,
                 erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
                 dismiss_alerts=body["dismissAlerts"]
@@ -273,6 +317,46 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id, "path": str(out)})
+
+        def _post_crawl(self, body: dict[str, Any]) -> None:
+            """Explore an app breadth-first and build a screen map (the Crawl tab).  The screen
+            map is streamed into ``runs/<runId>/screenmap.json`` as the crawl advances; the
+            returned ``runId`` lets the UI poll it and draw the graph live."""
+            cfg = state.config
+            if cfg is None:
+                self._json({"error": "open a config first"}, 400)
+                return
+            if not body.get("app"):
+                self._json({"error": "app is required"}, 400)
+                return
+            # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
+            resume_src = str(body.get("resumeSrc", "") or "")
+            resume_key = str(body.get("resumeKey", "") or "")
+            resuming = bool(resume_src and resume_key and body.get("runId"))
+            run_id = (
+                str(body["runId"]) if resuming else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+            )
+            udid = str(body.get("udid", "") or "")
+            cmd = crawl_command(
+                str(body["app"]),
+                out=str(state.runs_dir / run_id),
+                agent=body.get("agent", ""),
+                backend=body.get("backend", ""),
+                udid=udid,
+                max_screens=_int(body.get("maxScreens"), 50),
+                max_steps=_int(body.get("maxSteps"), 200),
+                erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
+                dismiss_alerts=body["dismissAlerts"]
+                if isinstance(body.get("dismissAlerts"), bool)
+                else None,
+                config=str(cfg),
+                resume_src=resume_src if resuming else "",
+                resume_key=resume_key if resuming else "",
+            )
+            app_path, build = app_build_info(cfg, str(body["app"]))
+            job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
+            threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+            self._json({"jobId": job.id, "runId": run_id})
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
             """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""

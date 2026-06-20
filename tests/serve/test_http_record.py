@@ -14,6 +14,7 @@ from _shared import (
     SCENARIO,
     FakeProc,
     _get_json,
+    _post,
     _serve,
     project,
 )
@@ -76,6 +77,36 @@ def test_http_record_requires_goal_and_app(tmp_path: Path) -> None:
         )
         with pytest.raises(urllib.error.HTTPError, match="400"):
             urllib.request.urlopen(req)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_record_rejects_unknown_backend(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        status, resp = _post(
+            port, "/api/record", {"goal": "tap x", "app": "demo", "backend": "rm -rf /"}
+        )
+        assert status == 400 and "unknown backend" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_record_rejects_invalid_udid(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        status, resp = _post(
+            port, "/api/record", {"goal": "tap x", "app": "demo", "udid": "A;rm -rf /"}
+        )
+        assert status == 400 and "invalid udid" in resp["error"]
     finally:
         server.shutdown()
         server.server_close()
