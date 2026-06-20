@@ -52,7 +52,7 @@ def test_http_approve_rejects_traversal(tmp_path: Path) -> None:
         code, body = _post_json(
             port, "/api/approve", {"runId": "r1", "sid": "00-home", "baseline": "../escape.png"}
         )
-        assert code == 400 and "escape" in body["error"]
+        assert code == 400 and "invalid baseline name" in body["error"]
         assert not (tmp_path / "escape.png").exists()
     finally:
         server.shutdown()

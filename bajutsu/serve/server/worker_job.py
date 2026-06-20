@@ -14,6 +14,7 @@ lazily (inside `_redis_log_bus`), so this module stays safe to import without th
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -176,15 +177,20 @@ def _materialize_baselines(work: Path, store: ObjectStore) -> None:
     ``--baselines`` points here), via the same `ObjectBaselineStore` keys the control plane writes."""
     from bajutsu.serve.server.baselines import ObjectBaselineStore
 
+    baselines = work / "baselines"
+    # The workspace is reused across jobs, so clear first — otherwise a baseline deleted/renamed in
+    # storage would linger and skew the comparison.
+    if baselines.exists():
+        shutil.rmtree(baselines, ignore_errors=True)
     src = ObjectBaselineStore(store, prefix=s3_prefix())
-    base = (work / "baselines").resolve()
+    base = baselines.resolve()
     for name in src.names():
         data = src.open_bytes(name)
         if data is None:
             continue
-        dest = (work / "baselines" / name).resolve()
-        if base != dest.parent and base not in dest.parents:
-            continue  # defensive: stay under the baselines dir
+        dest = (baselines / name).resolve()
+        if base not in dest.parents:
+            continue  # defensive: stay strictly under the baselines dir
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
 

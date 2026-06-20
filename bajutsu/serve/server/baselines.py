@@ -2,9 +2,9 @@
 
 `LocalBaselineStore` keeps visual-regression baselines on disk. `ObjectBaselineStore` keeps the same
 `BaselineStore` contract but stores them in S3-compatible object storage at ``<prefix>baselines/``,
-reusing the injected `ObjectStore` slice. *prefix* is the tenant prefix (parameterized so a shared
-bucket can host many tenants later with no contract change). The object-store client is injected, so
-a fake drives the gate.
+reusing the injected `ObjectStore` slice. A baseline name is a relative path under that root;
+*prefix* is the tenant prefix (parameterized so a shared bucket can host many tenants later with no
+contract change). The object-store client is injected, so a fake drives the gate.
 """
 
 from __future__ import annotations
@@ -32,4 +32,10 @@ class ObjectBaselineStore:
         return name
 
     def names(self) -> list[str]:
-        return [k[len(self._dir) :] for k in self._store.list_keys(self._dir)]
+        # Sorted for determinism; drop a stray ``baselines/`` marker (empty name) and any unsafe
+        # key that open_bytes would reject anyway.
+        return sorted(
+            n
+            for k in self._store.list_keys(self._dir)
+            if (n := k[len(self._dir) :]) and _safe_baseline_name(n)
+        )

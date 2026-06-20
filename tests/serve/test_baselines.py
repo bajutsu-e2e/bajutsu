@@ -48,11 +48,20 @@ def test_local_baseline_store_round_trips_and_lists(tmp_path: Path) -> None:
 
 def test_local_baseline_store_rejects_escapes(tmp_path: Path) -> None:
     store = LocalBaselineStore(tmp_path / "baselines")
-    for bad in ("../evil.png", "/abs.png", "a\x00.png", ""):
+    # "." resolves to the baselines root itself — must be rejected, not write_bytes() a directory.
+    for bad in ("../evil.png", "/abs.png", "a\x00.png", "", "."):
         written = store.write(bad, b"x")
         assert written is None, bad
         assert store.open_bytes(bad) is None, bad
     assert not (tmp_path / "evil.png").exists()
+
+
+def test_object_baseline_store_names_are_sorted_and_filtered() -> None:
+    obj = _FakeObjectStore()
+    obj.objects["baselines/b.png"] = b"b"
+    obj.objects["baselines/a.png"] = b"a"
+    obj.objects["baselines/"] = b""  # a stray marker object -> empty name, dropped
+    assert ObjectBaselineStore(obj).names() == ["a.png", "b.png"]
 
 
 def test_object_baseline_store_round_trips_under_prefix() -> None:
@@ -89,4 +98,4 @@ def test_approve_writes_to_the_baseline_store(tmp_path: Path) -> None:
     bad, code = ops.approve_baseline(
         state, {"runId": "r1", "sid": "00-home", "baseline": "../escape.png"}
     )
-    assert code == 400 and "escapes" in bad["error"]
+    assert code == 400 and "invalid baseline name" in bad["error"]

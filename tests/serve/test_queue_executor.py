@@ -401,7 +401,11 @@ def test_execute_job_spec_materializes_baselines(tmp_path: Path) -> None:
         "build": None,
         "materialize_baselines": True,
     }
+    # A stale baseline from a previous job in the reused workspace must be cleared before download.
+    (tmp_path / "baselines").mkdir()
+    (tmp_path / "baselines" / "stale.png").write_bytes(b"old")
     execute_job_spec(
         spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
     )
     assert (tmp_path / "baselines" / "home.png").read_bytes() == b"\x89PNG"
+    assert not (tmp_path / "baselines" / "stale.png").exists()  # cleared before re-materialize

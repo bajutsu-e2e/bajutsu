@@ -4,8 +4,9 @@ A `visual` assertion compares a run's captured screenshot against a stored basel
 promotes a screenshot to a baseline; a run reads baselines to compare against. This is the one
 point where that storage diverges between local and server hosting: locally baselines are files
 **confined to the baselines dir** (`LocalBaselineStore`), while a server store keeps them in object
-storage. Baselines are a flat name space (the same single dir `serve` uses today); per-tenant
-scoping comes from the object-store prefix.
+storage. A baseline name is a relative path under one baselines root (the same single dir `serve`
+uses today — subdirectories allowed, but never escaping it); per-tenant scoping comes from the
+object-store prefix.
 """
 
 from __future__ import annotations
@@ -46,8 +47,9 @@ class LocalBaselineStore:
         if not _safe_baseline_name(name):
             return None
         target = (self._dir / name).resolve()
-        base = self._dir.resolve()
-        return target if (target == base or base in target.parents) else None
+        # Must be strictly under the baselines root — reject the root itself (e.g. name ".") which
+        # would write_bytes() a directory, alongside any escaping path.
+        return target if self._dir.resolve() in target.parents else None
 
     def open_bytes(self, name: str) -> bytes | None:
         target = self._target(name)

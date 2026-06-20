@@ -464,7 +464,7 @@ def approve_baseline(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]
     if data is None:
         return {"error": "no captured screenshot for this run"}, 404
     if state.baselines.write(baseline, data) is None:
-        return {"error": "baseline path escapes the baselines dir"}, 400
+        return {"error": "invalid baseline name"}, 400
     return {"ok": True, "baseline": baseline}, 200
 
 
