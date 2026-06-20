@@ -10,9 +10,10 @@
 
 ## Introduction
 
-Forward-looking design — **not implemented yet**. This proposal selects a concrete server,
-database, storage, and deployment stack for turning the local `bajutsu serve`
-(`bajutsu/serve.py`) into a **shared, publicly hosted** service. The local UI today is a Tier-1
+Forward-looking design — the **hosted service is not implemented yet**, but the
+local/server-parity groundwork it builds on has landed (see *Migration* below). This proposal
+selects a concrete server, database, storage, and deployment stack for turning the local
+`bajutsu serve` (`bajutsu/serve/`) into a **shared, publicly hosted** service. The local UI today is a Tier-1
 convenience that binds `127.0.0.1`, has no auth, and shells out to `bajutsu run` on the same host
 ([cli](../../../docs/cli.md#serve) · [reporting](../../../docs/reporting.md)). Going public changes the shape of
 the system, not just its address: the web UI is a **thin launcher**, so hosting it really means
@@ -46,7 +47,7 @@ That forces a **split topology** the current single-process design does not have
 
 The cheap, stateful, multi-user part (auth, history, queue, report viewer) lives on Linux. The
 expensive macOS-only part is reduced to a stateless worker that pulls a job, runs it on a fresh
-Simulator, streams logs, and uploads artifacts. This is the central refactor: **`serve.py`'s
+Simulator, streams logs, and uploads artifacts. This is the central refactor: **`serve`'s
 in-process `subprocess.Popen` becomes a job enqueued onto a broker and consumed by remote
 workers.**
 
@@ -57,7 +58,7 @@ workers.**
 | Layer | Selected | Why this one | Notable alternatives |
 |---|---|---|---|
 | **API / web** | **FastAPI** on **Uvicorn** (prod: Gunicorn + uvicorn workers) | Async (SSE — server-sent events — / WebSocket for live logs), Pydantic is **already a dependency** ([pyproject](../../../pyproject.toml)), OpenAPI for free, same Python as the core | Django (heavier, sync-first), Litestar, keep stdlib (won't scale to auth/multi-user) |
-| **Frontend** | Keep the **single-page UI** from `serve.py`, served by the API; add auth + project pickers | The UI is one HTML string already; no SPA build step needed for v1 | React/Svelte SPA later if the UI grows |
+| **Frontend** | Keep the **single-page UI** from `serve`, served by the API; add auth + project pickers | The UI is one HTML string already; no SPA build step needed for v1 | React/Svelte SPA later if the UI grows |
 | **Reverse proxy + TLS** (Transport Layer Security) | **Caddy** | Automatic HTTPS (Let's Encrypt) with near-zero config; clean reverse proxy + headers | nginx + certbot (more knobs, more setup), Traefik |
 | **AuthN/Z** (authentication / authorization) | **OAuth2 — GitHub provider** via **Authlib**, signed-cookie sessions; per-org RBAC (role-based access control) | Audience is developers (they have GitHub); no passwords to store; org model maps to GitHub orgs | oauth2-proxy at the edge, Auth0/Clerk/WorkOS (managed, paid), Google OAuth |
 | **System of record** | **PostgreSQL 16** + **SQLAlchemy 2.0** + **Alembic** | Relational core (orgs/users/projects/runs) with **JSONB** for manifest summaries; managed everywhere (RDS, Cloud SQL, Neon, Supabase) | SQLite (no concurrency for multi-user), MySQL |
@@ -72,7 +73,7 @@ workers.**
 ### What each piece does
 
 #### Control plane (Linux, cheap, scales horizontally)
-The evolution of today's `serve.py`. Endpoints (auth'd):
+The evolution of today's `serve`. Endpoints (auth'd):
 
 - `GET /` → the project-scoped UI (scenario/app pickers come from the DB, **not** the filesystem).
 - `POST /api/run` → validate the request **against the caller's project** (no client-supplied
@@ -124,13 +125,13 @@ bill** and don't scale to zero cleanly (Orka nodes / EC2 Mac 24 h minimums). Des
 
 ### Security hardening (mandatory before any public exposure)
 
-Today's `serve.py` is safe because it's localhost-only and single-user. Public hosting removes
+Today's `serve` is safe because it's localhost-only and single-user. Public hosting removes
 both assumptions, so these are not optional:
 
 - **Auth on every endpoint** (OAuth + per-org RBAC); **rate-limit** run dispatch per user/org.
 - **Eliminate arbitrary-path scenario execution.** `/api/run` currently passes `body["scenario"]`
   straight into the `bajutsu run` argv with no check that it's within `scenarios_dir`
-  (`bajutsu/serve.py` `run_command` / `do_POST`). In the hosted model, scenarios are
+  (`bajutsu/serve/` `run_command` / `do_POST`). In the hosted model, scenarios are
   **stored per project and fetched by the worker by id** — the client never names a filesystem path,
   and `backend`/`udid` are validated against an allowlist, not passed as free text.
 - **Per-org BYO `ANTHROPIC_API_KEY`** so AI features (`--dismiss-alerts`, `record`) bound cost and
@@ -142,15 +143,29 @@ both assumptions, so these are not optional:
   **audit log** of who ran what, when.
 - **Quotas / concurrency caps per org** so one tenant can't starve the (scarce, expensive) Mac pool.
 
-### Migration from `serve.py` (incremental, not a rewrite from zero)
+### Migration from the stdlib `serve` (incremental, not a rewrite from zero)
 
-1. Lift the pure helpers (`list_scenarios`, `list_runs`, `run_command`, the `Job` model) into a
-   FastAPI app; keep the existing HTML as the v1 frontend.
-2. Replace in-process `run_job` with **enqueue → RQ**; add a worker entrypoint that runs the same
-   `bajutsu run` argv it builds today.
-3. Swap polling for **SSE over Redis pub/sub**; swap local `_serve_run_file` for **R2 signed URLs**.
-4. Add **OAuth + Postgres** (orgs/projects/runs); move scenario/app sources from the filesystem into
-   per-project storage.
+**The groundwork has landed.** `bajutsu serve` is now a package (`bajutsu/serve/`) structured
+around four swap-in **seams**, each with a local implementation on `main`, so the steps below are
+now "swap the local implementation for a server one behind the existing seam," not a rewrite:
+
+- **`RunExecutor`** — job dispatch (local: an in-process daemon thread running `run_job`).
+- **`LogBus`** — live-log delivery (local: an in-memory buffer; the UI already streams it over SSE).
+- **`ArtifactStore`** — run-artifact reads (local: filesystem, confined to `runs_dir`).
+- **`ScenarioStore`** — scenario resolution (local: confined to the app's scenarios dir).
+
+[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+also shipped the auth + input validation, and the pure helpers (`list_scenarios`, `list_runs`,
+`run_command`, the `Job` model) are already isolated in `bajutsu/serve/helpers.py`. So:
+
+1. Lift the (already-isolated) pure helpers and the embedded HTML into a FastAPI app as the v1
+   frontend.
+2. Provide a **queue-based `RunExecutor`** that enqueues → RQ, plus a worker entrypoint that runs
+   the same `bajutsu run` argv `run_job` builds today.
+3. Provide a **Redis-backed `LogBus`** (pub/sub) and an **object-storage `ArtifactStore`** that
+   returns R2 signed-URL redirects in place of the local filesystem reads.
+4. Add **OAuth + Postgres** (orgs/projects/runs) and a **per-project `ScenarioStore`** that resolves
+   by id from storage instead of the local filesystem.
 5. Stand up **one Orka worker**; close the security items above; then scale the pool.
 
 Each step is independently shippable and testable, and the deterministic core (`bajutsu run`, the
@@ -191,6 +206,6 @@ counterpart:
 
 ## References
 
-`bajutsu/serve.py`, [ci](../../../docs/ci.md), [architecture](../../../docs/architecture.md),
+`bajutsu/serve/`, [ci](../../../docs/ci.md), [architecture](../../../docs/architecture.md),
 [reporting](../../../docs/reporting.md), [cli](../../../docs/cli.md#serve), and the self-hosting counterpart
 [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
