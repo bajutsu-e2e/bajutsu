@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import threading
 
-from bajutsu.serve.server.logbus import RedisLogBus
+from bajutsu.serve.server.logbus import _DEFAULT_TTL, RedisLogBus
 
 
 class FakeRedis:
@@ -20,6 +20,7 @@ class FakeRedis:
     def __init__(self) -> None:
         self._lists: dict[str, list[str]] = {}
         self._kv: dict[str, str] = {}
+        self.ttls: dict[str, int] = {}  # records expire() calls so tests can assert key lifetimes
 
     def rpush(self, key: str, value: str) -> int:
         self._lists.setdefault(key, []).append(value)
@@ -36,6 +37,32 @@ class FakeRedis:
     def get(self, key: str) -> bytes | None:
         v = self._kv.get(key)
         return v.encode() if v is not None else None
+
+    def expire(self, key: str, seconds: int) -> None:
+        # Mirror real Redis: EXPIRE on a missing key is a no-op (so a test must create the key first).
+        if key in self._lists or key in self._kv:
+            self.ttls[key] = seconds
+
+
+def test_close_expires_both_keys_with_the_default_ttl() -> None:
+    # Without a TTL, every finished job's lines + done flag would live in Redis forever (a memory
+    # leak across runs). close() must bound both keys' lifetime so they self-clean after the job —
+    # at the module default when none is injected (so a regression in the default wiring is caught).
+    redis = FakeRedis()
+    bus = RedisLogBus(redis)  # no ttl override -> exercises the default
+    bus.publish("j1", "line A")
+    bus.close("j1", '{"status": "done"}')
+    assert redis.ttls["bajutsu:log:j1"] == _DEFAULT_TTL
+    assert redis.ttls["bajutsu:logdone:j1"] == _DEFAULT_TTL
+
+
+def test_close_honours_a_custom_ttl() -> None:
+    redis = FakeRedis()
+    bus = RedisLogBus(redis, ttl=60)
+    bus.publish("k", "line")  # create the backlog list so expiring it isn't a real-Redis no-op
+    bus.close("k")
+    assert redis.ttls["bajutsu:log:k"] == 60
+    assert redis.ttls["bajutsu:logdone:k"] == 60
 
 
 def test_replays_backlog_then_ends_on_close() -> None:
