@@ -82,7 +82,8 @@ def browse_fs(state: ServeState, sub: str | None) -> tuple[Any, int]:
 
 def api_key_info(state: ServeState, reveal: bool) -> tuple[Any, int]:
     """Whether a key is set in the serve process's environment, with a redacted preview.  ``reveal``
-    adds the full value — only on explicit request, and this server binds to localhost."""
+    adds the full value — only on explicit request, and gated by the auth check when a token is
+    configured (the local backend additionally binds to localhost)."""
     key = os.environ.get(_API_KEY_VAR) or None
     payload: dict[str, Any] = {"set": key is not None}
     if key is not None:

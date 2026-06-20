@@ -11,10 +11,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from _shared import SCENARIO, project, write_run
 from fastapi.testclient import TestClient
 
 from bajutsu import serve as srv
+from bajutsu.anthropic_client import BEDROCK_MODEL_ENV, PROVIDER_ENV
 from bajutsu.serve.server.app import make_app
 
 
@@ -80,7 +82,11 @@ def test_post_validation_errors_delegate(tmp_path: Path) -> None:
     assert client.get("/api/jobs/ghost").status_code == 404
 
 
-def test_more_delegations(tmp_path: Path) -> None:
+def test_more_delegations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The provider/apikey POSTs write os.environ directly (inherited by spawned jobs); clear the
+    # vars first so monkeypatch restores the originals at teardown and no state leaks to later tests.
+    for var in ("ANTHROPIC_API_KEY", PROVIDER_ENV, BEDROCK_MODEL_ENV, "AWS_REGION"):
+        monkeypatch.delenv(var, raising=False)
     client = _client(_state(tmp_path))
     # GET delegations
     assert client.get("/api/fs").json()["cwd"] == str(tmp_path.resolve())
