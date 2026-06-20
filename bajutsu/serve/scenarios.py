@@ -63,7 +63,17 @@ class LocalScenarioScope:
 
     def resolve_runnable(self, scenario: str) -> Path | None:
         name = Path(scenario).name  # honour only the basename, then match the trusted dir listing
-        return next((p for p in self._dir.glob("*.yaml") if p.name == name and p.is_file()), None)
+        base = self._dir.resolve()
+        # Basename match plus a resolved-containment check: a `*.yaml` that is a symlink out of the
+        # dir is rejected, so a runnable path can never escape the confinement (BE-0051).
+        return next(
+            (
+                p
+                for p in self._dir.glob("*.yaml")
+                if p.name == name and p.is_file() and base in p.resolve().parents
+            ),
+            None,
+        )
 
     def read(self, ref: str | None) -> str | None:
         target = _scenario_path(self._dir, ref)

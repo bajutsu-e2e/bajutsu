@@ -66,6 +66,26 @@ def test_resolve_writable_allows_new_confined_file(tmp_path: Path) -> None:
     assert scope.resolve_writable("note.txt") is None  # not a .yaml
 
 
+def test_invalid_path_with_nul_is_none_not_error(tmp_path: Path) -> None:
+    # A client path with an embedded NUL must resolve to None (404/400), never raise (500).
+    scope = _store(tmp_path).scope("demo")
+    assert scope is not None
+    assert scope.read("a\x00.yaml") is None
+    assert scope.resolve_writable("a\x00.yaml") is None
+
+
+def test_resolve_runnable_rejects_symlink_out_of_dir(tmp_path: Path) -> None:
+    # A *.yaml in the dir that symlinks outside must not be runnable (containment, BE-0051).
+    outside = tmp_path / "outside.yaml"
+    outside.write_text(SCENARIO, encoding="utf-8")
+    scope = _store(tmp_path).scope("demo")
+    assert scope is not None
+    link = tmp_path / "scn" / "evil.yaml"
+    link.symlink_to(outside)
+    assert link.is_file()  # the symlink itself resolves to a real file…
+    assert scope.resolve_runnable("evil.yaml") is None  # …but escapes the dir, so it's rejected
+
+
 def test_out_path_makes_unique_yaml_and_creates_dir(tmp_path: Path) -> None:
     # A fresh app whose dir does not exist yet: out_path must create it and return a *.yaml.
     target_dir = tmp_path / "fresh"
