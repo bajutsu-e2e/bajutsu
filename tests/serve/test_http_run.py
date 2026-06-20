@@ -33,7 +33,7 @@ def test_http_run_then_job_status(tmp_path: Path) -> None:
     )
     server, port = _serve(state)
     try:
-        body = json.dumps({"scenario": "s.yaml", "app": "demo"}).encode()
+        body = json.dumps({"scenario": "smoke.yaml", "app": "demo"}).encode()
         req = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/run",
             data=body,
@@ -77,7 +77,7 @@ def test_http_run_boots_pool_and_passes_workers(tmp_path: Path) -> None:
     )
     try:
         body = json.dumps(
-            {"scenario": "s.yaml", "app": "demo", "udid": "A,B", "workers": 2}
+            {"scenario": "smoke.yaml", "app": "demo", "udid": "A,B", "workers": 2}
         ).encode()
         req = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/run",
@@ -121,8 +121,70 @@ def test_http_run_requires_open_config(tmp_path: Path) -> None:
     _, _, runs = project(tmp_path)
     server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))  # no config
     try:
-        status, resp = _post(port, "/api/run", {"scenario": "s.yaml", "app": "demo"})
+        status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
         assert status == 400 and "open a config" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _run_server(tmp_path: Path) -> tuple[Any, int]:
+    scn_dir, cfg, runs = project(tmp_path)
+    return _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path))
+
+
+def test_http_run_rejects_scenario_outside_dir(tmp_path: Path) -> None:
+    # An absolute path outside the scenarios dir must not be runnable (arbitrary-path execution).
+    secret = tmp_path / "secret.yaml"
+    secret.write_text("- name: x\n  steps: []\n", encoding="utf-8")
+    server, port = _run_server(tmp_path)
+    try:
+        status, resp = _post(port, "/api/run", {"scenario": str(secret), "app": "demo"})
+        assert status == 400 and "inside the app's scenarios dir" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_run_rejects_path_traversal(tmp_path: Path) -> None:
+    server, port = _run_server(tmp_path)
+    try:
+        status, resp = _post(port, "/api/run", {"scenario": "../../etc/passwd", "app": "demo"})
+        assert status == 400 and "scenarios dir" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_run_rejects_nonexistent_scenario(tmp_path: Path) -> None:
+    server, port = _run_server(tmp_path)
+    try:
+        status, resp = _post(port, "/api/run", {"scenario": "ghost.yaml", "app": "demo"})
+        assert status == 400 and "existing .yaml" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_run_rejects_unknown_backend(tmp_path: Path) -> None:
+    server, port = _run_server(tmp_path)
+    try:
+        status, resp = _post(
+            port, "/api/run", {"scenario": "smoke.yaml", "app": "demo", "backend": "rm -rf /"}
+        )
+        assert status == 400 and "unknown backend" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_run_rejects_invalid_udid(tmp_path: Path) -> None:
+    server, port = _run_server(tmp_path)
+    try:
+        status, resp = _post(
+            port, "/api/run", {"scenario": "smoke.yaml", "app": "demo", "udid": "A;rm -rf /"}
+        )
+        assert status == 400 and "invalid udid" in resp["error"]
     finally:
         server.shutdown()
         server.server_close()

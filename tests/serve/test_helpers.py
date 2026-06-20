@@ -224,3 +224,19 @@ def test_list_simulators_parses_and_orders() -> None:
     assert [s["udid"] for s in sims] == ["A1", "B1"]  # booted first, then by name
     assert sims[0] == {"udid": "A1", "name": "iPhone 17 Pro", "runtime": "iOS 26.5", "booted": True}
     assert srv.list_simulators(simctl=_boom) == []  # failure -> empty, never raises
+
+
+def test_valid_backend_accepts_known_tokens() -> None:
+    assert srv.valid_backend("idb")
+    assert srv.valid_backend("ios")
+    assert srv.valid_backend("ios,fake")  # comma list of known tokens
+    assert not srv.valid_backend("idb,bogus")  # one unknown token -> reject
+    assert not srv.valid_backend("rm -rf /")  # free text -> reject
+
+
+def test_valid_udid_accepts_safe_tokens() -> None:
+    assert srv.valid_udid("booted")
+    assert srv.valid_udid("ABCDEF01-2345-6789-ABCD-EF0123456789")
+    assert srv.valid_udid("A,B")  # comma pool
+    assert not srv.valid_udid("A B")  # space -> reject
+    assert not srv.valid_udid("A;rm -rf /")  # metacharacters -> reject

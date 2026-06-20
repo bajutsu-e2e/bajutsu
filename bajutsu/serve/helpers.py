@@ -14,8 +14,14 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import env
+from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
 from bajutsu.config import load_config, resolve
 from bajutsu.scenario import load_scenario_file
+
+# Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
+_VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
+# A udid token: hex groups + hyphens, or the literal "booted". No spaces/metacharacters.
+_UDID_RE = re.compile(r"^[A-Za-z0-9-]+$")
 
 
 def mask_secret(value: str) -> str:
@@ -356,6 +362,20 @@ def unique_scenario_path(path: Path, stamp: str | None = None) -> Path:
         return path
     stamp = stamp or datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     return path.parent / f"{path.stem}-{stamp}.yaml"
+
+
+def valid_backend(backend: str) -> bool:
+    """Whether `backend` is a comma-list of known platform/actuator tokens (not free text).
+    Used to reject arbitrary `--backend` strings from a serve client before they reach argv."""
+    tokens = [t.strip() for t in backend.split(",") if t.strip()]
+    return bool(tokens) and all(t in _VALID_BACKENDS for t in tokens)
+
+
+def valid_udid(udid: str) -> bool:
+    """Whether `udid` is a comma-list of safe device tokens (hex/hyphen or `booted`), so a serve
+    client can't pass surprising free text through to the run argv."""
+    tokens = [t.strip() for t in udid.split(",") if t.strip()]
+    return bool(tokens) and all(_UDID_RE.fullmatch(t) for t in tokens)
 
 
 def _scenario_path(scenarios_dir: Path, p: str | None) -> Path | None:
