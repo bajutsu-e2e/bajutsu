@@ -14,7 +14,12 @@ from bajutsu.assertions import AssertionResult, VisualContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.orchestrator.actions import _action_of, _do_action, _step_label
-from bajutsu.orchestrator.evidence_rules import _collect_captures, _kind_of, _run_extract
+from bajutsu.orchestrator.evidence_rules import (
+    _collect_captures,
+    _kind_of,
+    _run_extract,
+    requested_intervals,
+)
 from bajutsu.orchestrator.substitution import _interp_asserts, _interp_step
 from bajutsu.orchestrator.types import (
     AlertEvent,
@@ -32,8 +37,6 @@ from bajutsu.orchestrator.types import (
 )
 from bajutsu.orchestrator.waits import _wait
 from bajutsu.scenario import ForEach, If, Scenario, Selector, Step
-
-_SCENARIO_INTERVALS = ("video", "deviceLog", "appTrace")
 
 
 def _fail_reason(results: list[AssertionResult]) -> str:
@@ -86,8 +89,10 @@ def run_scenario(
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
-    The whole scenario is screen-recorded (always on): the sink starts a video before
-    the first step and finalizes it after verification, attaching it to the result.
+    Heavy scenario-wide intervals (video / deviceLog / appTrace) are opt-in (BE-0028): the sink
+    starts only the interval kinds the scenario actually requests (`requested_intervals`) before
+    the first step and finalizes them after verification, attaching them to the result. A scenario
+    that requests none records no intervals; the instant baseline still fires every step.
 
     If a step fails and `on_blocked` clears a blocking condition (e.g. dismisses a
     system alert), the step is retried once before being recorded as a failure.
@@ -95,7 +100,7 @@ def run_scenario(
     clock = clock or RealClock()
     sink = sink or NullSink()
     sid = scenario_id or scenario_slug(scenario.name)
-    recordings = sink.start_scenario_intervals(sid, list(_SCENARIO_INTERVALS))
+    recordings = sink.start_scenario_intervals(sid, requested_intervals(scenario))
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
     expect_results: list[AssertionResult] = []

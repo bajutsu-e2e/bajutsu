@@ -78,10 +78,18 @@ bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
 
 ```bash
 bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
+bajutsu trace --explain <scenario.yaml>     # 実行前のドライラン（デバイス不要）
 ```
 
 - `<run-dir>` 省略時は `runs/` 直下の最新 run。`--scenario` は名前の部分一致で絞り込み。
 - run が見つからなければ**終了 2**。
+- **`--explain <scenario.yaml>`** は*実行前*版です。完了した run を読むのではなく、そのシナリオの
+  `capturePolicy` がどう発火するかを事前に表示します（BE-0028）。action トリガのルールは正確に回数を
+  数えて該当ステップを列挙し、`event` / `result` ルールは実行時依存として報告します。広くマッチする
+  ルールに heavy capture（`video` / `deviceLog` / `appTrace` / `network`）が付いていれば ⚠ で警告し、
+  コストを払う前にマッチを絞り込めます。読み取り専用・決定的で、デバイスも LLM も不要です
+  （components と data 行は展開しますが、config の `setup` プレリュードは含みません）。シナリオファイルが
+  無ければ**終了 2**。
 
 ## `triage`
 

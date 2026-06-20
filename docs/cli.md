@@ -85,10 +85,18 @@ summary. Read-only (reads the saved `manifest.json` / `network.json` / `appTrace
 
 ```bash
 bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
+bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
 ```
 
 - With no `<run-dir>`, uses the latest run under `runs/`. `--scenario` filters by name substring.
 - **Exits 2** if no run is found.
+- **`--explain <scenario.yaml>`** is the *pre-run* counterpart: instead of reading a finished run,
+  it previews how the scenario's `capturePolicy` would fire (BE-0028). Action-triggered rules are
+  counted exactly and their matching steps listed; `event` / `result` rules are reported as
+  runtime-conditional; and a heavy capture (`video` / `deviceLog` / `appTrace` / `network`) on a
+  broadly-matching rule is flagged with ⚠ so you can tighten the match before a run pays for it.
+  Read-only and deterministic — no device, no LLM. (Components and data rows are expanded;
+  config `setup` preludes are not included.) **Exits 2** if the scenario file is missing.
 
 ## `triage`
 
