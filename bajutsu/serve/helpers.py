@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from bajutsu import env
@@ -386,6 +386,23 @@ def valid_run_id(run_id: str) -> bool:
     """Whether `run_id` is a single safe path segment, so ``runs_dir / run_id`` can't escape
     ``runs_dir`` — a resumed crawl takes the run id from the client."""
     return bool(_RUN_ID_RE.fullmatch(run_id))
+
+
+def valid_scenario_ref(ref: str | None, *, allow_absolute: bool = False) -> bool:
+    """Whether *ref* is an obviously safe scenario reference: a non-empty, NUL-free ``*.yaml`` with
+    no ``..`` traversal (and, unless *allow_absolute*, a relative path).  A lightweight guard for a
+    caller with no filesystem to resolve against — the server store, where a ref is a storage key —
+    and for ordering the save handler's path error ahead of YAML parsing.  The local store still
+    does full path-containment resolution (`_scenario_path`) on top of this, so it accepts an
+    absolute path that lands inside its dir (the UI passes one)."""
+    if not ref or "\x00" in ref:
+        return False
+    if not ref.endswith(".yaml"):
+        return False
+    pure = PurePosixPath(ref.replace("\\", "/"))  # treat a Windows separator as traversal too
+    if ".." in pure.parts:
+        return False
+    return allow_absolute or not pure.is_absolute()
 
 
 def _scenario_path(scenarios_dir: Path, p: str | None) -> Path | None:

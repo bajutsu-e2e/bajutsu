@@ -36,9 +36,10 @@ class ScenarioScope(Protocol):
     def read(self, ref: str | None) -> str | None:
         """The YAML text of the scenario at *ref*, or None if it's missing or escapes the dir."""
 
-    def resolve_writable(self, ref: str | None) -> Path | None:
-        """A confined ``*.yaml`` path to save *ref* to (it need not exist yet), or None if *ref*
-        would escape the dir or isn't a scenario file."""
+    def save(self, ref: str | None, text: str) -> str | None:
+        """Save *text* as the scenario at *ref* (it need not exist yet), returning a reference to
+        the saved scenario, or None if *ref* would escape the scope or isn't a scenario file. The
+        scope owns the write, so a server scope persists to storage instead of the filesystem."""
 
     def out_path(self, name: str) -> Path:
         """A fresh, unique ``*.yaml`` path for an authored scenario named *name* (creating the
@@ -81,8 +82,13 @@ class LocalScenarioScope:
             return None
         return target.read_text(encoding="utf-8")
 
-    def resolve_writable(self, ref: str | None) -> Path | None:
-        return _scenario_path(self._dir, ref)
+    def save(self, ref: str | None, text: str) -> str | None:
+        target = _scenario_path(self._dir, ref)
+        if target is None:
+            return None
+        target.parent.mkdir(parents=True, exist_ok=True)  # a fresh project's dir may not exist yet
+        target.write_text(text, encoding="utf-8")
+        return str(target)
 
     def out_path(self, name: str) -> Path:
         self._dir.mkdir(parents=True, exist_ok=True)
