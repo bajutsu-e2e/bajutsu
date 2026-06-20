@@ -76,6 +76,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return True
             if self._authorized():
                 return True
+            # Drain any request body before replying, so a keep-alive connection isn't left with
+            # unread bytes that would corrupt the next request on it.
+            length = int(self.headers.get("Content-Length") or 0)
+            if length:
+                self.rfile.read(length)
             self._json({"error": "unauthorized"}, 401)
             return False
 

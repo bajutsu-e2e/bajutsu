@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from pathlib import Path
 
 import typer
 
-# Hosts that keep the server private to this machine; anything else needs a token (BE-0051).
-_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+def _is_loopback(host: str) -> bool:
+    """Whether binding `host` keeps the server private to this machine. Uses real loopback
+    semantics (so `127.0.0.2`, `::1` in any form, etc. all count), plus the `localhost` name."""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False  # a hostname we can't classify — treat as non-loopback (needs a token)
 
 
 def serve(
@@ -44,7 +53,7 @@ def serve(
     from bajutsu.serve import serve as _serve
 
     resolved_token = token or os.environ.get("BAJUTSU_SERVE_TOKEN") or ""
-    if host not in _LOOPBACK_HOSTS and not resolved_token:
+    if not _is_loopback(host) and not resolved_token:
         typer.echo(
             f"refusing to bind non-loopback host {host!r} without a token — "
             "pass --token or set BAJUTSU_SERVE_TOKEN"

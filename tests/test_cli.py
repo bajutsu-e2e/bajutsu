@@ -180,6 +180,19 @@ def test_serve_refuses_non_loopback_without_token() -> None:
     assert "without a token" in r.output
 
 
+def test_serve_loopback_detection() -> None:
+    from bajutsu.cli.commands.serve import _is_loopback
+
+    assert _is_loopback("127.0.0.1")
+    assert _is_loopback("127.0.0.2")  # the whole 127/8 block is loopback
+    assert _is_loopback("localhost")
+    assert _is_loopback("::1")
+    assert _is_loopback("0:0:0:0:0:0:0:1")  # fully-expanded ::1
+    assert not _is_loopback("0.0.0.0")
+    assert not _is_loopback("192.168.1.10")
+    assert not _is_loopback("example.com")  # an unresolvable hostname -> treated as non-loopback
+
+
 def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
     import json
 
