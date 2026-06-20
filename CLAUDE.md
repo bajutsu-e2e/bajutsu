@@ -122,8 +122,10 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   account of whoever first authored the item (for an AI-assisted draft, the person who drove and
   committed it). Its `Status` files it
   under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /
-  `Proposal (deferred)`). When an item ships, set `Status: Implemented` and **move its directory**
-  from `roadmaps/proposals/` to `roadmaps/implemented/`. **IDs are permanent — never renumber an
+  `Proposal (deferred)`). When an item ships, set `Status: Implemented`; CI (`roadmap-promote`)
+  then **moves its directory** from `roadmaps/proposals/` to `roadmaps/implemented/` and
+  regenerates the index — or run `make roadmap-promote` locally to do it yourself. `make test`
+  fails if any item's directory doesn't match its `Status`. **IDs are permanent — never renumber an
   existing item.** Full rule:
   [`roadmaps/README.md`](roadmaps/README.md) · [`docs/ai-development.md`](docs/ai-development.md).
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).

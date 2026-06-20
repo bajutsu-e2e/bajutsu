@@ -165,9 +165,12 @@ section the item appears in:
 | `Proposal` · `Proposal (deferred)` | **Proposals** — under consideration |
 
 As an item advances, **update its Status** and regenerate the index (the row moves to the right group
-automatically). When it ships, set `Status: Implemented` and **move its directory** from
-`roadmaps/proposals/` to `roadmaps/implemented/`, keeping the same ID and slug. Milestones M1–M4 are
-`BE-0001`–`BE-0004` (accepted & implemented).
+automatically). When it ships, set `Status: Implemented`; the **`roadmap-promote`** workflow then
+**moves its directory** from `roadmaps/proposals/` to `roadmaps/implemented/` (keeping the same ID and
+slug) and regenerates the index on your PR — or run `make roadmap-promote` to do it locally. The
+`Status` is the single source of truth for which subdirectory an item lives in, and `make test` fails
+if the two disagree, so a shipped item can never merge while still filed under `roadmaps/proposals/`.
+Milestones M1–M4 are `BE-0001`–`BE-0004` (accepted & implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
 
