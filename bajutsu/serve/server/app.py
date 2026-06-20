@@ -57,6 +57,12 @@ def make_app(state: ServeState) -> FastAPI:
         sid = request.cookies.get(_SESSION_COOKIE)
         return sid is not None and state.valid_session(sid)
 
+    def _actor(request: Request) -> str | None:
+        # The GitHub login bound to this request's session, for audit attribution (BE-0015 7c);
+        # None for a token/Bearer request or no session. Mirrors the stdlib handler's `_actor`.
+        sid = request.cookies.get(_SESSION_COOKIE)
+        return state.sessions.identity(sid) if sid else None
+
     @app.middleware("http")
     async def gate(request: Request, call_next: Any) -> Response:
         """Auth + CSRF + hardening headers, mirroring the stdlib handler's `_gate`/`_csrf_ok`/
@@ -228,16 +234,16 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.set_provider(state, body))
 
     @app.post("/api/run")
-    async def run(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.start_run(state, body))
+    async def run(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.start_run(state, body, actor=_actor(request)))
 
     @app.post("/api/record")
-    async def record(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.start_record(state, body))
+    async def record(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.start_record(state, body, actor=_actor(request)))
 
     @app.post("/api/crawl")
-    async def crawl(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.start_crawl(state, body))
+    async def crawl(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.start_crawl(state, body, actor=_actor(request)))
 
     @app.post("/api/scenario")
     async def save_scenario(body: dict[str, Any]) -> JSONResponse:

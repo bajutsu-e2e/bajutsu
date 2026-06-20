@@ -9,6 +9,7 @@ past the seam."""
 from __future__ import annotations
 
 import os
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -45,6 +46,17 @@ class Repository(Protocol):
 
     def list_runs(self, *, org_id: str, limit: int = 50) -> list[RunRecord]:
         """An org's runs, newest first, capped at *limit*."""
+
+    def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
+        """Create the org if it does not exist yet (idempotent) — 7c-1's single default org."""
+
+    def upsert_user(self, user_id: str, *, org_id: str, github_login: str, email: str) -> None:
+        """Insert the user, or update it in place when its id already exists (an OAuth re-login)."""
+
+    def record_audit(
+        self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]
+    ) -> None:
+        """Append an audit-log entry — who did what to which target, and when (server clock)."""
 
 
 def _to_record(row: Run) -> RunRecord:
@@ -107,6 +119,65 @@ class SqlRepository:
         stmt = select(Run).where(Run.org_id == org_id).order_by(Run.created_at.desc()).limit(limit)
         with Session(self._engine) as session:
             return [_to_record(row) for row in session.scalars(stmt)]
+
+    def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        with Session(self._engine) as session:
+            if session.get(Org, org_id) is not None:
+                return
+            session.add(Org(id=org_id, slug=slug, name=name))  # leave created_at to the default
+            try:
+                session.commit()
+            except IntegrityError:
+                # A concurrent login inserted it between the check and the commit — that's the
+                # idempotent outcome we wanted, so swallow it.
+                session.rollback()
+
+    def upsert_user(self, user_id: str, *, org_id: str, github_login: str, email: str) -> None:
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import User
+
+        with Session(self._engine) as session:
+            user = session.get(User, user_id)
+            if user is None:
+                session.add(User(id=user_id, org_id=org_id, github_login=github_login, email=email))
+                try:
+                    session.commit()
+                    return
+                except IntegrityError:
+                    # A concurrent OAuth callback inserted the same user first; fall through to
+                    # update the now-existing row instead of failing the login.
+                    session.rollback()
+                    user = session.get(User, user_id)
+            if user is not None:  # update in place (a re-login) without disturbing created_at
+                user.org_id, user.github_login, user.email = org_id, github_login, email
+                session.commit()
+
+    def record_audit(
+        self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]
+    ) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import AuditLog
+
+        with Session(self._engine) as session:
+            session.add(
+                AuditLog(
+                    id=uuid.uuid4().hex,
+                    org_id=org_id,
+                    actor_id=actor_id,
+                    action=action,
+                    target=target,
+                    detail=detail,
+                )
+            )
+            session.commit()
 
 
 def engine_from_url(url: str) -> Engine:

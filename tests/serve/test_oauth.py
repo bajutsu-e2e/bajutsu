@@ -84,6 +84,37 @@ class _RaisingOAuthClient:
         raise RuntimeError("github unreachable")
 
 
+def test_oauth_callback_persists_the_user_and_default_org(tmp_path: Path) -> None:
+    # With a database wired, a successful login upserts the user into the single default org so
+    # audit/RBAC can reference them (BE-0015 7c-1).
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base, Org, User
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    state = _state(tmp_path, oauth=FakeOAuthClient(login="alice"), allowed=frozenset({"alice"}))
+    state.repository = SqlRepository(engine)
+
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 200 and sid is not None
+    with Session(engine) as s:
+        users = list(s.scalars(select(User)))
+        orgs = list(s.scalars(select(Org)))
+    assert [u.github_login for u in users] == ["alice"]
+    assert [o.slug for o in orgs] == ["default"]
+
+
+def test_oauth_callback_without_a_database_is_a_no_op(tmp_path: Path) -> None:
+    # No repository (the default): login still works, nothing is persisted.
+    state = _state(tmp_path, oauth=FakeOAuthClient(login="alice"), allowed=frozenset({"alice"}))
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 200 and sid is not None
+    assert state.repository is None
+
+
 def test_oauth_callback_surfaces_an_exchange_error_as_502(tmp_path: Path) -> None:
     # A raising exchange (network / token parsing / missing dep) is an upstream error, not a 500.
     state = _state(tmp_path, oauth=_RaisingOAuthClient(), allowed=frozenset({"alice"}))

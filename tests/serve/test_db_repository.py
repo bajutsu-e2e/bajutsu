@@ -6,16 +6,68 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
 from bajutsu.serve.server.db import RunRecord, SqlRepository, engine_from_url, repository_from_env
-from bajutsu.serve.server.models import Base
+from bajutsu.serve.server.models import AuditLog, Base, Org, User
 
 
 def _repo() -> SqlRepository:
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     return SqlRepository(engine)
+
+
+def _engine_repo() -> tuple[object, SqlRepository]:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    return engine, SqlRepository(engine)
+
+
+def test_ensure_org_is_idempotent() -> None:
+    engine, repo = _engine_repo()
+    repo.ensure_org("default", slug="default", name="Default")
+    repo.ensure_org("default", slug="default", name="Default")  # again — no duplicate, no error
+    with Session(engine) as s:
+        orgs = list(s.scalars(select(Org)))
+    assert len(orgs) == 1
+    assert orgs[0].slug == "default"
+
+
+def test_upsert_user_inserts_then_updates_in_place() -> None:
+    engine, repo = _engine_repo()
+    repo.ensure_org("default", slug="default", name="Default")
+    email = "alice@users.noreply.github.com"
+    repo.upsert_user("alice", org_id="default", github_login="alice", email=email)
+    repo.upsert_user("alice", org_id="default", github_login="alice", email=email)
+    with Session(engine) as s:
+        users = list(s.scalars(select(User)))
+    assert len(users) == 1
+    assert users[0].github_login == "alice"
+    assert users[0].org_id == "default"
+
+
+def test_record_audit_appends_a_row_with_actor_and_detail() -> None:
+    engine, repo = _engine_repo()
+    repo.ensure_org("default", slug="default", name="Default")
+    repo.upsert_user(
+        "alice", org_id="default", github_login="alice", email="a@users.noreply.github.com"
+    )
+    repo.record_audit(
+        org_id="default",
+        actor_id="alice",
+        action="run",
+        target="demo/smoke.yaml",
+        detail={"workers": 2},
+    )
+    with Session(engine) as s:
+        rows = list(s.scalars(select(AuditLog)))
+    assert len(rows) == 1
+    assert rows[0].action == "run"
+    assert rows[0].target == "demo/smoke.yaml"
+    assert rows[0].actor_id == "alice"
+    assert rows[0].detail == {"workers": 2}
 
 
 def test_record_then_get_round_trips() -> None:

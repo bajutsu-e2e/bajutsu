@@ -108,6 +108,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         def _qs(self, key: str) -> str | None:
             return next(iter(parse_qs(urlparse(self.path).query).get(key) or []), None)
 
+        def _actor(self) -> str | None:
+            """The GitHub login bound to this request's session, if any — used to attribute audit
+            entries (BE-0015 7c). None for a token/Bearer request or no session."""
+            morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
+            return state.sessions.identity(morsel.value) if morsel is not None else None
+
         def do_GET(self) -> None:
             if not self._gate():
                 return
@@ -191,11 +197,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/provider":
                     self._json(*ops.set_provider(state, body))
                 case "/api/run":
-                    self._json(*ops.start_run(state, body))
+                    self._json(*ops.start_run(state, body, actor=self._actor()))
                 case "/api/record":
-                    self._json(*ops.start_record(state, body))
+                    self._json(*ops.start_record(state, body, actor=self._actor()))
                 case "/api/crawl":
-                    self._json(*ops.start_crawl(state, body))
+                    self._json(*ops.start_crawl(state, body, actor=self._actor()))
                 case "/api/scenario":
                     self._json(*ops.save_scenario(state, body))
                 case "/api/approve":
