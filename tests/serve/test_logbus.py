@@ -24,9 +24,13 @@ def test_inmemory_logbus_replays_backlog_then_ends_on_close() -> None:
 def test_inmemory_logbus_streams_live_lines() -> None:
     bus = srv.InMemoryLogBus()
     got: list[str] = []
+    err: list[BaseException] = []
 
     def consume() -> None:
-        got.extend(bus.stream("j2"))
+        try:
+            got.extend(bus.stream("j2"))
+        except BaseException as exc:
+            err.append(exc)
 
     t = threading.Thread(target=consume, daemon=True)
     t.start()
@@ -35,6 +39,7 @@ def test_inmemory_logbus_streams_live_lines() -> None:
     bus.close("j2")
     t.join(timeout=2)
     assert not t.is_alive(), "stream did not end after close()"
+    assert not err, f"consumer thread raised exception: {err[0]!r}"
     assert got == ["first", "second"]
 
 
