@@ -120,6 +120,22 @@ def _session_ttl_from_env(raw: str | None, default: int) -> int:
     return ttl
 
 
+def _max_per_user_from_env(raw: str | None) -> int:
+    """Parse ``BAJUTSU_MAX_CONCURRENT_PER_USER`` (unset/empty/0 = unlimited). A clear error beats a
+    bare ValueError for operator-facing config; negatives and non-integers are rejected (BE-0015 7c-3)."""
+    if not raw:
+        return 0
+    try:
+        n = int(raw)
+    except ValueError:
+        raise ValueError(
+            f"BAJUTSU_MAX_CONCURRENT_PER_USER must be a whole number, got {raw!r}"
+        ) from None
+    if n < 0:
+        raise ValueError(f"BAJUTSU_MAX_CONCURRENT_PER_USER must be >= 0, got {n}")
+    return n
+
+
 class MissingServerExtra(ImportError):
     """A server-backend optional extra (Redis/RQ, object storage, the database) is not installed.
 
@@ -253,6 +269,10 @@ def _build_server_state(
         root=root,
         baselines_dir=baselines_dir,
         max_concurrent=max_concurrent,
+        # Per-user concurrency cap (0 = unlimited), so one OAuth user can't starve the pool (7c-3).
+        max_concurrent_per_user=_max_per_user_from_env(
+            os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER")
+        ),
         token=token,
         executor=QueueExecutor(queue),
         logbus=RedisLogBus(redis),

@@ -273,3 +273,25 @@ def test_build_app_terminates_process_on_output_error(tmp_path: Path) -> None:
     srv.run_job(state, job)
     assert terminated, "build process was not terminated after stdout error"
     assert job.view()["status"] == "done"
+
+
+def test_try_new_job_caps_concurrency_per_user(tmp_path: Path) -> None:
+    # A per-user cap stops one user from monopolizing the scarce device pool (BE-0015 7c-3).
+    state = srv.ServeState(runs_dir=tmp_path / "runs", max_concurrent_per_user=1)
+    assert state.try_new_job([], actor="alice") is not None  # alice's first job
+    assert state.try_new_job([], actor="alice") is None  # alice is at her cap
+    assert state.try_new_job([], actor="bob") is not None  # a different user is unaffected
+
+
+def test_try_new_job_per_user_cap_ignores_anonymous_jobs(tmp_path: Path) -> None:
+    # Token/anonymous jobs (no identity) aren't subject to the per-user cap — only the global one.
+    state = srv.ServeState(runs_dir=tmp_path / "runs", max_concurrent_per_user=1)
+    assert state.try_new_job([], actor=None) is not None
+    assert state.try_new_job([], actor=None) is not None
+
+
+def test_try_new_job_per_user_unlimited_by_default(tmp_path: Path) -> None:
+    # Default 0 = unlimited, so behavior is unchanged unless an operator opts in.
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    assert state.try_new_job([], actor="alice") is not None
+    assert state.try_new_job([], actor="alice") is not None
