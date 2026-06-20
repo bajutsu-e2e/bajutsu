@@ -26,6 +26,7 @@ from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import app_scenarios_dir
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
+from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
 
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
@@ -120,7 +121,10 @@ class ServeState:
     # request must authenticate. `_sessions` holds the opaque ids issued at login (in-memory, so a
     # restart simply requires re-login) — the shared token itself never lives in the browser.
     token: str | None = None
-    _sessions: set[str] = field(default_factory=set)
+    # Login sessions (BE-0051). Default in-memory (a restart drops them); a server backend swaps in
+    # a Redis-backed store so sessions survive restarts and span control-plane processes (BE-0015
+    # 7b). The shared token itself never lives in the browser — only an opaque session id does.
+    sessions: SessionStore = field(default_factory=InMemorySessionStore)
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -138,14 +142,10 @@ class ServeState:
 
     def issue_session(self) -> str:
         """Mint and remember a new opaque session id (returned to set as a cookie at login)."""
-        sid = secrets.token_urlsafe(32)
-        with self._lock:
-            self._sessions.add(sid)
-        return sid
+        return self.sessions.issue()
 
     def valid_session(self, sid: str) -> bool:
-        with self._lock:
-            return sid in self._sessions
+        return self.sessions.valid(sid)
 
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished)."""

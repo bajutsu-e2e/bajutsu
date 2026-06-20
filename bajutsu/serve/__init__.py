@@ -199,6 +199,7 @@ def _build_server_state(
     from bajutsu.serve.server.logbus import RedisLogBus
     from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, s3_prefix
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
+    from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore
     from bajutsu.serve.server.worker_job import redis_url
 
     store = object_store_from_env()
@@ -220,6 +221,11 @@ def _build_server_state(
         token=token,
         executor=QueueExecutor(queue),
         logbus=RedisLogBus(redis),
+        # Sessions in Redis (the same client) so they survive a restart and span replicas, with a
+        # TTL from BAJUTSU_SESSION_TTL (default 7 days) — vs the in-memory default (BE-0015 7b).
+        sessions=RedisSessionStore(
+            redis, ttl=int(os.environ.get("BAJUTSU_SESSION_TTL", _DEFAULT_TTL))
+        ),
         # The system of record, when a database is configured (BAJUTSU_DATABASE_URL); None otherwise
         # so the server backend runs without one until 7b/7c need it (BE-0015 7a).
         repository=repository_from_env(),

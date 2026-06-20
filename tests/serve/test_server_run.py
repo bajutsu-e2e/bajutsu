@@ -154,6 +154,36 @@ def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
     assert isinstance(state.repository, SqlRepository)
 
 
+def test_build_state_local_uses_in_memory_sessions(tmp_path: Path) -> None:
+    # Local sessions stay in-memory (a restart drops them), so its behavior is unchanged.
+    from bajutsu.serve.sessions import InMemorySessionStore
+
+    assert isinstance(_state(tmp_path).sessions, InMemorySessionStore)
+
+
+def test_build_state_server_uses_redis_sessions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The server backend keeps sessions in Redis so they survive a restart and span replicas.
+    from bajutsu.serve.server.sessions import RedisSessionStore
+
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert isinstance(state.sessions, RedisSessionStore)
+
+
 def test_build_state_server_requires_a_bucket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
