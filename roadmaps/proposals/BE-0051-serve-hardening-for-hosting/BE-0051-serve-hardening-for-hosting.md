@@ -58,9 +58,10 @@ Simulator.
 3. **Apply the same input validation to the other run-spawning endpoints** (`/api/record`, and any
    future `/api/crawl`): the `backend` / `udid` token checks, mirroring slice 1.
 4. **CSRF protection + standard security headers** — once cookie auth exists, protect state-changing
-   POSTs with a CSRF token **and** an Origin check for browser/cookie-authenticated flows; for API
-   clients, require an `Authorization` header and do not rely on cookie auth. Add the standard headers.
-   Deferred behind slice 2 because it only matters once a cookie is in play.
+   POSTs with an **Origin check** (a present `Origin` must match `Host`) layered on the
+   `SameSite=Strict` session cookie; API clients authenticate with the `Authorization` header and
+   carry no ambient cookie. Add the standard security headers. Deferred behind slice 2 because it
+   only matters once a cookie is in play.
 5. **Rate-limiting run dispatch per token/org** — cap concurrent/inflight runs so one caller can't
    monopolize the (scarce) device, a lightweight precursor to BE-0015's per-org quotas.
 
