@@ -188,5 +188,10 @@ apply equally when reporting on or summarizing work.
 - **No omissions; be self-contained.** A reader must be able to understand the document on its own.
   Spell out an abbreviation the first time it appears, give a term the context it needs, and do not
   assume the reader has already read another page.
+- **Japanese prose follows the `japanese-tech-writing` skill.** Whether you write the Japanese side
+  fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
+  [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/): it is the authoritative style
+  for Japanese prose in this repo, and a translation must read as natural Japanese under those norms,
+  not a literal rendering of the English.
 
 The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).
