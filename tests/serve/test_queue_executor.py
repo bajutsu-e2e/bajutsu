@@ -128,7 +128,7 @@ def test_execute_job_spec_streams_logs_to_the_injected_bus(tmp_path: Path) -> No
     assert any("20260610-1" in line for line in replay)
 
 
-def testredis_url_prefers_bajutsu_then_redis_then_default(
+def test_redis_url_prefers_bajutsu_then_redis_then_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(

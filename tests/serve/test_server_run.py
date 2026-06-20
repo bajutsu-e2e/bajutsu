@@ -99,6 +99,46 @@ def test_build_state_server_wires_the_hosted_seams(
     assert scope is not None  # demo is an app in the bound config
 
 
+def test_build_state_server_requires_a_bucket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BAJUTSU_S3_BUCKET", raising=False)
+    _scn, cfg, runs = project(tmp_path)
+    with pytest.raises(ValueError, match="BAJUTSU_S3_BUCKET"):
+        srv._build_state(
+            runs_dir=runs,
+            config=cfg,
+            scenarios_dir=None,
+            root=tmp_path,
+            baselines_dir=None,
+            max_concurrent=4,
+            token=None,
+            backend="server",
+        )
+
+
+def test_build_state_server_normalizes_a_prefix_without_a_slash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A prefix without a trailing slash must not fuse into "tenantartifacts/" / "tenantscenarios/".
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_S3_PREFIX", "tenant")  # no trailing slash
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    # The artifact store keys a run-relative path under "<prefix>artifacts/", with the slash added.
+    assert state.artifacts._key("r1/report.html") == "tenant/artifacts/r1/report.html"
+
+
 def test_asgi_server_serves_the_app_over_a_real_socket(tmp_path: Path) -> None:
     state = _state(tmp_path)
     port = _free_port()

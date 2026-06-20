@@ -178,12 +178,19 @@ def _build_server_state(
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
     from bajutsu.serve.server.worker_job import redis_url
 
+    bucket = os.environ.get("BAJUTSU_S3_BUCKET")
+    if not bucket:
+        raise ValueError("BAJUTSU_S3_BUCKET is required for --backend=server")
+    # Normalize the optional tenant prefix to end with "/" so "tenant" doesn't fuse into
+    # "tenantartifacts/"; an empty prefix stays empty (no leading slash).
+    prefix = os.environ.get("BAJUTSU_S3_PREFIX", "")
+    if prefix and not prefix.endswith("/"):
+        prefix += "/"
     # The real clients are wider than our minimal seam protocols (RedisLike / Queue), so hand them
     # over as Any — the seam adapters use only the slice they declare.
     redis: Any = Redis.from_url(redis_url())
     queue: Any = Queue(os.environ.get("BAJUTSU_QUEUE", "bajutsu"), connection=redis)
-    store = S3ObjectStore(s3_client_from_env(), os.environ["BAJUTSU_S3_BUCKET"])
-    prefix = os.environ.get("BAJUTSU_S3_PREFIX", "")
+    store = S3ObjectStore(s3_client_from_env(), bucket)
 
     state = ServeState(
         runs_dir=runs_dir,
