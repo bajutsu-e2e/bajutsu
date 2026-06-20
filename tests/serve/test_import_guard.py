@@ -33,8 +33,15 @@ def test_default_serve_and_cli_import_no_server_deps() -> None:
         "sys.stdout.write(','.join(leaked))\n"
         "sys.exit(1 if leaked else 0)\n"
     )
-    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60
+    )
+    # exit 1 = server deps leaked (listed on stdout); any other non-zero = the import itself failed
+    # (traceback on stderr) — surface both so a failure is actionable rather than just "non-zero".
     assert result.returncode == 0, (
-        f"the default serve/CLI path imported server-only dependencies: {result.stdout.strip()}"
-        " — keep server imports lazy / inside bajutsu/serve/server/ behind the backend selection"
+        "importing the default serve/CLI path failed the server-dep guard "
+        f"(exit {result.returncode}).\n"
+        f"leaked server deps: {result.stdout.strip() or '(none)'}\n"
+        f"stderr: {result.stderr.strip() or '(none)'}\n"
+        "Keep server imports lazy / inside bajutsu/serve/server/ behind the backend selection."
     )
