@@ -21,6 +21,12 @@ from typing import Any
 from bajutsu import env
 from bajutsu.serve.jobs import Job, ServeState, run_job
 from bajutsu.serve.logbus import LogBus
+from bajutsu.serve.server.object_store import (
+    ObjectStore,
+    artifact_prefix,
+    object_store_from_env,
+    s3_prefix,
+)
 
 # The worker's Redis URL, set in-process by `bajutsu worker` (see `set_broker_url`). Kept off the
 # environment so a credential-bearing URL never propagates into the `bajutsu run` subprocesses
@@ -86,6 +92,20 @@ def _materialize(work: Path, materials: dict[str, str]) -> None:
         dest.write_text(content, encoding="utf-8")
 
 
+def _upload_runs(work: Path, store: ObjectStore, prefix: str) -> None:
+    """Upload the run tree the subprocess wrote (``work/runs/**``) to object storage, keyed by its
+    path relative to ``work/runs`` under *prefix* — the exact keys `ObjectStorageArtifactStore`
+    serves from. The control plane has no shared filesystem with the worker, so this is how a run's
+    report / screenshots / video reach it."""
+    runs = work / "runs"
+    if not runs.is_dir():
+        return
+    for path in sorted(runs.rglob("*")):
+        if path.is_file():
+            rel = path.relative_to(runs).as_posix()
+            store.put_bytes(f"{prefix}{rel}", path.read_bytes())
+
+
 def execute_job_spec(
     spec: dict[str, Any],
     *,
@@ -93,13 +113,16 @@ def execute_job_spec(
     simctl: env.RunFn = env._real_run,
     cwd: Path | None = None,
     bus: LogBus | None = None,
+    store: ObjectStore | None = None,
 ) -> Job:
-    """Worker entrypoint: rebuild the job from *spec* and run the unchanged `run_job`.
+    """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
+    run tree to object storage.
 
     Builds a minimal worker-side `ServeState` (its own working dir, real subprocess/simctl) whose
-    LogBus is the shared Redis bus, so the streamed log reaches the control plane. `popen` / `simctl`
-    / `cwd` / `bus` are injectable so the run can be driven with a fake subprocess and an in-memory
-    Redis on the gate. Returns the finished `Job`."""
+    LogBus is the shared Redis bus, so the streamed log reaches the control plane. After the run, the
+    run tree is uploaded so the control plane's artifact store can serve it. `popen` / `simctl` /
+    `cwd` / `bus` / `store` are injectable so the run can be driven with a fake subprocess, an
+    in-memory Redis, and a fake object store on the gate. Returns the finished `Job`."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -117,4 +140,9 @@ def execute_job_spec(
         bus=state.logbus,
     )
     run_job(state, job)
+    # Upload the run tree so the control plane can serve it. Skip when no object store is configured
+    # (e.g. a worker without one) rather than failing the finished run.
+    uploader = store if store is not None else object_store_from_env()
+    if uploader is not None:
+        _upload_runs(work, uploader, artifact_prefix(s3_prefix()))
     return job

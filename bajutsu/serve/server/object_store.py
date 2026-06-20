@@ -114,3 +114,24 @@ def s3_client_from_env() -> Any:
         endpoint_url=os.environ.get("BAJUTSU_S3_ENDPOINT") or None,
         region_name=os.environ.get("BAJUTSU_S3_REGION") or os.environ.get("AWS_REGION") or None,
     )
+
+
+def s3_prefix() -> str:
+    """The normalized tenant prefix from ``BAJUTSU_S3_PREFIX`` — trailing ``/`` when non-empty (so
+    ``tenant`` doesn't fuse into ``tenantartifacts/``), empty when unset."""
+    p = os.environ.get("BAJUTSU_S3_PREFIX", "")
+    return p if (not p or p.endswith("/")) else p + "/"
+
+
+def artifact_prefix(base: str = "") -> str:
+    """The object-key prefix for run artifacts under *base*. Shared by the control plane's artifact
+    store and the worker's upload so both agree on keys (``<base>artifacts/<runId>/…``)."""
+    return f"{base}artifacts/"
+
+
+def object_store_from_env() -> S3ObjectStore | None:
+    """An `S3ObjectStore` from the environment (``BAJUTSU_S3_BUCKET`` + endpoint/region), or None
+    when no bucket is configured — so a caller can require it (control plane) or skip (a worker with
+    no object storage)."""
+    bucket = os.environ.get("BAJUTSU_S3_BUCKET")
+    return S3ObjectStore(s3_client_from_env(), bucket) if bucket else None

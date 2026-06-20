@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from _shared import fake_popen, project
+from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -237,3 +237,66 @@ class FakeScenarioStorage:
 
     def save(self, app: str, ref: str | None, text: str) -> str | None:
         return ref
+
+
+class _FakeObjectStore:
+    """In-memory ObjectStore (put_bytes) for the worker upload tests."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    def exists(self, key: str) -> bool:
+        return key in self.objects
+
+    def get_bytes(self, key: str) -> bytes | None:
+        return self.objects.get(key)
+
+    def put_bytes(self, key: str, data: bytes) -> None:
+        self.objects[key] = data
+
+    def presigned_url(self, key: str) -> str:
+        return f"https://signed.example/{key}"
+
+    def list_keys(self, prefix: str) -> list[str]:
+        return [k for k in self.objects if k.startswith(prefix)]
+
+
+def test_upload_runs_puts_every_file_under_the_artifact_prefix(tmp_path: Path) -> None:
+    run = tmp_path / "runs" / "20260610-1"
+    (run / "sub").mkdir(parents=True)
+    (run / "report.html").write_text("<html>", encoding="utf-8")
+    (run / "manifest.json").write_text("{}", encoding="utf-8")
+    (run / "sub" / "shot.png").write_bytes(b"\x89PNG")
+    store = _FakeObjectStore()
+    worker_job._upload_runs(tmp_path, store, "artifacts/")
+    assert store.objects["artifacts/20260610-1/report.html"] == b"<html>"
+    assert store.objects["artifacts/20260610-1/manifest.json"] == b"{}"
+    assert store.objects["artifacts/20260610-1/sub/shot.png"] == b"\x89PNG"
+
+
+def test_execute_job_spec_uploads_the_run_tree(tmp_path: Path) -> None:
+    # The worker uploads the run tree the subprocess wrote, to the keys the artifact store serves.
+    def popen_writing_run(_cmd: list[str], **_kw: object) -> FakeProc:
+        run = tmp_path / "runs" / "20260610-1"
+        run.mkdir(parents=True, exist_ok=True)
+        (run / "report.html").write_text("<html>", encoding="utf-8")
+        return FakeProc(["PASS  runs/20260610-1/manifest.json\n"])
+
+    store = _FakeObjectStore()
+    spec = {"job_id": "1", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
+    execute_job_spec(
+        spec, popen=popen_writing_run, cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
+    )
+    assert store.objects["artifacts/20260610-1/report.html"] == b"<html>"
+
+
+def test_execute_job_spec_skips_upload_without_a_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No object store configured (no BAJUTSU_S3_BUCKET) -> a finished run isn't failed; it just
+    # doesn't upload.
+    monkeypatch.delenv("BAJUTSU_S3_BUCKET", raising=False)
+    project(tmp_path)
+    spec = {"job_id": "1", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
+    job = execute_job_spec(spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus())
+    assert job.view()["status"] == "done"  # ran fine, just no upload
