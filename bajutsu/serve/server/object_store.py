@@ -50,7 +50,11 @@ class S3ObjectStore:
             if _is_not_found(e):
                 return None
             raise
-        body: bytes = resp["Body"].read()
+        stream = resp["Body"]
+        try:
+            body: bytes = stream.read()
+        finally:
+            stream.close()  # release the HTTP connection/fd rather than leaking it under load
         return body
 
     def presigned_url(self, key: str) -> str:

@@ -80,6 +80,38 @@ def test_list_keys_paginates() -> None:
     assert sorted(keys) == sorted(objects)
 
 
+@pytest.mark.parametrize("code", ["404", "NotFound", "NoSuchKey"])
+def test_all_not_found_codes_map_to_absent(code: str) -> None:
+    class _MissS3(_FakeS3):
+        def head_object(self, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
+            raise ClientError({"Error": {"Code": code}}, "HeadObject")
+
+        def get_object(self, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
+            raise ClientError({"Error": {"Code": code}}, "GetObject")
+
+    store = S3ObjectStore(_MissS3({}), "b")
+    assert store.exists("k") is False
+    assert store.get_bytes("k") is None
+
+
+def test_get_bytes_closes_the_streaming_body() -> None:
+    # botocore's get_object body is a streaming body; it must be closed after reading so the HTTP
+    # connection/fd isn't leaked under load.
+    closed: list[bool] = []
+
+    class _Body(io.BytesIO):
+        def close(self) -> None:
+            closed.append(True)
+            super().close()
+
+    class _StreamS3(_FakeS3):
+        def get_object(self, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
+            return {"Body": _Body(b"data")}
+
+    assert S3ObjectStore(_StreamS3({"k": b"data"}), "b").get_bytes("k") == b"data"
+    assert closed == [True]
+
+
 def test_unexpected_client_error_propagates() -> None:
     class _BrokenS3(_FakeS3):
         def head_object(self, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
