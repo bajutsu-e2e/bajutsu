@@ -11,6 +11,7 @@ safe to import without the ``server`` extra and the default path stays SDK-free 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -26,6 +27,10 @@ class ObjectStore(Protocol):
 
     def put_bytes(self, key: str, data: bytes) -> None:
         """Write *data* to the object at *key* (creating or overwriting)."""
+
+    def put_file(self, key: str, path: Path) -> None:
+        """Upload the file at *path* to *key*, streaming from disk (no full read into memory) — for
+        large run artifacts like videos."""
 
     def presigned_url(self, key: str) -> str:
         """A short-lived signed GET URL for *key*."""
@@ -80,6 +85,10 @@ class S3ObjectStore:
 
     def put_bytes(self, key: str, data: bytes) -> None:
         self._client.put_object(Bucket=self._bucket, Key=key, Body=data)
+
+    def put_file(self, key: str, path: Path) -> None:
+        # upload_file streams from disk (multipart for large files) — no full read into memory.
+        self._client.upload_file(str(path), self._bucket, key)
 
     def presigned_url(self, key: str) -> str:
         url: str = self._client.generate_presigned_url(

@@ -254,6 +254,9 @@ class _FakeObjectStore:
     def put_bytes(self, key: str, data: bytes) -> None:
         self.objects[key] = data
 
+    def put_file(self, key: str, path: Path) -> None:
+        self.objects[key] = path.read_bytes()
+
     def presigned_url(self, key: str) -> str:
         return f"https://signed.example/{key}"
 
@@ -267,11 +270,22 @@ def test_upload_runs_puts_every_file_under_the_artifact_prefix(tmp_path: Path) -
     (run / "report.html").write_text("<html>", encoding="utf-8")
     (run / "manifest.json").write_text("{}", encoding="utf-8")
     (run / "sub" / "shot.png").write_bytes(b"\x89PNG")
+    # Another run in the shared workspace must NOT be uploaded (scoped to run_id).
+    other = tmp_path / "runs" / "20260101-0"
+    other.mkdir(parents=True)
+    (other / "report.html").write_text("old", encoding="utf-8")
+    # A symlink in the run dir must be skipped (no exfiltration outside the run tree).
+    secret = tmp_path / "secret.txt"
+    secret.write_text("secret", encoding="utf-8")
+    (run / "link.txt").symlink_to(secret)
+
     store = _FakeObjectStore()
-    worker_job._upload_runs(tmp_path, store, "artifacts/")
+    worker_job._upload_runs(tmp_path, store, "artifacts/", "20260610-1")
     assert store.objects["artifacts/20260610-1/report.html"] == b"<html>"
     assert store.objects["artifacts/20260610-1/manifest.json"] == b"{}"
     assert store.objects["artifacts/20260610-1/sub/shot.png"] == b"\x89PNG"
+    assert "artifacts/20260101-0/report.html" not in store.objects  # other run not uploaded
+    assert "artifacts/20260610-1/link.txt" not in store.objects  # symlink skipped
 
 
 def test_execute_job_spec_uploads_the_run_tree(tmp_path: Path) -> None:

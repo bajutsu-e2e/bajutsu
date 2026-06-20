@@ -92,18 +92,24 @@ def _materialize(work: Path, materials: dict[str, str]) -> None:
         dest.write_text(content, encoding="utf-8")
 
 
-def _upload_runs(work: Path, store: ObjectStore, prefix: str) -> None:
-    """Upload the run tree the subprocess wrote (``work/runs/**``) to object storage, keyed by its
+def _upload_runs(work: Path, store: ObjectStore, prefix: str, run_id: str) -> None:
+    """Upload only this job's run tree (``work/runs/<run_id>/**``) to object storage, keyed by its
     path relative to ``work/runs`` under *prefix* — the exact keys `ObjectStorageArtifactStore`
-    serves from. The control plane has no shared filesystem with the worker, so this is how a run's
-    report / screenshots / video reach it."""
+    serves. Scoped to *run_id* because a worker's CWD is shared across jobs (don't re-upload old
+    runs); symlinks are skipped and resolved paths must stay under the run dir (no exfiltration).
+    Files stream from disk (`put_file`), so a large video doesn't load into memory."""
     runs = work / "runs"
-    if not runs.is_dir():
+    run_dir = runs / run_id
+    if not run_dir.is_dir():
         return
-    for path in sorted(runs.rglob("*")):
-        if path.is_file():
-            rel = path.relative_to(runs).as_posix()
-            store.put_bytes(f"{prefix}{rel}", path.read_bytes())
+    base = run_dir.resolve()
+    for path in sorted(run_dir.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue  # skip symlinks (and non-files) so nothing outside the run dir is uploaded
+        if base != path.resolve().parent and base not in path.resolve().parents:
+            continue  # defensive: stay under the run dir
+        rel = path.relative_to(runs).as_posix()  # "<run_id>/..."
+        store.put_file(f"{prefix}{rel}", path)
 
 
 def execute_job_spec(
@@ -140,9 +146,10 @@ def execute_job_spec(
         bus=state.logbus,
     )
     run_job(state, job)
-    # Upload the run tree so the control plane can serve it. Skip when no object store is configured
-    # (e.g. a worker without one) rather than failing the finished run.
+    # Upload this run's tree so the control plane can serve it — scoped to the produced run id (the
+    # worker's CWD is shared across jobs). Skip when no run was produced (job.run_id is None) or no
+    # object store is configured, rather than failing the finished run.
     uploader = store if store is not None else object_store_from_env()
-    if uploader is not None:
-        _upload_runs(work, uploader, artifact_prefix(s3_prefix()))
+    if uploader is not None and job.run_id:
+        _upload_runs(work, uploader, artifact_prefix(s3_prefix()), job.run_id)
     return job
