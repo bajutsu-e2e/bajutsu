@@ -24,11 +24,20 @@ function setBusy(btn,stop,on,busyLabel){
   btn.classList.toggle('running',on);btn.disabled=on;btn.textContent=on?busyLabel:btn.dataset.idle;
   stop.hidden=!on;stop.disabled=false;stop.textContent='Stop';
 }
-// Ask the server to abort a running job; polling then sees it finish and resets the UI.
+// Ask the server to abort a running job; the live stream then sees it finish and resets the UI.
 async function cancelJob(id,stop){
   if(!id)return;stop.disabled=true;stop.textContent='Stopping…';
   try{await fetch('/api/jobs/'+id+'/cancel',{method:'POST'})}catch(e){}
 }
+// Live-stream a job's log over SSE (BE-0015): a `log` event per line, then one `done` event with
+// the job's final view. Returns the EventSource so a restart can close it. Replaces 1s polling.
+function streamJob(id,onLog,onDone){
+  const es=new EventSource('/api/jobs/'+id+'/events');
+  es.addEventListener('log',e=>onLog(e.data));
+  es.addEventListener('done',e=>{es.close();onDone(JSON.parse(e.data))});
+  return es;
+}
+function appendLine(el,line){el.textContent+=(el.textContent?'\n':'')+line;el.scrollTop=el.scrollHeight}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function setStatus(el,t,c){el.textContent=t;el.className='status '+c}
 
@@ -185,7 +194,7 @@ $('#rec-simrefresh').addEventListener('click',loadSims);
 $('#rec-go').addEventListener('click',async()=>{
   const goal=$('#rec-goal').value.trim();
   if(!goal){setStatus($('#rec-status'),'enter a goal first','ng');return}
-  if(recPoll)clearInterval(recPoll);
+  if(recPoll)recPoll.close();
   setBusy($('#rec-go'),$('#rec-stop'),true,'Authoring…');$('#rec-out').textContent='';
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
   setStatus($('#rec-status'),'','run');
@@ -196,14 +205,11 @@ $('#rec-go').addEventListener('click',async()=>{
   const {jobId,path,error}=await r.json();
   if(error){setStatus($('#rec-status'),error,'ng');setBusy($('#rec-go'),$('#rec-stop'),false);return}
   recPath=path;recJobId=jobId;
-  recPoll=setInterval(()=>recCheck(jobId),1000);recCheck(jobId);
+  recPoll=streamJob(jobId,line=>appendLine($('#rec-out'),line),recDone);
 });
 $('#rec-stop').addEventListener('click',()=>cancelJob(recJobId,$('#rec-stop')));
-async function recCheck(id){
-  const j=await (await fetch('/api/jobs/'+id)).json();
-  $('#rec-out').textContent=(j.lines||[]).join('\n');$('#rec-out').scrollTop=$('#rec-out').scrollHeight;
-  if(j.status==='running')return;
-  clearInterval(recPoll);recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);
+async function recDone(j){
+  recPoll=null;recJobId=null;setBusy($('#rec-go'),$('#rec-stop'),false);
   if(j.cancelled){setStatus($('#rec-status'),'cancelled','ng');return}
   setStatus($('#rec-status'),j.ok?'authored ✓':'failed', j.ok?'ok':'ng');
   if(j.ok&&(j.outPath||recPath)){await loadGenerated(j.outPath||recPath);loadScenarios();}
@@ -241,7 +247,7 @@ function pickedUdids(){return [...$('#sims').querySelectorAll('.simck:checked')]
 function onSimChange(){const n=pickedUdids().length;if(n>0)$('#workers').value=n}
 $('#simrefresh').addEventListener('click',loadSims);
 $('#go').addEventListener('click',async()=>{
-  if(poll)clearInterval(poll);
+  if(poll)poll.close();
   setBusy($('#go'),$('#stop'),true,'Running…');$('#out').textContent='';
   setStatus($('#status'),'','run');
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -251,14 +257,11 @@ $('#go').addEventListener('click',async()=>{
   const {jobId,error}=await r.json();
   if(error){setStatus($('#status'),error,'ng');setBusy($('#go'),$('#stop'),false);return}
   runJobId=jobId;
-  poll=setInterval(()=>check(jobId),1000);check(jobId);
+  poll=streamJob(jobId,line=>appendLine($('#out'),line),runDone);
 });
 $('#stop').addEventListener('click',()=>cancelJob(runJobId,$('#stop')));
-async function check(id){
-  const j=await (await fetch('/api/jobs/'+id)).json();
-  $('#out').textContent=(j.lines||[]).join('\n');$('#out').scrollTop=$('#out').scrollHeight;
-  if(j.status==='running')return;  // the Run button (amber + spinner) shows the running state
-  clearInterval(poll);poll=null;runJobId=null;setBusy($('#go'),$('#stop'),false);
+function runDone(j){
+  poll=null;runJobId=null;setBusy($('#go'),$('#stop'),false);
   if(j.cancelled){setStatus($('#status'),'cancelled','ng');loadHistory();return}
   setStatus($('#status'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
   if(j.runId)setReport(j.runId);
@@ -285,7 +288,7 @@ document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('cl
 let crawlPoll=null,crawlJobId=null,crawlRunId=null;
 $('#crawl-simrefresh').addEventListener('click',loadSims);
 $('#crawl-go').addEventListener('click',async()=>{
-  if(crawlPoll)clearInterval(crawlPoll);
+  if(crawlPoll)crawlPoll.close();
   setBusy($('#crawl-go'),$('#crawl-stop'),true,'Crawling…');
   $('#crawl-out').textContent='';$('#crawl-counts').textContent='';
   $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
@@ -298,15 +301,15 @@ $('#crawl-go').addEventListener('click',async()=>{
   const {jobId,runId,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
   crawlJobId=jobId;crawlRunId=runId;
-  crawlPoll=setInterval(()=>crawlCheck(jobId),1000);crawlCheck(jobId);
+  crawlPoll=streamJob(jobId,line=>{
+    appendLine($('#crawl-out'),line);
+    if(crawlRunId)loadGraph(crawlRunId);  // redraw the streamed screenmap.json as it grows
+  },crawlDone);
 });
 $('#crawl-stop').addEventListener('click',()=>cancelJob(crawlJobId,$('#crawl-stop')));
-async function crawlCheck(id){
-  const j=await (await fetch('/api/jobs/'+id)).json();
-  $('#crawl-out').textContent=(j.lines||[]).join('\n');$('#crawl-out').scrollTop=$('#crawl-out').scrollHeight;
-  if(crawlRunId)await loadGraph(crawlRunId);  // poll the streamed screenmap.json and redraw
-  if(j.status==='running')return;
-  clearInterval(crawlPoll);crawlPoll=null;crawlJobId=null;setBusy($('#crawl-go'),$('#crawl-stop'),false);
+async function crawlDone(j){
+  crawlPoll=null;crawlJobId=null;setBusy($('#crawl-go'),$('#crawl-stop'),false);
+  if(crawlRunId)await loadGraph(crawlRunId);  // final redraw
   if(j.cancelled){setStatus($('#crawl-status'),'stopped','ng');return}
   setStatus($('#crawl-status'),j.ok?'done ✓':'failed', j.ok?'ok':'ng');
 }
@@ -591,7 +594,7 @@ $('#crawl-plan').addEventListener('click',e=>{
 // replay to that screen and perform the pruned op, appending whatever it finds to the live map.
 async function resumePruned(src,key){
   if(!crawlRunId){setStatus($('#crawl-status'),'no active run to resume','ng');return}
-  if(crawlPoll)clearInterval(crawlPoll);
+  if(crawlPoll)crawlPoll.close();
   setBusy($('#crawl-go'),$('#crawl-stop'),true,'Resuming…');
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -602,7 +605,10 @@ async function resumePruned(src,key){
   const {jobId,runId,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
   crawlJobId=jobId;crawlRunId=runId;
-  crawlPoll=setInterval(()=>crawlCheck(jobId),1000);crawlCheck(jobId);
+  crawlPoll=streamJob(jobId,line=>{
+    appendLine($('#crawl-out'),line);
+    if(crawlRunId)loadGraph(crawlRunId);
+  },crawlDone);
 }
 // Toggle pruning of duplicate global ops in the plan tree, re-rendering it in place.
 (function(){const t=$('#crawl-prune');if(t)t.addEventListener('change',()=>{prunePlan=t.checked;if(crawlGraphData)renderPlan(crawlGraphData)})})();
