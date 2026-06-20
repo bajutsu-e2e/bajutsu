@@ -89,12 +89,14 @@ def test_requested_intervals_from_capture_policy_in_canonical_order() -> None:
     scn = _scn(
         {
             "name": "x",
-            "capturePolicy": [{"on": {"result": "error"}, "capture": ["deviceLog", "video"]}],
+            "capturePolicy": [
+                {"on": {"result": "error"}, "capture": ["appTrace", "deviceLog", "video"]}
+            ],
             "steps": [{"tap": {"id": "a"}}],
         }
     )
     # ordered video, deviceLog, appTrace regardless of request order
-    assert requested_intervals(scn) == ["video", "deviceLog"]
+    assert requested_intervals(scn) == ["video", "deviceLog", "appTrace"]
 
 
 def test_requested_intervals_recurses_into_nested_steps() -> None:

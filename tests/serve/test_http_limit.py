@@ -13,10 +13,15 @@ from _shared import _post, _serve, fake_popen, project
 from bajutsu import serve as srv
 
 
-def _running(state: srv.ServeState, n: int) -> None:
-    """Seed `n` jobs in the running state so the next dispatch sees the cap reached."""
-    for i in range(n):
-        state.jobs[str(i)] = srv.Job(id=str(i), cmd=[], status="running")
+def _running(state: srv.ServeState, n: int, start: int = 0) -> None:
+    """Seed `n` jobs starting at index `start` using unique `seed_` prefixed keys.
+
+    Using `seed_{i}` keys avoids collisions with integer-keyed jobs that real dispatch may create.
+    Use `start` to seed non-overlapping ranges across multiple calls.
+    """
+    for i in range(start, start + n):
+        job_id = f"seed_{i}"
+        state.jobs[job_id] = srv.Job(id=job_id, cmd=[], status="running")
 
 
 def test_active_jobs_counts_only_running() -> None:
@@ -42,7 +47,7 @@ def test_run_rejected_at_concurrency_cap(tmp_path: Path) -> None:
         status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
         assert status == 200 and "jobId" in resp
 
-        state.jobs["cap"] = srv.Job(id="cap", cmd=[], status="running")  # now at the cap
+        _running(state, 1, start=1)  # now at the cap
         status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
         assert status == 429 and "too many concurrent jobs" in resp["error"]
     finally:
