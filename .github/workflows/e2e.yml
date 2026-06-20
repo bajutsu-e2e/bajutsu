@@ -51,11 +51,13 @@ jobs:
           echo "Changed files:"
           echo "$changed"
           # The on-device jobs exercise only the idb runtime (smoke) and codegen -> XCUITest
-          # (xcuitest); they never touch the serve control plane, the MCP server, or the linter,
-          # which the Linux gate already covers. Drop those (and tests/) before matching so a
-          # serve/mcp/lint-only PR skips the metered macOS jobs. Dependency/build changes
-          # (pyproject / uv.lock / Makefile) stay device-relevant — a runtime dep could move.
-          device=$(echo "$changed" | grep -vE '^(bajutsu/serve/|bajutsu/mcp/|bajutsu/lint\.py|tests/)' || true)
+          # (xcuitest); they never touch the serve control plane, the worker, the MCP server, or
+          # the linter, which the Linux gate already covers. Drop those — both the packages and
+          # their CLI command modules (cli/commands/{serve,worker,mcp,lint,schema}.py) — plus
+          # tests/, before matching, so a serve/worker/mcp/lint-only PR skips the metered macOS
+          # jobs. Dependency/build changes (pyproject / uv.lock / Makefile) stay device-relevant —
+          # a runtime dep could move.
+          device=$(echo "$changed" | grep -vE '^(bajutsu/serve/|bajutsu/mcp/|bajutsu/lint\.py|bajutsu/cli/commands/(serve|worker|mcp|lint|schema)\.py|tests/)' || true)
           if echo "$device" | grep -qE '^(bajutsu/|BajutsuKit/|demos/features/app/|demos/features/demo\.config\.yaml|pyproject\.toml|uv\.lock|Makefile|\.github/workflows/e2e\.yml|\.github/actions/bajutsu-e2e/|\.github/actions/boot-simulator/)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
