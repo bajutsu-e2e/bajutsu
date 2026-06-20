@@ -69,17 +69,25 @@ class RedisLogBus:
         text = self._text(value)
         return None if text == "1" else text  # "1" = closed without a payload
 
-    def stream(self, job_id: str) -> Iterator[str]:
+    def stream(self, job_id: str, *, timeout: float | None = None) -> Iterator[str | None]:
         key = _LINES + job_id
         seen = 0
+        idle = 0.0  # seconds since the last line, to pace heartbeats when *timeout* is set
         while True:
             batch = self._redis.lrange(key, seen, -1)
             seen += len(batch)
-            for line in batch:
-                yield self._text(line)
+            if batch:
+                idle = 0.0
+                for line in batch:
+                    yield self._text(line)
+                continue
             # `close` is set only after every line is published, so once it's set and we've drained
             # the list (no new batch), the log is complete. Poll while waiting for live lines.
-            if not batch:
-                if self._redis.get(_DONE + job_id) is not None:
-                    return
-                time.sleep(self._poll)
+            if self._redis.get(_DONE + job_id) is not None:
+                return
+            time.sleep(self._poll)
+            if timeout is not None:
+                idle += self._poll
+                if idle >= timeout:
+                    idle = 0.0
+                    yield None  # idle for `timeout` with no new line → heartbeat

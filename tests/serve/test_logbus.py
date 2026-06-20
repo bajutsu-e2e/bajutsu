@@ -63,3 +63,27 @@ def test_inmemory_logbus_records_final_status_on_close() -> None:
     plain = srv.InMemoryLogBus()
     plain.close("k")
     assert plain.final("k") is None
+
+
+def test_inmemory_stream_timeout_yields_heartbeat_then_line() -> None:
+    # With a timeout, an idle stream yields None heartbeats (so a caller can keepalive / check for
+    # disconnect); a real line still arrives, and the stream ends on close. Without a timeout the
+    # stream never yields None (covered by the other tests).
+    import threading
+    import time
+
+    bus = srv.InMemoryLogBus()
+    got: list[str | None] = []
+
+    def consume() -> None:
+        got.extend(bus.stream("j", timeout=0.02))
+
+    t = threading.Thread(target=consume, daemon=True)
+    t.start()
+    time.sleep(0.1)  # stay idle so the timeout fires at least once
+    bus.publish("j", "x")
+    bus.close("j")
+    t.join(timeout=2)
+    assert not t.is_alive()
+    assert None in got  # at least one idle heartbeat
+    assert "x" in got  # the real line is still delivered

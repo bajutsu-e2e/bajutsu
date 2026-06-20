@@ -85,3 +85,24 @@ def test_close_records_final_status_and_stream_still_ends() -> None:
     plain = RedisLogBus(FakeRedis())
     plain.close("k")
     assert plain.final("k") is None  # closed without a payload
+
+
+def test_stream_timeout_yields_heartbeat_then_line() -> None:
+    import threading
+    import time
+
+    bus = RedisLogBus(FakeRedis(), poll_interval=0.01)
+    got: list[str | None] = []
+
+    def consume() -> None:
+        got.extend(bus.stream("j", timeout=0.03))
+
+    t = threading.Thread(target=consume, daemon=True)
+    t.start()
+    time.sleep(0.12)  # idle long enough for a heartbeat
+    bus.publish("j", "x")
+    bus.close("j")
+    t.join(timeout=2)
+    assert not t.is_alive()
+    assert None in got  # idle heartbeat
+    assert "x" in got
