@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from _shared import SCENARIO, project, write_run
+from _shared import SCENARIO, fake_popen, project, write_run
 from fastapi.testclient import TestClient
 
 from bajutsu import serve as srv
@@ -116,6 +116,44 @@ def test_oauth_callback_rejects_a_user_not_on_the_allowlist(tmp_path: Path) -> N
     csrf = _csrf_from_redirect(client.get("/api/oauth/login", follow_redirects=False))
     resp = client.get(f"/api/oauth/callback?code=ok&state={csrf}", follow_redirects=False)
     assert resp.status_code == 403
+
+
+def test_run_audits_the_logged_in_user(tmp_path: Path) -> None:
+    # End-to-end through the transport: a logged-in OAuth session attributes the run to that user in
+    # the audit log (BE-0015 7c-1). A fake popen stands in for the runner so no Simulator is needed.
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import AuditLog, Base
+
+    _scn_dir, cfg, runs = project(tmp_path)
+    # A file DB (not in-memory) so the callback's threadpool worker and the run handler share it.
+    engine = create_engine(f"sqlite:///{tmp_path / 'audit.db'}")
+    Base.metadata.create_all(engine)
+    state = srv.ServeState(
+        config=cfg,
+        runs_dir=runs,
+        root=tmp_path,
+        cwd=tmp_path,
+        oauth=_FakeOAuth("alice"),
+        oauth_allowed_users=frozenset({"alice"}),
+        repository=SqlRepository(engine),
+        popen=fake_popen([]),
+    )
+    client = TestClient(make_app(state))
+    csrf = _csrf_from_redirect(client.get("/api/oauth/login", follow_redirects=False))
+    assert (
+        client.get(f"/api/oauth/callback?code=ok&state={csrf}", follow_redirects=False).status_code
+        == 302
+    )
+    resp = client.post("/api/run", json={"scenario": "smoke.yaml", "app": "demo"})
+    assert resp.status_code == 200
+    with Session(engine) as s:
+        rows = list(s.scalars(select(AuditLog)))
+    assert len(rows) == 1
+    assert rows[0].action == "run"
+    assert rows[0].actor_id == "alice"  # the run is attributed to the logged-in GitHub user
 
 
 def test_security_headers_on_every_response(tmp_path: Path) -> None:

@@ -236,7 +236,34 @@ def oauth_callback(
         return {"error": "oauth exchange failed"}, 403, None
     if login not in state.oauth_allowed_users:
         return {"error": "user not allowed"}, 403, None
+    if state.repository is not None:
+        # Persist the identity into the system of record (single default org for now, BE-0015 7c-1),
+        # so audit entries and a later RBAC layer can reference the user. email is unknown from a
+        # read:user scope, so we store GitHub's canonical no-reply form (valid + unique per login).
+        state.repository.ensure_org(_DEFAULT_ORG, slug=_DEFAULT_ORG, name="Default")
+        state.repository.upsert_user(
+            login,
+            org_id=_DEFAULT_ORG,
+            github_login=login,
+            email=f"{login}@users.noreply.github.com",
+        )
     return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
+
+
+# The single tenant's org id/slug until real multi-tenancy lands (BE-0015 7c-1).
+_DEFAULT_ORG = "default"
+
+
+def _record_audit(
+    state: ServeState, actor: str | None, action: str, target: str, detail: dict[str, Any]
+) -> None:
+    """Append an audit entry (who did what, when) when a database is wired and the actor is known.
+    A no-op otherwise — local, no database, or a shared-token request with no identity (BE-0015 7c-1)."""
+    if state.repository is None or not actor:
+        return
+    state.repository.record_audit(
+        org_id=_DEFAULT_ORG, actor_id=actor, action=action, target=target, detail=detail
+    )
 
 
 def _confined_config_path(root: Path, raw: str) -> Path | None:
@@ -305,7 +332,9 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     return {"ok": True, "provider": "bedrock", "region": region, "model": model}, 200
 
 
-def start_run(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+def start_run(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
     cfg = state.config
     if cfg is None:
         return {"error": "open a config first"}, 400
@@ -365,10 +394,13 @@ def start_run(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)
+    _record_audit(state, actor, "run", f"{app}/{body['scenario']}", {"backend": backend or None})
     return {"jobId": job.id}, 200
 
 
-def start_record(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+def start_record(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
     """Author a scenario from a natural-language goal (the Record tab).  The authored file lands in
     the selected app's configured scenarios dir."""
     cfg = state.config
@@ -422,11 +454,14 @@ def start_record(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)
+    _record_audit(state, actor, "record", str(body["app"]), {"goal": str(body["goal"])})
     # Report the saved ref on the server (what the UI loads), else the on-disk path.
     return {"jobId": job.id, "path": authored.save[1] if authored.save else authored.out}, 200
 
 
-def start_crawl(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+def start_crawl(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
     """Explore an app breadth-first and build a screen map (the Crawl tab).  The screen map is
     streamed into ``runs/<runId>/screenmap.json``; the returned ``runId`` lets the UI poll it."""
     cfg = state.config
@@ -471,6 +506,7 @@ def start_crawl(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)
+    _record_audit(state, actor, "crawl", str(body["app"]), {"runId": run_id})
     return {"jobId": job.id, "runId": run_id}, 200
 
 
