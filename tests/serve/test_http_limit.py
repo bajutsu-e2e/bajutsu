@@ -29,11 +29,20 @@ def test_active_jobs_counts_only_running() -> None:
 def test_run_rejected_at_concurrency_cap(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
-        scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, max_concurrent=2
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        max_concurrent=2,
+        popen=fake_popen(["PASS  runs/x/manifest.json\n"]),
     )
-    _running(state, 2)  # at the cap
+    _running(state, 1)  # below the cap
     server, port = _serve(state)
     try:
+        status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
+        assert status == 200 and "jobId" in resp
+
+        state.jobs["cap"] = srv.Job(id="cap", cmd=[], status="running")  # now at the cap
         status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
         assert status == 429 and "too many concurrent jobs" in resp["error"]
     finally:
