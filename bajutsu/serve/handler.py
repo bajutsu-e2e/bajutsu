@@ -45,17 +45,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
-        def _sse(self, event: str, data: str) -> None:
-            """Write one Server-Sent Event and flush it so the browser sees it live."""
-            self.wfile.write(f"event: {event}\ndata: {data}\n\n".encode())
-            self.wfile.flush()
-
         def _sse_job(self, job_id: str) -> None:
-            """Stream a job's log over SSE: a `log` event per line (backlog + live from the
-            LogBus), then a terminal `done` event carrying the job's final view. The buffered bus
-            means a subscriber that attaches after the job finished still replays everything."""
-            job = state.jobs.get(job_id)
-            if job is None:
+            """Stream a job's log over SSE via the shared event stream: a `log` event per line
+            (backlog + live from the LogBus), then a terminal `done` event carrying the job's final
+            view. The buffered bus means a subscriber that attaches after the job finished still
+            replays everything."""
+            events = ops.job_log_events(state, job_id)
+            if events is None:
                 self._json({"error": "no such job"}, 404)
                 return
             self.send_response(200)
@@ -64,9 +60,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.send_header("X-Accel-Buffering", "no")  # don't let a proxy buffer the stream
             self.end_headers()
             try:
-                for line in state.logbus.stream(job_id):
-                    self._sse("log", line)
-                self._sse("done", json.dumps(job.view()))
+                for event, data in events:
+                    self.wfile.write(ops.format_sse(event, data).encode())
+                    self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 pass  # the client navigated away; stop streaming
 

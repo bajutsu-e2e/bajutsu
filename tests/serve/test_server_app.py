@@ -102,6 +102,26 @@ def test_more_delegations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     assert set_key.status_code == 400
 
 
+def test_job_events_streams_log_then_done(tmp_path: Path) -> None:
+    # The buffered LogBus means a subscriber that attaches after the job finished still replays
+    # every line and the terminal event, so reading to EOF is deterministic on the gate.
+    state = _state(tmp_path)
+    state.jobs["j1"] = srv.Job(id="j1", cmd=[])
+    state.logbus.publish("j1", "step 0 ok\n")
+    state.logbus.publish("j1", "PASS  runs/20260610-1/manifest.json\n")
+    state.logbus.close("j1")
+    resp = _client(state).get("/api/jobs/j1/events")
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+    text = resp.text
+    assert "event: log" in text and "data: step 0 ok" in text
+    assert "event: done" in text and '"id": "j1"' in text
+
+
+def test_job_events_unknown_is_404(tmp_path: Path) -> None:
+    assert _client(_state(tmp_path)).get("/api/jobs/nope/events").status_code == 404
+
+
 def test_csrf_blocks_cross_origin_post(tmp_path: Path) -> None:
     # With a token configured, a state-changing POST from a foreign Origin is blocked (BE-0051),
     # mirroring the stdlib handler's CSRF check.

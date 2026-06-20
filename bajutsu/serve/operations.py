@@ -10,7 +10,9 @@ SSE streaming, static asset serving).
 
 from __future__ import annotations
 
+import json
 import os
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -41,7 +43,7 @@ from bajutsu.serve.helpers import (
     valid_scenario_ref,
     valid_udid,
 )
-from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.jobs import Job, ServeState
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
@@ -122,6 +124,32 @@ def read_scenario(state: ServeState, app: str | None, path: str | None) -> tuple
 def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
     job = state.jobs.get(job_id)
     return (job.view(), 200) if job else ({"error": "no such job"}, 404)
+
+
+# --- live-log SSE (shared event stream; each shell does its own framing/transport) ---
+
+
+def format_sse(event: str, data: str) -> str:
+    """One Server-Sent Event frame: an ``event:`` line and a ``data:`` line, ended by a blank line
+    so the browser dispatches it."""
+    return f"event: {event}\ndata: {data}\n\n"
+
+
+def job_log_events(state: ServeState, job_id: str) -> Iterator[tuple[str, str]] | None:
+    """The live-log stream for *job_id* as ``(event, data)`` pairs — a ``log`` per line (backlog +
+    live from the LogBus), then a terminal ``done`` carrying the job's final view — or None if the
+    job is unknown. The buffered bus means a subscriber that attaches after the job finished still
+    replays everything. The blocking iteration is the caller's to host (a thread per request)."""
+    job = state.jobs.get(job_id)
+    if job is None:
+        return None
+    return _job_event_pairs(state, job, job_id)
+
+
+def _job_event_pairs(state: ServeState, job: Job, job_id: str) -> Iterator[tuple[str, str]]:
+    for line in state.logbus.stream(job_id):
+        yield ("log", line)
+    yield ("done", json.dumps(job.view()))
 
 
 # --- POST (actions) ---

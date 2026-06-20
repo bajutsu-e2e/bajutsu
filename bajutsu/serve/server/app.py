@@ -18,7 +18,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.handler import _SESSION_COOKIE, _index_html
@@ -130,6 +130,25 @@ def make_app(state: ServeState) -> FastAPI:
     @app.get("/api/jobs/{job_id}")
     async def job(job_id: str) -> JSONResponse:
         return _result(ops.job_view(state, job_id))
+
+    @app.get("/api/jobs/{job_id}/events")
+    async def job_events(job_id: str) -> Response:
+        events = ops.job_log_events(state, job_id)
+        if events is None:
+            return _result(({"error": "no such job"}, 404))
+
+        # The shared event stream blocks (LogBus.stream); passing the sync generator to Starlette
+        # runs it in a threadpool, so the event loop isn't blocked (a thread per live subscriber,
+        # like the stdlib server). X-Accel-Buffering disables proxy buffering of the stream.
+        def body() -> Any:
+            for event, data in events:
+                yield ops.format_sse(event, data)
+
+        return StreamingResponse(
+            body(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     # --- POST (actions) ---
 
