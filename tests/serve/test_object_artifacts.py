@@ -56,6 +56,26 @@ def test_get_missing_object_is_none() -> None:
     assert store.get("r1/missing.png") is None
 
 
+def test_escaping_rels_are_treated_as_missing() -> None:
+    # Same containment as LocalArtifactStore: empty, absolute, and `..` rels never reach storage.
+    store = ObjectStorageArtifactStore(
+        FakeObjectStore({"secret.txt": b"top secret", "runs/r1/ok.txt": b"ok"}), prefix="runs/"
+    )
+    for rel in ("", "/etc/passwd", "../secret.txt", "../../secret.txt"):
+        assert store.get(rel) is None, rel
+        assert store.open_bytes(rel) is None, rel
+
+
+def test_list_runs_skips_non_object_manifest() -> None:
+    # A manifest.json that decodes to a non-dict (e.g. a list) is skipped, not a 500.
+    objects = {
+        "runs/bad/manifest.json": b"[1, 2, 3]",
+        "runs/good/manifest.json": _manifest(True, [("home", True)]),
+    }
+    listed = ObjectStorageArtifactStore(FakeObjectStore(objects), prefix="runs/").list_runs()
+    assert [r["id"] for r in listed] == ["good"]
+
+
 def test_open_bytes_fetches_object_or_none() -> None:
     store = ObjectStorageArtifactStore(
         FakeObjectStore({"runs/r1/sid/visual-actual.png": b"SHOT"}), prefix="runs/"
