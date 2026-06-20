@@ -165,11 +165,72 @@ also shipped the auth + input validation, and the pure helpers (`list_scenarios`
 3. Provide a **Redis-backed `LogBus`** (pub/sub) and an **object-storage `ArtifactStore`** that
    returns R2 signed-URL redirects in place of the local filesystem reads.
 4. Add **OAuth + Postgres** (orgs/projects/runs) and a **per-project `ScenarioStore`** that resolves
-   by id from storage instead of the local filesystem.
+   by id from storage instead of the local filesystem — the **7a/7b/7c** breakdown below details
+   this step.
 5. Stand up **one Orka worker**; close the security items above; then scale the pool.
 
 Each step is independently shippable and testable, and the deterministic core (`bajutsu run`, the
 report) is unchanged throughout — only its *invocation* and *plumbing* move to the cloud.
+
+### Persistence and identity — the remaining slice (7a/7b/7c)
+
+The single-tenant server backend now reaches feature parity with local across **five** seams (the
+four above plus a **`BaselineStore`** for visual-regression baselines), so migration steps 1–3 have
+landed. What remains is **step 4 — persistence and identity**: the system of record and the login
+that turn that single-tenant backend multi-tenant. `ScenarioStore` and the object store are already
+parameterized by a tenant prefix (`<org>/`), so this slice adds the database and the identity on
+top of seams that already exist. It proceeds under three invariants — **local behavior is
+unchanged; every slice's tests run on the Linux gate (no Simulator, no live Postgres/Redis/object
+storage); and each slice follows the existing seam pattern** (a Protocol with an injected
+implementation, lazy-imported behind an optional extra so the default `serve`/CLI path never loads
+it). It splits into three independently shippable slices.
+
+#### 7a — the persistence layer (a `Repository` seam)
+
+A fifth seam, `Repository`, lands in `bajutsu/serve/server/db.py` the same way `ObjectStore` was
+built: a Protocol, an injected SQLAlchemy 2.0 implementation, an env-driven factory, and a lazy
+import. The schema is fixed up front in the first Alembic migration — adding foreign keys later is
+painful under SQLite, which the gate uses — even though only `runs` is read or written in 7a:
+
+```
+orgs       id, slug (unique), name, created_at
+users      id, org_id → orgs, email (unique), github_login (used in 7b), created_at
+projects   id, org_id → orgs, name (= the config app name), created_at, unique(org_id, name)
+runs       id, org_id → orgs, project_id → projects, created_by → users,
+           status, ok, created_at, summary (JSONB)
+audit_log  id, org_id → orgs, actor_id → users, action, target, at, detail (JSONB)
+```
+
+`org_id` threads through every table so that 7c's per-org scoping and quotas can filter on it. The
+relational core (ids, status, timestamps) stays in ordinary columns; only the variable manifest
+summary and audit detail use `JSON().with_variant(JSONB, "postgresql")`, so the same models run on
+SQLite (the gate) and Postgres (production). 7a implements only the `runs` methods on the seam —
+`record_run` / `get_run` / `list_runs` — returning a `RunRecord` boundary type so ORM rows never
+leak past the seam; the `orgs`/`users`/`projects`/`audit_log` behavior arrives with 7b and 7c.
+Wiring stays in the one place seams are assembled, `_build_server_state`, keyed off
+`BAJUTSU_DATABASE_URL`; when that is unset, and for the local backend, `repository` stays `None`, so
+behavior is unchanged. Tests build an in-memory SQLite engine inside each test (no fixtures), and
+the import guard already forbids `sqlalchemy`/`alembic`/`psycopg` on the default path. A `db` extra
+carries `sqlalchemy`, `alembic`, and `psycopg`. Ship it as two PRs: 7a-1 (schema + repository +
+SQLite tests, touching no existing file) and 7a-2 (the `_build_server_state` wiring + Alembic).
+
+#### 7b — GitHub OAuth and durable sessions
+
+Sessions today live in an in-memory `set[str]` on `ServeState`, which cannot survive a restart or
+span worker processes. 7b moves them into the system of record (or Redis) and adds **GitHub OAuth
+via Authlib**: a login/callback pair, signed-cookie sessions, and resolving the OAuth identity into
+an `orgs`/`users` upsert. The `operations` layer stays token-agnostic; authentication remains in the
+handler/app middleware, exactly where [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+put it. An `authlib` extra carries the dependency.
+
+#### 7c — per-org RBAC, audit log, and quotas
+
+The last slice enforces tenancy. Each user carries a role within its org (viewer / editor / admin);
+every endpoint checks org scope, so a cross-org access returns 403; the `audit_log` records who ran
+what and when; and per-org concurrency quotas apply at enqueue time so one tenant cannot starve the
+scarce Mac pool. The tenant prefix already present on `ScenarioStore`, the object store, and
+`BaselineStore` is fed the resolved `org_id`, so artifacts, scenarios, and baselines all become
+org-scoped without a contract change.
 
 ## Alternatives considered
 
