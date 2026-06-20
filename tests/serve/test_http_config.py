@@ -49,6 +49,23 @@ def test_http_scenario_save_validates_and_writes(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_scenario_save_reports_bad_path_before_bad_yaml(tmp_path: Path) -> None:
+    # When both the path and the YAML are invalid, the path error wins (a non-saveable ref is
+    # reported before the scenario is parsed), so the client learns where to save first.
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        status, resp = _post(
+            port, "/api/scenario", {"path": "note.txt", "yaml": "steps: [not, a, list"}
+        )
+        assert status == 400 and "path must be" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
     _, _, runs = project(tmp_path)
     # No config bound at startup; the browse root is the project dir.

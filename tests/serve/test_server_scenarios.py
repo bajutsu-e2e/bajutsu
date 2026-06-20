@@ -57,6 +57,33 @@ def test_list_read_save_delegate_to_storage() -> None:
     assert scope.save("bad.txt", "x") is None  # storage rejects a non-scenario ref
 
 
+class PermissiveStorage:
+    """A storage that would return for *any* ref — so a leak proves the scope didn't pre-reject."""
+
+    def has_app(self, app: str) -> bool:
+        return True
+
+    def list(self, app: str) -> list[dict[str, object]]:
+        return []
+
+    def read(self, app: str, ref: str | None) -> str | None:
+        return "LEAK"
+
+    def save(self, app: str, ref: str | None, text: str) -> str | None:
+        return "LEAK"
+
+
+def test_unsafe_refs_are_rejected_before_storage() -> None:
+    # A ref is a trust boundary even with no filesystem (object-store key / DB id): the scope must
+    # reject obviously unsafe refs before delegating, so a backing store never sees them.
+    scope = StorageScenarioStore(PermissiveStorage()).scope("demo")
+    assert scope is not None
+    for bad in ("", "note.txt", "../smoke.yaml", "/abs/smoke.yaml", "a\x00.yaml", None):
+        assert scope.read(bad) is None, bad
+        assert scope.save(bad, SCENARIO) is None, bad
+    assert scope.read("smoke.yaml") == "LEAK"  # a safe ref still reaches storage
+
+
 def test_execution_paths_are_worker_side() -> None:
     # run/record materialize the scenario on the worker, so the control-plane store doesn't serve
     # the filesystem-path methods.

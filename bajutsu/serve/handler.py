@@ -35,6 +35,7 @@ from bajutsu.serve.helpers import (
     run_command,
     valid_backend,
     valid_run_id,
+    valid_scenario_ref,
     valid_udid,
 )
 from bajutsu.serve.jobs import ServeState, cancel_job
@@ -528,15 +529,21 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
             """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""
+            # Resolve the scope and screen the ref before parsing: a non-saveable path is reported
+            # ahead of a YAML error (the local store passes an absolute path inside its dir).
+            scope = state.scenarios.scope(str(body.get("app") or "") or None)
+            ref = body.get("path")
+            ref = ref if isinstance(ref, str) else None
+            if scope is None or not valid_scenario_ref(ref, allow_absolute=True):
+                self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
+                return
             text = str(body.get("yaml", ""))
             try:
                 load_scenario_file(text)
             except (ValueError, OSError, yaml.YAMLError) as e:
                 self._json({"error": f"invalid scenario: {e}"}, 400)
                 return
-            scope = state.scenarios.scope(str(body.get("app") or "") or None)
-            ref = body.get("path")
-            saved = scope.save(ref if isinstance(ref, str) else None, text) if scope else None
+            saved = scope.save(ref, text)
             if saved is None:
                 self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
                 return

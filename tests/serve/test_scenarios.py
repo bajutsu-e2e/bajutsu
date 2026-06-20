@@ -68,6 +68,18 @@ def test_save_writes_a_confined_file_and_rejects_escapes(tmp_path: Path) -> None
     assert not (tmp_path / "scn" / "note.txt").exists()  # a rejected save writes nothing
 
 
+def test_save_creates_scenarios_dir_when_missing(tmp_path: Path) -> None:
+    # A fresh project whose scenarios dir does not exist yet: save must create it (mirrors out_path),
+    # not raise FileNotFoundError — save's contract allows creating a new file.
+    target_dir = tmp_path / "fresh"
+    store = srv.LocalScenarioStore(lambda app: target_dir if app == "demo" else None)
+    scope = store.scope("demo")
+    assert scope is not None
+    saved = scope.save("smoke.yaml", SCENARIO)
+    assert saved is not None and saved.endswith("smoke.yaml")
+    assert (target_dir / "smoke.yaml").read_text(encoding="utf-8") == SCENARIO
+
+
 def test_invalid_path_with_nul_is_none_not_error(tmp_path: Path) -> None:
     # A client path with an embedded NUL must resolve to None (404/400), never raise (500).
     scope = _store(tmp_path).scope("demo")

@@ -86,6 +86,7 @@ class LocalScenarioScope:
         target = _scenario_path(self._dir, ref)
         if target is None:
             return None
+        target.parent.mkdir(parents=True, exist_ok=True)  # a fresh project's dir may not exist yet
         target.write_text(text, encoding="utf-8")
         return str(target)
 

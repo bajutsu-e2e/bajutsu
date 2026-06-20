@@ -20,6 +20,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol
 
+from bajutsu.serve.helpers import valid_scenario_ref
+
 
 class ScenarioStorage(Protocol):
     """Per-project scenario storage the control plane reads and writes (a DB / object store)."""
@@ -48,9 +50,15 @@ class StorageScenarioScope:
         return self._storage.list(self._app)
 
     def read(self, ref: str | None) -> str | None:
+        # A ref is a trust boundary (an object-store key / DB id) even with no filesystem here:
+        # reject an obviously unsafe ref before it reaches the backing store.
+        if not valid_scenario_ref(ref):
+            return None
         return self._storage.read(self._app, ref)
 
     def save(self, ref: str | None, text: str) -> str | None:
+        if not valid_scenario_ref(ref):
+            return None
         return self._storage.save(self._app, ref, text)
 
     def resolve_runnable(self, scenario: str) -> Path | None:
