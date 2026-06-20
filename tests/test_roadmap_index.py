@@ -171,3 +171,30 @@ def test_committed_index_is_up_to_date() -> None:
         "roadmap index is out of date; run `python scripts/build_roadmap_index.py` "
         f"and commit: {stale}"
     )
+
+
+def test_duplicate_ids_flags_collisions(tmp_path: Path) -> None:
+    """duplicate_ids reports any BE number shared by two item directories."""
+    roadmap = tmp_path / "roadmaps"
+    for rel in ("implemented/BE-0045-foo", "proposals/BE-0045-bar", "proposals/BE-0046-baz"):
+        (roadmap / rel).mkdir(parents=True)
+    dupes = bri.duplicate_ids(roadmap)
+    assert set(dupes) == {"BE-0045"}
+    assert sorted(dupes["BE-0045"]) == ["implemented/BE-0045-foo", "proposals/BE-0045-bar"]
+
+
+def test_load_items_rejects_duplicate_ids(tmp_path: Path) -> None:
+    """The index build refuses a tree with a duplicate id instead of rendering two rows."""
+    import pytest
+
+    roadmap = tmp_path / "roadmaps"
+    for rel in ("implemented/BE-0045-foo", "proposals/BE-0045-bar"):
+        (roadmap / rel).mkdir(parents=True)
+    with pytest.raises(ValueError, match="duplicate BE IDs"):
+        bri.load_items(roadmap)
+
+
+def test_no_duplicate_be_ids() -> None:
+    """The gate: no two roadmap items share a BE id (IDs are unique and permanent)."""
+    roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
+    assert bri.duplicate_ids(roadmap) == {}, "duplicate BE IDs found in roadmaps/"

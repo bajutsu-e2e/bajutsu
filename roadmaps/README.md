@@ -266,8 +266,8 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|---|
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
-| [BE-0045](proposals/BE-0045-device-state-timezone-clipboard-shake/BE-0045-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Proposal | MagicPod |
 | [BE-0046](proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Proposal | MagicPod |
+| [BE-0052](proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | Proposal | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)

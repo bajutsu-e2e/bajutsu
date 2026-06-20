@@ -81,6 +81,6 @@ Prime directives preserved:
 ## References
 
 The remaining device-state primitives (timezone, clipboard seeding, shake, and app resume) are
-tracked separately in [Device-state primitives: timezone, clipboard, shake](../../proposals/BE-0045-device-state-timezone-clipboard-shake/BE-0045-device-state-timezone-clipboard-shake.md).
+tracked separately in [Device-state primitives: timezone, clipboard, shake](../../proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md).
 
 [DESIGN §6.2](../../../DESIGN.md), `bajutsu/orchestrator/actions/handlers/device.py`
