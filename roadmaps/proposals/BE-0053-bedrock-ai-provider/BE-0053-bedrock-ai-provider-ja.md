@@ -1,8 +1,8 @@
-[English](BE-XXXX-bedrock-ai-provider.md) · **日本語**
+[English](BE-0053-bedrock-ai-provider.md) · **日本語**
 
-# BE-XXXX — 差し替え可能な AI プロバイダとしての Amazon Bedrock
+# BE-0053 — 差し替え可能な AI プロバイダとしての Amazon Bedrock
 
-* 提案: [BE-XXXX](BE-XXXX-bedrock-ai-provider-ja.md)
+* 提案: [BE-0053](BE-0053-bedrock-ai-provider-ja.md)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: AI プロバイダ設定

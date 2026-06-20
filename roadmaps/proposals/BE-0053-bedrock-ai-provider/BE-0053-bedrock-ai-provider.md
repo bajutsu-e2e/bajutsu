@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-bedrock-ai-provider-ja.md)
+**English** · [日本語](BE-0053-bedrock-ai-provider-ja.md)
 
-# BE-XXXX — Amazon Bedrock as a pluggable AI provider
+# BE-0053 — Amazon Bedrock as a pluggable AI provider
 
-* Proposal: [BE-XXXX](BE-XXXX-bedrock-ai-provider.md)
+* Proposal: [BE-0053](BE-0053-bedrock-ai-provider.md)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: AI provider configuration
