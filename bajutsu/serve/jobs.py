@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from bajutsu.serve.server.db import Repository
+    from bajutsu.serve.server.oauth import OAuthClient
 
 from bajutsu import env
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
@@ -125,6 +126,12 @@ class ServeState:
     # a Redis-backed store so sessions survive restarts and span control-plane processes (BE-0015
     # 7b). The shared token itself never lives in the browser — only an opaque session id does.
     sessions: SessionStore = field(default_factory=InMemorySessionStore)
+    # GitHub OAuth login (BE-0015 7b-2). None = OAuth not configured (shared-token auth only); a
+    # server backend with the OAuth env set injects a client. `oauth_allowed_users` is the GitHub
+    # login allowlist — only these may log in. Both string-annotated/lazy so the default path is
+    # OAuth-free. Identity from a successful login is bound to the session.
+    oauth: OAuthClient | None = None
+    oauth_allowed_users: frozenset[str] = frozenset()
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -140,9 +147,10 @@ class ServeState:
         """Constant-time compare of a presented token against the configured one."""
         return self.token is not None and secrets.compare_digest(candidate, self.token)
 
-    def issue_session(self) -> str:
-        """Mint and remember a new opaque session id (returned to set as a cookie at login)."""
-        return self.sessions.issue()
+    def issue_session(self, identity: str | None = None) -> str:
+        """Mint and remember a new opaque session id (returned to set as a cookie at login),
+        optionally bound to *identity* (the GitHub login from an OAuth login)."""
+        return self.sessions.issue(identity)
 
     def valid_session(self, sid: str) -> bool:
         return self.sessions.valid(sid)

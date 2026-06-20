@@ -23,7 +23,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from bajutsu.serve import operations as ops
-from bajutsu.serve.handler import _SESSION_COOKIE, _index_html
+from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
 from bajutsu.serve.jobs import ServeState
 
 # How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
@@ -36,8 +36,10 @@ _STREAM_DONE: Any = object()
 
 # Endpoints reachable without a credential when a token is configured (mirrors the stdlib gate):
 # the index page so the login UI can load, and the login endpoint itself.
-_OPEN_GET = ("/", "/index.html")
+_OPEN_GET = ("/", "/index.html", "/api/oauth/login", "/api/oauth/callback")
 _LOGIN_PATH = "/api/login"
+_OAUTH_LOGIN = "/api/oauth/login"
+_OAUTH_CALLBACK = "/api/oauth/callback"
 
 
 def _result(payload_status: tuple[Any, int]) -> JSONResponse:
@@ -178,6 +180,39 @@ def make_app(state: ServeState) -> FastAPI:
         resp = JSONResponse(payload, status_code=status)
         if sid is not None:
             resp.set_cookie(_SESSION_COOKIE, sid, httponly=True, samesite="strict", path="/")
+        return resp
+
+    @app.get(_OAUTH_LOGIN)
+    async def oauth_login() -> Response:
+        # Mirror of the stdlib handler's `_oauth_login`: redirect to GitHub, stash the CSRF state in
+        # a short-lived SameSite=Lax cookie (so it survives the redirect back).
+        payload, status, csrf = ops.oauth_login(state)
+        if status != 200 or csrf is None:
+            return JSONResponse(payload, status_code=status)
+        resp = RedirectResponse(payload["redirect"], status_code=302)
+        resp.set_cookie(
+            _OAUTH_STATE_COOKIE, csrf, httponly=True, samesite="lax", path="/", max_age=600
+        )
+        return resp
+
+    @app.get(_OAUTH_CALLBACK)
+    async def oauth_callback(request: Request) -> Response:
+        # `state` is the OAuth query param; read it via query_params to avoid shadowing the
+        # ServeState closure. On success: session cookie + clear the state cookie + land on the app.
+        # oauth_callback exchanges the code with GitHub (sync network I/O); run it off the event
+        # loop so a slow GitHub call can't block other requests (mirrors the SSE pull).
+        payload, status, sid = await run_in_threadpool(
+            ops.oauth_callback,
+            state,
+            request.query_params.get("code", ""),
+            request.query_params.get("state", ""),
+            request.cookies.get(_OAUTH_STATE_COOKIE, ""),
+        )
+        if status != 200 or sid is None:
+            return JSONResponse(payload, status_code=status)
+        resp = RedirectResponse("/", status_code=302)
+        resp.set_cookie(_SESSION_COOKIE, sid, httponly=True, samesite="strict", path="/")
+        resp.delete_cookie(_OAUTH_STATE_COOKIE, path="/")
         return resp
 
     @app.post("/api/config")

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from collections.abc import Generator, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -72,6 +73,8 @@ def config_info(state: ServeState) -> tuple[Any, int]:
         "config": str(state.config) if state.config else None,
         "hasConfig": state.config is not None,
         "root": str(state.root.resolve()),
+        # Whether GitHub OAuth login is available, so the login UI can offer a button (BE-0015 7b-2).
+        "oauthEnabled": state.oauth is not None,
     }, 200
 
 
@@ -201,6 +204,39 @@ def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
     if not state.check_token(token):
         return {"error": "invalid token"}, 401, None
     return {"ok": True}, 200, state.issue_session()
+
+
+def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
+    """Begin GitHub OAuth (BE-0015 7b-2). Returns the authorize URL to redirect to plus a fresh CSRF
+    *state* value the transport sets as a short-lived cookie and compares on callback. 404 when OAuth
+    is not configured. Returns ``(payload, status, state | None)``."""
+    if state.oauth is None:
+        return {"error": "oauth not configured"}, 404, None
+    csrf = secrets.token_urlsafe(24)
+    return {"redirect": state.oauth.authorize_url(csrf)}, 200, csrf
+
+
+def oauth_callback(
+    state: ServeState, code: str, state_param: str, state_cookie: str
+) -> tuple[Any, int, str | None]:
+    """Complete GitHub OAuth (BE-0015 7b-2): verify the CSRF state (the query value must match the
+    cookie), exchange the code for a GitHub login, check it against the allowlist, and on success mint
+    a session bound to that login. Returns ``(payload, status, session_id | None)``."""
+    if state.oauth is None:
+        return {"error": "oauth not configured"}, 404, None
+    if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
+        return {"error": "invalid oauth state"}, 403, None
+    try:
+        login = state.oauth.fetch_login(code)
+    except Exception:
+        # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
+        # not a 500 — surface it as a clean 502 rather than a traceback.
+        return {"error": "oauth exchange failed"}, 502, None
+    if not login:
+        return {"error": "oauth exchange failed"}, 403, None
+    if login not in state.oauth_allowed_users:
+        return {"error": "user not allowed"}, 403, None
+    return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
 
 
 def _confined_config_path(root: Path, raw: str) -> Path | None:

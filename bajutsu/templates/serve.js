@@ -1,5 +1,6 @@
-// ---- token auth (BE-0051): if the server requires a token, requests 401; prompt for it, POST
-// /api/login (which sets an HttpOnly session cookie), then reload. No-op on an open server. ----
+// ---- login: a request 401s when the server requires auth. If GitHub OAuth is configured, send the
+// browser through it; otherwise prompt for the shared token, POST /api/login (which sets an HttpOnly
+// session cookie), then reload. No-op on an open server (BE-0051 token; BE-0015 7b-2 OAuth). ----
 const _bjFetch=window.fetch.bind(window);
 let _bjLoginShown=false;
 window.fetch=async(...a)=>{
@@ -7,8 +8,14 @@ window.fetch=async(...a)=>{
   if(r.status===401 && !String(a[0]).includes('/api/login')) _bjLogin();
   return r;
 };
-function _bjLogin(){
+async function _bjLogin(){
   if(_bjLoginShown)return; _bjLoginShown=true;
+  // When OAuth is configured, /api/oauth/login 302s to GitHub; detect that (without following it)
+  // and navigate there. A non-redirect (404) means OAuth is off — fall back to the token prompt.
+  try{
+    const probe=await _bjFetch('/api/oauth/login',{redirect:'manual'});
+    if(probe.type==='opaqueredirect'||probe.status===302){window.location='/api/oauth/login';return}
+  }catch(e){}
   const t=prompt('This bajutsu server requires a token:');
   if(!t){_bjLoginShown=false;return;}
   _bjFetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})

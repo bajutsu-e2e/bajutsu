@@ -184,6 +184,63 @@ def test_build_state_server_uses_redis_sessions(
     assert isinstance(state.sessions, RedisSessionStore)
 
 
+def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:
+    # OAuth is server-only; local never has it (token auth only), so behavior is unchanged.
+    state = _state(tmp_path)
+    assert state.oauth is None
+    assert state.oauth_allowed_users == frozenset()
+
+
+def test_build_state_server_wires_oauth_when_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve.server.oauth import GitHubOAuthClient
+
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", "cid")
+    monkeypatch.setenv("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET", "secret")
+    monkeypatch.setenv(
+        "BAJUTSU_OAUTH_GITHUB_REDIRECT_URI", "https://app.example/api/oauth/callback"
+    )
+    monkeypatch.setenv("BAJUTSU_OAUTH_ALLOWED_USERS", "alice, bob")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert isinstance(state.oauth, GitHubOAuthClient)
+    assert state.oauth_allowed_users == frozenset({"alice", "bob"})
+
+
+def test_build_state_server_has_no_oauth_without_the_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BAJUTSU_OAUTH_GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.oauth is None
+
+
 def test_build_state_server_requires_a_bucket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

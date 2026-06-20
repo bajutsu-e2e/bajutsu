@@ -185,6 +185,9 @@ idb = [
 mcp = [
     { name = "fastmcp" },
 ]
+oauth = [
+    { name = "authlib" },
+]
 server = [
     { name = "boto3" },
     { name = "fastapi" },
@@ -200,7 +203,7 @@ worker = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "bajutsu", extra = ["bedrock", "db", "mcp", "server", "visual", "worker"] },
+    { name = "bajutsu", extra = ["bedrock", "db", "mcp", "oauth", "server", "visual", "worker"] },
     { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
@@ -216,6 +219,7 @@ requires-dist = [
     { name = "alembic", marker = "extra == 'db'", specifier = ">=1.13" },
     { name = "anthropic", specifier = ">=0.50" },
     { name = "anthropic", extras = ["bedrock"], marker = "extra == 'bedrock'", specifier = ">=0.50" },
+    { name = "authlib", marker = "extra == 'oauth'", specifier = ">=1.3" },
     { name = "boto3", marker = "extra == 'server'", specifier = ">=1.34" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
@@ -231,11 +235,11 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.27" },
 ]
-provides-extras = ["idb", "visual", "mcp", "bedrock", "worker", "server", "db"]
+provides-extras = ["idb", "visual", "mcp", "bedrock", "worker", "server", "db", "oauth"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "bajutsu", extras = ["bedrock", "server", "worker", "db", "mcp", "visual"] },
+    { name = "bajutsu", extras = ["bedrock", "server", "worker", "db", "oauth", "mcp", "visual"] },
     { name = "httpx", specifier = ">=0.27" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "pytest", specifier = ">=8" },

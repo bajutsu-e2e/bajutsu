@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from _shared import SCENARIO, project, write_run
@@ -51,6 +52,70 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     assert body["yaml"] == SCENARIO
     assert client.get("/api/scenario?app=demo&path=missing.yaml").status_code == 404
     assert client.get("/api/nope").status_code == 404
+
+
+class _FakeOAuth:
+    """Stand-in for the GitHub OAuth client — no network. `fetch_login` fails for code ``"bad"``."""
+
+    def __init__(self, login: str | None = "alice") -> None:
+        self._login = login
+
+    def authorize_url(self, state: str) -> str:
+        return f"https://github.test/login/oauth/authorize?state={state}"
+
+    def fetch_login(self, code: str) -> str | None:
+        return None if code == "bad" else self._login
+
+
+def _oauth_state(
+    tmp_path: Path, *, login: str | None = "alice", allowed: frozenset[str] = frozenset({"alice"})
+) -> srv.ServeState:
+    _scn_dir, cfg, runs = project(tmp_path)
+    return srv.ServeState(
+        config=cfg,
+        runs_dir=runs,
+        root=tmp_path,
+        cwd=tmp_path,
+        oauth=_FakeOAuth(login),
+        oauth_allowed_users=allowed,
+    )
+
+
+def _csrf_from_redirect(resp: object) -> str:
+    return parse_qs(urlparse(resp.headers["location"]).query)["state"][0]  # type: ignore[attr-defined]
+
+
+def test_oauth_login_redirects_and_sets_a_state_cookie(tmp_path: Path) -> None:
+    resp = _client(_oauth_state(tmp_path)).get("/api/oauth/login", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "github.test" in resp.headers["location"]
+    assert "bajutsu_oauth_state" in resp.headers.get("set-cookie", "")
+
+
+def test_oauth_callback_logs_in_an_allowlisted_user(tmp_path: Path) -> None:
+    client = _client(_oauth_state(tmp_path))
+    started = client.get(
+        "/api/oauth/login", follow_redirects=False
+    )  # jar now holds the state cookie
+    csrf = _csrf_from_redirect(started)
+    resp = client.get(f"/api/oauth/callback?code=ok&state={csrf}", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/"
+    assert "bajutsu_session" in resp.headers.get("set-cookie", "")
+
+
+def test_oauth_callback_rejects_a_state_mismatch(tmp_path: Path) -> None:
+    client = _client(_oauth_state(tmp_path))
+    client.get("/api/oauth/login", follow_redirects=False)  # sets a state cookie
+    resp = client.get("/api/oauth/callback?code=ok&state=wrong", follow_redirects=False)
+    assert resp.status_code == 403
+
+
+def test_oauth_callback_rejects_a_user_not_on_the_allowlist(tmp_path: Path) -> None:
+    client = _client(_oauth_state(tmp_path, login="mallory"))
+    csrf = _csrf_from_redirect(client.get("/api/oauth/login", follow_redirects=False))
+    resp = client.get(f"/api/oauth/callback?code=ok&state={csrf}", follow_redirects=False)
+    assert resp.status_code == 403
 
 
 def test_security_headers_on_every_response(tmp_path: Path) -> None:
