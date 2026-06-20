@@ -22,7 +22,8 @@ if TYPE_CHECKING:
 class Queue(Protocol):
     """The slice of an RQ ``Queue`` that `QueueExecutor` needs (so a fake can stand in)."""
 
-    def enqueue(self, func: object, *args: object, **kwargs: object) -> object: ...
+    def enqueue(self, func: object, *args: object, **kwargs: object) -> object:
+        """Enqueue *func* with *args* for a worker to run; the return value is ignored."""
 
 
 class QueueExecutor:
