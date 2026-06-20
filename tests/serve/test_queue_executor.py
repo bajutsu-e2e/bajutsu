@@ -12,11 +12,40 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from _shared import fake_popen, project
 
 from bajutsu import serve as srv
+from bajutsu.serve.server import worker_job
 from bajutsu.serve.server.executor import QueueExecutor
+from bajutsu.serve.server.logbus import RedisLogBus
 from bajutsu.serve.server.worker_job import execute_job_spec, job_spec
+
+
+class _FakeRedis:
+    """The slice of a Redis client RedisLogBus uses, in memory. Returns the stored values as
+    `object` (bytes, like redis-py) to match the `RedisLike` protocol's `lrange -> list[object]`.
+    A DB stand-in so the worker's cross-process log flow is exercised without a real Redis."""
+
+    def __init__(self) -> None:
+        self._lists: dict[str, list[str]] = {}
+        self._kv: dict[str, str] = {}
+
+    def rpush(self, key: str, value: str) -> int:
+        self._lists.setdefault(key, []).append(value)
+        return len(self._lists[key])
+
+    def lrange(self, key: str, start: int, end: int) -> list[object]:
+        items = self._lists.get(key, [])
+        stop = len(items) if end == -1 else end + 1
+        return [s.encode() for s in items[start:stop]]
+
+    def set(self, key: str, value: str) -> None:
+        self._kv[key] = value
+
+    def get(self, key: str) -> bytes | None:
+        v = self._kv.get(key)
+        return v.encode() if v is not None else None
 
 
 class _FakeQueue:
@@ -70,7 +99,52 @@ def test_execute_job_spec_rebuilds_and_runs_run_job(tmp_path: Path) -> None:
         spec,
         popen=fake_popen(["step 0 ok\n", "PASS  runs/20260610-1/manifest.json\n"]),
         cwd=tmp_path,
+        bus=srv.InMemoryLogBus(),  # inject a bus so the gate needs no redis (default is Redis)
     )
     v = job.view()
     assert v["status"] == "done" and v["ok"] is True and v["runId"] == "20260610-1"
     assert "step 0 ok" in v["lines"]
+
+
+def test_execute_job_spec_streams_logs_to_the_injected_bus(tmp_path: Path) -> None:
+    # The worker publishes the job's log to the (Redis) LogBus it's given, so a control-plane
+    # replica streaming the same job id over its own RedisLogBus replays the log cross-process —
+    # the gap W1 closes (the worker no longer logs into a private in-memory bus).
+    project(tmp_path)
+    redis = _FakeRedis()
+    spec = {"job_id": "7", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
+    execute_job_spec(
+        spec,
+        popen=fake_popen(["step 0 ok\n", "PASS  runs/20260610-1/manifest.json\n"]),
+        cwd=tmp_path,
+        bus=RedisLogBus(redis),
+    )
+    # A separate bus over the same Redis (a different process) replays the worker's log, then ends
+    # (run_job closes the channel on exit, so the stream is finite).
+    replay = list(RedisLogBus(redis).stream("7"))
+    assert "step 0 ok" in replay
+    assert any("20260610-1" in line for line in replay)
+
+
+def test_redis_url_prefers_bajutsu_then_redis_then_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        worker_job, "_broker_url", None
+    )  # no in-process override; restored at teardown
+    monkeypatch.delenv("BAJUTSU_REDIS_URL", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    assert worker_job._redis_url() == "redis://localhost:6379"
+    monkeypatch.setenv("REDIS_URL", "redis://r:6379")
+    assert worker_job._redis_url() == "redis://r:6379"
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://b:6379")
+    assert worker_job._redis_url() == "redis://b:6379"  # BAJUTSU_REDIS_URL wins
+
+
+def test_set_broker_url_wins_over_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The worker records the broker URL in-process (not the environment), so it must take
+    # precedence over env vars and never need exporting — credentials stay out of spawned runs.
+    monkeypatch.setattr(worker_job, "_broker_url", None)  # restored at teardown
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://env:6379")
+    worker_job.set_broker_url("redis://broker:6379")
+    assert worker_job._redis_url() == "redis://broker:6379"
