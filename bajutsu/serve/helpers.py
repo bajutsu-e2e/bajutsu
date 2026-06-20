@@ -51,7 +51,7 @@ def summarize_scenario(file: str, path: str, text: str) -> dict[str, Any]:
         description = sf.description
         scenarios = [{"name": s.name, "description": s.description} for s in sf.scenarios]
     except (OSError, ValueError):
-        pass
+        scenarios = []  # a malformed/unparseable file still lists as a bare entry (no names)
     return {
         "file": file,
         "path": path,
@@ -68,8 +68,8 @@ def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
     for path in sorted(scenarios_dir.glob("*.yaml")):
         try:
             text = path.read_text(encoding="utf-8")
-        except OSError:
-            text = ""  # an unreadable file still lists as a bare entry
+        except (OSError, ValueError):
+            text = ""  # an unreadable / non-UTF-8 file (ValueError) still lists as a bare entry
         out.append(summarize_scenario(path.name, str(path), text))
     return out
 

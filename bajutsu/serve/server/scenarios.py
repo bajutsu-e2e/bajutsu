@@ -124,17 +124,22 @@ class ObjectScenarioStorage:
         out: list[dict[str, Any]] = []
         for key in sorted(self._store.list_keys(base)):
             name = key[len(base) :]
-            if "/" in name or not name.endswith(".yaml"):  # only direct *.yaml children
+            # Only direct children that read/save would accept, so list never shows an entry that
+            # can't then be read or run. valid_scenario_ref enforces a safe *.yaml ref.
+            if "/" in name or not valid_scenario_ref(name):
                 continue
             data = self._store.get_bytes(key)
-            out.append(summarize_scenario(name, name, data.decode("utf-8") if data else ""))
+            # Decode leniently: a non-UTF-8 object degrades to a bare entry, never 500s the listing.
+            text = data.decode("utf-8", errors="replace") if data else ""
+            out.append(summarize_scenario(name, name, text))
         return out
 
     def read(self, app: str, ref: str | None) -> str | None:
         if not ref:
             return None
         data = self._store.get_bytes(f"{self._dir(app)}{ref}")
-        return data.decode("utf-8") if data is not None else None
+        # Lenient decode: user-authored text shouldn't 500 the UI if it isn't valid UTF-8.
+        return data.decode("utf-8", errors="replace") if data is not None else None
 
     def save(self, app: str, ref: str | None, text: str) -> str | None:
         if not ref:

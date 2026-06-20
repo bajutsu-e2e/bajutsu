@@ -6,10 +6,10 @@ MinIO, …): `get` hands back a **signed-URL redirect** (`Artifact.redirect`, wh
 already 302s to) instead of inlining bytes, `open_bytes` fetches an object (e.g. a visual baseline
 for Approve), and `list_runs` summarizes the runs from their stored ``manifest.json`` objects.
 
-The object-store client is **injected** (the `ObjectStore` slice below), so this module imports no
-S3 SDK: it's unit-tested with an in-memory fake, the gate needs no boto3/bucket, and the default
-path stays server-free (#117 import guard). Endpoint/credentials (R2 vs MinIO) live in the injected
-client, so the same store serves either — what BE-0016 Tier B needs.
+The object-store client is **injected** (the `ObjectStore` slice from `object_store`), so this
+module imports no S3 SDK: it's unit-tested with an in-memory fake, the gate needs no boto3/bucket,
+and the default path stays server-free (#117 import guard). Endpoint/credentials (R2 vs MinIO) live
+in the injected client, so the same store serves either — what BE-0016 Tier B needs.
 """
 
 from __future__ import annotations

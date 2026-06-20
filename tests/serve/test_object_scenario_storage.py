@@ -70,6 +70,22 @@ def test_list_summarizes_only_the_apps_direct_yaml_children() -> None:
     assert listed[0]["path"] == "smoke.yaml"  # the ref the run/read commands take
 
 
+def test_list_and_read_degrade_non_utf8_and_skip_unsafe_keys() -> None:
+    # A non-UTF-8 object must not 500 the listing/read, and list must only surface keys that
+    # read/save would accept (a safe *.yaml ref), so it never shows an unreadable/unrunnable entry.
+    store = _FakeObjectStore(
+        {
+            "scenarios/demo/smoke.yaml": SCENARIO.encode(),
+            "scenarios/demo/bad.yaml": b"\xff\xfe not utf-8",
+            "scenarios/demo/notes.txt": b"x",  # not a *.yaml -> rejected by valid_scenario_ref
+        }
+    )
+    storage = ObjectScenarioStorage(store, lambda: {"demo"})
+    files = {s["file"] for s in storage.list("demo")}
+    assert files == {"smoke.yaml", "bad.yaml"}  # the .txt is filtered out
+    assert storage.read("demo", "bad.yaml") is not None  # lenient decode, no crash
+
+
 def test_prefix_scopes_a_shared_bucket() -> None:
     store = _FakeObjectStore()
     storage = ObjectScenarioStorage(store, lambda: {"demo"}, prefix="org1/")
