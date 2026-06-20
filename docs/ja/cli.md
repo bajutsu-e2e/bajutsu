@@ -37,7 +37,7 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | シナリオ準拠 | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの指定に従う。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--dismiss-alerts / --no-dismiss-alerts` | シナリオ準拠（ON） | 各シナリオの `dismissAlerts` を上書きします。idb から見えないシステムアラートを視覚で消すガードです。省略時は各シナリオの指定に従います（要 API キー・[recording](recording.md#システムアラートの自動対処)） |
+| `--dismiss-alerts / --no-dismiss-alerts` | シナリオ準拠（ON） | 各シナリオの `dismissAlerts` を上書きします。idb から見えないシステムアラートを視覚で消すガードです。省略時は各シナリオの指定に従います（設定した AI プロバイダを使用 —— `ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報・[recording](recording.md#システムアラートの自動対処)） |
 | `--alert-instruction` | "" | 既定のボタン指示（シナリオ自身の `dismissAlerts.instruction` が勝つ） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
@@ -163,11 +163,11 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
-| `--agent` | `api` | クロールガイドの AI バックエンド: `api`（Anthropic API・従量課金。`ANTHROPIC_API_KEY` 必須）/ `claude-code`（Claude Code CLI。サブスクリプションを利用・テキストのみ。`record --agent claude-code` と同様） |
+| `--agent` | `api` | クロールガイドの AI バックエンド: `api`（Anthropic SDK・従量課金。設定した AI プロバイダを使用 —— Anthropic なら `ANTHROPIC_API_KEY`、`BAJUTSU_AI_PROVIDER=bedrock` なら AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）/ `claude-code`（Claude Code CLI。サブスクリプションを利用・テキストのみ。`record --agent claude-code` と同様） |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
-| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。要 API キー） |
+| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用 —— `ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
 | `--config` | `bajutsu.config.yaml` | config |
 
@@ -327,9 +327,20 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `KEY=VALUE` 形式。`#` コメント・空行・`export ` 接頭・クォートに対応。
 - **既存の環境変数を上書きしません**（実環境の値が常に勝つ）。`.env` はフォールバックです。
 - 読み先は既定 `.env`、`BAJUTSU_DOTENV` で変更可能。`.gitignore` 済み。
-- 主な用途: `ANTHROPIC_API_KEY`（`record` と、既定で動くアラートガード）。
+- 主な用途: `ANTHROPIC_API_KEY`（`record`・`crawl` と、既定で動くアラートガード）。
+- AI プロバイダ（BE-0053）: `BAJUTSU_AI_PROVIDER=bedrock` を設定すると、Anthropic API ではなく
+  **Amazon Bedrock** 経由で Claude を呼びます。認証は標準の AWS 認証情報チェーン（環境変数 / 共有
+  プロファイル / インスタンス・ロール）で行うため、このパスでは **`ANTHROPIC_API_KEY` は不要**です。
+  `BAJUTSU_BEDROCK_MODEL` にはプロバイダ接頭辞付きのモデル id（例 `global.anthropic.claude-opus-4-6-v1`。
+  素の Anthropic id は Bedrock では無効）、`AWS_REGION` にはリージョンを設定します。既定は Anthropic
+  です。この選択は `record`・`crawl`・`triage`・アラートガードに共通で効きます。
 
 ```bash
-# .env
+# .env —— Anthropic（既定）
 ANTHROPIC_API_KEY=sk-ant-...
+
+# .env —— 代わりに Amazon Bedrock（AWS 認証情報で認証）
+BAJUTSU_AI_PROVIDER=bedrock
+BAJUTSU_BEDROCK_MODEL=global.anthropic.claude-opus-4-6-v1
+AWS_REGION=us-east-1
 ```

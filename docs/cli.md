@@ -40,7 +40,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | per-scenario | override every scenario's `preconditions.erase` (wipe the simulator first); omit to let each scenario decide. The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--dismiss-alerts / --no-dismiss-alerts` | per-scenario (on) | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts idb can't see; omit to let each scenario decide (needs an API key; [recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--dismiss-alerts / --no-dismiss-alerts` | per-scenario (on) | override every scenario's `dismissAlerts` — the vision guard that dismisses system alerts idb can't see; omit to let each scenario decide (uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; [recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--alert-instruction` | "" | default button instruction (a scenario's own `dismissAlerts.instruction` wins) |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
@@ -174,11 +174,11 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | (required) | the target app |
 | `--max-screens` | `50` | stop after discovering this many distinct screens |
 | `--max-steps` | `200` | stop after taking this many actions |
-| `--agent` | `api` | AI backend for the crawl guide: `api` (Anthropic API, pay-per-token; needs `ANTHROPIC_API_KEY`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`) |
+| `--agent` | `api` | AI backend for the crawl guide: `api` (the Anthropic SDK, pay-per-token; uses the configured AI provider — `ANTHROPIC_API_KEY` for Anthropic, or AWS credentials + `BAJUTSU_BEDROCK_MODEL` when `BAJUTSU_AI_PROVIDER=bedrock`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`) |
 | `--udid` | `booted` | the target Simulator |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
-| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; needs an API key) |
+| `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--config` | `bajutsu.config.yaml` | config |
 
@@ -354,9 +354,20 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **Never overrides an existing environment variable** (a real value always wins). `.env` is a
   fallback.
 - The path defaults to `.env`, changeable via `BAJUTSU_DOTENV`. It is `.gitignore`d.
-- Main use: `ANTHROPIC_API_KEY` (for `record` and the alert guard, which runs by default).
+- Main use: `ANTHROPIC_API_KEY` (for `record`, `crawl`, and the alert guard, which runs by default).
+- AI provider (BE-0053): set `BAJUTSU_AI_PROVIDER=bedrock` to reach Claude through **Amazon Bedrock**
+  instead of the Anthropic API — authenticated by the standard AWS credential chain (env vars /
+  shared profile / instance or role), so **no `ANTHROPIC_API_KEY`** is needed on that path. Set
+  `BAJUTSU_BEDROCK_MODEL` to a provider-prefixed model id (e.g. `global.anthropic.claude-opus-4-6-v1`;
+  the bare Anthropic id is not a valid Bedrock id) and `AWS_REGION` for the region. Anthropic is the
+  default. The same selection drives `record`, `crawl`, `triage`, and the alert guard.
 
 ```bash
-# .env
+# .env — Anthropic (default)
 ANTHROPIC_API_KEY=sk-ant-...
+
+# .env — Amazon Bedrock instead (authenticated by your AWS credentials)
+BAJUTSU_AI_PROVIDER=bedrock
+BAJUTSU_BEDROCK_MODEL=global.anthropic.claude-opus-4-6-v1
+AWS_REGION=us-east-1
 ```

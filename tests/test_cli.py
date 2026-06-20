@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
+from bajutsu.cli.commands.crawl import _ai_credential_gap
 
 runner = CliRunner()
 
@@ -230,6 +232,122 @@ def test_crawl_unknown_agent(tmp_path: Path) -> None:
     r = runner.invoke(app, ["crawl", "--app", "demo", "--agent", "bad", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "unknown --agent" in r.output
+
+
+# --- crawl AI-provider credential gate (BE-0053: crawl is a Tier-1 Bedrock path) ----------------
+# `--agent api` reaches Claude through the configured provider, so the credential it needs depends
+# on the provider: ANTHROPIC_API_KEY for Anthropic, a provider-prefixed BAJUTSU_BEDROCK_MODEL for
+# Bedrock (AWS credentials authenticate there, not an Anthropic key). `claude-code` brings its own.
+
+
+def test_ai_credential_gap_anthropic_needs_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert _ai_credential_gap("api") == "anthropic-key"
+
+
+def test_ai_credential_gap_anthropic_with_key_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    assert _ai_credential_gap("api") is None
+
+
+def test_ai_credential_gap_bedrock_does_not_need_anthropic_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The fix: on Bedrock, --agent api authenticates via AWS credentials + a Bedrock model id, so a
+    # missing ANTHROPIC_API_KEY must NOT block the crawl (it did before — record never gated on it).
+    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
+    monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert _ai_credential_gap("api") is None
+
+
+def test_ai_credential_gap_bedrock_needs_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
+    monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert _ai_credential_gap("api") == "bedrock-model"
+
+
+def test_ai_credential_gap_claude_code_brings_own_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    # claude-code uses its own subscription auth, so it never needs provider credentials.
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert _ai_credential_gap("claude-code") is None
+
+
+def _no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the credential-gate CLI tests hermetic: stub the @app.callback .env load so a
+    developer's local .env can't re-inject ANTHROPIC_API_KEY / a provider, and clear those vars."""
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    for var in ("ANTHROPIC_API_KEY", "BAJUTSU_AI_PROVIDER", "BAJUTSU_BEDROCK_MODEL"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_crawl_api_agent_needs_anthropic_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # On the Anthropic provider, --agent api still requires ANTHROPIC_API_KEY. The gate fires after
+    # backend selection (the `fake` actuator is always available) and before any device work, so the
+    # run dir is not created.
+    _no_dotenv(monkeypatch)
+    cfg, _ = _write(tmp_path)
+    out = tmp_path / "crawlrun"
+    r = runner.invoke(
+        app,
+        ["crawl", "--app", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
+    )
+    assert r.exit_code == 2
+    assert "ANTHROPIC_API_KEY" in r.output
+    assert not out.exists()
+
+
+def test_crawl_bedrock_does_not_require_anthropic_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The Bedrock fix end-to-end: with the provider set to bedrock + a model id, the crawl passes
+    # the credential gate without ANTHROPIC_API_KEY. The device boundary is mocked so the test needs
+    # no Simulator — reaching it (the DeviceError below) proves the gate didn't block the crawl.
+    import bajutsu.env as _benv
+
+    _no_dotenv(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
+    monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "booted")
+
+    def _no_device(*_args: object, **_kwargs: object) -> object:
+        raise _benv.DeviceError("device boundary reached (no Simulator in test)")
+
+    monkeypatch.setattr("bajutsu.cli.commands.crawl.launch_driver", _no_device)
+    cfg, _ = _write(tmp_path)
+    out = tmp_path / "crawlrun"
+    r = runner.invoke(
+        app,
+        ["crawl", "--app", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
+    )
+    assert r.exit_code == 2
+    assert (
+        "device boundary reached" in r.output
+    )  # passed the credential gate, reached device launch
+    assert "ANTHROPIC_API_KEY" not in r.output
+
+
+def test_crawl_bedrock_needs_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # On Bedrock the gate asks for BAJUTSU_BEDROCK_MODEL (the bare Anthropic id is not a valid
+    # Bedrock model id), not ANTHROPIC_API_KEY.
+    _no_dotenv(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
+    cfg, _ = _write(tmp_path)
+    out = tmp_path / "crawlrun"
+    r = runner.invoke(
+        app,
+        ["crawl", "--app", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
+    )
+    assert r.exit_code == 2
+    assert "BAJUTSU_BEDROCK_MODEL" in r.output
+    assert "ANTHROPIC_API_KEY" not in r.output
+    assert not out.exists()
 
 
 def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
