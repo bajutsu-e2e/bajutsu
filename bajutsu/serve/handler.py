@@ -38,6 +38,7 @@ from bajutsu.serve.helpers import (
     scenario_out_path,
     unique_scenario_path,
     valid_backend,
+    valid_run_id,
     valid_udid,
 )
 from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job
@@ -498,6 +499,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             run_id = (
                 str(body["runId"]) if resuming else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
             )
+            # A resumed crawl takes runId from the client; reject anything but a safe path segment
+            # so `runs_dir / run_id` (the crawl's --out) can't escape runs_dir (BE-0051).
+            if resuming and not valid_run_id(run_id):
+                self._json({"error": "invalid runId"}, 400)
+                return
             # Validate the device args like /api/run and /api/record (BE-0051): no free-text
             # backend or udid reaches the spawned `bajutsu crawl` argv.
             backend = str(body.get("backend", "") or "")

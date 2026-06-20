@@ -154,3 +154,26 @@ def test_http_crawl_rejected_at_concurrency_cap(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_valid_run_id_accepts_segments_rejects_paths() -> None:
+    assert srv.valid_run_id("20260610-153045")  # the server-generated timestamp form
+    assert srv.valid_run_id("run_1.2-3")
+    for bad in ("/tmp/evil", "../escape", "a/b", "..", "", ".", "a\x00b"):
+        assert not srv.valid_run_id(bad), bad
+
+
+def test_http_crawl_resume_rejects_unsafe_run_id(tmp_path: Path) -> None:
+    # Resuming takes runId from the client; it must not be able to redirect --out outside runs_dir.
+    server, port = _crawl_server(tmp_path)
+    try:
+        for bad in ("/tmp/evil", "../../etc"):
+            status, resp = _post(
+                port,
+                "/api/crawl",
+                {"app": "demo", "resumeSrc": "a", "resumeKey": "k", "runId": bad},
+            )
+            assert status == 400 and "invalid runId" in resp["error"], bad
+    finally:
+        server.shutdown()
+        server.server_close()
