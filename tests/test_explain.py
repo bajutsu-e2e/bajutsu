@@ -34,9 +34,11 @@ SCENARIO = """
     - tap: { id: dialog.submit }
 """
 
+SCENARIO_OBJ = load_scenarios(SCENARIO)[0]
+
 
 def _rules() -> list[trace.RuleExplain]:
-    return trace.explain_capture(load_scenarios(SCENARIO)[0])
+    return trace.explain_capture(SCENARIO_OBJ)
 
 
 def test_action_rule_counts_matching_steps() -> None:
@@ -93,7 +95,7 @@ def test_narrow_action_rule_is_not_broad() -> None:
 
 
 def test_render_explain_reports_counts_and_warns() -> None:
-    out = trace.render_explain(load_scenarios(SCENARIO))
+    out = trace.render_explain([SCENARIO_OBJ])
     assert "demo" in out
     assert "2" in out  # the submit rule's firing count
     assert "⚠" in out  # at least one heavy+broad warning
