@@ -48,6 +48,9 @@ class _FakeRedis:
         v = self._kv.get(key)
         return v.encode() if v is not None else None
 
+    def expire(self, key: str, seconds: int) -> None:
+        pass  # close() bounds key lifetime; this fake keeps everything for the test's duration
+
 
 class _FakeQueue:
     """Records enqueue calls; stands in for an RQ Queue so tests need no Redis."""

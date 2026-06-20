@@ -20,6 +20,7 @@ from typing import Protocol
 
 _LINES = "bajutsu:log:"  # Redis key prefix for a job's line list
 _DONE = "bajutsu:logdone:"  # Redis key prefix for a job's "no more lines" flag
+_DEFAULT_TTL = 86400  # seconds a finished job's log/done keys linger before Redis evicts them (24h)
 
 
 class RedisLike(Protocol):
@@ -37,6 +38,9 @@ class RedisLike(Protocol):
     def get(self, key: str) -> object:
         """Return *key*'s value, or None if unset."""
 
+    def expire(self, key: str, seconds: int) -> object:
+        """Set *key* to expire in *seconds* (bounding a finished job's log lifetime)."""
+
 
 class RedisLogBus:
     """LogBus backed by a Redis list (durable backlog) + a done flag, polled for the live tail.
@@ -46,9 +50,12 @@ class RedisLogBus:
     re-reading when no new line is available yet.
     """
 
-    def __init__(self, redis: RedisLike, *, poll_interval: float = 0.1) -> None:
+    def __init__(
+        self, redis: RedisLike, *, poll_interval: float = 0.1, ttl: int = _DEFAULT_TTL
+    ) -> None:
         self._redis = redis
         self._poll = poll_interval
+        self._ttl = ttl  # lifetime set on a job's keys at close() so finished logs self-clean
 
     @staticmethod
     def _text(value: object) -> str:
@@ -61,6 +68,10 @@ class RedisLogBus:
         # The done key's presence ends the stream; its value carries the terminal status payload
         # (a JSON view) when given, or the bare "1" sentinel when not.
         self._redis.set(_DONE + job_id, final if final is not None else "1")
+        # Bound both keys' lifetime from completion (not from the first line, so a long run's log
+        # isn't evicted mid-stream): after `ttl` the backlog self-cleans rather than living forever.
+        self._redis.expire(_LINES + job_id, self._ttl)
+        self._redis.expire(_DONE + job_id, self._ttl)
 
     def final(self, job_id: str) -> str | None:
         value = self._redis.get(_DONE + job_id)

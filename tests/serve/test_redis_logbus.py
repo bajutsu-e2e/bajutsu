@@ -20,6 +20,7 @@ class FakeRedis:
     def __init__(self) -> None:
         self._lists: dict[str, list[str]] = {}
         self._kv: dict[str, str] = {}
+        self.ttls: dict[str, int] = {}  # records expire() calls so tests can assert key lifetimes
 
     def rpush(self, key: str, value: str) -> int:
         self._lists.setdefault(key, []).append(value)
@@ -36,6 +37,27 @@ class FakeRedis:
     def get(self, key: str) -> bytes | None:
         v = self._kv.get(key)
         return v.encode() if v is not None else None
+
+    def expire(self, key: str, seconds: int) -> None:
+        self.ttls[key] = seconds
+
+
+def test_close_expires_both_keys_so_redis_doesnt_grow_unbounded() -> None:
+    # Without a TTL, every finished job's lines + done flag would live in Redis forever (a memory
+    # leak across runs). close() must bound both keys' lifetime so they self-clean after the job.
+    redis = FakeRedis()
+    bus = RedisLogBus(redis, ttl=86400)
+    bus.publish("j1", "line A")
+    bus.close("j1", '{"status": "done"}')
+    assert redis.ttls["bajutsu:log:j1"] == 86400
+    assert redis.ttls["bajutsu:logdone:j1"] == 86400
+
+
+def test_close_honours_a_custom_ttl() -> None:
+    redis = FakeRedis()
+    RedisLogBus(redis, ttl=60).close("k")
+    assert redis.ttls["bajutsu:log:k"] == 60
+    assert redis.ttls["bajutsu:logdone:k"] == 60
 
 
 def test_replays_backlog_then_ends_on_close() -> None:
