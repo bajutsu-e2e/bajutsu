@@ -102,11 +102,14 @@ def test_runnable_rejects_symlink_out_of_dir(tmp_path: Path) -> None:
     assert scope.runnable("evil.yaml") is None  # …but escapes the dir, so it's rejected
 
 
-def test_out_path_makes_unique_yaml_and_creates_dir(tmp_path: Path) -> None:
-    # A fresh app whose dir does not exist yet: out_path must create it and return a *.yaml.
+def test_authored_makes_unique_yaml_and_creates_dir(tmp_path: Path) -> None:
+    # A fresh app whose dir does not exist yet: authored() must create it and return an on-disk
+    # *.yaml out path with no save (the local run host writes it directly).
     target_dir = tmp_path / "fresh"
     store = srv.LocalScenarioStore(lambda app: target_dir if app == "demo" else None)
     scope = store.scope("demo")
     assert scope is not None
-    out = scope.out_path("login flow")
+    authored = scope.authored("login flow")
+    out = Path(authored.out)
     assert out.parent == target_dir and target_dir.is_dir() and out.suffix == ".yaml"
+    assert authored.save is None

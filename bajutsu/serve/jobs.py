@@ -49,6 +49,9 @@ class Job:
     # content): the scenario + config a server-backend run materializes. Empty for local (the files
     # are already on disk). Travels in the job spec; never carries a client-controlled path (BE-0015).
     materials: dict[str, str] = field(default_factory=dict)
+    # For a server-backend `record`: (app, ref) the worker persists the authored scenario to after
+    # the run (it wrote it to `out_path` in its workspace). None for local / non-record jobs.
+    record_save: tuple[str, str] | None = None
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -142,6 +145,7 @@ class ServeState:
         build: str | None,
         out_path: str | None,
         materials: dict[str, str] | None,
+        record_save: tuple[str, str] | None,
     ) -> Job:
         """Create + register a job. Caller must hold ``self._lock``."""
         self._seq += 1
@@ -154,6 +158,7 @@ class ServeState:
             out_path=out_path,
             bus=self.logbus,
             materials=dict(materials or {}),
+            record_save=record_save,
         )
         self.jobs[job.id] = job
         return job
@@ -166,9 +171,10 @@ class ServeState:
         build: str | None = None,
         out_path: str | None = None,
         materials: dict[str, str] | None = None,
+        record_save: tuple[str, str] | None = None,
     ) -> Job:
         with self._lock:
-            return self._make_job(cmd, udids, app_path, build, out_path, materials)
+            return self._make_job(cmd, udids, app_path, build, out_path, materials, record_save)
 
     def try_new_job(
         self,
@@ -178,6 +184,7 @@ class ServeState:
         build: str | None = None,
         out_path: str | None = None,
         materials: dict[str, str] | None = None,
+        record_save: tuple[str, str] | None = None,
     ) -> Job | None:
         """Create a job only if under the concurrency cap, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past the cap (BE-0051). Returns None
@@ -186,7 +193,7 @@ class ServeState:
             running = sum(1 for j in self.jobs.values() if j.status == "running")
             if self.max_concurrent > 0 and running >= self.max_concurrent:
                 return None
-            return self._make_job(cmd, udids, app_path, build, out_path, materials)
+            return self._make_job(cmd, udids, app_path, build, out_path, materials, record_save)
 
 
 def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:
