@@ -9,8 +9,6 @@ a client-chosen filesystem path. It serves the authoring operations the UI needs
 
 from __future__ import annotations
 
-import pytest
-
 from bajutsu.serve.server.scenarios import StorageScenarioStore
 
 SCENARIO = "- name: a\n  steps: []\n"
@@ -103,8 +101,22 @@ def test_runnable_ships_the_scenario_as_materials() -> None:
     assert scope.runnable("sub\\smoke.yaml") == runnable
 
 
-def test_record_output_is_still_worker_side() -> None:
+def test_authored_targets_a_workspace_path_and_storage_ref() -> None:
+    # No filesystem on the control plane: authored() gives a workspace-relative --out and the
+    # (app, ref) the worker persists the result to.
     scope = StorageScenarioStore(FakeScenarioStorage({"demo": {}})).scope("demo")
     assert scope is not None
-    with pytest.raises(NotImplementedError):
-        scope.out_path("authored")
+    authored = scope.authored("login flow")
+    assert authored.out == "scenarios/login flow.yaml"
+    assert authored.save == ("demo", "login flow.yaml")
+
+
+def test_authored_stamps_a_taken_ref_to_avoid_clobber() -> None:
+    scope = StorageScenarioStore(FakeScenarioStorage({"demo": {"smoke.yaml": "x"}})).scope("demo")
+    assert scope is not None
+    authored = scope.authored("smoke")  # smoke.yaml exists -> stamped
+    assert authored.save is not None
+    app, ref = authored.save
+    assert (
+        app == "demo" and ref != "smoke.yaml" and ref.startswith("smoke-") and ref.endswith(".yaml")
+    )

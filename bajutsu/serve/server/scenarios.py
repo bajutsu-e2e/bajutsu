@@ -18,11 +18,12 @@ fake and the default path stays server-free (#117 import guard).
 from __future__ import annotations
 
 from collections.abc import Callable, Collection
-from pathlib import Path, PurePosixPath
+from datetime import UTC, datetime
+from pathlib import PurePosixPath
 from typing import Any, Protocol
 
-from bajutsu.serve.helpers import summarize_scenario, valid_scenario_ref
-from bajutsu.serve.scenarios import Runnable
+from bajutsu.serve.helpers import scenario_out_name, summarize_scenario, valid_scenario_ref
+from bajutsu.serve.scenarios import Authored, Runnable
 from bajutsu.serve.server.object_store import ObjectStore
 
 # Where a materialized scenario lands in the worker's workspace (and the `--scenario` arg used).
@@ -81,8 +82,15 @@ class StorageScenarioScope:
         rel = f"{_WORKSPACE_SCENARIOS}/{name}"
         return Runnable(arg=rel, materials={rel: text})
 
-    def out_path(self, name: str) -> Path:
-        raise NotImplementedError("record output is written on the worker (BE-0015)")
+    def authored(self, name: str) -> Authored:
+        # No filesystem here: pick a safe ref, stamp it if taken (don't clobber), and tell the
+        # worker to write to a workspace-relative path then persist it to storage as (app, ref).
+        ref = scenario_out_name(name)
+        if self._storage.read(self._app, ref) is not None:
+            # Microsecond precision so two records in the same second don't pick the same ref.
+            stamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S-%f")
+            ref = f"{ref[: -len('.yaml')]}-{stamp}.yaml"
+        return Authored(out=f"{_WORKSPACE_SCENARIOS}/{ref}", save=(self._app, ref))
 
 
 class StorageScenarioStore:

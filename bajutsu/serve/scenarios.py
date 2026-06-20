@@ -37,6 +37,19 @@ class Runnable:
     materials: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass
+class Authored:
+    """Where a `record` run writes its authored scenario.
+
+    `out` is the ``--out`` value — a trusted absolute path on the local backend (the file lands in
+    the scenarios dir directly), or a workspace-relative path on the server backend. `save` is
+    ``(app, ref)`` telling a remote worker to persist the authored file to per-project storage
+    afterward (the run host has no shared filesystem with the control plane); None locally."""
+
+    out: str
+    save: tuple[str, str] | None = None
+
+
 class ScenarioScope(Protocol):
     """Scenario operations confined to one app's scenarios."""
 
@@ -57,9 +70,11 @@ class ScenarioScope(Protocol):
         the saved scenario, or None if *ref* would escape the scope or isn't a scenario file. The
         scope owns the write, so a server scope persists to storage instead of the filesystem."""
 
-    def out_path(self, name: str) -> Path:
-        """A fresh, unique ``*.yaml`` path for an authored scenario named *name* (creating the
-        scenarios dir if needed)."""
+    def authored(self, name: str) -> Authored:
+        """Where a `record` run for *name* should write its authored scenario — the ``--out`` value
+        and, on the server, the ``(app, ref)`` a worker persists it to afterward. The local scope
+        returns a fresh, unique on-disk path (no save); the server scope returns a workspace-relative
+        path plus the storage destination (BE-0015)."""
 
 
 class ScenarioStore(Protocol):
@@ -109,9 +124,11 @@ class LocalScenarioScope:
         target.write_text(text, encoding="utf-8")
         return str(target)
 
-    def out_path(self, name: str) -> Path:
+    def authored(self, name: str) -> Authored:
         self._dir.mkdir(parents=True, exist_ok=True)
-        return unique_scenario_path(scenario_out_path(self._dir, name))
+        out = unique_scenario_path(scenario_out_path(self._dir, name))
+        # The file lands on the local run host directly, so there's nothing to persist afterward.
+        return Authored(out=str(out))
 
 
 class LocalScenarioStore:

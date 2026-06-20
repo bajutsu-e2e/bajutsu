@@ -75,6 +75,9 @@ def job_spec(job: Job) -> dict[str, Any]:
         "app_path": job.app_path,
         "build": job.build,
         "materials": dict(job.materials),
+        # record: where in the workspace the authored file lands + (app, ref) to persist it as.
+        "out_path": job.out_path,
+        "record_save": list(job.record_save) if job.record_save else None,
     }
 
 
@@ -143,13 +146,34 @@ def execute_job_spec(
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
         build=spec.get("build"),
+        out_path=spec.get("out_path"),  # so the terminal-status payload reports it (record jobs)
         bus=state.logbus,
     )
     run_job(state, job)
-    # Upload this run's tree so the control plane can serve it — scoped to the produced run id (the
-    # worker's CWD is shared across jobs). Skip when no run was produced (job.run_id is None) or no
-    # object store is configured, rather than failing the finished run.
     uploader = store if store is not None else object_store_from_env()
-    if uploader is not None and job.run_id:
-        _upload_runs(work, uploader, artifact_prefix(s3_prefix()), job.run_id)
+    if uploader is not None:
+        # A `run` produced a run tree: upload it (scoped to this run id — the worker's CWD is shared
+        # across jobs). A `record` authored a scenario: persist it to per-project storage.
+        if job.run_id:
+            _upload_runs(work, uploader, artifact_prefix(s3_prefix()), job.run_id)
+        save = spec.get("record_save")
+        # Validate the queue payload's shape before indexing — a malformed spec must not crash here.
+        if isinstance(save, (list, tuple)) and len(save) == 2 and job.out_path:
+            _save_authored(work, uploader, job.out_path, str(save[0]), str(save[1]))
     return job
+
+
+def _save_authored(work: Path, store: ObjectStore, out_path: str, app: str, ref: str) -> None:
+    """Persist the scenario a `record` run wrote at *out_path* in the workspace to per-project
+    storage as ``(app, ref)`` — via the same `ObjectScenarioStorage` keys the control plane reads."""
+    from bajutsu.serve.server.scenarios import ObjectScenarioStorage
+
+    src = (work / out_path).resolve()
+    # Confine to the workspace: a crafted spec with an absolute / ``..`` out_path must not read &
+    # upload arbitrary host files (mirrors _materialize / _upload_runs).
+    if work.resolve() not in src.parents or not src.is_file():
+        return
+    # `list` is the apps provider (returns []); save() doesn't consult it, only the key scheme.
+    ObjectScenarioStorage(store, list, prefix=s3_prefix()).save(
+        app, ref, src.read_text(encoding="utf-8")
+    )

@@ -354,18 +354,25 @@ def crawl_command(
 # --- path helpers ---
 
 
-def scenario_out_path(scenarios_dir: Path, name: str) -> Path:
-    """A safe ``*.yaml`` path under *scenarios_dir* for an authored scenario.  ``name`` is the
-    user's file name (or, lacking one, the goal); path separators and control chars are stripped
-    so a request can never escape the scenarios dir, and a blank / unusable name falls back to
-    'authored'.  A ``.yaml`` suffix is normalized so 'foo' and 'foo.yaml' name the same file."""
+def scenario_out_name(name: str) -> str:
+    """A safe ``<stem>.yaml`` file name for an authored scenario.  ``name`` is the user's file name
+    (or, lacking one, the goal); path separators and control chars are stripped so it can never
+    escape its dir, and a blank / unusable name falls back to 'authored'.  A ``.yaml`` suffix is
+    normalized so 'foo' and 'foo.yaml' name the same file.  The bare-name form, for a store with no
+    filesystem dir (the server's object storage)."""
     stem = (name or "").strip().replace("/", "-").replace("\\", "-")
     if stem.endswith(".yaml"):
         stem = stem[: -len(".yaml")]
     stem = re.sub(r"[\x00-\x1f]", "", stem).strip(" .")
     if not stem or stem in {".", ".."}:
         stem = "authored"
-    return scenarios_dir / f"{stem}.yaml"
+    return f"{stem}.yaml"
+
+
+def scenario_out_path(scenarios_dir: Path, name: str) -> Path:
+    """A safe ``*.yaml`` path under *scenarios_dir* for an authored scenario named *name* (see
+    `scenario_out_name` for the sanitization)."""
+    return scenarios_dir / scenario_out_name(name)
 
 
 def unique_scenario_path(path: Path, stamp: str | None = None) -> Path:

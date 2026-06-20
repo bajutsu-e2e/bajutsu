@@ -81,6 +81,8 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "app_path": "A.app",
         "build": "make build",
         "materials": {},  # no materials for a local-built job
+        "out_path": None,  # not a record job
+        "record_save": None,
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -314,3 +316,70 @@ def test_execute_job_spec_skips_upload_without_a_store(
     spec = {"job_id": "1", "cmd": ["bajutsu", "run"], "udids": [], "app_path": None, "build": None}
     job = execute_job_spec(spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus())
     assert job.view()["status"] == "done"  # ran fine, just no upload
+
+
+def test_execute_job_spec_saves_the_authored_scenario(tmp_path: Path) -> None:
+    # A server-backend `record`: the worker writes the authored scenario to its workspace, then
+    # persists it to the same object-storage key the control plane reads (scenarios/<app>/<ref>).
+    def popen_writing_scenario(_cmd: list[str], **_kw: object) -> FakeProc:
+        out = tmp_path / "scenarios" / "login.yaml"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("- name: login\n  steps: []\n", encoding="utf-8")
+        return FakeProc(["authored ok\n"])
+
+    store = _FakeObjectStore()
+    spec = {
+        "job_id": "1",
+        "cmd": ["bajutsu", "record"],
+        "udids": [],
+        "app_path": None,
+        "build": None,
+        "out_path": "scenarios/login.yaml",
+        "record_save": ["demo", "login.yaml"],
+    }
+    job = execute_job_spec(
+        spec, popen=popen_writing_scenario, cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
+    )
+    assert store.objects["scenarios/demo/login.yaml"] == b"- name: login\n  steps: []\n"
+    assert job.view()["outPath"] == "scenarios/login.yaml"  # terminal status reports the out path
+
+
+def test_execute_job_spec_save_authored_confines_to_the_workspace(tmp_path: Path) -> None:
+    # A crafted spec with an escaping out_path must not read & upload a host file outside the
+    # workspace (defensive — the control plane never builds such a path).
+    secret = tmp_path / "secret.yaml"
+    secret.write_text("secret", encoding="utf-8")
+    store = _FakeObjectStore()
+    spec = {
+        "job_id": "1",
+        "cmd": ["bajutsu", "record"],
+        "udids": [],
+        "app_path": None,
+        "build": None,
+        "out_path": "../secret.yaml",
+        "record_save": ["demo", "stolen.yaml"],
+    }
+    execute_job_spec(
+        spec, popen=fake_popen(["ok\n"]), cwd=tmp_path / "ws", bus=srv.InMemoryLogBus(), store=store
+    )
+    assert store.objects == {}  # nothing read/uploaded from outside the workspace
+
+
+def test_start_record_on_the_server_backend_materializes_and_targets_storage(
+    tmp_path: Path,
+) -> None:
+    from bajutsu.serve.server.scenarios import StorageScenarioStore
+
+    _scn, cfg, runs = project(tmp_path)
+    q = _FakeQueue()
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, executor=QueueExecutor(q))
+    state.scenarios = StorageScenarioStore(FakeScenarioStorage({"demo": {}}))
+
+    payload, code = ops.start_record(state, {"app": "demo", "goal": "log in", "name": "login"})
+    assert code == 200 and payload["path"] == "login.yaml"
+
+    spec = q.enqueued[0][1][0]
+    assert "scenarios/login.yaml" in spec["cmd"]  # workspace-relative --out
+    assert "bajutsu.config.yaml" in spec["cmd"]  # config materialized
+    assert spec["record_save"] == ["demo", "login.yaml"]
+    assert "apps:" in spec["materials"]["bajutsu.config.yaml"]

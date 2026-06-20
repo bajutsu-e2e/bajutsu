@@ -327,17 +327,25 @@ def start_record(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     scope = state.scenarios.scope(str(body["app"]))
     if scope is None:
         return {"error": f"app '{body['app']}' has no scenarios dir"}, 400
-    out = scope.out_path(str(body.get("name") or "generated"))
+    authored = scope.authored(str(body.get("name") or "generated"))
     # Validate the device args the same way start_run does (BE-0051): no free-text backend or udid
-    # reaches the spawned `bajutsu record` argv. The output path is confined by out_path above.
+    # reaches the spawned `bajutsu record` argv. The output path is confined by `authored` above.
     backend = str(body.get("backend", "") or "")
     if backend and not valid_backend(backend):
         return {"error": f"unknown backend: {backend}"}, 400
     udid = str(body.get("udid", "") or "")
     if udid and not valid_udid(udid):
         return {"error": "invalid udid"}, 400
+    # On the server backend (authored.save set) the worker has no project on disk: ship the config
+    # and use workspace-relative --out / --config; the worker persists the authored file afterward.
+    on_worker = authored.save is not None
+    materials: dict[str, str] = {}
+    config_arg = str(cfg)
+    if on_worker:
+        config_arg = "bajutsu.config.yaml"
+        materials[config_arg] = cfg.read_text(encoding="utf-8")
     cmd = record_command(
-        str(out),
+        authored.out,
         body["app"],
         str(body["goal"]),
         agent=body.get("agent", ""),
@@ -347,16 +355,23 @@ def start_record(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         dismiss_alerts=body["dismissAlerts"]
         if isinstance(body.get("dismissAlerts"), bool)
         else None,
-        config=str(cfg),
+        config=config_arg,
     )
     app_path, build = app_build_info(cfg, body["app"])
     job = state.try_new_job(
-        cmd, udids=_boot_targets(udid), app_path=app_path, build=build, out_path=str(out)
+        cmd,
+        udids=_boot_targets(udid),
+        app_path=app_path,
+        build=build,
+        out_path=authored.out,
+        materials=materials,
+        record_save=authored.save,
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)
-    return {"jobId": job.id, "path": str(out)}, 200
+    # Report the saved ref on the server (what the UI loads), else the on-disk path.
+    return {"jobId": job.id, "path": authored.save[1] if authored.save else authored.out}, 200
 
 
 def start_crawl(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
