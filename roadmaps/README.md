@@ -165,6 +165,20 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 | [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
 <!-- /GENERATED:accepted-dogfood -->
 
+### AI provider configuration
+
+The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Claude through a
+pluggable provider. This topic covers selecting and configuring that provider — e.g. Amazon Bedrock
+(authenticated with AWS credentials) as an alternative to the direct Anthropic API. The
+deterministic `run` / CI gate calls no model and is unaffected. This axis is distinct from
+`backend` (the UI actuator).
+
+<!-- GENERATED:accepted-ai-provider -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0053](implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) | Amazon Bedrock as a pluggable AI provider | Implemented |
+<!-- /GENERATED:accepted-ai-provider -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *Accepted* once a decision is made.
@@ -249,19 +263,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
 | [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
 <!-- /GENERATED:proposals-codegen -->
-
-### AI provider configuration
-
-The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Claude through a
-pluggable provider. This topic covers selecting and configuring that provider — e.g. Amazon Bedrock
-(authenticated with AWS credentials) as an alternative to the direct Anthropic API. The
-deterministic `run` / CI gate calls no model and is unaffected. This axis is distinct from
-`backend` (the UI actuator).
-
-<!-- GENERATED:proposals-ai-provider -->
-| ID | Item | Status |
-|---|---|---|
-<!-- /GENERATED:proposals-ai-provider -->
 
 ### Miscellaneous / on hold
 

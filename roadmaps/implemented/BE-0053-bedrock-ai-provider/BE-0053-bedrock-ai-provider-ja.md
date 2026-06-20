@@ -3,8 +3,10 @@
 # BE-0053 — 差し替え可能な AI プロバイダとしての Amazon Bedrock
 
 * 提案: [BE-0053](BE-0053-bedrock-ai-provider-ja.md)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
+* Author: [@0x0c](https://github.com/0x0c)
+* 状態: **実装済み**
+* 実装 PR: [#109](https://github.com/bajutsu-e2e/bajutsu/pull/109)
+* トラック: [可決済み](../../README-ja.md#可決済み)
 * トピック: AI プロバイダ設定
 
 ## はじめに

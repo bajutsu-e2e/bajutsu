@@ -157,6 +157,19 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md) | Dogfood ショーケースアプリ群（UIKit × SwiftUI、アクセシビリティ対比） | 実装済み | Dogfooding |
 <!-- /GENERATED:accepted-dogfood -->
 
+### AI プロバイダ設定
+
+Tier-1 の AI 経路（`record` ／ `triage` ／ `--dismiss-alerts` ／ `crawl`）は、差し替え可能な
+プロバイダ経由で Claude を呼びます。このトピックは、そのプロバイダの選択と設定を扱います ——
+例えば直接の Anthropic API の代替としての Amazon Bedrock（AWS の認証情報で認証）です。決定的な
+`run` ／ CI ゲートはモデルを呼ばず影響を受けません。この軸は `backend`（UI の actuator）とは別物です。
+
+<!-- GENERATED:accepted-ai-provider -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0053](implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md) | 差し替え可能な AI プロバイダとしての Amazon Bedrock | 実装済み |
+<!-- /GENERATED:accepted-ai-provider -->
+
 ## 提案
 
 検討中 — まだ決定していません。決定したら *可決済み* に昇格してください。
@@ -241,18 +254,6 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 | [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation-ja.md) | 座標 swipe の生成 | 提案 |
 | [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) | 未対応構文の縮小 | 提案 |
 <!-- /GENERATED:proposals-codegen -->
-
-### AI プロバイダ設定
-
-Tier-1 の AI 経路（`record` ／ `triage` ／ `--dismiss-alerts` ／ `crawl`）は、差し替え可能な
-プロバイダ経由で Claude を呼びます。このトピックは、そのプロバイダの選択と設定を扱います ——
-例えば直接の Anthropic API の代替としての Amazon Bedrock（AWS の認証情報で認証）です。決定的な
-`run` ／ CI ゲートはモデルを呼ばず影響を受けません。この軸は `backend`（UI の actuator）とは別物です。
-
-<!-- GENERATED:proposals-ai-provider -->
-| ID | 項目 | 状態 |
-|---|---|---|
-<!-- /GENERATED:proposals-ai-provider -->
 
 ### その他・保留
 
