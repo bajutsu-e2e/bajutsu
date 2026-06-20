@@ -33,9 +33,9 @@ def worker(
     try:
         from redis import Redis
         from rq import Queue, Worker
-    except ImportError as e:
+    except ImportError:
         typer.echo("the `worker` extra is required — install with: pip install 'bajutsu[worker]'")
-        raise typer.Exit(2) from e
+        raise typer.Exit(2) from None
 
     connection = Redis.from_url(url)
     typer.echo(f"bajutsu worker → consuming '{queue}' from {url}  (Ctrl-C to stop)")

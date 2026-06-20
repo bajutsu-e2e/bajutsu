@@ -1,4 +1,4 @@
-"""Tests for the queue-based RunExecutor + worker entrypoint (BE-0015 server phase, PR1).
+"""Tests for the queue-based RunExecutor + worker entrypoint (BE-0015 server phase).
 
 `QueueExecutor` is a server implementation of the `RunExecutor` seam: instead of running `run_job`
 in-process (like `LocalExecutor`), it serializes the job and enqueues it; a remote `bajutsu worker`

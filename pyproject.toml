@@ -98,5 +98,5 @@ strict = true
 # The `worker` extra (RQ/Redis) is deliberately kept off the gate — server jobs are unit-tested
 # with fakes — so its imports (lazy, inside `bajutsu worker`) have no stubs to resolve here.
 [[tool.mypy.overrides]]
-module = ["redis.*", "rq.*"]
+module = ["redis", "redis.*", "rq", "rq.*"]
 ignore_missing_imports = true

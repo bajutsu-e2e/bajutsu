@@ -1,4 +1,4 @@
-"""Tests for the Redis-backed LogBus (BE-0015 server phase, PR2).
+"""Tests for the Redis-backed LogBus (BE-0015 server phase).
 
 `RedisLogBus` is the server implementation of the `LogBus` seam: it must preserve the same
 contract as `InMemoryLogBus` (a late subscriber replays the whole log; the stream ends once the
