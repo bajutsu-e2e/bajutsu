@@ -51,7 +51,7 @@ Simulator.
    `/api/approve`, `/runs/...` serving) already confine their paths.
 2. **Token authentication + non-loopback guard** *(next)* — an optional shared token
    (`--token` / `BAJUTSU_SERVE_TOKEN`), compared in constant time. API clients present it as a
-   `Bearer` header; the browser establishes an **HttpOnly, SameSite cookie via a POST login
+   `Bearer` header; the browser establishes an **HttpOnly, SameSite=Strict cookie via a POST login
    endpoint** (the token is never put in a URL — query strings leak through history, logs, and
    `Referer`). **Binding a non-loopback host without a token is refused at startup**, so the server
    can never be exposed unauthenticated by accident.
