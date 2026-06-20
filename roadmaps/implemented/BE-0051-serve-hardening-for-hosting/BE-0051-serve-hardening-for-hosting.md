@@ -4,8 +4,9 @@
 
 * Proposal: [BE-0051](BE-0051-serve-hardening-for-hosting.md)
 * Author: [@hirosassa](https://github.com/hirosassa)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
+* Status: **Implemented**
+* Implementing PRs: [#92](https://github.com/bajutsu-e2e/bajutsu/pull/92) (slice 1), [#94](https://github.com/bajutsu-e2e/bajutsu/pull/94) (slice 2), [#95](https://github.com/bajutsu-e2e/bajutsu/pull/95) (slice 3), [#96](https://github.com/bajutsu-e2e/bajutsu/pull/96) (slice 4), [#97](https://github.com/bajutsu-e2e/bajutsu/pull/97) (slice 5), [#114](https://github.com/bajutsu-e2e/bajutsu/pull/114) (crawl parity for slices 3 & 5)
+* Track: [Accepted](../../README.md#accepted)
 * Topic: Hosting the web UI (cloud / self-hosted)
 
 ## Introduction
@@ -13,8 +14,8 @@
 The stdlib `bajutsu serve` (`bajutsu/serve/`) is safe today only because it is **localhost-only and
 single-user**: it has no authentication and, until slice 1 below (#92) confined it, `/api/run`
 accepted a client-supplied scenario path.
-Both hosting proposals — public/cloud [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
-and self-hosted [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — name a set of
+Both hosting proposals — public/cloud [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
+and self-hosted [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — name a set of
 **mandatory** security fixes before `serve` may be reached beyond loopback. This item collects those
 fixes as a single, incrementally-shippable hardening track on the **existing** stdlib server, so the
 deterministic core never changes and each slice is testable on the Linux gate without a Simulator.
@@ -34,8 +35,8 @@ unsafe on any network beyond loopback:
   `bajutsu run` argv with no check that it stayed within the app's scenarios dir, and `backend` /
   `udid` were free text — an arbitrary-path execution surface.
 
-These are not theoretical: they are the exact items [BE-0015 §Security hardening](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
-and [BE-0016 Tier A](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) flag as blockers. Closing
+These are not theoretical: they are the exact items [BE-0015 §Security hardening](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
+and [BE-0016 Tier A](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) flag as blockers. Closing
 them on the current server is cheap, independently useful (it makes a Tailscale/LaunchAgent single-Mac
 deployment safe today, per BE-0016 Tier A), and a clean foundation for the hosted system later.
 
@@ -50,21 +51,24 @@ Simulator.
    client string) and reject a `backend` / `udid` that isn't a known token. Eliminates the
    arbitrary-path execution surface. The other endpoints (`/api/config`, `/api/scenario`,
    `/api/approve`, `/runs/...` serving) already confine their paths.
-2. **Token authentication + non-loopback guard** *(next)* — an optional shared token
+2. **Token authentication + non-loopback guard** *(implemented in #94)* — an optional shared token
    (`--token` / `BAJUTSU_SERVE_TOKEN`), compared in constant time. API clients present it as a
    `Bearer` header; the browser establishes an **HttpOnly, SameSite=Strict cookie via a POST login
    endpoint** (the token is never put in a URL — query strings leak through history, logs, and
    `Referer`). **Binding a non-loopback host without a token is refused at startup**, so the server
    can never be exposed unauthenticated by accident.
-3. **Apply the same input validation to the other run-spawning endpoints** (`/api/record`, and any
-   future `/api/crawl`): the `backend` / `udid` token checks, mirroring slice 1.
-4. **CSRF protection + standard security headers** — once cookie auth exists, protect state-changing
+3. **Apply the same input validation to the other run-spawning endpoints** *(implemented in #95;
+   `/api/crawl` in #114)* — `/api/record` and `/api/crawl`: the `backend` / `udid` token checks,
+   mirroring slice 1.
+4. **CSRF protection + standard security headers** *(implemented in #96)* — once cookie auth exists,
+   protect state-changing
    POSTs with an **Origin check** (a present `Origin` must match `Host`) layered on the
    `SameSite=Strict` session cookie; API clients authenticate with the `Authorization` header and
    carry no ambient cookie. Add the standard security headers. Deferred behind slice 2 because it
    only matters once a cookie is in play.
-5. **Rate-limiting run dispatch per token/org** — cap concurrent/inflight runs so one caller can't
-   monopolize the (scarce) device, a lightweight precursor to BE-0015's per-org quotas.
+5. **Rate-limiting run dispatch per token/org** *(implemented in #97; `/api/crawl` in #114)* — cap
+   concurrent/inflight runs so one caller can't monopolize the (scarce) device, a lightweight
+   precursor to BE-0015's per-org quotas.
 
 Slices 1–2 are the minimum that makes a single-Mac, tailnet-reachable deployment (BE-0016 Tier A)
 safe. Slices 3–5 round out the surface. Anything multi-tenant (per-org keys, RBAC, object storage,
@@ -87,6 +91,6 @@ safe to put behind a private network with a token."
 
 ## References
 
-[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (public/cloud hosting),
-[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting),
+[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (public/cloud hosting),
+[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting),
 `bajutsu/serve/`, [cli.md](../../../docs/cli.md#serve)
