@@ -411,3 +411,15 @@ def test_approve_no_run_found(tmp_path: Path) -> None:
     r = runner.invoke(app, ["approve", "--baselines", str(tmp_path / "b"), "--runs", str(tmp_path)])
     assert r.exit_code == 2
     assert "no run found" in r.output
+
+
+def test_worker_without_extra_exits_cleanly() -> None:
+    # On the gate the `worker` extra (redis/rq) isn't installed, so `bajutsu worker` must fail with
+    # a clear "install the extra" message and exit 2 — never a raw ImportError traceback.
+    import importlib.util
+
+    if importlib.util.find_spec("rq") is not None:
+        pytest.skip("the worker extra is installed; the Redis-connect path isn't gate-testable")
+    r = runner.invoke(app, ["worker"])
+    assert r.exit_code == 2
+    assert "worker" in r.output.lower() and "extra" in r.output.lower()
