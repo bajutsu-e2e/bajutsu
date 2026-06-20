@@ -208,7 +208,10 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     validate it loads, then re-point ``state.config`` so apps/scenarios come from it."""
     if not raw:
         return {"error": "path is required"}, 400
-    target = (state.root / raw).resolve() if not Path(raw).is_absolute() else Path(raw)
+    # Resolve both branches before the containment check: an *absolute* `raw` left unresolved could
+    # carry `..` segments that make the literal-parent check pass while the real file is outside the
+    # browse root (a path-traversal read). Resolving normalizes `..` so the guard is sound.
+    target = (Path(raw) if Path(raw).is_absolute() else state.root / raw).resolve()
     base = state.root.resolve()
     if target != base and base not in target.parents:
         return {"error": "path is outside the browse root"}, 400
