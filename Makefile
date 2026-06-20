@@ -1,5 +1,5 @@
 .PHONY: setup hooks deps deps-check serve test lint format format-check typecheck \
-        lock-check lint-sh lint-actions check roadmap-index
+        lock-check lint-sh lint-actions check roadmap-index roadmap-promote
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -81,6 +81,13 @@ lint-actions:
 # enforced by tests/test_roadmap_index.py — part of `make test`, so the gate fails on drift.
 roadmap-index:
 	uv run python scripts/build_roadmap_index.py
+
+# Move shipped items (Status: Implemented) from proposals/ to implemented/ and reindex, so each
+# item's directory matches its Status — the mechanical half of the documented ship step. The
+# roadmap-promote workflow runs this on a PR; the same invariant is enforced by
+# tests/test_promote_roadmap_items.py (part of `make test`), so the gate fails on a mismatch.
+roadmap-promote:
+	uv run python scripts/promote_roadmap_items.py
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
