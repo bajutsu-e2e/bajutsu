@@ -214,6 +214,7 @@ def _build_server_state(
     from bajutsu.serve.server.db import repository_from_env
     from bajutsu.serve.server.executor import QueueExecutor
     from bajutsu.serve.server.logbus import RedisLogBus
+    from bajutsu.serve.server.oauth import GitHubOAuthClient
     from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, s3_prefix
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
     from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore
@@ -223,6 +224,19 @@ def _build_server_state(
     if store is None:
         raise ValueError("BAJUTSU_S3_BUCKET is required for --backend=server")
     prefix = s3_prefix()
+    # GitHub OAuth login is optional: wired only when all three OAuth vars are set, else None (token
+    # auth only). The allowlist is the GitHub logins permitted to log in (BE-0015 7b-2).
+    cid = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_ID")
+    secret = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET")
+    redirect = os.environ.get("BAJUTSU_OAUTH_GITHUB_REDIRECT_URI")
+    oauth = (
+        GitHubOAuthClient(client_id=cid, client_secret=secret, redirect_uri=redirect)
+        if cid and secret and redirect
+        else None
+    )
+    allowed_users = frozenset(
+        u.strip() for u in os.environ.get("BAJUTSU_OAUTH_ALLOWED_USERS", "").split(",") if u.strip()
+    )
     # The real clients are wider than our minimal seam protocols (RedisLike / Queue), so hand them
     # over as Any — the seam adapters use only the slice they declare.
     redis: Any = Redis.from_url(redis_url())
@@ -246,6 +260,8 @@ def _build_server_state(
         # The system of record, when a database is configured (BAJUTSU_DATABASE_URL); None otherwise
         # so the server backend runs without one until 7b/7c need it (BE-0015 7a).
         repository=repository_from_env(),
+        oauth=oauth,
+        oauth_allowed_users=allowed_users,
     )
     # Override the filesystem seams (set local in __post_init__) with the object-storage ones. The
     # scenario store reads the live config's apps, so a config opened later is reflected.

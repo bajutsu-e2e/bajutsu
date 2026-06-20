@@ -23,6 +23,15 @@ def test_in_memory_unknown_is_invalid() -> None:
     assert not InMemorySessionStore().valid("nope")
 
 
+def test_in_memory_binds_and_reads_identity() -> None:
+    store = InMemorySessionStore()
+    sid = store.issue("alice")
+    assert store.identity(sid) == "alice"
+    # a token login carries no identity; an unknown id has none either
+    assert store.identity(store.issue()) is None
+    assert store.identity("nope") is None
+
+
 def test_in_memory_ids_are_unique_and_opaque() -> None:
     store = InMemorySessionStore()
     a, b = store.issue(), store.issue()
@@ -46,6 +55,10 @@ class FakeRedis:
     def exists(self, key: str) -> int:
         return 1 if key in self._kv else 0
 
+    def get(self, key: str) -> bytes | None:
+        v = self._kv.get(key)
+        return v.encode() if v is not None else None
+
 
 def test_redis_issue_then_valid() -> None:
     store = RedisSessionStore(FakeRedis())
@@ -55,6 +68,14 @@ def test_redis_issue_then_valid() -> None:
 
 def test_redis_unknown_is_invalid() -> None:
     assert not RedisSessionStore(FakeRedis()).valid("nope")
+
+
+def test_redis_binds_and_reads_identity() -> None:
+    store = RedisSessionStore(FakeRedis())
+    assert store.identity(store.issue("bob")) == "bob"
+    # a token login carries no identity; an unknown id has none
+    assert store.identity(store.issue()) is None
+    assert store.identity("nope") is None
 
 
 def test_redis_issue_sets_the_injected_ttl() -> None:

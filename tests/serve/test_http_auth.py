@@ -7,6 +7,7 @@ the token itself is never put in a URL or stored in the browser.
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -16,6 +17,16 @@ from typing import Any
 from _shared import _serve
 
 from bajutsu import serve as srv
+
+
+class _FakeOAuth:
+    """Stand-in for the GitHub OAuth client — no network."""
+
+    def authorize_url(self, state: str) -> str:
+        return f"https://github.test/login/oauth/authorize?state={state}"
+
+    def fetch_login(self, code: str) -> str | None:
+        return "alice"
 
 
 def _request(
@@ -198,6 +209,26 @@ def test_non_object_json_body_is_rejected(tmp_path: Path) -> None:
             body=[1, 2, 3],
         )
         assert status == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_oauth_login_redirects_and_sets_state_cookie(tmp_path: Path) -> None:
+    # The stdlib handler mirrors the FastAPI app: GET /api/oauth/login 302s to GitHub and stashes
+    # the CSRF state in a cookie. Use a raw connection so the 302 isn't auto-followed to github.test.
+    state = _state(tmp_path, None)
+    state.oauth = _FakeOAuth()
+    state.oauth_allowed_users = frozenset({"alice"})
+    server, port = _serve(state)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port)
+        conn.request("GET", "/api/oauth/login")
+        resp = conn.getresponse()
+        assert resp.status == 302
+        assert "github.test" in (resp.getheader("Location") or "")
+        assert "bajutsu_oauth_state" in (resp.getheader("Set-Cookie") or "")
+        conn.close()
     finally:
         server.shutdown()
         server.server_close()

@@ -23,6 +23,9 @@ from bajutsu.serve.jobs import ServeState
 
 # Session cookie set at login when a serve token is configured (BE-0051).
 _SESSION_COOKIE = "bajutsu_session"
+_OAUTH_STATE_COOKIE = (
+    "bajutsu_oauth_state"  # short-lived CSRF state for the OAuth round-trip (7b-2)
+)
 
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
@@ -83,7 +86,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if state.token is None:
                 return True
             path = urlparse(self.path).path
-            if self.command == "GET" and path in ("/", "/index.html"):
+            if self.command == "GET" and path in (
+                "/",
+                "/index.html",
+                "/api/oauth/login",
+                "/api/oauth/callback",
+            ):
                 return True
             if self.command == "POST" and path == "/api/login":
                 return True
@@ -130,6 +138,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.runs_payload(state))
                 case "/api/scenario":
                     self._json(*ops.read_scenario(state, self._qs("app"), self._qs("path")))
+                case "/api/oauth/login":
+                    self._oauth_login()
+                case "/api/oauth/callback":
+                    self._oauth_callback()
                 case _ if path.startswith("/api/jobs/") and path.endswith("/events"):
                     self._sse_job(path[len("/api/jobs/") : -len("/events")])
                 case _ if path.startswith("/api/jobs/"):
@@ -204,6 +216,44 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 else None
             )
             self._json(payload, status, cookie=cookie)
+
+        def _oauth_login(self) -> None:
+            """Begin GitHub OAuth (BE-0015 7b-2): redirect to GitHub's authorize URL and stash the
+            CSRF state in a short-lived cookie (SameSite=Lax so it survives the redirect back)."""
+            payload, status, csrf = ops.oauth_login(state)
+            if status != 200 or csrf is None:
+                self._json(payload, status)
+                return
+            self.send_response(302)
+            self.send_header("Location", payload["redirect"])
+            self.send_header(
+                "Set-Cookie",
+                f"{_OAUTH_STATE_COOKIE}={csrf}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600",
+            )
+            self.end_headers()
+
+        def _oauth_callback(self) -> None:
+            """Complete GitHub OAuth: compare the returned state to the cookie, exchange the code,
+            and on success set the session cookie, clear the state cookie, and land on the app."""
+            morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_OAUTH_STATE_COOKIE)
+            payload, status, sid = ops.oauth_callback(
+                state,
+                self._qs("code") or "",
+                self._qs("state") or "",
+                morsel.value if morsel is not None else "",
+            )
+            if status != 200 or sid is None:
+                self._json(payload, status)
+                return
+            self.send_response(302)
+            self.send_header("Location", "/")
+            self.send_header(
+                "Set-Cookie", f"{_SESSION_COOKIE}={sid}; HttpOnly; SameSite=Strict; Path=/"
+            )
+            self.send_header(
+                "Set-Cookie", f"{_OAUTH_STATE_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+            )
+            self.end_headers()
 
         def _serve_run_file(self, rel: str) -> None:
             art = state.artifacts.get(rel)
