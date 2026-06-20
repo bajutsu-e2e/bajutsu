@@ -37,14 +37,14 @@ def serve(
     from bajutsu.serve import serve as _serve
 
     _serve(
-        host,
-        port,
-        Path(scenarios) if scenarios else None,
-        Path(config) if config else None,
-        Path(runs),
-        Path(root) if root else Path.cwd(),
-        Path(baselines) if baselines else None,
-        max_concurrent_runs,
+        host=host,
+        port=port,
+        scenarios_dir=Path(scenarios) if scenarios else None,
+        config=Path(config) if config else None,
+        runs_dir=Path(runs),
+        root=Path(root) if root else Path.cwd(),
+        baselines_dir=Path(baselines) if baselines else None,
+        max_concurrent=max_concurrent_runs,
     )
 
 

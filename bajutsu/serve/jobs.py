@@ -79,9 +79,26 @@ class ServeState:
         with self._lock:
             return sum(1 for j in self.jobs.values() if j.status == "running")
 
-    def at_job_limit(self) -> bool:
-        """Whether a new run/record dispatch would exceed the concurrency cap."""
-        return self.max_concurrent > 0 and self.active_jobs() >= self.max_concurrent
+    def _make_job(
+        self,
+        cmd: list[str],
+        udids: list[str] | None,
+        app_path: str | None,
+        build: str | None,
+        out_path: str | None,
+    ) -> Job:
+        """Create + register a job. Caller must hold ``self._lock``."""
+        self._seq += 1
+        job = Job(
+            id=str(self._seq),
+            cmd=cmd,
+            udids=list(udids or []),
+            app_path=app_path,
+            build=build,
+            out_path=out_path,
+        )
+        self.jobs[job.id] = job
+        return job
 
     def new_job(
         self,
@@ -92,17 +109,24 @@ class ServeState:
         out_path: str | None = None,
     ) -> Job:
         with self._lock:
-            self._seq += 1
-            job = Job(
-                id=str(self._seq),
-                cmd=cmd,
-                udids=list(udids or []),
-                app_path=app_path,
-                build=build,
-                out_path=out_path,
-            )
-            self.jobs[job.id] = job
-        return job
+            return self._make_job(cmd, udids, app_path, build, out_path)
+
+    def try_new_job(
+        self,
+        cmd: list[str],
+        udids: list[str] | None = None,
+        app_path: str | None = None,
+        build: str | None = None,
+        out_path: str | None = None,
+    ) -> Job | None:
+        """Create a job only if under the concurrency cap, counting and inserting atomically under
+        the lock so two concurrent dispatches can't both slip past the cap (BE-0051). Returns None
+        at the cap."""
+        with self._lock:
+            running = sum(1 for j in self.jobs.values() if j.status == "running")
+            if self.max_concurrent > 0 and running >= self.max_concurrent:
+                return None
+            return self._make_job(cmd, udids, app_path, build, out_path)
 
 
 def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:
