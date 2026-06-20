@@ -182,3 +182,31 @@ def test_done_event_and_poll_use_the_bus_final_status(tmp_path: Path) -> None:
 
     payload, code = ops.job_view(state, "k")
     assert code == 200 and payload["status"] == "done" and payload["runId"] == "R1"
+
+
+def test_job_sse_emits_keepalive_then_log_and_done(tmp_path: Path) -> None:
+    # job_sse maps an idle stream's heartbeats to SSE keepalive comments, real lines to `log`
+    # frames, and the end to a `done` frame (B). Unknown job -> None.
+    import threading
+    import time
+
+    state = _state(tmp_path)
+    assert ops.job_sse(state, "nope", keepalive=1.0) is None
+    state.jobs["s"] = srv.Job(id="s", cmd=[])
+    frames = ops.job_sse(state, "s", keepalive=0.02)
+    assert frames is not None
+    out: list[str] = []
+
+    def consume() -> None:
+        out.extend(frames)
+
+    t = threading.Thread(target=consume, daemon=True)
+    t.start()
+    time.sleep(0.08)  # idle -> keepalive(s)
+    state.logbus.publish("s", "hi\n")
+    state.logbus.close("s", '{"status": "done", "ok": true, "id": "s"}')
+    t.join(timeout=2)
+    assert not t.is_alive()
+    assert ":keepalive\n\n" in out
+    assert "event: log\ndata: hi\n\n" in out
+    assert out[-1].startswith("event: done") and '"ok": true' in out[-1]

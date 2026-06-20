@@ -86,3 +86,43 @@ def test_asgi_server_serves_the_app_over_a_real_socket(tmp_path: Path) -> None:
         server.should_exit = True
         thread.join(timeout=5)
         assert not thread.is_alive(), "uvicorn server did not shut down"
+
+
+def test_sse_route_delivers_keepalive_over_the_wire(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # End to end over a real uvicorn server: an idle (running, not closed) job's /events stream
+    # delivers the log frame and periodic `:keepalive` comments, so a proxy won't drop the idle
+    # connection (B). Breaking out closes the socket — exercising the route's disconnect path.
+    from bajutsu.serve.server import app as app_module
+
+    monkeypatch.setattr(app_module, "_SSE_KEEPALIVE", 0.05)
+    state = _state(tmp_path)
+    state.jobs["w"] = srv.Job(id="w", cmd=[])
+    state.logbus.publish(
+        "w", "line one\n"
+    )  # a line, but the job is NOT closed -> stream stays open
+    port = _free_port()
+    server = srv.make_asgi_server(state, host="127.0.0.1", port=port)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        deadline = time.time() + 10
+        while not server.started and time.time() < deadline:
+            time.sleep(0.02)
+        assert server.started
+        seen_line = seen_keepalive = False
+        with httpx.stream("GET", f"http://127.0.0.1:{port}/api/jobs/w/events", timeout=5) as r:
+            for line in r.iter_lines():
+                if "data: line one" in line:
+                    seen_line = True
+                if line.startswith(":keepalive"):
+                    seen_keepalive = True
+                if seen_line and seen_keepalive:
+                    break
+        assert seen_line and seen_keepalive
+    finally:
+        state.logbus.close("w")
+        server.should_exit = True
+        thread.join(timeout=5)
+        assert not thread.is_alive(), "uvicorn server did not shut down"

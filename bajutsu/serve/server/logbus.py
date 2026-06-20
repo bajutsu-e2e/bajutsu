@@ -69,17 +69,32 @@ class RedisLogBus:
         text = self._text(value)
         return None if text == "1" else text  # "1" = closed without a payload
 
-    def stream(self, job_id: str) -> Iterator[str]:
+    def stream(self, job_id: str, *, timeout: float | None = None) -> Iterator[str | None]:
         key = _LINES + job_id
         seen = 0
+        idle = 0.0  # seconds since the last line, to pace heartbeats when *timeout* is set
         while True:
             batch = self._redis.lrange(key, seen, -1)
             seen += len(batch)
-            for line in batch:
-                yield self._text(line)
-            # `close` is set only after every line is published, so once it's set and we've drained
-            # the list (no new batch), the log is complete. Poll while waiting for live lines.
-            if not batch:
-                if self._redis.get(_DONE + job_id) is not None:
+            if batch:
+                idle = 0.0
+                for line in batch:
+                    yield self._text(line)
+                continue
+            # `close` is set only after every line is published. But a producer can rpush the final
+            # lines and set the done flag between our (empty) lrange above and this check — so on
+            # seeing done, re-drain once and only end when that tail is empty, never dropping it.
+            if self._redis.get(_DONE + job_id) is not None:
+                tail = self._redis.lrange(key, seen, -1)
+                if not tail:
                     return
-                time.sleep(self._poll)
+                seen += len(tail)
+                for line in tail:
+                    yield self._text(line)
+                continue
+            time.sleep(self._poll)
+            if timeout is not None:
+                idle += self._poll
+                if idle >= timeout:
+                    idle = 0.0
+                    yield None  # idle for `timeout` with no new line → heartbeat

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -161,12 +161,35 @@ def job_log_events(state: ServeState, job_id: str) -> Iterator[tuple[str, str]] 
 
 def _job_event_pairs(state: ServeState, job: Job, job_id: str) -> Iterator[tuple[str, str]]:
     for line in state.logbus.stream(job_id):
-        yield ("log", line)
-    # The terminal status: the worker-recorded view on the bus (server backend), else the local
-    # Job's (BE-0015 W2). The stream has ended, so `close` ran and any final payload is set. Lines
-    # are omitted — they already arrived as `log` events, so the done payload needn't repeat them.
+        if line is not None:  # no timeout passed, so no heartbeats — guard only satisfies the type
+            yield ("log", line)
+    yield ("done", _terminal_payload(state, job, job_id))
+
+
+def _terminal_payload(state: ServeState, job: Job, job_id: str) -> str:
+    """The job's terminal status (JSON): the worker-recorded view on the bus (server backend), else
+    the local Job's (BE-0015 W2). The stream has ended, so `close` ran and any final payload is set.
+    Lines are omitted — they already arrived as `log` events, so the done payload needn't repeat
+    them."""
     final = state.logbus.final(job_id)
-    yield ("done", final if final is not None else json.dumps(job.view(include_lines=False)))
+    return final if final is not None else json.dumps(job.view(include_lines=False))
+
+
+def job_sse(state: ServeState, job_id: str, *, keepalive: float) -> Generator[str] | None:
+    """The job's log as ready-to-send SSE strings — `log` frames, a terminal `done` frame, and a
+    ``:keepalive`` comment whenever the stream is idle for *keepalive* seconds (so a reverse proxy
+    won't drop the connection during a quiet stretch) — or None if the job is unknown (BE-0015).
+    A generator so the caller can ``close()`` it to stop the underlying stream on a disconnect."""
+    job = state.jobs.get(job_id)
+    if job is None:
+        return None
+    return _job_sse_frames(state, job, job_id, keepalive)
+
+
+def _job_sse_frames(state: ServeState, job: Job, job_id: str, keepalive: float) -> Generator[str]:
+    for line in state.logbus.stream(job_id, timeout=keepalive):
+        yield ":keepalive\n\n" if line is None else format_sse("log", line)
+    yield format_sse("done", _terminal_payload(state, job, job_id))
 
 
 # --- POST (actions) ---

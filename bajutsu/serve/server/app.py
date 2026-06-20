@@ -14,15 +14,25 @@ arrives with a later slice; the rest of the API surface is here.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.handler import _SESSION_COOKIE, _index_html
 from bajutsu.serve.jobs import ServeState
+
+# How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
+# client disconnect). Short enough to stay under a reverse proxy's idle timeout (BE-0015).
+_SSE_KEEPALIVE = 15.0
+
+# Returned by `next(..., _STREAM_DONE)` at exhaustion instead of raising StopIteration (which can't
+# cross the threadpool/coroutine boundary cleanly).
+_STREAM_DONE: Any = object()
 
 # Endpoints reachable without a credential when a token is configured (mirrors the stdlib gate):
 # the index page so the login UI can load, and the login endpoint itself.
@@ -132,17 +142,27 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.job_view(state, job_id))
 
     @app.get("/api/jobs/{job_id}/events")
-    async def job_events(job_id: str) -> Response:
-        events = ops.job_log_events(state, job_id)
-        if events is None:
+    async def job_events(job_id: str, request: Request) -> Response:
+        frames = ops.job_sse(state, job_id, keepalive=_SSE_KEEPALIVE)
+        if frames is None:
             return _result(({"error": "no such job"}, 404))
 
-        # The shared event stream blocks (LogBus.stream); passing the sync generator to Starlette
-        # runs it in a threadpool, so the event loop isn't blocked (a thread per live subscriber,
-        # like the stdlib server). X-Accel-Buffering disables proxy buffering of the stream.
-        def body() -> Any:
-            for event, data in events:
-                yield ops.format_sse(event, data)
+        # The shared frame stream blocks (LogBus.stream), so pull each frame in a threadpool to keep
+        # the event loop free. The stream's keepalive timeout bounds each pull, so between frames we
+        # can check for a client disconnect and stop — freeing the worker thread within one
+        # keepalive interval instead of parking it until the job ends. X-Accel-Buffering off so a
+        # proxy doesn't buffer the stream.
+        async def body() -> AsyncIterator[str]:
+            # `next(it, _DONE)` returns the sentinel at exhaustion rather than raising StopIteration,
+            # which can't cross the threadpool/coroutine boundary cleanly.
+            while True:
+                if await request.is_disconnected():
+                    frames.close()
+                    return
+                frame = await run_in_threadpool(next, frames, _STREAM_DONE)
+                if frame is _STREAM_DONE:
+                    return
+                yield frame
 
         return StreamingResponse(
             body(),

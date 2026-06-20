@@ -26,8 +26,11 @@ class LogBus(Protocol):
         """Signal that no more lines will be published for *job_id* (the job finished), optionally
         recording its terminal status payload (a JSON view) for `final` to return."""
 
-    def stream(self, job_id: str) -> Iterator[str]:
-        """Yield the buffered backlog then any live lines, ending once the job is closed."""
+    def stream(self, job_id: str, *, timeout: float | None = None) -> Iterator[str | None]:
+        """Yield the buffered backlog then any live lines, ending once the job is closed. With
+        *timeout*, yield ``None`` as a heartbeat when no new line arrives within that many seconds
+        and the job isn't closed — so a caller can emit a keepalive and check for a disconnect;
+        without it, block until the next line or close (never yielding ``None``)."""
 
     def final(self, job_id: str) -> str | None:
         """The terminal status payload recorded at `close`, or None if the job hasn't finished (or
@@ -79,16 +82,20 @@ class InMemoryLogBus:
         with ch.cond:  # `close` writes ch.final under this lock — read it the same way
             return ch.final
 
-    def stream(self, job_id: str) -> Iterator[str]:
+    def stream(self, job_id: str, *, timeout: float | None = None) -> Iterator[str | None]:
         ch = self._chan(job_id)
         i = 0
         while True:
             with ch.cond:
-                while i >= len(ch.lines) and not ch.closed:
-                    ch.cond.wait()
+                if i >= len(ch.lines) and not ch.closed:
+                    ch.cond.wait(timeout)  # wakes on a new line, close, or (if set) the timeout
                 batch = ch.lines[i:]
                 i = len(ch.lines)
                 done = ch.closed
-            yield from batch  # yield outside the lock so a slow consumer can't block producers
-            if done and not batch:
+            if batch:
+                yield from batch  # yield outside the lock so a slow consumer can't block producers
+            elif done:
                 return
+            elif timeout is not None:
+                yield None  # waited `timeout` with no new line and not closed → heartbeat
+            # else (no timeout): a spurious wakeup with no lines — loop and block again
