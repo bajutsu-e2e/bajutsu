@@ -132,3 +132,55 @@ def test_stale_cookie_is_rejected(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+# --- CSRF (Origin check) + security headers (slice 4) --------------------------------------
+
+
+def _auth_post(port: int, path: str, *, origin: str | None) -> int:
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer s3cret"}
+    if origin is not None:
+        headers["Origin"] = origin
+    return _request(port, path, method="POST", headers=headers, body={"token": "s3cret"})[0]
+
+
+def test_cross_origin_post_is_blocked(tmp_path: Path) -> None:
+    server, port = _serve(_state(tmp_path, "s3cret"))
+    try:
+        # A mismatched Origin (a cross-site forgery) is rejected even with a valid credential.
+        assert _auth_post(port, "/api/login", origin="http://evil.example") == 403
+        # Same-origin (Origin matches Host) is allowed; no Origin (API client) is allowed.
+        assert _auth_post(port, "/api/login", origin=f"http://127.0.0.1:{port}") == 200
+        assert _auth_post(port, "/api/login", origin=None) == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_origin_unchecked_on_open_server(tmp_path: Path) -> None:
+    # No token configured -> loopback-only open server; the Origin check does not apply.
+    server, port = _serve(_state(tmp_path, None))
+    try:
+        status, _, _ = _request(
+            port,
+            "/api/login",
+            method="POST",
+            headers={"Content-Type": "application/json", "Origin": "http://evil.example"},
+            body={"token": "x"},
+        )
+        assert status != 403  # login returns 401 (no token configured), not a CSRF block
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_security_headers_on_every_response(tmp_path: Path) -> None:
+    server, port = _serve(_state(tmp_path, None))
+    try:
+        _, headers, _ = _request(port, "/api/runs")
+        assert headers.get("X-Content-Type-Options") == "nosniff"
+        assert headers.get("X-Frame-Options") == "DENY"
+        assert headers.get("Referrer-Policy") == "no-referrer"
+    finally:
+        server.shutdown()
+        server.server_close()

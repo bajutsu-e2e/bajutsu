@@ -45,6 +45,14 @@ _SESSION_COOKIE = "bajutsu_session"
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
+        def end_headers(self) -> None:
+            # Standard hardening headers on every response (BE-0051): block MIME sniffing and
+            # framing (clickjacking), and don't leak the URL via Referer.
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            super().end_headers()
+
         def _json(self, payload: Any, code: int = 200) -> None:
             body = json.dumps(payload).encode("utf-8")
             self.send_response(code)
@@ -143,11 +151,26 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case _:
                     self._json({"error": "not found"}, 404)
 
+        def _csrf_ok(self) -> bool:
+            """CSRF defense (BE-0051), defense-in-depth atop the SameSite session cookie: if an
+            `Origin` header is present it must match the `Host`. Non-browser clients (no Origin,
+            no ambient cookie) are allowed; a cross-origin browser request is blocked."""
+            origin = self.headers.get("Origin")
+            if not origin:
+                return True
+            return urlparse(origin).netloc == (self.headers.get("Host") or "")
+
         def do_POST(self) -> None:
             if not self._gate():
                 return
             path = urlparse(self.path).path
             length = int(self.headers.get("Content-Length") or 0)
+            # Block cross-origin state-changing requests when auth (the cookie) is in play.
+            if state.token is not None and not self._csrf_ok():
+                if length:
+                    self.rfile.read(length)  # drain so keep-alive isn't left with unread bytes
+                self._json({"error": "cross-origin request blocked"}, 403)
+                return
             try:
                 body = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
