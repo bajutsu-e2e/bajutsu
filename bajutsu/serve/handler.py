@@ -1,47 +1,25 @@
-"""HTTP request handler for ``bajutsu serve``."""
+"""HTTP request handler for ``bajutsu serve`` (the local stdlib backend).
+
+A thin transport over `bajutsu.serve.operations`: this module owns only the stdlib-specific parts
+— auth / CSRF / cookies / security headers, JSON encoding, SSE streaming, and serving the SPA and
+run artifacts. The request-handling logic itself lives in `operations`, shared with the hosted
+FastAPI control plane so the two backends stay in lockstep (BE-0015).
+"""
 
 from __future__ import annotations
 
 import functools
 import json
-import os
-from datetime import UTC, datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-import yaml
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.anthropic_client import (
-    BEDROCK_MODEL_ENV,
-    PROVIDER_ENV,
-    PROVIDERS,
-    provider,
-)
-from bajutsu.config import load_config
-from bajutsu.scenario import load_scenario_file
-from bajutsu.serve.helpers import (
-    _int,
-    app_build_info,
-    crawl_command,
-    list_apps,
-    list_fs,
-    list_simulators,
-    mask_secret,
-    record_command,
-    run_command,
-    valid_backend,
-    valid_run_id,
-    valid_scenario_ref,
-    valid_udid,
-)
-from bajutsu.serve.jobs import ServeState, cancel_job
-
-# The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
-_API_KEY_VAR = "ANTHROPIC_API_KEY"
+from bajutsu.serve import operations as ops
+from bajutsu.serve.jobs import ServeState
 
 # Session cookie set at login when a serve token is configured (BE-0051).
 _SESSION_COOKIE = "bajutsu_session"
@@ -57,10 +35,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.send_header("Referrer-Policy", "no-referrer")
             super().end_headers()
 
-        def _json(self, payload: Any, code: int = 200) -> None:
+        def _json(self, payload: Any, code: int = 200, cookie: str | None = None) -> None:
             body = json.dumps(payload).encode("utf-8")
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
+            if cookie is not None:
+                self.send_header("Set-Cookie", cookie)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -121,6 +101,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self._json({"error": "unauthorized"}, 401)
             return False
 
+        def _qs(self, key: str) -> str | None:
+            return next(iter(parse_qs(urlparse(self.path).query).get(key) or []), None)
+
         def do_GET(self) -> None:
             if not self._gate():
                 return
@@ -134,47 +117,27 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.end_headers()
                     self.wfile.write(body)
                 case "/api/scenarios":
-                    qs = parse_qs(urlparse(self.path).query)
-                    scope = state.scenarios.scope(next(iter(qs.get("app") or []), None))
-                    self._json(scope.list() if scope else [])
+                    self._json(*ops.list_scenarios(state, self._qs("app")))
                 case "/api/apps":
-                    self._json(list_apps(state.config) if state.config else [])
+                    self._json(*ops.list_apps_payload(state))
                 case "/api/config":
-                    self._json(
-                        {
-                            "config": str(state.config) if state.config else None,
-                            "hasConfig": state.config is not None,
-                            "root": str(state.root.resolve()),
-                        }
-                    )
+                    self._json(*ops.config_info(state))
                 case "/api/fs":
-                    qs = parse_qs(urlparse(self.path).query)
-                    try:
-                        self._json(list_fs(state.root, next(iter(qs.get("dir") or []), None)))
-                    except (ValueError, OSError) as e:
-                        self._json({"error": str(e)}, 400)
+                    self._json(*ops.browse_fs(state, self._qs("dir")))
                 case "/api/apikey":
-                    qs = parse_qs(urlparse(self.path).query)
-                    self._get_api_key(reveal=bool(next(iter(qs.get("reveal") or []), "")))
+                    self._json(*ops.api_key_info(state, bool(self._qs("reveal"))))
                 case "/api/provider":
-                    self._get_provider()
+                    self._json(*ops.provider_info(state))
                 case "/api/simulators":
-                    self._json(list_simulators(state.simctl))
+                    self._json(*ops.simulators_payload(state))
                 case "/api/runs":
-                    self._json(state.artifacts.list_runs())
+                    self._json(*ops.runs_payload(state))
                 case "/api/scenario":
-                    qs = parse_qs(urlparse(self.path).query)
-                    scope = state.scenarios.scope(next(iter(qs.get("app") or []), None))
-                    text = scope.read(next(iter(qs.get("path") or []), None)) if scope else None
-                    if text is None:
-                        self._json({"error": "not found"}, 404)
-                    else:
-                        self._json({"yaml": text})
+                    self._json(*ops.read_scenario(state, self._qs("app"), self._qs("path")))
                 case _ if path.startswith("/api/jobs/") and path.endswith("/events"):
                     self._sse_job(path[len("/api/jobs/") : -len("/events")])
                 case _ if path.startswith("/api/jobs/"):
-                    job = state.jobs.get(path[len("/api/jobs/") :])
-                    self._json(job.view() if job else {"error": "no such job"}, 200 if job else 404)
+                    self._json(*ops.job_view(state, path[len("/api/jobs/") :]))
                 case _ if path.startswith("/runs/"):
                     self._serve_run_file(unquote(path[len("/runs/") :]))
                 case _:
@@ -206,373 +169,45 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 self._json({"error": "bad json"}, 400)
                 return
             if not isinstance(body, dict):
-                # Handlers below treat the body as a mapping; reject a non-object JSON (a list,
-                # string, number) here rather than 500 on a `.get(...)`.
+                # Handlers treat the body as a mapping; reject a non-object JSON (a list, string,
+                # number) here rather than 500 on a `.get(...)`.
                 self._json({"error": "expected a JSON object"}, 400)
                 return
             match path:
                 case "/api/login":
                     self._post_login(body)
                 case "/api/config":
-                    self._post_config(body)
+                    self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
                 case "/api/apikey":
-                    self._post_api_key(body)
+                    self._json(*ops.set_api_key(state, str(body.get("value", "") or "")))
                 case "/api/provider":
-                    self._post_provider(body)
+                    self._json(*ops.set_provider(state, body))
                 case "/api/run":
-                    self._post_run(body)
+                    self._json(*ops.start_run(state, body))
                 case "/api/record":
-                    self._post_record(body)
+                    self._json(*ops.start_record(state, body))
                 case "/api/crawl":
-                    self._post_crawl(body)
+                    self._json(*ops.start_crawl(state, body))
                 case "/api/scenario":
-                    self._post_scenario(body)
+                    self._json(*ops.save_scenario(state, body))
                 case "/api/approve":
-                    self._post_approve(body)
+                    self._json(*ops.approve_baseline(state, body))
                 case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
-                    job = state.jobs.get(path[len("/api/jobs/") : -len("/cancel")])
-                    if job is None:
-                        self._json({"error": "no such job"}, 404)
-                    else:
-                        self._json({"cancelled": cancel_job(job)})
+                    self._json(*ops.cancel_job(state, path[len("/api/jobs/") : -len("/cancel")]))
                 case _:
                     self._json({"error": "not found"}, 404)
 
-        # Concrete picked devices are booted (and waited on) before a run/record; the "booted"
-        # alias names whatever is already up, so it is not a boot target.
-        @staticmethod
-        def _boot_targets(udid: str) -> list[str]:
-            return [u.strip() for u in udid.split(",") if u.strip() and u.strip() != "booted"]
-
         def _post_login(self, body: dict[str, Any]) -> None:
             """Exchange the shared token for a session cookie (BE-0051). The token is sent in the
-            POST body (never a URL), and the response sets an HttpOnly, SameSite cookie holding an
-            opaque session id — so the token itself is never stored in the browser."""
-            if not state.check_token(str(body.get("token", "") or "")):
-                self._json({"error": "invalid token"}, 401)
-                return
-            sid = state.issue_session()
-            payload = json.dumps({"ok": True}).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header(
-                "Set-Cookie", f"{_SESSION_COOKIE}={sid}; HttpOnly; SameSite=Strict; Path=/"
+            POST body (never a URL); on success the response sets an HttpOnly, SameSite cookie
+            holding an opaque session id — so the token itself is never stored in the browser."""
+            payload, status, sid = ops.login(state, str(body.get("token", "") or ""))
+            cookie = (
+                f"{_SESSION_COOKIE}={sid}; HttpOnly; SameSite=Strict; Path=/"
+                if sid is not None
+                else None
             )
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-
-        def _post_config(self, body: dict[str, Any]) -> None:
-            """Bind a config.yml chosen in the UI's file browser.  The body carries a path the
-            browser surfaced (confined to ``--root``); we validate it loads, then re-point
-            ``state.config`` so apps/scenarios come from it."""
-            raw = str(body.get("path", "") or "")
-            if not raw:
-                self._json({"error": "path is required"}, 400)
-                return
-            target = (state.root / raw).resolve() if not Path(raw).is_absolute() else Path(raw)
-            base = state.root.resolve()
-            if target != base and base not in target.parents:
-                self._json({"error": "path is outside the browse root"}, 400)
-                return
-            if not target.is_file():
-                self._json({"error": "config not found"}, 404)
-                return
-            try:
-                load_config(target.read_text(encoding="utf-8"))
-            except (OSError, ValueError, yaml.YAMLError) as e:
-                self._json({"error": f"invalid config: {e}"}, 400)
-                return
-            state.config = target
-            self._json({"ok": True, "config": str(target), "apps": list_apps(target)})
-
-        def _get_api_key(self, reveal: bool) -> None:
-            """Report whether a key is set in the serve process's environment, with a redacted
-            preview.  ``?reveal=1`` adds the full value — only on explicit request, and this
-            server binds to localhost."""
-            key = os.environ.get(_API_KEY_VAR) or None
-            payload: dict[str, Any] = {"set": key is not None}
-            if key is not None:
-                payload["masked"] = mask_secret(key)
-                if reveal:
-                    payload["value"] = key
-            self._json(payload)
-
-        def _post_api_key(self, body: dict[str, Any]) -> None:
-            """Set the Claude API key in the serve process's environment for this session (an
-            empty value clears it).  It is held in memory only — never written to disk — and
-            spawned record/run jobs inherit it via the process environment.  It is not persisted,
-            so it must be re-entered after a restart (or set a real ``ANTHROPIC_API_KEY`` /
-            ``.env`` for the serve process to pick up at startup)."""
-            value = str(body.get("value", "") or "").strip()
-            if value and any(c.isspace() for c in value):
-                self._json({"error": "the API key must not contain whitespace"}, 400)
-                return
-            if value:
-                os.environ[_API_KEY_VAR] = value
-                self._json({"ok": True, "set": True, "masked": mask_secret(value)})
-            else:
-                os.environ.pop(_API_KEY_VAR, None)
-                self._json({"ok": True, "set": False})
-
-        def _get_provider(self) -> None:
-            """Report the AI provider spawned jobs will use, with the Bedrock region/model.  Read
-            from the serve process's environment (where ``_post_provider`` writes them), so it
-            reflects what a record/crawl job inherits."""
-            self._json(
-                {
-                    "provider": provider(),
-                    "region": os.environ.get("AWS_REGION", ""),
-                    "model": os.environ.get(BEDROCK_MODEL_ENV, ""),
-                }
-            )
-
-        def _post_provider(self, body: dict[str, Any]) -> None:
-            """Select the AI provider for spawned record/crawl jobs: the Anthropic API or Amazon
-            Bedrock.  Written into the serve process's environment for this session only — never to
-            disk — and inherited by jobs, mirroring the API-key handler.  Bedrock authenticates with
-            the standard AWS credential chain (env / profile / role), so only the provider, region,
-            and model id are set here; AWS credentials come from the serve environment."""
-            prov = str(body.get("provider", "") or "").strip().lower()
-            if prov not in PROVIDERS:
-                self._json({"error": f"unknown provider: {prov or '(empty)'}"}, 400)
-                return
-            if prov == "anthropic":
-                os.environ[PROVIDER_ENV] = "anthropic"
-                self._json({"ok": True, "provider": "anthropic"})
-                return
-            # Bedrock needs a provider-prefixed model id (the bare Anthropic id is invalid there);
-            # region is optional and falls back to AWS_REGION already in the environment.
-            model = str(body.get("model", "") or "").strip()
-            region = str(body.get("region", "") or "").strip()
-            if not model:
-                self._json({"error": "a Bedrock model id is required"}, 400)
-                return
-            if any(c.isspace() for c in model) or any(c.isspace() for c in region):
-                self._json({"error": "region and model must not contain whitespace"}, 400)
-                return
-            os.environ[PROVIDER_ENV] = "bedrock"
-            os.environ[BEDROCK_MODEL_ENV] = model
-            if region:
-                os.environ["AWS_REGION"] = region
-            self._json({"ok": True, "provider": "bedrock", "region": region, "model": model})
-
-        def _post_run(self, body: dict[str, Any]) -> None:
-            cfg = state.config
-            if cfg is None:
-                self._json({"error": "open a config first"}, 400)
-                return
-            if not body.get("scenario") or not body.get("app"):
-                self._json({"error": "scenario and app are required"}, 400)
-                return
-            app = str(body["app"])
-            # Confine the scenario to the app's own scenarios dir: a serve client must not be able
-            # to run an arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite).
-            scope = state.scenarios.scope(app)
-            if scope is None:
-                self._json({"error": f"app '{app}' has no scenarios dir"}, 400)
-                return
-            # The store matches the client value against the dir's actual files by basename and
-            # returns the trusted path from that listing — never the client string — so no
-            # client-controlled value reaches a filesystem path (BE-0051 arbitrary-path guard).
-            target = scope.resolve_runnable(str(body["scenario"]))
-            if target is None:
-                self._json(
-                    {"error": "scenario must be an existing .yaml inside the app's scenarios dir"},
-                    400,
-                )
-                return
-            backend = str(body.get("backend", "") or "")
-            if backend and not valid_backend(backend):
-                self._json({"error": f"unknown backend: {backend}"}, 400)
-                return
-            udid = str(body.get("udid", "") or "")
-            if udid and not valid_udid(udid):
-                self._json({"error": "invalid udid"}, 400)
-                return
-            cmd = run_command(
-                str(target),
-                app,
-                backend=backend,
-                udid=udid,
-                workers=_int(body.get("workers"), 1),
-                erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
-                dismiss_alerts=body["dismissAlerts"]
-                if isinstance(body.get("dismissAlerts"), bool)
-                else None,
-                config=str(cfg),
-                baselines=str(state.baselines_dir),
-            )
-            app_path, build = app_build_info(cfg, app)
-            # Atomic count + create so concurrent dispatches can't both slip past the cap.
-            job = state.try_new_job(
-                cmd, udids=self._boot_targets(udid), app_path=app_path, build=build
-            )
-            if job is None:
-                self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
-                return
-            state.executor.dispatch(state, job)
-            self._json({"jobId": job.id})
-
-        def _post_record(self, body: dict[str, Any]) -> None:
-            """Author a scenario from a natural-language goal (the Record tab).  The authored
-            file lands in the selected app's configured scenarios dir."""
-            cfg = state.config
-            if cfg is None:
-                self._json({"error": "open a config first"}, 400)
-                return
-            if not body.get("goal") or not body.get("app"):
-                self._json({"error": "goal and app are required"}, 400)
-                return
-            scope = state.scenarios.scope(str(body["app"]))
-            if scope is None:
-                self._json({"error": f"app '{body['app']}' has no scenarios dir"}, 400)
-                return
-            out = scope.out_path(str(body.get("name") or "generated"))
-            # Validate the device args the same way /api/run does (BE-0051): no free-text backend
-            # or udid reaches the spawned `bajutsu record` argv. The output path is already
-            # confined by the scenario store's out_path above.
-            backend = str(body.get("backend", "") or "")
-            if backend and not valid_backend(backend):
-                self._json({"error": f"unknown backend: {backend}"}, 400)
-                return
-            udid = str(body.get("udid", "") or "")
-            if udid and not valid_udid(udid):
-                self._json({"error": "invalid udid"}, 400)
-                return
-            cmd = record_command(
-                str(out),
-                body["app"],
-                str(body["goal"]),
-                agent=body.get("agent", ""),
-                backend=backend,
-                udid=udid,
-                erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
-                dismiss_alerts=body["dismissAlerts"]
-                if isinstance(body.get("dismissAlerts"), bool)
-                else None,
-                config=str(cfg),
-            )
-            app_path, build = app_build_info(cfg, body["app"])
-            job = state.try_new_job(
-                cmd,
-                udids=self._boot_targets(udid),
-                app_path=app_path,
-                build=build,
-                out_path=str(out),
-            )
-            if job is None:
-                self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
-                return
-            state.executor.dispatch(state, job)
-            self._json({"jobId": job.id, "path": str(out)})
-
-        def _post_crawl(self, body: dict[str, Any]) -> None:
-            """Explore an app breadth-first and build a screen map (the Crawl tab).  The screen
-            map is streamed into ``runs/<runId>/screenmap.json`` as the crawl advances; the
-            returned ``runId`` lets the UI poll it and draw the graph live."""
-            cfg = state.config
-            if cfg is None:
-                self._json({"error": "open a config first"}, 400)
-                return
-            if not body.get("app"):
-                self._json({"error": "app is required"}, 400)
-                return
-            # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
-            resume_src = str(body.get("resumeSrc", "") or "")
-            resume_key = str(body.get("resumeKey", "") or "")
-            resuming = bool(resume_src and resume_key and body.get("runId"))
-            run_id = (
-                str(body["runId"]) if resuming else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-            )
-            # A resumed crawl takes runId from the client; reject anything but a safe path segment
-            # so `runs_dir / run_id` (the crawl's --out) can't escape runs_dir (BE-0051).
-            if resuming and not valid_run_id(run_id):
-                self._json({"error": "invalid runId"}, 400)
-                return
-            # Validate the device args like /api/run and /api/record (BE-0051): no free-text
-            # backend or udid reaches the spawned `bajutsu crawl` argv.
-            backend = str(body.get("backend", "") or "")
-            if backend and not valid_backend(backend):
-                self._json({"error": f"unknown backend: {backend}"}, 400)
-                return
-            udid = str(body.get("udid", "") or "")
-            if udid and not valid_udid(udid):
-                self._json({"error": "invalid udid"}, 400)
-                return
-            cmd = crawl_command(
-                str(body["app"]),
-                out=str(state.runs_dir / run_id),
-                agent=body.get("agent", ""),
-                backend=backend,
-                udid=udid,
-                max_screens=_int(body.get("maxScreens"), 50),
-                max_steps=_int(body.get("maxSteps"), 200),
-                erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
-                dismiss_alerts=body["dismissAlerts"]
-                if isinstance(body.get("dismissAlerts"), bool)
-                else None,
-                config=str(cfg),
-                resume_src=resume_src if resuming else "",
-                resume_key=resume_key if resuming else "",
-            )
-            app_path, build = app_build_info(cfg, str(body["app"]))
-            # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
-            job = state.try_new_job(
-                cmd, udids=self._boot_targets(udid), app_path=app_path, build=build
-            )
-            if job is None:
-                self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
-                return
-            state.executor.dispatch(state, job)
-            self._json({"jobId": job.id, "runId": run_id})
-
-        def _post_scenario(self, body: dict[str, Any]) -> None:
-            """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""
-            # Resolve the scope and screen the ref before parsing: a non-saveable path is reported
-            # ahead of a YAML error (the local store passes an absolute path inside its dir).
-            scope = state.scenarios.scope(str(body.get("app") or "") or None)
-            ref = body.get("path")
-            ref = ref if isinstance(ref, str) else None
-            if scope is None or not valid_scenario_ref(ref, allow_absolute=True):
-                self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
-                return
-            text = str(body.get("yaml", ""))
-            try:
-                load_scenario_file(text)
-            except (ValueError, OSError, yaml.YAMLError) as e:
-                self._json({"error": f"invalid scenario: {e}"}, 400)
-                return
-            saved = scope.save(ref, text)
-            if saved is None:
-                self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
-                return
-            self._json({"ok": True, "path": saved})
-
-        def _post_approve(self, body: dict[str, Any]) -> None:
-            """Promote a run's captured screenshot to a `visual` baseline.
-
-            Copies ``runs/<runId>/<sid>/visual-actual.png`` → ``baselines/<baseline>``. Both
-            ends are resolved and confined to their roots so a crafted runId / sid / baseline
-            can't read or write outside the runs / baselines directories."""
-            run_id = str(body.get("runId") or "")
-            sid = str(body.get("sid") or "")
-            baseline = str(body.get("baseline") or "")
-            if not run_id or not sid or not baseline:
-                self._json({"error": "runId, sid and baseline are required"}, 400)
-                return
-            data = state.artifacts.open_bytes(f"{run_id}/{sid}/visual-actual.png")
-            base_root = state.baselines_dir.resolve()
-            dest = (state.baselines_dir / baseline).resolve()
-            if data is None:
-                self._json({"error": "no captured screenshot for this run"}, 404)
-                return
-            if base_root != dest.parent and base_root not in dest.parents:
-                self._json({"error": "baseline path escapes the baselines dir"}, 400)
-                return
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(data)
-            self._json({"ok": True, "baseline": baseline})
+            self._json(payload, status, cookie=cookie)
 
         def _serve_run_file(self, rel: str) -> None:
             art = state.artifacts.get(rel)
