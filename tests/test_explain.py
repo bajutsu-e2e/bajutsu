@@ -107,6 +107,12 @@ def test_cli_trace_explain_reports_firing(tmp_path: Path) -> None:
     assert r.exit_code == 0
     assert "fires 2×" in r.output
     assert "⚠" in r.output
+    # Ensure the counted rule is the expected action trigger.
+    assert "tap" in r.output
+    assert "*.submit" in r.output
+    # Ensure the other expected conditional rules are also reported.
+    assert "screenChanged" in r.output
+    assert "error" in r.output
 
 
 def test_cli_trace_explain_missing_file() -> None:
