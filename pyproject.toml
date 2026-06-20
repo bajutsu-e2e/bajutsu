@@ -27,6 +27,10 @@ worker = ["redis>=5", "rq>=1.16"]
 # same SPA + API over the swap-in seams. Imported only when the server backend is selected, never
 # on the default path (the import guard in tests/serve/test_import_guard.py locks this).
 server = ["fastapi>=0.110", "uvicorn>=0.27", "boto3>=1.34"]
+# The hosted-backend system of record (`serve --backend=server` with BAJUTSU_DATABASE_URL): the
+# SQLAlchemy `Repository` seam + Alembic migrations + the Postgres driver (BE-0015 7a). Imported
+# only when a database is wired, never on the default path (the import guard locks this).
+db = ["sqlalchemy>=2.0", "alembic>=1.13", "psycopg[binary]>=3.1"]
 
 [dependency-groups]
 dev = [
@@ -43,6 +47,9 @@ dev = [
     # queue/log-bus seams (clients construct offline; no connection on the gate).
     "redis>=5",
     "rq>=1.16",
+    # The db extra (SQLAlchemy) so the gate can test the `Repository` seam against in-memory SQLite
+    # (BE-0015 7a). Alembic/psycopg stay in the extra only — not needed to exercise the seam.
+    "sqlalchemy>=2.0",
     "fastmcp>=2.0.0",
     "mypy>=1.10",
     "pillow>=10.0",

@@ -14,7 +14,10 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from bajutsu.serve.server.db import Repository
 
 from bajutsu import env
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
@@ -104,6 +107,10 @@ class ServeState:
     # Visual-regression baselines. Filesystem-confined by default; a server backend swaps in an
     # object-storage store (set after construction) (BE-0015).
     baselines: BaselineStore = field(init=False)
+    # The system of record (BE-0015 7a). None until a database is wired: local never has one, and a
+    # server backend assigns a SqlRepository only when BAJUTSU_DATABASE_URL is set, so behavior is
+    # unchanged without one. Annotated as a string (lazy) so the default path never loads SQLAlchemy.
+    repository: Repository | None = None
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device

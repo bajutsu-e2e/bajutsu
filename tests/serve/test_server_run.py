@@ -101,6 +101,59 @@ def test_build_state_server_wires_the_hosted_seams(
     assert scope is not None  # demo is an app in the bound config
 
 
+def test_build_state_local_has_no_repository(tmp_path: Path) -> None:
+    # The system of record is server-only; local never has one, so its behavior is unchanged.
+    assert _state(tmp_path).repository is None
+
+
+def test_build_state_server_has_no_repository_without_a_database_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The database is optional on the server backend: with BAJUTSU_DATABASE_URL unset the repository
+    # stays None, so the existing server backing keeps working until a database is configured.
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.repository is None
+
+
+def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With BAJUTSU_DATABASE_URL set, the server backend assembles a SqlRepository (SQLite here, so
+    # it builds on the gate without a live Postgres).
+    from bajutsu.serve.server.db import SqlRepository
+
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert isinstance(state.repository, SqlRepository)
+
+
 def test_build_state_server_requires_a_bucket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
