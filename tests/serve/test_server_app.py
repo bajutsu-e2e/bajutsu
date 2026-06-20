@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from bajutsu import serve as srv
 from bajutsu.anthropic_client import BEDROCK_MODEL_ENV, PROVIDER_ENV
+from bajutsu.serve import operations as ops
 from bajutsu.serve.server.app import make_app
 
 
@@ -100,6 +101,38 @@ def test_more_delegations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     assert client.post("/api/provider", json={"provider": "anthropic"}).json()["ok"] is True
     set_key = client.post("/api/apikey", json={"value": "k key"})  # whitespace rejected
     assert set_key.status_code == 400
+
+
+def test_job_events_streams_log_then_done(tmp_path: Path) -> None:
+    # The buffered LogBus means a subscriber that attaches after the job finished still replays
+    # every line and the terminal event, so reading to EOF is deterministic on the gate.
+    state = _state(tmp_path)
+    state.jobs["j1"] = srv.Job(id="j1", cmd=[])
+    state.logbus.publish("j1", "step 0 ok\n")
+    state.logbus.publish("j1", "PASS  runs/20260610-1/manifest.json\n")
+    state.logbus.close("j1")
+    resp = _client(state).get("/api/jobs/j1/events")
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+    text = resp.text
+    assert "event: log" in text and "data: step 0 ok" in text
+    assert "event: done" in text and '"id": "j1"' in text
+
+
+def test_job_events_unknown_is_404(tmp_path: Path) -> None:
+    assert _client(_state(tmp_path)).get("/api/jobs/nope/events").status_code == 404
+
+
+def test_format_sse_splits_lines_and_blocks_injection() -> None:
+    # A LogBus line carries a trailing newline; it must become exactly one data: line ended by a
+    # single blank line (no stray blank line that would split the event).
+    assert ops.format_sse("log", "step 0 ok\n") == "event: log\ndata: step 0 ok\n\n"
+    # An embedded newline must be split across data: lines — never emitted raw, which a client would
+    # parse as a separate (injected) SSE field.
+    frame = ops.format_sse("log", "foo\nevent: hijack\ndata: x")
+    assert frame == "event: log\ndata: foo\ndata: event: hijack\ndata: data: x\n\n"
+    # Empty data still yields one (empty) data: line.
+    assert ops.format_sse("done", "") == "event: done\ndata: \n\n"
 
 
 def test_csrf_blocks_cross_origin_post(tmp_path: Path) -> None:
