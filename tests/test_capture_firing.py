@@ -302,18 +302,22 @@ def test_requested_interval_recorded_even_when_a_step_fails() -> None:
 def test_screen_changed_shares_query_with_evidence(tmp_path: Path) -> None:
     """With screenChanged capturePolicy, the post-step query() is shared between
     screen_changed detection and evidence capture (elements.json), not called twice."""
-    queries_after_tap: list[int] = [0]
-    tapped = [False]
+    class _State:
+        def __init__(self) -> None:
+            self.queries_after_tap = 0
+            self.tapped = False
+
+    state = _State()
 
     class CountingDriver(FakeDriver):
         def query(self) -> list[base.Element]:
-            if tapped[0]:
-                queries_after_tap[0] += 1
+            if state.tapped:
+                state.queries_after_tap += 1
             return super().query()
 
         def tap(self, sel: base.Selector) -> None:
             super().tap(sel)
-            tapped[0] = True
+            state.tapped = True
 
     next_screen = [_el("done", "Done")]
 
@@ -338,8 +342,8 @@ def test_screen_changed_shares_query_with_evidence(tmp_path: Path) -> None:
     )
     assert result.ok
     # After tap: 1 shared query for screen_changed + evidence (not 2 separate ones)
-    assert queries_after_tap[0] == 1, (
-        f"expected 1 post-step query (shared), got {queries_after_tap[0]}"
+    assert state.queries_after_tap == 1, (
+        f"expected 1 post-step query (shared), got {state.queries_after_tap}"
     )
     # elements.json should still be written
     assert (tmp_path / "run1" / "x" / "step0" / "elements.json").exists()
