@@ -166,6 +166,10 @@ idb = [
 mcp = [
     { name = "fastmcp" },
 ]
+server = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
 visual = [
     { name = "pillow" },
 ]
@@ -177,7 +181,9 @@ worker = [
 [package.dev-dependencies]
 dev = [
     { name = "anthropic", extra = ["bedrock"] },
+    { name = "fastapi" },
     { name = "fastmcp" },
+    { name = "httpx" },
     { name = "mypy" },
     { name = "pillow" },
     { name = "pytest" },
@@ -192,6 +198,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.50" },
     { name = "anthropic", extras = ["bedrock"], marker = "extra == 'bedrock'", specifier = ">=0.50" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
     { name = "fb-idb", marker = "extra == 'idb'", specifier = ">=1.1.0" },
     { name = "jinja2", specifier = ">=3.1" },
@@ -201,13 +208,16 @@ requires-dist = [
     { name = "redis", marker = "extra == 'worker'", specifier = ">=5" },
     { name = "rq", marker = "extra == 'worker'", specifier = ">=1.16" },
     { name = "typer", specifier = ">=0.12" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.27" },
 ]
-provides-extras = ["idb", "visual", "mcp", "bedrock", "worker"]
+provides-extras = ["idb", "visual", "mcp", "bedrock", "worker", "server"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "anthropic", extras = ["bedrock"], specifier = ">=0.50" },
+    { name = "fastapi", specifier = ">=0.110" },
     { name = "fastmcp", specifier = ">=2.0.0" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "pytest", specifier = ">=8" },
@@ -558,6 +568,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bf/89/780e11f9588d9e7128a3f87788354c7946a9cbb1401ad38a48c4db9a4f07/execnet-2.1.2.tar.gz", hash = "sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd", size = 166622, upload-time = "2025-11-12T09:56:37.75Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ab/84/02fc1827e8cdded4aa65baef11296a9bbe595c474f0d6d758af082d849fd/execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec", size = 40708, upload-time = "2025-11-12T09:56:36.333Z" },
+]
+
+[[package]]
+name = "fastapi"
+version = "0.138.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5b/58/ff455d9fe47c60abadb34b9e05a304b1f05f5ab8000ac01565156b6f5e43/fastapi-0.138.0.tar.gz", hash = "sha256:d445a4877636ad191e7053e08c9bf98cb921a6756776848400bb773d1740c061", size = 419240, upload-time = "2026-06-20T01:18:05.259Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/ff/8496d9847a5fedae775eb49460722d3efaa80487854273e9647ae876218c/fastapi-0.138.0-py3-none-any.whl", hash = "sha256:b6f54fd1bd72c80b0f899f172c61a600f6f7af9b43d4d772a018f35624048cb0", size = 126779, upload-time = "2026-06-20T01:18:03.483Z" },
 ]
 
 [[package]]
