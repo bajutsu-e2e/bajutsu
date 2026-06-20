@@ -185,12 +185,15 @@ def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) 
             "scenarios/smoke.yaml": "- name: a\n  steps: []\n",
             "bajutsu.config.yaml": "apps: {demo: {bundleId: x}}\n",
             "../escape.yaml": "nope",  # must not be written outside the workspace
+            "": "root",  # resolves to the workspace root — must be ignored, not write_text a dir
+            "scenarios/..": "root2",  # also the workspace root via traversal — ignored
         },
     }
     execute_job_spec(spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus())
     assert (tmp_path / "scenarios/smoke.yaml").read_text() == "- name: a\n  steps: []\n"
     assert (tmp_path / "bajutsu.config.yaml").exists()
     assert not (tmp_path.parent / "escape.yaml").exists()  # confinement held
+    assert tmp_path.is_dir()  # the root-resolving materials didn't crash or clobber the workspace
 
 
 def test_start_run_on_the_server_backend_materializes_scenario_and_config(tmp_path: Path) -> None:

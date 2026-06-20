@@ -77,8 +77,10 @@ def _materialize(work: Path, materials: dict[str, str]) -> None:
     base = work.resolve()
     for rel, content in materials.items():
         dest = (work / rel).resolve()
-        if dest != base and base not in dest.parents:
-            continue  # never escape the workspace
+        # Must be a file strictly under the workspace: reject an escaping path and the workspace
+        # root itself (rel "" / "." / "scenarios/.."), which would write_text() a directory.
+        if base not in dest.parents:
+            continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content, encoding="utf-8")
 

@@ -97,6 +97,10 @@ def test_runnable_ships_the_scenario_as_materials() -> None:
     assert runnable.materials == {"scenarios/smoke.yaml": SCENARIO}
     assert scope.runnable("missing.yaml") is None  # not in storage
     assert scope.runnable("../escape.yaml") is None  # unsafe ref
+    # Only the basename is honoured, for both separators — a leading dir (incl. a Windows
+    # backslash) can't leak into the storage key.
+    assert scope.runnable("sub/smoke.yaml") == runnable
+    assert scope.runnable("sub\\smoke.yaml") == runnable
 
 
 def test_record_output_is_still_worker_side() -> None:

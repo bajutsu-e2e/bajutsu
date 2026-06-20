@@ -68,7 +68,9 @@ class StorageScenarioScope:
     def runnable(self, scenario: str) -> Runnable | None:
         # Resolve by name from storage (no path on the control plane); ship the text as a material
         # the worker writes under its workspace, and point `--scenario` at that relative path.
-        name = PurePosixPath(scenario).name  # honour only the basename
+        # Honour only the basename. Normalize backslashes first so "a\\b.yaml" reduces to "b.yaml"
+        # too (PurePosixPath alone wouldn't split a backslash, leaking the prefix into the key).
+        name = PurePosixPath(scenario.replace("\\", "/")).name
         if not valid_scenario_ref(name):
             return None
         text = self._storage.read(self._app, name)

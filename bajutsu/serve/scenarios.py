@@ -23,7 +23,7 @@ from bajutsu.serve.helpers import (
 )
 
 
-@dataclass(frozen=True)
+@dataclass
 class Runnable:
     """A scenario ready to run via ``bajutsu run --scenario <arg>``.
 
