@@ -51,15 +51,17 @@ Simulator.
    `/api/approve`, `/runs/...` serving) already confine their paths.
 2. **Token authentication + non-loopback guard** *(next)* — an optional shared token
    (`--token` / `BAJUTSU_SERVE_TOKEN`), compared in constant time. API clients present it as a
-   `Bearer` header; the browser establishes an **HttpOnly, SameSite cookie via a POST login
+   `Bearer` header; the browser establishes an **HttpOnly, SameSite=Strict cookie via a POST login
    endpoint** (the token is never put in a URL — query strings leak through history, logs, and
    `Referer`). **Binding a non-loopback host without a token is refused at startup**, so the server
    can never be exposed unauthenticated by accident.
 3. **Apply the same input validation to the other run-spawning endpoints** (`/api/record`, and any
    future `/api/crawl`): the `backend` / `udid` token checks, mirroring slice 1.
 4. **CSRF protection + standard security headers** — once cookie auth exists, protect state-changing
-   POSTs (a CSRF token or an enforced `Authorization` header / `SameSite` strict + origin check), and
-   add the standard headers. Deferred behind slice 2 because it only matters once a cookie is in play.
+   POSTs with an **Origin check** (a present `Origin` must match `Host`) layered on the
+   `SameSite=Strict` session cookie; API clients authenticate with the `Authorization` header and
+   carry no ambient cookie. Add the standard security headers. Deferred behind slice 2 because it
+   only matters once a cookie is in play.
 5. **Rate-limiting run dispatch per token/org** — cap concurrent/inflight runs so one caller can't
    monopolize the (scarce) device, a lightweight precursor to BE-0015's per-org quotas.
 
