@@ -76,6 +76,13 @@ The trigger `on` is **exactly one** of `action` / `event` / `result`:
 
 The detailed firing logic is in [run-loop](run-loop.md#evidence-rule-firing).
 
+> **Preview firing before a run (BE-0028).** A loose glob or a `screenChanged` rule can fire on
+> far more steps than intended, and attaching a heavy capture (`video` / `deviceLog` / `appTrace` /
+> `network`) to it quietly produces gigabytes. `bajutsu trace --explain <scenario.yaml>` is a
+> read-only dry run that counts
+> how many times each rule would fire (and on which steps), and flags ⚠ a heavy capture on a
+> broadly-matching rule — so you can tighten the match before paying for it. See [cli](cli.md#trace).
+
 ## B. Inline evidence
 
 To capture just one step, attach `capture:` directly to the step.
