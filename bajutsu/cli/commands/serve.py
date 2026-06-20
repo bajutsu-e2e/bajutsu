@@ -74,7 +74,7 @@ def serve(
     and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
     over uvicorn (the transport the hosted backend will use); `--backend` selects which seams to
     assemble (only `local` for now)."""
-    from bajutsu.serve import SERVE_BACKENDS, launchagent_plist
+    from bajutsu.serve import SERVE_BACKENDS, MissingServerExtra, launchagent_plist
     from bajutsu.serve import serve as _serve
 
     resolved_token = token or os.environ.get("BAJUTSU_SERVE_TOKEN") or ""
@@ -109,19 +109,26 @@ def serve(
         )
         return
 
-    _serve(
-        host=host,
-        port=port,
-        scenarios_dir=Path(scenarios) if scenarios else None,
-        config=Path(config) if config else None,
-        runs_dir=Path(runs),
-        root=Path(root) if root else Path.cwd(),
-        baselines_dir=Path(baselines) if baselines else None,
-        max_concurrent=max_concurrent_runs,
-        token=resolved_token or None,
-        asgi=asgi,
-        backend=backend,
-    )
+    try:
+        _serve(
+            host=host,
+            port=port,
+            scenarios_dir=Path(scenarios) if scenarios else None,
+            config=Path(config) if config else None,
+            runs_dir=Path(runs),
+            root=Path(root) if root else Path.cwd(),
+            baselines_dir=Path(baselines) if baselines else None,
+            max_concurrent=max_concurrent_runs,
+            token=resolved_token or None,
+            asgi=asgi,
+            backend=backend,
+        )
+    except MissingServerExtra as e:
+        # The server backend was selected without its optional extras: show the install hint and
+        # exit cleanly rather than dumping a traceback (mirrors worker). Only this specific error is
+        # caught — a plain ImportError (e.g. a real internal bug) keeps its traceback.
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def register(app: typer.Typer) -> None:

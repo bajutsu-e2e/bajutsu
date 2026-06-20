@@ -66,6 +66,7 @@ __all__ = [
     "LocalScenarioScope",
     "LocalScenarioStore",
     "LogBus",
+    "MissingServerExtra",
     "Popen",
     "RunExecutor",
     "ScenarioScope",
@@ -102,6 +103,13 @@ __all__ = [
 SERVE_BACKENDS: tuple[str, ...] = ("local", "server")
 
 
+class MissingServerExtra(ImportError):
+    """A server-backend optional extra (Redis/RQ, object storage, the database) is not installed.
+
+    Carries the install hint and lets the CLI exit cleanly. Distinct from a plain ImportError so a
+    genuine `bajutsu.*` import bug is never mistaken for a missing dependency and swallowed."""
+
+
 def _build_state(
     *,
     runs_dir: Path,
@@ -127,15 +135,28 @@ def _build_state(
         scenarios_dir / "baselines" if scenarios_dir else Path("baselines")
     )
     if backend == "server":
-        return _build_server_state(
-            runs_dir=runs_dir,
-            config=config,
-            scenarios_dir=scenarios_dir,
-            root=root or Path.cwd(),
-            baselines_dir=resolved_baselines,
-            max_concurrent=max_concurrent,
-            token=token,
-        )
+        # The server backend's seams (Redis/RQ, object storage, the database) live behind the
+        # optional extras and import lazily. If any is missing, surface one clear install hint
+        # rather than a raw ImportError naming whichever module happened to load first.
+        try:
+            return _build_server_state(
+                runs_dir=runs_dir,
+                config=config,
+                scenarios_dir=scenarios_dir,
+                root=root or Path.cwd(),
+                baselines_dir=resolved_baselines,
+                max_concurrent=max_concurrent,
+                token=token,
+            )
+        except ImportError as e:
+            # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is
+            # a real bug, not a missing dependency — re-raise it so its own traceback survives.
+            if e.name and e.name.split(".")[0] == "bajutsu":
+                raise
+            raise MissingServerExtra(
+                "the server backend needs its optional extras — "
+                "install with: pip install 'bajutsu[server,worker,db]'"
+            ) from e
     return ServeState(
         runs_dir=runs_dir,
         config=config,

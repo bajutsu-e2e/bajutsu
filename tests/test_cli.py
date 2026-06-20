@@ -413,6 +413,17 @@ def test_approve_no_run_found(tmp_path: Path) -> None:
     assert "no run found" in r.output
 
 
+def test_serve_server_backend_without_extras_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `serve --backend=server` needs the optional extras; with one missing (redis stood in here) it
+    # must print an install hint and exit 2 — never a raw ImportError traceback.
+    import sys
+
+    monkeypatch.setitem(sys.modules, "redis", None)
+    r = runner.invoke(app, ["serve", "--backend", "server"])
+    assert r.exit_code == 2
+    assert "extra" in r.output.lower()
+
+
 def test_worker_without_extra_exits_cleanly() -> None:
     # On the gate the `worker` extra (redis/rq) isn't installed, so `bajutsu worker` must fail with
     # a clear "install the extra" message and exit 2 — never a raw ImportError traceback.
