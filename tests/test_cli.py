@@ -165,12 +165,14 @@ def test_record_unknown_app(tmp_path: Path) -> None:
         ],
     )
     assert r.exit_code == 2
+    assert "unknown app" in r.output
 
 
 def test_doctor_unknown_app(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
     r = runner.invoke(app, ["doctor", "--app", "ghost", "--config", str(cfg)])
     assert r.exit_code == 2
+    assert "unknown app" in r.output
 
 
 def test_serve_refuses_non_loopback_without_token() -> None:
