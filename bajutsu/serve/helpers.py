@@ -22,6 +22,10 @@ from bajutsu.scenario import load_scenario_file
 _VALID_BACKENDS = frozenset(PLATFORMS) | frozenset(KNOWN_ACTUATORS)
 # A udid token: hex groups + hyphens, or the literal "booted". No spaces/metacharacters.
 _UDID_RE = re.compile(r"^[A-Za-z0-9-]+$")
+# A run id is a single safe path segment (timestamps like 20260610-153045): alphanumeric start,
+# then [A-Za-z0-9._-]. Blocks "..", path separators, and absolute paths, so a client-supplied run
+# id (a resumed crawl) can't redirect a run's --out dir outside runs_dir.
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def mask_secret(value: str) -> str:
@@ -376,6 +380,12 @@ def valid_udid(udid: str) -> bool:
     client can't pass surprising free text through to the run argv."""
     tokens = [t.strip() for t in udid.split(",") if t.strip()]
     return bool(tokens) and all(_UDID_RE.fullmatch(t) for t in tokens)
+
+
+def valid_run_id(run_id: str) -> bool:
+    """Whether `run_id` is a single safe path segment, so ``runs_dir / run_id`` can't escape
+    ``runs_dir`` — a resumed crawl takes the run id from the client."""
+    return bool(_RUN_ID_RE.fullmatch(run_id))
 
 
 def _scenario_path(scenarios_dir: Path, p: str | None) -> Path | None:

@@ -4,8 +4,9 @@
 
 * 提案: [BE-0051](BE-0051-serve-hardening-for-hosting-ja.md)
 * Author: [@hirosassa](https://github.com/hirosassa)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
+* 状態: **実装済み**
+* 実装 PR: [#92](https://github.com/bajutsu-e2e/bajutsu/pull/92)（スライス 1）、[#94](https://github.com/bajutsu-e2e/bajutsu/pull/94)（スライス 2）、[#95](https://github.com/bajutsu-e2e/bajutsu/pull/95)（スライス 3）、[#96](https://github.com/bajutsu-e2e/bajutsu/pull/96)（スライス 4）、[#97](https://github.com/bajutsu-e2e/bajutsu/pull/97)（スライス 5）、[#114](https://github.com/bajutsu-e2e/bajutsu/pull/114)（スライス 3・5 の `/api/crawl` 対応）
+* トラック: [可決済み](../../README-ja.md#可決済み)
 * トピック: Web UI のホスティング（クラウド / セルフホスト）
 
 ## はじめに
@@ -13,8 +14,8 @@
 stdlib の `bajutsu serve`（`bajutsu/serve/`）が今安全なのは、**localhost 限定・単一ユーザー**だからです。
 認証は無く、`/api/run` は（下記スライス 1（#92）が封じ込めるまで）クライアント指定の scenario パスを
 受け付けていました。ホスティングの 2 提案 ——
-公開/クラウドの [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) と
-セルフホストの [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) —— はいずれも、
+公開/クラウドの [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) と
+セルフホストの [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) —— はいずれも、
 `serve` を loopback の外へ到達させる前に**必須**となる一連のセキュリティ修正を挙げています。本項目は、それらを
 **既存の** stdlib サーバ上の単一のハードニングのトラックとしてまとめます。決定的コアは一切変えず、各スライスは
 Simulator 無しで Linux ゲートでテストできます。
@@ -33,8 +34,8 @@ macOS ワーカープール・OAuth・オブジェクトストレージ）を記
 - **クライアントが実行面を制御できる。** `/api/run` は `body["scenario"]` を、アプリの scenarios dir 内かの
   チェック無しに `bajutsu run` の argv へ渡し、`backend` / `udid` も自由入力でした —— 任意パス実行の面です。
 
-これらは机上の話ではなく、[BE-0015 §セキュリティハードニング](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)
-と [BE-0016 Tier A](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) がブロッカーとして名指しする
+これらは机上の話ではなく、[BE-0015 §セキュリティハードニング](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)
+と [BE-0016 Tier A](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) がブロッカーとして名指しする
 項目そのものです。現行サーバでこれらを塞ぐのは安価で、単独でも有用（BE-0016 Tier A の Tailscale/LaunchAgent
 単一 Mac 構成を今日から安全にする）であり、後のホスティングシステムの綺麗な土台になります。
 
@@ -47,19 +48,19 @@ HTTP ハーネスで Simulator 無しにテストできます。
    ファイル名と突き合わせ（実行に使うパスは dir 列挙由来で、クライアント文字列は使わない）、既知トークンでない
    `backend` / `udid` を拒否。任意パス実行の面を排除する。他のエンドポイント（`/api/config`・`/api/scenario`・
    `/api/approve`・`/runs/...` 配信）は既にパスを封じ込め済み。
-2. **トークン認証 + 非 loopback ガード**（次）—— 任意の共有トークン（`--token` / `BAJUTSU_SERVE_TOKEN`）を
+2. **トークン認証 + 非 loopback ガード**（#94 で実装）—— 任意の共有トークン（`--token` / `BAJUTSU_SERVE_TOKEN`）を
    定数時間比較。API クライアントは `Bearer` ヘッダで提示し、ブラウザは **POST のログインエンドポイント経由で
    HttpOnly・SameSite=Strict Cookie を確立**します（トークンは URL に載せない —— クエリ文字列は履歴・ログ・`Referer`
    から漏えいするため）。**非 loopback host をトークン無しで bind するのは起動時に拒否**するので、無認証で誤って
    公開されることがない。
-3. **同じ入力検証を他の run 起動エンドポイントにも適用**（`/api/record`、将来の `/api/crawl`）—— スライス 1 と
-   同様に `backend` / `udid` のトークン検証。
-4. **CSRF 対策 + 標準セキュリティヘッダ** —— Cookie 認証が入ったら、状態変更 POST を **Origin チェック**
+3. **同じ入力検証を他の run 起動エンドポイントにも適用**（#95 で実装、`/api/crawl` は #114）—— `/api/record`
+   と `/api/crawl` に、スライス 1 と同様の `backend` / `udid` のトークン検証。
+4. **CSRF 対策 + 標準セキュリティヘッダ**（#96 で実装）—— Cookie 認証が入ったら、状態変更 POST を **Origin チェック**
    （`Origin` があれば `Host` と一致すること）で保護し、`SameSite=Strict` セッション Cookie に重ねる。API
    クライアントは `Authorization` ヘッダで認証し、Cookie を持たない。標準セキュリティヘッダを付与。Cookie が
    関わって初めて意味を持つので、スライス 2 の後に回す。
-5. **トークン/org 単位の run dispatch レート制限** —— 1 呼び出し元が（希少な）デバイスを独占できないよう同時/
-   実行中 run を上限化。BE-0015 の per-org クォータの軽量な前段。
+5. **トークン/org 単位の run dispatch レート制限**（#97 で実装、`/api/crawl` は #114）—— 1 呼び出し元が
+   （希少な）デバイスを独占できないよう同時/実行中 run を上限化。BE-0015 の per-org クォータの軽量な前段。
 
 スライス 1–2 が、単一 Mac・tailnet 到達（BE-0016 Tier A）を安全にする最小集合です。3–5 は面を仕上げます。
 マルチテナント（per-org キー・RBAC・オブジェクトストレージ・ワーカープール）は BE-0015/BE-0016 に残し、本項目は
@@ -79,6 +80,6 @@ HTTP ハーネスで Simulator 無しにテストできます。
 
 ## 参考
 
-[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)（公開/クラウドホスティング）、
-[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)（セルフホスティング）、
+[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)（公開/クラウドホスティング）、
+[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)（セルフホスティング）、
 `bajutsu/serve/`、[cli.md](../../../docs/cli.md#serve)

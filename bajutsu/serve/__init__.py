@@ -40,6 +40,7 @@ from bajutsu.serve.helpers import (
     scenario_out_path,
     unique_scenario_path,
     valid_backend,
+    valid_run_id,
     valid_udid,
 )
 from bajutsu.serve.jobs import Job, Popen, ServeState, cancel_job, run_job
@@ -88,6 +89,7 @@ __all__ = [
     "serve",
     "unique_scenario_path",
     "valid_backend",
+    "valid_run_id",
     "valid_udid",
 ]
 
