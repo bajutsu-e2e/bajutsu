@@ -301,7 +301,7 @@ links (and the crawl's `screenmap.json`) resolve. Stdlib only (no web framework)
 
 ```bash
 bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs runs] [--baselines <dir>]
-              [--host 127.0.0.1] [--token <t>]
+              [--host 127.0.0.1] [--token <t>] [--max-concurrent-runs 4]
 ```
 
 - **`--token` (or `$BAJUTSU_SERVE_TOKEN`) — authentication (BE-0051).** With a token set, every
@@ -342,6 +342,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
   ([BE-0015 / BE-0016](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
+- **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
+  caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
+  `0` for unlimited.
 
 ## Environment variables (.env)
 

@@ -69,6 +69,9 @@ class ServeState:
     popen: Popen = subprocess.Popen
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
+    # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
+    # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
+    max_concurrent: int = 4
     # Optional shared token (BE-0051). None = open (loopback-only legacy behavior); when set, every
     # request must authenticate. `_sessions` holds the opaque ids issued at login (in-memory, so a
     # restart simply requires re-login) — the shared token itself never lives in the browser.
@@ -92,6 +95,32 @@ class ServeState:
         with self._lock:
             return sid in self._sessions
 
+    def active_jobs(self) -> int:
+        """How many spawned jobs are still running (not yet finished)."""
+        with self._lock:
+            return sum(1 for j in self.jobs.values() if j.status == "running")
+
+    def _make_job(
+        self,
+        cmd: list[str],
+        udids: list[str] | None,
+        app_path: str | None,
+        build: str | None,
+        out_path: str | None,
+    ) -> Job:
+        """Create + register a job. Caller must hold ``self._lock``."""
+        self._seq += 1
+        job = Job(
+            id=str(self._seq),
+            cmd=cmd,
+            udids=list(udids or []),
+            app_path=app_path,
+            build=build,
+            out_path=out_path,
+        )
+        self.jobs[job.id] = job
+        return job
+
     def new_job(
         self,
         cmd: list[str],
@@ -101,17 +130,24 @@ class ServeState:
         out_path: str | None = None,
     ) -> Job:
         with self._lock:
-            self._seq += 1
-            job = Job(
-                id=str(self._seq),
-                cmd=cmd,
-                udids=list(udids or []),
-                app_path=app_path,
-                build=build,
-                out_path=out_path,
-            )
-            self.jobs[job.id] = job
-        return job
+            return self._make_job(cmd, udids, app_path, build, out_path)
+
+    def try_new_job(
+        self,
+        cmd: list[str],
+        udids: list[str] | None = None,
+        app_path: str | None = None,
+        build: str | None = None,
+        out_path: str | None = None,
+    ) -> Job | None:
+        """Create a job only if under the concurrency cap, counting and inserting atomically under
+        the lock so two concurrent dispatches can't both slip past the cap (BE-0051). Returns None
+        at the cap."""
+        with self._lock:
+            running = sum(1 for j in self.jobs.values() if j.status == "running")
+            if self.max_concurrent > 0 and running >= self.max_concurrent:
+                return None
+            return self._make_job(cmd, udids, app_path, build, out_path)
 
 
 def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:

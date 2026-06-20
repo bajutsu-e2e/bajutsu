@@ -38,6 +38,11 @@ def serve(
         help="visual-regression baselines dir (default: a `baselines` folder under --scenarios)",
     ),
     host: str = typer.Option("127.0.0.1", "--host"),
+    max_concurrent_runs: int = typer.Option(
+        4,
+        "--max-concurrent-runs",
+        help="cap on concurrently-running run/record jobs (0 = unlimited); over the cap returns 429",
+    ),
     token: str = typer.Option(
         "",
         "--token",
@@ -61,14 +66,15 @@ def serve(
         raise typer.Exit(2)
 
     _serve(
-        host,
-        port,
-        Path(scenarios) if scenarios else None,
-        Path(config) if config else None,
-        Path(runs),
-        Path(root) if root else Path.cwd(),
-        Path(baselines) if baselines else None,
-        resolved_token or None,
+        host=host,
+        port=port,
+        scenarios_dir=Path(scenarios) if scenarios else None,
+        config=Path(config) if config else None,
+        runs_dir=Path(runs),
+        root=Path(root) if root else Path.cwd(),
+        baselines_dir=Path(baselines) if baselines else None,
+        max_concurrent=max_concurrent_runs,
+        token=resolved_token or None,
     )
 
 

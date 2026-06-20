@@ -339,7 +339,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 baselines=str(state.baselines_dir),
             )
             app_path, build = app_build_info(cfg, app)
-            job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
+            # Atomic count + create so concurrent dispatches can't both slip past the cap.
+            job = state.try_new_job(
+                cmd, udids=self._boot_targets(udid), app_path=app_path, build=build
+            )
+            if job is None:
+                self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
+                return
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id})
 
@@ -386,13 +392,16 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 config=str(cfg),
             )
             app_path, build = app_build_info(cfg, body["app"])
-            job = state.new_job(
+            job = state.try_new_job(
                 cmd,
                 udids=self._boot_targets(udid),
                 app_path=app_path,
                 build=build,
                 out_path=str(out),
             )
+            if job is None:
+                self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
+                return
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id, "path": str(out)})
 
