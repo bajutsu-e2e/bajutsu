@@ -1,3 +1,21 @@
+// ---- token auth (BE-0051): if the server requires a token, requests 401; prompt for it, POST
+// /api/login (which sets an HttpOnly session cookie), then reload. No-op on an open server. ----
+const _bjFetch=window.fetch.bind(window);
+let _bjLoginShown=false;
+window.fetch=async(...a)=>{
+  const r=await _bjFetch(...a);
+  if(r.status===401 && !String(a[0]).includes('/api/login')) _bjLogin();
+  return r;
+};
+function _bjLogin(){
+  if(_bjLoginShown)return; _bjLoginShown=true;
+  const t=prompt('This bajutsu server requires a token:');
+  if(!t){_bjLoginShown=false;return;}
+  _bjFetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})
+    .then(r=>{if(r.ok){location.reload()}else{_bjLoginShown=false;alert('invalid token')}})
+    .catch(()=>{_bjLoginShown=false});
+}
+
 const $=s=>document.querySelector(s);
 let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],apps=[],sims=[];
 let recJobId=null,runJobId=null;

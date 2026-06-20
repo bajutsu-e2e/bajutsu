@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import secrets
 import shlex
 import subprocess
 import sys
@@ -71,8 +72,28 @@ class ServeState:
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
     max_concurrent: int = 4
+    # Optional shared token (BE-0051). None = open (loopback-only legacy behavior); when set, every
+    # request must authenticate. `_sessions` holds the opaque ids issued at login (in-memory, so a
+    # restart simply requires re-login) — the shared token itself never lives in the browser.
+    token: str | None = None
+    _sessions: set[str] = field(default_factory=set)
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def check_token(self, candidate: str) -> bool:
+        """Constant-time compare of a presented token against the configured one."""
+        return self.token is not None and secrets.compare_digest(candidate, self.token)
+
+    def issue_session(self) -> str:
+        """Mint and remember a new opaque session id (returned to set as a cookie at login)."""
+        sid = secrets.token_urlsafe(32)
+        with self._lock:
+            self._sessions.add(sid)
+        return sid
+
+    def valid_session(self, sid: str) -> bool:
+        with self._lock:
+            return sid in self._sessions
 
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished)."""

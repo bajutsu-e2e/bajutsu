@@ -173,6 +173,26 @@ def test_doctor_unknown_app(tmp_path: Path) -> None:
     assert r.exit_code == 2
 
 
+def test_serve_refuses_non_loopback_without_token() -> None:
+    # Binding a non-loopback host with no token would expose an unauthenticated server (BE-0051).
+    r = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
+    assert r.exit_code == 2
+    assert "without a token" in r.output
+
+
+def test_serve_loopback_detection() -> None:
+    from bajutsu.cli.commands.serve import _is_loopback
+
+    assert _is_loopback("127.0.0.1")
+    assert _is_loopback("127.0.0.2")  # the whole 127/8 block is loopback
+    assert _is_loopback("localhost")
+    assert _is_loopback("::1")
+    assert _is_loopback("0:0:0:0:0:0:0:1")  # fully-expanded ::1
+    assert not _is_loopback("0.0.0.0")
+    assert not _is_loopback("192.168.1.10")
+    assert not _is_loopback("example.com")  # a non-IP literal (no DNS lookup) -> non-loopback
+
+
 def test_crawl_no_backend_available(tmp_path: Path) -> None:
     # The backend gate runs before any device work, so an unknown backend exits 2 cleanly and,
     # crucially, before the run dir is created (no stray runs/ side effect from the gate).

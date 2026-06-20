@@ -9,6 +9,7 @@ import os
 import shutil
 import threading
 from datetime import UTC, datetime
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -42,9 +43,20 @@ from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job, run_j
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
 
+# Session cookie set at login when a serve token is configured (BE-0051).
+_SESSION_COOKIE = "bajutsu_session"
+
 
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
+        def end_headers(self) -> None:
+            # Standard hardening headers on every response (BE-0051): block MIME sniffing and
+            # framing (clickjacking), and don't leak the URL via Referer.
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            super().end_headers()
+
         def _json(self, payload: Any, code: int = 200) -> None:
             body = json.dumps(payload).encode("utf-8")
             self.send_response(code)
@@ -53,7 +65,40 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _authorized(self) -> bool:
+            """A request is authorized by a valid `Authorization: Bearer <token>` header (API
+            clients) or a valid session cookie (the browser, after POST /api/login)."""
+            auth = self.headers.get("Authorization", "")
+            if auth.startswith("Bearer ") and state.check_token(auth[len("Bearer ") :]):
+                return True
+            morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
+            return morsel is not None and state.valid_session(morsel.value)
+
+        def _gate(self) -> bool:
+            """Authentication gate (BE-0051). With no token configured the server is open
+            (loopback-only legacy behavior). Otherwise every request must be authorized, except
+            the index page (so the login UI can load) and the login endpoint itself. Sends 401
+            and returns False when a required credential is missing."""
+            if state.token is None:
+                return True
+            path = urlparse(self.path).path
+            if self.command == "GET" and path in ("/", "/index.html"):
+                return True
+            if self.command == "POST" and path == "/api/login":
+                return True
+            if self._authorized():
+                return True
+            # Drain any request body before replying, so a keep-alive connection isn't left with
+            # unread bytes that would corrupt the next request on it.
+            length = int(self.headers.get("Content-Length") or 0)
+            if length:
+                self.rfile.read(length)
+            self._json({"error": "unauthorized"}, 401)
+            return False
+
         def do_GET(self) -> None:
+            if not self._gate():
+                return
             path = urlparse(self.path).path
             match path:
                 case "/" | "/index.html":
@@ -110,15 +155,39 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case _:
                     self._json({"error": "not found"}, 404)
 
+        def _csrf_ok(self) -> bool:
+            """CSRF defense (BE-0051), defense-in-depth atop the SameSite session cookie: if an
+            `Origin` header is present it must match the `Host`. Non-browser clients (no Origin,
+            no ambient cookie) are allowed; a cross-origin browser request is blocked."""
+            origin = self.headers.get("Origin")
+            if not origin:
+                return True
+            return urlparse(origin).netloc == (self.headers.get("Host") or "")
+
         def do_POST(self) -> None:
+            if not self._gate():
+                return
             path = urlparse(self.path).path
             length = int(self.headers.get("Content-Length") or 0)
+            # Block cross-origin state-changing requests when auth (the cookie) is in play.
+            if state.token is not None and not self._csrf_ok():
+                if length:
+                    self.rfile.read(length)  # drain so keep-alive isn't left with unread bytes
+                self._json({"error": "cross-origin request blocked"}, 403)
+                return
             try:
                 body = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
                 self._json({"error": "bad json"}, 400)
                 return
+            if not isinstance(body, dict):
+                # Handlers below treat the body as a mapping; reject a non-object JSON (a list,
+                # string, number) here rather than 500 on a `.get(...)`.
+                self._json({"error": "expected a JSON object"}, 400)
+                return
             match path:
+                case "/api/login":
+                    self._post_login(body)
                 case "/api/config":
                     self._post_config(body)
                 case "/api/apikey":
@@ -147,6 +216,24 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         @staticmethod
         def _boot_targets(udid: str) -> list[str]:
             return [u.strip() for u in udid.split(",") if u.strip() and u.strip() != "booted"]
+
+        def _post_login(self, body: dict[str, Any]) -> None:
+            """Exchange the shared token for a session cookie (BE-0051). The token is sent in the
+            POST body (never a URL), and the response sets an HttpOnly, SameSite cookie holding an
+            opaque session id — so the token itself is never stored in the browser."""
+            if not state.check_token(str(body.get("token", "") or "")):
+                self._json({"error": "invalid token"}, 401)
+                return
+            sid = state.issue_session()
+            payload = json.dumps({"ok": True}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header(
+                "Set-Cookie", f"{_SESSION_COOKIE}={sid}; HttpOnly; SameSite=Strict; Path=/"
+            )
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
 
         def _post_config(self, body: dict[str, Any]) -> None:
             """Bind a config.yml chosen in the UI's file browser.  The body carries a path the
