@@ -41,6 +41,7 @@ from bajutsu.serve.helpers import (
     valid_udid,
 )
 from bajutsu.serve.jobs import Job, Popen, ServeState, cancel_job, run_job
+from bajutsu.serve.launchagent import launchagent_plist
 
 __all__ = [
     "Job",
@@ -52,6 +53,7 @@ __all__ = [
     "app_scenarios_dir",
     "cancel_job",
     "crawl_command",
+    "launchagent_plist",
     "list_apps",
     "list_fs",
     "list_runs",

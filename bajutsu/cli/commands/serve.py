@@ -49,12 +49,20 @@ def serve(
         help="shared token required for every request (or set BAJUTSU_SERVE_TOKEN). "
         "Required to bind a non-loopback --host.",
     ),
+    emit_launchagent: bool = typer.Option(
+        False,
+        "--emit-launchagent",
+        help="print a launchd LaunchAgent plist for these flags and exit (self-hosting, BE-0016)",
+    ),
 ) -> None:
     """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
 
     Without `--config`, open a config.yml from the UI's file browser (limited to `--root`).
     With `--token` (or $BAJUTSU_SERVE_TOKEN) every request must authenticate; binding a
-    non-loopback `--host` requires one so the server is never exposed unauthenticated."""
+    non-loopback `--host` requires one so the server is never exposed unauthenticated.
+    With `--emit-launchagent`, print a LaunchAgent plist matching these flags (for self-hosting)
+    and exit without starting the server."""
+    from bajutsu.serve import launchagent_plist
     from bajutsu.serve import serve as _serve
 
     resolved_token = token or os.environ.get("BAJUTSU_SERVE_TOKEN") or ""
@@ -64,6 +72,14 @@ def serve(
             "pass --token or set BAJUTSU_SERVE_TOKEN"
         )
         raise typer.Exit(2)
+
+    if emit_launchagent:
+        typer.echo(
+            launchagent_plist(
+                host=host, port=port, config=config or None, token=resolved_token or None
+            )
+        )
+        return
 
     _serve(
         host=host,
