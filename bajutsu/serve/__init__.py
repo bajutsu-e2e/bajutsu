@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.handler import make_server
 from bajutsu.serve.helpers import (
     _int,
@@ -45,7 +46,9 @@ from bajutsu.serve.launchagent import launchagent_plist
 
 __all__ = [
     "Job",
+    "LocalExecutor",
     "Popen",
+    "RunExecutor",
     "ServeState",
     "_int",
     "_scenario_path",
