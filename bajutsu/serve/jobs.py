@@ -20,6 +20,7 @@ from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import app_scenarios_dir
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
 
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
@@ -80,6 +81,9 @@ class ServeState:
     # Run-artifact reads. Filesystem-confined by default; a server backend swaps in an
     # object-storage store (set after construction) that may serve signed-URL redirects (BE-0015).
     artifacts: ArtifactStore = field(init=False)
+    # Scenario resolution. Confined to the app's scenarios dir by default; a server backend swaps
+    # in a per-project store (set after construction) that resolves by id (BE-0015).
+    scenarios: ScenarioStore = field(init=False)
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
@@ -94,9 +98,11 @@ class ServeState:
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
-        # `artifacts` is init=False so existing ServeState(...) calls don't change; default it to
-        # the filesystem store here (a server backend overwrites state.artifacts after construction).
+        # `artifacts`/`scenarios` are init=False so existing ServeState(...) calls don't change;
+        # default them to the local stores here (a server backend overwrites them afterwards).
         self.artifacts = LocalArtifactStore(self.runs_dir)
+        # Resolve the dir lazily through a closure so a config opened from the UI later is reflected.
+        self.scenarios = LocalScenarioStore(lambda app: _scenarios_dir_for(self, app))
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""

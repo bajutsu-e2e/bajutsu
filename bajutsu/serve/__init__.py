@@ -45,6 +45,12 @@ from bajutsu.serve.helpers import (
 from bajutsu.serve.jobs import Job, Popen, ServeState, cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
+from bajutsu.serve.scenarios import (
+    LocalScenarioScope,
+    LocalScenarioStore,
+    ScenarioScope,
+    ScenarioStore,
+)
 
 __all__ = [
     "Artifact",
@@ -53,9 +59,13 @@ __all__ = [
     "Job",
     "LocalArtifactStore",
     "LocalExecutor",
+    "LocalScenarioScope",
+    "LocalScenarioStore",
     "LogBus",
     "Popen",
     "RunExecutor",
+    "ScenarioScope",
+    "ScenarioStore",
     "ServeState",
     "_int",
     "_scenario_path",
