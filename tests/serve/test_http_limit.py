@@ -56,6 +56,26 @@ def test_record_rejected_at_concurrency_cap(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_record_allowed_when_under_concurrency_cap(tmp_path: Path) -> None:
+    scn_dir, cfg, runs = project(tmp_path)
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        max_concurrent=2,
+        popen=fake_popen(["PASS  runs/x/manifest.json\n"]),
+    )
+    _running(state, 1)  # below the cap
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/record", {"goal": "tap x", "app": "demo"})
+        assert status == 200 and "jobId" in resp
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_unlimited_when_cap_is_zero(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     # 0 = unlimited, so the dispatch spawns a job — stub popen so no real subprocess runs.
