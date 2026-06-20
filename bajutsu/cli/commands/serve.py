@@ -54,6 +54,16 @@ def serve(
         "--emit-launchagent",
         help="print a launchd LaunchAgent plist for these flags and exit (self-hosting, BE-0016)",
     ),
+    asgi: bool = typer.Option(
+        False,
+        "--asgi",
+        help="serve the FastAPI app over uvicorn instead of the stdlib server (needs bajutsu[server])",
+    ),
+    backend: str = typer.Option(
+        "local",
+        "--backend",
+        help="which serve seams to assemble (only 'local' available; hosted backends land later)",
+    ),
 ) -> None:
     """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
 
@@ -61,7 +71,9 @@ def serve(
     With `--token` (or $BAJUTSU_SERVE_TOKEN) every request must authenticate; binding a
     non-loopback `--host` requires one so the server is never exposed unauthenticated.
     With `--emit-launchagent`, print a LaunchAgent plist matching these flags (for self-hosting)
-    and exit without starting the server."""
+    and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
+    over uvicorn (the transport the hosted backend will use); `--backend` selects which seams to
+    assemble (only `local` for now)."""
     from bajutsu.serve import launchagent_plist
     from bajutsu.serve import serve as _serve
 
@@ -91,6 +103,8 @@ def serve(
         baselines_dir=Path(baselines) if baselines else None,
         max_concurrent=max_concurrent_runs,
         token=resolved_token or None,
+        asgi=asgi,
+        backend=backend,
     )
 
 

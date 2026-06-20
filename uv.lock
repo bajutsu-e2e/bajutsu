@@ -192,6 +192,7 @@ dev = [
     { name = "ruff" },
     { name = "shellcheck-py" },
     { name = "types-pyyaml" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -226,6 +227,7 @@ dev = [
     { name = "ruff", specifier = ">=0.5" },
     { name = "shellcheck-py", specifier = ">=0.10" },
     { name = "types-pyyaml", specifier = ">=6.0" },
+    { name = "uvicorn", specifier = ">=0.27" },
 ]
 
 [[package]]
