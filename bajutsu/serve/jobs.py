@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import env
+from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import app_scenarios_dir
 
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
@@ -67,6 +68,9 @@ class ServeState:
     baselines_dir: Path = field(default_factory=lambda: Path("baselines"))
     cwd: Path = field(default_factory=Path.cwd)
     popen: Popen = subprocess.Popen
+    # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
+    # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
+    executor: RunExecutor = field(default_factory=LocalExecutor)
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device

@@ -7,7 +7,6 @@ import json
 import mimetypes
 import os
 import shutil
-import threading
 from datetime import UTC, datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -38,7 +37,7 @@ from bajutsu.serve.helpers import (
     valid_backend,
     valid_udid,
 )
-from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job, run_job
+from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
@@ -346,7 +345,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if job is None:
                 self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
                 return
-            threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+            state.executor.dispatch(state, job)
             self._json({"jobId": job.id})
 
         def _post_record(self, body: dict[str, Any]) -> None:
@@ -402,7 +401,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if job is None:
                 self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
                 return
-            threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+            state.executor.dispatch(state, job)
             self._json({"jobId": job.id, "path": str(out)})
 
         def _post_crawl(self, body: dict[str, Any]) -> None:
@@ -442,7 +441,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             )
             app_path, build = app_build_info(cfg, str(body["app"]))
             job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
-            threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+            state.executor.dispatch(state, job)
             self._json({"jobId": job.id, "runId": run_id})
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
