@@ -4,7 +4,7 @@
 resolves a project's scenarios by name from per-project storage (a DB / object storage), never from
 a client-chosen filesystem path. It serves the authoring operations the UI needs — `list`, `read`,
 `save` — delegating to an injected `ScenarioStorage`, so an in-memory fake drives this on the gate.
-The execution paths (`resolve_runnable` / `out_path`) are worker-side and not served here.
+`runnable` ships the scenario as materials for a remote worker; `out_path` (record) stays worker-side.
 """
 
 from __future__ import annotations
@@ -84,12 +84,23 @@ def test_unsafe_refs_are_rejected_before_storage() -> None:
     assert scope.read("smoke.yaml") == "LEAK"  # a safe ref still reaches storage
 
 
-def test_execution_paths_are_worker_side() -> None:
-    # run/record materialize the scenario on the worker, so the control-plane store doesn't serve
-    # the filesystem-path methods.
+def test_runnable_ships_the_scenario_as_materials() -> None:
+    # No path exists on the control plane: runnable resolves by name from storage and returns the
+    # text as a material the worker writes, with a workspace-relative `--scenario` arg.
+    scope = StorageScenarioStore(FakeScenarioStorage({"demo": {"smoke.yaml": SCENARIO}})).scope(
+        "demo"
+    )
+    assert scope is not None
+    runnable = scope.runnable("smoke.yaml")
+    assert runnable is not None
+    assert runnable.arg == "scenarios/smoke.yaml"
+    assert runnable.materials == {"scenarios/smoke.yaml": SCENARIO}
+    assert scope.runnable("missing.yaml") is None  # not in storage
+    assert scope.runnable("../escape.yaml") is None  # unsafe ref
+
+
+def test_record_output_is_still_worker_side() -> None:
     scope = StorageScenarioStore(FakeScenarioStorage({"demo": {}})).scope("demo")
     assert scope is not None
-    with pytest.raises(NotImplementedError):
-        scope.resolve_runnable("smoke.yaml")
     with pytest.raises(NotImplementedError):
         scope.out_path("authored")

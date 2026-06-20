@@ -272,11 +272,11 @@ def start_run(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     scope = state.scenarios.scope(app)
     if scope is None:
         return {"error": f"app '{app}' has no scenarios dir"}, 400
-    # The store matches the client value against the dir's actual files by basename and returns the
-    # trusted path from that listing — never the client string — so no client-controlled value
-    # reaches a filesystem path (BE-0051 arbitrary-path guard).
-    target = scope.resolve_runnable(str(body["scenario"]))
-    if target is None:
+    # The store resolves the client value to a trusted runnable — never the client string — so no
+    # client-controlled value reaches a filesystem path (BE-0051 arbitrary-path guard). On the
+    # server backend it also carries the scenario text as `materials` for a remote worker.
+    runnable = scope.runnable(str(body["scenario"]))
+    if runnable is None:
         return {"error": "scenario must be an existing .yaml inside the app's scenarios dir"}, 400
     backend = str(body.get("backend", "") or "")
     if backend and not valid_backend(backend):
@@ -284,8 +284,16 @@ def start_run(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     udid = str(body.get("udid", "") or "")
     if udid and not valid_udid(udid):
         return {"error": "invalid udid"}, 400
+    # When the scenario ships as materials (server backend), the worker has no project on disk, so
+    # the config travels too and the run uses workspace-relative paths; locally nothing materializes
+    # and the run uses the real config / baselines paths.
+    materials = dict(runnable.materials)
+    on_worker = bool(materials)
+    config_arg = "bajutsu.config.yaml" if on_worker else str(cfg)
+    if on_worker:
+        materials[config_arg] = cfg.read_text(encoding="utf-8")
     cmd = run_command(
-        str(target),
+        runnable.arg,
         app,
         backend=backend,
         udid=udid,
@@ -294,12 +302,14 @@ def start_run(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         dismiss_alerts=body["dismissAlerts"]
         if isinstance(body.get("dismissAlerts"), bool)
         else None,
-        config=str(cfg),
-        baselines=str(state.baselines_dir),
+        config=config_arg,
+        baselines="" if on_worker else str(state.baselines_dir),
     )
     app_path, build = app_build_info(cfg, app)
     # Atomic count + create so concurrent dispatches can't both slip past the cap.
-    job = state.try_new_job(cmd, udids=_boot_targets(udid), app_path=app_path, build=build)
+    job = state.try_new_job(
+        cmd, udids=_boot_targets(udid), app_path=app_path, build=build, materials=materials
+    )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)

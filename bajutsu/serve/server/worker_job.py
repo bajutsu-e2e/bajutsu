@@ -67,7 +67,20 @@ def job_spec(job: Job) -> dict[str, Any]:
         "udids": list(job.udids),
         "app_path": job.app_path,
         "build": job.build,
+        "materials": dict(job.materials),
     }
+
+
+def _materialize(work: Path, materials: dict[str, str]) -> None:
+    """Write each ``relpath -> content`` into the workspace before the run. Each path is confined to
+    *work* (control-plane-built, but resolved defensively), so the run never writes outside it."""
+    base = work.resolve()
+    for rel, content in materials.items():
+        dest = (work / rel).resolve()
+        if dest != base and base not in dest.parents:
+            continue  # never escape the workspace
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content, encoding="utf-8")
 
 
 def execute_job_spec(
@@ -87,6 +100,9 @@ def execute_job_spec(
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
+    # Write the scenario + config the control plane shipped into the workspace, so the run's
+    # workspace-relative `--scenario` / `--config` resolve here (the worker has no project on disk).
+    _materialize(work, spec.get("materials") or {})
     log_bus = bus if bus is not None else _redis_log_bus()
     state = ServeState(runs_dir=work / "runs", cwd=work, popen=popen, simctl=simctl, logbus=log_bus)
     job = Job(

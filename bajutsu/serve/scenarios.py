@@ -5,12 +5,13 @@ run or read an arbitrary file path on the host (BE-0051). `ScenarioStore` is the
 this diverges between local and server hosting: the local store confines everything to the app's
 scenarios dir on disk (`LocalScenarioStore`), while a server store would fetch by id from
 per-project storage — where a path never exists, so arbitrary-path execution is impossible by
-construction. The containment and the `resolve_runnable` guard live here, in one place.
+construction. The containment and the `runnable` guard live here, in one place.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -22,16 +23,31 @@ from bajutsu.serve.helpers import (
 )
 
 
+@dataclass(frozen=True)
+class Runnable:
+    """A scenario ready to run via ``bajutsu run --scenario <arg>``.
+
+    `arg` is the value to pass — a trusted absolute path on the local backend, or a
+    workspace-relative path on the server backend. `materials` maps workspace-relative paths to
+    file contents the run host must write **before** running (empty locally, where the files
+    already exist on disk; on the server it carries the scenario text so a remote worker can
+    materialize it — never a path a client controls)."""
+
+    arg: str
+    materials: dict[str, str] = field(default_factory=dict)
+
+
 class ScenarioScope(Protocol):
     """Scenario operations confined to one app's scenarios."""
 
     def list(self) -> list[dict[str, Any]]:
         """Every scenario, summarized for the UI."""
 
-    def resolve_runnable(self, scenario: str) -> Path | None:
-        """Match *scenario* (by basename) against the app's existing ``*.yaml`` files, returning
-        the trusted path from the dir listing — never the client string — or None if no such file.
-        """
+    def runnable(self, scenario: str) -> Runnable | None:
+        """Resolve *scenario* (by basename) to a `Runnable` — the trusted ``--scenario`` arg plus
+        any materials a remote worker must write first — or None if no such scenario. Never lets a
+        client string reach a host path: the local store matches the dir listing; the server store
+        reads from per-project storage and ships the text as materials (BE-0051 / BE-0015)."""
 
     def read(self, ref: str | None) -> str | None:
         """The YAML text of the scenario at *ref*, or None if it's missing or escapes the dir."""
@@ -62,12 +78,12 @@ class LocalScenarioScope:
     def list(self) -> list[dict[str, Any]]:
         return list_scenarios(self._dir)
 
-    def resolve_runnable(self, scenario: str) -> Path | None:
+    def runnable(self, scenario: str) -> Runnable | None:
         name = Path(scenario).name  # honour only the basename, then match the trusted dir listing
         base = self._dir.resolve()
         # Basename match plus a resolved-containment check: a `*.yaml` that is a symlink out of the
         # dir is rejected, so a runnable path can never escape the confinement (BE-0051).
-        return next(
+        path = next(
             (
                 p
                 for p in self._dir.glob("*.yaml")
@@ -75,6 +91,9 @@ class LocalScenarioScope:
             ),
             None,
         )
+        # The file is already on the local run host, so no materials travel — the run uses the
+        # trusted absolute path directly.
+        return Runnable(arg=str(path)) if path is not None else None
 
     def read(self, ref: str | None) -> str | None:
         target = _scenario_path(self._dir, ref)

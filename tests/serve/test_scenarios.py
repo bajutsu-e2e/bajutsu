@@ -31,22 +31,24 @@ def test_scope_is_none_for_app_without_dir(tmp_path: Path) -> None:
     assert store.scope("demo") is not None
 
 
-def test_resolve_runnable_matches_by_name_only(tmp_path: Path) -> None:
+def test_runnable_matches_by_name_only(tmp_path: Path) -> None:
     scope = _store(tmp_path).scope("demo")
     assert scope is not None
-    runnable = scope.resolve_runnable("smoke.yaml")
-    assert runnable is not None and runnable.name == "smoke.yaml" and runnable.is_file()
+    runnable = scope.runnable("smoke.yaml")
+    # Local: the trusted absolute path, no materials (the file is already on the run host).
+    assert runnable is not None
+    assert runnable.arg == str(tmp_path / "scn" / "smoke.yaml") and runnable.materials == {}
     # the UI may pass a full path; only the basename is honoured (then matched against the dir)
-    assert scope.resolve_runnable("/etc/passwd/smoke.yaml") == runnable
+    assert scope.runnable("/etc/passwd/smoke.yaml") == runnable
 
 
-def test_resolve_runnable_rejects_escapes_and_missing(tmp_path: Path) -> None:
+def test_runnable_rejects_escapes_and_missing(tmp_path: Path) -> None:
     secret = tmp_path / "secret.yaml"
     secret.write_text(SCENARIO, encoding="utf-8")
     scope = _store(tmp_path).scope("demo")
     assert scope is not None
     for bad in ("../secret.yaml", str(secret), "missing.yaml", "smoke.txt"):
-        assert scope.resolve_runnable(bad) is None, bad
+        assert scope.runnable(bad) is None, bad
 
 
 def test_read_returns_text_inside_dir_else_none(tmp_path: Path) -> None:
@@ -88,7 +90,7 @@ def test_invalid_path_with_nul_is_none_not_error(tmp_path: Path) -> None:
     assert scope.save("a\x00.yaml", SCENARIO) is None
 
 
-def test_resolve_runnable_rejects_symlink_out_of_dir(tmp_path: Path) -> None:
+def test_runnable_rejects_symlink_out_of_dir(tmp_path: Path) -> None:
     # A *.yaml in the dir that symlinks outside must not be runnable (containment, BE-0051).
     outside = tmp_path / "outside.yaml"
     outside.write_text(SCENARIO, encoding="utf-8")
@@ -97,7 +99,7 @@ def test_resolve_runnable_rejects_symlink_out_of_dir(tmp_path: Path) -> None:
     link = tmp_path / "scn" / "evil.yaml"
     link.symlink_to(outside)
     assert link.is_file()  # the symlink itself resolves to a real file…
-    assert scope.resolve_runnable("evil.yaml") is None  # …but escapes the dir, so it's rejected
+    assert scope.runnable("evil.yaml") is None  # …but escapes the dir, so it's rejected
 
 
 def test_out_path_makes_unique_yaml_and_creates_dir(tmp_path: Path) -> None:
