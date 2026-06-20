@@ -125,10 +125,15 @@ def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
     job = state.jobs.get(job_id)
     if job is None:
         return {"error": "no such job"}, 404
-    # On the server backend the job ran on a worker, so its terminal status lives on the bus, not
-    # the control-plane Job (which stays "running"); prefer it when present (BE-0015 W2).
-    final = state.logbus.final(job_id)
-    return (json.loads(final) if final is not None else job.view()), 200
+    view = job.view()
+    # Locally the job ran in-process, so its own view (with the log buffer) is authoritative. On the
+    # server backend it ran on a worker and the control-plane Job stays "running"; fall back to the
+    # bus's terminal status then (BE-0015 W2).
+    if view["status"] != "done":
+        final = state.logbus.final(job_id)
+        if final is not None:
+            return json.loads(final), 200
+    return view, 200
 
 
 # --- live-log SSE (shared event stream; each shell does its own framing/transport) ---
@@ -158,9 +163,10 @@ def _job_event_pairs(state: ServeState, job: Job, job_id: str) -> Iterator[tuple
     for line in state.logbus.stream(job_id):
         yield ("log", line)
     # The terminal status: the worker-recorded view on the bus (server backend), else the local
-    # Job's (BE-0015 W2). The stream has ended, so `close` ran and any final payload is set.
+    # Job's (BE-0015 W2). The stream has ended, so `close` ran and any final payload is set. Lines
+    # are omitted — they already arrived as `log` events, so the done payload needn't repeat them.
     final = state.logbus.final(job_id)
-    yield ("done", final if final is not None else json.dumps(job.view()))
+    yield ("done", final if final is not None else json.dumps(job.view(include_lines=False)))
 
 
 # --- POST (actions) ---

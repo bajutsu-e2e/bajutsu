@@ -166,3 +166,4 @@ def test_execute_job_spec_records_terminal_status_on_the_bus(tmp_path: Path) -> 
     assert final is not None
     view = json.loads(final)
     assert view["status"] == "done" and view["ok"] is True and view["runId"] == "20260610-1"
+    assert "lines" not in view  # the log already lives in the bus stream; don't duplicate it

@@ -74,7 +74,10 @@ class InMemoryLogBus:
     def final(self, job_id: str) -> str | None:
         with self._lock:
             ch = self._chans.get(job_id)
-        return ch.final if ch is not None else None
+        if ch is None:
+            return None
+        with ch.cond:  # `close` writes ch.final under this lock — read it the same way
+            return ch.final
 
     def stream(self, job_id: str) -> Iterator[str]:
         ch = self._chan(job_id)
