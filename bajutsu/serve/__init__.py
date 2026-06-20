@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.handler import make_server
 from bajutsu.serve.helpers import (
@@ -46,8 +47,11 @@ from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 
 __all__ = [
+    "Artifact",
+    "ArtifactStore",
     "InMemoryLogBus",
     "Job",
+    "LocalArtifactStore",
     "LocalExecutor",
     "LogBus",
     "Popen",
