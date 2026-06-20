@@ -25,13 +25,17 @@ _DONE = "bajutsu:logdone:"  # Redis key prefix for a job's "no more lines" flag
 class RedisLike(Protocol):
     """The slice of a redis-py client `RedisLogBus` uses (so a fake can stand in)."""
 
-    def rpush(self, key: str, value: str) -> object: ...
+    def rpush(self, key: str, value: str) -> object:
+        """Append *value* to the list at *key*."""
 
-    def lrange(self, key: str, start: int, end: int) -> list[object]: ...
+    def lrange(self, key: str, start: int, end: int) -> list[object]:
+        """Return the list at *key* from index *start* to *end* (`-1` = last)."""
 
-    def set(self, key: str, value: str) -> object: ...
+    def set(self, key: str, value: str) -> object:
+        """Set *key* to *value*."""
 
-    def get(self, key: str) -> object: ...
+    def get(self, key: str) -> object:
+        """Return *key*'s value, or None if unset."""
 
 
 class RedisLogBus:
