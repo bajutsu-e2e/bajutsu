@@ -234,9 +234,13 @@ def _build_server_state(
         if cid and secret and redirect
         else None
     )
-    allowed_users = frozenset(
-        u.strip() for u in os.environ.get("BAJUTSU_OAUTH_ALLOWED_USERS", "").split(",") if u.strip()
-    )
+
+    def _logins(var: str) -> frozenset[str]:
+        return frozenset(u.strip() for u in os.environ.get(var, "").split(",") if u.strip())
+
+    allowed_users = _logins("BAJUTSU_OAUTH_ALLOWED_USERS")
+    oauth_admins = _logins("BAJUTSU_OAUTH_ADMINS")
+    oauth_viewers = _logins("BAJUTSU_OAUTH_VIEWERS")
     # The real clients are wider than our minimal seam protocols (RedisLike / Queue), so hand them
     # over as Any — the seam adapters use only the slice they declare.
     redis: Any = Redis.from_url(redis_url())
@@ -262,6 +266,8 @@ def _build_server_state(
         repository=repository_from_env(),
         oauth=oauth,
         oauth_allowed_users=allowed_users,
+        oauth_admins=oauth_admins,
+        oauth_viewers=oauth_viewers,
     )
     # Override the filesystem seams (set local in __post_init__) with the object-storage ones. The
     # scenario store reads the live config's apps, so a config opened later is reflected.

@@ -74,6 +74,15 @@ def make_app(state: ServeState) -> FastAPI:
             )
             if not open_path and not _authorized(request):
                 return _hardened(JSONResponse({"error": "unauthorized"}, status_code=401))
+            # Enforce the user's role on mutating endpoints for an OAuth session (an identity) when a
+            # database is wired (BE-0015 7c-2); token/Bearer has no identity and stays full-access.
+            login = _actor(request)
+            if (
+                login is not None
+                and state.repository is not None
+                and ops.forbidden_for_role(state, login, method, path)
+            ):
+                return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
             # Block cross-origin state-changing requests when auth (the cookie) is in play.
             if method == "POST":
                 origin = request.headers.get("origin")

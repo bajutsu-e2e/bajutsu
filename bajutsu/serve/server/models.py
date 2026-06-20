@@ -44,6 +44,7 @@ class User(Base):
     org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"))
     email: Mapped[str] = mapped_column(unique=True)
     github_login: Mapped[str | None] = mapped_column(default=None)
+    role: Mapped[str] = mapped_column(server_default="viewer")  # viewer | editor | admin (7c-2)
     created_at: Mapped[datetime] = _created_at()
 
 

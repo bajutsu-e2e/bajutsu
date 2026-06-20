@@ -156,6 +156,68 @@ def test_run_audits_the_logged_in_user(tmp_path: Path) -> None:
     assert rows[0].actor_id == "alice"  # the run is attributed to the logged-in GitHub user
 
 
+def _rbac_state(
+    tmp_path: Path,
+    *,
+    login: str,
+    admins: frozenset[str] = frozenset(),
+    viewers: frozenset[str] = frozenset(),
+) -> srv.ServeState:
+    from sqlalchemy import create_engine
+
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    _scn_dir, cfg, runs = project(tmp_path)
+    engine = create_engine(f"sqlite:///{tmp_path / 'rbac.db'}")
+    Base.metadata.create_all(engine)
+    return srv.ServeState(
+        config=cfg,
+        runs_dir=runs,
+        root=tmp_path,
+        cwd=tmp_path,
+        token="t",  # a token makes the gate enforce auth, so the OAuth session's role applies
+        oauth=_FakeOAuth(login),
+        oauth_allowed_users=frozenset({login}),
+        oauth_admins=admins,
+        oauth_viewers=viewers,
+        repository=SqlRepository(engine),
+        popen=fake_popen([]),
+    )
+
+
+def _oauth_signin(client: TestClient) -> None:
+    csrf = _csrf_from_redirect(client.get("/api/oauth/login", follow_redirects=False))
+    assert (
+        client.get(f"/api/oauth/callback?code=ok&state={csrf}", follow_redirects=False).status_code
+        == 302
+    )
+
+
+def test_rbac_viewer_cannot_run(tmp_path: Path) -> None:
+    client = TestClient(make_app(_rbac_state(tmp_path, login="v", viewers=frozenset({"v"}))))
+    _oauth_signin(client)
+    assert (
+        client.post("/api/run", json={"scenario": "smoke.yaml", "app": "demo"}).status_code == 403
+    )
+
+
+def test_rbac_editor_can_run_but_not_change_settings(tmp_path: Path) -> None:
+    client = TestClient(make_app(_rbac_state(tmp_path, login="e")))  # default role = editor
+    _oauth_signin(client)
+    assert (
+        client.post("/api/run", json={"scenario": "smoke.yaml", "app": "demo"}).status_code == 200
+    )
+    assert client.post("/api/apikey", json={"value": "k"}).status_code == 403  # admin-only
+
+
+def test_rbac_admin_can_change_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")  # so monkeypatch restores it after set_api_key runs
+    client = TestClient(make_app(_rbac_state(tmp_path, login="root", admins=frozenset({"root"}))))
+    _oauth_signin(client)
+    assert client.post("/api/apikey", json={"value": "sk-admin"}).status_code == 200
+
+
 def test_security_headers_on_every_response(tmp_path: Path) -> None:
     resp = _client(_state(tmp_path)).get("/api/runs")
     assert resp.headers["x-content-type-options"] == "nosniff"

@@ -96,6 +96,20 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if self.command == "POST" and path == "/api/login":
                 return True
             if self._authorized():
+                # Authenticated. For an OAuth session (an identity) with a database wired, enforce
+                # the user's role on mutating endpoints (BE-0015 7c-2). A token/Bearer request has
+                # no identity and stays full-access (the operator credential).
+                login = self._actor()
+                if (
+                    login is not None
+                    and state.repository is not None
+                    and ops.forbidden_for_role(state, login, self.command, path)
+                ):
+                    length = int(self.headers.get("Content-Length") or 0)
+                    if length:
+                        self.rfile.read(length)
+                    self._json({"error": "forbidden"}, 403)
+                    return False
                 return True
             # Drain any request body before replying, so a keep-alive connection isn't left with
             # unread bytes that would corrupt the next request on it.

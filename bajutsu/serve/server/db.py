@@ -50,8 +50,14 @@ class Repository(Protocol):
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
         """Create the org if it does not exist yet (idempotent) — 7c-1's single default org."""
 
-    def upsert_user(self, user_id: str, *, org_id: str, github_login: str, email: str) -> None:
-        """Insert the user, or update it in place when its id already exists (an OAuth re-login)."""
+    def upsert_user(
+        self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "viewer"
+    ) -> None:
+        """Insert the user, or update it in place when its id already exists (an OAuth re-login),
+        setting its *role* (recomputed from policy each login, BE-0015 7c-2)."""
+
+    def user_role(self, user_id: str) -> str | None:
+        """The user's role (viewer/editor/admin), or None if there is no such user."""
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]
@@ -137,7 +143,9 @@ class SqlRepository:
                 # idempotent outcome we wanted, so swallow it.
                 session.rollback()
 
-    def upsert_user(self, user_id: str, *, org_id: str, github_login: str, email: str) -> None:
+    def upsert_user(
+        self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "viewer"
+    ) -> None:
         from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
 
@@ -146,7 +154,15 @@ class SqlRepository:
         with Session(self._engine) as session:
             user = session.get(User, user_id)
             if user is None:
-                session.add(User(id=user_id, org_id=org_id, github_login=github_login, email=email))
+                session.add(
+                    User(
+                        id=user_id,
+                        org_id=org_id,
+                        github_login=github_login,
+                        email=email,
+                        role=role,
+                    )
+                )
                 try:
                     session.commit()
                     return
@@ -156,8 +172,22 @@ class SqlRepository:
                     session.rollback()
                     user = session.get(User, user_id)
             if user is not None:  # update in place (a re-login) without disturbing created_at
-                user.org_id, user.github_login, user.email = org_id, github_login, email
+                user.org_id, user.github_login, user.email, user.role = (
+                    org_id,
+                    github_login,
+                    email,
+                    role,
+                )
                 session.commit()
+
+    def user_role(self, user_id: str) -> str | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import User
+
+        with Session(self._engine) as session:
+            user = session.get(User, user_id)
+            return user.role if user is not None else None
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]

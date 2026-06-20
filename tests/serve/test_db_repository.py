@@ -48,6 +48,16 @@ def test_upsert_user_inserts_then_updates_in_place() -> None:
     assert users[0].org_id == "default"
 
 
+def test_upsert_user_stores_and_updates_the_role() -> None:
+    _engine, repo = _engine_repo()
+    repo.ensure_org("default", slug="default", name="Default")
+    repo.upsert_user("a", org_id="default", github_login="a", email="a@x", role="admin")
+    assert repo.user_role("a") == "admin"
+    repo.upsert_user("a", org_id="default", github_login="a", email="a@x", role="viewer")
+    assert repo.user_role("a") == "viewer"  # a re-login recomputes the role
+    assert repo.user_role("nobody") is None
+
+
 def test_record_audit_appends_a_row_with_actor_and_detail() -> None:
     engine, repo = _engine_repo()
     repo.ensure_org("default", slug="default", name="Default")
