@@ -250,6 +250,19 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
+### AI provider configuration
+
+The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Claude through a
+pluggable provider. This topic covers selecting and configuring that provider — e.g. Amazon Bedrock
+(authenticated with AWS credentials) as an alternative to the direct Anthropic API. The
+deterministic `run` / CI gate calls no model and is unaffected. This axis is distinct from
+`backend` (the UI actuator).
+
+<!-- GENERATED:proposals-ai-provider -->
+| ID | Item | Status |
+|---|---|---|
+<!-- /GENERATED:proposals-ai-provider -->
+
 ### Miscellaneous / on hold
 
 <!-- GENERATED:proposals-misc -->
