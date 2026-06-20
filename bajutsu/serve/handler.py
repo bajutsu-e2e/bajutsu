@@ -203,6 +203,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not body.get("scenario") or not body.get("app"):
                 self._json({"error": "scenario and app are required"}, 400)
                 return
+            if state.at_job_limit():
+                self._json({"error": "too many concurrent runs; try again shortly"}, 429)
+                return
             udid = str(body.get("udid", "") or "")
             cmd = run_command(
                 body["scenario"],
@@ -231,6 +234,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 return
             if not body.get("goal") or not body.get("app"):
                 self._json({"error": "goal and app are required"}, 400)
+                return
+            if state.at_job_limit():
+                self._json({"error": "too many concurrent runs; try again shortly"}, 429)
                 return
             scn_dir = _scenarios_dir_for(state, str(body["app"]))
             if scn_dir is None:

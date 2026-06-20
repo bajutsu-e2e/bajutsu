@@ -68,8 +68,20 @@ class ServeState:
     popen: Popen = subprocess.Popen
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
+    # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
+    # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
+    max_concurrent: int = 4
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def active_jobs(self) -> int:
+        """How many spawned jobs are still running (not yet finished)."""
+        with self._lock:
+            return sum(1 for j in self.jobs.values() if j.status == "running")
+
+    def at_job_limit(self) -> bool:
+        """Whether a new run/record dispatch would exceed the concurrency cap."""
+        return self.max_concurrent > 0 and self.active_jobs() >= self.max_concurrent
 
     def new_job(
         self,

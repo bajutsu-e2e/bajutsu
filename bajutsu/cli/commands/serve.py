@@ -25,6 +25,11 @@ def serve(
         help="visual-regression baselines dir (default: a `baselines` folder under --scenarios)",
     ),
     host: str = typer.Option("127.0.0.1", "--host"),
+    max_concurrent_runs: int = typer.Option(
+        4,
+        "--max-concurrent-runs",
+        help="cap on concurrently-running run/record jobs (0 = unlimited); over the cap returns 429",
+    ),
 ) -> None:
     """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
 
@@ -39,6 +44,7 @@ def serve(
         Path(runs),
         Path(root) if root else Path.cwd(),
         Path(baselines) if baselines else None,
+        max_concurrent_runs,
     )
 
 

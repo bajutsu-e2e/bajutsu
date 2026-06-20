@@ -201,6 +201,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
 - run サブプロセスは起動環境を継承します（venv の `bin` を `PATH` 先頭に付与し `idb` クライアントを解決）。
   `bajutsu.config.yaml` が解決するようプロジェクトルートから実行してください。
+- **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
+  希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
 
 ## 環境変数（.env）
 

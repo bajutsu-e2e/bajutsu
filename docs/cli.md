@@ -212,6 +212,9 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
 - The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH` so
   the `idb` client resolves). Run it from the project root so `bajutsu.config.yaml` resolves.
+- **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
+  caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
+  `0` for unlimited.
 
 ## Environment variables (.env)
 
