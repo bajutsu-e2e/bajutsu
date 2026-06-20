@@ -9,6 +9,7 @@ logic itself is covered once, through the stdlib suite, since both backends call
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -161,3 +162,23 @@ def test_auth_gate_mirrors_stdlib(tmp_path: Path) -> None:
     # A Bearer token also authorizes (a fresh client over the same state — no session cookie).
     fresh = TestClient(app)
     assert fresh.get("/api/runs", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+
+
+def test_done_event_and_poll_use_the_bus_final_status(tmp_path: Path) -> None:
+    # On the server backend the control-plane Job stays "running" (the worker ran it elsewhere);
+    # the terminal status comes from the bus. The done event and the poll must report that, not the
+    # local Job's "running".
+    state = _state(tmp_path)
+    state.jobs["k"] = srv.Job(id="k", cmd=[])  # control-plane handle: never leaves "running"
+    state.logbus.publish("k", "step ok\n")
+    state.logbus.close("k", json.dumps({"id": "k", "status": "done", "ok": True, "runId": "R1"}))
+
+    events = ops.job_log_events(state, "k")
+    assert events is not None
+    pairs = list(events)
+    assert ("log", "step ok\n") in pairs
+    kind, data = pairs[-1]
+    assert kind == "done" and json.loads(data)["status"] == "done" and json.loads(data)["ok"]
+
+    payload, code = ops.job_view(state, "k")
+    assert code == 200 and payload["status"] == "done" and payload["runId"] == "R1"

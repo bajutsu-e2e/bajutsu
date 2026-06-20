@@ -57,8 +57,17 @@ class RedisLogBus:
     def publish(self, job_id: str, line: str) -> None:
         self._redis.rpush(_LINES + job_id, line)
 
-    def close(self, job_id: str) -> None:
-        self._redis.set(_DONE + job_id, "1")
+    def close(self, job_id: str, final: str | None = None) -> None:
+        # The done key's presence ends the stream; its value carries the terminal status payload
+        # (a JSON view) when given, or the bare "1" sentinel when not.
+        self._redis.set(_DONE + job_id, final if final is not None else "1")
+
+    def final(self, job_id: str) -> str | None:
+        value = self._redis.get(_DONE + job_id)
+        if value is None:
+            return None
+        text = self._text(value)
+        return None if text == "1" else text  # "1" = closed without a payload
 
     def stream(self, job_id: str) -> Iterator[str]:
         key = _LINES + job_id

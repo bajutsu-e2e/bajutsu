@@ -22,17 +22,23 @@ class LogBus(Protocol):
     def publish(self, job_id: str, line: str) -> None:
         """Append one log *line* to *job_id*'s channel."""
 
-    def close(self, job_id: str) -> None:
-        """Signal that no more lines will be published for *job_id* (the job finished)."""
+    def close(self, job_id: str, final: str | None = None) -> None:
+        """Signal that no more lines will be published for *job_id* (the job finished), optionally
+        recording its terminal status payload (a JSON view) for `final` to return."""
 
     def stream(self, job_id: str) -> Iterator[str]:
         """Yield the buffered backlog then any live lines, ending once the job is closed."""
+
+    def final(self, job_id: str) -> str | None:
+        """The terminal status payload recorded at `close`, or None if the job hasn't finished (or
+        finished without one). Lets a control-plane replica read a worker-run job's result."""
 
 
 @dataclass
 class _Channel:
     lines: list[str] = field(default_factory=list)
     closed: bool = False
+    final: str | None = None  # terminal status payload recorded at close (a JSON view)
     cond: threading.Condition = field(default_factory=threading.Condition)
 
 
@@ -57,11 +63,21 @@ class InMemoryLogBus:
             ch.lines.append(line)
             ch.cond.notify_all()
 
-    def close(self, job_id: str) -> None:
+    def close(self, job_id: str, final: str | None = None) -> None:
         ch = self._chan(job_id)
         with ch.cond:
             ch.closed = True
+            if final is not None:
+                ch.final = final
             ch.cond.notify_all()
+
+    def final(self, job_id: str) -> str | None:
+        with self._lock:
+            ch = self._chans.get(job_id)
+        if ch is None:
+            return None
+        with ch.cond:  # `close` writes ch.final under this lock — read it the same way
+            return ch.final
 
     def stream(self, job_id: str) -> Iterator[str]:
         ch = self._chan(job_id)

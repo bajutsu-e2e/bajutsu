@@ -51,3 +51,15 @@ def test_inmemory_logbus_channels_are_isolated() -> None:
     bus.close("b")
     assert list(bus.stream("a")) == ["for a"]
     assert list(bus.stream("b")) == ["for b"]
+
+
+def test_inmemory_logbus_records_final_status_on_close() -> None:
+    # close() may carry the job's terminal status payload, which `final` returns (used for the
+    # `done` event / poll); a close without one leaves final None.
+    bus = srv.InMemoryLogBus()
+    bus.publish("j", "line")
+    bus.close("j", '{"status": "done", "ok": true}')
+    assert bus.final("j") == '{"status": "done", "ok": true}'
+    plain = srv.InMemoryLogBus()
+    plain.close("k")
+    assert plain.final("k") is None

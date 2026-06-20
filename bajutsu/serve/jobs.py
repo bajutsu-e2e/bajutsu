@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import secrets
@@ -45,9 +46,12 @@ class Job:
     lock: threading.Lock = field(default_factory=threading.Lock)
     bus: LogBus | None = None  # live-log channel; set from state.logbus at creation (BE-0015)
 
-    def view(self) -> dict[str, Any]:
+    def view(self, *, include_lines: bool = True) -> dict[str, Any]:
+        """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
+        terminal-status payload stored on the LogBus, where the lines already live in the log
+        stream and would needlessly duplicate the whole log (BE-0015 W2)."""
         with self.lock:
-            return {
+            v: dict[str, Any] = {
                 "id": self.id,
                 "status": self.status,
                 "exitCode": self.exit_code,
@@ -57,8 +61,10 @@ class Job:
                 "ok": (self.exit_code == 0 and not self.cancelled)
                 if self.status == "done"
                 else None,
-                "lines": list(self.lines),
             }
+            if include_lines:
+                v["lines"] = list(self.lines)
+            return v
 
 
 @dataclass
@@ -328,7 +334,11 @@ def run_job(state: ServeState, job: Job) -> None:
         _run_job(state, job)
     finally:
         if job.bus is not None:  # run_job returning means the job finished — end the live stream
-            job.bus.close(job.id)
+            # Record the terminal status on the bus so a control-plane replica reading a
+            # worker-run job sees the real exit/run id (its own Job stays "running") (BE-0015 W2).
+            # Exclude the log buffer — the lines already live in the bus's stream, so duplicating
+            # them into the done payload would needlessly bloat it (Redis memory).
+            job.bus.close(job.id, json.dumps(job.view(include_lines=False)))
 
 
 def _run_job(state: ServeState, job: Job) -> None:
