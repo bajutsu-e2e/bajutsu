@@ -14,9 +14,13 @@ self-hosted counterpart to the managed, multi-tenant public stack in
 [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md). It documents two tiers:
 
 - **Tier A — today-ready.** What runs *today* with the existing stdlib `bajutsu serve`
-  (`bajutsu/serve.py`), already shipped as [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md),
-  plus operational configuration (LaunchAgent, auto-login, Tailscale). It needs essentially no new
-  code.
+  (`bajutsu/serve/`), already shipped as [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
+  and made safe to expose by the hardening in
+  [BE-0051](../../proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+  (token auth + input validation), plus operational configuration (LaunchAgent, auto-login,
+  Tailscale). The one small piece of code it adds is `serve --emit-launchagent`, which prints the
+  LaunchAgent plist for you. The step-by-step operator guide is
+  [docs/self-hosting.md](../../../docs/self-hosting.md).
 - **Tier B — future.** A fully self-hosted version of the future multi-tenant system from
   [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), with every managed
   service replaced by self-hosted OSS (open-source software). It depends on the (unimplemented)
@@ -51,9 +55,11 @@ This is the operational difference between hosting bajutsu and hosting a normal 
 ### Tier A — run it today (single Mac, current `serve.py`)
 
 The only thing that actually runs today is the stdlib `bajutsu serve` + the CLI, already shipped as
-[BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md). This tier makes it safely
-reachable for a team with **near-zero code change** — it is **runnable today** on the existing
-`bajutsu serve`.
+[BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) and hardened for
+exposure by [BE-0051](../../proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md).
+This tier makes it safely reachable for a team with **near-zero code change** (only the
+`--emit-launchagent` helper) — it is **runnable today** on the existing `bajutsu serve`. See
+[docs/self-hosting.md](../../../docs/self-hosting.md) for the full walkthrough.
 
 ```
             team laptops
@@ -70,29 +76,28 @@ reachable for a team with **near-zero code change** — it is **runnable today**
 
 **Hardware.** Mac mini M2/M4, 16 GB RAM (32 GB if running several Simulators at once).
 
-**1) Run `serve` as a LaunchAgent** — keep it bound to `127.0.0.1` (never exposed raw). A
-`~/Library/LaunchAgents/com.bajutsu.serve.plist` runs
-`python -m bajutsu serve --host 127.0.0.1 --port 8765 --config <config.yml>` with
-`RunAtLoad` + `KeepAlive`, `ANTHROPIC_API_KEY` in `EnvironmentVariables` (for `--dismiss-alerts`),
-and stdout/stderr to `~/Library/Logs/`. Load it with
+**1) Run `serve` as a LaunchAgent** — keep it bound to `127.0.0.1` (never exposed raw). Generate the
+plist with `bajutsu serve --emit-launchagent --config <config.yml> --token <token>`, which prints a
+`com.bajutsu.serve.plist` running `python -m bajutsu serve --host 127.0.0.1 --port 8765 --config
+<config.yml>` with `RunAtLoad` + `KeepAlive`, the token in `EnvironmentVariables` (so it never
+appears in `ps`), and stdout/stderr to `~/Library/Logs/`. Load it with
 `launchctl bootstrap gui/$(id -u) …`. It must be a **LaunchAgent** (GUI session), not a
 LaunchDaemon.
 
 **2) Keep the session alive.** Enable auto-login in System Settings, and disable sleep
 (`sudo pmset -a sleep 0 disablesleep 1`).
 
-**3) Expose it — Tailscale (recommended).** `serve.py` has **no auth** and `/api/run` will run a
-**client-supplied scenario path** (`bajutsu/serve.py` `run_command` / `do_POST`), so
-**binding `0.0.0.0` to the public internet is not acceptable.** Put it on a private tailnet
-instead — identity-based access plus automatic TLS, no public surface:
+**3) Expose it — Tailscale (recommended).** BE-0051 gives serve token auth on every request and
+confines `/api/run` / `/api/record` to the app's scenarios dir, so exposure is no longer
+unauthenticated. Even so, the safe default is a **private tailnet**, not `0.0.0.0` on the public
+internet — identity-based access plus automatic TLS, no public surface:
 
 ```bash
 tailscale serve --bg 8765    # → https://<machine>.<tailnet>.ts.net (reachable only inside the tailnet)
 ```
 
 **Only** if you need a real internal hostname, front it with **Caddy** for TLS + basic auth
-(`reverse_proxy 127.0.0.1:8765` behind `basic_auth`) — but keep it off the open internet given the
-unauthenticated, arbitrary-path surface.
+(`reverse_proxy 127.0.0.1:8765` behind `basic_auth`) — but keep it off the open internet.
 
 This tier is usable by a team **today**.
 
@@ -226,9 +231,13 @@ isolation and history, i.e. after the control plane from
 - **`LaunchDaemon` instead of `LaunchAgent`** — rejected: a daemon has no GUI/Aqua session, and the
   Simulator will not run without one. The per-user `LaunchAgent` (plus auto-login and caffeinate) is
   mandatory, not a preference.
-- **Binding `0.0.0.0` to the public internet** — rejected: `serve.py` is unauthenticated and runs a
-  client-supplied scenario path, so a public bind is an unauthenticated arbitrary-path surface. Use a
-  private tailnet (Tailscale) and, only for an internal hostname, Caddy + basic auth.
+- **Binding `0.0.0.0` to the public internet** — rejected: even with BE-0051's token auth, a public
+  bind widens the attack surface needlessly. Use a private tailnet (Tailscale) and, only for an
+  internal hostname, Caddy + basic auth. serve already refuses a non-loopback `--host` without a
+  token.
+- **Embedding the plist as a template file (or a shell snippet in docs) vs `serve --emit-launchagent`**
+  — rejected: generating the plist from the same flags the operator already passes keeps the argv,
+  interpreter path, and token placement correct and in one place, with no copy-paste drift.
 - **Schema-per-tenant / DB-per-tenant vs shared schema + `org_id` + RLS** — rejected for self-host
   ops: per-tenant schemas/DBs multiply migration and connection management overhead; a shared schema
   with `org_id` and Postgres RLS gives isolation with far less operational burden.
@@ -238,6 +247,9 @@ isolation and history, i.e. after the control plane from
 
 ## References
 
-`bajutsu/serve.py`, [cli.md](../../../docs/cli.md#serve), [ci.md](../../../docs/ci.md),
+`bajutsu/serve/`, [docs/self-hosting.md](../../../docs/self-hosting.md) (the Tier A operator guide),
+[cli.md](../../../docs/cli.md#serve), [ci.md](../../../docs/ci.md),
+[BE-0051](../../proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+(the hardening that makes exposure safe),
 [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the cloud-hosting
 counterpart), [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)

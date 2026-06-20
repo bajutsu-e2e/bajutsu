@@ -182,6 +182,15 @@ def test_serve_refuses_non_loopback_without_token() -> None:
     assert "without a token" in r.output
 
 
+def test_serve_emit_launchagent_prints_plist_and_exits() -> None:
+    # --emit-launchagent prints a plist and exits 0 without binding a server (BE-0016 Tier A).
+    r = runner.invoke(app, ["serve", "--emit-launchagent", "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 0
+    assert "<plist" in r.output
+    assert "com.bajutsu.serve" in r.output
+    assert "bajutsu" in r.output and "serve" in r.output
+
+
 def test_serve_loopback_detection() -> None:
     from bajutsu.cli.commands.serve import _is_loopback
 
