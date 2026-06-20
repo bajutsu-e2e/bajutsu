@@ -51,7 +51,7 @@ class Repository(Protocol):
         """Create the org if it does not exist yet (idempotent) — 7c-1's single default org."""
 
     def upsert_user(
-        self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "viewer"
+        self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "editor"
     ) -> None:
         """Insert the user, or update it in place when its id already exists (an OAuth re-login),
         setting its *role* (recomputed from policy each login, BE-0015 7c-2)."""
@@ -144,7 +144,7 @@ class SqlRepository:
                 session.rollback()
 
     def upsert_user(
-        self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "viewer"
+        self, user_id: str, *, org_id: str, github_login: str, email: str, role: str = "editor"
     ) -> None:
         from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session

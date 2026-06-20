@@ -48,6 +48,15 @@ def test_upsert_user_inserts_then_updates_in_place() -> None:
     assert users[0].org_id == "default"
 
 
+def test_upsert_user_defaults_to_editor() -> None:
+    # The default role matches the policy default (an allowlisted user can run), so model /
+    # migration / upsert agree and no caller accidentally persists an over-restrictive viewer.
+    _engine, repo = _engine_repo()
+    repo.ensure_org("default", slug="default", name="Default")
+    repo.upsert_user("a", org_id="default", github_login="a", email="a@x")
+    assert repo.user_role("a") == "editor"
+
+
 def test_upsert_user_stores_and_updates_the_role() -> None:
     _engine, repo = _engine_repo()
     repo.ensure_org("default", slug="default", name="Default")

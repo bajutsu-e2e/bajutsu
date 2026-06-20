@@ -21,8 +21,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # SQLite supports ADD COLUMN with a constant server_default directly (no table rebuild), and so
-    # do Postgres/etc — existing rows backfill to 'viewer' (BE-0015 7c-2).
-    op.add_column("users", sa.Column("role", sa.String(), nullable=False, server_default="viewer"))
+    # do Postgres/etc. Backfill existing (allowlisted) users to 'editor' to match the role policy's
+    # default — so 7c-1 users keep run access without needing to re-login (BE-0015 7c-2).
+    op.add_column("users", sa.Column("role", sa.String(), nullable=False, server_default="editor"))
 
 
 def downgrade() -> None:
