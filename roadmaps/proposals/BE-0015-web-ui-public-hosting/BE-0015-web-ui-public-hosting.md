@@ -187,7 +187,7 @@ it). It splits into three independently shippable slices.
 
 #### 7a — the persistence layer (a `Repository` seam)
 
-A fifth seam, `Repository`, lands in `bajutsu/serve/server/db.py` the same way `ObjectStore` was
+A fifth seam, `Repository`, will land in `bajutsu/serve/server/db.py` the same way `ObjectStore` was
 built: a Protocol, an injected SQLAlchemy 2.0 implementation, an env-driven factory, and a lazy
 import. The schema is fixed up front in the first Alembic migration — adding foreign keys later is
 painful under SQLite, which the gate uses — even though only `runs` is read or written in 7a:
