@@ -16,7 +16,10 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import env
+from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
+from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import app_scenarios_dir
+from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
@@ -39,6 +42,7 @@ class Job:
     proc: Any = None  # the live subprocess (build or run), so a cancel can terminate it
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    bus: LogBus | None = None  # live-log channel; set from state.logbus at creation (BE-0015)
 
     def view(self) -> dict[str, Any]:
         with self.lock:
@@ -67,6 +71,15 @@ class ServeState:
     baselines_dir: Path = field(default_factory=lambda: Path("baselines"))
     cwd: Path = field(default_factory=Path.cwd)
     popen: Popen = subprocess.Popen
+    # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
+    # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
+    executor: RunExecutor = field(default_factory=LocalExecutor)
+    # Live-log delivery. In-memory buffer by default; a server backend swaps in a Redis stream
+    # so any replica can serve any job's `/events` (BE-0015).
+    logbus: LogBus = field(default_factory=InMemoryLogBus)
+    # Run-artifact reads. Filesystem-confined by default; a server backend swaps in an
+    # object-storage store (set after construction) that may serve signed-URL redirects (BE-0015).
+    artifacts: ArtifactStore = field(init=False)
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
@@ -79,6 +92,11 @@ class ServeState:
     _sessions: set[str] = field(default_factory=set)
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self) -> None:
+        # `artifacts` is init=False so existing ServeState(...) calls don't change; default it to
+        # the filesystem store here (a server backend overwrites state.artifacts after construction).
+        self.artifacts = LocalArtifactStore(self.runs_dir)
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""
@@ -117,6 +135,7 @@ class ServeState:
             app_path=app_path,
             build=build,
             out_path=out_path,
+            bus=self.logbus,
         )
         self.jobs[job.id] = job
         return job
@@ -173,6 +192,8 @@ def _spawn_env() -> dict[str, str]:
 def _log(job: Job, line: str) -> None:
     with job.lock:
         job.lines.append(line)
+    if job.bus is not None:  # publish outside job.lock; the bus has its own lock
+        job.bus.publish(job.id, line)
 
 
 def _terminate(proc: Any) -> None:
@@ -204,8 +225,11 @@ def cancel_job(job: Job) -> bool:
             return False
         job.cancelled = True
         proc = job.proc
-        if not job.lines or job.lines[-1] != "cancelled":
+        noted = not job.lines or job.lines[-1] != "cancelled"
+        if noted:
             job.lines.append("cancelled")
+    if noted and job.bus is not None:
+        job.bus.publish(job.id, "cancelled")
     if proc is not None:
         _terminate(proc)
     return True
@@ -292,7 +316,16 @@ def _build_app(state: ServeState, job: Job) -> bool:
 
 def run_job(state: ServeState, job: Job) -> None:
     """Boot the job's devices (if any), build the app if its binary is missing, then run
-    ``job.cmd``, capturing combined output line-by-line and the produced run id."""
+    ``job.cmd``, capturing combined output line-by-line and the produced run id. The job's live
+    log channel is closed on every exit path, so an ``/events`` subscriber's stream always ends."""
+    try:
+        _run_job(state, job)
+    finally:
+        if job.bus is not None:  # run_job returning means the job finished — end the live stream
+            job.bus.close(job.id)
+
+
+def _run_job(state: ServeState, job: Job) -> None:
     if not _boot_devices(state, job):
         return
     if not _build_app(state, job):
@@ -319,6 +352,8 @@ def run_job(state: ServeState, job: Job) -> None:
                 job.lines.append(line)
                 if match:
                     job.run_id = match.group(1)
+            if job.bus is not None:
+                job.bus.publish(job.id, line)
     except OSError:
         _terminate(proc)
     proc.wait()

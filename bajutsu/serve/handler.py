@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import functools
 import json
-import mimetypes
 import os
-import shutil
-import threading
 from datetime import UTC, datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,7 +24,6 @@ from bajutsu.serve.helpers import (
     crawl_command,
     list_apps,
     list_fs,
-    list_runs,
     list_scenarios,
     list_simulators,
     mask_secret,
@@ -38,7 +34,7 @@ from bajutsu.serve.helpers import (
     valid_backend,
     valid_udid,
 )
-from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job, run_job
+from bajutsu.serve.jobs import ServeState, _scenarios_dir_for, cancel_job
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
@@ -64,6 +60,31 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _sse(self, event: str, data: str) -> None:
+            """Write one Server-Sent Event and flush it so the browser sees it live."""
+            self.wfile.write(f"event: {event}\ndata: {data}\n\n".encode())
+            self.wfile.flush()
+
+        def _sse_job(self, job_id: str) -> None:
+            """Stream a job's log over SSE: a `log` event per line (backlog + live from the
+            LogBus), then a terminal `done` event carrying the job's final view. The buffered bus
+            means a subscriber that attaches after the job finished still replays everything."""
+            job = state.jobs.get(job_id)
+            if job is None:
+                self._json({"error": "no such job"}, 404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Accel-Buffering", "no")  # don't let a proxy buffer the stream
+            self.end_headers()
+            try:
+                for line in state.logbus.stream(job_id):
+                    self._sse("log", line)
+                self._sse("done", json.dumps(job.view()))
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the client navigated away; stop streaming
 
         def _authorized(self) -> bool:
             """A request is authorized by a valid `Authorization: Bearer <token>` header (API
@@ -134,7 +155,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/simulators":
                     self._json(list_simulators(state.simctl))
                 case "/api/runs":
-                    self._json(list_runs(state.runs_dir))
+                    self._json(state.artifacts.list_runs())
                 case "/api/scenario":
                     qs = parse_qs(urlparse(self.path).query)
                     scn_dir = _scenarios_dir_for(state, next(iter(qs.get("app") or []), None))
@@ -147,6 +168,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         self._json({"error": "not found"}, 404)
                     else:
                         self._json({"yaml": target.read_text(encoding="utf-8")})
+                case _ if path.startswith("/api/jobs/") and path.endswith("/events"):
+                    self._sse_job(path[len("/api/jobs/") : -len("/events")])
                 case _ if path.startswith("/api/jobs/"):
                     job = state.jobs.get(path[len("/api/jobs/") :])
                     self._json(job.view() if job else {"error": "no such job"}, 200 if job else 404)
@@ -346,7 +369,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if job is None:
                 self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
                 return
-            threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+            state.executor.dispatch(state, job)
             self._json({"jobId": job.id})
 
         def _post_record(self, body: dict[str, Any]) -> None:
@@ -402,7 +425,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if job is None:
                 self._json({"error": "too many concurrent jobs; try again shortly"}, 429)
                 return
-            threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+            state.executor.dispatch(state, job)
             self._json({"jobId": job.id, "path": str(out)})
 
         def _post_crawl(self, body: dict[str, Any]) -> None:
@@ -442,7 +465,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             )
             app_path, build = app_build_info(cfg, str(body["app"]))
             job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
-            threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+            state.executor.dispatch(state, job)
             self._json({"jobId": job.id, "runId": run_id})
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
@@ -473,30 +496,32 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not run_id or not sid or not baseline:
                 self._json({"error": "runId, sid and baseline are required"}, 400)
                 return
-            runs_base = state.runs_dir.resolve()
-            actual = (state.runs_dir / run_id / sid / "visual-actual.png").resolve()
+            data = state.artifacts.open_bytes(f"{run_id}/{sid}/visual-actual.png")
             base_root = state.baselines_dir.resolve()
             dest = (state.baselines_dir / baseline).resolve()
-            if runs_base not in actual.parents or not actual.is_file():
+            if data is None:
                 self._json({"error": "no captured screenshot for this run"}, 404)
                 return
             if base_root != dest.parent and base_root not in dest.parents:
                 self._json({"error": "baseline path escapes the baselines dir"}, 400)
                 return
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(actual, dest)
+            dest.write_bytes(data)
             self._json({"ok": True, "baseline": baseline})
 
         def _serve_run_file(self, rel: str) -> None:
-            base = state.runs_dir.resolve()
-            target = (state.runs_dir / rel).resolve()
-            if base not in target.parents or not target.is_file():
+            art = state.artifacts.get(rel)
+            if art is None:
                 self._json({"error": "not found"}, 404)
                 return
-            ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-            data = target.read_bytes()
+            if art.redirect is not None:  # a server store hands back a signed URL
+                self.send_response(302)
+                self.send_header("Location", art.redirect)
+                self.end_headers()
+                return
+            data = art.body or b""
             self.send_response(200)
-            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Type", art.content_type)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
