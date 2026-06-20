@@ -50,6 +50,17 @@ def test_list_scenarios_includes_descriptions(tmp_path: Path) -> None:
     assert got[0]["names"] == ["a"]
 
 
+def test_list_scenarios_degrades_a_non_utf8_file_to_a_bare_entry(tmp_path: Path) -> None:
+    # A non-UTF-8 *.yaml must still list (as a bare entry), not crash the whole listing.
+    d = tmp_path / "scn"
+    d.mkdir()
+    (d / "ok.yaml").write_text("- name: a\n  steps: []\n", encoding="utf-8")
+    (d / "bad.yaml").write_bytes(b"\xff\xfe not utf-8")
+    got = {s["file"]: s for s in srv.list_scenarios(d)}
+    assert set(got) == {"ok.yaml", "bad.yaml"}
+    assert got["bad.yaml"]["names"] == []  # unparseable -> bare entry
+
+
 def test_list_runs_newest_first_with_summary(tmp_path: Path) -> None:
     _, _, runs = project(tmp_path)
     write_run(runs, "20260610-1", ok=True, scenarios=[("alpha", True)])

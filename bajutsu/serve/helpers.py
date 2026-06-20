@@ -39,28 +39,38 @@ def mask_secret(value: str) -> str:
 # --- query helpers ---
 
 
+def summarize_scenario(file: str, path: str, text: str) -> dict[str, Any]:
+    """One scenario file's UI summary: its *file* name, the *path*/ref the run command takes, the
+    file-level ``description``, and each scenario's name + description. A parse failure degrades to
+    a bare entry (no descriptions/names) so a malformed file still lists.  Shared by the local dir
+    listing and the object-storage backing so the two never drift (BE-0015)."""
+    description: str | None = None
+    scenarios: list[dict[str, Any]] = []
+    try:
+        sf = load_scenario_file(text)
+        description = sf.description
+        scenarios = [{"name": s.name, "description": s.description} for s in sf.scenarios]
+    except (OSError, ValueError):
+        scenarios = []  # a malformed/unparseable file still lists as a bare entry (no names)
+    return {
+        "file": file,
+        "path": path,
+        "description": description,
+        "scenarios": scenarios,
+        "names": [s["name"] for s in scenarios],
+    }
+
+
 def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
     """Every ``*.yaml`` under *scenarios_dir*: a path the run command can take, the file-level
     ``description``, and each scenario's name + description (for the UI)."""
     out: list[dict[str, Any]] = []
     for path in sorted(scenarios_dir.glob("*.yaml")):
-        description: str | None = None
-        scenarios: list[dict[str, Any]] = []
         try:
-            sf = load_scenario_file(path.read_text(encoding="utf-8"))
-            description = sf.description
-            scenarios = [{"name": s.name, "description": s.description} for s in sf.scenarios]
+            text = path.read_text(encoding="utf-8")
         except (OSError, ValueError):
-            pass
-        out.append(
-            {
-                "file": path.name,
-                "path": str(path),
-                "description": description,
-                "scenarios": scenarios,
-                "names": [s["name"] for s in scenarios],
-            }
-        )
+            text = ""  # an unreadable / non-UTF-8 file (ValueError) still lists as a bare entry
+        out.append(summarize_scenario(path.name, str(path), text))
     return out
 
 

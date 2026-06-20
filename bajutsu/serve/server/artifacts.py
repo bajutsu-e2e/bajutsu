@@ -6,10 +6,10 @@ MinIO, …): `get` hands back a **signed-URL redirect** (`Artifact.redirect`, wh
 already 302s to) instead of inlining bytes, `open_bytes` fetches an object (e.g. a visual baseline
 for Approve), and `list_runs` summarizes the runs from their stored ``manifest.json`` objects.
 
-The object-store client is **injected** (the `ObjectStore` slice below), so this module imports no
-S3 SDK: it's unit-tested with an in-memory fake, the gate needs no boto3/bucket, and the default
-path stays server-free (#117 import guard). Endpoint/credentials (R2 vs MinIO) live in the injected
-client, so the same store serves either — what BE-0016 Tier B needs.
+The object-store client is **injected** (the `ObjectStore` slice from `object_store`), so this
+module imports no S3 SDK: it's unit-tested with an in-memory fake, the gate needs no boto3/bucket,
+and the default path stays server-free (#117 import guard). Endpoint/credentials (R2 vs MinIO) live
+in the injected client, so the same store serves either — what BE-0016 Tier B needs.
 """
 
 from __future__ import annotations
@@ -17,25 +17,10 @@ from __future__ import annotations
 import json
 import mimetypes
 from pathlib import PurePosixPath
-from typing import Any, Protocol
+from typing import Any
 
 from bajutsu.serve.artifacts import Artifact
-
-
-class ObjectStore(Protocol):
-    """The slice of an S3-compatible client `ObjectStorageArtifactStore` uses (so a fake fits)."""
-
-    def exists(self, key: str) -> bool:
-        """Whether an object exists at *key* (without downloading it)."""
-
-    def get_bytes(self, key: str) -> bytes | None:
-        """The object's bytes at *key*, or None if absent."""
-
-    def presigned_url(self, key: str) -> str:
-        """A short-lived signed GET URL for *key*."""
-
-    def list_keys(self, prefix: str) -> list[str]:
-        """Every object key under *prefix*."""
+from bajutsu.serve.server.object_store import ObjectStore
 
 
 class ObjectStorageArtifactStore:
