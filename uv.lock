@@ -167,6 +167,7 @@ mcp = [
     { name = "fastmcp" },
 ]
 server = [
+    { name = "boto3" },
     { name = "fastapi" },
     { name = "uvicorn" },
 ]
@@ -199,6 +200,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.50" },
     { name = "anthropic", extras = ["bedrock"], marker = "extra == 'bedrock'", specifier = ">=0.50" },
+    { name = "boto3", marker = "extra == 'server'", specifier = ">=1.34" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
     { name = "fb-idb", marker = "extra == 'idb'", specifier = ">=1.1.0" },
