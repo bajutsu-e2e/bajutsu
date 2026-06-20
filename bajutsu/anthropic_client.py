@@ -64,3 +64,16 @@ def resolve_model(default: str) -> str:
     if provider() == "bedrock":
         return (os.environ.get(BEDROCK_MODEL_ENV) or "").strip() or default
     return default
+
+
+def credential_gap() -> str | None:
+    """What the SDK AI path is missing to authenticate with the configured provider, or ``None``
+    when it can. The Anthropic provider needs ``ANTHROPIC_API_KEY``; Bedrock authenticates with the
+    standard AWS credential chain (env / shared profile / instance or task role — resolved by the
+    SDK, not checked here) and needs a provider-prefixed ``BAJUTSU_BEDROCK_MODEL`` instead, since the
+    bare Anthropic id is not a valid Bedrock model id. Returns ``"anthropic-key"`` or
+    ``"bedrock-model"`` so callers can phrase a provider-appropriate message (used by ``crawl`` /
+    ``run`` to gate or warn before reaching Claude)."""
+    if provider() == "bedrock":
+        return None if os.environ.get(BEDROCK_MODEL_ENV) else "bedrock-model"
+    return None if os.environ.get("ANTHROPIC_API_KEY") else "anthropic-key"

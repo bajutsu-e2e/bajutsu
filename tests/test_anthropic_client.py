@@ -66,3 +66,37 @@ def test_make_client_bedrock(monkeypatch: pytest.MonkeyPatch) -> None:
     from anthropic import AnthropicBedrock
 
     assert isinstance(ac.make_client(), AnthropicBedrock)
+
+
+# credential_gap reports the provider-specific credential the SDK AI path is missing, so crawl/run
+# can gate or warn appropriately. The Bedrock cases pin BE-0053: AWS auth, not ANTHROPIC_API_KEY.
+
+
+def test_credential_gap_anthropic_needs_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert ac.credential_gap() == "anthropic-key"
+
+
+def test_credential_gap_anthropic_with_key_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    assert ac.credential_gap() is None
+
+
+def test_credential_gap_bedrock_with_model_needs_no_anthropic_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # On Bedrock a missing ANTHROPIC_API_KEY is fine — AWS credentials authenticate, and only a
+    # provider-prefixed model id is required.
+    monkeypatch.setenv(ac.PROVIDER_ENV, "bedrock")
+    monkeypatch.setenv(ac.BEDROCK_MODEL_ENV, "global.anthropic.claude-opus-4-6-v1")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert ac.credential_gap() is None
+
+
+def test_credential_gap_bedrock_needs_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "bedrock")
+    monkeypatch.delenv(ac.BEDROCK_MODEL_ENV, raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert ac.credential_gap() == "bedrock-model"

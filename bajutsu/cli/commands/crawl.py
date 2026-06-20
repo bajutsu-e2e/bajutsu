@@ -10,7 +10,6 @@ dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +19,7 @@ import typer
 from bajutsu import crawl as crawl_engine
 from bajutsu import env as _env
 from bajutsu.agents import AGENT_KINDS
+from bajutsu.anthropic_client import credential_gap
 from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.crawl_guide import make_guide
@@ -27,6 +27,13 @@ from bajutsu.drivers import base
 from bajutsu.record import _clear_blocking
 from bajutsu.runner import _await_ready, launch_driver
 from bajutsu.scenario import Preconditions
+
+
+def _ai_credential_gap(agent: str) -> str | None:
+    """The crawl guide's credential gap for `--agent` (BE-0053: crawl is a Tier-1 Bedrock path):
+    `claude-code` brings its own auth (always None), while `api` uses the Anthropic SDK and so needs
+    the configured provider's credentials — see `credential_gap`."""
+    return None if agent != "api" else credential_gap()
 
 
 def _write_screenmap(path: Path, screen_map: crawl_engine.ScreenMap) -> None:
@@ -65,9 +72,10 @@ def crawl(
     agent: str = typer.Option(
         "api",
         "--agent",
-        help="AI backend for the crawl guide: 'api' (Anthropic API, pay-per-token; needs "
-        "ANTHROPIC_API_KEY) or 'claude-code' (the Claude Code CLI, drawing on your subscription; "
-        "text-only)",
+        help="AI backend for the crawl guide: 'api' (the Anthropic SDK, pay-per-token; uses the "
+        "configured AI provider — ANTHROPIC_API_KEY for Anthropic, or AWS credentials + "
+        "BAJUTSU_BEDROCK_MODEL when BAJUTSU_AI_PROVIDER=bedrock) or 'claude-code' (the Claude Code "
+        "CLI, drawing on your subscription; text-only)",
     ),
     out: str = typer.Option(
         "", "--out", help="run dir for the screen map (default: runs/<timestamp>)"
@@ -105,9 +113,19 @@ def crawl(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    if agent == "api" and not os.environ.get("ANTHROPIC_API_KEY"):
-        typer.echo("note: crawl needs ANTHROPIC_API_KEY for --agent api — set it,")
-        typer.echo("      or use --agent claude-code to drive the AI via the Claude Code CLI")
+    # `--agent api` reaches Claude through the configured AI provider (BE-0053): ANTHROPIC_API_KEY
+    # for Anthropic, or AWS credentials + a provider-prefixed BAJUTSU_BEDROCK_MODEL for Bedrock.
+    # Fail fast with provider-specific guidance before any device work (claude-code brings its own).
+    gap = _ai_credential_gap(agent)
+    if gap == "anthropic-key":
+        typer.echo("note: crawl --agent api needs ANTHROPIC_API_KEY for the Anthropic provider —")
+        typer.echo("      set it, use --agent claude-code (the Claude Code CLI), or select Amazon")
+        typer.echo("      Bedrock (BAJUTSU_AI_PROVIDER=bedrock, authenticated by AWS credentials)")
+        raise typer.Exit(2)
+    if gap == "bedrock-model":
+        typer.echo("note: crawl --agent api on Bedrock (BAJUTSU_AI_PROVIDER=bedrock) needs")
+        typer.echo("      BAJUTSU_BEDROCK_MODEL set to a provider-prefixed model id")
+        typer.echo("      (e.g. global.anthropic.claude-opus-4-6-v1)")
         raise typer.Exit(2)
 
     out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
@@ -182,9 +200,17 @@ def crawl(
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
         from bajutsu.orchestrator import RealClock
 
-        if not os.environ.get("ANTHROPIC_API_KEY"):
+        # The alert guard always uses the Anthropic SDK (vision), so it needs the configured
+        # provider's credentials regardless of --agent. Warn (best-effort) if they're missing.
+        guard_gap = credential_gap()
+        if guard_gap == "anthropic-key":
             say(
                 "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard no-ops"
+            )
+        elif guard_gap == "bedrock-model":
+            say(
+                "note: dismiss-alerts is on but BAJUTSU_BEDROCK_MODEL is unset — "
+                "the alert guard no-ops"
             )
         guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
         clock = RealClock()

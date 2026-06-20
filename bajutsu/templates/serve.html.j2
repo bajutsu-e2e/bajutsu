@@ -136,12 +136,12 @@
           <div><label>Max screens</label><input id="crawl-maxscreens" type="number" min="1" value="50"></div>
           <div><label>Max steps</label><input id="crawl-maxsteps" type="number" min="1" value="200"></div>
         </div>
-        <div class="subhint">Crawl explores the app breadth-first, discovering screens and the transitions between them &mdash; a discovery tool, never a pass/fail gate. It is AI-driven: the engine (screen identity, transitions, crashes) is always deterministic, while the <b>AI</b> proposes <i>what to try</i> &mdash; richer operations and realistic inputs to enable controls whose precondition isn't obvious. Pick the <b>Agent</b>: <code>api</code> uses the Anthropic API (needs <code>ANTHROPIC_API_KEY</code>), <code>claude-code</code> drives the Claude Code CLI on your subscription instead. Stops at the first of Max screens / Max steps.</div>
+        <div class="subhint">Crawl explores the app breadth-first, discovering screens and the transitions between them &mdash; a discovery tool, never a pass/fail gate. It is AI-driven: the engine (screen identity, transitions, crashes) is always deterministic, while the <b>AI</b> proposes <i>what to try</i> &mdash; richer operations and realistic inputs to enable controls whose precondition isn't obvious. Pick the <b>Agent</b>: <code>api</code> uses the <b>AI provider</b> chosen in <b>Settings</b> &mdash; the Anthropic API (needs <code>ANTHROPIC_API_KEY</code>) or Amazon Bedrock (AWS credentials), while <code>claude-code</code> drives the Claude Code CLI on your subscription instead. Stops at the first of Max screens / Max steps.</div>
         <div class="checks">
           <label><input type="checkbox" id="crawl-erase"> erase device first
             <span class="hint">Wipe the simulator before crawling so the app starts from onboarding. Off by default — the app is reinstalled fresh either way; check to also wipe all apps / data / settings first.</span></label>
           <label><input type="checkbox" id="crawl-nodismiss"> disable alert-dismiss
-            <span class="hint">The alert guard (Claude vision) dismisses unexpected OS prompts so they aren't read as crashes; on by default (needs ANTHROPIC_API_KEY). Check to force it off.</span></label>
+            <span class="hint">The alert guard (Claude vision) dismisses unexpected OS prompts so they aren't read as crashes; on by default (uses the AI provider set in Settings &mdash; ANTHROPIC_API_KEY for Anthropic, or AWS credentials for Bedrock). Check to force it off.</span></label>
         </div>
         <button class="run" id="crawl-go" data-idle="Start crawl">Start crawl</button>
         <button class="stop" id="crawl-stop" hidden>Stop</button>

@@ -12,6 +12,7 @@ import typer
 from bajutsu import env as _env
 from bajutsu import github
 from bajutsu import usage as _usage
+from bajutsu.anthropic_client import credential_gap
 from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
@@ -138,7 +139,8 @@ def run(
     dismiss_alerts: bool | None = typer.Option(
         None,
         "--dismiss-alerts/--no-dismiss-alerts",
-        help="override every scenario's dismissAlerts (default: per-scenario, on; needs API key)",
+        help="override every scenario's dismissAlerts (default: per-scenario, on; needs the "
+        "configured AI provider — ANTHROPIC_API_KEY, or AWS credentials for Bedrock)",
     ),
     alert_instruction: str = typer.Option(
         "", "--alert-instruction", help="default button instruction (a scenario's own wins)"
@@ -231,9 +233,18 @@ def run(
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
         from bajutsu.orchestrator import BlockedHandler
 
-        if not os.environ.get("ANTHROPIC_API_KEY"):
+        # The vision guard reaches Claude through the configured AI provider (BE-0053), so the
+        # credential it needs is provider-specific: ANTHROPIC_API_KEY for Anthropic, a
+        # provider-prefixed BAJUTSU_BEDROCK_MODEL for Bedrock (AWS credentials authenticate there).
+        guard_gap = credential_gap()
+        if guard_gap == "anthropic-key":
             typer.echo(
                 "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard will no-op"
+            )
+        elif guard_gap == "bedrock-model":
+            typer.echo(
+                "note: dismiss-alerts is on but BAJUTSU_BEDROCK_MODEL is unset — "
+                "the alert guard will no-op"
             )
         locator = ClaudeAlertLocator()
         default_instruction = alert_instruction or None
