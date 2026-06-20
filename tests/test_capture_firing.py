@@ -222,6 +222,27 @@ def test_inline_interval_token_is_recorded_scenario_wide_not_per_step() -> None:
     assert sink.scenario_intervals == [("x", ["deviceLog"])]  # opt-in: only the requested kind
 
 
+def test_multiple_inline_interval_tokens_are_recorded_scenario_wide() -> None:
+    # Multiple interval kinds are scenario-wide recordings: they should not appear
+    # as per-step instant captures, but all requested kinds should be started once.
+    driver = FakeDriver([_el("a", "A")])
+    sink = RecordingSink()
+    run_scenario(
+        driver,
+        _scn(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}, "capture": ["video", "deviceLog"]}
+                ],
+            }
+        ),
+        sink=sink,
+    )
+    assert sink.calls == [("x/step0", BASELINE)]
+    assert sink.scenario_intervals == [("x", ["video", "deviceLog"])]
+
+
 class IntervalSink:
     """Records scenario-level interval recordings and returns artifacts for them."""
 
