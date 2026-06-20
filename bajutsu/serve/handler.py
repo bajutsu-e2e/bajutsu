@@ -528,22 +528,19 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
             """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""
-            scope = state.scenarios.scope(str(body.get("app") or "") or None)
-            ref = body.get("path")
-            target = (
-                scope.resolve_writable(ref if isinstance(ref, str) else None) if scope else None
-            )
-            if target is None:
-                self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
-                return
             text = str(body.get("yaml", ""))
             try:
                 load_scenario_file(text)
             except (ValueError, OSError, yaml.YAMLError) as e:
                 self._json({"error": f"invalid scenario: {e}"}, 400)
                 return
-            target.write_text(text, encoding="utf-8")
-            self._json({"ok": True, "path": str(target)})
+            scope = state.scenarios.scope(str(body.get("app") or "") or None)
+            ref = body.get("path")
+            saved = scope.save(ref if isinstance(ref, str) else None, text) if scope else None
+            if saved is None:
+                self._json({"error": "path must be a *.yaml under the scenarios dir"}, 400)
+                return
+            self._json({"ok": True, "path": saved})
 
         def _post_approve(self, body: dict[str, Any]) -> None:
             """Promote a run's captured screenshot to a `visual` baseline.

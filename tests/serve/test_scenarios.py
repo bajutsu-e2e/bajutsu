@@ -57,13 +57,15 @@ def test_read_returns_text_inside_dir_else_none(tmp_path: Path) -> None:
     assert scope.read("missing.yaml") is None  # not present
 
 
-def test_resolve_writable_allows_new_confined_file(tmp_path: Path) -> None:
+def test_save_writes_a_confined_file_and_rejects_escapes(tmp_path: Path) -> None:
     scope = _store(tmp_path).scope("demo")
     assert scope is not None
-    target = scope.resolve_writable("new.yaml")  # need not exist yet (saving)
-    assert target is not None and target.name == "new.yaml"
-    assert scope.resolve_writable("../escape.yaml") is None
-    assert scope.resolve_writable("note.txt") is None  # not a .yaml
+    saved = scope.save("new.yaml", SCENARIO)  # need not exist yet (saving); scope owns the write
+    assert saved is not None and saved.endswith("new.yaml")
+    assert (tmp_path / "scn" / "new.yaml").read_text(encoding="utf-8") == SCENARIO
+    assert scope.save("../escape.yaml", SCENARIO) is None
+    assert scope.save("note.txt", SCENARIO) is None  # not a .yaml
+    assert not (tmp_path / "scn" / "note.txt").exists()  # a rejected save writes nothing
 
 
 def test_invalid_path_with_nul_is_none_not_error(tmp_path: Path) -> None:
@@ -71,7 +73,7 @@ def test_invalid_path_with_nul_is_none_not_error(tmp_path: Path) -> None:
     scope = _store(tmp_path).scope("demo")
     assert scope is not None
     assert scope.read("a\x00.yaml") is None
-    assert scope.resolve_writable("a\x00.yaml") is None
+    assert scope.save("a\x00.yaml", SCENARIO) is None
 
 
 def test_resolve_runnable_rejects_symlink_out_of_dir(tmp_path: Path) -> None:
