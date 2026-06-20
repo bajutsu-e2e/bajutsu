@@ -128,6 +128,40 @@ def test_record_command_builder() -> None:
     assert "--agent" not in bare and "--backend" not in bare
 
 
+def test_crawl_command_builder() -> None:
+    cmd = srv.crawl_command(
+        "demo",
+        out="runs/20260619-1",
+        agent="claude-code",
+        backend="idb",
+        udid="U",
+        max_screens=10,
+        max_steps=30,
+        config="c.yaml",
+    )
+    assert cmd[:6] == [sys.executable, "-m", "bajutsu", "crawl", "--app", "demo"]
+    assert cmd[cmd.index("--out") + 1] == "runs/20260619-1"
+    assert cmd[cmd.index("--config") + 1] == "c.yaml"
+    assert cmd[cmd.index("--max-screens") + 1] == "10"
+    assert cmd[cmd.index("--max-steps") + 1] == "30"
+    assert cmd[cmd.index("--agent") + 1] == "claude-code"
+    assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
+    # erase defaults to None (the CLI default — crawl erases): no flag forced either way.
+    assert "--erase" not in cmd and "--no-erase" not in cmd
+    assert "--no-erase" in srv.crawl_command("demo", out="o", erase=False)  # explicit override
+    assert "--no-dismiss-alerts" in srv.crawl_command("demo", out="o", dismiss_alerts=False)
+    bare = srv.crawl_command("demo", out="o")  # no agent/backend/udid → those flags omitted
+    assert "--agent" not in bare  # no agent → no --agent (CLI default api applies)
+    assert "--backend" not in bare and "--udid" not in bare
+    assert "--guide" not in bare  # crawl is AI-driven; there is no guide toggle
+    # Resume passes the pruned branch's coordinates and never erases (it continues the same run).
+    res = srv.crawl_command("demo", out="o", resume_src="abc123", resume_key="tab.x")
+    assert res[res.index("--resume-src") + 1] == "abc123"
+    assert res[res.index("--resume-key") + 1] == "tab.x"
+    assert "--no-erase" in res
+    assert "--resume-src" not in bare  # omitted for a normal crawl
+
+
 def test_scenario_out_path_sanitizes(tmp_path: Path) -> None:
     d = tmp_path / "scn"
     assert srv.scenario_out_path(d, "login") == d / "login.yaml"

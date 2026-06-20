@@ -173,6 +173,34 @@ def test_doctor_unknown_app(tmp_path: Path) -> None:
     assert r.exit_code == 2
 
 
+def test_crawl_no_backend_available(tmp_path: Path) -> None:
+    # The backend gate runs before any device work, so an unknown backend exits 2 cleanly and,
+    # crucially, before the run dir is created (no stray runs/ side effect from the gate).
+    cfg, _ = _write(tmp_path)
+    out = tmp_path / "crawlrun"
+    r = runner.invoke(
+        app,
+        ["crawl", "--app", "demo", "--backend", "nope", "--out", str(out), "--config", str(cfg)],
+    )
+    assert r.exit_code == 2
+    assert "no available actuator" in r.output
+    assert not out.exists()
+
+
+def test_crawl_unknown_app(tmp_path: Path) -> None:
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(app, ["crawl", "--app", "ghost", "--config", str(cfg)])
+    assert r.exit_code == 2
+
+
+def test_crawl_unknown_agent(tmp_path: Path) -> None:
+    # An invalid --agent is rejected before any device work (clean exit 2).
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(app, ["crawl", "--app", "demo", "--agent", "bad", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "unknown --agent" in r.output
+
+
 def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
     import json
 

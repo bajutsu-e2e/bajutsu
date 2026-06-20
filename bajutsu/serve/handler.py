@@ -8,6 +8,7 @@ import mimetypes
 import os
 import shutil
 import threading
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from bajutsu.serve.helpers import (
     _int,
     _scenario_path,
     app_build_info,
+    crawl_command,
     list_apps,
     list_fs,
     list_runs,
@@ -123,6 +125,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._post_run(body)
                 case "/api/record":
                     self._post_record(body)
+                case "/api/crawl":
+                    self._post_crawl(body)
                 case "/api/scenario":
                     self._post_scenario(body)
                 case "/api/approve":
@@ -264,6 +268,46 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             )
             threading.Thread(target=run_job, args=(state, job), daemon=True).start()
             self._json({"jobId": job.id, "path": str(out)})
+
+        def _post_crawl(self, body: dict[str, Any]) -> None:
+            """Explore an app breadth-first and build a screen map (the Crawl tab).  The screen
+            map is streamed into ``runs/<runId>/screenmap.json`` as the crawl advances; the
+            returned ``runId`` lets the UI poll it and draw the graph live."""
+            cfg = state.config
+            if cfg is None:
+                self._json({"error": "open a config first"}, 400)
+                return
+            if not body.get("app"):
+                self._json({"error": "app is required"}, 400)
+                return
+            # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
+            resume_src = str(body.get("resumeSrc", "") or "")
+            resume_key = str(body.get("resumeKey", "") or "")
+            resuming = bool(resume_src and resume_key and body.get("runId"))
+            run_id = (
+                str(body["runId"]) if resuming else datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+            )
+            udid = str(body.get("udid", "") or "")
+            cmd = crawl_command(
+                str(body["app"]),
+                out=str(state.runs_dir / run_id),
+                agent=body.get("agent", ""),
+                backend=body.get("backend", ""),
+                udid=udid,
+                max_screens=_int(body.get("maxScreens"), 50),
+                max_steps=_int(body.get("maxSteps"), 200),
+                erase=body["erase"] if isinstance(body.get("erase"), bool) else None,
+                dismiss_alerts=body["dismissAlerts"]
+                if isinstance(body.get("dismissAlerts"), bool)
+                else None,
+                config=str(cfg),
+                resume_src=resume_src if resuming else "",
+                resume_key=resume_key if resuming else "",
+            )
+            app_path, build = app_build_info(cfg, str(body["app"]))
+            job = state.new_job(cmd, udids=self._boot_targets(udid), app_path=app_path, build=build)
+            threading.Thread(target=run_job, args=(state, job), daemon=True).start()
+            self._json({"jobId": job.id, "runId": run_id})
 
         def _post_scenario(self, body: dict[str, Any]) -> None:
             """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""
