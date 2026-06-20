@@ -18,6 +18,7 @@ from typing import Any
 
 from bajutsu import env
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
+from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import app_scenarios_dir
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
@@ -52,6 +53,9 @@ class Job:
     # For a server-backend `record`: (app, ref) the worker persists the authored scenario to after
     # the run (it wrote it to `out_path` in its workspace). None for local / non-record jobs.
     record_save: tuple[str, str] | None = None
+    # For a server-backend `run`: download the visual baselines into the workspace before running
+    # (the cmd points `--baselines` at a workspace dir). False for local (the real dir is used).
+    materialize_baselines: bool = False
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -97,6 +101,9 @@ class ServeState:
     # Scenario resolution. Confined to the app's scenarios dir by default; a server backend swaps
     # in a per-project store (set after construction) that resolves by id (BE-0015).
     scenarios: ScenarioStore = field(init=False)
+    # Visual-regression baselines. Filesystem-confined by default; a server backend swaps in an
+    # object-storage store (set after construction) (BE-0015).
+    baselines: BaselineStore = field(init=False)
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
@@ -116,6 +123,7 @@ class ServeState:
         self.artifacts = LocalArtifactStore(self.runs_dir)
         # Resolve the dir lazily through a closure so a config opened from the UI later is reflected.
         self.scenarios = LocalScenarioStore(lambda app: _scenarios_dir_for(self, app))
+        self.baselines = LocalBaselineStore(self.baselines_dir)
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""
@@ -146,6 +154,7 @@ class ServeState:
         out_path: str | None,
         materials: dict[str, str] | None,
         record_save: tuple[str, str] | None,
+        materialize_baselines: bool,
     ) -> Job:
         """Create + register a job. Caller must hold ``self._lock``."""
         self._seq += 1
@@ -159,6 +168,7 @@ class ServeState:
             bus=self.logbus,
             materials=dict(materials or {}),
             record_save=record_save,
+            materialize_baselines=materialize_baselines,
         )
         self.jobs[job.id] = job
         return job
@@ -172,9 +182,12 @@ class ServeState:
         out_path: str | None = None,
         materials: dict[str, str] | None = None,
         record_save: tuple[str, str] | None = None,
+        materialize_baselines: bool = False,
     ) -> Job:
         with self._lock:
-            return self._make_job(cmd, udids, app_path, build, out_path, materials, record_save)
+            return self._make_job(
+                cmd, udids, app_path, build, out_path, materials, record_save, materialize_baselines
+            )
 
     def try_new_job(
         self,
@@ -185,6 +198,7 @@ class ServeState:
         out_path: str | None = None,
         materials: dict[str, str] | None = None,
         record_save: tuple[str, str] | None = None,
+        materialize_baselines: bool = False,
     ) -> Job | None:
         """Create a job only if under the concurrency cap, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past the cap (BE-0051). Returns None
@@ -193,7 +207,9 @@ class ServeState:
             running = sum(1 for j in self.jobs.values() if j.status == "running")
             if self.max_concurrent > 0 and running >= self.max_concurrent:
                 return None
-            return self._make_job(cmd, udids, app_path, build, out_path, materials, record_save)
+            return self._make_job(
+                cmd, udids, app_path, build, out_path, materials, record_save, materialize_baselines
+            )
 
 
 def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:

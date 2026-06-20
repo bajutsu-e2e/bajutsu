@@ -78,6 +78,8 @@ def job_spec(job: Job) -> dict[str, Any]:
         # record: where in the workspace the authored file lands + (app, ref) to persist it as.
         "out_path": job.out_path,
         "record_save": list(job.record_save) if job.record_save else None,
+        # run: download visual baselines into the workspace before running.
+        "materialize_baselines": job.materialize_baselines,
     }
 
 
@@ -139,6 +141,12 @@ def execute_job_spec(
     # workspace-relative `--scenario` / `--config` resolve here (the worker has no project on disk).
     _materialize(work, spec.get("materials") or {})
     log_bus = bus if bus is not None else _redis_log_bus()
+    # Download the visual baselines into the workspace before the run (the cmd's `--baselines` points
+    # at this dir); the control plane's baselines live in object storage the worker can't share.
+    if spec.get("materialize_baselines"):
+        baseline_src = store if store is not None else object_store_from_env()
+        if baseline_src is not None:
+            _materialize_baselines(work, baseline_src)
     state = ServeState(runs_dir=work / "runs", cwd=work, popen=popen, simctl=simctl, logbus=log_bus)
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
@@ -161,6 +169,24 @@ def execute_job_spec(
         if isinstance(save, (list, tuple)) and len(save) == 2 and job.out_path:
             _save_authored(work, uploader, job.out_path, str(save[0]), str(save[1]))
     return job
+
+
+def _materialize_baselines(work: Path, store: ObjectStore) -> None:
+    """Download every visual baseline into ``work/baselines/`` before the run (the cmd's
+    ``--baselines`` points here), via the same `ObjectBaselineStore` keys the control plane writes."""
+    from bajutsu.serve.server.baselines import ObjectBaselineStore
+
+    src = ObjectBaselineStore(store, prefix=s3_prefix())
+    base = (work / "baselines").resolve()
+    for name in src.names():
+        data = src.open_bytes(name)
+        if data is None:
+            continue
+        dest = (work / "baselines" / name).resolve()
+        if base != dest.parent and base not in dest.parents:
+            continue  # defensive: stay under the baselines dir
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
 
 
 def _save_authored(work: Path, store: ObjectStore, out_path: str, app: str, ref: str) -> None:
