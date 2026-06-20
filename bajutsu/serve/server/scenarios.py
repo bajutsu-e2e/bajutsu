@@ -87,7 +87,9 @@ class StorageScenarioScope:
         # worker to write to a workspace-relative path then persist it to storage as (app, ref).
         ref = scenario_out_name(name)
         if self._storage.read(self._app, ref) is not None:
-            ref = f"{ref[: -len('.yaml')]}-{datetime.now(tz=UTC).strftime('%Y%m%d-%H%M%S')}.yaml"
+            # Microsecond precision so two records in the same second don't pick the same ref.
+            stamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S-%f")
+            ref = f"{ref[: -len('.yaml')]}-{stamp}.yaml"
         return Authored(out=f"{_WORKSPACE_SCENARIOS}/{ref}", save=(self._app, ref))
 
 

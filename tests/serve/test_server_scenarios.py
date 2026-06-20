@@ -115,7 +115,8 @@ def test_authored_stamps_a_taken_ref_to_avoid_clobber() -> None:
     scope = StorageScenarioStore(FakeScenarioStorage({"demo": {"smoke.yaml": "x"}})).scope("demo")
     assert scope is not None
     authored = scope.authored("smoke")  # smoke.yaml exists -> stamped
-    app, ref = authored.save  # type: ignore[misc]
+    assert authored.save is not None
+    app, ref = authored.save
     assert (
         app == "demo" and ref != "smoke.yaml" and ref.startswith("smoke-") and ref.endswith(".yaml")
     )

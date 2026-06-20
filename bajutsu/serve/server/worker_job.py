@@ -146,6 +146,7 @@ def execute_job_spec(
         udids=list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
         build=spec.get("build"),
+        out_path=spec.get("out_path"),  # so the terminal-status payload reports it (record jobs)
         bus=state.logbus,
     )
     run_job(state, job)
@@ -156,8 +157,9 @@ def execute_job_spec(
         if job.run_id:
             _upload_runs(work, uploader, artifact_prefix(s3_prefix()), job.run_id)
         save = spec.get("record_save")
-        if save and spec.get("out_path"):
-            _save_authored(work, uploader, str(spec["out_path"]), str(save[0]), str(save[1]))
+        # Validate the queue payload's shape before indexing — a malformed spec must not crash here.
+        if isinstance(save, (list, tuple)) and len(save) == 2 and job.out_path:
+            _save_authored(work, uploader, job.out_path, str(save[0]), str(save[1]))
     return job
 
 
@@ -166,9 +168,12 @@ def _save_authored(work: Path, store: ObjectStore, out_path: str, app: str, ref:
     storage as ``(app, ref)`` — via the same `ObjectScenarioStorage` keys the control plane reads."""
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage
 
-    src = work / out_path
-    if src.is_file():
-        # `list` is the apps provider (returns []); save() doesn't consult it, only the key scheme.
-        ObjectScenarioStorage(store, list, prefix=s3_prefix()).save(
-            app, ref, src.read_text(encoding="utf-8")
-        )
+    src = (work / out_path).resolve()
+    # Confine to the workspace: a crafted spec with an absolute / ``..`` out_path must not read &
+    # upload arbitrary host files (mirrors _materialize / _upload_runs).
+    if work.resolve() not in src.parents or not src.is_file():
+        return
+    # `list` is the apps provider (returns []); save() doesn't consult it, only the key scheme.
+    ObjectScenarioStorage(store, list, prefix=s3_prefix()).save(
+        app, ref, src.read_text(encoding="utf-8")
+    )
