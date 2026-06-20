@@ -33,9 +33,11 @@ dev = [
     # The Bedrock extra (boto3) so the gate can import/test AnthropicBedrock and `make serve`
     # offers the Bedrock provider out of the box, mirroring fastmcp/pillow below.
     "anthropic[bedrock]>=0.50",
-    # The server extra (FastAPI) + httpx so the gate can import/test the control-plane app via
-    # FastAPI's TestClient, mirroring the Bedrock extra above. Kept off the default install.
+    # The server extra (FastAPI + uvicorn) + httpx so the gate can import/test the control-plane
+    # app via FastAPI's TestClient and run it over a real uvicorn server. Kept off the default
+    # install, mirroring the Bedrock extra above.
     "fastapi>=0.110",
+    "uvicorn>=0.27",
     "httpx>=0.27",
     "fastmcp>=2.0.0",
     "mypy>=1.10",

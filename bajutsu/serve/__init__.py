@@ -6,8 +6,9 @@ bajutsu record …``), streaming the agent's turn-by-turn progress and writing t
 the scenarios dir; **Replay** runs a scenario (``python -m bajutsu run …``) and shows its
 self-contained ``report.html``.  Each request spawns the CLI on a background thread, streams
 its output, and the produced ``runs/<id>/`` tree is served so the report's relative asset
-links resolve.  Stdlib only — the same ``ThreadingHTTPServer`` approach as the network
-collector ([[network]]).
+links resolve.  The default transport is stdlib-only — the same ``ThreadingHTTPServer`` approach
+as the network collector ([[network]]); ``--asgi`` instead serves the same UI/API as a FastAPI app
+over uvicorn (the ``server`` extra), the transport the hosted backend uses (BE-0015).
 
 Split into three submodules:
 
@@ -19,6 +20,7 @@ Split into three submodules:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
@@ -54,6 +56,7 @@ from bajutsu.serve.scenarios import (
 )
 
 __all__ = [
+    "SERVE_BACKENDS",
     "Artifact",
     "ArtifactStore",
     "InMemoryLogBus",
@@ -94,6 +97,65 @@ __all__ = [
 ]
 
 
+# The serve backends `_build_state` can assemble — the source of truth the CLI validates against.
+# Only the local backend exists today; the hosted ones land as their backings (Redis / object
+# store / DB) do (BE-0015).
+SERVE_BACKENDS: tuple[str, ...] = ("local",)
+
+
+def _build_state(
+    *,
+    runs_dir: Path,
+    config: Path | None,
+    scenarios_dir: Path | None,
+    root: Path | None,
+    baselines_dir: Path | None,
+    max_concurrent: int,
+    token: str | None,
+    backend: str = "local",
+) -> ServeState:
+    """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
+
+    Today only the ``local`` backend exists (in-process executor, in-memory log bus, filesystem
+    artifacts, on-disk scenarios). The hosted backend (Redis / object-store / DB seams) is
+    assembled here as those backings land (BE-0015); an unknown backend fails loudly rather than
+    silently falling back to local. The transport (stdlib vs uvicorn) is a separate choice."""
+    if backend not in SERVE_BACKENDS:
+        raise ValueError(
+            f"unknown serve backend: {backend!r} (available: {', '.join(SERVE_BACKENDS)})"
+        )
+    return ServeState(
+        runs_dir=runs_dir,
+        config=config,
+        scenarios_dir=scenarios_dir,
+        root=root or Path.cwd(),
+        baselines_dir=baselines_dir
+        or (scenarios_dir / "baselines" if scenarios_dir else Path("baselines")),
+        max_concurrent=max_concurrent,
+        token=token,
+    )
+
+
+def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:
+    """A uvicorn ``Server`` running the FastAPI control-plane app over *state*. uvicorn and the app
+    (FastAPI) are imported lazily — only when the ASGI transport is selected — so the default path
+    and the import guard (#117) stay server-free. (Return type is Any so the module needn't import
+    uvicorn to annotate it.)"""
+    try:
+        import uvicorn
+
+        from bajutsu.serve.server.app import make_app
+    except ImportError as e:
+        raise ImportError(
+            "the 'server' extra is required for --asgi (FastAPI + uvicorn) — "
+            "install with: pip install 'bajutsu[server]'"
+        ) from e
+
+    return uvicorn.Server(
+        uvicorn.Config(make_app(state), host=host, port=port, log_level="warning")
+    )
+
+
 def serve(
     host: str,
     port: int,
@@ -104,20 +166,30 @@ def serve(
     baselines_dir: Path | None = None,
     max_concurrent: int = 4,
     token: str | None = None,
+    *,
+    asgi: bool = False,
+    backend: str = "local",
 ) -> None:
-    state = ServeState(
+    state = _build_state(
         runs_dir=runs_dir,
         config=config,
         scenarios_dir=scenarios_dir,
-        root=root or Path.cwd(),
-        baselines_dir=baselines_dir
-        or (scenarios_dir / "baselines" if scenarios_dir else Path("baselines")),
+        root=root,
+        baselines_dir=baselines_dir,
         max_concurrent=max_concurrent,
         token=token,
+        backend=backend,
     )
+    hint = str(config) if config else "open a config.yml in the UI"
+    if asgi:
+        # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now
+        # with the local backend (a single-process ASGI server) so the path is exercised before
+        # the hosted seams land.
+        print(f"bajutsu serve (asgi) → http://{host}:{port}  (config: {hint} · Ctrl-C to stop)")  # noqa: T201
+        make_asgi_server(state, host, port).run()
+        return
     server = make_server(state, host, port)
     bound = server.server_address[1]
-    hint = str(config) if config else "open a config.yml in the UI"
     print(f"bajutsu serve → http://{host}:{bound}  (config: {hint} · Ctrl-C to stop)")  # noqa: T201
     try:
         server.serve_forever()
