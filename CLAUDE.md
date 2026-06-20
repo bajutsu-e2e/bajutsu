@@ -99,7 +99,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   translation:** use the conventional translation; if rendering a term would read unnaturally, keep
   the original (usually English) term (e.g. `selector`, `actuator`, `backend`). **No omissions:**
   each document must be self-contained — spell out abbreviations on first use and give the context
-  a reader needs, without assuming they read another page first. Full guidance:
+  a reader needs, without assuming they read another page first.
+  **When generating the Japanese side — writing it fresh, or translating the English `docs/` into
+  `docs/ja/` (and roadmap `*-ja.md`) — follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/)
+  skill: it is the authoritative style for Japanese prose here, and a translation must read as
+  natural Japanese under those norms, not a literal rendering of the English.** Full guidance:
   [`docs/ai-development.md`](docs/ai-development.md).
 - **Roadmap items use BE IDs (strict).** Every roadmap item is a directory
   `roadmaps/<implemented|proposals>/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md`
