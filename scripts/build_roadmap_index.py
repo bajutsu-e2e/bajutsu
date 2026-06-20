@@ -233,12 +233,33 @@ def replace_region(text: str, key: str, body: str) -> str:
     return pattern.sub(lambda m: f"{m.group(1)}{body}{m.group(2)}", text)
 
 
+def duplicate_ids(roadmap: Path) -> dict[str, list[str]]:
+    """Map every BE id used by more than one item directory to those directories' paths.
+
+    IDs are permanent and unique. A duplicate — e.g. two branches racing for ``max + 1`` — must
+    fail the build rather than silently render two index rows for one id. Empty when all unique.
+    """
+    by_id: dict[str, list[str]] = {}
+    for category in CATEGORIES:
+        category_dir = roadmap / category
+        if not category_dir.is_dir():
+            continue
+        for d in sorted(category_dir.iterdir()):
+            if d.is_dir() and (match := NUMBERED_DIR_RE.match(d.name)):
+                by_id.setdefault(f"BE-{match.group(1)}", []).append(f"{category}/{d.name}")
+    return {be_id: paths for be_id, paths in by_id.items() if len(paths) > 1}
+
+
 def load_items(roadmap: Path) -> list[Item]:
     """Read every BE item directory into an Item with per-language render fields.
 
     Items live under ``roadmaps/<category>/BE-NNNN-<slug>/`` — the category (the directory the
-    item was filed in by its Status) prefixes every link the index renders to it.
+    item was filed in by its Status) prefixes every link the index renders to it. Refuses a tree
+    with duplicate ids, so a number reused across two items fails the build.
     """
+    if dupes := duplicate_ids(roadmap):
+        detail = "; ".join(f"{be_id}: {', '.join(paths)}" for be_id, paths in sorted(dupes.items()))
+        raise ValueError(f"duplicate BE IDs (each id must be unique and permanent): {detail}")
     items: list[Item] = []
     for category in CATEGORIES:
         category_dir = roadmap / category
@@ -330,7 +351,11 @@ def _diff(current: str, updated: str, name: str) -> str:
 
 def main(argv: list[str]) -> int:
     check = "--check" in argv
-    items = load_items(ROADMAP)
+    try:
+        items = load_items(ROADMAP)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 1
     drift: list[str] = []
     for lang in LANGS:
         path = ROADMAP / lang.index_file

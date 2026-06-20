@@ -81,7 +81,7 @@ prime directive の保持：
 ## 参考
 
 残りのデバイス状態プリミティブ（タイムゾーン、クリップボードへの値の仕込み、シェイク、アプリの
-レジューム）は、[デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク](../../proposals/BE-0045-device-state-timezone-clipboard-shake/BE-0045-device-state-timezone-clipboard-shake-ja.md)
+レジューム）は、[デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク](../../proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
 で別途扱います。
 
 [DESIGN §6.2](../../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`

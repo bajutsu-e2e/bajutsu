@@ -256,8 +256,8 @@ MagicPod・Autify は **AI 自己修復（self-healing）+ ノーコード + ク
 |---|---|---|---|
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) | WebView / ハイブリッド対応 | 提案 | MagicPod |
 | [BE-0040](proposals/BE-0040-ai-assertions/BE-0040-ai-assertions-ja.md) | AI アサーション | 保留 | MagicPod |
-| [BE-0045](proposals/BE-0045-device-state-timezone-clipboard-shake/BE-0045-device-state-timezone-clipboard-shake-ja.md) | デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク | 提案 | MagicPod |
 | [BE-0046](proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) | OTP・メールの側方チャネルステップ | 提案 | MagicPod |
+| [BE-0052](proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md) | デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク | 提案 | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 
 ### 競合調査（Maestro）由来の候補
