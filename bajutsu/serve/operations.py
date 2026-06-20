@@ -130,9 +130,12 @@ def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
 
 
 def format_sse(event: str, data: str) -> str:
-    """One Server-Sent Event frame: an ``event:`` line and a ``data:`` line, ended by a blank line
-    so the browser dispatches it."""
-    return f"event: {event}\ndata: {data}\n\n"
+    """One Server-Sent Event frame. *data* is split on line breaks into one ``data:`` line each,
+    ended by a single blank line so the browser dispatches it. Splitting matters: a value with an
+    embedded newline (a multi-line or crafted log line) would otherwise inject extra SSE fields
+    (e.g. a fake ``event:``), and a LogBus line's trailing newline would add a stray blank line."""
+    body = "".join(f"data: {line}\n" for line in data.splitlines()) or "data: \n"
+    return f"event: {event}\n{body}\n"
 
 
 def job_log_events(state: ServeState, job_id: str) -> Iterator[tuple[str, str]] | None:
