@@ -16,6 +16,7 @@ from typing import Any
 
 from bajutsu import usage
 from bajutsu.agent import Observation, Proposal
+from bajutsu.anthropic_client import make_client, resolve_model
 from bajutsu.scenario import Assertion, Step
 
 MODEL = "claude-opus-4-8"
@@ -286,16 +287,16 @@ def _to_proposal(message: Any) -> Proposal:
 class ClaudeAgent:
     """Agent implementation that asks Claude for the next action via tool use."""
 
-    def __init__(self, client: Any = None, model: str = MODEL, max_tokens: int = 1024) -> None:
+    def __init__(
+        self, client: Any = None, model: str | None = None, max_tokens: int = 1024
+    ) -> None:
         self._client = client
-        self._model = model
+        self._model = resolve_model(MODEL) if model is None else model
         self._max_tokens = max_tokens
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            import anthropic
-
-            self._client = anthropic.Anthropic()
+            self._client = make_client()
         return self._client
 
     def next_action(self, observation: Observation) -> Proposal:

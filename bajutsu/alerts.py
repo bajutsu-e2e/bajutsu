@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu import usage
+from bajutsu.anthropic_client import make_client, resolve_model
 from bajutsu.drivers import base
 from bajutsu.orchestrator import AlertEvent
 
@@ -161,15 +162,13 @@ def _decision_of(message: Any, width: int, height: int) -> AlertDecision:
 class ClaudeAlertLocator:
     """AlertLocator backed by Claude vision; `anthropic` is lazy-imported."""
 
-    def __init__(self, client: Any = None, model: str = LOCATOR_MODEL) -> None:
+    def __init__(self, client: Any = None, model: str | None = None) -> None:
         self._client = client
-        self._model = model
+        self._model = resolve_model(LOCATOR_MODEL) if model is None else model
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            import anthropic
-
-            self._client = anthropic.Anthropic()
+            self._client = make_client()
         return self._client
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision:
