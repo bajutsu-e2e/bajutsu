@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import env
+from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.helpers import app_scenarios_dir
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
@@ -76,6 +77,9 @@ class ServeState:
     # Live-log delivery. In-memory buffer by default; a server backend swaps in a Redis stream
     # so any replica can serve any job's `/events` (BE-0015).
     logbus: LogBus = field(default_factory=InMemoryLogBus)
+    # Run-artifact reads. Filesystem-confined by default; a server backend swaps in an
+    # object-storage store (set after construction) that may serve signed-URL redirects (BE-0015).
+    artifacts: ArtifactStore = field(init=False)
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
@@ -88,6 +92,11 @@ class ServeState:
     _sessions: set[str] = field(default_factory=set)
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self) -> None:
+        # `artifacts` is init=False so existing ServeState(...) calls don't change; default it to
+        # the filesystem store here (a server backend overwrites state.artifacts after construction).
+        self.artifacts = LocalArtifactStore(self.runs_dir)
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""

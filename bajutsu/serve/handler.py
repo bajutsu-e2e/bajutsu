@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import functools
 import json
-import mimetypes
 import os
-import shutil
 from datetime import UTC, datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,7 +24,6 @@ from bajutsu.serve.helpers import (
     crawl_command,
     list_apps,
     list_fs,
-    list_runs,
     list_scenarios,
     list_simulators,
     mask_secret,
@@ -158,7 +155,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/simulators":
                     self._json(list_simulators(state.simctl))
                 case "/api/runs":
-                    self._json(list_runs(state.runs_dir))
+                    self._json(state.artifacts.list_runs())
                 case "/api/scenario":
                     qs = parse_qs(urlparse(self.path).query)
                     scn_dir = _scenarios_dir_for(state, next(iter(qs.get("app") or []), None))
@@ -499,30 +496,32 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not run_id or not sid or not baseline:
                 self._json({"error": "runId, sid and baseline are required"}, 400)
                 return
-            runs_base = state.runs_dir.resolve()
-            actual = (state.runs_dir / run_id / sid / "visual-actual.png").resolve()
+            data = state.artifacts.open_bytes(f"{run_id}/{sid}/visual-actual.png")
             base_root = state.baselines_dir.resolve()
             dest = (state.baselines_dir / baseline).resolve()
-            if runs_base not in actual.parents or not actual.is_file():
+            if data is None:
                 self._json({"error": "no captured screenshot for this run"}, 404)
                 return
             if base_root != dest.parent and base_root not in dest.parents:
                 self._json({"error": "baseline path escapes the baselines dir"}, 400)
                 return
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(actual, dest)
+            dest.write_bytes(data)
             self._json({"ok": True, "baseline": baseline})
 
         def _serve_run_file(self, rel: str) -> None:
-            base = state.runs_dir.resolve()
-            target = (state.runs_dir / rel).resolve()
-            if base not in target.parents or not target.is_file():
+            art = state.artifacts.get(rel)
+            if art is None:
                 self._json({"error": "not found"}, 404)
                 return
-            ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-            data = target.read_bytes()
+            if art.redirect is not None:  # a server store hands back a signed URL
+                self.send_response(302)
+                self.send_header("Location", art.redirect)
+                self.end_headers()
+                return
+            data = art.body or b""
             self.send_response(200)
-            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Type", art.content_type)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
