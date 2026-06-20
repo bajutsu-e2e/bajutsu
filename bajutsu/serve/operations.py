@@ -292,6 +292,8 @@ def start_run(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     config_arg = "bajutsu.config.yaml" if on_worker else str(cfg)
     if on_worker:
         materials[config_arg] = cfg.read_text(encoding="utf-8")
+    # On the worker, baselines are downloaded into a workspace-relative dir before the run (the
+    # control plane's baselines live in object storage); locally the real dir is used directly.
     cmd = run_command(
         runnable.arg,
         app,
@@ -303,12 +305,17 @@ def start_run(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
         if isinstance(body.get("dismissAlerts"), bool)
         else None,
         config=config_arg,
-        baselines="" if on_worker else str(state.baselines_dir),
+        baselines="baselines" if on_worker else str(state.baselines_dir),
     )
     app_path, build = app_build_info(cfg, app)
     # Atomic count + create so concurrent dispatches can't both slip past the cap.
     job = state.try_new_job(
-        cmd, udids=_boot_targets(udid), app_path=app_path, build=build, materials=materials
+        cmd,
+        udids=_boot_targets(udid),
+        app_path=app_path,
+        build=build,
+        materials=materials,
+        materialize_baselines=on_worker,
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
@@ -445,23 +452,19 @@ def save_scenario(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
 def approve_baseline(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     """Promote a run's captured screenshot to a `visual` baseline.
 
-    Copies ``runs/<runId>/<sid>/visual-actual.png`` → ``baselines/<baseline>``. Both ends are
-    resolved and confined to their roots so a crafted runId / sid / baseline can't read or write
-    outside the runs / baselines directories."""
+    Reads ``runs/<runId>/<sid>/visual-actual.png`` from the artifact store and writes it as baseline
+    *baseline* via the baseline store — both seams confine the name to their root (filesystem dir or
+    object-storage prefix), so a crafted runId / sid / baseline can't read or write outside it."""
     run_id = str(body.get("runId") or "")
     sid = str(body.get("sid") or "")
     baseline = str(body.get("baseline") or "")
     if not run_id or not sid or not baseline:
         return {"error": "runId, sid and baseline are required"}, 400
     data = state.artifacts.open_bytes(f"{run_id}/{sid}/visual-actual.png")
-    base_root = state.baselines_dir.resolve()
-    dest = (state.baselines_dir / baseline).resolve()
     if data is None:
         return {"error": "no captured screenshot for this run"}, 404
-    if base_root != dest.parent and base_root not in dest.parents:
-        return {"error": "baseline path escapes the baselines dir"}, 400
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(data)
+    if state.baselines.write(baseline, data) is None:
+        return {"error": "invalid baseline name"}, 400
     return {"ok": True, "baseline": baseline}, 200
 
 

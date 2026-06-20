@@ -172,6 +172,7 @@ def _build_server_state(
 
     from bajutsu.serve.helpers import list_apps
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
+    from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.executor import QueueExecutor
     from bajutsu.serve.server.logbus import RedisLogBus
     from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, s3_prefix
@@ -206,6 +207,7 @@ def _build_server_state(
             store, lambda: list_apps(state.config) if state.config else [], prefix=prefix
         )
     )
+    state.baselines = ObjectBaselineStore(store, prefix=prefix)
     return state
 
 

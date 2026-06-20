@@ -72,6 +72,7 @@ def test_build_state_server_wires_the_hosted_seams(
     # The server backend assembles the hosted seams from the environment. The Redis/RQ/boto3
     # clients construct without connecting, so this checks the wiring (the seam types) on the gate.
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
+    from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.executor import QueueExecutor
     from bajutsu.serve.server.logbus import RedisLogBus
     from bajutsu.serve.server.scenarios import StorageScenarioStore
@@ -94,6 +95,7 @@ def test_build_state_server_wires_the_hosted_seams(
     assert isinstance(state.logbus, RedisLogBus)
     assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert isinstance(state.scenarios, StorageScenarioStore)
+    assert isinstance(state.baselines, ObjectBaselineStore)
     # The scenario store reads the live config's apps (project registry comes from config here).
     scope = state.scenarios.scope("demo")
     assert scope is not None  # demo is an app in the bound config

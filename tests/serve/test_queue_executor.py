@@ -83,6 +83,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "materials": {},  # no materials for a local-built job
         "out_path": None,  # not a record job
         "record_save": None,
+        "materialize_baselines": False,
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -218,6 +219,8 @@ def test_start_run_on_the_server_backend_materializes_scenario_and_config(tmp_pa
     cmd = spec["cmd"]
     assert "scenarios/smoke.yaml" in cmd  # workspace-relative --scenario
     assert "bajutsu.config.yaml" in cmd  # workspace-relative --config
+    assert "baselines" in cmd  # workspace-relative --baselines (materialized on the worker)
+    assert spec["materialize_baselines"] is True
     assert spec["materials"]["scenarios/smoke.yaml"] == scenario_text
     assert "apps:" in spec["materials"]["bajutsu.config.yaml"]
 
@@ -383,3 +386,26 @@ def test_start_record_on_the_server_backend_materializes_and_targets_storage(
     assert "bajutsu.config.yaml" in spec["cmd"]  # config materialized
     assert spec["record_save"] == ["demo", "login.yaml"]
     assert "apps:" in spec["materials"]["bajutsu.config.yaml"]
+
+
+def test_execute_job_spec_materializes_baselines(tmp_path: Path) -> None:
+    # A server-backend run downloads the visual baselines into work/baselines before running, so the
+    # cmd's `--baselines baselines` resolves on the worker.
+    store = _FakeObjectStore()
+    store.objects["baselines/home.png"] = b"\x89PNG"
+    spec = {
+        "job_id": "1",
+        "cmd": ["bajutsu", "run"],
+        "udids": [],
+        "app_path": None,
+        "build": None,
+        "materialize_baselines": True,
+    }
+    # A stale baseline from a previous job in the reused workspace must be cleared before download.
+    (tmp_path / "baselines").mkdir()
+    (tmp_path / "baselines" / "stale.png").write_bytes(b"old")
+    execute_job_spec(
+        spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
+    )
+    assert (tmp_path / "baselines" / "home.png").read_bytes() == b"\x89PNG"
+    assert not (tmp_path / "baselines" / "stale.png").exists()  # cleared before re-materialize
