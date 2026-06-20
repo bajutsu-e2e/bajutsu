@@ -7,9 +7,9 @@ guard (BE-0051) made structural: no path ever exists on the control plane.
 
 It serves the authoring operations the UI needs — ``list`` / ``read`` / ``save`` — by delegating to
 an injected `ScenarioStorage` (a DB / object store; real backing arrives with the persistence
-slice). The execution paths (`resolve_runnable` / `out_path`) are **worker-side**: a queued run
-materializes the scenario into the worker's workspace and uses the local scope there, so the
-control-plane store does not serve them.
+slice). ``runnable`` returns the scenario as **materials** (the text plus a workspace-relative
+path) so a remote worker writes it before running — no path ever exists on the control plane.
+``out_path`` (record's authoring output) is still worker-side and not served yet.
 
 This module imports no storage SDK — `ScenarioStorage` is injected — so it's unit-tested with a
 fake and the default path stays server-free (#117 import guard).
@@ -17,10 +17,14 @@ fake and the default path stays server-free (#117 import guard).
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 from bajutsu.serve.helpers import valid_scenario_ref
+from bajutsu.serve.scenarios import Runnable
+
+# Where a materialized scenario lands in the worker's workspace (and the `--scenario` arg used).
+_WORKSPACE_SCENARIOS = "scenarios"
 
 
 class ScenarioStorage(Protocol):
@@ -61,8 +65,19 @@ class StorageScenarioScope:
             return None
         return self._storage.save(self._app, ref, text)
 
-    def resolve_runnable(self, scenario: str) -> Path | None:
-        raise NotImplementedError("a queued run materializes the scenario on the worker (BE-0015)")
+    def runnable(self, scenario: str) -> Runnable | None:
+        # Resolve by name from storage (no path on the control plane); ship the text as a material
+        # the worker writes under its workspace, and point `--scenario` at that relative path.
+        # Honour only the basename. Normalize backslashes first so "a\\b.yaml" reduces to "b.yaml"
+        # too (PurePosixPath alone wouldn't split a backslash, leaking the prefix into the key).
+        name = PurePosixPath(scenario.replace("\\", "/")).name
+        if not valid_scenario_ref(name):
+            return None
+        text = self._storage.read(self._app, name)
+        if text is None:
+            return None
+        rel = f"{_WORKSPACE_SCENARIOS}/{name}"
+        return Runnable(arg=rel, materials={rel: text})
 
     def out_path(self, name: str) -> Path:
         raise NotImplementedError("record output is written on the worker (BE-0015)")

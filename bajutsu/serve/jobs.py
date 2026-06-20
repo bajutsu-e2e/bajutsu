@@ -45,6 +45,10 @@ class Job:
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
     bus: LogBus | None = None  # live-log channel; set from state.logbus at creation (BE-0015)
+    # Files a remote worker must write into its workspace before running (workspace-relative path ->
+    # content): the scenario + config a server-backend run materializes. Empty for local (the files
+    # are already on disk). Travels in the job spec; never carries a client-controlled path (BE-0015).
+    materials: dict[str, str] = field(default_factory=dict)
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -137,6 +141,7 @@ class ServeState:
         app_path: str | None,
         build: str | None,
         out_path: str | None,
+        materials: dict[str, str] | None,
     ) -> Job:
         """Create + register a job. Caller must hold ``self._lock``."""
         self._seq += 1
@@ -148,6 +153,7 @@ class ServeState:
             build=build,
             out_path=out_path,
             bus=self.logbus,
+            materials=dict(materials or {}),
         )
         self.jobs[job.id] = job
         return job
@@ -159,9 +165,10 @@ class ServeState:
         app_path: str | None = None,
         build: str | None = None,
         out_path: str | None = None,
+        materials: dict[str, str] | None = None,
     ) -> Job:
         with self._lock:
-            return self._make_job(cmd, udids, app_path, build, out_path)
+            return self._make_job(cmd, udids, app_path, build, out_path, materials)
 
     def try_new_job(
         self,
@@ -170,6 +177,7 @@ class ServeState:
         app_path: str | None = None,
         build: str | None = None,
         out_path: str | None = None,
+        materials: dict[str, str] | None = None,
     ) -> Job | None:
         """Create a job only if under the concurrency cap, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past the cap (BE-0051). Returns None
@@ -178,7 +186,7 @@ class ServeState:
             running = sum(1 for j in self.jobs.values() if j.status == "running")
             if self.max_concurrent > 0 and running >= self.max_concurrent:
                 return None
-            return self._make_job(cmd, udids, app_path, build, out_path)
+            return self._make_job(cmd, udids, app_path, build, out_path, materials)
 
 
 def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:

@@ -16,6 +16,7 @@ import pytest
 from _shared import fake_popen, project
 
 from bajutsu import serve as srv
+from bajutsu.serve import operations as ops
 from bajutsu.serve.server import worker_job
 from bajutsu.serve.server.executor import QueueExecutor
 from bajutsu.serve.server.logbus import RedisLogBus
@@ -79,6 +80,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "udids": ["U1"],
         "app_path": "A.app",
         "build": "make build",
+        "materials": {},  # no materials for a local-built job
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -167,3 +169,71 @@ def test_execute_job_spec_records_terminal_status_on_the_bus(tmp_path: Path) -> 
     view = json.loads(final)
     assert view["status"] == "done" and view["ok"] is True and view["runId"] == "20260610-1"
     assert "lines" not in view  # the log already lives in the bus stream; don't duplicate it
+
+
+def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) -> None:
+    # The worker writes the control-plane-shipped scenario + config into its workspace before the
+    # run, confined to it (an escaping material is ignored).
+    project(tmp_path)
+    spec = {
+        "job_id": "m",
+        "cmd": ["bajutsu", "run"],
+        "udids": [],
+        "app_path": None,
+        "build": None,
+        "materials": {
+            "scenarios/smoke.yaml": "- name: a\n  steps: []\n",
+            "bajutsu.config.yaml": "apps: {demo: {bundleId: x}}\n",
+            "../escape.yaml": "nope",  # must not be written outside the workspace
+            "": "root",  # resolves to the workspace root — must be ignored, not write_text a dir
+            "scenarios/..": "root2",  # also the workspace root via traversal — ignored
+        },
+    }
+    execute_job_spec(spec, popen=fake_popen(["ok\n"]), cwd=tmp_path, bus=srv.InMemoryLogBus())
+    assert (tmp_path / "scenarios/smoke.yaml").read_text() == "- name: a\n  steps: []\n"
+    assert (tmp_path / "bajutsu.config.yaml").exists()
+    assert not (tmp_path.parent / "escape.yaml").exists()  # confinement held
+    assert tmp_path.is_dir()  # the root-resolving materials didn't crash or clobber the workspace
+
+
+def test_start_run_on_the_server_backend_materializes_scenario_and_config(tmp_path: Path) -> None:
+    # A server-backend run enqueues a spec whose cmd uses workspace-relative paths and whose
+    # materials carry the scenario + config text — so a remote worker can run without the project.
+    from bajutsu.serve.server.scenarios import StorageScenarioStore
+
+    scn_dir, cfg, runs = project(tmp_path)
+    scenario_text = (scn_dir / "smoke.yaml").read_text()
+    q = _FakeQueue()
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, executor=QueueExecutor(q))
+    state.scenarios = StorageScenarioStore(
+        FakeScenarioStorage({"demo": {"smoke.yaml": scenario_text}})
+    )
+
+    payload, code = ops.start_run(state, {"scenario": "smoke.yaml", "app": "demo"})
+    assert code == 200 and "jobId" in payload
+
+    spec = q.enqueued[0][1][0]
+    cmd = spec["cmd"]
+    assert "scenarios/smoke.yaml" in cmd  # workspace-relative --scenario
+    assert "bajutsu.config.yaml" in cmd  # workspace-relative --config
+    assert spec["materials"]["scenarios/smoke.yaml"] == scenario_text
+    assert "apps:" in spec["materials"]["bajutsu.config.yaml"]
+
+
+class FakeScenarioStorage:
+    """Per-project scenario storage, in memory: {app: {ref: yaml}} (for the start_run test)."""
+
+    def __init__(self, projects: dict[str, dict[str, str]]) -> None:
+        self._projects = projects
+
+    def has_app(self, app: str) -> bool:
+        return app in self._projects
+
+    def list(self, app: str) -> list[dict[str, object]]:
+        return [{"file": r, "path": r} for r in sorted(self._projects.get(app, {}))]
+
+    def read(self, app: str, ref: str | None) -> str | None:
+        return self._projects.get(app, {}).get(ref or "")
+
+    def save(self, app: str, ref: str | None, text: str) -> str | None:
+        return ref
