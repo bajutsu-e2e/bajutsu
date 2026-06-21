@@ -2,7 +2,7 @@
 
 # Bajutsu のデモ
 
-実行できるデモ群で、どれも実機 iOS Simulator を操作します。同じ中心的な物語を、それぞれ違う深さで見せます。その物語とは、シナリオが決定論的なハブであり、実行（run）の合否は機械的なアサーションだけで決まる（LLM は判定に関与しない）、というものです。どのデモも `make -C demos <target>` という一つの入口で実行します。
+実行できるデモ群です。下の `make -C demos` 一式は実機 iOS Simulator を操作し、別に web デモがブラウザを Linux 上で操作します（下記）。同じ中心的な物語を、それぞれ違う深さで見せます。その物語とは、シナリオが決定論的なハブであり、実行（run）の合否は機械的なアサーションだけで決まる（LLM は判定に関与しない）、というものです。iOS のデモはどれも `make -C demos <target>` という一つの入口で実行します。
 
 ```bash
 make -C demos            # メニュー（make -C demos help と同じ）
@@ -24,6 +24,11 @@ make -C demos record     # 本物の Claude による著作、続けて改変 + 
 > Simulator も idb も APIキーも要らず、Linux/CI で数秒です: `uv run python demos/tour/tour.py`（機能
 > ショーケースは `uv run python demos/features/run_demo.py`）。[`tour/README.ja.md`](tour/README.ja.md)
 > を参照してください。これらは素早い最初の一歩で、上記の `make` ターゲットが実機での本番です。
+
+> **web（Playwright）バックエンド。** 別のデモが小さな静的 web アプリをブラウザで操作します。Mac も
+> Simulator も不要で、Linux 上で動きます: `make -C demos/web e2e`（[`web/README.md`](web/README.md)）。
+> シナリオ形式も決定的ランナーも同じで、**違うのは backend だけ**です。backend を差し替えればプラット
+> フォームが変わる、という要点をそのまま示します。
 
 ## どれを実行すればいい？
 
@@ -61,6 +66,8 @@ make -C demos record     # 本物の Claude による著作、続けて改変 + 
   SwiftUI で書き、各々をアクセシビリティ有/無の変種にしたものです（2 コードベースで 4 プロダクト）。
   `record`、`crawl`、`run` を一度に行使するために作られています。`sample` を置き換えます（showcase が
   その CI / Web UI ツアーをカバーするまでは `sample` を残します）。
+- **`web`**（[`web/`](web/README.md)）。**Playwright** バックエンドが Linux 上で操作する小さな静的 web
+  アプリです（Mac / Simulator 不要）。コアが backend 非依存であることを示すクロスプラットフォームのデモです。
 
 生成シナリオと作業コピー（`*/generated.yaml`、`tour/scenario.yaml`）、Xcode プロジェクト、実行成果物
 （`runs/`）は gitignore されています。デモが再生成します。

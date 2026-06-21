@@ -5,8 +5,9 @@
 > Tier 1 = AI ライブ操作です。自然言語のゴールから AI がアプリを探索しながら操作し、**決定的シナリオ**
 > を書き出します。AI が関与するのはここ（記録時）だけです。生成された YAML は AI 非依存で、以後はユーザーが管理します。
 >
-> 実装: `bajutsu/record.py`（ループ）、`bajutsu/agent.py`（抽象）、`bajutsu/claude_agent.py`（Claude）、
-> `bajutsu/alerts.py`（システムアラート対処）。
+> 実装: `bajutsu/record.py`（ループ）、`bajutsu/agent.py` + `bajutsu/agents.py`（抽象 + backend 選択）、
+> `bajutsu/claude_agent.py`（Anthropic API）/ `bajutsu/claude_code_agent.py`（Claude Code）、
+> `bajutsu/alerts.py`（システムアラート対処）。幅優先の探索 `bajutsu/crawl.py` も同じエージェントを使います。
 
 関連: [concepts の 2 層](concepts.md#2-2-層構成tier-1--tier-2) ・ [scenarios](scenarios.md) ・ [run-loop](run-loop.md)
 
@@ -15,7 +16,7 @@
 ## Agent 抽象
 
 ループとモデルを分離するための薄い Protocol です（`agent.py`）。テストではスクリプト化した fake を使い、
-本番では Claude を使います。
+本番では Claude backend を `--agent` で選びます（下記）。
 
 ```python
 @dataclass
@@ -64,24 +65,22 @@ class Agent(Protocol):
 「存在を要する要素」への `wait`** を、アサーションの直前に記録します。これにより `run` に
 暗黙のタイミングを追加せず、記録シナリオが自己完結します。
 
-## ClaudeAgent
+## Claude エージェント
 
-`agent.Agent` を Claude（Anthropic SDK、ソフトウェア開発キット）で実装しています（`claude_agent.py`）。
+`record` / `crawl` が本番の `agent.Agent` 実装を `--agent` で選びます（`agents.py` が解決）。
 
-- **ツール強制呼び出し**: `tool_choice={"type": "any"}` で、毎ターン **ちょうど 1 つ**のツールを呼び出します。
-  - `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`。
-  - `finish` の `assertions` は `exists` / `notExists` / `valueEquals` / `labelContains` を
-    `Assertion` に変換します（`_to_assertion`）。
-- **prompt cache**: システムプロンプトとツール定義は静的で `cache_control: ephemeral` を付けます。
-  ターンごとに変わるのは観測（要素 + スクショ）の user メッセージだけです。
-- **視覚 + 要素の併用**: スクショで見た目と状態を読み、**操作は必ず要素リストの `id`** で行います
-  （id を生成させません）。要素リストには id を持つ要素だけを出します。
-- モデルは `claude-opus-4-8` です。`anthropic` は遅延インポートです（API キー無しでもモジュールは読み込めます）。
-  クライアントは注入可能です（テスト用）。
+- **`api`**（`ClaudeAgent`, `claude_agent.py`）: Anthropic API を直接呼びます（従量課金）。`ANTHROPIC_API_KEY`、または `BAJUTSU_AI_PROVIDER=bedrock` 経由の Amazon Bedrock が必要です（[cli の .env](cli.md#環境変数env)）。モデルは `claude-opus-4-8`。`anthropic` は遅延インポートで（API キー無しでもモジュールは読み込めます）、クライアントは注入可能です（テスト用）。
+- **`claude-code`**（`ClaudeCodeAgent`, `claude_code_agent.py`）: ローカルの Claude Code CLI を駆動します。Claude Code のサブスクリプションで動き、API キーは不要です。
+
+どちらも同じターン契約を共有します。
+
+- **ツール強制呼び出し**: `tool_choice={"type": "any"}` で毎ターン **ちょうど 1 つ**のツールを呼びます。`tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`。`finish` の `assertions`（`exists` / `notExists` / `valueEquals` / `labelContains`）は `Assertion` に変換されます（`_to_assertion`）。
+- **prompt cache**（API 経路）: 静的なシステムプロンプトとツール定義に `cache_control: ephemeral` を付け、ターンごとに変わるのは観測（要素 + スクショ）だけです。
+- **視覚 + 要素の併用**: スクショで見た目と状態を読み、**操作は必ず要素リストの `id`** で行います（id を生成させません。リストには id を持つ要素だけを出します）。
 
 ```python
-ClaudeAgent()                      # 本番（環境の ANTHROPIC_API_KEY を使う）
-ClaudeAgent(client=fake_client)    # テスト
+ClaudeAgent()                      # api: 本番（環境の ANTHROPIC_API_KEY を使う）
+ClaudeAgent(client=fake_client)    # api: テスト
 ```
 
 ## システムアラートの自動対処

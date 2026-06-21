@@ -16,7 +16,7 @@
 
 ```python
 class Element(TypedDict):
-    identifier: str | None        # accessibilityIdentifier
+    identifier: str | None        # 安定 id（iOS は accessibilityIdentifier・web は data-testid）
     label: str | None             # accessibilityLabel
     traits: list[str]             # 正規化トレイト（下記）
     value: str | None             # accessibility value
@@ -99,7 +99,7 @@ def resolve_unique(elements, sel):
 
 ### バックエンドに依らず一元化される
 
-idb は使える semantic tap を持たないため、抽象側は **常に `query()` で候補数を検証してから**操作し、確定した要素の frame 中心をタップします。これにより「曖昧なら失敗」の挙動が idb / fake で同一になります（各ドライバの `tap` 実装は [drivers](drivers.md) を参照してください）。
+idb は使える semantic tap を持たないため、抽象側は **常に `query()` で候補数を検証してから**操作し、確定した要素の frame 中心をタップします。これにより「曖昧なら失敗」の挙動が idb / playwright / fake で同一になります（各ドライバの `tap` 実装は [drivers](drivers.md) を参照してください）。
 
 `id` は idb の要素ツリー（`AXUniqueId`）から直接得られ、`Element.identifier` に正規化されます。そのため `id` セレクタは正規化形に対して直接解決できます。
 

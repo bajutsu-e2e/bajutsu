@@ -2,7 +2,7 @@
 
 # CLI リファレンス
 
-> 実装: `bajutsu/cli.py`（Typer）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
+> 実装: `bajutsu/cli/`（Typer。コマンドごとに `cli/commands/` の 1 ファイル）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
 > この CLI（コマンドラインインターフェース）のすべてのコマンドは `--app <name>` で 1 アプリを選び、
 > `--config`（既定 `bajutsu.config.yaml`）で設定を指す。アプリ固有の差分は config 側にある（[configuration](configuration.md)）。
 
@@ -44,6 +44,7 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（アプリに BajutsuKit が必要） |
 | `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` が必要（プール数で上限）。各デバイスが自前のネットワークコレクタ、インターバル録画、デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能する |
 | `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
+| `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流す（`serve` UI が消費する） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
@@ -327,6 +328,48 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
+- **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。`--backend server`（と `--asgi`）はホスティング用の FastAPI コントロールプレーンに切り替えます。どちらも [self-hosting](self-hosting.md) で扱います。
+
+## `mcp`
+
+エージェント（Claude Desktop / Code）がシナリオを実行し、run の証跡を読めるように **MCP（Model Context Protocol）サーバ**を起動します。オプションの `bajutsu[mcp]` extra（`fastmcp`）が必要です。
+
+```bash
+bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
+```
+
+| オプション | 既定 | 説明 |
+|---|---|---|
+| `--config` | `bajutsu.config.yaml` | ツールがアプリを解決する config |
+| `--runs` | `runs` | リソースとして公開する runs ディレクトリ |
+| `--transport` | `stdio` | `stdio`（ローカルエージェント）または `sse`（HTTP） |
+
+- **ツール**: `bajutsu_run`（決定的 run）と `bajutsu_doctor`（規約スコア）。どちらも CLI と同じで、合否に AI は入りません。
+- **リソース**: 完了した run の `manifest.json` / `report.html` / `junit.xml` と任意の入れ子の artifact（`bajutsu://runs/<id>/…`）、および `runs/latest`。
+
+## `worker`
+
+Redis からキュー済みの run をリースして実行します。ホスティング用サーバ backend の実行側です（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)、[self-hosting](self-hosting.md)）。オプションの `bajutsu[worker]` extra（`redis` / `rq`）が必要です。ローカル利用には不要です。
+
+```bash
+bajutsu worker [--redis-url <url>] [--queue bajutsu]
+```
+
+## `lint`
+
+シナリオファイルを **実行せずに** 文法に対して検証します（`run` がロード時に行う厳格な検証と同じ）。正しければ終了コード 0、そうでなければエラーとともに非 0 で終了します。
+
+```bash
+bajutsu lint <scenario.yaml>
+```
+
+## `schema`
+
+シナリオの **JSON Schema** を stdout に出力します。エディタ連携（補完 / インライン検証）用です。オプションはありません。
+
+```bash
+bajutsu schema > bajutsu.schema.json
+```
 
 ## 環境変数（.env）
 

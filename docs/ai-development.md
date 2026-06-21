@@ -150,6 +150,19 @@ When you add a roadmap item:
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
 
+Allocating by hand still races: two branches in flight can pick the same next ID, because neither
+sees the other's not-yet-merged number. You do not have to police this. When a roadmap PR merges,
+the **`roadmap-id-repair`** workflow re-attempts allocation on every open PR that *also* updates the
+roadmap: for an item that PR introduces (a slug not yet on `main`) whose number a since-merged item
+now holds, it allocates the next free ID — moving the directory and rewriting the files,
+cross-references, and PR title — and pushes the fixup onto the branch (`make roadmap-id-repair` runs
+the same step locally). `main` wins: the merged item keeps the number and the still-open one moves.
+That is the sole case in which a BE ID changes, and only ever for an unmerged item the branch itself
+introduced — an item the branch merely inherited from an older `main` (its slug already there) is
+left for a rebase, never renumbered. Drafting with the `BE-XXXX` placeholder avoids the race up
+front, since the `roadmap-id` workflow assigns the ID at PR time and steers clear of every number
+already on `main` or on another open PR.
+
 Each file follows the **Swift-Evolution proposal format** — a metadata block (`* Proposal`,
 `* Author`, `* Status`, `* Track`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
 `## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`. Fill what

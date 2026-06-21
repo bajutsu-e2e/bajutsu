@@ -4,7 +4,7 @@
 
 A scenario is Bajutsu's **only persisted artifact**: plain YAML, version-controlled in git and reviewable in a PR. `record` (AI) writes it the first time; humans own and edit it afterward. `run` executes this structure without AI.
 
-Implementation: `bajutsu/scenario.py` (pydantic, `extra="forbid"` rejects unknown keys).
+Implementation: `bajutsu/scenario/` (pydantic models under `models/`, `extra="forbid"` rejects unknown keys).
 
 The **normative grammar** — every production, type, default, and validation rule — is in [dsl-grammar](dsl-grammar.md). This page is the authoring guide: how to write a scenario, by example.
 
@@ -76,7 +76,7 @@ summary header and each scenario card) and in the `bajutsu serve` UI.
 
 ## preconditions (environment setup)
 
-Implementation: `scenario.py` `Preconditions`. The runner's `launch_driver` reads this to build
+Implementation: `scenario/models/scenario.py` `Preconditions`. The runner's `launch_driver` reads this to build
 the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 | Key | Type | Default | Description | Wired |
@@ -145,7 +145,7 @@ A selector identifies **which element** to act on or assert against. Provide one
 ## Step grammar (`steps`)
 
 Each step is **exactly one action** + optional modifiers (`capture:` / `name:`). Two or more
-actions in one step is a validation error (`scenario.py` `_one_action`).
+actions in one step is a validation error (`scenario/models/steps.py` `_one_action`).
 
 | Action | Form | Description |
 |---|---|---|
@@ -161,6 +161,12 @@ actions in one step is a validation error (`scenario.py` `_one_action`).
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
+| `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
+| `background` | `background: {}` | send the app to the background (Home button) |
+| `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
+| `clearClipboard` | `clearClipboard: {}` | clear the Simulator pasteboard |
+| `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
+| `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)) |
 
 Modifiers:
@@ -248,6 +254,33 @@ Both drive the Simulator via `simctl` and need a per-device control channel, so 
 the fake driver and in parallel runs — there the step fails cleanly (it does not crash). `push` delivers
 its `payload` as the APNs JSON to the app under test.
 
+### `http` (request, for test-data setup)
+
+```yaml
+- http: { method: POST, url: "https://api.test/seed", body: '{"n":1}', status: 200 }   # fails if status != 200
+- http: { url: "https://api.test/token", saveBody: token }   # vars.token ← response body text
+- assert:
+    - exists: { id: home.title }
+```
+
+`http` issues the request from the runner over HTTP — it does **not** go through the UI driver — so a
+`status` mismatch fails the step, and `saveBody` stores the response body text as `${vars.<name>}` for
+later steps. Touching no device, it is the one device-independent action here.
+
+### Device & system control (iOS)
+
+```yaml
+- background: {}                                                        # Home button (simctl ui home)
+- clearKeychain: {}                                                     # reset saved passwords / certificates
+- clearClipboard: {}                                                    # clear the pasteboard
+- overrideStatusBar: { time: "9:41", batteryLevel: 100, wifiBars: 3 }   # freeze the status bar
+- clearStatusBar: {}                                                    # restore the live status bar
+```
+
+Like `setLocation` / `push`, these drive the Simulator via `simctl`, so they need a per-device control
+channel and fail cleanly on the fake driver / in parallel runs. `overrideStatusBar` is most useful right
+before a screenshot or a `visual` assertion, to freeze the clock and signal bars for a stable image.
+
 ## Assertion DSL
 
 Shared by `expect` (final verification) and `assert` (mid-step). Items in the list are all
@@ -263,12 +296,14 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `enabled` / `disabled` | actionable or not (the `notEnabled` trait) | `disabled: { id: auth.submit }` |
 | `selected` | selected / toggled state (the `selected` trait) | `selected: { id: tab.home }` |
 | `request` | a matching network exchange was observed (needs `--network`) | `request: { method: POST, path: /login, status: 200, count: 1 }` |
+| `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
 - `value` / `label` take `sel:` + **exactly one** of `equals` / `contains` / `matches`.
 - `count` takes `sel:` + **exactly one** of `equals` / `atLeast` / `atMost`.
 - `enabled` / `disabled` / `selected` take a selector inline.
 - `request` matches an **observed network exchange** ([details below](#request-network-assertion)); needs the `--network` run flag.
+- `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
 > text break under translation. Write these against config's fixed locale, and write the selector
@@ -301,6 +336,20 @@ wait and `mocks` (below). At least one match field is required; the listed field
 > `pathMatches` / `status` / `bodyMatches` must be present. (real file:
 > [`demos/features/app/scenarios/network_mock.yaml`](../demos/features/app/scenarios/network_mock.yaml))
 
+### `visual` (visual regression)
+
+```yaml
+- assert:
+    - visual: { baseline: "home.png", threshold: 0.02, exclude: [{ x: 0, y: 0, w: 390, h: 47 }] }
+```
+
+`visual` captures a screenshot and pixel-compares it against `baseline` (a PNG resolved inside the run's
+baselines dir — `--baselines`, or `baselines/` beside the scenario). `threshold` is the allowed fraction
+of differing pixels (default `0.0` = exact match); `exclude` lists rectangles (screenshot pixels) to mask
+before comparing, e.g. a status bar or a clock. A baseline is created or updated with the `approve`
+command ([cli](cli.md#approve)) or the `serve` UI; a missing baseline fails the assertion. Pair it with
+`overrideStatusBar` to keep the clock / battery deterministic. Diffs are surfaced in `report.html`.
+
 ## Network mocks (deterministic stubs)
 
 `mocks` makes a test independent of a live server: when an outgoing request matches, BajutsuKit returns
@@ -327,7 +376,7 @@ a canned response instead of hitting the network. Each mock is `{ match, respond
     - request: { method: GET, urlMatches: "example.com", status: 418 }
 ```
 
-Mocks are handed to BajutsuKit via the `BAJUTSU_MOCKS` env (`dump_mocks`, `scenario.py:638`). The formal
+Mocks are handed to BajutsuKit via the `BAJUTSU_MOCKS` env (`dump_mocks`, `scenario/serialize.py`). The formal
 shape is in [dsl-grammar](dsl-grammar.md#2-grammar-at-a-glance).
 
 ## Reuse, data, and tags
@@ -336,7 +385,7 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 
 ### Components (`use` → reusable steps)
 
-A **component** is a separate file containing a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario.py:474`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected.
+A **component** is a separate file containing a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected.
 
 ```yaml
 # login.component.yaml — a component file (a single mapping, loaded separately)
@@ -356,7 +405,7 @@ steps:
 
 ### Data-driven scenarios (`data` / `dataFile`)
 
-A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:537`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`.
+A scenario with `data` (inline rows) or `dataFile` (a CSV path — the two are **mutually exclusive**) is expanded into **one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each derived scenario is renamed `"<name> [row N: col=val, …]"` and keeps the original preconditions, so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`.
 
 ```yaml
 - name: search returns a result
@@ -378,7 +427,7 @@ A CSV `dataFile` has a header row naming the columns; each subsequent row become
 
 `tags` label a scenario; the CLI `--tag` / `--exclude` flags pick which scenarios run. A scenario is kept
 when it carries at least one `--tag` (or none was given) **and** none of the `--exclude` tags —
-`--exclude` wins over `--tag` (`select_scenarios`, `scenario.py:560`). Both flags accept a comma list.
+`--exclude` wins over `--tag` (`select_scenarios`, `scenario/select.py`). Both flags accept a comma list.
 
 ```yaml
 - name: checkout smoke
@@ -466,7 +515,7 @@ Shared by `capture:` (per-step) and `capturePolicy[].capture` (rules). The form 
 - **Kinds**: `screenshot` / `elements` / `actionLog` / `deviceLog` / `network` / `video` / `appTrace`
 - **Modifiers**: `before` / `after` / `around` / `onError`
 
-Validation is over the set of kinds and modifiers (`scenario.py` `_validate_capture`). The
+Validation is over the set of kinds and modifiers (`scenario/models/_base.py` `_validate_capture`). The
 acquisition timing per kind, and which are captured, are in
 [evidence](evidence.md#evidence-kinds-and-acquisition-timing).
 
