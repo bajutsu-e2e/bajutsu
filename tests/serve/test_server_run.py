@@ -387,7 +387,7 @@ def test_asgi_server_serves_the_app_over_a_real_socket(tmp_path: Path) -> None:
         resp = httpx.get(f"http://127.0.0.1:{port}/api/runs", timeout=5)
         assert resp.status_code == 200 and resp.json() == []
         # The hardening middleware runs on the real server too (not just under TestClient).
-        assert resp.headers["x-frame-options"] == "DENY"
+        assert resp.headers["x-frame-options"] == "SAMEORIGIN"
     finally:
         server.should_exit = True
         thread.join(timeout=5)

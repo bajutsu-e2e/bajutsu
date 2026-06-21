@@ -93,10 +93,11 @@ def make_app(state: ServeState) -> FastAPI:
         return _hardened(await call_next(request))
 
     def _hardened(response: Response) -> Response:
-        # Standard hardening headers on every response (BE-0051): block MIME sniffing and framing
-        # (clickjacking), and don't leak the URL via Referer.
+        # Standard hardening headers on every response (BE-0051): block MIME sniffing and
+        # cross-origin framing (clickjacking), and don't leak the URL via Referer. SAMEORIGIN (not
+        # DENY) so the Replay view can frame its own run report (/runs/<id>/report.html).
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
 

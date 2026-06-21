@@ -32,9 +32,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def end_headers(self) -> None:
             # Standard hardening headers on every response (BE-0051): block MIME sniffing and
-            # framing (clickjacking), and don't leak the URL via Referer.
+            # cross-origin framing (clickjacking), and don't leak the URL via Referer. SAMEORIGIN
+            # (not DENY) so the Replay view can frame its own run report (/runs/<id>/report.html);
+            # cross-origin framing stays blocked.
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("X-Frame-Options", "SAMEORIGIN")
             self.send_header("Referrer-Policy", "no-referrer")
             super().end_headers()
 
