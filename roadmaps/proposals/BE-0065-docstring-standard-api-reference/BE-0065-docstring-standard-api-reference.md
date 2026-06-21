@@ -79,6 +79,61 @@ one purposeful line saying why they exist. Forcing `Args:` blocks onto a small h
 - **Keep the per-field idiom.** For `TypedDict` and constant-holder classes, the per-field inline
   comment carries each field's *why* better than a prose block; keep it.
 
+### Examples
+
+A public function, before (today's prose) and after (the standard). The types are *not* repeated —
+`Args:` / `Returns:` carry meaning, the determinism invariant leads, and the rationale is tied to a
+BE item:
+
+```python
+# before (today's prose) — bajutsu/drivers/base.py
+def resolve_unique(elements: list[Element], sel: Selector) -> Element:
+    """Resolve to exactly one element for a single action.
+
+    - 0 matches -> ElementNotFound
+    - 2+ matches -> AmbiguousSelector (rules out "tap whatever matched first")
+    - only with `index` do we pick the nth of multiple candidates (last resort)
+    """
+
+# after (Google style on the public surface)
+def resolve_unique(elements: list[Element], sel: Selector) -> Element:
+    """Resolve a selector to exactly one element for a single action.
+
+    A single action requires a unique match, so an ambiguous selector fails
+    rather than acting on "whatever matched first" (the determinism core, BE-0001).
+
+    Args:
+        elements: One `query()` snapshot of the on-screen elements.
+        sel: The selector to resolve. `index` is honored only as a last resort,
+            picking the nth of several candidates.
+
+    Returns:
+        The one element the selector resolves to.
+
+    Raises:
+        ElementNotFound: Nothing matched, or `index` is out of range.
+        AmbiguousSelector: Two or more matched and no `index` disambiguates.
+    """
+```
+
+Internal helpers stay prose — one line of *why*, no `Args:` block:
+
+```python
+def _contains(outer: Frame, inner: Frame) -> bool:
+    """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
+```
+
+`TypedDict` and constant-holder classes keep the per-field inline comment, which carries each
+field's *why* better than a prose `Args:`-style block:
+
+```python
+class Selector(TypedDict, total=False):
+    """How to address an element. Provided fields are combined with AND."""
+
+    id: str      # exact accessibilityIdentifier (first choice)
+    index: int   # nth of multiple matches (last resort; flaky)
+```
+
 ### Generation
 
 Recommended stack: **MkDocs + Material + `mkdocstrings[python]`**.
