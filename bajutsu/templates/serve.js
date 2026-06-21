@@ -148,20 +148,22 @@ async function clearKey(){
 $('#keyreveal').addEventListener('click',toggleReveal);
 $('#keyclear').addEventListener('click',clearKey);
 
-// ---- AI provider: Anthropic API (default) or Amazon Bedrock (AWS credentials) ----
+// ---- AI provider: Anthropic API (default), Amazon Bedrock (AWS credentials), or Claude Code (CLI) ----
 function renderProv(){
-  const bedrock=$('#provider').value==='bedrock';
-  $('#bedrockfields').hidden=!bedrock;       // region + model id (Bedrock only)
-  $('#apikeysection').hidden=bedrock;         // Claude API key (Anthropic only)
+  const v=$('#provider').value,bedrock=v==='bedrock',cc=v==='claude-code';
+  $('#bedrockfields').hidden=!bedrock;        // region + model id (Bedrock only)
+  $('#claudecodefields').hidden=!cc;          // claude CLI prerequisites (Claude Code only)
+  $('#apikeysection').hidden=bedrock;          // API key: hidden for Bedrock; optional under Claude Code (alert guard only)
 }
 async function loadProv(){
   let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={provider:'anthropic'}}
-  $('#provider').value=(d.provider==='bedrock')?'bedrock':'anthropic';
+  const p=d.provider;
+  $('#provider').value=(p==='bedrock'||p==='claude-code')?p:'anthropic';
   $('#bedrock-region').value=d.region||'';
   $('#bedrock-model').value=d.model||'';
   renderProv();
 }
-// ---- Settings: one Save persists the provider, plus the API key when on the Anthropic path ----
+// ---- Settings: one Save persists the provider; the API key saves on every path but Bedrock ----
 async function saveSettings(){
   const provider=$('#provider').value,body={provider};
   if(provider==='bedrock'){
@@ -172,7 +174,7 @@ async function saveSettings(){
   setSettingsStatus('saving…','');
   let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}
   if(d.error){setSettingsStatus(d.error,'ng');return}
-  if(provider==='anthropic'){
+  if(provider!=='bedrock'){  // Anthropic API needs the key; Claude Code uses it only for the alert guard
     const v=$('#apikey').value.trim();
     if(v){
       let k;try{k=await postKey(v)}catch(e){k={error:'request failed'}}
@@ -234,7 +236,7 @@ $('#rec-go').addEventListener('click',async()=>{
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    goal,app:$('#rec-app').value,agent:$('#rec-agent').value,backend:$('#rec-backend').value.trim(),
+    goal,app:$('#rec-app').value,backend:$('#rec-backend').value.trim(),
     udid:$('#rec-device').value||'booted',name:$('#rec-name').value.trim()||undefined,
     erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
   const {jobId,path,error}=await r.json();
@@ -329,7 +331,7 @@ $('#crawl-go').addEventListener('click',async()=>{
   $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,agent:$('#crawl-agent').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
+    app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     erase:$('#crawl-erase').checked,
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined})});
@@ -633,7 +635,7 @@ async function resumePruned(src,key){
   setBusy($('#crawl-go'),$('#crawl-stop'),true,'Resuming…');
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,agent:$('#crawl-agent').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
+    app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,
     runId:crawlRunId,resumeSrc:src,resumeKey:key})});

@@ -189,6 +189,18 @@ def test_crawl_unknown_agent(tmp_path: Path) -> None:
     assert "unknown --agent" in r.output
 
 
+def test_crawl_agent_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # With no --agent, crawl resolves the kind from $BAJUTSU_AGENT (set by serve's Settings
+    # selector), mirroring record. An invalid env value surfaces the same validation error, which
+    # proves the env is consulted — and it fails before any device work.
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("BAJUTSU_AGENT", "bad")
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(app, ["crawl", "--app", "demo", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "unknown --agent 'bad'" in r.output
+
+
 # --- crawl AI-provider credential gate (BE-0053: crawl is a Tier-1 Bedrock path) ----------------
 # `--agent api` reaches Claude through the configured provider, so the credential it needs depends
 # on the provider: ANTHROPIC_API_KEY for Anthropic, a provider-prefixed BAJUTSU_BEDROCK_MODEL for
@@ -234,9 +246,16 @@ def test_ai_credential_gap_claude_code_brings_own_auth(monkeypatch: pytest.Monke
 
 def _no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the credential-gate CLI tests hermetic: stub the @app.callback .env load so a
-    developer's local .env can't re-inject ANTHROPIC_API_KEY / a provider, and clear those vars."""
+    developer's local .env can't re-inject ANTHROPIC_API_KEY / a provider, and clear those vars.
+    BAJUTSU_AGENT is cleared too — crawl now resolves a blank --agent from it, so a leaked
+    claude-code would skip the Anthropic-key gate these tests assert on."""
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
-    for var in ("ANTHROPIC_API_KEY", "BAJUTSU_AI_PROVIDER", "BAJUTSU_BEDROCK_MODEL"):
+    for var in (
+        "ANTHROPIC_API_KEY",
+        "BAJUTSU_AI_PROVIDER",
+        "BAJUTSU_BEDROCK_MODEL",
+        "BAJUTSU_AGENT",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 

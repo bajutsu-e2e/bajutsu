@@ -165,7 +165,7 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
-| `--agent` | `api` | クロールガイドの AI バックエンド。`api`（Anthropic SDK、従量課金。設定した AI プロバイダを使用し、Anthropic なら `ANTHROPIC_API_KEY`、`BAJUTSU_AI_PROVIDER=bedrock` なら AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）か `claude-code`（Claude Code CLI。サブスクリプションを利用、テキストのみ。`record --agent claude-code` と同様） |
+| `--agent` | `$BAJUTSU_AGENT` または `api` | クロールガイドの AI バックエンド。`api`（Anthropic SDK、従量課金。設定した AI プロバイダを使用し、Anthropic なら `ANTHROPIC_API_KEY`、`BAJUTSU_AI_PROVIDER=bedrock` なら AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）か `claude-code`（Claude Code CLI。サブスクリプションを利用、テキストのみ。`record --agent claude-code` と同様）。省略時は `$BAJUTSU_AGENT`（`serve` が Settings の選択から設定）に従い、なければ `api` |
 | `--udid` | `booted` | 対象 Simulator |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
@@ -301,10 +301,14 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させます。
 - app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run** を押します。
   出力がライブ表示され、完了で `report.html` が埋め込まれます。
-- **Crawl** タブは、app、AI ガイドを動かす **Agent**（`api` または `claude-code`。`crawl --agent` や
-  Record タブと同じ選択肢）、デバイス、予算（max screens / steps）を選び、`POST /api/crawl` で crawl を
+- **Crawl** タブは、app、デバイス、予算（max screens / steps）を選び、`POST /api/crawl` で crawl を
   起動します。返ってきた run id で UI が `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に
   合わせて描きます（画面は幅優先の層に配置し、遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
+- オーサリング（Record と Crawl）の **AI バックエンド**は **Settings → AI プロバイダ** の一箇所で選びます。
+  **Anthropic API**（`ANTHROPIC_API_KEY`）、**Amazon Bedrock**（AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）、
+  **Claude Code**（ローカルの `claude` CLI。サブスクリプションを利用、テキストのみ）の 3 択で、`serve` は
+  この選択を `BAJUTSU_AI_PROVIDER` / `BAJUTSU_AGENT` として起動ジョブに渡します。タブごとの Agent 選択は
+  ありません。Claude Code のときは、API キー（設定済みなら）はアラートガードにのみ使われます。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
   実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`apps.<name>.build`
   に `appPath` を生成するシェルコマンド（例: `make -C demos/features sample-build`）を設定すると、
@@ -378,6 +382,10 @@ bajutsu schema > bajutsu.schema.json
   `BAJUTSU_BEDROCK_MODEL` にはプロバイダ接頭辞付きのモデル id（例 `global.anthropic.claude-opus-4-6-v1`。
   素の Anthropic id は Bedrock では無効）、`AWS_REGION` にはリージョンを設定します。既定は Anthropic
   です。この選択は `record`、`crawl`、`triage`、アラートガードに共通で効きます。
+- オーサリングエージェント: `BAJUTSU_AGENT=claude-code` にすると、`record` / `crawl` は API ではなく
+  ローカルの `claude` CLI（Claude Code のサブスクリプション）でシナリオを書きます。`--agent` を省略した
+  ときの既定値です。`api`（既定）は上記の SDK プロバイダを使います。`serve` の Settings の選択がこの値を
+  起動ジョブに書き込みます。アラートガードはエージェントに関わらず常に SDK プロバイダを使います。
 
 ```bash
 # .env —— Anthropic（既定）
