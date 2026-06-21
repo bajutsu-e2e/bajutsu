@@ -94,6 +94,36 @@ def select_actuator(
     raise RuntimeError(f"no available actuator among {actuators} (requested {backends})")
 
 
+def ensure_web_runtime(backends: list[str]) -> None:
+    """Provision the web backend on demand: when a `web`/`playwright` backend is requested but
+    the Playwright package is absent (e.g. the venv currently carries the idb extra, as after
+    `make serve`), install it *additively* — `uv pip install` so it doesn't evict idb — plus the
+    Chromium browser, then let the run proceed. Idempotent and a no-op unless web is requested and
+    missing; mirrors how `make serve` provisions idb on demand. The deterministic run/CI gate
+    drives the fake backend and never reaches this."""
+    if "playwright" not in resolve_actuators(backends) or _playwright_available():
+        return
+    import importlib
+    import subprocess
+    import sys
+
+    sys.stderr.write(
+        "bajutsu: web backend requested but Playwright is not installed — installing it now "
+        "(uv pip install playwright + chromium). This runs once per environment.\n"
+    )
+    sys.stderr.flush()
+    try:
+        subprocess.run(["uv", "pip", "install", "playwright"], check=True)
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+    except (OSError, subprocess.CalledProcessError) as e:
+        raise RuntimeError(
+            "failed to auto-install the web backend (Playwright). Install it manually with "
+            "`uv pip install playwright && uv run playwright install chromium`, or `uv sync "
+            "--extra web`."
+        ) from e
+    importlib.invalidate_caches()  # so the find_spec() in select_actuator sees the freshly-added package
+
+
 def make_driver(actuator: str, udid: str, *, base_url: str | None = None) -> base.Driver:
     if actuator == "idb":
         return IdbDriver(udid)

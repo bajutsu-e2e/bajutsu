@@ -13,7 +13,7 @@ from bajutsu import env as _env
 from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
-from bajutsu.backends import select_actuator
+from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
 from bajutsu.runner import device_pool, run_and_report
@@ -210,6 +210,7 @@ def run(
     # `run` path mirrors `doctor`: backend check first, then resolve the udid).
     backends = _backends(backend, eff.backend)
     try:
+        ensure_web_runtime(backends)  # auto-install Playwright if a web run needs it
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
