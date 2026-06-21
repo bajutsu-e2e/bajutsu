@@ -143,7 +143,7 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
    一度割り当てた BE ID は、その項目を永遠に指します。
 
 手で採番すると競合するので、その必要はありません。`roadmap-id` ワークフローが PR の時点で ID を割り当て、
-2 つの防御（[BE-0060](../roadmaps/implemented/BE-0060-be-id-allocation-hardening/BE-0060-be-id-allocation-hardening-ja.md)）が
+2 つの防御（[BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md)）が
 `main` *と* すべての open な PR にわたって ID を一意に保ちます。**採番は原子的に予約します。** 払い出す各 ID は、
 GitHub の create-ref API を通じて `refs/be-claims/<NNNN>` という git ref として確保されます。これは ref が
 すでに存在すると失敗する compare-and-set なので、同じ時間帯に採番する 2 つのブランチが番号を両取りすることは

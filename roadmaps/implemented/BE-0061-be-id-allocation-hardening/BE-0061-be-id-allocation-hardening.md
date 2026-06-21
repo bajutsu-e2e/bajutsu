@@ -1,8 +1,8 @@
-**English** · [日本語](BE-0060-be-id-allocation-hardening-ja.md)
+**English** · [日本語](BE-0061-be-id-allocation-hardening-ja.md)
 
-# BE-0060 — Collision-proof BE-ID allocation (atomic reservation + auto-repair)
+# BE-0061 — Collision-proof BE-ID allocation (atomic reservation + auto-repair)
 
-* Proposal: [BE-0060](BE-0060-be-id-allocation-hardening.md)
+* Proposal: [BE-0061](BE-0061-be-id-allocation-hardening.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
 * Implementing PR: [#175](https://github.com/bajutsu-e2e/bajutsu/pull/175)

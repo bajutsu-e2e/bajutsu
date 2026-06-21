@@ -1,8 +1,8 @@
-[English](BE-0060-be-id-allocation-hardening.md) · **日本語**
+[English](BE-0061-be-id-allocation-hardening.md) · **日本語**
 
-# BE-0060 — 衝突しない BE ID 採番（原子的な予約と自動修復）
+# BE-0061 — 衝突しない BE ID 採番（原子的な予約と自動修復）
 
-* 提案: [BE-0060](BE-0060-be-id-allocation-hardening-ja.md)
+* 提案: [BE-0061](BE-0061-be-id-allocation-hardening-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * 実装 PR: [#175](https://github.com/bajutsu-e2e/bajutsu/pull/175)

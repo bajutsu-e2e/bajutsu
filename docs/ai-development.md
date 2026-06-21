@@ -151,7 +151,7 @@ When you add a roadmap item:
    item forever.
 
 Allocating by hand races, so you do not have to: the `roadmap-id` workflow assigns IDs at PR time,
-and two defenses ([BE-0060](../roadmaps/implemented/BE-0060-be-id-allocation-hardening/BE-0060-be-id-allocation-hardening.md))
+and two defenses ([BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md))
 keep them unique across `main` *and* every open PR. **Allocation reserves atomically.** Each ID it
 hands out is claimed as a `refs/be-claims/<NNNN>` git ref through GitHub's create-ref API — a
 compare-and-set that fails if the ref already exists — so two branches allocating in the same window
