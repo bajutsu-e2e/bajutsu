@@ -71,10 +71,17 @@ class SsoEngine(Protocol):
     ``sso-oidc``; a CLI-delegation engine (``aws sso login``) can implement the same surface. Injected
     into ``ServeState`` so the gate drives a fake without touching AWS."""
 
-    def start(self, profile: str) -> DeviceAuthorization: ...
-    def poll(self, handle: str) -> LoginProgress: ...
-    def status(self, profile: str | None) -> SsoSession: ...
-    def logout(self, profile: str) -> None: ...
+    def start(self, profile: str) -> DeviceAuthorization:
+        """Start a sign-in for *profile*; return the verification URL/code + a poll handle."""
+
+    def poll(self, handle: str) -> LoginProgress:
+        """Advance a sign-in: pending until the user approves, then complete with the session."""
+
+    def status(self, profile: str | None) -> SsoSession:
+        """The current SSO session for *profile* (signed-in + expiry), without signing in."""
+
+    def logout(self, profile: str) -> None:
+        """Forget *profile*'s session (best-effort token-cache invalidation)."""
 
 
 @dataclass(frozen=True)
