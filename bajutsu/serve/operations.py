@@ -26,7 +26,7 @@ from bajutsu.anthropic_client import (
     PROVIDERS,
     provider,
 )
-from bajutsu.config import load_config
+from bajutsu.config import apps_for_org, load_config, org_for_app, org_for_user
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs
 from bajutsu.serve.helpers import (
@@ -36,6 +36,7 @@ from bajutsu.serve.helpers import (
     list_apps,
     list_fs,
     list_simulators,
+    load_config_file,
     mask_secret,
     record_command,
     run_command,
@@ -59,13 +60,25 @@ def _boot_targets(udid: str) -> list[str]:
 # --- GET (reads) ---
 
 
-def list_scenarios(state: ServeState, app: str | None) -> tuple[Any, int]:
-    scope = state.scenarios.scope(app)
+def list_scenarios(
+    state: ServeState, app: str | None, *, actor: str | None = None
+) -> tuple[Any, int]:
+    # Hide an app that belongs to another org (non-leaky: an empty list, not a 403) — BE-0015
+    # multi-tenancy. The scenarios come from the actor's org-scoped store.
+    if app is not None and _org_app_forbidden(state, actor, app):
+        return [], 200
+    scope = state.for_org(_resolve_org(state, actor)).scenarios.scope(app)
     return (scope.list() if scope else []), 200
 
 
-def list_apps_payload(state: ServeState) -> tuple[Any, int]:
-    return (list_apps(state.config) if state.config else []), 200
+def list_apps_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    # Only the apps the actor's org owns (every app for the default org / single-tenant) — BE-0015.
+    if state.config is None:
+        return [], 200
+    config = load_config_file(state.config)
+    if config is None:
+        return [], 200
+    return sorted(apps_for_org(config, _resolve_org(state, actor))), 200
 
 
 def config_info(state: ServeState) -> tuple[Any, int]:
@@ -112,17 +125,24 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
     return list_simulators(state.simctl), 200
 
 
-def runs_payload(state: ServeState) -> tuple[Any, int]:
-    # With a system of record (server backend), the history is the org's recorded runs — durable
-    # and org-scoped (BE-0015 7c-4). The stored summary mirrors the artifact entry, so the UI shape
-    # is identical. Without one (local / stdlib serve), list straight from the artifact store.
+def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    # With a system of record (server backend), the history is the actor's org's recorded runs —
+    # durable and org-scoped (BE-0015 7c-4). The stored summary mirrors the artifact entry, so the
+    # UI shape is identical. Without one (local / stdlib serve), list straight from the artifact
+    # store.
     if state.repository is not None:
-        return [r.summary for r in state.repository.list_runs(org_id=_DEFAULT_ORG)], 200
+        org = _resolve_org(state, actor)
+        return [r.summary for r in state.repository.list_runs(org_id=org)], 200
     return state.artifacts.list_runs(), 200
 
 
-def read_scenario(state: ServeState, app: str | None, path: str | None) -> tuple[Any, int]:
-    scope = state.scenarios.scope(app)
+def read_scenario(
+    state: ServeState, app: str | None, path: str | None, *, actor: str | None = None
+) -> tuple[Any, int]:
+    # A scenario in another org's app reads as not-found (non-leaky) — BE-0015 multi-tenancy.
+    if app is not None and _org_app_forbidden(state, actor, app):
+        return {"error": "not found"}, 404
+    scope = state.for_org(_resolve_org(state, actor)).scenarios.scope(app)
     text = scope.read(path) if scope else None
     if text is None:
         return {"error": "not found"}, 404
@@ -242,13 +262,15 @@ def oauth_callback(
     if login not in state.oauth_allowed_users:
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
-        # Persist the identity into the system of record (single default org for now, BE-0015 7c-1),
-        # so audit entries and a later RBAC layer can reference the user. email is unknown from a
-        # read:user scope, so we store GitHub's canonical no-reply form (valid + unique per login).
-        state.repository.ensure_org(_DEFAULT_ORG, slug=_DEFAULT_ORG, name="Default")
+        # Persist the identity into the system of record, so audit entries and RBAC can reference
+        # the user. The org comes from the config-declared org model (members list), defaulting to
+        # the single `default` org. email is unknown from a read:user scope, so we store GitHub's
+        # canonical no-reply form (valid + unique per login).
+        org = _org_for_login(state, login)
+        state.repository.ensure_org(org, slug=org, name=org)
         state.repository.upsert_user(
             login,
-            org_id=_DEFAULT_ORG,
+            org_id=org,
             github_login=login,
             email=f"{login}@users.noreply.github.com",
             # Recompute the role from the env policy on every login, so changing the policy takes
@@ -256,6 +278,29 @@ def oauth_callback(
             role=role_for(login, admins=state.oauth_admins, viewers=state.oauth_viewers),
         )
     return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
+
+
+def _org_for_login(state: ServeState, login: str) -> str:
+    """The org to assign *login* at OAuth login, from the config-declared org model (BE-0015
+    multi-tenancy). The single `default` org when no `orgs:` block lists them."""
+    config = load_config_file(state.config)
+    return org_for_user(config, login) if config is not None else _DEFAULT_ORG
+
+
+def _resolve_org(state: ServeState, actor: str | None) -> str:
+    """The org of the current *actor* (delegates to `ServeState.org_of`; kept as a module helper so
+    the operations read naturally)."""
+    return state.org_of(actor)
+
+
+def _org_app_forbidden(state: ServeState, actor: str | None, app: str) -> bool:
+    """True when *actor* may not touch *app* because the app belongs to a different org (BE-0015
+    multi-tenancy). Single-tenant (no config, or no `orgs:` block) never forbids: both the app and
+    the actor resolve to the default org."""
+    config = load_config_file(state.config)
+    if config is None:
+        return False
+    return org_for_app(config, app) != _resolve_org(state, actor)
 
 
 def _record_audit(
@@ -266,7 +311,11 @@ def _record_audit(
     if state.repository is None or not actor:
         return
     state.repository.record_audit(
-        org_id=_DEFAULT_ORG, actor_id=actor, action=action, target=target, detail=detail
+        org_id=_resolve_org(state, actor),
+        actor_id=actor,
+        action=action,
+        target=target,
+        detail=detail,
     )
 
 
@@ -391,9 +440,13 @@ def start_run(
     if not body.get("scenario") or not body.get("app"):
         return {"error": "scenario and app are required"}, 400
     app = str(body["app"])
+    # Deny an app that belongs to another org (BE-0015 multi-tenancy); single-tenant never forbids.
+    if _org_app_forbidden(state, actor, app):
+        return {"error": "forbidden"}, 403
     # Confine the scenario to the app's own scenarios dir: a serve client must not be able to run an
-    # arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite).
-    scope = state.scenarios.scope(app)
+    # arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite). The scenario store
+    # is scoped to the actor's org so the run reads that org's scenarios.
+    scope = state.for_org(_resolve_org(state, actor)).scenarios.scope(app)
     if scope is None:
         return {"error": f"app '{app}' has no scenarios dir"}, 400
     # The store resolves the client value to a trusted runnable — never the client string — so no
@@ -441,6 +494,7 @@ def start_run(
         materials=materials,
         materialize_baselines=on_worker,
         actor=actor,
+        org=_resolve_org(state, actor),
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
@@ -459,7 +513,10 @@ def start_record(
         return {"error": "open a config first"}, 400
     if not body.get("goal") or not body.get("app"):
         return {"error": "goal and app are required"}, 400
-    scope = state.scenarios.scope(str(body["app"]))
+    app = str(body["app"])
+    if _org_app_forbidden(state, actor, app):
+        return {"error": "forbidden"}, 403
+    scope = state.for_org(_resolve_org(state, actor)).scenarios.scope(app)
     if scope is None:
         return {"error": f"app '{body['app']}' has no scenarios dir"}, 400
     authored = scope.authored(str(body.get("name") or "generated"))
@@ -502,6 +559,7 @@ def start_record(
         materials=materials,
         record_save=authored.save,
         actor=actor,
+        org=_resolve_org(state, actor),
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
@@ -521,6 +579,8 @@ def start_crawl(
         return {"error": "open a config first"}, 400
     if not body.get("app"):
         return {"error": "app is required"}, 400
+    if _org_app_forbidden(state, actor, str(body["app"])):
+        return {"error": "forbidden"}, 403
     # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
     resume_src = str(body.get("resumeSrc", "") or "")
     resume_key = str(body.get("resumeKey", "") or "")
@@ -555,7 +615,12 @@ def start_crawl(
     app_path, build = app_build_info(cfg, str(body["app"]))
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
     job = state.try_new_job(
-        cmd, udids=_boot_targets(udid), app_path=app_path, build=build, actor=actor
+        cmd,
+        udids=_boot_targets(udid),
+        app_path=app_path,
+        build=build,
+        actor=actor,
+        org=_resolve_org(state, actor),
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
@@ -564,11 +629,17 @@ def start_crawl(
     return {"jobId": job.id, "runId": run_id}, 200
 
 
-def save_scenario(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+def save_scenario(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
     """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""
+    app = str(body.get("app") or "") or None
+    # Deny saving into another org's app (BE-0015 multi-tenancy); single-tenant never forbids.
+    if app is not None and _org_app_forbidden(state, actor, app):
+        return {"error": "forbidden"}, 403
     # Resolve the scope and screen the ref before parsing: a non-saveable path is reported ahead of
     # a YAML error (the local store passes an absolute path inside its dir).
-    scope = state.scenarios.scope(str(body.get("app") or "") or None)
+    scope = state.for_org(_resolve_org(state, actor)).scenarios.scope(app)
     ref = body.get("path")
     ref = ref if isinstance(ref, str) else None
     if scope is None or not valid_scenario_ref(ref, allow_absolute=True):
@@ -584,21 +655,25 @@ def save_scenario(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     return {"ok": True, "path": saved}, 200
 
 
-def approve_baseline(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+def approve_baseline(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
     """Promote a run's captured screenshot to a `visual` baseline.
 
     Reads ``runs/<runId>/<sid>/visual-actual.png`` from the artifact store and writes it as baseline
     *baseline* via the baseline store — both seams confine the name to their root (filesystem dir or
-    object-storage prefix), so a crafted runId / sid / baseline can't read or write outside it."""
+    object-storage prefix), so a crafted runId / sid / baseline can't read or write outside it. Both
+    are scoped to the actor's org, so a run in another org reads as not-found (BE-0015)."""
     run_id = str(body.get("runId") or "")
     sid = str(body.get("sid") or "")
     baseline = str(body.get("baseline") or "")
     if not run_id or not sid or not baseline:
         return {"error": "runId, sid and baseline are required"}, 400
-    data = state.artifacts.open_bytes(f"{run_id}/{sid}/visual-actual.png")
+    bundle = state.for_org(_resolve_org(state, actor))
+    data = bundle.artifacts.open_bytes(f"{run_id}/{sid}/visual-actual.png")
     if data is None:
         return {"error": "no captured screenshot for this run"}, 404
-    if state.baselines.write(baseline, data) is None:
+    if bundle.baselines.write(baseline, data) is None:
         return {"error": "invalid baseline name"}, 400
     return {"ok": True, "baseline": baseline}, 200
 

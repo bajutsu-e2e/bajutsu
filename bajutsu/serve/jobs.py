@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from bajutsu.serve.server.oauth import OAuthClient
 
 from bajutsu import env
+from bajutsu.config import DEFAULT_ORG
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
@@ -35,9 +36,9 @@ logger = logging.getLogger(__name__)
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
 
-# The single tenant's org id/slug until org resolution lands (BE-0015 7c-4; multi-tenant is still
-# ahead). Lives here so both job persistence and the operations layer share one source of truth.
-_DEFAULT_ORG = "default"
+# The org an unassigned user/app falls into. Re-exported from config (the org model's home) so job
+# persistence and the operations layer share one source of truth.
+_DEFAULT_ORG = DEFAULT_ORG
 
 Popen = Callable[..., Any]
 
@@ -55,6 +56,9 @@ class Job:
     out_path: str | None = None  # the scenario a `record` job authored (so the UI can load it)
     cancelled: bool = False  # a /cancel request stopped this job (vs. a real pass/fail)
     actor: str | None = None  # the GitHub login that started it, for per-user quota (BE-0015 7c-3)
+    # The org the run belongs to (BE-0015 multi-tenancy). Travels in the job spec so a remote worker
+    # reads/writes this org's object-store prefix. The single `default` org for local / single-tenant.
+    org: str = _DEFAULT_ORG
     proc: Any = None  # the live subprocess (build or run), so a cancel can terminate it
     lines: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -89,6 +93,18 @@ class Job:
             if include_lines:
                 v["lines"] = list(self.lines)
             return v
+
+
+@dataclass
+class StoreBundle:
+    """The three per-tenant storage seams resolved for one org (BE-0015 multi-tenancy). Operations
+    fetch a bundle for the request's org and use it instead of the bare `ServeState` fields, so a
+    server backend keeps each org's artifacts/scenarios/baselines under its own object-store prefix.
+    Local serve has one tenant, so its bundle is just the default stores."""
+
+    artifacts: ArtifactStore
+    scenarios: ScenarioStore
+    baselines: BaselineStore
 
 
 @dataclass
@@ -148,6 +164,10 @@ class ServeState:
     # editor. Recomputed into each user's stored role on login.
     oauth_admins: frozenset[str] = frozenset()
     oauth_viewers: frozenset[str] = frozenset()
+    # Per-org store factory (BE-0015 multi-tenancy). None on local serve (one tenant); a server
+    # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls
+    # back to the default stores when unset, so local behavior is unchanged.
+    org_stores: Callable[[str], StoreBundle] | None = None
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -158,6 +178,20 @@ class ServeState:
         # Resolve the dir lazily through a closure so a config opened from the UI later is reflected.
         self.scenarios = LocalScenarioStore(lambda app: _scenarios_dir_for(self, app))
         self.baselines = LocalBaselineStore(self.baselines_dir)
+
+    def org_of(self, actor: str | None) -> str:
+        """The org of *actor*, read from their persisted user row (assigned at login). The single
+        `default` org without a database, without an identity, or for an unknown user (BE-0015)."""
+        if self.repository is None or not actor:
+            return _DEFAULT_ORG
+        return self.repository.user_org(actor) or _DEFAULT_ORG
+
+    def for_org(self, org: str) -> StoreBundle:
+        """The storage seams scoped to *org*. A server backend prefixes each org's objects; local
+        serve has a single tenant, so this is just the default stores (BE-0015 multi-tenancy)."""
+        if self.org_stores is not None:
+            return self.org_stores(org)
+        return StoreBundle(self.artifacts, self.scenarios, self.baselines)
 
     def check_token(self, candidate: str) -> bool:
         """Constant-time compare of a presented token against the configured one."""
@@ -187,6 +221,7 @@ class ServeState:
         record_save: tuple[str, str] | None,
         materialize_baselines: bool,
         actor: str | None,
+        org: str,
     ) -> Job:
         """Create + register a job. Caller must hold ``self._lock``."""
         self._seq += 1
@@ -202,6 +237,7 @@ class ServeState:
             record_save=record_save,
             materialize_baselines=materialize_baselines,
             actor=actor,
+            org=org,
         )
         self.jobs[job.id] = job
         return job
@@ -217,6 +253,7 @@ class ServeState:
         record_save: tuple[str, str] | None = None,
         materialize_baselines: bool = False,
         actor: str | None = None,
+        org: str = _DEFAULT_ORG,
     ) -> Job:
         with self._lock:
             return self._make_job(
@@ -229,6 +266,7 @@ class ServeState:
                 record_save,
                 materialize_baselines,
                 actor,
+                org,
             )
 
     def try_new_job(
@@ -242,6 +280,7 @@ class ServeState:
         record_save: tuple[str, str] | None = None,
         materialize_baselines: bool = False,
         actor: str | None = None,
+        org: str = _DEFAULT_ORG,
     ) -> Job | None:
         """Create a job only if under the concurrency caps, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
@@ -264,6 +303,7 @@ class ServeState:
                 record_save,
                 materialize_baselines,
                 actor,
+                org,
             )
 
 
@@ -430,10 +470,10 @@ def run_job(state: ServeState, job: Job) -> None:
 
 def _persist_run(state: ServeState, job: Job) -> None:
     """Record a finished `run` into the system of record so the history list survives independently
-    of the artifact store and is org-scoped (BE-0015 7c-4). A no-op without a repository (local /
-    stdlib serve) or for a job that produced no run id (record/crawl, or a build/boot failure).
-    The org is the single default tenant until org resolution lands (7c-4 scope; multi-tenant is
-    still ahead).
+    of the artifact store and is org-scoped (BE-0015). A no-op without a repository (local / stdlib
+    serve) or for a job that produced no run id (record/crawl, or a build/boot failure). The run is
+    recorded under its actor's org (the single `default` org for a token/CI run or an unknown user),
+    so it shows in that org's history.
 
     Persistence must never break job finalization: this runs inside `run_job`'s `finally`, just
     before the live-log stream is closed, so any error (a missing org/user row, an FK violation on
@@ -447,14 +487,16 @@ def _persist_run(state: ServeState, job: Job) -> None:
         from bajutsu.serve.server.db import RunRecord
 
         ok = job.exit_code == 0 and not job.cancelled
-        repo.ensure_org(_DEFAULT_ORG, slug=_DEFAULT_ORG, name="Default")
-        # Attribute the run only to a user that actually exists, so the `created_by` foreign key
-        # can't fail (a token/CI run has no actor; an OAuth run's user was upserted at login).
-        created_by = job.actor if job.actor and repo.user_role(job.actor) is not None else None
+        # The run's org was decided at job creation (and travels to a worker in the spec). Attribute
+        # `created_by` only to a user that actually exists, so the foreign key can't fail (a token /
+        # CI run has no actor; an OAuth run's user was upserted at login).
+        org = job.org
+        repo.ensure_org(org, slug=org, name=org)
+        created_by = job.actor if job.actor and repo.user_org(job.actor) is not None else None
         repo.record_run(
             RunRecord(
                 id=run_id,
-                org_id=_DEFAULT_ORG,
+                org_id=org,
                 status="done",
                 created_by=created_by,
                 ok=ok,

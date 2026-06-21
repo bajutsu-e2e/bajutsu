@@ -81,9 +81,43 @@ class AppConfig(_Model):
         return _as_list(v) if v is not None else v
 
 
+class OrgConfig(_Model):
+    """One tenant (BE-0015 multi-tenancy): the GitHub logins that belong to it and the apps it
+    owns. A login or app named in no org falls back to the single `default` org, so a config with
+    no `orgs:` block stays single-tenant."""
+
+    members: list[str] = Field(default_factory=list)
+    apps: list[str] = Field(default_factory=list)
+
+
 class Config(_Model):
     defaults: Defaults = Field(default_factory=Defaults)
     apps: dict[str, AppConfig] = Field(default_factory=dict)
+    orgs: dict[str, OrgConfig] = Field(default_factory=dict)
+
+
+# The single tenant every unassigned user and app falls into; keep in sync with serve's
+# `_DEFAULT_ORG`.
+DEFAULT_ORG = "default"
+
+
+def org_for_user(config: Config, login: str) -> str:
+    """The org whose members list *login*, or `default` if none do."""
+    return next((org for org, oc in config.orgs.items() if login in oc.members), DEFAULT_ORG)
+
+
+def org_for_app(config: Config, app: str) -> str:
+    """The org whose apps list *app*, or `default` if none do."""
+    return next((org for org, oc in config.orgs.items() if app in oc.apps), DEFAULT_ORG)
+
+
+def apps_for_org(config: Config, org: str) -> list[str]:
+    """The apps belonging to *org*. For `default`, that's every app no org claims."""
+    if org == DEFAULT_ORG:
+        claimed = {a for oc in config.orgs.values() for a in oc.apps}
+        return [a for a in config.apps if a not in claimed]
+    oc = config.orgs.get(org)
+    return list(oc.apps) if oc else []
 
 
 @dataclass(frozen=True)

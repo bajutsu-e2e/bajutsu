@@ -15,7 +15,7 @@ from typing import Any
 
 from bajutsu import env
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
-from bajutsu.config import load_config, resolve
+from bajutsu.config import Config, load_config, resolve
 from bajutsu.scenario import load_scenario_file
 
 # Tokens a `--backend` may name: a platform (ios/android/web/fake) or a known actuator (idb/…).
@@ -72,6 +72,17 @@ def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
             text = ""  # an unreadable / non-UTF-8 file (ValueError) still lists as a bare entry
         out.append(summarize_scenario(path.name, str(path), text))
     return out
+
+
+def load_config_file(config_path: Path | None) -> Config | None:
+    """The parsed config, or None if there is none or it can't be read/validated. Used where the
+    org model is needed (resolving a user/app to its org); a re-read per call, like `list_apps`."""
+    if config_path is None:
+        return None
+    try:
+        return load_config(config_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def list_apps(config_path: Path) -> list[str]:

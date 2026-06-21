@@ -138,6 +138,18 @@ def artifact_prefix(base: str = "") -> str:
     return f"{base}artifacts/"
 
 
+# Keep in sync with config.DEFAULT_ORG; duplicated to avoid importing config on this hot path.
+_DEFAULT_ORG = "default"
+
+
+def org_prefix(base: str, org: str) -> str:
+    """The per-org object-key prefix under *base* (BE-0015 multi-tenancy). The default org keeps
+    *base* unchanged so the single-tenant layout is unaffected; every other org gets a ``<org>/``
+    segment, isolating its artifacts/scenarios/baselines. Shared by the control plane and the worker
+    so both agree on keys."""
+    return base if org == _DEFAULT_ORG else f"{base}{org}/"
+
+
 def object_store_from_env() -> S3ObjectStore | None:
     """An `S3ObjectStore` from the environment (``BAJUTSU_S3_BUCKET`` + endpoint/region), or None
     when no bucket is configured — so a caller can require it (control plane) or skip (a worker with

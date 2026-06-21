@@ -87,6 +87,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "out_path": None,  # not a record job
         "record_save": None,
         "materialize_baselines": False,
+        "org": "default",  # single-tenant default org (BE-0015 multi-tenancy)
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -310,6 +311,30 @@ def test_execute_job_spec_uploads_the_run_tree(tmp_path: Path) -> None:
         spec, popen=popen_writing_run, cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
     )
     assert store.objects["artifacts/20260610-1/report.html"] == b"<html>"
+
+
+def test_execute_job_spec_uploads_under_the_orgs_prefix(tmp_path: Path) -> None:
+    # A non-default org's run tree uploads under the org segment, matching the control plane's
+    # org-scoped artifact store (BE-0015 multi-tenancy).
+    def popen_writing_run(_cmd: list[str], **_kw: object) -> FakeProc:
+        run = tmp_path / "runs" / "20260610-1"
+        run.mkdir(parents=True, exist_ok=True)
+        (run / "report.html").write_text("<html>", encoding="utf-8")
+        return FakeProc(["PASS  runs/20260610-1/manifest.json\n"])
+
+    store = _FakeObjectStore()
+    spec = {
+        "job_id": "1",
+        "cmd": ["bajutsu", "run"],
+        "udids": [],
+        "app_path": None,
+        "build": None,
+        "org": "acme",
+    }
+    execute_job_spec(
+        spec, popen=popen_writing_run, cwd=tmp_path, bus=srv.InMemoryLogBus(), store=store
+    )
+    assert store.objects["acme/artifacts/20260610-1/report.html"] == b"<html>"
 
 
 def test_execute_job_spec_skips_upload_without_a_store(

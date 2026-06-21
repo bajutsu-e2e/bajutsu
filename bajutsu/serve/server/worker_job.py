@@ -20,12 +20,14 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import env
+from bajutsu.config import DEFAULT_ORG as _DEFAULT_ORG
 from bajutsu.serve.jobs import Job, ServeState, run_job
 from bajutsu.serve.logbus import LogBus
 from bajutsu.serve.server.object_store import (
     ObjectStore,
     artifact_prefix,
     object_store_from_env,
+    org_prefix,
     s3_prefix,
 )
 
@@ -81,6 +83,8 @@ def job_spec(job: Job) -> dict[str, Any]:
         "record_save": list(job.record_save) if job.record_save else None,
         # run: download visual baselines into the workspace before running.
         "materialize_baselines": job.materialize_baselines,
+        # The run's org, so the worker reads/writes this org's object-store prefix (BE-0015).
+        "org": job.org,
     }
 
 
@@ -138,6 +142,9 @@ def execute_job_spec(
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
+    # The run's org keys every object-store path, so the worker reads/writes the same prefix the
+    # control plane serves from (BE-0015 multi-tenancy). The default org keeps the base prefix.
+    base = org_prefix(s3_prefix(), str(spec.get("org") or _DEFAULT_ORG))
     # Write the scenario + config the control plane shipped into the workspace, so the run's
     # workspace-relative `--scenario` / `--config` resolve here (the worker has no project on disk).
     _materialize(work, spec.get("materials") or {})
@@ -147,7 +154,7 @@ def execute_job_spec(
     if spec.get("materialize_baselines"):
         baseline_src = store if store is not None else object_store_from_env()
         if baseline_src is not None:
-            _materialize_baselines(work, baseline_src)
+            _materialize_baselines(work, baseline_src, prefix=base)
     state = ServeState(runs_dir=work / "runs", cwd=work, popen=popen, simctl=simctl, logbus=log_bus)
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
@@ -164,17 +171,18 @@ def execute_job_spec(
         # A `run` produced a run tree: upload it (scoped to this run id — the worker's CWD is shared
         # across jobs). A `record` authored a scenario: persist it to per-project storage.
         if job.run_id:
-            _upload_runs(work, uploader, artifact_prefix(s3_prefix()), job.run_id)
+            _upload_runs(work, uploader, artifact_prefix(base), job.run_id)
         save = spec.get("record_save")
         # Validate the queue payload's shape before indexing — a malformed spec must not crash here.
         if isinstance(save, (list, tuple)) and len(save) == 2 and job.out_path:
-            _save_authored(work, uploader, job.out_path, str(save[0]), str(save[1]))
+            _save_authored(work, uploader, job.out_path, str(save[0]), str(save[1]), prefix=base)
     return job
 
 
-def _materialize_baselines(work: Path, store: ObjectStore) -> None:
+def _materialize_baselines(work: Path, store: ObjectStore, *, prefix: str = "") -> None:
     """Download every visual baseline into ``work/baselines/`` before the run (the cmd's
-    ``--baselines`` points here), via the same `ObjectBaselineStore` keys the control plane writes."""
+    ``--baselines`` points here), via the same `ObjectBaselineStore` keys the control plane writes
+    under the run's org *prefix*."""
     from bajutsu.serve.server.baselines import ObjectBaselineStore
 
     baselines = work / "baselines"
@@ -182,7 +190,7 @@ def _materialize_baselines(work: Path, store: ObjectStore) -> None:
     # storage would linger and skew the comparison.
     if baselines.exists():
         shutil.rmtree(baselines, ignore_errors=True)
-    src = ObjectBaselineStore(store, prefix=s3_prefix())
+    src = ObjectBaselineStore(store, prefix=prefix)
     base = baselines.resolve()
     for name in src.names():
         data = src.open_bytes(name)
@@ -195,9 +203,12 @@ def _materialize_baselines(work: Path, store: ObjectStore) -> None:
         dest.write_bytes(data)
 
 
-def _save_authored(work: Path, store: ObjectStore, out_path: str, app: str, ref: str) -> None:
+def _save_authored(
+    work: Path, store: ObjectStore, out_path: str, app: str, ref: str, *, prefix: str = ""
+) -> None:
     """Persist the scenario a `record` run wrote at *out_path* in the workspace to per-project
-    storage as ``(app, ref)`` — via the same `ObjectScenarioStorage` keys the control plane reads."""
+    storage as ``(app, ref)`` — via the same `ObjectScenarioStorage` keys the control plane reads
+    under the run's org *prefix*."""
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage
 
     src = (work / out_path).resolve()
@@ -206,6 +217,6 @@ def _save_authored(work: Path, store: ObjectStore, out_path: str, app: str, ref:
     if work.resolve() not in src.parents or not src.is_file():
         return
     # `list` is the apps provider (returns []); save() doesn't consult it, only the key scheme.
-    ObjectScenarioStorage(store, list, prefix=s3_prefix()).save(
+    ObjectScenarioStorage(store, list, prefix=prefix).save(
         app, ref, src.read_text(encoding="utf-8")
     )

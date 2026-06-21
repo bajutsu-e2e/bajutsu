@@ -74,6 +74,23 @@ into the action (`${secrets.X}`), and **masks the literal value everywhere it wo
 evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
 token, never the value.
 
+### Orgs (`orgs:`, the multi-tenant server backend)
+
+`orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+Each org lists its member GitHub logins and the apps it owns:
+
+```yaml
+orgs:
+  acme:
+    members: [alice, bob]
+    apps: [demo, checkout]
+```
+
+At OAuth login a user is assigned their org; afterward they see only that org's apps, and a run's
+artifacts/scenarios/baselines live under the org's own object-store prefix. A login or app named in
+no org falls into the single `default` org, so a config **without** an `orgs:` block is
+single-tenant — the CLI and local `serve` ignore `orgs:` entirely.
+
 ## Selecting from the CLI
 
 Every command in the CLI (command-line interface) selects one app with `--app <name>` and points at

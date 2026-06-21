@@ -59,6 +59,9 @@ class Repository(Protocol):
     def user_role(self, user_id: str) -> str | None:
         """The user's role (viewer/editor/admin), or None if there is no such user."""
 
+    def user_org(self, user_id: str) -> str | None:
+        """The user's org id, or None if there is no such user (BE-0015 multi-tenancy)."""
+
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]
     ) -> None:
@@ -188,6 +191,15 @@ class SqlRepository:
         with Session(self._engine) as session:
             user = session.get(User, user_id)
             return user.role if user is not None else None
+
+    def user_org(self, user_id: str) -> str | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import User
+
+        with Session(self._engine) as session:
+            user = session.get(User, user_id)
+            return user.org_id if user is not None else None
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]

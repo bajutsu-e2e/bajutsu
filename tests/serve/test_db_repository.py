@@ -67,6 +67,14 @@ def test_upsert_user_stores_and_updates_the_role() -> None:
     assert repo.user_role("nobody") is None
 
 
+def test_user_org_returns_the_users_org() -> None:
+    _engine, repo = _engine_repo()
+    repo.ensure_org("acme", slug="acme", name="Acme")
+    repo.upsert_user("a", org_id="acme", github_login="a", email="a@x")
+    assert repo.user_org("a") == "acme"
+    assert repo.user_org("nobody") is None
+
+
 def test_record_audit_appends_a_row_with_actor_and_detail() -> None:
     engine, repo = _engine_repo()
     repo.ensure_org("default", slug="default", name="Default")
