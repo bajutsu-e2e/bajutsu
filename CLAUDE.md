@@ -112,7 +112,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   `roadmaps/implemented/`, everything still in flight under `roadmaps/proposals/`. When you add
   one: allocate the next ID (`ls -d roadmaps/{implemented,proposals}/BE-*/ | sort | tail -1`,
   then +1; never reuse, skip, or guess) and create **both** language files in a new directory
-  under `roadmaps/proposals/` (a new item is always a proposal first). Don't hand-edit the index
+  under `roadmaps/proposals/` for a proposal, or under `roadmaps/implemented/` with `Status:
+  Implemented` when the **same PR ships the implementation** (a new item is a proposal first
+  *unless* its code lands with it). Don't hand-edit the index
   tables — run `make roadmap-index` to regenerate the tables in **both** index pages
   (`roadmaps/README.md` and `roadmaps/README-ja.md`) from each item's metadata;
   `make test` fails if the committed index drifts.

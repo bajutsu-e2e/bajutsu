@@ -4,20 +4,21 @@
 
 * Proposal: [BE-0056](BE-0056-dogfood-web-ui.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
+* Status: **Implemented**
+* Implementing PR: [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
+* Track: [Accepted](../../README.md#accepted)
 * Topic: Dogfood fixtures (web UI)
 * Origin: Dogfooding
 
 ## Introduction
 
-The local `serve` Web UI ([BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md))
+The local `serve` Web UI ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md))
 is itself a web app, so the Web (Playwright) backend
-([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) can drive it. This
+([BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) can drive it. This
 item makes Bajutsu test its **own** Web UI: a deterministic, Tier-2 regression net that drives the
 served single-page app through the same `run` path and the same determinism core as every other
 scenario. It is the web-side counterpart to the iOS showcase fixtures
-([BE-0045](../../implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md)): a
+([BE-0045](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md)): a
 purpose-shaped *test subject* (the Web UI, plus the `data-testid` ids that make it drivable) and a
 scenario set that exercises it, adding **no** LLM call to any gate.
 
@@ -102,7 +103,7 @@ The web backend taps by coordinate and so cannot operate a native `<select>` dro
 scenarios assert the **default** selection the page loads (the config→pickers chain auto-loads the
 first app's scenarios, needing no dropdown interaction) rather than switching options. Driving a
 `<select>` needs a semantic `selectOption` capability on the web driver, which belongs with
-[BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) (web backend
+[BE-0054](../../proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) (web backend
 completion); until then, scenarios that depend on switching a dropdown (e.g. provider →
 Bedrock) stay out of this net.
 
@@ -134,9 +135,9 @@ Bedrock) stay out of this net.
 
 ## References
 
-- [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the enabler
-- [BE-0045 — Dogfood showcase apps](../../implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) — the iOS counterpart this mirrors
-- [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) — the subject under test
-- [BE-0054 — Web backend completion](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — where `<select>` operation belongs
+- [BE-0041 — Web (Playwright) backend](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the enabler
+- [BE-0045 — Dogfood showcase apps](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) — the iOS counterpart this mirrors
+- [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) — the subject under test
+- [BE-0054 — Web backend completion](../../proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — where `<select>` operation belongs
 - [`demos/serve-ui`](../../../demos/serve-ui) — the harness · [`demos/web`](../../../demos/web) — the pattern it mirrors
 - [DESIGN §2 / §5 / §7.1](../../../DESIGN.md) — determinism, stability ladder, per-app onboarding · [drivers.md](../../../docs/drivers.md) — the Playwright backend

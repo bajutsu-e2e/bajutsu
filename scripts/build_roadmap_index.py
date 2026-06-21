@@ -117,13 +117,13 @@ SECTIONS: tuple[Section, ...] = (
         False,
     ),
     Section("accepted-dogfood", "Accepted", "Dogfood fixtures (demo apps)", True),
+    Section("accepted-dogfood-web-ui", "Accepted", "Dogfood fixtures (web UI)", True),
     Section("accepted-ai-provider", "Accepted", "AI provider configuration", False),
     Section("accepted-hosting", "Accepted", "Hosting the web UI (cloud / self-hosted)", False),
     Section("proposals-on-device", "Proposals", "On-device validation (M1 close-out)", False),
     Section(
         "proposals-platform", "Proposals", "Platform expansion (Android / Web / Flutter)", False
     ),
-    Section("proposals-dogfood", "Proposals", "Dogfood fixtures (web UI)", True),
     Section(
         "proposals-authoring", "Proposals", "Authoring experience (record / GUI editor)", False
     ),
