@@ -9,8 +9,10 @@ dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
 
 from __future__ import annotations
 
+import atexit
 import json
 import subprocess
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,12 +22,13 @@ from bajutsu import crawl as crawl_engine
 from bajutsu import env as _env
 from bajutsu.agents import AGENT_KINDS, resolve_kind
 from bajutsu.anthropic_client import credential_gap
-from bajutsu.backends import select_actuator
+from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
 from bajutsu.record import _clear_blocking
 from bajutsu.runner import _await_ready, launch_driver
+from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions
 
 
@@ -89,6 +92,12 @@ def crawl(
     resume_key: str = typer.Option(
         "", "--resume-key", help="resume: the pruned operation's replay key (see --resume-src)"
     ),
+    headed: bool | None = typer.Option(
+        None,
+        "--headed/--no-headed",
+        help="web backend: crawl a visible (headed, slow-motion) browser instead of headless; "
+        "default leaves the app's `headless` config",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app breadth-first and write a screen map (`screenmap.json`) of the reachable
@@ -96,6 +105,9 @@ def crawl(
     transitions, crashes); the AI guide only proposes *what to try*. A discovery tool, never a
     pass/fail gate."""
     eff = _load_effective(config, app_name)
+    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    if headed is not None:
+        eff = replace(eff, headless=not headed)
 
     # Progress (device work + the AI guide's reasoning) goes to stderr, like record's stream; the
     # web UI merges it into the crawl log so a watcher sees what the AI is thinking, turn by turn.
@@ -110,8 +122,10 @@ def crawl(
     # Crawl is AI-driven: the AI proposes what to try (the engine keeps identity/transitions/crashes
     # deterministic). The default backend needs an API key; --agent claude-code uses its own auth.
     crawl_guide = make_guide(report=say, agent=agent)
+    backends = _backends(backend, eff.backend)
     try:
-        actuator = select_actuator(_backends(backend, eff.backend))
+        ensure_web_runtime(backends)  # auto-install Playwright if a web crawl needs it
+        actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -161,7 +175,20 @@ def crawl(
         _write_screenmap(screenmap_path, crawl_engine.ScreenMap())  # empty map the UI can poll now
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
-    udid = _env.resolve_udid(udid)
+    # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
+    # shell out to simctl and crash off-macOS, so skip it for the web backend.
+    if actuator != "playwright":
+        udid = _env.resolve_udid(udid)
+
+    # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
+    # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
+    # command exits (atexit), since the crawl is a single linear flow with no run-style teardown.
+    try:
+        stop_server = start_launch_server(eff)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    atexit.register(stop_server)
 
     say(
         f"⚙️  preparing the simulator — installing and launching {app_name} (this can take a moment) …"
@@ -174,8 +201,13 @@ def crawl(
 
     def reset(d: base.Driver) -> None:
         # Revisit a known screen the way `run` reaches any state — return to a clean start and let
-        # the engine replay the shortest path. A relaunch (not a full erase) keeps each frontier
-        # visit fast; the app's own UI returns to its entry screen.
+        # the engine replay the shortest path. For web there is no app to relaunch: re-navigating to
+        # baseUrl is the clean start. For iOS a relaunch (not a full erase) keeps each frontier visit
+        # fast; the app's own UI returns to its entry screen.
+        if actuator == "playwright":
+            d.navigate()  # type: ignore[attr-defined]  # web-only lifecycle (re-navigate to baseUrl)
+            _await_ready(d)
+            return
         e = _env.Env(udid)
         e.terminate(eff.bundle_id)
         e.launch(eff.bundle_id, [*eff.launch_args, *_env.locale_args(eff.locale)], eff.launch_env)

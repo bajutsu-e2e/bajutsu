@@ -1,0 +1,18 @@
+# Record form — the Save button is gated until a scenario exists, and the goal field accepts
+# input. Deterministic: "Save" carries the `disabled` attribute until authoring produces YAML, so
+# typing a goal alone must not enable it. No AI runs — we only assert the form's own state.
+description: >-
+  Record form — Save stays disabled until a scenario is generated, and the goal textarea
+  records typed input.
+scenarios:
+  - name: save stays disabled until a scenario is generated
+    description: On the Record view, Generate is ready and Save is disabled; typing a goal does not enable Save.
+    steps:
+      - wait: { for: { id: view.record }, timeout: 10 }
+      - assert:
+          - enabled: { id: record.generate }
+          - disabled: { id: record.save }
+      - type: { text: "increment the counter twice and check it reads 2", into: { id: record.goal } }
+    expect:
+      - value: { sel: { id: record.goal }, contains: "increment the counter" }
+      - disabled: { id: record.save }

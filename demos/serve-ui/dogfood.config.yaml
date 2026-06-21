@@ -1,0 +1,21 @@
+# Config for dogfooding the bajutsu `serve` Web UI itself. The "app under test" is the serve
+# SPA — identified by `baseUrl` (no bundleId), driven by the Playwright (web) backend. Like
+# demos/web this needs no Mac and no Simulator. `launchServer` below brings the inner serve up for
+# the run, so `bajutsu run --app webui` is self-contained — `make -C demos/serve-ui e2e` just runs.
+defaults:
+  backend: [web]
+
+apps:
+  webui:
+    baseUrl: "http://127.0.0.1:8799/"
+    backend: [web]
+    # Bring up the inner serve (the WebUI under test) on :8799 for the run, then tear it down — so
+    # the run needs no hand-started server. Reused untouched if something is already serving :8799.
+    # The inner serve loads demos/web's config (so its dropdowns show a real app + scenario) and
+    # confines its file browser to demos/serve-ui via --root.
+    launchServer:
+      cmd: "uv run bajutsu serve --config demos/web/demo.config.yaml --root demos/serve-ui --port 8799"
+      readyTimeout: 60
+    scenarios: demos/serve-ui/scenarios
+    # The data-testid namespaces the WebUI exposes (the web equivalent of accessibility ids).
+    idNamespaces: [nav, view, record, replay, crawl, settings, config]

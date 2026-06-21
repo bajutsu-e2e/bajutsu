@@ -93,17 +93,30 @@ def list_scenarios(
     return (scope.list() if scope else []), 200
 
 
+def _primary_backend(config: Any, name: str) -> str:
+    """The app's first (effective) backend token, so the Web UI can tell web from iOS apps."""
+    app = config.apps.get(name)
+    if app is None:
+        return ""
+    backends = app.backend or config.defaults.backend
+    return backends[0] if backends else ""
+
+
 def list_apps_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    # Each app carries its primary backend, so selecting a web app can hide the iOS-only controls
+    # (and show the headed toggle) without the user typing the backend by hand.
     if state.config is None:
+        return [], 200
+    config = load_config_file(state.config)
+    if config is None:
         return [], 200
     # Org scoping applies only on a server backend with a system of record; local serve / token mode
     # ignores `orgs:` and lists every app (BE-0015 multi-tenancy).
     if state.repository is None:
-        return list_apps(state.config), 200
-    config = load_config_file(state.config)
-    if config is None:
-        return [], 200
-    return sorted(apps_for_org(config, state.org_of(actor))), 200
+        names = list_apps(state.config)
+    else:
+        names = sorted(apps_for_org(config, state.org_of(actor)))
+    return [{"name": n, "backend": _primary_backend(config, n)} for n in names], 200
 
 
 def config_info(state: ServeState) -> tuple[Any, int]:
@@ -518,6 +531,7 @@ def start_run(
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
         config=config_arg,
         baselines="baselines" if on_worker else str(state.baselines_dir),
+        headed=_bool_flag(body, "headed"),
     )
     app_path, build = app_build_info(cfg, app)
     # Atomic count + create so concurrent dispatches can't both slip past the cap.
@@ -582,6 +596,7 @@ def start_record(
         udid=udid,
         erase=_bool_flag(body, "erase"),
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
+        headed=_bool_flag(body, "headed"),
         config=config_arg,
     )
     app_path, build = app_build_info(cfg, body["app"])
@@ -642,6 +657,7 @@ def start_crawl(
         max_steps=_int(body.get("maxSteps"), 200),
         erase=_bool_flag(body, "erase"),
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
+        headed=_bool_flag(body, "headed"),
         config=str(cfg),
         resume_src=resume_src if resuming else "",
         resume_key=resume_key if resuming else "",
