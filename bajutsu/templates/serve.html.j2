@@ -35,11 +35,6 @@
         <label>Goal (natural language)</label>
         <textarea id="rec-goal" class="goal" placeholder="e.g. increment the counter twice and check it reads 2"></textarea>
         <label>App</label><select id="rec-app"></select>
-        <label>Agent</label><select id="rec-agent">
-          <option value="">default ($BAJUTSU_AGENT or api)</option>
-          <option value="api">api (Anthropic API)</option>
-          <option value="claude-code">claude-code (claude CLI)</option>
-        </select>
         <label>Backend</label><input id="rec-backend" type="text" placeholder="idb">
         <label>Device</label>
         <div class="row" style="align-items:flex-end">
@@ -121,11 +116,6 @@
     <div class="card">
       <div class="panel" id="panel-crawl">
         <label>App</label><select id="crawl-app"></select>
-        <label>Agent</label><select id="crawl-agent">
-          <option value="">default (api)</option>
-          <option value="api">api (Anthropic API)</option>
-          <option value="claude-code">claude-code (claude CLI)</option>
-        </select>
         <label>Backend</label><input id="crawl-backend" type="text" placeholder="idb">
         <label>Device</label>
         <div class="row" style="align-items:flex-end">
@@ -136,7 +126,7 @@
           <div><label>Max screens</label><input id="crawl-maxscreens" type="number" min="1" value="50"></div>
           <div><label>Max steps</label><input id="crawl-maxsteps" type="number" min="1" value="200"></div>
         </div>
-        <div class="subhint">Crawl explores the app breadth-first, discovering screens and the transitions between them &mdash; a discovery tool, never a pass/fail gate. It is AI-driven: the engine (screen identity, transitions, crashes) is always deterministic, while the <b>AI</b> proposes <i>what to try</i> &mdash; richer operations and realistic inputs to enable controls whose precondition isn't obvious. Pick the <b>Agent</b>: <code>api</code> uses the <b>AI provider</b> chosen in <b>Settings</b> &mdash; the Anthropic API (needs <code>ANTHROPIC_API_KEY</code>) or Amazon Bedrock (AWS credentials), while <code>claude-code</code> drives the Claude Code CLI on your subscription instead. Stops at the first of Max screens / Max steps.</div>
+        <div class="subhint">Crawl explores the app breadth-first, discovering screens and the transitions between them &mdash; a discovery tool, never a pass/fail gate. It is AI-driven: the engine (screen identity, transitions, crashes) is always deterministic, while the <b>AI</b> proposes <i>what to try</i> &mdash; richer operations and realistic inputs to enable controls whose precondition isn't obvious. The AI backend is the one chosen in <b>Settings</b> &mdash; the Anthropic API, Amazon Bedrock, or the Claude Code CLI. Stops at the first of Max screens / Max steps.</div>
         <div class="checks">
           <label><input type="checkbox" id="crawl-erase"> erase device first
             <span class="hint">Wipe the simulator before crawling so the app starts from onboarding. Off by default — the app is reinstalled fresh either way; check to also wipe all apps / data / settings first.</span></label>
@@ -192,7 +182,11 @@
       <select id="provider" class="keyinput">
         <option value="anthropic">Anthropic API (uses ANTHROPIC_API_KEY)</option>
         <option value="bedrock">Amazon Bedrock (uses AWS credentials)</option>
+        <option value="claude-code">Claude Code (the claude CLI, your subscription)</option>
       </select>
+      <div id="claudecodefields" hidden>
+        <div class="fshint"><b>Record</b> and <b>Crawl</b> author through the local <code>claude</code> CLI (Claude Code) on your Pro/Max subscription instead of the pay-per-token API. Install Claude Code and authenticate it (<code>claude setup-token</code>) in the environment that launched <code>serve</code>; an <code>ANTHROPIC_API_KEY</code>, if set, is stripped from the call so the subscription is billed. Authoring is text-only (no screenshot). The <b>alert guard</b> (Replay / Crawl with dismiss-alerts) still uses the Anthropic SDK, so it reads the API key below if present, and otherwise no-ops.</div>
+      </div>
       <div id="bedrockfields" hidden>
         <label class="keylabel" for="bedrock-region">AWS region</label>
         <input type="text" id="bedrock-region" class="keyinput" placeholder="us-east-1" autocomplete="off" spellcheck="false">

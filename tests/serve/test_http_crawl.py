@@ -71,7 +71,9 @@ def test_http_crawl_explores_and_streams_the_map(tmp_path: Path) -> None:
         assert cmd[1:5] == ["-m", "bajutsu", "crawl", "--app"]
         # The run dir passed to the CLI sits under the served runs dir, named by the returned id.
         assert cmd[cmd.index("--out") + 1] == str(runs / resp["runId"])
-        assert cmd[cmd.index("--agent") + 1] == "claude-code"  # the Agent picked in the Crawl tab
+        # An explicit `agent` in the request still maps to --agent (API clients may set it; the UI
+        # now omits it and lets the job inherit $BAJUTSU_AGENT from the Settings selector).
+        assert cmd[cmd.index("--agent") + 1] == "claude-code"
         assert cmd[cmd.index("--max-screens") + 1] == "10"
         # The streamed screen map is served back so the UI can draw the graph.
         status, raw, _ = _get(port, "/runs/" + resp["runId"] + "/screenmap.json")

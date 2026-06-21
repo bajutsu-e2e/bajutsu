@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import typer
 
 from bajutsu import env as _env
 from bajutsu import usage as _usage
-from bajutsu.agents import make_agent
+from bajutsu.agents import make_agent, resolve_kind
 from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
@@ -69,7 +68,7 @@ def record(
     eff = _load_effective(config, app_name)
     out_path = _record_out_path(eff, out, name, goal, app_name)
     before = _usage.snapshot()
-    kind = agent or os.environ.get("BAJUTSU_AGENT") or "api"
+    kind = resolve_kind(agent)
     try:
         authoring_agent = make_agent(kind)
     except ValueError as e:
