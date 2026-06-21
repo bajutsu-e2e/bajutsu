@@ -5,7 +5,7 @@
 > One run executes one or more scenarios (`list[RunResult]`). Their results are written in three
 > formats. `manifest.json` is the **single source of truth** for the report and for CI (continuous integration).
 >
-> Implementation: `bajutsu/report.py`.
+> Implementation: `bajutsu/report/` (a package, split by stage: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`).
 
 Related: [the run results in run-loop](run-loop.md#run-results-data-structures) · [evidence](evidence.md)
 

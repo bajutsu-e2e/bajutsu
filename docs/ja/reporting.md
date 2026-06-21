@@ -5,7 +5,7 @@
 > 1 回の run は、1 つ以上のシナリオ（`list[RunResult]`）を実行します。その結果を 3 つの形式で
 > 書き出します。`manifest.json` が、レポートと CI（継続的インテグレーション）の **単一の真実**です。
 >
-> 実装: `bajutsu/report.py`。
+> 実装: `bajutsu/report/`（パッケージ。段階で分割: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`）。
 
 関連: [run-loop の実行結果](run-loop.md#実行結果データ構造) ・ [evidence](evidence.md)
 

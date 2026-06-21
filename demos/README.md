@@ -2,9 +2,10 @@
 
 **English** · [日本語](README.ja.md)
 
-Runnable demos, all driving a real iOS Simulator. Each tells the same core story —
+Runnable demos — the `make -C demos` set below drives a real iOS Simulator, and a separate web
+demo drives a browser on Linux (below). Each tells the same core story —
 **a scenario is the deterministic hub; a run decides pass/fail with machine assertions only,
-never an LLM** — at a different depth. Every demo runs through one entry point,
+never an LLM** — at a different depth. Every iOS demo runs through one entry point,
 `make -C demos <target>`:
 
 ```bash
@@ -28,6 +29,11 @@ make -C demos record     # AI authoring with real Claude, then modify + triage
 > (and the feature showcase: `uv run python demos/features/run_demo.py`). See
 > [`tour/README.md`](tour/README.md). These are the fast first look; the `make` targets above
 > are the real thing on a device.
+
+> **Web (Playwright) backend.** A separate demo drives a tiny static web app in a browser — no Mac
+> or Simulator, on Linux: `make -C demos/web e2e` ([`web/README.md`](web/README.md)). Same scenario
+> format, same deterministic runner — **only the backend differs**, which is the whole
+> multi-platform story in one demo.
 
 ## Which one should I run?
 
@@ -66,6 +72,8 @@ an in-memory driver so you can see the seam with nothing installed.
   *same* app in UIKit and SwiftUI, each in an accessibility-on / -off variant (four products,
   two codebases), built to exercise `record`, `crawl`, and `run` together. Supersedes `sample`
   (kept until the showcase covers its CI / Web UI tours).
+- **`web`** ([`web/`](web/README.md)) — a tiny static web app driven by the **Playwright** backend
+  on Linux (no Mac / Simulator); the cross-platform demo that proves the core is backend-neutral.
 
 Generated scenarios, working copies (`*/generated.yaml`, `tour/scenario.yaml`), Xcode projects,
 and run artifacts (`runs/`) are gitignored — the demos regenerate them.

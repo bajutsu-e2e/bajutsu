@@ -4,7 +4,7 @@
 
 ツール本体はアプリ非依存です。アプリ固有の差分はすべて config に置くので、同じバイナリと同じドライバで複数のアプリを実行できます。アプリを追加するときは `apps.<name>` を 1 つ加えるだけです。
 
-実装: `bajutsu/config.py`（解決） · `bajutsu/doctor.py`（規約充足度スコア） · ルートの [`bajutsu.config.yaml`](../../bajutsu.config.yaml)。
+実装: `bajutsu/config.py`（解決） · `bajutsu/doctor.py`（規約充足度スコア）。config はリポジトリのルートには同梱されていません。`--config`（既定のファイル名は `bajutsu.config.yaml`）で渡します。デモにはすぐ動くものが同梱されています（例: [`demos/features/demo.config.yaml`](../../demos/features/demo.config.yaml)（iOS）、[`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)（web））。
 
 関連: [concepts のアプリ非依存](concepts.md#6-アプリ非依存差分は-config-に寄せる) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -51,7 +51,7 @@ apps:
 | `base_url` | app | web のターゲット URL（Playwright backend）。web では `bundle_id` の代わりに必須 |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
-| `device` / `locale` | app ?? defaults | ⚠️ `locale` は現状 launch で未適用 |
+| `device` / `locale` | app ?? defaults | `locale` は launch 時に適用される（`simctl` の launch 引数） |
 | `launch_env` / `launch_args` | app | preconditions が run 時にマージ追記 |
 | `id_namespaces` | app | doctor が参照 |
 | `reserved_namespaces` | defaults | 情報用（doctor は app の `idNamespaces` のみで採点） |

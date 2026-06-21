@@ -29,8 +29,23 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
+      - name: Reserve BE IDs already taken by other open PRs
+        id: reserved
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_PR: ${{ github.event.pull_request.number }}
+        run: |
+          # origin/main is the allocator's floor, but a number a *parallel* open PR has already
+          # allocated isn't on main yet — reserve those so two branches in flight never collide
+          # (the BE-0054 double-allocation). Best effort: an empty list just falls back to main.
+          reserved="$(bash scripts/open_pr_be_ids.sh "$CURRENT_PR")"
+          echo "Reserved by other open PRs: ${reserved:-<none>}"
+          echo "reserved=$reserved" >> "$GITHUB_OUTPUT"
+
       - name: Allocate placeholder IDs
         id: allocate
+        env:
+          ROADMAP_RESERVED_IDS: ${{ steps.reserved.outputs.reserved }}
         run: |
           out="$(python3 scripts/allocate_roadmap_ids.py)"
           echo "$out"

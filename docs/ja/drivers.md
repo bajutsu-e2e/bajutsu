@@ -2,11 +2,12 @@
 
 # ドライバ抽象、バックエンド、環境管理
 
-> ひとつの `Driver` インターフェースの裏にバックエンド（idb、それにテスト用のインメモリ `fake`）を
-> 置き、能力差を抽象側で吸収します。現状の実バックエンドは idb のみですが、インターフェースは
-> 追加のバックエンドに対応できるよう設計されています。アプリの起動（boot/launch）は `simctl` ラッパが担います。
+> ひとつの `Driver` インターフェースの裏にバックエンド（`idb`（iOS Simulator）、`playwright`（web
+> ブラウザ）、それにテスト用のインメモリ `fake`）を置き、能力差を抽象側で吸収します。プラットフォーム
+> 対応のレジストリが `backend` リストから actuator を選びます。iOS ではアプリの起動（boot/launch）を
+> `simctl` ラッパが担います。
 >
-> 実装: `bajutsu/drivers/`（`base.py` / `idb.py` / `fake.py`）・
+> 実装: `bajutsu/drivers/`（`base.py` / `idb.py` / `playwright.py` / `fake.py`）・
 > `bajutsu/backends.py` ・ `bajutsu/env.py`。
 
 関連: [selectors](selectors.md)（解決） ・ [concepts の安定度順ラダー](concepts.md#5-安定度順ラダーstability-ladder) ・ [run-loop](run-loop.md)

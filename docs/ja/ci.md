@@ -9,7 +9,8 @@
 
 | Workflow | ランナー | タイミング | 内容 |
 |---|---|---|---|
-| [`ci.yml`](../../.github/workflows/ci.yml) | Linux | `main` への push、全 PR（プルリクエスト） | Python 3.13 上で `make check` ゲート一式を実行します。ロックの鮮度（`uv lock --check`）、整形（`ruff format --check`）、lint（`ruff`）、シェル lint（`shellcheck`）、ワークフロー lint（`actionlint`）、型（`mypy bajutsu demos`）、カバレッジ下限つきの `pytest`（`--cov-fail-under=85`）です。ロジック層はシミュレータ不要なので速く安価です |
+| [`ci.yml`](../../.github/workflows/ci.yml)（`check` ジョブ） | Linux | `main` への push、全 PR（プルリクエスト） | Python 3.13 上で `make check` ゲート一式を実行します。ロックの鮮度（`uv lock --check`）、整形（`ruff format --check`）、lint（`ruff`）、シェル lint（`shellcheck`）、ワークフロー lint（`actionlint`）、型（`mypy bajutsu demos`）、カバレッジ下限つきの `pytest`（`--cov-fail-under=85`）です。ロジック層はシミュレータ不要なので速く安価です |
+| [`ci.yml`](../../.github/workflows/ci.yml)（`web-e2e` ジョブ） | Linux | `main` への push、全 PR | **web（Playwright）バックエンド**の smoke。`playwright install chromium` の後、`make -C demos/web e2e` が `demos/web` のシナリオをブラウザに対して決定的に実行します。**Mac / Simulator 不要**で、同じゲート上でコアがプラットフォーム非依存であることを示します |
 | [`swift.yml`](../../.github/workflows/swift.yml) | macOS | `main` への push + `BajutsuKit/**` を触る PR | [BajutsuKit](../../BajutsuKit) の `swift build` + `swift test` を実行します。純 Foundation のロジック（リクエスト照合 / モック解析）をシミュレータ無しで単体テストします。実機でのインターセプトそのものは `e2e.yml` がカバーします |
 | [`e2e.yml`](../../.github/workflows/e2e.yml) | macOS | 手動 + アプリ/SDK/ランタイムを触る PR | 2 ジョブ: **smoke (idb)** はサンプルをビルドしてシミュレータを起動し、idb バックエンドで `smoke.yaml` を実行します（driver + simctl + idb）。**xcuitest (codegen)** はシナリオからネイティブ XCUITest を生成し（`make -C demos/features ui-test`）`xcodebuild` で実行します（テスト時に bajutsu / idb / AI は不要） |
 

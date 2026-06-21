@@ -2,7 +2,7 @@
 
 # CLI reference
 
-> Implementation: `bajutsu/cli.py` (Typer). The entry point is `bajutsu = "bajutsu.cli:app"` in
+> Implementation: `bajutsu/cli/` (Typer; one file per command under `cli/commands/`). The entry point is `bajutsu = "bajutsu.cli:app"` in
 > `pyproject.toml`. Every command in this CLI (command-line interface) selects one app with `--app <name>` and points at config with
 > `--config` (default `bajutsu.config.yaml`). App-specific differences live in config
 > ([configuration](configuration.md)).
@@ -47,6 +47,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app) |
 | `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` (capped to the pool size). Each device carries its own network collector, interval recordings, and device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
+| `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
@@ -345,6 +346,58 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
   caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
   `0` for unlimited.
+- **Hosting flags (advanced).** `--emit-launchagent` prints a launchd plist to run `serve` as a
+  token-authenticated LaunchAgent on a single Mac; `--backend server` (with `--asgi`) switches to
+  the hosted FastAPI control plane. Both are covered in [self-hosting](self-hosting.md).
+
+## `mcp`
+
+Starts an **MCP (Model Context Protocol) server** so an agent (Claude Desktop / Code) can run
+scenarios and read run evidence. Needs the optional `bajutsu[mcp]` extra (`fastmcp`).
+
+```bash
+bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--config` | `bajutsu.config.yaml` | config the tools resolve apps against |
+| `--runs` | `runs` | the runs dir exposed as resources |
+| `--transport` | `stdio` | `stdio` (a local agent) or `sse` (HTTP) |
+
+- **Tools**: `bajutsu_run` (deterministic run) and `bajutsu_doctor` (convention score) — both mirror
+  the CLI, and no AI enters the verdict.
+- **Resources**: a finished run's `manifest.json` / `report.html` / `junit.xml` and any nested
+  artifact (`bajutsu://runs/<id>/…`), plus `runs/latest`.
+
+## `worker`
+
+Leases queued runs from Redis and executes them — the execution half of the hosted server backend
+([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md);
+[self-hosting](self-hosting.md)). Needs the optional `bajutsu[worker]` extra (`redis` / `rq`); not
+needed for local use.
+
+```bash
+bajutsu worker [--redis-url <url>] [--queue bajutsu]
+```
+
+## `lint`
+
+Validates a scenario file against the grammar **without running it** — the same strict validation
+`run` applies at load. Exits 0 if valid, non-zero with the error otherwise.
+
+```bash
+bajutsu lint <scenario.yaml>
+```
+
+## `schema`
+
+Prints the scenario **JSON Schema** to stdout, for editor integration (autocomplete / inline
+validation). No options.
+
+```bash
+bajutsu schema > bajutsu.schema.json
+```
 
 ## Environment variables (.env)
 

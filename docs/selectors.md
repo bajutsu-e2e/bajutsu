@@ -19,7 +19,7 @@ assertions only ever look at this normalized form (backend differences are absor
 
 ```python
 class Element(TypedDict):
-    identifier: str | None        # accessibilityIdentifier
+    identifier: str | None        # stable id (iOS accessibilityIdentifier · web data-testid)
     label: str | None             # accessibilityLabel
     traits: list[str]             # normalized traits (below)
     value: str | None             # accessibility value
@@ -114,7 +114,7 @@ failure" (they do not propagate the exception upward).
 
 idb exposes no usable semantic tap, so the abstraction **always verifies the candidate count via
 `query()` before** acting, then taps the resolved element's frame center. This makes the "ambiguous =
-fail" behavior identical across idb / fake (each driver's `tap` implementation is in
+fail" behavior identical across idb / playwright / fake (each driver's `tap` implementation is in
 [drivers](drivers.md)).
 
 The `id` comes straight from idb's element tree (`AXUniqueId`), normalized into `Element.identifier`,

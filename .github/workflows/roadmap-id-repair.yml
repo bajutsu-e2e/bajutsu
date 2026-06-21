@@ -1,0 +1,99 @@
+# Re-attempt BE-ID allocation on open roadmap PRs after a roadmap PR merges to main.
+# The roadmap-id workflow already avoids IDs on main and on other open PRs, but two branches
+# allocated in the same window can still land the same number — and once one merges, the loser
+# keeps a number that now belongs to main (the BE-0054 double-allocation). On every push to main
+# that touches roadmaps/, this walks the open PRs that *also* update the roadmap and, for any item
+# such a PR introduces (a slug not yet on main) whose number main now holds, re-allocates it to the
+# next free ID and pushes the fixup back onto the branch. main keeps the number; the open PR moves.
+name: roadmap-id-repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'roadmaps/**'
+
+permissions:
+  contents: write
+  pull-requests: write   # to push branch fixups and rewrite PR titles
+
+concurrency:
+  group: roadmap-id-repair
+  cancel-in-progress: false   # let an in-flight repair finish; the next push re-checks anyway
+
+jobs:
+  repair:
+    name: re-allocate colliding open-PR IDs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          fetch-depth: 0   # need full history to fetch and check out each PR branch
+
+      - name: Re-allocate open-PR IDs that now collide with main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # PR branches were cut before this code existed, so run the allocator (and the index
+          # builder it shells out to) from a copy of *main*'s scripts — never the branch's older
+          # versions. open_pr_be_ids.sh only queries gh, so it can run from the copy too.
+          tools="$(mktemp -d)"
+          cp scripts/allocate_roadmap_ids.py scripts/build_roadmap_index.py \
+             scripts/open_pr_be_ids.sh "$tools/"
+
+          # Same-repo open PRs only — the bot cannot push to a fork's branch.
+          mapfile -t prs < <(
+            gh pr list --state open --limit 1000 \
+              --json number,headRefName,isCrossRepository \
+              --jq '.[] | select(.isCrossRepository == false) | [.number, .headRefName] | @tsv'
+          )
+
+          for entry in "${prs[@]}"; do
+            IFS=$'\t' read -r pr branch <<< "$entry"
+            [ -n "$pr" ] || continue
+
+            # Only PRs that update the roadmap can introduce an ID to re-allocate; skip the rest so
+            # unrelated branches are never checked out or pushed to.
+            files="$(gh api "repos/{owner}/{repo}/pulls/$pr/files" --paginate --jq '.[].filename' 2>/dev/null || true)"
+            if ! printf '%s\n' "$files" | grep -q '^roadmaps/'; then
+              continue
+            fi
+
+            echo "::group::PR #$pr ($branch)"
+
+            git fetch --quiet origin "$branch"
+            git checkout --quiet -B "$branch" FETCH_HEAD
+
+            reserved="$(bash "$tools/open_pr_be_ids.sh" "$pr")"
+            out="$(ROADMAP_RESERVED_IDS="$reserved" python3 "$tools/allocate_roadmap_ids.py" --repair)"
+            echo "$out"
+
+            if [ -n "$(git status --porcelain)" ]; then
+              git add -A
+              git commit --quiet -m "docs(roadmap): re-allocate colliding BE IDs after main update"
+              # Integrate any concurrent push to the branch before pushing back.
+              git fetch --quiet origin "$branch"
+              if git rebase --quiet FETCH_HEAD; then
+                git push origin "HEAD:$branch"
+                # Rewrite the PR title's old id(s) to the re-allocated one(s).
+                mapfile -t remaps < <(printf '%s\n' "$out" \
+                  | sed -n 's/^Renumbered \(BE-[0-9]\{4\}\) -> \(BE-[0-9]\{4\}\).*/\1 \2/p')
+                orig_title="$(gh pr view "$pr" --json title --jq .title)"
+                title="$orig_title"
+                for remap in "${remaps[@]}"; do
+                  title="${title//${remap%% *}/${remap##* }}"
+                done
+                if [ "$title" != "$orig_title" ]; then
+                  echo "Updating PR #$pr title to: $title"
+                  gh pr edit "$pr" --title "$title"
+                fi
+              else
+                git rebase --abort
+                echo "::warning::PR #$pr moved during repair; the next push to main will retry."
+              fi
+            fi
+            echo "::endgroup::"
+          done
