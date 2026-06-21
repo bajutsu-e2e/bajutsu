@@ -156,9 +156,10 @@ function renderProv(){
   $('#apikeysection').hidden=bedrock;          // API key: hidden for Bedrock; optional under Claude Code (alert guard only)
 }
 async function loadProv(){
-  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={provider:'anthropic'}}
-  const p=d.provider;
-  $('#provider').value=(p==='bedrock'||p==='claude-code')?p:'anthropic';
+  // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
+  // the user must consciously pick one, so the #provider placeholder stays until they do. The
+  // region/model are still pre-filled so picking Bedrock shows the saved values.
+  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
   $('#bedrock-region').value=d.region||'';
   $('#bedrock-model').value=d.model||'';
   renderProv();
@@ -166,6 +167,7 @@ async function loadProv(){
 // ---- Settings: one Save persists the provider; the API key saves on every path but Bedrock ----
 async function saveSettings(){
   const provider=$('#provider').value,body={provider};
+  if(!provider){setSettingsStatus('select an AI provider','ng');return}  // explicit choice required
   if(provider==='bedrock'){
     body.region=$('#bedrock-region').value.trim();
     body.model=$('#bedrock-model').value.trim();
