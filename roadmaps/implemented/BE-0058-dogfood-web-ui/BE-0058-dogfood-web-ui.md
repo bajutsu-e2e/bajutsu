@@ -1,8 +1,8 @@
-**English** · [日本語](BE-0056-dogfood-web-ui-ja.md)
+**English** · [日本語](BE-0058-dogfood-web-ui-ja.md)
 
-# BE-0056 — Dogfood the serve Web UI (web-backend regression net)
+# BE-0058 — Dogfood the serve Web UI (web-backend regression net)
 
-* Proposal: [BE-0056](BE-0056-dogfood-web-ui.md)
+* Proposal: [BE-0058](BE-0058-dogfood-web-ui.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
 * Implementing PR: [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
