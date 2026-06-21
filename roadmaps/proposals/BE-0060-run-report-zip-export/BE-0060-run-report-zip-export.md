@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-run-report-zip-export-ja.md)
+**English** · [日本語](BE-0060-run-report-zip-export-ja.md)
 
-# BE-XXXX — Download / export a run report as a zip
+# BE-0060 — Download / export a run report as a zip
 
-* Proposal: [BE-XXXX](BE-XXXX-run-report-zip-export.md)
+* Proposal: [BE-0060](BE-0060-run-report-zip-export.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
