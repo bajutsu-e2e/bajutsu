@@ -1,8 +1,8 @@
-[English](BE-XXXX-parallel-crawl.md) · **日本語**
+[English](BE-0064-parallel-crawl.md) · **日本語**
 
-# BE-XXXX — 複数シミュレータでの並列クロール
+# BE-0064 — 複数シミュレータでの並列クロール
 
-* 提案: [BE-XXXX](BE-XXXX-parallel-crawl-ja.md)
+* 提案: [BE-0064](BE-0064-parallel-crawl-ja.md)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
 * トピック: クロール性能 / スケールアウト

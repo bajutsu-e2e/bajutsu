@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-parallel-crawl-ja.md)
+**English** · [日本語](BE-0064-parallel-crawl-ja.md)
 
-# BE-XXXX — Parallel crawl across multiple simulators
+# BE-0064 — Parallel crawl across multiple simulators
 
-* Proposal: [BE-XXXX](BE-XXXX-parallel-crawl.md)
+* Proposal: [BE-0064](BE-0064-parallel-crawl.md)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
 * Topic: Crawl performance / scale-out
