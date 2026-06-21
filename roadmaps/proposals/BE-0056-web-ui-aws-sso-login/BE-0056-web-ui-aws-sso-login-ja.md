@@ -1,8 +1,8 @@
-[English](BE-XXXX-web-ui-aws-sso-login.md) · **日本語**
+[English](BE-0056-web-ui-aws-sso-login.md) · **日本語**
 
-# BE-XXXX — Web UI からの AWS SSO サインイン（Bedrock 認証情報の取得）
+# BE-0056 — Web UI からの AWS SSO サインイン（Bedrock 認証情報の取得）
 
-* 提案: [BE-XXXX](BE-XXXX-web-ui-aws-sso-login-ja.md)
+* 提案: [BE-0056](BE-0056-web-ui-aws-sso-login-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)

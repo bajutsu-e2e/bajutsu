@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-web-ui-aws-sso-login-ja.md)
+**English** · [日本語](BE-0056-web-ui-aws-sso-login-ja.md)
 
-# BE-XXXX — AWS SSO sign-in from the web UI for Bedrock
+# BE-0056 — AWS SSO sign-in from the web UI for Bedrock
 
-* Proposal: [BE-XXXX](BE-XXXX-web-ui-aws-sso-login.md)
+* Proposal: [BE-0056](BE-0056-web-ui-aws-sso-login.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
