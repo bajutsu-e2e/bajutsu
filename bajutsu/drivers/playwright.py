@@ -1,4 +1,4 @@
-"""Web backend (Playwright, headless Chromium).
+"""Web backend (Playwright, Chromium — headless by default, headed on request).
 
 Walks the DOM into normalized Elements and acts by coordinate-clicking the resolved
 frame center — the *same* path idb uses. The browser has a native semantic click
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from bajutsu.drivers import base
 
@@ -143,9 +143,14 @@ def _start_chromium(headless: bool) -> tuple[Any, Any, _Page]:  # pragma: no cov
     from playwright.sync_api import sync_playwright
 
     pw = sync_playwright().start()
-    browser = pw.chromium.launch(headless=headless)
+    # A headed run adds a small slow-motion so a human can actually follow each action; headless
+    # (the default / CI) stays at full speed.
+    browser = pw.chromium.launch(headless=headless, slow_mo=0 if headless else 250)
     page = browser.new_context().new_page()
-    return pw, browser, page
+    # cast bridges playwright's real Page to our structural _Page: mypy only sees the real type
+    # when the web extra is installed, and a bare `# type: ignore` would be flagged unused when
+    # it isn't (so it can't satisfy both environments — the cast does).
+    return pw, browser, cast(_Page, page)
 
 
 class PlaywrightDriver:

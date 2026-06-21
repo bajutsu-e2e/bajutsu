@@ -117,6 +117,7 @@ SECTIONS: tuple[Section, ...] = (
         False,
     ),
     Section("accepted-dogfood", "Accepted", "Dogfood fixtures (demo apps)", True),
+    Section("accepted-dogfood-web-ui", "Accepted", "Dogfood fixtures (web UI)", True),
     Section("accepted-ai-provider", "Accepted", "AI provider configuration", False),
     Section("accepted-hosting", "Accepted", "Hosting the web UI (cloud / self-hosted)", False),
     Section("proposals-on-device", "Proposals", "On-device validation (M1 close-out)", False),
@@ -131,6 +132,7 @@ SECTIONS: tuple[Section, ...] = (
     Section("proposals-backend", "Proposals", "Backend expansion (iOS actuators)", False),
     Section("proposals-doctor", "Proposals", "doctor / onboarding", False),
     Section("proposals-codegen", "Proposals", "codegen coverage", False),
+    Section("proposals-crawl", "Proposals", "Crawl performance / scale-out", False),
     Section("proposals-misc", "Proposals", "Miscellaneous / on hold", False),
     Section(
         "proposals-competitive",

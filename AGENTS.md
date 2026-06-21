@@ -20,6 +20,9 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 - **Link the PR back to the roadmap.** When a PR implements a roadmap item (`roadmaps/**/BE-NNNN-*`),
   always add a link to that PR in the item's markdown (both the English and Japanese files) so the
   roadmap entry and its implementing PR are cross-referenced.
+- **Ship the roadmap item where its code lands.** A roadmap item lives under `roadmaps/proposals/`
+  while it is only a plan; when the **same PR also ships the implementation**, create it directly
+  under `roadmaps/implemented/` with `Status: Implemented` instead of filing it as a proposal.
 - **Prefix the PR title with the roadmap ID.** When a PR is tied to a roadmap item, begin its title
   with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap item keep
   the plain scoped title (`feat(...)`, `fix(...)`, `docs: …`). PR titles stay in English.

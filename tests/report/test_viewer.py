@@ -12,12 +12,16 @@ from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.report import html_report
 
 
-def test_screenshot_opens_element_viewer_and_arrows_navigate_steps() -> None:
-    # The full-size screenshot preview (lightbox) is gone: clicking a step's screenshot
-    # opens the element viewer, and ← / → walk the steps of the current scenario, looping.
+def test_screenshot_or_tree_button_opens_element_viewer_and_arrows_navigate() -> None:
+    # Clicking a step's screenshot — or the "tree" button — opens the element viewer; ← / → walk
+    # the steps of the current scenario, looping. Inside the viewer, clicking the screenshot
+    # enlarges it full-screen (a #imgz lightbox), where ← / → also walk the steps' screenshots.
     out = html_report("run1", [_passing()])
-    assert 'id="lb"' not in out and "lb-nav" not in out and "openLightbox" not in out
-    assert "tvOpen(shot.closest('td.ev'))" in out  # the screenshot opens the element viewer
+    assert "closest('.treebtn') || e.target.closest('.shot')" in out  # both open the element viewer
+    assert (
+        'id="imgz"' in out and "openImg(imEl.getAttribute('src'))" in out
+    )  # viewer screenshot → enlarge
+    assert "imgzSync" in out  # the enlarged view's ← / → drive the viewer and mirror its screenshot
     assert "ArrowLeft" in out and "ArrowRight" in out  # arrow keys walk the steps
     # navigation is scoped to one scenario (details.scn) and wraps at the ends
     assert "tvScopeFor" in out and "details.scn" in out and "% tvScope.length" in out
@@ -101,8 +105,8 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     assert 'target="_blank"' not in out
     assert "home.title" in out and "Welcome" in out
     assert 'id="tv"' in out and "tvFilter" in out
-    # the screenshot preview (lightbox) is gone; the element viewer shows the step's own
-    # info above the table instead.
+    # the screenshot and the tree button both open the element viewer (not the old "lb" preview); it
+    # shows the step's own info above the table.
     assert 'id="lb"' not in out and "openLightbox" not in out
     assert 'class="tv-step"' in out
     # the ◀ N/M ▶ step controls are built below the element list (in JS), and the element filter

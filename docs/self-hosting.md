@@ -29,7 +29,17 @@ it will not run from a headless daemon. Every choice below follows from that:
   interactive login after a cold boot before auto-login proceeds).
 - **Disable sleep** so the session stays alive: `sudo pmset -a sleep 0 disablesleep 1`.
 
+These constraints are specific to the **iOS Simulator (idb)** backend. The **web (Playwright)**
+backend runs a headless browser and needs none of them — it can serve from any Mac or Linux host
+(including the Tier B node), so a web-only deployment skips this section.
+
 ## 1. Generate the LaunchAgent
+
+> **First install the backend's runtime dependencies into the venv the agent will use.** The agent
+> runs `python -m bajutsu serve` directly, so — unlike `make serve` — it does **not** install them
+> on demand. For the iOS Simulator (idb) backend: `make deps` (the `idb` client + `idb_companion` +
+> xcodegen). For the web (Playwright) backend: `uv sync --extra web && playwright install chromium`.
+> Skipping it makes runs fail at dispatch with `no available actuator`.
 
 `bajutsu serve --emit-launchagent` prints a launchd plist matching the serve flags you pass, then
 exits without starting a server. Pick a strong token and write the plist into your LaunchAgents:
@@ -49,9 +59,25 @@ The emitted plist:
   isn't visible in `ps`;
 - writes stdout/stderr to `~/Library/Logs/bajutsu-serve.{out,err}.log`.
 
-If you use the AI paths (`record`, `--dismiss-alerts`), add `ANTHROPIC_API_KEY` to the plist's
-`EnvironmentVariables` dict (it isn't baked in for you). It stays bound to `127.0.0.1`; the next
-step is what makes it reachable.
+Two settings the emitted plist leaves out, both added under `EnvironmentVariables`:
+
+- **`ANTHROPIC_API_KEY`** — needed for the AI paths (`record`, `--dismiss-alerts`); it isn't baked
+  in for you. (For the Bedrock provider, set `BAJUTSU_AI_PROVIDER` / `BAJUTSU_BEDROCK_MODEL` and the
+  AWS credentials here instead.)
+- **`PATH`** — for the idb backend only. launchd starts the agent with a minimal `PATH`, and bajutsu
+  locates `idb` / `idb_companion` through `PATH`, so without it a run fails with
+  `no available actuator` even after `make deps`. Include Homebrew's bin and the venv's bin. (The web
+  backend finds Playwright by import, not `PATH`, so it needs no `PATH` entry.)
+
+PlistBuddy makes both edits without hand-editing XML (run from the repo root so `.venv` resolves):
+
+```bash
+PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:ANTHROPIC_API_KEY string sk-ant-…" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:PATH string $(brew --prefix)/bin:/usr/bin:/bin:/usr/sbin:/sbin:$(pwd)/.venv/bin" "$PLIST"
+```
+
+serve stays bound to `127.0.0.1`; the next step is what makes it reachable.
 
 ## 2. Load it
 
