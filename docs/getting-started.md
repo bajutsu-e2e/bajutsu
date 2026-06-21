@@ -17,7 +17,8 @@ Related: [cli](cli.md) · [scenarios](scenarios.md) · [sample-app](sample-app.m
 |---|---|
 | The deterministic core + unit tests | macOS or Linux, Python 3.13 (managed via [uv](https://github.com/astral-sh/uv)) |
 | Driving an app on a Simulator | macOS with **Xcode** (the iOS Simulator), [XcodeGen](https://github.com/yonwoo9/XcodeGen) (to build the sample), and the **idb** backend (`brew install facebook/fb/idb-companion`) |
-| AI authoring (`record`) / `--dismiss-alerts` | an `ANTHROPIC_API_KEY` |
+| Driving a web app (Playwright) | any OS — `uv sync --extra web` + `uv run playwright install chromium` (no Mac / Simulator; see [`demos/web`](../demos/web/README.md)) |
+| AI authoring (`record` / `crawl`) / `--dismiss-alerts` | an `ANTHROPIC_API_KEY` (or a Claude Code login with `--agent claude-code`) |
 
 You can do **Steps 1–3 on any machine** (no Simulator). Steps 4–6 need a Mac with Xcode.
 
@@ -31,8 +32,8 @@ You can do **Steps 1–3 on any machine** (no Simulator). Steps 4–6 need a Mac
 ## Step 1 — Install
 
 ```bash
-git clone <this repo> && cd simpilot      # or just cd into your checkout
-uv sync --extra dev                        # creates .venv (Python 3.13) + deps + dev tools
+git clone <this repo> && cd bajutsu       # or just cd into your checkout
+uv sync --group dev                        # creates .venv (Python 3.13) + deps + dev tools
 ```
 
 `uv` reads `pyproject.toml` / `uv.lock` and builds an isolated `.venv`. Prefix project commands
@@ -44,14 +45,14 @@ Confirm the CLI (command-line interface) is wired up:
 uv run bajutsu --help
 ```
 
-You should see the commands `run`, `doctor`, `record`, `codegen`, `trace`, `triage`, and
-`serve` (full reference: [cli](cli.md)).
+You should see the commands `run`, `doctor`, `record`, `crawl`, `codegen`, `trace`, `triage`,
+`approve`, `serve`, `mcp`, `worker`, `lint`, and `schema` (full reference: [cli](cli.md)).
 
 ---
 
 ## Step 2 — Run the unit suite (no Simulator)
 
-This is the fastest way to confirm everything is healthy — 405 tests that exercise the
+This is the fastest way to confirm everything is healthy — 998 tests that exercise the
 determinism core, the scenario schema, assertions, and the run loop against an in-memory fake
 driver, **without touching a Simulator**.
 

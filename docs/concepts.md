@@ -56,17 +56,19 @@ Bajutsu's "deterministic" behavior is enforced by the structure of the code.
    cutting off contamination from the previous test. State is injected via launch env / deeplink
    ([drivers](drivers.md#environment-management-simctl)).
 4. **Pass/fail is machine-checkable only.** There is no "looks like it passed" judgment. The
-   eight machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`
+   nine machine assertions are `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`visual`
    ([selectors](selectors.md#assertion-evaluation)).
 
-> Note the scope: accessibility identifiers only stabilize the **determinism of selection**.
+> Note the scope: stable identifiers only stabilize the **determinism of selection**.
 > Flakiness from timing, state, or the network is handled separately by waits, the environment,
-> and (in the future) mocks.
+> and `mocks`.
 
 ## 4. Stable selectors (prefer accessibilityIdentifier)
 
-Always write selectors by **`accessibilityIdentifier` (non-localized, unique, data-derived)**.
-The reason is to eliminate flakiness from layout changes, translation, and coordinate drift.
+Always write selectors by a **non-localized, unique, data-derived id**. On iOS that is
+`accessibilityIdentifier`; on the web it is `data-testid` (Android `resource-id` is planned). The
+selector YAML is the same across backends — only the attribute the backend reads to satisfy it
+differs. The reason is to eliminate flakiness from layout changes, translation, and coordinate drift.
 `label` is for VoiceOver / AI semantic understanding; because its wording changes with
 localization, it is not used as a selector (only as an auxiliary / disambiguator). The naming
 convention (`<namespace>.<element>`) is in
@@ -75,8 +77,9 @@ convention (`<namespace>.<element>`) is in
 ## 5. The stability ladder
 
 UI actions are attempted **most-stable-first**, where "most stable" refers to selection (which
-element), not actuation. idb actuates by coordinate tap at the frame center regardless, so what
-changes between rungs is how the element is chosen. The lower the rung, the more fragile.
+element), not actuation. idb (the iOS actuator) actuates by coordinate tap at the frame center
+regardless, so what changes between rungs is how the element is chosen. The lower the rung, the
+more fragile.
 
 | Rung | Selection (which element) | Stability |
 |---|---|---|
@@ -89,9 +92,10 @@ changes between rungs is how the element is chosen. The lower the rung, the more
 
 The **actuator (the backend that performs actions) is the first available backend in the list**; it
 is fixed once at the start of a run and held for the whole run (to avoid the non-determinism of two
-drivers operating one device). The `backend` list is still written most-stable-first, but idb is the
-only registered backend today, so it is always the actuator — the list is kept so another backend can
-be added later. Selection is always by `id`, so scenarios do not change
+drivers operating one device). The `backend` list is written most-stable-first and resolves through a
+platform-aware registry: a platform token (`ios` / `web` / `fake`; Android planned) expands to its
+actuator (`ios` → `idb`, `web` → `playwright`), and the first available one is chosen. Selection is
+always by `id`, so scenarios do not change
 ([drivers](drivers.md#backend-selection-and-the-actuator)).
 
 ## 6. App-agnostic (push differences into config)
@@ -100,6 +104,11 @@ The tool core, the drivers, and the runner do not depend on any app. To target a
 change **the app-side preparation (adding identifiers, etc.) and one `apps.<name>` config entry**
 — nothing else. Each app's determinism is guaranteed by the same implementation convention
 ([onboarding in configuration](configuration.md#onboarding-a-new-app)).
+
+The same move makes Bajutsu **platform-agnostic**: a platform is a **backend** behind the `Driver`
+interface (the actuator, §5). A new target — web (`playwright`) today, Android (`adb`) next — is a
+new backend; the scenario format, selector resolution, assertions, the orchestrator, evidence, and
+the reporter stay byte-for-byte the same. Per-platform differences live only in the backend and config.
 
 ## 7. Evidence is rules (fire repeatedly)
 
@@ -114,9 +123,9 @@ evidence reproduces without AI on the second run onward ([evidence](evidence.md)
 | Principle | Main implementation |
 |---|---|
 | Ambiguous selector fails fast | `drivers/base.py` `resolve_unique` |
-| Condition waits only | `orchestrator.py` `_wait` |
-| Clean environment | `runner.py` `launch_driver` · `env.py` `Env.erase` |
+| Condition waits only | `orchestrator/waits.py` `_wait` |
+| Clean environment | `runner/launch.py` `launch_driver` · `env.py` `Env.erase` |
 | Machine assertions | `assertions.py` |
 | Stability order / actuator | `backends.py` `select_actuator` · each `drivers/*.py` `capabilities()` |
 | App-agnostic | `config.py` `resolve` → `Effective` |
-| Evidence rules | `orchestrator.py` `_collect_captures` · `evidence.py` |
+| Evidence rules | `orchestrator/loop.py` `_collect_captures` · `evidence.py` |

@@ -17,7 +17,10 @@ import typer
 from bajutsu.cli import commands
 from bajutsu.dotenv import load_dotenv
 
-app = typer.Typer(add_completion=False, help="自然言語駆動 iOS E2E テストツール（Simulator 限定）")
+app = typer.Typer(
+    add_completion=False,
+    help="自然言語駆動の E2E テストツール。backend 差し替えでマルチプラットフォーム対応（iOS Simulator / web、Android は予定）",
+)
 
 
 @app.callback()

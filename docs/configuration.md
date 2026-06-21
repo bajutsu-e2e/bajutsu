@@ -4,7 +4,7 @@
 
 The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding an app means adding one `apps.<name>` entry.
 
-Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score) · the root [`bajutsu.config.yaml`](../bajutsu.config.yaml).
+Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/features/demo.config.yaml`](../demos/features/demo.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
 
 Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-into-config) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -54,7 +54,7 @@ An undefined app raises `KeyError` (the CLI exits with code 2).
 | `base_url` | app | web target URL (Playwright backend); required for web instead of `bundle_id` |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
-| `device` / `locale` | app ?? defaults | ⚠️ `locale` is currently not applied at launch |
+| `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args) |
 | `launch_env` / `launch_args` | app | merged/appended by preconditions at run time |
 | `id_namespaces` | app | referenced by doctor |
 | `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |

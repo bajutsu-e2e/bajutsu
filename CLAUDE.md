@@ -6,7 +6,10 @@
 
 ## What this is
 
-**Bajutsu** (馬術) is a natural-language-driven **E2E testing tool for the iOS Simulator**.
+**Bajutsu** (馬術) is a natural-language-driven **E2E testing tool** built on a backend-agnostic
+driver: a **platform is a backend** behind one interface, so the deterministic core is unchanged
+across targets — the **iOS Simulator** (idb) today, a **web (Playwright)** backend landed,
+**Android** planned.
 A scenario (YAML) is the shared hub: AI helps *author* and *investigate*, a deterministic
 runner decides pass/fail. Python logic core lives in [`bajutsu/`](bajutsu/); the Swift
 test-support package is [`BajutsuKit/`](BajutsuKit/); runnable examples are in [`demos/`](demos/).

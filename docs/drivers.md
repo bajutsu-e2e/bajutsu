@@ -2,12 +2,12 @@
 
 # Driver abstraction, backends, and environment management
 
-> One `Driver` interface, behind which sit the backends (idb, plus the in-memory `fake` for
-> tests), with capability differences absorbed on the abstraction side. idb is the only real
-> backend today, but the interface is designed to accommodate additional backends. Launching the app
-> (boot/launch) is handled by a `simctl` wrapper.
+> One `Driver` interface, behind which sit the backends — `idb` (iOS Simulator), `playwright`
+> (web browser), plus the in-memory `fake` for tests — with capability differences absorbed on the
+> abstraction side. A platform-aware registry picks the actuator from the `backend` list; on iOS,
+> launching the app (boot/launch) is handled by a `simctl` wrapper.
 >
-> Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `fake.py`) ·
+> Implementation: `bajutsu/drivers/` (`base.py` / `idb.py` / `playwright.py` / `fake.py`) ·
 > `bajutsu/backends.py` · `bajutsu/env.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
