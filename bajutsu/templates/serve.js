@@ -790,11 +790,14 @@ function initTiling(){
   const SPECS=[
     {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
     {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel'}},
+    {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
   ];
   const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
   const valid=(t,keys)=>{try{const l=leaves(t);return l.length===keys.length&&new Set(l).size===l.length&&l.every(k=>keys.includes(k))}catch(e){return false}};
-  let saved={};try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
-  const views=[];let pdrag=null,ind=null;
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
+  const views=[];
+  let pdrag=null,ind=null;
   const save=()=>{const s={};views.forEach(V=>s[V.spec.id]=V.tree);try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}};
   const keyOf=(V,el)=>Object.keys(V.panel).find(k=>V.panel[k]===el);
   function render(V,node){

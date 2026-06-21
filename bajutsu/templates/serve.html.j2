@@ -153,8 +153,7 @@
       </div>
     </div>
   </div>
-  <div class="gutter" data-var="--crawl-left" data-min="260" data-max="640"></div>
-  <div class="card crawlpanel">
+  <div class="card crawl-graph-panel">
     <div class="crawlhead">
       <span class="ttl">Screen map</span>
       <span class="crawlcounts" id="crawl-counts"></span>
@@ -164,18 +163,17 @@
         <button class="zbtn" id="crawl-zoomin" title="zoom in">+</button>
       </span>
     </div>
-    <div class="crawlbody">
-      <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
-      <div class="crawlside">
-        <div class="crawlsub planhd"><span>Exploration plan<span class="planpct" id="crawl-planpct"></span></span>
-          <label class="prunetog" title="Show the operations the crawl pruned as duplicate global controls (a tab/nav explored once), struck through and tappable to resume. Uncheck to hide them."><input type="checkbox" id="crawl-prune" checked> show pruned</label></div>
-        <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
-        <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
-        <div class="gutter row" data-var="--crawl-plan" data-min="80" data-max="600"></div>
-        <div class="crawlsub">Console</div>
-        <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
-      </div>
-    </div>
+    <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
+  </div>
+  <div class="card crawl-plan-panel">
+    <div class="crawlsub planhd"><span>Exploration plan<span class="planpct" id="crawl-planpct"></span></span>
+      <label class="prunetog" title="Show the operations the crawl pruned as duplicate global controls (a tab/nav explored once), struck through and tappable to resume. Uncheck to hide them."><input type="checkbox" id="crawl-prune" checked> show pruned</label></div>
+    <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
+    <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
+  </div>
+  <div class="card crawl-console-panel">
+    <div class="crawlsub">Console</div>
+    <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
   </div>
 </main>
 

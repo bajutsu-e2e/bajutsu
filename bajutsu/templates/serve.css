@@ -26,11 +26,11 @@ main[hidden]{display:none}
 /* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
 /* Record & Replay are tiled (see initTiling); the tile-root fills the block-level <main>.
    The :not([hidden]) keeps these id-level rules from overriding main[hidden]{display:none}. */
-#view-record:not([hidden]),#view-replay:not([hidden]){display:block}
+#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]){display:block}
 .rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:100%;min-height:0}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{min-height:0;height:auto}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
-#view-crawl{grid-template-columns:var(--crawl-left,340px) var(--gw) 1fr;grid-template-rows:1fr}
+/* Crawl is tiled too (initTiling): screen-map / exploration-plan / console panels + controls. */
 /* Draggable column splitters: a thin full-height handle between grid columns (see initSplitters). */
 .gutter{align-self:stretch;cursor:col-resize;position:relative}
 .gutter::before{content:"";position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:1px;background:var(--line)}
@@ -58,7 +58,7 @@ main[hidden]{display:none}
 .tile-leaf.tile-dragging{opacity:.5}
 .tile-dropind{position:fixed;z-index:40;background:color-mix(in srgb,var(--acc) 22%,transparent);border:2px solid var(--acc);border-radius:6px;pointer-events:none}
 body.reordering-active iframe{pointer-events:none}
-.crawlpanel{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.crawl-graph-panel,.crawl-plan-panel,.crawl-console-panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .crawlhead{flex:0 0 auto;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
 .crawlhead .ttl{font-weight:600}
 .crawlcounts{color:var(--mut);font-size:.82em}
@@ -82,7 +82,7 @@ body.reordering-active iframe{pointer-events:none}
 .crawlgraph{flex:1;min-height:0;overflow:hidden;position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:8px;cursor:grab;user-select:none;-webkit-user-select:none}
 .crawlgraph.panning{cursor:grabbing}
 .crawlgraph .empty{height:100%}
-.crawlside .crawllog{flex:1;min-height:0;height:auto}
+.crawllog{flex:1;min-height:0;height:auto}
 .graphpan{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 .graphwrap{position:absolute;left:0;top:0;transform-origin:0 0}
 /* Edges are one SVG layer; unit boxes are HTML label+info cards on top, in BFS layers. structural-
