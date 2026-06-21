@@ -260,6 +260,19 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0055](proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
+### Configuration sourcing
+
+Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the item here
+proposes naming a **Git repository at a ref** (`github:owner/repo@ref:path`) so a hosted or
+self-hosted `serve`, or a CI runner, can pull a team's test repo directly — scenarios are already
+git-tracked files ([DESIGN §6.5](../DESIGN.md)).
+
+<!-- GENERATED:proposals-config-sourcing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0063](proposals/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Proposal |
+<!-- /GENERATED:proposals-config-sourcing -->
+
 ### Integration & automation (MCP)
 
 <!-- GENERATED:proposals-mcp -->
