@@ -36,4 +36,6 @@ Masking reuses and extends the existing `redact` machinery (`bajutsu/redaction.p
 
 ## References
 
-`bajutsu/interp.py` · `bajutsu/redaction.py`, [evidence.md](../../../docs/evidence.md)
+`bajutsu/interp.py` · `bajutsu/redaction.py`, [evidence.md](../../../docs/evidence.md),
+[BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) — which reuses
+this secret-masking machinery for the hosted serve's operational logs.
