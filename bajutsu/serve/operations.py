@@ -21,6 +21,7 @@ from typing import Any
 
 import yaml
 
+from bajutsu.agents import AGENT_ENV
 from bajutsu.anthropic_client import (
     BEDROCK_MODEL_ENV,
     PROVIDER_ENV,
@@ -138,10 +139,13 @@ def api_key_info(state: ServeState, reveal: bool) -> tuple[Any, int]:
 
 
 def provider_info(state: ServeState) -> tuple[Any, int]:
-    """The AI provider spawned jobs will use, with the Bedrock region/model.  Read from the serve
-    process's environment, so it reflects what a record/crawl job inherits."""
+    """The AI mode spawned jobs will use, with the Bedrock region/model.  Read from the serve
+    process's environment, so it reflects what a record/crawl job inherits. `claude-code` is the
+    authoring agent (BAJUTSU_AGENT) reported as a third "provider" so the Settings selector is a
+    single choice; the SDK `provider()` underneath still backs the alert guard / triage."""
+    mode = "claude-code" if os.environ.get(AGENT_ENV) == "claude-code" else provider()
     return {
-        "provider": provider(),
+        "provider": mode,
         "region": os.environ.get("AWS_REGION", ""),
         "model": os.environ.get(BEDROCK_MODEL_ENV, ""),
     }, 200
@@ -437,12 +441,21 @@ def set_api_key(state: ServeState, value: str) -> tuple[Any, int]:
 
 
 def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
-    """Select the AI provider for spawned record/crawl jobs: the Anthropic API or Amazon Bedrock.
-    Written into the serve process's environment for this session only — never to disk — and
-    inherited by jobs, mirroring the API-key handler."""
+    """Select the AI mode for spawned record/crawl jobs: the Anthropic API, Amazon Bedrock, or
+    Claude Code (the `claude` CLI on your subscription). Written into the serve process's
+    environment for this session only — never to disk — and inherited by jobs, mirroring the
+    API-key handler. The first two are SDK providers (`BAJUTSU_AI_PROVIDER`); `claude-code` is an
+    authoring-agent choice (`BAJUTSU_AGENT`) instead, so it leaves the SDK provider at anthropic —
+    the alert guard / triage always use the SDK and fall back to a no-op when unkeyed."""
     prov = str(body.get("provider", "") or "").strip().lower()
+    if prov == "claude-code":
+        os.environ[AGENT_ENV] = "claude-code"
+        os.environ[PROVIDER_ENV] = "anthropic"
+        return {"ok": True, "provider": "claude-code"}, 200
     if prov not in PROVIDERS:
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
+    # An SDK provider implies the API authoring agent; clear any prior Claude Code selection.
+    os.environ[AGENT_ENV] = "api"
     if prov == "anthropic":
         os.environ[PROVIDER_ENV] = "anthropic"
         return {"ok": True, "provider": "anthropic"}, 200

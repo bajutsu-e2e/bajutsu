@@ -18,7 +18,7 @@ import typer
 
 from bajutsu import crawl as crawl_engine
 from bajutsu import env as _env
-from bajutsu.agents import AGENT_KINDS
+from bajutsu.agents import AGENT_KINDS, resolve_kind
 from bajutsu.anthropic_client import credential_gap
 from bajutsu.backends import select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
@@ -70,12 +70,12 @@ def crawl(
         "", "--alert-instruction", help="how to handle a prompt instead of dismissing it"
     ),
     agent: str = typer.Option(
-        "api",
+        "",
         "--agent",
         help="AI backend for the crawl guide: 'api' (the Anthropic SDK, pay-per-token; uses the "
         "configured AI provider — ANTHROPIC_API_KEY for Anthropic, or AWS credentials + "
         "BAJUTSU_BEDROCK_MODEL when BAJUTSU_AI_PROVIDER=bedrock) or 'claude-code' (the Claude Code "
-        "CLI, drawing on your subscription; text-only)",
+        "CLI, drawing on your subscription; text-only). Defaults to $BAJUTSU_AGENT or 'api'.",
     ),
     out: str = typer.Option(
         "", "--out", help="run dir for the screen map (default: runs/<timestamp>)"
@@ -102,6 +102,8 @@ def crawl(
     def say(msg: str) -> None:
         typer.echo(msg, err=True)
 
+    # Explicit --agent wins, else $BAJUTSU_AGENT (set by serve's Settings selector), else api.
+    agent = resolve_kind(agent)
     if agent not in AGENT_KINDS:
         typer.echo(f"unknown --agent {agent!r} (use {' or '.join(AGENT_KINDS)})")
         raise typer.Exit(2)
