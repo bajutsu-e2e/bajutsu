@@ -6,8 +6,10 @@
 > then writes out a **deterministic scenario**. AI is involved only here (at record time). The
 > resulting YAML is AI-independent and is owned by the user from that point forward.
 >
-> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent.py` (the abstraction) ·
-> `bajutsu/claude_agent.py` (Claude) · `bajutsu/alerts.py` (system-alert handling).
+> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agent.py` + `bajutsu/agents.py`
+> (the abstraction + backend selection) · `bajutsu/claude_agent.py` (Anthropic API) /
+> `bajutsu/claude_code_agent.py` (Claude Code) · `bajutsu/alerts.py` (system-alert handling). The
+> breadth-first explorer `bajutsu/crawl.py` shares the same agents.
 
 Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · [scenarios](scenarios.md) · [run-loop](run-loop.md)
 
@@ -16,7 +18,7 @@ Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · 
 ## The Agent abstraction
 
 A thin Protocol that separates the loop from the model (`agent.py`). Tests use a scripted fake;
-production uses Claude.
+production uses a Claude backend, picked with `--agent` (below).
 
 ```python
 @dataclass
@@ -66,26 +68,33 @@ and may verify before an async transition (e.g. a sheet) has rendered. So it rec
 the first "must-be-present" element in expect**, just before the assertions. This makes the recorded
 scenario self-sufficient without adding implicit timing to `run`.
 
-## ClaudeAgent
+## Claude agents (API and Claude Code)
 
-Implements `agent.Agent` with Claude (the Anthropic SDK, software development kit) (`claude_agent.py`).
+`record` / `crawl` pick a production `agent.Agent` implementation with `--agent`
+(`agents.py` resolves the choice):
 
-- **Forced tool use**: `tool_choice={"type": "any"}` forces **exactly one** tool call per turn.
-  - `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`.
-  - `finish`'s `assertions` (`exists` / `notExists` / `valueEquals` / `labelContains`) convert to
-    `Assertion` (`_to_assertion`).
-- **prompt cache**: the system prompt and tool definitions are static and marked
-  `cache_control: ephemeral`. What changes per turn is only the observation (elements + screenshot)
-  user message.
-- **Vision + elements together**: it reads appearance / state from the screenshot, but **acts only
-  by the `id` from the element list** (never invents ids). The element list surfaces only elements
-  that have an id.
-- The model is `claude-opus-4-8`. `anthropic` is lazy-imported (the module loads without an API
-  key). The client is injectable (for tests).
+- **`api` — `ClaudeAgent`** (`claude_agent.py`): calls the **Anthropic API** directly
+  (pay-per-token). Needs `ANTHROPIC_API_KEY`, or Amazon Bedrock via `BAJUTSU_AI_PROVIDER=bedrock`
+  ([.env in cli](cli.md#environment-variables-env)). The model is `claude-opus-4-8`; `anthropic` is
+  lazy-imported (the module loads without a key) and the client is injectable for tests.
+- **`claude-code` — `ClaudeCodeAgent`** (`claude_code_agent.py`): drives the local **Claude Code**
+  CLI, so authoring runs on a Claude Code subscription with no API key.
+
+Both share the same turn contract:
+
+- **Forced tool use**: `tool_choice={"type": "any"}` forces **exactly one** tool call per turn —
+  `tap(id)` / `type_text(id, text)` / `wait_for(id, timeout)` / `finish(assertions)`. `finish`'s
+  `assertions` (`exists` / `notExists` / `valueEquals` / `labelContains`) convert to `Assertion`
+  (`_to_assertion`).
+- **prompt cache** (API path): the static system prompt + tool definitions are marked
+  `cache_control: ephemeral`; only the per-turn observation (elements + screenshot) changes.
+- **Vision + elements together**: appearance / state is read from the screenshot, but the agent
+  **acts only by the `id`** from the element list (it never invents ids; the list surfaces only
+  elements that have an id).
 
 ```python
-ClaudeAgent()                      # production (uses ANTHROPIC_API_KEY from the environment)
-ClaudeAgent(client=fake_client)    # tests
+ClaudeAgent()                      # api: production (ANTHROPIC_API_KEY from the environment)
+ClaudeAgent(client=fake_client)    # api: tests
 ```
 
 ## Dismissing system alerts automatically

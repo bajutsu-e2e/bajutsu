@@ -2,14 +2,18 @@
 
 # Bajutsu ドキュメント
 
-> 自然言語駆動の iOS E2E（end-to-end）テストツール（iOS Simulator 限定）の、実装に基づいた
-> リファレンスです。[`README.md`](../../README.md) が紹介、[`DESIGN.md`](../../DESIGN.md) が設計の根拠を
-> 扱うのに対し、このドキュメント群は **現状のコードが実際に何をするか** を機能ごとに説明します。
-> 今後の計画は[ロードマップ](../../roadmaps/README-ja.md)にあります。
+> 自然言語駆動の E2E（end-to-end）テストツールの実装に基づいたリファレンスです。決定的コアはプラット
+> フォーム非依存で、プラットフォーム固有の継ぎ目は 1 つの `Driver` インターフェースの背後の **backend**
+> だけです。つまり新しいプラットフォームは新しい backend です。今は iOS Simulator（idb）、web
+> （Playwright）backend が実装済み、Android は予定です。
+> [`README.md`](../../README.md) が紹介、[`DESIGN.md`](../../DESIGN.md) が設計の根拠を扱うのに対し、この
+> ドキュメント群は **現状のコードが実際に何をするか** を機能ごとに説明します。今後の計画は
+> [ロードマップ](../../roadmaps/README-ja.md)にあります。
 
-Bajutsu は、自然言語で書かれた（または記録された）テストシナリオを受け取り、iOS Simulator
-上のアプリを操作（tap / type / swipe / wait）し、**機械チェック可能なアサーション**で結果を
-検証します。中心にあるのは、AI を CI（継続的インテグレーション）ゲートに持ち込まないという考え方
+Bajutsu は、自然言語で書かれた（または記録された）テストシナリオを受け取り、アプリを操作（tap / type /
+swipe / wait）し、**機械チェック可能なアサーション**で結果を検証します。決定的コアはプラットフォーム
+非依存で、プラットフォーム固有の継ぎ目は **backend** だけなので、この backend を差し替えるだけで同じ
+シナリオが iOS Simulator（idb）でもブラウザ（Playwright）でも動きます。中心にあるのは、AI を CI（継続的インテグレーション）ゲートに持ち込まないという考え方
 です。AI はシナリオの著者であり失敗時の調査役であって、合否を判定する役割は担いません
 （[concepts](concepts.md) 参照）。
 
@@ -24,7 +28,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
               ┌───────────────────────────────┼───────────────────────────────┐
               ▼                               ▼                               ▼
         Orchestrator                    Driver 抽象                     Evidence Sink
-   observe → act → verify   ──tap/type/swipe/wait/query──▶  idb / fake
+   observe → act → verify   ──tap/type/swipe/wait/query──▶  idb (iOS) / playwright (web) / fake
               │                          (simctl で boot/launch)            │
               ▼                                                             ▼
         Reporter ──────────────▶ runs/<runId>/{manifest.json, junit.xml, report.html}
@@ -49,7 +53,7 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 | 3 | [scenarios](scenarios.md) | シナリオ YAML の文法（ステップ / 待機 / アサーション / 証跡トークン）= オーサリングリファレンス |
 | 4 | [dsl-grammar](dsl-grammar.md) | シナリオ DSL（ドメイン固有言語）の **形式文法**（EBNF と全検証制約）。[scenarios](scenarios.md) の背後にある規範仕様です |
 | 5 | [selectors](selectors.md) | セレクタモデルと決定的解決（0/1/2+ 件）、アサーション評価の仕組み = 決定性の核 |
-| 6 | [drivers](drivers.md) | Driver 抽象、idb / fake、能力差の吸収、simctl 環境 |
+| 6 | [drivers](drivers.md) | Driver 抽象、idb (iOS) / playwright (web) / fake、能力差の吸収、simctl 環境 |
 | 7 | [run-loop](run-loop.md) | Orchestrator（observe → act → verify）、待機、リトライ、実行結果 |
 | 8 | [evidence](evidence.md) | 証跡サブシステム（瞬時 / 区間、capturePolicy、provider、redact） |
 | 9 | [reporting](reporting.md) | レポート（manifest.json / JUnit / HTML）と `runs/` レイアウト |
@@ -67,8 +71,8 @@ Bajutsu は、自然言語で書かれた（または記録された）テスト
 ## クイックスタート
 
 ```bash
-uv sync --extra dev                  # .venv 作成 + 依存 + 開発ツール
-uv run pytest -q                     # 405 のユニットテスト（実機不要）
+uv sync --group dev                  # .venv 作成 + 依存 + 開発ツール
+uv run pytest -q                     # ユニットテスト（実機不要）
 
 # 同梱サンプルに対して（実機 Simulator が必要）
 make -C demos/features sample-build                    # フィクスチャアプリをビルド

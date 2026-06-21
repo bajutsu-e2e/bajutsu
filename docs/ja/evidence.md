@@ -40,7 +40,7 @@
 
 ## A. `capturePolicy`（ルール方式）
 
-繰り返し発火するルールです。シナリオ単位で記述します（実装: `scenario.py` `CaptureRule` / `Trigger`）。
+繰り返し発火するルールです。シナリオ単位で記述します（実装: `scenario/models/evidence.py` `CaptureRule` / `Trigger`）。
 
 ```yaml
 capturePolicy:
@@ -109,8 +109,9 @@ capturePolicy:
 
 ```python
 class EvidenceSink(Protocol):
-    def start_intervals(self, step_id, kinds) -> list[Interval]: ...   # 操作前に区間を開始
-    def capture(self, driver, step_id, kinds) -> list[Artifact]: ...   # ステップ後に瞬時を取得
+    def capture(self, driver, step_id, kinds, *, elements=None) -> list[Artifact]: ...   # ステップ後に瞬時を取得
+    def start_scenario_intervals(self, scenario_id, kinds) -> list[Interval]: ...         # シナリオ全体の video / deviceLog / appTrace を開始
+    def finish_scenario_intervals(self, scenario_id, started) -> list[Artifact]: ...      # 停止してファイルを回収
 ```
 
 | Sink | 挙動 |
@@ -134,7 +135,7 @@ class Artifact:
 
 ## マスキング（redact）
 
-スクリーンショット、ログ、ネットワークデータには、PII（個人情報）やトークンが写り込む可能性があります。保存前に、マスクする対象を宣言してください。実装: `scenario.py` `Redact`。config の `redact` とシナリオの `redact` はマージ（union）されます（[configuration](configuration.md#redact-のマージ)）。
+スクリーンショット、ログ、ネットワークデータには、PII（個人情報）やトークンが写り込む可能性があります。保存前に、マスクする対象を宣言してください。実装: `scenario/models/evidence.py` `Redact`。config の `redact` とシナリオの `redact` はマージ（union）されます（[configuration](configuration.md#redact-のマージ)）。
 
 ```yaml
 redact:

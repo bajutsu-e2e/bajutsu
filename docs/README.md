@@ -2,14 +2,18 @@
 
 # Bajutsu documentation
 
-> Implementation-grounded reference for the natural-language-driven iOS E2E (end-to-end) testing tool
-> (iOS Simulator only). [`README.md`](../README.md) is the introduction and [`DESIGN.md`](../DESIGN.md)
+> Implementation-grounded reference for the natural-language-driven E2E (end-to-end) testing tool.
+> Its deterministic core is platform-neutral; the one platform-specific seam is the **backend**
+> behind a single `Driver` interface, so a new platform is a new backend — the iOS Simulator (idb)
+> today, a web (Playwright) backend landed, Android planned.
+> [`README.md`](../README.md) is the introduction and [`DESIGN.md`](../DESIGN.md)
 > covers the design rationale; this set of pages explains **what the code actually
 > does today**, feature by feature. Planned work is in [the roadmap](../roadmaps/README.md).
 
 Bajutsu takes test scenarios written in (or recorded from) natural language, drives an app
-on the iOS Simulator (tap / type / swipe / wait), and verifies the result with
-**machine-checkable assertions**. The central idea is to keep AI out of the CI (continuous
+(tap / type / swipe / wait), and verifies the result with **machine-checkable assertions**. The
+deterministic core is platform-neutral; the one platform-specific seam is the **backend**, so the
+same scenarios run on the iOS Simulator (idb) or in a browser (Playwright) by swapping it. The central idea is to keep AI out of the CI (continuous
 integration) gate: AI is the scenario author and the failure investigator, never the pass/fail
 judge (see [concepts](concepts.md)).
 
@@ -24,7 +28,7 @@ Natural-language goal ──(record / Tier 1, AI)──▶ Scenario YAML ◀─�
               ┌───────────────────────────────────────┼───────────────────────────────┐
               ▼                                        ▼                                ▼
         Orchestrator                            Driver abstraction              Evidence Sink
-   observe → act → verify   ──tap/type/swipe/wait/query──▶  idb / fake
+   observe → act → verify   ──tap/type/swipe/wait/query──▶  idb (iOS) / playwright (web) / fake
               │                          (simctl boots/launches)                        │
               ▼                                                                         ▼
         Reporter ──────────────▶ runs/<runId>/{manifest.json, junit.xml, report.html}
@@ -48,7 +52,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 3 | [scenarios](scenarios.md) | Scenario YAML grammar (steps / waits / assertions / capture tokens) = the authoring reference |
 | 4 | [dsl-grammar](dsl-grammar.md) | The **formal grammar** of the scenario DSL (domain-specific language) — EBNF + every validation constraint — the normative spec behind [scenarios](scenarios.md) |
 | 5 | [selectors](selectors.md) | Selector model and deterministic resolution (0/1/2+ matches); how assertions evaluate = the determinism core |
-| 6 | [drivers](drivers.md) | Driver abstraction · idb / fake · capability differences · the simctl environment |
+| 6 | [drivers](drivers.md) | Driver abstraction · idb (iOS) / playwright (web) / fake · capability differences · the simctl environment |
 | 7 | [run-loop](run-loop.md) | Orchestrator (observe → act → verify) · waits · retries · run results |
 | 8 | [evidence](evidence.md) | Evidence subsystem (instant / interval · capturePolicy · provider · redact) |
 | 9 | [reporting](reporting.md) | Reports (manifest.json / JUnit / HTML) and the `runs/` layout |
@@ -66,8 +70,8 @@ Which module owns each box, and how they depend on each other, is in [architectu
 ## Quick start
 
 ```bash
-uv sync --extra dev                  # .venv + deps + dev tools
-uv run pytest -q                     # 405 unit tests (no Simulator needed)
+uv sync --group dev                  # .venv + deps + dev tools
+uv run pytest -q                     # unit tests (no Simulator needed)
 
 # Against the bundled sample (needs a real Simulator)
 make -C demos/features sample-build                    # build the fixture app

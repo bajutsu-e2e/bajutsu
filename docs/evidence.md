@@ -47,7 +47,7 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 
 ## A. `capturePolicy` (rule-based)
 
-Repeatedly-firing rules, written per scenario (implementation: `scenario.py` `CaptureRule` /
+Repeatedly-firing rules, written per scenario (implementation: `scenario/models/evidence.py` `CaptureRule` /
 `Trigger`).
 
 ```yaml
@@ -125,8 +125,9 @@ subsystem, paired into timed intervals by `parse_app_trace`.)
 
 ```python
 class EvidenceSink(Protocol):
-    def start_intervals(self, step_id, kinds) -> list[Interval]: ...   # start intervals before the action
-    def capture(self, driver, step_id, kinds) -> list[Artifact]: ...   # acquire instant captures after the step
+    def capture(self, driver, step_id, kinds, *, elements=None) -> list[Artifact]: ...   # instant captures after a step
+    def start_scenario_intervals(self, scenario_id, kinds) -> list[Interval]: ...        # begin video / deviceLog / appTrace for the whole scenario
+    def finish_scenario_intervals(self, scenario_id, started) -> list[Artifact]: ...     # stop them and collect the files
 ```
 
 | Sink | Behavior |
@@ -152,7 +153,7 @@ class Artifact:
 
 ## Masking (redact)
 
-Screenshots, logs, and network data can capture PII (personally identifiable information) and tokens. Declare what to mask before writing. Implementation: `scenario.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).
+Screenshots, logs, and network data can capture PII (personally identifiable information) and tokens. Declare what to mask before writing. Implementation: `scenario/models/evidence.py` `Redact`. Config's `redact` and the scenario's `redact` are merged (union) ([configuration](configuration.md#merging-redact)).
 
 ```yaml
 redact:

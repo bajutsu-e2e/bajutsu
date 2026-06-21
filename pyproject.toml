@@ -1,7 +1,7 @@
 [project]
 name = "bajutsu"
 version = "0.0.0"
-description = "自然言語駆動 iOS E2E テストツール（Simulator 限定）"
+description = "自然言語駆動の E2E テストツール"
 readme = "DESIGN.md"
 requires-python = ">=3.13"
 dependencies = [

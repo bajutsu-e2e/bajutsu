@@ -2,7 +2,7 @@
 
 # Scenario DSL grammar (formal reference)
 
-This page is the **normative grammar** of the scenario DSL (domain-specific language): every production, type, default, and validation constraint, derived directly from the pydantic models in `bajutsu/scenario.py` (`extra="forbid"`, so unknown keys are rejected). Where [scenarios](scenarios.md) is the authoring guide (how to write a scenario, with examples), this page is the language spec (what parses and what is rejected). It also covers the templating and macro layer — components, data-driven rows, and `setup` preludes — that surrounds the core grammar.
+This page is the **normative grammar** of the scenario DSL (domain-specific language): every production, type, default, and validation constraint, derived directly from the pydantic models in `bajutsu/scenario/` (the `models/` subpackage; `extra="forbid"`, so unknown keys are rejected). Where [scenarios](scenarios.md) is the authoring guide (how to write a scenario, with examples), this page is the language spec (what parses and what is rejected). It also covers the templating and macro layer — components, data-driven rows, and `setup` preludes — that surrounds the core grammar.
 
 Related: [scenarios](scenarios.md) (authoring guide) · [selectors](selectors.md) (how selectors/assertions evaluate) · [evidence](evidence.md) · [getting-started](getting-started.md)
 
@@ -29,13 +29,13 @@ The DSL is a tree of YAML nodes, so the grammar is written over the **abstract s
 Scalar terminals: `string`, `integer`, `number` (int or float), `boolean` (**only** `true` /
 `false` — see [§3](#3-the-lexical-layer-yaml)), `any` (any YAML value).
 
-Every mapping rejects keys it does not declare (`_Model`, `scenario.py:41`).
+Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base.py`).
 
 ---
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that is harder to trace in the EBNF text: `Selector`'s `within` self-loop, and how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`. (`relaunch` / `setLocation` / `push` carry only scalars and reference no shared non-terminal, so they are omitted.)
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that is harder to trace in the EBNF text: `Selector`'s `within` self-loop, and how `RequestMatch` is shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`. (Actions that carry only scalars and reference no shared non-terminal — `relaunch`, `setLocation`, `push`, `http`, and the device / status-bar steps — are omitted.)
 
 ```mermaid
 graph LR
@@ -132,6 +132,12 @@ Action    ::=
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}
+  | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method default GET; saveBody → vars.<name>
+  | { background:       {} }                               # Home button (simctl ui home)
+  | { clearKeychain:    {} }                               # reset saved passwords / certificates
+  | { clearClipboard:   {} }                               # clear the pasteboard
+  | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
+  | { clearStatusBar:   {} }                               # restore the live status bar
   | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2)
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
@@ -242,22 +248,22 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 
 | Construct | Rule | Source |
 |---|---|---|
-| `Selector` | **≥ 1** field present | `scenario.py:67` |
-| `Step` | **exactly one** action key (`tap` … `use`); `capture`/`name` are modifiers, not actions | `scenario.py:321` |
-| `Swipe` | **exactly one** form: `{on,direction}` **or** `{from,to}` — never mixed, never half-specified | `scenario.py:129` |
-| `Pinch` | `scale` **> 0** | `scenario.py:103` |
-| `Wait` | **exactly one** of `for` / `until` | `scenario.py:190` |
-| `Assertion` | **exactly one** kind (`exists` … `request` … `visual`) | `scenario.py:277` |
-| `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario.py:243` |
-| `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario.py:258` |
-| `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` (`count` is not a match field) | `scenario.py:160` |
-| `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario.py:338` |
-| `Scenario` | `data` and `dataFile` **not both** | `scenario.py:414` |
-| every mapping | **no unknown keys** (`extra="forbid"`) | `scenario.py:41` |
+| `Selector` | **≥ 1** field present | `scenario/models/selector.py` |
+| `Step` | **exactly one** action key (`tap` … `use`); `capture`/`name` are modifiers, not actions | `scenario/models/steps.py` |
+| `Swipe` | **exactly one** form: `{on,direction}` **or** `{from,to}` — never mixed, never half-specified | `scenario/models/actions.py` |
+| `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
+| `Wait` | **exactly one** of `for` / `until` | `scenario/models/assertions.py` |
+| `Assertion` | **exactly one** kind (`exists` … `request` … `visual`) | `scenario/models/assertions.py` |
+| `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario/models/assertions.py` |
+| `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
+| `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` (`count` is not a match field) | `scenario/models/assertions.py` |
+| `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario/models/evidence.py` |
+| `Scenario` | `data` and `dataFile` **not both** | `scenario/models/scenario.py` |
+| every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an
 optional `negate: true` checks *absence*. The loader rewrites that into `{ sel, negate }` before
-validation (`Exists._inline`, `scenario.py:225`).
+validation (`Exists._inline`, `scenario/models/assertions.py`).
 
 ---
 
@@ -334,7 +340,7 @@ steps:
   - use: { component: login.component.yaml, with: { email: "a@b.com", password: "pw" } }
 ```
 
-`expand_components` (`scenario.py:474`) **replaces** each `use` with the component's substituted
+`expand_components` (`scenario/expand.py`) **replaces** each `use` with the component's substituted
 steps, recursively (a component may itself `use` another, depth ≤ 25). It raises on a missing param,
 an unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle.
 Because expansion is pure and compile-time, **no `use` survives into the run** — determinism is
@@ -343,7 +349,7 @@ unaffected.
 ### 6.3 Data-driven scenarios (`data` / `dataFile`)
 
 A scenario with `data` (inline rows) or `dataFile` (a CSV path; mutually exclusive) is expanded into
-**one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario.py:537`). Each
+**one scenario per row**, substituting `${row.<column>}` (`expand_data`, `scenario/expand.py`). Each
 derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the original preconditions**
 (so every row reinstalls the app fresh and inherits the template's `erase` / `reinstall`).
 
@@ -361,19 +367,19 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
 ### 6.4 `setup` preludes, secrets, and tag selection
 
 - **`setup`** (a `Preconditions` key, or the app/config default): names a reusable scenario file
-  whose steps are **prepended** to this scenario's own (`apply_setups`, `scenario.py:615`) — a shared
+  whose steps are **prepended** to this scenario's own (`apply_setups`, `scenario/expand.py`) — a shared
   login / navigation flow written once.
 - **`secrets`** (declared in config as `secrets:` — a list of environment-variable names): each
   declared name `X` is resolved from `os.environ[X]` and bound to `${secrets.X}`, substituted into the
-  executed step **at action time** (`cli.py`, `orchestrator.py` `_interp_step`). The scenario keeps the
+  executed step **at action time** (`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`). The scenario keeps the
   `${secrets.X}` token, never the value, and the literal values are auto-masked in evidence
   (`Redactor`). Unlike `params.*` / `row.*`, this namespace is resolved by the run loop, not at load.
 - **`tags`** + the `--tag` / `--exclude` CLI flags filter which scenarios run; `exclude` wins over
-  `include` (`select_scenarios`, `scenario.py:560`).
+  `include` (`select_scenarios`, `scenario/select.py`).
 
 ### 6.5 Expansion order
 
-The load pipeline (`cli.py`) applies these deterministically, in order:
+The load pipeline (`cli/commands/run.py`) applies these deterministically, in order:
 
 ```
 load_scenarios        # parse + validate against this grammar
@@ -390,9 +396,9 @@ load_scenarios        # parse + validate against this grammar
 
 - `load_scenarios(text) -> list[Scenario]` validates against everything above; the top level must be
   a sequence, and any rule in [§4](#4-cardinality--mutual-exclusion-constraints) failing is a load
-  error (`scenario.py:444`).
+  error (`scenario/load.py`).
 - `dump_scenarios(scenarios) -> str` serializes back to YAML, pruning `None` / empty list / empty
   dict for readability and emitting alias keys (`idMatches`, `launchEnv`, …). The output **reloads
-  cleanly** — this is the round-trip `record` relies on (`scenario.py:601`).
+  cleanly** — this is the round-trip `record` relies on (`scenario/serialize.py`).
 
 For the semantics behind the shapes — how a selector resolves to 0/1/2+ elements, how each assertion compares, how waits time out — see [selectors](selectors.md) and [run-loop](run-loop.md). To start writing scenarios by example, see [scenarios](scenarios.md).
