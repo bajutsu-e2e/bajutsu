@@ -186,3 +186,51 @@ def test_org_prefix_namespaces_non_default_orgs() -> None:
     assert org_prefix("tenant/", "default") == "tenant/"
     assert org_prefix("", "acme") == "acme/"
     assert org_prefix("tenant/", "acme") == "tenant/acme/"
+
+
+def test_device_args_parses_and_validates() -> None:
+    assert ops._device_args({"backend": "idb", "udid": "U1"}) == ("idb", "U1", None)
+    assert ops._device_args({}) == ("", "", None)  # both omitted is fine
+    _b, _u, err = ops._device_args({"backend": "nonsense"})
+    assert err == ({"error": "unknown backend: nonsense"}, 400)
+    _b, _u, err = ops._device_args({"udid": "bad udid!"})
+    assert err == ({"error": "invalid udid"}, 400)
+
+
+def test_bool_flag_is_tri_state() -> None:
+    assert ops._bool_flag({"erase": True}, "erase") is True
+    assert ops._bool_flag({"erase": False}, "erase") is False
+    assert ops._bool_flag({}, "erase") is None  # unset → the CLI/scenario default applies
+    assert ops._bool_flag({"erase": "yes"}, "erase") is None  # non-bool is ignored
+
+
+class _CountingRepo:
+    """Wraps a real SqlRepository and counts user_org calls, to assert org is resolved once."""
+
+    def __init__(self, inner: SqlRepository) -> None:
+        self._inner = inner
+        self.user_org_calls = 0
+
+    def user_org(self, user_id: str) -> str | None:
+        self.user_org_calls += 1
+        return self._inner.user_org(user_id)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._inner, name)
+
+
+def test_request_resolves_the_org_once(tmp_path: Path) -> None:
+    # The org is resolved a single time per request (one DB lookup), not re-resolved by each of the
+    # forbidden check / store bundle / audit (BE-0015 perf).
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    inner = SqlRepository(engine)
+    inner.ensure_org("default", slug="default", name="default")
+    inner.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
+    repo = _CountingRepo(inner)
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)  # type: ignore[arg-type]
+
+    ops.list_scenarios(state, "demo", actor="alice")
+    assert repo.user_org_calls == 1
