@@ -50,6 +50,15 @@ def test_apps_for_default_org_are_the_unassigned_ones() -> None:
     assert apps_for_org(cfg, "default") == []
 
 
+def test_apps_for_org_excludes_undeclared_app_names() -> None:
+    # An org listing an app that has no `apps:` entry doesn't conjure a runnable app.
+    cfg = load_config(
+        "apps:\n  demo: { bundleId: com.example.demo }\n"
+        "orgs:\n  acme:\n    members: [alice]\n    apps: [demo, ghost]\n"
+    )
+    assert apps_for_org(cfg, "acme") == ["demo"]
+
+
 def test_no_orgs_block_is_single_tenant() -> None:
     cfg = load_config("apps:\n  demo: { bundleId: com.example.demo }\n")
     assert org_for_user(cfg, "alice") == "default"

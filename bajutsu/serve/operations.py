@@ -72,9 +72,12 @@ def list_scenarios(
 
 
 def list_apps_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
-    # Only the apps the actor's org owns (every app for the default org / single-tenant) — BE-0015.
     if state.config is None:
         return [], 200
+    # Org scoping applies only on a server backend with a system of record; local serve / token mode
+    # ignores `orgs:` and lists every app (BE-0015 multi-tenancy).
+    if state.repository is None:
+        return list_apps(state.config), 200
     config = load_config_file(state.config)
     if config is None:
         return [], 200
@@ -295,10 +298,13 @@ def _resolve_org(state: ServeState, actor: str | None) -> str:
 
 def _org_app_forbidden(state: ServeState, actor: str | None, app: str) -> bool:
     """True when *actor* may not touch *app* because the app belongs to a different org (BE-0015
-    multi-tenancy). Single-tenant (no config, or no `orgs:` block) never forbids: both the app and
-    the actor resolve to the default org."""
+    multi-tenancy). Org scoping applies only on a server backend with a system of record; local
+    serve / token mode has no identity to scope to and ignores `orgs:` entirely. An app not declared
+    under `apps:` is "unknown", not cross-org — the caller handles it as a missing app downstream."""
+    if state.repository is None:
+        return False
     config = load_config_file(state.config)
-    if config is None:
+    if config is None or app not in config.apps:
         return False
     return org_for_app(config, app) != _resolve_org(state, actor)
 

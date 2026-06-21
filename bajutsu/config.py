@@ -112,12 +112,14 @@ def org_for_app(config: Config, app: str) -> str:
 
 
 def apps_for_org(config: Config, org: str) -> list[str]:
-    """The apps belonging to *org*. For `default`, that's every app no org claims."""
+    """The apps belonging to *org*, restricted to apps actually declared under `apps:` (an org that
+    lists an undeclared app name doesn't conjure a runnable app). For `default`, that's every
+    declared app no org claims."""
     if org == DEFAULT_ORG:
         claimed = {a for oc in config.orgs.values() for a in oc.apps}
         return [a for a in config.apps if a not in claimed]
     oc = config.orgs.get(org)
-    return list(oc.apps) if oc else []
+    return [a for a in oc.apps if a in config.apps] if oc else []
 
 
 @dataclass(frozen=True)

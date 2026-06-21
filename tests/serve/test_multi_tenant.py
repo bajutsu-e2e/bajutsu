@@ -127,6 +127,20 @@ def test_oauth_login_assigns_the_org_from_config(tmp_path: Path) -> None:
     assert state.repository.user_org("carol") == "default"
 
 
+def test_local_serve_ignores_orgs_without_a_repository(tmp_path: Path) -> None:
+    # No system of record (local serve / token mode): `orgs:` is ignored — every app is listed and
+    # nothing is forbidden, even for a config that declares orgs.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(CONFIG, encoding="utf-8")
+    state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg)  # repository defaults to None
+    assert state.repository is None
+    assert ops.list_apps_payload(state, actor="alice")[0] == ["checkout", "demo", "other"]
+    _payload, status = ops.start_run(
+        state, {"app": "other", "scenario": "smoke.yaml"}, actor="alice"
+    )
+    assert status != 403
+
+
 def test_for_org_routes_to_the_per_org_bundle(tmp_path: Path) -> None:
     # A server backend sets an org_stores factory; for_org must route through it.
     state = srv.ServeState(runs_dir=tmp_path / "runs")
