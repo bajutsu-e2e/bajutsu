@@ -1,8 +1,8 @@
-[English](BE-XXXX-git-config-source.md) · **日本語**
+[English](BE-0063-git-config-source.md) · **日本語**
 
-# BE-XXXX — Git リポジトリ + ref から config（とシナリオ一式）を読み込む
+# BE-0063 — Git リポジトリ + ref から config（とシナリオ一式）を読み込む
 
-* 提案: [BE-XXXX](BE-XXXX-git-config-source-ja.md)
+* 提案: [BE-0063](BE-0063-git-config-source-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)

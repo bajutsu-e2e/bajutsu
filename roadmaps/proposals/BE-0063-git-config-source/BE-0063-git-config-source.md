@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-git-config-source-ja.md)
+**English** · [日本語](BE-0063-git-config-source-ja.md)
 
-# BE-XXXX — Load config (and its scenario tree) from a Git repository + ref
+# BE-0063 — Load config (and its scenario tree) from a Git repository + ref
 
-* Proposal: [BE-XXXX](BE-XXXX-git-config-source.md)
+* Proposal: [BE-0063](BE-0063-git-config-source.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
