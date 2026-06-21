@@ -24,11 +24,9 @@ web-deps:
 serve-ui:
 	cd $(ROOT) && uv run bajutsu serve --config $(INNER_CONFIG) --root $(HERE) --port $(PORT)
 
-# End-to-end: launch serve (the app under test) in the background, drive its Web UI through the
-# Playwright backend with the Tier-A deterministic scenarios, then tear serve down. No device, no
-# Simulator, no LLM — pass/fail is the scenarios' machine assertions only.
+# End-to-end: drive the serve Web UI through the Playwright backend with the Tier-A deterministic
+# scenarios. The app under test (the inner serve) is brought up and torn down by the config's
+# `launchServer` (apps.webui), so the run is self-contained — no hand-started server here. No
+# device, no Simulator, no LLM — pass/fail is the scenarios' machine assertions only.
 e2e: web-deps
-	cd $(ROOT) && uv run bajutsu serve --config $(INNER_CONFIG) --root $(HERE) --port $(PORT) >/dev/null 2>&1 & srv=$$!; \
-	trap 'kill $$srv 2>/dev/null' EXIT; \
-	for _ in $$(seq 1 40); do curl -sf http://127.0.0.1:$(PORT)/ >/dev/null 2>&1 && break; sleep 0.5; done; \
 	cd $(ROOT) && uv run bajutsu run --app webui --backend web --config $(CONFIG) --no-network

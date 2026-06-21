@@ -18,6 +18,7 @@ from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
 from bajutsu.runner import device_pool, run_and_report
+from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import (
     DismissAlerts,
     Scenario,
@@ -302,6 +303,16 @@ def run(
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run
     # log); stdout stays the machine-readable final PASS/FAIL line.
     progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None  # noqa: T201
+    # Bring up the app's target server (the web baseUrl host) if it declares `launchServer`, waiting
+    # on its readiness probe; reused if already serving, torn down in the finally below. The pool
+    # leases lazily (the web driver navigates at lease time, inside run_and_report), so the server
+    # only needs to be up before the run, not before the pool.
+    try:
+        stop_server = start_launch_server(eff)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        shutdown()
+        raise typer.Exit(2) from None
     try:
         results, manifest = run_and_report(
             eff,
@@ -323,6 +334,7 @@ def run(
         raise typer.Exit(2) from None
     finally:
         shutdown()
+        stop_server()
     ok = all(r.ok for r in results)
     github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")

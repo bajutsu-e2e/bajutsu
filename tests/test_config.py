@@ -110,6 +110,25 @@ def test_web_app_headless_override() -> None:
     assert resolve(cfg, "web").headless is False
 
 
+def test_web_app_launch_server_parsed() -> None:
+    # `launchServer` declares how to bring up baseUrl's host for a run; readyUrl defaults to None
+    # (run falls back to baseUrl), readyTimeout to 30s.
+    eff = resolve(
+        load_config(
+            "apps: { web: { baseUrl: 'http://127.0.0.1:8799/', "
+            "launchServer: { cmd: 'uv run bajutsu serve --port 8799', readyTimeout: 60 } } }"
+        ),
+        "web",
+    )
+    assert eff.launch_server is not None
+    assert eff.launch_server.cmd == "uv run bajutsu serve --port 8799"
+    assert eff.launch_server.ready_timeout == 60.0
+    assert eff.launch_server.ready_url is None  # run falls back to baseUrl
+    assert (
+        resolve(load_config("apps: { web: { baseUrl: 'http://x/' } }"), "web").launch_server is None
+    )
+
+
 def test_app_without_bundleid_or_baseurl_rejected() -> None:
     # Dropping bundleId's required-ness must not silently accept a target-less app.
     with pytest.raises(ValidationError, match="needs bundleId"):

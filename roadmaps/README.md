@@ -175,6 +175,7 @@ Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drive
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0058](implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) | Dogfood the serve Web UI (web-backend regression net) | Implemented | Dogfooding |
+| [BE-0059](implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md) | Bring up the target server for a run (`launchServer`) | Implemented | Dogfooding |
 <!-- /GENERATED:accepted-dogfood-web-ui -->
 
 ### AI provider configuration

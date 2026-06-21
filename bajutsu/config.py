@@ -31,6 +31,21 @@ class MockServer(_Model):
     stubs: str | None = None
 
 
+class LaunchServer(_Model):
+    """How to bring up the app's target server (the host behind `baseUrl`) for a run. Unlike
+    `mockServer` (which stubs the dependencies the app *calls*), this hosts the app *under test*
+    itself — e.g. the static page for `demos/web`, or the inner `serve` the WebUI dogfood drives.
+    `run` probes `readyUrl` first: if it already answers it reuses it (started externally), else it
+    runs `cmd`, waits on the readiness probe (a condition wait, never a fixed sleep), and tears the
+    process down afterwards."""
+
+    cmd: str  # shell command that starts the server (run in its own process group)
+    ready_url: str | None = Field(default=None, alias="readyUrl")  # probe target; default: baseUrl
+    ready_timeout: float = Field(default=30.0, alias="readyTimeout")  # seconds before giving up
+    cwd: str | None = None  # working directory (default: the run's cwd)
+    env: dict[str, str] = Field(default_factory=dict)  # extra environment for the server
+
+
 class Defaults(_Model):
     backend: list[str] = Field(default_factory=lambda: ["idb"])
     device: str = "iPhone 15"
@@ -59,6 +74,8 @@ class AppConfig(_Model):
     # Web backend only: run with a visible (headed) browser instead of headless. iOS ignores it.
     # The `bajutsu run --headed/--no-headed` flag (and the Web UI's "Show browser" toggle) override.
     headless: bool = True
+    # How to bring up baseUrl's host for a run (start → readiness probe → teardown). See LaunchServer.
+    launch_server: LaunchServer | None = Field(default=None, alias="launchServer")
     deeplink_scheme: str | None = Field(default=None, alias="deeplinkScheme")
     backend: list[str] | None = None
     device: str | None = None
@@ -190,6 +207,8 @@ class Effective:
     base_url: str | None = None
     # Web (Playwright): run headless (default) or headed (visible browser). iOS ignores it.
     headless: bool = True
+    # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
+    launch_server: LaunchServer | None = None
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -214,6 +233,7 @@ def resolve(config: Config, app: str) -> Effective:
         bundle_id=a.bundle_id,
         base_url=a.base_url,
         headless=a.headless,
+        launch_server=a.launch_server,
         deeplink_scheme=a.deeplink_scheme,
         backend=a.backend or d.backend,
         device=a.device or d.device,
