@@ -131,6 +131,7 @@ SECTIONS: tuple[Section, ...] = (
     Section("proposals-backend", "Proposals", "Backend expansion (iOS actuators)", False),
     Section("proposals-doctor", "Proposals", "doctor / onboarding", False),
     Section("proposals-codegen", "Proposals", "codegen coverage", False),
+    Section("proposals-crawl", "Proposals", "Crawl performance / scale-out", False),
     Section("proposals-misc", "Proposals", "Miscellaneous / on hold", False),
     Section(
         "proposals-competitive",

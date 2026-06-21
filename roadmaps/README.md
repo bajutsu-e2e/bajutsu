@@ -280,6 +280,14 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0062](proposals/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
+### Crawl performance / scale-out
+
+<!-- GENERATED:proposals-crawl -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
+<!-- /GENERATED:proposals-crawl -->
+
 ### Miscellaneous / on hold
 
 <!-- GENERATED:proposals-misc -->
