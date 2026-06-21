@@ -1,8 +1,8 @@
-[English](BE-0056-dogfood-web-ui.md) · **日本語**
+[English](BE-0058-dogfood-web-ui.md) · **日本語**
 
-# BE-0056 — serve Web UI の Dogfood（web backend のリグレッション網）
+# BE-0058 — serve Web UI の Dogfood（web backend のリグレッション網）
 
-* 提案: [BE-0056](BE-0056-dogfood-web-ui-ja.md)
+* 提案: [BE-0058](BE-0058-dogfood-web-ui-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * 実装 PR: [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
