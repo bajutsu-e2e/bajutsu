@@ -750,6 +750,36 @@ wirePlatform('#panel-run','#backend');
 wirePlatform('#panel-record','#rec-backend');
 wirePlatform('#panel-crawl','#crawl-backend');
 
+// Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
+// column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.
+const SPLIT_KEY='bajutsu-splits';
+function restoreSplits(){
+  let v={};try{v=JSON.parse(localStorage.getItem(SPLIT_KEY)||'{}')}catch(e){}
+  document.querySelectorAll('main .gutter').forEach(g=>{const w=v[g.dataset.var];if(w)g.closest('main').style.setProperty(g.dataset.var,w)});
+}
+function initSplitters(){
+  let drag=null;
+  document.querySelectorAll('main .gutter').forEach(g=>g.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    drag={g,main:g.closest('main'),v:g.dataset.var,x:e.clientX,w:g.previousElementSibling.getBoundingClientRect().width,min:+g.dataset.min||200,max:+g.dataset.max||700};
+    g.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor='col-resize';
+  }));
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return;
+    drag.main.style.setProperty(drag.v,Math.max(drag.min,Math.min(drag.max,drag.w+e.clientX-drag.x))+'px');
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!drag)return;
+    drag.g.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';
+    let v={};try{v=JSON.parse(localStorage.getItem(SPLIT_KEY)||'{}')}catch(e){}
+    v[drag.v]=drag.main.style.getPropertyValue(drag.v);
+    try{localStorage.setItem(SPLIT_KEY,JSON.stringify(v))}catch(e){}
+    drag=null;
+  });
+}
+restoreSplits();
+initSplitters();
+
 initTheme();
 loadConfig();
 loadSims();
