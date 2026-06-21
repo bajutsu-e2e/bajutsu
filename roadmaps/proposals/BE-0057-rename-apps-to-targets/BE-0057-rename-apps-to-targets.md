@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-rename-apps-to-targets-ja.md)
+**English** · [日本語](BE-0057-rename-apps-to-targets-ja.md)
 
-# BE-XXXX — Rename the config `apps` key to `targets`
+# BE-0057 — Rename the config `apps` key to `targets`
 
-* Proposal: [BE-XXXX](BE-XXXX-rename-apps-to-targets.md)
+* Proposal: [BE-0057](BE-0057-rename-apps-to-targets.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
