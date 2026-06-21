@@ -156,11 +156,23 @@ def test_http_crawl_rejected_at_concurrency_cap(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_valid_run_id_accepts_segments_rejects_paths() -> None:
-    assert srv.valid_run_id("20260610-153045")  # the server-generated timestamp form
-    assert srv.valid_run_id("run_1.2-3")
-    for bad in ("/tmp/evil", "../escape", "a/b", "..", "", ".", "a\x00b"):
-        assert not srv.valid_run_id(bad), bad
+@pytest.mark.parametrize(
+    ("run_id", "ok"),
+    [
+        ("20260610-153045", True),  # the server-generated timestamp form
+        ("run_1.2-3", True),
+        ("/tmp/evil", False),
+        ("../escape", False),
+        ("a/b", False),
+        ("..", False),
+        ("", False),
+        (".", False),
+        ("a\x00b", False),
+    ],
+)
+def test_valid_run_id_accepts_segments_rejects_paths(run_id: str, ok: bool) -> None:
+    # A run id is a single safe path segment, so `runs_dir / run_id` can't escape runs_dir.
+    assert srv.valid_run_id(run_id) is ok
 
 
 def test_http_crawl_resume_rejects_unsafe_run_id(tmp_path: Path) -> None:
