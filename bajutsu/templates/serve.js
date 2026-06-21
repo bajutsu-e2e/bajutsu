@@ -781,6 +781,61 @@ function initSplitters(){
 restoreSplits();
 initSplitters();
 
+// Panel reordering: each reorderable panel gets a small grip; drag it onto a sibling to reorder
+// the panels within that view. Order is applied via CSS `order` (so it composes with the gutter
+// columns/rows) and persists in localStorage. Record's controls↔stack and the crawl plan/console
+// are left out — they'd nest with the row stack / interleave with section labels.
+function initReorder(){
+  const KEY='bajutsu-panel-order';
+  const GROUPS=[
+    {sel:'#view-replay',axis:'x',map:{left:'controls',logpanel:'log',report:'report'}},
+    {sel:'#view-record .rec-stack',axis:'y',map:{logpanel:'log',yamlpanel:'yaml'}},
+    {sel:'#view-crawl',axis:'x',map:{left:'controls',crawlpanel:'crawl'}},
+  ];
+  const panels=c=>[...c.children].filter(x=>x.dataset.panel);
+  const gutters=c=>[...c.children].filter(x=>x.classList.contains('gutter'));
+  function order(c,keys){
+    const ps=panels(c),by={};ps.forEach(p=>by[p.dataset.panel]=p);
+    const seq=keys.filter(k=>by[k]);ps.forEach(p=>{if(seq.indexOf(p.dataset.panel)<0)seq.push(p.dataset.panel)});
+    seq.forEach((k,i)=>by[k].style.order=i*2);
+    gutters(c).forEach((g,i)=>g.style.order=i*2+1);
+  }
+  const keysOf=c=>panels(c).slice().sort((a,b)=>(parseInt(a.style.order)||0)-(parseInt(b.style.order)||0)).map(p=>p.dataset.panel);
+  let saved={};try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
+  const save=()=>{const s={};GROUPS.forEach(g=>{const c=document.querySelector(g.sel);if(c)s[g.sel]=keysOf(c)});try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}};
+  let drag=null;
+  GROUPS.forEach(g=>{
+    const c=document.querySelector(g.sel);if(!c)return;
+    [...c.children].forEach(ch=>{for(const cls in g.map)if(ch.classList.contains(cls))ch.dataset.panel=g.map[cls]});
+    order(c,(saved[g.sel]&&saved[g.sel].length)?saved[g.sel]:panels(c).map(p=>p.dataset.panel));
+    panels(c).forEach(p=>{
+      const grip=document.createElement('div');
+      grip.className='reorder-grip';grip.title='ドラッグして並び替え';grip.textContent='⠿';
+      grip.addEventListener('mousedown',ev=>{ev.preventDefault();drag={c,axis:g.axis,panel:p};p.classList.add('reordering');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing'});
+      p.appendChild(grip);
+    });
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return;
+    const el=document.elementFromPoint(e.clientX,e.clientY),tp=el&&el.closest('[data-panel]');
+    panels(drag.c).forEach(p=>p.classList.toggle('dropzone',p===tp&&p!==drag.panel&&p.parentElement===drag.c));
+  });
+  window.addEventListener('mouseup',e=>{
+    if(!drag)return;
+    const el=document.elementFromPoint(e.clientX,e.clientY),tp=el&&el.closest('[data-panel]');
+    if(tp&&tp!==drag.panel&&tp.parentElement===drag.c){
+      const keys=keysOf(drag.c).filter(k=>k!==drag.panel.dataset.panel),r=tp.getBoundingClientRect();
+      const after=drag.axis==='x'?e.clientX>r.left+r.width/2:e.clientY>r.top+r.height/2;
+      keys.splice(keys.indexOf(tp.dataset.panel)+(after?1:0),0,drag.panel.dataset.panel);
+      order(drag.c,keys);save();
+    }
+    panels(drag.c).forEach(p=>p.classList.remove('dropzone'));
+    drag.panel.classList.remove('reordering');document.body.classList.remove('reordering-active');document.body.style.userSelect='';document.body.style.cursor='';
+    drag=null;
+  });
+}
+initReorder();
+
 initTheme();
 loadConfig();
 loadSims();

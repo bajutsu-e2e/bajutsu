@@ -36,6 +36,13 @@ main[hidden]{display:none}
 .gutter.row{cursor:row-resize}
 .gutter.row::before{top:50%;bottom:auto;left:0;right:0;width:auto;height:1px;transform:translateY(-50%)}
 .gutter.row:hover::before,.gutter.row.dragging::before{width:auto;height:3px}
+/* Panel reordering: a small grip tab per panel; drag it onto a sibling to reorder them in-view. */
+[data-panel]{position:relative}
+.reorder-grip{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:20;width:2.4rem;height:.95rem;display:flex;align-items:center;justify-content:center;color:var(--mut);background:var(--bg2);border:1px solid var(--line);border-top:none;border-radius:0 0 7px 7px;cursor:grab;opacity:.45;font-size:.7em;line-height:1;user-select:none}
+.reorder-grip:hover{opacity:1;color:var(--acc);border-color:var(--acc)}
+[data-panel].reordering{opacity:.55}
+[data-panel].dropzone{outline:2px dashed var(--acc);outline-offset:-3px}
+body.reordering-active iframe{pointer-events:none}
 .crawlpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
 .crawlhead{flex:0 0 auto;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
 .crawlhead .ttl{font-weight:600}
