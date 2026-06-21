@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from bajutsu.drivers import base
 
@@ -145,7 +145,10 @@ def _start_chromium(headless: bool) -> tuple[Any, Any, _Page]:  # pragma: no cov
     pw = sync_playwright().start()
     browser = pw.chromium.launch(headless=headless)
     page = browser.new_context().new_page()
-    return pw, browser, page
+    # cast bridges playwright's real Page to our structural _Page: mypy only sees the real type
+    # when the web extra is installed, and a bare `# type: ignore` would be flagged unused when
+    # it isn't (so it can't satisfy both environments — the cast does).
+    return pw, browser, cast(_Page, page)
 
 
 class PlaywrightDriver:
