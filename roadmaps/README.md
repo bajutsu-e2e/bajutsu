@@ -242,6 +242,7 @@ Bedrock from the web UI itself rather than the shell that launched `serve`.
 <!-- GENERATED:proposals-ai-provider -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0056](proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login.md) | AWS SSO sign-in from the web UI for Bedrock | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
