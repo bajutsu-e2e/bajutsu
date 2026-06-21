@@ -19,6 +19,12 @@ jobs:
   check:
     name: check
     runs-on: ubuntu-latest
+    # Every gate step below calls a `make` target, so the commands and file/target lists live only
+    # in the Makefile and CI mirrors `make check` by construction (no hand-copied list to drift).
+    # uv's auto-sync is disabled — the env is already populated by the explicit `uv sync` step —
+    # to keep the old `uv run --no-sync` speed.
+    env:
+      UV_NO_SYNC: "1"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
@@ -30,19 +36,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      # Mirrors `make check`. The uv-native steps run identically to the local gate
-      # and the pre-push hook; actionlint is the lone separately-installed binary.
+      # Each step invokes the matching `make` target so the gate's commands and file/target lists
+      # live only in the Makefile. actionlint is the lone separately-installed binary (kept inline
+      # below: `make lint-actions` only runs it when it's on PATH, but CI installs ./actionlint).
       - name: Lockfile up to date (uv lock --check)
-        run: uv lock --check
+        run: make lock-check
 
       - name: Format (ruff format --check)
-        run: uv run --no-sync ruff format --check .
+        run: make format-check
 
       - name: Lint (ruff)
-        run: uv run --no-sync ruff check .
+        run: make lint
 
       - name: Lint shell scripts (shellcheck)
-        run: uv run --no-sync shellcheck .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh .claude/hooks/session-start.sh demos/record/demo.sh
+        run: make lint-sh
 
       # actionlint is a standalone Go binary, not pip/uv-installable — the one gate check
       # not covered by `uv sync`. Pinned to a tagged release of the official installer.
@@ -53,17 +60,39 @@ jobs:
         run: ./actionlint -color
 
       - name: Typecheck (mypy)
-        run: uv run --no-sync mypy bajutsu demos
+        run: make typecheck
 
       - name: Test (pytest + coverage)
-        run: uv run --no-sync pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=85
+        run: make test
 
       # Render coverage.json into the run's job summary. Runs even when the floor above fails,
       # so a coverage regression shows the numbers rather than only a red step. Presentation
       # only — pass/fail is already decided by --cov-fail-under; the script never fails the run.
       - name: Coverage summary
         if: always()
-        run: uv run --no-sync python scripts/coverage_summary.py --floor 85 coverage.json
+        run: uv run --no-sync python scripts/coverage_summary.py --floor 87 coverage.json
+
+  # Audit the locked dependency graph (runtime + all shipped extras) against the advisory DB.
+  # uv.lock is the source of truth: export the pinned versions and audit them directly with
+  # --no-deps (no resolution). Hashes are dropped because pip-audit's hash-verified resolve picks
+  # platform-specific binary wheels (e.g. psycopg-binary) whose exact hash isn't in uv's pinned
+  # set on the runner's Python. A known CVE fails the job; accept a reviewed advisory with
+  # `--ignore-vuln <GHSA-or-CVE>` (with a comment) on the pip-audit call.
+  audit:
+    name: dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Audit dependencies (pip-audit)
+        run: |
+          uv export --frozen --all-extras --no-dev --no-emit-project --no-hashes --format requirements-txt -o requirements.txt
+          uvx pip-audit --no-deps -r requirements.txt
 
   # Real-browser E2E for the web (Playwright) backend (BE-0041). Unlike the iOS E2E it runs on
   # Linux — a headless Chromium, no Mac and no Simulator — so it lives here rather than in e2e.yml.

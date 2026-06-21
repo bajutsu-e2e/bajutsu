@@ -14,7 +14,7 @@ from typing import Protocol, runtime_checkable
 from urllib.parse import urlencode
 
 _AUTHORIZE = "https://github.com/login/oauth/authorize"
-_TOKEN = "https://github.com/login/oauth/access_token"  # the OAuth token-exchange endpoint
+_TOKEN = "https://github.com/login/oauth/access_token"  # noqa: S105 (token-exchange endpoint URL, not a secret)
 _USER = "https://api.github.com/user"
 _ORGS = "https://api.github.com/user/orgs"
 # `read:org` lets us read the user's org memberships (including private ones) to map them to a

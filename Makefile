@@ -46,7 +46,7 @@ SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh sc
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
 test:
-	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=85
+	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=87
 
 lint:
 	uv run ruff check .
@@ -59,7 +59,7 @@ format-check:
 	uv run ruff format --check .
 
 typecheck:
-	uv run mypy bajutsu demos
+	uv run mypy bajutsu demos scripts
 
 # The committed uv.lock must already satisfy pyproject — a dependency edit that forgets
 # to re-lock fails here instead of silently resolving something else in CI.
