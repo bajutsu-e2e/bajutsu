@@ -5,7 +5,7 @@
 * Proposal: [BE-0060](BE-0060-be-id-allocation-hardening.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
-* Implementing PR: TBD
+* Implementing PR: [#175](https://github.com/bajutsu-e2e/bajutsu/pull/175)
 * Track: [Accepted](../../README.md#accepted)
 * Topic: Development infrastructure (contributor workflow)
 
