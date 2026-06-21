@@ -5,6 +5,7 @@ Verify that scenario -> resolve -> assert closes as pure logic.
 
 from __future__ import annotations
 
+import pytest
 from conftest import el
 
 from bajutsu.assertions import evaluate, evaluate_one, passed
@@ -30,43 +31,33 @@ def _ok(data: dict[str, object]) -> bool:
     return evaluate_one(SCREEN, _a(data)).ok
 
 
-def test_exists() -> None:
-    assert _ok({"exists": {"id": "home.title"}})
-    assert not _ok({"exists": {"id": "spinner"}})
-
-
-def test_exists_negate() -> None:
-    assert _ok({"exists": {"id": "spinner", "negate": True}})  # absent, so passes
-    assert not _ok({"exists": {"id": "home.title", "negate": True}})  # present, so fails
-
-
-def test_value() -> None:
-    assert _ok({"value": {"sel": {"id": "counter"}, "equals": "3"}})
-    assert not _ok({"value": {"sel": {"id": "counter"}, "equals": "4"}})
-
-
-def test_label_contains_and_matches() -> None:
-    assert _ok({"label": {"sel": {"id": "status"}, "contains": "完了"}})
-    assert _ok({"label": {"sel": {"id": "status"}, "matches": "完了.*した"}})
-    assert not _ok({"label": {"sel": {"id": "status"}, "contains": "失敗"}})
-
-
-def test_count() -> None:
-    assert _ok({"count": {"sel": {"idMatches": "result.row.*"}, "equals": 2}})
-    assert not _ok({"count": {"sel": {"idMatches": "result.row.*"}, "equals": 3}})
-    assert _ok({"count": {"sel": {"idMatches": "result.row.*"}, "atLeast": 2}})
-    assert not _ok({"count": {"sel": {"idMatches": "result.row.*"}, "atMost": 1}})
-
-
-def test_enabled_disabled() -> None:
-    assert _ok({"disabled": {"id": "submit"}})
-    assert not _ok({"enabled": {"id": "submit"}})
-    assert _ok({"enabled": {"id": "home.title"}})
-
-
-def test_selected() -> None:
-    assert _ok({"selected": {"id": "tab.home"}})
-    assert not _ok({"selected": {"id": "home.title"}})
+# Each assertion kind evaluated against SCREEN: the data and whether it should pass. One row per
+# case keeps every kind's matching/non-matching coverage that the per-kind functions had.
+@pytest.mark.parametrize(
+    ("data", "expect_ok"),
+    [
+        ({"exists": {"id": "home.title"}}, True),
+        ({"exists": {"id": "spinner"}}, False),
+        ({"exists": {"id": "spinner", "negate": True}}, True),  # absent + negate, so passes
+        ({"exists": {"id": "home.title", "negate": True}}, False),  # present + negate, so fails
+        ({"value": {"sel": {"id": "counter"}, "equals": "3"}}, True),
+        ({"value": {"sel": {"id": "counter"}, "equals": "4"}}, False),
+        ({"label": {"sel": {"id": "status"}, "contains": "完了"}}, True),
+        ({"label": {"sel": {"id": "status"}, "matches": "完了.*した"}}, True),
+        ({"label": {"sel": {"id": "status"}, "contains": "失敗"}}, False),
+        ({"count": {"sel": {"idMatches": "result.row.*"}, "equals": 2}}, True),
+        ({"count": {"sel": {"idMatches": "result.row.*"}, "equals": 3}}, False),
+        ({"count": {"sel": {"idMatches": "result.row.*"}, "atLeast": 2}}, True),
+        ({"count": {"sel": {"idMatches": "result.row.*"}, "atMost": 1}}, False),
+        ({"disabled": {"id": "submit"}}, True),
+        ({"enabled": {"id": "submit"}}, False),
+        ({"enabled": {"id": "home.title"}}, True),
+        ({"selected": {"id": "tab.home"}}, True),
+        ({"selected": {"id": "home.title"}}, False),
+    ],
+)
+def test_assertion_evaluates(data: dict[str, object], expect_ok: bool) -> None:
+    assert _ok(data) is expect_ok
 
 
 def test_not_found_fails_with_reason() -> None:

@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from _shared import project, write_run
 
 from bajutsu import serve as srv
@@ -94,15 +95,16 @@ def test_list_apps_reflects_an_edited_config(tmp_path: Path) -> None:
     assert srv.list_apps(cfg) == ["demo", "other"]  # cache invalidated by the mtime/size change
 
 
-def test_mask_secret_keeps_head_and_tail() -> None:
-    masked = srv.mask_secret("sk-ant-api03-abcdefXYZ")
-    assert masked == "sk-a…fXYZ"  # head 4 + … + tail 4
-    assert "abcdef" not in masked
-
-
-def test_mask_secret_fully_hides_short_values() -> None:
-    assert srv.mask_secret("short") == "•••••"
-    assert srv.mask_secret("") == ""
+@pytest.mark.parametrize(
+    ("value", "masked"),
+    [
+        ("sk-ant-api03-abcdefXYZ", "sk-a…fXYZ"),  # head 4 + … + tail 4 (the middle never leaks)
+        ("short", "•••••"),  # <= 8 chars: fully masked
+        ("", ""),
+    ],
+)
+def test_mask_secret(value: str, masked: str) -> None:
+    assert srv.mask_secret(value) == masked
 
 
 def test_list_scenarios_includes_descriptions(tmp_path: Path) -> None:
@@ -306,17 +308,29 @@ def test_list_simulators_parses_and_orders() -> None:
     assert srv.list_simulators(simctl=_boom) == []  # failure -> empty, never raises
 
 
-def test_valid_backend_accepts_known_tokens() -> None:
-    assert srv.valid_backend("idb")
-    assert srv.valid_backend("ios")
-    assert srv.valid_backend("ios,fake")  # comma list of known tokens
-    assert not srv.valid_backend("idb,bogus")  # one unknown token -> reject
-    assert not srv.valid_backend("rm -rf /")  # free text -> reject
+@pytest.mark.parametrize(
+    ("value", "ok"),
+    [
+        ("idb", True),
+        ("ios", True),
+        ("ios,fake", True),  # comma list of known tokens
+        ("idb,bogus", False),  # one unknown token -> reject
+        ("rm -rf /", False),  # free text -> reject
+    ],
+)
+def test_valid_backend(value: str, ok: bool) -> None:
+    assert srv.valid_backend(value) is ok
 
 
-def test_valid_udid_accepts_safe_tokens() -> None:
-    assert srv.valid_udid("booted")
-    assert srv.valid_udid("ABCDEF01-2345-6789-ABCD-EF0123456789")
-    assert srv.valid_udid("A,B")  # comma pool
-    assert not srv.valid_udid("A B")  # space -> reject
-    assert not srv.valid_udid("A;rm -rf /")  # metacharacters -> reject
+@pytest.mark.parametrize(
+    ("value", "ok"),
+    [
+        ("booted", True),
+        ("ABCDEF01-2345-6789-ABCD-EF0123456789", True),
+        ("A,B", True),  # comma pool
+        ("A B", False),  # space -> reject
+        ("A;rm -rf /", False),  # metacharacters -> reject
+    ],
+)
+def test_valid_udid(value: str, ok: bool) -> None:
+    assert srv.valid_udid(value) is ok

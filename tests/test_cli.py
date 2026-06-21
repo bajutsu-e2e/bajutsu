@@ -48,17 +48,46 @@ def _write(tmp_path: Path) -> tuple[Path, Path]:
     return cfg, scn
 
 
+def _argv(
+    command: str, *, cfg: Path, scn: Path, out: Path, app: str, backend: str = ""
+) -> list[str]:
+    """The argv for *command* against *app*, carrying each command's own required flags. Used by the
+    error-path tests that only differ by command (unknown app / no available backend)."""
+    base = {
+        "run": ["run", "--scenario", str(scn), "--app", app],
+        "record": ["record", "--out", str(out), "--app", app, "--goal", "x"],
+        "doctor": ["doctor", "--app", app],
+        "crawl": ["crawl", "--app", app],
+    }[command]
+    if backend:
+        base += ["--backend", backend]
+    return [*base, "--config", str(cfg)]
+
+
+@pytest.mark.parametrize("command", ["run", "record", "doctor", "crawl"])
+def test_unknown_app_exits_cleanly(tmp_path: Path, command: str) -> None:
+    cfg, scn = _write(tmp_path)
+    r = runner.invoke(app, _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="ghost"))
+    assert r.exit_code == 2
+    assert "unknown app" in r.output
+
+
+@pytest.mark.parametrize("command", ["run", "record", "doctor"])
+def test_no_backend_available_exits_cleanly(tmp_path: Path, command: str) -> None:
+    # An unknown backend is never available -> clean exit 2, independent of PATH. (crawl has its own
+    # test below: it additionally checks the run dir isn't created by the gate.)
+    cfg, scn = _write(tmp_path)
+    r = runner.invoke(
+        app, _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo", backend="nope")
+    )
+    assert r.exit_code == 2
+    assert "no available actuator" in r.output
+
+
 def test_run_missing_config(tmp_path: Path) -> None:
     r = runner.invoke(app, ["run", "--app", "demo", "--config", str(tmp_path / "nope.yaml")])
     assert r.exit_code == 2
     assert "config not found" in r.output
-
-
-def test_run_unknown_app(tmp_path: Path) -> None:
-    cfg, scn = _write(tmp_path)
-    r = runner.invoke(app, ["run", "--scenario", str(scn), "--app", "ghost", "--config", str(cfg)])
-    assert r.exit_code == 2
-    assert "unknown app" in r.output
 
 
 def test_run_missing_scenario(tmp_path: Path) -> None:
@@ -77,17 +106,6 @@ def test_run_missing_scenario(tmp_path: Path) -> None:
     )
     assert r.exit_code == 2
     assert "scenario not found" in r.output
-
-
-def test_run_no_backend_available(tmp_path: Path) -> None:
-    # An unknown backend is never available -> clean exit 2 (independent of PATH).
-    cfg, scn = _write(tmp_path)
-    r = runner.invoke(
-        app,
-        ["run", "--scenario", str(scn), "--app", "demo", "--backend", "nope", "--config", str(cfg)],
-    )
-    assert r.exit_code == 2
-    assert "no available actuator" in r.output
 
 
 def test_run_reads_configured_dir(tmp_path: Path) -> None:
@@ -112,69 +130,12 @@ def test_run_empty_scenarios_dir(tmp_path: Path) -> None:
     assert "no scenarios found" in r.output
 
 
-def test_doctor_no_backend_available(tmp_path: Path) -> None:
-    cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["doctor", "--app", "demo", "--backend", "nope", "--config", str(cfg)])
-    assert r.exit_code == 2
-    assert "no available actuator" in r.output
-
-
-def test_record_no_backend_available(tmp_path: Path) -> None:
-    cfg, _ = _write(tmp_path)
-    out = tmp_path / "rec.yaml"
-    r = runner.invoke(
-        app,
-        [
-            "record",
-            "--out",
-            str(out),
-            "--app",
-            "demo",
-            "--goal",
-            "open settings",
-            "--backend",
-            "nope",
-            "--config",
-            str(cfg),
-        ],
-    )
-    assert r.exit_code == 2
-    assert "no available actuator" in r.output
-
-
 def test_record_no_scenarios_dir(tmp_path: Path) -> None:
     # No --out and the app has no scenarios dir -> can't decide where to write.
     cfg, _ = _write(tmp_path)
     r = runner.invoke(app, ["record", "--app", "bare", "--goal", "x", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios dir" in r.output
-
-
-def test_record_unknown_app(tmp_path: Path) -> None:
-    cfg, _ = _write(tmp_path)
-    r = runner.invoke(
-        app,
-        [
-            "record",
-            "--out",
-            str(tmp_path / "rec.yaml"),
-            "--app",
-            "ghost",
-            "--goal",
-            "x",
-            "--config",
-            str(cfg),
-        ],
-    )
-    assert r.exit_code == 2
-    assert "unknown app" in r.output
-
-
-def test_doctor_unknown_app(tmp_path: Path) -> None:
-    cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["doctor", "--app", "ghost", "--config", str(cfg)])
-    assert r.exit_code == 2
-    assert "unknown app" in r.output
 
 
 def test_serve_refuses_non_loopback_without_token() -> None:
@@ -218,12 +179,6 @@ def test_crawl_no_backend_available(tmp_path: Path) -> None:
     assert r.exit_code == 2
     assert "no available actuator" in r.output
     assert not out.exists()
-
-
-def test_crawl_unknown_app(tmp_path: Path) -> None:
-    cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["crawl", "--app", "ghost", "--config", str(cfg)])
-    assert r.exit_code == 2
 
 
 def test_crawl_unknown_agent(tmp_path: Path) -> None:
