@@ -581,6 +581,15 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
 - The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH` so
   the `idb` client resolves). Run it from the project root so `bajutsu.config.yaml` resolves.
+- The **Settings** panel selects the AI provider (Anthropic API or Amazon Bedrock) and holds the
+  Claude API key (Anthropic path). For Bedrock it also offers an **AWS SSO sign-in**
+  ([BE-0056](../roadmaps/proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login.md)):
+  enter a profile, click **Sign in**, and approve the verification link in your browser; on
+  completion `serve` sets `AWS_PROFILE` (in memory, never to disk) so spawned `record` / `crawl`
+  jobs resolve Bedrock credentials through that SSO session. Re-signing-in needs no `serve` restart
+  (each job is a fresh subprocess that re-resolves the credential chain). The verification link
+  opens in *your* browser, so it works for a remote `serve` too. Needs an existing
+  `aws configure sso` profile and the Bedrock extra (`uv sync --extra bedrock`).
 - **Input validation on `/api/run`.** The scenario must be an existing `*.yaml` **inside the
   selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
   must be known tokens, not free text — so a request can't run an arbitrary file or smuggle

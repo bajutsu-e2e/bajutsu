@@ -163,6 +163,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.api_key_info(state, bool(self._qs("reveal"))))
                 case "/api/provider":
                     self._json(*ops.provider_info(state))
+                case "/api/sso":
+                    self._json(*ops.sso_info(state))
                 case "/api/simulators":
                     self._json(*ops.simulators_payload(state))
                 case "/api/runs":
@@ -190,6 +192,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._serve_run_archive(unquote(path[len("/runs/") : -len("/archive.zip")]))
                 case "/api/capture/screenshot":
                     self._serve_capture_screenshot()
+                case _ if path.startswith("/api/sso/login/"):
+                    self._json(*ops.sso_login_poll(state, path[len("/api/sso/login/") :]))
                 case _ if path.startswith("/runs/"):
                     self._serve_run_file(unquote(path[len("/runs/") :]))
                 case _:
@@ -246,6 +250,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.set_api_key(state, str(body.get("value", "") or "")))
                 case "/api/provider":
                     self._json(*ops.set_provider(state, body))
+                case "/api/sso/login":
+                    self._json(*ops.sso_login_start(state, body))
+                case "/api/sso/logout":
+                    self._json(*ops.sso_logout(state, body))
                 case "/api/run":
                     self._json(*ops.start_run(state, body, actor=self._actor()))
                 case "/api/record":

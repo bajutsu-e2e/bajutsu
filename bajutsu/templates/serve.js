@@ -173,6 +173,7 @@ function renderProv(){
   $('#apikeysection').hidden=v!=='anthropic';      // the Claude API key is the Anthropic provider's config
   $('#bedrockfields').hidden=v!=='bedrock';        // region + model id
   $('#claudecodefields').hidden=v!=='claude-code'; // claude CLI prerequisites (no inputs)
+  if(v==='bedrock')loadSso();else stopSsoPoll();   // AWS SSO sign-in lives in the Bedrock panel (BE-0056)
 }
 async function loadProv(){
   // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
@@ -223,14 +224,57 @@ async function saveSettings(){
   setSettingsStatus('saved','ok');
   refreshAiAvailability();  // a just-saved key / provider can flip the record/crawl gate live
 }
+// ---- AWS SSO sign-in for the Bedrock provider (BE-0056): device flow, URL + code shown inline ----
+let ssoPoll=null;  // active poll timer so closing the panel / reloading can stop it
+function stopSsoPoll(){if(ssoPoll){clearTimeout(ssoPoll);ssoPoll=null}}
+function setSsoStatus(t,c){const st=$('#ssostatus');st.textContent=t;st.className='keystatus '+(c||'')}
+function renderSso(s){
+  s=s||{};
+  if(s.signedIn){
+    $('#ssocur').innerHTML='Signed in: <code>'+esc(s.profile||'')+'</code>'+(s.expiresAt?' <span class="muted">(expires '+esc(s.expiresAt)+')</span>':'');
+    $('#sso-logout').hidden=false;
+    if(s.profile&&!$('#sso-profile').value)$('#sso-profile').value=s.profile;
+  }else{$('#ssocur').textContent='Not signed in.';$('#sso-logout').hidden=true}
+}
+async function loadSso(){
+  stopSsoPoll();$('#ssoprompt').hidden=true;setSsoStatus('','');
+  let d;try{d=await (await fetch('/api/sso')).json()}catch(e){d={signedIn:false}}
+  renderSso(d);
+}
+async function startSso(){
+  const profile=$('#sso-profile').value.trim();
+  if(!profile){setSsoStatus('enter an AWS profile','ng');return}
+  stopSsoPoll();setSsoStatus('starting…','');$('#ssoprompt').hidden=true;
+  let d;try{d=await (await fetch('/api/sso/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile})})).json()}catch(e){d={error:'request failed'}}
+  if(d.error){setSsoStatus(d.error,'ng');return}
+  $('#ssoprompt').innerHTML='Open <a href="'+esc(d.verificationUri)+'" target="_blank" rel="noopener">this sign-in link</a> and confirm the code <b>'+esc(d.userCode)+'</b>, then approve in your browser.';
+  $('#ssoprompt').hidden=false;setSsoStatus('waiting for approval…','');
+  pollSso(d.handle,Math.max(1,d.interval||5)*1000);
+}
+function pollSso(handle,ms){
+  ssoPoll=setTimeout(async()=>{
+    let d;try{d=await (await fetch('/api/sso/login/'+encodeURIComponent(handle))).json()}catch(e){d={error:'request failed'}}
+    if(d.error){stopSsoPoll();setSsoStatus(d.error,'ng');$('#ssoprompt').hidden=true;return}
+    if(d.status==='complete'){stopSsoPoll();$('#ssoprompt').hidden=true;setSsoStatus('signed in','ok');renderSso({signedIn:true,profile:d.profile,expiresAt:d.expiresAt});return}
+    pollSso(handle,ms);
+  },ms);
+}
+async function logoutSso(){
+  stopSsoPoll();setSsoStatus('signing out…','');$('#ssoprompt').hidden=true;
+  let d;try{d=await (await fetch('/api/sso/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})})).json()}catch(e){d={error:'request failed'}}
+  if(d.error){setSsoStatus(d.error,'ng');return}
+  setSsoStatus('signed out','ok');renderSso({signedIn:false});
+}
 // ---- Settings modal: one panel for the provider + API-key controls ----
 function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';setSettingsStatus('','');loadKey();loadProv()}
-function closeSettings(){$('#settingsmodal').hidden=true}
+function closeSettings(){stopSsoPoll();$('#settingsmodal').hidden=true}
 $('#opensettings').addEventListener('click',openSettings);
 $('#settingsclose').addEventListener('click',closeSettings);
 $('#settingsmodal').addEventListener('click',e=>{if(e.target===$('#settingsmodal'))closeSettings()});
 $('#provider').addEventListener('change',renderProv);
 $('#settingssave').addEventListener('click',saveSettings);
+$('#sso-login').addEventListener('click',startSso);
+$('#sso-logout').addEventListener('click',logoutSso);
 async function chooseConfig(path){
   const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
   const d=await r.json();
