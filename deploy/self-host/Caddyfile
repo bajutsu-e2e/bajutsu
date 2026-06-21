@@ -1,0 +1,6 @@
+# Optional: front the control plane with automatic-HTTPS at a real hostname. Set BAJUTSU_PUBLIC_HOST
+# in .env and run `docker compose --profile caddy up -d`. For a tailnet-only deployment, skip Caddy
+# and use `tailscale serve --bg 8765` instead (see docs/self-hosting.md).
+{$BAJUTSU_PUBLIC_HOST} {
+	reverse_proxy bajutsu:8765
+}

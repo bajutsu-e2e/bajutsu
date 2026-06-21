@@ -104,6 +104,15 @@ This tier is usable by a team **today**.
 
 ### Tier B — fully self-hosted multi-tenant (depends on BE-0015's control plane)
 
+> **Available now (single-tenant):** BE-0015's server backend has shipped for a single tenant
+> (Postgres + Redis + S3-compatible storage + GitHub OAuth + RBAC + per-user quota), so a **one-team**
+> self-hosted control plane is runnable today — a Docker Compose stack and walkthrough are in
+> [`deploy/self-host/`](../../../deploy/self-host/) and
+> [docs/self-hosting.md](../../../docs/self-hosting.md#tier-b--single-team-self-hosting-the-server-backend).
+> It bridges Tier A and the full multi-tenant target below. The **multi-tenant** pieces in this
+> section (multiple orgs, org-scope enforcement, the `org_id` tenant prefix) still await BE-0015's
+> multi-tenant control plane.
+
 Take the architecture from
 [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) and replace every
 managed service with self-hosted OSS. Topology: **one Linux node (Docker Compose) + a pool of Mac
