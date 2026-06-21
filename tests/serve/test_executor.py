@@ -40,7 +40,7 @@ def test_local_executor_dispatch_runs_job_to_completion(tmp_path: Path) -> None:
         cwd=tmp_path,
         popen=fake_popen(["step 0 ok\n", "PASS  runs/20260610-1/manifest.json\n"]),
     )
-    job = state.new_job(["x"])
+    job = state.register(srv.Job(cmd=["x"]))
     state.executor.dispatch(state, job)
     _wait_done(job)
     v = job.view()

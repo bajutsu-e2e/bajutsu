@@ -21,7 +21,7 @@ def test_run_job_captures_output_and_run_id(tmp_path: Path) -> None:
         cwd=tmp_path,
         popen=fake_popen(["step 0 ok\n", "PASS  runs/20260610-1/manifest.json\n"]),
     )
-    job = state.new_job(["x"])
+    job = state.register(srv.Job(cmd=["x"]))
     srv.run_job(state, job)
     v = job.view()
     assert v["status"] == "done" and v["exitCode"] == 0 and v["ok"] is True
@@ -38,7 +38,7 @@ def test_run_job_marks_failure(tmp_path: Path) -> None:
         cwd=tmp_path,
         popen=fake_popen(["FAIL  runs/r/manifest.json\n"], code=1),
     )
-    job = state.new_job(["x"])
+    job = state.register(srv.Job(cmd=["x"]))
     srv.run_job(state, job)
     assert job.view()["ok"] is False and job.view()["runId"] == "r"
 
@@ -60,7 +60,7 @@ def test_run_job_builds_app_when_binary_missing(tmp_path: Path) -> None:
     state = srv.ServeState(
         scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen
     )
-    job = state.new_job(["run"], app_path=app_path, build="make build")
+    job = state.register(srv.Job(cmd=["run"], app_path=app_path, build="make build"))
     srv.run_job(state, job)
     v = job.view()
     assert calls == [["make", "build"], ["run"]]  # build first (shlex-split), then the run
@@ -81,7 +81,7 @@ def test_run_job_skips_build_when_binary_exists(tmp_path: Path) -> None:
     state = srv.ServeState(
         scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen
     )
-    job = state.new_job(["run"], app_path="MyApp.app", build="make build")
+    job = state.register(srv.Job(cmd=["run"], app_path="MyApp.app", build="make build"))
     srv.run_job(state, job)
     assert calls == [["run"]]  # only the run spawned; the build was skipped
     assert job.view()["ok"] is True
@@ -98,7 +98,7 @@ def test_run_job_build_failure_skips_the_run(tmp_path: Path) -> None:
     state = srv.ServeState(
         scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen
     )
-    job = state.new_job(["run"], app_path="MyApp.app", build="make build")
+    job = state.register(srv.Job(cmd=["run"], app_path="MyApp.app", build="make build"))
     srv.run_job(state, job)
     v = job.view()
     assert spawned == [["make", "build"]]  # the run is not spawned when the build fails
@@ -173,7 +173,7 @@ def test_run_job_boots_devices_before_running(tmp_path: Path) -> None:
         popen=fake_popen(["PASS  runs/r/manifest.json\n"]),
         simctl=simctl,
     )
-    job = state.new_job(["x"], udids=["U1", "U2"])
+    job = state.register(srv.Job(cmd=["x"], udids=["U1", "U2"]))
     srv.run_job(state, job)
     assert sorted(boots) == ["U1", "U2"]  # every picked device booted before the run (parallel)
     v = job.view()
@@ -195,7 +195,7 @@ def test_run_job_boot_failure_skips_the_run(tmp_path: Path) -> None:
     state = srv.ServeState(
         scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen, simctl=simctl
     )
-    job = state.new_job(["x"], udids=["BAD"])
+    job = state.register(srv.Job(cmd=["x"], udids=["BAD"]))
     srv.run_job(state, job)
     v = job.view()
     assert v["status"] == "done" and v["ok"] is False
@@ -233,7 +233,7 @@ def test_run_job_terminates_process_on_output_error(tmp_path: Path) -> None:
         cwd=tmp_path,
         popen=lambda *_a, **_kw: _ExplodingProc(),
     )
-    job = state.new_job(["run"])
+    job = state.register(srv.Job(cmd=["run"]))
     srv.run_job(state, job)
     assert terminated, "process was not terminated after stdout error"
     assert job.view()["status"] == "done"
@@ -269,29 +269,42 @@ def test_build_app_terminates_process_on_output_error(tmp_path: Path) -> None:
         cwd=tmp_path,
         popen=lambda *_a, **_kw: _ExplodingProc(),
     )
-    job = state.new_job(["run"], app_path="Missing.app", build="make build")
+    job = state.register(srv.Job(cmd=["run"], app_path="Missing.app", build="make build"))
     srv.run_job(state, job)
     assert terminated, "build process was not terminated after stdout error"
     assert job.view()["status"] == "done"
 
 
+def test_register_assigns_an_id_and_the_log_bus(tmp_path: Path) -> None:
+    # The caller builds a bare Job (no id, no bus); register stamps the sequence id and wires the
+    # state's log bus, and the job is then retrievable by that id.
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    job = state.register(srv.Job(cmd=["x"]))
+    assert job.id == "1"
+    assert job.bus is state.logbus
+    assert state.jobs["1"] is job
+    assert state.register(srv.Job(cmd=["y"])).id == "2"  # ids increment
+
+
 def test_try_new_job_caps_concurrency_per_user(tmp_path: Path) -> None:
     # A per-user cap stops one user from monopolizing the scarce device pool (BE-0015 7c-3).
     state = srv.ServeState(runs_dir=tmp_path / "runs", max_concurrent_per_user=1)
-    assert state.try_new_job([], actor="alice") is not None  # alice's first job
-    assert state.try_new_job([], actor="alice") is None  # alice is at her cap
-    assert state.try_new_job([], actor="bob") is not None  # a different user is unaffected
+    assert state.try_register(srv.Job(cmd=[], actor="alice")) is not None  # alice's first job
+    assert state.try_register(srv.Job(cmd=[], actor="alice")) is None  # alice is at her cap
+    assert (
+        state.try_register(srv.Job(cmd=[], actor="bob")) is not None
+    )  # a different user is unaffected
 
 
 def test_try_new_job_per_user_cap_ignores_anonymous_jobs(tmp_path: Path) -> None:
     # Token/anonymous jobs (no identity) aren't subject to the per-user cap — only the global one.
     state = srv.ServeState(runs_dir=tmp_path / "runs", max_concurrent_per_user=1)
-    assert state.try_new_job([], actor=None) is not None
-    assert state.try_new_job([], actor=None) is not None
+    assert state.try_register(srv.Job(cmd=[], actor=None)) is not None
+    assert state.try_register(srv.Job(cmd=[], actor=None)) is not None
 
 
 def test_try_new_job_per_user_unlimited_by_default(tmp_path: Path) -> None:
     # Default 0 = unlimited, so behavior is unchanged unless an operator opts in.
     state = srv.ServeState(runs_dir=tmp_path / "runs")
-    assert state.try_new_job([], actor="alice") is not None
-    assert state.try_new_job([], actor="alice") is not None
+    assert state.try_register(srv.Job(cmd=[], actor="alice")) is not None
+    assert state.try_register(srv.Job(cmd=[], actor="alice")) is not None
