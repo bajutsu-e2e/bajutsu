@@ -270,9 +270,12 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
     launch == navigate, relaunch == re-navigate, and release == close."""
     fakes: list[_FakeWeb] = []
 
-    def fake_make_driver(actuator: str, udid: str, base_url: str | None = None) -> base.Driver:
+    def fake_make_driver(
+        actuator: str, udid: str, base_url: str | None = None, headless: bool = True
+    ) -> base.Driver:
         assert actuator == "playwright"
         assert base_url == "http://x/index.html"  # threaded from eff.base_url
+        assert headless is True  # threaded from eff.headless (default headless)
         d = _FakeWeb([_el("home.title", "H"), _el("ok", "OK")])
         fakes.append(d)
         return d

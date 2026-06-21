@@ -287,7 +287,7 @@ $('#go').addEventListener('click',async()=>{
   setStatus($('#status'),'','run');
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     scenario:$('#scn').value,app:$('#app').value,backend:$('#backend').value.trim(),udid:pickedUdids().join(',')||'booted',
-    workers:parseInt($('#workers').value,10)||1,
+    workers:parseInt($('#workers').value,10)||1,headed:$('#headed').checked||undefined,
     erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined})});
   const {jobId,error}=await r.json();
   if(error){setStatus($('#status'),error,'ng');setBusy($('#go'),$('#stop'),false);return}
@@ -730,7 +730,8 @@ document.addEventListener('keydown',e=>{
 });
 
 // iOS-only device UI (simulators, device pickers, erase, alert-dismiss) shows only for an iOS
-// backend; web and other non-iOS runs hide it. Keyed off each panel's Backend field.
+// backend; web-only UI (the headed/show-browser toggle) shows only for web. Keyed off each
+// panel's Backend field.
 function isIosBackend(v){v=(v||'').trim().toLowerCase();return v===''||v==='idb'||v==='ios'||v==='xcuitest';}
 function syncPlatform(panelSel,fieldSel){
   const f=$(fieldSel);if(!f)return;
@@ -739,6 +740,9 @@ function syncPlatform(panelSel,fieldSel){
   // attribute's UA display:none would lose to them); removeProperty restores the CSS value.
   document.querySelectorAll(panelSel+' .iosonly').forEach(el=>{
     if(ios)el.style.removeProperty('display');else el.style.setProperty('display','none','important');
+  });
+  document.querySelectorAll(panelSel+' .webonly').forEach(el=>{
+    if(ios)el.style.setProperty('display','none','important');else el.style.removeProperty('display');
   });
 }
 function wirePlatform(panelSel,fieldSel){

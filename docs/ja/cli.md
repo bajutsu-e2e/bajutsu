@@ -44,6 +44,7 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（アプリに BajutsuKit が必要） |
 | `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` が必要（プール数で上限）。各デバイスが自前のネットワークコレクタ、インターバル録画、デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能する |
 | `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
+| `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できる（コマンドを実行しているマシン上でウィンドウが開く）。省略時はアプリの `headless` 設定に従う。iOS は無視する |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流す（`serve` UI が消費する） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 

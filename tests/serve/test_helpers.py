@@ -172,6 +172,11 @@ def test_run_command_builder() -> None:
     assert "--dismiss-alerts" not in cmd and "--no-dismiss-alerts" not in cmd
     # False forces the guard off for the run (mirrors --no-erase).
     assert "--no-dismiss-alerts" in srv.run_command("s.yaml", "demo", dismiss_alerts=False)
+    # headed defaults to None: no flag, so the app's `headless` config decides. True/False force
+    # the web browser visible/headless for the run (the Web UI's "show browser" toggle).
+    assert "--headed" not in cmd and "--no-headed" not in cmd
+    assert "--headed" in srv.run_command("s.yaml", "demo", headed=True)
+    assert "--no-headed" in srv.run_command("s.yaml", "demo", headed=False)
 
 
 def test_run_command_parallel_pool() -> None:

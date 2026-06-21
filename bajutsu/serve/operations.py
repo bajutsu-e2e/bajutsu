@@ -505,6 +505,7 @@ def start_run(
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
         config=config_arg,
         baselines="baselines" if on_worker else str(state.baselines_dir),
+        headed=_bool_flag(body, "headed"),
     )
     app_path, build = app_build_info(cfg, app)
     # Atomic count + create so concurrent dispatches can't both slip past the cap.

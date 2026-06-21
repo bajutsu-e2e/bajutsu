@@ -100,6 +100,14 @@ def test_web_app_baseurl_no_bundleid() -> None:
     assert eff.bundle_id == ""
     assert eff.backend == ["web"]
     assert eff.scenarios == "demos/web/scenarios"
+    assert eff.headless is True  # the web backend runs headless unless opted out
+
+
+def test_web_app_headless_override() -> None:
+    # A web app can opt into a headed (visible) browser via `headless: false`; the
+    # `bajutsu run --headed` flag and the Web UI's "show browser" toggle do the same per run.
+    cfg = load_config("apps: { web: { baseUrl: 'http://127.0.0.1:8787/', headless: false } }")
+    assert resolve(cfg, "web").headless is False
 
 
 def test_app_without_bundleid_or_baseurl_rejected() -> None:

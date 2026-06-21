@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -167,12 +168,21 @@ def run(
         help="directory of baseline images for `visual` assertions "
         "(default: config baselines, then baselines/ beside the scenario)",
     ),
+    headed: bool | None = typer.Option(
+        None,
+        "--headed/--no-headed",
+        help="web backend: show the browser (headed, slow-motion) instead of headless; "
+        "default leaves the app's `headless` config (headless)",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Run a scenario deterministically. Pass/fail is machine-only; the sole AI is the
     alert guard (on by default per scenario), which only fires to clear an OS prompt that
     blocked a step — see each scenario's `dismissAlerts`."""
     eff = _load_effective(config, app_name)
+    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    if headed is not None:
+        eff = replace(eff, headless=not headed)
     before = _usage.snapshot()
     # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
     # is interpolated at action time, while their literal values are masked in evidence and

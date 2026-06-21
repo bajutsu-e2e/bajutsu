@@ -56,6 +56,9 @@ class AppConfig(_Model):
     base_url: str | None = Field(
         default=None, alias="baseUrl"
     )  # web target (e.g. http://host/page)
+    # Web backend only: run with a visible (headed) browser instead of headless. iOS ignores it.
+    # The `bajutsu run --headed/--no-headed` flag (and the Web UI's "Show browser" toggle) override.
+    headless: bool = True
     deeplink_scheme: str | None = Field(default=None, alias="deeplinkScheme")
     backend: list[str] | None = None
     device: str | None = None
@@ -185,6 +188,8 @@ class Effective:
     baselines: str | None = None
     # Web (Playwright) target URL. None for iOS apps (which use bundle_id instead).
     base_url: str | None = None
+    # Web (Playwright): run headless (default) or headed (visible browser). iOS ignores it.
+    headless: bool = True
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -208,6 +213,7 @@ def resolve(config: Config, app: str) -> Effective:
         app=app,
         bundle_id=a.bundle_id,
         base_url=a.base_url,
+        headless=a.headless,
         deeplink_scheme=a.deeplink_scheme,
         backend=a.backend or d.backend,
         device=a.device or d.device,

@@ -124,7 +124,9 @@ def ensure_web_runtime(backends: list[str]) -> None:
     importlib.invalidate_caches()  # so the find_spec() in select_actuator sees the freshly-added package
 
 
-def make_driver(actuator: str, udid: str, *, base_url: str | None = None) -> base.Driver:
+def make_driver(
+    actuator: str, udid: str, *, base_url: str | None = None, headless: bool = True
+) -> base.Driver:
     if actuator == "idb":
         return IdbDriver(udid)
     if actuator == "fake":
@@ -135,7 +137,7 @@ def make_driver(actuator: str, udid: str, *, base_url: str | None = None) -> bas
 
         if not base_url:
             raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")
-        return PlaywrightDriver(base_url)
+        return PlaywrightDriver(base_url, headless=headless)
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"

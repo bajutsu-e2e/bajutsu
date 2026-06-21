@@ -37,6 +37,7 @@ apps:
   web:                          # a web app (Playwright backend) identifies its target by URL
     baseUrl:   "http://127.0.0.1:8787/index.html"   # required for web (instead of bundleId)
     backend:   [web]
+    headless:  true                                 # web only: false = a visible (headed) browser; --headed overrides per run
     scenarios: demos/web/scenarios
 ```
 
@@ -52,6 +53,7 @@ An undefined app raises `KeyError` (the CLI exits with code 2).
 |---|---|---|
 | `bundle_id` | app | iOS target; required unless `base_url` is set |
 | `base_url` | app | web target URL (Playwright backend); required for web instead of `bundle_id` |
+| `headless` | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args) |

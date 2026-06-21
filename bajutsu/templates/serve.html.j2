@@ -101,6 +101,10 @@
           <label><input type="checkbox" id="nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard is on by default: Claude vision dismisses unexpected system prompts (Save Password, notification permission) that idb can't see or tap (needs ANTHROPIC_API_KEY). Check to force it off for this run; a scenario can also set <code>dismissAlerts</code> itself.</span></label>
         </div>
+        <div class="checks webonly">
+          <label><input type="checkbox" id="headed" data-testid="replay.headed"> show browser (headed)
+            <span class="hint">Run in a visible Chromium window in slow-motion so you can watch each step, instead of the default headless browser. The window opens on the machine running <code>serve</code> (so this is for a local server).</span></label>
+        </div>
       </div>
       <div class="panel" id="panel-history" data-testid="replay.panel-history" hidden>
         <div class="hhead"><span>Past runs</span><button class="refresh" id="refresh" title="refresh">&#8635;</button></div>

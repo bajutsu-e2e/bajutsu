@@ -36,6 +36,7 @@ apps:
   web:                          # web アプリ（Playwright backend）はターゲットを URL で指定する
     baseUrl:   "http://127.0.0.1:8787/index.html"   # web では必須（bundleId の代わり）
     backend:   [web]
+    headless:  true                                 # web のみ: false でブラウザを画面に表示（--headed が実行ごとに上書き）
     scenarios: demos/web/scenarios
 ```
 
@@ -49,6 +50,7 @@ apps:
 |---|---|---|
 | `bundle_id` | app | iOS のターゲット。`base_url` が無いとき必須 |
 | `base_url` | app | web のターゲット URL（Playwright backend）。web では `bundle_id` の代わりに必須 |
+| `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | `locale` は launch 時に適用される（`simctl` の launch 引数） |
