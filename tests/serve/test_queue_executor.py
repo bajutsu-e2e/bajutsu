@@ -65,11 +65,13 @@ class _FakeQueue:
 def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
     q = _FakeQueue()
     state = srv.ServeState(runs_dir=tmp_path / "runs")
-    job = state.new_job(
-        ["python", "-m", "bajutsu", "run", "--config", "c.yaml"],
-        udids=["U1"],
-        app_path="A.app",
-        build="make build",
+    job = state.register(
+        srv.Job(
+            cmd=["python", "-m", "bajutsu", "run", "--config", "c.yaml"],
+            udids=["U1"],
+            app_path="A.app",
+            build="make build",
+        )
     )
     QueueExecutor(q).dispatch(state, job)
 
@@ -95,7 +97,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
 
 def test_job_spec_round_trips_through_json(tmp_path: Path) -> None:
     state = srv.ServeState(runs_dir=tmp_path / "runs")
-    job = state.new_job(["run"], udids=["A", "B"], app_path=None, build=None)
+    job = state.register(srv.Job(cmd=["run"], udids=["A", "B"], app_path=None, build=None))
     spec = job_spec(job)
     assert json.loads(json.dumps(spec)) == spec
 
@@ -103,7 +105,7 @@ def test_job_spec_round_trips_through_json(tmp_path: Path) -> None:
 def test_job_spec_carries_the_actor(tmp_path: Path) -> None:
     # The actor travels so the worker can attribute the recorded run to the user (BE-0015).
     state = srv.ServeState(runs_dir=tmp_path / "runs")
-    job = state.new_job(["run"], actor="alice", org="acme")
+    job = state.register(srv.Job(cmd=["run"], actor="alice", org="acme"))
     spec = job_spec(job)
     assert spec["actor"] == "alice"
     assert spec["org"] == "acme"

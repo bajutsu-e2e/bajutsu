@@ -40,7 +40,7 @@ def test_run_job_records_finished_run_into_the_repository(tmp_path: Path) -> Non
         repository=repo,
         popen=fake_popen(["PASS  runs/20260621-1/manifest.json\n"]),
     )
-    job = state.new_job(["x"])
+    job = state.register(srv.Job(cmd=["x"]))
     job.actor = "alice"
     srv.run_job(state, job)
 
@@ -70,7 +70,7 @@ def test_run_job_does_not_attribute_to_an_unknown_user(tmp_path: Path) -> None:
         repository=repo,
         popen=fake_popen(["PASS  runs/20260621-7/manifest.json\n"]),
     )
-    job = state.new_job(["x"])
+    job = state.register(srv.Job(cmd=["x"]))
     job.actor = "ghost"
     srv.run_job(state, job)
 
@@ -94,7 +94,7 @@ def test_run_job_survives_a_failing_repository(tmp_path: Path) -> None:
         repository=SqlRepository(engine),
         popen=fake_popen(["PASS  runs/20260621-8/manifest.json\n"]),
     )
-    job = state.new_job(["x"])
+    job = state.register(srv.Job(cmd=["x"]))
     srv.run_job(state, job)  # must not raise
     assert job.view()["status"] == "done"
     assert job.view()["runId"] == "20260621-8"
@@ -110,7 +110,7 @@ def test_run_job_without_a_repository_does_not_record(tmp_path: Path) -> None:
         cwd=tmp_path,
         popen=fake_popen(["PASS  runs/20260621-2/manifest.json\n"]),
     )
-    job = state.new_job(["x"])
+    job = state.register(srv.Job(cmd=["x"]))
     srv.run_job(state, job)  # no repository wired — must not raise
     assert job.view()["runId"] == "20260621-2"
 

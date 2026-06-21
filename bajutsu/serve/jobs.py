@@ -45,8 +45,10 @@ Popen = Callable[..., Any]
 
 @dataclass
 class Job:
-    id: str
-    cmd: list[str]
+    # `id` is assigned by `ServeState.register`/`try_register` (from the job sequence); a caller
+    # builds a Job without one. The worker rebuilds a Job with the control-plane id passed in.
+    id: str = ""
+    cmd: list[str] = field(default_factory=list)
     udids: list[str] = field(default_factory=list)  # devices to boot before the run
     app_path: str | None = None  # built .app the run needs; built on demand if missing
     build: str | None = None  # shell command that builds app_path (None = no on-demand build)
@@ -210,101 +212,40 @@ class ServeState:
         with self._lock:
             return sum(1 for j in self.jobs.values() if j.status == "running")
 
-    def _make_job(
-        self,
-        cmd: list[str],
-        udids: list[str] | None,
-        app_path: str | None,
-        build: str | None,
-        out_path: str | None,
-        materials: dict[str, str] | None,
-        record_save: tuple[str, str] | None,
-        materialize_baselines: bool,
-        actor: str | None,
-        org: str,
-    ) -> Job:
-        """Create + register a job. Caller must hold ``self._lock``."""
+    def _register(self, job: Job) -> Job:
+        """Assign the job its id + live-log bus and store it. Caller must hold ``self._lock``. The
+        caller builds a fresh `Job` (the dataclass is the single source of truth for its fields), so
+        adding a field never touches this layer. Single-use: registering a job that already has an id
+        is a programming error (it would orphan the earlier `state.jobs` entry)."""
+        if job.id:
+            raise ValueError(f"job {job.id!r} is already registered")
         self._seq += 1
-        job = Job(
-            id=str(self._seq),
-            cmd=cmd,
-            udids=list(udids or []),
-            app_path=app_path,
-            build=build,
-            out_path=out_path,
-            bus=self.logbus,
-            materials=dict(materials or {}),
-            record_save=record_save,
-            materialize_baselines=materialize_baselines,
-            actor=actor,
-            org=org,
-        )
+        job.id = str(self._seq)
+        job.bus = self.logbus
+        # Don't alias caller-owned collections (preserves the prior new_job semantics): a later edit
+        # to the list/dict the caller passed must not mutate the registered job.
+        job.udids = list(job.udids)
+        job.materials = dict(job.materials)
         self.jobs[job.id] = job
         return job
 
-    def new_job(
-        self,
-        cmd: list[str],
-        udids: list[str] | None = None,
-        app_path: str | None = None,
-        build: str | None = None,
-        out_path: str | None = None,
-        materials: dict[str, str] | None = None,
-        record_save: tuple[str, str] | None = None,
-        materialize_baselines: bool = False,
-        actor: str | None = None,
-        org: str = _DEFAULT_ORG,
-    ) -> Job:
+    def register(self, job: Job) -> Job:
         with self._lock:
-            return self._make_job(
-                cmd,
-                udids,
-                app_path,
-                build,
-                out_path,
-                materials,
-                record_save,
-                materialize_baselines,
-                actor,
-                org,
-            )
+            return self._register(job)
 
-    def try_new_job(
-        self,
-        cmd: list[str],
-        udids: list[str] | None = None,
-        app_path: str | None = None,
-        build: str | None = None,
-        out_path: str | None = None,
-        materials: dict[str, str] | None = None,
-        record_save: tuple[str, str] | None = None,
-        materialize_baselines: bool = False,
-        actor: str | None = None,
-        org: str = _DEFAULT_ORG,
-    ) -> Job | None:
-        """Create a job only if under the concurrency caps, counting and inserting atomically under
+    def try_register(self, job: Job) -> Job | None:
+        """Register *job* only if under the concurrency caps, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
-        the global cap, or — for an identified *actor* — at the per-user cap (BE-0015 7c-3)."""
+        the global cap, or — for an identified ``job.actor`` — at the per-user cap (BE-0015 7c-3)."""
         with self._lock:
             running = [j for j in self.jobs.values() if j.status == "running"]
             if self.max_concurrent > 0 and len(running) >= self.max_concurrent:
                 return None
-            if actor and self.max_concurrent_per_user > 0:
-                mine = sum(1 for j in running if j.actor == actor)
+            if job.actor and self.max_concurrent_per_user > 0:
+                mine = sum(1 for j in running if j.actor == job.actor)
                 if mine >= self.max_concurrent_per_user:
                     return None
-            return self._make_job(
-                cmd,
-                udids,
-                app_path,
-                build,
-                out_path,
-                materials,
-                record_save,
-                materialize_baselines,
-                actor,
-                org,
-            )
+            return self._register(job)
 
 
 def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:

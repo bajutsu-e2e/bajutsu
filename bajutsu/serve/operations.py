@@ -495,15 +495,17 @@ def start_run(
     )
     app_path, build = app_build_info(cfg, app)
     # Atomic count + create so concurrent dispatches can't both slip past the cap.
-    job = state.try_new_job(
-        cmd,
-        udids=_boot_targets(udid),
-        app_path=app_path,
-        build=build,
-        materials=materials,
-        materialize_baselines=on_worker,
-        actor=actor,
-        org=_resolve_org(state, actor),
+    job = state.try_register(
+        Job(
+            cmd=cmd,
+            udids=_boot_targets(udid),
+            app_path=app_path,
+            build=build,
+            materials=materials,
+            materialize_baselines=on_worker,
+            actor=actor,
+            org=_resolve_org(state, actor),
+        )
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
@@ -559,16 +561,18 @@ def start_record(
         config=config_arg,
     )
     app_path, build = app_build_info(cfg, body["app"])
-    job = state.try_new_job(
-        cmd,
-        udids=_boot_targets(udid),
-        app_path=app_path,
-        build=build,
-        out_path=authored.out,
-        materials=materials,
-        record_save=authored.save,
-        actor=actor,
-        org=_resolve_org(state, actor),
+    job = state.try_register(
+        Job(
+            cmd=cmd,
+            udids=_boot_targets(udid),
+            app_path=app_path,
+            build=build,
+            out_path=authored.out,
+            materials=materials,
+            record_save=authored.save,
+            actor=actor,
+            org=_resolve_org(state, actor),
+        )
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
@@ -623,13 +627,15 @@ def start_crawl(
     )
     app_path, build = app_build_info(cfg, str(body["app"]))
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
-    job = state.try_new_job(
-        cmd,
-        udids=_boot_targets(udid),
-        app_path=app_path,
-        build=build,
-        actor=actor,
-        org=_resolve_org(state, actor),
+    job = state.try_register(
+        Job(
+            cmd=cmd,
+            udids=_boot_targets(udid),
+            app_path=app_path,
+            build=build,
+            actor=actor,
+            org=_resolve_org(state, actor),
+        )
     )
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
