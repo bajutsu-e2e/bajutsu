@@ -1,10 +1,10 @@
-# Re-attempt BE-ID allocation on open roadmap PRs after a roadmap PR merges to main.
-# The roadmap-id workflow already avoids IDs on main and on other open PRs, but two branches
-# allocated in the same window can still land the same number — and once one merges, the loser
-# keeps a number that now belongs to main (the BE-0054 double-allocation). On every push to main
-# that touches roadmaps/, this walks the open PRs that *also* update the roadmap and, for any item
-# such a PR introduces (a slug not yet on main) whose number main now holds, re-allocates it to the
-# next free ID and pushes the fixup back onto the branch. main keeps the number; the open PR moves.
+# Backstop that re-allocates BE IDs on open roadmap PRs when the refs/be-claims/* reservation did not
+# prevent a collision — a hand-typed concrete ID, or a branch that predates the machinery. Runs after
+# a roadmap PR merges to main, and on a daily schedule, over every open PR that also updates the
+# roadmap. For an item a PR introduces (a slug not yet on main) whose number is already taken, it
+# re-allocates to the next free ID and pushes the fixup back onto the branch. Authority — who keeps
+# the number — is main first (a merged item wins), else the lowest open-PR number holding it; only the
+# loser moves. The freed-up new id is itself claimed so a later allocation can't re-take it.
 name: roadmap-id-repair
 
 on:
@@ -12,6 +12,9 @@ on:
     branches: [main]
     paths:
       - 'roadmaps/**'
+  schedule:
+    - cron: '17 6 * * *'   # daily; catches open-PR collisions even when nothing merges
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -19,7 +22,7 @@ permissions:
 
 concurrency:
   group: roadmap-id-repair
-  cancel-in-progress: false   # let an in-flight repair finish; the next push re-checks anyway
+  cancel-in-progress: false   # let an in-flight repair finish; the next run re-checks anyway
 
 jobs:
   repair:
@@ -30,19 +33,22 @@ jobs:
         with:
           fetch-depth: 0   # need full history to fetch and check out each PR branch
 
-      - name: Re-allocate open-PR IDs that now collide with main
+      - name: Re-allocate open-PR IDs that collide with main or a lower-numbered PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # PR branches were cut before this code existed, so run the allocator (and the index
-          # builder it shells out to) from a copy of *main*'s scripts — never the branch's older
-          # versions. open_pr_be_ids.sh only queries gh, so it can run from the copy too.
+          # PR branches may predate this code, so run the allocator (and the scripts it relies on)
+          # from a copy of *main*'s versions — never the branch's older ones.
           tools="$(mktemp -d)"
           cp scripts/allocate_roadmap_ids.py scripts/build_roadmap_index.py \
-             scripts/open_pr_be_ids.sh "$tools/"
+             scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh "$tools/"
+
+          # "<pr>\t<id>" for every open PR; used to apply the open-PR tiebreaker per branch below.
+          map="$(bash "$tools/open_pr_be_map.sh")"
+          claims="$(bash "$tools/be_claims.sh" list)"
 
           # Same-repo open PRs only — the bot cannot push to a fork's branch.
           mapfile -t prs < <(
@@ -67,32 +73,47 @@ jobs:
             git fetch --quiet origin "$branch"
             git checkout --quiet -B "$branch" FETCH_HEAD
 
-            reserved="$(bash "$tools/open_pr_be_ids.sh" "$pr")"
-            out="$(ROADMAP_RESERVED_IDS="$reserved" python3 "$tools/allocate_roadmap_ids.py" --repair)"
+            # Reserve every other open PR's ids and the whole claims ledger so a re-allocation never
+            # lands on a number already spoken for.
+            reserved="$(bash "$tools/open_pr_be_ids.sh" "$pr") $claims"
+            # The tiebreaker: ids held by open PRs with a *lower* number than this one. If this PR
+            # holds one of them, it is the loser and renumbers; otherwise it is the authority and keeps
+            # its number.
+            lower="$(printf '%s\n' "$map" | awk -v p="$pr" -F'\t' '$1 < p { print $2 }' | sort -u | paste -sd' ' -)"
+
+            out="$(ROADMAP_RESERVED_IDS="$reserved" ROADMAP_LOWER_PR_IDS="$lower" \
+                   python3 "$tools/allocate_roadmap_ids.py" --repair)"
             echo "$out"
 
             if [ -n "$(git status --porcelain)" ]; then
               git add -A
-              git commit --quiet -m "docs(roadmap): re-allocate colliding BE IDs after main update"
+              git commit --quiet -m "docs(roadmap): re-allocate colliding BE IDs"
               # Integrate any concurrent push to the branch before pushing back.
               git fetch --quiet origin "$branch"
               if git rebase --quiet FETCH_HEAD; then
                 git push origin "HEAD:$branch"
-                # Rewrite the PR title's old id(s) to the re-allocated one(s).
+
+                # Rewrite the PR title's old id(s) to the re-allocated one(s), and claim each new id so
+                # a later allocation cannot re-take it. The old id's claim stays with the authority.
                 mapfile -t remaps < <(printf '%s\n' "$out" \
                   | sed -n 's/^Renumbered \(BE-[0-9]\{4\}\) -> \(BE-[0-9]\{4\}\).*/\1 \2/p')
                 orig_title="$(gh pr view "$pr" --json title --jq .title)"
                 title="$orig_title"
                 for remap in "${remaps[@]}"; do
-                  title="${title//${remap%% *}/${remap##* }}"
+                  new="${remap##* }"
+                  bash "$tools/be_claims.sh" claim "${new#BE-}" "$(git rev-parse HEAD)" || true
+                  title="${title//${remap%% *}/$new}"
                 done
                 if [ "$title" != "$orig_title" ]; then
                   echo "Updating PR #$pr title to: $title"
                   gh pr edit "$pr" --title "$title"
                 fi
+
+                # Refresh the ledger so subsequent PRs in this sweep see the newly claimed ids.
+                claims="$(bash "$tools/be_claims.sh" list)"
               else
                 git rebase --abort
-                echo "::warning::PR #$pr moved during repair; the next push to main will retry."
+                echo "::warning::PR #$pr moved during repair; the next run will retry."
               fi
             fi
             echo "::endgroup::"

@@ -1,7 +1,9 @@
 # Allocate permanent BE IDs to roadmap items authored with the BE-XXXX placeholder.
-# The ideation skill leaves the ID undetermined so concurrent branches never
-# race for a number; this workflow assigns the next free IDs at PR time, pushes the
-# rename back onto the branch, and rewrites the PR title's BE-XXXX to the allocated ID.
+# The ideation skill leaves the ID undetermined so concurrent branches never race for a number; this
+# workflow assigns the next free IDs at PR time, claims each atomically as a refs/be-claims/* git ref
+# (GitHub's create-ref API is a compare-and-set, so two branches in the same window cannot both take
+# a number — the loser re-picks), pushes the rename back onto the branch, and rewrites the PR title's
+# BE-XXXX to the allocated ID.
 name: roadmap-id
 
 on:
@@ -21,7 +23,8 @@ jobs:
   allocate:
     name: allocate BE IDs
     runs-on: ubuntu-latest
-    # A fork PR's branch can't be pushed back to; only same-repo PRs are renumbered.
+    # A fork PR's branch can't be pushed back to, and its token can't create claim refs; only
+    # same-repo PRs are renumbered.
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -29,46 +32,67 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Reserve BE IDs already taken by other open PRs
-        id: reserved
+      - name: Allocate placeholder IDs, claim them atomically, and push
+        id: allocate
         env:
           GH_TOKEN: ${{ github.token }}
           CURRENT_PR: ${{ github.event.pull_request.number }}
-        run: |
-          # origin/main is the allocator's floor, but a number a *parallel* open PR has already
-          # allocated isn't on main yet — reserve those so two branches in flight never collide
-          # (the BE-0054 double-allocation). Best effort: an empty list just falls back to main.
-          reserved="$(bash scripts/open_pr_be_ids.sh "$CURRENT_PR")"
-          echo "Reserved by other open PRs: ${reserved:-<none>}"
-          echo "reserved=$reserved" >> "$GITHUB_OUTPUT"
-
-      - name: Allocate placeholder IDs
-        id: allocate
-        env:
-          ROADMAP_RESERVED_IDS: ${{ steps.reserved.outputs.reserved }}
-        run: |
-          out="$(python3 scripts/allocate_roadmap_ids.py)"
-          echo "$out"
-          # The script prints "Allocated BE-NNNN for <slug>" per item; collect the IDs
-          # (space-separated) so the title step can rewrite the placeholder. Empty when
-          # there were no placeholders — a no-op run.
-          tokens="$(printf '%s\n' "$out" \
-            | sed -n 's/^Allocated \(BE-[0-9]\{4\}\) for .*/\1/p' | paste -sd' ' -)"
-          echo "tokens=$tokens" >> "$GITHUB_OUTPUT"
-
-      - name: Commit and push if changed
-        env:
           HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "No placeholders to allocate; nothing to commit."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Allocate, then claim each id atomically. A claim lost to a parallel PR (HTTP 422) means we
+          # raced for that number: release any we did win, reset, and retry — the winning claim is now
+          # visible to `be_claims.sh list`, so the next attempt steers off it. A few attempts settle
+          # any realistic contention; origin/main is the allocator's floor regardless.
+          tokens=""
+          for attempt in 1 2 3 4 5; do
+            reserved="$(bash scripts/open_pr_be_ids.sh "$CURRENT_PR") $(bash scripts/be_claims.sh list)"
+            echo "Attempt $attempt — reserved (open PRs + claims): ${reserved:-<none>}"
+
+            out="$(ROADMAP_RESERVED_IDS="$reserved" python3 scripts/allocate_roadmap_ids.py)"
+            echo "$out"
+            # The script prints "Allocated BE-NNNN for <slug>" per item; collect the ids.
+            tokens="$(printf '%s\n' "$out" \
+              | sed -n 's/^Allocated \(BE-[0-9]\{4\}\) for .*/\1/p' | paste -sd' ' -)"
+            if [ -z "$tokens" ]; then
+              echo "No BE-XXXX placeholders; nothing to allocate."
+              exit 0
+            fi
+
+            read -ra toks <<< "$tokens"
+            won=()
+            lost=0
+            for tok in "${toks[@]}"; do
+              if bash scripts/be_claims.sh claim "${tok#BE-}" "$HEAD_SHA"; then
+                won+=("${tok#BE-}")
+              else
+                lost=1
+              fi
+            done
+            if [ "$lost" -eq 0 ]; then
+              break
+            fi
+
+            for id in "${won[@]}"; do
+              bash scripts/be_claims.sh release "$id"
+            done
+            git reset --quiet --hard HEAD
+            git clean --quiet -fd roadmaps/
+            tokens=""
+          done
+
+          if [ -z "$tokens" ]; then
+            echo "::error::Could not claim an allocated id after several attempts; a parallel PR is racing — re-run this job."
+            exit 1
+          fi
+
           git add -A
           git commit -m "docs(roadmap): allocate BE IDs for placeholder items"
           git push origin "HEAD:$HEAD_REF"
+          echo "tokens=$tokens" >> "$GITHUB_OUTPUT"
 
       - name: Rewrite the PR title's BE-XXXX to the allocated ID
         if: steps.allocate.outputs.tokens != ''
