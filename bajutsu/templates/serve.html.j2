@@ -35,7 +35,6 @@
         <label>Goal (natural language)</label>
         <textarea id="rec-goal" data-testid="record.goal" class="goal" placeholder="e.g. increment the counter twice and check it reads 2"></textarea>
         <label>App</label><select id="rec-app" data-testid="record.app"></select>
-        <label>Backend</label><input id="rec-backend" type="text" placeholder="idb">
         <label class="iosonly">Device</label>
         <div class="row iosonly" style="align-items:flex-end">
           <div><select id="rec-device"></select></div>
@@ -89,8 +88,7 @@
         <label>Scenario</label>
         <select id="scn" data-testid="replay.scenario"></select><div class="names" id="names" data-testid="replay.scenario-info"></div>
         <label>App</label><select id="app" data-testid="replay.app"></select>
-        <div class="row"><div><label>Backend</label><input id="backend" data-testid="replay.backend" type="text" placeholder="idb"></div>
-          <div class="iosonly"><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
+        <div class="row iosonly"><div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
         <div class="hhead iosonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
         <div class="sims iosonly" id="sims"></div>
         <div class="subhint iosonly">Pick the simulators to run on &mdash; shut-down ones are booted (and waited for) before the run. Pick two or more (Workers auto-tracks the count) to run the scenarios in parallel across them: each device gets its own network capture, video / device log, and setLocation / push. None picked = the already-booted device.</div>
@@ -128,7 +126,6 @@
     <div class="card">
       <div class="panel" id="panel-crawl">
         <label>App</label><select id="crawl-app" data-testid="crawl.app"></select>
-        <label>Backend</label><input id="crawl-backend" type="text" placeholder="idb">
         <label class="iosonly">Device</label>
         <div class="row iosonly" style="align-items:flex-end">
           <div><select id="crawl-device"></select></div>
