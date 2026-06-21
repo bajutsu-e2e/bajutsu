@@ -221,6 +221,15 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0054](proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
+### Dogfood fixtures (web UI)
+
+Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend can drive it — a deterministic, Tier-2 regression net for the UI, built on [BE-0041](proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) and the web-side counterpart to the iOS [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) showcase fixtures.
+
+<!-- GENERATED:proposals-dogfood -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+<!-- /GENERATED:proposals-dogfood -->
+
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:proposals-authoring -->

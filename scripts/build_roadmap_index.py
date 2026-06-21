@@ -123,6 +123,7 @@ SECTIONS: tuple[Section, ...] = (
     Section(
         "proposals-platform", "Proposals", "Platform expansion (Android / Web / Flutter)", False
     ),
+    Section("proposals-dogfood", "Proposals", "Dogfood fixtures (web UI)", True),
     Section(
         "proposals-authoring", "Proposals", "Authoring experience (record / GUI editor)", False
     ),
