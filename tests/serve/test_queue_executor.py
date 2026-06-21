@@ -88,6 +88,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "record_save": None,
         "materialize_baselines": False,
         "org": "default",  # single-tenant default org (BE-0015 multi-tenancy)
+        "actor": None,  # no OAuth identity for this locally-built job
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -97,6 +98,53 @@ def test_job_spec_round_trips_through_json(tmp_path: Path) -> None:
     job = state.new_job(["run"], udids=["A", "B"], app_path=None, build=None)
     spec = job_spec(job)
     assert json.loads(json.dumps(spec)) == spec
+
+
+def test_job_spec_carries_the_actor(tmp_path: Path) -> None:
+    # The actor travels so the worker can attribute the recorded run to the user (BE-0015).
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    job = state.new_job(["run"], actor="alice", org="acme")
+    spec = job_spec(job)
+    assert spec["actor"] == "alice"
+    assert spec["org"] == "acme"
+
+
+def test_execute_job_spec_records_the_run_into_an_injected_repository(tmp_path: Path) -> None:
+    # On the server backend the run executes on the worker; with a repository wired (the worker has
+    # BAJUTSU_DATABASE_URL), the finished run is recorded under its org and actor (BE-0015).
+    from sqlalchemy import create_engine
+
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.models import Base
+
+    project(tmp_path)
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    repo.ensure_org("acme", slug="acme", name="acme")
+    repo.upsert_user("alice", org_id="acme", github_login="alice", email="a@x")
+
+    spec = {
+        "job_id": "1",
+        "cmd": ["bajutsu", "run"],
+        "udids": [],
+        "app_path": None,
+        "build": None,
+        "actor": "alice",
+        "org": "acme",
+    }
+    execute_job_spec(
+        spec,
+        popen=fake_popen(["PASS  runs/20260610-1/manifest.json\n"]),
+        cwd=tmp_path,
+        bus=srv.InMemoryLogBus(),
+        repository=repo,
+    )
+    rec = repo.get_run("20260610-1")
+    assert rec is not None
+    assert rec.org_id == "acme"
+    assert rec.created_by == "alice"
+    assert rec.status == "done"
 
 
 def test_execute_job_spec_rebuilds_and_runs_run_job(tmp_path: Path) -> None:

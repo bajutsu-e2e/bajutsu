@@ -150,6 +150,11 @@ bajutsu worker
 再起動を越えるよう、Tier A と同じく `LaunchAgent` で包みます。各ジョブはクリーンな Simulator で実行され、
 `runs/<id>/` ツリーを MinIO にアップロードし、コントロールプレーンがそれを配信します。
 
+> **run 履歴のデータベース記録。** run は worker で実行されるので、run 履歴一覧のために Postgres へ記録するのは
+> worker です。これを有効にするには `bajutsu[worker,idb,db]` をインストールし、worker に `BAJUTSU_DATABASE_URL`
+> （tailnet 越しの Postgres ノード、コントロールプレーンと同じ URL）を渡してください。無くても run 自体は動き、
+> 成果物も配信されますが、永続化された履歴一覧には現れません。
+
 ### 4. 公開する
 
 Tier A と同様に前段を置きます。`tailscale serve --bg 8765`（tailnet 内のみ、推奨）、または実ホスト名なら Caddy

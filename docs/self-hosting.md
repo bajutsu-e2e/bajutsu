@@ -154,6 +154,12 @@ bajutsu worker
 Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. Each job runs on a fresh Simulator
 and uploads its `runs/<id>/` tree to MinIO, which the control plane serves back.
 
+> **Run history in the database.** A run executes on the worker, so the worker is what records it
+> into Postgres for the run-history list. To enable that, install `bajutsu[worker,idb,db]` and give
+> the worker `BAJUTSU_DATABASE_URL` (the Postgres node over the tailnet) — the same URL the control
+> plane uses. Without it the run still works and its artifacts are served, but it won't appear in the
+> durable history list.
+
 ### 4. Expose it
 
 Front the control plane like Tier A: `tailscale serve --bg 8765` (tailnet-only, recommended), or
