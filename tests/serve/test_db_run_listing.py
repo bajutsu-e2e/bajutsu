@@ -29,6 +29,9 @@ def test_run_job_records_finished_run_into_the_repository(tmp_path: Path) -> Non
     scn_dir, cfg, runs = project(tmp_path)
     write_run(runs, "20260621-1", ok=True, scenarios=[("alpha", True), ("beta", True)])
     repo = _repo()
+    # The actor was upserted at OAuth login, so the run can be attributed to them (the created_by
+    # foreign key resolves).
+    repo.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
     state = srv.ServeState(
         scenarios_dir=scn_dir,
         config=cfg,
@@ -51,6 +54,50 @@ def test_run_job_records_finished_run_into_the_repository(tmp_path: Path) -> Non
     assert rec.summary["passed"] == 2
     assert rec.summary["total"] == 2
     assert rec.summary["report"] is True
+
+
+def test_run_job_does_not_attribute_to_an_unknown_user(tmp_path: Path) -> None:
+    # A run whose actor has no user row (shouldn't happen in practice) is still recorded, just with
+    # no created_by — so the foreign key can't break job finalization.
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "20260621-7", ok=True, scenarios=[("alpha", True)])
+    repo = _repo()
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=repo,
+        popen=fake_popen(["PASS  runs/20260621-7/manifest.json\n"]),
+    )
+    job = state.new_job(["x"])
+    job.actor = "ghost"
+    srv.run_job(state, job)
+
+    rec = repo.get_run("20260621-7")
+    assert rec is not None
+    assert rec.created_by is None
+
+
+def test_run_job_survives_a_failing_repository(tmp_path: Path) -> None:
+    # A repository pointed at a schema-less database raises on record_run. Persistence runs in
+    # run_job's finally, just before the log stream is closed, so the error must be swallowed and
+    # the job must still finalize (its run id parsed, status done).
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "20260621-8", ok=True, scenarios=[("alpha", True)])
+    engine = create_engine("sqlite://")  # no Base.metadata.create_all → no tables
+    state = srv.ServeState(
+        scenarios_dir=scn_dir,
+        config=cfg,
+        runs_dir=runs,
+        cwd=tmp_path,
+        repository=SqlRepository(engine),
+        popen=fake_popen(["PASS  runs/20260621-8/manifest.json\n"]),
+    )
+    job = state.new_job(["x"])
+    srv.run_job(state, job)  # must not raise
+    assert job.view()["status"] == "done"
+    assert job.view()["runId"] == "20260621-8"
 
 
 def test_run_job_without_a_repository_does_not_record(tmp_path: Path) -> None:
