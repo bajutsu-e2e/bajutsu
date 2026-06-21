@@ -17,6 +17,7 @@ from machine assertions, never an LLM.
 | `scenarios/modals.yaml` | the config browser and Settings panel open/close; Settings defaults to Anthropic |
 | `scenarios/replay-contract.yaml` | a bound config reaches the Replay pickers (config → `/api/apps` → `/api/scenarios`) |
 | `scenarios/record-form.yaml` | Record's Save stays disabled until a scenario exists; the goal field takes input |
+| `scenarios/platform-ui.yaml` | the Replay panel hides its iOS device UI (simulators, workers, erase) for a non-iOS backend |
 | `Makefile` | `web-deps` / `serve-ui` / `e2e` |
 
 ## Run it

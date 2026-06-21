@@ -24,7 +24,8 @@ scenario set that exercises it, adding **no** LLM call to any gate.
 
 The first slice ships three things: `data-testid` attributes on the Web UI's controls, a
 `demos/serve-ui/` harness that launches `serve` and points a web-backend run at it, and a set of
-Tier-A deterministic scenarios (navigation, modals, the config→pickers contract, and form state).
+Tier-A deterministic scenarios (navigation, modals, the config→pickers contract, form state, and
+platform-aware controls).
 
 ## Motivation
 
@@ -86,6 +87,7 @@ modal is active — no screenshot diffing, no timing guess.
 | `modals` | the config browser and Settings panel open/close; Settings defaults to the Anthropic section, Bedrock fields hidden |
 | `replay-contract` | a bound config reaches the Replay pickers (`/api/apps` → `/api/scenarios`); the default app + scenario values are what the config declares |
 | `record-form` | Record's Save stays disabled until a scenario exists; the goal field records typed input |
+| `platform-ui` | the Replay panel's iOS device UI (simulators, workers, erase) shows only for an iOS backend; selecting `web` hides it |
 
 ### Tiering (what is, and is not, in this net)
 
@@ -109,7 +111,7 @@ Bedrock) stay out of this net.
 
 ### Scope and phasing
 
-- **In scope now:** the `data-testid` ids, the `demos/serve-ui` harness, and the four Tier-A
+- **In scope now:** the `data-testid` ids, the `demos/serve-ui` harness, and the five Tier-A
   scenario files. They run today on Linux through the web backend.
 - **Forward-looking:** `<select>` operation (with BE-0054); a populated Replay **History** assertion
   (needs a committed fixture run); the deterministic Replay-run round-trip; and wiring the target

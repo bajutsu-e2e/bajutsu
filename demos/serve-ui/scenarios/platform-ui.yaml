@@ -1,0 +1,20 @@
+# Platform-aware controls — the Replay panel's iOS device UI (simulators, workers, erase, the
+# alert-dismiss guard) shows only for an iOS backend. Switching the Backend field to a non-iOS
+# value (web) hides it. The SPA toggles the `iosonly` elements via the `hidden` attribute, which
+# the Playwright backend reads as gone from the element tree — so one exists/negate pair captures
+# the whole behavior. Deterministic: the toggle is synchronous on the field's input event.
+description: >-
+  Platform-aware controls — the Replay panel hides its iOS-only device UI when the backend is
+  not iOS.
+scenarios:
+  - name: a non-iOS backend hides the simulator controls
+    description: On Replay the Simulators UI shows by default (iOS); typing "web" into Backend hides it.
+    steps:
+      - tap: { id: nav.replay }
+      - wait: { for: { id: replay.simulators }, timeout: 10 }
+      - assert:
+          - exists: { id: replay.simulators }
+      - type: { text: "web", into: { id: replay.backend } }
+      - wait: { until: { gone: { id: replay.simulators } }, timeout: 5 }
+    expect:
+      - exists: { id: replay.simulators, negate: true }

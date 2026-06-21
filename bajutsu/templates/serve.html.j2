@@ -41,15 +41,15 @@
           <option value="claude-code">claude-code (claude CLI)</option>
         </select>
         <label>Backend</label><input id="rec-backend" type="text" placeholder="idb">
-        <label>Device</label>
-        <div class="row" style="align-items:flex-end">
+        <label class="iosonly">Device</label>
+        <div class="row iosonly" style="align-items:flex-end">
           <div><select id="rec-device"></select></div>
           <div style="flex:0 0 auto"><button class="refresh" id="rec-simrefresh" title="refresh devices">&#8635;</button></div>
         </div>
         <label>Save as</label>
         <input id="rec-name" type="text" placeholder="generated.yaml — leave blank to default">
         <div class="subhint">The recorded scenario is written under the scenarios dir, so it shows up in the <b>Replay</b> tab to run. Blank defaults to <code>generated.yaml</code>; if the name already exists, the run's date-time is appended (e.g. <code>generated-20260613-153045.yaml</code>) so nothing is overwritten.</div>
-        <div class="checks">
+        <div class="checks iosonly">
           <label><input type="checkbox" id="rec-erase"> erase device first
             <span class="hint">Wipe the simulator before authoring (record's default) so the app starts from onboarding. Uncheck to author against the app's current state.</span></label>
           <label><input type="checkbox" id="rec-nodismiss"> disable alert-dismiss
@@ -88,12 +88,12 @@
         <label>Scenario</label>
         <select id="scn" data-testid="replay.scenario"></select><div class="names" id="names" data-testid="replay.scenario-info"></div>
         <label>App</label><select id="app" data-testid="replay.app"></select>
-        <div class="row"><div><label>Backend</label><input id="backend" type="text" placeholder="idb"></div>
-          <div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
-        <div class="hhead"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
-        <div class="sims" id="sims"></div>
-        <div class="subhint">Pick the simulators to run on &mdash; shut-down ones are booted (and waited for) before the run. Pick two or more (Workers auto-tracks the count) to run the scenarios in parallel across them: each device gets its own network capture, video / device log, and setLocation / push. None picked = the already-booted device.</div>
-        <div class="checks">
+        <div class="row"><div><label>Backend</label><input id="backend" data-testid="replay.backend" type="text" placeholder="idb"></div>
+          <div class="iosonly"><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
+        <div class="hhead iosonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
+        <div class="sims iosonly" id="sims"></div>
+        <div class="subhint iosonly">Pick the simulators to run on &mdash; shut-down ones are booted (and waited for) before the run. Pick two or more (Workers auto-tracks the count) to run the scenarios in parallel across them: each device gets its own network capture, video / device log, and setLocation / push. None picked = the already-booted device.</div>
+        <div class="checks iosonly">
           <label><input type="checkbox" id="erasedev"> erase device first
             <span class="hint">Wipe the whole simulator (simctl erase &mdash; all apps, data, settings) before each scenario. Off (default) leaves it to each scenario's <code>preconditions.erase</code>; the app is reinstalled fresh either way.</span></label>
           <label><input type="checkbox" id="nodismiss"> disable alert-dismiss
@@ -127,8 +127,8 @@
           <option value="claude-code">claude-code (claude CLI)</option>
         </select>
         <label>Backend</label><input id="crawl-backend" type="text" placeholder="idb">
-        <label>Device</label>
-        <div class="row" style="align-items:flex-end">
+        <label class="iosonly">Device</label>
+        <div class="row iosonly" style="align-items:flex-end">
           <div><select id="crawl-device"></select></div>
           <div style="flex:0 0 auto"><button class="refresh" id="crawl-simrefresh" title="refresh devices">&#8635;</button></div>
         </div>
@@ -137,7 +137,7 @@
           <div><label>Max steps</label><input id="crawl-maxsteps" type="number" min="1" value="200"></div>
         </div>
         <div class="subhint">Crawl explores the app breadth-first, discovering screens and the transitions between them &mdash; a discovery tool, never a pass/fail gate. It is AI-driven: the engine (screen identity, transitions, crashes) is always deterministic, while the <b>AI</b> proposes <i>what to try</i> &mdash; richer operations and realistic inputs to enable controls whose precondition isn't obvious. Pick the <b>Agent</b>: <code>api</code> uses the <b>AI provider</b> chosen in <b>Settings</b> &mdash; the Anthropic API (needs <code>ANTHROPIC_API_KEY</code>) or Amazon Bedrock (AWS credentials), while <code>claude-code</code> drives the Claude Code CLI on your subscription instead. Stops at the first of Max screens / Max steps.</div>
-        <div class="checks">
+        <div class="checks iosonly">
           <label><input type="checkbox" id="crawl-erase"> erase device first
             <span class="hint">Wipe the simulator before crawling so the app starts from onboarding. Off by default — the app is reinstalled fresh either way; check to also wipe all apps / data / settings first.</span></label>
           <label><input type="checkbox" id="crawl-nodismiss"> disable alert-dismiss

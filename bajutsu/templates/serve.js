@@ -729,6 +729,27 @@ document.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight')shotStep('fwd');else if(e.key==='ArrowLeft')shotStep('prev');else if(e.key==='Escape')closeShot();
 });
 
+// iOS-only device UI (simulators, device pickers, erase, alert-dismiss) shows only for an iOS
+// backend; web and other non-iOS runs hide it. Keyed off each panel's Backend field.
+function isIosBackend(v){v=(v||'').trim().toLowerCase();return v===''||v==='idb'||v==='ios'||v==='xcuitest';}
+function syncPlatform(panelSel,fieldSel){
+  const f=$(fieldSel);if(!f)return;
+  const ios=isIosBackend(f.value);
+  // Inline display wins over the layout rules on .hhead/.sims/.checks/.row (the `hidden`
+  // attribute's UA display:none would lose to them); removeProperty restores the CSS value.
+  document.querySelectorAll(panelSel+' .iosonly').forEach(el=>{
+    if(ios)el.style.removeProperty('display');else el.style.setProperty('display','none','important');
+  });
+}
+function wirePlatform(panelSel,fieldSel){
+  if(!$(fieldSel))return;
+  $(fieldSel).addEventListener('input',()=>syncPlatform(panelSel,fieldSel));
+  syncPlatform(panelSel,fieldSel);
+}
+wirePlatform('#panel-run','#backend');
+wirePlatform('#panel-record','#rec-backend');
+wirePlatform('#panel-crawl','#crawl-backend');
+
 initTheme();
 loadConfig();
 loadSims();
