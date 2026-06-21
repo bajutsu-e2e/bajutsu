@@ -4,9 +4,20 @@ so `record` is identical apart from how the model is reached."""
 
 from __future__ import annotations
 
+import os
+
 from bajutsu.agent import Agent
 
 AGENT_KINDS = ("api", "claude-code")
+
+# The env var that picks the default authoring agent when no explicit `--agent` is given. `serve`
+# sets it from the Settings AI-provider selector, so `record` / `crawl` jobs inherit one choice.
+AGENT_ENV = "BAJUTSU_AGENT"
+
+
+def resolve_kind(agent: str = "") -> str:
+    """The effective agent kind: an explicit value wins, else `$BAJUTSU_AGENT`, else "api"."""
+    return agent or os.environ.get(AGENT_ENV) or "api"
 
 
 def make_agent(kind: str) -> Agent:
