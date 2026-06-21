@@ -25,14 +25,17 @@ main{display:grid;grid-template-columns:var(--rep-left,340px) var(--gw) var(--re
 main[hidden]{display:none}
 /* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
 #view-record{grid-template-columns:var(--rec-left,340px) var(--gw) 1fr}
-.rec-stack{display:flex;flex-direction:column;gap:1rem;height:calc(100vh - 6rem)}
-.rec-stack>.logpanel,.rec-stack>.yamlpanel{flex:1;min-height:0;height:auto}
+.rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:calc(100vh - 6rem)}
+.rec-stack>.logpanel,.rec-stack>.yamlpanel{min-height:0;height:auto}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
 #view-crawl{grid-template-columns:var(--crawl-left,340px) var(--gw) 1fr}
 /* Draggable column splitters: a thin full-height handle between grid columns (see initSplitters). */
 .gutter{align-self:stretch;cursor:col-resize;position:relative}
 .gutter::before{content:"";position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:1px;background:var(--line)}
 .gutter:hover::before,.gutter.dragging::before{width:3px;background:var(--acc)}
+.gutter.row{cursor:row-resize}
+.gutter.row::before{top:50%;bottom:auto;left:0;right:0;width:auto;height:1px;transform:translateY(-50%)}
+.gutter.row:hover::before,.gutter.row.dragging::before{width:auto;height:3px}
 .crawlpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
 .crawlhead{flex:0 0 auto;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
 .crawlhead .ttl{font-weight:600}
@@ -43,7 +46,7 @@ main[hidden]{display:none}
 /* Body splits into the full-height transition graph (left) and a right column whose top half is
    the live exploration-plan tree and bottom half the console. */
 .crawlbody{flex:1;min-height:0;display:flex;gap:.5rem}
-.crawlside{flex:0 0 22rem;min-width:0;display:flex;flex-direction:column;gap:.3rem}
+.crawlside{flex:0 0 22rem;min-width:0;display:grid;grid-template-rows:auto auto var(--crawl-plan,1fr) var(--gw) auto 1fr;gap:.3rem}
 .crawlsub{flex:0 0 auto;font-weight:600;font-size:.78em;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
 /* Plan progress: how much of the planned operations have been explored, as a percent + bar. */
 .planhd{display:flex;justify-content:space-between;align-items:baseline}

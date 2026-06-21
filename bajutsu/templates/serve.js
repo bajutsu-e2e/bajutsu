@@ -761,12 +761,13 @@ function initSplitters(){
   let drag=null;
   document.querySelectorAll('main .gutter').forEach(g=>g.addEventListener('mousedown',e=>{
     e.preventDefault();
-    drag={g,main:g.closest('main'),v:g.dataset.var,x:e.clientX,w:g.previousElementSibling.getBoundingClientRect().width,min:+g.dataset.min||200,max:+g.dataset.max||700};
-    g.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor='col-resize';
+    const row=g.classList.contains('row'),b=g.previousElementSibling.getBoundingClientRect();
+    drag={g,main:g.closest('main'),v:g.dataset.var,row,pos:row?e.clientY:e.clientX,size:row?b.height:b.width,min:+g.dataset.min||120,max:+g.dataset.max||900};
+    g.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor=row?'row-resize':'col-resize';
   }));
   window.addEventListener('mousemove',e=>{
     if(!drag)return;
-    drag.main.style.setProperty(drag.v,Math.max(drag.min,Math.min(drag.max,drag.w+e.clientX-drag.x))+'px');
+    drag.main.style.setProperty(drag.v,Math.max(drag.min,Math.min(drag.max,drag.size+(drag.row?e.clientY:e.clientX)-drag.pos))+'px');
   });
   window.addEventListener('mouseup',()=>{
     if(!drag)return;

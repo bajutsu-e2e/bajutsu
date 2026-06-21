@@ -66,6 +66,7 @@
       <div class="status" id="rec-status"></div>
       <pre class="out" id="rec-out" data-empty="Enter a goal and press Generate to watch the agent author it, turn by turn."></pre>
     </div>
+    <div class="gutter row" data-var="--rec-top" data-min="120" data-max="700"></div>
     <div class="card yamlpanel" id="rec-yamlpanel">
       <div class="yamlhead">
         <span class="ttl">Generated scenario</span>
@@ -170,6 +171,7 @@
           <label class="prunetog" title="Show the operations the crawl pruned as duplicate global controls (a tab/nav explored once), struck through and tappable to resume. Uncheck to hide them."><input type="checkbox" id="crawl-prune" checked> show pruned</label></div>
         <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
         <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
+        <div class="gutter row" data-var="--crawl-plan" data-min="80" data-max="600"></div>
         <div class="crawlsub">Console</div>
         <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
       </div>
