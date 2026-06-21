@@ -26,7 +26,7 @@ from bajutsu.anthropic_client import (
     PROVIDERS,
     provider,
 )
-from bajutsu.config import apps_for_org, load_config, org_for_app, org_for_user
+from bajutsu.config import apps_for_org, load_config, org_for_app, org_for_identity
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs
 from bajutsu.serve.helpers import (
@@ -255,21 +255,22 @@ def oauth_callback(
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
         return {"error": "invalid oauth state"}, 403, None
     try:
-        login = state.oauth.fetch_login(code)
+        identity = state.oauth.fetch_identity(code)
     except Exception:
         # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
         # not a 500 — surface it as a clean 502 rather than a traceback.
         return {"error": "oauth exchange failed"}, 502, None
-    if not login:
+    if identity is None or not identity.login:
         return {"error": "oauth exchange failed"}, 403, None
+    login = identity.login
     if login not in state.oauth_allowed_users:
         return {"error": "user not allowed"}, 403, None
     if state.repository is not None:
         # Persist the identity into the system of record, so audit entries and RBAC can reference
-        # the user. The org comes from the config-declared org model (members list), defaulting to
-        # the single `default` org. email is unknown from a read:user scope, so we store GitHub's
-        # canonical no-reply form (valid + unique per login).
-        org = _org_for_login(state, login)
+        # the user. The org comes from the config-declared org model — an explicit member listing or
+        # the user's GitHub org membership — defaulting to the single `default` org. email is unknown
+        # from this scope, so we store GitHub's canonical no-reply form (valid + unique per login).
+        org = _org_for_login(state, login, identity.orgs)
         state.repository.ensure_org(org, slug=org, name=org)
         state.repository.upsert_user(
             login,
@@ -283,11 +284,12 @@ def oauth_callback(
     return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
 
 
-def _org_for_login(state: ServeState, login: str) -> str:
+def _org_for_login(state: ServeState, login: str, github_orgs: list[str]) -> str:
     """The org to assign *login* at OAuth login, from the config-declared org model (BE-0015
-    multi-tenancy). The single `default` org when no `orgs:` block lists them."""
+    multi-tenancy): an explicit member listing or a matching GitHub org from *github_orgs*. The
+    single `default` org when no `orgs:` block maps them."""
     config = load_config_file(state.config)
-    return org_for_user(config, login) if config is not None else _DEFAULT_ORG
+    return org_for_identity(config, login, github_orgs) if config is not None else _DEFAULT_ORG
 
 
 def _resolve_org(state: ServeState, actor: str | None) -> str:

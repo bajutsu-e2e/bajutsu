@@ -21,6 +21,7 @@ from bajutsu import serve as srv
 from bajutsu.anthropic_client import BEDROCK_MODEL_ENV, PROVIDER_ENV
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.app import make_app
+from bajutsu.serve.server.oauth import Identity
 
 
 def _client(state: srv.ServeState) -> TestClient:
@@ -55,7 +56,7 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
 
 
 class _FakeOAuth:
-    """Stand-in for the GitHub OAuth client — no network. `fetch_login` fails for code ``"bad"``."""
+    """Stand-in for the GitHub OAuth client — no network. `fetch_identity` fails for code ``"bad"``."""
 
     def __init__(self, login: str | None = "alice") -> None:
         self._login = login
@@ -63,8 +64,10 @@ class _FakeOAuth:
     def authorize_url(self, state: str) -> str:
         return f"https://github.test/login/oauth/authorize?state={state}"
 
-    def fetch_login(self, code: str) -> str | None:
-        return None if code == "bad" else self._login
+    def fetch_identity(self, code: str) -> Identity | None:
+        if code == "bad" or not self._login:
+            return None
+        return Identity(login=self._login, orgs=[])
 
 
 def _oauth_state(

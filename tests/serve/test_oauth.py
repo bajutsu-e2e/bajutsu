@@ -10,20 +10,24 @@ from pathlib import Path
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.server.oauth import Identity
 
 
 class FakeOAuthClient:
-    """The slice of the OAuth flow the operations use, in memory — no GitHub call. `fetch_login`
-    returns None for the code ``"bad"`` (a failed exchange), else the configured login."""
+    """The slice of the OAuth flow the operations use, in memory — no GitHub call. `fetch_identity`
+    returns None for the code ``"bad"`` (a failed exchange), else the configured login + orgs."""
 
-    def __init__(self, login: str | None = "alice") -> None:
+    def __init__(self, login: str | None = "alice", orgs: list[str] | None = None) -> None:
         self._login = login
+        self._orgs = orgs or []
 
     def authorize_url(self, state: str) -> str:
         return f"https://github.test/login/oauth/authorize?state={state}"
 
-    def fetch_login(self, code: str) -> str | None:
-        return None if code == "bad" else self._login
+    def fetch_identity(self, code: str) -> Identity | None:
+        if code == "bad" or not self._login:
+            return None
+        return Identity(login=self._login, orgs=list(self._orgs))
 
 
 def _state(

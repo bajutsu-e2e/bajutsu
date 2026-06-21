@@ -137,6 +137,10 @@ Allowlisted users are **editors** by default (they can run); admins also change 
 (config / API key / provider); viewers are read-only. The token stays the operator/CI credential
 (full access); OAuth is the team's per-user login.
 
+Login requests the `read:org` scope so a user can be mapped to an org by GitHub org membership
+(config `githubOrgs`); the consent screen will mention organization access. Single-tenant deploys
+(no `orgs:` block) don't use it.
+
 ### 3. Run a Mac worker
 
 On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install

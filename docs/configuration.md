@@ -77,16 +77,19 @@ token, never the value.
 ### Orgs (`orgs:`, the multi-tenant server backend)
 
 `orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
-Each org lists its member GitHub logins and the apps it owns:
+Each org lists its members — explicit GitHub logins (`members`) and/or whole GitHub orgs
+(`githubOrgs`) — and the apps it owns:
 
 ```yaml
 orgs:
   acme:
-    members: [alice, bob]
+    members: [alice, bob]    # explicit GitHub logins
+    githubOrgs: [acme-gh]    # everyone in this GitHub org (needs the read:org OAuth scope)
     apps: [demo, checkout]
 ```
 
-At OAuth login a user is assigned their org; afterward they see only that org's apps, and a run's
+At OAuth login a user is assigned their org — an explicit `members` entry first, else a `githubOrgs`
+match from their GitHub org memberships. Afterward they see only that org's apps, and a run's
 artifacts/scenarios/baselines live under the org's own object-store prefix. A login or app named in
 no org falls into the single `default` org, so a config **without** an `orgs:` block is
 single-tenant — the CLI and local `serve` ignore `orgs:` entirely.

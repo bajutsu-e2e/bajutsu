@@ -133,6 +133,10 @@ GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/ca
 （run 可）、admin はサーバ設定（config、API キー、provider）も変更でき、viewer は閲覧のみです。トークンは
 オペレータ・CI 用の認証（full access）のまま、OAuth がチームのユーザごとのログインです。
 
+ログインは `read:org` scope を要求します。これによりユーザを GitHub org メンバーシップから org に対応づけられます
+（config の `githubOrgs`）。同意画面には organization へのアクセスが表示されます。シングルテナント構成（`orgs:`
+ブロック無し）では使いません。
+
 ### 3. Mac ワーカーを動かす
 
 各 Mac で（Tier A と同じ Aqua セッション設定。auto-login と `caffeinate`/`pmset`）、`bajutsu[worker,idb]` を

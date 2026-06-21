@@ -9,13 +9,26 @@ here."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 from urllib.parse import urlencode
 
 _AUTHORIZE = "https://github.com/login/oauth/authorize"
 _TOKEN = "https://github.com/login/oauth/access_token"  # the OAuth token-exchange endpoint
 _USER = "https://api.github.com/user"
-_SCOPE = "read:user"  # only the login is needed for the allowlist check
+_ORGS = "https://api.github.com/user/orgs"
+# `read:org` lets us read the user's org memberships (including private ones) to map them to a
+# bajutsu org; `read:user` covers the login for the allowlist check (BE-0015 multi-tenancy).
+_SCOPE = "read:user read:org"
+
+
+@dataclass
+class Identity:
+    """Who logged in: the GitHub *login* and the *orgs* (GitHub org logins) they belong to. The org
+    list maps the user to a bajutsu org (BE-0015); empty when org mapping isn't used."""
+
+    login: str
+    orgs: list[str] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -25,8 +38,9 @@ class OAuthClient(Protocol):
     def authorize_url(self, state: str) -> str:
         """The GitHub authorize URL to redirect the browser to, carrying the CSRF *state*."""
 
-    def fetch_login(self, code: str) -> str | None:
-        """Exchange an authorization *code* for a token and return the GitHub login, or None."""
+    def fetch_identity(self, code: str) -> Identity | None:
+        """Exchange an authorization *code* for a token and return the GitHub identity (login + org
+        memberships), or None on a failed exchange."""
 
 
 class GitHubOAuthClient:
@@ -49,7 +63,7 @@ class GitHubOAuthClient:
         )
         return f"{_AUTHORIZE}?{query}"
 
-    def fetch_login(self, code: str) -> str | None:
+    def fetch_identity(self, code: str) -> Identity | None:
         from authlib.integrations.httpx_client import OAuth2Client
 
         # `with` closes the underlying httpx client, so connections/fds aren't leaked on a busy server.
@@ -58,8 +72,19 @@ class GitHubOAuthClient:
         ) as client:
             # GitHub returns form-encoded by default; ask for JSON so authlib parses the token.
             client.fetch_token(_TOKEN, code=code, headers={"Accept": "application/json"})
-            resp = client.get(_USER, headers={"Accept": "application/vnd.github+json"})
-        if resp.status_code != 200:
-            return None
-        login = resp.json().get("login")
-        return str(login) if login else None
+            headers = {"Accept": "application/vnd.github+json"}
+            user = client.get(_USER, headers=headers)
+            if user.status_code != 200:
+                return None
+            login = user.json().get("login")
+            if not login:
+                return None
+            # Org memberships map the user to a bajutsu org; a failure here just yields no orgs (the
+            # user falls back to the default org) rather than failing the login.
+            orgs_resp = client.get(_ORGS, headers=headers)
+        orgs = (
+            [o["login"] for o in orgs_resp.json() if isinstance(o, dict) and o.get("login")]
+            if orgs_resp.status_code == 200 and isinstance(orgs_resp.json(), list)
+            else []
+        )
+        return Identity(login=str(login), orgs=orgs)

@@ -82,11 +82,13 @@ class AppConfig(_Model):
 
 
 class OrgConfig(_Model):
-    """One tenant (BE-0015 multi-tenancy): the GitHub logins that belong to it and the apps it
-    owns. A login or app named in no org falls back to the single `default` org, so a config with
-    no `orgs:` block stays single-tenant."""
+    """One tenant (BE-0015 multi-tenancy): the GitHub logins that belong to it (`members`) and/or the
+    GitHub orgs whose members belong to it (`github_orgs`), plus the apps it owns. A login or app
+    named in no org falls back to the single `default` org, so a config with no `orgs:` block stays
+    single-tenant."""
 
     members: list[str] = Field(default_factory=list)
+    github_orgs: list[str] = Field(default_factory=list, alias="githubOrgs")
     apps: list[str] = Field(default_factory=list)
 
 
@@ -109,6 +111,21 @@ def org_for_user(config: Config, login: str) -> str:
 def org_for_app(config: Config, app: str) -> str:
     """The org whose apps list *app*, or `default` if none do."""
     return next((org for org, oc in config.orgs.items() if app in oc.apps), DEFAULT_ORG)
+
+
+def org_for_identity(config: Config, login: str, github_orgs: list[str]) -> str:
+    """The org for a user logging in as *login* with the given GitHub *github_orgs* memberships
+    (BE-0015). An explicit `members` listing wins; otherwise the first org whose `github_orgs`
+    intersects the user's GitHub orgs; otherwise `default`. Resolution is deterministic in config
+    order."""
+    explicit = org_for_user(config, login)
+    if explicit != DEFAULT_ORG:
+        return explicit
+    user_orgs = set(github_orgs)
+    return next(
+        (org for org, oc in config.orgs.items() if user_orgs.intersection(oc.github_orgs)),
+        DEFAULT_ORG,
+    )
 
 
 def apps_for_org(config: Config, org: str) -> list[str]:
