@@ -155,7 +155,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | ID | Item | Status |
 |---|---|---|
 | [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Implemented |
-| [BE-0059](implemented/BE-0059-code-quality-gate-hardening/BE-0059-code-quality-gate-hardening.md) | Code-quality gate hardening (CI fidelity, security lint, supply-chain) | Implemented |
+| [BE-0067](implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) | Code-quality gate hardening (CI fidelity, security lint, supply-chain) | Implemented |
 <!-- /GENERATED:accepted-dev-infra -->
 
 ### Dogfood fixtures (demo apps)

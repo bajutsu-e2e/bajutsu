@@ -114,6 +114,11 @@ ignore = [
 # main — where CodeQL already dismissed the same py/unsafe-deserialization finding as a false
 # positive (an inline change re-surfaces it as a new PR alert).
 "bajutsu/_yaml.py" = ["S506"]
+# backends.py installs the web extra via `uv`/`playwright` on PATH (S607); launch_server.py probes a
+# config-driven readiness URL (S310). Both are intentional; ignored at the file level so the lines
+# stay byte-identical to main (an inline noqa could re-surface a dismissed-on-main CodeQL finding).
+"bajutsu/backends.py" = ["S607"]
+"bajutsu/runner/launch_server.py" = ["S310"]
 
 [tool.pytest.ini_options]
 addopts = "-n auto"
