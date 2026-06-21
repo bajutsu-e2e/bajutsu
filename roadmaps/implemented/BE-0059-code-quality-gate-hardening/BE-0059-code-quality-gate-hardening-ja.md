@@ -70,11 +70,12 @@ ruff の `S` ルールを有効化した。`S101`（assert）と `S603`（subpro
 ない。`S603` はすべての subprocess 呼び出しで発火するが、こちらの呼び出しは argv 配列（`shell=False`）で
 あり、本当に危険な `shell=True` の形は `S602` が引き続き捕捉する。`tests/` と `demos/` は `S` カテゴリ全体
 を、`scripts/` は `S607` を除外する（git や uv を PATH 経由で起動するため）。`bajutsu/` に残る指摘は個別に
-処理した。実体のある修正が1件（非暗号用途の dedup キーに対する `hashlib.sha1(..., usedforsecurity=False)`）
-と、確認済みの誤検知への抑制である。インライン `noqa` は http／https に限定済みの `urlopen`（`S310`）と
-`_TOKEN` という名前の公開エンドポイント URL（`S105`）。`_yaml.py` の `yaml.load`（`SafeLoader` の
-サブクラス）は `S506` をファイル単位で ignore する。これは行を main と完全に一致させ、main で同じ指摘が
-すでに false positive として dismiss 済みの状態を保つためである。
+処理した。実体のある修正が2件（非暗号用途の dedup キーに対する `hashlib.sha1(..., usedforsecurity=False)`
+と、OAuth エンドポイント定数を `_TOKEN` から `_EXCHANGE_URL` に改名し、ハードコードされた secret（`S105`）
+に見えないようにしたこと）。残りは確認済みの誤検知への抑制で、インライン `noqa` は http／https に限定済みの
+`urlopen`（`S310`）、`_yaml.py` の `yaml.load`（`SafeLoader` のサブクラス）は `S506` をファイル単位で
+ignore する。後者は行を main と完全に一致させ、main で同じ指摘がすでに false positive として dismiss 済み
+の状態に保つためである。
 
 ### SAST（CodeQL default setup を維持）
 

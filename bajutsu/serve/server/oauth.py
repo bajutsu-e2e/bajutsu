@@ -14,7 +14,7 @@ from typing import Protocol, runtime_checkable
 from urllib.parse import urlencode
 
 _AUTHORIZE = "https://github.com/login/oauth/authorize"
-_TOKEN = "https://github.com/login/oauth/access_token"  # noqa: S105 (token-exchange endpoint URL, not a secret)
+_EXCHANGE_URL = "https://github.com/login/oauth/access_token"  # the OAuth token-exchange endpoint
 _USER = "https://api.github.com/user"
 _ORGS = "https://api.github.com/user/orgs"
 # `read:org` lets us read the user's org memberships (including private ones) to map them to a
@@ -71,7 +71,7 @@ class GitHubOAuthClient:
             self._client_id, self._client_secret, redirect_uri=self._redirect_uri
         ) as client:
             # GitHub returns form-encoded by default; ask for JSON so authlib parses the token.
-            client.fetch_token(_TOKEN, code=code, headers={"Accept": "application/json"})
+            client.fetch_token(_EXCHANGE_URL, code=code, headers={"Accept": "application/json"})
             headers = {"Accept": "application/vnd.github+json"}
             user = client.get(_USER, headers=headers)
             if user.status_code != 200:
