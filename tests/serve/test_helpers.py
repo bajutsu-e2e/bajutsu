@@ -25,6 +25,49 @@ def test_list_apps(tmp_path: Path) -> None:
     assert srv.list_apps(cfg) == ["demo", "other"]
 
 
+def test_load_config_cached_reuses_an_unchanged_file(tmp_path: Path) -> None:
+    from bajutsu.serve import helpers
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    first = helpers._load_config_cached(cfg)
+    # An unchanged file isn't re-parsed: the same object comes back.
+    assert helpers._load_config_cached(cfg) is first
+
+
+def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> None:
+    import os
+
+    from bajutsu.serve import helpers
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    assert list(helpers._load_config_cached(cfg).apps) == ["demo"]
+    # Rewrite with new content; bump mtime so the freshness key changes deterministically.
+    cfg.write_text(
+        "apps:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        encoding="utf-8",
+    )
+    future = cfg.stat().st_mtime_ns + 1_000_000_000
+    os.utime(cfg, ns=(future, future))
+    assert sorted(helpers._load_config_cached(cfg).apps) == ["demo", "other"]
+
+
+def test_list_apps_reflects_an_edited_config(tmp_path: Path) -> None:
+    import os
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    assert srv.list_apps(cfg) == ["demo"]
+    cfg.write_text(
+        "apps:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        encoding="utf-8",
+    )
+    future = cfg.stat().st_mtime_ns + 1_000_000_000
+    os.utime(cfg, ns=(future, future))
+    assert srv.list_apps(cfg) == ["demo", "other"]  # cache invalidated by the mtime/size change
+
+
 def test_mask_secret_keeps_head_and_tail() -> None:
     masked = srv.mask_secret("sk-ant-api03-abcdefXYZ")
     assert masked == "sk-a…fXYZ"  # head 4 + … + tail 4
