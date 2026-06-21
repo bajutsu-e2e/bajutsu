@@ -232,6 +232,18 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0044](proposals/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
+### AI provider configuration
+
+Extending the pluggable AI provider beyond the shipped Bedrock support
+([BE-0053](implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), under Accepted) —
+making it easier to configure and authenticate the provider, e.g. acquiring AWS credentials for
+Bedrock from the web UI itself rather than the shell that launched `serve`.
+
+<!-- GENERATED:proposals-ai-provider -->
+| ID | Item | Status |
+|---|---|---|
+<!-- /GENERATED:proposals-ai-provider -->
+
 ### Hosting the web UI (cloud / self-hosted)
 
 Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s) — a today-ready single-Mac path on the existing `serve`, plus a fully self-hosted multi-tenant topology.
