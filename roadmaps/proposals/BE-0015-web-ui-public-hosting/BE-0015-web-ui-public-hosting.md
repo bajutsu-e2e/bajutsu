@@ -188,8 +188,8 @@ the multi-tenant, org-scoped pieces are deliberately deferred (see *Still ahead*
 
 A fifth seam, `Repository` (`bajutsu/serve/server/db.py`), built the same way as `ObjectStore`: a
 Protocol, an injected SQLAlchemy 2.0 implementation, an env-driven factory, and a lazy import. The
-schema is fixed up front in the first Alembic migration (adding foreign keys later is painful under
-SQLite, which the gate uses):
+table set and foreign keys are fixed up front in the first Alembic migration (adding them later is
+painful under SQLite, which the gate uses); `users.role` was added by a follow-up migration (0002):
 
 ```
 orgs       id, slug (unique), name, created_at
@@ -214,7 +214,8 @@ listing waits for multi-tenancy.)
 Sessions moved off the in-memory `set[str]` behind a `SessionStore` seam: in-memory locally (a
 restart drops them), Redis with a TTL on the server (surviving restarts, spanning replicas).
 **GitHub OAuth via Authlib** was added as an extra browser sign-in — `/api/oauth/login` +
-`/api/oauth/callback`, a CSRF state cookie, a signed session cookie — gated by a **GitHub-username
+`/api/oauth/callback`, a CSRF state cookie, and an HttpOnly cookie holding an opaque session id
+(checked against the server-side store) — gated by a **GitHub-username
 allowlist** (`BAJUTSU_OAUTH_ALLOWED_USERS`), with the login bound to the session as the user's
 identity. It coexists with the shared token (BE-0051): the token stays the operator credential (full
 access, e.g. for CI), OAuth is the per-user browser login. `operations` stays provider-agnostic;

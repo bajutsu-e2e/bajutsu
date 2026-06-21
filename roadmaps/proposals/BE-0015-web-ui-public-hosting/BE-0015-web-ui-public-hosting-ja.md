@@ -185,8 +185,9 @@ Redis、オブジェクトストレージも要らない）。各スライスを
 #### 7a 永続化レイヤ（#144、#145）
 
 5 本目の seam `Repository`（`bajutsu/serve/server/db.py`）を、`ObjectStore` と同じ作りで置きました。Protocol、
-注入する SQLAlchemy 2.0 実装、環境変数から組み立てるファクトリ、遅延 import です。スキーマは最初の Alembic
-マイグレーションで決め切っています（後から外部キーを足すのは、ゲートが使う SQLite では苦痛だからです）。
+注入する SQLAlchemy 2.0 実装、環境変数から組み立てるファクトリ、遅延 import です。テーブル一式と外部キーは
+最初の Alembic マイグレーションで決め切っています（後から足すのは、ゲートが使う SQLite では苦痛だからです）。
+`users.role` は後続のマイグレーション（0002）で追加しました。
 
 ```
 orgs       id, slug（一意）, name, created_at
@@ -210,7 +211,8 @@ SQLite（ゲート）でも Postgres（本番）でも動きます。配線は s
 セッションをインメモリの `set[str]` から `SessionStore` seam へ移しました。ローカルはインメモリ（再起動で
 消える）、サーバは TTL 付きの Redis（再起動を越え、レプリカを跨ぐ）です。**Authlib による GitHub OAuth** を、
 ブラウザ向けの追加のサインイン手段として加えました。`/api/oauth/login` と `/api/oauth/callback`、CSRF state
-cookie、署名付きセッション cookie からなり、**GitHub username の許可リスト**（`BAJUTSU_OAUTH_ALLOWED_USERS`）で
+cookie、そして不透明な session id を入れた HttpOnly cookie（サーバ側ストアで検証）からなり、
+**GitHub username の許可リスト**（`BAJUTSU_OAUTH_ALLOWED_USERS`）で
 制限し、ログインした login をセッションの identity として紐付けます。共有トークン（BE-0051）とは共存し、
 トークンはオペレータの認証（full access、CI など）、OAuth はユーザごとのブラウザログインです。`operations` 層は
 provider に依存せず、認証は handler/app のミドルウェアに置きます。依存は `authlib` extra が担います。
