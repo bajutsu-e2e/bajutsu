@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.backends import default_available, make_driver, resolve_actuators, select_actuator
+from bajutsu.backends import (
+    default_available,
+    ensure_web_runtime,
+    make_driver,
+    resolve_actuators,
+    select_actuator,
+)
 from bajutsu.drivers import base
 
 
@@ -103,3 +109,45 @@ def test_make_driver_planned_backend() -> None:
 def test_make_driver_unknown() -> None:
     with pytest.raises(ValueError, match="bogus"):
         make_driver("bogus", "U")
+
+
+def test_ensure_web_runtime_noop_when_not_web(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A non-web backend never shells out — auto-install is scoped to the web actuator.
+    calls: list[list[str]] = []
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: calls.append(a[0]))
+    ensure_web_runtime(["ios", "fake"])
+    assert calls == []
+
+
+def test_ensure_web_runtime_noop_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Web requested but Playwright already present: no install attempt.
+    calls: list[list[str]] = []
+    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: True)
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: calls.append(a[0]))
+    ensure_web_runtime(["web"])
+    assert calls == []
+
+
+def test_ensure_web_runtime_installs_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Web requested + Playwright absent: install the package additively (uv pip), then Chromium.
+    calls: list[list[str]] = []
+    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
+    ensure_web_runtime(["web"])
+    assert calls[0][:3] == ["uv", "pip", "install"] and "playwright" in calls[0]
+    assert calls[1][1:] == ["-m", "playwright", "install", "chromium"]
+
+
+def test_ensure_web_runtime_reports_install_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A failed install surfaces a RuntimeError with a manual-install hint, so `run` exits 2
+    # cleanly instead of crashing.
+    import subprocess
+
+    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+
+    def boom(cmd: list[str], **k: object) -> None:
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr("subprocess.run", boom)
+    with pytest.raises(RuntimeError, match="auto-install the web backend"):
+        ensure_web_runtime(["web"])

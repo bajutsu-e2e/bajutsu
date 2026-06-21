@@ -76,7 +76,7 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
         status, resp = _post(port, "/api/config", {"path": "bajutsu.config.yaml"})
         assert status == 200 and resp["ok"] is True and resp["apps"] == ["demo", "other"]
         assert _get_json(port, "/api/config")["hasConfig"] is True
-        assert _get_json(port, "/api/apps") == ["demo", "other"]
+        assert [a["name"] for a in _get_json(port, "/api/apps")] == ["demo", "other"]
         # A path outside the browse root is rejected.
         status, _ = _post(port, "/api/config", {"path": "/etc/hosts"})
         assert status == 400

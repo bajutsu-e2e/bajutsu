@@ -254,12 +254,13 @@ def run_command(
     dismiss_alerts: bool | None = None,
     config: str = "bajutsu.config.yaml",
     baselines: str = "",
+    headed: bool | None = None,
 ) -> list[str]:
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
-    the CLI).  ``erase`` / ``dismiss_alerts`` are overrides: True/False force the flag on/off,
-    None leaves each scenario's own preconditions.erase / dismissAlerts (the latter on by
-    default) to decide."""
+    the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` are overrides: True/False force the
+    flag on/off, None leaves the app's own config (each scenario's preconditions.erase /
+    dismissAlerts, or the app's headless) to decide."""
     cmd = [
         sys.executable,
         "-m",
@@ -287,6 +288,10 @@ def run_command(
         cmd += ["--dismiss-alerts"]
     elif dismiss_alerts is False:
         cmd += ["--no-dismiss-alerts"]
+    if headed is True:
+        cmd += ["--headed"]
+    elif headed is False:
+        cmd += ["--no-headed"]
     if baselines:
         cmd += ["--baselines", baselines]
     return cmd
@@ -302,6 +307,7 @@ def record_command(
     udid: str = "",
     erase: bool | None = None,
     dismiss_alerts: bool | None = None,
+    headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
 ) -> list[str]:
     """The ``python -m bajutsu record --out OUT --app … --goal …`` argv for an authoring request —
@@ -337,6 +343,10 @@ def record_command(
         cmd += ["--dismiss-alerts"]
     elif dismiss_alerts is False:
         cmd += ["--no-dismiss-alerts"]
+    if headed is True:
+        cmd += ["--headed"]
+    elif headed is False:
+        cmd += ["--no-headed"]
     return cmd
 
 
@@ -351,6 +361,7 @@ def crawl_command(
     max_steps: int = 200,
     erase: bool | None = None,
     dismiss_alerts: bool | None = None,
+    headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
     resume_src: str = "",
     resume_key: str = "",
@@ -392,6 +403,10 @@ def crawl_command(
         cmd += ["--dismiss-alerts"]
     elif dismiss_alerts is False:
         cmd += ["--no-dismiss-alerts"]
+    if headed is True:
+        cmd += ["--headed"]
+    elif headed is False:
+        cmd += ["--no-headed"]
     if resume_src and resume_key:
         # Resuming appends to the existing run: don't erase the device's app state mid-walk.
         cmd += ["--resume-src", resume_src, "--resume-key", resume_key, "--no-erase"]

@@ -24,7 +24,7 @@ def test_http_lists_and_index(tmp_path: Path) -> None:
     try:
         assert b"bajutsu" in _get(port, "/")[1]
         assert _get_json(port, "/api/scenarios?app=demo")[0]["names"] == ["alpha", "beta"]
-        assert _get_json(port, "/api/apps") == ["demo", "other"]
+        assert [a["name"] for a in _get_json(port, "/api/apps")] == ["demo", "other"]
     finally:
         server.shutdown()
         server.server_close()

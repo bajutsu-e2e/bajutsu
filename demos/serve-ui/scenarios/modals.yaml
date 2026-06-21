@@ -1,0 +1,40 @@
+# Modals — the "Open config" and "Settings" overlays open and close, and the Settings AI provider
+# requires an explicit choice. Fully deterministic: the SPA toggles each modal via the `hidden`
+# attribute, and the provider selector starts on its placeholder (no default), so its value is
+# empty, the API-key section shows, and the Bedrock fields stay hidden — all checkable
+# deterministically.
+description: >-
+  Modals — open and close the config file browser and the Settings panel, and assert the Settings
+  AI provider is not pre-selected (the user must pick one explicitly).
+scenarios:
+  - name: the config file browser opens and closes
+    description: Open the "Open config" modal, see the browser chrome, then close it.
+    steps:
+      - tap: { id: nav.open-config }
+      - wait: { for: { id: config.close }, timeout: 5 }
+      - assert:
+          - exists: { id: config.modal }
+          - exists: { id: config.close }
+      - tap: { id: config.close }
+      - wait: { until: { gone: { id: config.modal } }, timeout: 5 }
+    expect:
+      - exists: { id: config.modal, negate: true }
+
+  - name: the settings panel requires an explicit AI-provider choice
+    description: Open Settings; with no provider picked, no provider-specific config shows (the API-key section and the Bedrock fields stay hidden) and Save is rejected with a prompt to choose one.
+    steps:
+      - tap: { id: nav.settings }
+      - wait: { for: { id: settings.close }, timeout: 5 }
+      - assert:
+          - exists: { id: settings.provider }
+          - exists: { id: settings.apikey-section, negate: true }   # no provider picked → no config block shows
+          - exists: { id: settings.bedrock-fields, negate: true }
+      - tap: { id: settings.save }   # nothing selected yet — the placeholder is the active option
+      - wait: { for: { id: settings.status }, timeout: 5 }
+      - assert:
+          # no default: Save refuses until the user explicitly picks a provider
+          - label: { sel: { id: settings.status }, contains: "select an AI provider" }
+      - tap: { id: settings.close }
+      - wait: { until: { gone: { id: settings.modal } }, timeout: 5 }
+    expect:
+      - exists: { id: settings.modal, negate: true }
