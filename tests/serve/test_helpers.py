@@ -53,6 +53,32 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
     assert sorted(helpers._load_config_cached(cfg).apps) == ["demo", "other"]
 
 
+def test_load_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
+    # A YAML syntax error (yaml.YAMLError, not a ValueError) is normalized so the helpers' broad
+    # except still turns it into None rather than escaping and crashing request handling.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps: [unbalanced\n", encoding="utf-8")
+    assert srv.load_config_file(cfg) is None
+    assert srv.list_apps(cfg) == []
+
+
+def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
+    import os
+
+    from bajutsu.serve import helpers
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    # A relative path and the absolute path to the same file share one cache entry (same object).
+    cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        first = helpers._load_config_cached(Path("bajutsu.config.yaml"))
+        assert helpers._load_config_cached(cfg) is first
+    finally:
+        os.chdir(cwd)
+
+
 def test_list_apps_reflects_an_edited_config(tmp_path: Path) -> None:
     import os
 

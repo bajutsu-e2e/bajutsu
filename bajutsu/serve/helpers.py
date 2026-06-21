@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+import yaml
+
 from bajutsu import env
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
 from bajutsu.config import Config, load_config, resolve
@@ -75,27 +77,34 @@ def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
     return out
 
 
-# Parsed-config cache, keyed by path and a freshness stamp ``(st_mtime_ns, st_size)``. The serve
-# config is read on most requests (apps/scenarios listing, org resolution); without this each one
-# re-reads and re-validates the YAML. An edit changes the stamp, so a stale entry is never served.
-# A lock guards the dict since serve handles requests on multiple threads.
+# Parsed-config cache, keyed by the resolved path and a freshness stamp ``(st_mtime_ns, st_size)``.
+# The serve config is read on most requests (apps/scenarios listing, org resolution); without this
+# each one re-reads and re-validates the YAML. The entry is invalidated whenever the file's mtime or
+# size changes; an edit that preserves both (a same-size rewrite that also keeps the timestamp) won't
+# be noticed, which is acceptable for an operator-edited config. A lock guards the dict since serve
+# handles requests on multiple threads.
 _config_cache: dict[str, tuple[tuple[int, int], Config]] = {}
 _config_cache_lock = threading.Lock()
 
 
 def _load_config_cached(config_path: Path) -> Config:
-    """The parsed config at *config_path*, cached by file mtime+size so a request parses it at most
-    once and unchanged files aren't re-parsed across requests. Raises on a read/validation error
-    (callers handle it); only successful parses are cached, so a fix to a bad config is picked up at
-    once."""
+    """The parsed config at *config_path*, cached by resolved path + file mtime/size so a request
+    parses it at most once and unchanged files aren't re-parsed across requests. Raises on a
+    read/validation error (callers handle it); a malformed-YAML error is normalized to `ValueError`
+    so the callers' `except (OSError, ValueError)` covers it. Only successful parses are cached, so a
+    fix to a bad config is picked up at once."""
     stat = config_path.stat()
     stamp = (stat.st_mtime_ns, stat.st_size)
-    key = str(config_path)
+    # Canonicalize the key so the same file via a relative/absolute/symlinked path shares one entry.
+    key = str(config_path.resolve())
     with _config_cache_lock:
         cached = _config_cache.get(key)
         if cached is not None and cached[0] == stamp:
             return cached[1]
-    config = load_config(config_path.read_text(encoding="utf-8"))
+    try:
+        config = load_config(config_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ValueError(str(e)) from e  # so callers catching ValueError handle a malformed config
     with _config_cache_lock:
         _config_cache[key] = (stamp, config)
     return config
