@@ -793,35 +793,35 @@ function initTiling(){
     {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
   ];
   const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
-  const valid=(t,keys)=>{try{const l=leaves(t);return l.length===keys.length&&new Set(l).size===l.length&&l.every(k=>keys.includes(k))}catch(e){return false}};
+  const valid=(t,keys)=>{try{const l=leaves(t);return l.length===keys.length&&new Set(l).size===l.length&&l.every(k=>keys.includes(k));}catch(e){return false;}};
   let saved={};
-  try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
+  try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
   const views=[];
   let pdrag=null,ind=null;
-  const save=()=>{const s={};views.forEach(V=>s[V.spec.id]=V.tree);try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}};
+  const save=()=>{const s={};views.forEach(V=>s[V.spec.id]=V.tree);try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}};
   const keyOf=(V,el)=>Object.keys(V.panel).find(k=>V.panel[k]===el);
   function render(V,node){
-    if(typeof node==='string'){const el=V.panel[node];el.classList.add('tile-leaf');el.style.height='auto';el.style.minWidth='0';el.style.minHeight='0';return el}
+    if(typeof node==='string'){const el=V.panel[node];el.classList.add('tile-leaf');el.style.height='auto';el.style.minWidth='0';el.style.minHeight='0';return el;}
     const sp=document.createElement('div');sp.className='tile-split tile-'+node.d;
     node.k.forEach((kid,i)=>{
-      if(i>0){const dv=document.createElement('div');dv.className='tile-divider';dv.addEventListener('mousedown',e=>startResize(V,e,dv,node,i));sp.appendChild(dv)}
+      if(i>0){const dv=document.createElement('div');dv.className='tile-divider';dv.addEventListener('mousedown',e=>startResize(V,e,dv,node,i));sp.appendChild(dv);}
       const el=render(V,kid);el.style.flex=(node.s[i]??1)+' 1 0';sp.appendChild(el);
     });
     return sp;
   }
-  const rebuild=V=>{const r=render(V,V.tree);r.classList.add('tile-root');V.view.replaceChildren(r)};
+  const rebuild=V=>{const r=render(V,V.tree);r.classList.add('tile-root');V.view.replaceChildren(r);};
   function startResize(V,e,dv,node,i){
     e.preventDefault();const row=node.d==='row',a=dv.previousElementSibling,b=dv.nextElementSibling;
     const ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),tot=row?ra.width+rb.width:ra.height+rb.height,start=row?e.clientX:e.clientY,s0=row?ra.width:ra.height;
     dv.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor=row?'col-resize':'row-resize';
-    const mv=ev=>{const n0=Math.max(80,Math.min(tot-80,s0+(row?ev.clientX:ev.clientY)-start));node.s[i-1]=n0;node.s[i]=tot-n0;a.style.flex=n0+' 1 0';b.style.flex=(tot-n0)+' 1 0'};
-    const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);dv.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';save()};
+    const mv=ev=>{const n0=Math.max(80,Math.min(tot-80,s0+(row?ev.clientX:ev.clientY)-start));node.s[i-1]=n0;node.s[i]=tot-n0;a.style.flex=n0+' 1 0';b.style.flex=(tot-n0)+' 1 0';};
+    const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);dv.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';save();};
     window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);
   }
   const zdir=z=>(z==='left'||z==='right')?'row':'col';
   function removeLeaf(n,key){
     if(typeof n==='string')return n===key?null:n;
-    const k=[],s=[];n.k.forEach((c,i)=>{const r=removeLeaf(c,key);if(r!==null){k.push(r);s.push(n.s[i]??1)}});
+    const k=[],s=[];n.k.forEach((c,i)=>{const r=removeLeaf(c,key);if(r!==null){k.push(r);s.push(n.s[i]??1);}});
     return k.length===0?null:k.length===1?k[0]:{d:n.d,k,s};
   }
   function insertBeside(n,tgt,key,z){
@@ -829,7 +829,7 @@ function initTiling(){
     if(typeof n==='string')return n===tgt?{d:dir,k:before?[key,n]:[n,key],s:[1,1]}:n;
     const i=n.k.findIndex(c=>c===tgt);
     if(i>=0){
-      if(n.d===dir){const k=n.k.slice(),s=n.s.slice();k.splice(before?i:i+1,0,key);s.splice(before?i:i+1,0,s[i]??1);return {d:n.d,k,s}}
+      if(n.d===dir){const k=n.k.slice(),s=n.s.slice();k.splice(before?i:i+1,0,key);s.splice(before?i:i+1,0,s[i]??1);return {d:n.d,k,s};}
       return {d:n.d,k:n.k.map((c,j)=>j===i?{d:dir,k:before?[key,c]:[c,key],s:[1,1]}:c),s:n.s.slice()};
     }
     return {d:n.d,k:n.k.map(c=>insertBeside(c,tgt,key,z)),s:n.s.slice()};
@@ -837,24 +837,24 @@ function initTiling(){
   const swapKeys=(n,a,b)=>typeof n==='string'?(n===a?b:n===b?a:n):{d:n.d,k:n.k.map(c=>swapKeys(c,a,b)),s:n.s.slice()};
   function normalize(n){
     if(typeof n==='string')return n;
-    const k=[],s=[];n.k.forEach((c,i)=>{const x=normalize(c);if(typeof x!=='string'&&x.d===n.d){k.push(...x.k);s.push(...x.s)}else{k.push(x);s.push(n.s[i]??1)}});
+    const k=[],s=[];n.k.forEach((c,i)=>{const x=normalize(c);if(typeof x!=='string'&&x.d===n.d){k.push(...x.k);s.push(...x.s);}else{k.push(x);s.push(n.s[i]??1);}});
     return k.length===1?k[0]:{d:n.d,k,s};
   }
   function showInd(t,z){
-    if(!ind){ind=document.createElement('div');ind.className='tile-dropind';document.body.appendChild(ind)}
+    if(!ind){ind=document.createElement('div');ind.className='tile-dropind';document.body.appendChild(ind);}
     const r=t.getBoundingClientRect();let x=r.left,y=r.top,w=r.width,h=r.height;
-    if(z==='left')w/=2;else if(z==='right'){x+=w/2;w/=2}else if(z==='top')h/=2;else if(z==='bottom'){y+=h/2;h/=2}
+    if(z==='left')w/=2;else if(z==='right'){x+=w/2;w/=2;}else if(z==='top')h/=2;else if(z==='bottom'){y+=h/2;h/=2;}
     ind.style.cssText=`display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
   }
-  const hideInd=()=>{if(ind)ind.style.display='none'};
+  const hideInd=()=>{if(ind)ind.style.display='none';};
   SPECS.forEach(spec=>{
     const view=document.getElementById(spec.id);if(!view)return;
-    const panel={};for(const k in spec.sel){const el=view.querySelector(spec.sel[k]);if(el)panel[k]=el}
+    const panel={};for(const k in spec.sel){const el=view.querySelector(spec.sel[k]);if(el)panel[k]=el;}
     const keys=Object.keys(panel);if(!keys.length)return;
     const V={spec,view,panel,keys,tree:(saved[spec.id]&&valid(saved[spec.id],keys))?saved[spec.id]:spec.def};
     keys.forEach(k=>{
       const g=document.createElement('div');g.className='tile-grip';g.title='ドラッグして移動／入れ替え';g.textContent='⠿';
-      g.addEventListener('mousedown',e=>{e.preventDefault();pdrag={V,key:k};panel[k].classList.add('tile-dragging');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing'});
+      g.addEventListener('mousedown',e=>{e.preventDefault();pdrag={V,key:k};panel[k].classList.add('tile-dragging');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing';});
       panel[k].appendChild(g);
     });
     rebuild(V);views.push(V);
@@ -862,7 +862,7 @@ function initTiling(){
   window.addEventListener('mousemove',e=>{
     if(!pdrag)return;
     const el=document.elementFromPoint(e.clientX,e.clientY),t=el&&el.closest('.tile-leaf');
-    if(!t||!pdrag.V.view.contains(t)||t===pdrag.V.panel[pdrag.key]){pdrag.t=null;hideInd();return}
+    if(!t||!pdrag.V.view.contains(t)||t===pdrag.V.panel[pdrag.key]){pdrag.t=null;hideInd();return;}
     const r=t.getBoundingClientRect(),zx=(e.clientX-r.left)/r.width,zy=(e.clientY-r.top)/r.height,mn=Math.min(zx,1-zx,zy,1-zy);
     const z=mn>=0.28?'center':mn===zx?'left':mn===1-zx?'right':mn===zy?'top':'bottom';
     pdrag.t=t;pdrag.tkey=keyOf(pdrag.V,t);pdrag.z=z;showInd(t,z);
@@ -874,7 +874,7 @@ function initTiling(){
       try{
         V.tree=pdrag.z==='center'?swapKeys(V.tree,pdrag.key,pdrag.tkey):normalize(insertBeside(removeLeaf(V.tree,pdrag.key),pdrag.tkey,pdrag.key,pdrag.z));
         if(!valid(V.tree,V.keys))V.tree=JSON.parse(bak);
-      }catch(err){V.tree=JSON.parse(bak)}
+      }catch(err){V.tree=JSON.parse(bak);}
       rebuild(V);save();
     }
     V.panel[pdrag.key].classList.remove('tile-dragging');document.body.classList.remove('reordering-active');document.body.style.userSelect='';document.body.style.cursor='';hideInd();pdrag=null;
