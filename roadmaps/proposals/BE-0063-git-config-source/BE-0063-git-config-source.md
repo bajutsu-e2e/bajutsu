@@ -12,8 +12,9 @@
 
 Every command today takes `--config <path>` as a **local filesystem path** (default
 `bajutsu.config.yaml`), and the config's `scenarios` / `baselines` / `setup` / `appPath` / `build`
-entries are paths **relative to the working directory**. This proposal lets `--config` (and the
-serve UI's config picker) name a **Git repository at a ref** instead —
+entries are paths **relative to the working directory**. This proposal lets the `--config` flag on
+every command (`run` / `record` / `doctor` / `crawl`) and the serve UI's config picker name a
+**Git repository at a ref** instead —
 `github:<owner>/<repo>@<ref>:<path>` — so Bajutsu materializes that repo subtree at the ref, loads
 the config from it, and resolves the config's relative paths against the checked-out tree. Only the
 *acquisition* of the config-and-scenarios bundle changes; the schema, the runner, the drivers, and
@@ -160,7 +161,33 @@ the same config and tree — exactly
 and plumbing move" and [DESIGN §6.5](../../../DESIGN.md)'s "git holds the history." Per-app
 differences stay in the config; the tool does not branch per repository.
 
-### serve integration (the first consumer)
+### CLI surface (run / doctor / record / crawl)
+
+Because the resolver lives behind `_load_effective`, every command that takes `--config` accepts a
+Git source with no per-command change — this is the CI and scripting path, distinct from the serve
+GUI below. Two kinds of command consume a Git source differently:
+
+- **Read-only — `run` and `doctor`.** The natural Git-source consumers, and the point of the CI
+  case: they read the config (and, for `run`, the scenarios) from the materialized checkout and
+  execute or score against them, writing nothing back.
+  - `bajutsu run --config github:acme/mobile-tests@v1.4.0:e2e/bajutsu.config.yaml --app checkout`
+  - `bajutsu doctor --config github:acme/mobile-tests@main:e2e/bajutsu.config.yaml --app checkout`
+  - `--app <name>` selects an entry from the *fetched* config's `apps:`, exactly as with a local
+    config; `--backend` / `--udid` / `--workers` / `--scenario` are unchanged.
+- **Authoring — `record` and `crawl`.** These *produce* new files (a scenario, a `screenmap.json`),
+  which the read-only, SHA-keyed cache cannot receive. A Git source is therefore **read-only input**:
+  they may resolve the app config and existing scenarios from it (context for the agent), but the
+  generated artifact is written to a **local path** (`--out`, defaulting under the current
+  directory), never into the cache. The author reviews that file and commits it to the repository
+  through normal git — exactly [DESIGN §6.5](../../../DESIGN.md)'s "AI output is a reviewable diff the
+  human commits," unchanged. For a tight local authoring loop, point `--config` at a local checkout
+  as today.
+
+Two switches ride along on every command: `--config-offline` (use the cache, never touch the
+network) and `--require-pinned-config` (fail rather than warn on a bare branch, for a gate — see
+*Determinism* above).
+
+### serve surface (the GUI consumer)
 
 The serve config picker — today a local file browser confined to `--root` — gains a "from Git" mode:
 fields for repository, ref, and path, or a single `github:…` string. On open, serve resolves and
@@ -195,6 +222,11 @@ applies to the checkout root just as it does to `--root` today.
 - **Resolve relative paths against the caller's current directory even for a Git source.** Rejected:
   the caller's directory has nothing to do with the fetched tree, so paths must resolve against the
   materialized checkout root, which is why the path base is made explicit.
+- **Let `record` / `crawl` write back into the Git source.** Rejected: the cache is content-addressed
+  by an immutable commit SHA, so writing into it would break that invariant and the change would be
+  ephemeral (a later prune could drop it). Authoring instead emits to a local path the human commits
+  through git — the same review-then-commit flow as today, consistent with treating a Git source as
+  read-only input.
 
 ## References
 
