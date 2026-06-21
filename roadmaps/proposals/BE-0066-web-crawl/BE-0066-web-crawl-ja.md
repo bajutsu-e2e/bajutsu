@@ -1,8 +1,8 @@
-[English](BE-XXXX-web-crawl.md) · **日本語**
+[English](BE-0066-web-crawl.md) · **日本語**
 
-# BE-XXXX — Web crawl（Playwright backend）
+# BE-0066 — Web crawl（Playwright backend）
 
-* 提案: [BE-XXXX](BE-XXXX-web-crawl-ja.md)
+* 提案: [BE-0066](BE-0066-web-crawl-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
