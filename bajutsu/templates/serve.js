@@ -781,60 +781,103 @@ function initSplitters(){
 restoreSplits();
 initSplitters();
 
-// Panel reordering: each reorderable panel gets a small grip; drag it onto a sibling to reorder
-// the panels within that view. Order is applied via CSS `order` (so it composes with the gutter
-// columns/rows) and persists in localStorage. Record's controls↔stack and the crawl plan/console
-// are left out — they'd nest with the row stack / interleave with section labels.
-function initReorder(){
-  const KEY='bajutsu-panel-order';
-  const GROUPS=[
-    {sel:'#view-replay',axis:'x',map:{left:'controls',logpanel:'log',report:'report'}},
-    {sel:'#view-record .rec-stack',axis:'y',map:{logpanel:'log',yamlpanel:'yaml'}},
-    {sel:'#view-crawl',axis:'x',map:{left:'controls',crawlpanel:'crawl'}},
+// Tiling layout (Record/Replay): drag a panel's grip and drop on another panel's edge to split
+// that way (up/down/left/right), or on its center to swap the two. Dividers resize both axes and
+// the layout tree persists in localStorage. A node is either a leaf (panel key) or a split
+// {d:'row'|'col', k:[node…], s:[size…]}. Crawl keeps its grid (its graph isn't suited to tiling).
+function initTiling(){
+  const KEY='bajutsu-tiles';
+  const SPECS=[
+    {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
+    {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel'}},
   ];
-  const panels=c=>[...c.children].filter(x=>x.dataset.panel);
-  const gutters=c=>[...c.children].filter(x=>x.classList.contains('gutter'));
-  function order(c,keys){
-    const ps=panels(c),by={};ps.forEach(p=>by[p.dataset.panel]=p);
-    const seq=keys.filter(k=>by[k]);ps.forEach(p=>{if(seq.indexOf(p.dataset.panel)<0)seq.push(p.dataset.panel)});
-    seq.forEach((k,i)=>by[k].style.order=i*2);
-    gutters(c).forEach((g,i)=>g.style.order=i*2+1);
-  }
-  const keysOf=c=>panels(c).slice().sort((a,b)=>(parseInt(a.style.order)||0)-(parseInt(b.style.order)||0)).map(p=>p.dataset.panel);
+  const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
+  const valid=(t,keys)=>{try{const l=leaves(t);return l.length===keys.length&&new Set(l).size===l.length&&l.every(k=>keys.includes(k))}catch(e){return false}};
   let saved={};try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
-  const save=()=>{const s={};GROUPS.forEach(g=>{const c=document.querySelector(g.sel);if(c)s[g.sel]=keysOf(c)});try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}};
-  let drag=null;
-  GROUPS.forEach(g=>{
-    const c=document.querySelector(g.sel);if(!c)return;
-    [...c.children].forEach(ch=>{for(const cls in g.map)if(ch.classList.contains(cls))ch.dataset.panel=g.map[cls]});
-    order(c,(saved[g.sel]&&saved[g.sel].length)?saved[g.sel]:panels(c).map(p=>p.dataset.panel));
-    panels(c).forEach(p=>{
-      const grip=document.createElement('div');
-      grip.className='reorder-grip';grip.title='ドラッグして並び替え';grip.textContent='⠿';
-      grip.addEventListener('mousedown',ev=>{ev.preventDefault();drag={c,axis:g.axis,panel:p};p.classList.add('reordering');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing'});
-      p.appendChild(grip);
+  const views=[];let pdrag=null,ind=null;
+  const save=()=>{const s={};views.forEach(V=>s[V.spec.id]=V.tree);try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}};
+  const keyOf=(V,el)=>Object.keys(V.panel).find(k=>V.panel[k]===el);
+  function render(V,node){
+    if(typeof node==='string'){const el=V.panel[node];el.classList.add('tile-leaf');el.style.height='auto';el.style.minWidth='0';el.style.minHeight='0';return el}
+    const sp=document.createElement('div');sp.className='tile-split tile-'+node.d;
+    node.k.forEach((kid,i)=>{
+      if(i>0){const dv=document.createElement('div');dv.className='tile-divider';dv.addEventListener('mousedown',e=>startResize(V,e,dv,node,i));sp.appendChild(dv)}
+      const el=render(V,kid);el.style.flex=(node.s[i]??1)+' 1 0';sp.appendChild(el);
     });
+    return sp;
+  }
+  const rebuild=V=>{const r=render(V,V.tree);r.classList.add('tile-root');V.view.replaceChildren(r)};
+  function startResize(V,e,dv,node,i){
+    e.preventDefault();const row=node.d==='row',a=dv.previousElementSibling,b=dv.nextElementSibling;
+    const ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),tot=row?ra.width+rb.width:ra.height+rb.height,start=row?e.clientX:e.clientY,s0=row?ra.width:ra.height;
+    dv.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor=row?'col-resize':'row-resize';
+    const mv=ev=>{const n0=Math.max(80,Math.min(tot-80,s0+(row?ev.clientX:ev.clientY)-start));node.s[i-1]=n0;node.s[i]=tot-n0;a.style.flex=n0+' 1 0';b.style.flex=(tot-n0)+' 1 0'};
+    const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);dv.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';save()};
+    window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);
+  }
+  const zdir=z=>(z==='left'||z==='right')?'row':'col';
+  function removeLeaf(n,key){
+    if(typeof n==='string')return n===key?null:n;
+    const k=[],s=[];n.k.forEach((c,i)=>{const r=removeLeaf(c,key);if(r!==null){k.push(r);s.push(n.s[i]??1)}});
+    return k.length===0?null:k.length===1?k[0]:{d:n.d,k,s};
+  }
+  function insertBeside(n,tgt,key,z){
+    const dir=zdir(z),before=(z==='left'||z==='top');
+    if(typeof n==='string')return n===tgt?{d:dir,k:before?[key,n]:[n,key],s:[1,1]}:n;
+    const i=n.k.findIndex(c=>c===tgt);
+    if(i>=0){
+      if(n.d===dir){const k=n.k.slice(),s=n.s.slice();k.splice(before?i:i+1,0,key);s.splice(before?i:i+1,0,s[i]??1);return {d:n.d,k,s}}
+      return {d:n.d,k:n.k.map((c,j)=>j===i?{d:dir,k:before?[key,c]:[c,key],s:[1,1]}:c),s:n.s.slice()};
+    }
+    return {d:n.d,k:n.k.map(c=>insertBeside(c,tgt,key,z)),s:n.s.slice()};
+  }
+  const swapKeys=(n,a,b)=>typeof n==='string'?(n===a?b:n===b?a:n):{d:n.d,k:n.k.map(c=>swapKeys(c,a,b)),s:n.s.slice()};
+  function normalize(n){
+    if(typeof n==='string')return n;
+    const k=[],s=[];n.k.forEach((c,i)=>{const x=normalize(c);if(typeof x!=='string'&&x.d===n.d){k.push(...x.k);s.push(...x.s)}else{k.push(x);s.push(n.s[i]??1)}});
+    return k.length===1?k[0]:{d:n.d,k,s};
+  }
+  function showInd(t,z){
+    if(!ind){ind=document.createElement('div');ind.className='tile-dropind';document.body.appendChild(ind)}
+    const r=t.getBoundingClientRect();let x=r.left,y=r.top,w=r.width,h=r.height;
+    if(z==='left')w/=2;else if(z==='right'){x+=w/2;w/=2}else if(z==='top')h/=2;else if(z==='bottom'){y+=h/2;h/=2}
+    ind.style.cssText=`display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+  }
+  const hideInd=()=>{if(ind)ind.style.display='none'};
+  SPECS.forEach(spec=>{
+    const view=document.getElementById(spec.id);if(!view)return;
+    const panel={};for(const k in spec.sel){const el=view.querySelector(spec.sel[k]);if(el)panel[k]=el}
+    const keys=Object.keys(panel);if(!keys.length)return;
+    const V={spec,view,panel,keys,tree:(saved[spec.id]&&valid(saved[spec.id],keys))?saved[spec.id]:spec.def};
+    keys.forEach(k=>{
+      const g=document.createElement('div');g.className='tile-grip';g.title='ドラッグして移動／入れ替え';g.textContent='⠿';
+      g.addEventListener('mousedown',e=>{e.preventDefault();pdrag={V,key:k};panel[k].classList.add('tile-dragging');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing'});
+      panel[k].appendChild(g);
+    });
+    rebuild(V);views.push(V);
   });
   window.addEventListener('mousemove',e=>{
-    if(!drag)return;
-    const el=document.elementFromPoint(e.clientX,e.clientY),tp=el&&el.closest('[data-panel]');
-    panels(drag.c).forEach(p=>p.classList.toggle('dropzone',p===tp&&p!==drag.panel&&p.parentElement===drag.c));
+    if(!pdrag)return;
+    const el=document.elementFromPoint(e.clientX,e.clientY),t=el&&el.closest('.tile-leaf');
+    if(!t||!pdrag.V.view.contains(t)||t===pdrag.V.panel[pdrag.key]){pdrag.t=null;hideInd();return}
+    const r=t.getBoundingClientRect(),zx=(e.clientX-r.left)/r.width,zy=(e.clientY-r.top)/r.height,mn=Math.min(zx,1-zx,zy,1-zy);
+    const z=mn>=0.28?'center':mn===zx?'left':mn===1-zx?'right':mn===zy?'top':'bottom';
+    pdrag.t=t;pdrag.tkey=keyOf(pdrag.V,t);pdrag.z=z;showInd(t,z);
   });
-  window.addEventListener('mouseup',e=>{
-    if(!drag)return;
-    const el=document.elementFromPoint(e.clientX,e.clientY),tp=el&&el.closest('[data-panel]');
-    if(tp&&tp!==drag.panel&&tp.parentElement===drag.c){
-      const keys=keysOf(drag.c).filter(k=>k!==drag.panel.dataset.panel),r=tp.getBoundingClientRect();
-      const after=drag.axis==='x'?e.clientX>r.left+r.width/2:e.clientY>r.top+r.height/2;
-      keys.splice(keys.indexOf(tp.dataset.panel)+(after?1:0),0,drag.panel.dataset.panel);
-      order(drag.c,keys);save();
+  window.addEventListener('mouseup',()=>{
+    if(!pdrag)return;const V=pdrag.V;
+    if(pdrag.t&&pdrag.tkey&&pdrag.tkey!==pdrag.key){
+      const bak=JSON.stringify(V.tree);
+      try{
+        V.tree=pdrag.z==='center'?swapKeys(V.tree,pdrag.key,pdrag.tkey):normalize(insertBeside(removeLeaf(V.tree,pdrag.key),pdrag.tkey,pdrag.key,pdrag.z));
+        if(!valid(V.tree,V.keys))V.tree=JSON.parse(bak);
+      }catch(err){V.tree=JSON.parse(bak)}
+      rebuild(V);save();
     }
-    panels(drag.c).forEach(p=>p.classList.remove('dropzone'));
-    drag.panel.classList.remove('reordering');document.body.classList.remove('reordering-active');document.body.style.userSelect='';document.body.style.cursor='';
-    drag=null;
+    V.panel[pdrag.key].classList.remove('tile-dragging');document.body.classList.remove('reordering-active');document.body.style.userSelect='';document.body.style.cursor='';hideInd();pdrag=null;
   });
 }
-initReorder();
+initTiling();
 
 initTheme();
 loadConfig();

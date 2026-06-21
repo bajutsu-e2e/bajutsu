@@ -24,7 +24,9 @@ header .brand{font-weight:700}
 main{flex:1 1 0;min-height:0;overflow:hidden;display:grid;grid-template-columns:var(--rep-left,340px) var(--gw) var(--rep-mid,340px) var(--gw) 1fr;grid-template-rows:1fr;gap:0;padding:1rem;align-items:stretch;--gw:14px}
 main[hidden]{display:none}
 /* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
-#view-record{grid-template-columns:var(--rec-left,340px) var(--gw) 1fr;grid-template-rows:1fr}
+/* Record & Replay are tiled (see initTiling); the tile-root fills the block-level <main>.
+   The :not([hidden]) keeps these id-level rules from overriding main[hidden]{display:none}. */
+#view-record:not([hidden]),#view-replay:not([hidden]){display:block}
 .rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:100%;min-height:0}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{min-height:0;height:auto}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
@@ -36,12 +38,25 @@ main[hidden]{display:none}
 .gutter.row{cursor:row-resize}
 .gutter.row::before{top:50%;bottom:auto;left:0;right:0;width:auto;height:1px;transform:translateY(-50%)}
 .gutter.row:hover::before,.gutter.row.dragging::before{width:auto;height:3px}
-/* Panel reordering: a small grip tab per panel; drag it onto a sibling to reorder them in-view. */
-[data-panel]{position:relative}
-.reorder-grip{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:20;width:2.4rem;height:.95rem;display:flex;align-items:center;justify-content:center;color:var(--mut);background:var(--bg2);border:1px solid var(--line);border-top:none;border-radius:0 0 7px 7px;cursor:grab;opacity:.45;font-size:.7em;line-height:1;user-select:none}
-.reorder-grip:hover{opacity:1;color:var(--acc);border-color:var(--acc)}
-[data-panel].reordering{opacity:.55}
-[data-panel].dropzone{outline:2px dashed var(--acc);outline-offset:-3px}
+/* Tiling layout (Record/Replay): nested flex splits with resize dividers, a drag grip per panel,
+   and a drop indicator. Drop on an edge to split that way, on the center to swap. */
+.tile-root{height:100%;width:100%}
+.tile-split{display:flex;width:100%;height:100%;min-width:0;min-height:0}
+.tile-row{flex-direction:row}.tile-col{flex-direction:column}
+.tile-split>*{min-width:0;min-height:0}
+.tile-leaf{position:relative;overflow:hidden}
+.tile-divider{flex:0 0 10px;position:relative;z-index:5}
+.tile-row>.tile-divider{cursor:col-resize}.tile-col>.tile-divider{cursor:row-resize}
+.tile-divider::before{content:"";position:absolute;background:var(--line)}
+.tile-row>.tile-divider::before{top:0;bottom:0;left:50%;transform:translateX(-50%);width:1px}
+.tile-col>.tile-divider::before{left:0;right:0;top:50%;transform:translateY(-50%);height:1px}
+.tile-divider:hover::before,.tile-divider.dragging::before{background:var(--acc)}
+.tile-row>.tile-divider:hover::before,.tile-row>.tile-divider.dragging::before{width:3px}
+.tile-col>.tile-divider:hover::before,.tile-col>.tile-divider.dragging::before{height:3px}
+.tile-grip{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:20;width:2.4rem;height:.95rem;display:flex;align-items:center;justify-content:center;color:var(--mut);background:var(--bg2);border:1px solid var(--line);border-top:none;border-radius:0 0 7px 7px;cursor:grab;opacity:.45;font-size:.7em;line-height:1;user-select:none}
+.tile-grip:hover{opacity:1;color:var(--acc);border-color:var(--acc)}
+.tile-leaf.tile-dragging{opacity:.5}
+.tile-dropind{position:fixed;z-index:40;background:color-mix(in srgb,var(--acc) 22%,transparent);border:2px solid var(--acc);border-radius:6px;pointer-events:none}
 body.reordering-active iframe{pointer-events:none}
 .crawlpanel{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .crawlhead{flex:0 0 auto;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
