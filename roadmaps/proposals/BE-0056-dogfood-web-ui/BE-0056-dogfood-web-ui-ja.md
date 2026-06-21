@@ -1,8 +1,8 @@
-[English](BE-XXXX-dogfood-web-ui.md) · **日本語**
+[English](BE-0056-dogfood-web-ui.md) · **日本語**
 
-# BE-XXXX — serve Web UI の Dogfood（web backend のリグレッション網）
+# BE-0056 — serve Web UI の Dogfood（web backend のリグレッション網）
 
-* 提案: [BE-XXXX](BE-XXXX-dogfood-web-ui-ja.md)
+* 提案: [BE-0056](BE-0056-dogfood-web-ui-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)

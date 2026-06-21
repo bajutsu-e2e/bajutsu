@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-dogfood-web-ui-ja.md)
+**English** · [日本語](BE-0056-dogfood-web-ui-ja.md)
 
-# BE-XXXX — Dogfood the serve Web UI (web-backend regression net)
+# BE-0056 — Dogfood the serve Web UI (web-backend regression net)
 
-* Proposal: [BE-XXXX](BE-XXXX-dogfood-web-ui.md)
+* Proposal: [BE-0056](BE-0056-dogfood-web-ui.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
