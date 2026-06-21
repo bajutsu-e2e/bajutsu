@@ -190,7 +190,7 @@ def test_security_headers_on_every_response(tmp_path: Path) -> None:
     try:
         _, headers, _ = _request(port, "/api/runs")
         assert headers.get("X-Content-Type-Options") == "nosniff"
-        assert headers.get("X-Frame-Options") == "DENY"
+        assert headers.get("X-Frame-Options") == "SAMEORIGIN"
         assert headers.get("Referrer-Policy") == "no-referrer"
     finally:
         server.shutdown()

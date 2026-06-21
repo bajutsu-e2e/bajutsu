@@ -40,8 +40,9 @@ When you add a roadmap item:
    touching `roadmaps/**`, allocates the next free IDs, and pushes the rename back to
    the branch. This is what the `ideation` skill does, and it avoids two
    in-flight branches racing for the same number.
-2. **Create the item directory and both language files** under `roadmaps/proposals/` (a new
-   item is always a proposal first) —
+2. **Create the item directory and both language files** — under `roadmaps/proposals/` for a
+   proposal, or under `roadmaps/implemented/` with `Status: Implemented` when the same PR also ships
+   the implementation (a new item is a proposal first *unless* its code lands with it) —
    `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md` (English) and
    `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). **Don't hand-edit the
    index tables below** — they are generated from each item's own metadata. Run `make roadmap-index`
@@ -167,6 +168,17 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 | [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
 <!-- /GENERATED:accepted-dogfood -->
 
+### Dogfood fixtures (web UI)
+
+Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drives it — a deterministic, Tier-2 regression net for the UI, built on [BE-0041](proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) and the web-side counterpart to the iOS [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) showcase fixtures.
+
+<!-- GENERATED:accepted-dogfood-web-ui -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0058](implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) | Dogfood the serve Web UI (web-backend regression net) | Implemented | Dogfooding |
+| [BE-0059](implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md) | Bring up the target server for a run (`launchServer`) | Implemented | Dogfooding |
+<!-- /GENERATED:accepted-dogfood-web-ui -->
+
 ### AI provider configuration
 
 The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Claude through a
@@ -221,6 +233,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0010](proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Proposal |
 | [BE-0054](proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | Proposal |
 | [BE-0057](proposals/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md) | Rename the config `apps` key to `targets` | Proposal |
+| [BE-0066](proposals/BE-0066-web-crawl/BE-0066-web-crawl.md) | Web crawl (Playwright backend) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
@@ -232,6 +245,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Proposal |
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
 | [BE-0044](proposals/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Proposal |
+| [BE-0060](proposals/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -277,7 +291,16 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
 | [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
+| [BE-0062](proposals/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
+
+### Crawl performance / scale-out
+
+<!-- GENERATED:proposals-crawl -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
+<!-- /GENERATED:proposals-crawl -->
 
 ### Miscellaneous / on hold
 

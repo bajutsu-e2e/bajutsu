@@ -20,6 +20,7 @@ from typing import Any
 
 import yaml
 
+from bajutsu.agents import AGENT_ENV
 from bajutsu.anthropic_client import (
     BEDROCK_MODEL_ENV,
     PROVIDER_ENV,
@@ -92,17 +93,30 @@ def list_scenarios(
     return (scope.list() if scope else []), 200
 
 
+def _primary_backend(config: Any, name: str) -> str:
+    """The app's first (effective) backend token, so the Web UI can tell web from iOS apps."""
+    app = config.apps.get(name)
+    if app is None:
+        return ""
+    backends = app.backend or config.defaults.backend
+    return backends[0] if backends else ""
+
+
 def list_apps_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    # Each app carries its primary backend, so selecting a web app can hide the iOS-only controls
+    # (and show the headed toggle) without the user typing the backend by hand.
     if state.config is None:
+        return [], 200
+    config = load_config_file(state.config)
+    if config is None:
         return [], 200
     # Org scoping applies only on a server backend with a system of record; local serve / token mode
     # ignores `orgs:` and lists every app (BE-0015 multi-tenancy).
     if state.repository is None:
-        return list_apps(state.config), 200
-    config = load_config_file(state.config)
-    if config is None:
-        return [], 200
-    return sorted(apps_for_org(config, state.org_of(actor))), 200
+        names = list_apps(state.config)
+    else:
+        names = sorted(apps_for_org(config, state.org_of(actor)))
+    return [{"name": n, "backend": _primary_backend(config, n)} for n in names], 200
 
 
 def config_info(state: ServeState) -> tuple[Any, int]:
@@ -136,10 +150,13 @@ def api_key_info(state: ServeState, reveal: bool) -> tuple[Any, int]:
 
 
 def provider_info(state: ServeState) -> tuple[Any, int]:
-    """The AI provider spawned jobs will use, with the Bedrock region/model.  Read from the serve
-    process's environment, so it reflects what a record/crawl job inherits."""
+    """The AI mode spawned jobs will use, with the Bedrock region/model.  Read from the serve
+    process's environment, so it reflects what a record/crawl job inherits. `claude-code` is the
+    authoring agent (BAJUTSU_AGENT) reported as a third "provider" so the Settings selector is a
+    single choice; the SDK `provider()` underneath still backs the alert guard / triage."""
+    mode = "claude-code" if os.environ.get(AGENT_ENV) == "claude-code" else provider()
     return {
-        "provider": provider(),
+        "provider": mode,
         "region": os.environ.get("AWS_REGION", ""),
         "model": os.environ.get(BEDROCK_MODEL_ENV, ""),
     }, 200
@@ -433,12 +450,21 @@ def set_api_key(state: ServeState, value: str) -> tuple[Any, int]:
 
 
 def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
-    """Select the AI provider for spawned record/crawl jobs: the Anthropic API or Amazon Bedrock.
-    Written into the serve process's environment for this session only — never to disk — and
-    inherited by jobs, mirroring the API-key handler."""
+    """Select the AI mode for spawned record/crawl jobs: the Anthropic API, Amazon Bedrock, or
+    Claude Code (the `claude` CLI on your subscription). Written into the serve process's
+    environment for this session only — never to disk — and inherited by jobs, mirroring the
+    API-key handler. The first two are SDK providers (`BAJUTSU_AI_PROVIDER`); `claude-code` is an
+    authoring-agent choice (`BAJUTSU_AGENT`) instead, so it leaves the SDK provider at anthropic —
+    the alert guard / triage always use the SDK and fall back to a no-op when unkeyed."""
     prov = str(body.get("provider", "") or "").strip().lower()
+    if prov == "claude-code":
+        os.environ[AGENT_ENV] = "claude-code"
+        os.environ[PROVIDER_ENV] = "anthropic"
+        return {"ok": True, "provider": "claude-code"}, 200
     if prov not in PROVIDERS:
         return {"error": f"unknown provider: {prov or '(empty)'}"}, 400
+    # An SDK provider implies the API authoring agent; clear any prior Claude Code selection.
+    os.environ[AGENT_ENV] = "api"
     if prov == "anthropic":
         os.environ[PROVIDER_ENV] = "anthropic"
         return {"ok": True, "provider": "anthropic"}, 200
@@ -505,6 +531,7 @@ def start_run(
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
         config=config_arg,
         baselines="baselines" if on_worker else str(state.baselines_dir),
+        headed=_bool_flag(body, "headed"),
     )
     app_path, build = app_build_info(cfg, app)
     # Atomic count + create so concurrent dispatches can't both slip past the cap.
@@ -569,6 +596,7 @@ def start_record(
         udid=udid,
         erase=_bool_flag(body, "erase"),
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
+        headed=_bool_flag(body, "headed"),
         config=config_arg,
     )
     app_path, build = app_build_info(cfg, body["app"])
@@ -629,6 +657,7 @@ def start_crawl(
         max_steps=_int(body.get("maxSteps"), 200),
         erase=_bool_flag(body, "erase"),
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
+        headed=_bool_flag(body, "headed"),
         config=str(cfg),
         resume_src=resume_src if resuming else "",
         resume_key=resume_key if resuming else "",

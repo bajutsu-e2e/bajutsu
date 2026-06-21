@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-import os
+import atexit
+from dataclasses import replace
 from pathlib import Path
 
 import typer
 
 from bajutsu import env as _env
 from bajutsu import usage as _usage
-from bajutsu.agents import make_agent
-from bajutsu.backends import select_actuator
+from bajutsu.agents import make_agent, resolve_kind
+from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
 from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
+from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions, dump_scenarios
 
 
@@ -62,21 +64,32 @@ def record(
         help="authoring agent: 'api' (Anthropic API, pay-per-token) or 'claude-code' "
         "(the `claude` CLI, billed to your Claude subscription). Defaults to $BAJUTSU_AGENT or 'api'.",
     ),
+    headed: bool | None = typer.Option(
+        None,
+        "--headed/--no-headed",
+        help="web backend: author against a visible (headed, slow-motion) browser instead of "
+        "headless; default leaves the app's `headless` config",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario. With `--out` it
     writes there; otherwise it auto-names a file under the app's configured `scenarios` dir."""
     eff = _load_effective(config, app_name)
+    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    if headed is not None:
+        eff = replace(eff, headless=not headed)
     out_path = _record_out_path(eff, out, name, goal, app_name)
     before = _usage.snapshot()
-    kind = agent or os.environ.get("BAJUTSU_AGENT") or "api"
+    kind = resolve_kind(agent)
     try:
         authoring_agent = make_agent(kind)
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    backends = _backends(backend, eff.backend)
     try:
-        actuator = select_actuator(_backends(backend, eff.backend))
+        ensure_web_runtime(backends)  # auto-install Playwright if a web record needs it
+        actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -85,7 +98,19 @@ def record(
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
 
         alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
-    udid = _env.resolve_udid(udid)
+    # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
+    # shell out to simctl and crash off-macOS, so skip it for the web backend.
+    if actuator != "playwright":
+        udid = _env.resolve_udid(udid)
+
+    # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
+    # if already serving, started otherwise. Stopped when this command exits (atexit).
+    try:
+        stop_server = start_launch_server(eff)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    atexit.register(stop_server)
 
     # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher
     # knows what's happening before the agent takes over. Progress goes to stderr, like the

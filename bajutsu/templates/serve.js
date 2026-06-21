@@ -148,22 +148,27 @@ async function clearKey(){
 $('#keyreveal').addEventListener('click',toggleReveal);
 $('#keyclear').addEventListener('click',clearKey);
 
-// ---- AI provider: Anthropic API (default) or Amazon Bedrock (AWS credentials) ----
+// ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), or Claude Code (CLI) ----
+// Show only the selected provider's own config block — nothing until one is explicitly picked.
 function renderProv(){
-  const bedrock=$('#provider').value==='bedrock';
-  $('#bedrockfields').hidden=!bedrock;       // region + model id (Bedrock only)
-  $('#apikeysection').hidden=bedrock;         // Claude API key (Anthropic only)
+  const v=$('#provider').value;
+  $('#apikeysection').hidden=v!=='anthropic';      // the Claude API key is the Anthropic provider's config
+  $('#bedrockfields').hidden=v!=='bedrock';        // region + model id
+  $('#claudecodefields').hidden=v!=='claude-code'; // claude CLI prerequisites (no inputs)
 }
 async function loadProv(){
-  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={provider:'anthropic'}}
-  $('#provider').value=(d.provider==='bedrock')?'bedrock':'anthropic';
+  // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
+  // the user must consciously pick one, so the #provider placeholder stays until they do. The
+  // region/model are still pre-filled so picking Bedrock shows the saved values.
+  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
   $('#bedrock-region').value=d.region||'';
   $('#bedrock-model').value=d.model||'';
   renderProv();
 }
-// ---- Settings: one Save persists the provider, plus the API key when on the Anthropic path ----
+// ---- Settings: one Save persists the provider; the API key saves on every path but Bedrock ----
 async function saveSettings(){
   const provider=$('#provider').value,body={provider};
+  if(!provider){setSettingsStatus('select an AI provider','ng');return}  // explicit choice required
   if(provider==='bedrock'){
     body.region=$('#bedrock-region').value.trim();
     body.model=$('#bedrock-model').value.trim();
@@ -172,7 +177,7 @@ async function saveSettings(){
   setSettingsStatus('saving…','');
   let d;try{d=await (await fetch('/api/provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}catch(e){d={error:'request failed'}}
   if(d.error){setSettingsStatus(d.error,'ng');return}
-  if(provider==='anthropic'){
+  if(provider!=='bedrock'){  // Anthropic API needs the key; Claude Code uses it only for the alert guard
     const v=$('#apikey').value.trim();
     if(v){
       let k;try{k=await postKey(v)}catch(e){k={error:'request failed'}}
@@ -200,8 +205,13 @@ async function chooseConfig(path){
 // ---- shared data: apps, scenarios, simulators (used by both views) ----
 async function loadShared(){
   try{apps=await (await fetch('/api/apps')).json()}catch(e){apps=[]}
-  const opts=apps.map(a=>`<option>${esc(a)}</option>`).join('');
+  // each app carries its primary backend (data-backend) so picking a web app hides the iOS-only UI
+  const opts=apps.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
+    return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
   $('#app').innerHTML=opts;$('#rec-app').innerHTML=opts;$('#crawl-app').innerHTML=opts;
+  syncPlatform('#panel-run','#app');
+  syncPlatform('#panel-record','#rec-app');
+  syncPlatform('#panel-crawl','#crawl-app');
   await loadScenarios();
 }
 // Scenarios come from the selected app's configured dir, so reload when the Replay app changes.
@@ -234,9 +244,10 @@ $('#rec-go').addEventListener('click',async()=>{
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    goal,app:$('#rec-app').value,agent:$('#rec-agent').value,backend:$('#rec-backend').value.trim(),
+    goal,app:$('#rec-app').value,
     udid:$('#rec-device').value||'booted',name:$('#rec-name').value.trim()||undefined,
-    erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
+    erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined,
+    headed:$('#rec-headed').checked||undefined})});
   const {jobId,path,error}=await r.json();
   if(error){setStatus($('#rec-status'),error,'ng');setBusy($('#rec-go'),$('#rec-stop'),false);return}
   recPath=path;recJobId=jobId;
@@ -286,8 +297,8 @@ $('#go').addEventListener('click',async()=>{
   setBusy($('#go'),$('#stop'),true,'Running…');$('#out').textContent='';
   setStatus($('#status'),'','run');
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    scenario:$('#scn').value,app:$('#app').value,backend:$('#backend').value.trim(),udid:pickedUdids().join(',')||'booted',
-    workers:parseInt($('#workers').value,10)||1,
+    scenario:$('#scn').value,app:$('#app').value,udid:pickedUdids().join(',')||'booted',
+    workers:parseInt($('#workers').value,10)||1,headed:$('#headed').checked||undefined,
     erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined})});
   const {jobId,error}=await r.json();
   if(error){setStatus($('#status'),error,'ng');setBusy($('#go'),$('#stop'),false);return}
@@ -302,7 +313,32 @@ function runDone(j){
   if(j.runId)setReport(j.runId);
   loadHistory();
 }
-function setReport(id){selectedRun=id;$('#report').innerHTML=`<iframe src="/runs/${id}/report.html"></iframe>`}
+// Show a run's report inline (no iframe): render report.html into a shadow root so its CSS/JS stay
+// isolated, plus an "open full report ↗" link to view it as its own page. report.js is root-aware
+// (window.__bajutsuReportRoot), so its queries + delegated listeners run against the shadow root.
+async function setReport(id){
+  selectedRun=id;
+  const rep=$('#report');
+  rep.innerHTML=`<div class="repbar"><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
+  const host=rep.querySelector('.rephost');
+  let html;
+  try{html=await (await fetch(`/runs/${encodeURIComponent(id)}/report.html`)).text();}
+  catch(e){host.textContent='report unavailable';return;}
+  // No <base> inside a shadow root, so resolve the report's relative asset URLs against its run dir.
+  html=html.replace(/\b(src|href|poster)="(?!https?:|data:|\/|#)([^"]*)"/g,`$1="/runs/${id}/$2"`);
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const scr=doc.querySelector('script'),js=scr?scr.textContent:'';
+  doc.querySelectorAll('script').forEach(s=>s.remove());
+  // :root vars and the body rule don't match inside a shadow root → retarget them to :host.
+  let css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
+    .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
+  const sh=host.attachShadow({mode:'open'});
+  sh.innerHTML=`<style>:host{display:block}\n${css}</style><div data-run-id="${esc(id)}">${doc.body.innerHTML}</div>`;
+  window.__bajutsuReportRoot=sh;                 // report.js reads this to scope to the shadow root
+  // A <script> inside a shadow root doesn't execute, so run it from the document (it still targets
+  // the shadow via window.__bajutsuReportRoot); inline scripts run synchronously, so remove it after.
+  const s=document.createElement('script');s.textContent=js;document.body.appendChild(s);s.remove();
+}
 async function loadHistory(){
   let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');
@@ -329,10 +365,10 @@ $('#crawl-go').addEventListener('click',async()=>{
   $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,agent:$('#crawl-agent').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
+    app:$('#crawl-app').value,udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     erase:$('#crawl-erase').checked,
-    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined})});
+    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined})});
   const {jobId,runId,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
   crawlJobId=jobId;crawlRunId=runId;
@@ -633,9 +669,9 @@ async function resumePruned(src,key){
   setBusy($('#crawl-go'),$('#crawl-stop'),true,'Resuming…');
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,agent:$('#crawl-agent').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
+    app:$('#crawl-app').value,udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
-    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,
+    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
     runId:crawlRunId,resumeSrc:src,resumeKey:key})});
   const {jobId,runId,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
@@ -728,6 +764,164 @@ document.addEventListener('keydown',e=>{
   if($('#shotmodal').hidden)return;
   if(e.key==='ArrowRight')shotStep('fwd');else if(e.key==='ArrowLeft')shotStep('prev');else if(e.key==='Escape')closeShot();
 });
+
+// iOS-only device UI (simulators, device pickers, erase, alert-dismiss) shows only for an iOS
+// backend; web-only UI (the headed/show-browser toggle) shows only for web. The backend is fixed
+// per app by config (no UI override), so this follows the selected app's backend (data-backend) —
+// picking a web app hides the iOS UI. Applies to Record/Replay/Crawl.
+function isIosBackend(v){v=(v||'').trim().toLowerCase();return v===''||v==='idb'||v==='ios'||v==='xcuitest';}
+function appBackend(appSel){const a=$(appSel),o=a&&a.selectedOptions&&a.selectedOptions[0];return (o&&o.dataset.backend)||'';}
+function syncPlatform(panelSel,appSel){
+  const ios=isIosBackend(appBackend(appSel));
+  // Inline display wins over the layout rules on .hhead/.sims/.checks/.row (the `hidden`
+  // attribute's UA display:none would lose to them); removeProperty restores the CSS value.
+  document.querySelectorAll(panelSel+' .iosonly').forEach(el=>{
+    if(ios)el.style.removeProperty('display');else el.style.setProperty('display','none','important');
+  });
+  document.querySelectorAll(panelSel+' .webonly').forEach(el=>{
+    if(ios)el.style.setProperty('display','none','important');else el.style.removeProperty('display');
+  });
+}
+function wirePlatform(panelSel,appSel){
+  const re=()=>syncPlatform(panelSel,appSel);
+  if($(appSel))$(appSel).addEventListener('change',re);  // selecting an app re-evaluates the platform
+  re();
+}
+wirePlatform('#panel-run','#app');
+wirePlatform('#panel-record','#rec-app');
+wirePlatform('#panel-crawl','#crawl-app');
+
+// Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
+// column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.
+const SPLIT_KEY='bajutsu-splits';
+function restoreSplits(){
+  let v={};try{v=JSON.parse(localStorage.getItem(SPLIT_KEY)||'{}')}catch(e){}
+  document.querySelectorAll('main .gutter').forEach(g=>{const w=v[g.dataset.var];if(w)g.closest('main').style.setProperty(g.dataset.var,w)});
+}
+function initSplitters(){
+  let drag=null;
+  document.querySelectorAll('main .gutter').forEach(g=>g.addEventListener('mousedown',e=>{
+    e.preventDefault();
+    const row=g.classList.contains('row'),b=g.previousElementSibling.getBoundingClientRect();
+    drag={g,main:g.closest('main'),v:g.dataset.var,row,pos:row?e.clientY:e.clientX,size:row?b.height:b.width,min:+g.dataset.min||120,max:+g.dataset.max||900};
+    g.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor=row?'row-resize':'col-resize';
+  }));
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return;
+    drag.main.style.setProperty(drag.v,Math.max(drag.min,Math.min(drag.max,drag.size+(drag.row?e.clientY:e.clientX)-drag.pos))+'px');
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!drag)return;
+    drag.g.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';
+    let v={};try{v=JSON.parse(localStorage.getItem(SPLIT_KEY)||'{}')}catch(e){}
+    v[drag.v]=drag.main.style.getPropertyValue(drag.v);
+    try{localStorage.setItem(SPLIT_KEY,JSON.stringify(v))}catch(e){}
+    drag=null;
+  });
+}
+restoreSplits();
+initSplitters();
+
+// Tiling layout (Record/Replay): drag a panel's grip and drop on another panel's edge to split
+// that way (up/down/left/right), or on its center to swap the two. Dividers resize both axes and
+// the layout tree persists in localStorage. A node is either a leaf (panel key) or a split
+// {d:'row'|'col', k:[node…], s:[size…]}. All three views (Record/Replay/Crawl) tile.
+function initTiling(){
+  const KEY='bajutsu-tiles';
+  const SPECS=[
+    {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
+    {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel'}},
+    {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
+  ];
+  const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
+  const valid=(t,keys)=>{try{const l=leaves(t);return l.length===keys.length&&new Set(l).size===l.length&&l.every(k=>keys.includes(k));}catch(e){return false;}};
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  const views=[];
+  let pdrag=null,ind=null;
+  const save=()=>{const s={};views.forEach(V=>s[V.spec.id]=V.tree);try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}};
+  const keyOf=(V,el)=>Object.keys(V.panel).find(k=>V.panel[k]===el);
+  function render(V,node){
+    if(typeof node==='string'){const el=V.panel[node];el.classList.add('tile-leaf');el.style.height='auto';el.style.minWidth='0';el.style.minHeight='0';return el;}
+    const sp=document.createElement('div');sp.className='tile-split tile-'+node.d;
+    node.k.forEach((kid,i)=>{
+      if(i>0){const dv=document.createElement('div');dv.className='tile-divider';dv.addEventListener('mousedown',e=>startResize(V,e,dv,node,i));sp.appendChild(dv);}
+      const el=render(V,kid);el.style.flex=(node.s[i]??1)+' 1 0';sp.appendChild(el);
+    });
+    return sp;
+  }
+  const rebuild=V=>{const r=render(V,V.tree);r.classList.add('tile-root');V.view.replaceChildren(r);};
+  function startResize(V,e,dv,node,i){
+    e.preventDefault();const row=node.d==='row',a=dv.previousElementSibling,b=dv.nextElementSibling;
+    const ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),tot=row?ra.width+rb.width:ra.height+rb.height,start=row?e.clientX:e.clientY,s0=row?ra.width:ra.height;
+    dv.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor=row?'col-resize':'row-resize';
+    const mv=ev=>{const n0=Math.max(80,Math.min(tot-80,s0+(row?ev.clientX:ev.clientY)-start));node.s[i-1]=n0;node.s[i]=tot-n0;a.style.flex=n0+' 1 0';b.style.flex=(tot-n0)+' 1 0';};
+    const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);dv.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';save();};
+    window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);
+  }
+  const zdir=z=>(z==='left'||z==='right')?'row':'col';
+  function removeLeaf(n,key){
+    if(typeof n==='string')return n===key?null:n;
+    const k=[],s=[];n.k.forEach((c,i)=>{const r=removeLeaf(c,key);if(r!==null){k.push(r);s.push(n.s[i]??1);}});
+    return k.length===0?null:k.length===1?k[0]:{d:n.d,k,s};
+  }
+  function insertBeside(n,tgt,key,z){
+    const dir=zdir(z),before=(z==='left'||z==='top');
+    if(typeof n==='string')return n===tgt?{d:dir,k:before?[key,n]:[n,key],s:[1,1]}:n;
+    const i=n.k.findIndex(c=>c===tgt);
+    if(i>=0){
+      if(n.d===dir){const k=n.k.slice(),s=n.s.slice();k.splice(before?i:i+1,0,key);s.splice(before?i:i+1,0,s[i]??1);return {d:n.d,k,s};}
+      return {d:n.d,k:n.k.map((c,j)=>j===i?{d:dir,k:before?[key,c]:[c,key],s:[1,1]}:c),s:n.s.slice()};
+    }
+    return {d:n.d,k:n.k.map(c=>insertBeside(c,tgt,key,z)),s:n.s.slice()};
+  }
+  const swapKeys=(n,a,b)=>typeof n==='string'?(n===a?b:n===b?a:n):{d:n.d,k:n.k.map(c=>swapKeys(c,a,b)),s:n.s.slice()};
+  function normalize(n){
+    if(typeof n==='string')return n;
+    const k=[],s=[];n.k.forEach((c,i)=>{const x=normalize(c);if(typeof x!=='string'&&x.d===n.d){k.push(...x.k);s.push(...x.s);}else{k.push(x);s.push(n.s[i]??1);}});
+    return k.length===1?k[0]:{d:n.d,k,s};
+  }
+  function showInd(t,z){
+    if(!ind){ind=document.createElement('div');ind.className='tile-dropind';document.body.appendChild(ind);}
+    const r=t.getBoundingClientRect();let x=r.left,y=r.top,w=r.width,h=r.height;
+    if(z==='left')w/=2;else if(z==='right'){x+=w/2;w/=2;}else if(z==='top')h/=2;else if(z==='bottom'){y+=h/2;h/=2;}
+    ind.style.cssText=`display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+  }
+  const hideInd=()=>{if(ind)ind.style.display='none';};
+  SPECS.forEach(spec=>{
+    const view=document.getElementById(spec.id);if(!view)return;
+    const panel={};for(const k in spec.sel){const el=view.querySelector(spec.sel[k]);if(el)panel[k]=el;}
+    const keys=Object.keys(panel);if(!keys.length)return;
+    const V={spec,view,panel,keys,tree:(saved[spec.id]&&valid(saved[spec.id],keys))?saved[spec.id]:spec.def};
+    keys.forEach(k=>{
+      const g=document.createElement('div');g.className='tile-grip';g.title='drag to move / swap';g.textContent='⠿';
+      g.addEventListener('mousedown',e=>{e.preventDefault();pdrag={V,key:k};panel[k].classList.add('tile-dragging');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing';});
+      panel[k].appendChild(g);
+    });
+    rebuild(V);views.push(V);
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!pdrag)return;
+    const el=document.elementFromPoint(e.clientX,e.clientY),t=el&&el.closest('.tile-leaf');
+    if(!t||!pdrag.V.view.contains(t)||t===pdrag.V.panel[pdrag.key]){pdrag.t=null;hideInd();return;}
+    const r=t.getBoundingClientRect(),zx=(e.clientX-r.left)/r.width,zy=(e.clientY-r.top)/r.height,mn=Math.min(zx,1-zx,zy,1-zy);
+    const z=mn>=0.28?'center':mn===zx?'left':mn===1-zx?'right':mn===zy?'top':'bottom';
+    pdrag.t=t;pdrag.tkey=keyOf(pdrag.V,t);pdrag.z=z;showInd(t,z);
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!pdrag)return;const V=pdrag.V;
+    if(pdrag.t&&pdrag.tkey&&pdrag.tkey!==pdrag.key){
+      const bak=JSON.stringify(V.tree);
+      try{
+        V.tree=pdrag.z==='center'?swapKeys(V.tree,pdrag.key,pdrag.tkey):normalize(insertBeside(removeLeaf(V.tree,pdrag.key),pdrag.tkey,pdrag.key,pdrag.z));
+        if(!valid(V.tree,V.keys))V.tree=JSON.parse(bak);
+      }catch(err){V.tree=JSON.parse(bak);}
+      rebuild(V);save();
+    }
+    V.panel[pdrag.key].classList.remove('tile-dragging');document.body.classList.remove('reordering-active');document.body.style.userSelect='';document.body.style.cursor='';hideInd();pdrag=null;
+  });
+}
+initTiling();
 
 initTheme();
 loadConfig();

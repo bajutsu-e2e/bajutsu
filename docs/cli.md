@@ -47,6 +47,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app) |
 | `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` (capped to the pool size). Each device carries its own network collector, interval recordings, and device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
+| `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
@@ -148,6 +149,7 @@ bajutsu record --app <name> --goal "<natural-language goal>" [--out <file.yaml>]
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--dismiss-alerts` | off | clear prompts during authoring (needs an API key) |
+| `--headed / --no-headed` | app `headless` | web backend: author against a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--alert-instruction` | "" | the press instruction for the above |
 | `--config` | `bajutsu.config.yaml` | config |
 
@@ -175,11 +177,12 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--app` | (required) | the target app |
 | `--max-screens` | `50` | stop after discovering this many distinct screens |
 | `--max-steps` | `200` | stop after taking this many actions |
-| `--agent` | `api` | AI backend for the crawl guide: `api` (the Anthropic SDK, pay-per-token; uses the configured AI provider — `ANTHROPIC_API_KEY` for Anthropic, or AWS credentials + `BAJUTSU_BEDROCK_MODEL` when `BAJUTSU_AI_PROVIDER=bedrock`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`) |
+| `--agent` | `$BAJUTSU_AGENT` or `api` | AI backend for the crawl guide: `api` (the Anthropic SDK, pay-per-token; uses the configured AI provider — `ANTHROPIC_API_KEY` for Anthropic, or AWS credentials + `BAJUTSU_BEDROCK_MODEL` when `BAJUTSU_AI_PROVIDER=bedrock`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`). Omitted, it follows `$BAJUTSU_AGENT` (which `serve` sets from its Settings selector), then `api` |
 | `--udid` | `booted` | the target Simulator |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
+| `--headed / --no-headed` | app `headless` | web backend: crawl a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--config` | `bajutsu.config.yaml` | config |
 
@@ -324,11 +327,15 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   promotes the captured screenshot into it via `POST /api/approve`.
 - Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
   alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
-- The **Crawl** tab picks an app, the **Agent** that drives the AI guide (`api` or `claude-code`,
-  the same choice as `crawl --agent` / the Record tab), device, and budget (max screens / steps),
-  then `POST /api/crawl` spawns the crawl; the returned run id lets the UI poll
-  `runs/<id>/screenmap.json` and draw the screen map as it grows (screens laid out in breadth-first
-  layers, transitions as arrows). The **Stop** button aborts it, like Replay.
+- The **Crawl** tab picks an app, device, and budget (max screens / steps), then `POST /api/crawl`
+  spawns the crawl; the returned run id lets the UI poll `runs/<id>/screenmap.json` and draw the
+  screen map as it grows (screens laid out in breadth-first layers, transitions as arrows). The
+  **Stop** button aborts it, like Replay.
+- The **AI backend for authoring** (Record and Crawl) is one global choice in **Settings → AI
+  provider**: **Anthropic API** (`ANTHROPIC_API_KEY`), **Amazon Bedrock** (AWS credentials +
+  `BAJUTSU_BEDROCK_MODEL`), or **Claude Code** (the local `claude` CLI on your subscription — text
+  only). `serve` applies it to spawned jobs via `BAJUTSU_AI_PROVIDER` / `BAJUTSU_AGENT`, so there is
+  no per-tab agent picker. Under Claude Code, an API key (if set) still powers only the alert guard.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
   `apps.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features
@@ -414,6 +421,10 @@ bajutsu schema > bajutsu.schema.json
   `BAJUTSU_BEDROCK_MODEL` to a provider-prefixed model id (e.g. `global.anthropic.claude-opus-4-6-v1`;
   the bare Anthropic id is not a valid Bedrock id) and `AWS_REGION` for the region. Anthropic is the
   default. The same selection drives `record`, `crawl`, `triage`, and the alert guard.
+- Authoring agent: `BAJUTSU_AGENT=claude-code` makes `record` / `crawl` author through the local
+  `claude` CLI (your Claude Code subscription) instead of the API, the default when `--agent` is
+  omitted; `api` (the default) uses the SDK provider above. `serve`'s Settings selector writes this
+  for spawned jobs. The alert guard always uses the SDK provider, regardless of the agent.
 
 ```bash
 # .env — Anthropic (default)

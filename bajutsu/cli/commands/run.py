@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,10 +14,11 @@ from bajutsu import env as _env
 from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
-from bajutsu.backends import select_actuator
+from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
 from bajutsu.runner import device_pool, run_and_report
+from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import (
     DismissAlerts,
     Scenario,
@@ -167,12 +169,21 @@ def run(
         help="directory of baseline images for `visual` assertions "
         "(default: config baselines, then baselines/ beside the scenario)",
     ),
+    headed: bool | None = typer.Option(
+        None,
+        "--headed/--no-headed",
+        help="web backend: show the browser (headed, slow-motion) instead of headless; "
+        "default leaves the app's `headless` config (headless)",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Run a scenario deterministically. Pass/fail is machine-only; the sole AI is the
     alert guard (on by default per scenario), which only fires to clear an OS prompt that
     blocked a step — see each scenario's `dismissAlerts`."""
     eff = _load_effective(config, app_name)
+    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    if headed is not None:
+        eff = replace(eff, headless=not headed)
     before = _usage.snapshot()
     # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
     # is interpolated at action time, while their literal values are masked in evidence and
@@ -210,6 +221,7 @@ def run(
     # `run` path mirrors `doctor`: backend check first, then resolve the udid).
     backends = _backends(backend, eff.backend)
     try:
+        ensure_web_runtime(backends)  # auto-install Playwright if a web run needs it
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
@@ -291,6 +303,16 @@ def run(
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run
     # log); stdout stays the machine-readable final PASS/FAIL line.
     progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None  # noqa: T201
+    # Bring up the app's target server (the web baseUrl host) if it declares `launchServer`, waiting
+    # on its readiness probe; reused if already serving, torn down in the finally below. The pool
+    # leases lazily (the web driver navigates at lease time, inside run_and_report), so the server
+    # only needs to be up before the run, not before the pool.
+    try:
+        stop_server = start_launch_server(eff)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        shutdown()
+        raise typer.Exit(2) from None
     try:
         results, manifest = run_and_report(
             eff,
@@ -312,6 +334,7 @@ def run(
         raise typer.Exit(2) from None
     finally:
         shutdown()
+        stop_server()
     ok = all(r.ok for r in results)
     github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")

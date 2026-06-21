@@ -45,7 +45,7 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     state = _state(tmp_path)
     write_run(tmp_path / "runs", "20260101-000000", ok=True, scenarios=[("alpha", True)])
     client = _client(state)
-    assert client.get("/api/apps").json() == ["demo", "other"]
+    assert [a["name"] for a in client.get("/api/apps").json()] == ["demo", "other"]
     assert client.get("/api/scenarios?app=demo").json()[0]["names"] == ["alpha", "beta"]
     assert client.get("/api/config").json()["hasConfig"] is True
     assert client.get("/api/runs").json()[0]["id"] == "20260101-000000"
@@ -224,7 +224,9 @@ def test_rbac_admin_can_change_settings(tmp_path: Path, monkeypatch: pytest.Monk
 def test_security_headers_on_every_response(tmp_path: Path) -> None:
     resp = _client(_state(tmp_path)).get("/api/runs")
     assert resp.headers["x-content-type-options"] == "nosniff"
-    assert resp.headers["x-frame-options"] == "DENY"
+    assert (
+        resp.headers["x-frame-options"] == "SAMEORIGIN"
+    )  # same-origin so Replay can frame the report
     assert resp.headers["referrer-policy"] == "no-referrer"
 
 
