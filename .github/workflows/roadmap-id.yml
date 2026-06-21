@@ -89,6 +89,13 @@ jobs:
             exit 1
           fi
 
+          # Allocation only renamed the BE-XXXX placeholder directories. The index tables are
+          # generated from each item's metadata, and the generator skips an item while it is still
+          # BE-XXXX, so a newly-numbered item's row appears only after allocation. Regenerate here so
+          # this commit lands a complete, gate-green index (tests/test_roadmap_index.py). Stdlib-only
+          # like the allocate script (no uv needed).
+          python3 scripts/build_roadmap_index.py
+
           git add -A
           git commit -m "docs(roadmap): allocate BE IDs for placeholder items"
           git push origin "HEAD:$HEAD_REF"
