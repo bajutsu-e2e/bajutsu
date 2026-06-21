@@ -267,14 +267,22 @@
       else if(e.key === 'ArrowRight'){ e.preventDefault(); tvGo(1); }
     });
   }
-  // Inside the element viewer, clicking the screenshot enlarges it full-screen (a plain lightbox);
-  // click the backdrop or press Esc to close. No arrow keys here — the viewer itself walks steps.
+  // Inside the element viewer, clicking the screenshot enlarges it full-screen (a plain lightbox).
+  // ← / → walk the scenario's steps' screenshots: they drive the viewer underneath (tvGo) and the
+  // lightbox mirrors its screenshot, so the two stay in sync and closing it lands on that step.
+  // The backdrop or Esc closes it.
   var imgz = ROOT.getElementById('imgz'), imgzImg = imgz && imgz.querySelector('img');
   function openImg(src){ if(imgz && imgzImg && src){ imgzImg.src = src; imgz.classList.add('open'); } }
   function closeImg(){ if(imgz){ imgz.classList.remove('open'); if(imgzImg) imgzImg.removeAttribute('src'); } }
+  function imgzSync(){ var im = ROOT.querySelector('#tv .tv-shot img'); if(im && imgzImg) imgzImg.src = im.getAttribute('src'); }
   if(imgz){
     imgz.addEventListener('click', closeImg);
-    document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && imgz.classList.contains('open')) closeImg(); });
+    document.addEventListener('keydown', function(e){
+      if(!imgz.classList.contains('open')) return;
+      if(e.key === 'Escape'){ closeImg(); return; }
+      if(e.key === 'ArrowLeft'){ e.preventDefault(); tvGo(-1); imgzSync(); }
+      else if(e.key === 'ArrowRight'){ e.preventDefault(); tvGo(1); imgzSync(); }
+    });
   }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
   // so the controls never overlay the video frame the way the native HTML5 controls do.

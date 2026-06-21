@@ -15,12 +15,13 @@ from bajutsu.report import html_report
 def test_screenshot_or_tree_button_opens_element_viewer_and_arrows_navigate() -> None:
     # Clicking a step's screenshot — or the "tree" button — opens the element viewer; ← / → walk
     # the steps of the current scenario, looping. Inside the viewer, clicking the screenshot
-    # enlarges it full-screen (a #imgz lightbox).
+    # enlarges it full-screen (a #imgz lightbox), where ← / → also walk the steps' screenshots.
     out = html_report("run1", [_passing()])
     assert "closest('.treebtn') || e.target.closest('.shot')" in out  # both open the element viewer
     assert (
         'id="imgz"' in out and "openImg(imEl.getAttribute('src'))" in out
     )  # viewer screenshot → enlarge
+    assert "imgzSync" in out  # the enlarged view's ← / → drive the viewer and mirror its screenshot
     assert "ArrowLeft" in out and "ArrowRight" in out  # arrow keys walk the steps
     # navigation is scoped to one scenario (details.scn) and wraps at the ends
     assert "tvScopeFor" in out and "details.scn" in out and "% tvScope.length" in out
