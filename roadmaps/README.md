@@ -155,6 +155,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | ID | Item | Status |
 |---|---|---|
 | [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Implemented |
+| [BE-0061](implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md) | Collision-proof BE-ID allocation (atomic reservation + auto-repair) | Implemented |
 <!-- /GENERATED:accepted-dev-infra -->
 
 ### Dogfood fixtures (demo apps)

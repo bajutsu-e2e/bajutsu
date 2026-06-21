@@ -150,18 +150,24 @@ When you add a roadmap item:
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
 
-Allocating by hand still races: two branches in flight can pick the same next ID, because neither
-sees the other's not-yet-merged number. You do not have to police this. When a roadmap PR merges,
-the **`roadmap-id-repair`** workflow re-attempts allocation on every open PR that *also* updates the
-roadmap: for an item that PR introduces (a slug not yet on `main`) whose number a since-merged item
-now holds, it allocates the next free ID — moving the directory and rewriting the files,
-cross-references, and PR title — and pushes the fixup onto the branch (`make roadmap-id-repair` runs
-the same step locally). `main` wins: the merged item keeps the number and the still-open one moves.
-That is the sole case in which a BE ID changes, and only ever for an unmerged item the branch itself
-introduced — an item the branch merely inherited from an older `main` (its slug already there) is
-left for a rebase, never renumbered. Drafting with the `BE-XXXX` placeholder avoids the race up
-front, since the `roadmap-id` workflow assigns the ID at PR time and steers clear of every number
-already on `main` or on another open PR.
+Allocating by hand races, so you do not have to: the `roadmap-id` workflow assigns IDs at PR time,
+and two defenses ([BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md))
+keep them unique across `main` *and* every open PR. **Allocation reserves atomically.** Each ID it
+hands out is claimed as a `refs/be-claims/<NNNN>` git ref through GitHub's create-ref API — a
+compare-and-set that fails if the ref already exists — so two branches allocating in the same window
+cannot both take a number; the loser re-picks. A claim is released when the PR closes (its IDs are by
+then on `main`, or abandoned), with a daily sweep reaping any leak. **Repair is the backstop** for
+whatever still slips through — a hand-typed concrete ID, or a branch predating the machinery: the
+`roadmap-id-repair` workflow, on a push to `main` and on a daily schedule, re-attempts allocation on
+every open roadmap PR. For an item a PR introduces (a slug not yet on `main`) whose number is already
+taken, it allocates the next free ID — moving the directory and rewriting the files, cross-references,
+and PR title — and pushes the fixup onto the branch (`make roadmap-id-repair` runs the same step
+locally). Authority — who keeps a contested number — is `main` first (a merged item always wins),
+else the **lowest open-PR number** holding it; only the loser moves. An item the branch merely
+inherited from an older `main` (its slug already there) is left for a rebase, never renumbered.
+Drafting with the `BE-XXXX` placeholder is still the norm — it keeps you from guessing a number at
+all. (Fork PRs can be neither pushed to nor have claim refs created, so both workflows act only on
+same-repo PRs.)
 
 Each file follows the **Swift-Evolution proposal format** — a metadata block (`* Proposal`,
 `* Author`, `* Status`, `* Track`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
