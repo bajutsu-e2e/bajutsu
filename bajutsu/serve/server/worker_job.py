@@ -85,6 +85,8 @@ def job_spec(job: Job) -> dict[str, Any]:
         "materialize_baselines": job.materialize_baselines,
         # The run's org, so the worker reads/writes this org's object-store prefix (BE-0015).
         "org": job.org,
+        # Who started the run, so the worker can attribute the recorded run to the user (BE-0015).
+        "actor": job.actor,
     }
 
 
@@ -122,6 +124,17 @@ def _upload_runs(work: Path, store: ObjectStore, prefix: str, run_id: str) -> No
         store.put_file(f"{prefix}{rel}", path)
 
 
+def _repository_from_env_or_none() -> Any:
+    """The system of record from `BAJUTSU_DATABASE_URL`, or None when the worker has no database
+    configured — or no `db` extra installed (a worker may run without it). Lazy + guarded so the
+    worker imports cleanly without SQLAlchemy."""
+    try:
+        from bajutsu.serve.server.db import repository_from_env
+    except ImportError:
+        return None
+    return repository_from_env()
+
+
 def execute_job_spec(
     spec: dict[str, Any],
     *,
@@ -130,21 +143,26 @@ def execute_job_spec(
     cwd: Path | None = None,
     bus: LogBus | None = None,
     store: ObjectStore | None = None,
+    repository: Any = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree to object storage.
 
     Builds a minimal worker-side `ServeState` (its own working dir, real subprocess/simctl) whose
     LogBus is the shared Redis bus, so the streamed log reaches the control plane. After the run, the
-    run tree is uploaded so the control plane's artifact store can serve it. `popen` / `simctl` /
-    `cwd` / `bus` / `store` are injectable so the run can be driven with a fake subprocess, an
-    in-memory Redis, and a fake object store on the gate. Returns the finished `Job`."""
+    run tree is uploaded so the control plane's artifact store can serve it. With a *repository*
+    (the worker's `BAJUTSU_DATABASE_URL`), the finished run is recorded into the system of record
+    under its org/actor — the run executes here, not on the control plane, so this is where it's
+    recorded (BE-0015). `popen` / `simctl` / `cwd` / `bus` / `store` / `repository` are injectable so
+    the run can be driven with a fake subprocess, an in-memory Redis, a fake object store, and an
+    in-memory database on the gate. Returns the finished `Job`."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
+    org = str(spec.get("org") or _DEFAULT_ORG)
     # The run's org keys every object-store path, so the worker reads/writes the same prefix the
     # control plane serves from (BE-0015 multi-tenancy). The default org keeps the base prefix.
-    base = org_prefix(s3_prefix(), str(spec.get("org") or _DEFAULT_ORG))
+    base = org_prefix(s3_prefix(), org)
     # Write the scenario + config the control plane shipped into the workspace, so the run's
     # workspace-relative `--scenario` / `--config` resolve here (the worker has no project on disk).
     _materialize(work, spec.get("materials") or {})
@@ -155,7 +173,16 @@ def execute_job_spec(
         baseline_src = store if store is not None else object_store_from_env()
         if baseline_src is not None:
             _materialize_baselines(work, baseline_src, prefix=base)
-    state = ServeState(runs_dir=work / "runs", cwd=work, popen=popen, simctl=simctl, logbus=log_bus)
+    # A repository (worker BAJUTSU_DATABASE_URL) lets run_job's `_persist_run` record the finished
+    # run under its org — the run executes here, so this is the only place it can be recorded.
+    state = ServeState(
+        runs_dir=work / "runs",
+        cwd=work,
+        popen=popen,
+        simctl=simctl,
+        logbus=log_bus,
+        repository=repository if repository is not None else _repository_from_env_or_none(),
+    )
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
         cmd=list(spec["cmd"]),
@@ -164,6 +191,9 @@ def execute_job_spec(
         build=spec.get("build"),
         out_path=spec.get("out_path"),  # so the terminal-status payload reports it (record jobs)
         bus=state.logbus,
+        # Carry org + actor so the recorded run is attributed correctly (BE-0015).
+        org=org,
+        actor=spec.get("actor"),
     )
     run_job(state, job)
     uploader = store if store is not None else object_store_from_env()

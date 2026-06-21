@@ -273,10 +273,10 @@ block stays single-tenant — the shipped behavior is unchanged.
   single-tenant layout is untouched. The org travels in the job spec, so a worker reads and writes
   the same prefix the control plane serves from.
 
-Still ahead: assigning the org from **GitHub org membership** (rather than a config member list),
-and recording **server-backend runs** into the system of record (a run executes on a worker, which
-does not hold the database connection today, so the durable run listing currently covers the
-in-process path).
+A server-backend run executes on a worker, so the **worker** records it into the system of record:
+give the worker the `db` extra and `BAJUTSU_DATABASE_URL` and a finished run is recorded under its
+org/actor (no-op without them — the run still works, it just isn't listed). Still ahead: assigning
+the org from **GitHub org membership** rather than a config member list.
 
 ## Alternatives considered
 

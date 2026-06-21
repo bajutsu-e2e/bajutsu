@@ -264,9 +264,10 @@ orgs:
   シングルテナントのレイアウトは変わりません。org は job spec で運ばれ、worker は制御プレーンが配信するのと同じ
   prefix を読み書きします。
 
-今後の予定: org を config のメンバーリストではなく **GitHub org メンバーシップ**から割り当てること、そして
-**サーバ backend の run** を system of record に記録すること（run は worker で実行され、その worker は今のところ
-データベース接続を持たないため、永続化された run 一覧は現状 in-process 経路を対象とします）。
+サーバ backend の run は worker で実行されるので、それを system of record に記録するのは **worker** です。worker に
+`db` extra と `BAJUTSU_DATABASE_URL` を与えれば、完了した run はその org／actor の下に記録されます（無ければ no-op
+＝run は動くが一覧には出ません）。今後の予定: org を config のメンバーリストではなく **GitHub org メンバーシップ**
+から割り当てること。
 
 ## 検討した代替案
 
