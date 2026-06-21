@@ -103,6 +103,14 @@ tailscale serve --bg 8765    # → https://<machine>.<tailnet>.ts.net （tailnet
 
 ### 段階 B：完全セルフホストのマルチテナント版（BE-0015 のコントロールプレーンに依存）
 
+> **いま使える（シングルテナント）:** BE-0015 のサーバ backend がシングルテナント向けに出荷済みです
+> （Postgres、Redis、S3 互換ストレージ、GitHub OAuth、RBAC、per-user クォータ）。そのため**1 チーム**向けの
+> セルフホスト コントロールプレーンは今日動かせます。docker-compose 一式と手順は
+> [`deploy/self-host/`](../../../deploy/self-host/) と
+> [docs/ja/self-hosting.md](../../../docs/ja/self-hosting.md) にあります。これは段階 A と下記の完全マルチテナント
+> 目標の橋渡しです。本節の**マルチテナント**部分（複数 org、org スコープの強制、`org_id` のテナント prefix）は
+> 引き続き BE-0015 のマルチテナント コントロールプレーン待ちです。
+
 [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) のアーキテクチャを
 取り、各マネージドサービスをセルフホスト OSS に置き換えます。トポロジは **Linux 1 ノード（Docker
 Compose）＋ Mac ワーカープール**で、すべてを **Tailscale tailnet** で接続します。公開面は Caddy の

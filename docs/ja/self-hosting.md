@@ -1,14 +1,21 @@
 [English](../self-hosting.md) · **日本語**
 
-# 単一 Mac での Web UI セルフホスティング
+# Web UI のセルフホスティング
 
-> `bajutsu serve`（[cli](cli.md#serve)）を、自前の Mac 上でトークン認証付きの常駐サービスとして動かし、
-> プライベートな Tailscale ネットワーク越しにチームから到達できるようにします。これはセルフホスティング
-> ロードマップ（[BE-0016](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)）の
-> **Tier A**、すなわち stdlib サーバで**今日動く**構成です。
+> bajutsu の Web UI（[cli](cli.md#serve)）を、自前のハードウェア上で、プライベートな Tailscale ネットワーク
+> 越しにチームから到達できるよう動かします（セルフホスティングロードマップ
+> [BE-0016](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)）。今日使える
+> 段階は 2 つあり、どちらも
 > [BE-0051](../../roadmaps/proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
-> が公開を安全にする認証と入力検証を追加したことで、これが成立します。マルチテナントなクラウド構成（コントロール
-> プレーン + Mac ワーカープール）は別の将来の段階です
+> の認証と入力検証で公開を安全にしています。
+>
+> - **Tier A、単一 Mac。** トークン認証付きの `bajutsu serve` を 1 プロセス、1 台の Mac で動かします。本ページの
+>   「Tier B」節より前がこれを扱います。
+> - **Tier B、単一チームのサーバ backend。** BE-0015 のコントロールプレーン（FastAPI、Postgres、Redis、
+>   S3 互換ストレージ、GitHub OAuth、RBAC、クォータ）を Linux ノードで動かし、Mac をワーカーにします。1 チーム
+>   向けの構成です（シングルテナント）。後述の「Tier B、単一チームのセルフホスティング」節を参照してください。
+>
+> 完全マルチテナントの公開・セルフホスト構成（複数 org）は将来のままです
 > （[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)）。
 
 ## macOS の制約
@@ -77,3 +84,80 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 のハードニングに依存します。全リクエストのトークン認証、`/api/run` と `/api/record` をアプリの scenarios dir
 に限定して `backend`/`udid` を検証すること、CSRF Origin チェックとセキュリティヘッダ、run dispatch の同時実行上限です。
 トークンは秘匿し、Mac は tailnet 上に置き、OS は更新し続けてください。
+
+## Tier B、単一チームのセルフホスティング（サーバ backend）
+
+Tier A は 1 台の Mac で動く 1 プロセスです。**Tier B** は BE-0015 の**サーバ backend**、すなわち FastAPI の
+コントロールプレーン（Postgres、Redis、S3 互換ストレージ（MinIO）、GitHub OAuth、RBAC、per-user クォータ）を
+Linux ノードで動かし、1 台以上の Mac をワーカーにします。**シングルテナント**で、全ユーザが 1 つの default org に
+属するため、**1 チーム**で使う構成です（複数 org をまたぐ分離は未実装）。すぐ動かせる一式は
+[`deploy/self-host/`](../../deploy/self-host/)（compose、Dockerfile、`.env.example`）にあります。
+
+```
+        チームの端末
+           │  HTTPS（Tailscale tailnet、またはホスト名で Caddy）
+           ▼
+   ┌───────────────────────────────────────┐  job   ┌──────────────────────────┐
+   │  Linux ノード — docker compose        │ ─────▶ │  Mac ワーカー × N        │
+   │  bajutsu serve --asgi --backend=server│ Redis  │  bajutsu worker          │
+   │  postgres・redis・minio               │ ◀───── │  bajutsu run・Simulator  │
+   └───────────────────────────────────────┘ result └──────────────────────────┘
+                       └──────────── Tailscale tailnet ──────┘
+```
+
+Linux のコントロールプレーンは安価で、**Mac ワーカー**が Simulator の run を担う希少な部分です。ワーカーは
+コンテナ化しません。Tier A と同じく Aqua の GUI セッションが要るためです。
+
+### 1. コントロールプレーンを起動する
+
+```bash
+cd deploy/self-host
+cp .env.example .env            # BAJUTSU_SERVE_TOKEN, POSTGRES_PASSWORD, AWS_*（MinIO）, bucket を設定
+mkdir -p config && cp /path/to/bajutsu.config.yaml config/   # 公開する app/project の一覧
+docker compose up -d            # postgres + redis + minio + migrate（alembic upgrade head）+ bajutsu
+```
+
+`migrate` が `bajutsu` の起動前に Alembic マイグレーションを head まで適用し、`minio-init` がバケットを
+作成します。コントロールプレーンは `:8765` で待ち受けます。
+
+公開ポートは `BIND_ADDR`（既定は `127.0.0.1`）にバインドします。Mac の worker が別ホストから Redis と
+MinIO に届くようにするには、`.env` の `BIND_ADDR` をノードの tailnet IP に設定してください。公開
+インターフェースを持つホストで `0.0.0.0` にはしないでください。Redis と成果物バケットを露出させてしまいます。
+
+### 2. GitHub OAuth を足す（任意）
+
+オペレータが数人なら共有トークン（`BAJUTSU_SERVE_TOKEN`）だけで十分です。ユーザごとのブラウザログインには、
+GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/callback`）、`.env` に
+`BAJUTSU_OAUTH_GITHUB_CLIENT_ID`／`_SECRET`／`_REDIRECT_URI` と、許可リスト `BAJUTSU_OAUTH_ALLOWED_USERS`
+（任意で `BAJUTSU_OAUTH_ADMINS`／`BAJUTSU_OAUTH_VIEWERS`）を設定します。許可リストのユーザは既定で **editor**
+（run 可）、admin はサーバ設定（config、API キー、provider）も変更でき、viewer は閲覧のみです。トークンは
+オペレータ・CI 用の認証（full access）のまま、OAuth がチームのユーザごとのログインです。
+
+### 3. Mac ワーカーを動かす
+
+各 Mac で（Tier A と同じ Aqua セッション設定。auto-login と `caffeinate`/`pmset`）、`bajutsu[worker,idb]` を
+インストールし、tailnet 越しに Linux ノードへ向けます:
+
+```bash
+export BAJUTSU_REDIS_URL=redis://<linux-node>.<tailnet>.ts.net:6379
+export BAJUTSU_S3_BUCKET=bajutsu
+export BAJUTSU_S3_ENDPOINT=http://<linux-node>.<tailnet>.ts.net:9000
+export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
+export ANTHROPIC_API_KEY=…     # シナリオが AI パス（record / --dismiss-alerts）を使う場合のみ
+bajutsu worker
+```
+
+再起動を越えるよう、Tier A と同じく `LaunchAgent` で包みます。各ジョブはクリーンな Simulator で実行され、
+`runs/<id>/` ツリーを MinIO にアップロードし、コントロールプレーンがそれを配信します。
+
+### 4. 公開する
+
+Tier A と同様に前段を置きます。`tailscale serve --bg 8765`（tailnet 内のみ、推奨）、または実ホスト名なら Caddy
+（`docker compose --profile caddy up -d`、`BAJUTSU_PUBLIC_HOST` を設定）。ワーカーは tailnet 越しに Redis
+（`:6379`）と MinIO（`:9000`）へ到達するので、ノードはプライベートな tailnet 上に置いてください。
+
+### まだシングルテナントです
+
+複数 org、org スコープの run 履歴、org をまたぐアクセス検査、per-org クォータは**未実装**です（BE-0015 の
+マルチテナント コントロールプレーン待ち）。Tier B は**1 チーム**向けで、共有トークンと GitHub 許可リストが
+アクセス境界です。
