@@ -286,6 +286,27 @@ def test_register_assigns_an_id_and_the_log_bus(tmp_path: Path) -> None:
     assert state.register(srv.Job(cmd=["y"])).id == "2"  # ids increment
 
 
+def test_register_rejects_an_already_registered_job(tmp_path: Path) -> None:
+    # Registering the same Job twice would orphan its earlier state.jobs entry — guard against it.
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    job = state.register(srv.Job(cmd=["x"]))
+    with pytest.raises(ValueError, match="already registered"):
+        state.register(job)
+
+
+def test_register_does_not_alias_caller_collections(tmp_path: Path) -> None:
+    # The registered job must not alias the caller's list/dict (prior new_job semantics): mutating
+    # them afterward must not change the job.
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    udids = ["U1"]
+    materials = {"a.yaml": "x"}
+    job = state.register(srv.Job(cmd=["x"], udids=udids, materials=materials))
+    udids.append("U2")
+    materials["b.yaml"] = "y"
+    assert job.udids == ["U1"]
+    assert job.materials == {"a.yaml": "x"}
+
+
 def test_try_new_job_caps_concurrency_per_user(tmp_path: Path) -> None:
     # A per-user cap stops one user from monopolizing the scarce device pool (BE-0015 7c-3).
     state = srv.ServeState(runs_dir=tmp_path / "runs", max_concurrent_per_user=1)

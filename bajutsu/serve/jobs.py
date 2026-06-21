@@ -214,11 +214,18 @@ class ServeState:
 
     def _register(self, job: Job) -> Job:
         """Assign the job its id + live-log bus and store it. Caller must hold ``self._lock``. The
-        caller builds the `Job` (the dataclass is the single source of truth for its fields), so
-        adding a field never touches this layer."""
+        caller builds a fresh `Job` (the dataclass is the single source of truth for its fields), so
+        adding a field never touches this layer. Single-use: registering a job that already has an id
+        is a programming error (it would orphan the earlier `state.jobs` entry)."""
+        if job.id:
+            raise ValueError(f"job {job.id!r} is already registered")
         self._seq += 1
         job.id = str(self._seq)
         job.bus = self.logbus
+        # Don't alias caller-owned collections (preserves the prior new_job semantics): a later edit
+        # to the list/dict the caller passed must not mutate the registered job.
+        job.udids = list(job.udids)
+        job.materials = dict(job.materials)
         self.jobs[job.id] = job
         return job
 
