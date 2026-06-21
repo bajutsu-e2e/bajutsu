@@ -210,14 +210,21 @@ def run(
     # `run` path mirrors `doctor`: backend check first, then resolve the udid).
     backends = _backends(backend, eff.backend)
     try:
-        select_actuator(backends)
+        actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    # The idb CLI needs concrete UDIDs (not the simctl "booted" alias). `--udid` may be a
-    # comma list — a device pool for parallel runs (`--workers`), capped to the pool size.
-    udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
-    workers = max(1, min(workers, len(udids)))
+    if actuator == "playwright":
+        # Web has no simctl udid to resolve and no app-side network collector: one browser
+        # lane, keyed by a dummy udid, with network collection off.
+        udids = ["web"]
+        workers = 1
+        network = False
+    else:
+        # The idb CLI needs concrete UDIDs (not the simctl "booted" alias). `--udid` may be a
+        # comma list — a device pool for parallel runs (`--workers`), capped to the pool size.
+        udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
+        workers = max(1, min(workers, len(udids)))
     # --dismiss-alerts / --no-dismiss-alerts, when given, forces every scenario's guard on/off
     # (preserving any per-scenario instruction); otherwise each scenario's own `dismissAlerts`
     # (default on) decides. Mirrors the --erase override.

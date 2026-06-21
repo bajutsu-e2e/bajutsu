@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.backends import make_driver, resolve_actuators, select_actuator
+from bajutsu.backends import default_available, make_driver, resolve_actuators, select_actuator
 from bajutsu.drivers import base
 
 
@@ -50,8 +50,19 @@ def test_select_planned_backend_reports_not_implemented() -> None:
     # not a generic "no available actuator".
     with pytest.raises(RuntimeError, match="not implemented yet"):
         select_actuator(["android"])
-    with pytest.raises(RuntimeError, match="not implemented yet"):
-        select_actuator(["web"])
+
+
+def test_select_web_actuator_when_available() -> None:
+    # web is implemented now: it resolves to playwright and is selected when available.
+    assert select_actuator(["web"], available=lambda a: True) == "playwright"
+
+
+def test_playwright_availability_gated_on_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Availability is the python package (probed without importing it), not a PATH executable.
+    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: True)
+    assert default_available("playwright") is True
+    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    assert default_available("playwright") is False
 
 
 def test_fake_is_always_available() -> None:
@@ -73,6 +84,13 @@ def test_make_driver_fake() -> None:
     fake = make_driver("fake", "U")
     assert fake.name == "fake"
     assert base.Capability.QUERY in fake.capabilities()
+
+
+def test_make_driver_playwright_requires_base_url() -> None:
+    # The web driver needs a target URL; make_driver rejects a missing one before touching a
+    # browser (so this stays browser-free).
+    with pytest.raises(ValueError, match="base_url"):
+        make_driver("playwright", "web")
 
 
 def test_make_driver_planned_backend() -> None:

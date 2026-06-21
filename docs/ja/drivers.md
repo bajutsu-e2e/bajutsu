@@ -37,17 +37,17 @@ class Driver(Protocol):
 
 `capabilities()` が返すトークン集合で、actuator 選択と証跡のフォールバック解決に使います。
 
-| 能力 | 意味 | idb | fake |
-|---|---|:--:|:--:|
-| `query` | 要素ツリー取得 | ✅ | ✅ |
-| `elements` | 要素ダンプ証跡 | ✅ | ✅ |
-| `screenshot` | スクショ | ✅ | ✅ |
-| `semanticTap` | id/label で直接タップ（座標不要） | — | ✅ |
-| `conditionWait` | ネイティブ条件待機 | — | ✅ |
-| `network` | ネイティブネットワーク監視 | — | — |
-| `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | ✅ |
+| 能力 | 意味 | idb | playwright | fake |
+|---|---|:--:|:--:|:--:|
+| `query` | 要素ツリー取得 | ✅ | ✅ | ✅ |
+| `elements` | 要素ダンプ証跡 | ✅ | ✅ | ✅ |
+| `screenshot` | スクショ | ✅ | ✅ | ✅ |
+| `semanticTap` | id/label で直接タップ（座標不要） | — | ✅ | ✅ |
+| `conditionWait` | ネイティブ条件待機 | — | ✅ | ✅ |
+| `network` | ネイティブネットワーク監視 | — | — | — |
+| `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | — | ✅ |
 
-> idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。
+> idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）を公開しますが、v1 では `network` と `multiTouch` を先送りします（[BE-0054](../../roadmaps/proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) で追跡）。
 
 ## idb
 
@@ -59,6 +59,17 @@ class Driver(Protocol):
 - `swipe`: `--duration 0.2` を付けて実ドラッグ化します（瞬間スワイプは SwiftUI に pan として認識されません）。
 
 > describe-all の JSON キー名は fb-idb の出力に従い、`make -C demos/features e2e` ＋ `e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。インストール済み idb がスキーマを変えたときだけ再確認すれば十分です（`idb.py` 冒頭の注記参照）。idb クライアントは `uv sync --extra idb`、`idb_companion` は `brew install facebook/fb/idb-companion` でインストールします。
+
+## Playwright（web）
+
+Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
+
+- `query()`: 1 本の `page.evaluate()` が、可視・操作可能・アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`、input の `value` → `value`。
+- `tap(sel)`: idb と同様、`query()` のスナップショットに対し共有の `resolve_unique`/`find_all` で要素を**一意に**確定し、**frame 中心**を座標クリック（`page.mouse.click`）します。Playwright 自身の `get_by_test_id().click()` は**あえて使いません**。これによりセレクタの意味が他のどの backend ともバイト単位で一致します。
+- `type_text` は `page.keyboard` で入力します（オーケストレータが先に `into` をタップしてフィールドにフォーカスします）。`screenshot` は `page.screenshot`、`wait_for` は `find_all` による単発（idb と同じ）です。
+- ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(baseUrl)`）が `launch`、`close()` でブラウザを破棄します。simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません（v1 では `pinch`/`rotate` が `UnsupportedAction`）。
+
+> `playwright` は**遅延 import** されます（実際にブラウザを起動するときだけ読み込む）。そのため既定の CLI パスには決して載りません（`tests/serve/test_import_guard.py` で固定）。インストールは `uv sync --extra web` ＋ `uv run playwright install chromium`。`demos/web` のデモ（`make -C demos/web e2e`）が小さな静的 web アプリを端から端まで駆動します。
 
 ## FakeDriver
 
@@ -84,20 +95,20 @@ FakeDriver(screen=[...], react=react)
 PLATFORMS = {                              # プラットフォームトークンは actuator 列へ展開
     "ios":     ("idb",),                   #   将来: ("xcuitest", "idb")
     "android": ("adb",),                   #   計画中
-    "web":     ("playwright",),            #   計画中
+    "web":     ("playwright",),            #   実装済み（BE-0041）
     "fake":    ("fake",),                  #   メモリ上のテスト/デモ用ドライバ
 }
-IMPLEMENTED = {"idb", "fake"}              # 今日ドライバがある actuator
+IMPLEMENTED = {"idb", "fake", "playwright"}  # 今日ドライバがある actuator
 
-def default_available(actuator) -> bool:   # 実装済みで実行ファイルが PATH にあるか（fake は常に可）
+def default_available(actuator) -> bool:   # 実装済みかつ裏のツールがあるか（playwright はパッケージ import、fake は常に可）
 def resolve_actuators(backends) -> list:   # 各トークン（プラットフォーム/actuator）を actuator 列へ展開
 def select_actuator(backends, available) -> str:  # 順に見て最初の「実装済み かつ 利用可能」
-def make_driver(actuator, udid) -> Driver: # "idb" → IdbDriver, "fake" → FakeDriver
+def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
 - **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `idb`）のどちらかです。`--backend ios`（または `backend: [ios]`）は今日 `idb` に解決され、より高機能な iOS actuator（XCUITest）が入ればそれを拾います。シナリオも config も変わりません。
 - `backend` は **安定度順のリスト**です（先頭ほど安定。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）。各トークンは順に actuator 列へ展開され、**actuator = 最初の「実装済み かつ 利用可能」**なものです。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
-- `android` / `web` は**宣言済みだが未実装**です（[multi-platform](multi-platform.md)）。要求すると汎用の失敗ではなく明確な「未実装」エラーになります。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも、将来のバックエンドを列挙した config を実行できます）。
+- `web` は `playwright` に解決され、**実装済み**です（[multi-platform](multi-platform.md)）。`android`（→ `adb`）は**宣言済みだが未実装**で、要求すると汎用の失敗ではなく明確な「未実装」エラーになります。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも、将来のバックエンドを列挙した config を実行できます）。
 - 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。
 - actuator は run 開始時に 1 つ確定し、run 中は固定です（2 ドライバが同一デバイスを操作しません）。
 

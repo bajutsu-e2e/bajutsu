@@ -92,6 +92,8 @@ apps:
 
 `platform` selects which **environment manager** and **backend registry** are in play; the rest of the schema (namespaces, redact, setup, capture) stays shared. The selector slice of this registry has already landed (`bajutsu/backends.py` keys off a platform registry, and `--backend` / `backend:` accept a platform token); see [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md). This item covers the remaining cross-cutting work: the `platform` config field and the `Environment` protocol the registry hands off to.
 
+> **The web backend's v1 took a shortcut here.** The first Web (Playwright) slice ([BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) needed a target URL but not yet a `platform` discriminator, so it added a single `baseUrl` field to `apps.<name>` and kept the environment lifecycle (fresh `BrowserContext` = `erase`, `goto(baseUrl)` = `launch`) **inside the driver**, branching the runner on `actuator == "playwright"` instead of going through a neutral `Environment` protocol. That was the smallest correct change to land a working web `run`. This item generalizes it: the `platform` field subsumes the `bundleId`-vs-`baseUrl` choice, and the per-platform lifecycle moves behind the `Environment` protocol so the runner stops branching on the actuator name.
+
 ### Determinism is preserved per platform
 
 The four mechanisms hold on every backend — only their *implementation* differs:

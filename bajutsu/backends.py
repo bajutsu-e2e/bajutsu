@@ -36,20 +36,32 @@ KNOWN_ACTUATORS: tuple[str, ...] = tuple(
     dict.fromkeys(a for actuators in PLATFORMS.values() for a in actuators)
 )
 
-# Actuators with a driver today. Requesting a planned-but-absent one (adb / playwright) gives
-# a "not implemented yet" error instead of a generic failure.
-IMPLEMENTED: frozenset[str] = frozenset({"idb", "fake"})
+# Actuators with a driver today. Requesting a planned-but-absent one (adb) gives a
+# "not implemented yet" error instead of a generic failure.
+IMPLEMENTED: frozenset[str] = frozenset({"idb", "fake", "playwright"})
 
-# Which executable backs each actuator (the coarse availability check). `fake` needs none.
-_EXECUTABLE = {"idb": "idb", "adb": "adb", "playwright": "playwright"}
+# Which executable backs each actuator (the coarse availability check). `fake` needs none;
+# `playwright` is a Python package (probed by import), not a PATH executable.
+_EXECUTABLE = {"idb": "idb", "adb": "adb"}
+
+
+def _playwright_available() -> bool:
+    """Whether the `playwright` package is installed — without importing it (so the default
+    import path stays free of the heavy dependency; see tests/serve/test_import_guard.py)."""
+    import importlib.util
+
+    return importlib.util.find_spec("playwright") is not None
 
 
 def default_available(actuator: str) -> bool:
-    """Available if implemented and its executable is on PATH. `fake` is always available."""
+    """Available if implemented and its backing tool is present. `fake` is always available;
+    `playwright` is gated on the python package, every other actuator on a PATH executable."""
     if actuator not in IMPLEMENTED:
         return False
     if actuator == "fake":
         return True
+    if actuator == "playwright":
+        return _playwright_available()
     exe = _EXECUTABLE.get(actuator)
     return exe is not None and shutil.which(exe) is not None
 
@@ -82,11 +94,18 @@ def select_actuator(
     raise RuntimeError(f"no available actuator among {actuators} (requested {backends})")
 
 
-def make_driver(actuator: str, udid: str) -> base.Driver:
+def make_driver(actuator: str, udid: str, *, base_url: str | None = None) -> base.Driver:
     if actuator == "idb":
         return IdbDriver(udid)
     if actuator == "fake":
         return FakeDriver([])
+    if actuator == "playwright":
+        # Lazy: keep Playwright (a heavy optional dep) off the default import path.
+        from bajutsu.drivers.playwright import PlaywrightDriver
+
+        if not base_url:
+            raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")
+        return PlaywrightDriver(base_url)
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"

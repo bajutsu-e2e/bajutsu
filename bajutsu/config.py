@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bajutsu import _yaml
 from bajutsu.scenario import Redact
@@ -49,7 +49,13 @@ class Defaults(_Model):
 
 
 class AppConfig(_Model):
-    bundle_id: str = Field(alias="bundleId")
+    # iOS apps identify the target by bundleId; web apps by baseUrl instead. One of the two is
+    # required (the validator below) — defaulting bundleId to "" keeps every iOS `eff.bundle_id`
+    # call site a plain `str` while letting a web app omit it.
+    bundle_id: str = Field(default="", alias="bundleId")
+    base_url: str | None = Field(
+        default=None, alias="baseUrl"
+    )  # web target (e.g. http://host/page)
     deeplink_scheme: str | None = Field(default=None, alias="deeplinkScheme")
     backend: list[str] | None = None
     device: str | None = None
@@ -79,6 +85,14 @@ class AppConfig(_Model):
     @classmethod
     def _norm(cls, v: Any) -> Any:
         return _as_list(v) if v is not None else v
+
+    @model_validator(mode="after")
+    def _need_target(self) -> AppConfig:
+        # A malformed app entry (neither bundleId nor baseUrl) still fails fast, so dropping
+        # bundleId's required-ness for web doesn't silently accept a target-less iOS app.
+        if not self.bundle_id and not self.base_url:
+            raise ValueError("app needs bundleId (iOS) or baseUrl (web)")
+        return self
 
 
 class OrgConfig(_Model):
@@ -169,6 +183,8 @@ class Effective:
     # Baseline images directory for `visual` assertions. None = fall back to
     # baselines/ beside the scenario file (or --baselines CLI flag).
     baselines: str | None = None
+    # Web (Playwright) target URL. None for iOS apps (which use bundle_id instead).
+    base_url: str | None = None
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -191,6 +207,7 @@ def resolve(config: Config, app: str) -> Effective:
     return Effective(
         app=app,
         bundle_id=a.bundle_id,
+        base_url=a.base_url,
         deeplink_scheme=a.deeplink_scheme,
         backend=a.backend or d.backend,
         device=a.device or d.device,

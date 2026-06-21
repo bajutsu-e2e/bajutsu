@@ -47,9 +47,11 @@ def device_pool(
     Returns (lease, shutdown).
     """
     actuator = select_actuator(backends, available)
+    is_web = actuator == "playwright"
     # Resolve the device model / OS once up front (static per device) so each result can name
     # the simulator it ran on in the report; best-effort, so a missing catalog just omits it.
-    catalog = env.device_catalog(env_run)
+    # Web has no simctl catalog.
+    catalog = {} if is_web else env.device_catalog(env_run)
     free: queue.Queue[str] = queue.Queue()
     for udid in udids:
         free.put(udid)
@@ -88,12 +90,24 @@ def device_pool(
             redact=eff.redact,
             secrets=secret_values,
         )
-        relaunch = device_relauncher(udid, env_run, extra_env)(eff, scenario, driver)
-        control = device_control(udid, eff.bundle_id, env_run)
+        relaunch: RelaunchFn
+        control: DeviceControl | None
+        if is_web:
+            # No simctl device control / app terminate; the driver owns the browser, so a
+            # release tears it down (a re-lease then builds a fresh context = clean state).
+            relaunch = _web_relauncher(driver)
+            control = None
 
-        def release() -> None:
-            env.Env(udid, run=env_run).terminate(eff.bundle_id)
-            free.put(udid)
+            def release() -> None:
+                driver.close()  # type: ignore[attr-defined]  # web-only lifecycle
+                free.put(udid)
+        else:
+            relaunch = device_relauncher(udid, env_run, extra_env)(eff, scenario, driver)
+            control = device_control(udid, eff.bundle_id, env_run)
+
+            def release() -> None:
+                env.Env(udid, run=env_run).terminate(eff.bundle_id)
+                free.put(udid)
 
         meta = catalog.get(udid, {})
         return Lease(
@@ -144,6 +158,16 @@ def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
             e.clear_status_bar()
 
     return _Control()
+
+
+def _web_relauncher(driver: base.Driver) -> RelaunchFn:
+    """Web `relaunch`: re-navigate to the base URL and wait until ready (no device restart)."""
+
+    def relaunch(opts: Relaunch) -> None:
+        driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
+        _await_ready(driver)
+
+    return relaunch
 
 
 def device_relauncher(

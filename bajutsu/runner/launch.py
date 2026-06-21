@@ -34,6 +34,15 @@ def launch_driver(
     `BAJUTSU_COLLECTOR` url so the app reports to its own collector).
     """
     pre = preconditions or Preconditions()
+    # Web has no device to erase/boot/install: a fresh browser context (made in the driver) is
+    # the clean state, and `navigate()` is the launch. Branch out before any simctl call.
+    if actuator == "playwright":
+        if not eff.base_url:
+            raise env.DeviceError("web backend requires baseUrl (set apps.<app>.baseUrl)")
+        driver = make_driver(actuator, udid, base_url=eff.base_url)
+        driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
+        _await_ready(driver)
+        return driver
     e = env.Env(udid, run=env_run)
     try:
         if pre.erase:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from bajutsu.config import load_config, resolve
 
@@ -86,6 +87,30 @@ def test_app_path_parsed() -> None:
 def test_scenarios_parsed() -> None:
     cfg = load_config("apps: { x: { bundleId: com.x, scenarios: scn/dir } }")
     assert resolve(cfg, "x").scenarios == "scn/dir"
+
+
+def test_web_app_baseurl_no_bundleid() -> None:
+    # A web app identifies its target by baseUrl and needs no bundleId; bundle_id defaults to "".
+    cfg = load_config(
+        "defaults: { backend: [web] }\n"
+        "apps: { web: { baseUrl: 'http://127.0.0.1:8787/index.html', scenarios: demos/web/scenarios } }"
+    )
+    eff = resolve(cfg, "web")
+    assert eff.base_url == "http://127.0.0.1:8787/index.html"
+    assert eff.bundle_id == ""
+    assert eff.backend == ["web"]
+    assert eff.scenarios == "demos/web/scenarios"
+
+
+def test_app_without_bundleid_or_baseurl_rejected() -> None:
+    # Dropping bundleId's required-ness must not silently accept a target-less app.
+    with pytest.raises(ValidationError, match="needs bundleId"):
+        load_config("apps: { x: { scenarios: scn/dir } }")
+
+
+def test_ios_app_baseurl_defaults_to_none() -> None:
+    cfg = load_config("apps: { x: { bundleId: com.x } }")
+    assert resolve(cfg, "x").base_url is None
 
 
 def test_baselines_parsed() -> None:
