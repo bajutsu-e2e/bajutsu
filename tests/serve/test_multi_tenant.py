@@ -47,10 +47,13 @@ def _state(tmp_path: Path, config_text: str = CONFIG) -> srv.ServeState:
 
 def test_list_apps_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
     state = _state(tmp_path)
-    assert ops.list_apps_payload(state, actor="alice")[0] == ["checkout", "demo"]
-    assert ops.list_apps_payload(state, actor="bob")[0] == ["other"]
+    assert [a["name"] for a in ops.list_apps_payload(state, actor="alice")[0]] == [
+        "checkout",
+        "demo",
+    ]
+    assert [a["name"] for a in ops.list_apps_payload(state, actor="bob")[0]] == ["other"]
     # No identity → the default org, which owns the apps no org claims (none here).
-    assert ops.list_apps_payload(state, actor=None)[0] == []
+    assert [a["name"] for a in ops.list_apps_payload(state, actor=None)[0]] == []
 
 
 def test_start_run_on_another_orgs_app_is_forbidden(tmp_path: Path) -> None:
@@ -94,7 +97,7 @@ def test_no_orgs_block_keeps_a_single_tenant(tmp_path: Path) -> None:
     repo.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
 
-    assert ops.list_apps_payload(state, actor="alice")[0] == ["demo", "other"]
+    assert [a["name"] for a in ops.list_apps_payload(state, actor="alice")[0]] == ["demo", "other"]
     _payload, status = ops.start_run(
         state, {"app": "other", "scenario": "smoke.yaml"}, actor="alice"
     )
@@ -159,7 +162,11 @@ def test_local_serve_ignores_orgs_without_a_repository(tmp_path: Path) -> None:
     cfg.write_text(CONFIG, encoding="utf-8")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg)  # repository defaults to None
     assert state.repository is None
-    assert ops.list_apps_payload(state, actor="alice")[0] == ["checkout", "demo", "other"]
+    assert [a["name"] for a in ops.list_apps_payload(state, actor="alice")[0]] == [
+        "checkout",
+        "demo",
+        "other",
+    ]
     _payload, status = ops.start_run(
         state, {"app": "other", "scenario": "smoke.yaml"}, actor="alice"
     )

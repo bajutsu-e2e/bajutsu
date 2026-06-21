@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -89,6 +90,12 @@ def crawl(
     resume_key: str = typer.Option(
         "", "--resume-key", help="resume: the pruned operation's replay key (see --resume-src)"
     ),
+    headed: bool | None = typer.Option(
+        None,
+        "--headed/--no-headed",
+        help="web backend: crawl a visible (headed, slow-motion) browser instead of headless; "
+        "default leaves the app's `headless` config",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app breadth-first and write a screen map (`screenmap.json`) of the reachable
@@ -96,6 +103,9 @@ def crawl(
     transitions, crashes); the AI guide only proposes *what to try*. A discovery tool, never a
     pass/fail gate."""
     eff = _load_effective(config, app_name)
+    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    if headed is not None:
+        eff = replace(eff, headless=not headed)
 
     # Progress (device work + the AI guide's reasoning) goes to stderr, like record's stream; the
     # web UI merges it into the crawl log so a watcher sees what the AI is thinking, turn by turn.

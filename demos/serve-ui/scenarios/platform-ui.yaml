@@ -1,20 +1,31 @@
-# Platform-aware controls — the Replay panel's iOS device UI (simulators, workers, erase, the
-# alert-dismiss guard) shows only for an iOS backend. Switching the Backend field to a non-iOS
-# value (web) hides it. The SPA toggles the `iosonly` elements via the `hidden` attribute, which
-# the Playwright backend reads as gone from the element tree — so one exists/negate pair captures
-# the whole behavior. Deterministic: the toggle is synchronous on the field's input event.
+# Platform-aware controls — selecting a web app hides every view's iOS-only device UI (simulators,
+# device pickers, erase, the alert-dismiss guard) and shows the headless/headed "show browser"
+# toggle, with no manual Backend entry. The dogfood's only app (webui) is a web app, so each view
+# reflects that on load. Deterministic: the SPA toggles the iosonly/webonly elements synchronously
+# from the selected app's backend, which the Playwright backend reads as present/absent in the tree.
 description: >-
-  Platform-aware controls — the Replay panel hides its iOS-only device UI when the backend is
-  not iOS.
+  Platform-aware controls — a web app hides the iOS-only UI and shows the headed toggle across
+  Record, Replay, and Crawl.
 scenarios:
-  - name: a non-iOS backend hides the simulator controls
-    description: On Replay the Simulators UI shows by default (iOS); typing "web" into Backend hides it.
+  - name: Replay hides the iOS device UI and shows the headed toggle for a web app
+    description: webui is a web app, so Replay's Simulators UI is gone and the "show browser" toggle shows — without typing a backend.
     steps:
       - tap: { id: nav.replay }
-      - wait: { for: { id: replay.simulators }, timeout: 10 }
+      - wait: { for: { id: replay.headed }, timeout: 10 }
       - assert:
-          - exists: { id: replay.simulators }
-      - type: { text: "web", into: { id: replay.backend } }
-      - wait: { until: { gone: { id: replay.simulators } }, timeout: 5 }
-    expect:
-      - exists: { id: replay.simulators, negate: true }
+          - exists: { id: replay.headed }                    # headless/headed menu present (web)
+          - exists: { id: replay.simulators, negate: true }  # iOS device UI hidden
+  - name: Record shows the headed toggle for a web app
+    description: Record's "show browser" toggle shows for the web app (its iOS-only controls are hidden).
+    steps:
+      - tap: { id: nav.record }
+      - wait: { for: { id: record.headed }, timeout: 10 }
+      - assert:
+          - exists: { id: record.headed }
+  - name: Crawl shows the headed toggle for a web app
+    description: Crawl's "show browser" toggle shows for the web app (its iOS-only controls are hidden).
+    steps:
+      - tap: { id: nav.crawl }
+      - wait: { for: { id: crawl.headed }, timeout: 10 }
+      - assert:
+          - exists: { id: crawl.headed }

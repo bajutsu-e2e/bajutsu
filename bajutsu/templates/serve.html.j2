@@ -50,6 +50,10 @@
           <label><input type="checkbox" id="rec-nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard (Claude vision) dismisses unexpected system prompts while authoring; on by default (needs ANTHROPIC_API_KEY). Check to force it off.</span></label>
         </div>
+        <div class="checks webonly">
+          <label><input type="checkbox" id="rec-headed" data-testid="record.headed"> show browser (headed)
+            <span class="hint">Author against a visible Chromium window in slow-motion so you can watch the agent explore, instead of the default headless browser. The window opens on the machine running <code>serve</code>.</span></label>
+        </div>
       </div>
     </div>
   </div>
@@ -140,6 +144,10 @@
             <span class="hint">Wipe the simulator before crawling so the app starts from onboarding. Off by default — the app is reinstalled fresh either way; check to also wipe all apps / data / settings first.</span></label>
           <label><input type="checkbox" id="crawl-nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard (Claude vision) dismisses unexpected OS prompts so they aren't read as crashes; on by default (uses the AI provider set in Settings &mdash; ANTHROPIC_API_KEY for Anthropic, or AWS credentials for Bedrock). Check to force it off.</span></label>
+        </div>
+        <div class="checks webonly">
+          <label><input type="checkbox" id="crawl-headed" data-testid="crawl.headed"> show browser (headed)
+            <span class="hint">Crawl a visible Chromium window in slow-motion so you can watch the exploration, instead of the default headless browser. The window opens on the machine running <code>serve</code>.</span></label>
         </div>
         <button class="run" id="crawl-go" data-testid="crawl.start" data-idle="Start crawl">Start crawl</button>
         <button class="stop" id="crawl-stop" hidden>Stop</button>

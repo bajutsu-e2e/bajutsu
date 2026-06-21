@@ -307,6 +307,7 @@ def record_command(
     udid: str = "",
     erase: bool | None = None,
     dismiss_alerts: bool | None = None,
+    headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
 ) -> list[str]:
     """The ``python -m bajutsu record --out OUT --app … --goal …`` argv for an authoring request —
@@ -342,6 +343,10 @@ def record_command(
         cmd += ["--dismiss-alerts"]
     elif dismiss_alerts is False:
         cmd += ["--no-dismiss-alerts"]
+    if headed is True:
+        cmd += ["--headed"]
+    elif headed is False:
+        cmd += ["--no-headed"]
     return cmd
 
 
@@ -356,6 +361,7 @@ def crawl_command(
     max_steps: int = 200,
     erase: bool | None = None,
     dismiss_alerts: bool | None = None,
+    headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
     resume_src: str = "",
     resume_key: str = "",
@@ -397,6 +403,10 @@ def crawl_command(
         cmd += ["--dismiss-alerts"]
     elif dismiss_alerts is False:
         cmd += ["--no-dismiss-alerts"]
+    if headed is True:
+        cmd += ["--headed"]
+    elif headed is False:
+        cmd += ["--no-headed"]
     if resume_src and resume_key:
         # Resuming appends to the existing run: don't erase the device's app state mid-walk.
         cmd += ["--resume-src", resume_src, "--resume-key", resume_key, "--no-erase"]

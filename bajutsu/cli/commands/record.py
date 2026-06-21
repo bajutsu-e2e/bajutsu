@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import typer
@@ -61,11 +62,20 @@ def record(
         help="authoring agent: 'api' (Anthropic API, pay-per-token) or 'claude-code' "
         "(the `claude` CLI, billed to your Claude subscription). Defaults to $BAJUTSU_AGENT or 'api'.",
     ),
+    headed: bool | None = typer.Option(
+        None,
+        "--headed/--no-headed",
+        help="web backend: author against a visible (headed, slow-motion) browser instead of "
+        "headless; default leaves the app's `headless` config",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario. With `--out` it
     writes there; otherwise it auto-names a file under the app's configured `scenarios` dir."""
     eff = _load_effective(config, app_name)
+    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    if headed is not None:
+        eff = replace(eff, headless=not headed)
     out_path = _record_out_path(eff, out, name, goal, app_name)
     before = _usage.snapshot()
     kind = resolve_kind(agent)

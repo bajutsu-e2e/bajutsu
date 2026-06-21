@@ -204,8 +204,13 @@ async function chooseConfig(path){
 // ---- shared data: apps, scenarios, simulators (used by both views) ----
 async function loadShared(){
   try{apps=await (await fetch('/api/apps')).json()}catch(e){apps=[]}
-  const opts=apps.map(a=>`<option>${esc(a)}</option>`).join('');
+  // each app carries its primary backend (data-backend) so picking a web app hides the iOS-only UI
+  const opts=apps.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
+    return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
   $('#app').innerHTML=opts;$('#rec-app').innerHTML=opts;$('#crawl-app').innerHTML=opts;
+  syncPlatform('#panel-run','#backend','#app');
+  syncPlatform('#panel-record','#rec-backend','#rec-app');
+  syncPlatform('#panel-crawl','#crawl-backend','#crawl-app');
   await loadScenarios();
 }
 // Scenarios come from the selected app's configured dir, so reload when the Replay app changes.
@@ -240,7 +245,8 @@ $('#rec-go').addEventListener('click',async()=>{
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     goal,app:$('#rec-app').value,backend:$('#rec-backend').value.trim(),
     udid:$('#rec-device').value||'booted',name:$('#rec-name').value.trim()||undefined,
-    erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined})});
+    erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined,
+    headed:$('#rec-headed').checked||undefined})});
   const {jobId,path,error}=await r.json();
   if(error){setStatus($('#rec-status'),error,'ng');setBusy($('#rec-go'),$('#rec-stop'),false);return}
   recPath=path;recJobId=jobId;
@@ -336,7 +342,7 @@ $('#crawl-go').addEventListener('click',async()=>{
     app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     erase:$('#crawl-erase').checked,
-    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined})});
+    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined})});
   const {jobId,runId,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
   crawlJobId=jobId;crawlRunId=runId;
@@ -639,7 +645,7 @@ async function resumePruned(src,key){
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     app:$('#crawl-app').value,backend:$('#crawl-backend').value.trim(),udid:$('#crawl-device').value||'booted',
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
-    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,
+    dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
     runId:crawlRunId,resumeSrc:src,resumeKey:key})});
   const {jobId,runId,error}=await r.json();
   if(error){setStatus($('#crawl-status'),error,'ng');setBusy($('#crawl-go'),$('#crawl-stop'),false);return}
@@ -734,12 +740,14 @@ document.addEventListener('keydown',e=>{
 });
 
 // iOS-only device UI (simulators, device pickers, erase, alert-dismiss) shows only for an iOS
-// backend; web-only UI (the headed/show-browser toggle) shows only for web. Keyed off each
-// panel's Backend field.
+// backend; web-only UI (the headed/show-browser toggle) shows only for web. The effective backend
+// is the typed Backend field if set, else the selected app's configured backend (data-backend) —
+// so picking a web app hides the iOS UI without typing anything. Applies to Record/Replay/Crawl.
 function isIosBackend(v){v=(v||'').trim().toLowerCase();return v===''||v==='idb'||v==='ios'||v==='xcuitest';}
-function syncPlatform(panelSel,fieldSel){
+function appBackend(appSel){const a=$(appSel),o=a&&a.selectedOptions&&a.selectedOptions[0];return (o&&o.dataset.backend)||'';}
+function syncPlatform(panelSel,fieldSel,appSel){
   const f=$(fieldSel);if(!f)return;
-  const ios=isIosBackend(f.value);
+  const ios=isIosBackend(f.value.trim()||appBackend(appSel));
   // Inline display wins over the layout rules on .hhead/.sims/.checks/.row (the `hidden`
   // attribute's UA display:none would lose to them); removeProperty restores the CSS value.
   document.querySelectorAll(panelSel+' .iosonly').forEach(el=>{
@@ -749,14 +757,15 @@ function syncPlatform(panelSel,fieldSel){
     if(ios)el.style.setProperty('display','none','important');else el.style.removeProperty('display');
   });
 }
-function wirePlatform(panelSel,fieldSel){
-  if(!$(fieldSel))return;
-  $(fieldSel).addEventListener('input',()=>syncPlatform(panelSel,fieldSel));
-  syncPlatform(panelSel,fieldSel);
+function wirePlatform(panelSel,fieldSel,appSel){
+  const re=()=>syncPlatform(panelSel,fieldSel,appSel);
+  if($(fieldSel))$(fieldSel).addEventListener('input',re);
+  if($(appSel))$(appSel).addEventListener('change',re);  // selecting an app re-evaluates the platform
+  re();
 }
-wirePlatform('#panel-run','#backend');
-wirePlatform('#panel-record','#rec-backend');
-wirePlatform('#panel-crawl','#crawl-backend');
+wirePlatform('#panel-run','#backend','#app');
+wirePlatform('#panel-record','#rec-backend','#rec-app');
+wirePlatform('#panel-crawl','#crawl-backend','#crawl-app');
 
 // Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
 // column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.

@@ -211,6 +211,10 @@ def test_record_command_builder() -> None:
     # Explicit overrides mirror run_command.
     assert "--no-erase" in srv.record_command("o.yaml", "demo", "g", erase=False)
     assert "--no-dismiss-alerts" in srv.record_command("o.yaml", "demo", "g", dismiss_alerts=False)
+    # headed mirrors run_command: None = no flag, True/False force the web browser visible/headless.
+    assert "--headed" not in cmd and "--no-headed" not in cmd
+    assert "--headed" in srv.record_command("o.yaml", "demo", "g", headed=True)
+    assert "--no-headed" in srv.record_command("o.yaml", "demo", "g", headed=False)
     bare = srv.record_command("o.yaml", "demo", "g")  # no agent → no --agent (CLI default applies)
     assert "--agent" not in bare and "--backend" not in bare
 
@@ -235,6 +239,10 @@ def test_crawl_command_builder() -> None:
     assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
     # erase defaults to None (the CLI default — crawl erases): no flag forced either way.
     assert "--erase" not in cmd and "--no-erase" not in cmd
+    # headed mirrors run_command: None = no flag, True/False force the web browser visible/headless.
+    assert "--headed" not in cmd and "--no-headed" not in cmd
+    assert "--headed" in srv.crawl_command("demo", out="o", headed=True)
+    assert "--no-headed" in srv.crawl_command("demo", out="o", headed=False)
     assert "--no-erase" in srv.crawl_command("demo", out="o", erase=False)  # explicit override
     assert "--no-dismiss-alerts" in srv.crawl_command("demo", out="o", dismiss_alerts=False)
     bare = srv.crawl_command("demo", out="o")  # no agent/backend/udid → those flags omitted

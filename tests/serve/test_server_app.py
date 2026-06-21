@@ -45,7 +45,7 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     state = _state(tmp_path)
     write_run(tmp_path / "runs", "20260101-000000", ok=True, scenarios=[("alpha", True)])
     client = _client(state)
-    assert client.get("/api/apps").json() == ["demo", "other"]
+    assert [a["name"] for a in client.get("/api/apps").json()] == ["demo", "other"]
     assert client.get("/api/scenarios?app=demo").json()[0]["names"] == ["alpha", "beta"]
     assert client.get("/api/config").json()["hasConfig"] is True
     assert client.get("/api/runs").json()[0]["id"] == "20260101-000000"
