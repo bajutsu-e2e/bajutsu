@@ -12,13 +12,15 @@ from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.report import html_report
 
 
-def test_screenshot_opens_element_viewer_and_arrows_navigate_steps() -> None:
-    # The full-size screenshot preview (lightbox) is gone: clicking a step's screenshot
-    # opens the element viewer, and ← / → walk the steps of the current scenario, looping.
+def test_screenshot_opens_image_lightbox_and_tree_button_opens_viewer() -> None:
+    # Clicking a step's screenshot enlarges just the image (a plain #imgz lightbox); the element
+    # viewer is the separate "tree" button, where ← / → still walk the scenario's steps, looping.
     out = html_report("run1", [_passing()])
-    assert 'id="lb"' not in out and "lb-nav" not in out and "openLightbox" not in out
-    assert "tvOpen(shot.closest('td.ev'))" in out  # the screenshot opens the element viewer
-    assert "ArrowLeft" in out and "ArrowRight" in out  # arrow keys walk the steps
+    assert (
+        'id="imgz"' in out and "openImg(shot.getAttribute('src'))" in out
+    )  # screenshot → image lightbox
+    assert "tvOpen(b.closest('td.ev')" in out  # the "tree" button opens the element viewer
+    assert "ArrowLeft" in out and "ArrowRight" in out  # arrow keys walk the steps (in the viewer)
     # navigation is scoped to one scenario (details.scn) and wraps at the ends
     assert "tvScopeFor" in out and "details.scn" in out and "% tvScope.length" in out
 
@@ -101,8 +103,8 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     assert 'target="_blank"' not in out
     assert "home.title" in out and "Welcome" in out
     assert 'id="tv"' in out and "tvFilter" in out
-    # the screenshot preview (lightbox) is gone; the element viewer shows the step's own
-    # info above the table instead.
+    # the screenshot opens the plain image lightbox (#imgz), not the old "lb" preview; the element
+    # viewer (the tree button) shows the step's own info above the table.
     assert 'id="lb"' not in out and "openLightbox" not in out
     assert 'class="tv-step"' in out
     # the ◀ N/M ▶ step controls are built below the element list (in JS), and the element filter

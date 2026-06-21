@@ -93,6 +93,11 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
 .tv{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;
  justify-content:center;z-index:50}
 .tv.open{display:flex}
+/* Plain screenshot lightbox: clicking a step screenshot enlarges just the image. */
+.imgz{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;
+ justify-content:center;z-index:60;cursor:zoom-out}
+.imgz.open{display:flex}
+.imgz img{max-width:96vw;max-height:96vh;object-fit:contain;box-shadow:0 6px 30px rgba(0,0,0,.5)}
 .tv-box{position:relative;background:var(--card);color:var(--ink);width:min(94vw,1040px);max-height:84vh;border-radius:10px;
  box-shadow:0 10px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}
 /* ◀ / ▶ walk to the previous / next step's screenshot + elements (same as the arrow keys). */

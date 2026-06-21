@@ -253,7 +253,7 @@
     tv.addEventListener('click', function(e){ if(e.target === tv) tvClose(); });  // backdrop only
     var tvX = tv.querySelector('.tv-close'); if(tvX) tvX.addEventListener('click', tvClose);
     if(tvInput) tvInput.addEventListener('input', function(){ tvFilter(this.value); });
-    ROOT.addEventListener('keydown', function(e){
+    document.addEventListener('keydown', function(e){
       if(!tv.classList.contains('open')) return;
       if(e.key === 'Escape'){ tvClose(); return; }
       // While typing in the filter, let ← / → move the text cursor instead of navigating.
@@ -261,6 +261,17 @@
       if(e.key === 'ArrowLeft'){ e.preventDefault(); tvGo(-1); }
       else if(e.key === 'ArrowRight'){ e.preventDefault(); tvGo(1); }
     });
+  }
+  // Clicking a step screenshot enlarges just the image (a plain lightbox); the element viewer stays
+  // on the "tree" button. Backdrop click or Esc closes it.
+  var imgz = ROOT.getElementById('imgz'), imgzImg = imgz && imgz.querySelector('img');
+  function openImg(src){ if(imgz && imgzImg && src){ imgzImg.src = src; imgz.classList.add('open'); } }
+  function closeImg(){ if(imgz){ imgz.classList.remove('open'); if(imgzImg) imgzImg.removeAttribute('src'); } }
+  if(imgz){
+    imgz.addEventListener('click', closeImg);
+    document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && imgz.classList.contains('open')) closeImg(); });
+    // Delegated so it fires for every scenario — the per-row seek handler below is video-only.
+    ROOT.addEventListener('click', function(e){ var shot = e.target.closest('.shot'); if(shot) openImg(shot.getAttribute('src')); });
   }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
   // so the controls never overlay the video frame the way the native HTML5 controls do.
@@ -343,9 +354,8 @@
     var box = scn.querySelector('.rich-scroll'), lastCur = null;
     rows.forEach(function(r){
       r.addEventListener('click', function(e){
-        if(e.target.closest('a') || e.target.closest('.treebtn')) return;  // links / tree button handled elsewhere
-        var shot = e.target.closest('.shot');
-        if(shot){ tvOpen(shot.closest('td.ev')); return; }   // screenshot opens the element viewer
+        // links / tree button / screenshot handled elsewhere (the screenshot opens the lightbox)
+        if(e.target.closest('a') || e.target.closest('.treebtn') || e.target.closest('.shot')) return;
         var t = parseFloat(r.getAttribute('data-t'));
         // Seek only: keep playing if already playing, stay paused if paused.
         if(!isNaN(t)){ v.currentTime = t; }
