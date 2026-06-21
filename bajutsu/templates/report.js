@@ -245,8 +245,10 @@
     tree.scrollTop = 0;
     tv.classList.add('open');
   }
+  // The "tree" button or a step screenshot opens the element viewer (the step's screenshot beside
+  // its elements, with ◀ / ▶ and ← / → to walk the scenario's steps).
   ROOT.addEventListener('click', function(e){
-    var b = e.target.closest('.treebtn'); if(!b) return;
+    var b = e.target.closest('.treebtn') || e.target.closest('.shot'); if(!b) return;
     tvOpen(b.closest('td.ev') || b.parentNode);
   });
   if(tv){
@@ -261,17 +263,6 @@
       if(e.key === 'ArrowLeft'){ e.preventDefault(); tvGo(-1); }
       else if(e.key === 'ArrowRight'){ e.preventDefault(); tvGo(1); }
     });
-  }
-  // Clicking a step screenshot enlarges just the image (a plain lightbox); the element viewer stays
-  // on the "tree" button. Backdrop click or Esc closes it.
-  var imgz = ROOT.getElementById('imgz'), imgzImg = imgz && imgz.querySelector('img');
-  function openImg(src){ if(imgz && imgzImg && src){ imgzImg.src = src; imgz.classList.add('open'); } }
-  function closeImg(){ if(imgz){ imgz.classList.remove('open'); if(imgzImg) imgzImg.removeAttribute('src'); } }
-  if(imgz){
-    imgz.addEventListener('click', closeImg);
-    document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && imgz.classList.contains('open')) closeImg(); });
-    // Delegated so it fires for every scenario — the per-row seek handler below is video-only.
-    ROOT.addEventListener('click', function(e){ var shot = e.target.closest('.shot'); if(shot) openImg(shot.getAttribute('src')); });
   }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
   // so the controls never overlay the video frame the way the native HTML5 controls do.
