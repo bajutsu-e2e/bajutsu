@@ -21,13 +21,13 @@ scenarios:
       - exists: { id: config.modal, negate: true }
 
   - name: the settings panel requires an explicit AI-provider choice
-    description: Open Settings; with no provider picked, Save is rejected with a prompt to choose one (no silent default), while the API-key section shows and the Bedrock fields stay hidden.
+    description: Open Settings; with no provider picked, no provider-specific config shows (the API-key section and the Bedrock fields stay hidden) and Save is rejected with a prompt to choose one.
     steps:
       - tap: { id: nav.settings }
       - wait: { for: { id: settings.close }, timeout: 5 }
       - assert:
           - exists: { id: settings.provider }
-          - exists: { id: settings.apikey-section }
+          - exists: { id: settings.apikey-section, negate: true }   # no provider picked → no config block shows
           - exists: { id: settings.bedrock-fields, negate: true }
       - tap: { id: settings.save }   # nothing selected yet — the placeholder is the active option
       - wait: { for: { id: settings.status }, timeout: 5 }

@@ -148,12 +148,13 @@ async function clearKey(){
 $('#keyreveal').addEventListener('click',toggleReveal);
 $('#keyclear').addEventListener('click',clearKey);
 
-// ---- AI provider: Anthropic API (default), Amazon Bedrock (AWS credentials), or Claude Code (CLI) ----
+// ---- AI provider: Anthropic API (Claude API key), Amazon Bedrock (AWS creds), or Claude Code (CLI) ----
+// Show only the selected provider's own config block — nothing until one is explicitly picked.
 function renderProv(){
-  const v=$('#provider').value,bedrock=v==='bedrock',cc=v==='claude-code';
-  $('#bedrockfields').hidden=!bedrock;        // region + model id (Bedrock only)
-  $('#claudecodefields').hidden=!cc;          // claude CLI prerequisites (Claude Code only)
-  $('#apikeysection').hidden=bedrock||cc;      // API key: only the Anthropic API needs it (Bedrock uses AWS creds; Claude Code uses the CLI subscription)
+  const v=$('#provider').value;
+  $('#apikeysection').hidden=v!=='anthropic';      // the Claude API key is the Anthropic provider's config
+  $('#bedrockfields').hidden=v!=='bedrock';        // region + model id
+  $('#claudecodefields').hidden=v!=='claude-code'; // claude CLI prerequisites (no inputs)
 }
 async function loadProv(){
   // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
