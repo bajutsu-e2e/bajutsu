@@ -9,9 +9,12 @@ import json
 import re
 import subprocess
 import sys
+import threading
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+import yaml
 
 from bajutsu import env
 from bajutsu.backends import KNOWN_ACTUATORS, PLATFORMS
@@ -74,20 +77,53 @@ def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
     return out
 
 
+# Parsed-config cache, keyed by the resolved path and a freshness stamp ``(st_mtime_ns, st_size)``.
+# The serve config is read on most requests (apps/scenarios listing, org resolution); without this
+# each one re-reads and re-validates the YAML. The entry is invalidated whenever the file's mtime or
+# size changes; an edit that preserves both (a same-size rewrite that also keeps the timestamp) won't
+# be noticed, which is acceptable for an operator-edited config. A lock guards the dict since serve
+# handles requests on multiple threads.
+_config_cache: dict[str, tuple[tuple[int, int], Config]] = {}
+_config_cache_lock = threading.Lock()
+
+
+def _load_config_cached(config_path: Path) -> Config:
+    """The parsed config at *config_path*, cached by resolved path + file mtime/size so a request
+    parses it at most once and unchanged files aren't re-parsed across requests. Raises on a
+    read/validation error (callers handle it); a malformed-YAML error is normalized to `ValueError`
+    so the callers' `except (OSError, ValueError)` covers it. Only successful parses are cached, so a
+    fix to a bad config is picked up at once."""
+    stat = config_path.stat()
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    # Canonicalize the key so the same file via a relative/absolute/symlinked path shares one entry.
+    key = str(config_path.resolve())
+    with _config_cache_lock:
+        cached = _config_cache.get(key)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+    try:
+        config = load_config(config_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ValueError(str(e)) from e  # so callers catching ValueError handle a malformed config
+    with _config_cache_lock:
+        _config_cache[key] = (stamp, config)
+    return config
+
+
 def load_config_file(config_path: Path | None) -> Config | None:
     """The parsed config, or None if there is none or it can't be read/validated. Used where the
-    org model is needed (resolving a user/app to its org); a re-read per call, like `list_apps`."""
+    org model is needed (resolving a user/app to its org)."""
     if config_path is None:
         return None
     try:
-        return load_config(config_path.read_text(encoding="utf-8"))
+        return _load_config_cached(config_path)
     except (OSError, ValueError):
         return None
 
 
 def list_apps(config_path: Path) -> list[str]:
     try:
-        return sorted(load_config(config_path.read_text(encoding="utf-8")).apps)
+        return sorted(_load_config_cached(config_path).apps)
     except (OSError, ValueError):
         return []
 
@@ -98,7 +134,7 @@ def app_build_info(config_path: Path, app: str) -> tuple[str | None, str | None]
     then proceeds without an on-demand build (and the runner reports a missing binary as
     before)."""
     try:
-        eff = resolve(load_config(config_path.read_text(encoding="utf-8")), app)
+        eff = resolve(_load_config_cached(config_path), app)
     except (OSError, ValueError, KeyError):
         return (None, None)
     return (eff.app_path, eff.build)
@@ -108,7 +144,7 @@ def app_scenarios_dir(config_path: Path, app: str) -> Path | None:
     """The configured ``scenarios`` dir for *app*, or None (unset, or any load/resolve error).
     Mirrors ``app_build_info``; resolved relative to the run's working directory."""
     try:
-        eff = resolve(load_config(config_path.read_text(encoding="utf-8")), app)
+        eff = resolve(_load_config_cached(config_path), app)
     except (OSError, ValueError, KeyError):
         return None
     return Path(eff.scenarios) if eff.scenarios else None

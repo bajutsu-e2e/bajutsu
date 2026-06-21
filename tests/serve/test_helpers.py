@@ -25,6 +25,75 @@ def test_list_apps(tmp_path: Path) -> None:
     assert srv.list_apps(cfg) == ["demo", "other"]
 
 
+def test_load_config_cached_reuses_an_unchanged_file(tmp_path: Path) -> None:
+    from bajutsu.serve import helpers
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    first = helpers._load_config_cached(cfg)
+    # An unchanged file isn't re-parsed: the same object comes back.
+    assert helpers._load_config_cached(cfg) is first
+
+
+def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> None:
+    import os
+
+    from bajutsu.serve import helpers
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    assert list(helpers._load_config_cached(cfg).apps) == ["demo"]
+    # Rewrite with new content; bump mtime so the freshness key changes deterministically.
+    cfg.write_text(
+        "apps:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        encoding="utf-8",
+    )
+    future = cfg.stat().st_mtime_ns + 1_000_000_000
+    os.utime(cfg, ns=(future, future))
+    assert sorted(helpers._load_config_cached(cfg).apps) == ["demo", "other"]
+
+
+def test_load_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
+    # A YAML syntax error (yaml.YAMLError, not a ValueError) is normalized so the helpers' broad
+    # except still turns it into None rather than escaping and crashing request handling.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps: [unbalanced\n", encoding="utf-8")
+    assert srv.load_config_file(cfg) is None
+    assert srv.list_apps(cfg) == []
+
+
+def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
+    import os
+
+    from bajutsu.serve import helpers
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    # A relative path and the absolute path to the same file share one cache entry (same object).
+    cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        first = helpers._load_config_cached(Path("bajutsu.config.yaml"))
+        assert helpers._load_config_cached(cfg) is first
+    finally:
+        os.chdir(cwd)
+
+
+def test_list_apps_reflects_an_edited_config(tmp_path: Path) -> None:
+    import os
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    assert srv.list_apps(cfg) == ["demo"]
+    cfg.write_text(
+        "apps:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        encoding="utf-8",
+    )
+    future = cfg.stat().st_mtime_ns + 1_000_000_000
+    os.utime(cfg, ns=(future, future))
+    assert srv.list_apps(cfg) == ["demo", "other"]  # cache invalidated by the mtime/size change
+
+
 def test_mask_secret_keeps_head_and_tail() -> None:
     masked = srv.mask_secret("sk-ant-api03-abcdefXYZ")
     assert masked == "sk-a…fXYZ"  # head 4 + … + tail 4
