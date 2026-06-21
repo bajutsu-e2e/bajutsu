@@ -4,13 +4,13 @@
 
 * 提案: [BE-XXXX](BE-XXXX-parallel-crawl-ja.md)
 * 状態: **提案**
-* トラック: [提案](../README-ja.md#提案)
+* トラック: [提案](../../README-ja.md#提案)
 * トピック: クロール性能 / スケールアウト
 * 由来: ユーザー要望（クロール効率）
 
 ## はじめに
 
-[BE-0038 の自律クロール](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)を、**起動済みシミュレータ N 台で同時に**走らせ、独立したフロンティアの作業を重ね合わせて、画面マップを実時間ベースで大幅に短縮して構築します。クロールはあくまで探索・発見ツール（Tier 1、CI ゲートには決してならない）のままで、並列化されるのは**スケジューリングだけ**です。画面同一性・遷移・クラッシュの判定は従来とまったく同じに行われます。
+[BE-0038 の自律クロール](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)を、**起動済みシミュレータ N 台で同時に**走らせ、独立したフロンティアの作業を重ね合わせて、画面マップを実時間ベースで大幅に短縮して構築します。クロールはあくまで探索・発見ツール（Tier 1、CI ゲートには決してならない）のままで、並列化されるのは**スケジューリングだけ**です。画面同一性・遷移・クラッシュの判定は従来とまったく同じに行われます。
 
 ## 動機
 
@@ -21,7 +21,7 @@
 
 どちらも独立したシミュレータ間できれいに重なるので、AI のレート上限やコーディネータの競合が支配的になるまで、実時間はおおよそ台数に反比例して減ります。
 
-`run` は既にシミュレータプールで並列化されており（[`runner/pool.py`](../../../bajutsu/runner/pool.py)）、WebUI でも Replay は複数台プールを選べます。クロールは、いまだ 1 台に固定された唯一の Tier-1 経路です。これが、`record` の入口として、また全画面のカバレッジ計測の実行として（[DESIGN §7.2](../../../DESIGN.md)、[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) 動機 #2）クロールを使いにくくしています。
+`run` は既にシミュレータプールで並列化されており（[`runner/pool.py`](../../../bajutsu/runner/pool.py)）、WebUI でも Replay は複数台プールを選べます。クロールは、いまだ 1 台に固定された唯一の Tier-1 経路です。これが、`record` の入口として、また全画面のカバレッジ計測の実行として（[DESIGN §7.2](../../../DESIGN.md)、[BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) 動機 #2）クロールを使いにくくしています。
 
 ## 詳細設計
 
@@ -43,7 +43,7 @@
 
 並列化で緩むのは**探索順序**と**記録される正準 `path_to`** です。どのワーカーが画面に先に到達するかはスケジュール依存なので、アプリ自体に非決定性があると、記録されるパス（およびタイブレークされた発見順）は実行ごとに変わりえます。決定的なアプリでは、発見されるノードとエッジの*集合*は不変で、順序やパスのメタデータだけが変わります。
 
-これが許容されるのは、まさにクロールが **Tier 1 であり、合否ではなく発見成果物を出力する**からです —— [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) が既に「クロール自体は CI ゲートにならない」と述べているのと同じ理由です。決定的な*副産物*はその保証を保ちます。記録された再現/フローのパスは、`run` で AI なしの Tier 2 リグレッションとして再生できます。
+これが許容されるのは、まさにクロールが **Tier 1 であり、合否ではなく発見成果物を出力する**からです —— [BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) が既に「クロール自体は CI ゲートにならない」と述べているのと同じ理由です。決定的な*副産物*はその保証を保ちます。記録された再現/フローのパスは、`run` で AI なしの Tier 2 リグレッションとして再生できます。
 
 ### インターフェース
 
@@ -61,7 +61,7 @@
 
 ## 参考
 
-* [BE-0038 — 自律クロール探索](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) —— 本項目が拡張するエンジン。
+* [BE-0038 — 自律クロール探索](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) —— 本項目が拡張するエンジン。
 * [`bajutsu/runner/pool.py`](../../../bajutsu/runner/pool.py) —— `run` のシミュレータプール。倣うべき既存の並行モデル。
 * [CLAUDE.md](../../../CLAUDE.md) —— prime directive #1（AI は判定しない）と #2（決定性優先）。
 * [DESIGN §7.2](../../../DESIGN.md) —— クロールのダンプから全画面カバレッジを得る。クロールが速くなれば実用的になる。
