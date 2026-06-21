@@ -9,6 +9,7 @@ dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
 
 from __future__ import annotations
 
+import atexit
 import json
 import subprocess
 from dataclasses import replace
@@ -21,12 +22,13 @@ from bajutsu import crawl as crawl_engine
 from bajutsu import env as _env
 from bajutsu.agents import AGENT_KINDS, resolve_kind
 from bajutsu.anthropic_client import credential_gap
-from bajutsu.backends import select_actuator
+from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
 from bajutsu.record import _clear_blocking
 from bajutsu.runner import _await_ready, launch_driver
+from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions
 
 
@@ -120,8 +122,10 @@ def crawl(
     # Crawl is AI-driven: the AI proposes what to try (the engine keeps identity/transitions/crashes
     # deterministic). The default backend needs an API key; --agent claude-code uses its own auth.
     crawl_guide = make_guide(report=say, agent=agent)
+    backends = _backends(backend, eff.backend)
     try:
-        actuator = select_actuator(_backends(backend, eff.backend))
+        ensure_web_runtime(backends)  # auto-install Playwright if a web crawl needs it
+        actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -172,6 +176,16 @@ def crawl(
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
     udid = _env.resolve_udid(udid)
+
+    # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
+    # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
+    # command exits (atexit), since the crawl is a single linear flow with no run-style teardown.
+    try:
+        stop_server = start_launch_server(eff)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+    atexit.register(stop_server)
 
     say(
         f"⚙️  preparing the simulator — installing and launching {app_name} (this can take a moment) …"
