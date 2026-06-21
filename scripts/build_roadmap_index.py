@@ -128,11 +128,18 @@ SECTIONS: tuple[Section, ...] = (
         "proposals-authoring", "Proposals", "Authoring experience (record / GUI editor)", False
     ),
     Section("proposals-hosting", "Proposals", "Hosting the web UI (cloud / self-hosted)", False),
+    Section("proposals-config-sourcing", "Proposals", "Configuration sourcing", False),
     Section("proposals-mcp", "Proposals", "Integration & automation (MCP)", False),
     Section("proposals-backend", "Proposals", "Backend expansion (iOS actuators)", False),
     Section("proposals-doctor", "Proposals", "doctor / onboarding", False),
     Section("proposals-codegen", "Proposals", "codegen coverage", False),
     Section("proposals-crawl", "Proposals", "Crawl performance / scale-out", False),
+    Section(
+        "proposals-dev-infra",
+        "Proposals",
+        "Development infrastructure (contributor workflow)",
+        False,
+    ),
     Section("proposals-misc", "Proposals", "Miscellaneous / on hold", False),
     Section(
         "proposals-competitive",

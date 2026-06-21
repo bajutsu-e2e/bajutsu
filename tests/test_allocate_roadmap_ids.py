@@ -1,10 +1,11 @@
 """Tests for scripts/allocate_roadmap_ids.py.
 
 The script allocates permanent BE IDs to ``BE-XXXX`` placeholders and, in ``--repair`` mode,
-renumbers an item whose id ``origin/main`` now hands to a *different* item (the BE-0054
-double-allocation). These tests pin the pure pieces (reserved-id parsing, the used-id floor,
-collision detection) over temporary trees, the git-mv side effects over throwaway git repos, and
-finally assert the committed roadmaps/ tree carries no duplicate id.
+renumbers an item whose id a more authoritative holder already owns — ``origin/main`` (the BE-0054
+double-allocation) or, when nothing is merged, a lower-numbered open PR. These tests pin the pure
+pieces (reserved- and lower-PR-id parsing, the used-id floor, collision detection) over temporary
+trees, the git-mv side effects over throwaway git repos, and finally assert the committed roadmaps/
+tree carries no duplicate id.
 """
 
 from __future__ import annotations
@@ -83,6 +84,13 @@ def test_used_ids_folds_tree_main_and_reserved(monkeypatch: pytest.MonkeyPatch) 
     assert ari.used_ids() == {1, 2, 5, 7}
 
 
+def test_lower_pr_ids_from_env_parses_and_empties(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ari.LOWER_PR_IDS_ENV, "BE-0056 58")  # tokens and bare numbers both parse
+    assert ari.lower_pr_ids_from_env() == {56, 58}
+    monkeypatch.delenv(ari.LOWER_PR_IDS_ENV, raising=False)
+    assert ari.lower_pr_ids_from_env() == set()
+
+
 # --- collision detection ---------------------------------------------------------
 
 
@@ -114,6 +122,31 @@ def test_colliding_items_empty_when_no_main(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
     _make_item(roadmap, "proposals", "BE-0054-foo")
     assert ari.colliding_items(roadmap, {}) == []
+
+
+def test_colliding_items_flags_lower_pr_collision(tmp_path: Path) -> None:
+    """Nothing on main, so the number is contested only between open PRs: the lower PR number wins.
+
+    This branch introduces dogfood-web-ui at BE-0056; a lower-numbered open PR also holds 0056
+    (``lower_pr_ids``), so this branch is the loser and must renumber. Drop the lower claimant and
+    this branch is itself the authority — no collision.
+    """
+    roadmap = tmp_path / "roadmaps"
+    item = _make_item(roadmap, "implemented", "BE-0056-dogfood-web-ui")
+    assert ari.colliding_items(roadmap, {}, lower_pr_ids={56}) == [(56, "dogfood-web-ui", item)]
+    assert ari.colliding_items(roadmap, {}, lower_pr_ids=set()) == []
+
+
+def test_colliding_items_lower_pr_ignores_inherited_slug(tmp_path: Path) -> None:
+    """A lower PR sharing the number does not renumber an item whose slug is already on main.
+
+    Slug on main means the branch inherited the item (a rebase resolves it); the lower-PR tiebreaker
+    must not override that guard, or a stale branch would be renumbered instead of rebased.
+    """
+    roadmap = tmp_path / "roadmaps"
+    _make_item(roadmap, "proposals", "BE-0056-operational-logging")
+    main_ids = {55: "operational-logging"}  # same slug on main at a different id -> inherited
+    assert ari.colliding_items(roadmap, main_ids, lower_pr_ids={56}) == []
 
 
 # --- ids_to_slugs_on_git_ref over a real ref -------------------------------------
@@ -210,6 +243,56 @@ def test_repair_renumbers_collision_and_fixes_references(
     assert "BE-0055-operational-logging" in cross
     assert "[BE-0055]" in cross
     assert "BE-0054" not in cross
+
+
+def test_repair_renumbers_open_pr_collision_by_pr_number(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A number contested only between open PRs (nothing merged): the lower PR keeps it, this moves.
+
+    The branch introduces BE-0056-dogfood-web-ui; main holds no 0056, but a lower-numbered open PR
+    does (``ROADMAP_LOWER_PR_IDS``), so this branch is the loser. The next free id avoids every open
+    PR's number (``ROADMAP_RESERVED_IDS``) — proving the move is driven purely by the open-PR
+    tiebreaker, with main empty.
+    """
+    roadmap = tmp_path / "roadmaps"
+    _make_item(roadmap, "implemented", "BE-0056-dogfood-web-ui")
+    _git_init(tmp_path, monkeypatch)
+    monkeypatch.setattr(ari, "ids_to_slugs_on_git_ref", lambda _ref: {})  # nothing on main
+    monkeypatch.setattr(ari, "regenerate_index", lambda: None)
+    monkeypatch.setenv(ari.LOWER_PR_IDS_ENV, "56")  # a lower-numbered open PR also holds 0056
+    monkeypatch.setenv(ari.RESERVED_IDS_ENV, "56 59")  # other open PRs hold 0056 and 0059
+
+    remaps = ari.repair()
+
+    assert remaps == [("BE-0056", "BE-0060")]  # next free above max(56, 59)
+    new_dir = roadmap / "implemented" / "BE-0060-dogfood-web-ui"
+    assert (new_dir / "BE-0060-dogfood-web-ui.md").is_file()
+    assert not (roadmap / "implemented" / "BE-0056-dogfood-web-ui").exists()
+    assert "BE-0060" in (new_dir / "BE-0060-dogfood-web-ui.md").read_text(encoding="utf-8")
+
+
+def test_repair_keeps_id_when_lowest_open_pr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lowest open-PR holder of a number is the authority and is never renumbered.
+
+    Same contested 0056 as above, but no *lower*-numbered PR holds it (empty ``LOWER_PR_IDS``), so
+    this branch is the authority and keeps the number — repair is a no-op even though other open PRs
+    (higher-numbered) share it.
+    """
+    roadmap = tmp_path / "roadmaps"
+    _make_item(roadmap, "implemented", "BE-0056-web-ui-aws-sso-login")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ari, "ids_to_slugs_on_git_ref", lambda _ref: {})  # nothing on main
+    monkeypatch.setenv(
+        ari.RESERVED_IDS_ENV, "58 59"
+    )  # higher-numbered open PRs share nothing lower
+    calls: list[str] = []
+    monkeypatch.setattr(ari, "git_mv", lambda _s, _d: calls.append("mv"))
+    monkeypatch.setattr(ari, "regenerate_index", lambda: calls.append("index"))
+    assert ari.main(["--repair"]) == 0
+    assert calls == []
 
 
 def test_repair_noop_when_no_collision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

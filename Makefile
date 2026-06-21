@@ -41,7 +41,7 @@ serve:
 	@./scripts/serve.sh $(ARGS)
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
@@ -89,10 +89,12 @@ roadmap-index:
 roadmap-promote:
 	uv run python scripts/promote_roadmap_items.py
 
-# Renumber any item on this branch whose BE id origin/main now hands to a different item, picking
-# the next free ID — the self-heal for the rare case where two branches were allocated the same
-# number and one merged first. The roadmap-id-repair workflow runs this across open PRs on a push
-# to main; run it locally to fix your own branch before pushing (needs `git fetch origin` first).
+# Renumber any item on this branch whose BE id a more authoritative holder already owns — origin/main
+# (a merged item wins), or, when nothing is merged, a lower-numbered open PR — picking the next free
+# ID. The backstop for the rare collision the refs/be-claims/* reservation does not prevent. The
+# roadmap-id-repair workflow runs this across open PRs on a push to main and on a schedule; run it
+# locally to fix your own branch before pushing (needs `git fetch origin` first; the open-PR
+# tiebreaker only applies in CI, which passes ROADMAP_LOWER_PR_IDS).
 roadmap-id-repair:
 	uv run python scripts/allocate_roadmap_ids.py --repair
 
