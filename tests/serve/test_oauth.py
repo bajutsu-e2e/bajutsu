@@ -10,20 +10,24 @@ from pathlib import Path
 
 from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.server.oauth import Identity
 
 
 class FakeOAuthClient:
-    """The slice of the OAuth flow the operations use, in memory — no GitHub call. `fetch_login`
-    returns None for the code ``"bad"`` (a failed exchange), else the configured login."""
+    """The slice of the OAuth flow the operations use, in memory — no GitHub call. `fetch_identity`
+    returns None for the code ``"bad"`` (a failed exchange), else the configured login + orgs."""
 
-    def __init__(self, login: str | None = "alice") -> None:
+    def __init__(self, login: str | None = "alice", orgs: list[str] | None = None) -> None:
         self._login = login
+        self._orgs = orgs or []
 
     def authorize_url(self, state: str) -> str:
         return f"https://github.test/login/oauth/authorize?state={state}"
 
-    def fetch_login(self, code: str) -> str | None:
-        return None if code == "bad" else self._login
+    def fetch_identity(self, code: str) -> Identity | None:
+        if code == "bad" or not self._login:
+            return None
+        return Identity(login=self._login, orgs=list(self._orgs))
 
 
 def _state(
@@ -80,7 +84,7 @@ class _RaisingOAuthClient:
     def authorize_url(self, state: str) -> str:
         return f"https://github.test/authorize?state={state}"
 
-    def fetch_login(self, code: str) -> str | None:
+    def fetch_identity(self, code: str) -> Identity | None:
         raise RuntimeError("github unreachable")
 
 
@@ -121,3 +125,48 @@ def test_oauth_callback_surfaces_an_exchange_error_as_502(tmp_path: Path) -> Non
     _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert status == 502
     assert sid is None
+
+
+class _FakeResponse:
+    def __init__(self, status: int, body: object, next_url: str | None = None) -> None:
+        self.status_code = status
+        self._body = body
+        self.links = {"next": {"url": next_url}} if next_url else {}
+
+    def json(self) -> object:
+        if isinstance(self._body, Exception):
+            raise self._body
+        return self._body
+
+
+class _PagingClient:
+    """A stand-in httpx client whose `/user/orgs` is paginated across two pages."""
+
+    def __init__(self, pages: list[_FakeResponse]) -> None:
+        self._pages = pages
+        self.calls = 0
+
+    def get(self, url: str, headers: dict[str, str]) -> _FakeResponse:
+        resp = self._pages[self.calls]
+        self.calls += 1
+        return resp
+
+
+def test_fetch_orgs_follows_pagination() -> None:
+    from bajutsu.serve.server.oauth import _fetch_orgs
+
+    client = _PagingClient(
+        [
+            _FakeResponse(200, [{"login": "acme-gh"}], next_url="https://api.github.test/p2"),
+            _FakeResponse(200, [{"login": "globex-gh"}]),
+        ]
+    )
+    assert _fetch_orgs(client, {}) == ["acme-gh", "globex-gh"]
+    assert client.calls == 2  # both pages fetched
+
+
+def test_fetch_orgs_is_non_fatal_on_error() -> None:
+    from bajutsu.serve.server.oauth import _fetch_orgs
+
+    assert _fetch_orgs(_PagingClient([_FakeResponse(403, [])]), {}) == []
+    assert _fetch_orgs(_PagingClient([_FakeResponse(200, ValueError("bad json"))]), {}) == []

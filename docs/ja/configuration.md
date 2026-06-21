@@ -66,16 +66,17 @@ config の `defaults.redact` と `apps.<name>.redact` は **union** されます
 
 ### org（`orgs:`、マルチテナントのサーバ backend）
 
-`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属する GitHub login と、その org が持つ apps を列挙します。
+`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、その org が持つ apps を列挙します。
 
 ```yaml
 orgs:
   acme:
-    members: [alice, bob]
+    members: [alice, bob]    # 明示の GitHub login
+    githubOrgs: [acme-gh]    # この GitHub org の全員（read:org の OAuth scope が必要）
     apps: [demo, checkout]
 ```
 
-OAuth ログイン時にユーザは自分の org に割り当てられ、以後はその org の apps だけが見え、run の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に置かれます。どの org にも挙げられていない login や app は単一の `default` org に入るので、`orgs:` ブロックの**無い** config はシングルテナントです。CLI とローカルの `serve` は `orgs:` を一切参照しません。
+OAuth ログイン時にユーザは自分の org に割り当てられます（まず明示の `members`、無ければ GitHub org メンバーシップからの `githubOrgs` 一致）。以後はその org の apps だけが見え、run の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に置かれます。どの org にも挙げられていない login や app は単一の `default` org に入るので、`orgs:` ブロックの**無い** config はシングルテナントです。CLI とローカルの `serve` は `orgs:` を一切参照しません。
 
 ## CLI からの選択
 

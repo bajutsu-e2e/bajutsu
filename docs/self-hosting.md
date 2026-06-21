@@ -11,11 +11,12 @@
 >
 > - **Tier A — a single Mac.** One `bajutsu serve` process, token-authenticated, on one Mac. The
 >   rest of this page up to *Tier B* covers it.
-> - **Tier B — a single-team server backend.** BE-0015's control plane (FastAPI + Postgres + Redis +
->   S3-compatible storage + GitHub OAuth + RBAC + quotas) on a Linux node, with Mac workers — for one
->   team (it is single-tenant). See *[Tier B — single-team self-hosting](#tier-b--single-team-self-hosting-the-server-backend)*.
+> - **Tier B — a self-hosted server backend.** BE-0015's control plane (FastAPI + Postgres + Redis +
+>   S3-compatible storage + GitHub OAuth + RBAC + quotas) on a Linux node, with Mac workers. It runs
+>   single-tenant by default and supports **multiple orgs** when you declare them in config (see
+>   *[Tier B — self-hosting the server backend](#tier-b--self-hosting-the-server-backend)*).
 >
-> The fully multi-tenant public/self-hosted system (multiple orgs) remains future
+> The fully managed public cloud offering (a hosted MacStadium worker pool + IaC) remains future
 > ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 
 ## The macOS constraint
@@ -87,14 +88,14 @@ token auth on every request, `/api/run` and `/api/record` confined to the app's 
 validated `backend`/`udid`, a CSRF Origin check plus security headers, and a concurrency cap on run
 dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patched.
 
-## Tier B — single-team self-hosting (the server backend)
+## Tier B — self-hosting the server backend
 
 Tier A is one process on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
 plane with Postgres, Redis, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota
-— on a Linux node, with one or more Macs as workers. It is **single-tenant**: every user belongs to
-one default org, so run it for **one team** (multi-tenant isolation across orgs is not implemented
-yet). The ready-to-run stack is in [`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile
-+ `.env.example`).
+— on a Linux node, with one or more Macs as workers. It runs **single-tenant** by default (every
+user in one default org) and supports **multiple orgs** once you declare them in config — see
+*[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
+[`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile + `.env.example`).
 
 ```
         team laptops
@@ -137,6 +138,10 @@ Allowlisted users are **editors** by default (they can run); admins also change 
 (config / API key / provider); viewers are read-only. The token stays the operator/CI credential
 (full access); OAuth is the team's per-user login.
 
+Login always requests the `read:org` scope so a user can be mapped to an org by GitHub org
+membership (config `githubOrgs`), so the consent screen mentions organization access either way. A
+single-tenant deploy (no `orgs:` block) just ignores the org info.
+
 ### 3. Run a Mac worker
 
 On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install
@@ -167,9 +172,26 @@ Caddy for a real hostname (`docker compose --profile caddy up -d`, with `BAJUTSU
 The worker reaches Redis (`:6379`) and MinIO (`:9000`) over the tailnet, so keep the node on the
 private tailnet.
 
-### Still single-tenant
+### Multiple orgs
 
-Multiple orgs, org-scoped run history, cross-org access checks, and per-org quotas are **not**
-implemented (they wait on BE-0015's multi-tenant control plane). Tier B is for **one team**; the
-shared token and the GitHub allowlist are the access boundary.
+To host more than one team on one backend, declare orgs in the mounted config — each with its member
+GitHub logins and/or GitHub orgs, plus the apps it owns (see
+[configuration](configuration.md#orgs-the-multi-tenant-server-backend)):
+
+```yaml
+orgs:
+  acme:
+    members: [alice, bob]
+    githubOrgs: [acme-gh]    # everyone in this GitHub org (login requests the read:org scope)
+    apps: [demo, checkout]
+  globex:
+    members: [carol]
+    apps: [other]
+```
+
+Each user is then scoped to their org: they see only that org's apps, a cross-org run/scenario/
+artifact reads as not-found or returns 403, and each org's artifacts/scenarios/baselines live under
+its own object-store prefix. With no `orgs:` block the backend stays single-tenant (one default org),
+and the shared token plus the GitHub allowlist are the access boundary. The fully managed public
+cloud offering (a hosted Mac worker pool + IaC) is still future work in BE-0015.
 

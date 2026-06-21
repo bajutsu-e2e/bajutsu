@@ -246,12 +246,13 @@ On the server backend with a database wired:
 #### 8 — multi-tenancy (org model, resolution, enforcement, per-org storage)
 
 Real multi-tenancy now ships on top of the single-tenant backend. The org model is **declared in
-config**, so it stays app-agnostic and needs no extra GitHub scope:
+config**, so it stays app-agnostic:
 
 ```yaml
 orgs:
   acme:
-    members: [alice, bob]   # GitHub logins
+    members: [alice, bob]      # explicit GitHub logins, and/or…
+    githubOrgs: [acme-gh]      # …everyone in this GitHub org
     apps: [demo, checkout]
   globex:
     members: [carol]
@@ -261,10 +262,12 @@ orgs:
 A login or app named in no org falls into the single `default` org, so a config with no `orgs:`
 block stays single-tenant — the shipped behavior is unchanged.
 
-- **Org resolution (8b):** at OAuth login the user is assigned their config org (`org_for_user`,
-  persisted on the user row); each later request resolves the actor's org from that row
-  (`ServeState.org_of`). The run listing, run records, and audit entries are written/read under the
-  resolved org.
+- **Org resolution (8b):** at OAuth login the user is assigned their config org and it's persisted
+  on the user row; each later request resolves the actor's org from that row (`ServeState.org_of`).
+  The org comes from an explicit `members` listing or, failing that, the user's **GitHub org
+  membership** (`org_for_identity`): the OAuth flow requests `read:org` and reads `/user/orgs`, and a
+  `githubOrgs` entry maps a GitHub org to a bajutsu org. The run listing, run records, and audit
+  entries are written/read under the resolved org.
 - **Org-scope enforcement (8c):** a user sees only their org's apps; starting a run/record/crawl on,
   or saving into, another org's app returns 403; reading a scenario or a run artifact outside the
   org reads as not-found (non-leaky).
@@ -275,8 +278,7 @@ block stays single-tenant — the shipped behavior is unchanged.
 
 A server-backend run executes on a worker, so the **worker** records it into the system of record:
 give the worker the `db` extra and `BAJUTSU_DATABASE_URL` and a finished run is recorded under its
-org/actor (no-op without them — the run still works, it just isn't listed). Still ahead: assigning
-the org from **GitHub org membership** rather than a config member list.
+org/actor (no-op without them — the run still works, it just isn't listed).
 
 ## Alternatives considered
 

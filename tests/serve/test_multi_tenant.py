@@ -13,6 +13,7 @@ from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import StoreBundle
 from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.models import Base
+from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.server.object_store import org_prefix
 
 CONFIG = """
@@ -101,14 +102,15 @@ def test_no_orgs_block_keeps_a_single_tenant(tmp_path: Path) -> None:
 
 
 class _FakeOAuthClient:
-    def __init__(self, login: str) -> None:
+    def __init__(self, login: str, orgs: list[str] | None = None) -> None:
         self._login = login
+        self._orgs = orgs or []
 
     def authorize_url(self, state: str) -> str:
         return f"https://github.test/?state={state}"
 
-    def fetch_login(self, code: str) -> str | None:
-        return self._login
+    def fetch_identity(self, code: str) -> Identity | None:
+        return Identity(login=self._login, orgs=list(self._orgs))
 
 
 def test_oauth_login_assigns_the_org_from_config(tmp_path: Path) -> None:
@@ -125,6 +127,29 @@ def test_oauth_login_assigns_the_org_from_config(tmp_path: Path) -> None:
     state.oauth_allowed_users = frozenset({"carol"})
     ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
     assert state.repository.user_org("carol") == "default"
+
+
+def test_oauth_login_assigns_the_org_from_github_org_membership(tmp_path: Path) -> None:
+    # A login with no explicit member listing is mapped to a bajutsu org by its GitHub org.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "apps:\n  demo: { bundleId: com.example.demo }\n"
+        "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n    apps: [demo]\n",
+        encoding="utf-8",
+    )
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        config=cfg,
+        repository=repo,
+        oauth=_FakeOAuthClient("dave", orgs=["acme-gh"]),
+        oauth_allowed_users=frozenset({"dave"}),
+    )
+    _payload, status, sid = ops.oauth_callback(state, code="ok", state_param="s", state_cookie="s")
+    assert status == 200 and sid is not None
+    assert repo.user_org("dave") == "acme"
 
 
 def test_local_serve_ignores_orgs_without_a_repository(tmp_path: Path) -> None:

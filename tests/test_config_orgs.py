@@ -4,7 +4,13 @@ member GitHub logins and its apps. A user or app not named in any org falls back
 
 from __future__ import annotations
 
-from bajutsu.config import apps_for_org, load_config, org_for_app, org_for_user
+from bajutsu.config import (
+    apps_for_org,
+    load_config,
+    org_for_app,
+    org_for_identity,
+    org_for_user,
+)
 
 CONFIG_YAML = """
 apps:
@@ -57,6 +63,39 @@ def test_apps_for_org_excludes_undeclared_app_names() -> None:
         "orgs:\n  acme:\n    members: [alice]\n    apps: [demo, ghost]\n"
     )
     assert apps_for_org(cfg, "acme") == ["demo"]
+
+
+IDENTITY_YAML = """
+apps:
+  demo: { bundleId: com.example.demo }
+
+orgs:
+  acme:
+    members: [alice]
+    githubOrgs: [acme-gh]
+    apps: [demo]
+  globex:
+    githubOrgs: [globex-gh]
+"""
+
+
+def test_org_for_identity_prefers_an_explicit_member() -> None:
+    cfg = load_config(IDENTITY_YAML)
+    # alice is an explicit acme member, so her GitHub orgs don't override that.
+    assert org_for_identity(cfg, "alice", ["globex-gh"]) == "acme"
+
+
+def test_org_for_identity_maps_from_github_org_membership() -> None:
+    cfg = load_config(IDENTITY_YAML)
+    assert org_for_identity(cfg, "carol", ["globex-gh"]) == "globex"
+    assert org_for_identity(cfg, "dave", ["acme-gh"]) == "acme"
+
+
+def test_org_for_identity_falls_back_to_default() -> None:
+    cfg = load_config(IDENTITY_YAML)
+    # No explicit membership and no matching GitHub org → the default org.
+    assert org_for_identity(cfg, "stranger", ["unrelated-gh"]) == "default"
+    assert org_for_identity(cfg, "stranger", []) == "default"
 
 
 def test_no_orgs_block_is_single_tenant() -> None:

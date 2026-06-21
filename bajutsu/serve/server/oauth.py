@@ -1,21 +1,34 @@
 """GitHub OAuth client for the hosted backend (BE-0015 7b-2).
 
 The `OAuthClient` seam is the slice of the OAuth web flow the serve operations need — build the
-authorize URL, and exchange a callback code for the GitHub login — so a fake can drive the gate
-without contacting GitHub. `GitHubOAuthClient` is the real implementation; authlib is lazy-imported
-inside the exchange, so this module imports no authlib and the default path / import guard stay
-clean. The username allowlist and CSRF-state check live in the (provider-neutral) operations, not
-here."""
+authorize URL, and exchange a callback code for the GitHub identity (login + org memberships) — so a
+fake can drive the gate without contacting GitHub. `GitHubOAuthClient` is the real implementation;
+authlib is lazy-imported inside the exchange, so this module imports no authlib and the default path /
+import guard stay clean. The username allowlist and CSRF-state check live in the (provider-neutral)
+operations, not here."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 from urllib.parse import urlencode
 
 _AUTHORIZE = "https://github.com/login/oauth/authorize"
 _TOKEN = "https://github.com/login/oauth/access_token"  # the OAuth token-exchange endpoint
 _USER = "https://api.github.com/user"
-_SCOPE = "read:user"  # only the login is needed for the allowlist check
+_ORGS = "https://api.github.com/user/orgs"
+# `read:org` lets us read the user's org memberships (including private ones) to map them to a
+# bajutsu org; `read:user` covers the login for the allowlist check (BE-0015 multi-tenancy).
+_SCOPE = "read:user read:org"
+
+
+@dataclass
+class Identity:
+    """Who logged in: the GitHub *login* and the *orgs* (GitHub org logins) they belong to. The org
+    list maps the user to a bajutsu org (BE-0015); empty when org mapping isn't used."""
+
+    login: str
+    orgs: list[str] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -25,8 +38,9 @@ class OAuthClient(Protocol):
     def authorize_url(self, state: str) -> str:
         """The GitHub authorize URL to redirect the browser to, carrying the CSRF *state*."""
 
-    def fetch_login(self, code: str) -> str | None:
-        """Exchange an authorization *code* for a token and return the GitHub login, or None."""
+    def fetch_identity(self, code: str) -> Identity | None:
+        """Exchange an authorization *code* for a token and return the GitHub identity (login + org
+        memberships), or None on a failed exchange."""
 
 
 class GitHubOAuthClient:
@@ -49,7 +63,7 @@ class GitHubOAuthClient:
         )
         return f"{_AUTHORIZE}?{query}"
 
-    def fetch_login(self, code: str) -> str | None:
+    def fetch_identity(self, code: str) -> Identity | None:
         from authlib.integrations.httpx_client import OAuth2Client
 
         # `with` closes the underlying httpx client, so connections/fds aren't leaked on a busy server.
@@ -58,8 +72,34 @@ class GitHubOAuthClient:
         ) as client:
             # GitHub returns form-encoded by default; ask for JSON so authlib parses the token.
             client.fetch_token(_TOKEN, code=code, headers={"Accept": "application/json"})
-            resp = client.get(_USER, headers={"Accept": "application/vnd.github+json"})
+            headers = {"Accept": "application/vnd.github+json"}
+            user = client.get(_USER, headers=headers)
+            if user.status_code != 200:
+                return None
+            login = user.json().get("login")
+            if not login:
+                return None
+            return Identity(login=str(login), orgs=_fetch_orgs(client, headers))
+
+
+def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
+    """Every GitHub org the user belongs to, following pagination (so a user in >30 orgs isn't
+    truncated). Org membership only maps the user to a bajutsu org, so any failure — a non-200, a
+    parse error, an unexpected shape — yields no orgs (the user falls back to the default org)
+    rather than failing the login."""
+    orgs: list[str] = []
+    url: str | None = f"{_ORGS}?per_page=100"
+    while url:
+        resp = client.get(url, headers=headers)  # type: ignore[attr-defined]
         if resp.status_code != 200:
-            return None
-        login = resp.json().get("login")
-        return str(login) if login else None
+            break
+        try:
+            page = resp.json()
+        except ValueError:
+            break
+        if not isinstance(page, list):
+            break
+        orgs.extend(o["login"] for o in page if isinstance(o, dict) and o.get("login"))
+        # httpx parses the GitHub `Link` header into `.links`; follow `next` until it's gone.
+        url = resp.links.get("next", {}).get("url")
+    return orgs
