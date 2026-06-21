@@ -155,6 +155,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | ID | Item | Status |
 |---|---|---|
 | [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Implemented |
+| [BE-0061](implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md) | Collision-proof BE-ID allocation (atomic reservation + auto-repair) | Implemented |
 <!-- /GENERATED:accepted-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
@@ -255,6 +256,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
 | [BE-0044](proposals/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Proposal |
 | [BE-0060](proposals/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Proposal |
+| [BE-0068](proposals/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -268,6 +270,19 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
 | [BE-0055](proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Proposal |
 <!-- /GENERATED:proposals-hosting -->
+
+### Configuration sourcing
+
+Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the item here
+proposes naming a **Git repository at a ref** (`github:owner/repo@ref:path`) so a hosted or
+self-hosted `serve`, or a CI runner, can pull a team's test repo directly — scenarios are already
+git-tracked files ([DESIGN §6.5](../DESIGN.md)).
+
+<!-- GENERATED:proposals-config-sourcing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0063](proposals/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Proposal |
+<!-- /GENERATED:proposals-config-sourcing -->
 
 ### Integration & automation (MCP)
 
@@ -309,6 +324,19 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
 <!-- /GENERATED:proposals-crawl -->
+
+### Development infrastructure (contributor workflow)
+
+Lower the cost for the many parallel sessions — human and AI — that read and change this repo.
+[BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+(Accepted) reshaped the *file flow*; the proposals here improve how the codebase **documents
+itself** to the humans and agents working it.
+
+<!-- GENERATED:proposals-dev-infra -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0065](proposals/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) | Docstring standard & generated API reference | Proposal |
+<!-- /GENERATED:proposals-dev-infra -->
 
 ### Miscellaneous / on hold
 

@@ -18,17 +18,18 @@ across runs and machines) it:
    covers both the link text and the path.
 
 **Repair** (``--repair``), run by the ``roadmap-id-repair`` workflow when a roadmap PR merges to
-``main``, against every open PR that also updates the roadmap. Allocation avoids the IDs in the
-working tree, on ``origin/main``, and on other open PRs (passed in via ``ROADMAP_RESERVED_IDS``),
-but a number can still be handed to two branches in flight if they allocate in the same window —
-and once a placeholder has become a concrete ``BE-NNNN`` there is nothing left to re-trigger
-allocation. So when ``main`` moves, this re-attempts allocation for the items the branch
-*introduces*: an item whose slug is not yet on ``main`` is one this branch is adding, and if its
-``BE-NNNN`` is already taken on ``main`` it is a genuine double-allocation. Each such item gets the
-next free ID, rewriting the directory, files, self-references, the slug-qualified cross-references
-in other items, and the index. ``main`` is authoritative — the merged item keeps the number; the
-open PR moves off it. An item whose slug is already on ``main`` is one the branch inherited (a
-stale view ``main`` may have renumbered); that is a rebase, never a renumber here.
+``main`` and on a schedule, against every open PR that also updates the roadmap. Allocation avoids
+the IDs in the working tree, on ``origin/main``, and on other open PRs (passed in via
+``ROADMAP_RESERVED_IDS``); the workflow also claims each allocated ID atomically as a
+``refs/be-claims/*`` git ref, so two branches allocating in the same window cannot both take a
+number. Repair is the backstop for whatever still slips past that — a hand-typed concrete ID, or a
+branch that predates the machinery: for an item the branch *introduces* (a slug not yet on ``main``)
+whose ``BE-NNNN`` is already taken, it allocates the next free ID, rewriting the directory, files,
+self-references, the slug-qualified cross-references in other items, and the index. Authority — who
+keeps a contested number — is ``origin/main`` first (a merged item always wins), else the **lowest
+open-PR number** holding it (passed in via ``ROADMAP_LOWER_PR_IDS``); this branch moves only when it
+is not the authority. An item whose slug is already on ``main`` is one the branch inherited (a stale
+view ``main`` may have renumbered); that is a rebase, never a renumber here.
 
 Both modes are a no-op when there is nothing to do. Limitations: a new item must not
 cross-reference another *new* item by ``BE-XXXX`` (the allocate rewrite is per item); and
@@ -43,6 +44,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 
 ROADMAP = Path("roadmaps")
@@ -56,6 +58,11 @@ INDEX_FILES = ("README.md", "README-ja.md")
 # IDs other open PRs have already allocated but not yet merged. The script can't see GitHub,
 # so the workflow lists them (see scripts/open_pr_be_ids.sh) and passes them in here.
 RESERVED_IDS_ENV = "ROADMAP_RESERVED_IDS"
+# IDs held by open PRs with a *lower* PR number than the one being repaired. When a number is
+# contested only between open PRs (none on main yet), the lowest PR number is the authority and
+# keeps it; a branch renumbers only when a lower-numbered PR also holds its id. The workflow knows
+# every open PR's number and passes the lower-numbered holders' ids here.
+LOWER_PR_IDS_ENV = "ROADMAP_LOWER_PR_IDS"
 BUILD_INDEX = Path(__file__).resolve().parent / "build_roadmap_index.py"
 
 
@@ -112,6 +119,18 @@ def reserved_ids_from_env() -> set[int]:
     ``origin/main`` lookup.
     """
     raw = os.environ.get(RESERVED_IDS_ENV, "")
+    return {int(m.group()) for m in re.finditer(r"\d+", raw)}
+
+
+def lower_pr_ids_from_env() -> set[int]:
+    """BE numbers held by open PRs with a lower PR number than the one being repaired.
+
+    Repair's authority rule when a number is contested only between open PRs (none on ``main``): the
+    lowest PR number keeps it. The workflow knows every open PR's number and exports the ids of the
+    lower-numbered holders here, so a branch can tell whether it is the authority for its id or must
+    move off it. Unset/empty (local runs) degrades to "no lower claimant", like the reservations.
+    """
+    raw = os.environ.get(LOWER_PR_IDS_ENV, "")
     return {int(m.group()) for m in re.finditer(r"\d+", raw)}
 
 
@@ -196,15 +215,19 @@ def rewrite_index_tables(allocations: list[tuple[str, str]]) -> None:
         index.write_text("".join(lines), encoding="utf-8")
 
 
-def colliding_items(roadmap: Path, main_ids: dict[int, str]) -> list[tuple[int, str, Path]]:
-    """Items this branch *introduces* whose BE number ``main`` already gives to another item.
+def colliding_items(
+    roadmap: Path, main_ids: dict[int, str], lower_pr_ids: AbstractSet[int] = frozenset()
+) -> list[tuple[int, str, Path]]:
+    """Items this branch *introduces* whose BE number a more authoritative holder already owns.
 
     Returns ``(id, slug, directory)`` for each, sorted by category then name (deterministic). The
     branch's own items are the ones whose slug is absent from ``main``: a slug is unique and
-    permanent per item, so a slug not yet on ``main`` marks a new item this branch is adding, and a
-    number it shares with ``main`` is then a genuine double-allocation to move off. An item whose
-    slug *is* on ``main`` is one the branch inherited — possibly a stale view ``main`` has since
-    renumbered — which is resolved by rebasing, never by renumbering here, so it is left alone.
+    permanent per item, so a slug not yet on ``main`` marks a new item this branch is adding. Such an
+    item collides — and must move — when its number is already taken by a holder that outranks this
+    branch: ``main`` (a merged item always wins) or a lower-numbered open PR (``lower_pr_ids``, the
+    tiebreaker when neither is merged). An item whose slug *is* on ``main`` is one the branch
+    inherited — possibly a stale view ``main`` has since renumbered — which is resolved by rebasing,
+    never by renumbering here, so it is left alone.
     """
     main_slugs = set(main_ids.values())
     found: list[tuple[int, str, Path]] = []
@@ -216,7 +239,9 @@ def colliding_items(roadmap: Path, main_ids: dict[int, str]) -> list[tuple[int, 
             if not (d.is_dir() and (m := NUMBERED_DIR_RE.match(d.name))):
                 continue
             be_id, slug = int(m.group(1)), m.group(2)
-            if be_id in main_ids and slug not in main_slugs:
+            if slug in main_slugs:  # inherited from main -> a rebase, never a renumber here
+                continue
+            if be_id in main_ids or be_id in lower_pr_ids:
                 found.append((be_id, slug, d))
     return found
 
@@ -242,12 +267,12 @@ def rewrite_cross_references(roadmap: Path, old_token: str, slug: str, new_token
 
 
 def repair() -> list[tuple[str, str]]:
-    """Renumber working-tree items whose id ``main`` now hands to a different item.
+    """Renumber working-tree items whose id ``origin/main`` — or a lower-numbered open PR — holds.
 
     Returns the ``(old-token, new-token)`` remaps so the workflow can rewrite the PR title.
     """
     main_ids = ids_to_slugs_on_git_ref("origin/main")
-    collisions = colliding_items(ROADMAP, main_ids)
+    collisions = colliding_items(ROADMAP, main_ids, lower_pr_ids_from_env())
     if not collisions:
         return []
 
