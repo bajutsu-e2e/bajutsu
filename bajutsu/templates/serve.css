@@ -2,8 +2,8 @@
    keep new rules theme-aware by using var(--…) (e.g. --bg2 for inset wells,
    --on-acc / --on-run for text on the accent / running buttons, --scrim for overlays)
    rather than literals. */
-*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg2);color:var(--fg)}
-header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;background:var(--bg);border-bottom:1px solid var(--line)}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg2);color:var(--fg);display:flex;flex-direction:column;height:100vh;overflow:hidden}
+header{flex:0 0 auto;z-index:10;display:flex;align-items:center;gap:1rem;padding:.55rem 1rem;background:var(--bg);border-bottom:1px solid var(--line)}
 header .brandcol{display:flex;flex-direction:column;gap:.4rem}
 header .brand{font-weight:700}
 .toptabs{display:flex;align-items:center;gap:.3rem}
@@ -21,14 +21,14 @@ header .brand{font-weight:700}
 .themeswitch .thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--mut);transition:transform .15s,background .15s}
 .themeswitch input:checked+.track .thumb{transform:translateX(16px);background:var(--acc)}
 .themeswitch input:focus-visible+.track{outline:2px solid var(--acc);outline-offset:2px}
-main{display:grid;grid-template-columns:var(--rep-left,340px) var(--gw) var(--rep-mid,340px) var(--gw) 1fr;gap:0;padding:1rem;align-items:start;--gw:14px}
+main{flex:1 1 0;min-height:0;overflow:hidden;display:grid;grid-template-columns:var(--rep-left,340px) var(--gw) var(--rep-mid,340px) var(--gw) 1fr;grid-template-rows:1fr;gap:0;padding:1rem;align-items:stretch;--gw:14px}
 main[hidden]{display:none}
 /* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
-#view-record{grid-template-columns:var(--rec-left,340px) var(--gw) 1fr}
-.rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:calc(100vh - 6rem)}
+#view-record{grid-template-columns:var(--rec-left,340px) var(--gw) 1fr;grid-template-rows:1fr}
+.rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:100%;min-height:0}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{min-height:0;height:auto}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
-#view-crawl{grid-template-columns:var(--crawl-left,340px) var(--gw) 1fr}
+#view-crawl{grid-template-columns:var(--crawl-left,340px) var(--gw) 1fr;grid-template-rows:1fr}
 /* Draggable column splitters: a thin full-height handle between grid columns (see initSplitters). */
 .gutter{align-self:stretch;cursor:col-resize;position:relative}
 .gutter::before{content:"";position:absolute;top:0;bottom:0;left:50%;transform:translateX(-50%);width:1px;background:var(--line)}
@@ -43,7 +43,7 @@ main[hidden]{display:none}
 [data-panel].reordering{opacity:.55}
 [data-panel].dropzone{outline:2px dashed var(--acc);outline-offset:-3px}
 body.reordering-active iframe{pointer-events:none}
-.crawlpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
+.crawlpanel{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .crawlhead{flex:0 0 auto;display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
 .crawlhead .ttl{font-weight:600}
 .crawlcounts{color:var(--mut);font-size:.82em}
@@ -200,17 +200,17 @@ button.stop{flex:0 0 auto;width:100%;margin-top:.5rem;padding:.6rem;background:v
 button.stop:disabled{opacity:.5;cursor:default}
 button.stop[hidden]{display:none}
 .status{flex:0 0 auto;font-weight:600}.status:not(:empty){margin-top:.6rem}.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}.status.run{color:var(--acc)}
-.logpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column;overflow:hidden}
+.logpanel{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 pre.out{flex:1;min-height:0;margin:.6rem 0 0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:12px;white-space:pre-wrap}
 pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
-.report{height:calc(100vh - 6rem)}iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
+.report{height:100%;min-height:0}iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut);text-align:center;padding:1rem}
 .names{color:var(--mut);font-size:.8em;margin-top:.2rem;min-height:1em}
 .names .finfo{color:var(--fg);font-size:1.05em;margin-bottom:.25rem}
 .scnlist{list-style:none;margin:.1rem 0 0;padding:0;font-size:1em;max-height:30vh;overflow:auto}
 .scnlist li{padding:.12rem 0;color:var(--fg)}
 .scnlist .sd{color:var(--mut)}
-.left{display:flex;flex-direction:column;gap:1rem;height:calc(100vh - 6rem)}
+.left{display:flex;flex-direction:column;gap:1rem;height:100%;min-height:0}
 .left>.card{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .left>.card>.panel{flex:1;min-height:0;overflow-y:auto}
 .tabs{flex:0 0 auto;display:flex;gap:.25rem;margin:-.25rem 0 .9rem;border-bottom:1px solid var(--line)}
@@ -229,7 +229,7 @@ pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
 .hid{font-variant-numeric:tabular-nums}
 .hsum{color:var(--mut);font-size:.8em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .muted{color:var(--mut)}
-.yamlpanel{height:calc(100vh - 6rem);display:flex;flex-direction:column}
+.yamlpanel{height:100%;min-height:0;display:flex;flex-direction:column}
 .yamlhead{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
 .yamlhead .ttl{font-weight:600}
 .yamlhead .savebtn{margin-left:auto;background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;padding:.35rem .9rem;cursor:pointer}
