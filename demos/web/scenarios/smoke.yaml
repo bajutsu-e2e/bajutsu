@@ -1,0 +1,19 @@
+# End-to-end smoke for the web backend: onboarding -> login -> home -> counter.
+# Byte-for-byte the same step/expect schema as the iOS smoke — only the backend differs.
+description: >-
+  Web smoke — onboard, log in, reach home, and increment the counter. The fastest
+  check that the Playwright backend drives the demo web app end to end.
+scenarios:
+  - name: onboard, log in, and increment the counter
+    description: Onboard, sign in with email/password, tap increment twice, and assert the count reads 2.
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - tap: { id: counter.increment }
+      - tap: { id: counter.increment }
+    expect:
+      - exists: { id: home.title }
+      - value: { sel: { id: counter.value }, equals: "2" }

@@ -92,6 +92,8 @@ apps:
 
 `platform` がどの **環境マネージャ**と **backend レジストリ**を使うかを決めます。スキーマの残り（名前空間、redact、setup、capture）は共有のままです。このレジストリの選択層のスライスはすでに実装済みです（`bajutsu/backends.py` はプラットフォームレジストリで分岐し、`--backend` / `backend:` はプラットフォームトークンを受け付けます）。[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md) を参照してください。本項目が扱うのは残りの横断的作業で、`platform` 設定フィールドと、レジストリが引き渡す `Environment` プロトコルです。
 
+> **Web backend の v1 はここで近道を取りました。** 最初の Web（Playwright）スライス（[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は対象 URL を必要としましたが、まだ `platform` 判別子は要りませんでした。そこで `apps.<name>` に単一の `baseUrl` フィールドを追加し、環境のライフサイクル（新しい `BrowserContext` = `erase`、`goto(baseUrl)` = `launch`）を **driver の内側**に置き、中立な `Environment` プロトコルを経由せず runner を `actuator == "playwright"` で分岐させました。これは動く web `run` を出荷するための最小の正しい変更でした。本項目はこれを一般化します。`platform` フィールドが `bundleId` か `baseUrl` かの選択を吸収し、プラットフォーム別のライフサイクルが `Environment` プロトコルの背後に移ることで、runner は actuator 名での分岐をやめます。
+
 ### 決定性はプラットフォームごとに保たれる
 
 4 つの機構はどのバックエンドでも成立します。変わるのは *実装* だけです。

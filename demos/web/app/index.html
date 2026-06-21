@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bajutsu Web Demo</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 28rem; }
+      section[hidden] { display: none; }
+      button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
+      input { display: block; margin: 0.5rem 0; padding: 0.4rem; font-size: 1rem; width: 100%; }
+      output, .count { font-size: 2rem; font-weight: 600; }
+      h1 { font-size: 1.4rem; }
+    </style>
+  </head>
+  <body>
+    <!--
+      A deliberately tiny web app mirroring the iOS sample's smoke flow
+      (onboarding → login → counter), used to prove the Playwright web backend
+      drives a real browser deterministically. Stable, non-localized `data-testid`
+      attributes are the web equivalent of iOS accessibilityIdentifier, and are what
+      a scenario's `{ id: ... }` selector resolves to.
+    -->
+    <section data-testid="onboarding.screen" id="onboarding">
+      <h1 data-testid="onboarding.title">Welcome to Bajutsu</h1>
+      <button data-testid="onboarding.start">Get started</button>
+    </section>
+
+    <section data-testid="auth.screen" id="auth" hidden>
+      <h1 data-testid="auth.title">Sign in</h1>
+      <input data-testid="auth.email" type="email" placeholder="Email" aria-label="Email" />
+      <input data-testid="auth.password" type="password" placeholder="Password" aria-label="Password" />
+      <button data-testid="auth.submit">Sign in</button>
+    </section>
+
+    <section data-testid="home.screen" id="home" hidden>
+      <h1 data-testid="home.title">Home</h1>
+      <input data-testid="counter.value" readonly value="0" aria-label="Counter value" />
+      <button data-testid="counter.increment">Increment</button>
+    </section>
+
+    <script>
+      const show = (id) => {
+        for (const s of document.querySelectorAll("section")) s.hidden = s.id !== id;
+      };
+      document.querySelector('[data-testid="onboarding.start"]').addEventListener("click", () =>
+        show("auth")
+      );
+      document.querySelector('[data-testid="auth.submit"]').addEventListener("click", () =>
+        show("home")
+      );
+      const counter = document.querySelector('[data-testid="counter.value"]');
+      let n = 0;
+      document.querySelector('[data-testid="counter.increment"]').addEventListener("click", () => {
+        n += 1;
+        counter.value = String(n);
+      });
+    </script>
+  </body>
+</html>

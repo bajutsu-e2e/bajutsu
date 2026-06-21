@@ -16,6 +16,10 @@ dependencies = [
 # The idb backend shells out to the `idb` client; idb_companion is a separate
 # `brew install facebook/fb/idb-companion`.
 idb = ["fb-idb>=1.1.0"]
+# The web backend drives a headless browser via Playwright (BE-0041). Imported lazily, only when
+# a browser is actually started — never on the default path (the import guard locks this). The
+# Chromium binary is a separate `playwright install chromium` (see demos/web), not a pip dep.
+web = ["playwright>=1.49"]
 visual = ["pillow>=10.0"]
 mcp = ["fastmcp>=2.0.0"]
 # Amazon Bedrock provider for the AI paths (BAJUTSU_AI_PROVIDER=bedrock); pulls in boto3 for SigV4.
@@ -121,5 +125,6 @@ module = [
     "botocore",
     "botocore.*",
     "authlib.*",
+    "playwright.*",
 ]
 ignore_missing_imports = true

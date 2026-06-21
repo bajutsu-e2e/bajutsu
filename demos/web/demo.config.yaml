@@ -1,0 +1,10 @@
+# Config for the web demo. The app is identified by `baseUrl` (no bundleId) and driven by the
+# Playwright backend. `make -C demos/web e2e` serves demos/web/app and points a run at it.
+defaults:
+  backend: [web]
+
+apps:
+  web:
+    baseUrl: "http://127.0.0.1:8787/index.html"
+    backend: [web]
+    scenarios: demos/web/scenarios

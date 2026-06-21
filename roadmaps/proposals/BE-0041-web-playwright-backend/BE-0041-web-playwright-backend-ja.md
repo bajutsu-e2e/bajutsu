@@ -4,9 +4,9 @@
 
 * 提案: [BE-0041](BE-0041-web-playwright-backend-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: プラットフォーム拡張（Android / Web / Flutter）
+* 状態: **可決・実装中**
+* トラック: [可決済み](../../README-ja.md#可決済み)
+* トピック: プラットフォーム拡張（着手済みスライス）
 
 ## はじめに
 
