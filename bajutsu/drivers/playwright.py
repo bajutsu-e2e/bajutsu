@@ -98,24 +98,39 @@ def parse_dom(records: list[dict[str, Any]]) -> list[base.Element]:
 # The subset of Playwright's Page the driver uses — kept as a Protocol so tests can inject a
 # fake page without importing playwright, and the real (untyped, lazily imported) page satisfies it.
 class _Mouse(Protocol):
-    def click(self, x: float, y: float) -> None: ...
-    def dblclick(self, x: float, y: float) -> None: ...
-    def move(self, x: float, y: float) -> None: ...
-    def down(self) -> None: ...
-    def up(self) -> None: ...
+    def click(self, x: float, y: float) -> None:
+        pass
+
+    def dblclick(self, x: float, y: float) -> None:
+        pass
+
+    def move(self, x: float, y: float) -> None:
+        pass
+
+    def down(self) -> None:
+        pass
+
+    def up(self) -> None:
+        pass
 
 
 class _Keyboard(Protocol):
-    def type(self, text: str) -> None: ...
+    def type(self, text: str) -> None:
+        pass
 
 
 class _Page(Protocol):
     mouse: _Mouse
     keyboard: _Keyboard
 
-    def evaluate(self, expression: str) -> Any: ...
-    def goto(self, url: str) -> object: ...
-    def screenshot(self, *, path: str) -> object: ...
+    def evaluate(self, expression: str) -> Any:
+        pass
+
+    def goto(self, url: str) -> object:
+        pass
+
+    def screenshot(self, *, path: str) -> object:
+        pass
 
 
 # (playwright, browser, page) — browser/playwright are held only to tear them down in close().

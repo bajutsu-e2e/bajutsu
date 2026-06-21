@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-import bajutsu.backends as backends
 from bajutsu.backends import default_available, make_driver, resolve_actuators, select_actuator
 from bajutsu.drivers import base
 
@@ -60,9 +59,9 @@ def test_select_web_actuator_when_available() -> None:
 
 def test_playwright_availability_gated_on_package(monkeypatch: pytest.MonkeyPatch) -> None:
     # Availability is the python package (probed without importing it), not a PATH executable.
-    monkeypatch.setattr(backends, "_playwright_available", lambda: True)
+    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: True)
     assert default_available("playwright") is True
-    monkeypatch.setattr(backends, "_playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
     assert default_available("playwright") is False
 
 
