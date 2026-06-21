@@ -39,7 +39,7 @@ def launch_driver(
     if actuator == "playwright":
         if not eff.base_url:
             raise env.DeviceError("web backend requires baseUrl (set apps.<app>.baseUrl)")
-        driver = make_driver(actuator, udid, base_url=eff.base_url)
+        driver = make_driver(actuator, udid, base_url=eff.base_url, headless=eff.headless)
         driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
         _await_ready(driver)
         return driver

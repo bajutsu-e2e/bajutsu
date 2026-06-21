@@ -166,6 +166,17 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 | [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
 <!-- /GENERATED:accepted-dogfood -->
 
+### Dogfood fixtures (web UI)
+
+Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend drives it — a deterministic, Tier-2 regression net for the UI, built on [BE-0041](proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) and the web-side counterpart to the iOS [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) showcase fixtures.
+
+<!-- GENERATED:accepted-dogfood-web-ui -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0058](implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) | Dogfood the serve Web UI (web-backend regression net) | Implemented | Dogfooding |
+| [BE-0059](implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md) | Bring up the target server for a run (`launchServer`) | Implemented | Dogfooding |
+<!-- /GENERATED:accepted-dogfood-web-ui -->
+
 ### AI provider configuration
 
 The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Claude through a
@@ -290,7 +301,16 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
 | [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
+| [BE-0062](proposals/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
+
+### Crawl performance / scale-out
+
+<!-- GENERATED:proposals-crawl -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
+<!-- /GENERATED:proposals-crawl -->
 
 ### Miscellaneous / on hold
 

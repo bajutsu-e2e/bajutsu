@@ -11,114 +11,123 @@
   <div class="brandcol">
     <span class="brand">bajutsu</span>
     <div class="toptabs">
-      <button class="toptab active" data-view="record">Record</button>
-      <button class="toptab" data-view="replay">Replay</button>
-      <button class="toptab" data-view="crawl">Crawl</button>
-      <button class="cfgbtn" id="opencfg">Open config</button>
-      <span class="cfgname" id="cfgname"></span>
-      <button class="cfgbtn" id="opensettings">Settings</button>
+      <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>
+      <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
+      <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
+      <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
+      <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
+      <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
     </div>
   </div>
   <label class="themeswitch" title="dark / light mode (follows your system by default)">
     <svg class="ico moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-    <input type="checkbox" id="theme" aria-label="toggle dark / light mode">
+    <input type="checkbox" id="theme" data-testid="nav.theme-toggle" aria-label="toggle dark / light mode">
     <span class="track"><span class="thumb"></span></span>
     <svg class="ico sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
   </label>
 </header>
 
 <!-- ===== Record: author a scenario from a natural-language goal ===== -->
-<main id="view-record">
+<main id="view-record" data-testid="view.record">
   <div class="left">
     <div class="card">
       <div class="panel" id="panel-record">
         <label>Goal (natural language)</label>
-        <textarea id="rec-goal" class="goal" placeholder="e.g. increment the counter twice and check it reads 2"></textarea>
-        <label>App</label><select id="rec-app"></select>
-        <label>Backend</label><input id="rec-backend" type="text" placeholder="idb">
-        <label>Device</label>
-        <div class="row" style="align-items:flex-end">
+        <textarea id="rec-goal" data-testid="record.goal" class="goal" placeholder="e.g. increment the counter twice and check it reads 2"></textarea>
+        <label>App</label><select id="rec-app" data-testid="record.app"></select>
+        <label class="iosonly">Device</label>
+        <div class="row iosonly" style="align-items:flex-end">
           <div><select id="rec-device"></select></div>
           <div style="flex:0 0 auto"><button class="refresh" id="rec-simrefresh" title="refresh devices">&#8635;</button></div>
         </div>
         <label>Save as</label>
         <input id="rec-name" type="text" placeholder="generated.yaml — leave blank to default">
         <div class="subhint">The recorded scenario is written under the scenarios dir, so it shows up in the <b>Replay</b> tab to run. Blank defaults to <code>generated.yaml</code>; if the name already exists, the run's date-time is appended (e.g. <code>generated-20260613-153045.yaml</code>) so nothing is overwritten.</div>
-        <div class="checks">
+        <div class="checks iosonly">
           <label><input type="checkbox" id="rec-erase"> erase device first
             <span class="hint">Wipe the simulator before authoring (record's default) so the app starts from onboarding. Uncheck to author against the app's current state.</span></label>
           <label><input type="checkbox" id="rec-nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard (Claude vision) dismisses unexpected system prompts while authoring; on by default (needs ANTHROPIC_API_KEY). Check to force it off.</span></label>
         </div>
+        <div class="checks webonly">
+          <label><input type="checkbox" id="rec-headed" data-testid="record.headed"> show browser (headed)
+            <span class="hint">Author against a visible Chromium window in slow-motion so you can watch the agent explore, instead of the default headless browser. The window opens on the machine running <code>serve</code>.</span></label>
+        </div>
       </div>
     </div>
   </div>
+  <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
   <div class="rec-stack">
     <div class="card logpanel">
-      <button class="run" id="rec-go" data-idle="Generate scenario">Generate scenario</button>
+      <button class="run" id="rec-go" data-testid="record.generate" data-idle="Generate scenario">Generate scenario</button>
       <button class="stop" id="rec-stop" hidden>Stop</button>
       <div class="status" id="rec-status"></div>
       <pre class="out" id="rec-out" data-empty="Enter a goal and press Generate to watch the agent author it, turn by turn."></pre>
     </div>
+    <div class="gutter row" data-var="--rec-top" data-min="120" data-max="700"></div>
     <div class="card yamlpanel" id="rec-yamlpanel">
       <div class="yamlhead">
         <span class="ttl">Generated scenario</span>
         <span class="muted" id="rec-yamlinfo" style="font-size:.8em"></span>
-        <button class="savebtn" id="rec-save" disabled>Save</button>
+        <button class="savebtn" id="rec-save" data-testid="record.save" disabled>Save</button>
       </div>
-      <textarea id="rec-yaml" class="yaml" placeholder="The recorded scenario YAML appears here once authoring finishes — edit and Save, then run it in the Replay tab."></textarea>
+      <textarea id="rec-yaml" data-testid="record.yaml" class="yaml" placeholder="The recorded scenario YAML appears here once authoring finishes — edit and Save, then run it in the Replay tab."></textarea>
     </div>
   </div>
 </main>
 
 <!-- ===== Replay: run a scenario and view its report ===== -->
-<main id="view-replay" hidden>
+<main id="view-replay" data-testid="view.replay" hidden>
   <div class="left">
     <div class="card">
       <div class="tabs">
-        <button class="tab active" data-tab="run">Run</button>
-        <button class="tab" data-tab="history" id="histtab">History</button>
+        <button class="tab active" data-tab="run" data-testid="replay.tab-run">Run</button>
+        <button class="tab" data-tab="history" id="histtab" data-testid="replay.tab-history">History</button>
       </div>
-      <div class="panel" id="panel-run">
+      <div class="panel" id="panel-run" data-testid="replay.panel-run">
         <label>Scenario</label>
-        <select id="scn"></select><div class="names" id="names"></div>
-        <label>App</label><select id="app"></select>
-        <div class="row"><div><label>Backend</label><input id="backend" type="text" placeholder="idb"></div>
-          <div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
-        <div class="hhead"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
-        <div class="sims" id="sims"></div>
-        <div class="subhint">Pick the simulators to run on &mdash; shut-down ones are booted (and waited for) before the run. Pick two or more (Workers auto-tracks the count) to run the scenarios in parallel across them: each device gets its own network capture, video / device log, and setLocation / push. None picked = the already-booted device.</div>
-        <div class="checks">
+        <select id="scn" data-testid="replay.scenario"></select><div class="names" id="names" data-testid="replay.scenario-info"></div>
+        <label>App</label><select id="app" data-testid="replay.app"></select>
+        <div class="row iosonly"><div><label>Workers</label><input id="workers" type="number" min="1" value="1"></div></div>
+        <div class="hhead iosonly" data-testid="replay.simulators"><span>Simulators</span><button class="refresh" id="simrefresh" title="refresh devices">&#8635;</button></div>
+        <div class="sims iosonly" id="sims"></div>
+        <div class="subhint iosonly">Pick the simulators to run on &mdash; shut-down ones are booted (and waited for) before the run. Pick two or more (Workers auto-tracks the count) to run the scenarios in parallel across them: each device gets its own network capture, video / device log, and setLocation / push. None picked = the already-booted device.</div>
+        <div class="checks iosonly">
           <label><input type="checkbox" id="erasedev"> erase device first
             <span class="hint">Wipe the whole simulator (simctl erase &mdash; all apps, data, settings) before each scenario. Off (default) leaves it to each scenario's <code>preconditions.erase</code>; the app is reinstalled fresh either way.</span></label>
           <label><input type="checkbox" id="nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard is on by default: Claude vision dismisses unexpected system prompts (Save Password, notification permission) that idb can't see or tap (needs ANTHROPIC_API_KEY). Check to force it off for this run; a scenario can also set <code>dismissAlerts</code> itself.</span></label>
         </div>
+        <div class="checks webonly">
+          <label><input type="checkbox" id="headed" data-testid="replay.headed"> show browser (headed)
+            <span class="hint">Run in a visible Chromium window in slow-motion so you can watch each step, instead of the default headless browser. The window opens on the machine running <code>serve</code> (so this is for a local server).</span></label>
+        </div>
       </div>
-      <div class="panel" id="panel-history" hidden>
+      <div class="panel" id="panel-history" data-testid="replay.panel-history" hidden>
         <div class="hhead"><span>Past runs</span><button class="refresh" id="refresh" title="refresh">&#8635;</button></div>
         <ul class="history" id="history"></ul>
       </div>
     </div>
   </div>
+  <div class="gutter" data-var="--rep-left" data-min="260" data-max="560"></div>
   <div class="card logpanel">
-    <button class="run" id="go" data-idle="Run">Run</button>
+    <button class="run" id="go" data-testid="replay.run" data-idle="Run">Run</button>
     <button class="stop" id="stop" hidden>Stop</button>
     <div class="status" id="status"></div>
     <pre class="out" id="out" data-empty="Run a scenario to see its output here."></pre>
   </div>
-  <div class="report" id="report"><div class="empty">Run a scenario to see its report here.</div></div>
+  <div class="gutter" data-var="--rep-mid" data-min="220" data-max="640"></div>
+  <div class="report" id="report" data-testid="replay.report"><div class="empty">Run a scenario to see its report here.</div></div>
 </main>
 
 <!-- ===== Crawl: explore the app breadth-first and map its screens live ===== -->
-<main id="view-crawl" hidden>
+<main id="view-crawl" data-testid="view.crawl" hidden>
   <div class="left">
     <div class="card">
       <div class="panel" id="panel-crawl">
-        <label>App</label><select id="crawl-app"></select>
-        <label>Backend</label><input id="crawl-backend" type="text" placeholder="idb">
-        <label>Device</label>
-        <div class="row" style="align-items:flex-end">
+        <label>App</label><select id="crawl-app" data-testid="crawl.app"></select>
+        <label class="iosonly">Device</label>
+        <div class="row iosonly" style="align-items:flex-end">
           <div><select id="crawl-device"></select></div>
           <div style="flex:0 0 auto"><button class="refresh" id="crawl-simrefresh" title="refresh devices">&#8635;</button></div>
         </div>
@@ -127,19 +136,23 @@
           <div><label>Max steps</label><input id="crawl-maxsteps" type="number" min="1" value="200"></div>
         </div>
         <div class="subhint">Crawl explores the app breadth-first, discovering screens and the transitions between them &mdash; a discovery tool, never a pass/fail gate. It is AI-driven: the engine (screen identity, transitions, crashes) is always deterministic, while the <b>AI</b> proposes <i>what to try</i> &mdash; richer operations and realistic inputs to enable controls whose precondition isn't obvious. The AI backend is the one chosen in <b>Settings</b> &mdash; the Anthropic API, Amazon Bedrock, or the Claude Code CLI. Stops at the first of Max screens / Max steps.</div>
-        <div class="checks">
+        <div class="checks iosonly">
           <label><input type="checkbox" id="crawl-erase"> erase device first
             <span class="hint">Wipe the simulator before crawling so the app starts from onboarding. Off by default — the app is reinstalled fresh either way; check to also wipe all apps / data / settings first.</span></label>
           <label><input type="checkbox" id="crawl-nodismiss"> disable alert-dismiss
             <span class="hint">The alert guard (Claude vision) dismisses unexpected OS prompts so they aren't read as crashes; on by default (uses the AI provider set in Settings &mdash; ANTHROPIC_API_KEY for Anthropic, or AWS credentials for Bedrock). Check to force it off.</span></label>
         </div>
-        <button class="run" id="crawl-go" data-idle="Start crawl">Start crawl</button>
+        <div class="checks webonly">
+          <label><input type="checkbox" id="crawl-headed" data-testid="crawl.headed"> show browser (headed)
+            <span class="hint">Crawl a visible Chromium window in slow-motion so you can watch the exploration, instead of the default headless browser. The window opens on the machine running <code>serve</code>.</span></label>
+        </div>
+        <button class="run" id="crawl-go" data-testid="crawl.start" data-idle="Start crawl">Start crawl</button>
         <button class="stop" id="crawl-stop" hidden>Stop</button>
         <div class="status" id="crawl-status"></div>
       </div>
     </div>
   </div>
-  <div class="card crawlpanel">
+  <div class="card crawl-graph-panel">
     <div class="crawlhead">
       <span class="ttl">Screen map</span>
       <span class="crawlcounts" id="crawl-counts"></span>
@@ -149,49 +162,50 @@
         <button class="zbtn" id="crawl-zoomin" title="zoom in">+</button>
       </span>
     </div>
-    <div class="crawlbody">
-      <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
-      <div class="crawlside">
-        <div class="crawlsub planhd"><span>Exploration plan<span class="planpct" id="crawl-planpct"></span></span>
-          <label class="prunetog" title="Show the operations the crawl pruned as duplicate global controls (a tab/nav explored once), struck through and tappable to resume. Uncheck to hide them."><input type="checkbox" id="crawl-prune" checked> show pruned</label></div>
-        <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
-        <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
-        <div class="crawlsub">Console</div>
-        <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
-      </div>
-    </div>
+    <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
+  </div>
+  <div class="card crawl-plan-panel">
+    <div class="crawlsub planhd"><span>Exploration plan<span class="planpct" id="crawl-planpct"></span></span>
+      <label class="prunetog" title="Show the operations the crawl pruned as duplicate global controls (a tab/nav explored once), struck through and tappable to resume. Uncheck to hide them."><input type="checkbox" id="crawl-prune" checked> show pruned</label></div>
+    <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
+    <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
+  </div>
+  <div class="card crawl-console-panel">
+    <div class="crawlsub">Console</div>
+    <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
   </div>
 </main>
 
 <!-- ===== Open config: a server-side file browser confined to the serve --root ===== -->
-<div class="modal" id="fsmodal" hidden>
+<div class="modal" id="fsmodal" data-testid="config.modal" hidden>
   <div class="fsbox">
-    <div class="fshead"><span class="ttl">Open config</span><button class="fsclose" id="fsclose">&#10005;</button></div>
-    <div class="fspath" id="fspath"></div>
-    <ul class="fslist" id="fslist"></ul>
+    <div class="fshead"><span class="ttl">Open config</span><button class="fsclose" id="fsclose" data-testid="config.close">&#10005;</button></div>
+    <div class="fspath" id="fspath" data-testid="config.path"></div>
+    <ul class="fslist" id="fslist" data-testid="config.list"></ul>
     <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>
   </div>
 </div>
 
 <!-- ===== Settings: AI provider + Claude API key (one panel) ===== -->
-<div class="modal" id="settingsmodal" hidden>
+<div class="modal" id="settingsmodal" data-testid="settings.modal" hidden>
   <div class="fsbox">
-    <div class="fshead"><span class="ttl">Settings</span><button class="fsclose" id="settingsclose">&#10005;</button></div>
+    <div class="fshead"><span class="ttl">Settings</span><button class="fsclose" id="settingsclose" data-testid="settings.close">&#10005;</button></div>
     <div class="setsection">
       <div class="setlabel">AI provider</div>
-      <select id="provider" class="keyinput">
+      <select id="provider" data-testid="settings.provider" class="keyinput">
+        <option value="" data-testid="settings.provider-placeholder" selected>Select an AI provider…</option>
         <option value="anthropic">Anthropic API (uses ANTHROPIC_API_KEY)</option>
         <option value="bedrock">Amazon Bedrock (uses AWS credentials)</option>
         <option value="claude-code">Claude Code (the claude CLI, your subscription)</option>
       </select>
       <div id="claudecodefields" hidden>
-        <div class="fshint"><b>Record</b> and <b>Crawl</b> author through the local <code>claude</code> CLI (Claude Code) on your Pro/Max subscription instead of the pay-per-token API. Install Claude Code and authenticate it (<code>claude setup-token</code>) in the environment that launched <code>serve</code>; an <code>ANTHROPIC_API_KEY</code>, if set, is stripped from the call so the subscription is billed. Authoring is text-only (no screenshot). The <b>alert guard</b> (Replay / Crawl with dismiss-alerts) still uses the Anthropic SDK, so it reads the API key below if present, and otherwise no-ops.</div>
+        <div class="fshint"><b>Record</b> and <b>Crawl</b> author through the local <code>claude</code> CLI (Claude Code) on your Pro/Max subscription instead of the pay-per-token API. Install Claude Code and authenticate it (<code>claude setup-token</code>) in the environment that launched <code>serve</code>; an <code>ANTHROPIC_API_KEY</code>, if set, is stripped from the call so the subscription is billed. Authoring is text-only (no screenshot). The <b>alert guard</b> (Replay / Crawl with dismiss-alerts) still uses the Anthropic SDK; set <code>ANTHROPIC_API_KEY</code> in the environment for it, otherwise it no-ops.</div>
       </div>
-      <div id="bedrockfields" hidden>
+      <div id="bedrockfields" data-testid="settings.bedrock-fields" hidden>
         <label class="keylabel" for="bedrock-region">AWS region</label>
-        <input type="text" id="bedrock-region" class="keyinput" placeholder="us-east-1" autocomplete="off" spellcheck="false">
+        <input type="text" id="bedrock-region" data-testid="settings.bedrock-region" class="keyinput" placeholder="us-east-1" autocomplete="off" spellcheck="false">
         <label class="keylabel" for="bedrock-model">Bedrock model id</label>
-        <input type="text" id="bedrock-model" class="keyinput" placeholder="global.anthropic.claude-opus-4-6-v1" autocomplete="off" spellcheck="false">
+        <input type="text" id="bedrock-model" data-testid="settings.bedrock-model" class="keyinput" placeholder="global.anthropic.claude-opus-4-6-v1" autocomplete="off" spellcheck="false">
         <div class="fshint">Bedrock model ids carry a provider prefix (<code>global.anthropic.&hellip;</code>, or a regional <code>us.anthropic.&hellip;</code>) &mdash; unlike the bare Anthropic id. Authentication uses your standard AWS credentials (environment, shared profile, or an IAM role); set <code>AWS_*</code> / <code>AWS_REGION</code> in your shell or a <code>.env</code> before launching <code>serve</code> if you don't use a profile or role.</div>
         <div class="ssobox">
           <div class="setlabel">AWS SSO sign-in <span class="muted">(optional)</span></div>
@@ -207,22 +221,22 @@
         </div>
       </div>
     </div>
-    <div class="setsection" id="apikeysection">
+    <div class="setsection" id="apikeysection" data-testid="settings.apikey-section">
       <div class="setlabel">Claude API key</div>
       <div class="keycur" id="keycur"></div>
       <label class="keylabel" for="apikey">New key</label>
       <div class="keyrow">
-        <input type="password" id="apikey" class="keyinput" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
-        <button class="keyreveal" id="keyreveal" type="button" title="show / hide" aria-label="show / hide the key">&#128065;</button>
+        <input type="password" id="apikey" data-testid="settings.apikey" class="keyinput" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+        <button class="keyreveal" id="keyreveal" data-testid="settings.key-reveal" type="button" title="show / hide" aria-label="show / hide the key">&#128065;</button>
       </div>
       <div class="keyactions">
-        <button class="keyclear" id="keyclear">Clear</button>
+        <button class="keyclear" id="keyclear" data-testid="settings.key-clear">Clear</button>
       </div>
       <div class="fshint">Used by the <b>Anthropic API</b> provider (Amazon Bedrock uses AWS credentials instead). Only the AI paths need it: <b>Record</b>, <b>Crawl</b>, and Replay with <code>--dismiss-alerts</code>.</div>
     </div>
     <div class="keyactions">
-      <button class="cfgbtn keysave" id="settingssave">Save</button>
-      <span class="keystatus" id="setstatus"></span>
+      <button class="cfgbtn keysave" id="settingssave" data-testid="settings.save">Save</button>
+      <span class="keystatus" id="setstatus" data-testid="settings.status"></span>
     </div>
     <div class="fshint">Settings live in the running server's memory for this session only &mdash; <b>not written to disk</b>, so they reset when <code>serve</code> restarts. For values that survive restarts, set <code>ANTHROPIC_API_KEY</code> / <code>AWS_*</code> in your shell or a <code>.env</code> before launching <code>serve</code>.</div>
   </div>

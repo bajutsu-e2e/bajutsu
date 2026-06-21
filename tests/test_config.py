@@ -100,6 +100,33 @@ def test_web_app_baseurl_no_bundleid() -> None:
     assert eff.bundle_id == ""
     assert eff.backend == ["web"]
     assert eff.scenarios == "demos/web/scenarios"
+    assert eff.headless is True  # the web backend runs headless unless opted out
+
+
+def test_web_app_headless_override() -> None:
+    # A web app can opt into a headed (visible) browser via `headless: false`; the
+    # `bajutsu run --headed` flag and the Web UI's "show browser" toggle do the same per run.
+    cfg = load_config("apps: { web: { baseUrl: 'http://127.0.0.1:8787/', headless: false } }")
+    assert resolve(cfg, "web").headless is False
+
+
+def test_web_app_launch_server_parsed() -> None:
+    # `launchServer` declares how to bring up baseUrl's host for a run; readyUrl defaults to None
+    # (run falls back to baseUrl), readyTimeout to 30s.
+    eff = resolve(
+        load_config(
+            "apps: { web: { baseUrl: 'http://127.0.0.1:8799/', "
+            "launchServer: { cmd: 'uv run bajutsu serve --port 8799', readyTimeout: 60 } } }"
+        ),
+        "web",
+    )
+    assert eff.launch_server is not None
+    assert eff.launch_server.cmd == "uv run bajutsu serve --port 8799"
+    assert eff.launch_server.ready_timeout == 60.0
+    assert eff.launch_server.ready_url is None  # run falls back to baseUrl
+    assert (
+        resolve(load_config("apps: { web: { baseUrl: 'http://x/' } }"), "web").launch_server is None
+    )
 
 
 def test_app_without_bundleid_or_baseurl_rejected() -> None:
