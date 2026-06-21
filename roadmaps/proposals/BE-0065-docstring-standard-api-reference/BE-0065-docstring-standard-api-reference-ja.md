@@ -1,8 +1,8 @@
-[English](BE-XXXX-docstring-standard-api-reference.md) · **日本語**
+[English](BE-0065-docstring-standard-api-reference.md) · **日本語**
 
-# BE-XXXX — docstring の規範と API リファレンス生成
+# BE-0065 — docstring の規範と API リファレンス生成
 
-* 提案: [BE-XXXX](BE-XXXX-docstring-standard-api-reference-ja.md)
+* 提案: [BE-0065](BE-0065-docstring-standard-api-reference-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
