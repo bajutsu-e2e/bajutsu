@@ -315,6 +315,19 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 | [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
 <!-- /GENERATED:proposals-crawl -->
 
+### Development infrastructure (contributor workflow)
+
+Lower the cost for the many parallel sessions — human and AI — that read and change this repo.
+[BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+(Accepted) reshaped the *file flow*; the proposals here improve how the codebase **documents
+itself** to the humans and agents working it.
+
+<!-- GENERATED:proposals-dev-infra -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0065](proposals/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) | Docstring standard & generated API reference | Proposal |
+<!-- /GENERATED:proposals-dev-infra -->
+
 ### Miscellaneous / on hold
 
 <!-- GENERATED:proposals-misc -->
