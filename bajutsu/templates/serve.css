@@ -73,7 +73,7 @@ body.reordering-active iframe{pointer-events:none}
 /* Plan progress: how much of the planned operations have been explored, as a percent + bar. */
 .planhd{display:flex;justify-content:space-between;align-items:baseline}
 .planpct{font-weight:700;color:var(--ok);text-transform:none}
-.planbar{flex:0 0 auto;height:5px;background:var(--bg);border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.planbar{flex:0 0 auto;height:5px;margin:.45rem 0;background:var(--bg);border:1px solid var(--line);border-radius:3px;overflow:hidden}
 .planfill{height:100%;width:0;background:var(--ok);transition:width .3s ease}
 .crawlplan{flex:1;min-height:0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:.35rem}
 .crawlplan .empty{height:100%}
