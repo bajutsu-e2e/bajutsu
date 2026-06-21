@@ -1,0 +1,34 @@
+# Modals — the "Open config" and "Settings" overlays open and close, and Settings shows the
+# correct provider section by default. Fully deterministic: the SPA toggles each modal via the
+# `hidden` attribute, and the Settings provider defaults to Anthropic, so the API-key section is
+# shown and the Bedrock fields are hidden — both checkable by element presence alone.
+description: >-
+  Modals — open and close the config file browser and the Settings panel, and assert the
+  Settings provider sections default to Anthropic.
+scenarios:
+  - name: the config file browser opens and closes
+    description: Open the "Open config" modal, see the browser chrome, then close it.
+    steps:
+      - tap: { id: nav.open-config }
+      - wait: { for: { id: config.close }, timeout: 5 }
+      - assert:
+          - exists: { id: config.modal }
+          - exists: { id: config.close }
+      - tap: { id: config.close }
+      - wait: { until: { gone: { id: config.modal } }, timeout: 5 }
+    expect:
+      - exists: { id: config.modal, negate: true }
+
+  - name: the settings panel defaults to the Anthropic provider section
+    description: Open Settings and assert the Anthropic key section shows while the Bedrock fields stay hidden.
+    steps:
+      - tap: { id: nav.settings }
+      - wait: { for: { id: settings.close }, timeout: 5 }
+      - assert:
+          - exists: { id: settings.provider }
+          - exists: { id: settings.apikey-section }
+          - exists: { id: settings.bedrock-fields, negate: true }
+      - tap: { id: settings.close }
+      - wait: { until: { gone: { id: settings.modal } }, timeout: 5 }
+    expect:
+      - exists: { id: settings.modal, negate: true }

@@ -1,0 +1,14 @@
+# Config for dogfooding the bajutsu `serve` Web UI itself. The "app under test" is the serve
+# SPA — identified by `baseUrl` (no bundleId), driven by the Playwright (web) backend. Like
+# demos/web this needs no Mac and no Simulator. `make -C demos/serve-ui e2e` launches serve and
+# points a deterministic run at it. The port here must match PORT in the Makefile.
+defaults:
+  backend: [web]
+
+apps:
+  webui:
+    baseUrl: "http://127.0.0.1:8799/"
+    backend: [web]
+    scenarios: demos/serve-ui/scenarios
+    # The data-testid namespaces the WebUI exposes (the web equivalent of accessibility ids).
+    idNamespaces: [nav, view, record, replay, crawl, settings, config]
