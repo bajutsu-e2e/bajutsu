@@ -15,9 +15,22 @@ from __future__ import annotations
 import subprocess
 import sys
 
-# Top-level packages that only the (future) server backend may import — never the default path.
+# Top-level packages that only an opt-in backend may import — never the default path: the
+# (future) server backend, plus the web backend's Playwright (a heavy dep loaded only when a
+# browser is actually started; see bajutsu/drivers/playwright.py).
 FORBIDDEN = sorted(
-    {"redis", "rq", "fastapi", "uvicorn", "sqlalchemy", "alembic", "authlib", "boto3", "psycopg"}
+    {
+        "redis",
+        "rq",
+        "fastapi",
+        "uvicorn",
+        "sqlalchemy",
+        "alembic",
+        "authlib",
+        "boto3",
+        "psycopg",
+        "playwright",
+    }
 )
 
 

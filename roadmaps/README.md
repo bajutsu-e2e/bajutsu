@@ -92,6 +92,7 @@ The first slice of the multi-platform direction has landed: a **platform-aware b
 <!-- GENERATED:accepted-platform-landed -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0041](proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | In progress |
 | [BE-0042](implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) | Platform-aware backend registry & selection | Implemented |
 <!-- /GENERATED:accepted-platform-landed -->
 
@@ -217,7 +218,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Proposal |
 | [BE-0010](proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Proposal |
-| [BE-0041](proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | Proposal |
+| [BE-0054](proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)

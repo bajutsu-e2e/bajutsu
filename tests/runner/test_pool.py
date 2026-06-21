@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import pytest
 from _runner import _eff, _el
 
 from bajutsu import env
+from bajutsu.config import Effective
+from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.runner import (
     device_pool,
@@ -241,3 +244,70 @@ def test_device_pool_stops_started_collectors_when_one_fails(
             env_run=lambda args, extra_env=None: "",
         )
     assert len(started) == 1 and started[0].stopped  # type: ignore[attr-defined]
+
+
+class _FakeWeb(FakeDriver):
+    """A fake web driver: a FakeDriver plus the web-only navigate()/close() lifecycle."""
+
+    def __init__(self, screen: list[base.Element]) -> None:
+        super().__init__(screen)
+        self.navigated = 0
+        self.closed = 0
+
+    def navigate(self) -> None:
+        self.navigated += 1
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def _eff_web() -> Effective:
+    return dataclasses.replace(_eff(), base_url="http://x/index.html", backend=["web"])
+
+
+def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The web lane: no simctl catalog/control/collector; the driver owns the browser, so
+    launch == navigate, relaunch == re-navigate, and release == close."""
+    fakes: list[_FakeWeb] = []
+
+    def fake_make_driver(actuator: str, udid: str, base_url: str | None = None) -> base.Driver:
+        assert actuator == "playwright"
+        assert base_url == "http://x/index.html"  # threaded from eff.base_url
+        d = _FakeWeb([_el("home.title", "H"), _el("ok", "OK")])
+        fakes.append(d)
+        return d
+
+    monkeypatch.setattr("bajutsu.runner.launch.make_driver", fake_make_driver)
+    lease, shutdown = device_pool(
+        ["web"], ["web"], _eff_web(), Path("runs"), network=False, available=lambda b: True
+    )
+    try:
+        leased = lease(_eff_web(), _scn("a"))
+        assert leased.control is None  # no simctl device control
+        assert leased.collector is None  # network off for web
+        assert leased.sink.udid == "web"
+        assert fakes[0].navigated == 1  # launch == navigate to base_url
+        assert leased.relaunch is not None
+        leased.relaunch(Relaunch())  # re-navigate, no device restart
+        assert fakes[0].navigated == 2
+        leased.release()  # tears the browser down
+        assert fakes[0].closed == 1
+    finally:
+        shutdown()
+
+
+def test_device_pool_web_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A web app with no baseUrl fails cleanly at launch (env.DeviceError), not deep in Playwright.
+    monkeypatch.setattr(
+        "bajutsu.runner.launch.make_driver",
+        lambda actuator, udid, base_url=None: FakeDriver([]),
+    )
+    eff_no_url = dataclasses.replace(_eff(), base_url=None, backend=["web"])
+    lease, shutdown = device_pool(
+        ["web"], ["web"], eff_no_url, Path("runs"), network=False, available=lambda b: True
+    )
+    try:
+        with pytest.raises(env.DeviceError, match="baseUrl"):
+            lease(eff_no_url, _scn("a"))
+    finally:
+        shutdown()

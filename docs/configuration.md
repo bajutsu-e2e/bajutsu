@@ -27,13 +27,21 @@ defaults:                       # shared across all apps
 
 apps:
   sample:                       # ← selected by --app sample
-    bundleId:       com.bajutsu.sample     # required
+    bundleId:       com.bajutsu.sample     # iOS target (required unless baseUrl is set for web)
     deeplinkScheme: bajutsusample
     idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
     launchEnv:      { SAMPLE_UITEST: "1" }
     scenarios:      demos/features/app/scenarios   # this app's scenarios dir (run reads it; record writes here)
     # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
+
+  web:                          # a web app (Playwright backend) identifies its target by URL
+    baseUrl:   "http://127.0.0.1:8787/index.html"   # required for web (instead of bundleId)
+    backend:   [web]
+    scenarios: demos/web/scenarios
 ```
+
+An app entry needs **either** `bundleId` (iOS) **or** `baseUrl` (web) — a config with neither is
+rejected at load. See [drivers → Playwright](drivers.md#playwright-web) and `demos/web`.
 
 ### Resolution (`resolve` → `Effective`)
 
@@ -42,7 +50,8 @@ An undefined app raises `KeyError` (the CLI exits with code 2).
 
 | `Effective` field | Source | Notes |
 |---|---|---|
-| `bundle_id` | app | required |
+| `bundle_id` | app | iOS target; required unless `base_url` is set |
+| `base_url` | app | web target URL (Playwright backend); required for web instead of `bundle_id` |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | ⚠️ `locale` is currently not applied at launch |

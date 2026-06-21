@@ -26,13 +26,20 @@ defaults:                       # 全アプリ共通の既定
 
 apps:
   sample:                       # ← --app sample で選択
-    bundleId:       com.bajutsu.sample     # 必須
+    bundleId:       com.bajutsu.sample     # iOS のターゲット（web で baseUrl を設定する場合を除き必須）
     deeplinkScheme: bajutsusample
     idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
     launchEnv:      { SAMPLE_UITEST: "1" }
     scenarios:      demos/features/app/scenarios   # このアプリのシナリオディレクトリ（run が読み、record が書く）
     # 任意: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
+
+  web:                          # web アプリ（Playwright backend）はターゲットを URL で指定する
+    baseUrl:   "http://127.0.0.1:8787/index.html"   # web では必須（bundleId の代わり）
+    backend:   [web]
+    scenarios: demos/web/scenarios
 ```
+
+アプリ項目には `bundleId`（iOS）か `baseUrl`（web）の**どちらか**が必要で、どちらも無い config は読み込み時に拒否されます。[drivers → Playwright](drivers.md#playwrightweb) と `demos/web` を参照してください。
 
 ### 解決（`resolve` → `Effective`）
 
@@ -40,7 +47,8 @@ apps:
 
 | `Effective` フィールド | 由来 | 備考 |
 |---|---|---|
-| `bundle_id` | app | 必須 |
+| `bundle_id` | app | iOS のターゲット。`base_url` が無いとき必須 |
+| `base_url` | app | web のターゲット URL（Playwright backend）。web では `bundle_id` の代わりに必須 |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | ⚠️ `locale` は現状 launch で未適用 |

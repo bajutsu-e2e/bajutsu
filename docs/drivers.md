@@ -42,21 +42,23 @@ class Driver(Protocol):
 The set of tokens returned by `capabilities()`, used for actuator selection and evidence fallback
 resolution.
 
-| Capability | Meaning | idb | fake |
-|---|---|:--:|:--:|
-| `query` | element-tree query | ✅ | ✅ |
-| `elements` | element-dump evidence | ✅ | ✅ |
-| `screenshot` | screenshot | ✅ | ✅ |
-| `semanticTap` | tap directly by id/label (no coordinates) | — | ✅ |
-| `conditionWait` | native condition waiting | — | ✅ |
-| `network` | native network monitoring | — | — |
-| `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ |
+| Capability | Meaning | idb | playwright | fake |
+|---|---|:--:|:--:|:--:|
+| `query` | element-tree query | ✅ | ✅ | ✅ |
+| `elements` | element-dump evidence | ✅ | ✅ | ✅ |
+| `screenshot` | screenshot | ✅ | ✅ | ✅ |
+| `semanticTap` | tap directly by id/label (no coordinates) | — | ✅ | ✅ |
+| `conditionWait` | native condition waiting | — | ✅ | ✅ |
+| `network` | native network monitoring | — | — | — |
+| `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ |
 
 > idb actuates by **frame-center coordinates** — it exposes no semantic tap, so the run loop resolves
 > a unique element via `query()` and taps its center. `pinch` / `rotate` raise `UnsupportedAction`
 > (single-touch); those go through codegen → XCUITest. The `fake` driver advertises a richer
 > capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
-> tests.
+> tests. The `playwright` (web) driver advertises `semanticTap` / `conditionWait` (Playwright has
+> both natively) but its v1 defers `network` and `multiTouch` (tracked in
+> [BE-0054](../roadmaps/proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)).
 
 ## idb
 
@@ -76,6 +78,32 @@ Headless, coordinate-based. For CI (continuous integration). With no semantic ta
 > fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/features e2e` + the `e2e.yml` CI workflow; re-check them only
 > if the installed idb version changes the schema (the note atop `idb.py`). The idb client is
 > `uv sync --extra idb`; `idb_companion` is `brew install facebook/fb/idb-companion`.
+
+## Playwright (web)
+
+Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Simulator**, so it
+fits the same toolchain as `make check`. Implementation: `drivers/playwright.py` (roadmap
+[BE-0041](../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+
+- `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
+  pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
+  iOS accessibilityIdentifier: `data-testid` → `Selector.id`, ARIA `role` (or tag) → `traits`,
+  accessible name / `aria-label` / text → `label`, input `value` → `value`.
+- `tap(sel)`: like idb, it resolves a **unique** element through the shared
+  `resolve_unique`/`find_all` against a `query()` snapshot and clicks the **frame center** by
+  coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
+  `get_by_test_id().click()`, so selector semantics stay byte-identical to every other backend.
+- `type_text` types via `page.keyboard` (the orchestrator taps `into` first, focusing the field);
+  `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (same as idb).
+- Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
+  (`page.goto(baseUrl)`) is the `launch`, and `close()` tears the browser down. There is no simctl
+  device, so the run uses a dummy lease and no device control (`pinch`/`rotate` raise
+  `UnsupportedAction` in v1).
+
+> `playwright` is imported **lazily** (only when a browser is actually started), so it never loads on
+> the default CLI path (locked by `tests/serve/test_import_guard.py`). Install with
+> `uv sync --extra web` + `uv run playwright install chromium`; the demo at `demos/web`
+> (`make -C demos/web e2e`) drives a tiny static web app end to end.
 
 ## FakeDriver
 
@@ -103,15 +131,15 @@ Implementation: `bajutsu/backends.py`.
 PLATFORMS = {                              # a platform token expands to its actuators
     "ios":     ("idb",),                   #   later: ("xcuitest", "idb")
     "android": ("adb",),                   #   planned
-    "web":     ("playwright",),            #   planned
+    "web":     ("playwright",),            #   implemented (BE-0041)
     "fake":    ("fake",),                  #   the in-memory test/demo driver
 }
-IMPLEMENTED = {"idb", "fake"}              # actuators with a driver today
+IMPLEMENTED = {"idb", "fake", "playwright"}  # actuators with a driver today
 
-def default_available(actuator) -> bool:   # implemented and its executable on PATH (fake: always)
+def default_available(actuator) -> bool:   # implemented + backing tool present (playwright: package import; fake: always)
 def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators
 def select_actuator(backends, available) -> str:  # first implemented + available, in order
-def make_driver(actuator, udid) -> Driver: # "idb" → IdbDriver, "fake" → FakeDriver
+def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
 - A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
@@ -120,11 +148,13 @@ def make_driver(actuator, udid) -> Driver: # "idb" → IdbDriver, "fake" → Fak
 - `backend` is an **ordered list** (most-stable-first; [concepts](concepts.md#5-the-stability-ladder)).
   Each token is expanded to its actuators, in order; the **actuator = the first implemented and
   available** one. If none is available, `RuntimeError` (the CLI exits with code 2).
-- `android` / `web` are **declared but not implemented yet** ([multi-platform](multi-platform.md)):
-  requesting them raises a clear "not implemented yet" rather than a generic failure. Truly unknown
-  tokens are skipped (forward-compat: an older build can run a config that lists a future backend).
+- `web` resolves to `playwright`, which **is implemented** ([multi-platform](multi-platform.md));
+  `android` (→ `adb`) is **declared but not implemented yet**, so requesting it raises a clear "not
+  implemented yet" rather than a generic failure. Truly unknown tokens are skipped (forward-compat:
+  an older build can run a config that lists a future backend).
 - The availability check `available` is injectable (swappable in tests). The default is `shutil.which`
-  (and `fake` needs no executable, so it is always available).
+  for PATH-backed actuators; `playwright` is gated on whether its Python package is importable, and
+  `fake` is always available.
 - The actuator is fixed once at the start of a run and held for the whole run (so two drivers never
   operate one device).
 
