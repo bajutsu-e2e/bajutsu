@@ -285,6 +285,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 <!-- GENERATED:proposals-crawl -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
 <!-- /GENERATED:proposals-crawl -->
 
 ### Miscellaneous / on hold
