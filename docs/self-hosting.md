@@ -123,6 +123,10 @@ docker compose up -d            # postgres + redis + minio + migrate (alembic up
 `migrate` runs the Alembic migrations to head before `bajutsu` starts, and `minio-init` creates the
 bucket. The control plane then listens on `:8765`.
 
+Published ports bind to `BIND_ADDR` (default `127.0.0.1`). For a Mac worker to reach Redis and
+MinIO from another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `0.0.0.0`
+on a host with a public interface, since that would expose Redis and the artifacts bucket.
+
 ### 2. Add GitHub OAuth (optional)
 
 The shared token (`BAJUTSU_SERVE_TOKEN`) alone is enough for a couple of operators. For per-user

@@ -120,6 +120,10 @@ docker compose up -d            # postgres + redis + minio + migrate（alembic u
 `migrate` が `bajutsu` の起動前に Alembic マイグレーションを head まで適用し、`minio-init` がバケットを
 作成します。コントロールプレーンは `:8765` で待ち受けます。
 
+公開ポートは `BIND_ADDR`（既定は `127.0.0.1`）にバインドします。Mac の worker が別ホストから Redis と
+MinIO に届くようにするには、`.env` の `BIND_ADDR` をノードの tailnet IP に設定してください。公開
+インターフェースを持つホストで `0.0.0.0` にはしないでください。Redis と成果物バケットを露出させてしまいます。
+
 ### 2. GitHub OAuth を足す（任意）
 
 オペレータが数人なら共有トークン（`BAJUTSU_SERVE_TOKEN`）だけで十分です。ユーザごとのブラウザログインには、

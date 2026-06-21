@@ -14,6 +14,7 @@ The step-by-step guide — including the macOS worker, OAuth setup, and exposure
 ## Quick start
 
 ```sh
+cd deploy/self-host           # the compose file and .env live here
 cp .env.example .env          # then edit: tokens, passwords, OAuth, bucket
 mkdir -p config               # put your bajutsu.config.yaml (the app list) here
 docker compose up -d          # postgres, redis, minio, migrate (one-shot), bajutsu

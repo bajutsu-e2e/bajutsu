@@ -11,6 +11,7 @@ COPY . /app
 RUN pip install --no-cache-dir '.[server,worker,db,oauth]'
 
 EXPOSE 8765
-# Default command; compose overrides it for the one-shot `migrate` service. `--config` points at a
-# mounted config so the server backend's app/project list comes from it.
+# A sensible default for `docker run`, but compose supplies the real command for both services it
+# builds from this image: `alembic … upgrade head` for the one-shot `migrate`, and the serve command
+# with `--config /config/bajutsu.config.yaml` for the control plane (see docker-compose.yml).
 CMD ["bajutsu", "serve", "--asgi", "--backend=server", "--host", "0.0.0.0", "--port", "8765"]

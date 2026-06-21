@@ -2,6 +2,10 @@
 # The macOS worker runs natively on a Mac (it needs the Simulator) and joins over the tailnet; see
 # docs/self-hosting.md. Copy .env.example to .env and fill it in, then `docker compose up -d`.
 # One team = one (default) org; multi-tenant isolation is not implemented yet.
+#
+# Published ports bind to ${BIND_ADDR}, which defaults to 127.0.0.1 (loopback only). Redis and
+# MinIO must stay private: to let the native Mac worker reach them, set BIND_ADDR to the host's
+# tailnet IP — never 0.0.0.0 on a host that also has a public interface.
 
 services:
   postgres:
@@ -20,20 +24,28 @@ services:
   redis:
     image: redis:7
     volumes: ["redisdata:/data"]
-    ports: ["6379:6379"]  # reached by the Mac worker over the tailnet (keep it on a private tailnet)
+    # Reached by the Mac worker over the tailnet — bind to the tailnet IP via BIND_ADDR; loopback by
+    # default. Keep it off any public interface.
+    ports: ["${BIND_ADDR:-127.0.0.1}:6379:6379"]
 
   minio:
-    image: minio/minio
+    # Pinned for reproducible deploys; bump deliberately after re-validating with this stack.
+    image: minio/minio:RELEASE.2025-10-15T17-29-55Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID in .env}
       MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env}
     volumes: ["miniodata:/data"]
-    ports: ["9000:9000", "9001:9001"]  # S3 API (reached by the Mac worker over the tailnet) + console
+    # S3 API (reached by the Mac worker over the tailnet) + console — same BIND_ADDR rule as Redis;
+    # loopback by default so a public host can't accidentally expose the artifacts bucket.
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:9000:9000"
+      - "${BIND_ADDR:-127.0.0.1}:9001:9001"
 
-  # One-shot: wait for MinIO, then create the artifacts/scenarios bucket.
+  # One-shot: wait for MinIO, then create the artifacts/scenarios bucket (idempotent on a restart
+  # with a persisted volume — --ignore-existing keeps `mc mb` from failing if the bucket is there).
   minio-init:
-    image: minio/mc
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     env_file: .env
     depends_on: [minio]
     entrypoint:
@@ -41,12 +53,16 @@ services:
       - -c
       - >
         until mc alias set m http://minio:9000 "$$AWS_ACCESS_KEY_ID" "$$AWS_SECRET_ACCESS_KEY";
-        do sleep 1; done; mc mb -p "m/$$BAJUTSU_S3_BUCKET"
+        do sleep 1; done; mc mb --ignore-existing "m/$$BAJUTSU_S3_BUCKET"
 
   # One-shot: bring the schema to head (orgs/users/projects/runs/audit_log + users.role).
   migrate:
     build: { context: ../.., dockerfile: deploy/self-host/Dockerfile }
     env_file: .env
+    # Derive the DB URL from POSTGRES_PASSWORD so the two can't drift (this overrides any
+    # BAJUTSU_DATABASE_URL in .env, which is only for non-compose use).
+    environment:
+      BAJUTSU_DATABASE_URL: postgresql+psycopg://bajutsu:${POSTGRES_PASSWORD}@postgres:5432/bajutsu
     working_dir: /app
     command: ["alembic", "-c", "bajutsu/serve/server/alembic.ini", "upgrade", "head"]
     depends_on:
@@ -55,6 +71,9 @@ services:
   bajutsu:
     build: { context: ../.., dockerfile: deploy/self-host/Dockerfile }
     env_file: .env
+    # Same as migrate: derive the DB URL from POSTGRES_PASSWORD so it can't use a stale password.
+    environment:
+      BAJUTSU_DATABASE_URL: postgresql+psycopg://bajutsu:${POSTGRES_PASSWORD}@postgres:5432/bajutsu
     # Mount your config.yml (the app/project list the server backend exposes) at /config.
     command:
       - bajutsu
@@ -65,7 +84,9 @@ services:
       - --port=8765
       - --config=/config/bajutsu.config.yaml
     volumes: ["./config:/config:ro"]
-    ports: ["8765:8765"]  # front with Tailscale serve, or enable the caddy profile below
+    # Front with Tailscale serve (loopback default) or the caddy profile below; set BIND_ADDR only
+    # if something off-host must reach 8765 directly.
+    ports: ["${BIND_ADDR:-127.0.0.1}:8765:8765"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
