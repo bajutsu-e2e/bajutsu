@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -29,8 +30,14 @@ from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
 from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
 
+logger = logging.getLogger(__name__)
+
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
+
+# The single tenant's org id/slug until org resolution lands (BE-0015 7c-4; multi-tenant is still
+# ahead). Lives here so both job persistence and the operations layer share one source of truth.
+_DEFAULT_ORG = "default"
 
 Popen = Callable[..., Any]
 
@@ -412,12 +419,73 @@ def run_job(state: ServeState, job: Job) -> None:
     try:
         _run_job(state, job)
     finally:
+        _persist_run(state, job)
         if job.bus is not None:  # run_job returning means the job finished — end the live stream
             # Record the terminal status on the bus so a control-plane replica reading a
             # worker-run job sees the real exit/run id (its own Job stays "running") (BE-0015 W2).
             # Exclude the log buffer — the lines already live in the bus's stream, so duplicating
             # them into the done payload would needlessly bloat it (Redis memory).
             job.bus.close(job.id, json.dumps(job.view(include_lines=False)))
+
+
+def _persist_run(state: ServeState, job: Job) -> None:
+    """Record a finished `run` into the system of record so the history list survives independently
+    of the artifact store and is org-scoped (BE-0015 7c-4). A no-op without a repository (local /
+    stdlib serve) or for a job that produced no run id (record/crawl, or a build/boot failure).
+    The org is the single default tenant until org resolution lands (7c-4 scope; multi-tenant is
+    still ahead).
+
+    Persistence must never break job finalization: this runs inside `run_job`'s `finally`, just
+    before the live-log stream is closed, so any error (a missing org/user row, an FK violation on
+    Postgres, a flaky DB) is caught and logged rather than stranding the stream."""
+    if state.repository is None or job.run_id is None:
+        return
+    repo, run_id = state.repository, job.run_id
+    try:
+        # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded,
+        # so the default serve path never pulls server.db in (the import guard stays green).
+        from bajutsu.serve.server.db import RunRecord
+
+        ok = job.exit_code == 0 and not job.cancelled
+        repo.ensure_org(_DEFAULT_ORG, slug=_DEFAULT_ORG, name="Default")
+        # Attribute the run only to a user that actually exists, so the `created_by` foreign key
+        # can't fail (a token/CI run has no actor; an OAuth run's user was upserted at login).
+        created_by = job.actor if job.actor and repo.user_role(job.actor) is not None else None
+        repo.record_run(
+            RunRecord(
+                id=run_id,
+                org_id=_DEFAULT_ORG,
+                status="done",
+                created_by=created_by,
+                ok=ok,
+                summary=_run_summary(state, run_id, ok=ok),
+            )
+        )
+    except Exception:
+        logger.warning("failed to persist run %s to the system of record", run_id, exc_info=True)
+
+
+def _run_summary(state: ServeState, run_id: str, *, ok: bool) -> dict[str, Any]:
+    """The run's history-list summary, read from just this run's `manifest.json` (not a full
+    `list_runs()` scan, which re-reads every run's manifest from object storage). `write_report`
+    writes `report.html` alongside the manifest, so a readable manifest means the report exists."""
+    minimal = {"id": run_id, "ok": ok, "report": False, "scenarios": [], "passed": 0, "total": 0}
+    raw = state.artifacts.open_bytes(f"{run_id}/manifest.json")
+    if raw is None:
+        return minimal
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return minimal
+    scenarios = [s for s in (data.get("scenarios") or []) if isinstance(s, dict)]
+    return {
+        "id": run_id,
+        "ok": bool(data.get("ok")),
+        "report": True,
+        "scenarios": [str(s.get("scenario", "")) for s in scenarios],
+        "passed": sum(1 for s in scenarios if s.get("ok")),
+        "total": len(scenarios),
+    }
 
 
 def _run_job(state: ServeState, job: Job) -> None:

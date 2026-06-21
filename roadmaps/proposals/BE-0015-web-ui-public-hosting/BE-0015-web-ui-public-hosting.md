@@ -206,8 +206,8 @@ so the same models run on SQLite (the gate) and Postgres (production). Wiring st
 seams are assembled, `_build_server_state`, keyed off `BAJUTSU_DATABASE_URL`; unset — and the local
 backend — leaves `repository` as `None`, so behavior is unchanged without a database. A `db` extra
 carries `sqlalchemy`, `alembic`, and `psycopg`. (The `Repository` exposes `record_run`/`get_run`/
-`list_runs`, but the run history is still listed from object storage; a DB-backed, org-scoped
-listing waits for multi-tenancy.)
+`list_runs`; the run history is served from the DB once one is wired — see 7c-4 below — and from
+object storage otherwise.)
 
 #### 7b — GitHub OAuth and durable sessions (#148, #149)
 
@@ -237,14 +237,19 @@ On the server backend with a database wired:
 - **Per-user concurrency quota** (#152): `BAJUTSU_MAX_CONCURRENT_PER_USER` caps one user's in-flight
   jobs so no single user starves the scarce device pool (the per-org quota is just the existing
   global `max_concurrent` while there is one org).
+- **DB-backed run listing** (7c-4): a finished run is recorded into the `runs` table (its id, org,
+  who started it, pass/fail, and the manifest summary), and the run-history endpoint serves the org's
+  recorded runs instead of scanning the artifact store. Without a database (local / stdlib serve) the
+  listing still reads straight from the artifact store, so behavior is unchanged there. The listing is
+  already org-scoped — it just resolves to the single default org until org resolution lands.
 
 #### Still ahead (real multi-tenancy)
 
-The pieces that only matter with more than one org are deferred: a **DB-backed, org-scoped run
-listing** (7c-4); **org-scope enforcement** (a cross-org access returning 403); **feeding the
-resolved `org_id` into the tenant prefix** on `ScenarioStore` / the object store / `BaselineStore`
-(already parameterized by a `<org>/` prefix); and the org model itself (mapping GitHub orgs, more
-than one org). Until then, the single-tenant backend above is the shipped baseline.
+The pieces that only matter with more than one org are deferred: **org-scope enforcement** (a
+cross-org access returning 403); **feeding the resolved `org_id` into the tenant prefix** on
+`ScenarioStore` / the object store / `BaselineStore` (already parameterized by a `<org>/` prefix) and
+into the run listing (which already filters by org); and the org model itself (mapping GitHub orgs,
+more than one org). Until then, the single-tenant backend above is the shipped baseline.
 
 ## Alternatives considered
 

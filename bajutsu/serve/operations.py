@@ -44,7 +44,7 @@ from bajutsu.serve.helpers import (
     valid_scenario_ref,
     valid_udid,
 )
-from bajutsu.serve.jobs import Job, ServeState
+from bajutsu.serve.jobs import _DEFAULT_ORG, Job, ServeState
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
@@ -113,6 +113,11 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
 
 
 def runs_payload(state: ServeState) -> tuple[Any, int]:
+    # With a system of record (server backend), the history is the org's recorded runs — durable
+    # and org-scoped (BE-0015 7c-4). The stored summary mirrors the artifact entry, so the UI shape
+    # is identical. Without one (local / stdlib serve), list straight from the artifact store.
+    if state.repository is not None:
+        return [r.summary for r in state.repository.list_runs(org_id=_DEFAULT_ORG)], 200
     return state.artifacts.list_runs(), 200
 
 
@@ -251,10 +256,6 @@ def oauth_callback(
             role=role_for(login, admins=state.oauth_admins, viewers=state.oauth_viewers),
         )
     return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
-
-
-# The single tenant's org id/slug until real multi-tenancy lands (BE-0015 7c-1).
-_DEFAULT_ORG = "default"
 
 
 def _record_audit(
