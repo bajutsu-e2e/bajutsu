@@ -318,5 +318,5 @@ counterpart:
 `bajutsu/serve/`, [ci](../../../docs/ci.md), [architecture](../../../docs/architecture.md),
 [reporting](../../../docs/reporting.md), [cli](../../../docs/cli.md#serve), the self-hosting counterpart
 [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), and
-[BE-0054](../../proposals/BE-0054-operational-logging/BE-0054-operational-logging.md) — which designs
+[BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) — which designs
 the operational logging that realizes the "structured JSON logs" observability row above.

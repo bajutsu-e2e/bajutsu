@@ -1,8 +1,8 @@
-[English](BE-0054-operational-logging.md) · **日本語**
+[English](BE-0055-operational-logging.md) · **日本語**
 
-# BE-0054 — ホスト型 serve の運用ログ
+# BE-0055 — ホスト型 serve の運用ログ
 
-* 提案: [BE-0054](BE-0054-operational-logging-ja.md)
+* 提案: [BE-0055](BE-0055-operational-logging-ja.md)
 * Author: [@hirosassa](https://github.com/hirosassa)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)

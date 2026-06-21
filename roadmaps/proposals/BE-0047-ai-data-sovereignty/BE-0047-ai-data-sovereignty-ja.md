@@ -39,4 +39,4 @@ Bajutsu はすでにその逆です。AI 経路はユーザー自身の `ANTHROP
 
 `bajutsu/agent.py`、`bajutsu/claude_agent.py`、`bajutsu/alerts.py`、`bajutsu/redaction.py`、
 [recording.md](../../../docs/ja/recording.md)、[DESIGN §2 / §3.1](../../../DESIGN.md)、
-[BE-0054](../../proposals/BE-0054-operational-logging/BE-0054-operational-logging-ja.md) — 同じ redact 経路の思想をホスト型 serve の運用ログへ広げます。
+[BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging-ja.md) — 同じ redact 経路の思想をホスト型 serve の運用ログへ広げます。

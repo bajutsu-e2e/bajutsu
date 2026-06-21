@@ -71,5 +71,5 @@ enforcement, not a new kind of check.
 
 `bajutsu/agent.py`, `bajutsu/claude_agent.py`, `bajutsu/alerts.py`, `bajutsu/redaction.py`,
 [recording.md](../../../docs/recording.md), [DESIGN §2 / §3.1](../../../DESIGN.md),
-[BE-0054](../../proposals/BE-0054-operational-logging/BE-0054-operational-logging.md) — which extends
+[BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) — which extends
 the same redacted-path philosophy to the hosted serve's operational logs.
