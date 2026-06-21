@@ -1,8 +1,8 @@
-[English](BE-XXXX-playwright-codegen.md) · **日本語**
+[English](BE-0062-playwright-codegen.md) · **日本語**
 
-# BE-XXXX — Playwright codegen ターゲット
+# BE-0062 — Playwright codegen ターゲット
 
-* 提案: [BE-XXXX](BE-XXXX-playwright-codegen-ja.md)
+* 提案: [BE-0062](BE-0062-playwright-codegen-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)
