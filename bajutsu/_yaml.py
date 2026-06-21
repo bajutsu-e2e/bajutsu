@@ -35,8 +35,7 @@ _restrict_bool_to_true_false()
 
 
 def safe_load(text: str) -> Any:
-    # _Loader subclasses SafeLoader (it only changes on/off/yes/no resolving), so this is safe.
-    return yaml.load(text, Loader=_Loader)  # noqa: S506
+    return yaml.load(text, Loader=_Loader)
 
 
 def safe_dump(data: Any) -> str:

@@ -72,9 +72,11 @@ documents internal invariants throughout and bajutsu never runs under `-O`, and 
 subprocess call while ours are argv lists (`shell=False`); the genuinely dangerous `shell=True` form is
 still caught by `S602`. `tests/` and `demos/` ignore the whole `S` category; `scripts/` ignores `S607`
 (they invoke git / uv via `PATH`). The remaining findings in `bajutsu/` were triaged: one real fix
-(`hashlib.sha1(..., usedforsecurity=False)` for a non-crypto dedup key) plus reviewed `noqa`s for
-confirmed false positives (an `urlopen` already guarded to http/https, a `SafeLoader` subclass, a
-public endpoint URL named `_TOKEN`).
+(`hashlib.sha1(..., usedforsecurity=False)` for a non-crypto dedup key) plus suppressions for
+confirmed false positives: inline `noqa` for an `urlopen` already guarded to http/https (`S310`) and
+a public endpoint URL named `_TOKEN` (`S105`), and a file-level `S506` ignore for `_yaml.py`'s
+`yaml.load` (a `SafeLoader` subclass) — file-level rather than inline so the line stays identical to
+main, where CodeQL already dismissed the same finding as a false positive.
 
 ### SAST (CodeQL default setup, retained)
 

@@ -71,8 +71,10 @@ ruff の `S` ルールを有効化した。`S101`（assert）と `S603`（subpro
 あり、本当に危険な `shell=True` の形は `S602` が引き続き捕捉する。`tests/` と `demos/` は `S` カテゴリ全体
 を、`scripts/` は `S607` を除外する（git や uv を PATH 経由で起動するため）。`bajutsu/` に残る指摘は個別に
 処理した。実体のある修正が1件（非暗号用途の dedup キーに対する `hashlib.sha1(..., usedforsecurity=False)`）
-と、確認済みの誤検知への理由つき `noqa`（すでに http／https に限定済みの `urlopen`、`SafeLoader` の
-サブクラス、`_TOKEN` という名前の公開エンドポイント URL）である。
+と、確認済みの誤検知への抑制である。インライン `noqa` は http／https に限定済みの `urlopen`（`S310`）と
+`_TOKEN` という名前の公開エンドポイント URL（`S105`）。`_yaml.py` の `yaml.load`（`SafeLoader` の
+サブクラス）は `S506` をファイル単位で ignore する。これは行を main と完全に一致させ、main で同じ指摘が
+すでに false positive として dismiss 済みの状態を保つためである。
 
 ### SAST（CodeQL default setup を維持）
 
