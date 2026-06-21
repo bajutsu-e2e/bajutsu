@@ -197,6 +197,8 @@
       var frame = document.createElement('div'); frame.className = 'tv-shotframe';
       imEl = document.createElement('img'); imEl.alt = 'step screenshot';
       imEl.src = shot.getAttribute('src');
+      imEl.style.cursor = 'zoom-in';  // click the viewer's screenshot to enlarge it full-screen
+      imEl.addEventListener('click', function(e){ e.stopPropagation(); openImg(imEl.getAttribute('src')); });
       var hl = document.createElement('div'); hl.className = 'tv-hl'; hl.hidden = true;
       frame.appendChild(imEl); frame.appendChild(hl); sd.appendChild(frame);
     }
@@ -257,12 +259,22 @@
     if(tvInput) tvInput.addEventListener('input', function(){ tvFilter(this.value); });
     document.addEventListener('keydown', function(e){
       if(!tv.classList.contains('open')) return;
+      if(imgz && imgz.classList.contains('open')) return;  // the enlarged screenshot handles its own keys
       if(e.key === 'Escape'){ tvClose(); return; }
       // While typing in the filter, let ← / → move the text cursor instead of navigating.
       if(ROOT.activeElement === tvInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
       if(e.key === 'ArrowLeft'){ e.preventDefault(); tvGo(-1); }
       else if(e.key === 'ArrowRight'){ e.preventDefault(); tvGo(1); }
     });
+  }
+  // Inside the element viewer, clicking the screenshot enlarges it full-screen (a plain lightbox);
+  // click the backdrop or press Esc to close. No arrow keys here — the viewer itself walks steps.
+  var imgz = ROOT.getElementById('imgz'), imgzImg = imgz && imgz.querySelector('img');
+  function openImg(src){ if(imgz && imgzImg && src){ imgzImg.src = src; imgz.classList.add('open'); } }
+  function closeImg(){ if(imgz){ imgz.classList.remove('open'); if(imgzImg) imgzImg.removeAttribute('src'); } }
+  if(imgz){
+    imgz.addEventListener('click', closeImg);
+    document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && imgz.classList.contains('open')) closeImg(); });
   }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
   // so the controls never overlay the video frame the way the native HTML5 controls do.

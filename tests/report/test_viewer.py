@@ -14,10 +14,13 @@ from bajutsu.report import html_report
 
 def test_screenshot_or_tree_button_opens_element_viewer_and_arrows_navigate() -> None:
     # Clicking a step's screenshot — or the "tree" button — opens the element viewer; ← / → walk
-    # the steps of the current scenario, looping. There is no separate image lightbox.
+    # the steps of the current scenario, looping. Inside the viewer, clicking the screenshot
+    # enlarges it full-screen (a #imgz lightbox).
     out = html_report("run1", [_passing()])
-    assert 'id="imgz"' not in out and "openImg(" not in out  # no bare image lightbox
     assert "closest('.treebtn') || e.target.closest('.shot')" in out  # both open the element viewer
+    assert (
+        'id="imgz"' in out and "openImg(imEl.getAttribute('src'))" in out
+    )  # viewer screenshot → enlarge
     assert "ArrowLeft" in out and "ArrowRight" in out  # arrow keys walk the steps
     # navigation is scoped to one scenario (details.scn) and wraps at the ends
     assert "tvScopeFor" in out and "details.scn" in out and "% tvScope.length" in out
@@ -101,8 +104,8 @@ def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:
     assert 'target="_blank"' not in out
     assert "home.title" in out and "Welcome" in out
     assert 'id="tv"' in out and "tvFilter" in out
-    # the screenshot and the tree button both open the element viewer (no image lightbox); it shows
-    # the step's own info above the table.
+    # the screenshot and the tree button both open the element viewer (not the old "lb" preview); it
+    # shows the step's own info above the table.
     assert 'id="lb"' not in out and "openLightbox" not in out
     assert 'class="tv-step"' in out
     # the ◀ N/M ▶ step controls are built below the element list (in JS), and the element filter
