@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-operational-logging-ja.md)
+**English** · [日本語](BE-0054-operational-logging-ja.md)
 
-# BE-XXXX — Operational logging for the hosted serve
+# BE-0054 — Operational logging for the hosted serve
 
-* Proposal: [BE-XXXX](BE-XXXX-operational-logging.md)
+* Proposal: [BE-0054](BE-0054-operational-logging.md)
 * Author: [@hirosassa](https://github.com/hirosassa)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
