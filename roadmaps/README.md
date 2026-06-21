@@ -240,6 +240,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
 | [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
+| [BE-0054](proposals/BE-0054-operational-logging/BE-0054-operational-logging.md) | Operational logging for the hosted serve | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Integration & automation (MCP)
