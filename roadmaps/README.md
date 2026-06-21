@@ -277,6 +277,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
 | [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
+| [BE-0062](proposals/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### Miscellaneous / on hold
