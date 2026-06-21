@@ -206,6 +206,7 @@ textarea.goal{min-height:5.5rem;resize:vertical;line-height:1.4}
 .checks label{display:block;margin:0;color:var(--fg);cursor:pointer}
 .checks .hint{display:block;color:var(--mut);font-size:.78em;line-height:1.35;margin:.15rem 0 0 1.45rem}
 button.run{flex:0 0 auto;width:100%;padding:.6rem;background:var(--acc);color:var(--on-acc);border:0;border-radius:6px;font-weight:700;cursor:pointer}
+.checks + button.run{margin-top:.7rem}  /* crawl: separate Start crawl from the checks above it */
 button.run:disabled{opacity:.5;cursor:default}
 /* While a job runs the button turns amber, shows a spinner, and stays disabled (Stop aborts it). */
 button.run.running{background:var(--run);color:var(--on-run);opacity:1;cursor:default}
@@ -234,7 +235,7 @@ pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
 .panel[hidden]{display:none}
 .hhead{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:.5rem}
 .refresh{background:none;border:1px solid var(--line);color:var(--mut);border-radius:6px;cursor:pointer;padding:.1rem .45rem}
-.history{list-style:none;margin:0;padding:0;max-height:calc(100vh - 11rem);overflow:auto}
+.history{list-style:none;margin:0;padding:0}
 .history li{display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;border-radius:6px;cursor:pointer}
 .history li:hover{background:var(--bg2)}
 .history li.sel{background:var(--bg2);outline:1px solid var(--acc)}

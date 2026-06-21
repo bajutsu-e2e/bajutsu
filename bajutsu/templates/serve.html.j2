@@ -199,7 +199,7 @@
         <option value="claude-code">Claude Code (the claude CLI, your subscription)</option>
       </select>
       <div id="claudecodefields" hidden>
-        <div class="fshint"><b>Record</b> and <b>Crawl</b> author through the local <code>claude</code> CLI (Claude Code) on your Pro/Max subscription instead of the pay-per-token API. Install Claude Code and authenticate it (<code>claude setup-token</code>) in the environment that launched <code>serve</code>; an <code>ANTHROPIC_API_KEY</code>, if set, is stripped from the call so the subscription is billed. Authoring is text-only (no screenshot). The <b>alert guard</b> (Replay / Crawl with dismiss-alerts) still uses the Anthropic SDK, so it reads the API key below if present, and otherwise no-ops.</div>
+        <div class="fshint"><b>Record</b> and <b>Crawl</b> author through the local <code>claude</code> CLI (Claude Code) on your Pro/Max subscription instead of the pay-per-token API. Install Claude Code and authenticate it (<code>claude setup-token</code>) in the environment that launched <code>serve</code>; an <code>ANTHROPIC_API_KEY</code>, if set, is stripped from the call so the subscription is billed. Authoring is text-only (no screenshot). The <b>alert guard</b> (Replay / Crawl with dismiss-alerts) still uses the Anthropic SDK; set <code>ANTHROPIC_API_KEY</code> in the environment for it, otherwise it no-ops.</div>
       </div>
       <div id="bedrockfields" data-testid="settings.bedrock-fields" hidden>
         <label class="keylabel" for="bedrock-region">AWS region</label>

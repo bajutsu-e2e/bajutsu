@@ -153,7 +153,7 @@ function renderProv(){
   const v=$('#provider').value,bedrock=v==='bedrock',cc=v==='claude-code';
   $('#bedrockfields').hidden=!bedrock;        // region + model id (Bedrock only)
   $('#claudecodefields').hidden=!cc;          // claude CLI prerequisites (Claude Code only)
-  $('#apikeysection').hidden=bedrock;          // API key: hidden for Bedrock; optional under Claude Code (alert guard only)
+  $('#apikeysection').hidden=bedrock||cc;      // API key: only the Anthropic API needs it (Bedrock uses AWS creds; Claude Code uses the CLI subscription)
 }
 async function loadProv(){
   // Explicit selection: don't pre-select a provider from the server's (env-derived) default —
