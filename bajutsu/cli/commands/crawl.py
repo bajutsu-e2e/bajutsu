@@ -175,7 +175,10 @@ def crawl(
         _write_screenmap(screenmap_path, crawl_engine.ScreenMap())  # empty map the UI can poll now
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
-    udid = _env.resolve_udid(udid)
+    # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
+    # shell out to simctl and crash off-macOS, so skip it for the web backend.
+    if actuator != "playwright":
+        udid = _env.resolve_udid(udid)
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
@@ -198,8 +201,13 @@ def crawl(
 
     def reset(d: base.Driver) -> None:
         # Revisit a known screen the way `run` reaches any state — return to a clean start and let
-        # the engine replay the shortest path. A relaunch (not a full erase) keeps each frontier
-        # visit fast; the app's own UI returns to its entry screen.
+        # the engine replay the shortest path. For web there is no app to relaunch: re-navigating to
+        # baseUrl is the clean start. For iOS a relaunch (not a full erase) keeps each frontier visit
+        # fast; the app's own UI returns to its entry screen.
+        if actuator == "playwright":
+            d.navigate()  # type: ignore[attr-defined]  # web-only lifecycle (re-navigate to baseUrl)
+            _await_ready(d)
+            return
         e = _env.Env(udid)
         e.terminate(eff.bundle_id)
         e.launch(eff.bundle_id, [*eff.launch_args, *_env.locale_args(eff.locale)], eff.launch_env)

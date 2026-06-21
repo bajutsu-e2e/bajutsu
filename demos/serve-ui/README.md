@@ -14,7 +14,7 @@ from machine assertions, never an LLM.
 |---|---|
 | `dogfood.config.yaml` | `apps.webui` with `baseUrl` (the running serve) + `backend: [web]` (no `bundleId`) |
 | `scenarios/shell-navigation.yaml` | the Record / Replay / Crawl tabs swap the visible view |
-| `scenarios/modals.yaml` | the config browser and Settings panel open/close; Settings defaults to Anthropic |
+| `scenarios/modals.yaml` | the config browser and Settings panel open/close; the AI provider needs an explicit choice (no default — Save is rejected until one is picked) |
 | `scenarios/replay-contract.yaml` | a bound config reaches the Replay pickers (config → `/api/apps` → `/api/scenarios`) |
 | `scenarios/record-form.yaml` | Record's Save stays disabled until a scenario exists; the goal field takes input |
 | `scenarios/platform-ui.yaml` | the Replay panel hides its iOS device UI (simulators, workers, erase) for a non-iOS backend |
@@ -51,6 +51,6 @@ same rule that keeps the LLM out of the run/CI gate.
 ## Scope (current)
 
 The web backend taps by coordinate, so it cannot operate a native `<select>` dropdown; these
-scenarios assert the **default** selection the page loads (which needs no dropdown interaction) rather
+scenarios assert the **state the page loads** (which needs no dropdown interaction) rather
 than switching options. Driving `<select>` and the AI round-trips are tracked as future work in the
 dogfood roadmap item.

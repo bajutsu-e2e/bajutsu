@@ -98,7 +98,10 @@ def record(
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
 
         alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
-    udid = _env.resolve_udid(udid)
+    # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
+    # shell out to simctl and crash off-macOS, so skip it for the web backend.
+    if actuator != "playwright":
+        udid = _env.resolve_udid(udid)
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise. Stopped when this command exits (atexit).

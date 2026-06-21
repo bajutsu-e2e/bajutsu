@@ -825,7 +825,7 @@ initSplitters();
 // Tiling layout (Record/Replay): drag a panel's grip and drop on another panel's edge to split
 // that way (up/down/left/right), or on its center to swap the two. Dividers resize both axes and
 // the layout tree persists in localStorage. A node is either a leaf (panel key) or a split
-// {d:'row'|'col', k:[node…], s:[size…]}. Crawl keeps its grid (its graph isn't suited to tiling).
+// {d:'row'|'col', k:[node…], s:[size…]}. All three views (Record/Replay/Crawl) tile.
 function initTiling(){
   const KEY='bajutsu-tiles';
   const SPECS=[
@@ -894,7 +894,7 @@ function initTiling(){
     const keys=Object.keys(panel);if(!keys.length)return;
     const V={spec,view,panel,keys,tree:(saved[spec.id]&&valid(saved[spec.id],keys))?saved[spec.id]:spec.def};
     keys.forEach(k=>{
-      const g=document.createElement('div');g.className='tile-grip';g.title='ドラッグして移動／入れ替え';g.textContent='⠿';
+      const g=document.createElement('div');g.className='tile-grip';g.title='drag to move / swap';g.textContent='⠿';
       g.addEventListener('mousedown',e=>{e.preventDefault();pdrag={V,key:k};panel[k].classList.add('tile-dragging');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing';});
       panel[k].appendChild(g);
     });

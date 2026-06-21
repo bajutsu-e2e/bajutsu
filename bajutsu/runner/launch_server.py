@@ -14,6 +14,7 @@ answers — never a blind fixed sleep. If `readyUrl` already answers, the server
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import signal
@@ -108,3 +109,6 @@ def _terminate(proc: subprocess.Popen[bytes], say: Callable[[str], None]) -> Non
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             proc.kill()
+        # Reap the killed child so it doesn't linger as a zombie until the parent exits.
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=5)
