@@ -1,8 +1,8 @@
-**English** · [日本語](BE-0067-regenerable-reports-ja.md)
+**English** · [日本語](BE-0068-regenerable-reports-ja.md)
 
-# BE-0067 — Regenerable reports (render from stored run data)
+# BE-0068 — Regenerable reports (render from stored run data)
 
-* Proposal: [BE-0067](BE-0067-regenerable-reports.md)
+* Proposal: [BE-0068](BE-0068-regenerable-reports.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
