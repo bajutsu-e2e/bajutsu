@@ -142,7 +142,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 
 ## Test layout
 
-`tests/` holds **998 unit tests** (`uv run pytest -q`). None require a real Simulator: command
+`tests/` holds the **unit-test suite** (`uv run pytest -q`). None require a real Simulator: command
 builders are verified as pure functions, and execution paths are tested with `FakeDriver` /
 injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sample app is
 `make -C demos/features e2e` / `make -C demos/features ui-test` ([sample-app](sample-app.md)).
@@ -162,7 +162,7 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 - The **Playwright web backend** (`drivers/playwright.py`): a first slice — a deterministic `run`
   against a browser, on the Linux gate (`demos/web`); rich-end web capture is planned (BE-0054)
 - Scenario schema (strict validation) and YAML round-trip
-- Evaluation of the 9 assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `visual`)
+- Evaluation of the assertion kinds (`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `visual`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
@@ -192,7 +192,7 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
-- The CLI (13 commands): `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
+- The CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
 - AI **crawl** (`crawl.py`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; browse reports and evidence; approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)

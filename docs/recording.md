@@ -18,7 +18,7 @@ Related: [the two tiers in concepts](concepts.md#2-two-tiers-tier-1--tier-2) · 
 ## The Agent abstraction
 
 A thin Protocol that separates the loop from the model (`agent.py`). Tests use a scripted fake;
-production uses one of two Claude backends, picked with `--agent` (below).
+production uses a Claude backend, picked with `--agent` (below).
 
 ```python
 @dataclass
@@ -70,7 +70,7 @@ scenario self-sufficient without adding implicit timing to `run`.
 
 ## Claude agents (API and Claude Code)
 
-Two production implementations of `agent.Agent`; `record` / `crawl` pick one with `--agent`
+`record` / `crawl` pick a production `agent.Agent` implementation with `--agent`
 (`agents.py` resolves the choice):
 
 - **`api` — `ClaudeAgent`** (`claude_agent.py`): calls the **Anthropic API** directly

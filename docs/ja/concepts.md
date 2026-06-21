@@ -49,7 +49,7 @@ Bajutsu の「決定的」という性質は、コードの構造として強制
 3. **クリーン環境から開始する**：各テストは既定で boot/launch の前に `simctl erase` を実行し、前テストからの
    汚染を断ちます。状態は launch env や deeplink から注入します（[drivers](drivers.md#環境管理simctl)）。
 4. **合否は機械チェックのみで決める**：「成功した気がする」という判断は入りません。機械アサーションは
-   `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`visual` の 9 種です
+   `exists`/`value`/`label`/`count`/`enabled`/`disabled`/`selected`/`request`/`visual` です
    （[selectors](selectors.md#アサーション評価)）。
 
 > 適用範囲に注意してください。安定した識別子が安定させるのは「選択の決定性」だけです。タイミング、状態、

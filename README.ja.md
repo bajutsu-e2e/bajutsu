@@ -12,7 +12,7 @@
 > （Playwright）backend は実装済み、Android は次です。
 > **ステータス: pre-alpha。** 決定的コア、AI オーサリングループ（`record` / `crawl`）、証跡
 > サブシステム、XCUITest codegen、自己修復トリアージはいずれも実装・ユニットテスト済みです
-> （998 のユニットテスト、Simulator 不要）。iOS の **idb backend** は **実機 Simulator で
+> （Simulator 不要）。iOS の **idb backend** は **実機 Simulator で
 > end-to-end に検証済み**で、シナリオ実行・証跡取得・triage の自己修復ループはいずれも実機で
 > 動きます。**web（Playwright）backend** も第一段を実装済みで、ブラウザに対する決定的な `run` を
 > Linux のゲート上で動かせます（[`demos/web`](demos/web/README.md)）。
@@ -128,7 +128,7 @@ flowchart TB
 
 ## ステータス
 
-実装済み・テスト済み（998 のユニットテスト。Simulator 不要で実行できます）:
+実装済み・テスト済み（Simulator 不要で実行できます）:
 
 - ドライバ抽象と **セレクタ解決**（決定性の核）
 - **プラットフォーム対応の backend レジストリ**。`--backend` / `backend:` は `ios` / `web` / `fake`
@@ -151,7 +151,7 @@ flowchart TB
   2 つの backend（Anthropic API + Claude Code）を持ち、システムアラートガードを伴います
 - **XCUITest codegen**（構造マッピング・テスト時 AI 不要）
 - **自己修復トリアージ**（原因 + 最小修正案。助言のみ、AI は任意）
-- 配線済み CLI（13 コマンド）: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` /
+- 配線済み CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` /
   `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`
 - **MCP サーバ**（`bajutsu mcp`）: `run` と `doctor` を MCP ツールとして、run の証跡
   （manifest / report / JUnit / artifact）をリソースとして公開し、Claude Desktop / Code 連携に
@@ -261,7 +261,7 @@ apps:
 
 ```bash
 make check                # 完全なゲート: format + lint + 型チェック + テスト（CI と同一）
-uv run pytest -q          # テストのみ（998・Simulator 不要）
+uv run pytest -q          # テストのみ（Simulator 不要）
 ```
 
 作業規約は [`CLAUDE.md`](CLAUDE.md) と [`CONTRIBUTING.ja.md`](CONTRIBUTING.ja.md) を参照してください。

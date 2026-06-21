@@ -16,7 +16,7 @@
 ## Agent 抽象
 
 ループとモデルを分離するための薄い Protocol です（`agent.py`）。テストではスクリプト化した fake を使い、
-本番では 2 つの Claude backend のいずれかを `--agent` で選びます（下記）。
+本番では Claude backend を `--agent` で選びます（下記）。
 
 ```python
 @dataclass
@@ -67,7 +67,7 @@ class Agent(Protocol):
 
 ## Claude エージェント
 
-`agent.Agent` の本番実装は 2 つあり、`record` / `crawl` が `--agent` で選びます（`agents.py` が解決）。
+`record` / `crawl` が本番の `agent.Agent` 実装を `--agent` で選びます（`agents.py` が解決）。
 
 - **`api`**（`ClaudeAgent`, `claude_agent.py`）: Anthropic API を直接呼びます（従量課金）。`ANTHROPIC_API_KEY`、または `BAJUTSU_AI_PROVIDER=bedrock` 経由の Amazon Bedrock が必要です（[cli の .env](cli.md#環境変数env)）。モデルは `claude-opus-4-8`。`anthropic` は遅延インポートで（API キー無しでもモジュールは読み込めます）、クライアントは注入可能です（テスト用）。
 - **`claude-code`**（`ClaudeCodeAgent`, `claude_code_agent.py`）: ローカルの Claude Code CLI を駆動します。Claude Code のサブスクリプションで動き、API キーは不要です。

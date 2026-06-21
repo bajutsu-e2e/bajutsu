@@ -136,7 +136,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 
 ## テスト構成
 
-`tests/` に **998 のユニットテスト**（`uv run pytest -q`）があります。すべて実機 Simulator を必要としません。コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`、`Spawn`、`Clock`）で検証します。サンプルアプリに対する実機 E2E は `make -C demos/features e2e` / `make -C demos/features ui-test` です（[sample-app](sample-app.md)）。
+`tests/` に **ユニットテスト一式**（`uv run pytest -q`）があります。すべて実機 Simulator を必要としません。コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`、`Spawn`、`Clock`）で検証します。サンプルアプリに対する実機 E2E は `make -C demos/features e2e` / `make -C demos/features ui-test` です（[sample-app](sample-app.md)）。
 
 ---
 
@@ -151,7 +151,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 - プラットフォーム対応の backend レジストリ: `--backend` / `backend:` は `ios` / `web` / `fake` トークンを受け取り（Android は予定）、安定度順にそれぞれの actuator へ展開する（`backends.py`）
 - **Playwright web バックエンド**（`drivers/playwright.py`）: 第一段。ブラウザに対する決定的 `run` を Linux のゲート上で動かせる（`demos/web`）。リッチ寄りの web 取得は予定（BE-0054）
 - シナリオスキーマ（厳格検証）と YAML ラウンドトリップ
-- 9 種のアサーション評価（`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `visual`）
+- アサーション評価（`exists` / `value` / `label` / `count` / `enabled` / `disabled` / `selected` / `request` / `visual`）
 - Tier 2 run ループ（act → wait → verify）、`FakeDriver` で検証
 - DSL（ドメイン固有言語）: `within` セレクタ（幾何スコープ）、`relaunch` ステップ（実機検証済み）、再利用 `setup` 前段、起動時の `locale` 適用、デバイスプール上の並列実行（`--workers`）
 - DSL のオーサリング再利用: 再利用可能なパラメータ化コンポーネント（`use` / `${params.*}`）、データ駆動シナリオ（`data` / `dataFile` と `${row.*}`）、シークレット変数（`${secrets.X}`、値マスク）、シナリオタグ + `--tag` / `--exclude` 選択、`setLocation` / `push` デバイスステップ、`doubleTap` アクション、ファイル単位 + シナリオ単位の `description`
@@ -164,7 +164,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 - `simctl` コマンド層、idb の出力パーサ、`doctor` スコア + 実行可能ゲート（`preflight.py`: 必須 CLI + 起動済みシミュレータ）
 - `trace` コマンド（`trace.py`）: 保存済み run のテキストタイムライン（steps + network + appTrace）
 - M4 自己修復トリアージ（`triage.py` + `claude_triage.py`）: 失敗 run のコンテキスト組み立て + `TriageAgent` 診断（ルールベース `HeuristicTriageAgent`、または `--ai` の Claude で失敗スクショ込み）。エージェントは構造化 fix（`renameId` / `addIndex` / `raiseTimeout`）を提案でき、`--apply`/`--write` でシナリオ source に適用（diff プレビュー、opt-in）、`--rerun` で再実行検証
-- CLI（13 コマンド）: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`。`record` と `crawl` が Tier 1 の AI オーサリング経路で、alert guard を伴う
+- CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`。`record` と `crawl` が Tier 1 の AI オーサリング経路で、alert guard を伴う
 - AI **crawl**（`crawl.py`）: アプリを自律的に幅優先で探索し、スクリーンマップ（`screenmap.json`）を作る
 - `serve` ローカル Web UI（Tier 1）: ブラウザからシナリオをオーサリング（`record` / `crawl`）・編集・実行し、レポートと証跡を閲覧、ビジュアル baseline を承認、ジョブをライブ配信する（CI 用ではない）
 - **MCP サーバ**（`bajutsu mcp`）: `bajutsu_run` と `bajutsu_doctor` を MCP ツールとして、実行証跡をリソースとして公開する。Claude Desktop / Code との連携用（オプション依存 `fastmcp`）

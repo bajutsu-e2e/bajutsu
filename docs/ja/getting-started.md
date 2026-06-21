@@ -53,7 +53,7 @@ uv run bajutsu --help
 ## ステップ 2：ユニットテストを走らせる（Simulator 不要）
 
 すべてが健全かを確かめる最速の手段です。決定性コア、シナリオスキーマ、アサーション、run ループを
-インメモリの fake driver に対して検証する 998 個のテストで、**Simulator には一切触れません**。
+インメモリの fake driver に対して検証するユニットテストで、**Simulator には一切触れません**。
 
 ```bash
 uv run pytest -q          # テストスイート

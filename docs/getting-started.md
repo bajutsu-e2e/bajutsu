@@ -52,7 +52,7 @@ You should see the commands `run`, `doctor`, `record`, `crawl`, `codegen`, `trac
 
 ## Step 2 — Run the unit suite (no Simulator)
 
-This is the fastest way to confirm everything is healthy — 998 tests that exercise the
+This is the fastest way to confirm everything is healthy — the unit tests exercise the
 determinism core, the scenario schema, assertions, and the run loop against an in-memory fake
 driver, **without touching a Simulator**.
 

@@ -12,7 +12,7 @@
 > Simulator (idb) today, a web (Playwright) backend landed, Android next.
 > **Status: pre-alpha.** The deterministic core, the AI authoring loop (`record` / `crawl`),
 > the evidence subsystem, XCUITest codegen, and self-healing triage are all implemented and
-> unit-tested (998 unit tests, no Simulator needed). The iOS **idb backend** is **validated
+> unit-tested (no Simulator needed). The iOS **idb backend** is **validated
 > end-to-end on a real Simulator** — scenarios, evidence capture, and the triage self-heal loop
 > all run on-device — and the **web (Playwright) backend** has landed a first slice: a
 > deterministic `run` against a browser, on the Linux gate ([`demos/web`](demos/web/README.md)).
@@ -132,7 +132,7 @@ Entry points share the scenario format: `record` and `crawl` (AI authoring / exp
 
 ## Status
 
-Implemented and covered by tests (998 unit tests, run without a Simulator):
+Implemented and covered by tests (run without a Simulator):
 
 - Driver abstraction and **selector resolution** (the determinism core)
 - **Platform-aware backend registry** — `--backend` / `backend:` accept `ios` / `web` / `fake`
@@ -156,7 +156,7 @@ Implemented and covered by tests (998 unit tests, run without a Simulator):
   abstraction with two backends (Anthropic API + Claude Code) + system-alert guard
 - **XCUITest codegen** (structural mapping; no AI at test time)
 - **Self-healing triage** (root cause + minimal-fix suggestions; advisory, AI optional)
-- The wired CLI (13 commands): `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` /
+- The wired CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` /
   `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`
 - **MCP server** (`bajutsu mcp`): exposes `run` and `doctor` as MCP tools and run evidence
   (manifest / report / JUnit / artifacts) as resources, for Claude Desktop / Code integration
@@ -263,7 +263,7 @@ Runnable demos, all through one entry point — `make -C demos <target>` ([`demo
 
 ```bash
 make check                # the full gate: format + lint + typecheck + tests (mirrors CI exactly)
-uv run pytest -q          # just the tests (998, no Simulator)
+uv run pytest -q          # just the tests (no Simulator)
 ```
 
 See [`CLAUDE.md`](CLAUDE.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the working agreement.

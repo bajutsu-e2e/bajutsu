@@ -71,7 +71,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 
 ```bash
 uv sync --group dev                  # .venv + deps + dev tools
-uv run pytest -q                     # 998 unit tests (no Simulator needed)
+uv run pytest -q                     # unit tests (no Simulator needed)
 
 # Against the bundled sample (needs a real Simulator)
 make -C demos/features sample-build                    # build the fixture app
