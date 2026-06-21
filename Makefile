@@ -1,5 +1,5 @@
 .PHONY: setup hooks deps deps-check serve test lint format format-check typecheck \
-        lock-check lint-sh lint-actions check roadmap-index roadmap-promote
+        lock-check lint-sh lint-actions check roadmap-index roadmap-promote roadmap-id-repair
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -41,7 +41,7 @@ serve:
 	@./scripts/serve.sh $(ARGS)
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
@@ -88,6 +88,13 @@ roadmap-index:
 # tests/test_promote_roadmap_items.py (part of `make test`), so the gate fails on a mismatch.
 roadmap-promote:
 	uv run python scripts/promote_roadmap_items.py
+
+# Renumber any item on this branch whose BE id origin/main now hands to a different item, picking
+# the next free ID — the self-heal for the rare case where two branches were allocated the same
+# number and one merged first. The roadmap-id-repair workflow runs this across open PRs on a push
+# to main; run it locally to fix your own branch before pushing (needs `git fetch origin` first).
+roadmap-id-repair:
+	uv run python scripts/allocate_roadmap_ids.py --repair
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
