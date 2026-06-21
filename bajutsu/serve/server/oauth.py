@@ -1,11 +1,11 @@
 """GitHub OAuth client for the hosted backend (BE-0015 7b-2).
 
 The `OAuthClient` seam is the slice of the OAuth web flow the serve operations need — build the
-authorize URL, and exchange a callback code for the GitHub login — so a fake can drive the gate
-without contacting GitHub. `GitHubOAuthClient` is the real implementation; authlib is lazy-imported
-inside the exchange, so this module imports no authlib and the default path / import guard stay
-clean. The username allowlist and CSRF-state check live in the (provider-neutral) operations, not
-here."""
+authorize URL, and exchange a callback code for the GitHub identity (login + org memberships) — so a
+fake can drive the gate without contacting GitHub. `GitHubOAuthClient` is the real implementation;
+authlib is lazy-imported inside the exchange, so this module imports no authlib and the default path /
+import guard stay clean. The username allowlist and CSRF-state check live in the (provider-neutral)
+operations, not here."""
 
 from __future__ import annotations
 
@@ -79,12 +79,27 @@ class GitHubOAuthClient:
             login = user.json().get("login")
             if not login:
                 return None
-            # Org memberships map the user to a bajutsu org; a failure here just yields no orgs (the
-            # user falls back to the default org) rather than failing the login.
-            orgs_resp = client.get(_ORGS, headers=headers)
-        orgs = (
-            [o["login"] for o in orgs_resp.json() if isinstance(o, dict) and o.get("login")]
-            if orgs_resp.status_code == 200 and isinstance(orgs_resp.json(), list)
-            else []
-        )
-        return Identity(login=str(login), orgs=orgs)
+            return Identity(login=str(login), orgs=_fetch_orgs(client, headers))
+
+
+def _fetch_orgs(client: object, headers: dict[str, str]) -> list[str]:
+    """Every GitHub org the user belongs to, following pagination (so a user in >30 orgs isn't
+    truncated). Org membership only maps the user to a bajutsu org, so any failure — a non-200, a
+    parse error, an unexpected shape — yields no orgs (the user falls back to the default org)
+    rather than failing the login."""
+    orgs: list[str] = []
+    url: str | None = f"{_ORGS}?per_page=100"
+    while url:
+        resp = client.get(url, headers=headers)  # type: ignore[attr-defined]
+        if resp.status_code != 200:
+            break
+        try:
+            page = resp.json()
+        except ValueError:
+            break
+        if not isinstance(page, list):
+            break
+        orgs.extend(o["login"] for o in page if isinstance(o, dict) and o.get("login"))
+        # httpx parses the GitHub `Link` header into `.links`; follow `next` until it's gone.
+        url = resp.links.get("next", {}).get("url")
+    return orgs

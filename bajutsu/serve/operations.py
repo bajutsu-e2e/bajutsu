@@ -248,8 +248,9 @@ def oauth_callback(
     state: ServeState, code: str, state_param: str, state_cookie: str
 ) -> tuple[Any, int, str | None]:
     """Complete GitHub OAuth (BE-0015 7b-2): verify the CSRF state (the query value must match the
-    cookie), exchange the code for a GitHub login, check it against the allowlist, and on success mint
-    a session bound to that login. Returns ``(payload, status, session_id | None)``."""
+    cookie), exchange the code for a GitHub identity (login + org memberships), check the login
+    against the allowlist, persist the user under their resolved org, and on success mint a session
+    bound to that login. Returns ``(payload, status, session_id | None)``."""
     if state.oauth is None:
         return {"error": "oauth not configured"}, 404, None
     if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):

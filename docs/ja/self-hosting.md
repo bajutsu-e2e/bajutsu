@@ -11,11 +11,12 @@
 >
 > - **Tier A、単一 Mac。** トークン認証付きの `bajutsu serve` を 1 プロセス、1 台の Mac で動かします。本ページの
 >   「Tier B」節より前がこれを扱います。
-> - **Tier B、単一チームのサーバ backend。** BE-0015 のコントロールプレーン（FastAPI、Postgres、Redis、
->   S3 互換ストレージ、GitHub OAuth、RBAC、クォータ）を Linux ノードで動かし、Mac をワーカーにします。1 チーム
->   向けの構成です（シングルテナント）。後述の「Tier B、単一チームのセルフホスティング」節を参照してください。
+> - **Tier B、セルフホストのサーバ backend。** BE-0015 のコントロールプレーン（FastAPI、Postgres、Redis、
+>   S3 互換ストレージ、GitHub OAuth、RBAC、クォータ）を Linux ノードで動かし、Mac をワーカーにします。既定では
+>   シングルテナントで動き、config で org を宣言すれば**複数 org**に対応します（後述の「Tier B、サーバ backend の
+>   セルフホスティング」節を参照）。
 >
-> 完全マルチテナントの公開・セルフホスト構成（複数 org）は将来のままです
+> フルマネージドの公開クラウド提供（ホスト型の Mac ワーカープール＋IaC）は将来のままです
 > （[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)）。
 
 ## macOS の制約
@@ -85,13 +86,13 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 に限定して `backend`/`udid` を検証すること、CSRF Origin チェックとセキュリティヘッダ、run dispatch の同時実行上限です。
 トークンは秘匿し、Mac は tailnet 上に置き、OS は更新し続けてください。
 
-## Tier B、単一チームのセルフホスティング（サーバ backend）
+## Tier B、サーバ backend のセルフホスティング
 
 Tier A は 1 台の Mac で動く 1 プロセスです。**Tier B** は BE-0015 の**サーバ backend**、すなわち FastAPI の
 コントロールプレーン（Postgres、Redis、S3 互換ストレージ（MinIO）、GitHub OAuth、RBAC、per-user クォータ）を
-Linux ノードで動かし、1 台以上の Mac をワーカーにします。**シングルテナント**で、全ユーザが 1 つの default org に
-属するため、**1 チーム**で使う構成です（複数 org をまたぐ分離は未実装）。すぐ動かせる一式は
-[`deploy/self-host/`](../../deploy/self-host/)（compose、Dockerfile、`.env.example`）にあります。
+Linux ノードで動かし、1 台以上の Mac をワーカーにします。既定では**シングルテナント**（全ユーザが 1 つの
+default org）で動き、config で org を宣言すれば**複数 org**に対応します（後述の「複数 org」を参照）。すぐ動かせる
+一式は [`deploy/self-host/`](../../deploy/self-host/)（compose、Dockerfile、`.env.example`）にあります。
 
 ```
         チームの端末
@@ -133,9 +134,9 @@ GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/ca
 （run 可）、admin はサーバ設定（config、API キー、provider）も変更でき、viewer は閲覧のみです。トークンは
 オペレータ・CI 用の認証（full access）のまま、OAuth がチームのユーザごとのログインです。
 
-ログインは `read:org` scope を要求します。これによりユーザを GitHub org メンバーシップから org に対応づけられます
-（config の `githubOrgs`）。同意画面には organization へのアクセスが表示されます。シングルテナント構成（`orgs:`
-ブロック無し）では使いません。
+ログインは常に `read:org` scope を要求し、ユーザを GitHub org メンバーシップから org に対応づけられるようにします
+（config の `githubOrgs`）。そのため同意画面には常に organization へのアクセスが表示されます。シングルテナント構成
+（`orgs:` ブロック無し）では、その org 情報を使わないだけです。
 
 ### 3. Mac ワーカーを動かす
 
@@ -165,8 +166,24 @@ Tier A と同様に前段を置きます。`tailscale serve --bg 8765`（tailnet
 （`docker compose --profile caddy up -d`、`BAJUTSU_PUBLIC_HOST` を設定）。ワーカーは tailnet 越しに Redis
 （`:6379`）と MinIO（`:9000`）へ到達するので、ノードはプライベートな tailnet 上に置いてください。
 
-### まだシングルテナントです
+### 複数 org
 
-複数 org、org スコープの run 履歴、org をまたぐアクセス検査、per-org クォータは**未実装**です（BE-0015 の
-マルチテナント コントロールプレーン待ち）。Tier B は**1 チーム**向けで、共有トークンと GitHub 許可リストが
-アクセス境界です。
+1 つの backend で複数チームをホストするには、マウントした config に org を宣言します。各 org に所属メンバー
+（GitHub login や GitHub org）と、その org が持つ apps を指定します（[configuration](configuration.md#orgsマルチテナントのサーバ-backend)を参照）。
+
+```yaml
+orgs:
+  acme:
+    members: [alice, bob]
+    githubOrgs: [acme-gh]    # この GitHub org の全員（ログインは read:org scope を要求）
+    apps: [demo, checkout]
+  globex:
+    members: [carol]
+    apps: [other]
+```
+
+各ユーザは自分の org にスコープされます。自 org の apps だけが見え、別 org の run／scenario／成果物は not-found
+または 403 になり、各 org の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に
+置かれます。`orgs:` ブロックが無ければ backend はシングルテナント（1 つの default org）のままで、共有トークンと
+GitHub 許可リストがアクセス境界です。フルマネージドの公開クラウド提供（ホスト型の Mac ワーカープール＋IaC）は
+BE-0015 で今後の作業です。
