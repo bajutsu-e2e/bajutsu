@@ -256,6 +256,7 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 <!-- GENERATED:proposals-config-sourcing -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0063](proposals/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### Integration & automation (MCP)
