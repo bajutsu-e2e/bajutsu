@@ -19,7 +19,7 @@ from bajutsu.dotenv import load_dotenv
 
 app = typer.Typer(
     add_completion=False,
-    help="自然言語駆動の E2E テストツール。backend 差し替えでマルチプラットフォーム対応（iOS Simulator / web、Android は予定）",
+    help="自然言語駆動の E2E テストツール",
 )
 
 
