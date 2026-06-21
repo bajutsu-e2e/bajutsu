@@ -4,8 +4,8 @@
 
 * Proposal: [BE-0062](BE-0062-playwright-codegen.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
+* Status: **Implemented**
+* Track: [Accepted](../../README.md#accepted)
 * Topic: codegen coverage
 
 ## Introduction
