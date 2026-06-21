@@ -1,8 +1,8 @@
-[English](BE-0056-code-quality-gate-hardening.md) · **日本語**
+[English](BE-0059-code-quality-gate-hardening.md) · **日本語**
 
-# BE-0056 — コード品質ゲートの強化（CI の忠実性、セキュリティ lint、サプライチェーン）
+# BE-0059 — コード品質ゲートの強化（CI の忠実性、セキュリティ lint、サプライチェーン）
 
-* 提案: [BE-0056](BE-0056-code-quality-gate-hardening-ja.md)
+* 提案: [BE-0059](BE-0059-code-quality-gate-hardening-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **実装済み**
 * 実装 PR: [#170](https://github.com/bajutsu-e2e/bajutsu/pull/170)
