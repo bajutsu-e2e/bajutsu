@@ -224,7 +224,9 @@ def test_rbac_admin_can_change_settings(tmp_path: Path, monkeypatch: pytest.Monk
 def test_security_headers_on_every_response(tmp_path: Path) -> None:
     resp = _client(_state(tmp_path)).get("/api/runs")
     assert resp.headers["x-content-type-options"] == "nosniff"
-    assert resp.headers["x-frame-options"] == "DENY"
+    assert (
+        resp.headers["x-frame-options"] == "SAMEORIGIN"
+    )  # same-origin so Replay can frame the report
     assert resp.headers["referrer-policy"] == "no-referrer"
 
 
