@@ -108,8 +108,10 @@ def make_app(state: ServeState) -> FastAPI:
         return HTMLResponse(_index_html())
 
     @app.get("/runs/{rel:path}")
-    async def run_file(rel: str) -> Response:
-        art = state.artifacts.get(rel)
+    async def run_file(rel: str, request: Request) -> Response:
+        # The actor's org-scoped artifact store: a run in another org's prefix reads as not-found
+        # (BE-0015 multi-tenancy).
+        art = state.for_org(state.org_of(_actor(request))).artifacts.get(rel)
         if art is None:
             return _result(({"error": "not found"}, 404))
         if art.redirect is not None:  # a server store hands back a signed URL
@@ -119,12 +121,12 @@ def make_app(state: ServeState) -> FastAPI:
     # --- GET (reads) ---
 
     @app.get("/api/scenarios")
-    async def scenarios(app: str | None = None) -> JSONResponse:
-        return _result(ops.list_scenarios(state, app))
+    async def scenarios(request: Request, app: str | None = None) -> JSONResponse:
+        return _result(ops.list_scenarios(state, app, actor=_actor(request)))
 
     @app.get("/api/apps")
-    async def apps() -> JSONResponse:
-        return _result(ops.list_apps_payload(state))
+    async def apps(request: Request) -> JSONResponse:
+        return _result(ops.list_apps_payload(state, actor=_actor(request)))
 
     @app.get("/api/config")
     async def config() -> JSONResponse:
@@ -147,12 +149,14 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.simulators_payload(state))
 
     @app.get("/api/runs")
-    async def runs() -> JSONResponse:
-        return _result(ops.runs_payload(state))
+    async def runs(request: Request) -> JSONResponse:
+        return _result(ops.runs_payload(state, actor=_actor(request)))
 
     @app.get("/api/scenario")
-    async def read_scenario(app: str | None = None, path: str | None = None) -> JSONResponse:
-        return _result(ops.read_scenario(state, app, path))
+    async def read_scenario(
+        request: Request, app: str | None = None, path: str | None = None
+    ) -> JSONResponse:
+        return _result(ops.read_scenario(state, app, path, actor=_actor(request)))
 
     @app.get("/api/jobs/{job_id}")
     async def job(job_id: str) -> JSONResponse:
@@ -255,12 +259,12 @@ def make_app(state: ServeState) -> FastAPI:
         return _result(ops.start_crawl(state, body, actor=_actor(request)))
 
     @app.post("/api/scenario")
-    async def save_scenario(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.save_scenario(state, body))
+    async def save_scenario(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.save_scenario(state, body, actor=_actor(request)))
 
     @app.post("/api/approve")
-    async def approve(body: dict[str, Any]) -> JSONResponse:
-        return _result(ops.approve_baseline(state, body))
+    async def approve(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.approve_baseline(state, body, actor=_actor(request)))
 
     @app.post("/api/jobs/{job_id}/cancel")
     async def cancel(job_id: str) -> JSONResponse:

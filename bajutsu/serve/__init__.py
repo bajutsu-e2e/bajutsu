@@ -19,9 +19,11 @@ Split into three submodules:
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from typing import Any
 
+from bajutsu.config import DEFAULT_ORG, apps_for_org
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.handler import make_server
@@ -36,6 +38,7 @@ from bajutsu.serve.helpers import (
     list_runs,
     list_scenarios,
     list_simulators,
+    load_config_file,
     mask_secret,
     record_command,
     run_command,
@@ -45,7 +48,7 @@ from bajutsu.serve.helpers import (
     valid_run_id,
     valid_udid,
 )
-from bajutsu.serve.jobs import Job, Popen, ServeState, cancel_job, run_job
+from bajutsu.serve.jobs import Job, Popen, ServeState, StoreBundle, cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.scenarios import (
@@ -224,14 +227,18 @@ def _build_server_state(
     from redis import Redis
     from rq import Queue
 
-    from bajutsu.serve.helpers import list_apps
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.db import repository_from_env
     from bajutsu.serve.server.executor import QueueExecutor
     from bajutsu.serve.server.logbus import RedisLogBus
     from bajutsu.serve.server.oauth import GitHubOAuthClient
-    from bajutsu.serve.server.object_store import artifact_prefix, object_store_from_env, s3_prefix
+    from bajutsu.serve.server.object_store import (
+        artifact_prefix,
+        object_store_from_env,
+        org_prefix,
+        s3_prefix,
+    )
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
     from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore
     from bajutsu.serve.server.worker_job import redis_url
@@ -289,15 +296,34 @@ def _build_server_state(
         oauth_admins=oauth_admins,
         oauth_viewers=oauth_viewers,
     )
-    # Override the filesystem seams (set local in __post_init__) with the object-storage ones. The
-    # scenario store reads the live config's apps, so a config opened later is reflected.
-    state.artifacts = ObjectStorageArtifactStore(store, prefix=artifact_prefix(prefix))
-    state.scenarios = StorageScenarioStore(
-        ObjectScenarioStorage(
-            store, lambda: list_apps(state.config) if state.config else [], prefix=prefix
+
+    # Build the object-storage seams per org (BE-0015 multi-tenancy): each org's artifacts/
+    # scenarios/baselines live under its own key prefix, and its scenario store only acknowledges
+    # the apps that org owns. The scenario apps are read from the live config, so a config opened
+    # later is reflected.
+    def _org_apps(org: str) -> list[str]:
+        cfg = load_config_file(state.config)
+        return apps_for_org(cfg, org) if cfg is not None else []
+
+    def make_bundle(org: str) -> StoreBundle:
+        base = org_prefix(prefix, org)
+        return StoreBundle(
+            artifacts=ObjectStorageArtifactStore(store, prefix=artifact_prefix(base)),
+            scenarios=StorageScenarioStore(
+                ObjectScenarioStorage(store, partial(_org_apps, org), prefix=base)
+            ),
+            baselines=ObjectBaselineStore(store, prefix=base),
         )
+
+    state.org_stores = make_bundle
+    # The default-org bundle backs the bare ServeState fields, so code paths that don't resolve an
+    # org (and local-parity tests) keep working.
+    default = make_bundle(DEFAULT_ORG)
+    state.artifacts, state.scenarios, state.baselines = (
+        default.artifacts,
+        default.scenarios,
+        default.baselines,
     )
-    state.baselines = ObjectBaselineStore(store, prefix=prefix)
     return state
 
 

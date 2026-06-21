@@ -243,13 +243,40 @@ On the server backend with a database wired:
   listing still reads straight from the artifact store, so behavior is unchanged there. The listing is
   already org-scoped — it just resolves to the single default org until org resolution lands.
 
-#### Still ahead (real multi-tenancy)
+#### 8 — multi-tenancy (org model, resolution, enforcement, per-org storage)
 
-The pieces that only matter with more than one org are deferred: **org-scope enforcement** (a
-cross-org access returning 403); **feeding the resolved `org_id` into the tenant prefix** on
-`ScenarioStore` / the object store / `BaselineStore` (already parameterized by a `<org>/` prefix) and
-into the run listing (which already filters by org); and the org model itself (mapping GitHub orgs,
-more than one org). Until then, the single-tenant backend above is the shipped baseline.
+Real multi-tenancy now ships on top of the single-tenant backend. The org model is **declared in
+config**, so it stays app-agnostic and needs no extra GitHub scope:
+
+```yaml
+orgs:
+  acme:
+    members: [alice, bob]   # GitHub logins
+    apps: [demo, checkout]
+  globex:
+    members: [carol]
+    apps: [other]
+```
+
+A login or app named in no org falls into the single `default` org, so a config with no `orgs:`
+block stays single-tenant — the shipped behavior is unchanged.
+
+- **Org resolution (8b):** at OAuth login the user is assigned their config org (`org_for_user`,
+  persisted on the user row); each later request resolves the actor's org from that row
+  (`ServeState.org_of`). The run listing, run records, and audit entries are written/read under the
+  resolved org.
+- **Org-scope enforcement (8c):** a user sees only their org's apps; starting a run/record/crawl on,
+  or saving into, another org's app returns 403; reading a scenario or a run artifact outside the
+  org reads as not-found (non-leaky).
+- **Per-org storage (8d):** a server backend keeps each org's artifacts/scenarios/baselines under
+  its own object-store prefix (`<base><org>/`); the default org keeps the base prefix, so the
+  single-tenant layout is untouched. The org travels in the job spec, so a worker reads and writes
+  the same prefix the control plane serves from.
+
+Still ahead: assigning the org from **GitHub org membership** (rather than a config member list),
+and recording **server-backend runs** into the system of record (a run executes on a worker, which
+does not hold the database connection today, so the durable run listing currently covers the
+in-process path).
 
 ## Alternatives considered
 

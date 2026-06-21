@@ -64,6 +64,19 @@ config の `defaults.redact` と `apps.<name>.redact` は **union** されます
 
 `secrets:` は **環境変数名のリスト**で（`defaults` と `apps.<name>` の両方で宣言でき、`resolve` が和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
 
+### org（`orgs:`、マルチテナントのサーバ backend）
+
+`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属する GitHub login と、その org が持つ apps を列挙します。
+
+```yaml
+orgs:
+  acme:
+    members: [alice, bob]
+    apps: [demo, checkout]
+```
+
+OAuth ログイン時にユーザは自分の org に割り当てられ、以後はその org の apps だけが見え、run の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に置かれます。どの org にも挙げられていない login や app は単一の `default` org に入るので、`orgs:` ブロックの**無い** config はシングルテナントです。CLI とローカルの `serve` は `orgs:` を一切参照しません。
+
 ## CLI からの選択
 
 CLI（コマンドラインインターフェース）のすべてのコマンドは、`--app <name>` で 1 つのアプリを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend ios`（またはプラットフォーム/actuator のカンマ区切り）で解決順序を上書きできます（[cli](cli.md)）。

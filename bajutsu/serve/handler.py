@@ -141,9 +141,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.end_headers()
                     self.wfile.write(body)
                 case "/api/scenarios":
-                    self._json(*ops.list_scenarios(state, self._qs("app")))
+                    self._json(*ops.list_scenarios(state, self._qs("app"), actor=self._actor()))
                 case "/api/apps":
-                    self._json(*ops.list_apps_payload(state))
+                    self._json(*ops.list_apps_payload(state, actor=self._actor()))
                 case "/api/config":
                     self._json(*ops.config_info(state))
                 case "/api/fs":
@@ -155,9 +155,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/simulators":
                     self._json(*ops.simulators_payload(state))
                 case "/api/runs":
-                    self._json(*ops.runs_payload(state))
+                    self._json(*ops.runs_payload(state, actor=self._actor()))
                 case "/api/scenario":
-                    self._json(*ops.read_scenario(state, self._qs("app"), self._qs("path")))
+                    self._json(
+                        *ops.read_scenario(
+                            state, self._qs("app"), self._qs("path"), actor=self._actor()
+                        )
+                    )
                 case "/api/oauth/login":
                     self._oauth_login()
                 case "/api/oauth/callback":
@@ -217,9 +221,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/crawl":
                     self._json(*ops.start_crawl(state, body, actor=self._actor()))
                 case "/api/scenario":
-                    self._json(*ops.save_scenario(state, body))
+                    self._json(*ops.save_scenario(state, body, actor=self._actor()))
                 case "/api/approve":
-                    self._json(*ops.approve_baseline(state, body))
+                    self._json(*ops.approve_baseline(state, body, actor=self._actor()))
                 case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     self._json(*ops.cancel_job(state, path[len("/api/jobs/") : -len("/cancel")]))
                 case _:
@@ -276,7 +280,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
 
         def _serve_run_file(self, rel: str) -> None:
-            art = state.artifacts.get(rel)
+            # The actor's org-scoped artifact store: a run in another org's prefix reads as
+            # not-found (BE-0015 multi-tenancy).
+            art = state.for_org(state.org_of(self._actor())).artifacts.get(rel)
             if art is None:
                 self._json({"error": "not found"}, 404)
                 return
