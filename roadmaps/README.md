@@ -228,6 +228,7 @@ Bajutsu's own `serve` Web UI is a web app, so the Web (Playwright) backend can d
 <!-- GENERATED:proposals-dogfood -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
+| [BE-0056](proposals/BE-0056-dogfood-web-ui/BE-0056-dogfood-web-ui.md) | Dogfood the serve Web UI (web-backend regression net) | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
 
 ### Authoring experience (record / GUI editor)
