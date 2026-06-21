@@ -199,6 +199,18 @@
         <label class="keylabel" for="bedrock-model">Bedrock model id</label>
         <input type="text" id="bedrock-model" class="keyinput" placeholder="global.anthropic.claude-opus-4-6-v1" autocomplete="off" spellcheck="false">
         <div class="fshint">Bedrock model ids carry a provider prefix (<code>global.anthropic.&hellip;</code>, or a regional <code>us.anthropic.&hellip;</code>) &mdash; unlike the bare Anthropic id. Authentication uses your standard AWS credentials (environment, shared profile, or an IAM role); set <code>AWS_*</code> / <code>AWS_REGION</code> in your shell or a <code>.env</code> before launching <code>serve</code> if you don't use a profile or role.</div>
+        <div class="ssobox">
+          <div class="setlabel">AWS SSO sign-in <span class="muted">(optional)</span></div>
+          <div class="keycur" id="ssocur"></div>
+          <label class="keylabel" for="sso-profile">Profile</label>
+          <div class="keyrow">
+            <input type="text" id="sso-profile" class="keyinput" placeholder="my-sso-profile" autocomplete="off" spellcheck="false">
+            <button class="cfgbtn" id="sso-login" type="button">Sign in</button>
+          </div>
+          <div class="ssoprompt" id="ssoprompt" hidden></div>
+          <div class="keyactions"><button class="keyclear" id="sso-logout" type="button" hidden>Sign out</button><span class="keystatus" id="ssostatus"></span></div>
+          <div class="fshint">Sign in with AWS SSO (IAM Identity Center) to obtain Bedrock credentials from here &mdash; instead of running <code>aws sso login</code> in your shell. Needs an existing <code>aws configure sso</code> profile. The verification link opens in your browser; approve there and spawned jobs use the session. Re-signing-in needs no <code>serve</code> restart. (BE-0056)</div>
+        </div>
       </div>
     </div>
     <div class="setsection" id="apikeysection">

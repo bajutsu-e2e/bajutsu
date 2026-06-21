@@ -254,3 +254,6 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .keyclear:hover{color:var(--ng);border-color:var(--ng)}
 .keystatus{font-size:.82em;color:var(--mut)}
 .keystatus.ok{color:var(--ok)}.keystatus.ng{color:var(--ng)}
+.ssobox{border-top:1px solid var(--line);margin-top:.8rem;padding-top:.7rem}
+.ssoprompt{margin:.5rem 0;padding:.5rem;background:var(--bg2);border:1px solid var(--line);border-radius:6px;font-size:.88em;line-height:1.5}
+.ssoprompt code,.ssoprompt b{color:var(--fg)}

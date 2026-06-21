@@ -10,6 +10,7 @@ SSE streaming, static asset serving).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
@@ -46,6 +47,7 @@ from bajutsu.serve.helpers import (
     valid_udid,
 )
 from bajutsu.serve.jobs import _DEFAULT_ORG, Job, ServeState
+from bajutsu.serve.sso import AWS_PROFILE_ENV, SsoError
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
@@ -348,7 +350,9 @@ def _record_audit(
 # --- RBAC (BE-0015 7c-2): role-based access control over the mutating endpoints ---
 
 _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
-_ADMIN_PATHS = frozenset({"/api/config", "/api/apikey", "/api/provider"})  # server-wide settings
+_ADMIN_PATHS = frozenset(  # server-wide settings (incl. AWS SSO sign-in, which sets AWS_PROFILE)
+    {"/api/config", "/api/apikey", "/api/provider", "/api/sso/login", "/api/sso/logout"}
+)
 _EDITOR_PATHS = frozenset(
     {"/api/run", "/api/record", "/api/crawl", "/api/scenario", "/api/approve"}
 )
@@ -455,6 +459,68 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     if region:
         os.environ["AWS_REGION"] = region
     return {"ok": True, "provider": "bedrock", "region": region, "model": model}, 200
+
+
+def sso_info(state: ServeState) -> tuple[Any, int]:
+    """The AWS SSO session spawned Bedrock jobs will use (BE-0056). Reads the active AWS_PROFILE from
+    the serve process's environment and asks the engine whether that profile's session resolves."""
+    profile = os.environ.get(AWS_PROFILE_ENV) or None
+    session = state.sso_engine.status(profile)
+    return {
+        "signedIn": session.signed_in,
+        "profile": session.profile,
+        "expiresAt": session.expires_at,
+    }, 200
+
+
+def sso_login_start(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+    """Begin an AWS SSO device-authorization sign-in for the named profile. Returns the verification
+    URL + user code to approve in the browser, plus an opaque handle the client polls (BE-0056). The
+    device code stays inside the engine, never handed to the client."""
+    profile = str(body.get("profile", "") or "").strip()
+    if not profile:
+        return {"error": "an AWS profile is required"}, 400
+    if any(c.isspace() for c in profile):
+        return {"error": "the profile must not contain whitespace"}, 400
+    try:
+        auth = state.sso_engine.start(profile)
+    except SsoError as e:
+        return {"error": str(e)}, 400
+    return {
+        "verificationUri": auth.verification_uri,
+        "userCode": auth.user_code,
+        "expiresIn": auth.expires_in,
+        "interval": auth.interval,
+        "handle": auth.handle,
+    }, 200
+
+
+def sso_login_poll(state: ServeState, handle: str) -> tuple[Any, int]:
+    """Poll a sign-in started by ``sso_login_start``. While the user hasn't approved, returns
+    ``{"status": "pending"}``; on approval, sets AWS_PROFILE in the serve env (in memory, never to
+    disk — inherited by spawned jobs) and returns the session (BE-0056)."""
+    try:
+        progress = state.sso_engine.poll(handle)
+    except SsoError as e:
+        return {"error": str(e)}, 400
+    session = progress.session
+    if progress.status != "complete" or session is None or session.profile is None:
+        return {"status": "pending"}, 200
+    os.environ[AWS_PROFILE_ENV] = session.profile
+    return {"status": "complete", "profile": session.profile, "expiresAt": session.expires_at}, 200
+
+
+def sso_logout(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+    """Sign out: clear AWS_PROFILE from the serve env so spawned jobs stop using the SSO session.
+    Engine-side token-cache invalidation is best-effort; clearing the env is authoritative. Mirrors
+    the API-key handler — env only, never disk (BE-0056)."""
+    profile = os.environ.get(AWS_PROFILE_ENV) or None
+    if profile:
+        # Best-effort token-cache invalidation; the env clear below is what unbinds the session.
+        with contextlib.suppress(SsoError):
+            state.sso_engine.logout(profile)
+    os.environ.pop(AWS_PROFILE_ENV, None)
+    return {"ok": True, "signedIn": False}, 200
 
 
 def start_run(
