@@ -313,7 +313,32 @@ function runDone(j){
   if(j.runId)setReport(j.runId);
   loadHistory();
 }
-function setReport(id){selectedRun=id;$('#report').innerHTML=`<iframe src="/runs/${id}/report.html"></iframe>`}
+// Show a run's report inline (no iframe): render report.html into a shadow root so its CSS/JS stay
+// isolated, plus an "open full report ↗" link to view it as its own page. report.js is root-aware
+// (window.__bajutsuReportRoot), so its queries + delegated listeners run against the shadow root.
+async function setReport(id){
+  selectedRun=id;
+  const rep=$('#report');
+  rep.innerHTML=`<div class="repbar"><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
+  const host=rep.querySelector('.rephost');
+  let html;
+  try{html=await (await fetch(`/runs/${encodeURIComponent(id)}/report.html`)).text();}
+  catch(e){host.textContent='report unavailable';return;}
+  // No <base> inside a shadow root, so resolve the report's relative asset URLs against its run dir.
+  html=html.replace(/\b(src|href|poster)="(?!https?:|data:|\/|#)([^"]*)"/g,`$1="/runs/${id}/$2"`);
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const scr=doc.querySelector('script'),js=scr?scr.textContent:'';
+  doc.querySelectorAll('script').forEach(s=>s.remove());
+  // :root vars and the body rule don't match inside a shadow root → retarget them to :host.
+  let css=((doc.querySelector('style')||{}).textContent||'').replace(/:root/g,':host')
+    .replace(/(^|[\s,>}])body([\s{])/g,'$1:host$2');
+  const sh=host.attachShadow({mode:'open'});
+  sh.innerHTML=`<style>:host{display:block}\n${css}</style><div data-run-id="${esc(id)}">${doc.body.innerHTML}</div>`;
+  window.__bajutsuReportRoot=sh;                 // report.js reads this to scope to the shadow root
+  // A <script> inside a shadow root doesn't execute, so run it from the document (it still targets
+  // the shadow via window.__bajutsuReportRoot); inline scripts run synchronously, so remove it after.
+  const s=document.createElement('script');s.textContent=js;document.body.appendChild(s);s.remove();
+}
 async function loadHistory(){
   let runs;try{runs=await (await fetch('/api/runs')).json()}catch(e){return}
   const tab=$('#histtab');if(tab)tab.textContent='History'+(runs.length?` (${runs.length})`:'');

@@ -1,13 +1,19 @@
 (function(){
+  // ROOT is the document when this report is its own page, or the shadow root when the serve Web UI
+  // embeds it inline (window.__bajutsuReportRoot). Queries and delegated listeners resolve against
+  // ROOT so they work inside the embed (shadow-DOM event retargeting hides inner targets from the
+  // host document) and unchanged on the standalone page (ROOT === document).
+  var ROOT = (window.__bajutsuReportRoot && window.__bajutsuReportRoot.querySelectorAll)
+    ? window.__bajutsuReportRoot : document;
   function esc(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
-  document.addEventListener('click', function(e){
+  ROOT.addEventListener('click', function(e){
     var t = e.target.closest('.tab'); if(!t) return;
     var scn = t.closest('.scn'), name = t.getAttribute('data-tab');
     scn.querySelectorAll('.tab').forEach(function(b){ b.classList.toggle('active', b===t); });
     scn.querySelectorAll('.panel').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-panel')===name); });
   });
   // A network request/response row expands its full settings table in the row below.
-  document.addEventListener('click', function(e){
+  ROOT.addEventListener('click', function(e){
     var row = e.target.closest('tr.xrow'); if(!row) return;
     var det = row.nextElementSibling;
     if(det && det.classList.contains('nxdetail')){
@@ -18,11 +24,11 @@
   // Visual-regression baseline approval. Only works when the report is served (so the
   // POST can reach the bajutsu serve endpoint); a report opened from disk hides the button.
   if (location.protocol === 'file:') {
-    document.querySelectorAll('.vapprove').forEach(function(b){ b.hidden = true; });
+    ROOT.querySelectorAll('.vapprove').forEach(function(b){ b.hidden = true; });
   }
-  document.addEventListener('click', function(e){
+  ROOT.addEventListener('click', function(e){
     var b = e.target.closest('.vapprove'); if(!b || b.disabled) return;
-    var runId = document.body.getAttribute('data-run-id');
+    var runId = (ROOT.querySelector('[data-run-id]') || document.body).getAttribute('data-run-id');
     var sid = b.getAttribute('data-sid'), baseline = b.getAttribute('data-baseline');
     if(!runId || !sid || !baseline) return;
     b.disabled = true; var label = b.textContent; b.textContent = 'Approving…';
@@ -71,9 +77,9 @@
     window.addEventListener('pointerup', function(){ dragging = false; });
     setMode('swipe');
   }
-  document.querySelectorAll('.vcmp').forEach(initComparator);
+  ROOT.querySelectorAll('.vcmp').forEach(initComparator);
   // Rich / YAML toggle within the merged Result tab.
-  document.addEventListener('click', function(e){
+  ROOT.addEventListener('click', function(e){
     var t = e.target.closest('.vt'); if(!t) return;
     var panel = t.closest('.panel'), view = t.getAttribute('data-view');
     panel.querySelectorAll('.vt').forEach(function(b){ b.classList.toggle('active', b===t); });
@@ -81,7 +87,7 @@
       v.classList.toggle('active', v.classList.contains('view-'+view));
     });
   });
-  document.addEventListener('input', function(e){
+  ROOT.addEventListener('input', function(e){
     if(!e.target.classList.contains('logfilter')) return;
     var panel = e.target.closest('.panel'), ql = e.target.value.toLowerCase(), n = 0;
     panel.querySelectorAll('.log .ln').forEach(function(l){
@@ -101,25 +107,25 @@
     var cnt = panel.querySelector('.logcount'); if(cnt) cnt.textContent = n + ' lines';
   });
   window.onlyFailures = function(cb){
-    document.querySelectorAll('details.scn').forEach(function(d){
+    ROOT.querySelectorAll('details.scn').forEach(function(d){
       d.style.display = (cb.checked && d.getAttribute('data-ok')==='true') ? 'none' : '';
     });
   };
   window.toggleAll = function(open){
-    document.querySelectorAll('details.scn').forEach(function(d){ d.open = open; });
+    ROOT.querySelectorAll('details.scn').forEach(function(d){ d.open = open; });
   };
   // Element viewer: clicking a step's screenshot (or its "tree" button) opens that step's
   // captured accessibility elements in an overlay — embedded inline, so it works offline
   // (no new tab). The step's own info is shown above the element table; ◀ / ▶ (and the
   // ← / → keys) walk the steps of the *current scenario only*, wrapping around at the ends.
-  var tv = document.getElementById('tv');
+  var tv = ROOT.getElementById('tv');
   var tvBody = tv && tv.querySelector('.tv-body');
   var tvStep = tv && tv.querySelector('.tv-step');
   var tvInput = tv && tv.querySelector('.tvfilter');
   var tvCount = tv && tv.querySelector('.tvcount');
   // The step "view" cells with embedded element data within one scenario, in document order.
   function tvScopeFor(host){
-    var scn = host.closest('details.scn') || document;
+    var scn = host.closest('details.scn') || ROOT;
     return Array.prototype.slice.call(scn.querySelectorAll('td.ev')).filter(function(td){
       return td.querySelector('template.treedata');
     });
@@ -239,7 +245,7 @@
     tree.scrollTop = 0;
     tv.classList.add('open');
   }
-  document.addEventListener('click', function(e){
+  ROOT.addEventListener('click', function(e){
     var b = e.target.closest('.treebtn'); if(!b) return;
     tvOpen(b.closest('td.ev') || b.parentNode);
   });
@@ -247,11 +253,11 @@
     tv.addEventListener('click', function(e){ if(e.target === tv) tvClose(); });  // backdrop only
     var tvX = tv.querySelector('.tv-close'); if(tvX) tvX.addEventListener('click', tvClose);
     if(tvInput) tvInput.addEventListener('input', function(){ tvFilter(this.value); });
-    document.addEventListener('keydown', function(e){
+    ROOT.addEventListener('keydown', function(e){
       if(!tv.classList.contains('open')) return;
       if(e.key === 'Escape'){ tvClose(); return; }
       // While typing in the filter, let ← / → move the text cursor instead of navigating.
-      if(document.activeElement === tvInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
+      if(ROOT.activeElement === tvInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
       if(e.key === 'ArrowLeft'){ e.preventDefault(); tvGo(-1); }
       else if(e.key === 'ArrowRight'){ e.preventDefault(); tvGo(1); }
     });
@@ -276,12 +282,12 @@
     var h = pr.bottom - wrap.getBoundingClientRect().top;
     wrap.style.maxHeight = h > 120 ? h + 'px' : '';
   }
-  function syncAllHeights(){ document.querySelectorAll('.scn').forEach(syncResultHeight); }
+  function syncAllHeights(){ ROOT.querySelectorAll('.scn').forEach(syncResultHeight); }
   window.addEventListener('resize', syncAllHeights);
-  document.querySelectorAll('details.scn').forEach(function(d){
+  ROOT.querySelectorAll('details.scn').forEach(function(d){
     d.addEventListener('toggle', function(){ if(d.open) syncResultHeight(d); });
   });
-  document.querySelectorAll('.player').forEach(function(p){
+  ROOT.querySelectorAll('.player').forEach(function(p){
     var v = p.querySelector('video'), btn = p.querySelector('.vplay');
     var seek = p.querySelector('.vseek'), time = p.querySelector('.vtime');
     var marks = p.querySelector('.vmarks'), scn = p.closest('.scn');
@@ -330,7 +336,7 @@
     if(rr.top < cr.top) box.scrollTop -= (cr.top - rr.top) + 8;
     else if(rr.bottom > cr.bottom) box.scrollTop += (rr.bottom - cr.bottom) + 8;
   }
-  document.querySelectorAll('.scn').forEach(function(scn){
+  ROOT.querySelectorAll('.scn').forEach(function(scn){
     var v = scn.querySelector('video'); if(!v) return;
     var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow'));
     if(!rows.length) return;

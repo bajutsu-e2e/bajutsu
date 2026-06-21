@@ -219,7 +219,13 @@ button.stop[hidden]{display:none}
 .logpanel{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 pre.out{flex:1;min-height:0;margin:.6rem 0 0;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:.5rem;font-size:12px;white-space:pre-wrap}
 pre.out:empty::before{content:attr(data-empty);color:var(--mut)}
-.report{height:100%;min-height:0}iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
+.report{height:100%;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.report>.empty{margin:auto}
+.repbar{flex:0 0 auto;display:flex;justify-content:flex-end;padding:.3rem .5rem;border-bottom:1px solid var(--line);background:var(--bg2)}
+.repopen{font-size:.82rem;color:var(--acc);text-decoration:none}
+.repopen:hover{text-decoration:underline}
+.rephost{flex:1;min-height:0;overflow:auto}
+iframe{width:100%;height:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--mut);text-align:center;padding:1rem}
 .names{color:var(--mut);font-size:.8em;margin-top:.2rem;min-height:1em}
 .names .finfo{color:var(--fg);font-size:1.05em;margin-bottom:.25rem}
