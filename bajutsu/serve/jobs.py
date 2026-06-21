@@ -32,6 +32,10 @@ from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
 # The run command prints "PASS/FAIL  runs/<id>/manifest.json"; pull <id> from it.
 _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
 
+# The single tenant's org id/slug until org resolution lands (BE-0015 7c-4; multi-tenant is still
+# ahead). Lives here so both job persistence and the operations layer share one source of truth.
+_DEFAULT_ORG = "default"
+
 Popen = Callable[..., Any]
 
 
@@ -412,12 +416,50 @@ def run_job(state: ServeState, job: Job) -> None:
     try:
         _run_job(state, job)
     finally:
+        _persist_run(state, job)
         if job.bus is not None:  # run_job returning means the job finished — end the live stream
             # Record the terminal status on the bus so a control-plane replica reading a
             # worker-run job sees the real exit/run id (its own Job stays "running") (BE-0015 W2).
             # Exclude the log buffer — the lines already live in the bus's stream, so duplicating
             # them into the done payload would needlessly bloat it (Redis memory).
             job.bus.close(job.id, json.dumps(job.view(include_lines=False)))
+
+
+def _persist_run(state: ServeState, job: Job) -> None:
+    """Record a finished `run` into the system of record so the history list survives independently
+    of the artifact store and is org-scoped (BE-0015 7c-4). A no-op without a repository (local /
+    stdlib serve) or for a job that produced no run id (record/crawl, or a build/boot failure).
+    The org is the single default tenant until org resolution lands (7c-4 scope; multi-tenant is
+    still ahead)."""
+    if state.repository is None or job.run_id is None:
+        return
+    # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded, so
+    # the default serve path never pulls server.db in (the import guard stays green).
+    from bajutsu.serve.server.db import RunRecord
+
+    # Mirror the artifact listing entry so a DB-served listing matches the UI shape exactly; fall
+    # back to a minimal summary if the manifest isn't readable (e.g. a crash mid-write).
+    summary = next((r for r in state.artifacts.list_runs() if r.get("id") == job.run_id), None)
+    ok = job.exit_code == 0 and not job.cancelled
+    if summary is None:
+        summary = {
+            "id": job.run_id,
+            "ok": ok,
+            "report": False,
+            "scenarios": [],
+            "passed": 0,
+            "total": 0,
+        }
+    state.repository.record_run(
+        RunRecord(
+            id=job.run_id,
+            org_id=_DEFAULT_ORG,
+            status="done",
+            created_by=job.actor,
+            ok=ok,
+            summary=summary,
+        )
+    )
 
 
 def _run_job(state: ServeState, job: Job) -> None:
