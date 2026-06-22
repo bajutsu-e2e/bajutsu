@@ -57,6 +57,10 @@ make check   # lock-check ＋ format-check ＋ lint ＋ lint-sh ＋ lint-actions
   （動機・背景）、主な変更点の短いまとめ（差分が大きいときは領域ごとに分けます）、どう検証したか
   （例: `make check`）、関連するリンク（ロードマップ項目、issue）と注記（トレードオフ、フォロー
   アップ、レビューで特に見てほしい箇所）を書きます。これは人間にも AI にも等しく期待されます。
+  `## Summary` で始め、`make check` の検証（緑の数値）で締め、`What changed` /
+  `Prime-directive compliance` / `Scope` / `Notes` を変更が必要とする範囲で足します。タイトルと本文の
+  完全なテンプレートは
+  [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body) にあります。
 - PR がロードマップ項目を実装する場合は、**タイトル先頭に角括弧付きで ID** を付け（例:
   `[BE-0017] feat(mcp): add MCP server`）、その項目の markdown（両言語ファイル）に PR への
   リンクを追加します。ロードマップ項目に紐づかない PR は、スコープ付きのタイトルのままにします。

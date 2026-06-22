@@ -121,6 +121,125 @@ conflict in behavior — the merge is where they meet, which is exactly why the 
 suite (not an LLM, not a human eyeball) is the arbiter. Keep the suite meaningful and your branch
 rebased, and parallel work composes.
 
+## Pull requests: title and body
+
+Don't open the PR yourself unless the human asks (see [One topic per branch](#one-topic-per-branch));
+push your branch and let them open it. But when you draft a PR — or write the title and body for a
+human to open — follow the shape below. It is reverse-engineered from the PRs this repo already
+merges, so matching it keeps the history uniform and a reviewer always finds the same things in the
+same places. **The title and body are always in English**, whatever language the session ran in.
+
+### Title
+
+One scoped, [Conventional Commits](https://www.conventionalcommits.org/) subject — the same line you
+would write as the lead commit:
+
+```
+[BE-NNNN] type(scope): summary
+```
+
+- **`type(scope):`** — a conventional-commit type (`feat`, `fix`, `docs`, `chore`, `ci`, `refactor`,
+  `test`) and the area it touches (`run`, `web`, `codegen`, `audit`, `roadmap`, `hooks`, `ja`, …),
+  e.g. `feat(audit):`, `fix(hooks):`, `docs(roadmap):`.
+- **summary** — imperative mood, lower-case, no trailing period; a single line a reviewer reads at a
+  glance. A roadmap proposal reads `docs(roadmap): propose <the idea>`.
+- **`[BE-NNNN]` prefix** — only when the PR is tied to a roadmap item, in brackets before the scoped
+  subject (e.g. `[BE-0017] feat(mcp): add MCP server`). A PR with no roadmap item keeps the plain
+  scoped subject. When the PR *introduces* a new roadmap item, draft with the literal `[BE-XXXX]`
+  placeholder — the `roadmap-id` workflow rewrites it to the allocated number (see
+  [Roadmap items](#roadmap-items-be-ids-strict)).
+
+### Body
+
+Two parts are mandatory — `## Summary` and a verification statement — and the rest appear as the
+change warrants, in the order below. Match the depth to the diff: a one-file fix is a short Summary
+and the green numbers; a cross-cutting feature earns the full set. Write the prose the way these
+sections already read in the merged PRs — present tense, describing what the change *is*, not a
+narration of how you got there. Keep **bold** for the few nouns that carry the change, never whole
+sentences. In the change list, follow the recurring `**path** — what it does, and why this seam`
+shape: name the design choice, not just the edit.
+
+The sections that recur, and what each carries:
+
+- **`## Summary`** (mandatory) — one to three short paragraphs: what the PR does and *why it
+  matters*, with the key nouns in **bold**. Open with the change itself, not its history. When the
+  PR is one slice of a larger item, name the slice and say what merging it does to the item's
+  `Status` (e.g. moves it to *Accepted, in progress*).
+- **`## What changed`** / **`## Changes`** — one bullet per file or component, the **path or
+  component in bold**, then an em-dash and what it does *and why this seam* — the design choice, not
+  just the edit. Mark new files `(new)`. Group by component, not by commit; the reviewer reads the
+  result, not the path you took to it.
+- **`## Prime-directive compliance`** — whenever the change touches tool behavior or the runtime.
+  State it plainly: no model is consulted on the verdict, the `run` / CI gate stays deterministic,
+  and per-app differences stay in config — a line per [prime
+  directive](../CLAUDE.md#prime-directives-do-not-violate) the change bears on. A docs-only or
+  infrastructure PR can say so in a sentence instead.
+- **`## Scope`** (often *Scope (deferred to …)*) — what is deliberately **not** in this PR, so a
+  reviewer never has to infer the boundary. For a slice of a larger item, list what later slices
+  still owe.
+- **`## Verification`** / **`## Testing`** / **`## Test plan`** (mandatory, in some form) —
+  `make check` green with the concrete numbers it printed (`N passed, coverage X%`), and a sentence
+  on what the new tests cover. Call out anything the gate *can't* exercise (a workflow's runtime, a
+  Simulator-only path) so the reviewer knows what was and wasn't proven — accuracy here is the point,
+  don't claim a path was tested when it wasn't.
+- For a roadmap proposal: **`## Files`** (the bilingual pair) and **`## BE ID allocation`** (the
+  `BE-XXXX` placeholder note — the workflow numbers it; don't hand-edit the number).
+- **`## Notes`** — caveats, a related or competing open PR, an expected merge conflict and how to
+  resolve it.
+
+Close the body with reference-style links for the items you cited (`[BE-0049]: roadmaps/…`) and the
+footer `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Reserve GitHub's
+`> [!NOTE]` callouts for a caveat a reviewer must not miss.
+
+A small fix needs only the two mandatory parts:
+
+```markdown
+## Summary
+
+Follow-up to #189: `session-start.sh` could abort the hook — and the session — under `set -e`
+when `CLAUDE_PROJECT_DIR` is unset. This makes the project-dir discovery best-effort.
+
+## Verification
+
+`shellcheck` clean; `make check` green (1059 passed, coverage 87.4%). Repro'd that the hook now
+logs the skip and exits 0 instead of aborting.
+```
+
+A feature or roadmap-bearing PR fills the full shape:
+
+```markdown
+## Summary
+
+The **<slice>** of [BE-NNNN]. <What it does and why it matters, key nouns in bold.> This moves
+the item to **Accepted, in progress**.
+
+## What changed
+
+- **`bajutsu/<file>.py` (new)** — <what it does, and why this seam>.
+- **`bajutsu/<other>.py`** — <the change, and the design choice behind it>.
+- **docs (en/ja)** — <what was documented>.
+
+## Prime-directive compliance
+
+No model is consulted on the verdict; the `run` / CI gate stays deterministic; per-app
+differences stay in config.
+
+## Scope (deferred to later BE-NNNN slices)
+
+<What is deliberately not in this PR.>
+
+## Verification
+
+`make check` green: format-check / ruff / mypy (Success) / test (N passed, coverage X%). New
+tests cover <…>.
+
+[BE-NNNN]: roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```
+
+The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).
+
 ## Responding to PR review comments
 
 Reviews get answered comment by comment, by **whoever owns the pull request — a human contributor
