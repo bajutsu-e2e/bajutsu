@@ -2,12 +2,14 @@
 
 # BE-0047 — AI data sovereignty (provider-agnostic, redacted AI path)
 
-* Proposal: [BE-0047](BE-0047-ai-data-sovereignty.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Candidates from competitive research (Maestro)
-* Origin: Maestro
+<!-- BE-METADATA -->
+| Proposal | [BE-0047](BE-0047-ai-data-sovereignty.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Candidates from competitive research (Maestro) |
+| Origin | Maestro |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

@@ -42,6 +42,11 @@ PROPOSALS = "proposals"
 CATEGORIES = (IMPLEMENTED, PROPOSALS)  # each item lives under exactly one
 SHIPPED_STATUS = "Implemented"  # the only Status that belongs under implemented/
 NUMBERED_DIR_RE = re.compile(r"^BE-\d{4}-")
+# Status lives in the fenced metadata block (``build_roadmap_index`` defines the same fence). Read
+# the ``| Status | … |`` row there; fall back to the legacy ``* Status: …`` bullet for unmigrated
+# items. Scoping to the fence keeps a body table that happens to mention "Status" out of reach.
+META_BLOCK_RE = re.compile(r"<!-- BE-METADATA -->\n(.*?)\n<!-- /BE-METADATA -->", re.DOTALL)
+TABLE_STATUS_RE = re.compile(r"^\| Status \| (.+?) \|\s*$", re.MULTILINE)
 STATUS_RE = re.compile(r"^\* Status: (.+)$", re.MULTILINE)
 BUILD_INDEX = Path(__file__).resolve().parent / "build_roadmap_index.py"
 
@@ -67,7 +72,8 @@ def read_status(item_dir: Path) -> str | None:
         text = english.read_text(encoding="utf-8")
     except OSError:
         return None
-    match = STATUS_RE.search(text)
+    block = META_BLOCK_RE.search(text)
+    match = TABLE_STATUS_RE.search(block.group(1)) if block else STATUS_RE.search(text)
     if not match:
         return None
     return match.group(1).replace("**", "").strip()

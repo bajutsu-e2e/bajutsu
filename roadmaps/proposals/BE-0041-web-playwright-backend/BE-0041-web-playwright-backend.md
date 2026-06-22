@@ -2,11 +2,13 @@
 
 # BE-0041 — Web (Playwright) backend
 
-* Proposal: [BE-0041](BE-0041-web-playwright-backend.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Accepted, in progress**
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Platform expansion (landed slices)
+<!-- BE-METADATA -->
+| Proposal | [BE-0041](BE-0041-web-playwright-backend.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Accepted, in progress** |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Platform expansion (landed slices) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

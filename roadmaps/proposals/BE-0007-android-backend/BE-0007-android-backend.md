@@ -2,11 +2,13 @@
 
 # BE-0007 — Android backend
 
-* Proposal: [BE-0007](BE-0007-android-backend.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Platform expansion (Android / Web / Flutter)
+<!-- BE-METADATA -->
+| Proposal | [BE-0007](BE-0007-android-backend.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Platform expansion (Android / Web / Flutter) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

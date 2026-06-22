@@ -2,11 +2,14 @@
 
 # BE-0064 — Parallel crawl across multiple simulators
 
-* Proposal: [BE-0064](BE-0064-parallel-crawl.md)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Crawl performance / scale-out
-* Origin: User request (crawl efficiency)
+<!-- BE-METADATA -->
+| Proposal | [BE-0064](BE-0064-parallel-crawl.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Crawl performance / scale-out |
+| Origin | User request (crawl efficiency) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

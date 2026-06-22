@@ -2,13 +2,15 @@
 
 # BE-0030 — Parameterized shared steps
 
-* Proposal: [BE-0030](BE-0030-parameterized-shared-steps.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Candidates from competitive research (MagicPod / Autify)
-* Origin: MagicPod
+<!-- BE-METADATA -->
+| Proposal | [BE-0030](BE-0030-parameterized-shared-steps.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Origin | MagicPod |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

@@ -122,10 +122,14 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   (`roadmaps/README.md` and `roadmaps/README-ja.md`) from each item's metadata;
   `make test` fails if the committed index drifts.
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
-  Motivation / Detailed design / Alternatives considered / References). The metadata block must
-  name the author by GitHub handle — `* Author: [@handle](https://github.com/handle)`, the
-  account of whoever first authored the item (for an AI-assisted draft, the person who drove and
-  committed it). Its `Status` files it
+  Motivation / Detailed design / Alternatives considered / References), with the metadata as a
+  fenced `| field | value |` block — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->` holding
+  `Proposal` / `Author` / `Status` / `Track` / `Topic` (plus `Implementing PR` once shipped and
+  `Origin` last, when applicable); the Japanese mirror uses `提案` / `提案者` / `状態` / `トラック`
+  / `トピック`. The metadata block must name the author by GitHub handle — `| Author |
+  [@handle](https://github.com/handle) |`, the account of whoever first authored the item (for an
+  AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py` checks
+  this shape (BE-0074). Its `Status` files it
   under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /
   `Proposal (deferred)`). When an item ships, set `Status: Implemented`; CI (`roadmap-promote`)
   then **moves its directory** from `roadmaps/proposals/` to `roadmaps/implemented/` and

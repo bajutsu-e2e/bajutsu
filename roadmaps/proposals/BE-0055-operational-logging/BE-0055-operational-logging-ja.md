@@ -2,11 +2,13 @@
 
 # BE-0055 — ホスト型 serve の運用ログ
 
-* 提案: [BE-0055](BE-0055-operational-logging-ja.md)
-* Author: [@hirosassa](https://github.com/hirosassa)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: Web UI のホスティング（クラウド / セルフホスト）
+<!-- BE-METADATA -->
+| 提案 | [BE-0055](BE-0055-operational-logging-ja.md) |
+| 提案者 | [@hirosassa](https://github.com/hirosassa) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | Web UI のホスティング（クラウド / セルフホスト） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

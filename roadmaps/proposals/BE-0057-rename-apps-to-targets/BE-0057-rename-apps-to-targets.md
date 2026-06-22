@@ -2,11 +2,13 @@
 
 # BE-0057 — Rename the config `apps` key to `targets`
 
-* Proposal: [BE-0057](BE-0057-rename-apps-to-targets.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Platform expansion (Android / Web / Flutter)
+<!-- BE-METADATA -->
+| Proposal | [BE-0057](BE-0057-rename-apps-to-targets.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Platform expansion (Android / Web / Flutter) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

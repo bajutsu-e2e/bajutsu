@@ -2,12 +2,14 @@
 
 # BE-0002 — AI オーサリングループと証跡（M2）
 
-* 提案: [BE-0002](BE-0002-m2-ai-loop-and-evidence-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし）
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: マイルストーン（M1–M4）
+<!-- BE-METADATA -->
+| 提案 | [BE-0002](BE-0002-m2-ai-loop-and-evidence-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし） |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | マイルストーン（M1–M4） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

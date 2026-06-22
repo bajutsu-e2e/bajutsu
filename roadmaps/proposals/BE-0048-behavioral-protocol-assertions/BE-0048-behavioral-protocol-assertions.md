@@ -2,12 +2,14 @@
 
 # BE-0048 — Behavioral / protocol assertions
 
-* Proposal: [BE-0048](BE-0048-behavioral-protocol-assertions.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Candidates from competitive research (Maestro)
-* Origin: Maestro
+<!-- BE-METADATA -->
+| Proposal | [BE-0048](BE-0048-behavioral-protocol-assertions.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Candidates from competitive research (Maestro) |
+| Origin | Maestro |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

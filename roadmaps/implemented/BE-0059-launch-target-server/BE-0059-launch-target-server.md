@@ -2,13 +2,15 @@
 
 # BE-0059 — Bring up the target server for a run (`launchServer`)
 
-* Proposal: [BE-0059](BE-0059-launch-target-server.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Dogfood fixtures (web UI)
-* Origin: Dogfooding
+<!-- BE-METADATA -->
+| Proposal | [BE-0059](BE-0059-launch-target-server.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Dogfood fixtures (web UI) |
+| Origin | Dogfooding |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

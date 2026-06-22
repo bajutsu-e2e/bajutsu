@@ -2,13 +2,15 @@
 
 # BE-0033 — シナリオ変数 + 軽い制御フロー
 
-* 提案: [BE-0033](BE-0033-scenario-variables-control-flow-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: [#42](https://github.com/bajutsu-e2e/bajutsu/pull/42), [#67](https://github.com/bajutsu-e2e/bajutsu/pull/67)
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: 競合調査（MagicPod / Autify）由来の候補
-* 由来: MagicPod
+<!-- BE-METADATA -->
+| 提案 | [BE-0033](BE-0033-scenario-variables-control-flow-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | [#42](https://github.com/bajutsu-e2e/bajutsu/pull/42), [#67](https://github.com/bajutsu-e2e/bajutsu/pull/67) |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| 由来 | MagicPod |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

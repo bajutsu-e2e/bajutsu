@@ -2,11 +2,13 @@
 
 # BE-0027 — `mockServer` (external mock)
 
-* Proposal: [BE-0027](BE-0027-mock-server-external.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal (deferred)**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Miscellaneous / on hold
+<!-- BE-METADATA -->
+| Proposal | [BE-0027](BE-0027-mock-server-external.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal (deferred)** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Miscellaneous / on hold |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

@@ -2,11 +2,13 @@
 
 # BE-0070 — 制御プレーンと worker をまたいだ実行中アーティファクトのライブ表示
 
-* 提案: [BE-0070](BE-0070-live-run-artifacts-across-split-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: Web UI のホスティング（クラウド / セルフホスト）
+<!-- BE-METADATA -->
+| 提案 | [BE-0070](BE-0070-live-run-artifacts-across-split-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | Web UI のホスティング（クラウド / セルフホスト） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

@@ -2,13 +2,15 @@
 
 # BE-0029 — Visual-regression assertions
 
-* Proposal: [BE-0029](BE-0029-visual-regression-assertions.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: [#30](https://github.com/bajutsu-e2e/bajutsu/pull/30), [#34](https://github.com/bajutsu-e2e/bajutsu/pull/34)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Candidates from competitive research (MagicPod / Autify)
-* Origin: Both
+<!-- BE-METADATA -->
+| Proposal | [BE-0029](BE-0029-visual-regression-assertions.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | [#30](https://github.com/bajutsu-e2e/bajutsu/pull/30), [#34](https://github.com/bajutsu-e2e/bajutsu/pull/34) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Origin | Both |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

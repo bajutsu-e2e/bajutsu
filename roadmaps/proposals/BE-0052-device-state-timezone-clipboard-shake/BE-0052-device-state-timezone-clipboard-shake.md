@@ -2,12 +2,14 @@
 
 # BE-0052 — Device-state primitives: timezone, clipboard, shake
 
-* Proposal: [BE-0052](BE-0052-device-state-timezone-clipboard-shake.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Candidates from competitive research (MagicPod / Autify)
-* Origin: MagicPod
+<!-- BE-METADATA -->
+| Proposal | [BE-0052](BE-0052-device-state-timezone-clipboard-shake.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Origin | MagicPod |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

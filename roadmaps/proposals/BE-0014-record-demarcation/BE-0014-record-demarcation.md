@@ -2,11 +2,13 @@
 
 # BE-0014 — Demarcation from the existing AI record
 
-* Proposal: [BE-0014](BE-0014-record-demarcation.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Authoring experience (record / GUI editor)
+<!-- BE-METADATA -->
+| Proposal | [BE-0014](BE-0014-record-demarcation.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Authoring experience (record / GUI editor) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

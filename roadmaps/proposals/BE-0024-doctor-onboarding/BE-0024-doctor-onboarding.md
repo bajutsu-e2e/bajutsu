@@ -2,11 +2,13 @@
 
 # BE-0024 — doctor / onboarding
 
-* Proposal: [BE-0024](BE-0024-doctor-onboarding.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: doctor / onboarding
+<!-- BE-METADATA -->
+| Proposal | [BE-0024](BE-0024-doctor-onboarding.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | doctor / onboarding |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

@@ -30,6 +30,13 @@ ROADMAP = Path("roadmaps")
 CATEGORIES = ("implemented", "proposals")  # each item lives under one; it prefixes its links
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
+# Canonical metadata: ``| field | value |`` rows fenced by these markers, mirroring the index's
+# ``<!-- GENERATED:* -->`` regions. Fencing keeps the parser off same-shaped rows in the body, and
+# is what lets the block drop a header row — the fence, not a header, marks where metadata is.
+META_BLOCK_RE = re.compile(r"<!-- BE-METADATA -->\n(.*?)\n<!-- /BE-METADATA -->", re.DOTALL)
+# A field row inside that block. Every such row is a field; there is no header to skip.
+META_ROW_RE = re.compile(r"^\| (.+?) \| (.+?) \|\s*$", re.MULTILINE)
+# Legacy form (unmigrated items): ``* Field: value`` bullet lines. Read when no fence is present.
 FIELD_RE = re.compile(r"^\* ([^:]+): (.+)$", re.MULTILINE)
 BRACKET_RE = re.compile(r"\[([^\]]+)\]")
 
@@ -189,13 +196,27 @@ class Item:
 def parse_metadata(text: str) -> tuple[str, dict[str, str]]:
     """Return (H1 title, metadata fields) from a BE item file's body.
 
-    Fields are the ``* Key: value`` lines of the metadata block, with ``**`` emphasis stripped
-    from the value. The title is the text after the em dash in the ``# BE-NNNN — …`` heading.
+    Spec. The metadata block is a list of ``| field | value |`` rows fenced by the markers
+    ``<!-- BE-METADATA -->`` … ``<!-- /BE-METADATA -->`` (no header row — the fence marks the
+    block). Each row is one ``field -> value``, with ``**`` emphasis stripped from the value.
+    Fencing the block — like the index's ``<!-- GENERATED:* -->`` regions — keeps the parser off
+    same-shaped rows elsewhere in the body. A file without the markers is read by the legacy
+    ``* Field: value`` bullet rule, so an unmigrated item still parses. The title is the text after
+    the em dash in the ``# BE-NNNN — …`` heading.
     """
     title_match = TITLE_RE.search(text)
     if not title_match:
         raise ValueError("no '# BE-NNNN — <title>' heading found")
-    fields = {key.strip(): value.replace("**", "").strip() for key, value in FIELD_RE.findall(text)}
+    block = META_BLOCK_RE.search(text)
+    if block:
+        fields = {
+            key.strip(): value.replace("**", "").strip()
+            for key, value in META_ROW_RE.findall(block.group(1))
+        }
+    else:  # legacy bullet form, until the item is migrated to the fenced table
+        fields = {
+            key.strip(): value.replace("**", "").strip() for key, value in FIELD_RE.findall(text)
+        }
     return title_match.group(1).strip(), fields
 
 

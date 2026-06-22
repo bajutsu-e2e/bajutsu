@@ -47,11 +47,15 @@
 3. **ID は不変**です。既存項目を採番し直してはいけません。状態が変わっても、完了しても、表から削除しても、
    一度割り当てた BE ID は、その項目を永遠に指します。
 
-各ファイルは **Swift-Evolution の proposal フォーマット**に従います。メタデータブロック（`* 提案`・
-`* Author`・`* 状態`・`* トラック`・`* トピック` …）の後に `## はじめに` / `## 動機` / `## 詳細設計` /
-`## 検討した代替案` / `## 参考` を置きます（埋められる範囲だけ記入し、不明は `TBD`）。**Author は
-GitHub のアカウント名で明記**します（`* Author: [@handle](https://github.com/handle)`）。最初に
-その項目を作成した人（AI 支援で書き起こした場合は、それを主導してコミットした人）のアカウントです。
+各ファイルは **Swift-Evolution の proposal フォーマット**に従います。メタデータブロックの後に
+`## はじめに` / `## 動機` / `## 詳細設計` / `## 検討した代替案` / `## 参考` を置きます（埋められる
+範囲だけ記入し、不明は `TBD`）。メタデータは `| field | value |` 形式の囲みブロックで、
+`<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->` の中に `提案`・`提案者`・`状態`・`トラック`・
+`トピック`（出荷後は `実装 PR`、該当時は末尾に `由来`）を並べます。英語側は `Proposal`・`Author`・
+`Status`・`Track`・`Topic` です。**提案者は GitHub のアカウント名で明記**します
+（`| 提案者 | [@handle](https://github.com/handle) |`）。最初にその項目を作成した人（AI 支援で
+書き起こした場合は、それを主導してコミットした人）のアカウントです。`tests/test_roadmap_format.py`
+がこの形を検査します。
 **状態**がトラックを決めます。`実装済み`・`可決・実装中` は **可決済み**（意思決定・実装の記録）に、
 `提案`・`提案（保留）` は **提案**（検討中）に並びます。項目が出荷されたら状態を `実装済み` にし、
 ディレクトリを `roadmaps/proposals/` から `roadmaps/implemented/` へ（同じ ID と slug のまま）
@@ -159,6 +163,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 実装済み |
 | [BE-0061](implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md) | 衝突しない BE ID 採番（原子的な予約と自動修復） | 実装済み |
 | [BE-0067](implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md) | コード品質ゲートの強化（CI の忠実性、セキュリティ lint、サプライチェーン） | 実装済み |
+| [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) | BE 項目テンプレートの標準化（EN / JA） | 実装済み |
 <!-- /GENERATED:accepted-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）

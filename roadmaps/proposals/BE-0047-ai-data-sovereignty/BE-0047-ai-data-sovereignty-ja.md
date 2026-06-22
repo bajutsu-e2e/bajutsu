@@ -2,12 +2,14 @@
 
 # BE-0047 — AI データ主権（プロバイダ非依存・秘匿化された AI 経路）
 
-* 提案: [BE-0047](BE-0047-ai-data-sovereignty-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: 競合調査（Maestro）由来の候補
-* 由来: Maestro
+<!-- BE-METADATA -->
+| 提案 | [BE-0047](BE-0047-ai-data-sovereignty-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | 競合調査（Maestro）由来の候補 |
+| 由来 | Maestro |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

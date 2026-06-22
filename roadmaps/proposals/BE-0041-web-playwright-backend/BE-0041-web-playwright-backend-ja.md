@@ -2,11 +2,13 @@
 
 # BE-0041 — Web (Playwright) backend
 
-* 提案: [BE-0041](BE-0041-web-playwright-backend-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **可決・実装中**
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: プラットフォーム拡張（着手済みスライス）
+<!-- BE-METADATA -->
+| 提案 | [BE-0041](BE-0041-web-playwright-backend-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **可決・実装中** |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | プラットフォーム拡張（着手済みスライス） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

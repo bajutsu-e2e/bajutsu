@@ -2,12 +2,14 @@
 
 # BE-0040 — AI assertions
 
-* Proposal: [BE-0040](BE-0040-ai-assertions.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal (deferred)**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Candidates from competitive research (MagicPod / Autify)
-* Origin: MagicPod
+<!-- BE-METADATA -->
+| Proposal | [BE-0040](BE-0040-ai-assertions.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal (deferred)** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Origin | MagicPod |
+<!-- /BE-METADATA -->
 
 ## Introduction
 
