@@ -1,8 +1,9 @@
 """`bajutsu audit` — statically score a scenario's determinism (no device, no AI, BE-0049).
 
 Read-only and advisory: it grades selectors on the stability ladder, flags over-loose waits and
-coordinate gestures, and reports findings. It never runs the scenario and never gates CI (it
-always exits 0), so it strengthens determinism-first without ever deciding a verdict.
+coordinate gestures, and reports findings. It never runs the scenario and never gates CI — a
+successful audit exits 0 *even with findings* (only a missing / unreadable scenario file exits 2),
+so it strengthens determinism-first without ever deciding a verdict.
 """
 
 from __future__ import annotations
@@ -22,7 +23,8 @@ def audit(
     as_json: bool = typer.Option(False, "--json", help="emit the reports as JSON instead of text"),
 ) -> None:
     """Statically score a scenario's determinism — selector stability, loose waits, coordinate
-    gestures. Read-only and advisory: it never runs the scenario and never gates CI (exits 0)."""
+    gestures. Read-only and advisory: it never runs the scenario and never gates CI — a successful
+    audit exits 0 even with findings; only a missing / unreadable scenario file exits 2."""
     path = Path(scenario)
     if not path.is_file():
         typer.echo(f"scenario not found: {scenario}")

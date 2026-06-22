@@ -82,7 +82,7 @@ bajutsu audit <scenario.yaml> [--json]
 
 - 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）を指摘します。
 - シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
-- **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**（常に**終了 0**）。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
+- **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。成功した監査は **finding があっても終了 0**（シナリオファイルが無い/読めないときだけ終了 2）です。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
 
 ## `trace`
 

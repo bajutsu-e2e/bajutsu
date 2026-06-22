@@ -97,9 +97,10 @@ bajutsu audit <scenario.yaml> [--json]
   screenChanged` / `settled`, which wait for no concrete condition).
 - Emits a per-scenario `grade` (`Stable` / `Moderate` / `Fragile`), a stability fraction, and the
   located findings — as text, or `--json` for tooling.
-- **Advisory and read-only**: it never runs the scenario, never edits it, and **never gates CI**
-  (it always **exits 0**). A finding is something to harden, not a verdict — the opposite of
-  retry-to-pass, which hides flakiness.
+- **Advisory and read-only**: it never runs the scenario, never edits it, and **never gates CI** —
+  a successful audit **exits 0 even with findings** (only a missing / unreadable scenario file
+  exits 2). A finding is something to harden, not a verdict — the opposite of retry-to-pass, which
+  hides flakiness.
 
 ## `trace`
 

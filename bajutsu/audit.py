@@ -47,15 +47,24 @@ class AuditReport:
 
 def _tier(sel: base.Selector) -> str:
     """Place a selector on the stability ladder by its strongest field."""
+    if "index" in sel:  # nth-of-many: a flaky last resort, even alongside an id / idMatches
+        return "fragile"
     if "id" in sel or "idMatches" in sel:
         return "stable"
-    if "index" in sel:  # nth-of-many: a flaky last resort even alongside a label
-        return "fragile"
     return "moderate"  # label / labelMatches / traits / value / within
 
 
+def _with_nested(where: str, sel: base.Selector) -> Iterator[tuple[str, base.Selector]]:
+    """Yield a selector and, recursively, any `within` scope it nests (each graded on its own)."""
+    yield where, sel
+    inner = sel.get("within")
+    if isinstance(inner, dict):
+        yield from _with_nested(f"{where} within", inner)
+
+
 def _describe(sel: base.Selector) -> str:
-    return ", ".join(f"{key}={sel[key]!r}" for key in sel)  # type: ignore[literal-required]
+    # The `within` scope is graded separately, so don't repeat its dict in this selector's text.
+    return ", ".join(f"{key}={sel[key]!r}" for key in sel if key != "within")  # type: ignore[literal-required]
 
 
 def _assertion_selectors(a: Assertion) -> Iterator[tuple[str, base.Selector]]:
@@ -152,10 +161,13 @@ def _selector_finding(where: str, sel: base.Selector, tier: str) -> Finding:
 
 def audit_scenario(scenario: Scenario) -> AuditReport:
     """Grade one scenario's determinism, statically. Pure: no device, no model, no side effects."""
-    located = [
+    addressed = [
         *(ws for step in scenario.steps for ws in _step_selectors(step)),
         *(ks for a in scenario.expect for ks in _assertion_selectors(a)),
     ]
+    # A `within` scope is itself resolved at runtime, so grade nested selectors too — a fragile
+    # `within` (e.g. by index) is a determinism risk that would otherwise slip through.
+    located = [exp for where, sel in addressed for exp in _with_nested(where, sel)]
     # Grade each selector once, then derive both the counts and the findings from that.
     graded = [(where, sel, _tier(sel)) for where, sel in located]
     tiers = Counter(tier for _, _, tier in graded)
@@ -188,10 +200,12 @@ def _grade(tiers: Counter[str], gesture_findings: list[Finding]) -> str:
 
 def render(report: AuditReport) -> str:
     """Human-readable summary that points at what to harden."""
-    lines = [
-        f"scenario: {report.scenario}",
-        f"grade: {report.grade}",
-        f"stability: {report.stability:.2f} ({report.stable}/{report.selectors} selectors id-based)",
-    ]
+    stability = (
+        "stability: n/a (no selectors)"
+        if report.selectors == 0
+        else f"stability: {report.stability:.2f} "
+        f"({report.stable}/{report.selectors} selectors id-based)"
+    )
+    lines = [f"scenario: {report.scenario}", f"grade: {report.grade}", stability]
     lines.extend(f"  {f.where}: {f.detail}" for f in report.findings)
     return "\n".join(lines)

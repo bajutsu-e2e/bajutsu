@@ -52,6 +52,29 @@ def test_index_selector_is_fragile() -> None:
     assert any(f.kind == "fragile-selector" and "index" in f.detail for f in report.findings)
 
 
+def test_index_makes_a_selector_fragile_even_with_id_matches() -> None:
+    # `index` is nth-of-many regardless of the other fields, so it dominates the tier.
+    report = _audit("- name: x\n  steps:\n    - tap: { idMatches: 'row.*', index: 1 }\n")
+    assert report.grade == "Fragile"
+    assert report.fragile == 1 and report.stable == 0
+
+
+def test_within_scope_is_graded_too() -> None:
+    # a stable outer id scoped within a fragile (index) container still carries a determinism risk
+    report = _audit(
+        "- name: x\n  steps:\n    - tap: { id: row.open, within: { label: List, index: 2 } }\n"
+    )
+    assert report.fragile == 1  # the nested within selector
+    assert report.stable == 1  # the outer id
+    assert report.grade == "Fragile"
+
+
+def test_no_selectors_renders_cleanly() -> None:
+    report = _audit("- name: x\n  steps:\n    - swipe: { from: [0.5, 0.8], to: [0.5, 0.2] }\n")
+    assert report.selectors == 0
+    assert "stability: n/a (no selectors)" in render(report)
+
+
 def test_coordinate_swipe_is_flagged_and_fragile() -> None:
     report = _audit("- name: x\n  steps:\n    - swipe: { from: [0.5, 0.8], to: [0.5, 0.2] }\n")
     assert report.grade == "Fragile"
