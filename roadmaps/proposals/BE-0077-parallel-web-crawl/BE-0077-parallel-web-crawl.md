@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-parallel-web-crawl-ja.md)
+**English** · [日本語](BE-0077-parallel-web-crawl-ja.md)
 
-# BE-XXXX — Parallel web crawl across multiple browsers
+# BE-0077 — Parallel web crawl across multiple browsers
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-parallel-web-crawl.md) |
+| Proposal | [BE-0077](BE-0077-parallel-web-crawl.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Track | [Proposals](../../README.md#proposals) |

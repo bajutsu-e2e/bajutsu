@@ -1,11 +1,11 @@
-[English](BE-XXXX-parallel-web-crawl.md) · **日本語**
+[English](BE-0077-parallel-web-crawl.md) · **日本語**
 
-# BE-XXXX — 複数ブラウザでの並列 Web クロール
+# BE-0077 — 複数ブラウザでの並列 Web クロール
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-parallel-web-crawl-ja.md) |
+| 提案 | [BE-0077](BE-0077-parallel-web-crawl-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラック | [提案](../../README-ja.md#提案) |
