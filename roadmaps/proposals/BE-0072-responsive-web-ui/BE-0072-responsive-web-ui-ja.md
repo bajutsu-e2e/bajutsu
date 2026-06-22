@@ -2,11 +2,13 @@
 
 # BE-0072 — serve Web UI のレスポンシブ対応（小さい画面・タッチ操作）
 
-* 提案: [BE-0072](BE-0072-responsive-web-ui-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: オーサリング体験（record / GUI エディタ）
+<!-- BE-METADATA -->
+| 提案 | [BE-0072](BE-0072-responsive-web-ui-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | オーサリング体験（record / GUI エディタ） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

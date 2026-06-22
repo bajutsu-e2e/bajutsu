@@ -55,12 +55,15 @@ When you add a roadmap item:
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
 
-Each file follows the **Swift-Evolution proposal format**: a metadata block (`* Proposal`,
-`* Author`, `* Status`, `* Track`, `* Topic`, …) then `## Introduction` / `## Motivation` /
-`## Detailed design` / `## Alternatives considered` / `## References` (fill what you can; mark
-unknowns `TBD`). **Name the author by GitHub handle** —
-`* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
-(for an AI-assisted draft, the person who drove and committed it). The **Status** decides the
+Each file follows the **Swift-Evolution proposal format**: a metadata block then `## Introduction`
+/ `## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References` (fill
+what you can; mark unknowns `TBD`). The metadata is a fenced `| field | value |` block —
+`<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->` holding `Proposal`, `Author`, `Status`, `Track`,
+`Topic` (plus `Implementing PR` once shipped and `Origin` last, when applicable); the Japanese
+mirror uses `提案`, `提案者`, `状態`, `トラック`, `トピック`. **Name the author by GitHub handle** —
+`| Author | [@handle](https://github.com/handle) |`, the account of whoever first authored the item
+(for an AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py`
+checks this shape. The **Status** decides the
 track: `Implemented` or `Accepted, in progress` are
 listed under **Accepted** (a decision/implementation record); `Proposal` or `Proposal (deferred)`
 under **Proposals** (under consideration). When an item ships, set its Status to `Implemented`
