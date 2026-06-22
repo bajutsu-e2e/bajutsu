@@ -3,6 +3,8 @@
 # BE-0055 — ホスト型 serve の運用ログ
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0055](BE-0055-operational-logging-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |

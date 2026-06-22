@@ -3,6 +3,8 @@
 # BE-0016 — Self-hosting of the web UI
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0016](BE-0016-web-ui-self-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

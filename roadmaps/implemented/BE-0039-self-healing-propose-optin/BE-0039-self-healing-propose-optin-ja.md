@@ -3,6 +3,8 @@
 # BE-0039 — 自己修復は「提案＋opt-in 適用」に限定
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0039](BE-0039-self-healing-propose-optin-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

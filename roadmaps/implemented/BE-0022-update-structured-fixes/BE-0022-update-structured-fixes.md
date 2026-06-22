@@ -3,6 +3,8 @@
 # BE-0022 — `update` (minimal-diff proposals = applying structured fixes)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0022](BE-0022-update-structured-fixes.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

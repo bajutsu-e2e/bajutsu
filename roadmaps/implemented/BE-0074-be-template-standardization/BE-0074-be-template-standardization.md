@@ -3,6 +3,8 @@
 # BE-0074 — Standardize the BE item template (EN / JA)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0074](BE-0074-be-template-standardization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
@@ -64,10 +66,11 @@ not. This item extends the same treatment to the body.
 
 ### Canonical metadata
 
-The metadata block is a list of `| field | value |` rows fenced by a marker pair,
+The metadata block is a `| Field | Value |` table fenced by a marker pair,
 `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, that mirrors the index's `<!-- GENERATED:* -->`
-regions. There is no `Field` / `Value` header row: the fence — not a header — marks where the
-metadata is, so the header would only be noise. The fence is the load-bearing part: it lets the
+regions. It opens with a `| Field | Value |` header row (`| 項目 | 値 |` on the Japanese side) and
+its `|---|---|` delimiter, so the block renders as a real table; the fence — not the header — is
+still what marks where the metadata is. The fence is the load-bearing part: it lets the
 parser read exactly these rows and never a same-shaped row elsewhere in the body, and it is what
 the bullet-list form could not offer (a bare `* Key: value` line has no boundary). One row per
 field also holds its shape better than free bullets.
@@ -126,6 +129,8 @@ The English file:
 # BE-NNNN — <Title>
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-NNNN](BE-NNNN-<slug>.md) |
 | Author | [@handle](https://github.com/handle) |
 | Status | **Proposal** |
@@ -177,9 +182,11 @@ and, for the `Status` field, by `read_status` in
    `<!-- /BE-METADATA -->`. This is the reason for the markers: without them a parser keys on a
    shape (`* Key:` lines, or `| a | b |` rows) that also occurs in the body, so it can latch onto
    the wrong row. The fence makes the metadata region explicit — the same way the index tables are
-   fenced by `<!-- GENERATED:* -->` — and is what lets the block carry no header row.
+   fenced by `<!-- GENERATED:* -->`.
 2. **Read one field per row.** Inside the fence, each `| field | value |` row maps `field` to
-   `value`, with `**` emphasis stripped. There is no header to skip.
+   `value`, with `**` emphasis stripped. The `| Field | Value |` header row (`| 項目 | 値 |` in
+   Japanese) and its `|---|---|` delimiter are skipped: the header is excluded by key, and the
+   delimiter never matches the row pattern (no space after its leading pipe).
 3. **Fall back for unmigrated items.** A file with no fence is read by the legacy `* Field: value`
    bullet rule, so the items not yet converted keep parsing during the migration.
 
@@ -194,9 +201,10 @@ For every `roadmaps/{implemented,proposals}/BE-*/` item it asserts, per language
 
 1. the first line is the exact bilingual header link for that file's language and slug;
 2. the H1 is `# BE-NNNN — …` with the em dash;
-3. the metadata block is fenced by `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->` and lists the
-   required `| field | value |` rows for that language in the canonical order, with no header row
-   and no unknown field rows;
+3. the metadata block is fenced by `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opens with the
+   `| Field | Value |` header row (`| 項目 | 値 |` in Japanese) and its delimiter, and lists the
+   required `| field | value |` rows for that language in the canonical order, with no unknown
+   field rows;
 4. `Status` is one of the four canonical values, and the English/Japanese values agree across the
    pair;
 5. the five H2 headings are present, in order, with the exact canonical wording.

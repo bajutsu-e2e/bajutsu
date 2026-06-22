@@ -3,6 +3,8 @@
 # BE-0007 — Android backend
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0007](BE-0007-android-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

@@ -3,6 +3,8 @@
 # BE-0041 — Web (Playwright) backend
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0041](BE-0041-web-playwright-backend-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **可決・実装中** |

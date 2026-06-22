@@ -3,6 +3,8 @@
 # BE-0055 — Operational logging for the hosted serve
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0055](BE-0055-operational-logging.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |

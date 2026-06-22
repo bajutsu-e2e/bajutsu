@@ -3,6 +3,8 @@
 # BE-0017 — MCP サーバ化
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0017](BE-0017-mcp-server-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

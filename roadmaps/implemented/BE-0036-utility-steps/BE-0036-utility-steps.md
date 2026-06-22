@@ -3,6 +3,8 @@
 # BE-0036 — HTTP utility step
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0036](BE-0036-utility-steps.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

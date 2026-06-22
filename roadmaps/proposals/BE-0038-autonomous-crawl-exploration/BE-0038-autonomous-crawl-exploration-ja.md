@@ -3,6 +3,8 @@
 # BE-0038 — 自律クロール探索（App Explorer 風）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0038](BE-0038-autonomous-crawl-exploration-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **可決・実装中** |

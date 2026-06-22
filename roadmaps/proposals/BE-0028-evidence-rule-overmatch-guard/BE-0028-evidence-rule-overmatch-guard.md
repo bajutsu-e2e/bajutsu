@@ -3,6 +3,8 @@
 # BE-0028 — Guard against over-matching evidence rules
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0028](BE-0028-evidence-rule-overmatch-guard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

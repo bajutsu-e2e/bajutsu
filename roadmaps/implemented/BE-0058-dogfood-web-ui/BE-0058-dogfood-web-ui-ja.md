@@ -3,6 +3,8 @@
 # BE-0058 — serve Web UI の Dogfood（web backend のリグレッション網）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0058](BE-0058-dogfood-web-ui-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

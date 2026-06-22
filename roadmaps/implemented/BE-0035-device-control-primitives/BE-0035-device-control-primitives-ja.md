@@ -3,6 +3,8 @@
 # BE-0035 — デバイス制御ステップ（background・ステータスバー上書き）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0035](BE-0035-device-control-primitives-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

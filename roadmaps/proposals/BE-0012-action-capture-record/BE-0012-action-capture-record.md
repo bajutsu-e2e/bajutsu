@@ -3,6 +3,8 @@
 # BE-0012 — Action-capture record
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0012](BE-0012-action-capture-record.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

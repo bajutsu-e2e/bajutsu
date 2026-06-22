@@ -3,6 +3,8 @@
 # BE-0040 — AI アサーション
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0040](BE-0040-ai-assertions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案（保留）** |

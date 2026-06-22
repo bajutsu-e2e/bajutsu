@@ -3,6 +3,8 @@
 # BE-0051 — ホスティングのための serve ハードニング（認証・入力検証）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0051](BE-0051-serve-hardening-for-hosting-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |

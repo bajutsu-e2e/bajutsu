@@ -3,6 +3,8 @@
 # BE-0066 — Web crawl (Playwright backend)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0066](BE-0066-web-crawl.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

@@ -3,6 +3,8 @@
 # BE-0033 — Scenario variables + light control flow
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0033](BE-0033-scenario-variables-control-flow.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

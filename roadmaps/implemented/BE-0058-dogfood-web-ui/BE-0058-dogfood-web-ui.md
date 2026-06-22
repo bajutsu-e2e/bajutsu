@@ -3,6 +3,8 @@
 # BE-0058 — Dogfood the serve Web UI (web-backend regression net)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0058](BE-0058-dogfood-web-ui.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

@@ -3,6 +3,8 @@
 # BE-0050 — E2E coverage map
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0050](BE-0050-e2e-coverage-map.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

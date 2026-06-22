@@ -3,6 +3,8 @@
 # BE-0044 — Scenario provenance (`from:` — step ↔ natural-language origin)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0044](BE-0044-scenario-provenance.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

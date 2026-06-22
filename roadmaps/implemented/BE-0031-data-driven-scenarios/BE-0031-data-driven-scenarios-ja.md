@@ -3,6 +3,8 @@
 # BE-0031 — データ駆動シナリオ
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0031](BE-0031-data-driven-scenarios-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

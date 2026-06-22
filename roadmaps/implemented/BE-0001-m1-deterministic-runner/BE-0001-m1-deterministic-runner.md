@@ -3,6 +3,8 @@
 # BE-0001 — Deterministic runner (M1)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0001](BE-0001-m1-deterministic-runner.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

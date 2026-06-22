@@ -3,6 +3,8 @@
 # BE-0027 — `mockServer` (external mock)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0027](BE-0027-mock-server-external.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal (deferred)** |

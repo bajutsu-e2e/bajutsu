@@ -3,6 +3,8 @@
 # BE-0051 — Serve hardening for hosting (auth, input validation)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0051](BE-0051-serve-hardening-for-hosting.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |

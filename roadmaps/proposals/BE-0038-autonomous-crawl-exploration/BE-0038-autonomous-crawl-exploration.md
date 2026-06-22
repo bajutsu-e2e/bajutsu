@@ -3,6 +3,8 @@
 # BE-0038 — Autonomous crawl exploration (App Explorer style)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0038](BE-0038-autonomous-crawl-exploration.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Accepted, in progress** |

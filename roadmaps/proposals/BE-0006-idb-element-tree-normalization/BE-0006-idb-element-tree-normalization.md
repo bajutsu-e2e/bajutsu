@@ -3,6 +3,8 @@
 # BE-0006 — idb element-tree normalization accuracy
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0006](BE-0006-idb-element-tree-normalization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

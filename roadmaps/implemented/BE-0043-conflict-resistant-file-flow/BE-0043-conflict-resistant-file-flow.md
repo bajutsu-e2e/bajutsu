@@ -3,6 +3,8 @@
 # BE-0043 — Conflict-resistant file flow (generated indexes, modular files, git hygiene)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0043](BE-0043-conflict-resistant-file-flow.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

@@ -3,6 +3,8 @@
 # BE-0070 — 制御プレーンと worker をまたいだ実行中アーティファクトのライブ表示
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0070](BE-0070-live-run-artifacts-across-split-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

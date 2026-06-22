@@ -3,6 +3,8 @@
 # BE-0004 — Self-healing triage (M4)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0004](BE-0004-m4-self-healing-triage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

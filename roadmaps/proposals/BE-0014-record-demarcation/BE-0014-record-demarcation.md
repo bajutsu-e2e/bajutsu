@@ -3,6 +3,8 @@
 # BE-0014 — Demarcation from the existing AI record
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0014](BE-0014-record-demarcation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

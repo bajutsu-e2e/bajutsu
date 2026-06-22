@@ -3,6 +3,8 @@
 # BE-0031 — Data-driven scenarios
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0031](BE-0031-data-driven-scenarios.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

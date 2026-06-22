@@ -3,6 +3,8 @@
 # BE-0017 — MCP server
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0017](BE-0017-mcp-server.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

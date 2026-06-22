@@ -3,6 +3,8 @@
 # BE-0037 — WebView / hybrid support
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0037](BE-0037-webview-hybrid-support.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

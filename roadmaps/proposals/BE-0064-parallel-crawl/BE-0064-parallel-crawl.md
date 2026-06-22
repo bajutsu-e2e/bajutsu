@@ -3,6 +3,8 @@
 # BE-0064 — Parallel crawl across multiple simulators
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0064](BE-0064-parallel-crawl.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

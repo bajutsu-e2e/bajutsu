@@ -3,6 +3,8 @@
 # BE-0004 — 自己修復トリアージ（M4）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0004](BE-0004-m4-self-healing-triage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

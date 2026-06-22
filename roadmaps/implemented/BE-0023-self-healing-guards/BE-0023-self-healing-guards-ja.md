@@ -3,6 +3,8 @@
 # BE-0023 — 「テストを甘くする」防止策
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0023](BE-0023-self-healing-guards-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

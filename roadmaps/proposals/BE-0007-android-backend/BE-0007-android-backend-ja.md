@@ -3,6 +3,8 @@
 # BE-0007 — Android backend
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0007](BE-0007-android-backend-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

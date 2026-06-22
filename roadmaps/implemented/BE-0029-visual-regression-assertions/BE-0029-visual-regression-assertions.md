@@ -3,6 +3,8 @@
 # BE-0029 — Visual-regression assertions
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0029](BE-0029-visual-regression-assertions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

@@ -3,6 +3,8 @@
 # BE-0047 — AI データ主権（プロバイダ非依存・秘匿化された AI 経路）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0047](BE-0047-ai-data-sovereignty-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

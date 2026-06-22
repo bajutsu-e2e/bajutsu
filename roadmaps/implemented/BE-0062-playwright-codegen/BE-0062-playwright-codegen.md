@@ -3,6 +3,8 @@
 # BE-0062 — Playwright codegen target
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0062](BE-0062-playwright-codegen.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

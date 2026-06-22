@@ -3,6 +3,8 @@
 # BE-0052 — デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0052](BE-0052-device-state-timezone-clipboard-shake-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

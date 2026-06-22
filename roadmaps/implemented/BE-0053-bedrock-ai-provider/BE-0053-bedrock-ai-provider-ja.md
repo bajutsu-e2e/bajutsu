@@ -3,6 +3,8 @@
 # BE-0053 — 差し替え可能な AI プロバイダとしての Amazon Bedrock
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0053](BE-0053-bedrock-ai-provider-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

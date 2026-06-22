@@ -3,6 +3,8 @@
 # BE-0072 — Responsive serve Web UI (small-screen & touch layout)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0072](BE-0072-responsive-web-ui.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

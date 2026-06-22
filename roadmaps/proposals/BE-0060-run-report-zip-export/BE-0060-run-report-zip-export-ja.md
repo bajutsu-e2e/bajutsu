@@ -3,6 +3,8 @@
 # BE-0060 — run の実行レポートの zip ダウンロードとエクスポート
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0060](BE-0060-run-report-zip-export-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

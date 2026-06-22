@@ -3,6 +3,8 @@
 # BE-0069 — コントリビュータ向けガードレールの実行可能化（手順をコマンドに）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0069](BE-0069-executable-contributor-guardrails-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

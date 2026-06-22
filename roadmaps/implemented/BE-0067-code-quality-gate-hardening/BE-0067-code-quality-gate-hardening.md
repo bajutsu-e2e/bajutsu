@@ -3,6 +3,8 @@
 # BE-0067 — Code-quality gate hardening (CI fidelity, security lint, supply-chain)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0067](BE-0067-code-quality-gate-hardening.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

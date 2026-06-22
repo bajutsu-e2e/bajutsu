@@ -3,6 +3,8 @@
 # BE-0057 — Rename the config `apps` key to `targets`
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0057](BE-0057-rename-apps-to-targets.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

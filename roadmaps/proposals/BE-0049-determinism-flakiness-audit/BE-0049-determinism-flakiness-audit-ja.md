@@ -3,6 +3,8 @@
 # BE-0049 — 決定性／フレーキネス監査
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0049](BE-0049-determinism-flakiness-audit-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **可決・実装中** |

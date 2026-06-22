@@ -3,6 +3,8 @@
 # BE-0033 — シナリオ変数 + 軽い制御フロー
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0033](BE-0033-scenario-variables-control-flow-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

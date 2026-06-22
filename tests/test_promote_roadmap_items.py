@@ -52,13 +52,13 @@ def test_read_status_strips_emphasis(tmp_path: Path) -> None:
     assert pri.read_status(item) == "Proposal (deferred)"
 
 
-def test_read_status_reads_fenced_block(tmp_path: Path) -> None:
+def test_read_status_reads_fenced_table(tmp_path: Path) -> None:
     item = tmp_path / "proposals" / "BE-9003-baz"
     item.mkdir(parents=True)
     (item / "BE-9003-baz.md").write_text(
         "# BE-9003-baz — demo\n\n"
         "<!-- BE-METADATA -->\n"
-        "| Status | **Implemented** |\n"
+        "| Field | Value |\n|---|---|\n| Status | **Implemented** |\n"
         "<!-- /BE-METADATA -->\n\n"
         "## Detailed design\n\n| Status | not-metadata |\n",
         encoding="utf-8",

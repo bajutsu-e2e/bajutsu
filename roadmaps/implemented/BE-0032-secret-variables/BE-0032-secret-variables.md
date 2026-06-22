@@ -3,6 +3,8 @@
 # BE-0032 — Secret variables
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0032](BE-0032-secret-variables.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

@@ -3,6 +3,8 @@
 # BE-0030 — Parameterized shared steps
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0030](BE-0030-parameterized-shared-steps.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
