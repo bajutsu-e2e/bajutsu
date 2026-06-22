@@ -268,6 +268,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `enabled` / `disabled` | 操作可否（`notEnabled` trait） | `disabled: { id: auth.submit }` |
 | `selected` | 選択 / トグル状態（`selected` trait） | `selected: { id: tab.home }` |
 | `request` | 一致するネットワーク通信が観測された（`--network` が必要） | `request: { method: POST, path: /login, status: 200, count: 1 }` |
+| `event` | アプリが送った分析 / テレメトリイベント。エンドポイント＋JSON ボディのフィールドを count とともに検証（`--network` が必要） | `event: { url: "https://t.example.com/track", body: { name: purchase_completed }, count: { equals: 1 } }` |
 | `visual` | 画面が baseline 画像に一致する（ビジュアルリグレッション） | `visual: { baseline: home.png, threshold: 0.02 }` |
 
 - `exists` はセレクタを **インラインで**書きます（`{ id: ... }` を直書き）。`negate` は任意です。
@@ -275,6 +276,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - `count` は `sel:` と、`equals` / `atLeast` / `atMost` の **いずれか 1 つ**を指定します。
 - `enabled` / `disabled` / `selected` はセレクタを直書きします。
 - `request` は **観測されたネットワーク通信**に一致するか検証します（[下記](#requestネットワークアサーション)）。`--network` 実行フラグが必要です。
+- `event` は **アプリが送った分析 / テレメトリイベント**に一致するか検証します（[下記](#eventイベントアサーション)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
 
 > **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらは config の固定 locale を前提に書き、セレクタ自体は `id` で書いてください。
@@ -303,6 +305,33 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 > `count` はマッチフィールド **ではありません**。`method` / `url` / `urlMatches` / `path` /
 > `pathMatches` / `status` / `bodyMatches` の少なくとも 1 つが必要です。
 > （[`demos/features/app/scenarios/network_mock.yaml`](../../demos/features/app/scenarios/network_mock.yaml) 実物）
+
+### `event`（イベントアサーション）
+
+`event` は、画面には現れない振る舞い、すなわちアプリが**送った**分析 / テレメトリイベントを表明します
+（[BE-0048](../../roadmaps/proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
+`request` が読むのと同じ観測済み通信に対する純粋な検査なので（`--network` 実行フラグが必要）、判定は機械のみで LLM は介在しません。
+イベントの**エンドポイント**（`request` と同じ `method` / `url` / `urlMatches` / `path` / `pathMatches` マッチャ）でタイムラインを絞り、
+続けて構造化した**リクエストボディのフィールド**で絞り、残った通信数を count 演算子と突き合わせます。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `method` / `url` / `urlMatches` / `path` / `pathMatches` | str | エンドポイントのマッチャ（AND）。意味は `request` と同じ |
+| `body` | map | 各 `key: value` が JSON リクエストボディに存在し、その値と等しいこと。テキストとして比較する（`amount: "300"` は JSON の数値 `300` に一致。JSON の真偽値 / null は `"true"` / `"false"` / `"null"` に一致） |
+| `count` | object | 期待する多重度。`equals` / `atLeast` / `atMost` の **いずれか 1 つ**。省略時は **1 件以上** |
+
+```yaml
+expect:
+  # 購入イベントが正しい金額でちょうど 1 回発火したこと
+  - event:
+      url: "https://t.example.com/track"
+      body: { name: purchase_completed, amount: "300" }
+      count: { equals: 1 }
+```
+
+> エンドポイントのフィールドか `body` の少なくとも一方が必須で、イベントは必ず何かを特定します。JSON でない、
+> オブジェクトでない、あるいは存在しないリクエストボディは `body` 条件に一致しません（推測せず失敗します）。
+> ボディの値は DSL の他の箇所と同じく `${vars.*}` / `${secrets.*}` トークンを使えます。
 
 ### `visual`（ビジュアルリグレッション）
 

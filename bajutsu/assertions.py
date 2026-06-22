@@ -11,6 +11,7 @@ straight into the report (manifest).
 from __future__ import annotations
 
 import functools
+import json
 import re
 import shutil
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from bajutsu.network import NetworkExchange
 from bajutsu.scenario import (
     Assertion,
     CountMatch,
+    CountOp,
+    EventMatch,
     Exists,
     RequestMatch,
     Selector,
@@ -223,6 +226,101 @@ def _eval_request(exchanges: list[NetworkExchange], req: RequestMatch) -> Assert
     return AssertionResult(False, "request", detail, reason)
 
 
+def _count_op_label(c: CountOp) -> str:
+    if c.equals is not None:
+        return f"=={c.equals}"
+    if c.at_least is not None:
+        return f">={c.at_least}"
+    return f"<={c.at_most}"
+
+
+def _count_satisfied(n: int, c: CountOp | None) -> bool:
+    """Whether `n` matches satisfy the count operator (default: at least one)."""
+    if c is None:
+        return n >= 1
+    if c.equals is not None:
+        return n == c.equals
+    if c.at_least is not None:
+        return n >= c.at_least
+    return c.at_most is not None and n <= c.at_most
+
+
+def _json_text(value: object) -> str:
+    """Canonical text form of a JSON value for comparing an event body field — booleans and null
+    render JSON-style (`true` / `false` / `null`), so a YAML matcher reads the way the captured
+    body does, not as a Python `repr` (`True` / `None`). Numbers / strings keep their plain form."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def _event_body_matches(ex: NetworkExchange, body: dict[str, str]) -> bool:
+    """Whether the exchange's JSON request body carries every given field, each equal (as text)
+    to the expected value. A non-JSON / non-object / absent body matches no body criterion."""
+    if not body:
+        return True
+    if ex.request_body is None:
+        return False
+    try:
+        parsed = json.loads(ex.request_body)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    return all(key in parsed and _json_text(parsed[key]) == want for key, want in body.items())
+
+
+def _event_label(m: EventMatch) -> str:
+    """Compact human description of an event matcher (endpoint + body + count)."""
+    parts: list[str] = []
+    if m.method is not None:
+        parts.append(m.method.upper())
+    if m.url is not None:
+        parts.append(m.url)
+    if m.url_matches is not None:
+        parts.append(f"url~{m.url_matches}")
+    if m.path is not None:
+        parts.append(m.path)
+    if m.path_matches is not None:
+        parts.append(f"~{m.path_matches}")
+    if m.body:
+        parts.append(f"body={m.body}")
+    if m.count is not None:
+        parts.append(f"count{_count_op_label(m.count)}")
+    return " ".join(parts)
+
+
+def _eval_event(exchanges: list[NetworkExchange], m: EventMatch) -> AssertionResult:
+    """Assert an analytics/telemetry event the app sent (BE-0048): filter the timeline by the
+    event's endpoint (reusing the request matcher), then by its structured request-body fields,
+    and check the surviving count against the operator. Pure over the captured exchanges."""
+    endpoint = (m.method, m.url, m.url_matches, m.path, m.path_matches)
+    if any(v is not None for v in endpoint):
+        req = RequestMatch(
+            method=m.method,
+            url=m.url,
+            urlMatches=m.url_matches,
+            path=m.path,
+            pathMatches=m.path_matches,
+        )
+        candidates = [ex for ex in exchanges if match_request(ex, req)]
+    else:
+        candidates = exchanges
+    n = sum(1 for ex in candidates if _event_body_matches(ex, m.body))
+    detail = f"event {_event_label(m)}"
+    if _count_satisfied(n, m.count):
+        return AssertionResult(True, "event", detail)
+    want = f"count{_count_op_label(m.count)}" if m.count is not None else "at least one"
+    return AssertionResult(
+        False,
+        "event",
+        detail,
+        f"expected {want}, matched {n} (observed {len(exchanges)} exchanges)",
+    )
+
+
 def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch]) -> list[int]:
     """Assign each request matcher a *distinct* exchange — one `request` ↔ one exchange.
 
@@ -337,6 +435,8 @@ def evaluate_one(
         return _eval_state(elements, "selected", a.selected)
     if a.request is not None:
         return _eval_request(exchanges or [], a.request)
+    if a.event is not None:
+        return _eval_event(exchanges or [], a.event)
     if a.visual is not None:
         return _eval_visual(visual_context, a.visual)
     raise AssertionError("empty assertion (should be caught by scenario validation)")

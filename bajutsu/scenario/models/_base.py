@@ -33,6 +33,7 @@ _ASSERTION_KINDS = (
     "disabled",
     "selected",
     "request",
+    "event",
     "visual",
 )
 

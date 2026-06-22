@@ -296,6 +296,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `enabled` / `disabled` | actionable or not (the `notEnabled` trait) | `disabled: { id: auth.submit }` |
 | `selected` | selected / toggled state (the `selected` trait) | `selected: { id: tab.home }` |
 | `request` | a matching network exchange was observed (needs `--network`) | `request: { method: POST, path: /login, status: 200, count: 1 }` |
+| `event` | an analytics / telemetry event was sent — endpoint + JSON body fields, with a count (needs `--network`) | `event: { url: "https://t.example.com/track", body: { name: purchase_completed }, count: { equals: 1 } }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
@@ -303,6 +304,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `count` takes `sel:` + **exactly one** of `equals` / `atLeast` / `atMost`.
 - `enabled` / `disabled` / `selected` take a selector inline.
 - `request` matches an **observed network exchange** ([details below](#request-network-assertion)); needs the `--network` run flag.
+- `event` matches an **analytics / telemetry event the app sent** ([details below](#event-analytics-event-assertion)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
@@ -335,6 +337,34 @@ wait and `mocks` (below). At least one match field is required; the listed field
 > `count` is **not** a match field — at least one of `method` / `url` / `urlMatches` / `path` /
 > `pathMatches` / `status` / `bodyMatches` must be present. (real file:
 > [`demos/features/app/scenarios/network_mock.yaml`](../demos/features/app/scenarios/network_mock.yaml))
+
+### `event` (analytics event assertion)
+
+`event` asserts on a behavior the screen never shows: an analytics / telemetry event the app **sent**
+([BE-0048](../roadmaps/proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
+so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
+same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by structured
+**request-body fields**, and checks how many exchanges survive against a count operator.
+
+| Field | Type | Description |
+|---|---|---|
+| `method` / `url` / `urlMatches` / `path` / `pathMatches` | str | Endpoint matcher (AND-ed), same meaning as `request` |
+| `body` | map | Each `key: value` must be present in the JSON request body and equal the value, compared as text (so `amount: "300"` matches the JSON number `300`; a JSON boolean / null matches `"true"` / `"false"` / `"null"`) |
+| `count` | object | Expected multiplicity — **exactly one** of `equals` / `atLeast` / `atMost`. Omitted means **at least one** |
+
+```yaml
+expect:
+  # the purchase event fired exactly once with the right amount
+  - event:
+      url: "https://t.example.com/track"
+      body: { name: purchase_completed, amount: "300" }
+      count: { equals: 1 }
+```
+
+> At least one of an endpoint field or `body` must be present, so an event always pins something. A
+> non-JSON, non-object, or absent request body matches no `body` criterion (it fails rather than
+> guessing). Body values support `${vars.*}` / `${secrets.*}` tokens like the rest of the DSL.
 
 ### `visual` (visual regression)
 
