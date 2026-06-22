@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0064](BE-0064-parallel-crawl.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Status | **Implemented** |
+| Implementing PR | [#198](https://github.com/bajutsu-e2e/bajutsu/pull/198) |
+| Track | [Accepted](../../README.md#accepted) |
 | Topic | Crawl performance / scale-out |
 | Origin | User request (crawl efficiency) |
 <!-- /BE-METADATA -->

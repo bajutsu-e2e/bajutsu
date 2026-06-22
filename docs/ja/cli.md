@@ -46,6 +46,7 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
 | `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できる（コマンドを実行しているマシン上でウィンドウが開く）。省略時はアプリの `headless` 設定に従う。iOS は無視する |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流す（`serve` UI が消費する） |
+| `--zip` | off | run の後に `runs/<id>.zip` も書き出す。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使える。**判定の後**に走るので pass/fail に影響しない。[`export`](#export) 参照 |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
@@ -83,6 +84,18 @@ bajutsu audit <scenario.yaml> [--json]
 - 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）を指摘します。
 - シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。成功した監査は **finding があっても終了 0**（シナリオファイルが無い/読めないときだけ終了 2）です。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
+
+## `export`
+
+完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`・`junit.xml`・実行した `scenario.yaml`・**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
+
+```bash
+bajutsu export <run-id | run-dir> [-o out.zip] [--force]
+```
+
+- `<run>` は run id（`--runs` 既定 `runs/` の下で解決）または run ディレクトリのパスです。
+- 出力は既定で run dir の隣の `<id>.zip`。`-o/--output` で上書き指定。`--force` なしでは既存ファイルを**上書きしません**（`record` が黙って上書きしないのと同じ）。
+- run が既に書いたものを詰めるだけで、デバイスも AI も使わず、判定にも影響しません。**run dir の中だけ**を固めます（`.env`・config・その上位には一切触れません）。run の secret スクラブをそのまま継承します。`bajutsu run --zip` は同じアーカイバを判定後にインラインで走らせ、`bajutsu serve` は埋め込みレポートの隣に **Download** ボタンとして提供します。
 
 ## `trace`
 
@@ -179,7 +192,8 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
 | `--agent` | `$BAJUTSU_AGENT` または `api` | クロールガイドの AI バックエンド。`api`（Anthropic SDK、従量課金。設定した AI プロバイダを使用し、Anthropic なら `ANTHROPIC_API_KEY`、`BAJUTSU_AI_PROVIDER=bedrock` なら AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）か `claude-code`（Claude Code CLI。サブスクリプションを利用、テキストのみ。`record --agent claude-code` と同様）。省略時は `$BAJUTSU_AGENT`（`serve` が Settings の選択から設定）に従い、なければ `api` |
-| `--udid` | `booted` | 対象 Simulator |
+| `--udid` | `booted` | 対象 Simulator。カンマ区切り（`A,B,C`）で並列プールも指定できる（`--workers` 参照） |
+| `--workers` | `1` | 複数のシミュレータで同時にクロールする台数（[BE-0064](../../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)）。1 つの画面マップを共有する。`--udid` のデバイス数で上限。`1` はシングルデバイスのクロール。iOS のみ |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
@@ -214,6 +228,14 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   （`serve` の **Crawl** タブ）はマップをリアルタイムに描けます。各画面はラベルと情報のノードで表示され、同じ UI で
   状態だけ違う画面（フォーム未入力と入力済みなど）は 1 つのノードにまとめられ、その場で展開できます。
   `--max-screens` / `--max-steps` のいずれか早い方で停止します。
+- **並列プール**（[BE-0064](../../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)）:
+  `--udid A,B,C` のプールに `--workers N` を組み合わせると、起動済みのシミュレータ N 台で同時にクロールします。
+  全ワーカーが 1 つの画面マップとフロンティアを共有し、独立した枝が並行して進み、AI ガイドの往復もデバイス間で
+  重なるので、実時間はおおよそ台数に反比例して減ります。並行になるのは**スケジューリングだけ**です。どのワーカーが
+  画面に先に到達するかは時間依存なので、アプリ自体に非決定性があると記録されるパスや発見順は実行ごとに変わりえますが、
+  画面同一性・遷移・クラッシュ判定は要素ツリーの同じ決定的関数のままです（クロールは依然として合否を下しません）。
+  固まったデバイスは自分の作業を手放し、残りのワーカーが続行します。既定の `--workers 1` は従来どおりのシングル
+  デバイスのクロールです。（iOS のみ。web のクロールはブラウザ 1 つです。）
 
 ### 画面の同定方法（fingerprint）
 
@@ -339,9 +361,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させます。
 - app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run** を押します。
   出力がライブ表示され、完了で `report.html` が埋め込まれます。
-- **Crawl** タブは、app、デバイス、予算（max screens / steps）を選び、`POST /api/crawl` で crawl を
-  起動します。返ってきた run id で UI が `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に
-  合わせて描きます（画面は幅優先の層に配置し、遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
+- **Crawl** タブは、app、シミュレータのプール（Replay と同様の複数選択。2 台以上選ぶと 1 つの画面マップを
+  共有して並列にクロールします。詳細は [BE-0064](../../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)）、
+  予算（max screens / steps）を選び、`POST /api/crawl` で crawl を起動します。返ってきた run id で UI が
+  `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に合わせて描きます（画面は幅優先の層に配置し、
+  遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
 - オーサリング（Record と Crawl）の **AI バックエンド**は **Settings → AI プロバイダ** の一箇所で選びます。
   **Anthropic API**（`ANTHROPIC_API_KEY`）、**Amazon Bedrock**（AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）、
   **Claude Code**（ローカルの `claude` CLI。サブスクリプションを利用、テキストのみ）の 3 択で、`serve` は

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0060](BE-0060-run-report-zip-export.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Status | **Implemented** |
+| Implementing PR | [#194](https://github.com/bajutsu-e2e/bajutsu/pull/194) |
+| Track | [Accepted](../../README.md#accepted) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

@@ -249,6 +249,11 @@ def test_crawl_command_builder() -> None:
     assert "--agent" not in bare  # no agent → no --agent (CLI default api applies)
     assert "--backend" not in bare and "--udid" not in bare
     assert "--guide" not in bare  # crawl is AI-driven; there is no guide toggle
+    assert "--workers" not in bare  # single-device crawl omits it (CLI default 1)
+    # A parallel pool (BE-0064): the comma udid list + worker count reach the crawl command.
+    pool = srv.crawl_command("demo", out="o", udid="A,B,C", workers=3)
+    assert pool[pool.index("--udid") + 1] == "A,B,C"
+    assert pool[pool.index("--workers") + 1] == "3"
     # Resume passes the pruned branch's coordinates and never erases (it continues the same run).
     res = srv.crawl_command("demo", out="o", resume_src="abc123", resume_key="tab.x")
     assert res[res.index("--resume-src") + 1] == "abc123"

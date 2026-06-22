@@ -653,6 +653,7 @@ def start_crawl(
         agent=body.get("agent", ""),
         backend=backend,
         udid=udid,
+        workers=_int(body.get("workers"), 1),
         max_screens=_int(body.get("maxScreens"), 50),
         max_steps=_int(body.get("maxSteps"), 200),
         erase=_bool_flag(body, "erase"),

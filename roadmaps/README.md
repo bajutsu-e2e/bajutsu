@@ -111,6 +111,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | ID | Item | Status |
 |---|---|---|
 | [BE-0011](implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) | Local web UI (`bajutsu serve`) | Implemented |
+| [BE-0060](implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Implemented |
 <!-- /GENERATED:accepted-authoring -->
 
 ### Self-healing triage (M4)
@@ -233,6 +234,16 @@ Turning a passing scenario into a native test in a destination framework's idiom
 | [BE-0062](implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
 <!-- /GENERATED:accepted-codegen -->
 
+### Crawl performance / scale-out
+
+Running the autonomous crawl across more than one device so a full screen map is built in a fraction of the wall-clock time.
+
+<!-- GENERATED:accepted-crawl -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0064](implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Implemented |
+<!-- /GENERATED:accepted-crawl -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *Accepted* once a decision is made.
@@ -272,7 +283,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Proposal |
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
 | [BE-0044](proposals/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Proposal |
-| [BE-0060](proposals/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Proposal |
 | [BE-0068](proposals/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | Proposal |
 | [BE-0072](proposals/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md) | Responsive serve Web UI (small-screen & touch layout) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
@@ -301,6 +311,7 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 | ID | Item | Status |
 |---|---|---|
 | [BE-0063](proposals/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Proposal |
+| [BE-0073](proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### Integration & automation (MCP)
@@ -341,7 +352,6 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 <!-- GENERATED:proposals-crawl -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
 <!-- /GENERATED:proposals-crawl -->
 
 ### Development infrastructure (contributor workflow)

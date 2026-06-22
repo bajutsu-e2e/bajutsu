@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.serve import operations as ops
+from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.jobs import ServeState
 
 # Session cookie set at login when a serve token is configured (BE-0051).
@@ -172,6 +173,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._sse_job(path[len("/api/jobs/") : -len("/events")])
                 case _ if path.startswith("/api/jobs/"):
                     self._json(*ops.job_view(state, path[len("/api/jobs/") :]))
+                case _ if path.startswith("/runs/") and path.endswith("/archive.zip"):
+                    self._serve_run_archive(unquote(path[len("/runs/") : -len("/archive.zip")]))
                 case _ if path.startswith("/runs/"):
                     self._serve_run_file(unquote(path[len("/runs/") :]))
                 case _:
@@ -281,10 +284,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             )
             self.end_headers()
 
-        def _serve_run_file(self, rel: str) -> None:
+        def _artifacts(self) -> Any:
             # The actor's org-scoped artifact store: a run in another org's prefix reads as
             # not-found (BE-0015 multi-tenancy).
-            art = state.for_org(state.org_of(self._actor())).artifacts.get(rel)
+            return state.for_org(state.org_of(self._actor())).artifacts
+
+        def _serve_artifact(self, art: Any, *, filename: str | None = None) -> None:
+            """Emit an `Artifact` (404 if None): a 302 to its signed URL (server store) or its
+            inline bytes (local). For the inline case, `filename` (when given) forces a download via
+            Content-Disposition; a redirect relies on the signed URL's own disposition."""
             if art is None:
                 self._json({"error": "not found"}, 404)
                 return
@@ -296,9 +304,23 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             data = art.body or b""
             self.send_response(200)
             self.send_header("Content-Type", art.content_type)
+            if filename is not None:
+                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+
+        def _serve_run_file(self, rel: str) -> None:
+            self._serve_artifact(self._artifacts().get(rel))
+
+        def _serve_run_archive(self, run_id: str) -> None:
+            # A one-file download of the whole run (BE-0060), through the same org-scoped store, so
+            # containment / multi-tenancy hold identically to the per-file route. Reject a non-segment
+            # id (e.g. `<id>/demo`) up front, so no `/` reaches the filename header (HTTP-splitting).
+            if not valid_run_id(run_id):
+                self._json({"error": "not found"}, 404)
+                return
+            self._serve_artifact(self._artifacts().archive(run_id), filename=f"{run_id}.zip")
 
         def log_message(self, *_args: Any) -> None:  # silence per-request stderr logging
             pass

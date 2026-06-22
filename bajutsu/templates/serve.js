@@ -228,10 +228,13 @@ async function loadSims(){
   const el=$('#sims');
   el.innerHTML=sims.length?sims.map(s=>`<label><input type="checkbox" class="simck" value="${esc(s.udid)}"><span class="dot ${s.booted?'ok':'off'}" title="${s.booted?'booted':'shut down'}"></span><span>${esc(s.name)}</span><span class="rt">${esc(s.runtime)}${s.booted?'':' · off'}</span></label>`).join(''):'<div class="empty">no simulators found</div>';
   el.querySelectorAll('.simck').forEach(c=>c.addEventListener('change',onSimChange));
-  // Record + Crawl: single-device dropdown ("booted" = whatever is already up). Crawl explores
-  // one app instance breadth-first, so it picks a single device rather than a parallel pool.
+  // Crawl: multi-select checkboxes too (a parallel pool sharing one screen map — BE-0064).
+  const cel=$('#crawl-sims');
+  cel.innerHTML=sims.length?sims.map(s=>`<label><input type="checkbox" class="crawl-simck" value="${esc(s.udid)}"><span class="dot ${s.booted?'ok':'off'}" title="${s.booted?'booted':'shut down'}"></span><span>${esc(s.name)}</span><span class="rt">${esc(s.runtime)}${s.booted?'':' · off'}</span></label>`).join(''):'<div class="empty">no simulators found</div>';
+  cel.querySelectorAll('.crawl-simck').forEach(c=>c.addEventListener('change',onCrawlSimChange));
+  // Record: single-device dropdown ("booted" = whatever is already up).
   const single='<option value="booted">booted (already up)</option>'+sims.map(s=>`<option value="${esc(s.udid)}">${esc(s.name)} · ${esc(s.runtime)}${s.booted?'':' · off'}</option>`).join('');
-  $('#rec-device').innerHTML=single;$('#crawl-device').innerHTML=single;
+  $('#rec-device').innerHTML=single;
 }
 
 // ---- Record: author a scenario from a goal ----
@@ -319,7 +322,7 @@ function runDone(j){
 async function setReport(id){
   selectedRun=id;
   const rep=$('#report');
-  rep.innerHTML=`<div class="repbar"><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
+  rep.innerHTML=`<div class="repbar"><a class="repdl" href="/runs/${esc(id)}/archive.zip" download>⬇ download .zip</a><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
   const host=rep.querySelector('.rephost');
   let html;
   try{html=await (await fetch(`/runs/${encodeURIComponent(id)}/report.html`)).text();}
@@ -357,6 +360,8 @@ document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('cl
 
 // ---- Crawl: explore the app and watch the screen map grow live ----
 let crawlPoll=null,crawlJobId=null,crawlRunId=null;
+function crawlPickedUdids(){return [...$('#crawl-sims').querySelectorAll('.crawl-simck:checked')].map(c=>c.value)}
+function onCrawlSimChange(){const n=crawlPickedUdids().length;if(n>0)$('#crawl-workers').value=n}
 $('#crawl-simrefresh').addEventListener('click',loadSims);
 $('#crawl-go').addEventListener('click',async()=>{
   if(crawlPoll)crawlPoll.close();
@@ -365,7 +370,8 @@ $('#crawl-go').addEventListener('click',async()=>{
   $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,udid:$('#crawl-device').value||'booted',
+    app:$('#crawl-app').value,udid:crawlPickedUdids().join(',')||'booted',
+    workers:parseInt($('#crawl-workers').value,10)||1,
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     erase:$('#crawl-erase').checked,
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined})});
@@ -669,7 +675,7 @@ async function resumePruned(src,key){
   setBusy($('#crawl-go'),$('#crawl-stop'),true,'Resuming…');
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,udid:$('#crawl-device').value||'booted',
+    app:$('#crawl-app').value,udid:crawlPickedUdids()[0]||'booted',  // a resume is a single-branch walk
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
     runId:crawlRunId,resumeSrc:src,resumeKey:key})});

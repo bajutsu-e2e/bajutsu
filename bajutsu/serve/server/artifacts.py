@@ -19,7 +19,9 @@ import mimetypes
 from pathlib import PurePosixPath
 from typing import Any
 
+from bajutsu.report.archive import zip_tree
 from bajutsu.serve.artifacts import Artifact
+from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.server.object_store import ObjectStore
 
 
@@ -54,6 +56,24 @@ class ObjectStorageArtifactStore:
     def open_bytes(self, rel: str) -> bytes | None:
         key = self._key(rel)
         return self._store.get_bytes(key) if key is not None else None
+
+    def archive(self, run_id: str) -> Artifact | None:
+        # Zip the run's objects on read (the same confinement as `_key`); entries are rooted under
+        # `<run_id>/` exactly like the filesystem store, so the two surfaces produce the same zip.
+        # A run is a single id segment, so `r1/demo` (a nested prefix) is rejected, not zipped.
+        if not valid_run_id(run_id):
+            return None
+        prefix = self._key(f"{run_id}/")
+        if prefix is None:
+            return None
+        files = [
+            (key[len(self._prefix) :], data)
+            for key in self._store.list_keys(prefix)
+            if (data := self._store.get_bytes(key)) is not None
+        ]
+        if not files:
+            return None
+        return Artifact(content_type="application/zip", body=zip_tree(files))
 
     def list_runs(self) -> list[dict[str, Any]]:
         rels = [k[len(self._prefix) :] for k in self._store.list_keys(self._prefix)]
