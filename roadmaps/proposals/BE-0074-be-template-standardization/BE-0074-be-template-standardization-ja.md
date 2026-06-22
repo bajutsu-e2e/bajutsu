@@ -1,9 +1,9 @@
-[English](BE-XXXX-be-template-standardization.md) · **日本語**
+[English](BE-0074-be-template-standardization.md) · **日本語**
 
-# BE-XXXX — BE 項目テンプレートの標準化（EN / JA）
+# BE-0074 — BE 項目テンプレートの標準化（EN / JA）
 
 <!-- BE-METADATA -->
-| 提案 | [BE-XXXX](BE-XXXX-be-template-standardization-ja.md) |
+| 提案 | [BE-0074](BE-0074-be-template-standardization-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラック | [提案](../../README-ja.md#提案) |

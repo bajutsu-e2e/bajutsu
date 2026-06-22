@@ -1,9 +1,9 @@
-**English** · [日本語](BE-XXXX-be-template-standardization-ja.md)
+**English** · [日本語](BE-0074-be-template-standardization-ja.md)
 
-# BE-XXXX — Standardize the BE item template (EN / JA)
+# BE-0074 — Standardize the BE item template (EN / JA)
 
 <!-- BE-METADATA -->
-| Proposal | [BE-XXXX](BE-XXXX-be-template-standardization.md) |
+| Proposal | [BE-0074](BE-0074-be-template-standardization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Track | [Proposals](../../README.md#proposals) |
