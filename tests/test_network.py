@@ -80,7 +80,7 @@ def test_request_assertions_map_one_to_one() -> None:
     get = Assertion(request=RequestMatch(method="GET"))
     one = evaluate([], [get, get], [_ex("GET", "/a", 200)])
     assert sum(r.ok for r in one) == 1  # only one can be satisfied
-    assert "1 対 1" in next(r.reason for r in one if not r.ok)
+    assert "one-to-one" in next(r.reason for r in one if not r.ok)
     two = evaluate([], [get, get], [_ex("GET", "/a", 200), _ex("GET", "/b", 200)])
     assert all(r.ok for r in two)  # both satisfied by distinct exchanges
 
@@ -115,7 +115,7 @@ def test_request_count_assertion_stays_independent() -> None:
 
 def test_request_no_match_fails_with_reason() -> None:
     r = evaluate_one([], _req(method="DELETE"), [_ex("GET", "/x")])
-    assert not r.ok and "通信" in r.reason
+    assert not r.ok and "exchange" in r.reason
 
 
 def _event(**kw: object) -> Assertion:
@@ -281,7 +281,7 @@ def test_orchestrator_request_assertion_step() -> None:
     ok = run_scenario(FakeDriver(), scn, network=lambda: [_ex("POST", "/login", 200)])
     assert ok.ok, ok.failure
     miss = run_scenario(FakeDriver(), scn, network=list)  # no exchanges
-    assert not miss.ok and "通信" in (miss.failure or "")
+    assert not miss.ok and "exchange" in (miss.failure or "")
 
 
 def test_wait_for_request_satisfied() -> None:
