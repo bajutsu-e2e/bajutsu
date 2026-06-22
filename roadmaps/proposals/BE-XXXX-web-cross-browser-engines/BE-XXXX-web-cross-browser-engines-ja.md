@@ -2,11 +2,11 @@
 
 # BE-XXXX — ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend）
 
-* Proposal: [BE-XXXX](BE-XXXX-web-cross-browser-engines-ja.md)
+* 提案: [BE-XXXX](BE-XXXX-web-cross-browser-engines-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README-ja.md#proposals)
-* Topic: Platform expansion (Android / Web / Flutter)
+* 状態: **提案**
+* トラック: [提案](../../README-ja.md#提案)
+* トピック: プラットフォーム拡張（Android / Web / Flutter）
 
 ## Introduction
 
