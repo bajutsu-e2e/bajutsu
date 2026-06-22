@@ -7,7 +7,24 @@ stage rarely touches the others (BE-0043). Public API is re-exported here, so
 
 from __future__ import annotations
 
-from bajutsu.report.html import html_report, write_report
+from bajutsu.report.html import (
+    html_report,
+    scenario_render_inputs,
+    write_html_and_junit,
+    write_report,
+)
+from bajutsu.report.load import load_run, rebake, rerender_html, results_from_manifest
 from bajutsu.report.manifest import junit_xml, manifest_dict
 
-__all__ = ["html_report", "junit_xml", "manifest_dict", "write_report"]
+__all__ = [
+    "html_report",
+    "junit_xml",
+    "load_run",
+    "manifest_dict",
+    "rebake",
+    "rerender_html",
+    "results_from_manifest",
+    "scenario_render_inputs",
+    "write_html_and_junit",
+    "write_report",
+]

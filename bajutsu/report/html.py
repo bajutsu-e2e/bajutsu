@@ -14,6 +14,17 @@ from bajutsu.orchestrator import RunResult
 from bajutsu.report.format import _fmt_duration
 from bajutsu.report.manifest import _run_backend, junit_xml, manifest_dict
 from bajutsu.report.panels import _scenario_data
+from bajutsu.scenario import Scenario, dump_scenarios, scenario_dict
+
+
+def scenario_render_inputs(
+    scenarios: list[Scenario],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """The renderer's per-scenario plan inputs: `definitions` (structured) and `sources` (raw
+    YAML), aligned with the scenarios. Shared by the run pipeline (initial bake) and the offline
+    re-render (BE-0068), so both feed the renderer identical inputs."""
+    return [scenario_dict(s) for s in scenarios], [dump_scenarios([s]) for s in scenarios]
+
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
@@ -79,6 +90,28 @@ def html_report(
     )
 
 
+def write_html_and_junit(
+    run_dir: Path,
+    run_id: str,
+    results: list[RunResult],
+    definitions: list[dict[str, Any]] | None = None,
+    sources: list[str] | None = None,
+    source_name: str | None = None,
+    description: str | None = None,
+) -> None:
+    """Write (or rewrite) report.html + junit.xml under run_dir, leaving manifest.json untouched.
+
+    The renderable half of the report: the initial bake calls it after the manifest, and the
+    offline re-render (BE-0068) calls it alone to refresh a finished run from its stored model.
+    """
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "junit.xml").write_text(junit_xml(results), encoding="utf-8")
+    (run_dir / "report.html").write_text(
+        html_report(run_id, results, run_dir, definitions, sources, source_name, description),
+        encoding="utf-8",
+    )
+
+
 def write_report(
     run_dir: Path,
     run_id: str,
@@ -88,20 +121,16 @@ def write_report(
     source_name: str | None = None,
     description: str | None = None,
 ) -> Path:
-    """Write manifest.json, junit.xml, and report.html under run_dir; return the manifest path.
-
-    `definitions` (structured) and `sources` (raw YAML), aligned with `results`, feed
-    the report's merged Result tab and its Rich/YAML toggle.
-    """
+    """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir;
+    return the manifest path. `definitions` / `sources`, aligned with `results`, feed the report's
+    merged Result tab and its Rich/YAML toggle."""
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "manifest.json"
     manifest_path.write_text(
-        json.dumps(manifest_dict(run_id, results), ensure_ascii=False, indent=2),
+        json.dumps(
+            manifest_dict(run_id, results, source_name=source_name), ensure_ascii=False, indent=2
+        ),
         encoding="utf-8",
     )
-    (run_dir / "junit.xml").write_text(junit_xml(results), encoding="utf-8")
-    (run_dir / "report.html").write_text(
-        html_report(run_id, results, run_dir, definitions, sources, source_name, description),
-        encoding="utf-8",
-    )
+    write_html_and_junit(run_dir, run_id, results, definitions, sources, source_name, description)
     return manifest_path

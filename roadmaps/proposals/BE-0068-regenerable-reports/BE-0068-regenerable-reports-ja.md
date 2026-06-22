@@ -7,8 +7,8 @@
 |---|---|
 | 提案 | [BE-0068](BE-0068-regenerable-reports-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
+| 状態 | **可決・実装中** |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
 

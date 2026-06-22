@@ -22,9 +22,9 @@ from bajutsu.orchestrator import (
     scenario_slug,
 )
 from bajutsu.redaction import Redactor
-from bajutsu.report import write_report
+from bajutsu.report import scenario_render_inputs, write_report
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
-from bajutsu.scenario import Scenario, dump_scenario_file, dump_scenarios, scenario_dict
+from bajutsu.scenario import Scenario, dump_scenario_file
 
 
 def _write_network(
@@ -182,10 +182,9 @@ def run_and_report(
         progress=progress,
         baselines_dir=baselines_dir,
     )
-    # The merged Result tab renders each scenario as a structured view (definitions)
-    # with a toggle to the raw YAML (sources).
-    definitions = [scenario_dict(s) for s in scenarios]
-    sources = [dump_scenarios([s]) for s in scenarios]
+    # The merged Result tab renders each scenario as a structured view (definitions) with a toggle
+    # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match.
+    definitions, sources = scenario_render_inputs(scenarios)
     run_dir.mkdir(parents=True, exist_ok=True)
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
     (run_dir / "scenario.yaml").write_text(
