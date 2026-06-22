@@ -384,7 +384,10 @@ class ClaudeCodeActionProposer:
         binary: str = "claude",
         max_actions: int = 8,
     ) -> None:
-        self._model = model
+        # Default to MODEL (like ClaudeActionProposer), not the CLI's ambient default, so the crawl
+        # pins the same model on both backends. Bare MODEL, not resolve_model: the CLI runs on the
+        # subscription, where a Bedrock-form id would be invalid. Pass model="" to defer to the CLI.
+        self._model = MODEL if model is None else model
         self._runner = runner
         self._binary = binary
         self._max_actions = max_actions
