@@ -86,6 +86,7 @@ select = [
     "PIE",
     "PT",
     "RUF",
+    "S",
     "SIM",
     "T20",
     "UP",
@@ -96,17 +97,37 @@ ignore = [
     "N818",    # exception names like ElementNotFound are clear without Error suffix
     "PT018",   # compound assert (guard + check) is often more readable as-is
     "RUF001",  # fullwidth characters are intentional in Japanese strings
+    # S603 fires on every subprocess call; ours are argv lists (shell=False), and the dangerous
+    # shell=True form is still caught by S602. S101 (assert) documents internal invariants across
+    # the codebase, and bajutsu is never run under -O where asserts would be stripped.
+    "S101",
+    "S603",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"demos/**" = ["ANN", "T20"]
-"tests/**" = ["ANN", "T20"]
-"scripts/**" = ["T20"]  # CLI helper scripts print progress to stdout
+"demos/**" = ["ANN", "T20", "S"]
+"tests/**" = ["ANN", "T20", "S"]
+# Dev helper scripts print progress (T20) and invoke git/uv via PATH (S607).
+"scripts/**" = ["T20", "S607"]
+# `_Loader` subclasses SafeLoader (it only tweaks on/off/yes/no resolving), so its `yaml.load`
+# is safe. Ignore S506 at the file level rather than inline, so the line stays byte-identical to
+# main — where CodeQL already dismissed the same py/unsafe-deserialization finding as a false
+# positive (an inline change re-surfaces it as a new PR alert).
+"bajutsu/_yaml.py" = ["S506"]
+# backends.py installs the web extra via `uv`/`playwright` on PATH (S607); launch_server.py probes a
+# config-driven readiness URL (S310). Both are intentional; ignored at the file level so the lines
+# stay byte-identical to main (an inline noqa could re-surface a dismissed-on-main CodeQL finding).
+"bajutsu/backends.py" = ["S607"]
+"bajutsu/runner/launch_server.py" = ["S310"]
 
 [tool.pytest.ini_options]
 addopts = "-n auto"
 # Collect only the project's own suite; ignore local git worktrees under worktree/.
 testpaths = ["tests"]
+
+[tool.coverage.run]
+# Branch coverage too: an untested if/else path fails the floor even when every line ran.
+branch = true
 
 [tool.mypy]
 python_version = "3.13"

@@ -77,7 +77,12 @@ def _merge_rows(base: list[str], ours: list[str], theirs: list[str]) -> list[str
         # Present on only one side: keep it if that side *added* it (absent from base);
         # if it was in base, the other side deleted it, so drop it.
         elif rb is None:
-            out[rid] = ro if ro is not None else rt
+            # rid is in o|t but not base → whichever side has it added it (at least one of
+            # ro/rt is non-None here; spell it out so mypy can narrow to str).
+            if ro is not None:
+                out[rid] = ro
+            elif rt is not None:
+                out[rid] = rt
     return [out[rid] for rid in sorted(out)]
 
 
