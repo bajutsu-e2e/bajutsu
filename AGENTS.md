@@ -32,8 +32,9 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
   Each reply states that the comment is addressed *and* the grounds for it: the concrete change
   that resolves it (cite the commit or file/line), or, when you make no change, the specific reason
   it does not apply. A bare "done" or 👍 does not satisfy this. When you are unsure how a comment
-  should be handled, ask the human instead of guessing. Full guide:
-  [`docs/ai-development.md`](docs/ai-development.md#responding-to-ai-pr-reviews).
+  should be handled, ask the human instead of guessing. The same is expected of human contributors
+  (see [`CONTRIBUTING.md`](CONTRIBUTING.md)) — it is not an AI-only rule. Full guide:
+  [`docs/ai-development.md`](docs/ai-development.md#responding-to-pr-review-comments).
 - **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the idb
   backend's deps on demand; pass flags via `ARGS`.
 - **Write docs as plain technical prose.** State facts and reasons directly, in the register of
