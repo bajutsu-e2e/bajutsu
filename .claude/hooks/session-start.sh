@@ -10,14 +10,14 @@
 #      (`make check` = ruff + mypy + pytest) immediately, without first discovering
 #      and installing dependencies.
 #
-# Progress goes to stderr to keep the agent's context (stdout) clean.
+# This hook must never abort a session: every step is best-effort, and project-dir
+# discovery skips cleanly when it can't be determined. Progress goes to stderr to
+# keep the agent's context (stdout) clean.
 set -euo pipefail
-
-cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
 
 log() { echo "[session-start] $*" >&2; }
 
-# 1. Ensure the review plugin is installed (user scope; does not touch the repo).
+# 1. Ensure the review plugin is installed (user scope; needs no project dir).
 #    .claude/settings.json `enabledPlugins` only *enables* an already-installed plugin
 #    — it does not install a missing one (anthropics/claude-code#23737), and references
 #    to an uninstalled plugin are silently ignored (#32607), so a fresh clone needs this.
@@ -31,6 +31,17 @@ fi
 
 # 2. The Python toolchain bootstrap is web-specific; local sessions manage their venv.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
+  exit 0
+fi
+
+# Resolve the project dir non-fatally; skip the bootstrap if it can't be determined
+# or entered, rather than letting `set -e` abort the hook (and the session).
+project_dir="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$project_dir" ]; then
+  project_dir="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+fi
+if [ -z "$project_dir" ] || ! cd "$project_dir" 2>/dev/null; then
+  log "project dir unavailable — skipping Python bootstrap"
   exit 0
 fi
 
