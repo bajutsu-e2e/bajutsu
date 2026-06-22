@@ -337,6 +337,7 @@ itself** to the humans and agents working it.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0065](proposals/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) | Docstring standard & generated API reference | Proposal |
+| [BE-0069](proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Miscellaneous / on hold
