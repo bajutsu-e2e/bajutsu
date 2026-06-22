@@ -3,6 +3,8 @@
 # BE-0069 — Executable contributor guardrails (procedures as commands)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0069](BE-0069-executable-contributor-guardrails.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

@@ -3,6 +3,8 @@
 # BE-0039 — Self-healing limited to "propose + opt-in apply"
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0039](BE-0039-self-healing-propose-optin.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

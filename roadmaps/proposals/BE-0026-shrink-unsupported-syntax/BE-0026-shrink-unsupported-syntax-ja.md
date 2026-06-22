@@ -3,6 +3,8 @@
 # BE-0026 — 未対応構文の縮小
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0026](BE-0026-shrink-unsupported-syntax-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

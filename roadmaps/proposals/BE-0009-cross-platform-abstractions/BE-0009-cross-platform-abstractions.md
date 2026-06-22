@@ -3,6 +3,8 @@
 # BE-0009 — Cross-platform abstractions
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0009](BE-0009-cross-platform-abstractions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

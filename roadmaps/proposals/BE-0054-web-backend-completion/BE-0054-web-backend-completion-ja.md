@@ -3,6 +3,8 @@
 # BE-0054 — Web backend の完成（リッチな capability と並列実行）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0054](BE-0054-web-backend-completion-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **可決・実装中** |

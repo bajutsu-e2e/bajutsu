@@ -57,8 +57,9 @@ When you add a roadmap item:
 
 Each file follows the **Swift-Evolution proposal format**: a metadata block then `## Introduction`
 / `## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References` (fill
-what you can; mark unknowns `TBD`). The metadata is a fenced `| field | value |` block —
-`<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->` holding `Proposal`, `Author`, `Status`, `Track`,
+what you can; mark unknowns `TBD`). The metadata is a fenced `| Field | Value |` table —
+`<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening with a `| Field | Value |` header row
+(`| 項目 | 値 |` on the Japanese side) and holding `Proposal`, `Author`, `Status`, `Track`,
 `Topic` (plus `Implementing PR` once shipped and `Origin` last, when applicable); the Japanese
 mirror uses `提案`, `提案者`, `状態`, `トラック`, `トピック`. **Name the author by GitHub handle** —
 `| Author | [@handle](https://github.com/handle) |`, the account of whoever first authored the item

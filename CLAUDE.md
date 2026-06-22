@@ -123,7 +123,8 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   `make test` fails if the committed index drifts.
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
   Motivation / Detailed design / Alternatives considered / References), with the metadata as a
-  fenced `| field | value |` block — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->` holding
+  fenced `| Field | Value |` table — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening with
+  a `| Field | Value |` header row (`| 項目 | 値 |` on the Japanese side) and holding
   `Proposal` / `Author` / `Status` / `Track` / `Topic` (plus `Implementing PR` once shipped and
   `Origin` last, when applicable); the Japanese mirror uses `提案` / `提案者` / `状態` / `トラック`
   / `トピック`. The metadata block must name the author by GitHub handle — `| Author |

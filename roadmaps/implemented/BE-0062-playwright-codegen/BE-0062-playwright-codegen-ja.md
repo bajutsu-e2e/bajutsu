@@ -3,6 +3,8 @@
 # BE-0062 — Playwright codegen ターゲット
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0062](BE-0062-playwright-codegen-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

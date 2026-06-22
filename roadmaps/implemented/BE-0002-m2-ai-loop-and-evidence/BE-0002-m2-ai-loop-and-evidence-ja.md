@@ -3,6 +3,8 @@
 # BE-0002 — AI オーサリングループと証跡（M2）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0002](BE-0002-m2-ai-loop-and-evidence-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

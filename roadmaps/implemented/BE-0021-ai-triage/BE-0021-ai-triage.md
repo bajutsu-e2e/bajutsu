@@ -3,6 +3,8 @@
 # BE-0021 — AI triage (root-cause summary, fix suggestions)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0021](BE-0021-ai-triage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

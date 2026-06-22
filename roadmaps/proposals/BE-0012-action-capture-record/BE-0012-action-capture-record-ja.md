@@ -3,6 +3,8 @@
 # BE-0012 — 操作キャプチャ record
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0012](BE-0012-action-capture-record-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

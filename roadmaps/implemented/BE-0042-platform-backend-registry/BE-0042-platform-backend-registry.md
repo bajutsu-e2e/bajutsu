@@ -3,6 +3,8 @@
 # BE-0042 — Platform-aware backend registry & selection
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0042](BE-0042-platform-backend-registry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

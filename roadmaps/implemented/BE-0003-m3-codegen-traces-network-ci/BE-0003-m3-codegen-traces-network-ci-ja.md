@@ -3,6 +3,8 @@
 # BE-0003 — codegen・トレース・ネットワーク・CI（M3）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0003](BE-0003-m3-codegen-traces-network-ci-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

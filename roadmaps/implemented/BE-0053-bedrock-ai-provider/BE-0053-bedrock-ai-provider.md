@@ -3,6 +3,8 @@
 # BE-0053 — Amazon Bedrock as a pluggable AI provider
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0053](BE-0053-bedrock-ai-provider.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

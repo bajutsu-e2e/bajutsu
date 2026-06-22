@@ -3,6 +3,8 @@
 # BE-0046 — OTP & email side-channel steps
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0046](BE-0046-otp-email-steps.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

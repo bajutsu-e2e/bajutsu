@@ -3,6 +3,8 @@
 # BE-0005 — `idb_companion` バージョン監視
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0005](BE-0005-idb-companion-version-monitoring-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

@@ -3,6 +3,8 @@
 # BE-0015 — Public hosting of the web UI
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0015](BE-0015-web-ui-public-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

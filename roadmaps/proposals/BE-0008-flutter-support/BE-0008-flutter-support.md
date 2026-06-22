@@ -3,6 +3,8 @@
 # BE-0008 — Flutter support
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0008](BE-0008-flutter-support.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

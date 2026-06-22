@@ -3,6 +3,8 @@
 # BE-0011 — Local web UI (`bajutsu serve`)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0011](BE-0011-local-web-ui-serve.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

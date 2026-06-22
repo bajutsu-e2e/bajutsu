@@ -3,6 +3,8 @@
 # BE-0048 — Behavioral / protocol assertions
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0048](BE-0048-behavioral-protocol-assertions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

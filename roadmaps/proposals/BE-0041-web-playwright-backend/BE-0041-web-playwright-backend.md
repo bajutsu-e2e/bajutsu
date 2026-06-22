@@ -3,6 +3,8 @@
 # BE-0041 — Web (Playwright) backend
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0041](BE-0041-web-playwright-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Accepted, in progress** |

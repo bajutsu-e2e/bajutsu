@@ -3,6 +3,8 @@
 # BE-0032 — シークレット変数
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0032](BE-0032-secret-variables-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

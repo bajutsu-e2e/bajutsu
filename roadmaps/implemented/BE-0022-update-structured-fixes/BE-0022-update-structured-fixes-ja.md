@@ -3,6 +3,8 @@
 # BE-0022 — `update`（最小差分提案＝構造化 fix の適用）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0022](BE-0022-update-structured-fixes-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

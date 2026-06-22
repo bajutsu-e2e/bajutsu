@@ -3,6 +3,8 @@
 # BE-0024 — doctor / onboarding
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0024](BE-0024-doctor-onboarding.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

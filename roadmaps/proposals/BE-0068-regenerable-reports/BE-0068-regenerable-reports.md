@@ -3,6 +3,8 @@
 # BE-0068 — Regenerable reports (render from stored run data)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0068](BE-0068-regenerable-reports.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

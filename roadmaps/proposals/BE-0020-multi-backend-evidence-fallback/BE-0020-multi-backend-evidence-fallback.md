@@ -3,6 +3,8 @@
 # BE-0020 — Multi-backend evidence fallback
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0020](BE-0020-multi-backend-evidence-fallback.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

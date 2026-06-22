@@ -3,6 +3,8 @@
 # BE-0048 — 振る舞い／プロトコルアサーション
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0048](BE-0048-behavioral-protocol-assertions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

@@ -3,6 +3,8 @@
 # BE-0037 — WebView / ハイブリッド対応
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0037](BE-0037-webview-hybrid-support-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

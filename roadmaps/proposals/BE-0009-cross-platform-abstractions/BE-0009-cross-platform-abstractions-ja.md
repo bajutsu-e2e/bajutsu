@@ -3,6 +3,8 @@
 # BE-0009 — 抽象のクロスプラットフォーム化
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0009](BE-0009-cross-platform-abstractions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

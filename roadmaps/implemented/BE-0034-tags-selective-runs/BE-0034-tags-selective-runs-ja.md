@@ -3,6 +3,8 @@
 # BE-0034 — タグ / ラベル + 選択実行
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0034](BE-0034-tags-selective-runs-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

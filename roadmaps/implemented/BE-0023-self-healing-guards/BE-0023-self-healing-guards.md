@@ -3,6 +3,8 @@
 # BE-0023 — Guards against "making tests laxer"
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0023](BE-0023-self-healing-guards.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

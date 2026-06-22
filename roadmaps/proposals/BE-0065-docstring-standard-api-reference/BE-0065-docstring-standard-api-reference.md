@@ -3,6 +3,8 @@
 # BE-0065 — Docstring standard & generated API reference
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0065](BE-0065-docstring-standard-api-reference.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

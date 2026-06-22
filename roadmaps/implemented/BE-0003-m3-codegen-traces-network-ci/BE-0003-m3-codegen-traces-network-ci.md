@@ -3,6 +3,8 @@
 # BE-0003 — codegen, traces, network & CI (M3)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0003](BE-0003-m3-codegen-traces-network-ci.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

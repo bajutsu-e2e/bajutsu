@@ -3,6 +3,8 @@
 # BE-0018 — Return evidence as MCP resources
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0018](BE-0018-evidence-as-mcp-resources.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

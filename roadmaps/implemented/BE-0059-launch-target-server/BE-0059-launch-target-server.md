@@ -3,6 +3,8 @@
 # BE-0059 — Bring up the target server for a run (`launchServer`)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0059](BE-0059-launch-target-server.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

@@ -3,6 +3,8 @@
 # BE-0021 — AI triage（原因要約・修正提案）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0021](BE-0021-ai-triage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

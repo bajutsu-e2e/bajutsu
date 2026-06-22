@@ -26,6 +26,13 @@ ORDER_JA = ["提案", "提案者", "状態", "実装 PR", "トラック", "ト�
 REQUIRED_EN = {"Proposal", "Author", "Status", "Track", "Topic"}
 REQUIRED_JA = {"提案", "提案者", "状態", "トラック", "トピック"}
 
+# The block opens with a ``| Field | Value |`` header (``| 項目 | 値 |`` in Japanese) and its
+# delimiter, so it renders as a real table; both are skipped when reading fields.
+HEADER_EN = "| Field | Value |"
+HEADER_JA = "| 項目 | 値 |"
+HEADER_KEYS = {"Field", "項目"}
+DELIMITER = "|---|---|"
+
 # Status: a fixed set, paired across languages.
 STATUS_PAIR = {
     "Implemented": "実装済み",
@@ -92,8 +99,23 @@ def _check_file(be_id: str, slug: str, text: str, *, lang: str) -> tuple[list[st
             "metadata block must be fenced by <!-- BE-METADATA --> … <!-- /BE-METADATA -->"
         )
     else:
-        fields = [key.strip() for key, _ in META_ROW_RE.findall(block.group(1))]
-        values = {key.strip(): value.strip() for key, value in META_ROW_RE.findall(block.group(1))}
+        expected_header = HEADER_JA if lang == "ja" else HEADER_EN
+        block_lines = [line for line in block.group(1).splitlines() if line.strip()]
+        if block_lines[:2] != [expected_header, DELIMITER]:
+            problems.append(
+                f"metadata block must open with the header {expected_header!r} and its "
+                f"{DELIMITER!r} delimiter"
+            )
+        fields = [
+            key.strip()
+            for key, _ in META_ROW_RE.findall(block.group(1))
+            if key.strip() not in HEADER_KEYS
+        ]
+        values = {
+            key.strip(): value.strip()
+            for key, value in META_ROW_RE.findall(block.group(1))
+            if key.strip() not in HEADER_KEYS
+        }
         unknown = [f for f in fields if f not in order]
         if unknown:
             problems.append(f"unknown metadata field(s): {', '.join(unknown)}")

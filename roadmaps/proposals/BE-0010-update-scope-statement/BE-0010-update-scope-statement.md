@@ -3,6 +3,8 @@
 # BE-0010 — Update the scope statement
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0010](BE-0010-update-scope-statement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |

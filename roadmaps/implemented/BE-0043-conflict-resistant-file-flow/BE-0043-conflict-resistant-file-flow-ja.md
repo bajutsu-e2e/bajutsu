@@ -3,6 +3,8 @@
 # BE-0043 — コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0043](BE-0043-conflict-resistant-file-flow-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |

@@ -3,6 +3,8 @@
 # BE-0046 — OTP・メールの側方チャネルステップ
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0046](BE-0046-otp-email-steps-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

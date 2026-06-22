@@ -3,6 +3,8 @@
 # BE-0044 — シナリオの来歴（`from:` — ステップ ↔ 自然言語の対応）
 
 <!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
 | 提案 | [BE-0044](BE-0044-scenario-provenance-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |

@@ -3,6 +3,8 @@
 # BE-0035 — Device-control steps (background, status-bar override)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0035](BE-0035-device-control-primitives.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |

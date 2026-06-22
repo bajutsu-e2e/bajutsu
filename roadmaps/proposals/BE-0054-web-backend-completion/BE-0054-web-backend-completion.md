@@ -3,6 +3,8 @@
 # BE-0054 — Web backend completion (rich capabilities & parallel runs)
 
 <!-- BE-METADATA -->
+| Field | Value |
+|---|---|
 | Proposal | [BE-0054](BE-0054-web-backend-completion.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Accepted, in progress** |
