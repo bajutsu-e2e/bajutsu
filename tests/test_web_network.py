@@ -141,6 +141,34 @@ def test_mock_lets_an_unmatched_request_continue() -> None:
     assert collector.snapshot() == []  # a continued request isn't recorded until it finishes
 
 
+def test_mock_ignores_status_in_the_matcher_like_ios() -> None:
+    # `status` does not apply to mock matching (parity with iOS BajutsuKit): a mock that pins a
+    # response `status` still matches on its request-side path, rather than never matching because
+    # the outgoing request has no status yet.
+    page = _FakePage()
+    mock = Mock(
+        match=RequestMatch(path="/login", status=200),
+        respond=MockResponse(status=201),
+    )
+    WebNetworkCollector(page, mocks=[mock])
+    route = _FakeRoute(_FakeRequest("GET", "https://api.test/login"))
+    page.route_request(route)
+    assert route.fulfilled is not None and route.fulfilled["status"] == 201
+
+
+def test_mock_honors_delay_ms_before_fulfilling() -> None:
+    # delayMs is an author-requested latency injection (implemented on iOS); web honors it too.
+    # The sleep is injected so the test asserts the delay without actually waiting.
+    sleeps: list[float] = []
+    page = _FakePage()
+    mock = Mock(match=RequestMatch(path="/slow"), respond=MockResponse(delay_ms=50.0))
+    WebNetworkCollector(page, mocks=[mock], sleep=sleeps.append)
+    route = _FakeRoute(_FakeRequest("GET", "https://api.test/slow"))
+    page.route_request(route)
+    assert route.fulfilled is not None
+    assert sleeps == [0.05]  # 50 ms, not a synchronization wait
+
+
 def test_request_assertion_passes_over_web_collected_exchanges() -> None:
     # The deterministic `request` assertion runs unchanged over the web collector's snapshot.
     page = _FakePage()

@@ -13,6 +13,7 @@ from bajutsu import env
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.network import NetworkExchange
 from bajutsu.runner import (
     device_pool,
     device_relauncher,
@@ -252,10 +253,10 @@ class _StubCollector:
     def __init__(self) -> None:
         self.stopped = False
 
-    def snapshot(self) -> list[base.Element]:
+    def snapshot(self) -> list[NetworkExchange]:
         return []
 
-    def snapshot_timed(self) -> list[tuple[object, float]]:
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
         return []
 
     def clear(self) -> None:

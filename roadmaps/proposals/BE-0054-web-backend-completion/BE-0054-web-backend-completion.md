@@ -5,6 +5,7 @@
 * Proposal: [BE-0054](BE-0054-web-backend-completion.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Accepted, in progress**
+* Implementing PR: [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187) (native network slice)
 * Track: [Accepted](../../README.md#accepted)
 * Topic: Platform expansion (landed slices)
 

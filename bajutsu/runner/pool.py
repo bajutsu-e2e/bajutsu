@@ -6,7 +6,7 @@ from __future__ import annotations
 import queue
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from bajutsu import env
 from bajutsu.backends import default_available, select_actuator
@@ -18,9 +18,6 @@ from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.runner.launch import _await_ready, launch_driver
 from bajutsu.runner.types import Lease, LeaseFn, RelaunchFactory
 from bajutsu.scenario import Relaunch, Scenario
-
-if TYPE_CHECKING:
-    from bajutsu.drivers.playwright import PlaywrightDriver
 
 
 def device_pool(
@@ -100,10 +97,12 @@ def device_pool(
         relaunch: RelaunchFn
         control: DeviceControl | None
         if is_web:
+            from bajutsu.drivers.playwright import PlaywrightDriver
+
             # The web collector hooks the live page (and fulfills this scenario's mocks); a fresh
             # context per lease scopes its traffic, mirroring iOS's per-scenario collector clear.
             web_collector = (
-                cast("PlaywrightDriver", driver).network_collector(scenario.mocks)
+                cast(PlaywrightDriver, driver).network_collector(scenario.mocks)
                 if network
                 else None
             )

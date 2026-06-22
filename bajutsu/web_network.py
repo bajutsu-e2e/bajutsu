@@ -23,6 +23,7 @@ from bajutsu.assertions import match_request
 from bajutsu.network import NetworkExchange
 
 if TYPE_CHECKING:
+    from bajutsu.scenario.models.assertions import RequestMatch
     from bajutsu.scenario.models.mocks import Mock
 
 
@@ -36,10 +37,15 @@ class WebNetworkCollector:
     """
 
     def __init__(
-        self, page: Any, mocks: list[Mock] | None = None, now: Callable[[], float] = time.monotonic
+        self,
+        page: Any,
+        mocks: list[Mock] | None = None,
+        now: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._items: list[tuple[NetworkExchange, float]] = []
         self._now = now
+        self._sleep = sleep
         self._mocks = mocks or []
         # Requests fulfilled from a mock, by identity, so `requestfinished` records them as mocked.
         self._mocked: set[int] = set()
@@ -79,12 +85,14 @@ class WebNetworkCollector:
 
     def _on_route(self, route: Any) -> None:
         request = route.request
-        # A mock matches the request exactly as a `request` assertion would (request-side only:
-        # a `mocked` exchange gets its response from the mock once it finishes, below).
         probe = NetworkExchange(**_request_fields(request))
         for mock in self._mocks:
-            if match_request(probe, mock.match):
+            if _mock_matches(probe, mock.match):
                 self._mocked.add(id(request))
+                if mock.respond.delay_ms:
+                    # An author-requested latency injection (part of the mock DSL, like iOS), not a
+                    # synchronization wait — so this fixed sleep does not violate determinism-first.
+                    self._sleep(mock.respond.delay_ms / 1000.0)
                 route.fulfill(
                     status=mock.respond.status,
                     headers=mock.respond.headers,
@@ -92,6 +100,28 @@ class WebNetworkCollector:
                 )
                 return
         route.continue_()
+
+
+def _mock_matches(probe: NetworkExchange, match: RequestMatch) -> bool:
+    """Whether an outgoing request matches a mock, on its **request-side** fields only.
+
+    `status` / `count` don't apply to mock matching (the iOS BajutsuKit matcher ignores them), so
+    they are stripped first — otherwise a mock with `status` set would never match here (the probe
+    has no status yet) and behave differently than on iOS. A matcher left with no request-side
+    criterion would match every request, so it is treated as no-match instead."""
+    request_side = match.model_copy(update={"status": None, "count": None})
+    if not any(
+        (
+            request_side.method,
+            request_side.url,
+            request_side.url_matches,
+            request_side.path,
+            request_side.path_matches,
+            request_side.body_matches,
+        )
+    ):
+        return False
+    return match_request(probe, request_side)
 
 
 def _request_fields(request: Any) -> dict[str, Any]:
