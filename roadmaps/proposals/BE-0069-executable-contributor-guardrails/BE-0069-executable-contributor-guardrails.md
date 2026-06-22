@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-executable-contributor-guardrails-ja.md)
+**English** · [日本語](BE-0069-executable-contributor-guardrails-ja.md)
 
-# BE-XXXX — Executable contributor guardrails (procedures as commands)
+# BE-0069 — Executable contributor guardrails (procedures as commands)
 
-* Proposal: [BE-XXXX](BE-XXXX-executable-contributor-guardrails.md)
+* Proposal: [BE-0069](BE-0069-executable-contributor-guardrails.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
@@ -37,7 +37,7 @@ Bajutsu's guardrails already split into two kinds, by whether a human can run th
   *is* the guardrail; it cannot be forgotten or half-remembered.
 - **Prose only** — a multi-step recipe written for a reader to follow by hand:
   - **Scaffolding a new roadmap item** — create the directory and *both* bilingual files in the
-    exact Swift-Evolution format, with a complete metadata block, the `BE-XXXX` placeholder, and the
+    exact Swift-Evolution format, with a complete metadata block, the `BE-0069` placeholder, and the
     author's GitHub handle. The `ideation` skill spends most of its text teaching this, and it is the
     single most error-prone, highest-ceremony procedure in the repo — yet it has no command.
   - **Worktree + branch setup** — the `git fetch origin && git worktree add … -b … origin/main &&
@@ -84,12 +84,12 @@ Four mechanisms, in order of leverage.
 `make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal]` →
 `scripts/new_roadmap_item.py`:
 
-- Creates `roadmaps/proposals/BE-XXXX-<slug>/` with both `BE-XXXX-<slug>.md` and
-  `BE-XXXX-<slug>-ja.md`, pre-filled from a template: the bilingual header link, the metadata block
+- Creates `roadmaps/proposals/BE-0069-<slug>/` with both `BE-0069-<slug>.md` and
+  `BE-0069-<slug>-ja.md`, pre-filled from a template: the bilingual header link, the metadata block
   (`Proposal` / `Author` / `Status` / `Track` / `Topic`), and the five Swift-Evolution sections
   (`Introduction` / `Motivation` / `Detailed design` / `Alternatives considered` / `References`)
   seeded with `TBD`.
-- **Always emits the literal `BE-XXXX` placeholder** — never a number. IDs are permanent and
+- **Always emits the literal `BE-0069` placeholder** — never a number. IDs are permanent and
   monotonic, and allocation is CI's atomic job
   ([BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md));
   a scaffolder that guessed a number would reintroduce the race the placeholder exists to avoid.
@@ -98,7 +98,7 @@ Four mechanisms, in order of leverage.
   real section. (A `Topic` matching no section makes the index builder *crash* after CI numbers the
   item — not merely drift — a sharp edge worth catching at creation.) Defaults: `Status=Proposal`,
   `Track=Proposals`, author resolved from `git config` (overridable via `HANDLE=`).
-- **Does not add a manual index row.** The generator skips `BE-XXXX` items, so the committed index
+- **Does not add a manual index row.** The generator skips `BE-0069` items, so the committed index
   stays row-free for the placeholder and `make check` is green locally; the `roadmap-id` workflow
   regenerates the index once it numbers the item. (This is a known trap — the scaffolder encodes the
   correct flow so an author never hits it.)
@@ -113,14 +113,14 @@ authoring from scratch.
 checks the well-formedness rules now scattered across prose and reviewer judgement:
 
 - the bilingual pair exists (both files present);
-- the slug matches the directory name, and the in-file `BE-XXXX`/`BE-NNNN` token matches the
+- the slug matches the directory name, and the in-file `BE-0069`/`BE-NNNN` token matches the
   directory;
 - the metadata block is complete (`Proposal`, `Author`, `Status`, `Track`, `Topic` all present);
 - `Author` is a GitHub-handle link (`[@handle](https://github.com/handle)`);
 - `Status` is one of the known values and consistent with the subdirectory (`Implemented` ⇒
   `implemented/`, otherwise `proposals/`);
 - every cross-referenced `BE-NNNN` resolves to an item that exists;
-- a `BE-XXXX` item does not cross-reference *another* `BE-XXXX` item (the allocator's per-item
+- a `BE-0069` item does not cross-reference *another* `BE-0069` item (the allocator's per-item
   rewrite cannot fix that — already a documented limitation).
 
 Today only index drift and `Status`↔directory consistency are tested
@@ -150,7 +150,7 @@ commands:
 The conventions that are prose-only and reviewer-enforced today, made checkable — strictly the
 **mechanical** ones, never judgement calls:
 
-- a roadmap-touching change carries the `[BE-NNNN]` (or `[BE-XXXX]`) prefix on its PR title;
+- a roadmap-touching change carries the `[BE-NNNN]` (or `[BE-0069]`) prefix on its PR title;
 - commit messages are scoped (`feat(scope): …` / `fix(scope): …` / `docs: …`);
 - a reminder when a behavior change carries no test delta.
 
@@ -193,7 +193,7 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
 - **Make the scaffolder allocate a real BE number.** Rejected: it violates the placeholder rule — IDs
   are permanent and monotonic, and allocation is CI's atomic, race-free job
   ([BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)).
-  The scaffolder must emit `BE-XXXX`.
+  The scaffolder must emit `BE-0069`.
 - **Make `preflight` a second hard gate (a pre-commit hook running `make check`).** Rejected: the
   pre-push hook already gates `make check`; a per-commit gate slows the inner loop for no added
   safety. `preflight` is advisory and human-initiated by design.
@@ -216,7 +216,7 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
 - [BE-0067 — Code-quality gate hardening](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
   — CI mirrors `make check` by construction (single source of truth); `scripts/` under `mypy`.
 - [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
-  — why the scaffolder must emit `BE-XXXX`, not a number.
+  — why the scaffolder must emit `BE-0069`, not a number.
 - [`docs/ai-development.md`](../../../docs/ai-development.md) — the worktree / preflight / BE-ID
   recipes C and A convert.
 - [`Makefile`](../../../Makefile), [`scripts/`](../../../scripts/) — where the targets and scripts
