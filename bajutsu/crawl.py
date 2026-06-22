@@ -550,7 +550,7 @@ def crawl(
         0  # workers holding a popped action (mid step) — the crawl is done at 0 with no frontier
     )
     stopped = False  # a budget was hit; no worker takes more work
-    failure: list[BaseException] = []  # the first unexpected worker error, re-raised after join
+    failure: list[Exception] = []  # the first unexpected worker error, re-raised after join
 
     def _observe(d: base.Driver) -> tuple[list[base.Element], list[str]]:
         # Per-worker so concurrent observations don't clobber each other: settle, dismiss anything
@@ -612,28 +612,38 @@ def crawl(
             start_fp = fingerprint(landed)
             path_to[start_fp.value] = list(seed_path)
             if start_fp.value not in screen_map.nodes:
-                _store_node(d, start_fp, landed, GuideContext(tuple(dismissed)))
+                # Single-threaded here (workers not yet started), so publishing without the lock is
+                # safe; we claim ownership but the resume sets `pending` to its own ops below.
+                node, actions = _discover(d, start_fp, landed, GuideContext(tuple(dismissed)))
+                _publish(start_fp, node, actions)
             pending[start_fp.value] = list(seed_ops or [])  # explore the resumed branch's op(s)
         else:
             start_fp = fingerprint(start)
             path_to[start_fp.value] = []
-            pending[start_fp.value] = _store_node(
-                d, start_fp, start, GuideContext(tuple(dismissed))
-            )
+            node, actions = _discover(d, start_fp, start, GuideContext(tuple(dismissed)))
+            pending[start_fp.value] = _publish(start_fp, node, actions)
         _emit()
         return start_fp.value
 
-    def _store_node(
+    def _discover(
         d: base.Driver, fp: Fingerprint, elements: list[base.Element], context: GuideContext
-    ) -> list[Action]:
-        # The driver is on this screen: ask the guide what to try (the slow AI step), record the
-        # node, screenshot it, and claim its operations. Bootstrap calls this single-threaded; a
-        # worker runs the guide off-lock (see below) and then stores under the lock.
+    ) -> tuple[Node, list[Action]]:
+        # The driver is on this screen: ask the guide what to try (the slow AI step), build the
+        # node, and screenshot it. None of this touches shared coordinator state, so a worker runs
+        # it off-lock — that is what lets the guide's AI round-trips overlap across simulators. The
+        # caller then publishes the result under the lock (see `_publish`).
         actions = guide(d, elements, context)
         node = _node_of(fp, elements, actions)
-        screen_map.nodes[fp.value] = node
         if on_node is not None:
             on_node(d, node)
+        return node, actions
+
+    def _publish(fp: Fingerprint, node: Node, actions: list[Action]) -> list[Action]:
+        # Holding the lock: register the node and claim its operations. Every mutation of shared
+        # state — `screen_map.nodes`, `screen_map.pruned` (via `_claim`), and the `claimed` table —
+        # happens here, so the coordinator lock serializes it against other workers and `on_event`
+        # readers. Returns the screen's frontier (its actions not already claimed elsewhere).
+        screen_map.nodes[fp.value] = node
         return _claim(fp.value, actions)
 
     def _worker(d: base.Driver, rst: Reset, current_fp: str | None) -> None:
@@ -749,10 +759,11 @@ def crawl(
             if not is_new:
                 continue
             # Discover the new screen: run the guide on THIS worker's driver, off-lock, so AI calls
-            # on different simulators overlap. Then publish the node + frontier under the lock.
-            ops = _store_node(d, dst_fp, landed, reached)
+            # on different simulators overlap. Then publish the node + frontier under the lock, so
+            # every shared-state mutation stays serialized by the coordinator.
+            node, actions = _discover(d, dst_fp, landed, reached)
             with cond:
-                pending[dst_fp.value] = ops
+                pending[dst_fp.value] = _publish(dst_fp, node, actions)
                 discovering.discard(dst_fp.value)
                 active -= 1
                 _emit()
@@ -763,7 +774,7 @@ def crawl(
         # while device-error isolation is handled inside `_worker`.
         try:
             _worker(d, rst, current_fp)
-        except BaseException as exc:  # re-raised on the main thread after join
+        except Exception as exc:  # re-raised on the main thread after join
             with cond:
                 failure.append(exc)
                 _finish(screen_map.stop_reason or "completed")
