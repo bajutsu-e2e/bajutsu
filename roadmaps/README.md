@@ -300,6 +300,7 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 | ID | Item | Status |
 |---|---|---|
 | [BE-0063](proposals/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Proposal |
+| [BE-0073](proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### Integration & automation (MCP)
