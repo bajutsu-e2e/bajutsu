@@ -164,10 +164,16 @@ class _FakeRequest:
         return self._nav
 
 
+class _FakeFrame:
+    def __init__(self, parent: object | None = None) -> None:
+        self.parent_frame = parent
+
+
 class _FakeResponse:
-    def __init__(self, status: int, nav: bool = True) -> None:
+    def __init__(self, status: int, nav: bool = True, frame: _FakeFrame | None = None) -> None:
         self.status = status
         self.request = _FakeRequest(nav)
+        self.frame = frame
 
 
 def _driver(records: list[dict[str, Any]]) -> tuple[PlaywrightDriver, _FakePage]:
@@ -290,6 +296,16 @@ def test_nav_status_tracks_main_frame_navigations_only() -> None:
     assert drv.last_nav_status() == 500
     page.fire("response", _FakeResponse(200, nav=False))  # a subresource — ignored
     assert drv.last_nav_status() == 500
+
+
+def test_nav_status_ignores_subframe_navigations() -> None:
+    # An iframe 404 is a sub-frame navigation, not the top-level document — it must not be read
+    # as the app crashing. A main-frame navigation (parent_frame is None) is still recorded.
+    drv, page = _driver([])
+    page.fire("response", _FakeResponse(404, nav=True, frame=_FakeFrame(parent=object())))
+    assert drv.last_nav_status() is None  # iframe navigation ignored
+    page.fire("response", _FakeResponse(200, nav=True, frame=_FakeFrame(parent=None)))
+    assert drv.last_nav_status() == 200  # main-frame navigation recorded
 
 
 def test_dialog_is_auto_dismissed_and_recorded() -> None:

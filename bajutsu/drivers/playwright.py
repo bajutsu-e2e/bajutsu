@@ -209,9 +209,15 @@ class PlaywrightDriver:
 
     def _on_response(self, response: Any) -> None:
         # Only the top-level (main-frame) navigation's status signals a "navigated to an error";
-        # subresource responses (images, XHR) are noise for crash detection.
-        if response.request.is_navigation_request():
-            self._last_nav_status = int(response.status)
+        # subresource responses (images, XHR) and sub-frame (iframe) navigations are noise — an
+        # iframe 404 must not be read as the app crashing. Gate to the main frame when Playwright
+        # exposes frame info; a minimal injected fake without it keeps the navigation-request check.
+        if not response.request.is_navigation_request():
+            return
+        frame = getattr(response, "frame", None)
+        if frame is not None and getattr(frame, "parent_frame", None) is not None:
+            return  # a sub-frame navigation, not the top-level document
+        self._last_nav_status = int(response.status)
 
     def _on_dialog(self, dialog: Any) -> None:
         self._dialogs.append(str(dialog.message))

@@ -15,7 +15,7 @@ import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import typer
 
@@ -31,9 +31,6 @@ from bajutsu.record import _clear_blocking
 from bajutsu.runner import _await_ready, launch_driver
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions
-
-if TYPE_CHECKING:
-    from bajutsu.drivers.playwright import PlaywrightDriver
 
 
 def _ai_credential_gap(agent: str) -> str | None:
@@ -242,9 +239,9 @@ def crawl(
     is_alive: crawl_engine.AliveCheck | None = None
     clear_blocking: crawl_engine.ClearBlocking | None = None
     if actuator == "playwright":
-        from bajutsu.drivers.playwright import web_is_alive
+        from bajutsu.drivers.playwright import PlaywrightDriver, web_is_alive
 
-        web = cast("PlaywrightDriver", driver)
+        web = cast(PlaywrightDriver, driver)
 
         def is_alive(_d: base.Driver, elements: list[base.Element]) -> bool:
             return web_is_alive(web, elements)

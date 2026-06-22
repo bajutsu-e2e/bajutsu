@@ -151,7 +151,7 @@ bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>]
 ## `crawl`
 
 アプリを**幅優先**で探索し、到達できる画面と画面間の遷移の**画面マップ**を書き出します
-（Tier 1・[BE-0038](roadmap/README-ja.md)）。`record` は *目的指向* で、1 つの自然言語ゴールに
+（Tier 1・[BE-0038](../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）。`record` は *目的指向* で、1 つの自然言語ゴールに
 向かって AI が探索し、1 本のシナリオを書き出します。これに対し `crawl` は *体系的な発見* です。
 到達できる画面を巡り、見つけたものを報告します。探索エンジンは**決定的**で（画面の識別子と候補
 アクションを試す順序は、どちらも要素ツリーの純粋な関数です）、**AI は関与せず**、**合否ゲートには
@@ -239,7 +239,7 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 なので、`bajutsu crawl --app <web-app> --backend web` は同じ `screenmap.json`・スクリーンショット・クラッシュ
 一覧を出力します。web アプリは `bundleId` ではなく `baseUrl` で指定し、ブラウザは Mac もエミュレータも要らない
 ので、web クロールは Linux の `make check` / CI ゲート内で走ります。iOS と違う点は次の 3 つで、いずれも決定的
-です（[BE-0066](roadmap/README-ja.md)）。
+です（[BE-0066](../../roadmaps/implemented/BE-0066-web-crawl/BE-0066-web-crawl-ja.md)）。
 
 - **クリーンな起点 = 再ナビゲート。** 再起動するアプリプロセスはありません。クリーンな状態に戻すのは、新しい
   ブラウザコンテキストに対する `page.goto(baseUrl)`（`erase` 相当で、ほぼ無償）です。`run` が使うのと同じ
