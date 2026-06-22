@@ -4,8 +4,8 @@
 
 * Proposal: [BE-0049](BE-0049-determinism-flakiness-audit.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
+* Status: **Accepted, in progress**
+* Track: [Accepted](../../README.md#accepted)
 * Topic: Candidates from competitive research (Maestro)
 * Origin: Maestro
 

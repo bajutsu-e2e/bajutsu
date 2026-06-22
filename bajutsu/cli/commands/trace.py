@@ -7,13 +7,7 @@ from pathlib import Path
 import typer
 
 from bajutsu import trace as _trace
-from bajutsu.scenario import (
-    expand_components,
-    expand_data,
-    load_component,
-    load_scenario_file,
-    read_csv,
-)
+from bajutsu.cli._shared import load_expanded_scenarios
 
 
 def trace(
@@ -47,15 +41,8 @@ def _explain(scenario_path: str) -> None:
     if not scenario_path or not path.is_file():
         typer.echo("--explain needs a scenario file path")
         raise typer.Exit(2)
-    base = path.parent
     try:
-        scenarios = load_scenario_file(path.read_text(encoding="utf-8")).scenarios
-        expand_components(
-            scenarios, lambda ref: load_component((base / ref).read_text(encoding="utf-8"))
-        )
-        scenarios = expand_data(
-            scenarios, lambda ref: read_csv((base / ref).read_text(encoding="utf-8"))
-        )
+        scenarios = load_expanded_scenarios(path)
     except (OSError, ValueError) as e:
         typer.echo(f"failed to load scenario: {e}")
         raise typer.Exit(2) from None

@@ -11,8 +11,28 @@ from pathlib import Path
 import typer
 
 from bajutsu.config import Effective, load_config, resolve
+from bajutsu.scenario import (
+    Scenario,
+    expand_components,
+    expand_data,
+    load_component,
+    load_scenario_file,
+    read_csv,
+)
 
 DEFAULT_CONFIG = "bajutsu.config.yaml"
+
+
+def load_expanded_scenarios(path: Path) -> list[Scenario]:
+    """Load a scenario file and expand its components + data rows (resolved relative to the file),
+    device-free. Raises OSError / ValueError on a bad file for the caller to surface — the shared
+    read-only loader behind `trace --explain` and `audit` (setup-prefixing `run` keeps its own)."""
+    base = path.parent
+    scenarios = load_scenario_file(path.read_text(encoding="utf-8")).scenarios
+    expand_components(
+        scenarios, lambda ref: load_component((base / ref).read_text(encoding="utf-8"))
+    )
+    return expand_data(scenarios, lambda ref: read_csv((base / ref).read_text(encoding="utf-8")))
 
 
 def _load_effective(config: str, app_name: str) -> Effective:
