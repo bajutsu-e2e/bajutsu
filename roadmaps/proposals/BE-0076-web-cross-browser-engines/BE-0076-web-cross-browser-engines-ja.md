@@ -1,8 +1,8 @@
-[English](BE-XXXX-web-cross-browser-engines.md) · **日本語**
+[English](BE-0076-web-cross-browser-engines.md) · **日本語**
 
-# BE-XXXX — ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend）
+# BE-0076 — ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend）
 
-* 提案: [BE-XXXX](BE-XXXX-web-cross-browser-engines-ja.md)
+* 提案: [BE-0076](BE-0076-web-cross-browser-engines-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)

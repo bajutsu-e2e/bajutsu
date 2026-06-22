@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-web-cross-browser-engines-ja.md)
+**English** · [日本語](BE-0076-web-cross-browser-engines-ja.md)
 
-# BE-XXXX — Selectable browser engines & cross-browser compatibility matrix (web backend)
+# BE-0076 — Selectable browser engines & cross-browser compatibility matrix (web backend)
 
-* Proposal: [BE-XXXX](BE-XXXX-web-cross-browser-engines.md)
+* Proposal: [BE-0076](BE-0076-web-cross-browser-engines.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
