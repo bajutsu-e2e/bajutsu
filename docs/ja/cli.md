@@ -72,6 +72,18 @@ bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
   `idb_companion`）と**起動済みシミュレータ**を ✓/✗ チェックリストで表示します。不足があれば**終了 1**（直し方ヒント付きで即失敗）。
 - 次に actuator で `query()` し、`score(elements, idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
 
+## `audit`
+
+シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)・[BE-0049](../../roadmaps/proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
+
+```bash
+bajutsu audit <scenario.yaml> [--json]
+```
+
+- 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）を指摘します。
+- シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
+- **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**（常に**終了 0**）。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
+
 ## `trace`
 
 完了した run を**テキストタイムライン**で検査します。シナリオごとに、ステップと観測した通信を

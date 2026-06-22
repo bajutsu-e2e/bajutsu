@@ -140,6 +140,16 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0039](implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
 <!-- /GENERATED:accepted-competitive -->
 
+### Candidates from competitive research (Maestro)
+
+Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-tolerance into concrete, machine-checkable features. The determinism audit (static stability score) is the first landed slice.
+
+<!-- GENERATED:accepted-competitive-maestro -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | In progress | Maestro |
+<!-- /GENERATED:accepted-competitive-maestro -->
+
 ### Integration & automation (MCP)
 
 <!-- GENERATED:accepted-mcp -->
@@ -374,7 +384,6 @@ into concrete features that a UI-layer, no-instrumentation competitor cannot eas
 |---|---|---|---|
 | [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Proposal | Maestro |
 | [BE-0048](proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Proposal | Maestro |
-| [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Proposal | Maestro |
 | [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Proposal | Maestro |
 <!-- /GENERATED:proposals-competitive-maestro -->
 
