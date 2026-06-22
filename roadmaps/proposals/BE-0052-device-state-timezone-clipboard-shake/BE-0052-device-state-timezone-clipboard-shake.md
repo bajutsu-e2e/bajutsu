@@ -91,7 +91,7 @@ Prime directives preserved:
 The first slice ships **`setClipboard`** (seed the pasteboard) and **`foreground`** (resume a
 backgrounded app), the two primitives with a reliable `simctl` backing the codebase already uses:
 `setClipboard` reuses `simctl pbcopy` (the same command `clearClipboard` already drives, with the
-seed text on stdin), and `foreground` is `simctl launch` without `--terminate` — the exact inverse
+seed text on stdin), and `foreground` is `simctl launch` without `--terminate-running-process` — the exact inverse
 of `background`'s `simctl ui home`, adding no settle sleep. Both follow the BE-0035 pattern end to
 end (action model → `Step` field → `DeviceControl` handler → `Env` command → `_Control`), fail
 cleanly on the fake driver and in parallel runs, and emit a labeled `// TODO` from codegen.

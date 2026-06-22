@@ -108,8 +108,8 @@ def home_cmd(udid: str) -> list[str]:
 
 
 def foreground_cmd(udid: str, bundle_id: str) -> list[str]:
-    """Resume a backgrounded app to the foreground (simctl launch, without --terminate, so the
-    running process is brought forward rather than relaunched)."""
+    """Resume a backgrounded app to the foreground (simctl launch, without
+    --terminate-running-process, so the running process is brought forward rather than relaunched)."""
     return ["xcrun", "simctl", "launch", udid, bundle_id]
 
 
