@@ -118,10 +118,16 @@ baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: diff
 
 ```python
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> Path  # 3 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名、description=ファイルレベルの説明
-def manifest_dict(run_id, results) -> dict            # manifest の素（テスト、検査用）
+def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> None  # 描画される側だけ（report.html + junit.xml）。manifest.json は触らない。再描画が使う
+def manifest_dict(run_id, results, *, source_name=None) -> dict  # バージョン付き render モデル（schemaVersion）。manifest の素（テスト、検査用）
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
+def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (definitions, sources)。初回 bake と再描画で共有
 ```
 
 `runner.run_and_report` がこの `write_report` を呼び、CLI に `(results, manifest_path)` を返します
 （[run-loop](run-loop.md#runner実行パイプライン)）。CLI は全シナリオ成功なら終了コード 0、失敗で 1 です。
+
+## レポートの再生成（BE-0068）
+
+レポートは **run dir に保存されたデータの純粋なレンダリング**です。そのため、完了した run を再実行せずに現行テンプレでオフライン再描画できます。`manifest.json` が**バージョン付き**（`schemaVersion`）で無損失の render モデルで、`report.load` がその逆変換です。`results_from_manifest()` が `RunResult` を復元し、`load_run(run_dir)` が render モデル全体（outcome は `manifest.json`、シナリオの plan は `scenario.yaml`）を復元します。`bajutsu report <run>`（[cli](cli.md#report)）がそれを使って `report.html`＋`junit.xml` を書き直します。再描画は記録済みの outcome を再提示するだけで、assertion を再実行したり verdict を変えたりしません。古い run も、新しいバージョンにしかないセクションを捏造せず「not captured」と表示して描画します。

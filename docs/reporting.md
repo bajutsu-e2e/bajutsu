@@ -131,11 +131,24 @@ Device Log / App Trace remain separate tabs.
 
 ```python
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> Path  # all 3 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description
-def manifest_dict(run_id, results) -> dict            # the manifest source (for tests / inspection)
+def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> None  # the renderable half (report.html + junit.xml), leaving manifest.json untouched — used by re-render
+def manifest_dict(run_id, results, *, source_name=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
+def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (definitions, sources); shared by the bake and the re-render
 ```
 
 `runner.run_and_report` calls this `write_report` and returns `(results, manifest_path)` to the CLI
 ([run-loop](run-loop.md#runner-the-run-pipeline)). The CLI exits 0 if every scenario passes, 1 on
 failure.
+
+## Regenerating a report (BE-0068)
+
+The report is a **pure rendering of data stored in the run dir**, so a finished run can be
+re-rendered offline with the current template — without re-executing it. `manifest.json` is the
+**versioned** (`schemaVersion`), lossless render model; `report.load` is its inverse —
+`results_from_manifest()` reconstructs the `RunResult`s, and `load_run(run_dir)` recovers the whole
+render model (outcomes from `manifest.json`, the scenario plan from `scenario.yaml`). `bajutsu
+report <run>` ([cli](cli.md#report)) rewrites `report.html` + `junit.xml` from it. Re-rendering only
+re-presents recorded outcomes — it never re-runs an assertion or changes a verdict — and an older
+run renders with any newer-only section shown as "not captured" rather than invented.

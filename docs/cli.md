@@ -167,6 +167,27 @@ bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
   Read-only and deterministic — no device, no LLM. (Components and data rows are expanded;
   config `setup` preludes are not included.) **Exits 2** if the scenario file is missing.
 
+## `report`
+
+Re-renders a finished run's `report.html` (and re-emits `junit.xml`) from its **stored data**, with
+the **current** template — no device, no LLM, no re-run
+([BE-0068](../roadmaps/proposals/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
+template improvement or a rendering-bug fix reaches past runs without re-executing them; the
+verdict is read from the stored model, never recomputed.
+
+```bash
+bajutsu report <run-id | run-dir>      # re-render one run
+bajutsu report --all [--runs runs]     # re-render every run dir (with a manifest.json) under runs/
+```
+
+- The render model is `manifest.json` (a versioned, lossless render input — `schemaVersion`) plus
+  the executed `scenario.yaml`; the renderer reads only the run dir. An **older** run renders
+  without error, with any newer-only section shown as "not captured" rather than invented.
+- It re-presents recorded outcomes — it never re-evaluates an assertion or alters a verdict — so it
+  sits inside the determinism contract. `serve` rendering each report on view from the same model
+  is a planned follow-on.
+- **Exits 2** if the run (or, with `--all`, the runs root) has no readable `manifest.json`.
+
 ## `triage`
 
 Diagnoses the first **failed** scenario in a run and suggests a minimal fix. This is **advisory** — it
