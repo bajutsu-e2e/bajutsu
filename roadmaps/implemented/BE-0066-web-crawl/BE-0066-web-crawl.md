@@ -4,9 +4,10 @@
 
 * Proposal: [BE-0066](BE-0066-web-crawl.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Platform expansion (Android / Web / Flutter)
+* Status: **Implemented**
+* Implementing PR: [#185](https://github.com/bajutsu-e2e/bajutsu/pull/185)
+* Track: [Accepted](../../README.md#accepted)
+* Topic: Platform expansion (landed slices)
 
 ## Introduction
 

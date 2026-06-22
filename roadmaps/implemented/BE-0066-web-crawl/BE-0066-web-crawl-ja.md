@@ -4,9 +4,10 @@
 
 * 提案: [BE-0066](BE-0066-web-crawl-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: プラットフォーム拡張（Android / Web / Flutter）
+* 状態: **実装済み**
+* 実装 PR: [#185](https://github.com/bajutsu-e2e/bajutsu/pull/185)
+* トラック: [可決済み](../../README-ja.md#可決済み)
+* トピック: プラットフォーム拡張（着手済みスライス）
 
 ## はじめに
 

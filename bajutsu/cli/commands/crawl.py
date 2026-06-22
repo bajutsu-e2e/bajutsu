@@ -15,6 +15,7 @@ import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import typer
 
@@ -190,9 +191,13 @@ def crawl(
         raise typer.Exit(2) from None
     atexit.register(stop_server)
 
-    say(
-        f"⚙️  preparing the simulator — installing and launching {app_name} (this can take a moment) …"
-    )
+    if actuator == "playwright":
+        say(f"⚙️  preparing the browser — navigating to {eff.base_url} …")
+    else:
+        say(
+            f"⚙️  preparing the simulator — installing and launching {app_name} "
+            "(this can take a moment) …"
+        )
     try:
         driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
     except _env.DeviceError as e:
@@ -227,10 +232,27 @@ def crawl(
         except (OSError, subprocess.CalledProcessError) as exc:
             say(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
-    # The alert guard (Claude vision) dismisses unexpected OS prompts the crawl would otherwise
-    # read as a crash. Best-effort: with no API key it no-ops, so the crawl still runs.
-    clear_blocking = None
-    if dismiss_alerts:
+    # Crash detection and blocking-overlay clearing are platform-specific. iOS reads the
+    # accessibility tree (engine default) and clears OS prompts with the Claude vision guard; web
+    # reads deterministic signals (pageerror / HTTP status / blank DOM) and auto-handles JS
+    # dialogs with no model (BE-0066).
+    is_alive: crawl_engine.AliveCheck | None = None
+    clear_blocking: crawl_engine.ClearBlocking | None = None
+    if actuator == "playwright":
+        from bajutsu.drivers.playwright import PlaywrightDriver, web_is_alive
+
+        web = cast(PlaywrightDriver, driver)
+
+        def is_alive(_d: base.Driver, elements: list[base.Element]) -> bool:
+            return web_is_alive(web, elements)
+
+        def clear_blocking(_d: base.Driver) -> list[str]:
+            # JS dialogs are auto-dismissed by the driver the moment they appear (they would
+            # otherwise block the page); here we just report what was handled, for the screen map.
+            return web.pop_dialogs()
+    elif dismiss_alerts:
+        # The alert guard (Claude vision) dismisses unexpected OS prompts the crawl would otherwise
+        # read as a crash. Best-effort: with no API key it no-ops, so the crawl still runs.
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
         from bajutsu.orchestrator import RealClock
 
@@ -260,6 +282,7 @@ def crawl(
             max_screens=max_screens,
             max_steps=max_steps,
             clear_blocking=clear_blocking,
+            is_alive=is_alive,
             guide=crawl_guide,
             prune_global=prune_global and base_map is None,  # resume explores the branch fully
             base_map=base_map,

@@ -779,3 +779,33 @@ def test_crawl_uses_a_custom_guide_for_label_based_actions() -> None:
     screen_map = crawl.crawl(driver, reset, guide=guide)
     assert any(e.action == "tap Start" for e in screen_map.edges)
     assert crawl.fingerprint(second).value in screen_map.nodes
+
+
+# --- platform-dispatched health check (the web crash-detection seam, BE-0066) ---------------
+
+
+def test_is_alive_dispatch_records_a_crash_via_injected_health_check() -> None:
+    """The engine's liveness check is injectable so a non-iOS backend can supply its own crash
+    signal (web: pageerror / HTTP status / blank DOM). Here a health check flags the landed
+    screen as dead, so the engine records a Crash on that path without any accessibility-tree
+    logic — and stops treating it as a normal screen."""
+    home = [el(identifier="home.boom", traits=["button"], frame=(0, 0, 100, 40))]
+    broken = [el(identifier="error.page", traits=["button"], frame=(0, 200, 100, 40))]
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict) and arg.get("id") == "home.boom":
+            d.screen = list(broken)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    def is_alive(_d: FakeDriver, elements: list[dict]) -> bool:
+        return not any(e.get("identifier") == "error.page" for e in elements)
+
+    screen_map = crawl.crawl(
+        FakeDriver(screen=list(home), react=react), reset, is_alive=is_alive, max_steps=20
+    )
+    assert any(c.path == ("tap home.boom",) for c in screen_map.crashes)
+    # the dead screen is recorded as a crash, not as a normal edge/node
+    assert not any(e.action == "tap home.boom" for e in screen_map.edges)
+    assert crawl.fingerprint(broken).value not in screen_map.nodes
