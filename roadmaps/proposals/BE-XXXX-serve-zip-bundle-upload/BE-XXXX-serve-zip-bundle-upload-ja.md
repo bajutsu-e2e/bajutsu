@@ -2,19 +2,19 @@
 
 # BE-XXXX — config・シナリオ・アプリバイナリを zip でまとめてアップロードし Web UI から実行する
 
-* Proposal: [BE-XXXX](BE-XXXX-serve-zip-bundle-upload-ja.md)
+* 提案: [BE-XXXX](BE-XXXX-serve-zip-bundle-upload-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README-ja.md#proposals)
-* Topic: Configuration sourcing
+* 状態: **提案**
+* トラック: [提案](../../README-ja.md#提案)
+* トピック: config の取得元
 
-## Introduction
+## はじめに
 
 `bajutsu.config.yaml`・そのシナリオ木・**ビルド済みアプリバイナリ**（`.app` / `.app.zip` / `.ipa`）を 1 つの `.zip` にまとめ、**`bajutsu serve` の Web UI からアップロードして実行する**ための機能です。serve ホストのファイルシステムに触れないブラウザだけで完結します。serve は zip を隔離された一時ディレクトリへ展開し、ローカルのファイルブラウザで選んだ config と同じ流儀でそれをバインドし、バイナリを run の Simulator にインストールし、展開したツリーに対して既存の決定的な `run` 経路を走らせます。これは config + シナリオ + バイナリの束を**取得する経路を増やすだけ**であり、スキーマ・ランナー・ドライバ・決定的ゲートはいずれも変更せず、LLM をどこにも追加しません。
 
 この提案は、既存の 2 項目とちょうど対になります。完了した run を zip に**エクスポート**する [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) の**インポート**側の鏡像であり、config とシナリオ木を Git リポジトリから**プル**する [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) の**プッシュ**側の兄弟です。後者の 2 つは「ホスト型 serve は実行する config とシナリオをどこから得るのか」という同じ問いに、片方は Git で、片方はアップロードで答えます。本提案は [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)（token 認証 + パス封じ込め）として既に出荷済みの serve hardening の上に乗ります。これなしに任意のバイナリをアップロードして実行する機能を公開するのは安全ではありません。
 
-## Motivation
+## 動機
 
 チームの config とシナリオはリポジトリに置かれており、`bajutsu run` は*ローカルの*ツリーと*ビルド済みの*アプリ成果物を消費します（[DESIGN §1](../../../DESIGN.md)：「Bajutsu はアプリをビルドしない。既存の `xcodebuild` 成果物を受け取る」）。ローカルの Mac ならこれで十分ですが、**ホスト型・リモートの serve** では、手作業での配置でも Git source でも埋めきれない隙間が残ります。
 
@@ -26,7 +26,7 @@
 
 アーカイブの*インポート*はコードベースにまだ存在しません。[BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) が**エクスポート**側（stdlib の `zipfile`、1 つの archiver）を提案しており、本提案は同じ stdlib の土台の上に**インポート**側を提案します。両者が揃うと、run の束は双方向に持ち運べる単位になります。
 
-## Detailed design
+## 詳細設計
 
 ### 束は「materialize するツリー」にすぎない（新しいレイアウトを発明しない）
 
@@ -82,7 +82,7 @@ my-suite.zip
 - **マルチテナントの実行アイソレーション。** テナントごとの Simulator、ジョブごとの egress 制御、org 単位のストレージは [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) の領域です。本項目は単一 Mac の Tier A serve を対象にします。
 - **保持／アップロード束のライブラリ化。** アップロードはエフェメラルです。それを永続化しバージョン管理するのは Git source（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）の仕事であり、本項目の仕事ではありません。
 
-## Alternatives considered
+## 検討した代替案
 
 - **Git source だけ（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。** 完全な代替としては却下します。Git は*テキスト*をよく運びますが、[DESIGN §1](../../../DESIGN.md) が Bajutsu の消費対象とする*ビルド済みバイナリ*は運びません。バイナリを Git に通すには、ビルド成果物をコミットするか、ホストで完全なビルドを走らせるかになり、これこそアップロードが避けるものです。両者は冗長ではなく補完的です。
 - **ホストへ手で配置し、既存のファイルブラウザ選択を使う。** ローカル Mac では動きますが、ホスト型 serve の*ブラウザ*利用者には自分のスイートを持ち込む手段を与えません。これはダウンロード方向で [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) が閉じるのと同じ隙間です。
@@ -91,7 +91,7 @@ my-suite.zip
 - **zip ではなく tarball。** 対称性と到達範囲のため却下します。`.ipa` や zip 化した `.app` は既に zip であり、stdlib の `zipfile` は [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) がエクスポートに使うのと同じ土台で、zip はどの OS でもダブルクリックで開けます。
 - **アップロードを再利用ライブラリとして永続化する。** 先送りします。それはバージョン管理されたストレージであり、Git（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）が既にそれです。アップロードはエフェメラルのままにします。
 
-## References
+## 参考
 
 - [CLAUDE.md](../../../CLAUDE.md)、[DESIGN §1](../../../DESIGN.md)（Bajutsu はビルド済みアプリを受け取り、ビルドはしない）、[DESIGN §2](../../../DESIGN.md)（AI は判定者にならない・決定性優先・テストごとにクリーン環境）。
 - [BE-0060 — run レポートを zip でダウンロード／エクスポート](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) — **エクスポート**側の鏡像。共有する stdlib `zipfile` の土台であり、往復の相手。
