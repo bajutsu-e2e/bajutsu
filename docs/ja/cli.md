@@ -235,18 +235,22 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 
 ## `codegen`
 
-シナリオから **ネイティブ XCUITest** を生成します（AI 非依存・構造マッピング・[codegen](codegen.md)）。
+シナリオから **ネイティブテスト** を生成します（AI 非依存・構造マッピング・[codegen](codegen.md)）。出力先は
+**XCUITest**（Swift、iOS）または **Playwright**（TypeScript、web）です。
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] [--config ...]
+bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
 ```
 
 | オプション | 既定 | 説明 |
 |---|---|---|
-| `--emit` | `xcuitest` | 出力形式（現状 `xcuitest` のみ。他は終了コード 2） |
+| `--emit` | `xcuitest` | 出力形式。`xcuitest` または `playwright`（他は終了コード 2） |
 | `-o, --out` | `-` | 出力ファイル。`-` で標準出力 |
 
-- config の `launchEnv` が生成テストの `app.launchEnvironment` に入ります。
+- config の `launchEnv` が生成テストに入ります。XCUITest では `app.launchEnvironment`、Playwright では
+  `localStorage` のシードに反映されます。
+- `--emit playwright` は対象が web ターゲットであること（`apps.<name>.baseUrl`）を要求し、なければ終了コード 2 で
+  終わります。
 - ファイル出力時は `wrote <N> scenario(s) -> <out>`。
 
 ## `approve`

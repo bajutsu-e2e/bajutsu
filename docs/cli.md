@@ -257,18 +257,22 @@ hashes to the same value. Each node records both the fingerprint and its `kind`.
 
 ## `codegen`
 
-Generates a **native XCUITest** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)).
+Generates a **native test** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)):
+**XCUITest** (Swift, iOS) or **Playwright** (TypeScript, web).
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] [--config ...]
+bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `--emit` | `xcuitest` | output format (currently `xcuitest` only; others exit with code 2) |
+| `--emit` | `xcuitest` | output format: `xcuitest` or `playwright` (others exit with code 2) |
 | `-o, --out` | `-` | output file. `-` for stdout |
 
-- Config's `launchEnv` goes into the generated test's `app.launchEnvironment`.
+- Config's `launchEnv` goes into the generated test: `app.launchEnvironment` (XCUITest) or seeded
+  `localStorage` (Playwright).
+- `--emit playwright` requires the app to be a web target (`apps.<name>.baseUrl`); otherwise it exits
+  with code 2.
 - On file output: `wrote <N> scenario(s) -> <out>`.
 
 ## `approve`

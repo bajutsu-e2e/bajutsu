@@ -206,6 +206,16 @@ plane, self-hosted multi-tenant) remain proposals below.
 | [BE-0051](implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
 <!-- /GENERATED:accepted-hosting -->
 
+### codegen coverage
+
+Turning a passing scenario into a native test in a destination framework's idiom. The web (Playwright) target has landed alongside the original XCUITest one; remaining gaps stay as proposals below.
+
+<!-- GENERATED:accepted-codegen -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0062](implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
+<!-- /GENERATED:accepted-codegen -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *Accepted* once a decision is made.
@@ -306,7 +316,6 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 |---|---|---|
 | [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
 | [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
-| [BE-0062](proposals/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### Crawl performance / scale-out
