@@ -2,11 +2,15 @@
 
 # BE-0060 — Download / export a run report as a zip
 
-* Proposal: [BE-0060](BE-0060-run-report-zip-export.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Authoring experience (record / GUI editor)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0060](BE-0060-run-report-zip-export.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Authoring experience (record / GUI editor) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

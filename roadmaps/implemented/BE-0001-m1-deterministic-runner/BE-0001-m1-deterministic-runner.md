@@ -2,12 +2,16 @@
 
 # BE-0001 — Deterministic runner (M1)
 
-* Proposal: [BE-0001](BE-0001-m1-deterministic-runner.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Milestones (M1–M4)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0001](BE-0001-m1-deterministic-runner.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Milestones (M1–M4) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

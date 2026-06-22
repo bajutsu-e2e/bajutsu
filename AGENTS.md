@@ -26,10 +26,21 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 - **Prefix the PR title with the roadmap ID.** When a PR is tied to a roadmap item, begin its title
   with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap item keep
   the plain scoped title (`feat(...)`, `fix(...)`, `docs: …`). PR titles stay in English.
-- **Resolve AI PR reviews before stopping.** When an AI reviewer (Copilot and the like) leaves
-  comments on a pull request, keep working until every comment is resolved. Reply to each PR
-  comment once you have addressed it, stating what you changed or why no change was needed. When
-  you are unsure how a comment should be handled, ask the human instead of guessing.
+- **Write a thorough PR body, never a one-line restatement of the title.** A reviewer should grasp
+  the change from the body without reconstructing it from the diff: *what* changed and *why* (the
+  motivation/context), a short summary of the key changes (grouped by area when the diff is large),
+  how you verified it (e.g. `make check`), and the relevant links (roadmap item, issue) and
+  call-outs (trade-offs, follow-ups, things to look at closely). This is expected of humans and AI
+  alike. Bodies stay in English.
+- **Resolve AI PR reviews before stopping, and reply per comment with the grounds.** When an AI
+  reviewer (Copilot and the like) leaves comments on a pull request, keep working until every
+  comment is resolved, then **reply to each comment individually** — never a single summary reply.
+  Each reply states that the comment is addressed *and* the grounds for it: the concrete change
+  that resolves it (cite the commit or file/line), or, when you make no change, the specific reason
+  it does not apply. A bare "done" or 👍 does not satisfy this. When you are unsure how a comment
+  should be handled, ask the human instead of guessing. The same is expected of human contributors
+  (see [`CONTRIBUTING.md`](CONTRIBUTING.md)) — it is not an AI-only rule. Full guide:
+  [`docs/ai-development.md`](docs/ai-development.md#responding-to-pr-review-comments).
 - **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the idb
   backend's deps on demand; pass flags via `ARGS`.
 - **Write docs as plain technical prose.** State facts and reasons directly, in the register of

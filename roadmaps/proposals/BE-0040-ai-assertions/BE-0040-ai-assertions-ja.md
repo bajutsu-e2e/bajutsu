@@ -2,12 +2,16 @@
 
 # BE-0040 — AI アサーション
 
-* 提案: [BE-0040](BE-0040-ai-assertions-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案（保留）**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: 競合調査（MagicPod / Autify）由来の候補
-* 由来: MagicPod
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0040](BE-0040-ai-assertions-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案（保留）** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| 由来 | MagicPod |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

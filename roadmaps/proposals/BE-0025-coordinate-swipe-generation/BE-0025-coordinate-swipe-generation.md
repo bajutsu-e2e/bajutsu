@@ -2,11 +2,15 @@
 
 # BE-0025 — Coordinate swipe generation
 
-* Proposal: [BE-0025](BE-0025-coordinate-swipe-generation.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: codegen coverage
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0025](BE-0025-coordinate-swipe-generation.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | codegen coverage |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

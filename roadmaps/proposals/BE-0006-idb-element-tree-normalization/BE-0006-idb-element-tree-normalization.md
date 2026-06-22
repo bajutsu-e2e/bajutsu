@@ -2,11 +2,15 @@
 
 # BE-0006 — idb element-tree normalization accuracy
 
-* Proposal: [BE-0006](BE-0006-idb-element-tree-normalization.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: On-device validation (M1 close-out)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0006](BE-0006-idb-element-tree-normalization.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | On-device validation (M1 close-out) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

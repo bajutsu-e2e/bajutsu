@@ -2,11 +2,15 @@
 
 # BE-0068 — Regenerable reports (render from stored run data)
 
-* Proposal: [BE-0068](BE-0068-regenerable-reports.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Authoring experience (record / GUI editor)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0068](BE-0068-regenerable-reports.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Authoring experience (record / GUI editor) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

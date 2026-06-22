@@ -2,12 +2,16 @@
 
 # BE-0043 — コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生）
 
-* 提案: [BE-0043](BE-0043-conflict-resistant-file-flow-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: [#66](https://github.com/bajutsu-e2e/bajutsu/pull/66), [#69](https://github.com/bajutsu-e2e/bajutsu/pull/69), [#73](https://github.com/bajutsu-e2e/bajutsu/pull/73)
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: 開発基盤（コントリビュータ体験）
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0043](BE-0043-conflict-resistant-file-flow-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | [#66](https://github.com/bajutsu-e2e/bajutsu/pull/66), [#69](https://github.com/bajutsu-e2e/bajutsu/pull/69), [#73](https://github.com/bajutsu-e2e/bajutsu/pull/73) |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | 開発基盤（コントリビュータ体験） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

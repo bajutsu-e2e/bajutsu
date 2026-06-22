@@ -2,12 +2,16 @@
 
 # BE-0001 — 決定的ランナー（M1）
 
-* 提案: [BE-0001](BE-0001-m1-deterministic-runner-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし）
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: マイルストーン（M1–M4）
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0001](BE-0001-m1-deterministic-runner-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし） |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | マイルストーン（M1–M4） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

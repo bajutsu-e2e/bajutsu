@@ -2,13 +2,17 @@
 
 # BE-0039 — 自己修復は「提案＋opt-in 適用」に限定
 
-* 提案: [BE-0039](BE-0039-self-healing-propose-optin-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし）
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: 競合調査（MagicPod / Autify）由来の候補
-* 由来: 両社
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0039](BE-0039-self-healing-propose-optin-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし） |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| 由来 | 両社 |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

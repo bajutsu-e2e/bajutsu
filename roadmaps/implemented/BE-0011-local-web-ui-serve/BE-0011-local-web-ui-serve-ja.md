@@ -2,12 +2,16 @@
 
 # BE-0011 — ローカル Web UI（`bajutsu serve`）
 
-* 提案: [BE-0011](BE-0011-local-web-ui-serve-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし）
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: オーサリング体験（record / GUI エディタ）
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0011](BE-0011-local-web-ui-serve-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし） |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | オーサリング体験（record / GUI エディタ） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

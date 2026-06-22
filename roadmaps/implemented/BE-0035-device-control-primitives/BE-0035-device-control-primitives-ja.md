@@ -2,13 +2,17 @@
 
 # BE-0035 — デバイス制御ステップ（background・ステータスバー上書き）
 
-* 提案: [BE-0035](BE-0035-device-control-primitives-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: [#59](https://github.com/bajutsu-e2e/bajutsu/pull/59)
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: 競合調査（MagicPod / Autify）由来の候補
-* 由来: MagicPod
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0035](BE-0035-device-control-primitives-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | [#59](https://github.com/bajutsu-e2e/bajutsu/pull/59) |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| 由来 | MagicPod |
+<!-- /BE-METADATA -->
 
 ## はじめに
 
