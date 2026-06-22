@@ -125,21 +125,29 @@ def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
             yield from _step_selectors(nested)
 
 
+def _located_selectors(scenario: Scenario) -> Iterator[tuple[str, base.Selector]]:
+    """Every selector the scenario addresses — across steps and scenario-level assertions — each
+    followed by the selectors nested in its `within` scope. The single lazy walk both the
+    determinism audit and the coverage map (BE-0050) consume, so a new selector source is added in
+    one place and the two never diverge."""
+    for step in scenario.steps:
+        for where, sel in _step_selectors(step):
+            yield from _with_nested(where, sel)
+    for a in scenario.expect:
+        for where, sel in _assertion_selectors(a):
+            yield from _with_nested(where, sel)
+
+
 def referenced_ids(scenario: Scenario) -> set[str]:
     """The stable ids (`id` / `idMatches`) a scenario statically references — across steps, nested
     control flow, `within` scopes, and assertions. The coverage map (BE-0050) measures these
     against an app's declared `idNamespaces`. Pure: no device, no model, no side effects."""
-    addressed = [
-        *(ws for step in scenario.steps for ws in _step_selectors(step)),
-        *(ks for a in scenario.expect for ks in _assertion_selectors(a)),
-    ]
     ids: set[str] = set()
-    for where, top in addressed:
-        for _, sel in _with_nested(where, top):
-            if "id" in sel:
-                ids.add(sel["id"])
-            if "idMatches" in sel:
-                ids.add(sel["idMatches"])
+    for _, sel in _located_selectors(scenario):
+        if "id" in sel:
+            ids.add(sel["id"])
+        if "idMatches" in sel:
+            ids.add(sel["idMatches"])
     return ids
 
 
@@ -179,13 +187,10 @@ def _selector_finding(where: str, sel: base.Selector, tier: str) -> Finding:
 
 def audit_scenario(scenario: Scenario) -> AuditReport:
     """Grade one scenario's determinism, statically. Pure: no device, no model, no side effects."""
-    addressed = [
-        *(ws for step in scenario.steps for ws in _step_selectors(step)),
-        *(ks for a in scenario.expect for ks in _assertion_selectors(a)),
-    ]
     # A `within` scope is itself resolved at runtime, so grade nested selectors too — a fragile
-    # `within` (e.g. by index) is a determinism risk that would otherwise slip through.
-    located = [exp for where, sel in addressed for exp in _with_nested(where, sel)]
+    # `within` (e.g. by index) is a determinism risk that would otherwise slip through. The walk
+    # (steps + assertions, each with its nested scopes) is shared with the coverage map.
+    located = list(_located_selectors(scenario))
     # Grade each selector once, then derive both the counts and the findings from that.
     graded = [(where, sel, _tier(sel)) for where, sel in located]
     tiers = Counter(tier for _, _, tier in graded)
