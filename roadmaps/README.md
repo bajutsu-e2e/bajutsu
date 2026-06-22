@@ -233,6 +233,16 @@ Turning a passing scenario into a native test in a destination framework's idiom
 | [BE-0062](implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
 <!-- /GENERATED:accepted-codegen -->
 
+### Crawl performance / scale-out
+
+Running the autonomous crawl across more than one device so a full screen map is built in a fraction of the wall-clock time.
+
+<!-- GENERATED:accepted-crawl -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0064](implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Implemented |
+<!-- /GENERATED:accepted-crawl -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *Accepted* once a decision is made.
@@ -340,7 +350,6 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 <!-- GENERATED:proposals-crawl -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
 <!-- /GENERATED:proposals-crawl -->
 
 ### Development infrastructure (contributor workflow)

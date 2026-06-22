@@ -8,6 +8,7 @@ identity are deterministic functions of the element tree.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 
 from conftest import el
@@ -254,6 +255,134 @@ def test_crawl_respects_max_steps_budget() -> None:
     assert len(screen_map.nodes) < 3
 
 
+# --- parallel crawl across simulators (BE-0064) --------------------------------------------
+
+
+def _wide_app(n: int) -> tuple[Callable[[FakeDriver, str, object], None], list[dict]]:
+    """A hub (`home`) with `n` distinct leaf screens, each reached by its own button and returning
+    home — `n` independent frontier branches for workers to share. The react is a pure function of
+    the tap target, so every worker's own FakeDriver explores it independently."""
+    home = [el(identifier=f"home.leaf{i}", traits=["button"]) for i in range(n)]
+    leaves = {
+        f"leaf{i}": [
+            el(identifier=f"leaf{i}.marker", traits=["staticText"]),
+            el(identifier=f"leaf{i}.back", traits=["button"]),
+        ]
+        for i in range(n)
+    }
+    screens = {"home": home, **leaves}
+    dest = {f"home.leaf{i}": f"leaf{i}" for i in range(n)}
+    dest.update({f"leaf{i}.back": "home" for i in range(n)})
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind != "tap" or not isinstance(arg, dict):
+            return
+        nxt = dest.get(str(arg.get("id")))
+        if nxt is not None:
+            d.screen = list(screens[nxt])
+
+    return react, home
+
+
+def _edge_set(sm: crawl.ScreenMap) -> set[tuple[str, str, str]]:
+    return {(e.src, e.action, e.dst) for e in sm.edges}
+
+
+def _pool(
+    react: Callable[[FakeDriver, str, object], None], home: list[dict], n: int
+) -> tuple[FakeDriver, list[tuple[FakeDriver, crawl.Reset]]]:
+    """A primary driver plus `n-1` extra `(driver, reset)` workers, all on the same react model."""
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    drivers = [FakeDriver(screen=list(home), react=react) for _ in range(n)]
+    return drivers[0], [(d, reset) for d in drivers[1:]]
+
+
+def test_parallel_crawl_discovers_the_same_map_as_serial() -> None:
+    """The crux of BE-0064: across N simulators the *set* of screens and transitions discovered is
+    identical to the serial crawl of the same deterministic app — only ordering/path metadata may
+    differ. Here a 4-worker crawl of a wide app matches the single-worker map exactly."""
+    react, home = _wide_app(8)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    serial = crawl.crawl(FakeDriver(screen=list(home), react=react), reset)
+
+    # A small settle (a stand-in for real device latency) lets the workers actually overlap instead
+    # of the primary draining the synchronous fake before the others wake — the very latency the
+    # parallel design overlaps across simulators.
+    def settle(_d: FakeDriver) -> None:
+        time.sleep(0.002)
+
+    primary, extra = _pool(react, home, 4)
+    parallel = crawl.crawl(primary, reset, settle=settle, extra_workers=extra)
+
+    assert set(parallel.nodes) == set(serial.nodes)  # same 9 screens (home + 8 leaves)
+    assert _edge_set(parallel) == _edge_set(serial)  # same transitions, regardless of scheduling
+    assert parallel.stop_reason == "completed"
+    # The work was genuinely shared: more than one simulator performed taps.
+    acted = sum(
+        1 for d in [primary, *(d for d, _ in extra)] if any(a[0] == "tap" for a in d.actions)
+    )
+    assert acted >= 2
+
+
+def test_parallel_crawl_honors_the_screen_budget() -> None:
+    """`--max-screens` is a shared counter under the lock. With N workers it can overshoot only by
+    the in-flight discoveries (at most one per worker), never unbounded."""
+    react, home = _wide_app(12)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    primary, extra = _pool(react, home, 4)
+    sm = crawl.crawl(primary, reset, max_screens=5, extra_workers=extra)
+    assert 5 <= len(sm.nodes) <= 5 + 4  # the cap, plus at most one in-flight discovery per worker
+    assert sm.stop_reason == "max_screens"
+
+
+def test_parallel_crawl_isolates_a_wedged_device() -> None:
+    """One bad simulator can't sink the crawl: a worker whose device errors on every action hands
+    its frontier entries back and retires, while the healthy worker still maps the whole app."""
+    react, home = _wide_app(6)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    def wedged(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":
+            raise crawl.env.DeviceError("simulator wedged")
+
+    healthy = FakeDriver(screen=list(home), react=react)
+    bad = FakeDriver(screen=list(home), react=wedged)
+    sm = crawl.crawl(healthy, reset, extra_workers=[(bad, reset)])
+
+    assert len(sm.nodes) == 7  # home + 6 leaves, all found by the healthy device
+    assert sm.stop_reason == "completed"
+
+
+def test_lone_worker_surfaces_a_device_error() -> None:
+    """Without a pool there's nothing to fall back to, so a device error propagates as it always
+    did (the serial engine's behavior) rather than being silently swallowed."""
+    home = [el(identifier="home.a", traits=["button"]), el(identifier="home.b", traits=["button"])]
+
+    def boom(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":
+            raise crawl.env.DeviceError("device gone")
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    try:
+        crawl.crawl(FakeDriver(screen=list(home), react=boom), reset)
+    except crawl.env.DeviceError:
+        return
+    raise AssertionError("a lone worker's device error must propagate")
+
+
 def test_crawl_records_a_crash_when_app_ui_collapses() -> None:
     home = [el(identifier="home.boom", traits=["button"])]
     crashed = [el(traits=["application"])]  # collapsed tree: no actionable app content
@@ -426,9 +555,9 @@ def test_crawl_fires_on_node_once_per_screen_while_on_it() -> None:
 
     seen: list[str] = []
 
-    def on_node(node: crawl.Node) -> None:
+    def on_node(d: FakeDriver, node: crawl.Node) -> None:
         seen.append(node.fingerprint)
-        driver.screenshot(f"{node.fingerprint}.png")
+        d.screenshot(f"{node.fingerprint}.png")
 
     screen_map = crawl.crawl(driver, reset, on_node=on_node)
     assert sorted(seen) == sorted(screen_map.nodes)  # one call per distinct screen, no repeats

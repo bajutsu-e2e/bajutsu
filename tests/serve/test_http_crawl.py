@@ -84,6 +84,47 @@ def test_http_crawl_explores_and_streams_the_map(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_crawl_boots_pool_and_passes_workers(tmp_path: Path) -> None:
+    """A parallel crawl (BE-0064): the UI's picked simulators are booted, and the udid pool +
+    worker count reach the spawned `crawl` command, mirroring run's pool."""
+    scn_dir, cfg, runs = project(tmp_path)
+    captured: list[list[str]] = []
+    boots: list[str] = []
+
+    def popen(cmd: list[str], **_kw: Any) -> FakeProc:
+        captured.append(cmd)
+        return FakeProc(["crawled 0 screens\n"])
+
+    def simctl(args: list[str], _e: object = None) -> str:
+        boots.append(args[3])
+        return ""
+
+    server, port = _serve(
+        srv.ServeState(
+            scenarios_dir=scn_dir,
+            config=cfg,
+            runs_dir=runs,
+            cwd=tmp_path,
+            popen=popen,
+            simctl=simctl,
+        )
+    )
+    try:
+        status, _resp = _post(port, "/api/crawl", {"app": "demo", "udid": "A,B,C", "workers": 3})
+        assert status == 200
+        for _ in range(100):
+            if captured:
+                break
+            time.sleep(0.02)
+        cmd = captured[0]
+        assert cmd[cmd.index("--udid") + 1] == "A,B,C"
+        assert cmd[cmd.index("--workers") + 1] == "3"
+        assert sorted(boots) == ["A", "B", "C"]  # every picked device booted before the crawl
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_crawl_requires_app(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     server, port = _serve(
