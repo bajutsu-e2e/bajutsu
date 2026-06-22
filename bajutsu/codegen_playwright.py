@@ -32,17 +32,26 @@ _SWIPE_DELTA = {
     "right": (_SWIPE_PX, 0),
 }
 
-# Glob metacharacters beyond a single leading/trailing `*` make a glob too complex to render
-# as a substring locator.
-_GLOB_SPECIAL = set("*?[]")
+# Glob metacharacters a CSS attribute operator cannot express (single-char `?`, char classes,
+# and interior `*`); a glob carrying any of these falls back to `// TODO`.
+_GLOB_UNSUPPORTED = set("?[]")
 # Regex metacharacters to escape when turning a `contains` substring into a JS RegExp literal.
 _RE_SPECIAL = re.compile(r"[.*+?^${}()|[\]\\/]")
+# Selector fields the emitter cannot represent as an AND-constraint on a Playwright locator.
+# A selector carrying either (beside its primary field) is rendered as `// TODO` rather than
+# silently dropped, which would target a broader element set than the scenario means.
+_UNSUPPORTED_FIELDS = ("within", "value")
 
 
 def _ts(text: str) -> str:
     """A TypeScript single-quoted string literal."""
     escaped = text.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
     return f"'{escaped}'"
+
+
+def _css_attr_value(value: str) -> str:
+    """Escape a string for use inside a double-quoted CSS attribute-selector value."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _re_contains(text: str) -> str:
@@ -55,12 +64,20 @@ def _re_raw(pattern: str) -> str:
     return "/" + pattern.replace("/", "\\/") + "/"
 
 
-def _glob_substring(glob: str) -> str | None:
-    """The literal core of a simple substring glob (`*x*` -> `x`), or None if too complex."""
-    core = glob.strip("*")
-    if not core or any(c in _GLOB_SPECIAL for c in core):
+def _glob_to_css(glob: str) -> str | None:
+    """Render an `idMatches` fnmatch glob as a `data-testid` CSS attribute selector.
+
+    A leading/trailing `*` maps to the `$=` / `^=` / `*=` operators; an exact glob to `=`. A glob
+    with an interior `*`, a `?`, or a `[…]` class has no CSS equivalent and returns None (→ TODO).
+    """
+    if any(c in _GLOB_UNSUPPORTED for c in glob):
         return None
-    return core
+    lead, trail = glob.startswith("*"), glob.endswith("*")
+    core = glob.strip("*")
+    if not core or "*" in core:  # empty, or an interior `*` a CSS operator cannot express
+        return None
+    op = {(True, True): "*=", (False, True): "^=", (True, False): "$="}.get((lead, trail), "=")
+    return f'[data-testid{op}"{_css_attr_value(core)}"]'
 
 
 def describe_name_for(stem: str) -> str:
@@ -69,8 +86,8 @@ def describe_name_for(stem: str) -> str:
     return cleaned or "Generated"
 
 
-def _locator(sel: base.Selector) -> str | None:
-    """A Playwright locator expression for one element, or None if not renderable."""
+def _primary_locator(sel: base.Selector) -> str | None:
+    """The base Playwright locator for a selector's primary field, before `index` narrowing."""
     if "id" in sel:
         return f"page.getByTestId({_ts(sel['id'])})"
     traits = sel.get("traits")
@@ -81,13 +98,29 @@ def _locator(sel: base.Selector) -> str | None:
     if traits:
         return f"page.getByRole({_ts(traits[0])})"
     if "idMatches" in sel:
-        core = _glob_substring(sel["idMatches"])
-        if core is not None:
-            return f"page.locator('[data-testid*=\"{core}\"]')"
-        return None
+        css = _glob_to_css(sel["idMatches"])
+        return f"page.locator('{css}')" if css is not None else None
     if "labelMatches" in sel:
-        return f"page.getByText({_ts(sel['labelMatches'])})"
+        # `labelMatches` is a regex (re.search); a JS RegExp preserves that, unlike a plain string.
+        return f"page.getByText({_re_raw(sel['labelMatches'])})"
     return None
+
+
+def _locator(sel: base.Selector) -> str | None:
+    """A Playwright locator expression for one element, or None if not faithfully renderable.
+
+    Selector fields are AND-ed. `index` narrows with `.nth()`; `within` / `value` have no faithful
+    Playwright equivalent here, so a selector carrying either is left unsupported (→ TODO) rather
+    than rendered as a broader match that drops the constraint.
+    """
+    if any(field in sel for field in _UNSUPPORTED_FIELDS):
+        return None
+    loc = _primary_locator(sel)
+    if loc is None:
+        return None
+    if "index" in sel:
+        loc += f".nth({sel['index']})"
+    return loc
 
 
 def _act(sel: base.Selector, call: str) -> list[str]:

@@ -140,7 +140,10 @@ test.describe('Components', () => {
 | `label`（単独） | `page.getByText('…', { exact: true })` |
 | `label` + `traits` | `page.getByRole(role, { name: '…', exact: true })` |
 | `traits`（単独） | `page.getByRole('button')` |
-| `idMatches`（単純な部分一致 glob） | `page.locator('[data-testid*="…"]')`。複雑な glob は `// TODO` |
+| `idMatches`（fnmatch glob） | `data-testid` の CSS 属性セレクタ。`prefix*` → `[…^="prefix"]`、`*suffix` → `[…$="suffix"]`、`*sub*` → `[…*="sub"]`。内側の `*`、`?`、`[…]` クラスは `// TODO` |
+| `labelMatches` | `page.getByText(/regex/)`（JS の RegExp。DSL の `re.search` の意味論に合わせる） |
+| `index` | `.nth(<index>)` でロケータを絞る |
+| `value` / `within` | AND 制約としては未対応で `// TODO` |
 
 ### アクションのマッピング（Playwright）
 

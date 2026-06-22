@@ -86,11 +86,37 @@ def test_selector_label_traits_and_role() -> None:
     assert "await page.getByRole('button', { name: 'Save', exact: true }).click();" in code
 
 
-def test_id_matches_substring_and_complex_todo() -> None:
-    simple = _gen("- name: x\n  steps:\n    - tap: { idMatches: '*.submit' }\n")
-    assert "await page.locator('[data-testid*=\".submit\"]').click();" in simple
-    complex_glob = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'a*b*c' }\n")
-    assert "// TODO: unsupported selector" in complex_glob
+def test_id_matches_glob_maps_to_css_operators() -> None:
+    suffix = _gen("- name: x\n  steps:\n    - tap: { idMatches: '*.submit' }\n")
+    assert "await page.locator('[data-testid$=\".submit\"]').click();" in suffix
+    prefix = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'list.row.*' }\n")
+    assert "await page.locator('[data-testid^=\"list.row.\"]').click();" in prefix
+    contains = _gen("- name: x\n  steps:\n    - tap: { idMatches: '*row*' }\n")
+    assert "await page.locator('[data-testid*=\"row\"]').click();" in contains
+
+
+def test_id_matches_complex_glob_is_todo() -> None:
+    interior = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'a*b*c' }\n")
+    assert "// TODO: unsupported selector" in interior
+    charclass = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row[0-9]' }\n")
+    assert "// TODO: unsupported selector" in charclass
+
+
+def test_label_matches_is_a_regexp() -> None:
+    code = _gen("- name: x\n  steps:\n    - tap: { labelMatches: '^Item ' }\n")
+    assert "await page.getByText(/^Item /).click();" in code
+
+
+def test_index_narrows_with_nth() -> None:
+    code = _gen("- name: x\n  steps:\n    - tap: { id: row, index: 2 }\n")
+    assert "await page.getByTestId('row').nth(2).click();" in code
+
+
+def test_value_and_within_constraints_are_todo() -> None:
+    with_value = _gen("- name: x\n  steps:\n    - tap: { id: f, value: '5' }\n")
+    assert "// TODO: unsupported selector" in with_value
+    with_within = _gen("- name: x\n  steps:\n    - tap: { id: c, within: { id: parent } }\n")
+    assert "// TODO: unsupported selector" in with_within
 
 
 def test_assertions_existence_and_negate() -> None:

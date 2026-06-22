@@ -5,6 +5,7 @@
 * Proposal: [BE-0062](BE-0062-playwright-codegen.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Implemented**
+* Implementing PR: [#183](https://github.com/bajutsu-e2e/bajutsu/pull/183)
 * Track: [Accepted](../../README.md#accepted)
 * Topic: codegen coverage
 

@@ -143,7 +143,10 @@ test.describe('Components', () => {
 | `label` (alone) | `page.getByText('…', { exact: true })` |
 | `label` + `traits` | `page.getByRole(role, { name: '…', exact: true })` |
 | `traits` (alone) | `page.getByRole('button')` |
-| `idMatches` (simple substring glob) | `page.locator('[data-testid*="…"]')`; a complex glob → `// TODO` |
+| `idMatches` (fnmatch glob) | a `data-testid` CSS attribute selector: `prefix*` → `[…^="prefix"]`, `*suffix` → `[…$="suffix"]`, `*sub*` → `[…*="sub"]`; an interior `*`, a `?`, or a `[…]` class → `// TODO` |
+| `labelMatches` | `page.getByText(/regex/)` (a JS RegExp, matching the DSL's `re.search` semantics) |
+| `index` | narrows the locator with `.nth(<index>)` |
+| `value` / `within` | unsupported as an AND-constraint → `// TODO` |
 
 ### Action mapping (Playwright)
 
