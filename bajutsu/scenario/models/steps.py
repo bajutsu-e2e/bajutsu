@@ -19,6 +19,7 @@ from bajutsu.scenario.models.actions import (
     ClearClipboard,
     ClearKeychain,
     ClearStatusBar,
+    Foreground,
     HttpRequest,
     LongPress,
     OverrideStatusBar,
@@ -26,6 +27,7 @@ from bajutsu.scenario.models.actions import (
     Push,
     Relaunch,
     Rotate,
+    SetClipboard,
     SetLocation,
     Swipe,
     TypeText,
@@ -87,7 +89,9 @@ class Step(_Model):
     http: HttpRequest | None = None
     clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
     clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")
+    set_clipboard: SetClipboard | None = Field(default=None, alias="setClipboard")
     background: Background | None = None
+    foreground: Foreground | None = None
     override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
     clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
     if_: If | None = Field(default=None, alias="if")

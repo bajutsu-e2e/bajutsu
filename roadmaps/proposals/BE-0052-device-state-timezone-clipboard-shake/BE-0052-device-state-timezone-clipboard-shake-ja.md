@@ -7,8 +7,8 @@
 |---|---|
 | 提案 | [BE-0052](BE-0052-device-state-timezone-clipboard-shake-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
+| 状態 | **可決・実装中** |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
@@ -85,6 +85,22 @@ prime directive の保持：
 - **codegen。** これらにはアプリレベルの XCUITest 等価物がないため（`simctl` レベルです）、codegen
   はコマンドを明記したラベル付き `// TODO` を出力します。これは
   [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) と整合します。
+
+### 実装状況
+
+最初のスライスは **`setClipboard`**（ペーストボードへの投入）と **`foreground`**（バックグラウンドの
+アプリの前面復帰）を提供します。いずれも、コードベースが既に使う確実な `simctl` の裏付けがある 2 つです。
+`setClipboard` は `simctl pbcopy`（`clearClipboard` が既に使うのと同じコマンドで、投入テキストを stdin で
+渡す）を再利用し、`foreground` は `--terminate` なしの `simctl launch`、すなわち `background` の
+`simctl ui home` の正確な逆操作で、settle 用の sleep を入れません。どちらも BE-0035 のパターンを端から端まで
+踏襲し（アクションモデル → `Step` フィールド → `DeviceControl` ハンドラ → `Env` コマンド → `_Control`）、
+fake ドライバや並列実行ではクリーンに失敗し、codegen はラベル付きの `// TODO` を出力します。
+
+**`setTimezone` と `shake` は見送りました**。どちらも確実な `simctl` の actuation が無いためです。デバイスの
+タイムゾーンを変える `simctl` サブコマンドは存在せず（`status_bar override --time` は表示上のクロック文字列を
+変えるだけ、`spawn launchctl setenv TZ` は spawn したプロセスにしか効かずアプリの `NSTimeZone` には効かない）、
+shake の `simctl`/`idb` コマンドも存在しません（Hardware メニューのジェスチャ）。実際には効かないコマンドを
+出荷するのは決定性優先に反するので、確実な機構が特定できるまで待ちます。
 
 ## 検討した代替案
 

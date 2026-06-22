@@ -163,8 +163,10 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
 | `background` | `background: {}` | send the app to the background (Home button) |
+| `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
 | `clearClipboard` | `clearClipboard: {}` | clear the Simulator pasteboard |
+| `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)) |
@@ -271,8 +273,10 @@ later steps. Touching no device, it is the one device-independent action here.
 
 ```yaml
 - background: {}                                                        # Home button (simctl ui home)
+- foreground: {}                                                        # resume the backgrounded app (simctl launch)
 - clearKeychain: {}                                                     # reset saved passwords / certificates
 - clearClipboard: {}                                                    # clear the pasteboard
+- setClipboard: { text: "COUPON123" }                                   # seed the pasteboard (paste flows)
 - overrideStatusBar: { time: "9:41", batteryLevel: 100, wifiBars: 3 }   # freeze the status bar
 - clearStatusBar: {}                                                    # restore the live status bar
 ```
@@ -280,6 +284,9 @@ later steps. Touching no device, it is the one device-independent action here.
 Like `setLocation` / `push`, these drive the Simulator via `simctl`, so they need a per-device control
 channel and fail cleanly on the fake driver / in parallel runs. `overrideStatusBar` is most useful right
 before a screenshot or a `visual` assertion, to freeze the clock and signal bars for a stable image.
+`background` / `foreground` are the two halves of a background/foreground transition; `foreground`
+resumes the app without any settle sleep, so wait for a concrete element afterward if you need one.
+`setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 ## Assertion DSL
 

@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0052](BE-0052-device-state-timezone-clipboard-shake.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Status | **Accepted, in progress** |
+| Track | [Accepted](../../README.md#accepted) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->
@@ -85,6 +85,23 @@ Prime directives preserved:
 - **Codegen.** These have no app-level XCUITest equivalent (they are `simctl`-level), so codegen
   emits a labeled `// TODO` naming the command, consistent with
   [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md).
+
+### Implementation status
+
+The first slice ships **`setClipboard`** (seed the pasteboard) and **`foreground`** (resume a
+backgrounded app), the two primitives with a reliable `simctl` backing the codebase already uses:
+`setClipboard` reuses `simctl pbcopy` (the same command `clearClipboard` already drives, with the
+seed text on stdin), and `foreground` is `simctl launch` without `--terminate` — the exact inverse
+of `background`'s `simctl ui home`, adding no settle sleep. Both follow the BE-0035 pattern end to
+end (action model → `Step` field → `DeviceControl` handler → `Env` command → `_Control`), fail
+cleanly on the fake driver and in parallel runs, and emit a labeled `// TODO` from codegen.
+
+**`setTimezone` and `shake` are deferred** because neither has a reliable `simctl` actuation: there
+is no `simctl` subcommand that changes the device's timezone (`status_bar override --time` only sets
+the *displayed* clock string, and `spawn launchctl setenv TZ` affects spawned processes, not the
+app's `NSTimeZone`), and there is no `simctl`/`idb` shake command (it is a Hardware-menu gesture).
+Shipping a command that does not actually take effect would violate determinism-first, so these
+wait until a verified mechanism is identified.
 
 ## Alternatives considered
 
