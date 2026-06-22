@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-responsive-web-ui-ja.md)
+**English** · [日本語](BE-0072-responsive-web-ui-ja.md)
 
-# BE-XXXX — Responsive serve Web UI (small-screen & touch layout)
+# BE-0072 — Responsive serve Web UI (small-screen & touch layout)
 
-* Proposal: [BE-XXXX](BE-XXXX-responsive-web-ui.md)
+* Proposal: [BE-0072](BE-0072-responsive-web-ui.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
