@@ -154,7 +154,7 @@ verdict is read from the stored model, never recomputed.
 
 ```bash
 bajutsu report <run-id | run-dir>      # re-render one run
-bajutsu report --all [--runs runs]     # re-render every run under runs/
+bajutsu report --all [--runs runs]     # re-render every run dir (with a manifest.json) under runs/
 ```
 
 - The render model is `manifest.json` (a versioned, lossless render input — `schemaVersion`) plus

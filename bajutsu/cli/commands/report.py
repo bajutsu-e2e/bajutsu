@@ -18,7 +18,9 @@ from bajutsu.report import rebake
 
 def report(
     run: str = typer.Argument("", help="a run id (under --runs) or a run directory path"),
-    all_runs: bool = typer.Option(False, "--all", help="re-render every run under --runs"),
+    all_runs: bool = typer.Option(
+        False, "--all", help="re-render every run dir (with a manifest.json) under --runs"
+    ),
     runs: str = typer.Option("runs", help="runs root (used for a bare run id and for --all)"),
 ) -> None:
     """Re-render a finished run's report.html + junit.xml from its stored data, with the current
