@@ -269,8 +269,8 @@ def test_capabilities() -> None:
     caps = drv.capabilities()
     assert base.Capability.SEMANTIC_TAP in caps
     assert base.Capability.CONDITION_WAIT in caps
-    assert base.Capability.MULTI_TOUCH not in caps
-    assert base.Capability.NETWORK not in caps
+    assert base.Capability.NETWORK in caps  # native observe + stub (BE-0054)
+    assert base.Capability.MULTI_TOUCH not in caps  # still deferred
 
 
 def test_importing_module_does_not_load_playwright() -> None:

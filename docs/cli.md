@@ -44,7 +44,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--alert-instruction` | "" | default button instruction (a scenario's own `dismissAlerts.instruction` wins) |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
-| `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app) |
+| `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process) |
 | `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` (capped to the pool size). Each device carries its own network collector, interval recordings, and device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
 | `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
