@@ -15,7 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from bajutsu.serve.helpers import list_runs
+from bajutsu.report.archive import archive_run_dir
+from bajutsu.serve.helpers import list_runs, valid_run_id
 
 
 @dataclass
@@ -37,6 +38,10 @@ class ArtifactStore(Protocol):
     def list_runs(self) -> list[dict[str, Any]]:
         """Past runs, newest first, each summarized for the history list."""
 
+    def archive(self, run_id: str) -> Artifact | None:
+        """A zip of the whole run *run_id* (rooted under `<run_id>/`), or None if it's missing
+        or *run_id* escapes the run tree — the download/export half of the report (BE-0060)."""
+
 
 class LocalArtifactStore:
     """Reads run artifacts from the filesystem, confined to ``runs_dir`` — the default for serve."""
@@ -46,11 +51,19 @@ class LocalArtifactStore:
 
     def _confined(self, rel: str) -> Path | None:
         """Resolve *rel* under ``runs_dir`` to an existing file, or None if it escapes / is absent."""
+        target = self._resolve(rel)
+        return target if target is not None and target.is_file() else None
+
+    def _confined_dir(self, rel: str) -> Path | None:
+        """Resolve *rel* under ``runs_dir`` to an existing directory, or None if it escapes / is absent."""
+        target = self._resolve(rel)
+        return target if target is not None and target.is_dir() else None
+
+    def _resolve(self, rel: str) -> Path | None:
+        """Resolve *rel* under ``runs_dir``, or None if it escapes the tree (containment in one place)."""
         base = self._runs_dir.resolve()
         target = (self._runs_dir / rel).resolve()
-        if base not in target.parents or not target.is_file():
-            return None
-        return target
+        return target if base in target.parents else None
 
     def open_bytes(self, rel: str) -> bytes | None:
         target = self._confined(rel)
@@ -65,3 +78,13 @@ class LocalArtifactStore:
 
     def list_runs(self) -> list[dict[str, Any]]:
         return list_runs(self._runs_dir)
+
+    def archive(self, run_id: str) -> Artifact | None:
+        # A run is a single id segment, so reject `r1/demo` (a subdir) — it would otherwise zip the
+        # subtree rather than a whole run, diverging from how run ids are used elsewhere in serve.
+        if not valid_run_id(run_id):
+            return None
+        target = self._confined_dir(run_id)
+        if target is None:  # missing or escapes runs_dir
+            return None
+        return Artifact(content_type="application/zip", body=archive_run_dir(target))

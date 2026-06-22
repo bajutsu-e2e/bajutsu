@@ -49,6 +49,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
 | `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
+| `--zip` | off | after the run, also write `runs/<id>.zip` — one portable artifact (report + evidence) for CI upload or sharing. Runs **after** the verdict, so it can't affect pass/fail; see [`export`](#export) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
@@ -101,6 +102,26 @@ bajutsu audit <scenario.yaml> [--json]
   a successful audit **exits 0 even with findings** (only a missing / unreadable scenario file
   exits 2). A finding is something to harden, not a verdict — the opposite of retry-to-pass, which
   hides flakiness.
+
+## `export`
+
+Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,
+`junit.xml`, the executed `scenario.yaml`, and **all** of its evidence (screenshots, video,
+`network.json`, …) ([BE-0060](../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
+The whole `runs/<id>/` tree is rooted under a single `<id>/` folder, so `report.html`'s **relative**
+links resolve offline — the report works by double-click, no server.
+
+```bash
+bajutsu export <run-id | run-dir> [-o out.zip] [--force]
+```
+
+- `<run>` is a run id (resolved under `--runs`, default `runs/`) or a path to a run directory.
+- Output defaults to `<id>.zip` beside the run dir; `-o/--output` overrides. It **refuses to
+  overwrite** an existing file without `--force` (mirroring how `record` never silently overwrites).
+- Pure packaging of what the run already wrote: no device, no AI, no effect on any verdict. It
+  archives **strictly the run dir** (never `.env`, config, or anything above it) and inherits the
+  run's secret-scrubbing. `bajutsu run --zip` is the same archiver, run inline after the verdict;
+  `bajutsu serve` offers it as a **Download** button beside the embedded report.
 
 ## `trace`
 
