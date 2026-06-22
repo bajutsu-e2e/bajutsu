@@ -26,10 +26,14 @@ Please read [`CLAUDE.md`](CLAUDE.md) before starting. In short:
 - **Prefix the PR title with the roadmap ID.** When a PR is tied to a roadmap item, begin its title
   with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap item keep
   the plain scoped title (`feat(...)`, `fix(...)`, `docs: …`). PR titles stay in English.
-- **Resolve AI PR reviews before stopping.** When an AI reviewer (Copilot and the like) leaves
-  comments on a pull request, keep working until every comment is resolved. Reply to each PR
-  comment once you have addressed it, stating what you changed or why no change was needed. When
-  you are unsure how a comment should be handled, ask the human instead of guessing.
+- **Resolve AI PR reviews before stopping, and reply per comment with the grounds.** When an AI
+  reviewer (Copilot and the like) leaves comments on a pull request, keep working until every
+  comment is resolved, then **reply to each comment individually** — never a single summary reply.
+  Each reply states that the comment is addressed *and* the grounds for it: the concrete change
+  that resolves it (cite the commit or file/line), or, when you make no change, the specific reason
+  it does not apply. A bare "done" or 👍 does not satisfy this. When you are unsure how a comment
+  should be handled, ask the human instead of guessing. Full guide:
+  [`docs/ai-development.md`](docs/ai-development.md#responding-to-ai-pr-reviews).
 - **Launch the web UI with `make serve`** (never `bajutsu serve` directly) — it installs the idb
   backend's deps on demand; pass flags via `ARGS`.
 - **Write docs as plain technical prose.** State facts and reasons directly, in the register of

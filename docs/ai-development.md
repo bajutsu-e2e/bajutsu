@@ -121,6 +121,28 @@ conflict in behavior — the merge is where they meet, which is exactly why the 
 suite (not an LLM, not a human eyeball) is the arbiter. Keep the suite meaningful and your branch
 rebased, and parallel work composes.
 
+## Responding to AI PR reviews
+
+When an AI reviewer — GitHub Copilot and the like — leaves comments on a pull request, keep
+working until every comment is resolved, then **reply to each comment individually**. A single
+summary reply on the PR is not enough: each comment thread gets its own reply, so the thread that
+raised a point is the thread that records its resolution.
+
+Every reply states two things:
+
+- **that the comment is addressed** — fixed in code, or consciously declined; and
+- **the grounds for it** — the concrete change that resolves it (what you altered, and where —
+  cite the commit or the file/line), or, when you make no change, the specific reason the comment
+  does not apply.
+
+A bare "done" or a 👍 is not a reply under this rule; the grounds are what let the human who later
+reads the thread audit the resolution. Keep each reply short and factual — the point is evidence,
+not narration.
+
+When you are unsure how a comment should be handled — the fix is ambiguous, or it touches
+something architecturally significant — ask the human instead of guessing, and leave that thread
+open until they decide.
+
 ## Roadmap items: BE IDs (strict)
 
 The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
