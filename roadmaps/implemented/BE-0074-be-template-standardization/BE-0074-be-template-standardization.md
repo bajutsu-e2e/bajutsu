@@ -5,8 +5,9 @@
 <!-- BE-METADATA -->
 | Proposal | [BE-0074](BE-0074-be-template-standardization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Status | **Implemented** |
+| Implementing PR | [#197](https://github.com/bajutsu-e2e/bajutsu/pull/197) |
+| Track | [Accepted](../../README.md#accepted) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -182,8 +183,9 @@ and, for the `Status` field, by `read_status` in
 3. **Fall back for unmigrated items.** A file with no fence is read by the legacy `* Field: value`
    bullet rule, so the items not yet converted keep parsing during the migration.
 
-This proposal already updates both parsers to that contract (the fenced rows are parsed; the bullet
-form still works), so a fenced item and a legacy item coexist while the tree migrates.
+Both parsers follow that contract (the fenced rows are parsed; the bullet form still works as a
+fallback), so a hand-edited item that slips back to bullets still parses rather than breaking the
+build.
 
 ### The deterministic check
 
@@ -203,14 +205,16 @@ The check is a **gate, not a formatter**: it reports the offending file and line
 the fix to the author — mirroring `format-check` / `lint`, which report rather than rewrite. The two
 files of a pair are validated together so an EN/JA Status mismatch is caught.
 
-### Rollout
+### What shipped
 
-This proposal pins the shape, ships the skeleton, and teaches the two parsers the fenced form while
-keeping the bullet form working; it does not by itself renumber or rewrite the existing tree.
-The implementation phase wires the check into `make test` and, in the same change, converts the 68
-remaining items to the fenced block and fixes the drifting files named in *Motivation*, so the tree
-is green when the check lands. (This item's own files already use the fenced metadata block,
-demonstrating the target state.)
+This item landed as one change: all roadmap items moved to the fenced metadata block, the two
+parsers re-specified around it (with the legacy `* Field: value` form kept as a fallback so a
+hand-edited item still parses), and `tests/test_roadmap_format.py` wired into `make test`. The
+drift listed under *Motivation* is fixed in the same change — the two `## 代替案の検討` headings,
+`BE-0044-ja`'s untranslated headings, the missing `## Motivation` in `BE-0017`, the missing author
+field in `BE-0064`, the plural `Implementing PRs` in `BE-0051`, and the English author field across
+the Japanese files (now `提案者`). The prose in `CLAUDE.md` and `roadmaps/README.md` (and its
+Japanese mirror) is updated to describe the fenced block. The tree is green under the new check.
 
 ## Alternatives considered
 

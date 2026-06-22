@@ -2,13 +2,15 @@
 
 # BE-0045 — Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired)
 
-* Proposal: [BE-0045](BE-0045-dogfood-showcase-apps.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: [#85](https://github.com/bajutsu-e2e/bajutsu/pull/85)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Dogfood fixtures (demo apps)
-* Origin: Dogfooding
+<!-- BE-METADATA -->
+| Proposal | [BE-0045](BE-0045-dogfood-showcase-apps.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | [#85](https://github.com/bajutsu-e2e/bajutsu/pull/85) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Dogfood fixtures (demo apps) |
+| Origin | Dogfooding |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

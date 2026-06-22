@@ -2,12 +2,14 @@
 
 # BE-0050 — E2E coverage map
 
-* Proposal: [BE-0050](BE-0050-e2e-coverage-map.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Candidates from competitive research (Maestro)
-* Origin: Maestro
+<!-- BE-METADATA -->
+| Proposal | [BE-0050](BE-0050-e2e-coverage-map.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Candidates from competitive research (Maestro) |
+| Origin | Maestro |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

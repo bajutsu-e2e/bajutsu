@@ -2,12 +2,14 @@
 
 # BE-0022 — `update`（最小差分提案＝構造化 fix の適用）
 
-* 提案: [BE-0022](BE-0022-update-structured-fixes-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし）
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: 自己修復トリアージ（M4）
+<!-- BE-METADATA -->
+| 提案 | [BE-0022](BE-0022-update-structured-fixes-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし） |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | 自己修復トリアージ（M4） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

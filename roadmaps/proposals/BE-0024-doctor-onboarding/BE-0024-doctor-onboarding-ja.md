@@ -2,11 +2,13 @@
 
 # BE-0024 — doctor / オンボーディング
 
-* 提案: [BE-0024](BE-0024-doctor-onboarding-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: doctor / オンボーディング
+<!-- BE-METADATA -->
+| 提案 | [BE-0024](BE-0024-doctor-onboarding-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | doctor / オンボーディング |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

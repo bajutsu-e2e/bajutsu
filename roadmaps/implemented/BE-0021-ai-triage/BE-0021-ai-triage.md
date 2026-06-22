@@ -2,12 +2,14 @@
 
 # BE-0021 — AI triage (root-cause summary, fix suggestions)
 
-* Proposal: [BE-0021](BE-0021-ai-triage.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Self-healing triage (M4)
+<!-- BE-METADATA -->
+| Proposal | [BE-0021](BE-0021-ai-triage.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Self-healing triage (M4) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

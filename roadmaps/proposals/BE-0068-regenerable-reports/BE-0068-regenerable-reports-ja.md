@@ -2,11 +2,13 @@
 
 # BE-0068 — 再生成できるレポート（保存済み run データから描画する）
 
-* 提案: [BE-0068](BE-0068-regenerable-reports-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: オーサリング体験（record / GUI エディタ）
+<!-- BE-METADATA -->
+| 提案 | [BE-0068](BE-0068-regenerable-reports-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | オーサリング体験（record / GUI エディタ） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

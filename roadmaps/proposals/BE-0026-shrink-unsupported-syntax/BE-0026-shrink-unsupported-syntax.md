@@ -2,11 +2,13 @@
 
 # BE-0026 — Shrink unsupported syntax
 
-* Proposal: [BE-0026](BE-0026-shrink-unsupported-syntax.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: codegen coverage
+<!-- BE-METADATA -->
+| Proposal | [BE-0026](BE-0026-shrink-unsupported-syntax.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | codegen coverage |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

@@ -2,12 +2,14 @@
 
 # BE-0051 — Serve hardening for hosting (auth, input validation)
 
-* Proposal: [BE-0051](BE-0051-serve-hardening-for-hosting.md)
-* Author: [@hirosassa](https://github.com/hirosassa)
-* Status: **Implemented**
-* Implementing PRs: [#92](https://github.com/bajutsu-e2e/bajutsu/pull/92) (slice 1), [#94](https://github.com/bajutsu-e2e/bajutsu/pull/94) (slice 2), [#95](https://github.com/bajutsu-e2e/bajutsu/pull/95) (slice 3), [#96](https://github.com/bajutsu-e2e/bajutsu/pull/96) (slice 4), [#97](https://github.com/bajutsu-e2e/bajutsu/pull/97) (slice 5), [#114](https://github.com/bajutsu-e2e/bajutsu/pull/114) (crawl parity for slices 3 & 5)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Hosting the web UI (cloud / self-hosted)
+<!-- BE-METADATA -->
+| Proposal | [BE-0051](BE-0051-serve-hardening-for-hosting.md) |
+| Author | [@hirosassa](https://github.com/hirosassa) |
+| Status | **Implemented** |
+| Implementing PR | [#92](https://github.com/bajutsu-e2e/bajutsu/pull/92) (slice 1), [#94](https://github.com/bajutsu-e2e/bajutsu/pull/94) (slice 2), [#95](https://github.com/bajutsu-e2e/bajutsu/pull/95) (slice 3), [#96](https://github.com/bajutsu-e2e/bajutsu/pull/96) (slice 4), [#97](https://github.com/bajutsu-e2e/bajutsu/pull/97) (slice 5), [#114](https://github.com/bajutsu-e2e/bajutsu/pull/114) (crawl parity for slices 3 & 5) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Hosting the web UI (cloud / self-hosted) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

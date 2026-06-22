@@ -2,11 +2,13 @@
 
 # BE-0069 — Executable contributor guardrails (procedures as commands)
 
-* Proposal: [BE-0069](BE-0069-executable-contributor-guardrails.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Development infrastructure (contributor workflow)
+<!-- BE-METADATA -->
+| Proposal | [BE-0069](BE-0069-executable-contributor-guardrails.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Development infrastructure (contributor workflow) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

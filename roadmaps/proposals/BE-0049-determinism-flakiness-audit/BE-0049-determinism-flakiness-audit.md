@@ -2,12 +2,14 @@
 
 # BE-0049 — Determinism / flakiness audit
 
-* Proposal: [BE-0049](BE-0049-determinism-flakiness-audit.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Accepted, in progress**
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Candidates from competitive research (Maestro)
-* Origin: Maestro
+<!-- BE-METADATA -->
+| Proposal | [BE-0049](BE-0049-determinism-flakiness-audit.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Accepted, in progress** |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Candidates from competitive research (Maestro) |
+| Origin | Maestro |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

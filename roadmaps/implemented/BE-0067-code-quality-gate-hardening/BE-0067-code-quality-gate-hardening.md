@@ -2,12 +2,14 @@
 
 # BE-0067 — Code-quality gate hardening (CI fidelity, security lint, supply-chain)
 
-* Proposal: [BE-0067](BE-0067-code-quality-gate-hardening.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: [#170](https://github.com/bajutsu-e2e/bajutsu/pull/170)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Development infrastructure (contributor workflow)
+<!-- BE-METADATA -->
+| Proposal | [BE-0067](BE-0067-code-quality-gate-hardening.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | [#170](https://github.com/bajutsu-e2e/bajutsu/pull/170) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Development infrastructure (contributor workflow) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 
