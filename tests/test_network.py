@@ -186,6 +186,14 @@ def test_event_body_only_matches_across_exchanges() -> None:
     assert not evaluate_one([], _event(body={"flag": "True"}), exs).ok  # not Python repr
 
 
+def test_event_body_nested_value_matches_compact_json() -> None:
+    # A nested array / object field matches its compact JSON form, not a Python repr.
+    exs = [_ex("POST", "/track", request_body='{"items":[1,2],"meta":{"k":"v"}}')]
+    assert evaluate_one([], _event(path="/track", body={"items": "[1,2]"}), exs).ok
+    assert evaluate_one([], _event(path="/track", body={"meta": '{"k":"v"}'}), exs).ok
+    assert not evaluate_one([], _event(path="/track", body={"items": "[1, 2]"}), exs).ok  # not repr
+
+
 def test_event_non_json_body_does_not_crash() -> None:
     exs = [_ex("POST", "/track", request_body="not json"), _ex("POST", "/track", request_body=None)]
     r = evaluate_one([], _event(path="/track", body={"name": "tap"}), exs)

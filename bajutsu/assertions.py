@@ -247,12 +247,15 @@ def _count_satisfied(n: int, c: CountOp | None) -> bool:
 
 def _json_text(value: object) -> str:
     """Canonical text form of a JSON value for comparing an event body field — booleans and null
-    render JSON-style (`true` / `false` / `null`), so a YAML matcher reads the way the captured
-    body does, not as a Python `repr` (`True` / `None`). Numbers / strings keep their plain form."""
+    render JSON-style (`true` / `false` / `null`), and a nested array / object renders as compact
+    JSON, so a YAML matcher reads the way the captured body does, not as a Python `repr` (`True` /
+    `None` / single-quoted dicts). Numbers / strings keep their plain form."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if value is None:
         return "null"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
     return str(value)
 
 
