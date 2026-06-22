@@ -50,9 +50,21 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
 - **Commit messages** are imperative and scoped: `feat(run): …`, `fix(record): …`, `docs: …`.
 - **Pull request titles and bodies are always in English**, regardless of the language used while
   working, so the history stays readable for everyone.
+- **Write a thorough PR body — not a one-line restatement of the title.** A reviewer should
+  understand the change from the body without reconstructing it from the diff: *what* changed and
+  *why* (the motivation/context), a short summary of the key changes (grouped by area when the diff
+  is large), how you verified it (e.g. `make check`), and the relevant links (roadmap item, issue)
+  and call-outs (trade-offs, follow-ups, anything to look at closely). This holds for humans and AI
+  alike.
 - When a PR implements a roadmap item, **prefix the title with the ID** in brackets — e.g.
   `[BE-0017] feat(mcp): add MCP server` — and add a link to the PR in the item's markdown (both
   language files). PRs with no roadmap item keep the plain scoped title.
+- **Answer reviews comment by comment.** When a reviewer (a human, or an AI reviewer like Copilot)
+  leaves comments, resolve them all and **reply to each comment individually** — never a single
+  summary reply. Each reply states that the comment is addressed *and* the grounds: the concrete
+  change that resolves it (cite the commit or file/line), or, when you make no change, the specific
+  reason it does not apply. A bare "done" or 👍 is not enough. This is expected of everyone, human
+  and AI alike — see [`docs/ai-development.md`](docs/ai-development.md#responding-to-pr-review-comments).
 - Several sessions work this repo in parallel. For worktrees, the `uv.lock` merge driver, and the
   rest of the parallel-work model, see [`docs/ai-development.md`](docs/ai-development.md).
 

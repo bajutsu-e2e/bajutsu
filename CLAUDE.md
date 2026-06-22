@@ -136,6 +136,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
 - **PR titles and bodies are always in English**, regardless of the language used in the
   session. This keeps the project history readable for every contributor.
+- **Write a thorough PR body — never a one-line restatement of the title.** A reviewer should
+  understand the change from the body without reconstructing it from the diff: explain *what*
+  changed and *why* (the motivation/context), give a short summary of the key changes (grouped by
+  area when the diff is large), say how you verified it (e.g. `make check`), and include the
+  relevant links (roadmap item, issue) and call-outs (trade-offs, follow-ups, anything a reviewer
+  should look at closely). This expectation holds for humans and AI alike.
 - **Prefix the PR title with the roadmap ID** when the PR is tied to a roadmap item: start the
   title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap
   item keep the plain scoped title.
