@@ -1,8 +1,8 @@
-[English](BE-XXXX-serve-zip-bundle-upload.md) · **日本語**
+[English](BE-0073-serve-zip-bundle-upload.md) · **日本語**
 
-# BE-XXXX — config・シナリオ・アプリバイナリを zip でまとめてアップロードし Web UI から実行する
+# BE-0073 — config・シナリオ・アプリバイナリを zip でまとめてアップロードし Web UI から実行する
 
-* 提案: [BE-XXXX](BE-XXXX-serve-zip-bundle-upload-ja.md)
+* 提案: [BE-0073](BE-0073-serve-zip-bundle-upload-ja.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * 状態: **提案**
 * トラック: [提案](../../README-ja.md#提案)

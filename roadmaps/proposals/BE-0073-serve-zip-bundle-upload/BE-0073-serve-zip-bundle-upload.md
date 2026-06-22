@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-serve-zip-bundle-upload-ja.md)
+**English** · [日本語](BE-0073-serve-zip-bundle-upload-ja.md)
 
-# BE-XXXX — Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI
+# BE-0073 — Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI
 
-* Proposal: [BE-XXXX](BE-XXXX-serve-zip-bundle-upload.md)
+* Proposal: [BE-0073](BE-0073-serve-zip-bundle-upload.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
