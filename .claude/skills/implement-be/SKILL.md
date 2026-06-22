@@ -6,7 +6,7 @@ description: >-
   "start on BE-0007", a bare number, or a slug — or otherwise asks to turn an existing BE
   proposal into shipped code. Treats the item's proposal as the spec, grounds the work in
   the prime directives, sets up a focused branch, plans and confirms before writing,
-  implements with tests, flips the item to Implemented (Status + roadmap-promote +
+  implements with tests, reviews and refines the diff, flips the item to Implemented (Status + roadmap-promote +
   reindex), and proves the gate is green. The deterministic counterpart to the `ideation`
   skill: ideation authors proposals, this one ships them.
 ---
@@ -121,14 +121,44 @@ Build to the Detailed design, matching the codebase's grain:
   [`japanese-tech-writing`](../japanese-tech-writing/SKILL.md) skill — natural Japanese, not
   a literal rendering of the English.
 
-### 6. Flip the roadmap item to Implemented
+### 6. Review and refine the diff
+
+`make check` proves the change is green — it does **not** judge design, simplicity, or
+logic. Close that gap on the diff you just wrote, with official review tooling as
+**authoring aids**. This stays inside directive #1: they advise the author and never
+judge — the gate (step 8) is still the only verdict, and no LLM touches the `run`/CI path.
+
+Built-in skills, on the diff, every time:
+
+- Invoke the **`simplify`** skill to refine the change — reuse, dead code, over-abstraction,
+  altitude — and apply its fixes. It edits the working tree, so the gate must run *after* it.
+- Invoke the **`code-review`** skill (review-only; there's no PR yet) for the correctness
+  bugs the gate can't see.
+
+For a non-trivial change, also launch the official **pr-review-toolkit** agents in parallel
+(via the `Agent` tool; the [`session-start` hook](../../hooks/session-start.sh) installs it and
+[`.claude/settings.json`](../../settings.json) enables it repo-wide — or install by hand with
+`claude plugin install pr-review-toolkit@claude-plugins-official`). Pick by what the change
+touches; each lens maps to a prime directive, so the review pulls the same way as the runner:
+
+- **`silent-failure-hunter`** — swallowed errors and weak fallbacks. This *is* "determinism
+  first, fail loudly": a test tool that hides failures is worse than none.
+- **`type-design-analyzer`** — type invariants and encapsulation under strict `mypy`.
+- **`pr-test-analyzer`** — whether the regression-net tests actually cover the new logic.
+
+Weigh every suggestion against the prime directives and the surrounding code before taking it;
+drop anything that fights the codebase grain. Prefer the built-in `simplify` / `code-review`
+over pr-review-toolkit's own `code-simplifier` / `code-reviewer` — they overlap, and the
+simplifier leans on JS/React idioms foreign to this Python core.
+
+### 7. Flip the roadmap item to Implemented
 
 The implementing PR is what ships the item, so promote it in this same change:
 
 1. In **both** language files, set `* Status: **Implemented**` and change the `Track` line
    to **Accepted** (`../../README.md#accepted`). Add an `* Implementing PR:
    [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` line right under `Status` once
-   the PR number exists (fill it at step 8 if you don't have it yet).
+   the PR number exists (fill it at step 9 if you don't have it yet).
 2. Move the directory and regenerate the index:
    ```bash
    make roadmap-promote   # moves proposals/BE-NNNN-… → implemented/BE-NNNN-…
@@ -138,7 +168,7 @@ The implementing PR is what ships the item, so promote it in this same change:
    index drifts — so these two commands keep the gate honest. **Never renumber the item**;
    its ID is permanent.
 
-### 7. Verify — the gate
+### 8. Verify — the gate
 
 ```bash
 make check    # lock-check + format + lint + lint-sh + lint-actions + typecheck + test
@@ -146,10 +176,12 @@ make check    # lock-check + format + lint + lint-sh + lint-actions + typecheck 
 
 It must be green; **never push red** (the tracked pre-push hook runs it for you). It needs
 no Simulator and runs anywhere. On-device E2E (`make -C demos/features e2e`) is a separate,
-heavier path and is **not** part of this gate — don't block core work on it, but call it
-out if the item's correctness genuinely depends on a Simulator/browser run.
+heavier path and is **not** part of this gate — don't block core work on it. But if the
+item's correctness genuinely depends on a Simulator/browser run, drive that run with the
+`verify` skill (launch the app, exercise the behavior, report what you saw) rather than
+claiming it works untested.
 
-### 8. PR only when asked
+### 9. PR only when asked
 
 Push to your branch. **Don't open a PR unless the user asks** — the human usually opens it.
 When you do:
@@ -167,3 +199,7 @@ When you do:
   gate, and the strict BE-ID lifecycle (Status ⇒ directory, `roadmap-promote`, permanent IDs).
 - [`roadmaps/README.md`](../../../roadmaps/README.md) — the index and the per-item format.
 - [`ideation`](../ideation/SKILL.md) — the upstream skill that authors the proposal this one builds.
+- The built-in **`simplify`** / **`code-review`** / **`verify`** skills — the authoring aids
+  steps 6 and 8 lean on. They advise the author; only `make check` judges.
+- **pr-review-toolkit** (`@claude-plugins-official`, Anthropic-official) — the specialized
+  review agents step 6 launches; enabled repo-wide in [`.claude/settings.json`](../../settings.json).
