@@ -50,7 +50,17 @@ def _write_screenmap(path: Path, screen_map: crawl_engine.ScreenMap) -> None:
 
 def crawl(
     app_name: str = typer.Option(..., "--app"),
-    udid: str = typer.Option("booted"),
+    udid: str = typer.Option(
+        "booted",
+        help="simulator(s) to crawl on: a single udid, or a comma list for a parallel pool "
+        "(see --workers); mirrors `run`'s --udid",
+    ),
+    workers: int = typer.Option(
+        1,
+        "--workers",
+        help="crawl across this many simulators at once (BE-0064), sharing one screen map; "
+        "capped to the number of --udid devices. Default 1 = single-device crawl. iOS only",
+    ),
     backend: str = typer.Option(""),
     max_screens: int = typer.Option(
         50, "--max-screens", help="stop after discovering this many distinct screens"
@@ -176,10 +186,19 @@ def crawl(
         _write_screenmap(screenmap_path, crawl_engine.ScreenMap())  # empty map the UI can poll now
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
-    # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
-    # shell out to simctl and crash off-macOS, so skip it for the web backend.
-    if actuator != "playwright":
-        udid = _env.resolve_udid(udid)
+    # The device pool (BE-0064): `--udid` may be a comma list and `--workers N` crawls across that
+    # many simulators at once, sharing one screen map. Web is one browser lane (launch_driver
+    # ignores the udid for playwright; resolving "booted" would shell out to simctl and crash
+    # off-macOS). A resumed crawl is a single-branch walk, so it stays one device.
+    if actuator == "playwright":
+        udids = ["web"]
+        workers = 1
+    else:
+        udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
+        workers = max(1, min(workers, len(udids)))
+    if base_map is not None:
+        workers = 1
+    udids = udids[:workers]
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
@@ -193,30 +212,45 @@ def crawl(
 
     if actuator == "playwright":
         say(f"⚙️  preparing the browser — navigating to {eff.base_url} …")
+    elif workers > 1:
+        say(
+            f"⚙️  preparing {workers} simulators — installing and launching {app_name} on each "
+            "(this can take a moment) …"
+        )
     else:
         say(
             f"⚙️  preparing the simulator — installing and launching {app_name} "
             "(this can take a moment) …"
         )
+
+    def reset_for(u: str) -> crawl_engine.Reset:
+        # Revisit a known screen the way `run` reaches any state — return to a clean start on this
+        # device and let the engine replay the shortest path. For web there is no app to relaunch:
+        # re-navigating to baseUrl is the clean start. For iOS a relaunch (not a full erase) keeps
+        # each frontier visit fast; the app's own UI returns to its entry screen.
+        def reset(d: base.Driver) -> None:
+            if actuator == "playwright":
+                d.navigate()  # type: ignore[attr-defined]  # web-only lifecycle (re-navigate to baseUrl)
+                _await_ready(d)
+                return
+            e = _env.Env(u)
+            e.terminate(eff.bundle_id)
+            e.launch(
+                eff.bundle_id, [*eff.launch_args, *_env.locale_args(eff.locale)], eff.launch_env
+            )
+            _await_ready(d)
+
+        return reset
+
     try:
-        driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))
+        pool = [
+            (launch_driver(u, eff, actuator, Preconditions(erase=erase)), reset_for(u))
+            for u in udids
+        ]
     except _env.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-
-    def reset(d: base.Driver) -> None:
-        # Revisit a known screen the way `run` reaches any state — return to a clean start and let
-        # the engine replay the shortest path. For web there is no app to relaunch: re-navigating to
-        # baseUrl is the clean start. For iOS a relaunch (not a full erase) keeps each frontier visit
-        # fast; the app's own UI returns to its entry screen.
-        if actuator == "playwright":
-            d.navigate()  # type: ignore[attr-defined]  # web-only lifecycle (re-navigate to baseUrl)
-            _await_ready(d)
-            return
-        e = _env.Env(udid)
-        e.terminate(eff.bundle_id)
-        e.launch(eff.bundle_id, [*eff.launch_args, *_env.locale_args(eff.locale)], eff.launch_env)
-        _await_ready(d)
+    driver = pool[0][0]  # the primary device; the web is_alive / dialog hooks read it
 
     def on_event(screen_map: crawl_engine.ScreenMap) -> None:
         _write_screenmap(screenmap_path, screen_map)
@@ -225,10 +259,11 @@ def crawl(
             f"crashes={len(screen_map.crashes)} alerts={len(screen_map.alerts)}"
         )
 
-    def on_node(node: crawl_engine.Node) -> None:
-        # Best-effort: a screenshot hiccup shouldn't abort the crawl (the node still maps fine).
+    def on_node(d: base.Driver, node: crawl_engine.Node) -> None:
+        # Screenshot on the worker's own driver (a parallel crawl maps each screen on whichever
+        # simulator found it). Best-effort: a screenshot hiccup shouldn't abort the crawl.
         try:
-            driver.screenshot(str(screens_dir / f"{node.fingerprint}.png"))
+            d.screenshot(str(screens_dir / f"{node.fingerprint}.png"))
         except (OSError, subprocess.CalledProcessError) as exc:
             say(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
@@ -277,8 +312,8 @@ def crawl(
     say("✅ app is up — crawling…")
     try:
         screen_map = crawl_engine.crawl(
-            driver,
-            reset,
+            pool[0][0],
+            pool[0][1],
             max_screens=max_screens,
             max_steps=max_steps,
             clear_blocking=clear_blocking,
@@ -290,6 +325,7 @@ def crawl(
             seed_ops=seed_ops,
             on_event=on_event,
             on_node=on_node,
+            extra_workers=pool[1:],  # the rest of the simulator pool (BE-0064)
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

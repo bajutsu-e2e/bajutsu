@@ -222,7 +222,8 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--max-screens` | `50` | stop after discovering this many distinct screens |
 | `--max-steps` | `200` | stop after taking this many actions |
 | `--agent` | `$BAJUTSU_AGENT` or `api` | AI backend for the crawl guide: `api` (the Anthropic SDK, pay-per-token; uses the configured AI provider — `ANTHROPIC_API_KEY` for Anthropic, or AWS credentials + `BAJUTSU_BEDROCK_MODEL` when `BAJUTSU_AI_PROVIDER=bedrock`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`). Omitted, it follows `$BAJUTSU_AGENT` (which `serve` sets from its Settings selector), then `api` |
-| `--udid` | `booted` | the target Simulator |
+| `--udid` | `booted` | the target Simulator — or a comma list (`A,B,C`) for a parallel pool (see `--workers`) |
+| `--workers` | `1` | crawl across this many simulators at once ([BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)), sharing one screen map; capped to the number of `--udid` devices. `1` = single-device crawl. iOS only |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
@@ -264,6 +265,15 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   screen is a label+info node, and screens that are the same UI in different states (a form empty vs
   filled) collapse into one node you can expand in place. Stops at the first of `--max-screens` /
   `--max-steps`.
+- **Parallel pool** ([BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)):
+  with `--workers N` over a `--udid A,B,C` pool the crawl runs across N booted simulators at once,
+  all sharing the one screen map and frontier — independent branches explore concurrently and the AI
+  guide's round-trips overlap across devices, so wall-clock time falls roughly with the device count.
+  Only *scheduling* becomes concurrent: which worker reaches a screen first is timing-dependent, so
+  for an app with its own non-determinism the recorded paths and discovery order can vary run to run,
+  but screen identity, transitions and crashes stay the same deterministic functions of the element
+  tree (the crawl is still never a verdict). A wedged device drops its work and the others carry on.
+  Default `--workers 1` is the single-device crawl, unchanged. (iOS only; a web crawl is one browser.)
 
 ### How a screen is identified (the fingerprint)
 
@@ -396,10 +406,11 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   promotes the captured screenshot into it via `POST /api/approve`.
 - Pick an app (its scenarios populate the dropdown), set backend / udid / erase / `disable
   alert-dismiss`, hit **Run**; the output streams live and the `report.html` embeds on completion.
-- The **Crawl** tab picks an app, device, and budget (max screens / steps), then `POST /api/crawl`
-  spawns the crawl; the returned run id lets the UI poll `runs/<id>/screenmap.json` and draw the
-  screen map as it grows (screens laid out in breadth-first layers, transitions as arrows). The
-  **Stop** button aborts it, like Replay.
+- The **Crawl** tab picks an app, a pool of simulators (multi-select, like Replay — two or more
+  crawl in parallel, sharing one screen map; [BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)),
+  and a budget (max screens / steps), then `POST /api/crawl` spawns the crawl; the returned run id
+  lets the UI poll `runs/<id>/screenmap.json` and draw the screen map as it grows (screens laid out
+  in breadth-first layers, transitions as arrows). The **Stop** button aborts it, like Replay.
 - The **AI backend for authoring** (Record and Crawl) is one global choice in **Settings → AI
   provider**: **Anthropic API** (`ANTHROPIC_API_KEY`), **Amazon Bedrock** (AWS credentials +
   `BAJUTSU_BEDROCK_MODEL`), or **Claude Code** (the local `claude` CLI on your subscription — text

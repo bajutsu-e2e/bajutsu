@@ -357,6 +357,7 @@ def crawl_command(
     agent: str = "",
     backend: str = "",
     udid: str = "",
+    workers: int = 1,
     max_screens: int = 50,
     max_steps: int = 200,
     erase: bool | None = None,
@@ -369,10 +370,12 @@ def crawl_command(
     """The ``python -m bajutsu crawl --app … --out …`` argv for a crawl request — the explorer the
     Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
     (``<out>/screenmap.json``, which the UI polls live); ``erase`` mirrors ``run_command`` (None
-    leaves the CLI default — crawl erases by default). Crawl is AI-driven, so ``agent`` is the
-    brain that proposes what to try ("api" / "claude-code"); blank leaves the CLI default. When
-    ``resume_src`` / ``resume_key`` are set, ``out`` points at an existing run and the crawl
-    resumes one pruned branch, appending to that run's map instead of starting a fresh one."""
+    leaves the CLI default — crawl erases by default). ``udid`` may be a comma list and
+    ``workers > 1`` crawls across that many simulators at once, sharing one screen map (BE-0064;
+    capped to the pool size by the CLI). Crawl is AI-driven, so ``agent`` is the brain that
+    proposes what to try ("api" / "claude-code"); blank leaves the CLI default. When ``resume_src``
+    / ``resume_key`` are set, ``out`` points at an existing run and the crawl resumes one pruned
+    branch, appending to that run's map instead of starting a fresh one."""
     cmd = [
         sys.executable,
         "-m",
@@ -395,6 +398,8 @@ def crawl_command(
         cmd += ["--backend", backend]
     if udid:
         cmd += ["--udid", udid]
+    if workers > 1:
+        cmd += ["--workers", str(workers)]
     if erase is True:
         cmd += ["--erase"]
     elif erase is False:

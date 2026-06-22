@@ -135,6 +135,7 @@ SECTIONS: tuple[Section, ...] = (
     Section("accepted-ai-provider", "Accepted", "AI provider configuration", False),
     Section("accepted-hosting", "Accepted", "Hosting the web UI (cloud / self-hosted)", False),
     Section("accepted-codegen", "Accepted", "codegen coverage", False),
+    Section("accepted-crawl", "Accepted", "Crawl performance / scale-out", False),
     Section("proposals-on-device", "Proposals", "On-device validation (M1 close-out)", False),
     Section(
         "proposals-platform", "Proposals", "Platform expansion (Android / Web / Flutter)", False
