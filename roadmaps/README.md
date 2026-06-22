@@ -95,6 +95,7 @@ The first slice of the multi-platform direction has landed: a **platform-aware b
 |---|---|---|
 | [BE-0041](proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | In progress |
 | [BE-0042](implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) | Platform-aware backend registry & selection | Implemented |
+| [BE-0066](implemented/BE-0066-web-crawl/BE-0066-web-crawl.md) | Web crawl (Playwright backend) | Implemented |
 <!-- /GENERATED:accepted-platform-landed -->
 
 ### Authoring experience (record / GUI editor)
@@ -244,7 +245,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0010](proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Proposal |
 | [BE-0054](proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | Proposal |
 | [BE-0057](proposals/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md) | Rename the config `apps` key to `targets` | Proposal |
-| [BE-0066](proposals/BE-0066-web-crawl/BE-0066-web-crawl.md) | Web crawl (Playwright backend) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)

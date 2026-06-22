@@ -255,6 +255,27 @@ hashes to the same value. Each node records both the fingerprint and its `kind`.
   few elements — into one expandable unit, so the graph stays readable. That grouping never changes
   the fingerprints or what the crawl explores; it only collapses the drawing.
 
+### Web backend (`--backend web`)
+
+The crawl runs against a web app the same way it runs against the Simulator — the exploration
+engine is platform-neutral, so `bajutsu crawl --app <web-app> --backend web` produces the same
+`screenmap.json`, screenshots, and crash list. The web app is identified by `baseUrl` (not
+`bundleId`), and because a browser needs no Mac or emulator a web crawl runs on the Linux
+`make check` / CI gate. Three things differ from iOS, and all stay deterministic
+([BE-0066](roadmap/README.md)):
+
+- **Clean start = re-navigate.** There is no app process to relaunch; returning to a clean state
+  is `page.goto(baseUrl)` against a fresh browser context (the `erase` equivalent, ~free), the
+  same lifecycle seam `run` uses.
+- **Crash detection.** The iOS signal (the accessibility tree collapsing) does not exist on the
+  web, so the crawl uses the browser's own deterministic signals instead: an uncaught JS exception
+  (`pageerror`), a 4xx/5xx main-frame navigation, or a blank document. Each is a machine fact (an
+  event, a status number, an empty element set) — no model judges whether the page "looks broken".
+- **Dialogs instead of OS alerts.** The web has no OS prompts; it has JS dialogs (`alert` /
+  `confirm` / `beforeunload`). They are auto-handled by a fixed, model-free policy (dismiss) and
+  recorded in `alerts`, replacing the iOS vision alert guard. `--dismiss-alerts` and the vision
+  path are iOS-only; `--headed` applies (watch the crawl in a visible browser).
+
 ## `codegen`
 
 Generates a **native test** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)):

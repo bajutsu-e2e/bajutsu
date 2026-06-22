@@ -233,6 +233,26 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   トグル、要素を少し足すアラート/オーバーレイ）を 1 つの展開可能なユニットに*まとめ*、グラフを読みやすくします。
   このグループ化は fingerprint やクロールの探索内容を一切変えず、描画を畳むだけです。
 
+### web backend（`--backend web`）
+
+クロールは Simulator に対するのと同じように web アプリにも走ります。探索エンジンはプラットフォーム非依存
+なので、`bajutsu crawl --app <web-app> --backend web` は同じ `screenmap.json`・スクリーンショット・クラッシュ
+一覧を出力します。web アプリは `bundleId` ではなく `baseUrl` で指定し、ブラウザは Mac もエミュレータも要らない
+ので、web クロールは Linux の `make check` / CI ゲート内で走ります。iOS と違う点は次の 3 つで、いずれも決定的
+です（[BE-0066](roadmap/README-ja.md)）。
+
+- **クリーンな起点 = 再ナビゲート。** 再起動するアプリプロセスはありません。クリーンな状態に戻すのは、新しい
+  ブラウザコンテキストに対する `page.goto(baseUrl)`（`erase` 相当で、ほぼ無償）です。`run` が使うのと同じ
+  ライフサイクルの接合点です。
+- **クラッシュ検出。** iOS の信号（アクセシビリティツリーの崩壊）は web には存在しないため、ブラウザ自身の
+  決定的な信号を使います。未捕捉の JS 例外（`pageerror`）、メインフレームの 4xx/5xx ナビゲーション、空の
+  ドキュメントの 3 つです。どれも機械的な事実（イベント・ステータス番号・空の要素集合）であり、ページが
+  「壊れて見えるか」をモデルが判断することはありません。
+- **OS アラートではなくダイアログ。** web に OS プロンプトはなく、JS ダイアログ（`alert` / `confirm` /
+  `beforeunload`）があります。これらは固定のモデル非依存ポリシー（dismiss）で自動処理し、`alerts` に記録します。
+  iOS の vision アラートガードの置き換えです。`--dismiss-alerts` と vision 経路は iOS 専用で、`--headed` は
+  web で有効です（可視ブラウザでクロールを見られます）。
+
 ## `codegen`
 
 シナリオから **ネイティブテスト** を生成します（AI 非依存・構造マッピング・[codegen](codegen.md)）。出力先は
