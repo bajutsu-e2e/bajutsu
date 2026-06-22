@@ -109,6 +109,12 @@ SECTIONS: tuple[Section, ...] = (
         "Candidates from competitive research (MagicPod / Autify)",
         True,
     ),
+    Section(
+        "accepted-competitive-maestro",
+        "Accepted",
+        "Candidates from competitive research (Maestro)",
+        True,
+    ),
     Section("accepted-mcp", "Accepted", "Integration & automation (MCP)", False),
     Section(
         "accepted-dev-infra",

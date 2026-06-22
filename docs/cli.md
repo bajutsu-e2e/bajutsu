@@ -79,6 +79,29 @@ bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
 - Then `query()`s via the actuator and renders `score(elements, idNamespaces)`. **Exits 1 when
   the grade is Blocked, 0 otherwise.**
 
+## `audit`
+
+A **static determinism score** for a scenario — the device-free cousin of `doctor`'s convention
+score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
+It reads a scenario file (expanding components / data, like `trace --explain`) and reports, per
+scenario, how reproducible it is — without running it.
+
+```bash
+bajutsu audit <scenario.yaml> [--json]
+```
+
+- Grades each selector on the **stability ladder** ([selectors](selectors.md)): a unique `id` /
+  `idMatches` is **stable**; `label` / `labelMatches` / `traits` / `value` is **moderate** (auxiliary,
+  no id); an `index` (nth-of-many) is **fragile**. Plus it flags **coordinate gestures**
+  (`swipe {from,to}`, which a stable id could replace) and **over-loose waits** (`until:
+  screenChanged` / `settled`, which wait for no concrete condition).
+- Emits a per-scenario `grade` (`Stable` / `Moderate` / `Fragile`), a stability fraction, and the
+  located findings — as text, or `--json` for tooling.
+- **Advisory and read-only**: it never runs the scenario, never edits it, and **never gates CI** —
+  a successful audit **exits 0 even with findings** (only a missing / unreadable scenario file
+  exits 2). A finding is something to harden, not a verdict — the opposite of retry-to-pass, which
+  hides flakiness.
+
 ## `trace`
 
 Inspects a finished run as a **text timeline**: per scenario, steps and observed network
