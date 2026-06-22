@@ -7,8 +7,8 @@
 |---|---|
 | 提案 | [BE-0048](BE-0048-behavioral-protocol-assertions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
+| 状態 | **可決・実装中** |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 競合調査（Maestro）由来の候補 |
 | 由来 | Maestro |
 <!-- /BE-METADATA -->
@@ -78,6 +78,21 @@ expect:
   [BE-0029](../../implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)
   のビジュアル回帰アサーションを補完します。どちらもアクセシビリティツリーでは表現できないものを、
   LLM なしで検査します。
+
+### 実装状況
+
+最初のスライスは **`event`** アサーションを提供します（`bajutsu/scenario/models/assertions.py` の
+`EventMatch` ＋ `CountOp`、`bajutsu/assertions.py` の `_eval_event`）。捕捉済みタイムラインを、イベントの
+エンドポイント（既存の `RequestMatch` マッチャを再利用）で絞り、続けて構造化した JSON リクエストボディの
+フィールドで絞り、残った通信数を `equals` / `atLeast` / `atMost` 演算子（省略時は 1 件以上）と突き合わせます。
+記録済み通信に対する純粋な処理で、AI を使わず、他のアサーションと同じく Tier-2 の run/CI ゲートに乗ります。
+ボディの値への `${vars.*}` / `${secrets.*}` 補間は既存のアサーション置換経路を通るため、フィールドごとの
+配線は不要でした。
+
+後続のスライスに見送り: **`requestSequence`**（タイムライン上の順序 / 多重度の照合。同じく純粋で
+`RequestMatch` を再利用するため、軽い続きになる）と **`responseSchema`**（捕捉したレスポンスボディを
+保存済みの JSON Schema で検証。スキーマ検証の新依存、`apps.<name>.schemas` 設定ディレクトリ、runner 配線を
+伴うため独立スライス）。
 
 ## 検討した代替案
 

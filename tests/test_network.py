@@ -10,7 +10,14 @@ from bajutsu.assertions import evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import Assertion, RequestMatch, dump_mocks, load_scenarios
+from bajutsu.scenario import (
+    Assertion,
+    CountOp,
+    EventMatch,
+    RequestMatch,
+    dump_mocks,
+    load_scenarios,
+)
 
 
 def _ex(
@@ -109,6 +116,96 @@ def test_request_count_assertion_stays_independent() -> None:
 def test_request_no_match_fails_with_reason() -> None:
     r = evaluate_one([], _req(method="DELETE"), [_ex("GET", "/x")])
     assert not r.ok and "通信" in r.reason
+
+
+def _event(**kw: object) -> Assertion:
+    return Assertion(event=EventMatch(**kw))
+
+
+def test_event_matches_endpoint_and_body_field() -> None:
+    exs = [
+        _ex(
+            "POST",
+            "/track",
+            200,
+            url="https://t.example.com/track",
+            request_body='{"name":"purchase_completed","amount":300}',
+        ),
+        _ex("GET", "/items", 200),
+    ]
+    # endpoint + structured body field; numeric JSON value matches its string form
+    assert evaluate_one(
+        [],
+        _event(
+            url="https://t.example.com/track", body={"name": "purchase_completed", "amount": "300"}
+        ),
+        exs,
+    ).ok
+    # a body field that doesn't match → fail
+    assert not evaluate_one(
+        [], _event(url="https://t.example.com/track", body={"name": "checkout_started"}), exs
+    ).ok
+
+
+def test_event_count_operator() -> None:
+    exs = [
+        _ex("POST", "/track", request_body='{"name":"tap"}'),
+        _ex("POST", "/track", request_body='{"name":"tap"}'),
+    ]
+    assert evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(equals=2)), exs
+    ).ok
+    assert not evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(equals=1)), exs
+    ).ok
+    assert evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_least=2)), exs
+    ).ok
+    assert evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_most=2)), exs
+    ).ok
+    assert not evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_most=1)), exs
+    ).ok
+
+
+def test_event_default_count_is_at_least_one() -> None:
+    exs = [_ex("POST", "/track", request_body='{"name":"tap"}')]
+    assert evaluate_one([], _event(path="/track", body={"name": "tap"}), exs).ok
+    assert not evaluate_one([], _event(path="/track", body={"name": "other"}), exs).ok
+
+
+def test_event_body_only_matches_across_exchanges() -> None:
+    # No endpoint criterion: every exchange whose JSON body carries the field counts. JSON
+    # booleans / null match their JSON-canonical text (`true` / `false` / `null`), not Python repr.
+    exs = [
+        _ex("POST", "/a", request_body='{"flag":true,"note":null}'),
+        _ex("POST", "/b", request_body='{"flag":false}'),
+    ]
+    assert evaluate_one([], _event(body={"flag": "true", "note": "null"}), exs).ok
+    assert not evaluate_one([], _event(body={"flag": "True"}), exs).ok  # not Python repr
+
+
+def test_event_body_nested_value_matches_compact_json() -> None:
+    # A nested array / object field matches its compact JSON form, not a Python repr.
+    exs = [_ex("POST", "/track", request_body='{"items":[1,2],"meta":{"k":"v"}}')]
+    assert evaluate_one([], _event(path="/track", body={"items": "[1,2]"}), exs).ok
+    assert evaluate_one([], _event(path="/track", body={"meta": '{"k":"v"}'}), exs).ok
+    assert not evaluate_one([], _event(path="/track", body={"items": "[1, 2]"}), exs).ok  # not repr
+
+
+def test_event_non_json_body_does_not_crash() -> None:
+    exs = [_ex("POST", "/track", request_body="not json"), _ex("POST", "/track", request_body=None)]
+    r = evaluate_one([], _event(path="/track", body={"name": "tap"}), exs)
+    assert not r.ok and r.reason
+
+
+def test_event_interpolates_vars_in_body() -> None:
+    from bajutsu.orchestrator import _interp_asserts
+
+    a = _event(url="https://t.example.com/track", body={"amount": "${vars.amount}"})
+    [interp] = _interp_asserts([a], {"vars.amount": "300"})
+    assert interp.event is not None and interp.event.body["amount"] == "300"
 
 
 def test_mocks_parse_and_serialize() -> None:

@@ -39,6 +39,8 @@ from bajutsu.scenario.models.actions import (
 from bajutsu.scenario.models.assertions import (
     Assertion,
     CountMatch,
+    CountOp,
+    EventMatch,
     ExcludeRegion,
     Exists,
     Gone,
@@ -77,7 +79,9 @@ __all__ = [
     "ClearStatusBar",
     "Component",
     "CountMatch",
+    "CountOp",
     "DismissAlerts",
+    "EventMatch",
     "ExcludeRegion",
     "Exists",
     "Extract",

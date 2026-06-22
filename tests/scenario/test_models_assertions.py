@@ -41,6 +41,39 @@ def test_assertion_one_kind() -> None:
         Assertion.model_validate({"exists": {"id": "a"}, "disabled": {"id": "b"}})
 
 
+def test_event_parses_endpoint_body_and_count() -> None:
+    a = Assertion.model_validate(
+        {
+            "event": {
+                "url": "https://t.example.com/track",
+                "body": {"name": "purchase_completed", "amount": "300"},
+                "count": {"equals": 1},
+            }
+        }
+    )
+    assert a.event is not None
+    assert a.event.url == "https://t.example.com/track"
+    assert a.event.body["name"] == "purchase_completed"
+    assert a.event.count is not None and a.event.count.equals == 1
+
+
+def test_event_requires_a_criterion() -> None:
+    with pytest.raises(ValidationError):  # neither endpoint nor body
+        Assertion.model_validate({"event": {"count": {"equals": 1}}})
+
+
+def test_event_count_requires_exactly_one_operator() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"event": {"path": "/t", "count": {"equals": 1, "atLeast": 2}}})
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"event": {"path": "/t", "count": {}}})
+
+
+def test_event_is_an_exclusive_assertion_kind() -> None:
+    with pytest.raises(ValidationError):  # event + another kind rejected
+        Assertion.model_validate({"event": {"path": "/t"}, "exists": {"id": "a"}})
+
+
 def test_text_match_one_operator() -> None:
     Assertion.model_validate({"value": {"sel": {"id": "c"}, "equals": "3"}})
     with pytest.raises(ValidationError):
