@@ -103,6 +103,29 @@ bajutsu audit <scenario.yaml> [--json]
   exits 2). A finding is something to harden, not a verdict — the opposite of retry-to-pass, which
   hides flakiness.
 
+## `coverage`
+
+A **static e2e coverage map** for a suite — the read-only cousin of `doctor`'s convention score
+(AI-independent; [BE-0050](../roadmaps/proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
+Where `doctor` grades the ids one screen *exposes*, this grades the ids a whole *suite* exercises:
+it walks every `*.yaml` in the app's configured `scenarios` dir (expanding components / data), groups
+the stable ids they reference by namespace, and measures them against the app's declared
+`idNamespaces` ([configuration](configuration.md#doctor-the-convention-score)) — without running anything.
+
+```bash
+bajutsu coverage --app <name> [--config ...] [--json]
+```
+
+- Reports the **coverage fraction** (declared namespaces the suite references / declared namespaces),
+  the **per-namespace ids** that touch each, the **gap list** (declared namespaces no scenario
+  references — what is untested), and **off-namespace ids** (referenced ids whose namespace was never
+  declared). As text, or `--json` for tooling.
+- A referenced id is any `id` / `idMatches` a scenario addresses — across steps, nested control flow,
+  `within` scopes, and assertions.
+- **Advisory and read-only**: it never runs a scenario, never edits anything, and **never gates CI** —
+  it **exits 0 even with gaps** (only a missing config / scenarios dir or an unreadable scenario exits
+  2). A gap is a namespace to cover, not a verdict.
+
 ## `export`
 
 Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,

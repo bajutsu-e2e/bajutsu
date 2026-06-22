@@ -85,6 +85,18 @@ bajutsu audit <scenario.yaml> [--json]
 - シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。成功した監査は **finding があっても終了 0**（シナリオファイルが無い/読めないときだけ終了 2）です。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
 
+## `coverage`
+
+スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
+
+```bash
+bajutsu coverage --app <name> [--config ...] [--json]
+```
+
+- **カバレッジの割合**（スイートが参照する宣言済み namespace 数 / 宣言済み namespace 数）、各 namespace に触れる **namespace ごとの id**、**gap 一覧**（どのシナリオも参照しない宣言済み namespace。すなわち未テストの範囲）、**off-namespace な id**（参照されているが宣言されていない namespace の id）を報告します。テキスト、または `--json` で機械可読に出せます。
+- 参照している id とは、シナリオが指定する `id` / `idMatches` のすべてです。ステップ、入れ子の制御フロー、`within` スコープ、アサーションを横断して集めます。
+- **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。**gap があっても終了 0**（config / scenarios ディレクトリが無い、またはシナリオが読めないときだけ終了 2）です。gap は埋めるべき namespace であって判定ではありません。
+
 ## `export`
 
 完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`・`junit.xml`・実行した `scenario.yaml`・**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。

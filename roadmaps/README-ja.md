@@ -145,6 +145,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
 | [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) | 決定性／フレーキネス監査 | 実装中 | Maestro |
+| [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装中 | Maestro |
 <!-- /GENERATED:accepted-competitive-maestro -->
 
 ### 統合と自動化（MCP）
@@ -389,7 +390,6 @@ Maestro（mobile.dev）はオープンソースのクロスプラットフォー
 |---|---|---|---|
 | [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) | AI データ主権（プロバイダ非依存・秘匿化された AI 経路） | 提案 | Maestro |
 | [BE-0048](proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md) | 振る舞い／プロトコルアサーション | 提案 | Maestro |
-| [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 提案 | Maestro |
 <!-- /GENERATED:proposals-competitive-maestro -->
 
 ## 取り込まない（既に充足 / スコープ外）

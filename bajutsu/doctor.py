@@ -45,7 +45,8 @@ def _is_actionable(el: base.Element) -> bool:
     return bool(set(el["traits"]) & ACTIONABLE_TRAITS)
 
 
-def _namespace(identifier: str) -> str:
+def namespace_of(identifier: str) -> str:
+    """The id's namespace — the first segment before a '.' (e.g. `auth.email` → `auth`)."""
     return identifier.split(".", 1)[0]
 
 
@@ -63,9 +64,9 @@ def score(elements: list[base.Element], id_namespaces: list[str]) -> Score:
 
     namespaces = set(id_namespaces)
     if namespaces and ids:
-        conforming = sum(1 for i in ids if _namespace(i) in namespaces)
+        conforming = sum(1 for i in ids if namespace_of(i) in namespaces)
         namespace_conformance = conforming / len(ids)
-        off_namespace = [i for i in ids if _namespace(i) not in namespaces]
+        off_namespace = [i for i in ids if namespace_of(i) not in namespaces]
     else:
         namespace_conformance = 1.0
         off_namespace = []

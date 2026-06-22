@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0050](BE-0050-e2e-coverage-map.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Status | **Accepted, in progress** |
+| Track | [Accepted](../../README.md#accepted) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->
@@ -53,6 +53,23 @@ Proposal altitude.
   (though a team may choose to track the number in CI as informational).
 - **Determinism.** Every figure is a deterministic aggregation over captured artifacts; there is
   no model and no judgement call. This keeps the feature firmly on the Tier-1 / reporting side.
+
+### Implementation status
+
+The first slice ships the **id-namespace dimension** statically — the highest-value figure, whose
+denominator (declared `idNamespaces`) is already fully defined. `bajutsu coverage --app <name>`
+(`bajutsu/coverage.py`, `bajutsu/cli/commands/coverage.py`) walks every scenario in the app's
+configured `scenarios` dir, groups the stable ids each references (via `bajutsu.audit.referenced_ids`,
+reusing the audit selector walk) by namespace, and reports per-namespace coverage, the gap list, and
+off-namespace ids — read-only, AI-free, exits 0 even with gaps. It is the suite-level cousin of
+`doctor`'s per-screen convention score.
+
+Deferred to a later slice, each because its denominator depends on an item not yet shipped or on a
+second evidence source: the **screens-visited** dimension (needs a crawl-discovered denominator,
+[BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
+the **endpoints-observed-vs-declared** dimension (needs the behavioral-assertions sibling for the
+"declared" half), and folding run evidence (`network.json`, per-step `elements.json`) into the map
+alongside the static analysis.
 
 ## Alternatives considered
 
