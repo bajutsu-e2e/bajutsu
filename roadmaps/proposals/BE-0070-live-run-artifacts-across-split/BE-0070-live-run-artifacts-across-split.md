@@ -1,8 +1,8 @@
-**English** · [日本語](BE-XXXX-live-run-artifacts-across-split-ja.md)
+**English** · [日本語](BE-0070-live-run-artifacts-across-split-ja.md)
 
-# BE-XXXX — Live in-progress run artifacts across the worker split
+# BE-0070 — Live in-progress run artifacts across the worker split
 
-* Proposal: [BE-XXXX](BE-XXXX-live-run-artifacts-across-split.md)
+* Proposal: [BE-0070](BE-0070-live-run-artifacts-across-split.md)
 * Author: [@0x0c](https://github.com/0x0c)
 * Status: **Proposal**
 * Track: [Proposals](../../README.md#proposals)
