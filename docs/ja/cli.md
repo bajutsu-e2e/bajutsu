@@ -4,7 +4,7 @@
 
 > 実装: `bajutsu/cli/`（Typer。コマンドごとに `cli/commands/` の 1 ファイル）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
 > この CLI（コマンドラインインターフェース）のすべてのコマンドは `--app <name>` で 1 アプリを選び、
-> `--config`（既定 `bajutsu.config.yaml`）で設定を指す。アプリ固有の差分は config 側にある（[configuration](configuration.md)）。
+> `--config`（既定 `bajutsu.config.yaml`）で設定を指します。アプリ固有の差分は config 側にあります（[configuration](configuration.md)）。
 
 関連: [run-loop](run-loop.md) ・ [recording](recording.md) ・ [codegen](codegen.md) ・ [configuration](configuration.md)
 
@@ -41,11 +41,12 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--alert-instruction` | "" | 既定のボタン指示（シナリオ自身の `dismissAlerts.instruction` が勝つ） |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
-| `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（アプリに BajutsuKit が必要） |
+| `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブする） |
 | `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` が必要（プール数で上限）。各デバイスが自前のネットワークコレクタ、インターバル録画、デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能する |
 | `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
 | `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できる（コマンドを実行しているマシン上でウィンドウが開く）。省略時はアプリの `headless` 設定に従う。iOS は無視する |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流す（`serve` UI が消費する） |
+| `--zip` | off | run の後に `runs/<id>.zip` も書き出す。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使える。**判定の後**に走るので pass/fail に影響しない。[`export`](#export) 参照 |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
@@ -71,6 +72,30 @@ bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
 - まず env ゲート（`preflight.py`）: actuator が必要とする CLI（`xcrun`、idb なら `idb` /
   `idb_companion`）と**起動済みシミュレータ**を ✓/✗ チェックリストで表示します。不足があれば**終了 1**（直し方ヒント付きで即失敗）。
 - 次に actuator で `query()` し、`score(elements, idNamespaces)` を表示します。**grade が Blocked で 1、それ以外 0**。
+
+## `audit`
+
+シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)・[BE-0049](../../roadmaps/proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
+
+```bash
+bajutsu audit <scenario.yaml> [--json]
+```
+
+- 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）を指摘します。
+- シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
+- **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。成功した監査は **finding があっても終了 0**（シナリオファイルが無い/読めないときだけ終了 2）です。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
+
+## `export`
+
+完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`・`junit.xml`・実行した `scenario.yaml`・**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
+
+```bash
+bajutsu export <run-id | run-dir> [-o out.zip] [--force]
+```
+
+- `<run>` は run id（`--runs` 既定 `runs/` の下で解決）または run ディレクトリのパスです。
+- 出力は既定で run dir の隣の `<id>.zip`。`-o/--output` で上書き指定。`--force` なしでは既存ファイルを**上書きしません**（`record` が黙って上書きしないのと同じ）。
+- run が既に書いたものを詰めるだけで、デバイスも AI も使わず、判定にも影響しません。**run dir の中だけ**を固めます（`.env`・config・その上位には一切触れません）。run の secret スクラブをそのまま継承します。`bajutsu run --zip` は同じアーカイバを判定後にインラインで走らせ、`bajutsu serve` は埋め込みレポートの隣に **Download** ボタンとして提供します。
 
 ## `trace`
 
@@ -151,7 +176,7 @@ bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>]
 ## `crawl`
 
 アプリを**幅優先**で探索し、到達できる画面と画面間の遷移の**画面マップ**を書き出します
-（Tier 1・[BE-0038](roadmap/README-ja.md)）。`record` は *目的指向* で、1 つの自然言語ゴールに
+（Tier 1・[BE-0038](../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）。`record` は *目的指向* で、1 つの自然言語ゴールに
 向かって AI が探索し、1 本のシナリオを書き出します。これに対し `crawl` は *体系的な発見* です。
 到達できる画面を巡り、見つけたものを報告します。探索エンジンは**決定的**で（画面の識別子と候補
 アクションを試す順序は、どちらも要素ツリーの純粋な関数です）、**AI は関与せず**、**合否ゲートには
@@ -233,20 +258,44 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   トグル、要素を少し足すアラート/オーバーレイ）を 1 つの展開可能なユニットに*まとめ*、グラフを読みやすくします。
   このグループ化は fingerprint やクロールの探索内容を一切変えず、描画を畳むだけです。
 
+### web backend（`--backend web`）
+
+クロールは Simulator に対するのと同じように web アプリにも走ります。探索エンジンはプラットフォーム非依存
+なので、`bajutsu crawl --app <web-app> --backend web` は同じ `screenmap.json`・スクリーンショット・クラッシュ
+一覧を出力します。web アプリは `bundleId` ではなく `baseUrl` で指定し、ブラウザは Mac もエミュレータも要らない
+ので、web クロールは Linux の `make check` / CI ゲート内で走ります。iOS と違う点は次の 3 つで、いずれも決定的
+です（[BE-0066](../../roadmaps/implemented/BE-0066-web-crawl/BE-0066-web-crawl-ja.md)）。
+
+- **クリーンな起点 = 再ナビゲート。** 再起動するアプリプロセスはありません。クリーンな状態に戻すのは、新しい
+  ブラウザコンテキストに対する `page.goto(baseUrl)`（`erase` 相当で、ほぼ無償）です。`run` が使うのと同じ
+  ライフサイクルの接合点です。
+- **クラッシュ検出。** iOS の信号（アクセシビリティツリーの崩壊）は web には存在しないため、ブラウザ自身の
+  決定的な信号を使います。未捕捉の JS 例外（`pageerror`）、メインフレームの 4xx/5xx ナビゲーション、空の
+  ドキュメントの 3 つです。どれも機械的な事実（イベント・ステータス番号・空の要素集合）であり、ページが
+  「壊れて見えるか」をモデルが判断することはありません。
+- **OS アラートではなくダイアログ。** web に OS プロンプトはなく、JS ダイアログ（`alert` / `confirm` /
+  `beforeunload`）があります。これらは固定のモデル非依存ポリシー（dismiss）で自動処理し、`alerts` に記録します。
+  iOS の vision アラートガードの置き換えです。`--dismiss-alerts` と vision 経路は iOS 専用で、`--headed` は
+  web で有効です（可視ブラウザでクロールを見られます）。
+
 ## `codegen`
 
-シナリオから **ネイティブ XCUITest** を生成します（AI 非依存・構造マッピング・[codegen](codegen.md)）。
+シナリオから **ネイティブテスト** を生成します（AI 非依存・構造マッピング・[codegen](codegen.md)）。出力先は
+**XCUITest**（Swift、iOS）または **Playwright**（TypeScript、web）です。
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] [--config ...]
+bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
 ```
 
 | オプション | 既定 | 説明 |
 |---|---|---|
-| `--emit` | `xcuitest` | 出力形式（現状 `xcuitest` のみ。他は終了コード 2） |
+| `--emit` | `xcuitest` | 出力形式。`xcuitest` または `playwright`（他は終了コード 2） |
 | `-o, --out` | `-` | 出力ファイル。`-` で標準出力 |
 
-- config の `launchEnv` が生成テストの `app.launchEnvironment` に入ります。
+- config の `launchEnv` が生成テストに入ります。XCUITest では `app.launchEnvironment`、Playwright では
+  `localStorage` のシードに反映されます。
+- `--emit playwright` は対象が web ターゲットであること（`apps.<name>.baseUrl`）を要求し、なければ終了コード 2 で
+  終わります。
 - ファイル出力時は `wrote <N> scenario(s) -> <out>`。
 
 ## `approve`

@@ -18,7 +18,7 @@ import threading
 import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -40,6 +40,18 @@ class NetworkExchange(BaseModel):
     started_at: float | None = Field(default=None, alias="startedAt")
     duration_ms: float | None = Field(default=None, alias="durationMs")
     mocked: bool = False  # served by a bajutsu mock stub (not a real network call)
+
+
+@runtime_checkable
+class Collector(Protocol):
+    """The exchange source the run loop and evidence writer drive, independent of how it observed
+    the traffic. The iOS `NetworkCollector` receives POSTs over HTTP; the web `WebNetworkCollector`
+    hooks Playwright events — both satisfy this, so the pipeline stays backend-agnostic."""
+
+    def snapshot(self) -> list[NetworkExchange]: ...
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]: ...
+    def clear(self) -> None: ...
+    def stop(self) -> None: ...
 
 
 class NetworkCollector:

@@ -16,14 +16,14 @@ def _do_http(http: HttpRequest, bindings: dict[str, str] | None) -> None:
     if not http.url.startswith(("http://", "https://")):
         raise base.SelectorError(f"http: only http/https URLs are allowed, got {http.url!r}")
 
-    req = urllib.request.Request(
+    req = urllib.request.Request(  # noqa: S310 (scheme restricted to http/https above)
         http.url,
         data=http.body.encode("utf-8") if http.body else None,
         headers=dict(http.headers or {}),
         method=http.method,
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 (http/https only)
             body = resp.read().decode("utf-8", errors="replace")
             status = resp.status
     except urllib.error.HTTPError as e:

@@ -13,6 +13,7 @@ from bajutsu import env
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.network import NetworkExchange
 from bajutsu.runner import (
     device_pool,
     device_relauncher,
@@ -246,6 +247,25 @@ def test_device_pool_stops_started_collectors_when_one_fails(
     assert len(started) == 1 and started[0].stopped  # type: ignore[attr-defined]
 
 
+class _StubCollector:
+    """A minimal `Collector` for the web lease test (the real one needs a Playwright page)."""
+
+    def __init__(self) -> None:
+        self.stopped = False
+
+    def snapshot(self) -> list[NetworkExchange]:
+        return []
+
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
+        return []
+
+    def clear(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
 class _FakeWeb(FakeDriver):
     """A fake web driver: a FakeDriver plus the web-only navigate()/close() lifecycle."""
 
@@ -253,12 +273,19 @@ class _FakeWeb(FakeDriver):
         super().__init__(screen)
         self.navigated = 0
         self.closed = 0
+        self.collector_mocks: object = "unset"
+        self.collector: _StubCollector | None = None
 
     def navigate(self) -> None:
         self.navigated += 1
 
     def close(self) -> None:
         self.closed += 1
+
+    def network_collector(self, mocks: object = None) -> _StubCollector:
+        self.collector_mocks = mocks
+        self.collector = _StubCollector()
+        return self.collector
 
 
 def _eff_web() -> Effective:
@@ -295,6 +322,41 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         assert fakes[0].navigated == 2
         leased.release()  # tears the browser down
         assert fakes[0].closed == 1
+    finally:
+        shutdown()
+
+
+def test_device_pool_web_lease_builds_a_page_hooked_collector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--network` on web: no up-front HTTP receiver; the lease hooks a collector to the live
+    page and threads this scenario's mocks into it (BE-0054). The collector satisfies the
+    `Collector` protocol and is stopped on release."""
+    from bajutsu.network import Collector
+
+    fakes: list[_FakeWeb] = []
+
+    def fake_make_driver(
+        actuator: str, udid: str, base_url: str | None = None, headless: bool = True
+    ) -> base.Driver:
+        d = _FakeWeb([_el("home", "H"), _el("ok", "OK")])
+        fakes.append(d)
+        return d
+
+    monkeypatch.setattr("bajutsu.runner.launch.make_driver", fake_make_driver)
+    lease, shutdown = device_pool(
+        ["web"], ["web"], _eff_web(), Path("runs"), network=True, available=lambda b: True
+    )
+    try:
+        scn = Scenario.model_validate(
+            {"name": "a", "mocks": [{"match": {"path": "/x"}}], "steps": [{"tap": {"id": "ok"}}]}
+        )
+        leased = lease(_eff_web(), scn)
+        assert isinstance(leased.collector, Collector)  # protocol-satisfying
+        assert leased.collector is fakes[0].collector  # the page-hooked collector, not an HTTP one
+        assert fakes[0].collector_mocks == scn.mocks  # this scenario's mocks were wired in
+        leased.release()
+        assert fakes[0].collector is not None and fakes[0].collector.stopped is True
     finally:
         shutdown()
 

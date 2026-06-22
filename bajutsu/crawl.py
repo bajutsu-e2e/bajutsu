@@ -42,6 +42,11 @@ _FRAME_BUCKET = 32
 
 Reset = Callable[[base.Driver], None]
 Settle = Callable[[base.Driver], None]
+# Whether the app is still alive after an action — the crash signal. Default reads the iOS
+# accessibility tree (`is_app_alive`); a backend with different crash signals (web: pageerror /
+# HTTP status / blank DOM, BE-0066) injects its own. It receives the driver so a backend can read
+# its own health state, plus the landed elements. It only observes; it never decides pass/fail.
+AliveCheck = Callable[[base.Driver, list[base.Element]], bool]
 
 
 @dataclass(frozen=True)
@@ -296,7 +301,7 @@ def _frame_bucket(element: base.Element) -> tuple[int, int, int, int]:
 
 def _hash(parts: list[str]) -> str:
     # Full digest: a crawl may visit many screens across runs, so keep collision risk negligible.
-    return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()
+    return hashlib.sha1("\n".join(parts).encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def candidate_actions(elements: list[base.Element]) -> list[Action]:
@@ -461,6 +466,7 @@ def crawl(
     max_steps: int = 200,
     settle: Settle | None = None,
     clear_blocking: ClearBlocking | None = None,
+    is_alive: AliveCheck | None = None,
     guide: Guide | None = None,
     prune_global: bool = False,
     base_map: ScreenMap | None = None,
@@ -475,7 +481,9 @@ def crawl(
     tests, restoring the start screen). `settle`, if given, waits for the screen to stabilize
     after an action (a condition wait — never a fixed sleep); it is omitted when the driver is
     synchronous. `clear_blocking`, if given, dismisses anything covering the app (e.g. an OS
-    alert) at each observation, so a system prompt isn't mistaken for a crash. `guide` proposes
+    alert) at each observation, so a system prompt isn't mistaken for a crash. `is_alive`, if
+    given, replaces the default iOS crash signal (the accessibility-tree check) so another backend
+    can supply its own (web: pageerror / HTTP status / blank DOM); it only observes. `guide` proposes
     the actions to try from a screen (default: the deterministic `candidate_actions`; an AI guide
     proposes richer operations) — it only chooses *what to try*, never what happened. `on_event`,
     if given, fires after each new node, edge, or crash so a caller can stream the growing screen
@@ -484,6 +492,8 @@ def crawl(
     distinct screens or `max_steps` actions, whichever first.
     """
     guide = guide or _deterministic_guide
+    # Default crash signal = the iOS accessibility-tree check; a backend can inject its own.
+    alive = is_alive or (lambda _driver, elements: is_app_alive(elements))
     # Resume continues an existing map (`base_map`): replay `seed_path` back to a pruned branch's
     # screen, then explore from it with `seed_ops` as that screen's frontier, appending findings.
     screen_map = base_map if base_map is not None else ScreenMap()
@@ -598,7 +608,7 @@ def crawl(
         if dismissed:
             screen_map.alerts.append(Alert(tuple(a.describe() for a in path), tuple(dismissed)))
 
-        if not is_app_alive(landed):
+        if not alive(driver, landed):
             screen_map.crashes.append(Crash(tuple(a.describe() for a in path)))
             current_fp = None  # the app collapsed — reset to keep going
             emit()

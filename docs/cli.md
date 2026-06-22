@@ -44,11 +44,12 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--alert-instruction` | "" | default button instruction (a scenario's own `dismissAlerts.instruction` wins) |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
-| `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (needs BajutsuKit in the app) |
+| `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process) |
 | `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` (capped to the pool size). Each device carries its own network collector, interval recordings, and device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
 | `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
+| `--zip` | off | after the run, also write `runs/<id>.zip` — one portable artifact (report + evidence) for CI upload or sharing. Runs **after** the verdict, so it can't affect pass/fail; see [`export`](#export) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
@@ -78,6 +79,49 @@ bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
   check **exits 1** (fail fast with a fixable hint).
 - Then `query()`s via the actuator and renders `score(elements, idNamespaces)`. **Exits 1 when
   the grade is Blocked, 0 otherwise.**
+
+## `audit`
+
+A **static determinism score** for a scenario — the device-free cousin of `doctor`'s convention
+score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
+It reads a scenario file (expanding components / data, like `trace --explain`) and reports, per
+scenario, how reproducible it is — without running it.
+
+```bash
+bajutsu audit <scenario.yaml> [--json]
+```
+
+- Grades each selector on the **stability ladder** ([selectors](selectors.md)): a unique `id` /
+  `idMatches` is **stable**; `label` / `labelMatches` / `traits` / `value` is **moderate** (auxiliary,
+  no id); an `index` (nth-of-many) is **fragile**. Plus it flags **coordinate gestures**
+  (`swipe {from,to}`, which a stable id could replace) and **over-loose waits** (`until:
+  screenChanged` / `settled`, which wait for no concrete condition).
+- Emits a per-scenario `grade` (`Stable` / `Moderate` / `Fragile`), a stability fraction, and the
+  located findings — as text, or `--json` for tooling.
+- **Advisory and read-only**: it never runs the scenario, never edits it, and **never gates CI** —
+  a successful audit **exits 0 even with findings** (only a missing / unreadable scenario file
+  exits 2). A finding is something to harden, not a verdict — the opposite of retry-to-pass, which
+  hides flakiness.
+
+## `export`
+
+Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,
+`junit.xml`, the executed `scenario.yaml`, and **all** of its evidence (screenshots, video,
+`network.json`, …) ([BE-0060](../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
+The whole `runs/<id>/` tree is rooted under a single `<id>/` folder, so `report.html`'s **relative**
+links resolve offline — the report works by double-click, no server.
+
+```bash
+bajutsu export <run-id | run-dir> [-o out.zip] [--force]
+```
+
+- `<run>` is a run id (resolved under `--runs`, default `runs/`) or a path to a run directory.
+- Output defaults to `<id>.zip` beside the run dir; `-o/--output` overrides. It **refuses to
+  overwrite** an existing file without `--force` (mirroring how `record` never silently overwrites).
+- Pure packaging of what the run already wrote: no device, no AI, no effect on any verdict. It
+  archives **strictly the run dir** (never `.env`, config, or anything above it) and inherits the
+  run's secret-scrubbing. `bajutsu run --zip` is the same archiver, run inline after the verdict;
+  `bajutsu serve` offers it as a **Download** button beside the embedded report.
 
 ## `trace`
 
@@ -161,7 +205,7 @@ bajutsu record --app <name> --goal "<natural-language goal>" [--out <file.yaml>]
 ## `crawl`
 
 Explores the app **breadth-first** and writes a **screen map** of the reachable screens and the
-transitions between them (Tier 1; [BE-0038](roadmap/README.md)). Unlike `record`, which is
+transitions between them (Tier 1; [BE-0038](../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)). Unlike `record`, which is
 *goal-directed* — AI explores toward one natural-language goal and writes one scenario — `crawl`
 is *systematic discovery*: it visits the screens it can reach and reports what it found. The
 exploration engine is **deterministic** (a screen's identity and the order candidate actions are
@@ -255,20 +299,45 @@ hashes to the same value. Each node records both the fingerprint and its `kind`.
   few elements — into one expandable unit, so the graph stays readable. That grouping never changes
   the fingerprints or what the crawl explores; it only collapses the drawing.
 
+### Web backend (`--backend web`)
+
+The crawl runs against a web app the same way it runs against the Simulator — the exploration
+engine is platform-neutral, so `bajutsu crawl --app <web-app> --backend web` produces the same
+`screenmap.json`, screenshots, and crash list. The web app is identified by `baseUrl` (not
+`bundleId`), and because a browser needs no Mac or emulator a web crawl runs on the Linux
+`make check` / CI gate. Three things differ from iOS, and all stay deterministic
+([BE-0066](../roadmaps/implemented/BE-0066-web-crawl/BE-0066-web-crawl.md)):
+
+- **Clean start = re-navigate.** There is no app process to relaunch; returning to a clean state
+  is `page.goto(baseUrl)` against a fresh browser context (the `erase` equivalent, ~free), the
+  same lifecycle seam `run` uses.
+- **Crash detection.** The iOS signal (the accessibility tree collapsing) does not exist on the
+  web, so the crawl uses the browser's own deterministic signals instead: an uncaught JS exception
+  (`pageerror`), a 4xx/5xx main-frame navigation, or a blank document. Each is a machine fact (an
+  event, a status number, an empty element set) — no model judges whether the page "looks broken".
+- **Dialogs instead of OS alerts.** The web has no OS prompts; it has JS dialogs (`alert` /
+  `confirm` / `beforeunload`). They are auto-handled by a fixed, model-free policy (dismiss) and
+  recorded in `alerts`, replacing the iOS vision alert guard. `--dismiss-alerts` and the vision
+  path are iOS-only; `--headed` applies (watch the crawl in a visible browser).
+
 ## `codegen`
 
-Generates a **native XCUITest** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)).
+Generates a **native test** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)):
+**XCUITest** (Swift, iOS) or **Playwright** (TypeScript, web).
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest] [-o <out.swift>] [--config ...]
+bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `--emit` | `xcuitest` | output format (currently `xcuitest` only; others exit with code 2) |
+| `--emit` | `xcuitest` | output format: `xcuitest` or `playwright` (others exit with code 2) |
 | `-o, --out` | `-` | output file. `-` for stdout |
 
-- Config's `launchEnv` goes into the generated test's `app.launchEnvironment`.
+- Config's `launchEnv` goes into the generated test: `app.launchEnvironment` (XCUITest) or seeded
+  `localStorage` (Playwright).
+- `--emit playwright` requires the app to be a web target (`apps.<name>.baseUrl`); otherwise it exits
+  with code 2.
 - On file output: `wrote <N> scenario(s) -> <out>`.
 
 ## `approve`

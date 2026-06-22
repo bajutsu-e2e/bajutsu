@@ -1,0 +1,150 @@
+[English](BE-0070-live-run-artifacts-across-split.md) · **日本語**
+
+# BE-0070 — 制御プレーンと worker をまたいだ実行中アーティファクトのライブ表示
+
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0070](BE-0070-live-run-artifacts-across-split-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | Web UI のホスティング（クラウド / セルフホスト） |
+<!-- /BE-METADATA -->
+
+## はじめに
+
+ホスト型の `bajutsu serve` は **2 インスタンス構成**です。制御プレーン（Web UI ＋ API、Linux）と、実際にテスト
+を実行する別の **worker**（idb / Playwright、Mac）が、Redis とオブジェクトストレージでつながります
+（[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、
+[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。run 中、ブラウザは
+3 つのライブな面を見せます。**コンソールログ**、**最終結果 / レポート**、そして
+[`crawl`](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
+の場合は探索が進むにつれて育つ**探索グラフ**です。このうち 2 つはすでにインスタンスの分割を越えますが、1 つは
+越えません。
+
+本提案は、その 1 点だけを埋めます。run の**実行中（ライブ）アーティファクト**を、制御プレーンと worker の分割を
+またいで見えるようにします。最初の利用者は **crawl の途中グラフ**です。すでに分割を越えている 2 つの面は、
+スコープを絞るため**あえて再提案しません**。
+
+- **コンソールログ — すでに越えている。** ライブな run 出力は **LogBus シーム**を通ります。worker が stdout の
+  各行を Redis（`RedisLogBus`）に publish し、制御プレーンが SSE（server-sent events）でブラウザに中継します。
+  本提案の対象ではありません。
+- **最終結果 / レポート — すでに越えている。** 終端の状態は永続化されます。worker は `runs/<id>/` ツリーを
+  オブジェクトストレージにアップロードし run record を書き、UI は run 後にそれを読みます。本提案の対象では
+  ありません。
+
+欠けているのは **crawl の途中グラフ**です。これは今、共有ファイルシステムを前提とした作りに依存していて、
+worker の分割で壊れます。
+
+## 動機
+
+**ギャップの具体。** crawl は `runs/<id>/screenmap.json` を*逐次*書き出します。エンジンは発見のたびに
+`on_event` コールバックを発火し、その中でファイルを書き換えます（`bajutsu/cli/commands/crawl.py`）。ブラウザは
+SSE のログ行が来るたびに `GET /runs/<id>/screenmap.json` をポーリングして再描画します
+（`bajutsu/templates/serve.js` の `loadGraph`）。**local** モードではこれが成立します。ファイルを書くプロセスと
+配信するサーバが 1 つのファイルシステムを共有するからです。
+
+**server** モードでは壊れます。worker は `screenmap.json` を*自分の*ディスクに書きますが、アーティファクトが
+オブジェクトストレージにアップロードされるのは **job 終了後だけ**です。`_upload_runs` は `run_job` が返った後、
+つまり crawl のサブプロセスがすでに終了した後に走ります（`bajutsu/serve/server/worker_job.py`）。crawl の進行中
+は、制御プレーンの `ObjectStorageArtifactStore.get` がキーを見つけられず **404** を返すため、ブラウザのポーリング
+は失敗し、グラフは **crawl が終わるまで**空のままです。
+
+**根因。** ログには分割を越える伝送路（LogBus）を与えましたが、実行中アーティファクトには与えていません。
+アーティファクトストアは*終了時にアップロードし、要求のたびに読む*作りで、レポートにはまさに最適ですが、
+**変化し続けている最中に読まれる**ファイルには合いません。crawl グラフが最初の「live artifact」であり、それを
+分割の向こうへ運ぶものが今はないのです。
+
+**なぜ重要か。** crawl は長時間かかり、育っていくグラフがその主たる UX です。カバレッジが積み上がり、画面が現れ、
+フロンティアが縮んでいく様子を見られます。ホスト型のトポロジ
+（[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)。チームが実際に運用
+するのはこちらです）では、その UX が「ログのスクロールを眺め、最後にグラフ全体を見る」へと静かに劣化します。
+local の dogfood では完成して見え、本番で気づかれずに退行する、という形です。
+
+## 詳細設計
+
+### スコープ：live artifact
+
+**live artifact** とは、run が実行*中*に更新し、UI が*途中で*読むファイルを指します。run 後にだけ読む終端
+アーティファクト（レポート、証跡）とは別物です。今あるのはちょうど 1 つ、`screenmap.json` だけです。本設計は、
+**live artifact のパスを明示した小さな allowlist** を置き、仕組みを一般化します（将来のライブな進捗ファイルが
+これを再利用できます）。すべてのアーティファクトをストリーム対象にするわけではありません。
+
+### 主設計 — live artifact の逐次アップロード
+
+worker はすでに適切な境界を持っています。発見のたびに `screenmap.json` を worker のディスクへ書き換える
+`on_event` コールバックです。**同じ**境界をフックして、アーティファクトをオブジェクトストレージにも `put` します。
+すると制御プレーンの `ObjectStorageArtifactStore.get` が run の途中でそれを見つけられます。ブラウザは**同じ**
+`/runs/<id>/...` のルートをポーリングし続けます。変わるのは*バイトの出所だけ*です。したがって、
+
+- **UI 変更なし・GET ルート変更なし。** local モードは無影響です（従来どおりディスク上のライブファイルを配信
+  します）。server モードでは同じファイルがオブジェクトストレージに見えるようになります。1 つのコード経路で両
+  モードを賄います。
+- **イベントごとではなく throttle する。** chatty な crawl は多くのイベントを発火します。アップロードは短い間隔
+  （約 1〜2 秒。ブラウザのポーリング間隔に合わせます）に合体させ、**加えて** job 終了時に確定の書き込みを 1 回
+  行います。これでオブジェクトストレージへの PUT を抑えつつ、体感の UX は損ないません（グラフはもともと約 1 秒に
+  1 回更新されます）。
+- **整合性は心配いりません。** S3 / R2 の上書きは read-after-write の強整合なので、アップロード後に発行された
+  ポーリングは新しいスナップショットを返します。古い値を読む窓を設計で塞ぐ必要はありません。
+- **終端アップロードが最終権威のまま。** job 終了時の `_upload_runs` は、完全な `runs/<id>/` ツリーの権威であり
+  続けます。逐次アップロードは*ライブ*なアーティファクトを早く見せるだけです。
+
+### 契約 — 機械チェック可能な不変条件
+
+Mac も Simulator も使わず、Linux ゲート上で in-memory / fake のオブジェクトストレージを使って検証します。
+
+1. **途中可視化（退行）。** 終了前に N 個の screen-map スナップショットを出す fake worker を与えると、job が done
+   になる**前**に、制御プレーンのアーティファクト `get` が k 番目のスナップショットを返す。今 404 を返すケース。
+2. **終端権威。** job 完了後、保存された `screenmap.json` がディスク上の最後のスナップショットと一致する（終端の
+   一括アップロードが逐次の書き込みと整合する）。
+3. **アップロード上限。** ある期間に M 個の発見があっても、アップロードは高々 `ceil(duration / interval) + 1`
+   回。PUT はイベント数ではなく実時間に比例する。
+4. **local モード等価。** local モードではライブグラフが従来どおりディスクから配信される（すでに動いている経路に
+   退行がない）。
+5. **ゲートを汚さない。** 既定経路で LLM 呼び出しも重い新規依存もない。決定的コアは不変。
+
+### prime directive への適合
+
+これは **Tier-1 の `crawl` ＋ serve の配管だけ**の話です。`run` / CI ゲートに LLM は入りません
+（[DESIGN §2](../../../DESIGN.md)）。決定性は保たれます。変えるのは*いつバイトが見えるか*だけで、*crawl が何を
+探索するか*は変えないからです（crawl の探索は要素ツリーの純関数のままです）。仕組みは app 非依存です
+（対象アプリに関係なくファイルを動かすだけです）。
+
+## 検討した代替案
+
+- **ファイルをポーリングする代わりに、進捗イベントを bus に流す（SSE で差分配信）** — より汎用な「進捗チャネル」
+  です。worker が新しいノード / エッジを構造化イベントとして出し、制御プレーンがログ行と並べて SSE で中継し、
+  ブラウザはその payload から更新します（ポーリングなし）。すでに分割を越えている伝送路（LogBus）に統一でき、
+  差分はマップ全体を取り直すよりずっと小さい点が魅力です。**却下ではなく見送り**：変更が大きいからです（新しい
+  イベント種別、UI のデータ経路がポーリングからイベントへ移る、local と server の両モードを賄う必要がある）。
+  逐次アップロードは既存のシームと既存の UI を保ちます。将来この進捗チャネルが見合うようになれば、ポーリングを
+  置き換えられます。
+- **worker → 制御プレーンの artifact proxy**（制御プレーンが worker から実行中ファイルを HTTP で読む） — **却下**：
+  worker は **pull 型**で、Redis から job を lease します。アドレス可能なサーバではありません。worker にファイルを
+  配らせると lease モデルを反転させ、アップロードに対する利点もないままネットワークとセキュリティの面を増やします。
+- **server モードで終端のみのグラフを受け入れる（何もしない）** — **却下**：ライブグラフは crawl の主たる UX で
+  あり、ホスト型こそ実際に運用されるトポロジです。local の dogfood でしか動かない機能は、本番での静かな退行です。
+- **全イベントでアップロード（throttle なし）** — **却下**：chatty な crawl で PUT が無制限になり、ポーリング間隔に
+  合わせて合体させる場合に対して UX 上の利点はありません。
+
+## 参考
+
+- [DESIGN.md](../../../DESIGN.md) §2 — 決定性優先・AI は `run` / CI ゲートに入れない。本変更は crawl の探索を決定的に
+  保ち、モデル呼び出しを足さない。
+- [BE-0015 — Web UI の公開ホスティング](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)
+  — 制御プレーン ⇄ worker の分割と、本項目が土台にする LogBus / アーティファクトストアのシームを導入した項目。
+- [BE-0016 — Web UI のセルフホスティング](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)
+  — 「job を lease し……ログを返し、`runs/<id>/` ツリーをアップロードする」worker（job 終了時）。本項目はその終端
+  アップロードの*前*に live artifact を見えるようにする。
+- [BE-0038 — 自律的な crawl 探索](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
+  — 本項目が分割をまたいで拡張する crawl と、その local モードのライブグラフ。最初の利用者。
+- [BE-0055 — ホスト型 serve の運用ログ](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging-ja.md)
+  — 同じホスティング・トピックの隣接項目。LogBus がすでに run の*出力*をライブで運ぶ、つまりコンソールログは
+  すでに分割を越えていることに触れている。
+- [architecture.md#implementation-status](../../../docs/ja/architecture.md#implementation-status) — serve UI の
+  「ライブ job ストリーミング」と crawl のスクリーンマップ。
+- ソースの該当箇所：`bajutsu/serve/server/worker_job.py`（`_upload_runs`、終端アップロード）、
+  `bajutsu/serve/artifacts.py` / `bajutsu/serve/server/artifacts.py`（アーティファクトストアのシーム）、
+  `bajutsu/cli/commands/crawl.py`（`on_event`、逐次の書き込み）、`bajutsu/templates/serve.js`
+  （`loadGraph`、ポーリングして再描画）。

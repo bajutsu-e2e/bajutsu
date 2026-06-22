@@ -18,9 +18,13 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from bajutsu.drivers import base
+
+if TYPE_CHECKING:
+    from bajutsu.scenario.models.mocks import Mock
+    from bajutsu.web_network import WebNetworkCollector
 
 # One DOM walk: visible, interactive / a11y-relevant nodes → records the parser maps to Elements.
 QUERY_JS = """
@@ -132,6 +136,9 @@ class _Page(Protocol):
     def screenshot(self, *, path: str) -> object:
         pass
 
+    def on(self, event: str, handler: Callable[[Any], None]) -> None:
+        pass
+
 
 # (playwright, browser, page) — browser/playwright are held only to tear them down in close().
 Starter = Callable[[bool], "tuple[Any, Any, _Page]"]
@@ -153,6 +160,19 @@ def _start_chromium(headless: bool) -> tuple[Any, Any, _Page]:  # pragma: no cov
     return pw, browser, cast(_Page, page)
 
 
+def web_is_alive(driver: PlaywrightDriver, elements: list[base.Element]) -> bool:
+    """The web crash signal for the crawl (BE-0066): False on an uncaught JS exception, a 4xx/5xx
+    main-frame navigation, or a blank document. All three are machine facts (an event fired, a
+    status number, an empty element set), so prime directive #1 holds — AI stays out of the
+    verdict. This is the web counterpart of the iOS accessibility-tree `is_app_alive`."""
+    if driver.pop_page_errors():
+        return False
+    status = driver.last_nav_status()
+    if status is not None and status >= 400:
+        return False
+    return bool(elements)
+
+
 class PlaywrightDriver:
     name = "playwright"
 
@@ -171,6 +191,55 @@ class PlaywrightDriver:
             self._page: _Page = page
         else:
             self._pw, self._browser, self._page = starter(headless)
+        # Deterministic web health / dialog signals the crawl reads (BE-0066): an uncaught JS
+        # exception, a 4xx/5xx main-frame navigation, and a JS dialog are all machine facts — no
+        # model is consulted. A JS dialog blocks the page until handled, so it is auto-dismissed
+        # by a fixed policy here and merely recorded for the screen map.
+        self._page_errors: list[str] = []
+        self._last_nav_status: int | None = None
+        self._dialogs: list[str] = []
+        self._register_health_handlers()
+
+    def _register_health_handlers(self) -> None:
+        on = getattr(self._page, "on", None)
+        if on is None:  # a minimal injected page without event support — skip silently
+            return
+        on("pageerror", self._on_pageerror)
+        on("response", self._on_response)
+        on("dialog", self._on_dialog)
+
+    def _on_pageerror(self, error: Any) -> None:
+        self._page_errors.append(str(error))
+
+    def _on_response(self, response: Any) -> None:
+        # Only the top-level (main-frame) navigation's status signals a "navigated to an error";
+        # subresource responses (images, XHR) and sub-frame (iframe) navigations are noise — an
+        # iframe 404 must not be read as the app crashing. Gate to the main frame when Playwright
+        # exposes frame info; a minimal injected fake without it keeps the navigation-request check.
+        if not response.request.is_navigation_request():
+            return
+        frame = getattr(response, "frame", None)
+        if frame is not None and getattr(frame, "parent_frame", None) is not None:
+            return  # a sub-frame navigation, not the top-level document
+        self._last_nav_status = int(response.status)
+
+    def _on_dialog(self, dialog: Any) -> None:
+        self._dialogs.append(str(dialog.message))
+        dialog.dismiss()  # fixed, non-destructive policy (alert→close, confirm→cancel, stay)
+
+    def pop_page_errors(self) -> list[str]:
+        """Uncaught JS exceptions seen since the last read (consuming)."""
+        errors, self._page_errors = self._page_errors, []
+        return errors
+
+    def last_nav_status(self) -> int | None:
+        """HTTP status of the most recent main-frame navigation, or None if none yet."""
+        return self._last_nav_status
+
+    def pop_dialogs(self) -> list[str]:
+        """Messages of JS dialogs auto-handled since the last read (consuming)."""
+        dialogs, self._dialogs = self._dialogs, []
+        return dialogs
 
     # --- lifecycle (web equivalents of env.Env launch/erase/terminate) ---
 
@@ -235,13 +304,22 @@ class PlaywrightDriver:
     def screenshot(self, path: str) -> None:
         self._page.screenshot(path=path)
 
+    def network_collector(self, mocks: list[Mock] | None = None) -> WebNetworkCollector:
+        """A collector hooked to this driver's page (Playwright sees every request natively), so
+        the run loop's `request` assertion + network evidence work on web (BE-0054). `mocks` are
+        fulfilled in-process via `page.route`. Imported lazily to keep the page private."""
+        from bajutsu.web_network import WebNetworkCollector
+
+        return WebNetworkCollector(self._page, mocks)
+
     def capabilities(self) -> set[str]:
-        # Playwright has a genuine semantic click and native auto-waiting; multi-touch and
-        # native network are deferred (see the BE for web-backend completion).
+        # Playwright has a genuine semantic click, native auto-waiting, and native network
+        # observation + stubbing (BE-0054); multi-touch is still deferred.
         return {
             base.Capability.QUERY,
             base.Capability.ELEMENTS,
             base.Capability.SCREENSHOT,
             base.Capability.SEMANTIC_TAP,
             base.Capability.CONDITION_WAIT,
+            base.Capability.NETWORK,
         }

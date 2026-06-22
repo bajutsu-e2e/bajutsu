@@ -363,7 +363,7 @@ function runDone(j){
 async function setReport(id){
   selectedRun=id;
   const rep=$('#report');
-  rep.innerHTML=`<div class="repbar"><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
+  rep.innerHTML=`<div class="repbar"><a class="repdl" href="/runs/${esc(id)}/archive.zip" download>⬇ download .zip</a><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
   const host=rep.querySelector('.rephost');
   let html;
   try{html=await (await fetch(`/runs/${encodeURIComponent(id)}/report.html`)).text();}

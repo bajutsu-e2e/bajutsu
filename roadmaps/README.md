@@ -94,6 +94,8 @@ The first slice of the multi-platform direction has landed: a **platform-aware b
 |---|---|---|
 | [BE-0041](proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | In progress |
 | [BE-0042](implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) | Platform-aware backend registry & selection | Implemented |
+| [BE-0054](proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | In progress |
+| [BE-0066](implemented/BE-0066-web-crawl/BE-0066-web-crawl.md) | Web crawl (Playwright backend) | Implemented |
 <!-- /GENERATED:accepted-platform-landed -->
 
 ### Authoring experience (record / GUI editor)
@@ -104,6 +106,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | ID | Item | Status |
 |---|---|---|
 | [BE-0011](implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) | Local web UI (`bajutsu serve`) | Implemented |
+| [BE-0060](implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Implemented |
 <!-- /GENERATED:accepted-authoring -->
 
 ### Self-healing triage (M4)
@@ -137,6 +140,16 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0039](implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
 <!-- /GENERATED:accepted-competitive -->
 
+### Candidates from competitive research (Maestro)
+
+Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-tolerance into concrete, machine-checkable features. The determinism audit (static stability score) is the first landed slice.
+
+<!-- GENERATED:accepted-competitive-maestro -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | In progress | Maestro |
+<!-- /GENERATED:accepted-competitive-maestro -->
+
 ### Integration & automation (MCP)
 
 <!-- GENERATED:accepted-mcp -->
@@ -154,6 +167,9 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | ID | Item | Status |
 |---|---|---|
 | [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) | Conflict-resistant file flow (generated indexes, modular files, git hygiene) | Implemented |
+| [BE-0061](implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md) | Collision-proof BE-ID allocation (atomic reservation + auto-repair) | Implemented |
+| [BE-0067](implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) | Code-quality gate hardening (CI fidelity, security lint, supply-chain) | Implemented |
+| [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) | Standardize the BE item template (EN / JA) | Implemented |
 <!-- /GENERATED:accepted-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
@@ -203,6 +219,16 @@ plane, self-hosted multi-tenant) remain proposals below.
 | [BE-0051](implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
 <!-- /GENERATED:accepted-hosting -->
 
+### codegen coverage
+
+Turning a passing scenario into a native test in a destination framework's idiom. The web (Playwright) target has landed alongside the original XCUITest one; remaining gaps stay as proposals below.
+
+<!-- GENERATED:accepted-codegen -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0062](implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
+<!-- /GENERATED:accepted-codegen -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *Accepted* once a decision is made.
@@ -229,7 +255,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Proposal |
 | [BE-0010](proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Proposal |
-| [BE-0054](proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | Proposal |
 | [BE-0057](proposals/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md) | Rename the config `apps` key to `targets` | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
@@ -242,7 +267,8 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Proposal |
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
 | [BE-0044](proposals/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Proposal |
-| [BE-0060](proposals/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Proposal |
+| [BE-0068](proposals/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | Proposal |
+| [BE-0072](proposals/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md) | Responsive serve Web UI (small-screen & touch layout) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### AI provider configuration
@@ -268,7 +294,21 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
 | [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
 | [BE-0055](proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Proposal |
+| [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Proposal |
 <!-- /GENERATED:proposals-hosting -->
+
+### Configuration sourcing
+
+Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the item here
+proposes naming a **Git repository at a ref** (`github:owner/repo@ref:path`) so a hosted or
+self-hosted `serve`, or a CI runner, can pull a team's test repo directly — scenarios are already
+git-tracked files ([DESIGN §6.5](../DESIGN.md)).
+
+<!-- GENERATED:proposals-config-sourcing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0063](proposals/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Proposal |
+<!-- /GENERATED:proposals-config-sourcing -->
 
 ### Integration & automation (MCP)
 
@@ -301,7 +341,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
 | [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
-| [BE-0062](proposals/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### Crawl performance / scale-out
@@ -311,6 +350,20 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0064](proposals/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Proposal |
 <!-- /GENERATED:proposals-crawl -->
+
+### Development infrastructure (contributor workflow)
+
+Lower the cost for the many parallel sessions — human and AI — that read and change this repo.
+[BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+(Accepted) reshaped the *file flow*; the proposals here improve how the codebase **documents
+itself** to the humans and agents working it.
+
+<!-- GENERATED:proposals-dev-infra -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0065](proposals/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) | Docstring standard & generated API reference | Proposal |
+| [BE-0069](proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | Proposal |
+<!-- /GENERATED:proposals-dev-infra -->
 
 ### Miscellaneous / on hold
 
@@ -345,7 +398,6 @@ into concrete features that a UI-layer, no-instrumentation competitor cannot eas
 |---|---|---|---|
 | [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Proposal | Maestro |
 | [BE-0048](proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Proposal | Maestro |
-| [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Proposal | Maestro |
 | [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Proposal | Maestro |
 <!-- /GENERATED:proposals-competitive-maestro -->
 

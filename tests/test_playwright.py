@@ -125,6 +125,7 @@ class _FakePage:
         self.keyboard = _FakeKeyboard()
         self.goto_url: str | None = None
         self.shot: str | None = None
+        self._handlers: dict[str, list[Any]] = {}
 
     def evaluate(self, expression: str) -> Any:
         return list(self._records)
@@ -136,6 +137,43 @@ class _FakePage:
     def screenshot(self, *, path: str) -> object:
         self.shot = path
         return None
+
+    def on(self, event: str, handler: Any) -> None:
+        self._handlers.setdefault(event, []).append(handler)
+
+    def fire(self, event: str, arg: Any) -> None:
+        for handler in self._handlers.get(event, []):
+            handler(arg)
+
+
+class _FakeDialog:
+    def __init__(self, message: str, type: str = "alert") -> None:
+        self.message = message
+        self.type = type
+        self.dismissed = False
+
+    def dismiss(self) -> None:
+        self.dismissed = True
+
+
+class _FakeRequest:
+    def __init__(self, nav: bool) -> None:
+        self._nav = nav
+
+    def is_navigation_request(self) -> bool:
+        return self._nav
+
+
+class _FakeFrame:
+    def __init__(self, parent: object | None = None) -> None:
+        self.parent_frame = parent
+
+
+class _FakeResponse:
+    def __init__(self, status: int, nav: bool = True, frame: _FakeFrame | None = None) -> None:
+        self.status = status
+        self.request = _FakeRequest(nav)
+        self.frame = frame
 
 
 def _driver(records: list[dict[str, Any]]) -> tuple[PlaywrightDriver, _FakePage]:
@@ -231,10 +269,65 @@ def test_capabilities() -> None:
     caps = drv.capabilities()
     assert base.Capability.SEMANTIC_TAP in caps
     assert base.Capability.CONDITION_WAIT in caps
-    assert base.Capability.MULTI_TOUCH not in caps
-    assert base.Capability.NETWORK not in caps
+    assert base.Capability.NETWORK in caps  # native observe + stub (BE-0054)
+    assert base.Capability.MULTI_TOUCH not in caps  # still deferred
 
 
 def test_importing_module_does_not_load_playwright() -> None:
     # The playwright package must stay off the import path until a browser is actually started.
     assert "playwright" not in sys.modules
+
+
+# --- web health / dialog signals (the crawl crash-detection seam, BE-0066) ---
+
+
+def test_page_errors_accumulate_and_are_consumed() -> None:
+    drv, page = _driver([])
+    assert drv.pop_page_errors() == []
+    page.fire("pageerror", "ReferenceError: x is not defined")
+    assert drv.pop_page_errors() == ["ReferenceError: x is not defined"]
+    assert drv.pop_page_errors() == []  # consumed by the previous read
+
+
+def test_nav_status_tracks_main_frame_navigations_only() -> None:
+    drv, page = _driver([])
+    assert drv.last_nav_status() is None
+    page.fire("response", _FakeResponse(500, nav=True))
+    assert drv.last_nav_status() == 500
+    page.fire("response", _FakeResponse(200, nav=False))  # a subresource — ignored
+    assert drv.last_nav_status() == 500
+
+
+def test_nav_status_ignores_subframe_navigations() -> None:
+    # An iframe 404 is a sub-frame navigation, not the top-level document — it must not be read
+    # as the app crashing. A main-frame navigation (parent_frame is None) is still recorded.
+    drv, page = _driver([])
+    page.fire("response", _FakeResponse(404, nav=True, frame=_FakeFrame(parent=object())))
+    assert drv.last_nav_status() is None  # iframe navigation ignored
+    page.fire("response", _FakeResponse(200, nav=True, frame=_FakeFrame(parent=None)))
+    assert drv.last_nav_status() == 200  # main-frame navigation recorded
+
+
+def test_dialog_is_auto_dismissed_and_recorded() -> None:
+    drv, page = _driver([])
+    dialog = _FakeDialog("Leave page?", type="beforeunload")
+    page.fire("dialog", dialog)
+    assert dialog.dismissed is True  # deterministic fixed policy: dismiss, no model
+    assert drv.pop_dialogs() == ["Leave page?"]
+    assert drv.pop_dialogs() == []  # consumed
+
+
+def test_web_is_alive_flags_each_crash_signal() -> None:
+    from bajutsu.drivers.playwright import web_is_alive
+
+    drv, page = _driver([])
+    els = parse_dom([_rec(identifier="home.title")])
+    assert web_is_alive(drv, els) is True  # healthy: content, no error, no bad status
+    assert web_is_alive(drv, []) is False  # blank document = collapsed page
+    page.fire("pageerror", "TypeError: boom")
+    assert web_is_alive(drv, els) is False  # uncaught JS exception
+    assert web_is_alive(drv, els) is True  # the error was consumed; back to healthy
+    page.fire("response", _FakeResponse(503, nav=True))
+    assert web_is_alive(drv, els) is False  # navigated to a 5xx
+    page.fire("response", _FakeResponse(200, nav=True))
+    assert web_is_alive(drv, els) is True  # a later good navigation clears it

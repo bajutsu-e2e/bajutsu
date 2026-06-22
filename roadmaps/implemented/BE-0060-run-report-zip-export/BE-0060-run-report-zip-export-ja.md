@@ -2,11 +2,16 @@
 
 # BE-0060 — run の実行レポートの zip ダウンロードとエクスポート
 
-* 提案: [BE-0060](BE-0060-run-report-zip-export-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: オーサリング体験（record / GUI エディタ）
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0060](BE-0060-run-report-zip-export-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | [#194](https://github.com/bajutsu-e2e/bajutsu/pull/194) |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | オーサリング体験（record / GUI エディタ） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

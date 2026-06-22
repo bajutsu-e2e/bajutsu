@@ -159,7 +159,10 @@ def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> Asser
     return AssertionResult(ok, kind, detail, reason)
 
 
-def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
+def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
+    """Whether one exchange satisfies a `RequestMatch` (set fields AND-ed). Shared by the
+    `request` assertion and the web mock router, so a mock stubs exactly what an assertion
+    would match."""
     if req.method is not None and ex.method.upper() != req.method.upper():
         return False
     if req.url is not None and ex.url != req.url:
@@ -181,7 +184,7 @@ def _match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
 def count_matching(exchanges: list[NetworkExchange], req: RequestMatch) -> int:
     """How many observed exchanges satisfy the request matcher (shared by the `request`
     assertion and the `until: { request }` wait)."""
-    return sum(1 for ex in exchanges if _match_request(ex, req))
+    return sum(1 for ex in exchanges if match_request(ex, req))
 
 
 def request_label(req: RequestMatch) -> str:
@@ -226,7 +229,7 @@ def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch])
     Maximum bipartite matching (Kuhn's augmenting paths) so a broad matcher never steals
     the only exchange a more specific one needs. Returns, per matcher, the exchange index
     it was assigned, or -1 when none is left for it."""
-    adj = [[j for j, ex in enumerate(exchanges) if _match_request(ex, req)] for req in reqs]
+    adj = [[j for j, ex in enumerate(exchanges) if match_request(ex, req)] for req in reqs]
     ex_to_req = [-1] * len(exchanges)
     assigned = [-1] * len(reqs)
 
@@ -250,7 +253,7 @@ def _request_assignment_result(
     detail = f"request {request_label(req)}"
     if assigned_ex != -1:
         return AssertionResult(True, "request", detail)
-    matched_any = any(_match_request(ex, req) for ex in exchanges)
+    matched_any = any(match_request(ex, req) for ex in exchanges)
     reason = (
         "一致する通信は他の request と対応済み（request と通信は 1 対 1）"
         if matched_any

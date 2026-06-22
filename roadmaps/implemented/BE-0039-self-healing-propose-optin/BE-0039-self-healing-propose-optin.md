@@ -2,13 +2,17 @@
 
 # BE-0039 — Self-healing limited to "propose + opt-in apply"
 
-* Proposal: [BE-0039](BE-0039-self-healing-propose-optin.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Candidates from competitive research (MagicPod / Autify)
-* Origin: Both
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0039](BE-0039-self-healing-propose-optin.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Origin | Both |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

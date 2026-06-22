@@ -17,6 +17,7 @@ from bajutsu.anthropic_client import credential_gap
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
+from bajutsu.report.archive import archive_run_dir
 from bajutsu.runner import device_pool, run_and_report
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import (
@@ -156,7 +157,8 @@ def run(
     network: bool = typer.Option(
         True,
         "--network/--no-network",
-        help="collect the app's network exchanges (for `request` assertions); needs BajutsuKit in the app",
+        help="collect the app's network exchanges (for `request` assertions); iOS needs BajutsuKit "
+        "in the app, web (Playwright) observes natively",
     ),
     progress: bool = typer.Option(
         False,
@@ -174,6 +176,12 @@ def run(
         "--headed/--no-headed",
         help="web backend: show the browser (headed, slow-motion) instead of headless; "
         "default leaves the app's `headless` config (headless)",
+    ),
+    zip_run: bool = typer.Option(
+        False,
+        "--zip",
+        help="after the run, also write runs/<id>.zip — one portable artifact (report + evidence) "
+        "for CI upload or sharing; runs after the verdict, so it can't affect pass/fail",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
@@ -227,11 +235,11 @@ def run(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     if actuator == "playwright":
-        # Web has no simctl udid to resolve and no app-side network collector: one browser
-        # lane, keyed by a dummy udid, with network collection off.
+        # Web has no simctl udid to resolve: one browser lane, keyed by a dummy udid. Network
+        # collection is native (Playwright observes the page), so `--network` works here too
+        # (BE-0054) — the pool builds a page-hooked collector instead of an HTTP receiver.
         udids = ["web"]
         workers = 1
-        network = False
     else:
         # The idb CLI needs concrete UDIDs (not the simctl "booted" alias). `--udid` may be a
         # comma list — a device pool for parallel runs (`--workers`), capped to the pool size.
@@ -338,6 +346,18 @@ def run(
     ok = all(r.ok for r in results)
     github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
+    # --zip packages the finished run into one artifact, strictly *after* the verdict above, so it
+    # cannot influence pass/fail (BE-0060). A write failure (disk full, permissions) must not flip
+    # the run's exit code, so it's reported as a warning, never raised. Path/warning go to stderr;
+    # stdout stays the PASS/FAIL line.
+    if zip_run:
+        run_dir = manifest.parent
+        zip_path = run_dir.parent / f"{run_dir.name}.zip"
+        try:
+            zip_path.write_bytes(archive_run_dir(run_dir))
+            typer.echo(f"wrote {zip_path}", err=True)
+        except OSError as e:
+            typer.echo(f"warning: --zip failed ({e}); the run verdict stands", err=True)
     # The only AI in `run` is the alert guard (when it actually fired). Report its token use on
     # stderr so stdout stays the machine-readable PASS/FAIL line; silent when nothing fired.
     spent = _usage.snapshot() - before

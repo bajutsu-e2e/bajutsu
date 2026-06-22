@@ -63,3 +63,24 @@ def test_list_runs_summarizes_newest_first(tmp_path: Path) -> None:
     listed = srv.LocalArtifactStore(runs).list_runs()
     assert [r["id"] for r in listed] == ["20260612-9", "20260610-1"]  # reverse-lexicographic
     assert listed[0]["passed"] == 1 and listed[0]["total"] == 2 and listed[0]["ok"] is False
+
+
+def test_archive_zips_the_run_under_its_id_root(tmp_path: Path) -> None:
+    import io
+    import zipfile
+
+    runs = _runs(tmp_path)
+    art = srv.LocalArtifactStore(runs).archive("20260610-1")
+    assert art is not None and art.content_type == "application/zip" and art.body is not None
+    with zipfile.ZipFile(io.BytesIO(art.body)) as zf:
+        names = zf.namelist()
+    assert "20260610-1/report.html" in names and "20260610-1/manifest.json" in names
+
+
+def test_archive_rejects_escaping_or_missing_run_id(tmp_path: Path) -> None:
+    runs = _runs(tmp_path)
+    (runs / "20260610-1" / "demo").mkdir()  # a real subdir, to prove it's the segment rule
+    store = srv.LocalArtifactStore(runs)
+    # escape / missing / a file / a nested segment (a run is one id segment, never a subdir)
+    for run_id in ("../", "nope", "", "20260610-1/report.html", "20260610-1/demo"):
+        assert store.archive(run_id) is None, run_id

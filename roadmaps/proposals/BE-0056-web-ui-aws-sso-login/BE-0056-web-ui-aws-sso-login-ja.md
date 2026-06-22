@@ -2,11 +2,15 @@
 
 # BE-0056 — Web UI からの AWS SSO サインイン（Bedrock 認証情報の取得）
 
-* 提案: [BE-0056](BE-0056-web-ui-aws-sso-login-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: AI プロバイダ設定
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0056](BE-0056-web-ui-aws-sso-login-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | AI プロバイダ設定 |
+<!-- /BE-METADATA -->
 
 ## はじめに
 
@@ -151,7 +155,7 @@ BE-0053 が挙げたプロバイダ認証情報チェックと同じ趣旨です
   足ります。本項目は SSO 体験に限ります。
 - `claude-code` agent 経由の Bedrock — 別機構で、BE-0053 でも範囲外です。
 
-## 代替案の検討
+## 検討した代替案
 
 - **静的な一時 AWS キー（`AWS_ACCESS_KEY_ID` ／ `…SECRET…` ／ `…SESSION_TOKEN`）を貼る欄。** 却下。一時キーは
   設定時に serve プロセスへ固定され更新されないため、セッション途中で失効し再起動を強います。`AWS_PROFILE` を

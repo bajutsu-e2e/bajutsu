@@ -115,6 +115,144 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
 人間の目視でもありません。スイートを意味あるものに保ち、ブランチを rebase し続ければ、並行作業は破綻なく合成
 されます。
 
+## プルリクエスト: タイトルと本文
+
+PR は、人間が頼まない限り自分では開きません（[1 トピック 1 ブランチ](#1-トピック-1-ブランチ)を参照）。
+自分のブランチに push し、PR は人間に開いてもらいます。ただし PR を書き起こすとき、あるいは人間が
+開くためのタイトルと本文を用意するときは、以下の型に従ってください。これはこのリポジトリが実際に
+マージしてきた PR から型を起こしたもので、これに合わせると履歴の体裁がそろい、レビュアーは毎回
+同じ情報を同じ場所で見つけられます。**タイトルと本文は、作業に使った言語にかかわらず常に英語**で
+書きます。
+
+### タイトル
+
+スコープ付きの [Conventional Commits](https://www.conventionalcommits.org/) の subject を 1 行で
+書きます。先頭コミットの subject と同じ形です。
+
+```
+[BE-NNNN] type(scope): summary
+```
+
+- **`type(scope):`**：conventional-commit の type（`feat`、`fix`、`docs`、`chore`、`ci`、
+  `refactor`、`test`）と、触れる領域（`run`、`web`、`codegen`、`audit`、`roadmap`、`hooks`、`ja`
+  など）です。例: `feat(audit):`、`fix(hooks):`、`docs(roadmap):`。
+- **summary**：命令形、小文字始まり、末尾のピリオドなしで、レビュアーが一目で読める 1 行にします。
+  ロードマップ提案なら `docs(roadmap): propose <提案の内容>` の形です。
+- **`[BE-NNNN]` の接頭辞**：PR がロードマップ項目に紐づくときだけ、スコープ付き subject の前に角括弧で
+  付けます（例: `[BE-0017] feat(mcp): add MCP server`）。ロードマップ項目に紐づかない PR は、スコープ
+  付き subject のままにします。PR が新しいロードマップ項目を*導入する*場合は、リテラルの `[BE-XXXX]`
+  プレースホルダで書き起こします。`roadmap-id` ワークフローが、割り当てた番号へ書き換えます
+  （[ロードマップ項目](#ロードマップ項目-be-id厳守)を参照）。
+
+### 本文
+
+必須は 2 つ——`## Summary` と検証の記述——で、残りのセクションは変更が必要とする範囲で、以下の順に
+足します。詳しさは差分に合わせます。1 ファイルの修正なら、短い Summary と緑の数値で足ります。横断的な
+機能なら全セクションが要ります。文章は、マージ済みの PR でこれらのセクションが実際に読める形にならって
+書きます。現在形で、たどり着くまでの経緯を語るのではなく、変更が*何であるか*を述べます。**太字**は、変更の
+鍵となる少数の名詞に限り、文全体には使いません。変更一覧では、繰り返し現れる `**パス** — 何をするか、
+そしてなぜこの継ぎ目か` の形に従い、単なる編集ではなく設計上の選択を書きます。
+
+よく現れるセクションと、それぞれが担う内容は次のとおりです。
+
+- **`## Summary`**（必須）：PR が何をするか、そして*なぜ重要か*を、短い段落 1〜3 個で書きます。鍵となる
+  名詞は**太字**にします。経緯ではなく変更そのものから書き始めます。より大きな項目の一部を成す PR なら、
+  どの一部かを示し、マージによってその項目の `Status` がどう動くか（例: *Accepted, in progress* へ移る）を
+  述べます。
+- **`## What changed`** / **`## Changes`**：ファイルまたはコンポーネントごとに箇条書き 1 個を当て、
+  **パスまたはコンポーネント名を太字**にし、em ダッシュに続けて、何をするか*となぜこの継ぎ目か*（単なる
+  編集内容ではなく設計上の選択）を書きます。新規ファイルには `(new)` を付けます。コミット単位ではなく
+  コンポーネント単位でまとめます。レビュアーが読むのは、たどり着いた結果であって経路ではありません。
+- **`## Prime-directive compliance`**：変更がツールの挙動やランタイムに触れるときに置きます。判定に
+  モデルを介在させないこと、`run` / CI ゲートが決定論的なままであること、アプリごとの違いは設定に
+  留まることを、はっきり述べます。変更が関わる[prime
+  directive](../../CLAUDE.md#prime-directives-do-not-violate)ごとに 1 行です。ドキュメントのみ、または
+  基盤のみの PR は、その旨を 1 文で述べれば足ります。
+- **`## Scope`**（多くは *Scope (deferred to …)*）：この PR に意図的に**含めない**ものを書きます。境界を
+  レビュアーに推測させないためです。より大きな項目の一部なら、後続の一部が負っている残りを挙げます。
+- **`## Verification`** / **`## Testing`** / **`## Test plan`**（必須、いずれかの形で）：`make check` が
+  緑であることを、出力した具体的な数値（`N passed, coverage X%`）とともに示し、新しいテストが何を
+  カバーするかを 1 文で書きます。ゲートが*動かせない*もの（ワークフローの実行時挙動、Simulator でしか
+  通らない経路）は明記し、何が証明され何が証明されていないかをレビュアーに伝えます。ここでの正確さが要で、
+  テストしていない経路をテストしたかのように書きません。
+- ロードマップ提案の場合：**`## Files`**（両言語のペア）と **`## BE ID allocation`**（`BE-XXXX`
+  プレースホルダについての注記。番号はワークフローが採番するので、手で書き換えません）。
+- **`## Notes`**：注意点、関連する、あるいは番号を争う open な PR、予期されるマージ衝突とその解消方法。
+
+本文の末尾は、引用した項目への参照リンク（`[BE-0049]: roadmaps/…`）と、フッタ
+`🤖 Generated with [Claude Code](https://claude.com/claude-code)` で締めます。GitHub の `> [!NOTE]`
+コールアウトは、レビュアーが見落としてはいけない注意点に限って使います。
+
+小さな修正なら、必須の 2 つだけで足ります。
+
+```markdown
+## Summary
+
+Follow-up to #189: `session-start.sh` could abort the hook — and the session — under `set -e`
+when `CLAUDE_PROJECT_DIR` is unset. This makes the project-dir discovery best-effort.
+
+## Verification
+
+`shellcheck` clean; `make check` green (1059 passed, coverage 87.4%). Repro'd that the hook now
+logs the skip and exits 0 instead of aborting.
+```
+
+機能や、ロードマップ項目に紐づく PR は、全体の型を埋めます。
+
+```markdown
+## Summary
+
+The **<slice>** of [BE-NNNN]. <What it does and why it matters, key nouns in bold.> This moves
+the item to **Accepted, in progress**.
+
+## What changed
+
+- **`bajutsu/<file>.py` (new)** — <what it does, and why this seam>.
+- **`bajutsu/<other>.py`** — <the change, and the design choice behind it>.
+- **docs (en/ja)** — <what was documented>.
+
+## Prime-directive compliance
+
+No model is consulted on the verdict; the `run` / CI gate stays deterministic; per-app
+differences stay in config.
+
+## Scope (deferred to later BE-NNNN slices)
+
+<What is deliberately not in this PR.>
+
+## Verification
+
+`make check` green: format-check / ruff / mypy (Success) / test (N passed, coverage X%). New
+tests cover <…>.
+
+[BE-NNNN]: roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+```
+
+このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
+
+## PR レビューコメントへの対応
+
+レビューには 1 件ずつ返信します。返信するのは、**その pull request の担い手——人間の貢献者でも AI
+エージェントでも同じ**です。レビュアー（GitHub Copilot などの AI レビュアー、あるいは人間）が
+コメントを残したときは、すべてのコメントを解消するまで作業を続け、そのうえで**コメント 1 件ごとに個別に
+返信します**。PR にまとめて 1 つ返信するだけでは足りません。指摘が出たスレッドそのものに解消の記録が
+残るよう、コメントのスレッドそれぞれに返信します。
+
+返信では次の 2 点を必ず示します。
+
+- **その指摘に対応したこと** — コードを修正したのか、意図して見送ったのか。
+- **その根拠** — 解消にあたる具体的な変更（何をどこで変えたか。コミットやファイル・行を挙げます）。
+  変更しない場合は、その指摘が当てはまらない具体的な理由。
+
+「対応しました」や 👍 だけではこの規範を満たしません。根拠があってこそ、後でスレッドを読む人が解消の
+妥当性を確認できます。返信は短く事実に即して書きます。重要なのは根拠であって、説明の量ではありません。
+
+コメントへの対応に迷うとき（修正の解釈が複数ありうる、あるいはアーキテクチャ上重要な箇所に触れる場合）
+は、当て推量せず確認します。AI エージェントは自分を動かしている人間に、人間の貢献者はレビュアーや
+メンテナに確認し、判断が出るまでそのスレッドは開いたままにします。
+
 ## ロードマップ項目: BE ID（厳守）
 
 ロードマップは [`roadmaps/`](../../roadmaps/README-ja.md) 配下に**1 項目 1 ディレクトリ**で置きます。各項目は
@@ -142,17 +280,22 @@ CI は全 PR で同じゲートを走らせ、`concurrency: ci-${{ github.ref }}
 3. **ID は不変**。既存項目を採番し直しません。状態が変わっても、完了しても、表から削除しても同じです。
    一度割り当てた BE ID は、その項目を永遠に指します。
 
-手で採番しても競合は残ります。同時に進む 2 つのブランチが同じ次の ID を選ぶことがあり、互いのまだ merge
-していない番号は見えないからです。これを自分で見張る必要はありません。roadmap を更新する PR が merge されると、
-**`roadmap-id-repair`** ワークフローが、roadmap を更新している open な PR それぞれで採番をやり直します。その PR が
-新しく導入した項目（slug がまだ `main` に無い項目）の番号を merge 済みの項目がすでに持っていれば、次の空き番号へ
-割り当て直し、ディレクトリを移動してファイルや相互参照、PR タイトルを書き換え、修正をブランチへ push します
-（ローカルで同じ処理を行うなら `make roadmap-id-repair`）。優先されるのは `main` で、merge 済みの項目が番号を保ち、
-まだ open な側が動きます。BE ID が変わるのはこの場合だけで、しかもそのブランチ自身が新しく導入した、まだ merge
-されていない項目に限られます。古い `main` から引き継いだだけの項目（slug がすでに `main` にある項目）は rebase で
-解消するもので、採番し直しません。`BE-XXXX` プレースホルダで書き起こせば、この競合は最初から避けられます。
-`roadmap-id` ワークフローが PR の時点で ID を割り当て、`main` と他の open な PR にすでにある番号をすべて避ける
-からです。
+手で採番すると競合するので、その必要はありません。`roadmap-id` ワークフローが PR の時点で ID を割り当て、
+2 つの防御（[BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md)）が
+`main` *と* すべての open な PR にわたって ID を一意に保ちます。**採番は原子的に予約します。** 払い出す各 ID は、
+GitHub の create-ref API を通じて `refs/be-claims/<NNNN>` という git ref として確保されます。これは ref が
+すでに存在すると失敗する compare-and-set なので、同じ時間帯に採番する 2 つのブランチが番号を両取りすることは
+できず、敗者が選び直します。claim は PR が close されると解放され（その ID はその時点で `main` に載っているか、
+放棄されています）、日次のスイープが漏れを回収します。**修復はそれでもすり抜けるもの**（手打ちした具体的な
+ID、この仕組みより前から存在するブランチ）への砦です。`roadmap-id-repair` ワークフローが、`main` への push 時
+と日次のスケジュールで、open なロードマップ PR すべてに対して採番をやり直します。PR が導入する項目（slug が
+まだ `main` に無い項目）で番号がすでに取られていれば、次の空き番号を割り当て、ディレクトリを移動してファイルや
+相互参照、PR タイトルを書き換え、修正をブランチへ push します（ローカルで同じ処理を行うなら
+`make roadmap-id-repair`）。権威（争われた番号を誰が保つか）は `main` を第一とし（merge 済みの項目が常に
+勝つ）、無ければその番号を持つ **open な PR のうち最小の番号** です。動くのは敗者だけです。ブランチが古い
+`main` から引き継いだだけの項目（slug がすでにそこにある項目）は rebase に委ね、採番し直しません。`BE-XXXX`
+プレースホルダで書き起こすのが依然として常道で、そもそも番号を当て推量せずに済みます。（fork からの PR は
+push も claim 用 ref の作成もできないので、両方のワークフローは同一リポジトリの PR にのみ作用します。）
 
 各ファイルは **Swift-Evolution の proposal フォーマット**に従います。メタデータブロック（`* 提案`、
 `* Author`、`* 状態`、`* トラック`、`* トピック`、任意で `* 由来`）の後に `## はじめに` / `## 動機` /

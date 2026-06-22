@@ -2,15 +2,23 @@
 
 # BE-0017 — MCP server
 
-* Proposal: [BE-0017](BE-0017-mcp-server.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Integration & automation (MCP)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0017](BE-0017-mcp-server.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Integration & automation (MCP) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 
 Expose Bajutsu commands as MCP (Model Context Protocol) tools so that AI agents (Claude Desktop / Code) can invoke them directly. This integrates with Tier 1 (AI authoring and investigation) — the deterministic gate stays unchanged.
+
+## Motivation
+
+Bajutsu already treats an AI agent as a first-class Tier-1 user: it authors and investigates scenarios. But an agent reaching Bajutsu through the shell has to construct CLI invocations, capture stdout, and parse free-form output to learn what happened. Exposing the commands as MCP tools gives the agent a typed surface it can call directly, and exposing each run's manifest and report as MCP resources lets it read structured results instead of scraping logs. The pass/fail judgement still comes only from the deterministic runner, so the gate is unchanged; MCP only makes the AI-facing paths (authoring, investigation) reachable without a shell.
 
 ## Detailed design
 

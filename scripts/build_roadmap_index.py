@@ -30,6 +30,14 @@ ROADMAP = Path("roadmaps")
 CATEGORIES = ("implemented", "proposals")  # each item lives under one; it prefixes its links
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
+# Canonical metadata: a ``| Field | Value |`` table fenced by these markers, mirroring the index's
+# ``<!-- GENERATED:* -->`` regions. Fencing keeps the parser off same-shaped tables in the body.
+META_BLOCK_RE = re.compile(r"<!-- BE-METADATA -->\n(.*?)\n<!-- /BE-METADATA -->", re.DOTALL)
+# A data row inside that block. The header (``| Field …``) is excluded by key; the dash delimiter
+# (``|---|``) never matches because there is no space after its leading pipe.
+META_ROW_RE = re.compile(r"^\| (.+?) \| (.+?) \|\s*$", re.MULTILINE)
+META_HEADER_KEYS = frozenset({"Field", "項目"})
+# Legacy form (unmigrated items): ``* Field: value`` bullet lines. Read when no fence is present.
 FIELD_RE = re.compile(r"^\* ([^:]+): (.+)$", re.MULTILINE)
 BRACKET_RE = re.compile(r"\[([^\]]+)\]")
 
@@ -109,6 +117,12 @@ SECTIONS: tuple[Section, ...] = (
         "Candidates from competitive research (MagicPod / Autify)",
         True,
     ),
+    Section(
+        "accepted-competitive-maestro",
+        "Accepted",
+        "Candidates from competitive research (Maestro)",
+        True,
+    ),
     Section("accepted-mcp", "Accepted", "Integration & automation (MCP)", False),
     Section(
         "accepted-dev-infra",
@@ -120,6 +134,7 @@ SECTIONS: tuple[Section, ...] = (
     Section("accepted-dogfood-web-ui", "Accepted", "Dogfood fixtures (web UI)", True),
     Section("accepted-ai-provider", "Accepted", "AI provider configuration", False),
     Section("accepted-hosting", "Accepted", "Hosting the web UI (cloud / self-hosted)", False),
+    Section("accepted-codegen", "Accepted", "codegen coverage", False),
     Section("proposals-on-device", "Proposals", "On-device validation (M1 close-out)", False),
     Section(
         "proposals-platform", "Proposals", "Platform expansion (Android / Web / Flutter)", False
@@ -129,11 +144,18 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section("proposals-ai-provider", "Proposals", "AI provider configuration", False),
     Section("proposals-hosting", "Proposals", "Hosting the web UI (cloud / self-hosted)", False),
+    Section("proposals-config-sourcing", "Proposals", "Configuration sourcing", False),
     Section("proposals-mcp", "Proposals", "Integration & automation (MCP)", False),
     Section("proposals-backend", "Proposals", "Backend expansion (iOS actuators)", False),
     Section("proposals-doctor", "Proposals", "doctor / onboarding", False),
     Section("proposals-codegen", "Proposals", "codegen coverage", False),
     Section("proposals-crawl", "Proposals", "Crawl performance / scale-out", False),
+    Section(
+        "proposals-dev-infra",
+        "Proposals",
+        "Development infrastructure (contributor workflow)",
+        False,
+    ),
     Section("proposals-misc", "Proposals", "Miscellaneous / on hold", False),
     Section(
         "proposals-competitive",
@@ -176,13 +198,28 @@ class Item:
 def parse_metadata(text: str) -> tuple[str, dict[str, str]]:
     """Return (H1 title, metadata fields) from a BE item file's body.
 
-    Fields are the ``* Key: value`` lines of the metadata block, with ``**`` emphasis stripped
-    from the value. The title is the text after the em dash in the ``# BE-NNNN — …`` heading.
+    Spec. The metadata block is a ``| Field | Value |`` table fenced by the markers
+    ``<!-- BE-METADATA -->`` … ``<!-- /BE-METADATA -->``. Each data row is one ``field -> value``
+    (header and dash-delimiter rows excluded), with ``**`` emphasis stripped from the value.
+    Fencing the block — like the index's ``<!-- GENERATED:* -->`` regions — keeps the parser off
+    same-shaped tables elsewhere in the body. A file without the markers is read by the legacy
+    ``* Field: value`` bullet rule, so an unmigrated item still parses. The title is the text after
+    the em dash in the ``# BE-NNNN — …`` heading.
     """
     title_match = TITLE_RE.search(text)
     if not title_match:
         raise ValueError("no '# BE-NNNN — <title>' heading found")
-    fields = {key.strip(): value.replace("**", "").strip() for key, value in FIELD_RE.findall(text)}
+    block = META_BLOCK_RE.search(text)
+    if block:
+        fields = {
+            key.strip(): value.replace("**", "").strip()
+            for key, value in META_ROW_RE.findall(block.group(1))
+            if key.strip() not in META_HEADER_KEYS
+        }
+    else:  # legacy bullet form, until the item is migrated to the fenced table
+        fields = {
+            key.strip(): value.replace("**", "").strip() for key, value in FIELD_RE.findall(text)
+        }
     return title_match.group(1).strip(), fields
 
 
