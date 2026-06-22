@@ -2,11 +2,15 @@
 
 # BE-0010 — Update the scope statement
 
-* Proposal: [BE-0010](BE-0010-update-scope-statement.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Platform expansion (Android / Web / Flutter)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0010](BE-0010-update-scope-statement.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Platform expansion (Android / Web / Flutter) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

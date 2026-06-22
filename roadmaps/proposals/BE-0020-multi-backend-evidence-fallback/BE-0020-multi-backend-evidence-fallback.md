@@ -2,11 +2,15 @@
 
 # BE-0020 — Multi-backend evidence fallback
 
-* Proposal: [BE-0020](BE-0020-multi-backend-evidence-fallback.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Backend expansion (iOS actuators)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0020](BE-0020-multi-backend-evidence-fallback.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Backend expansion (iOS actuators) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

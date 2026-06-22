@@ -122,10 +122,15 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   (`roadmaps/README.md` and `roadmaps/README-ja.md`) from each item's metadata;
   `make test` fails if the committed index drifts.
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
-  Motivation / Detailed design / Alternatives considered / References). The metadata block must
-  name the author by GitHub handle — `* Author: [@handle](https://github.com/handle)`, the
-  account of whoever first authored the item (for an AI-assisted draft, the person who drove and
-  committed it). Its `Status` files it
+  Motivation / Detailed design / Alternatives considered / References), with the metadata as a
+  fenced `| Field | Value |` table — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening with
+  a `| Field | Value |` header row (`| 項目 | 値 |` on the Japanese side) and holding
+  `Proposal` / `Author` / `Status` / `Track` / `Topic` (plus `Implementing PR` once shipped and
+  `Origin` last, when applicable); the Japanese mirror uses `提案` / `提案者` / `状態` / `トラック`
+  / `トピック`. The metadata block must name the author by GitHub handle — `| Author |
+  [@handle](https://github.com/handle) |`, the account of whoever first authored the item (for an
+  AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py` checks
+  this shape (BE-0074). Its `Status` files it
   under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /
   `Proposal (deferred)`). When an item ships, set `Status: Implemented`; CI (`roadmap-promote`)
   then **moves its directory** from `roadmaps/proposals/` to `roadmaps/implemented/` and
@@ -141,7 +146,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   changed and *why* (the motivation/context), give a short summary of the key changes (grouped by
   area when the diff is large), say how you verified it (e.g. `make check`), and include the
   relevant links (roadmap item, issue) and call-outs (trade-offs, follow-ups, anything a reviewer
-  should look at closely). This expectation holds for humans and AI alike.
+  should look at closely). This expectation holds for humans and AI alike. Concretely: lead with
+  `## Summary`, close with the `make check` verification (the green numbers), and add `What changed`
+  / `Prime-directive compliance` / `Scope` / `Notes` as the change warrants — depth proportional to
+  the diff. Full title-and-body template:
+  [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
 - **Prefix the PR title with the roadmap ID** when the PR is tied to a roadmap item: start the
   title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap
   item keep the plain scoped title.

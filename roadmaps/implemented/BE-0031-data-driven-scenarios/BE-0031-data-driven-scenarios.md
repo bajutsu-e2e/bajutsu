@@ -2,13 +2,17 @@
 
 # BE-0031 — Data-driven scenarios
 
-* Proposal: [BE-0031](BE-0031-data-driven-scenarios.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Candidates from competitive research (MagicPod / Autify)
-* Origin: MagicPod
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0031](BE-0031-data-driven-scenarios.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Origin | MagicPod |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

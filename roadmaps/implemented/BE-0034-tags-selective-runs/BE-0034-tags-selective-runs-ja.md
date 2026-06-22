@@ -2,13 +2,17 @@
 
 # BE-0034 — タグ / ラベル + 選択実行
 
-* 提案: [BE-0034](BE-0034-tags-selective-runs-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6)
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: 競合調査（MagicPod / Autify）由来の候補
-* 由来: MagicPod
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0034](BE-0034-tags-selective-runs-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | [#6](https://github.com/bajutsu-e2e/bajutsu/pull/6) |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | 競合調査（MagicPod / Autify）由来の候補 |
+| 由来 | MagicPod |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

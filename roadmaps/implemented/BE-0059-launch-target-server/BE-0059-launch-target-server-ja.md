@@ -2,13 +2,17 @@
 
 # BE-0059 — run のためにターゲットサーバを起動する（`launchServer`）
 
-* 提案: [BE-0059](BE-0059-launch-target-server-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **実装済み**
-* 実装 PR: [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169)
-* トラック: [可決済み](../../README-ja.md#可決済み)
-* トピック: Dogfood フィクスチャ（Web UI）
-* 由来: Dogfooding
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0059](BE-0059-launch-target-server-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **実装済み** |
+| 実装 PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169) |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
+| トピック | Dogfood フィクスチャ（Web UI） |
+| 由来 | Dogfooding |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

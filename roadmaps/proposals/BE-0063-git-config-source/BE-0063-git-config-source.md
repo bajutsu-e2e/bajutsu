@@ -2,11 +2,15 @@
 
 # BE-0063 — Load config (and its scenario tree) from a Git repository + ref
 
-* Proposal: [BE-0063](BE-0063-git-config-source.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Configuration sourcing
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0063](BE-0063-git-config-source.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Configuration sourcing |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

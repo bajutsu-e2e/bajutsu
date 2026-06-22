@@ -2,13 +2,17 @@
 
 # BE-0035 — Device-control steps (background, status-bar override)
 
-* Proposal: [BE-0035](BE-0035-device-control-primitives.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: [#59](https://github.com/bajutsu-e2e/bajutsu/pull/59)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Candidates from competitive research (MagicPod / Autify)
-* Origin: MagicPod
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0035](BE-0035-device-control-primitives.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | [#59](https://github.com/bajutsu-e2e/bajutsu/pull/59) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Candidates from competitive research (MagicPod / Autify) |
+| Origin | MagicPod |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

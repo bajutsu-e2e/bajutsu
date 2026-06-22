@@ -2,11 +2,15 @@
 
 # BE-0070 — Live in-progress run artifacts across the worker split
 
-* Proposal: [BE-0070](BE-0070-live-run-artifacts-across-split.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Hosting the web UI (cloud / self-hosted)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0070](BE-0070-live-run-artifacts-across-split.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Proposal** |
+| Track | [Proposals](../../README.md#proposals) |
+| Topic | Hosting the web UI (cloud / self-hosted) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

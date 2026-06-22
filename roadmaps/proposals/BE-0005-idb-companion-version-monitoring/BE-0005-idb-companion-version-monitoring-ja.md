@@ -2,11 +2,15 @@
 
 # BE-0005 — `idb_companion` バージョン監視
 
-* 提案: [BE-0005](BE-0005-idb-companion-version-monitoring-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: 実機検証（M1 クローズアウト）
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0005](BE-0005-idb-companion-version-monitoring-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | 実機検証（M1 クローズアウト） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

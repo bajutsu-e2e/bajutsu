@@ -2,12 +2,16 @@
 
 # BE-0011 — Local web UI (`bajutsu serve`)
 
-* Proposal: [BE-0011](BE-0011-local-web-ui-serve.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* Status: **Implemented**
-* Implementing PR: predates the per-PR history (squashed into the initial import; no single PR)
-* Track: [Accepted](../../README.md#accepted)
-* Topic: Authoring experience (record / GUI editor)
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-0011](BE-0011-local-web-ui-serve.md) |
+| Author | [@0x0c](https://github.com/0x0c) |
+| Status | **Implemented** |
+| Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Authoring experience (record / GUI editor) |
+<!-- /BE-METADATA -->
 
 ## Introduction
 

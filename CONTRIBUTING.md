@@ -55,7 +55,10 @@ On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** par
   *why* (the motivation/context), a short summary of the key changes (grouped by area when the diff
   is large), how you verified it (e.g. `make check`), and the relevant links (roadmap item, issue)
   and call-outs (trade-offs, follow-ups, anything to look at closely). This holds for humans and AI
-  alike.
+  alike. Lead with `## Summary` and close with the `make check` verification (the green numbers),
+  adding `What changed` / `Prime-directive compliance` / `Scope` / `Notes` as the change warrants;
+  the full title-and-body template is in
+  [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
 - When a PR implements a roadmap item, **prefix the title with the ID** in brackets — e.g.
   `[BE-0017] feat(mcp): add MCP server` — and add a link to the PR in the item's markdown (both
   language files). PRs with no roadmap item keep the plain scoped title.

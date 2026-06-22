@@ -2,11 +2,15 @@
 
 # BE-0063 — Git リポジトリ + ref から config（とシナリオ一式）を読み込む
 
-* 提案: [BE-0063](BE-0063-git-config-source-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: config の取得元
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0063](BE-0063-git-config-source-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | config の取得元 |
+<!-- /BE-METADATA -->
 
 ## はじめに
 

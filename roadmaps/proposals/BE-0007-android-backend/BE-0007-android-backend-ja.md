@@ -2,11 +2,15 @@
 
 # BE-0007 — Android backend
 
-* 提案: [BE-0007](BE-0007-android-backend-ja.md)
-* Author: [@0x0c](https://github.com/0x0c)
-* 状態: **提案**
-* トラック: [提案](../../README-ja.md#提案)
-* トピック: プラットフォーム拡張（Android / Web / Flutter）
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-0007](BE-0007-android-backend-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **提案** |
+| トラック | [提案](../../README-ja.md#提案) |
+| トピック | プラットフォーム拡張（Android / Web / Flutter） |
+<!-- /BE-METADATA -->
 
 ## はじめに
 
