@@ -296,7 +296,7 @@ def _frame_bucket(element: base.Element) -> tuple[int, int, int, int]:
 
 def _hash(parts: list[str]) -> str:
     # Full digest: a crawl may visit many screens across runs, so keep collision risk negligible.
-    return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()
+    return hashlib.sha1("\n".join(parts).encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def candidate_actions(elements: list[base.Element]) -> list[Action]:
