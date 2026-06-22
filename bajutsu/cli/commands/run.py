@@ -156,7 +156,8 @@ def run(
     network: bool = typer.Option(
         True,
         "--network/--no-network",
-        help="collect the app's network exchanges (for `request` assertions); needs BajutsuKit in the app",
+        help="collect the app's network exchanges (for `request` assertions); iOS needs BajutsuKit "
+        "in the app, web (Playwright) observes natively",
     ),
     progress: bool = typer.Option(
         False,
@@ -227,11 +228,11 @@ def run(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     if actuator == "playwright":
-        # Web has no simctl udid to resolve and no app-side network collector: one browser
-        # lane, keyed by a dummy udid, with network collection off.
+        # Web has no simctl udid to resolve: one browser lane, keyed by a dummy udid. Network
+        # collection is native (Playwright observes the page), so `--network` works here too
+        # (BE-0054) — the pool builds a page-hooked collector instead of an HTTP receiver.
         udids = ["web"]
         workers = 1
-        network = False
     else:
         # The idb CLI needs concrete UDIDs (not the simctl "booted" alias). `--udid` may be a
         # comma list — a device pool for parallel runs (`--workers`), capped to the pool size.

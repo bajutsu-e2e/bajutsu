@@ -18,9 +18,13 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from bajutsu.drivers import base
+
+if TYPE_CHECKING:
+    from bajutsu.scenario.models.mocks import Mock
+    from bajutsu.web_network import WebNetworkCollector
 
 # One DOM walk: visible, interactive / a11y-relevant nodes → records the parser maps to Elements.
 QUERY_JS = """
@@ -300,13 +304,22 @@ class PlaywrightDriver:
     def screenshot(self, path: str) -> None:
         self._page.screenshot(path=path)
 
+    def network_collector(self, mocks: list[Mock] | None = None) -> WebNetworkCollector:
+        """A collector hooked to this driver's page (Playwright sees every request natively), so
+        the run loop's `request` assertion + network evidence work on web (BE-0054). `mocks` are
+        fulfilled in-process via `page.route`. Imported lazily to keep the page private."""
+        from bajutsu.web_network import WebNetworkCollector
+
+        return WebNetworkCollector(self._page, mocks)
+
     def capabilities(self) -> set[str]:
-        # Playwright has a genuine semantic click and native auto-waiting; multi-touch and
-        # native network are deferred (see the BE for web-backend completion).
+        # Playwright has a genuine semantic click, native auto-waiting, and native network
+        # observation + stubbing (BE-0054); multi-touch is still deferred.
         return {
             base.Capability.QUERY,
             base.Capability.ELEMENTS,
             base.Capability.SCREENSHOT,
             base.Capability.SEMANTIC_TAP,
             base.Capability.CONDITION_WAIT,
+            base.Capability.NETWORK,
         }

@@ -45,10 +45,10 @@ class Driver(Protocol):
 | `screenshot` | スクショ | ✅ | ✅ | ✅ |
 | `semanticTap` | id/label で直接タップ（座標不要） | — | ✅ | ✅ |
 | `conditionWait` | ネイティブ条件待機 | — | ✅ | ✅ |
-| `network` | ネイティブネットワーク監視 | — | — | — |
+| `network` | ネイティブネットワーク監視 | — | ✅ | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | — | ✅ |
 
-> idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）を公開しますが、v1 では `network` と `multiTouch` を先送りします（[BE-0054](../../roadmaps/proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) で追跡）。
+> idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network` も公開します。アプリ側の協力なしに通信を観測し、その場でスタブもできる**初めてのネイティブネットワーク対応バックエンド**です（BE-0054）。`multiTouch` は引き続き先送りです（[BE-0054](../../roadmaps/proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) で追跡）。
 
 ## idb
 
@@ -69,6 +69,7 @@ Playwright（Python）によるヘッドレス Chromium です。Mac も Simulat
 - `tap(sel)`: idb と同様、`query()` のスナップショットに対し共有の `resolve_unique`/`find_all` で要素を**一意に**確定し、**frame 中心**を座標クリック（`page.mouse.click`）します。Playwright 自身の `get_by_test_id().click()` は**あえて使いません**。これによりセレクタの意味が他のどの backend ともバイト単位で一致します。
 - `type_text` は `page.keyboard` で入力します（オーケストレータが先に `into` をタップしてフィールドにフォーカスします）。`screenshot` は `page.screenshot`、`wait_for` は `find_all` による単発（idb と同じ）です。
 - ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(baseUrl)`）が `launch`、`close()` でブラウザを破棄します。simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません（v1 では `pinch`/`rotate` が `UnsupportedAction`）。
+- **ネイティブネットワーク**（BE-0054）: Playwright はページが出すすべてのリクエストを見られるので、`--network` はアプリ側の協力なしに web でも動きます。`network_collector()` がページの `requestfinished` イベントを iOS と同じ `NetworkExchange` に変換するため、`request` アサーションも `network.json` 証跡もそのまま使えます。シナリオの `mocks` は `page.route` でその場で fulfill します。一致したリクエストには既定のレスポンスを返し、`mocked: true` を立てて記録します。一致判定は決定論的な `request` マッチャを再利用し、モデルは一切使いません。
 
 > `playwright` は**遅延 import** されます（実際にブラウザを起動するときだけ読み込む）。そのため既定の CLI パスには決して載りません（`tests/serve/test_import_guard.py` で固定）。インストールは `uv sync --extra web` ＋ `uv run playwright install chromium`。`demos/web` のデモ（`make -C demos/web e2e`）が小さな静的 web アプリを端から端まで駆動します。
 

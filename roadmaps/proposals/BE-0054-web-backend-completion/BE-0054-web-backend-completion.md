@@ -4,9 +4,9 @@
 
 * Proposal: [BE-0054](BE-0054-web-backend-completion.md)
 * Author: [@0x0c](https://github.com/0x0c)
-* Status: **Proposal**
-* Track: [Proposals](../../README.md#proposals)
-* Topic: Platform expansion (Android / Web / Flutter)
+* Status: **Accepted, in progress**
+* Track: [Accepted](../../README.md#accepted)
+* Topic: Platform expansion (landed slices)
 
 ## Introduction
 

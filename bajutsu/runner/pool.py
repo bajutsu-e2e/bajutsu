@@ -6,17 +6,21 @@ from __future__ import annotations
 import queue
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from bajutsu import env
 from bajutsu.backends import default_available, select_actuator
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
-from bajutsu.network import NetworkCollector
+from bajutsu.network import Collector, NetworkCollector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.runner.launch import _await_ready, launch_driver
 from bajutsu.runner.types import Lease, LeaseFn, RelaunchFactory
 from bajutsu.scenario import Relaunch, Scenario
+
+if TYPE_CHECKING:
+    from bajutsu.drivers.playwright import PlaywrightDriver
 
 
 def device_pool(
@@ -58,8 +62,10 @@ def device_pool(
     # One collector per device (its own ephemeral port), started up front and reused across
     # leases (cleared per scenario by the run loop). If a start fails mid-setup, stop the
     # ones already started so we don't leak listening sockets.
+    # iOS collectors are HTTP receivers started up front and reused; web has no up-front receiver
+    # (its collector hooks the page built per lease), so only the non-web path pre-starts them.
     collectors: dict[str, NetworkCollector] = {}
-    if network:
+    if network and not is_web:
         started: list[NetworkCollector] = []
         try:
             for udid in udids:
@@ -74,11 +80,12 @@ def device_pool(
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
-        collector = collectors.get(udid)
-        # Point the app at this device's collector (survives a relaunch via the relauncher).
+        # iOS points the app at its pre-started HTTP collector via launch env; web has no such
+        # env (Playwright observes natively), so its collector is built from the live page below.
+        collector: Collector | None = collectors.get(udid)
         extra_env = (
             {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
-            if collector is not None
+            if isinstance(collector, NetworkCollector)
             else None
         )
         driver = launch_driver(udid, eff, actuator, scenario.preconditions, env_run, extra_env)
@@ -93,12 +100,22 @@ def device_pool(
         relaunch: RelaunchFn
         control: DeviceControl | None
         if is_web:
+            # The web collector hooks the live page (and fulfills this scenario's mocks); a fresh
+            # context per lease scopes its traffic, mirroring iOS's per-scenario collector clear.
+            web_collector = (
+                cast("PlaywrightDriver", driver).network_collector(scenario.mocks)
+                if network
+                else None
+            )
+            collector = web_collector
             # No simctl device control / app terminate; the driver owns the browser, so a
             # release tears it down (a re-lease then builds a fresh context = clean state).
             relaunch = _web_relauncher(driver)
             control = None
 
             def release() -> None:
+                if web_collector is not None:
+                    web_collector.stop()
                 driver.close()  # type: ignore[attr-defined]  # web-only lifecycle
                 free.put(udid)
         else:

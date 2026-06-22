@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import EvidenceSink
-from bajutsu.network import NetworkCollector, NetworkExchange
+from bajutsu.network import Collector, NetworkExchange
 from bajutsu.orchestrator import BlockedHandler, DeviceControl, RelaunchFn
 from bajutsu.scenario import Scenario
 
@@ -30,15 +30,16 @@ class Lease:
     resources bound to that device. `release()` terminates the app and returns the
     device to the pool.
 
-    `collector` is None when network collection is off; otherwise it is the device's
-    own receiver (the app POSTs to it), cleared per scenario by the run loop.
+    `collector` is None when network collection is off; otherwise it observes the leased
+    device's traffic (iOS: the app POSTs to an HTTP receiver; web: Playwright events),
+    cleared per scenario by the run loop.
     """
 
     driver: base.Driver
     sink: EvidenceSink
     relaunch: RelaunchFn | None
     control: DeviceControl | None
-    collector: NetworkCollector | None
+    collector: Collector | None
     release: Callable[[], None]
     udid: str = ""  # the leased device, recorded on each RunResult (parallel-split attribution)
     # The leased device's model / OS runtime, recorded on the result for the report's
