@@ -3,8 +3,6 @@
 # BE-XXXX — Standardize the BE item template (EN / JA)
 
 <!-- BE-METADATA -->
-| Field | Value |
-|---|---|
 | Proposal | [BE-XXXX](BE-XXXX-be-template-standardization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
@@ -65,12 +63,13 @@ not. This item extends the same treatment to the body.
 
 ### Canonical metadata
 
-The metadata block is a two-column Markdown table — `Field` / `Value` in English, `項目` / `値`
-in Japanese — fenced by a marker pair, `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, that
-mirrors the index's `<!-- GENERATED:* -->` regions. The fence is the load-bearing part: it lets the
-parser read exactly this table and never a same-shaped table elsewhere in the body, and it is what
-the bullet-list form could not offer (a bare `* Key: value` line has no boundary). A table also
-holds its shape better than free bullets — a fixed header and one row per field are harder to drift.
+The metadata block is a list of `| field | value |` rows fenced by a marker pair,
+`<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, that mirrors the index's `<!-- GENERATED:* -->`
+regions. There is no `Field` / `Value` header row: the fence — not a header — marks where the
+metadata is, so the header would only be noise. The fence is the load-bearing part: it lets the
+parser read exactly these rows and never a same-shaped row elsewhere in the body, and it is what
+the bullet-list form could not offer (a bare `* Key: value` line has no boundary). One row per
+field also holds its shape better than free bullets.
 
 The block carries the fields below, in this order. `Proposal`, `Author`, `Status`, `Track`, and
 `Topic` are mandatory; the `Implementing PR` row appears once an item ships; the `Origin` row
@@ -126,8 +125,6 @@ The English file:
 # BE-NNNN — <Title>
 
 <!-- BE-METADATA -->
-| Field | Value |
-|---|---|
 | Proposal | [BE-NNNN](BE-NNNN-<slug>.md) |
 | Author | [@handle](https://github.com/handle) |
 | Status | **Proposal** |
@@ -157,9 +154,9 @@ The English file:
 ```
 
 The Japanese file is the same shape with the Japanese header link (`[English](BE-NNNN-<slug>.md) ·
-**日本語**`), the Japanese field names (`項目` / `値` and the field column above) and Status value,
-and the Japanese section headings. The title line keeps the `BE-NNNN — <タイトル>` form (the em dash
-here is part of the fixed title format, not Japanese running text).
+**日本語**`), the Japanese field names (`提案` / `提案者` / `状態` / `トラック` / `トピック`) and Status
+value, and the Japanese section headings. The title line keeps the `BE-NNNN — <タイトル>` form (the em
+dash here is part of the fixed title format, not Japanese running text).
 
 The H1 title line is `# BE-NNNN — <Title>` in both files: the ID, a space, an em dash (`—`,
 U+2014) flanked by spaces, then the title. A brand-new item leaves the number undetermined and is
@@ -178,15 +175,14 @@ and, for the `Status` field, by `read_status` in
 1. **Scope to the fence.** Read only the text between `<!-- BE-METADATA -->` and
    `<!-- /BE-METADATA -->`. This is the reason for the markers: without them a parser keys on a
    shape (`* Key:` lines, or `| a | b |` rows) that also occurs in the body, so it can latch onto
-   the wrong table. The fence makes the metadata region explicit, the same way the index tables are
-   fenced by `<!-- GENERATED:* -->`.
-2. **Read one field per data row.** Inside the fence, each `| field | value |` row maps `field` to
-   `value`, with `**` emphasis stripped. The header row (`Field` / `項目`) and the dash delimiter
-   are not fields and are skipped.
+   the wrong row. The fence makes the metadata region explicit — the same way the index tables are
+   fenced by `<!-- GENERATED:* -->` — and is what lets the block carry no header row.
+2. **Read one field per row.** Inside the fence, each `| field | value |` row maps `field` to
+   `value`, with `**` emphasis stripped. There is no header to skip.
 3. **Fall back for unmigrated items.** A file with no fence is read by the legacy `* Field: value`
    bullet rule, so the items not yet converted keep parsing during the migration.
 
-This proposal already updates both parsers to that contract (the fenced table is parsed; the bullet
+This proposal already updates both parsers to that contract (the fenced rows are parsed; the bullet
 form still works), so a fenced item and a legacy item coexist while the tree migrates.
 
 ### The deterministic check
@@ -196,9 +192,9 @@ For every `roadmaps/{implemented,proposals}/BE-*/` item it asserts, per language
 
 1. the first line is the exact bilingual header link for that file's language and slug;
 2. the H1 is `# BE-NNNN — …` with the em dash;
-3. the metadata block is fenced by `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, holds the
-   `Field`/`Value` (or `項目`/`値`) header, and lists the required fields for that language in the
-   canonical order with no unknown field rows;
+3. the metadata block is fenced by `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->` and lists the
+   required `| field | value |` rows for that language in the canonical order, with no header row
+   and no unknown field rows;
 4. `Status` is one of the four canonical values, and the English/Japanese values agree across the
    pair;
 5. the five H2 headings are present, in order, with the exact canonical wording.
@@ -209,11 +205,11 @@ files of a pair are validated together so an EN/JA Status mismatch is caught.
 
 ### Rollout
 
-This proposal pins the shape, ships the skeleton, and teaches the two parsers the fenced-table form
-while keeping the bullet form working; it does not by itself renumber or rewrite the existing tree.
+This proposal pins the shape, ships the skeleton, and teaches the two parsers the fenced form while
+keeping the bullet form working; it does not by itself renumber or rewrite the existing tree.
 The implementation phase wires the check into `make test` and, in the same change, converts the 68
-remaining items to the fenced table and fixes the drifting files named in *Motivation*, so the tree
-is green when the check lands. (This item's own files already use the fenced metadata table,
+remaining items to the fenced block and fixes the drifting files named in *Motivation*, so the tree
+is green when the check lands. (This item's own files already use the fenced metadata block,
 demonstrating the target state.)
 
 ## Alternatives considered
@@ -235,9 +231,9 @@ demonstrating the target state.)
 - **Keep the metadata as a `* Field: value` bullet list** (the current form, and the literal shape
   `CLAUDE.md` / `README.md` show as the "Swift-Evolution proposal format"). This item diverges from
   that on purpose: a bullet line has no boundary, so a parser scoped to it can stray onto a body
-  list, and bullets drift more freely than a fixed table. The fenced table closes both gaps and
+  list, and bullets drift more freely than one row per field. The fenced block closes both gaps and
   matches the index's own `<!-- GENERATED:* -->` convention. The divergence is small and documented
-  here; the prose in `CLAUDE.md` / `README.md` is updated to the fenced table in the implementation
+  here; the prose in `CLAUDE.md` / `README.md` is updated to the fenced block in the implementation
   phase.
 
 ## References

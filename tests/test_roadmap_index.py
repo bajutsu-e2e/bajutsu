@@ -56,8 +56,6 @@ FENCED_EN_FILE = """\
 # BE-0029 — Visual-regression assertions
 
 <!-- BE-METADATA -->
-| Field | Value |
-|---|---|
 | Proposal | [BE-0029](BE-0029-visual-regression-assertions.md) |
 | Status | **Implemented** |
 | Track | [Accepted](../README.md#accepted) |
@@ -67,22 +65,19 @@ FENCED_EN_FILE = """\
 
 ## Detailed design
 
-A same-shaped table in the body must not be read as metadata:
+A same-shaped row in the body must not be read as metadata:
 
-| Field | Value |
-|---|---|
 | Status | not-metadata |
 """
 
 
-def test_parse_metadata_reads_fenced_table() -> None:
+def test_parse_metadata_reads_fenced_block() -> None:
     title, fields = bri.parse_metadata(FENCED_EN_FILE)
     assert title == "Visual-regression assertions"
-    # The fenced data rows are read; the header row and the body table are not.
+    # The fenced rows are read; the same-shaped body row outside the fence is not.
     assert fields["Status"] == "Implemented"
     assert fields["Topic"] == "Candidates from competitive research (MagicPod / Autify)"
     assert fields["Origin"] == "Both"
-    assert "Field" not in fields
 
 
 def test_parse_metadata_reads_title_and_fields() -> None:
