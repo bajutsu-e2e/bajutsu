@@ -96,3 +96,30 @@ def test_list_runs_summarizes_from_manifests_newest_first() -> None:
     assert newest["ok"] is False and newest["passed"] == 1 and newest["total"] == 2
     assert newest["report"] is False  # no report.html stored for this run
     assert older["report"] is True and older["scenarios"] == ["home"]
+
+
+def test_archive_zips_objects_under_the_run_id_root() -> None:
+    import io
+    import zipfile
+
+    store = ObjectStorageArtifactStore(
+        FakeObjectStore(
+            {
+                "runs/r1/report.html": b"<html></html>",
+                "runs/r1/demo/shot.png": b"PNG",
+                "runs/r2/report.html": b"other",  # a different run must not leak in
+            }
+        ),
+        prefix="runs/",
+    )
+    art = store.archive("r1")
+    assert art is not None and art.content_type == "application/zip" and art.body is not None
+    with zipfile.ZipFile(io.BytesIO(art.body)) as zf:
+        names = zf.namelist()
+    assert names == ["r1/demo/shot.png", "r1/report.html"]  # sorted, rooted at id, no r2 leak
+
+
+def test_archive_missing_or_escaping_run_id_is_none() -> None:
+    store = ObjectStorageArtifactStore(FakeObjectStore({}), prefix="runs/")
+    assert store.archive("nope") is None  # no objects
+    assert store.archive("../etc") is None  # escapes the prefix

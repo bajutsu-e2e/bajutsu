@@ -46,6 +46,7 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
 | `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
 | `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できる（コマンドを実行しているマシン上でウィンドウが開く）。省略時はアプリの `headless` 設定に従う。iOS は無視する |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流す（`serve` UI が消費する） |
+| `--zip` | off | run の後に `runs/<id>.zip` も書き出す。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使える。**判定の後**に走るので pass/fail に影響しない。[`export`](#export) 参照 |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
@@ -83,6 +84,18 @@ bajutsu audit <scenario.yaml> [--json]
 - 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）を指摘します。
 - シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。成功した監査は **finding があっても終了 0**（シナリオファイルが無い/読めないときだけ終了 2）です。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
+
+## `export`
+
+完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`・`junit.xml`・実行した `scenario.yaml`・**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/proposals/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
+
+```bash
+bajutsu export <run-id | run-dir> [-o out.zip] [--force]
+```
+
+- `<run>` は run id（`--runs` 既定 `runs/` の下で解決）または run ディレクトリのパスです。
+- 出力は既定で run dir の隣の `<id>.zip`。`-o/--output` で上書き指定。`--force` なしでは既存ファイルを**上書きしません**（`record` が黙って上書きしないのと同じ）。
+- run が既に書いたものを詰めるだけで、デバイスも AI も使わず、判定にも影響しません。**run dir の中だけ**を固めます（`.env`・config・その上位には一切触れません）。run の secret スクラブをそのまま継承します。`bajutsu run --zip` は同じアーカイバを判定後にインラインで走らせ、`bajutsu serve` は埋め込みレポートの隣に **Download** ボタンとして提供します。
 
 ## `trace`
 
