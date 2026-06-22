@@ -125,6 +125,24 @@ def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
             yield from _step_selectors(nested)
 
 
+def referenced_ids(scenario: Scenario) -> set[str]:
+    """The stable ids (`id` / `idMatches`) a scenario statically references — across steps, nested
+    control flow, `within` scopes, and assertions. The coverage map (BE-0050) measures these
+    against an app's declared `idNamespaces`. Pure: no device, no model, no side effects."""
+    addressed = [
+        *(ws for step in scenario.steps for ws in _step_selectors(step)),
+        *(ks for a in scenario.expect for ks in _assertion_selectors(a)),
+    ]
+    ids: set[str] = set()
+    for where, top in addressed:
+        for _, sel in _with_nested(where, top):
+            if "id" in sel:
+                ids.add(sel["id"])
+            if "idMatches" in sel:
+                ids.add(sel["idMatches"])
+    return ids
+
+
 def _step_findings(step: Step) -> Iterator[Finding]:
     """Non-selector determinism risks in a step (coordinate gestures, over-loose waits)."""
     if step.swipe is not None and step.swipe.from_ is not None:

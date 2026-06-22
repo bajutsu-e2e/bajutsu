@@ -153,6 +153,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | In progress | Maestro |
+| [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
 <!-- /GENERATED:accepted-competitive-maestro -->
 
 ### Integration & automation (MCP)
@@ -402,7 +403,6 @@ into concrete features that a UI-layer, no-instrumentation competitor cannot eas
 |---|---|---|---|
 | [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Proposal | Maestro |
 | [BE-0048](proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Proposal | Maestro |
-| [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Proposal | Maestro |
 <!-- /GENERATED:proposals-competitive-maestro -->
 
 ## Not adopting (already covered / out of scope)
