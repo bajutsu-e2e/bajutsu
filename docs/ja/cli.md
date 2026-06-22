@@ -349,7 +349,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - app を選ぶ（そのシナリオがドロップダウンに並ぶ）と、backend / udid / erase / `disable alert-dismiss` を設定して **Run** を押します。
   出力がライブ表示され、完了で `report.html` が埋め込まれます。
 - **Crawl** タブは、app、シミュレータのプール（Replay と同様の複数選択。2 台以上選ぶと 1 つの画面マップを
-  共有して並列にクロールします。[BE-0064](../../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)）、
+  共有して並列にクロールします。詳細は [BE-0064](../../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)）、
   予算（max screens / steps）を選び、`POST /api/crawl` で crawl を起動します。返ってきた run id で UI が
   `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に合わせて描きます（画面は幅優先の層に配置し、
   遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
