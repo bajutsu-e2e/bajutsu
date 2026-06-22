@@ -347,12 +347,17 @@ def run(
     github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
     # --zip packages the finished run into one artifact, strictly *after* the verdict above, so it
-    # cannot influence pass/fail (BE-0060). Path goes to stderr; stdout stays the PASS/FAIL line.
+    # cannot influence pass/fail (BE-0060). A write failure (disk full, permissions) must not flip
+    # the run's exit code, so it's reported as a warning, never raised. Path/warning go to stderr;
+    # stdout stays the PASS/FAIL line.
     if zip_run:
         run_dir = manifest.parent
         zip_path = run_dir.parent / f"{run_dir.name}.zip"
-        zip_path.write_bytes(archive_run_dir(run_dir))
-        typer.echo(f"wrote {zip_path}", err=True)
+        try:
+            zip_path.write_bytes(archive_run_dir(run_dir))
+            typer.echo(f"wrote {zip_path}", err=True)
+        except OSError as e:
+            typer.echo(f"warning: --zip failed ({e}); the run verdict stands", err=True)
     # The only AI in `run` is the alert guard (when it actually fired). Report its token use on
     # stderr so stdout stays the machine-readable PASS/FAIL line; silent when nothing fired.
     spent = _usage.snapshot() - before

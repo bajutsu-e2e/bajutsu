@@ -120,6 +120,9 @@ def test_archive_zips_objects_under_the_run_id_root() -> None:
 
 
 def test_archive_missing_or_escaping_run_id_is_none() -> None:
-    store = ObjectStorageArtifactStore(FakeObjectStore({}), prefix="runs/")
+    store = ObjectStorageArtifactStore(
+        FakeObjectStore({"runs/r1/demo/shot.png": b"PNG"}), prefix="runs/"
+    )
     assert store.archive("nope") is None  # no objects
     assert store.archive("../etc") is None  # escapes the prefix
+    assert store.archive("r1/demo") is None  # a nested segment isn't a run id

@@ -107,7 +107,7 @@ bajutsu audit <scenario.yaml> [--json]
 
 Bundles a finished run into a single portable `.zip` — `report.html` together with `manifest.json`,
 `junit.xml`, the executed `scenario.yaml`, and **all** of its evidence (screenshots, video,
-`network.json`, …) ([BE-0060](../roadmaps/proposals/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
+`network.json`, …) ([BE-0060](../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)).
 The whole `runs/<id>/` tree is rooted under a single `<id>/` folder, so `report.html`'s **relative**
 links resolve offline — the report works by double-click, no server.
 

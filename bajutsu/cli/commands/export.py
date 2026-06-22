@@ -23,7 +23,10 @@ def export(
     runs: str = typer.Option("runs", help="runs root (used when <run> is an id, not a path)"),
 ) -> None:
     """Archive an existing run into a single `.zip` for sharing / CI / offline viewing."""
-    run_dir = Path(run) if Path(run).is_dir() else Path(runs) / run
+    # An absolute or multi-segment value (`/abs/run`, `runs/r1`) is a path; a bare segment (`r1`)
+    # is a run id resolved under --runs. So a mistyped path isn't silently re-rooted under runs/.
+    run_path = Path(run)
+    run_dir = run_path if run_path.is_absolute() or len(run_path.parts) > 1 else Path(runs) / run
     if not run_dir.is_dir():
         typer.echo(f"run not found: {run}")
         raise typer.Exit(2)

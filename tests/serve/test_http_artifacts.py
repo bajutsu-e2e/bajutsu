@@ -46,6 +46,22 @@ def test_archive_endpoint_streams_a_zip_attachment(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_archive_endpoint_rejects_a_nested_run_id(tmp_path: Path) -> None:
+    # /runs/<id>/demo/archive.zip would zip a subdir and put a `/` in the download filename
+    # (HTTP response splitting); a non-segment id is rejected as 404.
+    scn_dir, cfg, runs = project(tmp_path)
+    write_run(runs, "r1", ok=True, scenarios=[("smoke", True)])
+    (runs / "r1" / "demo").mkdir()
+    server, port = _serve(srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs))
+    try:
+        with pytest.raises(urllib.error.HTTPError) as ei:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/runs/r1/demo/archive.zip")
+        assert ei.value.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 class _RedirectStore:
     """A stand-in server-style store that hands back a signed-URL redirect instead of bytes."""
 

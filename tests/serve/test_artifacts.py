@@ -78,6 +78,9 @@ def test_archive_zips_the_run_under_its_id_root(tmp_path: Path) -> None:
 
 
 def test_archive_rejects_escaping_or_missing_run_id(tmp_path: Path) -> None:
-    store = srv.LocalArtifactStore(_runs(tmp_path))
-    for run_id in ("../", "nope", "", "20260610-1/report.html"):  # escape / missing / a file
+    runs = _runs(tmp_path)
+    (runs / "20260610-1" / "demo").mkdir()  # a real subdir, to prove it's the segment rule
+    store = srv.LocalArtifactStore(runs)
+    # escape / missing / a file / a nested segment (a run is one id segment, never a subdir)
+    for run_id in ("../", "nope", "", "20260610-1/report.html", "20260610-1/demo"):
         assert store.archive(run_id) is None, run_id

@@ -87,7 +87,7 @@ bajutsu audit <scenario.yaml> [--json]
 
 ## `export`
 
-完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`・`junit.xml`・実行した `scenario.yaml`・**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/proposals/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
+完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`・`junit.xml`・実行した `scenario.yaml`・**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
 
 ```bash
 bajutsu export <run-id | run-dir> [-o out.zip] [--force]

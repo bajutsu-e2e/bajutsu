@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.serve import operations as ops
+from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.jobs import ServeState
 
 # Session cookie set at login when a serve token is configured (BE-0051).
@@ -290,7 +291,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _serve_artifact(self, art: Any, *, filename: str | None = None) -> None:
             """Emit an `Artifact` (404 if None): a 302 to its signed URL (server store) or its
-            inline bytes (local). `filename`, when given, forces a download via Content-Disposition."""
+            inline bytes (local). For the inline case, `filename` (when given) forces a download via
+            Content-Disposition; a redirect relies on the signed URL's own disposition."""
             if art is None:
                 self._json({"error": "not found"}, 404)
                 return
@@ -313,7 +315,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
 
         def _serve_run_archive(self, run_id: str) -> None:
             # A one-file download of the whole run (BE-0060), through the same org-scoped store, so
-            # containment / multi-tenancy hold identically to the per-file route.
+            # containment / multi-tenancy hold identically to the per-file route. Reject a non-segment
+            # id (e.g. `<id>/demo`) up front, so no `/` reaches the filename header (HTTP-splitting).
+            if not valid_run_id(run_id):
+                self._json({"error": "not found"}, 404)
+                return
             self._serve_artifact(self._artifacts().archive(run_id), filename=f"{run_id}.zip")
 
         def log_message(self, *_args: Any) -> None:  # silence per-request stderr logging

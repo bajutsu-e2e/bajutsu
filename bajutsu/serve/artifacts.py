@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu.report.archive import archive_run_dir
-from bajutsu.serve.helpers import list_runs
+from bajutsu.serve.helpers import list_runs, valid_run_id
 
 
 @dataclass
@@ -80,6 +80,10 @@ class LocalArtifactStore:
         return list_runs(self._runs_dir)
 
     def archive(self, run_id: str) -> Artifact | None:
+        # A run is a single id segment, so reject `r1/demo` (a subdir) — it would otherwise zip the
+        # subtree rather than a whole run, diverging from how run ids are used elsewhere in serve.
+        if not valid_run_id(run_id):
+            return None
         target = self._confined_dir(run_id)
         if target is None:  # missing or escapes runs_dir
             return None

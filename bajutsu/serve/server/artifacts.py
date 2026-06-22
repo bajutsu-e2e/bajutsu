@@ -21,6 +21,7 @@ from typing import Any
 
 from bajutsu.report.archive import zip_tree
 from bajutsu.serve.artifacts import Artifact
+from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.server.object_store import ObjectStore
 
 
@@ -59,6 +60,9 @@ class ObjectStorageArtifactStore:
     def archive(self, run_id: str) -> Artifact | None:
         # Zip the run's objects on read (the same confinement as `_key`); entries are rooted under
         # `<run_id>/` exactly like the filesystem store, so the two surfaces produce the same zip.
+        # A run is a single id segment, so `r1/demo` (a nested prefix) is rejected, not zipped.
+        if not valid_run_id(run_id):
+            return None
         prefix = self._key(f"{run_id}/")
         if prefix is None:
             return None

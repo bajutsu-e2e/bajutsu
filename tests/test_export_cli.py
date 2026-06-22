@@ -52,3 +52,9 @@ def test_export_refuses_to_overwrite_without_force(tmp_path: Path) -> None:
 def test_export_missing_run_exits_two(tmp_path: Path) -> None:
     result = runner.invoke(app, ["export", str(tmp_path / "nope"), "--runs", str(tmp_path)])
     assert result.exit_code == 2 and "run not found" in result.output
+
+
+def test_export_treats_a_slashed_value_as_a_path_not_a_run_id(tmp_path: Path) -> None:
+    # "runs/r1" (a path, missing here) must not be silently re-rooted under --runs as an id.
+    result = runner.invoke(app, ["export", "runs/r1", "--runs", str(tmp_path / "runs")])
+    assert result.exit_code == 2 and "run not found: runs/r1" in result.output
