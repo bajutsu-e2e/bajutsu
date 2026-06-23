@@ -28,9 +28,11 @@ def _observed_exchanges(runs_dir: Path) -> list[NetworkExchange]:
     for net in sorted(runs_dir.glob("*/*/network.json")):
         try:
             data = json.loads(net.read_text(encoding="utf-8"))
+            # model_validate stays inside the try: a bad-typed entry raises pydantic
+            # ValidationError (a ValueError subclass), so a malformed file is skipped, not fatal.
+            exchanges.extend(NetworkExchange.model_validate(e) for e in data if isinstance(e, dict))
         except (OSError, ValueError):
             continue
-        exchanges.extend(NetworkExchange.model_validate(e) for e in data if isinstance(e, dict))
     return exchanges
 
 

@@ -117,13 +117,17 @@ def _assertion_requests(a: Assertion) -> Iterator[RequestMatch]:
         yield a.request
     if a.event is not None:
         e = a.event
-        yield RequestMatch(
-            method=e.method,
-            url=e.url,
-            urlMatches=e.url_matches,
-            path=e.path,
-            pathMatches=e.path_matches,
-        )
+        endpoint = (e.method, e.url, e.url_matches, e.path, e.path_matches)
+        # A body-only event pins no endpoint, so it contributes no endpoint matcher (and a
+        # RequestMatch with every field None would fail its own "at least one criterion" validator).
+        if any(v is not None for v in endpoint):
+            yield RequestMatch(
+                method=e.method,
+                url=e.url,
+                urlMatches=e.url_matches,
+                path=e.path,
+                pathMatches=e.path_matches,
+            )
     if a.request_sequence is not None:
         yield from a.request_sequence
 

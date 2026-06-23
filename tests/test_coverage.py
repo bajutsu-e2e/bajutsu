@@ -207,6 +207,39 @@ def test_endpoint_coverage_no_observed_is_full() -> None:
     assert ec.observed == [] and ec.coverage == 1.0
 
 
+def test_body_only_event_contributes_no_endpoint_matcher() -> None:
+    # A body-only event pins no endpoint — it must not crash building a (field-less) RequestMatch.
+    [scn] = load_scenarios(
+        "- name: x\n  steps:\n    - assert: [ { event: { body: { name: tap } } } ]\n"
+    )
+    assert referenced_requests(scn) == []
+    ec = endpoint_coverage([scn], [_ex("GET", "/a")])
+    assert ec.unasserted == ["GET /a"]  # the event declares no endpoint
+
+
+def test_cli_skips_malformed_network_json(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - assert: [ { request: { path: /a } } ]\n", encoding="utf-8"
+    )
+    net = tmp_path / "runs" / "20260101-000000" / "00-x"
+    net.mkdir(parents=True)
+    # a bad-typed entry (status as a string) must be skipped, not crash the command
+    (net / "network.json").write_text('[{"method":"GET","path":"/a","status":"oops"}]', "utf-8")
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "apps:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["coverage", "--app", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
+    )
+    assert result.exit_code == 0  # skipped the bad file, did not crash
+
+
 def test_cli_endpoint_coverage_with_runs(tmp_path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
