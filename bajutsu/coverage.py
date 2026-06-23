@@ -18,7 +18,7 @@ from bajutsu.assertions import match_request, request_label
 from bajutsu.audit import referenced_ids
 from bajutsu.doctor import namespace_of
 from bajutsu.network import NetworkExchange
-from bajutsu.scenario import Assertion, RequestMatch, Scenario, Step
+from bajutsu.scenario import Assertion, RequestMatch, Scenario, Step, WaitRequest
 
 
 @dataclass(frozen=True)
@@ -97,6 +97,8 @@ class EndpointCoverage:
 
 def _step_requests(step: Step) -> Iterator[RequestMatch]:
     """Every network-endpoint matcher a step declares, recursing into control flow."""
+    if step.wait is not None and isinstance(step.wait.until, WaitRequest):
+        yield step.wait.until.request  # `wait: { until: { request: ... } }` declares an endpoint too
     for a in step.assert_ or []:
         yield from _assertion_requests(a)
     if step.if_ is not None:

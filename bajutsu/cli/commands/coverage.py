@@ -28,11 +28,14 @@ def _observed_exchanges(runs_dir: Path) -> list[NetworkExchange]:
     for net in sorted(runs_dir.glob("*/*/network.json")):
         try:
             data = json.loads(net.read_text(encoding="utf-8"))
-            # model_validate stays inside the try: a bad-typed entry raises pydantic
-            # ValidationError (a ValueError subclass), so a malformed file is skipped, not fatal.
-            exchanges.extend(NetworkExchange.model_validate(e) for e in data if isinstance(e, dict))
+            if not isinstance(data, list):  # a scalar/object file isn't an exchange list — skip it
+                continue
+            # Validate the whole file into a batch before extending, so a bad entry (pydantic
+            # ValidationError, a ValueError) skips the file wholesale rather than leaving a partial.
+            batch = [NetworkExchange.model_validate(e) for e in data if isinstance(e, dict)]
         except (OSError, ValueError):
             continue
+        exchanges.extend(batch)
     return exchanges
 
 
@@ -68,11 +71,13 @@ def coverage(
         raise typer.Exit(2) from None
 
     report = _coverage.coverage(scenarios, eff.id_namespaces)
-    endpoints = (
-        _coverage.endpoint_coverage(scenarios, _observed_exchanges(Path(runs)))
-        if runs and Path(runs).is_dir()
-        else None
-    )
+    endpoints = None
+    if runs:
+        runs_path = Path(runs)
+        if runs_path.is_dir():
+            endpoints = _coverage.endpoint_coverage(scenarios, _observed_exchanges(runs_path))
+        else:  # don't silently ignore the flag — warn (to stderr) and proceed without endpoints
+            typer.echo(f"--runs not found, skipping endpoint coverage: {runs}", err=True)
     if as_json:
         out: dict[str, object] = dataclasses.asdict(report)
         if endpoints is not None:

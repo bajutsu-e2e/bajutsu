@@ -182,6 +182,16 @@ def test_referenced_requests_collects_from_all_network_assertions() -> None:
     assert paths == ["/a", "/b", "/c", "/track"]
 
 
+def test_referenced_requests_includes_wait_until_request() -> None:
+    # `wait: { until: { request: ... } }` declares an endpoint too (same RequestMatch model).
+    [scn] = load_scenarios(
+        "- name: x\n  steps:\n    - wait: { until: { request: { path: /ready } }, timeout: 5 }\n"
+    )
+    assert [r.path for r in referenced_requests(scn)] == ["/ready"]
+    ec = endpoint_coverage([scn], [_ex("GET", "/ready")])
+    assert ec.asserted == ["GET /ready"] and ec.unasserted == []
+
+
 def test_endpoint_coverage_asserted_and_unasserted() -> None:
     [scn] = load_scenarios("- name: x\n  steps:\n    - assert: [ { request: { path: /a } } ]\n")
     observed = [_ex("GET", "/a"), _ex("POST", "/b")]
@@ -229,15 +239,65 @@ def test_cli_skips_malformed_network_json(tmp_path) -> None:  # type: ignore[no-
     (net / "network.json").write_text('[{"method":"GET","path":"/a","status":"oops"}]', "utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "apps:\n  demo:\n    bundleId: com.example.demo\n"
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
         f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
         encoding="utf-8",
     )
     result = runner.invoke(
         app,
-        ["coverage", "--app", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
+        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
     )
     assert result.exit_code == 0  # skipped the bad file, did not crash
+
+
+def test_cli_skips_scalar_network_json(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: a }\n", "utf-8")
+    net = tmp_path / "runs" / "20260101-000000" / "00-x"
+    net.mkdir(parents=True)
+    (net / "network.json").write_text("null", encoding="utf-8")  # a scalar, not a list
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
+    )
+    assert result.exit_code == 0  # a scalar file is skipped, not iterated/crashed
+
+
+def test_cli_runs_path_missing_warns_and_proceeds(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", "utf-8"
+    )
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "nope"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    assert json.loads(result.stdout).get("endpoints") is None  # omitted, not crashed
+    assert "skipping endpoint coverage" in result.stderr  # but the flag wasn't ignored silently
 
 
 def test_cli_endpoint_coverage_with_runs(tmp_path) -> None:  # type: ignore[no-untyped-def]
