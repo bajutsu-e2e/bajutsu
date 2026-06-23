@@ -412,6 +412,38 @@ def test_relaunch_replaces_the_browser_process() -> None:
     assert drv.pop_page_errors() == ["boom"]
 
 
+def test_relaunch_stops_playwright_even_if_browser_close_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wedged browser's close() usually raises (it's already dead). Teardown is per-handle, so the
+    Playwright process (`pw`) is still stopped rather than leaked across relaunches."""
+
+    class _PwError(Exception):
+        pass
+
+    monkeypatch.setattr(sys.modules["bajutsu.drivers.playwright"], "_PW_ERRORS", (_PwError,))
+
+    class _DeadBrowser(_FakeBrowser):
+        def close(self) -> None:
+            raise _PwError("Target page, context or browser has been closed")
+
+    old_pw, dead_browser = _FakePw(), _DeadBrowser([])
+    new_pw, new_browser, new_page = _FakePw(), _FakeBrowser([]), _FakePage([])
+    starts = iter(
+        [
+            (old_pw, dead_browser, _FakeContext(_FakePage([])), _FakePage([])),
+            (new_pw, new_browser, _FakeContext(new_page), new_page),
+        ]
+    )
+    drv = PlaywrightDriver("http://app.test/", starter=lambda _h: next(starts))
+
+    drv.relaunch()
+
+    assert old_pw.stopped == 1  # pw stopped despite the browser's close() raising — no process leak
+    new_page.fire("pageerror", "boom")
+    assert drv.pop_page_errors() == ["boom"]  # the fresh process was still adopted
+
+
 def test_relaunch_is_a_noop_for_an_injected_page() -> None:
     drv, _ = _driver([])  # an injected test page has no real browser to relaunch
     drv.relaunch()  # must not raise
@@ -431,14 +463,15 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
     """A wedged browser raises a Playwright error from a page op; the driver re-raises it as the
     crawl's recoverable `env.DeviceError` (BE-0077), so a pool worker relaunches instead of the crawl
     aborting. A selection failure is not a wedge and still propagates unchanged."""
-    import bajutsu.drivers.playwright as pw_mod
     from bajutsu import env
 
     class _PwError(Exception):
         pass
 
-    # Playwright isn't installed in the gate env, so stand in its error types (cached global).
-    monkeypatch.setattr(pw_mod, "_PW_ERRORS", (_PwError,))
+    # Playwright isn't installed in the gate env, so stand in its error types (the cached module
+    # global). Patch via sys.modules to keep this file's single `from bajutsu.drivers.playwright`
+    # import style (no second `import … as` of the same module).
+    monkeypatch.setattr(sys.modules["bajutsu.drivers.playwright"], "_PW_ERRORS", (_PwError,))
 
     class _WedgedPage(_FakePage):
         def evaluate(self, expression: str) -> Any:

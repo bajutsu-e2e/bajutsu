@@ -274,10 +274,12 @@ def crawl(
 
     def on_node(d: base.Driver, node: crawl_engine.Node) -> None:
         # Screenshot on the worker's own driver (a parallel crawl maps each screen on whichever
-        # simulator found it). Best-effort: a screenshot hiccup shouldn't abort the crawl.
+        # device found it). Best-effort: a screenshot hiccup shouldn't abort the crawl. A wedged web
+        # browser surfaces here as a DeviceError too — skip the (non-essential) screenshot; the wedge
+        # resurfaces on the worker's next operation, where the engine relaunches the lane (BE-0077).
         try:
             d.screenshot(str(screens_dir / f"{node.fingerprint}.png"))
-        except (OSError, subprocess.CalledProcessError) as exc:
+        except (OSError, subprocess.CalledProcessError, _env.DeviceError) as exc:
             say(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
     # Crash detection and blocking-overlay clearing are platform-specific. iOS reads the

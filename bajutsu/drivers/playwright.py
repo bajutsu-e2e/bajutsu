@@ -348,11 +348,21 @@ class PlaywrightDriver:
         an injected test page (no real browser to relaunch)."""
         if self._browser is None:  # injected test page — nothing to relaunch
             return
-        # Best-effort teardown of the faulted browser before replacing it: it may already be dead
-        # (target closed), so a Playwright error here is expected and must not stop the relaunch.
-        # The loud failure path is the *new* browser failing to start below, which propagates.
-        with contextlib.suppress(*_playwright_error_types()):
-            self.close()
+        # Best-effort teardown of the faulted browser before replacing it, each handle on its own:
+        # the browser may already be dead (target closed) so closing it can raise — but the Playwright
+        # process (`pw`) must still be stopped or it leaks across relaunches, so suppress per handle
+        # rather than around one combined close(). Clear the references, then start fresh. The loud
+        # failure path is the *new* browser failing to start below, which propagates (a real fault).
+        pw_errors = _playwright_error_types()
+        for closer in (
+            getattr(self._context, "close", None),
+            getattr(self._browser, "close", None),
+            getattr(self._pw, "stop", None),
+        ):
+            if closer is not None:
+                with contextlib.suppress(*pw_errors):
+                    closer()
+        self._pw = self._browser = self._context = None
         self._pw, self._browser, self._context, page = self._starter(self._headless)
         self._bind(page)
 
