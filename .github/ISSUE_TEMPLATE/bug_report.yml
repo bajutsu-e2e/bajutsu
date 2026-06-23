@@ -68,7 +68,7 @@ body:
         - iOS Simulator: (e.g. iOS 18.2)
         - idb / idb_companion: (version, if known)
         - Python / uv: (e.g. 3.13 / uv 0.5.x)
-        - Target app (`apps.<name>`):
+        - Target (`targets.<name>`):
         - Bajutsu version / commit:
     validations:
       required: true
