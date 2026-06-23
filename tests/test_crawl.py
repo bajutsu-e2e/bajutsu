@@ -290,14 +290,16 @@ def _edge_set(sm: crawl.ScreenMap) -> set[tuple[str, str, str]]:
 
 def _pool(
     react: Callable[[FakeDriver, str, object], None], home: list[dict], n: int
-) -> tuple[FakeDriver, list[tuple[FakeDriver, crawl.Reset]]]:
-    """A primary driver plus `n-1` extra `(driver, reset)` workers, all on the same react model."""
+) -> tuple[list[FakeDriver], list[crawl.WorkerFactory]]:
+    """The `n` driver objects (index 0 = primary) plus the `n-1` extra-worker factories that hand
+    them out. Each factory returns a pre-made FakeDriver (thread-agnostic) when the engine calls it
+    on that worker's own thread (BE-0077); the driver list lets a test inspect what each worker did."""
 
     def reset(d: FakeDriver) -> None:
         d.screen = list(home)
 
     drivers = [FakeDriver(screen=list(home), react=react) for _ in range(n)]
-    return drivers[0], [(d, reset) for d in drivers[1:]]
+    return drivers, [(lambda d=d: (d, reset)) for d in drivers[1:]]
 
 
 def test_parallel_crawl_discovers_the_same_map_as_serial() -> None:
@@ -317,16 +319,14 @@ def test_parallel_crawl_discovers_the_same_map_as_serial() -> None:
     def settle(_d: FakeDriver) -> None:
         time.sleep(0.002)
 
-    primary, extra = _pool(react, home, 4)
-    parallel = crawl.crawl(primary, reset, settle=settle, extra_workers=extra)
+    drivers, extra = _pool(react, home, 4)
+    parallel = crawl.crawl(drivers[0], reset, settle=settle, extra_workers=extra)
 
     assert set(parallel.nodes) == set(serial.nodes)  # same 9 screens (home + 8 leaves)
     assert _edge_set(parallel) == _edge_set(serial)  # same transitions, regardless of scheduling
     assert parallel.stop_reason == "completed"
     # The work was genuinely shared: more than one simulator performed taps.
-    acted = sum(
-        1 for d in [primary, *(d for d, _ in extra)] if any(a[0] == "tap" for a in d.actions)
-    )
+    acted = sum(1 for d in drivers if any(a[0] == "tap" for a in d.actions))
     assert acted >= 2
 
 
@@ -338,8 +338,8 @@ def test_parallel_crawl_honors_the_screen_budget() -> None:
     def reset(d: FakeDriver) -> None:
         d.screen = list(home)
 
-    primary, extra = _pool(react, home, 4)
-    sm = crawl.crawl(primary, reset, max_screens=5, extra_workers=extra)
+    drivers, extra = _pool(react, home, 4)
+    sm = crawl.crawl(drivers[0], reset, max_screens=5, extra_workers=extra)
     assert 5 <= len(sm.nodes) <= 5 + 4  # the cap, plus at most one in-flight discovery per worker
     assert sm.stop_reason == "max_screens"
 
@@ -358,7 +358,7 @@ def test_parallel_crawl_isolates_a_wedged_device() -> None:
 
     healthy = FakeDriver(screen=list(home), react=react)
     bad = FakeDriver(screen=list(home), react=wedged)
-    sm = crawl.crawl(healthy, reset, extra_workers=[(bad, reset)])
+    sm = crawl.crawl(healthy, reset, extra_workers=[lambda: (bad, reset)])
 
     assert len(sm.nodes) == 7  # home + 6 leaves, all found by the healthy device
     assert sm.stop_reason == "completed"
@@ -408,7 +408,9 @@ def test_parallel_crawl_recovers_a_wedged_lane_instead_of_retiring() -> None:
         recovered["n"] += 1
 
     drivers = [FakeDriver(screen=list(home), react=flaky) for _ in range(2)]
-    sm = crawl.crawl(drivers[0], reset, recover=recover, extra_workers=[(drivers[1], reset)])
+    sm = crawl.crawl(
+        drivers[0], reset, recover=recover, extra_workers=[lambda: (drivers[1], reset)]
+    )
 
     assert len(sm.nodes) == 7  # home + 6 leaves — nothing lost, the lane was not retired
     assert sm.stop_reason == "completed"
@@ -469,13 +471,40 @@ def test_parallel_crawl_retires_a_lane_that_never_heals_instead_of_looping() -> 
     primary = FakeDriver(screen=list(home), react=always_wedged)
     healthy = FakeDriver(screen=list(home), react=react)
     sm = crawl.crawl(
-        primary, reset, recover=recover, settle=settle, extra_workers=[(healthy, reset)]
+        primary, reset, recover=recover, settle=settle, extra_workers=[lambda: (healthy, reset)]
     )
 
     assert len(sm.nodes) == 7  # the healthy worker maps everything despite the unhealable lane
     assert sm.stop_reason == "completed"
     # recover was attempted but bounded — the lane retired rather than looping forever.
     assert 1 <= recovered["n"] <= crawl._MAX_WORKER_DEVICE_ERRORS - 1
+
+
+def test_extra_worker_driver_is_built_on_its_own_thread() -> None:
+    """BE-0077: each extra worker's `(driver, reset)` lane is built by its factory *inside that
+    worker's thread*, never on the main thread — required because Playwright's sync API is bound to
+    the thread that creates it (a main-thread driver driven from a worker thread raises
+    `greenlet.error: cannot switch to a different thread`). A factory that records the thread it ran
+    on proves the lane was built off the main thread."""
+    import threading
+
+    react, home = _wide_app(4)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    main_ident = threading.get_ident()
+    built_on: list[int] = []
+
+    def factory() -> tuple[FakeDriver, crawl.Reset]:
+        built_on.append(threading.get_ident())
+        return FakeDriver(screen=list(home), react=react), reset
+
+    primary = FakeDriver(screen=list(home), react=react)
+    crawl.crawl(primary, reset, extra_workers=[factory])
+
+    assert built_on, "the extra worker's factory was never called"
+    assert all(ident != main_ident for ident in built_on)  # built on a worker thread, not main
 
 
 def test_crawl_records_a_crash_when_app_ui_collapses() -> None:

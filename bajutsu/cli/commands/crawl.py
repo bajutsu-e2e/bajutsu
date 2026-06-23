@@ -246,14 +246,24 @@ def crawl(
 
         return reset
 
+    def build_lane(u: str) -> tuple[base.Driver, crawl_engine.Reset]:
+        return launch_driver(u, eff, actuator, Preconditions(erase=erase)), reset_for(u)
+
     try:
-        pool = [
-            (launch_driver(u, eff, actuator, Preconditions(erase=erase)), reset_for(u))
-            for u in udids
-        ]
+        # The primary lane is built here (on the main thread): it drives bootstrap and the in-place
+        # walk, so its driver lives on this thread. A launch failure surfaces cleanly as exit 2.
+        primary = build_lane(udids[0])
     except _env.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+
+    # Extra lanes are built lazily *inside their own worker thread* (BE-0077): a Playwright browser
+    # must be created on the thread that drives it, and idb is thread-agnostic so this is harmless
+    # for iOS. A factory's own launch failure is surfaced by the engine after join.
+    def lane_factory(u: str) -> crawl_engine.WorkerFactory:
+        return lambda: build_lane(u)
+
+    extra_factories = [lane_factory(u) for u in udids[1:]]
 
     def on_event(screen_map: crawl_engine.ScreenMap) -> None:
         _write_screenmap(screenmap_path, screen_map)
@@ -323,8 +333,8 @@ def crawl(
     say("✅ app is up — crawling…")
     try:
         screen_map = crawl_engine.crawl(
-            pool[0][0],
-            pool[0][1],
+            primary[0],
+            primary[1],
             max_screens=max_screens,
             max_steps=max_steps,
             clear_blocking=clear_blocking,
@@ -337,9 +347,7 @@ def crawl(
             on_event=on_event,
             on_node=on_node,
             recover=recover,  # web: relaunch a wedged browser so its lane keeps crawling (BE-0077)
-            extra_workers=pool[
-                1:
-            ],  # the rest of the worker pool (BE-0064 simulators / BE-0077 browsers)
+            extra_workers=extra_factories,  # built on their own threads (BE-0064 sims / BE-0077 browsers)
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

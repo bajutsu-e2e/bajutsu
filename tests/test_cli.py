@@ -376,9 +376,16 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
         ],
     )
     assert r.exit_code == 0, r.output
-    assert launched["n"] == 3  # three browser-process lanes, not forced to one
+    # Only the primary lane is built eagerly (on the main thread, for bootstrap); the other two are
+    # factories the engine calls on each worker's own thread (BE-0077: a Playwright browser must be
+    # created on the thread that drives it).
+    assert launched["n"] == 1
     extra = captured["extra_workers"]
-    assert isinstance(extra, list) and len(extra) == 2  # primary + 2 extras = 3 workers
+    assert isinstance(extra, list) and len(extra) == 2  # primary + 2 extra-worker factories = 3
+    # Each factory builds a real browser lane when invoked — three lanes in total, not pinned to one.
+    for make_lane in extra:
+        make_lane()
+    assert launched["n"] == 3
     assert captured["recover"] is not None  # the browser-relaunch recover hook is wired for web
 
 
