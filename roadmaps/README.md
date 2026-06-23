@@ -225,6 +225,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 <!-- GENERATED:implemented-codegen -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0025](implemented/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Implemented |
 | [BE-0062](implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
 <!-- /GENERATED:implemented-codegen -->
 

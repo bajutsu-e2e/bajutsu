@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#217](https://github.com/bajutsu-e2e/bajutsu/pull/217) |
-| トラック | [承認済み](../../README-ja.md#承認済み) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 

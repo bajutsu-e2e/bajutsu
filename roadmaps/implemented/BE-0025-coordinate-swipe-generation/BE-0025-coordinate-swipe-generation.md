@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#217](https://github.com/bajutsu-e2e/bajutsu/pull/217) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
