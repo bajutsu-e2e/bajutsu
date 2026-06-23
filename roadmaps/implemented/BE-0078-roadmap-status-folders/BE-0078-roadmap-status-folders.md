@@ -8,6 +8,7 @@
 | Proposal | [BE-0078](BE-0078-roadmap-status-folders.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#220](https://github.com/bajutsu-e2e/bajutsu/pull/220) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 

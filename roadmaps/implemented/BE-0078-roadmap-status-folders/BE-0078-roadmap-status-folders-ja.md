@@ -8,6 +8,7 @@
 | 提案 | [BE-0078](BE-0078-roadmap-status-folders-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| 実装 PR | [#220](https://github.com/bajutsu-e2e/bajutsu/pull/220) |
 | トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->
 
