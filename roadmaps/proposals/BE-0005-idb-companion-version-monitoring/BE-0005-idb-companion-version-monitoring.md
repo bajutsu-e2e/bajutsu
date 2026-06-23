@@ -8,7 +8,6 @@
 | Proposal | [BE-0005](BE-0005-idb-companion-version-monitoring.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 

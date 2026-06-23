@@ -8,7 +8,6 @@
 | Proposal | [BE-0076](BE-0076-web-cross-browser-engines.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -32,7 +31,7 @@ of those verdicts. The proposal sits entirely inside the prime directives ([CLAU
 
 ### The backend is Chromium-only today
 
-The Web backend that landed with [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
+The Web backend that landed with [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
 is hard-wired to one engine: `bajutsu/drivers/playwright.py` starts the browser through
 `_start_chromium`, which calls `pw.chromium.launch(...)`, and `bajutsu/backends.py`
 `ensure_web_runtime` installs only the `chromium` browser. BE-0041's own seam table promised a
@@ -92,7 +91,7 @@ are; the QUERY_JS snapshot is standard DOM and runs identically on all three eng
 
 **The fan-out.** A `--browsers <list>` option on `run` (e.g. `--browsers chromium,firefox,webkit`)
 runs each selected scenario once per listed engine. This reuses the parallel-lane machinery from
-[BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md): a `BrowserContext`
+[BE-0054](../../in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md): a `BrowserContext`
 is a near-free "device", so each (scenario, engine) pair is an independent lane in the device pool's
 web branch. `--browsers chromium` is exactly `--browser chromium`; the two options are the
 single-engine and multi-engine spellings of one axis.
@@ -131,8 +130,8 @@ passing.
 
 ### Relationship to existing items
 
-* **Builds on [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)** (the
-  web backend) and **reuses [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
+* **Builds on [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)** (the
+  web backend) and **reuses [BE-0054](../../in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
   parallel lanes** for the fan-out. It is *distinct* from BE-0054, whose scope is explicitly the
   rich-end capabilities (native network, video/console evidence, emulated multi-touch, parallel
   runs) on a single engine — it does not address engine selection or a cross-engine matrix. This
@@ -175,9 +174,9 @@ passing.
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this
   respects: AI never judges (the matrix aggregates deterministic verdicts), determinism first
   (per-engine condition-waited runs), app-agnostic (engine is an execution axis, not scenario content).
-* [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
+* [BE-0041 — Web (Playwright) backend](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
   — the backend this extends, and its "cross-browser" seam promise.
-* [BE-0054 — Web backend completion](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)
+* [BE-0054 — Web backend completion](../../in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)
   — the parallel-lane pool this fan-out reuses; distinct (single-engine rich capabilities) in scope.
 * [BE-0021 — AI triage](../../implemented/BE-0021-ai-triage/BE-0021-ai-triage.md) — advisory
   investigation of an engine-specific failure.

@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#58](https://github.com/bajutsu-e2e/bajutsu/pull/58) |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
@@ -65,7 +64,7 @@ prime directive の保持：
   しません。
 - **codegen。** `http` はアプリではなく bajutsu ランナーで動き、XCUITest 等価物がないため、codegen
   はラベル付き `// TODO` を出力します
-  （[BE-0026](../../proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) に
+  （[BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) に
   従います）。
 
 ## 検討した代替案

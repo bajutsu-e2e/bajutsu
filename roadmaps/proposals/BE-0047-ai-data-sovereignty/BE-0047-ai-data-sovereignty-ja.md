@@ -8,7 +8,6 @@
 | 提案 | [BE-0047](BE-0047-ai-data-sovereignty-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
 | トピック | 競合調査（Maestro）由来の候補 |
 | 由来 | Maestro |
 <!-- /BE-METADATA -->
@@ -43,4 +42,4 @@ Bajutsu はすでにその逆です。AI 経路はユーザー自身の `ANTHROP
 
 `bajutsu/agent.py`、`bajutsu/claude_agent.py`、`bajutsu/alerts.py`、`bajutsu/redaction.py`、
 [recording.md](../../../docs/ja/recording.md)、[DESIGN §2 / §3.1](../../../DESIGN.md)、
-[BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging-ja.md) — 同じ redact 経路の思想をホスト型 serve の運用ログへ広げます。
+[BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging-ja.md) — 同じ redact 経路の思想をホスト型 serve の運用ログへ広げます。

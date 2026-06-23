@@ -8,7 +8,6 @@
 | 提案 | [BE-0046](BE-0046-otp-email-steps-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
@@ -81,7 +80,7 @@ prime directive の保持：
   シークレットだけです。
 - **codegen。** これらはアプリではなく bajutsu ランナーで動き、XCUITest 等価物がないため、codegen
   はラベル付き `// TODO` を出力します
-  （[BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) に従います）。
+  （[BE-0026](../../implemented/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) に従います）。
 
 ## 検討した代替案
 

@@ -8,13 +8,12 @@
 | 提案 | [BE-0009](BE-0009-cross-platform-abstractions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-現状の Bajutsu は iOS Simulator 限定にスコープを切っています（[DESIGN §1](../../../DESIGN.md)、[README](../../../README.md)）が、そのコアは意図的にバックエンド非依存の `Driver` インターフェースの背後に構築されています。本項目は、同じ決定的コアで Android（エミュレータ）と Web（ブラウザ）も操作できるようにするための横断的な抽象化作業です。iOS 固有の継ぎ目をプラットフォーム中立なプロトコルの背後に抽出し、config スキーマを `platform` 判別子で一般化し、runner と orchestrator に漏れた iOS 前提を監査します。プラットフォーム別バックエンドそのものは別項目です。Android は [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)、Web は [BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（web-playwright-backend）、すでに実装済みのセレクタ/レジストリのスライスは [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（platform-backend-registry）です。本項目は、それらすべてが乗る共有の土台にあたります。
+現状の Bajutsu は iOS Simulator 限定にスコープを切っています（[DESIGN §1](../../../DESIGN.md)、[README](../../../README.md)）が、そのコアは意図的にバックエンド非依存の `Driver` インターフェースの背後に構築されています。本項目は、同じ決定的コアで Android（エミュレータ）と Web（ブラウザ）も操作できるようにするための横断的な抽象化作業です。iOS 固有の継ぎ目をプラットフォーム中立なプロトコルの背後に抽出し、config スキーマを `platform` 判別子で一般化し、runner と orchestrator に漏れた iOS 前提を監査します。プラットフォーム別バックエンドそのものは別項目です。Android は [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)、Web は [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（web-playwright-backend）、すでに実装済みのセレクタ/レジストリのスライスは [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（platform-backend-registry）です。本項目は、それらすべてが乗る共有の土台にあたります。
 
 ## 動機
 
@@ -26,7 +25,7 @@
 2. **環境マネージャ**（`env.py`）。`simctl` の boot / erase / launch / openurl を担います。
 3. **安定 id 規約**（`accessibilityIdentifier`、[DESIGN §7](../../../DESIGN.md)）。`Selector.id` の解決を決定的にする、アプリ側の供給源です。
 
-マルチプラットフォーム化とは、決定的コアを 1 バイトも変えずに、プラットフォームごとに**この 3 点組（actuator + 環境 + id 規約）を追加する**ことです。これは設計がすでに 2 つ目の iOS actuator（XCUITest、[BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)）について見込んでいる動きを、OS 横断に一般化したものです。
+マルチプラットフォーム化とは、決定的コアを 1 バイトも変えずに、プラットフォームごとに**この 3 点組（actuator + 環境 + id 規約）を追加する**ことです。これは設計がすでに 2 つ目の iOS actuator（XCUITest、[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)）について見込んでいる動きを、OS 横断に一般化したものです。
 
 #### 不変なもの vs プラットフォームごとに追加するもの
 
@@ -96,7 +95,7 @@ apps:
 
 `platform` がどの **環境マネージャ**と **backend レジストリ**を使うかを決めます。スキーマの残り（名前空間、redact、setup、capture）は共有のままです。このレジストリの選択層のスライスはすでに実装済みです（`bajutsu/backends.py` はプラットフォームレジストリで分岐し、`--backend` / `backend:` はプラットフォームトークンを受け付けます）。[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md) を参照してください。本項目が扱うのは残りの横断的作業で、`platform` 設定フィールドと、レジストリが引き渡す `Environment` プロトコルです。
 
-> **Web backend の v1 はここで近道を取りました。** 最初の Web（Playwright）スライス（[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は対象 URL を必要としましたが、まだ `platform` 判別子は要りませんでした。そこで `apps.<name>` に単一の `baseUrl` フィールドを追加し、環境のライフサイクル（新しい `BrowserContext` = `erase`、`goto(baseUrl)` = `launch`）を **driver の内側**に置き、中立な `Environment` プロトコルを経由せず runner を `actuator == "playwright"` で分岐させました。これは動く web `run` を出荷するための最小の正しい変更でした。本項目はこれを一般化します。`platform` フィールドが `bundleId` か `baseUrl` かの選択を吸収し、プラットフォーム別のライフサイクルが `Environment` プロトコルの背後に移ることで、runner は actuator 名での分岐をやめます。
+> **Web backend の v1 はここで近道を取りました。** 最初の Web（Playwright）スライス（[BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は対象 URL を必要としましたが、まだ `platform` 判別子は要りませんでした。そこで `apps.<name>` に単一の `baseUrl` フィールドを追加し、環境のライフサイクル（新しい `BrowserContext` = `erase`、`goto(baseUrl)` = `launch`）を **driver の内側**に置き、中立な `Environment` プロトコルを経由せず runner を `actuator == "playwright"` で分岐させました。これは動く web `run` を出荷するための最小の正しい変更でした。本項目はこれを一般化します。`platform` フィールドが `bundleId` か `baseUrl` かの選択を吸収し、プラットフォーム別のライフサイクルが `Environment` プロトコルの背後に移ることで、runner は actuator 名での分岐をやめます。
 
 ### 決定性はプラットフォームごとに保たれる
 
@@ -125,7 +124,7 @@ apps:
 - **config に `platform` + プラットフォームスコープの backend レジストリを追加する。** レジストリのスライス（[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)）はすでに `--backend` / `backend:` をプラットフォームトークン経由でルーティングします。残る作業は明示的な `platform` 設定フィールドと、それを環境マネージャ選択へ結線することです。
 - **`runner.py` / `orchestrator.py` の漏れた iOS 固有部分を監査する。** 上表の「不変」列は検証すべき主張です。最初の抽象化パスこそが、潜在する iOS 固有の前提を表に出させます。
 
-これに乗るプラットフォーム別バックエンド（まず Web、次に Android）は別項目で扱います。Web は [BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、Android は [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) です。
+これに乗るプラットフォーム別バックエンド（まず Web、次に Android）は別項目で扱います。Web は [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、Android は [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md) です。
 
 ## 検討した代替案
 
@@ -138,4 +137,4 @@ apps:
 - [DESIGN §5](../../../DESIGN.md)（バックエンド非依存の `Driver` インターフェース）、[DESIGN §7 / §7.3](../../../DESIGN.md)（安定 id 規約）
 - `bajutsu/drivers/`（`base.py` `resolve_unique`、`idb.py`）、`bajutsu/backends.py`（プラットフォームレジストリ）
 - [architecture.md](../../../docs/ja/architecture.md)
-- 関連項目: [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)（Android バックエンド）、[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド）、[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（プラットフォーム backend レジストリ）、[BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)（スコープ文の更新）、[BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)（XCUITest バックエンド）
+- 関連項目: [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)（Android バックエンド）、[BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド）、[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（プラットフォーム backend レジストリ）、[BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)（スコープ文の更新）、[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)（XCUITest バックエンド）

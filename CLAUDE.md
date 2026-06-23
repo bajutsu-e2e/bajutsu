@@ -109,11 +109,13 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   natural Japanese under those norms, not a literal rendering of the English.** Full guidance:
   [`docs/ai-development.md`](docs/ai-development.md).
 - **Roadmap items use BE IDs (strict).** Every roadmap item is a directory
-  `roadmaps/<implemented|proposals>/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md`
-  and its Japanese version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*, `NNNN` a
-  zero-padded 4-digit monotonically increasing ID. Shipped items live under
-  `roadmaps/implemented/`, everything still in flight under `roadmaps/proposals/`. When you add
-  one: allocate the next ID (`ls -d roadmaps/{implemented,proposals}/BE-*/ | sort | tail -1`,
+  `roadmaps/<implemented|in-progress|proposals|deferred>/BE-NNNN-<slug>/` holding the English file
+  `BE-NNNN-<slug>.md` and its Japanese version `BE-NNNN-<slug>-ja.md` — `BE` = *Bajutsu Evolution*,
+  `NNNN` a zero-padded 4-digit monotonically increasing ID. Each item lives in the folder its
+  `Status` names (BE-0078): `roadmaps/implemented/` (`Implemented`), `roadmaps/in-progress/` (`In
+  progress`), `roadmaps/proposals/` (`Proposal`), `roadmaps/deferred/` (`Proposal (deferred)`). When
+  you add one: allocate the next ID
+  (`ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1`,
   then +1; never reuse, skip, or guess) and create **both** language files in a new directory
   under `roadmaps/proposals/` for a proposal, or under `roadmaps/implemented/` with `Status:
   Implemented` when the **same PR ships the implementation** (a new item is a proposal first
@@ -125,17 +127,16 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   Motivation / Detailed design / Alternatives considered / References), with the metadata as a
   fenced `| Field | Value |` table — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening with
   a `| Field | Value |` header row (`| 項目 | 値 |` on the Japanese side) and holding
-  `Proposal` / `Author` / `Status` / `Track` / `Topic` (plus `Implementing PR` once shipped and
-  `Origin` last, when applicable); the Japanese mirror uses `提案` / `提案者` / `状態` / `トラック`
+  `Proposal` / `Author` / `Status` / `Topic` (plus `Implementing PR` once shipped and
+  `Origin` last, when applicable); the Japanese mirror uses `提案` / `提案者` / `状態`
   / `トピック`. The metadata block must name the author by GitHub handle — `| Author |
   [@handle](https://github.com/handle) |`, the account of whoever first authored the item (for an
   AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py` checks
-  this shape (BE-0074). Its `Status` files it
-  under **Accepted** (`Implemented` / `Accepted, in progress`) or **Proposals** (`Proposal` /
-  `Proposal (deferred)`). When an item ships, set `Status: Implemented`; CI (`roadmap-promote`)
-  then **moves its directory** from `roadmaps/proposals/` to `roadmaps/implemented/` and
-  regenerates the index — or run `make roadmap-promote` locally to do it yourself. `make test`
-  fails if any item's directory doesn't match its `Status`. **IDs are permanent — never renumber an
+  this shape (BE-0074). **`Status` is the single source of truth** for both the item's folder
+  (above) and its index bucket — `Implemented` / `In progress` / `Proposal` / `Proposal
+  (deferred)`. When an item's status changes, set `Status` and move its directory to the matching
+  folder; CI (`roadmap-promote`) does the move and reindex — or run `make roadmap-promote` locally.
+  `make test` fails if any item's directory doesn't match its `Status`. **IDs are permanent — never renumber an
   existing item.** Full rule:
   [`roadmaps/README.md`](roadmaps/README.md) · [`docs/ai-development.md`](docs/ai-development.md).
 - Commit messages: imperative, scoped (`feat(run): …`, `fix(record): …`, `docs: …`).

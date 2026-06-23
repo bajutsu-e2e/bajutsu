@@ -8,7 +8,6 @@
 | Proposal | [BE-0008](BE-0008-flutter-support.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -41,7 +40,7 @@ elements in the OS a11y tree. These need a **semantics bridge** rather than a ne
   consumes.
 - **WebView / embedded-web hybrids** — a WebView→DOM (Document Object Model) bridge for the
   embedded-web case, so DOM nodes inside the WebView become resolvable elements. This overlaps with
-  the dedicated WebView/hybrid item [BE-0037](../../proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md);
+  the dedicated WebView/hybrid item [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md);
   the two should be designed together so the bridge story is shared rather than duplicated.
 
 The key design stance: this is a **semantics bridge layered onto the existing native backends**,
@@ -71,6 +70,6 @@ until the two native trees are solid.
 ## References
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
-[BE-0037 — WebView / hybrid support](../../proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md),
-[BE-0007 — Android backend](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md),
-[BE-0041 — Web (Playwright) backend](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
+[BE-0037 — WebView / hybrid support](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md),
+[BE-0007 — Android backend](../BE-0007-android-backend/BE-0007-android-backend.md),
+[BE-0041 — Web (Playwright) backend](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)

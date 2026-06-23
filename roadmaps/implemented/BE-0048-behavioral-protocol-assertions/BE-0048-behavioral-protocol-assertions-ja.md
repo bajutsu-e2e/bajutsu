@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) · [#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 競合調査（Maestro）由来の候補 |
 | 由来 | Maestro |
 <!-- /BE-METADATA -->
@@ -73,10 +72,10 @@ expect:
 - **アプリ非依存。** どのエンドポイントがアナリティクスを運ぶか、スキーマファイルがどこにあるかは、
   アプリごとの config（`apps.<name>`）に置きます。アサーション機構はアプリをまたいで同一です。
 - **兄弟項目との関係。** これは取得志向のユーティリティステップ
-  （[BE-0036](../../implemented/BE-0036-utility-steps/BE-0036-utility-steps-ja.md)）に対する*観測と
+  （[BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)）に対する*観測と
   検証*側の対です。あちらのステップは側方チャネルの値を `${vars.*}` へ*取得*し、こちらのアサーション
   はアプリ自身のトラフィックを*検証*します。また、決定的で非構造的な
-  [BE-0029](../../implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)
+  [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)
   のビジュアル回帰アサーションを補完します。どちらもアクセシビリティツリーでは表現できないものを、
   LLM なしで検査します。
 

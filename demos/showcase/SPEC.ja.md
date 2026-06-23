@@ -10,7 +10,7 @@
 ## 1. 目的
 
 showcase は Bajutsu の **次世代 dogfood 対象** です。`record`（Tier 1 オーサリング）、
-`crawl`（Tier 1 探索、[BE-0038](../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)）、
+`crawl`（Tier 1 探索、[BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)）、
 `run`（Tier 2 決定的ゲート）を実践するための土台です。実アプリが持つ操作面（タブ＋ナビゲーション＋
 モーダルによる画面遷移、テキスト入力、ジェスチャ、非同期ロード、通信（実通信＋モック可能）、そして
 意図的に OS レベルのアラートを上げる画面）を、その全体を語れる最小のアプリに収めています。
@@ -266,4 +266,4 @@ nav, stable, horse, search, log, notice, perm, net
 | `run` | `-a11y` | `scenarios/` の全シナリオの決定的再実行。タブ、push ナビ、4 つのモーダル様式すべて、通信（実＋モック）、alert-guard 付き Permissions フロー。 |
 | `doctor --target` | 両方 | `-a11y` → **Ready**、`-noax` → **Blocked**（`idCoverage` ≈ 0）。この対がアクセシビリティ負債を定量化する。 |
 | `record` | `-noax` | 識別子のないアプリに対し、自然言語ゴールから AI がシナリオを起こし、label/traits/座標へ落ちて、stability ladder の代償を可視化する。`-a11y` の双子は同じゴールのクリーンな id ベース出力を示す。 |
-| `crawl`（[BE-0038](../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)） | `-a11y` | 本当に枝分かれの多いアプリ（5 タブ × push × 4 モーダル様式）を幅優先探索 → 画面マップ。§5 の識別子が安定なので、id ベースの状態フィンガープリントも安定。（先行き：BE-0038 が入った時点で有効。） |
+| `crawl`（[BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)） | `-a11y` | 本当に枝分かれの多いアプリ（5 タブ × push × 4 モーダル様式）を幅優先探索 → 画面マップ。§5 の識別子が安定なので、id ベースの状態フィンガープリントも安定。（先行き：BE-0038 が入った時点で有効。） |

@@ -2,7 +2,7 @@
 
 [日本語](README.ja.md)
 
-A tiny static web app driven by Bajutsu's **Playwright** backend ([BE-0041](../../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+A tiny static web app driven by Bajutsu's **Playwright** backend ([BE-0041](../../roadmaps/implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 Unlike the iOS demos this needs **no Mac and no Simulator** — it runs on Linux inside the same
 toolchain as `make check`.
 

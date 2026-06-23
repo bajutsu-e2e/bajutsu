@@ -59,7 +59,7 @@ resolution.
 > tests. The `playwright` (web) driver advertises `semanticTap` / `conditionWait` (Playwright has
 > both natively) and `network` — the **first backend with native network**, observing and stubbing
 > traffic in-process with no app-side cooperation (BE-0054). `multiTouch` is still deferred
-> (tracked in [BE-0054](../roadmaps/proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)).
+> (tracked in [BE-0054](../roadmaps/in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)).
 
 ## idb
 
@@ -84,7 +84,7 @@ Headless, coordinate-based. For CI (continuous integration). With no semantic ta
 
 Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Simulator**, so it
 fits the same toolchain as `make check`. Implementation: `drivers/playwright.py` (roadmap
-[BE-0041](../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+[BE-0041](../roadmaps/implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
 - `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of

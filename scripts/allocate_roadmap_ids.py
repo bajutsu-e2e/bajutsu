@@ -48,8 +48,8 @@ from collections.abc import Set as AbstractSet
 from pathlib import Path
 
 ROADMAP = Path("roadmaps")
-# New items are proposals, so placeholders land here; IDs are global across both subdirs.
-CATEGORIES = ("implemented", "proposals")
+# New items are proposals, so placeholders land here; IDs are global across every status folder.
+CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 PLACEHOLDER_CATEGORY = "proposals"
 PLACEHOLDER = "BE-XXXX"
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")

@@ -6,7 +6,7 @@
 > 越しにチームから到達できるよう動かします（セルフホスティングロードマップ
 > [BE-0016](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)）。今日使える
 > 段階は 2 つあり、どちらも
-> [BE-0051](../../roadmaps/proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+> [BE-0051](../../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 > の認証と入力検証で公開を安全にしています。
 >
 > - **Tier A、単一 Mac。** トークン認証付きの `bajutsu serve` を 1 プロセス、1 台の Mac で動かします。本ページの
@@ -107,7 +107,7 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 ## セキュリティのまとめ（BE-0051）
 
 セルフホストの serve は
-[BE-0051](../../roadmaps/proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+[BE-0051](../../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 のハードニングに依存します。全リクエストのトークン認証、`/api/run` と `/api/record` をアプリの scenarios dir
 に限定して `backend`/`udid` を検証すること、CSRF Origin チェックとセキュリティヘッダ、run dispatch の同時実行上限です。
 トークンは秘匿し、Mac は tailnet 上に置き、OS は更新し続けてください。

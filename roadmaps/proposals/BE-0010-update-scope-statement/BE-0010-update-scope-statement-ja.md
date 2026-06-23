@@ -8,13 +8,12 @@
 | 提案 | [BE-0010](BE-0010-update-scope-statement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-マルチプラットフォーム化はコードだけの話ではなく、**戦略的なスコープ変更**です。現状の Bajutsu は、iOS Simulator 限定とドキュメントに書かれています（[DESIGN §1](../../../DESIGN.md)、[README](../../../README.md)）。2 つ目の本格的なプラットフォームが最初に着地したとき（まず Web、続いて Android。横断的な抽象化の作業は [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) を参照）、プロジェクトが宣言するスコープもそれに合わせて動かす必要があります。本項目は、それらのドキュメントと位置づけの変更を、意図して協調させた一手として扱い、プロダクトの説明がコードから遅れないようにします。
+マルチプラットフォーム化はコードだけの話ではなく、**戦略的なスコープ変更**です。現状の Bajutsu は、iOS Simulator 限定とドキュメントに書かれています（[DESIGN §1](../../../DESIGN.md)、[README](../../../README.md)）。2 つ目の本格的なプラットフォームが最初に着地したとき（まず Web、続いて Android。横断的な抽象化の作業は [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) を参照）、プロジェクトが宣言するスコープもそれに合わせて動かす必要があります。本項目は、それらのドキュメントと位置づけの変更を、意図して協調させた一手として扱い、プロダクトの説明がコードから遅れないようにします。
 
 ## 動機
 
@@ -38,11 +37,11 @@
 ## 検討した代替案
 
 - **スコープ文を漂わせておき、後で直す。** 却下しました。コードが Web を操作するのにドキュメントが「iOS Simulator 限定」と言うプロダクトは、自らを誤って説明することになり、元の iOS 限定の論拠は、移し替えられるのではなく陳腐化します。更新を最初のプラットフォームの着地に結びつければ、ドキュメントとコードを誠実に保てます。
-- **これらのドキュメント編集を、プラットフォーム別のバックエンド項目に畳み込む**（[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。却下しました。スコープ変更は横断的（DESIGN、README、architecture 実装状況、docs ナビ）でありかつ戦略的なので、独立した項目として追跡すれば、バックエンドの実装詳細の中に埋もれて見失われるのを防げます。それでいて段階 1 と同じ変更で着地させられます。
+- **これらのドキュメント編集を、プラットフォーム別のバックエンド項目に畳み込む**（[BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)）。却下しました。スコープ変更は横断的（DESIGN、README、architecture 実装状況、docs ナビ）でありかつ戦略的なので、独立した項目として追跡すれば、バックエンドの実装詳細の中に埋もれて見失われるのを防げます。それでいて段階 1 と同じ変更で着地させられます。
 
 ## 参考
 
 - [DESIGN §1](../../../DESIGN.md)（スコープ: やること / やらないこと）
 - [README](../../../README.md)、[README.ja](../../../README.ja.md)
 - [architecture.md](../../../docs/ja/architecture.md)（実装状況）
-- 関連項目: [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド）、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)（Android バックエンド）
+- 関連項目: [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド）、[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)（Android バックエンド）

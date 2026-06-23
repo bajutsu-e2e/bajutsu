@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#197](https://github.com/bajutsu-e2e/bajutsu/pull/197) |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->
 
@@ -53,7 +52,7 @@ Alternatives considered / References）である。この形は [`CLAUDE.md`](..
 
 どれも単独では小さい。まとめて見れば、「隣をコピーして目視で揃える」やり方が生む当然の帰結である。散文の
 指針は逸脱を防がない。コミット時にその散文を読み直す者がいないからだ。衝突に強いファイルフロー
-（[BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)）
+（[BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)）
 は、この種の問題に対する本プロジェクトの答えをすでに確立している。不変条件を機械検査にかけ、「ローカルで
 緑なら CI も緑」を成り立たせることだ。ロードマップの索引はそのように守られているが、項目の本体は守られて
 いない。本項目は同じ扱いを本体へ広げる。
@@ -129,7 +128,6 @@ Alternatives considered / References）である。この形は [`CLAUDE.md`](..
 | Proposal | [BE-NNNN](BE-NNNN-<slug>.md) |
 | 提案者 | [@handle](https://github.com/handle) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | <one of the index topics> |
 <!-- /BE-METADATA -->
 
@@ -204,7 +202,7 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
 - **失敗する検査ではなく、ファイルを形に書き換える整形器**（`make format` の方式）。最初の一歩としては却下
   する。散文を含むファイルの書き換えは内容に触れる危険があり、逸脱は手で直せる程度に小さい。検査ができた
   あとの利便として、自動修正は後続にできる。
-- **[BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
+- **[BE-0069](../../proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
   （実行可能なコントリビュータガードレール）に統合する。** 近縁ではある。どちらもコントリビュータの手続きを
   機械検査にかける。ただし対象が異なる。BE-0069 は複数手順の**手続き**をコマンド化するもので、本項目は一つの
   **ファイル書式**とその検証器を固定する。別項目として保ち、相互参照する。
@@ -227,7 +225,7 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
   [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py)、
   `tests/test_roadmap_index.py` —— 本項目が囲みブロックを軸に再定義するメタデータパーサと、本体に対して倣う
   索引への既存の「生成して検査する」扱い。
-- [BE-0043 —— 衝突に強いファイルフロー](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
+- [BE-0043 —— 衝突に強いファイルフロー](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
   —— 「不変条件を機械検査にかける」を確立した、コントリビュータ体験の兄弟項目。
-- [BE-0069 —— 実行可能なコントリビュータガードレール](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
+- [BE-0069 —— 実行可能なコントリビュータガードレール](../../proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
   —— 近縁の手続きのコマンド化の項目。別物として保つ。

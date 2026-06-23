@@ -48,7 +48,7 @@ class Driver(Protocol):
 | `network` | ネイティブネットワーク監視 | — | ✅ | — |
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | — | ✅ |
 
-> idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network` も公開します。アプリ側の協力なしに通信を観測し、その場でスタブもできる**初めてのネイティブネットワーク対応バックエンド**です（BE-0054）。`multiTouch` は引き続き先送りです（[BE-0054](../../roadmaps/proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) で追跡）。
+> idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network` も公開します。アプリ側の協力なしに通信を観測し、その場でスタブもできる**初めてのネイティブネットワーク対応バックエンド**です（BE-0054）。`multiTouch` は引き続き先送りです（[BE-0054](../../roadmaps/in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) で追跡）。
 
 ## idb
 
@@ -63,7 +63,7 @@ class Driver(Protocol):
 
 ## Playwright（web）
 
-Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
+Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
 
 - `query()`: 1 本の `page.evaluate()` が、可視・操作可能・アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`、input の `value` → `value`。
 - `tap(sel)`: idb と同様、`query()` のスナップショットに対し共有の `resolve_unique`/`find_all` で要素を**一意に**確定し、**frame 中心**を座標クリック（`page.mouse.click`）します。Playwright 自身の `get_by_test_id().click()` は**あえて使いません**。これによりセレクタの意味が他のどの backend ともバイト単位で一致します。

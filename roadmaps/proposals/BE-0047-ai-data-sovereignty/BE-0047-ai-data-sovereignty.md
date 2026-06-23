@@ -8,7 +8,6 @@
 | Proposal | [BE-0047](BE-0047-ai-data-sovereignty.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->
@@ -75,5 +74,5 @@ enforcement, not a new kind of check.
 
 `bajutsu/agent.py`, `bajutsu/claude_agent.py`, `bajutsu/alerts.py`, `bajutsu/redaction.py`,
 [recording.md](../../../docs/recording.md), [DESIGN §2 / §3.1](../../../DESIGN.md),
-[BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) — which extends
+[BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) — which extends
 the same redacted-path philosophy to the hosted serve's operational logs.

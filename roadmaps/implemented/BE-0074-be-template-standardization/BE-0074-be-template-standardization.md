@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#197](https://github.com/bajutsu-e2e/bajutsu/pull/197) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -57,7 +56,7 @@ generator or test currently guards:
 None of these is large on its own. Together they are the predictable result of "copy a neighbour and
 match it by eye": prose guidance does not prevent drift, because nothing rereads the prose at commit
 time. The conflict-resistant file-flow work
-([BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md))
+([BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md))
 already established the project's answer to this class of problem — make the invariant machine-checked
 so "green locally predicts green in CI". The roadmap *index* is guarded that way; the item *body* is
 not. This item extends the same treatment to the body.
@@ -134,7 +133,6 @@ The English file:
 | Proposal | [BE-NNNN](BE-NNNN-<slug>.md) |
 | Author | [@handle](https://github.com/handle) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | <one of the index topics> |
 <!-- /BE-METADATA -->
 
@@ -233,7 +231,7 @@ Japanese mirror) is updated to describe the fenced block. The tree is green unde
   fails. Rejected as the first step: rewriting prose-bearing files risks touching content, and the
   drift is small enough to fix by hand. An auto-fixer could be a later convenience once the checker
   exists.
-- **Fold into [BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)**
+- **Fold into [BE-0069](../../proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)**
   (executable contributor guardrails). Related — both make a contributor procedure machine-checked —
   but distinct surfaces: BE-0069 turns multi-step *procedures* into commands, this pins one *file
   format* and its validator. Kept separate; cross-referenced.
@@ -259,7 +257,7 @@ Japanese mirror) is updated to describe the fenced block. The tree is green unde
   [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py),
   `tests/test_roadmap_index.py` — the metadata parsers this item re-specifies around the fenced
   table, and the existing generate-and-gate treatment of the *index* it mirrors for the *body*.
-- [BE-0043 — Conflict-resistant file flow](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
+- [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   — the contributor-workflow sibling that established "make the invariant machine-checked".
-- [BE-0069 — Executable contributor guardrails](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
+- [BE-0069 — Executable contributor guardrails](../../proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
   — the related procedures-as-commands item, kept distinct.

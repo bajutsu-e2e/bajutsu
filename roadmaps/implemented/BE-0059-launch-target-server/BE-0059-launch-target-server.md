@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Dogfood fixtures (web UI) |
 | Origin | Dogfooding |
 <!-- /BE-METADATA -->
@@ -90,7 +89,7 @@ this adds no new exposure there.
 
 * [BE-0058 — Dogfood the serve Web UI](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the
   motivating consumer.
-* [BE-0041 — Web (Playwright) backend](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md).
+* [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md).
 * The iOS `build` / `appPath` on-demand preparation hook (`bajutsu/config.py`,
   `bajutsu/serve/jobs.py`).
 * [DESIGN.md](../../../DESIGN.md) — determinism (condition waits, no fixed sleep) and the app-agnostic

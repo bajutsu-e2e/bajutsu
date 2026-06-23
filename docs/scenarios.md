@@ -286,7 +286,7 @@ channel and fail cleanly on the fake driver / in parallel runs. `overrideStatusB
 before a screenshot or a `visual` assertion, to freeze the clock and signal bars for a stable image.
 `background` / `foreground` are the two halves of a background/foreground transition; `foreground`
 resumes the app without any settle sleep, so wait for a concrete element afterward if you need one.
-`setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+`setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 ## Assertion DSL
 

@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#194](https://github.com/bajutsu-e2e/bajutsu/pull/194) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
@@ -35,7 +34,7 @@ out. The gap bites in four concrete ways:
 
 1. **`report.html` is not portable on its own.** The report references its evidence — screenshots,
    the interval video, `network.json` — by **relative link**; the local web UI exists partly to
-   serve that evidence so those links resolve ([BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)).
+   serve that evidence so those links resolve ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)).
    Copy just the HTML out and you get a report with broken images and no video. The only way to
    move a *working* report is to move the whole directory, intact, with its layout preserved.
 2. **Sharing a failure is a daily need.** Attaching a run to a bug ticket, handing it to a teammate
@@ -107,7 +106,7 @@ that any future hosted store implements on its side (the worker that holds the f
 there). Reusing this boundary keeps the handler from touching the file system directly.
 
 In the UI, a **Download** button appears per run in the **History** list and on the **Replay**
-result view, beside the embedded report ([BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)).
+result view, beside the embedded report ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)).
 One click downloads `<id>.zip`. For a large run (video plus many screenshots) the store builds the
 archive into a temp file and streams it, keeping memory bounded rather than holding the whole zip in
 RAM.
@@ -121,7 +120,7 @@ RAM.
 * **Linux-testable.** Zipping a directory needs no Simulator, so the archiver and the endpoint are
   unit-tested on the existing Linux gate against a fixture run dir.
 * **Secrets stay scrubbed.** Secret values are already redacted from artifacts after a run
-  ([BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)); the zip
+  ([BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md)); the zip
   packages what is on disk, so it inherits that scrub and re-introduces nothing. The archiver must
   archive **strictly the run dir** — never reaching out to `.env`, config, or anything above it.
 
@@ -143,7 +142,7 @@ retention / cleanup of old runs.
 ## Alternatives considered
 
 * **Zip `report.html` only (the single self-contained file).** Rejected as the default: the report
-  links its evidence by relative path ([BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)),
+  links its evidence by relative path ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)),
   so a lone HTML loses every screenshot, the video, and the network log. The whole-run zip is what
   makes the report actually portable. A lean "report + only the assets it references" variant could
   be offered later for size-sensitive cases, but it is an optimization on top, not the safe default.
@@ -169,15 +168,15 @@ retention / cleanup of old runs.
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — AI never judges; determinism
   first. The archiver adds no LLM and runs after the verdict.
-* [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
+* [BE-0011 — Local web UI (`bajutsu serve`)](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
   — the embedded report and the relative-link evidence serving this extends; where the Download
   button lives.
 * [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
   [BE-0016 — Self-hosting of the web UI](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   — why a download endpoint matters when the browser has no access to the worker's file system.
-* [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
+* [BE-0032 — Secret variables](../BE-0032-secret-variables/BE-0032-secret-variables.md)
   — the existing artifact scrub the zip inherits.
-* [BE-0018 — Return evidence as MCP resources](../../implemented/BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md)
+* [BE-0018 — Return evidence as MCP resources](../BE-0018-evidence-as-mcp-resources/BE-0018-evidence-as-mcp-resources.md)
   — the adjacent "expose run artifacts" surface (MCP); the zip is the human / file-download
   equivalent.
 * `bajutsu/report/` (`manifest.py`, `html.py`), `bajutsu/serve/artifacts.py`,

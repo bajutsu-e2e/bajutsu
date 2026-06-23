@@ -9,13 +9,12 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#183](https://github.com/bajutsu-e2e/bajutsu/pull/183) |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-`bajutsu codegen` は、成功したシナリオを、出力先フレームワークそのものの流儀に沿ったネイティブテストへ変換します。これにより、チームは bajutsu のランタイムも実行時の AI もなしに、同じフローを既存の CI で動かせます。現状 `--emit` が受け付けるのは `xcuitest` だけです。web（Playwright）バックエンドが入った今（[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、シナリオはブラウザに対して `run` できますが、そのフローをネイティブのブラウザテストとして受け渡す手段がありません。本項目は `--emit playwright` を追加します。シナリオを Playwright テストとして描き出す、純粋に構造的な 2 つめの出力ターゲットです。
+`bajutsu codegen` は、成功したシナリオを、出力先フレームワークそのものの流儀に沿ったネイティブテストへ変換します。これにより、チームは bajutsu のランタイムも実行時の AI もなしに、同じフローを既存の CI で動かせます。現状 `--emit` が受け付けるのは `xcuitest` だけです。web（Playwright）バックエンドが入った今（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、シナリオはブラウザに対して `run` できますが、そのフローをネイティブのブラウザテストとして受け渡す手段がありません。本項目は `--emit playwright` を追加します。シナリオを Playwright テストとして描き出す、純粋に構造的な 2 つめの出力ターゲットです。
 
 > **用語の区別。** Playwright には `codegen`（`playwright codegen`）という同名のツールがあります。これは新しいブラウザセッションを観察し、見えた操作からコードを書き起こす *レコーダ* です。bajutsu の `codegen` はこれとは別物で、*すでに成功しているシナリオ* を構造的にマッピングするものです。シナリオは git でレビューされる唯一の真実であり続けます。本項目が扱うのは後者（シナリオ → Playwright テスト）であって、Playwright のレコーダを包むことではありません。
 
@@ -26,7 +25,7 @@
 このマッピングが収まりよく成立する理由は、XCUITest のときと同じです。
 
 - **純粋に構造的** です。シナリオの構成要素から Playwright の呼び出しへの固定的な対応で、生成時にモデルを参照しません。`run`／CI ゲート（[DESIGN §2](../../../DESIGN.md)）には触れず、どこにも LLM を足しません。
-- web の識別子規約（`data-testid`）と ARIA の `role`／名前は、すでに `Selector` の各フィールドに対応づいています（[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。そのため各構成要素には自然な Playwright の対応物があり、これこそ XCUITest の生成器を小さな全域関数に保っている性質です。
+- web の識別子規約（`data-testid`）と ARIA の `role`／名前は、すでに `Selector` の各フィールドに対応づいています（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。そのため各構成要素には自然な Playwright の対応物があり、これこそ XCUITest の生成器を小さな全域関数に保っている性質です。
 
 ## 詳細設計
 
@@ -66,7 +65,7 @@ test.describe('Components', () => {
 
 ### selector のマッピング
 
-ドライバがすでに使っている `Selector` → web 属性の対応を踏襲します（[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
+ドライバがすでに使っている `Selector` → web 属性の対応を踏襲します（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
 
 | `Selector` のフィールド | Playwright の locator |
 |---|---|
@@ -117,7 +116,7 @@ test.describe('Components', () => {
 - **決定性を最優先。** 同期は Playwright の自動待機で行い、固定時間はジェスチャの長さだけ、それも明示します。
 - **アプリ非依存。** ベース URL と `launchEnv` は config 由来で、出力コードは既存の `el` / `byLabel` ヘルパと同様、アプリをまたいで同一です。
 
-`launchEnv` → web の正確な対応（query param か、seed した `localStorage` か、cookie か。[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) が挙げる経路です）は **TBD** とします。v1 は既定で `page.addInitScript` により `localStorage` を seed し、別の経路を期待するアプリには `// TODO` を出力します。アプリごとの差を生成器ではなく config 側に置く方針です。
+`launchEnv` → web の正確な対応（query param か、seed した `localStorage` か、cookie か。[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) が挙げる経路です）は **TBD** とします。v1 は既定で `page.addInitScript` により `localStorage` を seed し、別の経路を期待するアプリには `// TODO` を出力します。アプリごとの差を生成器ではなく config 側に置く方針です。
 
 ## 検討した代替案
 
@@ -129,7 +128,7 @@ test.describe('Components', () => {
 
 [codegen.md](../../../docs/ja/codegen.md), [`bajutsu/codegen.py`](../../../bajutsu/codegen.py),
 [`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py),
-[BE-0041 — Web（Playwright）バックエンド](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md),
+[BE-0041 — Web（Playwright）バックエンド](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md),
 [BE-0019 — XCUITest backend](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md),
 [BE-0025 — 座標 swipe の生成](../../proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation-ja.md),
-[BE-0026 — 未対応構文の縮小](../../proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)
+[BE-0026 — 未対応構文の縮小](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)

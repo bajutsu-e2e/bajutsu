@@ -41,10 +41,11 @@ def _write_item(roadmap: Path, category: str, name: str, status: str) -> Path:
 # --- pure detection --------------------------------------------------------------
 
 
-def test_expected_category_only_implemented_ships() -> None:
+def test_expected_category_maps_each_status_to_its_folder() -> None:
     assert pri.expected_category("Implemented") == "implemented"
-    for status in ("Proposal", "Proposal (deferred)", "Accepted, in progress"):
-        assert pri.expected_category(status) == "proposals"
+    assert pri.expected_category("In progress") == "in-progress"
+    assert pri.expected_category("Proposal") == "proposals"
+    assert pri.expected_category("Proposal (deferred)") == "deferred"
 
 
 def test_read_status_strips_emphasis(tmp_path: Path) -> None:
@@ -81,7 +82,7 @@ def test_misfiled_flags_shipped_under_proposals(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "proposals", "BE-9001-foo", "Implemented")
     _write_item(roadmap, "implemented", "BE-9002-bar", "Implemented")  # correctly filed
-    _write_item(roadmap, "proposals", "BE-9003-baz", "Accepted, in progress")  # correctly filed
+    _write_item(roadmap, "in-progress", "BE-9003-baz", "In progress")  # correctly filed
     assert pri.misfiled_items(roadmap) == [
         pri.Misfiled(
             name="BE-9001-foo", status="Implemented", current="proposals", expected="implemented"

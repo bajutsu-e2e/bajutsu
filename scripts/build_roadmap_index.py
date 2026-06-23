@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate the roadmap index tables in README.md / README-ja.md from per-item metadata.
 
-Every ``roadmaps/<implemented|proposals>/BE-NNNN-<slug>/`` item already carries the metadata an
-index row needs (``Status`` / ``Track`` / ``Topic`` / ``Origin``) plus its H1 title. This reads
-metadata and regenerates the **marker-delimited** table bodies in both index pages, so a
+Every ``roadmaps/<implemented|in-progress|proposals|deferred>/BE-NNNN-<slug>/`` item already
+carries the metadata an index row needs (``Status`` / ``Topic`` / ``Origin``) plus its H1 title.
+This reads metadata and regenerates the **marker-delimited** table bodies in both index pages, so a
 roadmap PR only ever touches its own directory — the shared index never needs a hand-edit,
 removing the single largest merge-conflict source (BE-0043). The hand-written section prose
 outside the markers is preserved untouched.
@@ -15,7 +15,9 @@ Usage::
 
 The generated regions are bounded by ``<!-- GENERATED:<key> -->`` /
 ``<!-- /GENERATED:<key> -->`` markers; the section keys below map each table to the items it
-lists (by their English ``Track`` + ``Topic``) and to whether it carries an Origin column.
+lists (by their English ``Status`` bucket + ``Topic``) and to whether it carries an Origin column.
+``Status`` is the single source of truth: it decides both an item's folder (BE-0078) and its index
+bucket, so the two can never disagree.
 """
 
 from __future__ import annotations
@@ -27,7 +29,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROADMAP = Path("roadmaps")
-CATEGORIES = ("implemented", "proposals")  # each item lives under one; it prefixes its links
+# Each item lives under one folder named for its Status bucket; it prefixes the item's links.
+CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
 # Canonical metadata: a ``| Field | Value |`` table fenced by these markers, mirroring the index's
@@ -39,7 +42,16 @@ META_ROW_RE = re.compile(r"^\| (.+?) \| (.+?) \|\s*$", re.MULTILINE)
 META_HEADER_KEYS = frozenset({"Field", "項目"})
 # Legacy form (unmigrated items): ``* Field: value`` bullet lines. Read when no fence is present.
 FIELD_RE = re.compile(r"^\* ([^:]+): (.+)$", re.MULTILINE)
-BRACKET_RE = re.compile(r"\[([^\]]+)\]")
+
+# The four index buckets, keyed by an item's raw English Status. ``Status`` is the source of truth
+# (BE-0078): this map decides an item's index bucket exactly as ``promote_roadmap_items`` decides its
+# folder, so a row's bucket and its directory always agree.
+STATUS_BUCKET = {
+    "Implemented": "Implemented",
+    "In progress": "In progress",
+    "Proposal": "Proposals",
+    "Proposal (deferred)": "Deferred",
+}
 
 
 @dataclass(frozen=True)
@@ -50,7 +62,6 @@ class Lang:
     suffix: str  # filename suffix before ".md" ("" for English, "-ja" for Japanese)
     index_file: str
     field_status: str
-    field_track: str
     field_topic: str
     field_origin: str
     status_display: dict[str, str]
@@ -63,12 +74,11 @@ LANGS: tuple[Lang, ...] = (
         suffix="",
         index_file="README.md",
         field_status="Status",
-        field_track="Track",
         field_topic="Topic",
         field_origin="Origin",
         status_display={
             "Implemented": "Implemented",
-            "Accepted, in progress": "In progress",
+            "In progress": "In progress",
             "Proposal": "Proposal",
             "Proposal (deferred)": "Deferred",
         },
@@ -79,12 +89,11 @@ LANGS: tuple[Lang, ...] = (
         suffix="-ja",
         index_file="README-ja.md",
         field_status="状態",
-        field_track="トラック",
         field_topic="トピック",
         field_origin="由来",
         status_display={
             "実装済み": "実装済み",
-            "可決・実装中": "実装中",
+            "実装中": "実装中",
             "提案": "提案",
             "提案（保留）": "保留",
         },
@@ -96,47 +105,75 @@ LANG_BY_CODE = {lang.code: lang for lang in LANGS}
 
 @dataclass(frozen=True)
 class Section:
-    """One generated table, keyed by the English Track + Topic of the items it lists."""
+    """One generated table, keyed by the English Status bucket + Topic of the items it lists."""
 
     key: str
-    track: str
+    bucket: str
     topic: str
     has_origin: bool
 
 
-# Ordered to match the layout of the two index pages. The (track, topic) pair selects an
-# item into exactly one section; adding an item to an existing topic needs no edit here.
+# Ordered to match the layout of the two index pages. The (bucket, topic) pair selects an item into
+# exactly one section; adding an item to an existing topic needs no edit here. A topic that spans
+# buckets (e.g. an Implemented slice and an In-progress one) has one section per bucket.
 SECTIONS: tuple[Section, ...] = (
-    Section("accepted-milestones", "Accepted", "Milestones (M1–M4)", False),
-    Section("accepted-platform-landed", "Accepted", "Platform expansion (landed slices)", False),
-    Section("accepted-authoring", "Accepted", "Authoring experience (record / GUI editor)", False),
-    Section("accepted-self-healing", "Accepted", "Self-healing triage (M4)", False),
+    # --- Implemented ---------------------------------------------------------
+    Section("implemented-milestones", "Implemented", "Milestones (M1–M4)", False),
     Section(
-        "accepted-competitive",
-        "Accepted",
+        "implemented-platform-landed", "Implemented", "Platform expansion (landed slices)", False
+    ),
+    Section(
+        "implemented-authoring", "Implemented", "Authoring experience (record / GUI editor)", False
+    ),
+    Section("implemented-self-healing", "Implemented", "Self-healing triage (M4)", False),
+    Section(
+        "implemented-competitive",
+        "Implemented",
         "Candidates from competitive research (MagicPod / Autify)",
         True,
     ),
     Section(
-        "accepted-competitive-maestro",
-        "Accepted",
+        "implemented-competitive-maestro",
+        "Implemented",
         "Candidates from competitive research (Maestro)",
         True,
     ),
-    Section("accepted-mcp", "Accepted", "Integration & automation (MCP)", False),
+    Section("implemented-mcp", "Implemented", "Integration & automation (MCP)", False),
     Section(
-        "accepted-dev-infra",
-        "Accepted",
+        "implemented-dev-infra",
+        "Implemented",
         "Development infrastructure (contributor workflow)",
         False,
     ),
-    Section("accepted-dogfood", "Accepted", "Dogfood fixtures (demo apps)", True),
-    Section("accepted-dogfood-web-ui", "Accepted", "Dogfood fixtures (web UI)", True),
-    Section("accepted-ai-provider", "Accepted", "AI provider configuration", False),
-    Section("accepted-hosting", "Accepted", "Hosting the web UI (cloud / self-hosted)", False),
-    Section("accepted-codegen", "Accepted", "codegen coverage", False),
-    Section("accepted-crawl", "Accepted", "Crawl performance / scale-out", False),
-    Section("accepted-misc", "Accepted", "Miscellaneous / on hold", False),
+    Section("implemented-dogfood", "Implemented", "Dogfood fixtures (demo apps)", True),
+    Section("implemented-dogfood-web-ui", "Implemented", "Dogfood fixtures (web UI)", True),
+    Section("implemented-ai-provider", "Implemented", "AI provider configuration", False),
+    Section(
+        "implemented-hosting", "Implemented", "Hosting the web UI (cloud / self-hosted)", False
+    ),
+    Section("implemented-codegen", "Implemented", "codegen coverage", False),
+    Section("implemented-crawl", "Implemented", "Crawl performance / scale-out", False),
+    Section("implemented-misc", "Implemented", "Miscellaneous", False),
+    # --- In progress ---------------------------------------------------------
+    Section(
+        "in-progress-platform-landed", "In progress", "Platform expansion (landed slices)", False
+    ),
+    Section(
+        "in-progress-authoring", "In progress", "Authoring experience (record / GUI editor)", False
+    ),
+    Section(
+        "in-progress-competitive",
+        "In progress",
+        "Candidates from competitive research (MagicPod / Autify)",
+        True,
+    ),
+    Section(
+        "in-progress-competitive-maestro",
+        "In progress",
+        "Candidates from competitive research (Maestro)",
+        True,
+    ),
+    # --- Proposals -----------------------------------------------------------
     Section("proposals-on-device", "Proposals", "On-device validation (M1 close-out)", False),
     Section(
         "proposals-platform", "Proposals", "Platform expansion (Android / Web / Flutter)", False
@@ -146,18 +183,15 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section("proposals-hosting", "Proposals", "Hosting the web UI (cloud / self-hosted)", False),
     Section("proposals-config-sourcing", "Proposals", "Configuration sourcing", False),
-    Section("proposals-mcp", "Proposals", "Integration & automation (MCP)", False),
     Section("proposals-backend", "Proposals", "Backend expansion (iOS actuators)", False),
     Section("proposals-doctor", "Proposals", "doctor / onboarding", False),
     Section("proposals-codegen", "Proposals", "codegen coverage", False),
-    Section("proposals-crawl", "Proposals", "Crawl performance / scale-out", False),
     Section(
         "proposals-dev-infra",
         "Proposals",
         "Development infrastructure (contributor workflow)",
         False,
     ),
-    Section("proposals-misc", "Proposals", "Miscellaneous / on hold", False),
     Section(
         "proposals-competitive",
         "Proposals",
@@ -170,6 +204,14 @@ SECTIONS: tuple[Section, ...] = (
         "Candidates from competitive research (Maestro)",
         True,
     ),
+    # --- Deferred ------------------------------------------------------------
+    Section("deferred-misc", "Deferred", "Miscellaneous", False),
+    Section(
+        "deferred-competitive",
+        "Deferred",
+        "Candidates from competitive research (MagicPod / Autify)",
+        True,
+    ),
 )
 
 
@@ -179,7 +221,7 @@ class Entry:
 
     id: str
     slug: str
-    category: str  # subdirectory the item lives in ("implemented" / "proposals")
+    category: str  # subdirectory the item lives in (one of CATEGORIES)
     title: str
     status: str  # raw status, before display mapping
     origin: str | None
@@ -187,11 +229,11 @@ class Entry:
 
 @dataclass(frozen=True)
 class Item:
-    """A roadmap item: its identity, English Track/Topic, and per-language render fields."""
+    """A roadmap item: its identity, English Status bucket / Topic, and per-language render fields."""
 
     id: str
     slug: str
-    track: str  # canonical (English) track
+    bucket: str  # canonical (English) Status bucket
     topic: str  # canonical (English) topic
     by_lang: dict[str, Entry]
 
@@ -222,12 +264,6 @@ def parse_metadata(text: str) -> tuple[str, dict[str, str]]:
             key.strip(): value.replace("**", "").strip() for key, value in FIELD_RE.findall(text)
         }
     return title_match.group(1).strip(), fields
-
-
-def track_label(value: str) -> str:
-    """Extract the human label from a Track value like ``[Accepted](../README.md#accepted)``."""
-    match = BRACKET_RE.search(value)
-    return match.group(1) if match else value.strip()
 
 
 def status_display(raw: str, lang_code: str) -> str:
@@ -297,8 +333,9 @@ def load_items(roadmap: Path) -> list[Item]:
     """Read every BE item directory into an Item with per-language render fields.
 
     Items live under ``roadmaps/<category>/BE-NNNN-<slug>/`` — the category (the directory the
-    item was filed in by its Status) prefixes every link the index renders to it. Refuses a tree
-    with duplicate ids, so a number reused across two items fails the build.
+    item was filed in by its Status) prefixes every link the index renders to it, and the English
+    Status decides the item's index bucket. Refuses a tree with duplicate ids, so a number reused
+    across two items fails the build.
     """
     if dupes := duplicate_ids(roadmap):
         detail = "; ".join(f"{be_id}: {', '.join(paths)}" for be_id, paths in sorted(dupes.items()))
@@ -317,7 +354,7 @@ def load_items(roadmap: Path) -> list[Item]:
             item_id, slug = f"BE-{match.group(1)}", match.group(2)
 
             by_lang: dict[str, Entry] = {}
-            track = topic = ""
+            bucket = topic = ""
             for lang in LANGS:
                 path = d / f"{item_id}-{slug}{lang.suffix}.md"
                 title, fields = parse_metadata(path.read_text(encoding="utf-8"))
@@ -330,22 +367,25 @@ def load_items(roadmap: Path) -> list[Item]:
                     origin=fields.get(lang.field_origin),
                 )
                 if lang.code == "en":
-                    track = track_label(fields[lang.field_track])
+                    raw_status = fields[lang.field_status]
+                    if raw_status not in STATUS_BUCKET:
+                        raise ValueError(f"{item_id}: unknown Status {raw_status!r}")
+                    bucket = STATUS_BUCKET[raw_status]
                     topic = fields[lang.field_topic]
 
-            items.append(Item(id=item_id, slug=slug, track=track, topic=topic, by_lang=by_lang))
+            items.append(Item(id=item_id, slug=slug, bucket=bucket, topic=topic, by_lang=by_lang))
     return items
 
 
 def assign_sections(items: list[Item]) -> dict[str, list[Item]]:
     """Group items by section key; raise if an item matches no section."""
     by_key: dict[str, list[Item]] = {s.key: [] for s in SECTIONS}
-    index = {(s.track, s.topic): s for s in SECTIONS}
+    index = {(s.bucket, s.topic): s for s in SECTIONS}
     for item in items:
-        section = index.get((item.track, item.topic))
+        section = index.get((item.bucket, item.topic))
         if section is None:
             raise ValueError(
-                f"{item.id}: no section for track={item.track!r} topic={item.topic!r}; "
+                f"{item.id}: no section for bucket={item.bucket!r} topic={item.topic!r}; "
                 "add a Section (and markers) for it"
             )
         by_key[section.key].append(item)

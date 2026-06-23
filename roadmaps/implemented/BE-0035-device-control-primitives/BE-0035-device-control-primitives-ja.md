@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#59](https://github.com/bajutsu-e2e/bajutsu/pull/59) |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
@@ -70,7 +69,7 @@ prime directive の保持：
   をまたいで不変です。
 - **codegen。** これらにはアプリレベルの XCUITest 等価物がないため（`simctl` レベルです）、codegen
   はコマンドを明記したラベル付き `// TODO` を出力します。これは
-  [BE-0026](../../proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) と
+  [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) と
   整合します。
 
 ## 検討した代替案
@@ -86,7 +85,7 @@ prime directive の保持：
 ## 参考
 
 残りのデバイス状態プリミティブ（タイムゾーン、クリップボードへの値の仕込み、シェイク、アプリの
-レジューム）は、[デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク](../../proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
+レジューム）は、[デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク](../../in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)
 で別途扱います。
 
 [DESIGN §6.2](../../../DESIGN.md)、`bajutsu/orchestrator/actions/handlers/device.py`

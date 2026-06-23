@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) · [#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->
@@ -75,10 +74,10 @@ expect:
 - **App-agnostic.** Which endpoints carry analytics, and where schema files live, is per-app
   config (`apps.<name>`); the assertion machinery is identical across apps.
 - **Relationship to siblings.** This is the *observe-and-verify* counterpart to the
-  fetch-oriented utility steps ([BE-0036](../../implemented/BE-0036-utility-steps/BE-0036-utility-steps.md)):
+  fetch-oriented utility steps ([BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md)):
   those steps *fetch* a side-channel value into `${vars.*}`; these assertions *verify* the app's
   own traffic. It also complements the deterministic, non-structural
-  [BE-0029](../../implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)
+  [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)
   visual-regression assertion — both check things the accessibility tree cannot express, without
   an LLM.
 

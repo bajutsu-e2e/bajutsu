@@ -9,13 +9,12 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#185](https://github.com/bajutsu-e2e/bajutsu/pull/185) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Platform expansion (landed slices) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-Bring the autonomous crawl ([BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
+Bring the autonomous crawl ([BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
 to the Web (Playwright) backend ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
 so `bajutsu crawl --backend web` explores a web app breadth-first and produces the *same* outputs the iOS crawl
 does — a screen map, crash repro scenarios, candidate scenarios, and a whole-app coverage feed — at full parity,
@@ -147,7 +146,7 @@ item ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend
 It is also the same "same engine, new axis" relationship [BE-0064 (parallel crawl)](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)
 has with BE-0038 (that one varies concurrency; this one varies platform).
 
-**Wait for [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) (web backend
+**Wait for [BE-0054](../../in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) (web backend
 completion).** Not required: the crawl needs only `query` / `tap` / `type` / `tap_point` / `screenshot`, the
 lifecycle seam, and the health signals — all present or small additions. BE-0054's rich capture (native network,
 video, parallel runs) enriches a later web crawl but does not block this one; parallel web crawl in particular is the
@@ -155,9 +154,9 @@ intersection of this item with the parallel-crawl axis and can follow once both 
 
 ## References
 
-- [BE-0038 — Autonomous crawl exploration](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the platform-neutral engine this reaches a new backend.
+- [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the platform-neutral engine this reaches a new backend.
 - [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the web driver and the deterministic web `run` path.
-- [BE-0054 — Web backend completion](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — rich web capture (network / video / parallel) that enriches a web crawl later.
+- [BE-0054 — Web backend completion](../../in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) — rich web capture (network / video / parallel) that enriches a web crawl later.
 - [BE-0064 — Parallel crawl across multiple simulators](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the sibling crawl axis (concurrency); parallel web crawl is the intersection of the two.
 - [`crawl.py`](../../../bajutsu/crawl.py), [`cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py), [`runner/launch.py`](../../../bajutsu/runner/launch.py), [`runner/pool.py`](../../../bajutsu/runner/pool.py), [`drivers/playwright.py`](../../../bajutsu/drivers/playwright.py), [`config.py`](../../../bajutsu/config.py).
 - [DESIGN §2 / §3.1 / §5 / §7.2 / §9](../../../DESIGN.md), [CLAUDE.md](../../../CLAUDE.md) prime directives #1 (AI never judges) and #2 (determinism first), [multi-platform.md](../../../docs/multi-platform.md).

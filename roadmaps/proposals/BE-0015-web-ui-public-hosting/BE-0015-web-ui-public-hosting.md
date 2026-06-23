@@ -8,7 +8,6 @@
 | Proposal | [BE-0015](BE-0015-web-ui-public-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -27,7 +26,7 @@ hosting the **runner** — which leads to a shared public service built from a L
 and a macOS worker pool.
 
 Related: [architecture](../../../docs/architecture.md) · [ci](../../../docs/ci.md) · the self-hosting counterpart
-[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
+[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
 
 ## Motivation
 
@@ -321,6 +320,6 @@ counterpart:
 
 `bajutsu/serve/`, [ci](../../../docs/ci.md), [architecture](../../../docs/architecture.md),
 [reporting](../../../docs/reporting.md), [cli](../../../docs/cli.md#serve), the self-hosting counterpart
-[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), and
-[BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) — which designs
+[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), and
+[BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) — which designs
 the operational logging that realizes the "structured JSON logs" observability row above.

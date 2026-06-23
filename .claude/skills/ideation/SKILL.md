@@ -80,10 +80,10 @@ proposals):
 Match the existing format exactly (see any `BE-00NN-*` file as a template): the bilingual
 header link, a metadata block (`* Proposal: [BE-XXXX](BE-XXXX-<slug>.md)`,
 `* Author: [@handle](https://github.com/handle)` for whoever is authoring the item, `* Status`,
-`* Track`, `* Topic`, and `* Origin` when relevant), then `## Introduction` /
+`* Topic`, and `* Origin` when relevant), then `## Introduction` /
 `## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`.
 Fill what the discussion produced; mark the rest `TBD`. New items are normally
-`Status: **Proposal**` on the **Proposals** track.
+`Status: **Proposal**`, filed under `roadmaps/proposals/` (the folder derives from `Status`; BE-0078).
 
 Then add a row for the item to the matching topic table in **both** index pages
 (`README.md` and `README-ja.md`), using `BE-XXXX` in the link text and the path — e.g.

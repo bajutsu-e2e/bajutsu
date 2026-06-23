@@ -8,7 +8,6 @@
 | Proposal | [BE-0055](BE-0055-operational-logging.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -16,7 +15,7 @@
 
 The hosted `bajutsu serve` is now a **multi-process, multi-tenant** service — a control plane plus
 remote macOS workers, scoped by org — after the persistence/identity/multi-tenancy work landed
-([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)). Yet the
+([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)). Yet the
 tool has **almost no operational logging of its own**: a single `getLogger` call exists in the whole
 codebase, and the stdlib request handler deliberately silences per-request logging. This proposal
 designs an **operational logging contract** for the hosted serve: **structured** (JSON), **correlated**
@@ -45,7 +44,7 @@ must never reach a log line**.
 - **No redaction guarantee on operational output.** Ad-hoc `print`/log calls risk leaking a resolved
   `${secrets.X}` value, the operator token, an OAuth session id, or `ANTHROPIC_API_KEY`. Evidence has a
   redaction subsystem; the operational channel has no such guarantee.
-- **The design is unowned.** [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
+- **The design is unowned.** [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
   names "structured JSON logs" in its observability row but defers the design; no item owns the
   contract.
 - **Audience: a future SRE.** Someone operating the hosted service needs greppable, alertable,
@@ -114,12 +113,12 @@ The operational channel runs through the existing `redaction.py` value-masking, 
 key-based masking above. This keeps a single source of truth for "what counts as a secret", shared with
 secret variables ([BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)) and
 the redacted-AI-path direction
-([BE-0047](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
+([BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
 
 ### Out of scope
 
 - **Metrics / error tracking / distributed tracing** (Prometheus, Sentry, OpenTelemetry) — deployment /
-  observability, owned by [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md).
+  observability, owned by [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md).
 - **An audit-log viewer** — the `audit_log` table exists (BE-0015); surfacing it is a separate concern.
 - **Evidence and run output** — already owned (evidence subsystem; the LogBus).
 - **A file sink / in-process rotation** — stdout only; see Alternatives.
@@ -143,8 +142,8 @@ the redacted-AI-path direction
 ## References
 
 - [DESIGN.md](../../../DESIGN.md) §2 — determinism-first; secret masking.
-- [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the hosted topology and the deferred "structured JSON logs" observability row this item realizes.
+- [BE-0015 — Public hosting of the web UI](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the hosted topology and the deferred "structured JSON logs" observability row this item realizes.
 - [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md) — the secret-masking machinery shared with this item.
-- [BE-0047 — AI data sovereignty](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) — the redacted-path philosophy this item extends to operational logs.
+- [BE-0047 — AI data sovereignty](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) — the redacted-path philosophy this item extends to operational logs.
 - [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) and [BE-0051 — Serve hardening](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) — the serve this logging instruments.
 - [evidence.md](../../../docs/evidence.md) — the evidence subsystem this is deliberately distinct from.

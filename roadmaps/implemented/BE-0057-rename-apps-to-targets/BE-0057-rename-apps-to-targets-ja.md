@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#211](https://github.com/bajutsu-e2e/bajutsu/pull/211) |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | プラットフォーム拡張（着手済みスライス） |
 <!-- /BE-METADATA -->
 
@@ -22,7 +21,7 @@ Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つの
 `apps` は実態に合わない名前になっており、コード自身が既にそれを回避しています。
 
 - エントリのモデル `AppConfig` は、その分岐を自身のコメントで「iOS アプリは bundleId で、web アプリは baseUrl でテスト対象を特定する」と説明し、バリデータは不正なエントリを `app needs bundleId (iOS) or baseUrl (web)` で弾きます。キーは `apps` のままなのに、概念を表す語としてコードは **target** を使っています。
-- Android が予定され（[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)）、スコープ文自体もマルチプラットフォームへ動かす予定がある（[BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)）なか、web サイトや Android パッケージを「アプリ」と呼ぶ無理は増す一方です。
+- Android が予定され（[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)）、スコープ文自体もマルチプラットフォームへ動かす予定がある（[BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)）なか、web サイトや Android パッケージを「アプリ」と呼ぶ無理は増す一方です。
 - app-agnostic は prime directive です（[DESIGN §2](../../../DESIGN.md)）。テスト対象ごとの差分は config に置き、ツール本体は対象が変わっても不変に保ちます。`targets.<name>` はこの約束をプラットフォーム非依存の語で述べますが、`apps.<name>` は暗黙に iOS を前提にしています。
 
 「target」はテストツールでテスト対象（system under test）を指す慣用語で、プラットフォームに依存せず、しかも上記のとおりコードとドキュメントが既に使っている語です（"the target app"）。config の表面がまだ 1 キーで、プロジェクトが 1.0 に達していないいま改名するほうが、用語が 3 プラットフォーム分のドキュメントとシナリオに広がった後よりはるかに安く済みます。
@@ -80,4 +79,4 @@ Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つの
 - [DESIGN §8](../../../DESIGN.md)（CLI と設定: per-app / マルチアプリ）、[DESIGN §2](../../../DESIGN.md)（app-agnostic の prime directive）
 - [configuration.md](../../../docs/ja/configuration.md)、[cli.md](../../../docs/ja/cli.md)（設定の階層と `--app` フラグ）
 - `bajutsu/config.py`（`AppConfig`、`Config.apps`、`OrgConfig.apps`、`resolve` / `org_for_app` / `apps_for_org`）
-- 関連項目: [BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)（スコープ文の更新。この改名が相乗りするマルチプラットフォームのドキュメント移行）、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド。「アプリ」を実態に合わない名前にした、着地済みのプラットフォーム）、[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（プラットフォーム対応バックエンドレジストリ）
+- 関連項目: [BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)（スコープ文の更新。この改名が相乗りするマルチプラットフォームのドキュメント移行）、[BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド。「アプリ」を実態に合わない名前にした、着地済みのプラットフォーム）、[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（プラットフォーム対応バックエンドレジストリ）

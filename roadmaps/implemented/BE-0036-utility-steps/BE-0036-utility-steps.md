@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#58](https://github.com/bajutsu-e2e/bajutsu/pull/58) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->
@@ -63,7 +62,7 @@ Prime directives preserved:
   `${secrets.X}` and auto-masked in evidence, so the scenario stores tokens, never values.
 - **Codegen.** `http` runs in the bajutsu runner, not the app, and has no XCUITest equivalent, so
   codegen emits a labeled `// TODO` (per
-  [BE-0026](../../proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
+  [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
 
 ## Alternatives considered
 

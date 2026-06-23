@@ -9,8 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#90](https://github.com/bajutsu-e2e/bajutsu/pull/90) · [#91](https://github.com/bajutsu-e2e/bajutsu/pull/91) |
-| Track | [Accepted](../../README.md#accepted) |
-| Topic | Miscellaneous / on hold |
+| Topic | Miscellaneous |
 <!-- /BE-METADATA -->
 
 ## Introduction

@@ -155,8 +155,8 @@ simplifier leans on JS/React idioms foreign to this Python core.
 
 The implementing PR is what ships the item, so promote it in this same change:
 
-1. In **both** language files, set `* Status: **Implemented**` and change the `Track` line
-   to **Accepted** (`../../README.md#accepted`). Add an `* Implementing PR:
+1. In **both** language files, set `* Status: **Implemented**` (the `Track` field was retired by
+   BE-0078 — the folder and index bucket both derive from `Status`). Add an `* Implementing PR:
    [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)` line right under `Status` once
    the PR number exists (fill it at step 9 if you don't have it yet).
 2. Move the directory and regenerate the index:

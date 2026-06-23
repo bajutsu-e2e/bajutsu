@@ -8,7 +8,6 @@
 | Proposal | [BE-0016](BE-0016-web-ui-self-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -16,18 +15,18 @@
 
 This proposal describes how to **stand up and operate** the web UI on **your own Mac(s)**, as the
 self-hosted counterpart to the managed, multi-tenant public stack in
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md). It documents two tiers:
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md). It documents two tiers:
 
 - **Tier A — today-ready.** What runs *today* with the existing stdlib `bajutsu serve`
   (`bajutsu/serve/`), already shipped as [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
   and made safe to expose by the hardening in
-  [BE-0051](../../proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+  [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   (token auth + input validation), plus operational configuration (LaunchAgent, auto-login,
   Tailscale). The one small piece of code it adds is `serve --emit-launchagent`, which prints the
   LaunchAgent plist for you. The step-by-step operator guide is
   [docs/self-hosting.md](../../../docs/self-hosting.md).
 - **Tier B — future.** A fully self-hosted version of the future multi-tenant system from
-  [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), with every managed
+  [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), with every managed
   service replaced by self-hosted OSS (open-source software). It depends on the (unimplemented)
   control plane proposed in BE-0015.
 
@@ -61,7 +60,7 @@ This is the operational difference between hosting bajutsu and hosting a normal 
 
 The only thing that actually runs today is the stdlib `bajutsu serve` + the CLI, already shipped as
 [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) and hardened for
-exposure by [BE-0051](../../proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md).
+exposure by [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md).
 This tier makes it safely reachable for a team with **near-zero code change** (only the
 `--emit-launchagent` helper) — it is **runnable today** on the existing `bajutsu serve`. See
 [docs/self-hosting.md](../../../docs/self-hosting.md) for the full walkthrough.
@@ -118,7 +117,7 @@ This tier is usable by a team **today**.
 > multi-tenant control plane.
 
 Take the architecture from
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) and replace every
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) and replace every
 managed service with self-hosted OSS. Topology: **one Linux node (Docker Compose) + a pool of Mac
 workers**, all wired together over a **Tailscale tailnet**; the only public surface is Caddy's
 `:443`.
@@ -149,7 +148,7 @@ workers**, all wired together over a **Tailscale tailnet**; the only public surf
 
 A `docker-compose.yml` for the Linux node would wire `caddy` (TLS + reverse proxy), `authelia`
 (auth), `app` (the control plane — **unimplemented**, see
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)), `postgres`, `redis`,
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)), `postgres`, `redis`,
 `minio`, and `prometheus`/`grafana`, with named volumes for the stateful ones. Each Mac worker runs
 the **same `LaunchAgent` pattern as Tier A** (GUI session, auto-login, caffeinate), but runs a
 **worker agent** that leases jobs from the Linux node's Redis over the tailnet, runs
@@ -238,7 +237,7 @@ per-tenant quotas and fair scheduling (resources)**. Because the Mac pool can't 
 Start with **Tier A** (Tailscale + LaunchAgent) — it runs the real, existing system safely for a
 team with essentially no code. Graduate to **Tier B** only once you actually need multi-user
 isolation and history, i.e. after the control plane from
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) exists.
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) exists.
 
 ## Alternatives considered
 
@@ -263,7 +262,7 @@ isolation and history, i.e. after the control plane from
 
 `bajutsu/serve/`, [docs/self-hosting.md](../../../docs/self-hosting.md) (the Tier A operator guide),
 [cli.md](../../../docs/cli.md#serve), [ci.md](../../../docs/ci.md),
-[BE-0051](../../proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
+[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 (the hardening that makes exposure safe),
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the cloud-hosting
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the cloud-hosting
 counterpart), [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
