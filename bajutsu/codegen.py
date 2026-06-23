@@ -320,7 +320,7 @@ def to_xcuitest(
         "  }",
         "  private func coord(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {",
         "    app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))"
-        ".withOffset(CGVector(dx: x, dy: y))",
+        + ".withOffset(CGVector(dx: x, dy: y))",
         "  }",
         "",
     ]
