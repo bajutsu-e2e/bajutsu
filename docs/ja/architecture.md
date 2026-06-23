@@ -177,7 +177,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 
 ### ブラウザで検証済み（Linux・Mac 不要）
 
-- Playwright web バックエンドは `demos/web` のシナリオを、CI と同じ `make check` ゲートの中（`ci.yml` の `web-e2e` ジョブ）で決定的に実行します。決定的コアがプラットフォーム非依存であることの裏付けです。リッチ寄りの web 取得（ネットワーク / 動画 / マルチタッチ / 並列）は予定です（BE-0054）。
+- Playwright web バックエンドは `demos/web` のシナリオを、CI と同じ `make check` ゲートの中（`ci.yml` の `web-e2e` ジョブ）で決定的に実行します。決定的コアがプラットフォーム非依存であることの裏付けです。リッチ寄りの web 取得（ネットワーク / 動画 / マルチタッチ）は予定です（BE-0054）。N 個のブラウザプロセスにまたがる並列 web クロール（[BE-0077](../../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）は、この同じゲートの上で動きます。
 
 ### 未配線（スキーマ/フラグはあるが実行時に効かない）
 

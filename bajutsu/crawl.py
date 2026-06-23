@@ -62,6 +62,16 @@ Settle = Callable[[base.Driver], None]
 # HTTP status / blank DOM, BE-0066) injects its own. It receives the driver so a backend can read
 # its own health state, plus the landed elements. It only observes; it never decides pass/fail.
 AliveCheck = Callable[[base.Driver, list[base.Element]], bool]
+# Heal a wedged worker lane in place so the crawl keeps going (BE-0077). A backend whose lane
+# can be torn down and relaunched cheaply (web: a fresh browser process) injects this; the worker
+# calls it on a device fault instead of retiring the lane. iOS leaves it unset (a wedged simulator
+# isn't cheaply recoverable mid-crawl), so its workers retire as before. It only heals; it never
+# decides pass/fail.
+Recover = Callable[[base.Driver], None]
+# Builds one extra worker's `(driver, reset)` lane. The engine calls it *inside that worker's own
+# thread*, so a thread-affine driver (Playwright's sync API, BE-0077) is created on the very thread
+# that drives it; idb is thread-agnostic, so this is also where the run pool builds its lanes.
+WorkerFactory = Callable[[], "tuple[base.Driver, Reset]"]
 
 
 @dataclass(frozen=True)
@@ -491,7 +501,8 @@ def crawl(
     seed_ops: list[Action] | None = None,
     on_event: OnEvent | None = None,
     on_node: OnNode | None = None,
-    extra_workers: Sequence[tuple[base.Driver, Reset]] | None = None,
+    recover: Recover | None = None,
+    extra_workers: Sequence[WorkerFactory] | None = None,
 ) -> ScreenMap:
     """Crawl by a forward walk, resetting + replaying only to backtrack to an unexplored screen.
 
@@ -506,14 +517,18 @@ def crawl(
     proposes richer operations) — it only chooses *what to try*, never what happened. `on_event`,
     if given, fires after each new node, edge, or crash so a caller can stream the growing screen
     map. `on_node`, if given, fires once per newly discovered screen while the discovering worker's
-    driver is still on it (to capture a screenshot). Stops at `max_screens` distinct screens or
-    `max_steps` actions, whichever first.
+    driver is still on it (to capture a screenshot). `recover`, if given, heals a worker whose
+    device wedged (web: relaunch its browser process) so the lane keeps crawling instead of
+    retiring; only fires in a pool. Stops at `max_screens` distinct screens or `max_steps` actions,
+    whichever first.
 
-    `extra_workers` adds simulators beyond the primary `(driver, reset)`: each `(driver, reset)`
-    pair is one more worker that explores the *same* shared frontier on its own device, so the
-    guide's AI round-trips overlap across devices (BE-0064). The default (none) is a single worker
-    that walks exactly as the serial engine always did. A resumed crawl (`seed_path`) is one walk,
-    so `extra_workers` is ignored for it.
+    `extra_workers` adds workers beyond the primary `(driver, reset)`: each is a *factory* the engine
+    calls inside that worker's own thread to build one more `(driver, reset)` lane, which explores the
+    *same* shared frontier on its own device/browser so the guide's AI round-trips overlap (BE-0064).
+    Building inside the thread is what lets a thread-affine driver (Playwright's sync API, BE-0077) be
+    created on the very thread that drives it. The default (none) is a single worker that walks exactly
+    as the serial engine always did. A resumed crawl (`seed_path`) is one walk, so `extra_workers` is
+    ignored for it.
     """
     guide = guide or _deterministic_guide
     # Default crash signal = the iOS accessibility-tree check; a backend can inject its own.
@@ -521,14 +536,14 @@ def crawl(
     # Resume continues an existing map (`base_map`): replay `seed_path` back to a pruned branch's
     # screen, then explore from it with `seed_ops` as that screen's frontier, appending findings.
     screen_map = base_map if base_map is not None else ScreenMap()
-    # The worker pool: the primary plus any extras. A resume is a single branch walk, so it stays
-    # one worker regardless of how many devices were offered.
-    workers: list[tuple[base.Driver, Reset]] = [(driver, reset)]
-    if seed_path is None:
-        workers += list(extra_workers or [])
+    # The worker pool: the caller-built primary `(driver, reset)` (used on this thread for bootstrap
+    # and the in-place walk), plus extra-worker factories the engine builds inside each spawned
+    # thread (so a thread-affine driver is created on the thread that drives it). A resume is a
+    # single branch walk, so the extras are dropped regardless of how many were offered.
+    extra_factories = list(extra_workers or []) if seed_path is None else []
     # One bad device must not be able to sink a multi-device crawl, so a worker isolates device
     # errors only in a pool; a lone worker lets them propagate (the serial engine's behavior).
-    isolate = len(workers) > 1
+    isolate = (1 + len(extra_factories)) > 1
 
     # --- coordinator: the shared map, frontier and budgets, all under one lock ---
     cond = threading.Condition()
@@ -598,7 +613,7 @@ def crawl(
         # Once, before workers start (so single-threaded — no lock needed): reach the entry screen
         # on the primary device and seed the frontier. Returns the fingerprint the primary worker is
         # left on, or None if a resume's replay no longer resolves (nothing to explore).
-        d, rst = workers[0]
+        d, rst = driver, reset
         rst(d)
         start, dismissed = _observe(d)
         if dismissed:
@@ -722,7 +737,17 @@ def crawl(
                 if not isolate:
                     raise  # a lone worker surfaces the device failure, as the serial engine did
                 current_fp = None
-                if _give_back(src_fp, action):
+                retire = _give_back(src_fp, action)
+                if recover is not None and not retire:
+                    # The lane can be healed in place (web: relaunch its browser process), so do
+                    # that and keep crawling rather than abandoning the worker (BE-0077). A clean
+                    # step resets the fault counter, so only persistent wedging (MAX faults in a
+                    # row) still retires. `recover(d)` runs outside any inner try on purpose: if even
+                    # the relaunch fails, that real environment fault propagates (via `_run`, below)
+                    # rather than being swallowed — a browser that can't relaunch isn't a transient
+                    # wedge. Don't wrap this call in a try.
+                    recover(d)
+                elif retire:
                     return  # retire the wedged device so it can't keep stealing the frontier
                 continue
             errors = 0
@@ -783,13 +808,24 @@ def crawl(
     if start_fp is None:
         return screen_map  # a resume with nothing to replay (stop_reason set in bootstrap)
 
+    def _run_extra(factory: WorkerFactory) -> None:
+        # Build this lane's driver on *this* thread (the Playwright sync API is bound to its creating
+        # thread — BE-0077), then walk. A lane that can't even start is surfaced after join, like any
+        # other worker fault, rather than silently dropping a worker.
+        try:
+            d, rst = factory()
+        except Exception as exc:
+            with cond:
+                failure.append(exc)
+                _finish(screen_map.stop_reason or "completed")
+            return
+        _run(d, rst, None)
+
     # The primary worker is left on the entry screen; extras start cold and reset to a frontier.
-    threads = [
-        threading.Thread(target=_run, args=(d, rst, None), daemon=True) for d, rst in workers[1:]
-    ]
+    threads = [threading.Thread(target=_run_extra, args=(f,), daemon=True) for f in extra_factories]
     for t in threads:
         t.start()
-    _run(workers[0][0], workers[0][1], start_fp)
+    _run(driver, reset, start_fp)
     for t in threads:
         t.join()
     if failure:

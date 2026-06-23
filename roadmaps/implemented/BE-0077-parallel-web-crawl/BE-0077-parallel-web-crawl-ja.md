@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0077](BE-0077-parallel-web-crawl-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
+| 状態 | **実装済み** |
+| 実装 PR | [#209](https://github.com/bajutsu-e2e/bajutsu/pull/209) |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | クロール性能 / スケールアウト |
 | 由来 | ユーザー要望（並列 Web クロール） |
 <!-- /BE-METADATA -->
@@ -28,7 +29,7 @@
 
 どちらも独立したブラウザ間できれいに重なるので、AI のレート上限やコーディネータの競合が支配的になるまで、実時間はおおよそワーカー数に反比例して減ります。
 
-**並列クロールを最も低摩擦で活かせるのが Web です。** Mac もエミュレータも要らず、既存の Linux の `make check` / CI ゲート上で動くので（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、速いクロールを CI 内の発見ステップとしてそのまま回せます。ブラウザプロセスは端末起動なしに数秒で立ち上がるので、N レーンを用意するコストも小さい。`run` は既にレーンで並列化されており —— [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) がプールの Web 分岐を N レーンへ一般化します —— クロールだけが、いまだ 1 つのブラウザに固定された唯一の Tier-1 経路です。これが、`record` の入口として、また全画面のカバレッジ計測の実行として（[DESIGN §7.2](../../../DESIGN.md)、[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) 動機 #2）クロールを使いにくくしています。
+**並列クロールを最も低摩擦で活かせるのが Web です。** Mac もエミュレータも要らず、既存の Linux の `make check` / CI ゲート上で動くので（[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、速いクロールを CI 内の発見ステップとしてそのまま回せます。ブラウザプロセスは端末起動なしに数秒で立ち上がるので、N レーンを用意するコストも小さい。`run` は既にレーンで並列化されており —— [BE-0054](../../proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) がプールの Web 分岐を N レーンへ一般化します —— クロールだけが、いまだ 1 つのブラウザに固定された唯一の Tier-1 経路です。これが、`record` の入口として、また全画面のカバレッジ計測の実行として（[DESIGN §7.2](../../../DESIGN.md)、[BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) 動機 #2）クロールを使いにくくしています。
 
 ## 詳細設計
 
@@ -78,8 +79,8 @@ BE-0054 が N レーンへ一般化する [`runner/pool.py`](../../../bajutsu/ru
 
 * [BE-0064 — 複数シミュレータでの並列クロール](../BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) —— Web で倣う並行モデル。
 * [BE-0066 — Web クロール（Playwright バックエンド）](../../implemented/BE-0066-web-crawl/BE-0066-web-crawl-ja.md) —— 本項目が並列化する逐次 Web クロール。そのリセット継ぎ目・クラッシュシグナル・ダイアログハンドラがワーカーごとに引き継がれる。
-* [BE-0054 — Web バックエンドの完成](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) —— Web プールを N レーンへ一般化する。本項目のレーンはコンテキストではなくブラウザプロセス。
-* [BE-0038 — 自律クロール探索](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) —— プラットフォーム非依存のクロールエンジン。
-* [BE-0041 — Web（Playwright）バックエンド](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) —— Web ドライバと決定的な Web `run` 経路。
+* [BE-0054 — Web バックエンドの完成](../../proposals/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) —— Web プールを N レーンへ一般化する。本項目のレーンはコンテキストではなくブラウザプロセス。
+* [BE-0038 — 自律クロール探索](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) —— プラットフォーム非依存のクロールエンジン。
+* [BE-0041 — Web（Playwright）バックエンド](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) —— Web ドライバと決定的な Web `run` 経路。
 * [`bajutsu/runner/pool.py`](../../../bajutsu/runner/pool.py)、[`bajutsu/crawl.py`](../../../bajutsu/crawl.py)、[`bajutsu/cli/commands/crawl.py`](../../../bajutsu/cli/commands/crawl.py)、[`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py)。
 * [CLAUDE.md](../../../CLAUDE.md) —— prime directive #1（AI は判定しない）と #2（決定性優先）。[DESIGN §7.2](../../../DESIGN.md) —— クロールのダンプから全画面カバレッジを得る。クロールが速くなれば実用的になる。

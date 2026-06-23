@@ -290,14 +290,16 @@ def _edge_set(sm: crawl.ScreenMap) -> set[tuple[str, str, str]]:
 
 def _pool(
     react: Callable[[FakeDriver, str, object], None], home: list[dict], n: int
-) -> tuple[FakeDriver, list[tuple[FakeDriver, crawl.Reset]]]:
-    """A primary driver plus `n-1` extra `(driver, reset)` workers, all on the same react model."""
+) -> tuple[list[FakeDriver], list[crawl.WorkerFactory]]:
+    """The `n` driver objects (index 0 = primary) plus the `n-1` extra-worker factories that hand
+    them out. Each factory returns a pre-made FakeDriver (thread-agnostic) when the engine calls it
+    on that worker's own thread (BE-0077); the driver list lets a test inspect what each worker did."""
 
     def reset(d: FakeDriver) -> None:
         d.screen = list(home)
 
     drivers = [FakeDriver(screen=list(home), react=react) for _ in range(n)]
-    return drivers[0], [(d, reset) for d in drivers[1:]]
+    return drivers, [(lambda d=d: (d, reset)) for d in drivers[1:]]
 
 
 def test_parallel_crawl_discovers_the_same_map_as_serial() -> None:
@@ -317,16 +319,14 @@ def test_parallel_crawl_discovers_the_same_map_as_serial() -> None:
     def settle(_d: FakeDriver) -> None:
         time.sleep(0.002)
 
-    primary, extra = _pool(react, home, 4)
-    parallel = crawl.crawl(primary, reset, settle=settle, extra_workers=extra)
+    drivers, extra = _pool(react, home, 4)
+    parallel = crawl.crawl(drivers[0], reset, settle=settle, extra_workers=extra)
 
     assert set(parallel.nodes) == set(serial.nodes)  # same 9 screens (home + 8 leaves)
     assert _edge_set(parallel) == _edge_set(serial)  # same transitions, regardless of scheduling
     assert parallel.stop_reason == "completed"
     # The work was genuinely shared: more than one simulator performed taps.
-    acted = sum(
-        1 for d in [primary, *(d for d, _ in extra)] if any(a[0] == "tap" for a in d.actions)
-    )
+    acted = sum(1 for d in drivers if any(a[0] == "tap" for a in d.actions))
     assert acted >= 2
 
 
@@ -338,8 +338,8 @@ def test_parallel_crawl_honors_the_screen_budget() -> None:
     def reset(d: FakeDriver) -> None:
         d.screen = list(home)
 
-    primary, extra = _pool(react, home, 4)
-    sm = crawl.crawl(primary, reset, max_screens=5, extra_workers=extra)
+    drivers, extra = _pool(react, home, 4)
+    sm = crawl.crawl(drivers[0], reset, max_screens=5, extra_workers=extra)
     assert 5 <= len(sm.nodes) <= 5 + 4  # the cap, plus at most one in-flight discovery per worker
     assert sm.stop_reason == "max_screens"
 
@@ -358,7 +358,7 @@ def test_parallel_crawl_isolates_a_wedged_device() -> None:
 
     healthy = FakeDriver(screen=list(home), react=react)
     bad = FakeDriver(screen=list(home), react=wedged)
-    sm = crawl.crawl(healthy, reset, extra_workers=[(bad, reset)])
+    sm = crawl.crawl(healthy, reset, extra_workers=[lambda: (bad, reset)])
 
     assert len(sm.nodes) == 7  # home + 6 leaves, all found by the healthy device
     assert sm.stop_reason == "completed"
@@ -381,6 +381,130 @@ def test_lone_worker_surfaces_a_device_error() -> None:
     except crawl.env.DeviceError:
         return
     raise AssertionError("a lone worker's device error must propagate")
+
+
+def test_parallel_crawl_recovers_a_wedged_lane_instead_of_retiring() -> None:
+    """With a `recover` hook (web's browser relaunch, BE-0077), a worker whose device wedges hands
+    its frontier entry back, heals its lane, and keeps crawling — rather than retiring the lane as
+    the iOS default does. The fault is keyed to an *action* (the first open of leaf0), not a worker,
+    so it fires deterministically whichever worker reaches it; the whole app is still mapped."""
+    react, home = _wide_app(6)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    wedged = {"leaf0": False}  # leaf0's first open wedges once; only one worker holds it at a time
+
+    def flaky(d: FakeDriver, kind: str, arg: object) -> None:
+        opening_leaf0 = kind == "tap" and isinstance(arg, dict) and arg.get("id") == "home.leaf0"
+        if opening_leaf0 and not wedged["leaf0"]:
+            wedged["leaf0"] = True
+            raise crawl.env.DeviceError("browser wedged")
+        react(d, kind, arg)
+
+    recovered = {"n": 0}
+
+    def recover(_d: FakeDriver) -> None:
+        recovered["n"] += 1
+
+    drivers = [FakeDriver(screen=list(home), react=flaky) for _ in range(2)]
+    sm = crawl.crawl(
+        drivers[0], reset, recover=recover, extra_workers=[lambda: (drivers[1], reset)]
+    )
+
+    assert len(sm.nodes) == 7  # home + 6 leaves — nothing lost, the lane was not retired
+    assert sm.stop_reason == "completed"
+    assert recovered["n"] == 1  # exactly one wedge, healed in place rather than retired
+
+
+def test_lone_worker_ignores_recover_and_surfaces_the_error() -> None:
+    """`recover` only heals a pool lane; a lone worker has no healthy peer to fall back to, so its
+    device error still propagates and recover never fires — a missing pool can't silently swallow a
+    real failure (prime directive #2)."""
+    home = [el(identifier="home.a", traits=["button"])]
+
+    def boom(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":
+            raise crawl.env.DeviceError("device gone")
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    calls = {"n": 0}
+
+    def recover(_d: FakeDriver) -> None:
+        calls["n"] += 1
+
+    try:
+        crawl.crawl(FakeDriver(screen=list(home), react=boom), reset, recover=recover)
+    except crawl.env.DeviceError:
+        assert calls["n"] == 0  # recover was never called for a lone worker
+        return
+    raise AssertionError("a lone worker's device error must propagate even with recover set")
+
+
+def test_parallel_crawl_retires_a_lane_that_never_heals_instead_of_looping() -> None:
+    """The recover safety valve: a browser that keeps wedging even after relaunch must not busy-loop
+    recover() forever. The wedged worker is the primary, so it deterministically faults on its first
+    action; recover (a no-op stand-in here — the lane stays broken) fires at most MAX-1 times, then
+    the lane retires after MAX faults in a row, and the healthy worker still maps the whole app."""
+    react, home = _wide_app(6)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    def always_wedged(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":
+            raise crawl.env.DeviceError("browser wedged")
+
+    recovered = {"n": 0}
+
+    def recover(_d: FakeDriver) -> None:  # the lane stays broken; recovery never actually heals it
+        recovered["n"] += 1
+
+    # A small settle throttles the healthy worker (it settles after each observe) so the wedged
+    # primary — whose taps fault *before* any observe — reliably runs through its fault budget rather
+    # than the synchronous fake being fully mapped before the primary acts.
+    def settle(_d: FakeDriver) -> None:
+        time.sleep(0.002)
+
+    primary = FakeDriver(screen=list(home), react=always_wedged)
+    healthy = FakeDriver(screen=list(home), react=react)
+    sm = crawl.crawl(
+        primary, reset, recover=recover, settle=settle, extra_workers=[lambda: (healthy, reset)]
+    )
+
+    assert len(sm.nodes) == 7  # the healthy worker maps everything despite the unhealable lane
+    assert sm.stop_reason == "completed"
+    # recover was attempted but bounded — the lane retired rather than looping forever.
+    assert 1 <= recovered["n"] <= crawl._MAX_WORKER_DEVICE_ERRORS - 1
+
+
+def test_extra_worker_driver_is_built_on_its_own_thread() -> None:
+    """BE-0077: each extra worker's `(driver, reset)` lane is built by its factory *inside that
+    worker's thread*, never on the main thread — required because Playwright's sync API is bound to
+    the thread that creates it (a main-thread driver driven from a worker thread raises
+    `greenlet.error: cannot switch to a different thread`). A factory that records the thread it ran
+    on proves the lane was built off the main thread."""
+    import threading
+
+    react, home = _wide_app(4)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    main_ident = threading.get_ident()
+    built_on: list[int] = []
+
+    def factory() -> tuple[FakeDriver, crawl.Reset]:
+        built_on.append(threading.get_ident())
+        return FakeDriver(screen=list(home), react=react), reset
+
+    primary = FakeDriver(screen=list(home), react=react)
+    crawl.crawl(primary, reset, extra_workers=[factory])
+
+    assert built_on, "the extra worker's factory was never called"
+    assert all(ident != main_ident for ident in built_on)  # built on a worker thread, not main
 
 
 def test_crawl_records_a_crash_when_app_ui_collapses() -> None:

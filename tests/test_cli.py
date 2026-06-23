@@ -324,6 +324,71 @@ def test_crawl_bedrock_needs_model(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert not out.exists()
 
 
+def test_crawl_web_builds_one_browser_lane_per_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Web has no devices, so `--workers N` launches N browser-process lanes that share one screen
+    map (BE-0077) — not the old single-lane pin — and wires the browser-relaunch `recover` hook. The
+    browser launch, target server, and crawl engine are mocked so no Chromium is needed."""
+    import bajutsu.crawl as crawl_engine
+
+    _no_dotenv(monkeypatch)
+    monkeypatch.setattr("bajutsu.cli.commands.crawl.ensure_web_runtime", lambda *a, **k: None)
+    monkeypatch.setattr("bajutsu.cli.commands.crawl.select_actuator", lambda *a, **k: "playwright")
+    monkeypatch.setattr(
+        "bajutsu.cli.commands.crawl.start_launch_server", lambda *a, **k: lambda: None
+    )
+
+    launched = {"n": 0}
+
+    def fake_launch(*_a: object, **_k: object) -> object:
+        launched["n"] += 1
+        return object()  # the engine is mocked, so no driver method is ever called
+
+    monkeypatch.setattr("bajutsu.cli.commands.crawl.launch_driver", fake_launch)
+
+    captured: dict[str, object] = {}
+
+    def fake_crawl(driver: object, reset: object, **kwargs: object) -> crawl_engine.ScreenMap:
+        captured.update(kwargs)
+        return crawl_engine.ScreenMap()
+
+    monkeypatch.setattr(crawl_engine, "crawl", fake_crawl)
+
+    cfg, _ = _write(tmp_path)
+    out = tmp_path / "crawlrun"
+    r = runner.invoke(
+        app,
+        [
+            "crawl",
+            "--app",
+            "demo",
+            "--backend",
+            "web",
+            "--workers",
+            "3",
+            "--agent",
+            "claude-code",
+            "--out",
+            str(out),
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 0, r.output
+    # Only the primary lane is built eagerly (on the main thread, for bootstrap); the other two are
+    # factories the engine calls on each worker's own thread (BE-0077: a Playwright browser must be
+    # created on the thread that drives it).
+    assert launched["n"] == 1
+    extra = captured["extra_workers"]
+    assert isinstance(extra, list) and len(extra) == 2  # primary + 2 extra-worker factories = 3
+    # Each factory builds a real browser lane when invoked — three lanes in total, not pinned to one.
+    for make_lane in extra:
+        make_lane()
+    assert launched["n"] == 3
+    assert captured["recover"] is not None  # the browser-relaunch recover hook is wired for web
+
+
 def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:
     import json
 
