@@ -284,14 +284,14 @@ def _fingerprint_token(element: base.Element) -> str:
     combinations of control states — and can act on a control it just enabled."""
     ident = _id_of(element) or ""
     traits = _traits(element)
-    suffix = ""
-    if base.Trait.NOT_ENABLED in traits:
-        suffix += "!"
-    if INPUT_TRAITS & traits and (element.get("value") or ""):
-        suffix += "="
-    if base.Trait.SELECTED in traits:
-        suffix += "+"
-    return ident + suffix
+    # (present?, marker) in a fixed order — the markers append as `!`, `=`, `+`, so the hash stays
+    # stable. An enabled, empty, unselected element matches none and contributes just its id.
+    markers = (
+        (base.Trait.NOT_ENABLED in traits, "!"),
+        (bool(INPUT_TRAITS & traits and (element.get("value") or "")), "="),
+        (base.Trait.SELECTED in traits, "+"),
+    )
+    return ident + "".join(marker for present, marker in markers if present)
 
 
 def fingerprint(elements: list[base.Element]) -> Fingerprint:
