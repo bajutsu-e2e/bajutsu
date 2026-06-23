@@ -74,6 +74,30 @@ def test_event_is_an_exclusive_assertion_kind() -> None:
         Assertion.model_validate({"event": {"path": "/t"}, "exists": {"id": "a"}})
 
 
+def test_request_sequence_parses_a_list_of_matchers() -> None:
+    a = Assertion.model_validate(
+        {
+            "requestSequence": [
+                {"method": "POST", "urlMatches": ".*/auth/refresh"},
+                {"method": "GET", "urlMatches": ".*/api/account"},
+            ]
+        }
+    )
+    assert a.request_sequence is not None
+    assert len(a.request_sequence) == 2
+    assert a.request_sequence[0].method == "POST"
+
+
+def test_request_sequence_rejects_empty_list() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"requestSequence": []})
+
+
+def test_request_sequence_is_an_exclusive_kind() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"requestSequence": [{"path": "/x"}], "exists": {"id": "a"}})
+
+
 def test_text_match_one_operator() -> None:
     Assertion.model_validate({"value": {"sel": {"id": "c"}, "equals": "3"}})
     with pytest.raises(ValidationError):

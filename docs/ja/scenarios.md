@@ -273,6 +273,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `selected` | 選択 / トグル状態（`selected` trait） | `selected: { id: tab.home }` |
 | `request` | 一致するネットワーク通信が観測された（`--network` が必要） | `request: { method: POST, path: /login, status: 200, count: 1 }` |
 | `event` | アプリが送った分析 / テレメトリイベント。エンドポイント＋JSON ボディのフィールドを count とともに検証（`--network` が必要） | `event: { url: "https://t.example.com/track", body: { name: purchase_completed }, count: { equals: 1 } }` |
+| `requestSequence` | 複数のマッチャがこの順序で観測されたか検証（`--network` が必要） | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `visual` | 画面が baseline 画像に一致する（ビジュアルリグレッション） | `visual: { baseline: home.png, threshold: 0.02 }` |
 
 - `exists` はセレクタを **インラインで**書きます（`{ id: ... }` を直書き）。`negate` は任意です。
@@ -281,6 +282,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - `enabled` / `disabled` / `selected` はセレクタを直書きします。
 - `request` は **観測されたネットワーク通信**に一致するか検証します（[下記](#requestネットワークアサーション)）。`--network` 実行フラグが必要です。
 - `event` は **アプリが送った分析 / テレメトリイベント**に一致するか検証します（[下記](#eventイベントアサーション)）。`--network` 実行フラグが必要です。
+- `requestSequence` は複数の request マッチャが **順序どおりに観測された**かを検証します（[下記](#requestsequence順序付きリクエスト)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
 
 > **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらは config の固定 locale を前提に書き、セレクタ自体は `id` で書いてください。
@@ -336,6 +338,27 @@ expect:
 > エンドポイントのフィールドか `body` の少なくとも一方が必須で、イベントは必ず何かを特定します。JSON でない、
 > オブジェクトでない、あるいは存在しないリクエストボディは `body` 条件に一致しません（推測せず失敗します）。
 > ボディの値は DSL の他の箇所と同じく `${vars.*}` / `${secrets.*}` トークンを使えます。
+
+### `requestSequence`（順序付きリクエスト）
+
+`requestSequence` は、複数のリクエストが **指定した順序で**起きたことを表明します。たとえば保護された
+呼び出しの*前に*トークンリフレッシュが起きたこと、といった検証です
+（[BE-0048](../../roadmaps/proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
+観測済みタイムラインに対する純粋な検査なので（`--network` 実行フラグが必要）、判定は機械のみです。空でない
+[`request` マッチャ](#requestネットワークアサーション)のリスト（同じフィールド）を取り、**順序を保った部分列**
+として照合します。各マッチャは、直前のマッチより厳密に後ろの位置にある別々の通信に一致しなければなりません。
+間に無関係な通信が**挟まってもよい**のでノイズに強く、同じマッチャを2回並べれば順序を保った2件の出現を要求します。
+
+```yaml
+expect:
+  - requestSequence:
+      - { method: POST, urlMatches: ".*/auth/refresh" }
+      - { method: GET,  urlMatches: ".*/api/account" }
+```
+
+> 各マッチャは `request` と同じフィールド（`method` / `url` / `urlMatches` / `path` / `pathMatches` /
+> `status` / `bodyMatches`）を使います。マッチャ自身の `count` はここでは無視されます。シーケンスの役割は
+> **順序**だからです。純粋な多重度の検査には `request` の `count` を使ってください。
 
 ### `visual`（ビジュアルリグレッション）
 

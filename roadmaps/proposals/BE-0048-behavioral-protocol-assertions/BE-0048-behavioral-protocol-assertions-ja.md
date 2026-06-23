@@ -81,18 +81,22 @@ expect:
 
 ### 実装状況
 
-最初のスライスは **`event`** アサーションを提供します（`bajutsu/scenario/models/assertions.py` の
-`EventMatch` ＋ `CountOp`、`bajutsu/assertions.py` の `_eval_event`）。捕捉済みタイムラインを、イベントの
-エンドポイント（既存の `RequestMatch` マッチャを再利用）で絞り、続けて構造化した JSON リクエストボディの
-フィールドで絞り、残った通信数を `equals` / `atLeast` / `atMost` 演算子（省略時は 1 件以上）と突き合わせます。
-記録済み通信に対する純粋な処理で、AI を使わず、他のアサーションと同じく Tier-2 の run/CI ゲートに乗ります。
-ボディの値への `${vars.*}` / `${secrets.*}` 補間は既存のアサーション置換経路を通るため、フィールドごとの
-配線は不要でした。
+まず **`event`** アサーションを提供しました（`bajutsu/scenario/models/assertions.py` の `EventMatch`
+＋ `CountOp`、`bajutsu/assertions.py` の `_eval_event`）。捕捉済みタイムラインを、イベントのエンドポイント
+（既存の `RequestMatch` マッチャを再利用）で絞り、続けて構造化した JSON リクエストボディのフィールドで絞り、
+残った通信数を `equals` / `atLeast` / `atMost` 演算子（省略時は 1 件以上）と突き合わせます。ボディの値への
+`${vars.*}` / `${secrets.*}` 補間は既存のアサーション置換経路を通るため、フィールドごとの配線は不要でした。
 
-後続のスライスに見送り: **`requestSequence`**（タイムライン上の順序 / 多重度の照合。同じく純粋で
-`RequestMatch` を再利用するため、軽い続きになる）と **`responseSchema`**（捕捉したレスポンスボディを
-保存済みの JSON Schema で検証。スキーマ検証の新依存、`apps.<name>.schemas` 設定ディレクトリ、runner 配線を
-伴うため独立スライス）。
+続いて **`requestSequence`** アサーションを提供しました（`Assertion.request_sequence`、
+`bajutsu/assertions.py` の `_eval_request_sequence`）。空でない `RequestMatch` のリストを、タイムライン上の
+順序を保った部分列として照合します（各マッチャは直前より厳密に後ろの別々の通信に一致し、間に無関係な通信が
+挟まってもよい）。`match_request` を再利用し、新依存を加えず、純粋です。役割は順序なので、マッチャ自身の
+`count` は無視します。
+
+どちらも AI を使わず、他のアサーションと同じく Tier-2 の run/CI ゲートに乗ります。
+
+後続のスライスに見送り: **`responseSchema`**（捕捉したレスポンスボディを保存済みの JSON Schema で検証。
+スキーマ検証の新依存、`apps.<name>.schemas` 設定ディレクトリ、runner 配線を伴うため独立スライス）。
 
 ## 検討した代替案
 

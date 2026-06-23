@@ -208,6 +208,44 @@ def test_event_interpolates_vars_in_body() -> None:
     assert interp.event is not None and interp.event.body["amount"] == "300"
 
 
+def _seq(*reqs: RequestMatch) -> Assertion:
+    return Assertion(request_sequence=list(reqs))
+
+
+def test_request_sequence_matches_in_order() -> None:
+    exs = [_ex("POST", "/auth/refresh"), _ex("GET", "/account")]
+    assert evaluate_one(
+        [], _seq(RequestMatch(path="/auth/refresh"), RequestMatch(path="/account")), exs
+    ).ok
+
+
+def test_request_sequence_allows_interleaving() -> None:
+    # Unrelated exchanges between the matched ones don't break the order (subsequence).
+    exs = [_ex("POST", "/auth/refresh"), _ex("GET", "/noise"), _ex("GET", "/account")]
+    assert evaluate_one(
+        [], _seq(RequestMatch(path="/auth/refresh"), RequestMatch(path="/account")), exs
+    ).ok
+
+
+def test_request_sequence_out_of_order_fails() -> None:
+    exs = [_ex("GET", "/account"), _ex("POST", "/auth/refresh")]
+    r = evaluate_one(
+        [], _seq(RequestMatch(path="/auth/refresh"), RequestMatch(path="/account")), exs
+    )
+    assert not r.ok and "/account" in r.reason  # the second matcher had no later exchange
+
+
+def test_request_sequence_multiplicity_needs_distinct_exchanges() -> None:
+    twice = _seq(RequestMatch(path="/ping"), RequestMatch(path="/ping"))
+    assert evaluate_one([], twice, [_ex("GET", "/ping"), _ex("GET", "/ping")]).ok
+    assert not evaluate_one([], twice, [_ex("GET", "/ping")]).ok  # only one occurrence
+
+
+def test_request_sequence_empty_timeline_fails() -> None:
+    r = evaluate_one([], _seq(RequestMatch(path="/x")), [])
+    assert not r.ok and r.reason
+
+
 def test_mocks_parse_and_serialize() -> None:
     scn = load_scenarios(
         "- name: m\n"

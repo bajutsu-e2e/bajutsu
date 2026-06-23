@@ -304,6 +304,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `selected` | selected / toggled state (the `selected` trait) | `selected: { id: tab.home }` |
 | `request` | a matching network exchange was observed (needs `--network`) | `request: { method: POST, path: /login, status: 200, count: 1 }` |
 | `event` | an analytics / telemetry event was sent — endpoint + JSON body fields, with a count (needs `--network`) | `event: { url: "https://t.example.com/track", body: { name: purchase_completed }, count: { equals: 1 } }` |
+| `requestSequence` | matchers were observed in this order (needs `--network`) | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
@@ -312,6 +313,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `enabled` / `disabled` / `selected` take a selector inline.
 - `request` matches an **observed network exchange** ([details below](#request-network-assertion)); needs the `--network` run flag.
 - `event` matches an **analytics / telemetry event the app sent** ([details below](#event-analytics-event-assertion)); needs the `--network` run flag.
+- `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
@@ -372,6 +374,27 @@ expect:
 > At least one of an endpoint field or `body` must be present, so an event always pins something. A
 > non-JSON, non-object, or absent request body matches no `body` criterion (it fails rather than
 > guessing). Body values support `${vars.*}` / `${secrets.*}` tokens like the rest of the DSL.
+
+### `requestSequence` (ordered requests)
+
+`requestSequence` asserts that several requests happened **in a given order** — e.g. a token refresh
+*before* the protected call ([BE-0048](../roadmaps/proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+It is a pure check over the observed timeline (needs the `--network` run flag), so the verdict stays
+machine-only. It takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
+fields) and matches them as an **ordered subsequence**: each matcher must match a distinct exchange at
+a strictly later position than the previous one. Unrelated traffic **may interleave** between them, so
+the check is robust to noise; listing the same matcher twice requires two occurrences in order.
+
+```yaml
+expect:
+  - requestSequence:
+      - { method: POST, urlMatches: ".*/auth/refresh" }
+      - { method: GET,  urlMatches: ".*/api/account" }
+```
+
+> Each matcher uses the same fields as `request` (`method` / `url` / `urlMatches` / `path` /
+> `pathMatches` / `status` / `bodyMatches`); a matcher's own `count` is ignored here, since the
+> sequence's job is **order**. For a pure multiplicity check, use `request` with `count`.
 
 ### `visual` (visual regression)
 

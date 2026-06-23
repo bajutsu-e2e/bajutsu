@@ -195,6 +195,9 @@ class Assertion(_Model):
     selected: Selector | None = None
     request: RequestMatch | None = None
     event: EventMatch | None = None
+    request_sequence: list[RequestMatch] | None = Field(
+        default=None, alias="requestSequence", min_length=1
+    )
     visual: VisualMatch | None = None
 
     @model_validator(mode="after")
