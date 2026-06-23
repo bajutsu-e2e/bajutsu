@@ -139,7 +139,7 @@ jobs:
       # (compiled modules) when only sources change, scoped to the same Xcode, and a miss simply
       # rebuilds cold — so the cache only ever speeds the build, never changes its result.
       - name: Cache DerivedData
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           path: demos/features/app/build/dd
           key: xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/features/app/**/*.swift', 'demos/features/app/**/project.yml') }}
