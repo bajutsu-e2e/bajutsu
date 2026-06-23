@@ -113,7 +113,7 @@ the stable ids they reference by namespace, and measures them against the app's 
 `idNamespaces` ([configuration](configuration.md#doctor-the-convention-score)) — without running anything.
 
 ```bash
-bajutsu coverage --target <name> [--config ...] [--json]
+bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json]
 ```
 
 - Reports the **coverage fraction** (declared namespaces the suite references / declared namespaces),
@@ -122,6 +122,11 @@ bajutsu coverage --target <name> [--config ...] [--json]
   declared). As text, or `--json` for tooling.
 - A referenced id is any `id` / `idMatches` a scenario addresses — across steps, nested control flow,
   `within` scopes, and assertions.
+- **`--runs <dir>`** adds an **endpoint coverage** dimension: it reads every `network.json` under the
+  runs dir (the union of observed exchanges) and measures how many **observed endpoints** (`METHOD path`)
+  the suite's network assertions (`request` / `event` / `requestSequence`) cover. It reports the
+  fraction asserted, the **unasserted** observed endpoints (traffic the suite never asserts on), and
+  matchers **declared but not observed** in any run. Omit `--runs` for the static id-namespace map only.
 - **Advisory and read-only**: it never runs a scenario, never edits anything, and **never gates CI** —
   it **exits 0 even with gaps** (only a missing config / scenarios dir or an unreadable scenario exits
   2). A gap is a namespace to cover, not a verdict.

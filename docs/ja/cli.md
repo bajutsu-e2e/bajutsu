@@ -90,11 +90,12 @@ bajutsu audit <scenario.yaml> [--json]
 スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
 
 ```bash
-bajutsu coverage --target <name> [--config ...] [--json]
+bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json]
 ```
 
 - **カバレッジの割合**（スイートが参照する宣言済み namespace 数 / 宣言済み namespace 数）、各 namespace に触れる **namespace ごとの id**、**gap 一覧**（どのシナリオも参照しない宣言済み namespace。すなわち未テストの範囲）、**off-namespace な id**（参照されているが宣言されていない namespace の id）を報告します。テキスト、または `--json` で機械可読に出せます。
 - 参照している id とは、シナリオが指定する `id` / `idMatches` のすべてです。ステップ、入れ子の制御フロー、`within` スコープ、アサーションを横断して集めます。
+- **`--runs <dir>`** を渡すと **エンドポイントカバレッジ**の次元が加わります。runs ディレクトリ配下のすべての `network.json`（観測した通信の和集合）を読み、**観測したエンドポイント**（`METHOD path`）のうちスイートのネットワークアサーション（`request` / `event` / `requestSequence`）がカバーしている割合を測ります。アサート済みの割合、**未アサートの観測エンドポイント**（スイートが一度もアサートしないトラフィック）、どの run でも**観測されなかった宣言マッチャ**を報告します。`--runs` を省くと従来どおり静的な id-namespace マップのみです。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。**gap があっても終了 0**（config / scenarios ディレクトリが無い、またはシナリオが読めないときだけ終了 2）です。gap は埋めるべき namespace であって判定ではありません。
 
 ## `export`
