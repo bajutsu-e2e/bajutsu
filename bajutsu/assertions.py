@@ -190,8 +190,10 @@ def count_matching(exchanges: list[NetworkExchange], req: RequestMatch) -> int:
     return sum(1 for ex in exchanges if match_request(ex, req))
 
 
-def request_label(req: RequestMatch) -> str:
-    """Compact human description of a request matcher (e.g. "GET /items status=200")."""
+def request_label(req: RequestMatch, *, with_count: bool = True) -> str:
+    """Compact human description of a request matcher (e.g. "GET /items status=200"). `with_count`
+    is False where a matcher's `count` is not part of the check (e.g. `requestSequence`, which is
+    about order), so the label doesn't imply a field that is ignored."""
     parts: list[str] = []
     if req.method is not None:
         parts.append(req.method.upper())
@@ -207,7 +209,7 @@ def request_label(req: RequestMatch) -> str:
         parts.append(f"status={req.status}")
     if req.body_matches is not None:
         parts.append(f"body~{req.body_matches}")
-    if req.count is not None:
+    if with_count and req.count is not None:
         parts.append(f"count={req.count}")
     return " ".join(parts)
 
@@ -330,14 +332,14 @@ def _eval_request_sequence(
     """Assert a set of request matchers were observed in order (BE-0048): each matches a distinct
     exchange at a strictly later position than the previous, so unrelated traffic may interleave.
     A greedy forward scan is optimal for this order-preserving subsequence. Pure over the timeline."""
-    detail = "requestSequence " + " → ".join(request_label(r) for r in seq)
+    detail = "requestSequence " + " → ".join(request_label(r, with_count=False) for r in seq)
     i = 0
     for pos, req in enumerate(seq):
         while i < len(exchanges) and not match_request(exchanges[i], req):
             i += 1
         if i >= len(exchanges):
             reason = (
-                f"step {pos} ({request_label(req)}) not observed in order "
+                f"step {pos} ({request_label(req, with_count=False)}) not observed in order "
                 f"(matched {pos} of {len(seq)} so far; observed {len(exchanges)} exchanges)"
             )
             return AssertionResult(False, "requestSequence", detail, reason)
