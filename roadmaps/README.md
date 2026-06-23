@@ -250,6 +250,14 @@ Running the autonomous crawl across more than one device so a full screen map is
 | [BE-0077](implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) | Parallel web crawl across multiple browsers | Implemented |
 <!-- /GENERATED:accepted-crawl -->
 
+### Miscellaneous / on hold
+
+<!-- GENERATED:accepted-misc -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0028](implemented/BE-0028-evidence-rule-overmatch-guard/BE-0028-evidence-rule-overmatch-guard.md) | Guard against over-matching evidence rules | Implemented |
+<!-- /GENERATED:accepted-misc -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *Accepted* once a decision is made.
@@ -378,7 +386,6 @@ itself** to the humans and agents working it.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0027](proposals/BE-0027-mock-server-external/BE-0027-mock-server-external.md) | `mockServer` (external mock) | Deferred |
-| [BE-0028](proposals/BE-0028-evidence-rule-overmatch-guard/BE-0028-evidence-rule-overmatch-guard.md) | Guard against over-matching evidence rules | Proposal |
 <!-- /GENERATED:proposals-misc -->
 
 ### Candidates from competitive research (MagicPod / Autify)
