@@ -154,8 +154,10 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（`simctl push`） |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する |
 | `background` | `background: {}` | アプリをバックグラウンドへ送る（Home ボタン） |
+| `foreground` | `foreground: {}` | バックグラウンドのアプリを前面へ復帰する（`simctl launch`。settle 用の sleep なし） |
 | `clearKeychain` | `clearKeychain: {}` | Simulator のキーチェーンをリセットする（保存済みパスワード / 証明書） |
 | `clearClipboard` | `clearClipboard: {}` | Simulator のペーストボードをクリアする |
+| `setClipboard` | `setClipboard: { text: "..." }` | ペースト操作のため Simulator のペーストボードにテキストを投入する |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | 決定的なスクリーンショットのためステータスバーを上書きする |
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
 | `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)） |
@@ -247,13 +249,15 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 
 ```yaml
 - background: {}                                                        # Home ボタン（simctl ui home）
+- foreground: {}                                                        # バックグラウンドのアプリを前面へ復帰（simctl launch）
 - clearKeychain: {}                                                     # 保存済みパスワード / 証明書をリセット
 - clearClipboard: {}                                                    # ペーストボードをクリア
+- setClipboard: { text: "COUPON123" }                                   # ペーストボードに投入（ペースト操作用）
 - overrideStatusBar: { time: "9:41", batteryLevel: 100, wifiBars: 3 }   # ステータスバーを固定
 - clearStatusBar: {}                                                    # ライブのステータスバーに戻す
 ```
 
-`setLocation` / `push` と同様、これらは `simctl` 経由で Simulator を操作するため、デバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。
+`setLocation` / `push` と同様、これらは `simctl` 経由で Simulator を操作するため、デバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。`background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は settle 用の sleep を入れずに復帰するので、必要なら直後に具体的な要素を待ってください。`setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
 ## アサーション DSL
 

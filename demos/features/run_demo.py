@@ -124,7 +124,13 @@ def demo_device() -> None:
         def clear_clipboard(self) -> None:
             pass
 
+        def set_clipboard(self, text: str) -> None:
+            pass
+
         def home(self) -> None:
+            pass
+
+        def foreground(self) -> None:
             pass
 
         def override_status_bar(self, **kwargs: str | int) -> None:

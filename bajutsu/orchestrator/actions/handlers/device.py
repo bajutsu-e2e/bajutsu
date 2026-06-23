@@ -1,6 +1,6 @@
 """Device-environment handlers (simctl-backed): relaunch, setLocation, push, clearKeychain,
-clearClipboard, background, overrideStatusBar, clearStatusBar. Each needs the injected device
-control (or relauncher); without one — e.g. the fake driver — it fails clearly."""
+clearClipboard, setClipboard, background, foreground, overrideStatusBar, clearStatusBar. Each needs
+the injected device control (or relauncher); without one — e.g. the fake driver — it fails clearly."""
 
 from __future__ import annotations
 
@@ -50,11 +50,26 @@ def _do_clear_clipboard(
     _need_control(control, "clearClipboard").clear_clipboard()
 
 
+@_handler("set_clipboard")
+def _do_set_clipboard(
+    _d: object, step: Step, _r: object, control: DeviceControl | None, _b: object
+) -> None:
+    assert step.set_clipboard is not None
+    _need_control(control, "setClipboard").set_clipboard(step.set_clipboard.text)
+
+
 @_handler("background")
 def _do_background(
     _d: object, step: Step, _r: object, control: DeviceControl | None, _b: object
 ) -> None:
     _need_control(control, "background").home()
+
+
+@_handler("foreground")
+def _do_foreground(
+    _d: object, step: Step, _r: object, control: DeviceControl | None, _b: object
+) -> None:
+    _need_control(control, "foreground").foreground()
 
 
 @_handler("override_status_bar")

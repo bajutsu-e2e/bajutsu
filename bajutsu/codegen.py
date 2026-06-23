@@ -134,6 +134,13 @@ def _emit_step(step: Step) -> list[str]:
         return [line for a in step.assert_ for line in _emit_assertion(a)]
     if step.relaunch is not None:
         return ["app.terminate()", "app.launch()"]
+    if step.set_clipboard is not None:
+        # simctl-backed in bajutsu; not currently generated for XCUITest (BE-0052).
+        return [
+            f"// TODO: setClipboard(text: {_s(step.set_clipboard.text)}) — simctl pbcopy; not generated"
+        ]
+    if step.foreground is not None:
+        return ["// TODO: foreground() — simctl launch (resume); not generated"]
     return ["// TODO: unsupported step"]
 
 

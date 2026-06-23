@@ -98,13 +98,19 @@ def keychain_reset_cmd(udid: str) -> list[str]:
 
 
 def pbcopy_cmd(udid: str) -> list[str]:
-    """Clear the pasteboard by writing empty data via simctl pbcopy."""
+    """Write to the pasteboard via simctl pbcopy (text comes from stdin; empty stdin clears it)."""
     return ["xcrun", "simctl", "pbcopy", udid]
 
 
 def home_cmd(udid: str) -> list[str]:
     """Press the Home button (sends the foreground app to the background)."""
     return ["xcrun", "simctl", "ui", udid, "home"]
+
+
+def foreground_cmd(udid: str, bundle_id: str) -> list[str]:
+    """Resume a backgrounded app to the foreground (simctl launch, without
+    --terminate-running-process, so the running process is brought forward rather than relaunched)."""
+    return ["xcrun", "simctl", "launch", udid, bundle_id]
 
 
 def status_bar_override_cmd(udid: str, **kwargs: str | int) -> list[str]:
@@ -286,12 +292,19 @@ class Env:
         # directly but route through a class-level attribute so tests can patch it.
         self._run_pbcopy(pbcopy_cmd(self.udid))
 
+    def set_clipboard(self, text: str) -> None:
+        # Same simctl pbcopy as clearing, but with the seed text on stdin.
+        self._run_pbcopy(pbcopy_cmd(self.udid), text)
+
     @staticmethod
-    def _run_pbcopy(cmd: list[str]) -> None:
-        subprocess.run(cmd, input="", capture_output=True, text=True, check=True)
+    def _run_pbcopy(cmd: list[str], text: str = "") -> None:
+        subprocess.run(cmd, input=text, capture_output=True, text=True, check=True)
 
     def home(self) -> None:
         self._run(home_cmd(self.udid), None)
+
+    def foreground(self, bundle_id: str) -> None:
+        self._run(foreground_cmd(self.udid, bundle_id), None)
 
     def override_status_bar(self, **kwargs: str | int) -> None:
         self._run(status_bar_override_cmd(self.udid, **kwargs), None)

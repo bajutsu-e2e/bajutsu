@@ -104,8 +104,21 @@ class ClearClipboard(_Model):
     """Clear the Simulator's pasteboard."""
 
 
+class SetClipboard(_Model):
+    """Seed the Simulator's pasteboard with text (simctl pbcopy), for paste flows."""
+
+    text: str
+
+
 class Background(_Model):
     """Send the app to the background by pressing the Home button (simctl ui home)."""
+
+
+class Foreground(_Model):
+    """Resume a backgrounded app to the foreground (simctl launch, without terminating it).
+
+    The other half of `background`. It adds no settle sleep — any wait after resuming is the
+    scenario's own condition wait."""
 
 
 class OverrideStatusBar(_Model):

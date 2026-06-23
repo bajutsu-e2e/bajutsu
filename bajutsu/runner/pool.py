@@ -147,8 +147,8 @@ def device_pool(
 
 def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run) -> DeviceControl:
     """A DeviceControl bound to one device, backing `setLocation` / `push` /
-    `clearKeychain` / `clearClipboard` / `background` / `overrideStatusBar` /
-    `clearStatusBar` steps via simctl."""
+    `clearKeychain` / `clearClipboard` / `setClipboard` / `background` / `foreground` /
+    `overrideStatusBar` / `clearStatusBar` steps via simctl."""
     e = env.Env(udid, run=env_run)
 
     class _Control:
@@ -164,8 +164,14 @@ def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
         def clear_clipboard(self) -> None:
             e.clear_clipboard()
 
+        def set_clipboard(self, text: str) -> None:
+            e.set_clipboard(text)
+
         def home(self) -> None:
             e.home()
+
+        def foreground(self) -> None:
+            e.foreground(bundle_id)
 
         def override_status_bar(self, **kwargs: str | int) -> None:
             e.override_status_bar(**kwargs)
