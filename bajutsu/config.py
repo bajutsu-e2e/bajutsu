@@ -98,6 +98,9 @@ class TargetConfig(_Model):
     # Directory of baseline images for `visual` assertions. Relative to the run's
     # working directory. Overrides the default (baselines/ beside the scenario file).
     baselines: str | None = None
+    # Directory of JSON Schema files for `responseSchema` assertions. Relative to the run's
+    # working directory. Overrides the default (schemas/ beside the scenario file).
+    schemas: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
 
@@ -203,6 +206,9 @@ class Effective:
     # Baseline images directory for `visual` assertions. None = fall back to
     # baselines/ beside the scenario file (or --baselines CLI flag).
     baselines: str | None = None
+    # JSON Schema directory for `responseSchema` assertions. None = fall back to
+    # schemas/ beside the scenario file (or --schemas CLI flag).
+    schemas: str | None = None
     # Web (Playwright) target URL. None for iOS apps (which use bundle_id instead).
     base_url: str | None = None
     # Web (Playwright): run headless (default) or headed (visible browser). iOS ignores it.
@@ -251,6 +257,7 @@ def resolve(config: Config, target: str) -> Effective:
         build=a.build,
         scenarios=a.scenarios,
         baselines=a.baselines,
+        schemas=a.schemas,
     )
 
 

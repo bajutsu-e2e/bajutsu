@@ -52,6 +52,19 @@ def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Pa
         return scenario_file.parent / "baselines"
 
 
+def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
+    """Resolve the JSON Schema directory for `responseSchema` assertions.
+
+    Resolution order: --schemas flag > config `targets.<name>.schemas` > schemas/ beside the scenario.
+    """
+    if flag:
+        return Path(flag)
+    elif eff.schemas:
+        return Path(eff.schemas)
+    else:
+        return scenario_file.parent / "schemas"
+
+
 def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[list[Path], bool]:
     """The scenario files `run` should load: `[--scenario]` when given (an explicit override),
     else every `*.yaml` in the target's configured `scenarios` dir. Returns `(files, single)` where
@@ -170,6 +183,12 @@ def run(
         "--baselines",
         help="directory of baseline images for `visual` assertions "
         "(default: config baselines, then baselines/ beside the scenario)",
+    ),
+    schemas: str = typer.Option(
+        "",
+        "--schemas",
+        help="directory of JSON Schema files for `responseSchema` assertions "
+        "(default: config schemas, then schemas/ beside the scenario)",
     ),
     headed: bool | None = typer.Option(
         None,
@@ -294,6 +313,8 @@ def run(
     # Visual assertions resolve `baseline: <name>` within this directory.
     # Resolution order: --baselines flag > config baselines > baselines/ beside the scenario.
     baselines_dir = _resolve_baselines_dir(baselines, eff, files[0])
+    # responseSchema assertions resolve `schema: <path>` within this directory (same order).
+    schemas_dir = _resolve_schemas_dir(schemas, eff, files[0])
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # A pool of one-or-more devices. Each device carries its own network collector, evidence
     # sink (interval recordings), and device control — so network collection / video / log /
@@ -336,6 +357,7 @@ def run(
             description=description,
             progress=progress_fn,
             baselines_dir=baselines_dir,
+            schemas_dir=schemas_dir,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

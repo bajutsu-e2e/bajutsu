@@ -15,6 +15,7 @@ from bajutsu.scenario import (
     CountOp,
     EventMatch,
     RequestMatch,
+    ResponseSchemaMatch,
     dump_mocks,
     load_scenarios,
 )
@@ -244,6 +245,121 @@ def test_request_sequence_multiplicity_needs_distinct_exchanges() -> None:
 def test_request_sequence_empty_timeline_fails() -> None:
     r = evaluate_one([], _seq(RequestMatch(path="/x")), [])
     assert not r.ok and r.reason
+
+
+def _schemas_dir(tmp_path: object, name: str, schema: dict[str, object]):  # type: ignore[no-untyped-def]
+    d = tmp_path / "schemas"  # type: ignore[operator]
+    d.mkdir(exist_ok=True)
+    (d / name).write_text(json.dumps(schema), encoding="utf-8")
+    return d
+
+
+def _rs(schema_path: str, **req: object) -> Assertion:
+    return Assertion(
+        response_schema=ResponseSchemaMatch(request=RequestMatch(**req), schema_path=schema_path)
+    )
+
+
+def test_response_schema_passes_for_conforming_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    d = _schemas_dir(
+        tmp_path,
+        "items.json",
+        {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}},
+    )
+    exs = [_ex("GET", "/api/items", response_body='{"id":1}')]
+    r = evaluate_one(
+        [], _rs("items.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+    )
+    assert r.ok, r.reason
+
+
+def test_response_schema_fails_for_nonconforming_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    d = _schemas_dir(
+        tmp_path,
+        "items.json",
+        {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}},
+    )
+    exs = [_ex("GET", "/api/items", response_body='{"id":"not-an-int"}')]
+    r = evaluate_one(
+        [], _rs("items.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+    )
+    assert not r.ok and r.reason
+
+
+def test_response_schema_no_matching_exchange(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
+    r = evaluate_one(
+        [],
+        _rs("x.json", path="/api/items"),
+        [_ex("GET", "/other")],
+        schema_context=SchemaContext(schemas_dir=d),
+    )
+    assert not r.ok and "exchange" in r.reason
+
+
+def test_response_schema_missing_schema_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    (tmp_path / "schemas").mkdir()
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one(
+        [],
+        _rs("missing.json", path="/api/items"),
+        exs,
+        schema_context=SchemaContext(schemas_dir=tmp_path / "schemas"),
+    )
+    assert not r.ok and "schema" in r.reason.lower()
+
+
+def test_response_schema_non_json_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
+    exs = [_ex("GET", "/api/items", response_body="not json")]
+    r = evaluate_one(
+        [], _rs("x.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+    )
+    assert not r.ok and r.reason
+
+
+def test_response_schema_malformed_schema_fails_cleanly(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    # An unresolvable $ref must fail the assertion loudly, not crash the run.
+    d = _schemas_dir(tmp_path, "bad.json", {"$ref": "#/definitions/missing"})
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one(
+        [], _rs("bad.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+    )
+    assert not r.ok and r.reason
+
+
+def test_response_schema_without_context_fails() -> None:
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one([], _rs("x.json", path="/api/items"), exs)  # no schema_context
+    assert not r.ok and r.reason
+
+
+def test_response_schema_rejects_path_traversal(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    # a `..` escape (or an absolute path) must be rejected, not read outside the schemas dir
+    d = _schemas_dir(tmp_path, "ok.json", {"type": "object"})
+    (tmp_path / "secret.json").write_text('{"type": "string"}', encoding="utf-8")
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one(
+        [],
+        _rs("../secret.json", path="/api/items"),
+        exs,
+        schema_context=SchemaContext(schemas_dir=d),
+    )
+    assert not r.ok and "escapes" in r.reason
 
 
 def test_mocks_parse_and_serialize() -> None:

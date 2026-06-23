@@ -44,6 +44,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--network / --no-network` | `--network` | `request` アサーション用にアプリの通信を収集（iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブする） |
 | `--workers` | 1 | デバイスプール上で並列実行。`--udid u1,u2,…` が必要（プール数で上限）。各デバイスが自前のネットワークコレクタ、インターバル録画、デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能する |
 | `--baselines` | シナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決される |
+| `--schemas` | シナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決される（`schema` extra が必要） |
 | `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できる（コマンドを実行しているマシン上でウィンドウが開く）。省略時はアプリの `headless` 設定に従う。iOS は無視する |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流す（`serve` UI が消費する） |
 | `--zip` | off | run の後に `runs/<id>.zip` も書き出す。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使える。**判定の後**に走るので pass/fail に影響しない。[`export`](#export) 参照 |
