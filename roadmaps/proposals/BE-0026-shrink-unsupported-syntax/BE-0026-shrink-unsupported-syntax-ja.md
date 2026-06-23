@@ -7,8 +7,8 @@
 |---|---|
 | 提案 | [BE-0026](BE-0026-shrink-unsupported-syntax-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
+| 状態 | **可決・実装中** |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
@@ -54,6 +54,21 @@
 AI 非依存な構造マッピングが存在するときに限る。** 生成時に意図の推測を要するものは `// TODO` の
 ままにします。誤った翻訳よりも、レビュー可能で誠実な欠落の方が良いからです。これにより codegen の
 「純粋に構造的で AI 非依存」という保証を保ったまま、チームに必要な手作業移植を着実に減らします。
+
+### 実装状況
+
+**複合セレクタ**のスライスを提供しました（`bajutsu/codegen.py`）。単一の `id` / `label` / `idMatches` は
+読みやすいヘルパをそのまま使い、`value`・`traits`・`index`（単独でも組み合わせでも）は
+`el("UNSUPPORTED_SELECTOR")` に落とさず 1 つの `NSPredicate` クエリに合成します。trait は小さな語彙の上で忠実に
+写します（`button` / `link` → `elementType`、`notEnabled` → `enabled == NO`、`selected` → `selected == YES`）。
+メタ文字を含まない `labelMatches` は部分文字列（`label CONTAINS`）、非負の `index` は `element(boundBy:)` になります。
+**デバイス制御**ステップ（`setLocation` / `push`）は、素の「unsupported step」ではなく `simctl` コマンド名を
+明記したラベル付き `// TODO` を出力するようにしました。
+
+*忠実な*構造写像が無いものは正直に `el("UNSUPPORTED_SELECTOR")` / `// TODO` のままにしました（統制ルール:
+決定的で AI 非依存の写像が存在するときだけフォールバック集合から外す）: 正規表現の `labelMatches`（`re.search`
+であり、NSPredicate の全体一致 `MATCHES` とは異なる）、`within`（ツリークエリでなく幾何的なフレーム包含）、
+負の `index`、未知の trait、ネットワークの `request` アサーションと `until: { request }` wait。
 
 ## 検討した代替案
 

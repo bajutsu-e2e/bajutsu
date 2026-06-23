@@ -235,6 +235,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 <!-- GENERATED:accepted-codegen -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | In progress |
 | [BE-0062](implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
 <!-- /GENERATED:accepted-codegen -->
 
@@ -348,7 +349,6 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 | ID | Item | Status |
 |---|---|---|
 | [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
-| [BE-0026](proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### Crawl performance / scale-out

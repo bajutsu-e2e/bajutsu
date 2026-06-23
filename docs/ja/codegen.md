@@ -55,10 +55,37 @@ final class ComponentsUITests: XCTestCase {
 }
 ```
 
-- ヘルパ `el(id)` / `byLabel(label)` / `matchingId(glob)` が、セレクタの 3 形（id / label / idMatches）を
-  XCUIElement に橋渡しします。
+- ヘルパ `el(id)` / `byLabel(label)` / `matchingId(glob)` が、単一フィールドのセレクタ 3 形（id / label /
+  idMatches）を XCUIElement に橋渡しします。
 - 各メソッドは冒頭で `launchEnvironment` を設定してから `app.launch()` を呼びます。env は **config の `launchEnv` <
   シナリオの `preconditions.launchEnv`** のマージで、テスト側が勝ちます。
+
+### セレクタのマッピング（XCUITest）
+
+単一の `id` / `label` / `idMatches` は上記のヘルパをそのまま使います。**複合**セレクタ
+（`value`・`traits`・`index`、または複数フィールドの組み合わせ）は、`// TODO` に落とさず 1 つの
+`NSPredicate` クエリに合成します（BE-0026）。
+
+| `Selector` フィールド | 生成される XCUITest |
+|---|---|
+| `id` / `idMatches` | `identifier == %@` / `identifier LIKE %@` |
+| `label` | `label == %@` |
+| `labelMatches`（リテラル部分文字列） | `label CONTAINS %@` |
+| `value` | `value == %@` |
+| `traits: [button \| link]` | `elementType == XCUIElement.ElementType.<case>.rawValue` |
+| `traits: [notEnabled]` / `[selected]` | `enabled == NO` / `selected == YES` |
+| `index: n`（n ≥ 0） | `.element(boundBy: n)`（それ以外は `.firstMatch`） |
+
+設定された全フィールドを **AND** で結合します。*忠実な*構造写像が無いフィールドがあると、セレクタは
+`el("UNSUPPORTED_SELECTOR")` のまま残ります（誤った推測ではなく、正直なギャップ）。
+
+- **正規表現メタ文字を含む `labelMatches`** — これは Python の `re.search` パターンです。メタ文字を含ま
+  ないものだけが単純な部分文字列で（`CONTAINS`）、本物の正規表現（例 `^Item `）は忠実な NSPredicate 形が
+  ありません（ICU の `MATCHES` は全体一致でアンカーの意味も異なる）。
+- **`within`** — *幾何的*なフレーム包含制約です（候補のフレームがコンテナのフレーム内に収まること。
+  [selectors](selectors.md) 参照）。XCUITest のクエリはツリーベースで幾何的ではありません。
+- **負の `index`** — `element(boundBy:)` に負の形はありません。
+- **未知の trait** — `button` / `link` / `notEnabled` / `selected` の語彙の外。
 
 ## マッピング表
 
@@ -89,7 +116,9 @@ final class ComponentsUITests: XCTestCase {
 
 ## 未対応は TODO コメントに落とす
 
-未対応の構文（座標スワイプ、未知のセレクタなど）は、失敗させずに `// TODO` 行を出力します。出力は常に
+未対応の構文（座標スワイプ、`simctl` レベルのデバイス制御 `setLocation` / `push`、ネットワークの `request`
+アサーション、負の `index`、未知の trait）は、失敗させずに `// TODO` 行を出力します。デバイス制御ステップは
+レビュー担当が実行する `simctl` コマンド名を明記します。出力は常に
 レビューでき、生成結果を壊しません。生成ファイルの先頭にも「手で編集せず再生成せよ」と明記します。これは
 両方の出力先に共通です。
 

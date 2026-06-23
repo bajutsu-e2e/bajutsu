@@ -8,6 +8,9 @@ purely structural (no AI).
 Coverage: tap (by id or label) / doubleTap / type / longPress / swipe
 (on+direction) / pinch (withScale) / rotate (radians) / wait (for, until gone) /
 assertions (exists, notExists, value, label, enabled, disabled, selected, count).
+Selectors map their compound forms too (BE-0026): a single id/label/idMatches/labelMatches
+keeps its readable helper, while value / traits / within / index (or several fields together)
+compose one NSPredicate query — only a negative index or an unknown trait stays unsupported.
 Unsupported constructs emit a `// TODO` line rather than failing, so the output is
 always reviewable. (pinch / rotate need multi-touch, which idb cannot drive at run
 time — XCUITest is their on-device home.)
@@ -51,29 +54,105 @@ def _class_name(name: str) -> str:
     return f"{cleaned}UITests"
 
 
-def _element(sel: base.Selector) -> str:
-    """A Swift expression resolving to a single XCUIElement."""
+_UNSUPPORTED = 'el("UNSUPPORTED_SELECTOR")'
+# Traits that map to an XCUIElement.ElementType (queryable as `elementType == <case>.rawValue`).
+_TRAIT_ELEMENT_TYPE = {base.Trait.BUTTON: "button", base.Trait.LINK: "link"}
+# Regex metacharacters. `labelMatches` is a Python `re.search` pattern; only a metacharacter-free
+# one is a plain substring we can map faithfully to NSPredicate `CONTAINS`. A real regex has no
+# faithful NSPredicate form (ICU `MATCHES` is a full, differently-anchored match), so it stays a TODO.
+_RE_METACHARS = set(r".^$*+?{}[]\|()")
+
+
+def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
+    """Build the NSPredicate (format, Swift args) ANDing every set field, or None if any field
+    has no faithful structural mapping (so the caller falls back to a TODO/unsupported marker)."""
+    clauses: list[str] = []
+    args: list[str] = []
     if "id" in sel:
-        return f"el({_s(sel['id'])})"
-    if "label" in sel:
-        return f"byLabel({_s(sel['label'])})"
+        clauses.append("identifier == %@")
+        args.append(_s(sel["id"]))
     if "idMatches" in sel:
-        return f"matchingId({_s(sel['idMatches'])}).firstMatch"
+        clauses.append("identifier LIKE %@")
+        args.append(_s(sel["idMatches"]))
+    if "label" in sel:
+        clauses.append("label == %@")
+        args.append(_s(sel["label"]))
     if "labelMatches" in sel:
-        pattern = f"*{sel['labelMatches']}*"
-        return (
-            "app.descendants(matching: .any)"
-            f'.matching(NSPredicate(format: "label LIKE %@", {_s(pattern)})).firstMatch'
-        )
-    return 'el("UNSUPPORTED_SELECTOR")'
+        pattern = sel["labelMatches"]
+        if set(pattern) & _RE_METACHARS:  # a real regex — no faithful NSPredicate form
+            return None
+        clauses.append("label CONTAINS %@")  # metacharacter-free: a plain substring (re.search)
+        args.append(_s(pattern))
+    if "value" in sel:
+        clauses.append("value == %@")
+        args.append(_s(sel["value"]))
+    for trait in sel.get("traits", []):
+        if trait in _TRAIT_ELEMENT_TYPE:
+            clauses.append("elementType == %ld")
+            args.append(f"XCUIElement.ElementType.{_TRAIT_ELEMENT_TYPE[trait]}.rawValue")
+        elif trait == base.Trait.NOT_ENABLED:
+            clauses.append("enabled == NO")
+        elif trait == base.Trait.SELECTED:
+            clauses.append("selected == YES")
+        else:  # an unknown trait has no faithful query — don't broaden the match
+            return None
+    if not clauses:
+        return None
+    return " AND ".join(clauses), args
+
+
+def _query(sel: base.Selector) -> str | None:
+    """A Swift XCUIElementQuery expression for the selector, scoping into a `within` container's
+    subtree when present. None when the selector (or its container) can't be mapped faithfully."""
+    if "within" in sel:
+        # `within` is a *geometric* frame-containment constraint (the candidate's frame must sit
+        # inside the container's; see drivers/base.py). XCUITest queries are tree-based, not
+        # geometric, so there is no faithful structural form — it stays unsupported.
+        return None
+    base_query = "app.descendants(matching: .any)"
+    pred = _predicate(sel)
+    if pred is None:
+        return None
+    fmt, args = pred
+    # Some clauses are self-contained (enabled == NO / selected == YES) and take no arg, so a
+    # traits-only selector has an empty arg list — omit the trailing `, ` then (NSPredicate(format:)).
+    predicate = (
+        f"NSPredicate(format: {_s(fmt)}, {', '.join(args)})"
+        if args
+        else f"NSPredicate(format: {_s(fmt)})"
+    )
+    return f"{base_query}.matching({predicate})"
+
+
+def _element(sel: base.Selector) -> str:
+    """A Swift expression resolving to a single XCUIElement.
+
+    Single addressing fields keep their readable helper; compound selectors (value / traits /
+    `within` / `index`, or several fields) compose an NSPredicate query, picking the element by
+    `index` (`element(boundBy:)`, non-negative only) or `firstMatch`."""
+    keys = set(sel)
+    if keys == {"id"}:
+        return f"el({_s(sel['id'])})"
+    if keys == {"label"}:
+        return f"byLabel({_s(sel['label'])})"
+    if keys == {"idMatches"}:
+        return f"matchingId({_s(sel['idMatches'])}).firstMatch"
+    query = _query(sel)
+    if query is None:
+        return _UNSUPPORTED
+    index = sel.get("index")
+    if index is None:
+        return f"{query}.firstMatch"
+    if index < 0:  # element(boundBy:) has no negative form — an honest gap, not a wrong guess
+        return _UNSUPPORTED
+    return f"{query}.element(boundBy: {index})"
 
 
 def _count_expr(sel: base.Selector) -> str:
-    if "idMatches" in sel:
+    if set(sel) == {"idMatches"}:
         return f"matchingId({_s(sel['idMatches'])}).count"
-    if "id" in sel:
-        return f"({_element(sel)}.exists ? 1 : 0)"
-    return "0"
+    query = _query(sel)
+    return f"{query}.count" if query is not None else "0"
 
 
 def _selector_of_step(step: Step) -> base.Selector | None:
@@ -141,6 +220,14 @@ def _emit_step(step: Step) -> list[str]:
         ]
     if step.foreground is not None:
         return ["// TODO: foreground() — simctl launch (resume); not generated"]
+    if step.set_location is not None:
+        # simctl-backed device control; no app-level XCUITest equivalent (BE-0026).
+        loc = step.set_location
+        return [
+            f"// TODO: setLocation(lat: {loc.lat}, lon: {loc.lon}) — simctl location; not generated"
+        ]
+    if step.push is not None:
+        return ["// TODO: push — simctl push (APNs payload); not generated"]
     return ["// TODO: unsupported step"]
 
 

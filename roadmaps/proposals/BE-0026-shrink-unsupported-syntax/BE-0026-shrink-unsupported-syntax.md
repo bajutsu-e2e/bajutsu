@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0026](BE-0026-shrink-unsupported-syntax.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Status | **Accepted, in progress** |
+| Track | [Accepted](../../README.md#accepted) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -55,6 +55,23 @@ only when a faithful, deterministic, AI-free structural mapping exists.** Anythi
 require inferring intent at generation time stays a `// TODO` — a reviewable, honest gap is
 better than a wrong translation. This keeps codegen's "purely structural, AI-independent"
 guarantee intact while steadily reducing the hand-porting a team must do.
+
+### Implementation status
+
+The **compound-selector** slice shipped (`bajutsu/codegen.py`): a single `id` / `label` / `idMatches`
+keeps its readable helper, while `value`, `traits`, `index` (alone or combined) now compose one
+`NSPredicate` query instead of dropping to `el("UNSUPPORTED_SELECTOR")`. Traits map faithfully over
+the small vocabulary (`button` / `link` → `elementType`, `notEnabled` → `enabled == NO`, `selected`
+→ `selected == YES`); a metacharacter-free `labelMatches` is a substring (`label CONTAINS`); a
+non-negative `index` becomes `element(boundBy:)`. The **device-control** steps (`setLocation` /
+`push`) now emit a labeled `// TODO` naming the `simctl` command, rather than a bare "unsupported
+step."
+
+Kept an honest `el("UNSUPPORTED_SELECTOR")` / `// TODO` where no *faithful* structural form exists —
+the governing rule (a construct leaves the fallback set only when a deterministic, AI-free mapping
+exists): a `labelMatches` regex (it is `re.search`, unlike NSPredicate's full-match `MATCHES`),
+`within` (geometric frame containment, not a tree query), a negative `index`, an unknown trait, and
+the network `request` assertion / `until: { request }` wait.
 
 ## Alternatives considered
 
