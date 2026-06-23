@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-consolidate-demos-on-showcase-ja.md)
+**English** · [日本語](BE-0079-consolidate-demos-on-showcase-ja.md)
 
-# BE-XXXX — Consolidate the demo & dogfood apps onto the showcase suite
+# BE-0079 — Consolidate the demo & dogfood apps onto the showcase suite
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-consolidate-demos-on-showcase.md) |
+| Proposal | [BE-0079](BE-0079-consolidate-demos-on-showcase.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Track | [Proposals](../../README.md#proposals) |

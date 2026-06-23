@@ -1,11 +1,11 @@
-[English](BE-XXXX-consolidate-demos-on-showcase.md) · **日本語**
+[English](BE-0079-consolidate-demos-on-showcase.md) · **日本語**
 
-# BE-XXXX — デモ／dogfood 用アプリを showcase 群へ統合する
+# BE-0079 — デモ／dogfood 用アプリを showcase 群へ統合する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-consolidate-demos-on-showcase-ja.md) |
+| 提案 | [BE-0079](BE-0079-consolidate-demos-on-showcase-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラック | [提案](../../README-ja.md#提案) |

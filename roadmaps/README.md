@@ -391,6 +391,7 @@ deliberately scoped out.
 <!-- GENERATED:proposals-dogfood -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
+| [BE-0079](proposals/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
 
 ### Miscellaneous / on hold
