@@ -50,7 +50,7 @@ Home screen** (`SAMPLE_LOGGED_IN=1`), so the assertions are deterministic.
 ```bash
 # Build the sample first (make -C demos/features sample-build; see demos/features/app/README.md), then:
 PASSWORD='s3cr3t' uv run bajutsu run --scenario demos/features/sample_features.yaml \
-  --app sample --config demos/features/demo.config.yaml --no-erase --no-network
+  --target sample --config demos/features/demo.config.yaml --no-erase --no-network
 ```
 
 [`demo.config.yaml`](demo.config.yaml) declares `secrets: [PASSWORD]` so

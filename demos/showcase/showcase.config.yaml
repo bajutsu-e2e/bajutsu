@@ -3,8 +3,8 @@
 #
 # The two `-a11y` apps expose an identical identifier contract, so the shared
 # `scenarios/` directory runs unchanged against either toolkit:
-#   bajutsu run --app showcase-swiftui --config demos/showcase/showcase.config.yaml ...
-#   bajutsu run --app showcase-uikit   --config demos/showcase/showcase.config.yaml ...
+#   bajutsu run --target showcase-swiftui --config demos/showcase/showcase.config.yaml ...
+#   bajutsu run --target showcase-uikit   --config demos/showcase/showcase.config.yaml ...
 # The `-noax` apps carry no identifiers (idNamespaces: []) — the `record` / `doctor`
 # "missing accessibility" demo. `make -C demos/showcase <target>-build` builds each.
 defaults:
@@ -12,7 +12,7 @@ defaults:
   device: "iPhone 17 Pro"
   reservedNamespaces: [nav]   # shared flows / nav (DESIGN §7.3)
 
-apps:
+targets:
   # ---- SwiftUI, accessibility ON (the `run` / `doctor`-Ready target) -------------
   showcase-swiftui:
     bundleId: com.bajutsu.showcase.swiftui

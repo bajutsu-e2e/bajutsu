@@ -13,7 +13,7 @@ SWIFTUI := $(HERE)/swiftui
 UIKIT   := $(HERE)/uikit
 
 # A built scheme lands at build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app,
-# which is exactly the appPath each apps.<name> entry in showcase.config.yaml points to.
+# which is exactly the appPath each targets.<name> entry in showcase.config.yaml points to.
 define build_scheme
 	cd $(1) && xcodegen generate
 	cd $(1) && xcodebuild -project $(2).xcodeproj -scheme $(3) \
@@ -41,20 +41,20 @@ uikit-noax-build:
 SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
 
 run-swiftui: swiftui-build
-	cd $(ROOT) && uv run bajutsu run --app showcase-swiftui --udid $(SIM) --backend idb --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend idb --config $(CONFIG)
 run-uikit: uikit-build
-	cd $(ROOT) && uv run bajutsu run --app showcase-uikit --udid $(SIM) --backend idb --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend idb --config $(CONFIG)
 
 # The accessibility A/B: doctor grades the a11y app Ready and the no-a11y app Blocked.
 doctor: swiftui-build swiftui-noax-build
-	cd $(ROOT) && uv run bajutsu doctor --app showcase-swiftui      --udid $(SIM) --backend idb --config $(CONFIG)
-	cd $(ROOT) && uv run bajutsu doctor --app showcase-swiftui-noax --udid $(SIM) --backend idb --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu doctor --target showcase-swiftui      --udid $(SIM) --backend idb --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu doctor --target showcase-swiftui-noax --udid $(SIM) --backend idb --config $(CONFIG)
 
 # AI authoring against the no-a11y app — record falls down the stability ladder (DESIGN §5).
 # Needs ANTHROPIC_API_KEY. GOAL overrides the first non-comment line of record/goals.txt.
 GOAL ?= $(shell grep -vE '^[[:space:]]*#|^[[:space:]]*$$' $(HERE)/record/goals.txt | head -1)
 record: swiftui-noax-build
-	cd $(ROOT) && uv run bajutsu record --app showcase-swiftui-noax --udid $(SIM) --backend idb \
+	cd $(ROOT) && uv run bajutsu record --target showcase-swiftui-noax --udid $(SIM) --backend idb \
 		--config $(CONFIG) --goal "$(GOAL)"
 
 clean:

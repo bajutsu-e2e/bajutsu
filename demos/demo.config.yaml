@@ -7,7 +7,7 @@ defaults:
   backend: [ios]   # platform token -> the idb actuator today (see docs/drivers.md)
   device: "iPhone 15"
   capture: [screenshot.after, elements, actionLog]
-apps:
+targets:
   demo:
     bundleId: com.bajutsu.demo
     deeplinkScheme: bajutsudemo
@@ -21,6 +21,6 @@ apps:
     # Built by `make -C demos app-build`; path is relative to the repo root (the run's cwd).
     appPath: demos/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuDemo.app
     build: make -C demos app-build
-    # `bajutsu run --app demo` runs every *.yaml directly in this dir (the _components/
+    # `bajutsu run --target demo` runs every *.yaml directly in this dir (the _components/
     # subdir is not globbed, so the shared component is never run as a standalone scenario).
     scenarios: demos/app/scenarios

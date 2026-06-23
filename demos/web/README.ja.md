@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で駆動する、小さな静的 web アプリです。iOS のデモと違い **Mac も Simulator も不要**で、`make check` と同じツールチェーンの Linux 上で動きます。
+Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で駆動する、小さな静的 web アプリです。iOS のデモと違い **Mac も Simulator も不要**で、`make check` と同じツールチェーンの Linux 上で動きます。
 
 ## 構成
 
@@ -10,7 +10,7 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/proposals/BE-0041-
 |---|---|
 | `app/index.html` | テスト対象アプリ。onboarding → login → counter、素の JS、安定した `data-testid` の id |
 | `scenarios/smoke.yaml` | 決定論的なスモークシナリオ（iOS デモと同じ step/expect スキーマ） |
-| `demo.config.yaml` | `apps.web`（`baseUrl` ＋ `scenarios` ＋ `backend: [web]`、`bundleId` なし） |
+| `demo.config.yaml` | `targets.web`（`baseUrl` ＋ `scenarios` ＋ `backend: [web]`、`bundleId` なし） |
 | `Makefile` | `web-deps` / `app-serve` / `e2e` |
 
 ## 実行

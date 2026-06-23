@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from bajutsu.assertions import VisualContext
+from bajutsu.assertions import SchemaContext, VisualContext
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
 from bajutsu.network import NetworkExchange
@@ -22,9 +22,9 @@ from bajutsu.orchestrator import (
     scenario_slug,
 )
 from bajutsu.redaction import Redactor
-from bajutsu.report import write_report
+from bajutsu.report import scenario_render_inputs, write_report
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
-from bajutsu.scenario import Scenario, dump_scenario_file, dump_scenarios, scenario_dict
+from bajutsu.scenario import Scenario, dump_scenario_file
 
 
 def _write_network(
@@ -69,6 +69,7 @@ def run_all(
     secret_values: list[str] | None = None,
     progress: ProgressFn | None = None,
     baselines_dir: Path | None = None,
+    schemas_dir: Path | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device.
 
@@ -110,6 +111,7 @@ def run_all(
                     diff_dir=run_dir / sid,
                     run_dir=run_dir,
                 )
+            sc = SchemaContext(schemas_dir=schemas_dir) if schemas_dir is not None else None
             result = run_scenario(
                 lz.driver,
                 s,
@@ -123,6 +125,7 @@ def run_all(
                 control=lz.control,
                 progress=progress,
                 visual_context=vc,
+                schema_context=sc,
             )
             result.device = lz.udid  # attribute the scenario to the device that ran it
             result.device_name = lz.device_name  # for the report's Environment tab
@@ -162,11 +165,13 @@ def run_and_report(
     description: str | None = None,
     progress: ProgressFn | None = None,
     baselines_dir: Path | None = None,
+    schemas_dir: Path | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id.
 
     When `baselines_dir` is given, `visual` assertions compare each scenario's end-state
-    screenshot against a baseline image in that directory (see run_all)."""
+    screenshot against a baseline image in that directory; `schemas_dir` likewise resolves
+    `responseSchema` assertions' schema files (see run_all)."""
     run_dir = runs_dir / run_id
     results = run_all(
         eff,
@@ -181,11 +186,11 @@ def run_and_report(
         secret_values=secret_values,
         progress=progress,
         baselines_dir=baselines_dir,
+        schemas_dir=schemas_dir,
     )
-    # The merged Result tab renders each scenario as a structured view (definitions)
-    # with a toggle to the raw YAML (sources).
-    definitions = [scenario_dict(s) for s in scenarios]
-    sources = [dump_scenarios([s]) for s in scenarios]
+    # The merged Result tab renders each scenario as a structured view (definitions) with a toggle
+    # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match.
+    definitions, sources = scenario_render_inputs(scenarios)
     run_dir.mkdir(parents=True, exist_ok=True)
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
     (run_dir / "scenario.yaml").write_text(

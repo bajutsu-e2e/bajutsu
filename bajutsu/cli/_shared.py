@@ -35,14 +35,22 @@ def load_expanded_scenarios(path: Path) -> list[Scenario]:
     return expand_data(scenarios, lambda ref: read_csv((base / ref).read_text(encoding="utf-8")))
 
 
-def _load_effective(config: str, app_name: str) -> Effective:
+def resolve_run_dir(run: str, runs_root: str) -> Path:
+    """The run directory for *run*: a bare id (`r1`) resolves under *runs_root*, while an absolute
+    or multi-segment value (`/abs/run`, `runs/r1`) is taken as a path — so a mistyped path isn't
+    silently re-rooted under the runs dir. Shared by `export` and `report`."""
+    p = Path(run)
+    return p if p.is_absolute() or len(p.parts) > 1 else Path(runs_root) / run
+
+
+def _load_effective(config: str, target_name: str) -> Effective:
     cfg_path = Path(config)
     if not cfg_path.exists():
         typer.echo(f"config not found: {config}")
         raise typer.Exit(2)
     cfg = load_config(cfg_path.read_text(encoding="utf-8"))
     try:
-        return resolve(cfg, app_name)
+        return resolve(cfg, target_name)
     except KeyError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

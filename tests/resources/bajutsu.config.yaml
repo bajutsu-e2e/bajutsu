@@ -1,11 +1,11 @@
-# Bajutsu config — team-wide defaults, overlaid by per-app entries.
+# Bajutsu config — team-wide defaults, overlaid by per-target entries.
 #
-# `bajutsu run|doctor|record --app <name>` resolves apps.<name>: the app entry
+# `bajutsu run|doctor|record --target <name>` resolves targets.<name>: the target entry
 # overrides defaults (backend/device/locale), redact is merged (union), and
 # capture/reservedNamespaces come from defaults. A scenario's preconditions add to
 # launchEnv/launchArgs at run time.
 
-# ── Team-wide defaults (apply to every app unless the app overrides them) ──
+# ── Team-wide defaults (apply to every target unless the target overrides them) ──
 defaults:
   # Actuator selection in UI-stability order. The FIRST backend available on this
   # machine becomes the actuator and performs every tap/type/swipe/query for the
@@ -14,7 +14,7 @@ defaults:
   # May be a single string or a list.
   backend: [idb]
 
-  device: "iPhone 15"   # default simulator model (override per app if needed)
+  device: "iPhone 15"   # default simulator model (override per target if needed)
   locale: en_US         # default locale
 
   # Evidence captured by default. Each token is <kind>[.<modifier>]; the light
@@ -22,25 +22,25 @@ defaults:
   # (video / deviceLog) are opt-in per step or via a scenario's capturePolicy.
   capture: [screenshot.after, elements, actionLog]
 
-  # Masking applied before evidence is written. Merged (union) with each app's
+  # Masking applied before evidence is written. Merged (union) with each target's
   # redact. Three independent lists:
   redact:
     headers: [Authorization, Cookie]   # HTTP header names to mask (network evidence)
     fields: [token, password]          # JSON/body field names to mask
     # labels: []                       # accessibility labels to mask (optional)
 
-  # Identifier namespaces reserved for cross-cutting concerns. Intent: any app that
+  # Identifier namespaces reserved for cross-cutting concerns. Intent: any target that
   # uses these should also list them in its idNamespaces. (Informational for now —
-  # `doctor` scores against the app's idNamespaces only.)
+  # `doctor` scores against the target's idNamespaces only.)
   reservedNamespaces: [auth, nav]
 
-# ── Per-app entries. `--app <name>` selects one of these ──
-apps:
+# ── Per-target entries. `--target <name>` selects one of these ──
+targets:
   # The bundled fixture app (demos/features/app/). Instrumented for every Bajutsu primitive.
   sample:
     bundleId: com.bajutsu.sample      # required — the app's bundle identifier
     deeplinkScheme: bajutsusample     # URL scheme for deep-link preconditions
-    # accessibilityIdentifier namespaces this app is allowed to use (first segment
+    # accessibilityIdentifier namespaces this target is allowed to use (first segment
     # of each id). `doctor` scores how well on-screen ids conform to this list.
     idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists, gest, pres, async, sys, net]
     # Env vars passed to the app on launch (as SIMCTL_CHILD_*). Scenarios can add
@@ -53,11 +53,11 @@ apps:
     # Shell command that builds appPath. `bajutsu serve` runs it before the scenario when the
     # binary above is missing, so the Web UI builds the app on demand (no manual build first).
     build: make -C demos/features sample-build
-    # Directory of this app's scenarios. `bajutsu run --app sample` runs every *.yaml here
+    # Directory of this target's scenarios. `bajutsu run --target sample` runs every *.yaml here
     # (or pass --scenario for one); `record` writes new ones here. Relative to the run's cwd.
     scenarios: demos/features/app/scenarios
-    # Optional per-app keys (all override or extend the defaults above):
-    #   backend: [...]            # actuator order for this app
+    # Optional per-target keys (all override or extend the defaults above):
+    #   backend: [...]            # actuator order for this target
     #   device: "iPhone 17 Pro"   # simulator model
     #   locale: ja_JP
     #   launchArgs: ["-AppleLanguages", "(ja)"]

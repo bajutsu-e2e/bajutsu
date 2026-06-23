@@ -45,7 +45,7 @@ body:
           required: true
         - label: "Determinism first — no fixed sleeps; ambiguous selectors fail rather than guessing."
           required: true
-        - label: "App-agnostic — per-app differences belong in config (`apps.<name>`), not the tool/runner."
+        - label: "App-agnostic — per-target differences belong in config (`targets.<name>`), not the tool/runner."
           required: true
         - label: I checked the roadmap and existing issues and this isn't already tracked.
           required: true

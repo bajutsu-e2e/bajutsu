@@ -11,6 +11,7 @@ from pathlib import Path
 
 import typer
 
+from bajutsu.cli._shared import resolve_run_dir
 from bajutsu.report.archive import archive_run_dir
 
 
@@ -23,10 +24,7 @@ def export(
     runs: str = typer.Option("runs", help="runs root (used when <run> is an id, not a path)"),
 ) -> None:
     """Archive an existing run into a single `.zip` for sharing / CI / offline viewing."""
-    # An absolute or multi-segment value (`/abs/run`, `runs/r1`) is a path; a bare segment (`r1`)
-    # is a run id resolved under --runs. So a mistyped path isn't silently re-rooted under runs/.
-    run_path = Path(run)
-    run_dir = run_path if run_path.is_absolute() or len(run_path.parts) > 1 else Path(runs) / run
+    run_dir = resolve_run_dir(run, runs)
     if not run_dir.is_dir():
         typer.echo(f"run not found: {run}")
         raise typer.Exit(2)

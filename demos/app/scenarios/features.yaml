@@ -1,6 +1,6 @@
 # On-device feature showcase for the demo app: tags + a parameterized shared component
 # (login) + a secret variable. Run a subset with, e.g.:
-#   bajutsu run --scenario features.yaml --app demo --tag smoke --exclude slow
+#   bajutsu run --scenario features.yaml --target demo --tag smoke --exclude slow
 - name: log in via the shared component
   tags: [smoke]
   steps:

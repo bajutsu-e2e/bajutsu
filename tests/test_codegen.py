@@ -95,6 +95,98 @@ def test_state_assertions() -> None:
     assert 'XCTAssertTrue(el("toggle").isSelected)' in code
 
 
+# --- BE-0026: compound selectors map structurally instead of UNSUPPORTED_SELECTOR ---
+
+
+def test_compound_id_and_value_maps_to_predicate() -> None:
+    code = _gen("- name: x\n  steps:\n    - tap: { id: counter, value: '5' }\n")
+    assert (
+        "app.descendants(matching: .any).matching(NSPredicate(format: "
+        '"identifier == %@ AND value == %@", "counter", "5")).firstMatch.tap()' in code
+    )
+
+
+def test_index_maps_to_bound_by() -> None:
+    code = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row.*', index: 2 }\n")
+    assert (
+        'matching(NSPredicate(format: "identifier LIKE %@", "row.*")).element(boundBy: 2).tap()'
+        in code
+    )
+
+
+def test_negative_index_stays_unsupported() -> None:
+    code = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row.*', index: -1 }\n")
+    assert 'el("UNSUPPORTED_SELECTOR").tap()' in code
+
+
+def test_within_stays_unsupported() -> None:
+    # `within` is geometric frame containment, not tree descendants — no faithful XCUITest query.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: row.action, within: { id: list.row } }\n")
+    assert 'el("UNSUPPORTED_SELECTOR").tap()' in code
+
+
+def test_label_matches_literal_maps_to_contains() -> None:
+    code = _gen("- name: x\n  steps:\n    - tap: { labelMatches: 'Delete' }\n")
+    assert 'matching(NSPredicate(format: "label CONTAINS %@", "Delete")).firstMatch.tap()' in code
+
+
+def test_label_matches_regex_stays_unsupported() -> None:
+    # A real regex (anchors/metachars) has no faithful NSPredicate form (re.search vs full match).
+    code = _gen("- name: x\n  steps:\n    - tap: { labelMatches: '^Item ' }\n")
+    assert 'el("UNSUPPORTED_SELECTOR").tap()' in code
+
+
+def test_traits_map_to_element_type_and_state() -> None:
+    button = _gen("- name: x\n  steps:\n    - tap: { traits: [button] }\n")
+    assert (
+        'matching(NSPredicate(format: "elementType == %ld", '
+        "XCUIElement.ElementType.button.rawValue)).firstMatch.tap()" in button
+    )
+    disabled = _gen("- name: x\n  steps:\n    - tap: { id: a, traits: [notEnabled] }\n")
+    assert '"identifier == %@ AND enabled == NO", "a"' in disabled
+    selected = _gen("- name: x\n  steps:\n    - tap: { id: t, traits: [selected] }\n")
+    assert '"identifier == %@ AND selected == YES", "t"' in selected
+
+
+def test_traits_only_selector_has_no_trailing_comma() -> None:
+    # notEnabled/selected add self-contained clauses (no arg); a traits-only selector must not
+    # emit `NSPredicate(format: "enabled == NO", )` (a trailing comma is invalid Swift).
+    code = _gen("- name: x\n  steps:\n    - tap: { traits: [notEnabled] }\n")
+    assert 'matching(NSPredicate(format: "enabled == NO")).firstMatch.tap()' in code
+    assert ", )" not in code
+
+
+def test_compound_label_traits_index() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { labelMatches: 'Item', traits: [button], index: 0 }\n"
+    )
+    assert (
+        'matching(NSPredicate(format: "label CONTAINS %@ AND elementType == %ld", "Item", '
+        "XCUIElement.ElementType.button.rawValue)).element(boundBy: 0).tap()" in code
+    )
+
+
+def test_simple_selectors_keep_their_helpers() -> None:
+    # Single-field selectors are unchanged (stable, readable output).
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n    - tap: { label: B }\n"
+        "    - tap: { idMatches: 'r.*' }\n"
+    )
+    assert 'el("a").tap()' in code
+    assert 'byLabel("B").tap()' in code
+    assert 'matchingId("r.*").firstMatch.tap()' in code
+
+
+def test_device_control_steps_emit_labeled_todo() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - setLocation: { lat: 35.6, lon: 139.7 }\n"
+        "    - push: { payload: { aps: { alert: hi } } }\n"
+    )
+    assert "// TODO: setLocation(lat: 35.6, lon: 139.7) — simctl location" in code
+    assert "// TODO: push" in code and "simctl push" in code
+
+
 def test_class_name_for() -> None:
     assert class_name_for("smoke") == "SmokeUITests"
     assert class_name_for("my-flow_v2") == "MyFlowV2UITests"

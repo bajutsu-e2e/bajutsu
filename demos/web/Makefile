@@ -23,4 +23,4 @@ e2e: web-deps
 	cd $(APP) && python3 -m http.server $(PORT) >/dev/null 2>&1 & srv=$$!; \
 	trap 'kill $$srv 2>/dev/null' EXIT; \
 	sleep 1; \
-	cd $(ROOT) && uv run bajutsu run --app web --backend web --config $(CONFIG) --no-network
+	cd $(ROOT) && uv run bajutsu run --target web --backend web --config $(CONFIG) --no-network

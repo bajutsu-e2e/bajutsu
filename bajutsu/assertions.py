@@ -11,6 +11,7 @@ straight into the report (manifest).
 from __future__ import annotations
 
 import functools
+import json
 import re
 import shutil
 from dataclasses import dataclass
@@ -21,8 +22,11 @@ from bajutsu.network import NetworkExchange
 from bajutsu.scenario import (
     Assertion,
     CountMatch,
+    CountOp,
+    EventMatch,
     Exists,
     RequestMatch,
+    ResponseSchemaMatch,
     Selector,
     TextMatch,
     VisualMatch,
@@ -72,6 +76,14 @@ class VisualContext:
     run_dir: Path
 
 
+@dataclass(frozen=True)
+class SchemaContext:
+    """Context needed by `responseSchema` assertions — the directory a schema path resolves against
+    (config `apps.<name>.schemas`, the `--schemas` flag, or `schemas/` beside the scenario)."""
+
+    schemas_dir: Path
+
+
 def _sel_str(sel: Selector) -> str:
     return ", ".join(f"{k}={v!r}" for k, v in sel.as_selector().items())
 
@@ -90,8 +102,8 @@ def _resolve_one(elements: list[base.Element], sel: Selector) -> tuple[base.Elem
 def _eval_exists(elements: list[base.Element], a: Exists) -> AssertionResult:
     found = len(base.find_all(elements, a.sel.as_selector())) >= 1
     ok = found != a.negate
-    want = "不在" if a.negate else "存在"
-    reason = "" if ok else f"{want}を期待したが{'存在' if found else '不在'}"
+    want = "absent" if a.negate else "present"
+    reason = "" if ok else f"expected {want} but was {'present' if found else 'absent'}"
     return AssertionResult(ok, "exists", f"{want}: {_sel_str(a.sel)}", reason)
 
 
@@ -103,7 +115,7 @@ def _eval_text(elements: list[base.Element], kind: str, a: TextMatch) -> Asserti
     actual = el["value"] if kind == "value" else el["label"]
     op, expected = _text_op(a)
     ok = _text_cmp(actual, op, expected)
-    reason = "" if ok else f"{op}={expected!r} を期待したが actual={actual!r}"
+    reason = "" if ok else f"expected {op}={expected!r} but actual={actual!r}"
     return AssertionResult(ok, kind, f"{kind} {op}={expected!r}: {_sel_str(a.sel)}", reason)
 
 
@@ -130,7 +142,7 @@ def _eval_count(elements: list[base.Element], a: CountMatch) -> AssertionResult:
     n = len(base.find_all(elements, a.sel.as_selector()))
     op, k = _count_op(a)
     ok = {"equals": n == k, "atLeast": n >= k, "atMost": n <= k}[op]
-    reason = "" if ok else f"count {op}={k} を期待したが n={n}"
+    reason = "" if ok else f"expected count {op}={k} but n={n}"
     return AssertionResult(ok, "count", f"count {op}={k}: {_sel_str(a.sel)}", reason)
 
 
@@ -155,7 +167,7 @@ def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> Asser
         ok = base.Trait.NOT_ENABLED in traits
     else:  # selected
         ok = base.Trait.SELECTED in traits
-    reason = "" if ok else f"{kind} を満たさない: traits={traits}"
+    reason = "" if ok else f"not {kind}: traits={traits}"
     return AssertionResult(ok, kind, detail, reason)
 
 
@@ -187,8 +199,10 @@ def count_matching(exchanges: list[NetworkExchange], req: RequestMatch) -> int:
     return sum(1 for ex in exchanges if match_request(ex, req))
 
 
-def request_label(req: RequestMatch) -> str:
-    """Compact human description of a request matcher (e.g. "GET /items status=200")."""
+def request_label(req: RequestMatch, *, with_count: bool = True) -> str:
+    """Compact human description of a request matcher (e.g. "GET /items status=200"). `with_count`
+    is False where a matcher's `count` is not part of the check (e.g. `requestSequence`, which is
+    about order), so the label doesn't imply a field that is ignored."""
     parts: list[str] = []
     if req.method is not None:
         parts.append(req.method.upper())
@@ -204,7 +218,7 @@ def request_label(req: RequestMatch) -> str:
         parts.append(f"status={req.status}")
     if req.body_matches is not None:
         parts.append(f"body~{req.body_matches}")
-    if req.count is not None:
+    if with_count and req.count is not None:
         parts.append(f"count={req.count}")
     return " ".join(parts)
 
@@ -216,11 +230,188 @@ def _eval_request(exchanges: list[NetworkExchange], req: RequestMatch) -> Assert
     if ok:
         return AssertionResult(True, "request", detail)
     reason = (
-        f"count={req.count} を期待したが {n} 件"
+        f"expected count={req.count} but matched {n}"
         if req.count is not None
-        else f"一致する通信なし（観測 {len(exchanges)} 件）"
+        else f"no matching exchange (observed {len(exchanges)})"
     )
     return AssertionResult(False, "request", detail, reason)
+
+
+def _count_op_label(c: CountOp) -> str:
+    if c.equals is not None:
+        return f"=={c.equals}"
+    if c.at_least is not None:
+        return f">={c.at_least}"
+    return f"<={c.at_most}"
+
+
+def _count_satisfied(n: int, c: CountOp | None) -> bool:
+    """Whether `n` matches satisfy the count operator (default: at least one)."""
+    if c is None:
+        return n >= 1
+    if c.equals is not None:
+        return n == c.equals
+    if c.at_least is not None:
+        return n >= c.at_least
+    return c.at_most is not None and n <= c.at_most
+
+
+def _json_text(value: object) -> str:
+    """Canonical text form of a JSON value for comparing an event body field — booleans and null
+    render JSON-style (`true` / `false` / `null`), and a nested array / object renders as compact
+    JSON, so a YAML matcher reads the way the captured body does, not as a Python `repr` (`True` /
+    `None` / single-quoted dicts). Numbers / strings keep their plain form."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+    return str(value)
+
+
+def _event_body_matches(ex: NetworkExchange, body: dict[str, str]) -> bool:
+    """Whether the exchange's JSON request body carries every given field, each equal (as text)
+    to the expected value. A non-JSON / non-object / absent body matches no body criterion."""
+    if not body:
+        return True
+    if ex.request_body is None:
+        return False
+    try:
+        parsed = json.loads(ex.request_body)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    return all(key in parsed and _json_text(parsed[key]) == want for key, want in body.items())
+
+
+def _event_label(m: EventMatch) -> str:
+    """Compact human description of an event matcher (endpoint + body + count)."""
+    parts: list[str] = []
+    if m.method is not None:
+        parts.append(m.method.upper())
+    if m.url is not None:
+        parts.append(m.url)
+    if m.url_matches is not None:
+        parts.append(f"url~{m.url_matches}")
+    if m.path is not None:
+        parts.append(m.path)
+    if m.path_matches is not None:
+        parts.append(f"~{m.path_matches}")
+    if m.body:
+        parts.append(f"body={m.body}")
+    if m.count is not None:
+        parts.append(f"count{_count_op_label(m.count)}")
+    return " ".join(parts)
+
+
+def _eval_event(exchanges: list[NetworkExchange], m: EventMatch) -> AssertionResult:
+    """Assert an analytics/telemetry event the app sent (BE-0048): filter the timeline by the
+    event's endpoint (reusing the request matcher), then by its structured request-body fields,
+    and check the surviving count against the operator. Pure over the captured exchanges."""
+    endpoint = (m.method, m.url, m.url_matches, m.path, m.path_matches)
+    if any(v is not None for v in endpoint):
+        req = RequestMatch(
+            method=m.method,
+            url=m.url,
+            urlMatches=m.url_matches,
+            path=m.path,
+            pathMatches=m.path_matches,
+        )
+        candidates = [ex for ex in exchanges if match_request(ex, req)]
+    else:
+        candidates = exchanges
+    n = sum(1 for ex in candidates if _event_body_matches(ex, m.body))
+    detail = f"event {_event_label(m)}"
+    if _count_satisfied(n, m.count):
+        return AssertionResult(True, "event", detail)
+    want = f"count{_count_op_label(m.count)}" if m.count is not None else "at least one"
+    return AssertionResult(
+        False,
+        "event",
+        detail,
+        f"expected {want}, matched {n} (observed {len(exchanges)} exchanges)",
+    )
+
+
+def _eval_request_sequence(
+    exchanges: list[NetworkExchange], seq: list[RequestMatch]
+) -> AssertionResult:
+    """Assert a set of request matchers were observed in order (BE-0048): each matches a distinct
+    exchange at a strictly later position than the previous, so unrelated traffic may interleave.
+    A greedy forward scan is optimal for this order-preserving subsequence. Pure over the timeline."""
+    detail = "requestSequence " + " → ".join(request_label(r, with_count=False) for r in seq)
+    i = 0
+    for pos, req in enumerate(seq):
+        while i < len(exchanges) and not match_request(exchanges[i], req):
+            i += 1
+        if i >= len(exchanges):
+            reason = (
+                f"step {pos} ({request_label(req, with_count=False)}) not observed in order "
+                f"(matched {pos} of {len(seq)} so far; observed {len(exchanges)} exchanges)"
+            )
+            return AssertionResult(False, "requestSequence", detail, reason)
+        i += 1
+    return AssertionResult(True, "requestSequence", detail)
+
+
+def _eval_response_schema(
+    exchanges: list[NetworkExchange], m: ResponseSchemaMatch, ctx: SchemaContext | None
+) -> AssertionResult:
+    """Validate the first matching exchange's response body against a stored JSON Schema (BE-0048).
+    Pure over the captured exchanges + the schema file; `jsonschema` is imported lazily (the `schema`
+    extra), so the dependency only loads when a responseSchema assertion is actually evaluated."""
+    detail = f"responseSchema {request_label(m.request)} ~ {m.schema_path}"
+    if ctx is None:
+        return AssertionResult(False, "responseSchema", detail, "no schema context provided")
+    ex = next((e for e in exchanges if match_request(e, m.request)), None)
+    if ex is None:
+        return AssertionResult(
+            False, "responseSchema", detail, f"no matching exchange (observed {len(exchanges)})"
+        )
+    # Confine the schema path to the schemas dir: an absolute path or `..` traversal would read
+    # files outside it and make the result depend on the runner's filesystem — reject it.
+    schemas_dir = ctx.schemas_dir.resolve()
+    schema_file = (schemas_dir / m.schema_path).resolve()
+    if not schema_file.is_relative_to(schemas_dir):
+        return AssertionResult(
+            False, "responseSchema", detail, f"schema path escapes the schemas dir: {m.schema_path}"
+        )
+    if not schema_file.is_file():
+        return AssertionResult(
+            False, "responseSchema", detail, f"schema not found: {m.schema_path}"
+        )
+    try:
+        schema = json.loads(schema_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return AssertionResult(False, "responseSchema", detail, f"could not read schema: {e}")
+    if ex.response_body is None:
+        return AssertionResult(False, "responseSchema", detail, "response has no body")
+    try:
+        instance = json.loads(ex.response_body)
+    except ValueError:
+        return AssertionResult(False, "responseSchema", detail, "response body is not JSON")
+
+    try:
+        import jsonschema
+    except ImportError:
+        return AssertionResult(
+            False, "responseSchema", detail, "responseSchema needs the 'schema' extra (jsonschema)"
+        )
+    try:
+        jsonschema.validate(instance, schema)
+    except jsonschema.ValidationError as e:
+        return AssertionResult(
+            False, "responseSchema", detail, f"schema validation failed: {e.message}"
+        )
+    except jsonschema.SchemaError as e:
+        return AssertionResult(False, "responseSchema", detail, f"invalid schema: {e.message}")
+    except Exception as e:
+        # A bad schema (e.g. an unresolvable $ref) must fail the assertion loudly with the reason,
+        # never crash the deterministic run — so any other validator error is caught here too.
+        return AssertionResult(False, "responseSchema", detail, f"schema error: {e}")
+    return AssertionResult(True, "responseSchema", detail)
 
 
 def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch]) -> list[int]:
@@ -255,9 +446,9 @@ def _request_assignment_result(
         return AssertionResult(True, "request", detail)
     matched_any = any(match_request(ex, req) for ex in exchanges)
     reason = (
-        "一致する通信は他の request と対応済み（request と通信は 1 対 1）"
+        "matching exchange already taken by another request (request ↔ exchange is one-to-one)"
         if matched_any
-        else f"一致する通信なし（観測 {len(exchanges)} 件）"
+        else f"no matching exchange (observed {len(exchanges)})"
     )
     return AssertionResult(False, "request", detail, reason)
 
@@ -316,11 +507,13 @@ def evaluate_one(
     exchanges: list[NetworkExchange] | None = None,
     *,
     visual_context: VisualContext | None = None,
+    schema_context: SchemaContext | None = None,
 ) -> AssertionResult:
     """Evaluate one assertion (the kind is guaranteed unique by scenario validation).
 
-    UI kinds check ``elements``; ``request`` checks the observed network ``exchanges``;
-    ``visual`` compares a screenshot to a baseline via *visual_context*."""
+    UI kinds check ``elements``; ``request`` / ``event`` / ``requestSequence`` check the observed
+    network ``exchanges``; ``responseSchema`` validates a response body against a stored schema via
+    *schema_context*; ``visual`` compares a screenshot to a baseline via *visual_context*."""
     if a.exists is not None:
         return _eval_exists(elements, a.exists)
     if a.value is not None:
@@ -337,6 +530,12 @@ def evaluate_one(
         return _eval_state(elements, "selected", a.selected)
     if a.request is not None:
         return _eval_request(exchanges or [], a.request)
+    if a.event is not None:
+        return _eval_event(exchanges or [], a.event)
+    if a.request_sequence is not None:
+        return _eval_request_sequence(exchanges or [], a.request_sequence)
+    if a.response_schema is not None:
+        return _eval_response_schema(exchanges or [], a.response_schema, schema_context)
     if a.visual is not None:
         return _eval_visual(visual_context, a.visual)
     raise AssertionError("empty assertion (should be caught by scenario validation)")
@@ -348,6 +547,7 @@ def evaluate(
     exchanges: list[NetworkExchange] | None = None,
     *,
     visual_context: VisualContext | None = None,
+    schema_context: SchemaContext | None = None,
 ) -> list[AssertionResult]:
     """Evaluate all of expect/assert (the caller decides AND via passed()).
 
@@ -367,7 +567,9 @@ def evaluate(
     return [
         assigned[i]
         if i in assigned
-        else evaluate_one(elements, a, exs, visual_context=visual_context)
+        else evaluate_one(
+            elements, a, exs, visual_context=visual_context, schema_context=schema_context
+        )
         for i, a in enumerate(assertions)
     ]
 

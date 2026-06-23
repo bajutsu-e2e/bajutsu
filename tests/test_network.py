@@ -10,7 +10,15 @@ from bajutsu.assertions import evaluate, evaluate_one
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.network import NetworkCollector, NetworkExchange
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import Assertion, RequestMatch, dump_mocks, load_scenarios
+from bajutsu.scenario import (
+    Assertion,
+    CountOp,
+    EventMatch,
+    RequestMatch,
+    ResponseSchemaMatch,
+    dump_mocks,
+    load_scenarios,
+)
 
 
 def _ex(
@@ -73,7 +81,7 @@ def test_request_assertions_map_one_to_one() -> None:
     get = Assertion(request=RequestMatch(method="GET"))
     one = evaluate([], [get, get], [_ex("GET", "/a", 200)])
     assert sum(r.ok for r in one) == 1  # only one can be satisfied
-    assert "1 対 1" in next(r.reason for r in one if not r.ok)
+    assert "one-to-one" in next(r.reason for r in one if not r.ok)
     two = evaluate([], [get, get], [_ex("GET", "/a", 200), _ex("GET", "/b", 200)])
     assert all(r.ok for r in two)  # both satisfied by distinct exchanges
 
@@ -108,7 +116,250 @@ def test_request_count_assertion_stays_independent() -> None:
 
 def test_request_no_match_fails_with_reason() -> None:
     r = evaluate_one([], _req(method="DELETE"), [_ex("GET", "/x")])
-    assert not r.ok and "通信" in r.reason
+    assert not r.ok and "exchange" in r.reason
+
+
+def _event(**kw: object) -> Assertion:
+    return Assertion(event=EventMatch(**kw))
+
+
+def test_event_matches_endpoint_and_body_field() -> None:
+    exs = [
+        _ex(
+            "POST",
+            "/track",
+            200,
+            url="https://t.example.com/track",
+            request_body='{"name":"purchase_completed","amount":300}',
+        ),
+        _ex("GET", "/items", 200),
+    ]
+    # endpoint + structured body field; numeric JSON value matches its string form
+    assert evaluate_one(
+        [],
+        _event(
+            url="https://t.example.com/track", body={"name": "purchase_completed", "amount": "300"}
+        ),
+        exs,
+    ).ok
+    # a body field that doesn't match → fail
+    assert not evaluate_one(
+        [], _event(url="https://t.example.com/track", body={"name": "checkout_started"}), exs
+    ).ok
+
+
+def test_event_count_operator() -> None:
+    exs = [
+        _ex("POST", "/track", request_body='{"name":"tap"}'),
+        _ex("POST", "/track", request_body='{"name":"tap"}'),
+    ]
+    assert evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(equals=2)), exs
+    ).ok
+    assert not evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(equals=1)), exs
+    ).ok
+    assert evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_least=2)), exs
+    ).ok
+    assert evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_most=2)), exs
+    ).ok
+    assert not evaluate_one(
+        [], _event(path="/track", body={"name": "tap"}, count=CountOp(at_most=1)), exs
+    ).ok
+
+
+def test_event_default_count_is_at_least_one() -> None:
+    exs = [_ex("POST", "/track", request_body='{"name":"tap"}')]
+    assert evaluate_one([], _event(path="/track", body={"name": "tap"}), exs).ok
+    assert not evaluate_one([], _event(path="/track", body={"name": "other"}), exs).ok
+
+
+def test_event_body_only_matches_across_exchanges() -> None:
+    # No endpoint criterion: every exchange whose JSON body carries the field counts. JSON
+    # booleans / null match their JSON-canonical text (`true` / `false` / `null`), not Python repr.
+    exs = [
+        _ex("POST", "/a", request_body='{"flag":true,"note":null}'),
+        _ex("POST", "/b", request_body='{"flag":false}'),
+    ]
+    assert evaluate_one([], _event(body={"flag": "true", "note": "null"}), exs).ok
+    assert not evaluate_one([], _event(body={"flag": "True"}), exs).ok  # not Python repr
+
+
+def test_event_body_nested_value_matches_compact_json() -> None:
+    # A nested array / object field matches its compact JSON form, not a Python repr.
+    exs = [_ex("POST", "/track", request_body='{"items":[1,2],"meta":{"k":"v"}}')]
+    assert evaluate_one([], _event(path="/track", body={"items": "[1,2]"}), exs).ok
+    assert evaluate_one([], _event(path="/track", body={"meta": '{"k":"v"}'}), exs).ok
+    assert not evaluate_one([], _event(path="/track", body={"items": "[1, 2]"}), exs).ok  # not repr
+
+
+def test_event_non_json_body_does_not_crash() -> None:
+    exs = [_ex("POST", "/track", request_body="not json"), _ex("POST", "/track", request_body=None)]
+    r = evaluate_one([], _event(path="/track", body={"name": "tap"}), exs)
+    assert not r.ok and r.reason
+
+
+def test_event_interpolates_vars_in_body() -> None:
+    from bajutsu.orchestrator import _interp_asserts
+
+    a = _event(url="https://t.example.com/track", body={"amount": "${vars.amount}"})
+    [interp] = _interp_asserts([a], {"vars.amount": "300"})
+    assert interp.event is not None and interp.event.body["amount"] == "300"
+
+
+def _seq(*reqs: RequestMatch) -> Assertion:
+    return Assertion(request_sequence=list(reqs))
+
+
+def test_request_sequence_matches_in_order() -> None:
+    exs = [_ex("POST", "/auth/refresh"), _ex("GET", "/account")]
+    assert evaluate_one(
+        [], _seq(RequestMatch(path="/auth/refresh"), RequestMatch(path="/account")), exs
+    ).ok
+
+
+def test_request_sequence_allows_interleaving() -> None:
+    # Unrelated exchanges between the matched ones don't break the order (subsequence).
+    exs = [_ex("POST", "/auth/refresh"), _ex("GET", "/noise"), _ex("GET", "/account")]
+    assert evaluate_one(
+        [], _seq(RequestMatch(path="/auth/refresh"), RequestMatch(path="/account")), exs
+    ).ok
+
+
+def test_request_sequence_out_of_order_fails() -> None:
+    exs = [_ex("GET", "/account"), _ex("POST", "/auth/refresh")]
+    r = evaluate_one(
+        [], _seq(RequestMatch(path="/auth/refresh"), RequestMatch(path="/account")), exs
+    )
+    assert not r.ok and "/account" in r.reason  # the second matcher had no later exchange
+
+
+def test_request_sequence_multiplicity_needs_distinct_exchanges() -> None:
+    twice = _seq(RequestMatch(path="/ping"), RequestMatch(path="/ping"))
+    assert evaluate_one([], twice, [_ex("GET", "/ping"), _ex("GET", "/ping")]).ok
+    assert not evaluate_one([], twice, [_ex("GET", "/ping")]).ok  # only one occurrence
+
+
+def test_request_sequence_empty_timeline_fails() -> None:
+    r = evaluate_one([], _seq(RequestMatch(path="/x")), [])
+    assert not r.ok and r.reason
+
+
+def _schemas_dir(tmp_path: object, name: str, schema: dict[str, object]):  # type: ignore[no-untyped-def]
+    d = tmp_path / "schemas"  # type: ignore[operator]
+    d.mkdir(exist_ok=True)
+    (d / name).write_text(json.dumps(schema), encoding="utf-8")
+    return d
+
+
+def _rs(schema_path: str, **req: object) -> Assertion:
+    return Assertion(
+        response_schema=ResponseSchemaMatch(request=RequestMatch(**req), schema_path=schema_path)
+    )
+
+
+def test_response_schema_passes_for_conforming_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    d = _schemas_dir(
+        tmp_path,
+        "items.json",
+        {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}},
+    )
+    exs = [_ex("GET", "/api/items", response_body='{"id":1}')]
+    r = evaluate_one(
+        [], _rs("items.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+    )
+    assert r.ok, r.reason
+
+
+def test_response_schema_fails_for_nonconforming_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    d = _schemas_dir(
+        tmp_path,
+        "items.json",
+        {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}},
+    )
+    exs = [_ex("GET", "/api/items", response_body='{"id":"not-an-int"}')]
+    r = evaluate_one(
+        [], _rs("items.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+    )
+    assert not r.ok and r.reason
+
+
+def test_response_schema_no_matching_exchange(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
+    r = evaluate_one(
+        [],
+        _rs("x.json", path="/api/items"),
+        [_ex("GET", "/other")],
+        schema_context=SchemaContext(schemas_dir=d),
+    )
+    assert not r.ok and "exchange" in r.reason
+
+
+def test_response_schema_missing_schema_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    (tmp_path / "schemas").mkdir()
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one(
+        [],
+        _rs("missing.json", path="/api/items"),
+        exs,
+        schema_context=SchemaContext(schemas_dir=tmp_path / "schemas"),
+    )
+    assert not r.ok and "schema" in r.reason.lower()
+
+
+def test_response_schema_non_json_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
+    exs = [_ex("GET", "/api/items", response_body="not json")]
+    r = evaluate_one(
+        [], _rs("x.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+    )
+    assert not r.ok and r.reason
+
+
+def test_response_schema_malformed_schema_fails_cleanly(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    # An unresolvable $ref must fail the assertion loudly, not crash the run.
+    d = _schemas_dir(tmp_path, "bad.json", {"$ref": "#/definitions/missing"})
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one(
+        [], _rs("bad.json", path="/api/items"), exs, schema_context=SchemaContext(schemas_dir=d)
+    )
+    assert not r.ok and r.reason
+
+
+def test_response_schema_without_context_fails() -> None:
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one([], _rs("x.json", path="/api/items"), exs)  # no schema_context
+    assert not r.ok and r.reason
+
+
+def test_response_schema_rejects_path_traversal(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    # a `..` escape (or an absolute path) must be rejected, not read outside the schemas dir
+    d = _schemas_dir(tmp_path, "ok.json", {"type": "object"})
+    (tmp_path / "secret.json").write_text('{"type": "string"}', encoding="utf-8")
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one(
+        [],
+        _rs("../secret.json", path="/api/items"),
+        exs,
+        schema_context=SchemaContext(schemas_dir=d),
+    )
+    assert not r.ok and "escapes" in r.reason
 
 
 def test_mocks_parse_and_serialize() -> None:
@@ -184,7 +435,7 @@ def test_orchestrator_request_assertion_step() -> None:
     ok = run_scenario(FakeDriver(), scn, network=lambda: [_ex("POST", "/login", 200)])
     assert ok.ok, ok.failure
     miss = run_scenario(FakeDriver(), scn, network=list)  # no exchanges
-    assert not miss.ok and "通信" in (miss.failure or "")
+    assert not miss.ok and "exchange" in (miss.failure or "")
 
 
 def test_wait_for_request_satisfied() -> None:

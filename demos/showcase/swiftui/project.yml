@@ -17,7 +17,7 @@ packages:
     path: ../../../BajutsuKit
 targets:
   # The a11y build: ACCESSIBLE is defined, so every aid(...) attaches an identifier
-  # and state mirrors to accessibilityValue. doctor --app grades this Ready.
+  # and state mirrors to accessibilityValue. doctor --target grades this Ready.
   BajutsuShowcaseSwiftUI:
     type: application
     platform: iOS
@@ -42,7 +42,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.swiftui
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCESSIBLE
   # The no-a11y twin: same Sources/, but ACCESSIBLE is absent, so aid(...) is a no-op
-  # and no identifiers or mirrored values reach the tree. doctor --app grades it Blocked.
+  # and no identifiers or mirrored values reach the tree. doctor --target grades it Blocked.
   BajutsuShowcaseSwiftUINoAx:
     type: application
     platform: iOS

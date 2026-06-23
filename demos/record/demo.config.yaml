@@ -6,7 +6,7 @@ defaults:
   backend: [idb]
   device: "iPhone 15"
   capture: [screenshot.after, elements, actionLog]
-apps:
+targets:
   sample2:
     bundleId: com.bajutsu.sample2
     deeplinkScheme: bajutsusample2

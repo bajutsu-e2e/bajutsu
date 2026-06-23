@@ -159,6 +159,29 @@ def test_run_and_report_forwards_baselines_dir(tmp_path: Path) -> None:
     assert ev.visual is not None and ev.visual.missing
 
 
+def test_run_and_report_forwards_schemas_dir(tmp_path: Path) -> None:
+    # A responseSchema expect with schemas_dir forwarded builds a SchemaContext, so the failure
+    # gets past the "no schema context" guard (here it fails later, on no matching exchange) —
+    # proving the dir was threaded, not dropped.
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "rs",
+                "steps": [{"tap": {"id": "ok"}}],
+                "expect": [
+                    {"responseSchema": {"request": {"path": "/api/items"}, "schema": "items.json"}}
+                ],
+            }
+        )
+    ]
+    results, _ = run_and_report(
+        _eff(), scenarios, _lease, tmp_path / "runs", "run1", schemas_dir=tmp_path / "schemas"
+    )
+    ev = results[0].expect_results[0]
+    assert ev.kind == "responseSchema"
+    assert "no schema context" not in ev.reason  # context was forwarded
+
+
 def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> None:
     """The run-level scrub is the final safety net: a secret that reaches result text (here a
     failing assertion's expected value, interpolated from a binding) must not survive into any

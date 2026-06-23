@@ -163,8 +163,10 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
 | `background` | `background: {}` | send the app to the background (Home button) |
+| `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
 | `clearClipboard` | `clearClipboard: {}` | clear the Simulator pasteboard |
+| `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)) |
@@ -271,8 +273,10 @@ later steps. Touching no device, it is the one device-independent action here.
 
 ```yaml
 - background: {}                                                        # Home button (simctl ui home)
+- foreground: {}                                                        # resume the backgrounded app (simctl launch)
 - clearKeychain: {}                                                     # reset saved passwords / certificates
 - clearClipboard: {}                                                    # clear the pasteboard
+- setClipboard: { text: "COUPON123" }                                   # seed the pasteboard (paste flows)
 - overrideStatusBar: { time: "9:41", batteryLevel: 100, wifiBars: 3 }   # freeze the status bar
 - clearStatusBar: {}                                                    # restore the live status bar
 ```
@@ -280,6 +284,9 @@ later steps. Touching no device, it is the one device-independent action here.
 Like `setLocation` / `push`, these drive the Simulator via `simctl`, so they need a per-device control
 channel and fail cleanly on the fake driver / in parallel runs. `overrideStatusBar` is most useful right
 before a screenshot or a `visual` assertion, to freeze the clock and signal bars for a stable image.
+`background` / `foreground` are the two halves of a background/foreground transition; `foreground`
+resumes the app without any settle sleep, so wait for a concrete element afterward if you need one.
+`setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 ## Assertion DSL
 
@@ -296,6 +303,9 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `enabled` / `disabled` | actionable or not (the `notEnabled` trait) | `disabled: { id: auth.submit }` |
 | `selected` | selected / toggled state (the `selected` trait) | `selected: { id: tab.home }` |
 | `request` | a matching network exchange was observed (needs `--network`) | `request: { method: POST, path: /login, status: 200, count: 1 }` |
+| `event` | an analytics / telemetry event was sent — endpoint + JSON body fields, with a count (needs `--network`) | `event: { url: "https://t.example.com/track", body: { name: purchase_completed }, count: { equals: 1 } }` |
+| `requestSequence` | matchers were observed in this order (needs `--network`) | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
+| `responseSchema` | a captured response body conforms to a JSON Schema (needs `--network`) | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
@@ -303,6 +313,9 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `count` takes `sel:` + **exactly one** of `equals` / `atLeast` / `atMost`.
 - `enabled` / `disabled` / `selected` take a selector inline.
 - `request` matches an **observed network exchange** ([details below](#request-network-assertion)); needs the `--network` run flag.
+- `event` matches an **analytics / telemetry event the app sent** ([details below](#event-analytics-event-assertion)); needs the `--network` run flag.
+- `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
+- `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
@@ -335,6 +348,77 @@ wait and `mocks` (below). At least one match field is required; the listed field
 > `count` is **not** a match field — at least one of `method` / `url` / `urlMatches` / `path` /
 > `pathMatches` / `status` / `bodyMatches` must be present. (real file:
 > [`demos/features/app/scenarios/network_mock.yaml`](../demos/features/app/scenarios/network_mock.yaml))
+
+### `event` (analytics event assertion)
+
+`event` asserts on a behavior the screen never shows: an analytics / telemetry event the app **sent**
+([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
+so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
+same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by structured
+**request-body fields**, and checks how many exchanges survive against a count operator.
+
+| Field | Type | Description |
+|---|---|---|
+| `method` / `url` / `urlMatches` / `path` / `pathMatches` | str | Endpoint matcher (AND-ed), same meaning as `request` |
+| `body` | map | Each `key: value` must be present in the JSON request body and equal the value, compared as text (so `amount: "300"` matches the JSON number `300`; a JSON boolean / null matches `"true"` / `"false"` / `"null"`) |
+| `count` | object | Expected multiplicity — **exactly one** of `equals` / `atLeast` / `atMost`. Omitted means **at least one** |
+
+```yaml
+expect:
+  # the purchase event fired exactly once with the right amount
+  - event:
+      url: "https://t.example.com/track"
+      body: { name: purchase_completed, amount: "300" }
+      count: { equals: 1 }
+```
+
+> At least one of an endpoint field or `body` must be present, so an event always pins something. A
+> non-JSON, non-object, or absent request body matches no `body` criterion (it fails rather than
+> guessing). Body values support `${vars.*}` / `${secrets.*}` tokens like the rest of the DSL.
+
+### `requestSequence` (ordered requests)
+
+`requestSequence` asserts that several requests happened **in a given order** — e.g. a token refresh
+*before* the protected call ([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+It is a pure check over the observed timeline (needs the `--network` run flag), so the verdict stays
+machine-only. It takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
+fields) and matches them as an **ordered subsequence**: each matcher must match a distinct exchange at
+a strictly later position than the previous one. Unrelated traffic **may interleave** between them, so
+the check is robust to noise; listing the same matcher twice requires two occurrences in order.
+
+```yaml
+expect:
+  - requestSequence:
+      - { method: POST, urlMatches: ".*/auth/refresh" }
+      - { method: GET,  urlMatches: ".*/api/account" }
+```
+
+> Each matcher uses the same fields as `request` (`method` / `url` / `urlMatches` / `path` /
+> `pathMatches` / `status` / `bodyMatches`); a matcher's own `count` is ignored here, since the
+> sequence's job is **order**. For a pure multiplicity check, use `request` with `count`.
+
+### `responseSchema` (JSON Schema of a response)
+
+`responseSchema` asserts that a captured **response body conforms to a JSON Schema** — a contract
+check the screen can't express ([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
+`--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
+matcher fields) whose response is validated; `schema` is a file path resolved within the app's
+**schemas directory** (`--schemas` flag, config `apps.<name>.schemas`, or `schemas/` beside the
+scenario). Validation uses the `jsonschema` library — install the `schema` extra
+(`pip install bajutsu[schema]`).
+
+```yaml
+expect:
+  - responseSchema:
+      request: { method: GET, urlMatches: ".*/api/items" }
+      schema: items.json        # resolved within the schemas dir
+```
+
+> It validates the **first** matching exchange's response. It fails (rather than guessing) when no
+> exchange matches, the schema file is missing, the response has no body or isn't JSON, or the body
+> doesn't conform. The schemas dir resolves like `--baselines` for `visual`.
 
 ### `visual` (visual regression)
 
@@ -437,7 +521,7 @@ when it carries at least one `--tag` (or none was given) **and** none of the `--
 ```
 
 ```bash
-uv run bajutsu run --app sample --tag smoke --exclude wip   # run @smoke, skip anything @wip (across the app's scenarios dir)
+uv run bajutsu run --target sample --tag smoke --exclude wip   # run @smoke, skip anything @wip (across the app's scenarios dir)
 ```
 
 ### Secrets (`${secrets.X}`)

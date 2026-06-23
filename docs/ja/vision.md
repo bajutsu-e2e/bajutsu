@@ -97,7 +97,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 | observe → act → verify オーケストレータ | [run-loop](run-loop.md) |
 | 証跡サブシステム（capturePolicy / manifest） | [evidence](evidence.md) |
 | レポーター（manifest / JUnit / HTML） | [reporting](reporting.md) |
-| 設定の階層（`defaults × apps`） | [configuration](configuration.md) |
+| 設定の階層（`defaults × targets`） | [configuration](configuration.md) |
 
 新しいプラットフォームは `Driver` の継ぎ目の背後にバックエンドを足します。新しいホスティングは `run` を
 どこで起動するかを変えるだけで、何をするかは変えません。新しいオーサリングは同じ YAML を生みます。コアは一定のままです。

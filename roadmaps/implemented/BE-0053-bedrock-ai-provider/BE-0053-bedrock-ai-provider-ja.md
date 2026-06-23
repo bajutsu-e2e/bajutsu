@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#109](https://github.com/bajutsu-e2e/bajutsu/pull/109) |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | AI プロバイダ設定 |
 <!-- /BE-METADATA -->
 

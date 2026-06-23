@@ -17,11 +17,11 @@ Related: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [drivers](drivers
 ## Usage
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>]
+bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright] [-o <out>]
 ```
 
 `--emit` is `xcuitest` (default) or `playwright`. `-o -` (default) writes to stdout; a file path
-writes to the file. `--emit playwright` requires the app to be a web target (`apps.<name>.baseUrl`
+writes to the file. `--emit playwright` requires the app to be a web target (`targets.<name>.baseUrl`
 set); without it the command exits with code 2. Config's `launchEnv` is carried into the generated
 test ([cli](cli.md#codegen)) — `app.launchEnvironment` for XCUITest, seeded `localStorage` for
 Playwright.
@@ -56,10 +56,37 @@ final class ComponentsUITests: XCTestCase {
 }
 ```
 
-- The helpers `el(id)` / `byLabel(label)` / `matchingId(glob)` bridge the three selector forms
-  (id / label / idMatches) to an XCUIElement.
+- The helpers `el(id)` / `byLabel(label)` / `matchingId(glob)` bridge the three single-field
+  selector forms (id / label / idMatches) to an XCUIElement.
 - Each method sets `launchEnvironment` then `app.launch()` at the top. The env is the merge of
   **config's `launchEnv` < the scenario's `preconditions.launchEnv`** (the test side wins).
+
+### Selector mapping (XCUITest)
+
+A single `id` / `label` / `idMatches` keeps its readable helper above. Any **compound** selector —
+`value`, `traits`, `index`, or several fields together — composes one `NSPredicate` query instead
+(BE-0026), so it generates structurally rather than dropping to a `// TODO`:
+
+| `Selector` field | Generated XCUITest |
+|---|---|
+| `id` / `idMatches` | `identifier == %@` / `identifier LIKE %@` |
+| `label` | `label == %@` |
+| `labelMatches` (literal substring) | `label CONTAINS %@` |
+| `value` | `value == %@` |
+| `traits: [button \| link]` | `elementType == XCUIElement.ElementType.<case>.rawValue` |
+| `traits: [notEnabled]` / `[selected]` | `enabled == NO` / `selected == YES` |
+| `index: n` (n ≥ 0) | `.element(boundBy: n)` (else `.firstMatch`) |
+
+All set fields are **AND**-ed into the predicate. A field with no *faithful* structural form keeps
+the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong guess:
+
+- **`labelMatches` with regex metacharacters** — it is a Python `re.search` pattern; only a
+  metacharacter-free one is a plain substring (`CONTAINS`). A real regex (e.g. `^Item `) has no
+  faithful NSPredicate form (ICU `MATCHES` is a full, differently-anchored match).
+- **`within`** — a *geometric* frame-containment constraint (the candidate's frame must sit inside
+  the container's; see [selectors](selectors.md)). XCUITest queries are tree-based, not geometric.
+- **a negative `index`** — `element(boundBy:)` has no negative form.
+- **an unknown trait** — outside the `button` / `link` / `notEnabled` / `selected` vocabulary.
 
 ## Mapping table
 
@@ -90,9 +117,11 @@ final class ComponentsUITests: XCTestCase {
 
 ## Unsupported constructs fall back to TODO comments
 
-Unsupported constructs (coordinate swipes, unknown selectors, etc.) emit a **`// TODO` line rather
-than failing**. The output is always reviewable and never breaks the generated result. The generated
-file header also states "do not edit by hand; re-generate." This holds for both targets.
+Unsupported constructs (coordinate swipes, `simctl`-level device control like `setLocation` /
+`push`, network `request` assertions, a negative `index`, an unknown trait) emit a **`// TODO` line
+rather than failing** — device-control steps name the `simctl` command a reviewer would run. The
+output is always reviewable and never breaks the generated result. The generated file header also
+states "do not edit by hand; re-generate." This holds for both targets.
 
 ## Playwright (web) target
 

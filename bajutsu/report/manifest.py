@@ -15,14 +15,24 @@ def _run_backend(results: list[RunResult]) -> str:
     return ", ".join(names)
 
 
-def manifest_dict(run_id: str, results: list[RunResult]) -> dict[str, object]:
-    """Build the manifest. RunResult and its parts are dataclasses, so asdict()
-    captures step/expect outcomes verbatim. `backend` is the actuator that drove
-    the run (each scenario also carries its own `backend`)."""
+# The render model's version. Bump when a field the report needs is added, so an older run can be
+# detected and its newer-only sections shown as "not captured" rather than failing (BE-0068).
+SCHEMA_VERSION = 1
+
+
+def manifest_dict(
+    run_id: str, results: list[RunResult], *, source_name: str | None = None
+) -> dict[str, object]:
+    """Build the manifest — the run's canonical, versioned render model (BE-0068). RunResult and
+    its parts are dataclasses, so asdict() captures step/expect outcomes verbatim. `backend` is the
+    actuator that drove the run (each scenario also carries its own `backend`); `sourceName` is the
+    label the report's YAML toggle shows, persisted here so a re-render can recover it."""
     return {
+        "schemaVersion": SCHEMA_VERSION,
         "runId": run_id,
         "ok": all(r.ok for r in results),
         "backend": _run_backend(results),
+        "sourceName": source_name,
         "scenarios": [asdict(r) for r in results],
     }
 

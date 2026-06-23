@@ -99,7 +99,7 @@ jobs:
         uses: ./.github/actions/bajutsu-e2e
         with:
           scenarios: demos/features/app/scenarios/smoke.yaml
-          app: sample
+          target: sample
           config: demos/features/demo.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run

@@ -7,7 +7,7 @@ import json
 from bajutsu import env
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import Push, Scenario, SetLocation, Step
+from bajutsu.scenario import Foreground, Push, Scenario, SetClipboard, SetLocation, Step
 
 # --- pure command builders ---
 
@@ -54,6 +54,29 @@ def test_env_set_location_runs_command() -> None:
     assert calls == [["xcrun", "simctl", "location", "U", "set", "1.0,2.0"]]
 
 
+def test_foreground_command_builder() -> None:
+    # resume a backgrounded app: launch WITHOUT --terminate (not a relaunch)
+    assert env.foreground_cmd("U", "com.demo") == ["xcrun", "simctl", "launch", "U", "com.demo"]
+
+
+def test_env_foreground_runs_command() -> None:
+    calls: list[list[str]] = []
+    env.Env("U", run=lambda a, _e=None: calls.append(a) or "").foreground("com.demo")
+    assert calls == [["xcrun", "simctl", "launch", "U", "com.demo"]]
+
+
+def test_env_set_clipboard_seeds_pasteboard_with_text(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    captured: dict[str, object] = {}
+
+    def fake_pbcopy(cmd: list[str], text: str = "") -> None:
+        captured["cmd"], captured["text"] = cmd, text
+
+    monkeypatch.setattr(env.Env, "_run_pbcopy", staticmethod(fake_pbcopy))
+    env.Env("U").set_clipboard("COUPON123")
+    assert captured["cmd"] == ["xcrun", "simctl", "pbcopy", "U"]
+    assert captured["text"] == "COUPON123"
+
+
 # --- step dispatch through an injected DeviceControl ---
 
 
@@ -64,6 +87,8 @@ class _RecordingControl:
         self.home_calls: int = 0
         self.status_bar_overrides: list[dict[str, str | int]] = []
         self.clear_status_bar_calls: int = 0
+        self.clipboards: list[str] = []
+        self.foreground_calls: int = 0
 
     def set_location(self, lat: float, lon: float) -> None:
         self.locations.append((lat, lon))
@@ -85,6 +110,12 @@ class _RecordingControl:
 
     def clear_status_bar(self) -> None:
         self.clear_status_bar_calls += 1
+
+    def set_clipboard(self, text: str) -> None:
+        self.clipboards.append(text)
+
+    def foreground(self) -> None:
+        self.foreground_calls += 1
 
 
 def test_steps_dispatch_to_control() -> None:
@@ -135,8 +166,43 @@ def test_clear_status_bar_dispatches_to_control() -> None:
     assert ctrl.clear_status_bar_calls == 1
 
 
+def test_set_clipboard_dispatches_to_control() -> None:
+    ctrl = _RecordingControl()
+    scn = Scenario(name="s", steps=[Step(set_clipboard=SetClipboard(text="COUPON123"))])
+    result = run_scenario(FakeDriver(), scn, control=ctrl)
+    assert result.ok
+    assert ctrl.clipboards == ["COUPON123"]
+
+
+def test_set_clipboard_parses_camelcase_alias() -> None:
+    step = Step.model_validate({"setClipboard": {"text": "hi"}})
+    assert step.set_clipboard is not None and step.set_clipboard.text == "hi"
+
+
+def test_foreground_dispatches_to_control() -> None:
+    ctrl = _RecordingControl()
+    scn = Scenario(name="s", steps=[Step(foreground=Foreground())])
+    result = run_scenario(FakeDriver(), scn, control=ctrl)
+    assert result.ok
+    assert ctrl.foreground_calls == 1
+
+
 def test_device_step_without_control_fails_cleanly() -> None:
     scn = Scenario(name="s", steps=[Step(set_location=SetLocation(lat=1.0, lon=2.0))])
     result = run_scenario(FakeDriver(), scn)
     assert not result.ok
     assert "setLocation" in (result.failure or "")
+
+
+def test_set_clipboard_without_control_fails_cleanly() -> None:
+    scn = Scenario(name="s", steps=[Step(set_clipboard=SetClipboard(text="x"))])
+    result = run_scenario(FakeDriver(), scn)
+    assert not result.ok
+    assert "setClipboard" in (result.failure or "")
+
+
+def test_foreground_without_control_fails_cleanly() -> None:
+    scn = Scenario(name="s", steps=[Step(foreground=Foreground())])
+    result = run_scenario(FakeDriver(), scn)
+    assert not result.ok
+    assert "foreground" in (result.failure or "")

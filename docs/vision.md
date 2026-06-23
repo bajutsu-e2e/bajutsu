@@ -107,7 +107,7 @@ not the core.
 | observe → act → verify orchestrator | [run-loop](run-loop.md) |
 | Evidence subsystem (capturePolicy / manifest) | [evidence](evidence.md) |
 | Reporter (manifest / JUnit / HTML) | [reporting](reporting.md) |
-| Config layering (`defaults × apps`) | [configuration](configuration.md) |
+| Config layering (`defaults × targets`) | [configuration](configuration.md) |
 
 New platforms add backends behind the `Driver` seam; new hosting changes where `run` is invoked,
 not what it does; new authoring produces the same YAML. The core stays constant.

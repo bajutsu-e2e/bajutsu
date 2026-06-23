@@ -41,10 +41,12 @@ def _write_item(roadmap: Path, category: str, name: str, status: str) -> Path:
 # --- pure detection --------------------------------------------------------------
 
 
-def test_expected_category_only_implemented_ships() -> None:
+def test_expected_category_maps_each_status_to_its_folder() -> None:
+    # Status is the single source of truth, and each value has its own folder (BE-0078).
     assert pri.expected_category("Implemented") == "implemented"
-    for status in ("Proposal", "Proposal (deferred)", "Accepted, in progress"):
-        assert pri.expected_category(status) == "proposals"
+    assert pri.expected_category("In progress") == "in-progress"
+    assert pri.expected_category("Proposal (deferred)") == "deferred"
+    assert pri.expected_category("Proposal") == "proposals"
 
 
 def test_read_status_strips_emphasis(tmp_path: Path) -> None:
@@ -81,7 +83,7 @@ def test_misfiled_flags_shipped_under_proposals(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "proposals", "BE-9001-foo", "Implemented")
     _write_item(roadmap, "implemented", "BE-9002-bar", "Implemented")  # correctly filed
-    _write_item(roadmap, "proposals", "BE-9003-baz", "Accepted, in progress")  # correctly filed
+    _write_item(roadmap, "proposals", "BE-9003-baz", "Proposal")  # correctly filed
     assert pri.misfiled_items(roadmap) == [
         pri.Misfiled(
             name="BE-9001-foo", status="Implemented", current="proposals", expected="implemented"
@@ -96,6 +98,27 @@ def test_misfiled_flags_unshipped_under_implemented(tmp_path: Path) -> None:
         pri.Misfiled(
             name="BE-9004-qux", status="Proposal", current="implemented", expected="proposals"
         )
+    ]
+
+
+def test_misfiled_flags_in_progress_and_deferred_homes(tmp_path: Path) -> None:
+    # The middle and parked states get their own folders (BE-0078): an In progress item under
+    # proposals/ and a Deferred item under proposals/ are both misfiled.
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9005-mid", "In progress")
+    _write_item(roadmap, "proposals", "BE-9006-park", "Proposal (deferred)")
+    _write_item(roadmap, "in-progress", "BE-9007-ok", "In progress")  # correctly filed
+    _write_item(roadmap, "deferred", "BE-9008-ok", "Proposal (deferred)")  # correctly filed
+    assert pri.misfiled_items(roadmap) == [
+        pri.Misfiled(
+            name="BE-9005-mid", status="In progress", current="proposals", expected="in-progress"
+        ),
+        pri.Misfiled(
+            name="BE-9006-park",
+            status="Proposal (deferred)",
+            current="proposals",
+            expected="deferred",
+        ),
     ]
 
 

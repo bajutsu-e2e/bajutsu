@@ -17,7 +17,7 @@ def test_secrets_union_defaults_and_app() -> None:
         """
 defaults:
   secrets: [globalKey]
-apps:
+targets:
   demo:
     bundleId: com.demo
     secrets: [appToken]

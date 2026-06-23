@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#194](https://github.com/bajutsu-e2e/bajutsu/pull/194) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

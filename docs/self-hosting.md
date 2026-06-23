@@ -201,7 +201,7 @@ private tailnet.
 ### Multiple orgs
 
 To host more than one team on one backend, declare orgs in the mounted config — each with its member
-GitHub logins and/or GitHub orgs, plus the apps it owns (see
+GitHub logins and/or GitHub orgs, plus the targets it owns (see
 [configuration](configuration.md#orgs-the-multi-tenant-server-backend)):
 
 ```yaml
@@ -209,13 +209,13 @@ orgs:
   acme:
     members: [alice, bob]
     githubOrgs: [acme-gh]    # everyone in this GitHub org (login requests the read:org scope)
-    apps: [demo, checkout]
+    targets: [demo, checkout]
   globex:
     members: [carol]
-    apps: [other]
+    targets: [other]
 ```
 
-Each user is then scoped to their org: they see only that org's apps, a cross-org run/scenario/
+Each user is then scoped to their org: they see only that org's targets, a cross-org run/scenario/
 artifact reads as not-found or returns 403, and each org's artifacts/scenarios/baselines live under
 its own object-store prefix. With no `orgs:` block the backend stays single-tenant (one default org),
 and the shared token plus the GitHub allowlist are the access boundary. The fully managed public

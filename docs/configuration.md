@@ -1,8 +1,8 @@
 **English** · [日本語](ja/configuration.md)
 
-# Configuration, onboarding an app, and doctor
+# Configuration, onboarding a target, and doctor
 
-The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding an app means adding one `apps.<name>` entry.
+The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding a target means adding one `targets.<name>` entry.
 
 Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/features/demo.config.yaml`](../demos/features/demo.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
 
@@ -10,13 +10,13 @@ Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-
 
 ---
 
-## Config layering (defaults × apps)
+## Config layering (defaults × targets)
 
-`bajutsu.config.yaml` has two layers. The resolution order is **defaults < app < scenario** (the
+`bajutsu.config.yaml` has two layers. The resolution order is **defaults < target < scenario** (the
 one closer to the test wins).
 
 ```yaml
-defaults:                       # shared across all apps
+defaults:                       # shared across all targets
   backend: [ios]                # ordered list of platforms (ios/android/web/fake) or actuators (idb); a single string is also OK
   device:  "iPhone 15"
   locale:  en_US
@@ -25,29 +25,29 @@ defaults:                       # shared across all apps
   secrets: [LOGIN_PASSWORD]         # env var names usable as ${secrets.X} (values masked in evidence)
   reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
 
-apps:
-  sample:                       # ← selected by --app sample
+targets:
+  sample:                       # ← selected by --target sample
     bundleId:       com.bajutsu.sample     # iOS target (required unless baseUrl is set for web)
     deeplinkScheme: bajutsusample
     idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
     launchEnv:      { SAMPLE_UITEST: "1" }
-    scenarios:      demos/features/app/scenarios   # this app's scenarios dir (run reads it; record writes here)
+    scenarios:      demos/features/app/scenarios   # this target's scenarios dir (run reads it; record writes here)
     # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 
-  web:                          # a web app (Playwright backend) identifies its target by URL
+  web:                          # a web target (Playwright backend) is identified by URL
     baseUrl:   "http://127.0.0.1:8787/index.html"   # required for web (instead of bundleId)
     backend:   [web]
     headless:  true                                 # web only: false = a visible (headed) browser; --headed overrides per run
     scenarios: demos/web/scenarios
 ```
 
-An app entry needs **either** `bundleId` (iOS) **or** `baseUrl` (web) — a config with neither is
+A target entry needs **either** `bundleId` (iOS) **or** `baseUrl` (web) — a config with neither is
 rejected at load. See [drivers → Playwright](drivers.md#playwright-web) and `demos/web`.
 
 ### Resolution (`resolve` → `Effective`)
 
-`resolve(config, app)` builds the effective values `Effective` (a frozen dataclass) for one app.
-An undefined app raises `KeyError` (the CLI exits with code 2).
+`resolve(config, target)` builds the effective values `Effective` (a frozen dataclass) for one target.
+An undefined target raises `KeyError` (the CLI exits with code 2).
 
 | `Effective` field | Source | Notes |
 |---|---|---|
@@ -63,7 +63,7 @@ An undefined app raises `KeyError` (the CLI exits with code 2).
 | `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |
 | `mock_server` | app | ⚠️ schema only · not wired |
 | `setup` | app | default reusable prelude (a scenario whose steps run before each scenario's own) |
-| `scenarios` | app | this app's scenarios dir — `run --app` loads every `*.yaml` here; `record` writes new ones here. Relative to the run's cwd. `run --scenario` / `record --out` override it |
+| `scenarios` | app | this app's scenarios dir — `run --target` loads every `*.yaml` here; `record` writes new ones here. Relative to the run's cwd. `run --scenario` / `record --out` override it |
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
@@ -73,13 +73,13 @@ defaults / app).
 
 ### Merging redact
 
-Config's `defaults.redact` and `apps.<name>.redact` are **union**ed (`_merge_redact`, unioning
+Config's `defaults.redact` and `targets.<name>.redact` are **union**ed (`_merge_redact`, unioning
 `labels`/`headers`/`fields` individually). The scenario's `redact`
 ([evidence](evidence.md#masking-redact)) layers on top.
 
 ### Secrets (`secrets:`)
 
-`secrets:` (a list of **environment-variable names**, declared in `defaults` and/or `apps.<name>`,
+`secrets:` (a list of **environment-variable names**, declared in `defaults` and/or `targets.<name>`,
 unioned by `resolve`) is the declaration site for the `${secrets.X}` variables a scenario can input.
 At run time `bajutsu run` resolves each declared name from the environment, interpolates its value
 into the action (`${secrets.X}`), and **masks the literal value everywhere it would appear in
@@ -90,39 +90,39 @@ token, never the value.
 
 `orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 Each org lists its members — explicit GitHub logins (`members`) and/or whole GitHub orgs
-(`githubOrgs`) — and the apps it owns:
+(`githubOrgs`) — and the targets it owns:
 
 ```yaml
 orgs:
   acme:
     members: [alice, bob]    # explicit GitHub logins
     githubOrgs: [acme-gh]    # everyone in this GitHub org (needs the read:org OAuth scope)
-    apps: [demo, checkout]
+    targets: [demo, checkout]
 ```
 
 At OAuth login a user is assigned their org — an explicit `members` entry first, else a `githubOrgs`
-match from their GitHub org memberships. Afterward they see only that org's apps, and a run's
-artifacts/scenarios/baselines live under the org's own object-store prefix. A login or app named in
+match from their GitHub org memberships. Afterward they see only that org's targets, and a run's
+artifacts/scenarios/baselines live under the org's own object-store prefix. A login or target named in
 no org falls into the single `default` org, so a config **without** an `orgs:` block is
 single-tenant — the CLI and local `serve` ignore `orgs:` entirely.
 
 ## Selecting from the CLI
 
-Every command in the CLI (command-line interface) selects one app with `--app <name>` and points at
+Every command in the CLI (command-line interface) selects one app with `--target <name>` and points at
 config with `--config` (default `bajutsu.config.yaml`). `--backend ios` (or a comma list of
 platforms/actuators) overrides the resolved order ([cli](cli.md)).
 
-## Onboarding a new app
+## Onboarding a new target
 
 To add a new app, add **app-side preparation and one config entry**. No changes to the tool itself are required.
 
 1. **Apply the implementation convention** — `accessibilityIdentifier` on key elements (in the
    app's namespace), expose state in label / traits / value, launch hooks, disable animations.
-2. **Add `apps.<name>`** — `bundleId` (required) / `deeplinkScheme` / default `launchEnv` /
+2. **Add `targets.<name>`** — `bundleId` (required) / `deeplinkScheme` / default `launchEnv` /
    `idNamespaces`, etc.
 3. **(Optional) a reusable prelude** — factor login etc. into a `setup:` scenario whose steps run
    before each scenario's own (set per app or per scenario).
-4. **Verify with `bajutsu doctor --app <name>`** — look at the convention score (below).
+4. **Verify with `bajutsu doctor --target <name>`** — look at the convention score (below).
 5. **Place scenarios** — write identifiers in the app's namespace.
 
 ## Identifier naming convention

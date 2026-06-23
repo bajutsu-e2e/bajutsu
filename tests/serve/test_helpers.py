@@ -21,16 +21,16 @@ def test_list_scenarios_parses_names(tmp_path: Path) -> None:
     assert got[0]["path"].endswith("smoke.yaml")
 
 
-def test_list_apps(tmp_path: Path) -> None:
+def test_list_targets(tmp_path: Path) -> None:
     _, cfg, _ = project(tmp_path)
-    assert srv.list_apps(cfg) == ["demo", "other"]
+    assert srv.list_targets(cfg) == ["demo", "other"]
 
 
 def test_load_config_cached_reuses_an_unchanged_file(tmp_path: Path) -> None:
     from bajutsu.serve import helpers
 
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     first = helpers._load_config_cached(cfg)
     # An unchanged file isn't re-parsed: the same object comes back.
     assert helpers._load_config_cached(cfg) is first
@@ -42,25 +42,25 @@ def test_load_config_cached_reparses_when_the_file_changes(tmp_path: Path) -> No
     from bajutsu.serve import helpers
 
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
-    assert list(helpers._load_config_cached(cfg).apps) == ["demo"]
+    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    assert list(helpers._load_config_cached(cfg).targets) == ["demo"]
     # Rewrite with new content; bump mtime so the freshness key changes deterministically.
     cfg.write_text(
-        "apps:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        "targets:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
         encoding="utf-8",
     )
     future = cfg.stat().st_mtime_ns + 1_000_000_000
     os.utime(cfg, ns=(future, future))
-    assert sorted(helpers._load_config_cached(cfg).apps) == ["demo", "other"]
+    assert sorted(helpers._load_config_cached(cfg).targets) == ["demo", "other"]
 
 
 def test_load_config_file_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
     # A YAML syntax error (yaml.YAMLError, not a ValueError) is normalized so the helpers' broad
     # except still turns it into None rather than escaping and crashing request handling.
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("apps: [unbalanced\n", encoding="utf-8")
+    cfg.write_text("targets: [unbalanced\n", encoding="utf-8")
     assert srv.load_config_file(cfg) is None
-    assert srv.list_apps(cfg) == []
+    assert srv.list_targets(cfg) == []
 
 
 def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
@@ -69,7 +69,7 @@ def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
     from bajutsu.serve import helpers
 
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     # A relative path and the absolute path to the same file share one cache entry (same object).
     cwd = os.getcwd()
     try:
@@ -80,19 +80,19 @@ def test_load_config_cached_keys_on_the_resolved_path(tmp_path: Path) -> None:
         os.chdir(cwd)
 
 
-def test_list_apps_reflects_an_edited_config(tmp_path: Path) -> None:
+def test_list_targets_reflects_an_edited_config(tmp_path: Path) -> None:
     import os
 
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
-    assert srv.list_apps(cfg) == ["demo"]
+    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    assert srv.list_targets(cfg) == ["demo"]
     cfg.write_text(
-        "apps:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        "targets:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
         encoding="utf-8",
     )
     future = cfg.stat().st_mtime_ns + 1_000_000_000
     os.utime(cfg, ns=(future, future))
-    assert srv.list_apps(cfg) == ["demo", "other"]  # cache invalidated by the mtime/size change
+    assert srv.list_targets(cfg) == ["demo", "other"]  # cache invalidated by the mtime/size change
 
 
 @pytest.mark.parametrize(
@@ -154,7 +154,7 @@ def test_run_command_builder() -> None:
     # erase defaults to None: no flag, so each scenario's preconditions.erase decides.
     # --progress is always passed so the run streams scenario/step lines into the run log.
     assert cmd[6:] == [
-        "--app",
+        "--target",
         "demo",
         "--config",
         "c.yaml",
@@ -203,7 +203,7 @@ def test_record_command_builder() -> None:
         config="c.yaml",
     )
     assert cmd[:6] == [sys.executable, "-m", "bajutsu", "record", "--out", "out.yaml"]
-    assert cmd[6:12] == ["--app", "demo", "--goal", "tap Increment", "--config", "c.yaml"]
+    assert cmd[6:12] == ["--target", "demo", "--goal", "tap Increment", "--config", "c.yaml"]
     assert cmd[cmd.index("--agent") + 1] == "claude-code"
     assert cmd[cmd.index("--backend") + 1] == "idb" and cmd[cmd.index("--udid") + 1] == "U"
     # erase / dismiss default to None (the CLI defaults — record erases and dismisses): no flag.
@@ -230,7 +230,7 @@ def test_crawl_command_builder() -> None:
         max_steps=30,
         config="c.yaml",
     )
-    assert cmd[:6] == [sys.executable, "-m", "bajutsu", "crawl", "--app", "demo"]
+    assert cmd[:6] == [sys.executable, "-m", "bajutsu", "crawl", "--target", "demo"]
     assert cmd[cmd.index("--out") + 1] == "runs/20260619-1"
     assert cmd[cmd.index("--config") + 1] == "c.yaml"
     assert cmd[cmd.index("--max-screens") + 1] == "10"
@@ -249,6 +249,11 @@ def test_crawl_command_builder() -> None:
     assert "--agent" not in bare  # no agent → no --agent (CLI default api applies)
     assert "--backend" not in bare and "--udid" not in bare
     assert "--guide" not in bare  # crawl is AI-driven; there is no guide toggle
+    assert "--workers" not in bare  # single-device crawl omits it (CLI default 1)
+    # A parallel pool (BE-0064): the comma udid list + worker count reach the crawl command.
+    pool = srv.crawl_command("demo", out="o", udid="A,B,C", workers=3)
+    assert pool[pool.index("--udid") + 1] == "A,B,C"
+    assert pool[pool.index("--workers") + 1] == "3"
     # Resume passes the pruned branch's coordinates and never erases (it continues the same run).
     res = srv.crawl_command("demo", out="o", resume_src="abc123", resume_key="tab.x")
     assert res[res.index("--resume-src") + 1] == "abc123"

@@ -45,14 +45,23 @@ def test_get_reads_delegate_to_operations(tmp_path: Path) -> None:
     state = _state(tmp_path)
     write_run(tmp_path / "runs", "20260101-000000", ok=True, scenarios=[("alpha", True)])
     client = _client(state)
-    assert [a["name"] for a in client.get("/api/apps").json()] == ["demo", "other"]
-    assert client.get("/api/scenarios?app=demo").json()[0]["names"] == ["alpha", "beta"]
+    assert [a["name"] for a in client.get("/api/targets").json()] == ["demo", "other"]
+    assert client.get("/api/scenarios?target=demo").json()[0]["names"] == ["alpha", "beta"]
     assert client.get("/api/config").json()["hasConfig"] is True
     assert client.get("/api/runs").json()[0]["id"] == "20260101-000000"
-    body = client.get("/api/scenario?app=demo&path=smoke.yaml").json()
+    body = client.get("/api/scenario?target=demo&path=smoke.yaml").json()
     assert body["yaml"] == SCENARIO
-    assert client.get("/api/scenario?app=demo&path=missing.yaml").status_code == 404
+    assert client.get("/api/scenario?target=demo&path=missing.yaml").status_code == 404
     assert client.get("/api/nope").status_code == 404
+
+
+def test_legacy_apps_grammar_is_rejected(tmp_path: Path) -> None:
+    # Hard cutover (BE-0057): the old `/api/apps` route and the `{"app": ...}` wire key are gone, so
+    # a stale client fails loudly (404 / 400) rather than silently hitting a compatibility alias.
+    client = _client(_state(tmp_path))
+    assert client.get("/api/apps").status_code == 404
+    stale = client.post("/api/run", json={"app": "demo", "scenario": "smoke.yaml"})
+    assert stale.status_code == 400
 
 
 class _FakeOAuth:
@@ -150,7 +159,7 @@ def test_run_audits_the_logged_in_user(tmp_path: Path) -> None:
         client.get(f"/api/oauth/callback?code=ok&state={csrf}", follow_redirects=False).status_code
         == 302
     )
-    resp = client.post("/api/run", json={"scenario": "smoke.yaml", "app": "demo"})
+    resp = client.post("/api/run", json={"scenario": "smoke.yaml", "target": "demo"})
     assert resp.status_code == 200
     with Session(engine) as s:
         rows = list(s.scalars(select(AuditLog)))
@@ -201,7 +210,8 @@ def test_rbac_viewer_cannot_run(tmp_path: Path) -> None:
     client = TestClient(make_app(_rbac_state(tmp_path, login="v", viewers=frozenset({"v"}))))
     _oauth_signin(client)
     assert (
-        client.post("/api/run", json={"scenario": "smoke.yaml", "app": "demo"}).status_code == 403
+        client.post("/api/run", json={"scenario": "smoke.yaml", "target": "demo"}).status_code
+        == 403
     )
 
 
@@ -209,7 +219,8 @@ def test_rbac_editor_can_run_but_not_change_settings(tmp_path: Path) -> None:
     client = TestClient(make_app(_rbac_state(tmp_path, login="e")))  # default role = editor
     _oauth_signin(client)
     assert (
-        client.post("/api/run", json={"scenario": "smoke.yaml", "app": "demo"}).status_code == 200
+        client.post("/api/run", json={"scenario": "smoke.yaml", "target": "demo"}).status_code
+        == 200
     )
     assert client.post("/api/apikey", json={"value": "k"}).status_code == 403  # admin-only
 
@@ -235,18 +246,18 @@ def test_post_scenario_save_writes_and_rejects(tmp_path: Path) -> None:
     client = _client(_state(tmp_path))
     target = scn_dir / "smoke.yaml"
     edited = "- name: edited\n  steps:\n    - tap: { id: y }\n"
-    ok = client.post("/api/scenario", json={"app": "demo", "path": str(target), "yaml": edited})
+    ok = client.post("/api/scenario", json={"target": "demo", "path": str(target), "yaml": edited})
     assert ok.status_code == 200 and ok.json()["ok"] is True
     assert target.read_text(encoding="utf-8") == edited
     # A non-saveable path is reported (path error wins over the YAML parse).
-    bad = client.post("/api/scenario", json={"app": "demo", "path": "note.txt", "yaml": "x: ["})
+    bad = client.post("/api/scenario", json={"target": "demo", "path": "note.txt", "yaml": "x: ["})
     assert bad.status_code == 400 and "path must be" in bad.json()["error"]
 
 
 def test_post_validation_errors_delegate(tmp_path: Path) -> None:
     client = _client(_state(tmp_path))
     # start_run: scenario+app required
-    assert client.post("/api/run", json={"app": "demo"}).status_code == 400
+    assert client.post("/api/run", json={"target": "demo"}).status_code == 400
     # approve: runId/sid/baseline required
     assert client.post("/api/approve", json={}).status_code == 400
     # cancel of an unknown job
@@ -267,7 +278,7 @@ def test_more_delegations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     assert isinstance(client.get("/api/simulators").json(), list)
     # POST delegations (validation paths — no device needed)
     assert client.post("/api/config", json={}).status_code == 400  # path required
-    assert client.post("/api/record", json={"app": "demo"}).status_code == 400  # goal required
+    assert client.post("/api/record", json={"target": "demo"}).status_code == 400  # goal required
     assert client.post("/api/crawl", json={}).status_code == 400  # app required
     assert client.post("/api/provider", json={"provider": "anthropic"}).json()["ok"] is True
     set_key = client.post("/api/apikey", json={"value": "k key"})  # whitespace rejected

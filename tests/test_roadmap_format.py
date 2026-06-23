@@ -16,15 +16,16 @@ import re
 from pathlib import Path
 
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
-CATEGORIES = ("implemented", "proposals")
+CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 
 # Canonical metadata field order, per language. Required fields are always present; the optional
-# ones (Implementing PR, Origin) may be absent but, when present, keep their slot.
-ORDER_EN = ["Proposal", "Author", "Status", "Implementing PR", "Track", "Topic", "Origin"]
-ORDER_JA = ["提案", "提案者", "状態", "実装 PR", "トラック", "トピック", "由来"]
-REQUIRED_EN = {"Proposal", "Author", "Status", "Track", "Topic"}
-REQUIRED_JA = {"提案", "提案者", "状態", "トラック", "トピック"}
+# ones (Implementing PR, Origin) may be absent but, when present, keep their slot. Track was retired
+# in BE-0078 — the index bucket is now derived from Status, the lone hand-set lifecycle field.
+ORDER_EN = ["Proposal", "Author", "Status", "Implementing PR", "Topic", "Origin"]
+ORDER_JA = ["提案", "提案者", "状態", "実装 PR", "トピック", "由来"]
+REQUIRED_EN = {"Proposal", "Author", "Status", "Topic"}
+REQUIRED_JA = {"提案", "提案者", "状態", "トピック"}
 
 # The block opens with a ``| Field | Value |`` header (``| 項目 | 値 |`` in Japanese) and its
 # delimiter, so it renders as a real table; both are skipped when reading fields.
@@ -36,7 +37,7 @@ DELIMITER = "|---|---|"
 # Status: a fixed set, paired across languages.
 STATUS_PAIR = {
     "Implemented": "実装済み",
-    "Accepted, in progress": "可決・実装中",
+    "In progress": "実装中",
     "Proposal": "提案",
     "Proposal (deferred)": "提案（保留）",
 }

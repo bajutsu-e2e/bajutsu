@@ -40,7 +40,7 @@ def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Pa
 
     Resolution order (highest to lowest priority):
     1. --baselines flag: explicit path on the command line
-    2. config baselines: apps.<name>.baselines in the config file
+    2. config baselines: targets.<name>.baselines in the config file
     3. scenario-local default: baselines/ beside the scenario file
     """
     # flag > config > scenario-local default
@@ -52,9 +52,22 @@ def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Pa
         return scenario_file.parent / "baselines"
 
 
-def _scenario_files(eff: Effective, scenario: str, app_name: str) -> tuple[list[Path], bool]:
+def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
+    """Resolve the JSON Schema directory for `responseSchema` assertions.
+
+    Resolution order: --schemas flag > config `targets.<name>.schemas` > schemas/ beside the scenario.
+    """
+    if flag:
+        return Path(flag)
+    elif eff.schemas:
+        return Path(eff.schemas)
+    else:
+        return scenario_file.parent / "schemas"
+
+
+def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[list[Path], bool]:
     """The scenario files `run` should load: `[--scenario]` when given (an explicit override),
-    else every `*.yaml` in the app's configured `scenarios` dir. Returns `(files, single)` where
+    else every `*.yaml` in the target's configured `scenarios` dir. Returns `(files, single)` where
     `single` flags the one-file override (so the report can carry that file's name/description)."""
     if scenario:
         path = Path(scenario)
@@ -64,8 +77,8 @@ def _scenario_files(eff: Effective, scenario: str, app_name: str) -> tuple[list[
         return [path], True
     if eff.scenarios is None:
         typer.echo(
-            f"app '{app_name}' has no scenarios dir "
-            f"(set apps.{app_name}.scenarios, or pass --scenario)"
+            f"target '{target_name}' has no scenarios dir "
+            f"(set targets.{target_name}.scenarios, or pass --scenario)"
         )
         raise typer.Exit(2)
     scenarios_dir = Path(eff.scenarios)
@@ -116,11 +129,11 @@ def _expand_file(path: Path, eff: Effective) -> tuple[list[Scenario], str | None
 
 
 def run(
-    app_name: str = typer.Option(..., "--app"),
+    target_name: str = typer.Option(..., "--target"),
     scenario: str = typer.Option(
         "",
         "--scenario",
-        help="run only this one *.yaml (overrides the app's configured scenarios dir)",
+        help="run only this one *.yaml (overrides the target's configured scenarios dir)",
     ),
     backend: str = typer.Option(
         "",
@@ -171,11 +184,17 @@ def run(
         help="directory of baseline images for `visual` assertions "
         "(default: config baselines, then baselines/ beside the scenario)",
     ),
+    schemas: str = typer.Option(
+        "",
+        "--schemas",
+        help="directory of JSON Schema files for `responseSchema` assertions "
+        "(default: config schemas, then schemas/ beside the scenario)",
+    ),
     headed: bool | None = typer.Option(
         None,
         "--headed/--no-headed",
         help="web backend: show the browser (headed, slow-motion) instead of headless; "
-        "default leaves the app's `headless` config (headless)",
+        "default leaves the target's `headless` config (headless)",
     ),
     zip_run: bool = typer.Option(
         False,
@@ -188,8 +207,8 @@ def run(
     """Run a scenario deterministically. Pass/fail is machine-only; the sole AI is the
     alert guard (on by default per scenario), which only fires to clear an OS prompt that
     blocked a step — see each scenario's `dismissAlerts`."""
-    eff = _load_effective(config, app_name)
-    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    eff = _load_effective(config, target_name)
+    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
     before = _usage.snapshot()
@@ -198,10 +217,10 @@ def run(
     # run-level artifacts (the scenario definition keeps the token, never the value).
     secret_bindings = {f"secrets.{n}": os.environ[n] for n in eff.secrets if n in os.environ}
     secret_values = list(secret_bindings.values())
-    # Either the explicit `--scenario` file, or every `*.yaml` in the app's configured dir.
+    # Either the explicit `--scenario` file, or every `*.yaml` in the target's configured dir.
     # Each file's setup/component/data refs resolve relative to its own directory, then the
     # expanded scenarios are concatenated into one run.
-    files, single = _scenario_files(eff, scenario, app_name)
+    files, single = _scenario_files(eff, scenario, target_name)
     scenarios: list[Scenario] = []
     description: str | None = None
     for path in files:
@@ -294,6 +313,8 @@ def run(
     # Visual assertions resolve `baseline: <name>` within this directory.
     # Resolution order: --baselines flag > config baselines > baselines/ beside the scenario.
     baselines_dir = _resolve_baselines_dir(baselines, eff, files[0])
+    # responseSchema assertions resolve `schema: <path>` within this directory (same order).
+    schemas_dir = _resolve_schemas_dir(schemas, eff, files[0])
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # A pool of one-or-more devices. Each device carries its own network collector, evidence
     # sink (interval recordings), and device control — so network collection / video / log /
@@ -336,6 +357,7 @@ def run(
             description=description,
             progress=progress_fn,
             baselines_dir=baselines_dir,
+            schemas_dir=schemas_dir,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

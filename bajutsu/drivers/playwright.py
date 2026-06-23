@@ -16,10 +16,13 @@ this module — or the default CLI path — never pulls in the heavy dependency.
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
+from bajutsu import env
 from bajutsu.drivers import base
 
 if TYPE_CHECKING:
@@ -140,11 +143,23 @@ class _Page(Protocol):
         pass
 
 
-# (playwright, browser, page) — browser/playwright are held only to tear them down in close().
-Starter = Callable[[bool], "tuple[Any, Any, _Page]"]
+class _Started(NamedTuple):
+    """What a `Starter` returns. `browser` / `pw` are held to tear down in close(); `context` is held
+    so a per-visit reset can close it before opening a fresh one (BE-0077), bounding live contexts to
+    one per worker rather than leaking one per frontier visit. The three handles are `Any` because
+    playwright is imported lazily — its types aren't in scope at module load — and naming the slots
+    here (vs. a bare 4-tuple) keeps the adjacent `browser` / `context` handles from being transposed."""
+
+    pw: Any
+    browser: Any
+    context: Any
+    page: _Page
 
 
-def _start_chromium(headless: bool) -> tuple[Any, Any, _Page]:  # pragma: no cover - needs a browser
+Starter = Callable[[bool], _Started]
+
+
+def _start_chromium(headless: bool) -> _Started:  # pragma: no cover - needs a browser
     """Start Playwright + a fresh Chromium context. A fresh context is the `erase` equivalent
     (no cookies / storage carried over). Lazily imports playwright so the default path stays free."""
     from playwright.sync_api import sync_playwright
@@ -153,11 +168,56 @@ def _start_chromium(headless: bool) -> tuple[Any, Any, _Page]:  # pragma: no cov
     # A headed run adds a small slow-motion so a human can actually follow each action; headless
     # (the default / CI) stays at full speed.
     browser = pw.chromium.launch(headless=headless, slow_mo=0 if headless else 250)
-    page = browser.new_context().new_page()
+    context = browser.new_context()
+    page = context.new_page()
     # cast bridges playwright's real Page to our structural _Page: mypy only sees the real type
     # when the web extra is installed, and a bare `# type: ignore` would be flagged unused when
     # it isn't (so it can't satisfy both environments — the cast does).
-    return pw, browser, cast(_Page, page)
+    return _Started(pw, browser, context, cast(_Page, page))
+
+
+# Playwright's error types, imported lazily and cached so the heavy dep stays off the default path
+# (an empty tuple when the web extra isn't installed — there is then no real browser to wedge).
+# `Error` is the base of every Playwright browser-side failure (TimeoutError is one of its
+# subclasses); the crawl deliberately treats the whole family as recoverable lane faults — a Tier-1
+# discovery tool isolates and relaunches a bad lane rather than aborting, and the worker's
+# retire-after-N counter bounds the cost if a lane never heals. Narrowing to specific subclasses
+# would risk an unlisted wedge type aborting the crawl instead.
+_PW_ERRORS: tuple[type[BaseException], ...] | None = None
+
+
+def _playwright_error_types() -> tuple[type[BaseException], ...]:
+    global _PW_ERRORS
+    if _PW_ERRORS is None:
+        try:
+            from playwright.sync_api import Error
+            from playwright.sync_api import TimeoutError as _Timeout
+
+            _PW_ERRORS = (Error, _Timeout)
+        except ImportError:
+            _PW_ERRORS = ()
+    return _PW_ERRORS
+
+
+def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
+    """Turn a browser-side failure into the crawl's recoverable "lane wedged" signal (BE-0077). A
+    renderer crash, a hung page, a navigation timeout — any Playwright error from a page operation —
+    re-raises as `env.DeviceError`, which a pool worker isolates (handing its frontier entry back and
+    relaunching the browser) instead of sinking the crawl. Selection failures (`base.SelectorError`)
+    are not wedges and pass through unchanged, as do real bugs (any non-Playwright exception)."""
+
+    @functools.wraps(method)
+    def wrapper(self: PlaywrightDriver, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return method(self, *args, **kwargs)
+        except base.SelectorError:
+            raise
+        except Exception as exc:
+            if isinstance(exc, _playwright_error_types()):
+                raise env.DeviceError(f"web browser fault (recoverable wedge): {exc}") from exc
+            raise
+
+    return cast(F, wrapper)
 
 
 def web_is_alive(driver: PlaywrightDriver, elements: list[base.Element]) -> bool:
@@ -185,19 +245,34 @@ class PlaywrightDriver:
         starter: Starter = _start_chromium,
     ) -> None:
         self._base_url = base_url
+        # Kept so a wedged browser can be relaunched in place (BE-0077): the same starter + headless
+        # mode build the replacement process.
+        self._headless = headless
+        self._starter = starter
         self._pw: Any = None
         self._browser: Any = None
-        if page is not None:  # test injection: no real browser
-            self._page: _Page = page
-        else:
-            self._pw, self._browser, self._page = starter(headless)
+        self._context: Any = None  # current BrowserContext (web); closed + replaced on each reset
         # Deterministic web health / dialog signals the crawl reads (BE-0066): an uncaught JS
         # exception, a 4xx/5xx main-frame navigation, and a JS dialog are all machine facts — no
-        # model is consulted. A JS dialog blocks the page until handled, so it is auto-dismissed
-        # by a fixed policy here and merely recorded for the screen map.
-        self._page_errors: list[str] = []
-        self._last_nav_status: int | None = None
-        self._dialogs: list[str] = []
+        # model is consulted. A JS dialog blocks the page until handled, so it is auto-dismissed by
+        # a fixed policy and merely recorded. `_bind` clears these buffers and registers the
+        # handlers for the current page (a fresh context or a relaunched browser rebinds the same).
+        self._page_errors: list[str]
+        self._last_nav_status: int | None
+        self._dialogs: list[str]
+        self._page: _Page
+        if page is None:  # not a test injection: start a real browser process
+            self._pw, self._browser, self._context, page = starter(headless)
+        self._bind(page)
+
+    def _bind(self, page: _Page) -> None:
+        """Adopt a freshly created page (a new context, or a relaunched browser) as the live page:
+        clear the consuming health buffers and (re)register the dialog / health handlers on it, so
+        the new page starts with a clean signal slate."""
+        self._page = page
+        self._page_errors = []
+        self._last_nav_status = None
+        self._dialogs = []
         self._register_health_handlers()
 
     def _register_health_handlers(self) -> None:
@@ -243,9 +318,53 @@ class PlaywrightDriver:
 
     # --- lifecycle (web equivalents of env.Env launch/erase/terminate) ---
 
+    @_wedge_guard
     def navigate(self) -> None:
         """Go to the configured base URL — the `launch` equivalent."""
         self._page.goto(self._base_url)
+
+    @_wedge_guard
+    def reset_context(self) -> None:
+        """The crawl's clean start (the `erase` equivalent): open a fresh BrowserContext + page —
+        no cookies / storage / history carried across frontier visits — then navigate to the base
+        URL. Cheap (no browser-process restart), and it lets a `path_to` recorded in one worker's
+        browser replay from the same clean state in another (BE-0077). An injected test page has no
+        contexts, so it just re-navigates."""
+        if self._browser is not None:
+            # Discard the current context (its cookies / storage / history) and open a clean one, so
+            # at most one context is alive per worker — the per-visit `erase`, not a slow leak.
+            if self._context is not None:
+                with contextlib.suppress(*_playwright_error_types()):
+                    self._context.close()
+            self._context = self._browser.new_context()
+            self._bind(self._context.new_page())
+        self.navigate()
+
+    def relaunch(self) -> None:
+        """Tear down a wedged browser process and start a fresh one (BE-0077 fault isolation).
+        Unlike `reset_context` (a cheap fresh context inside the same browser), this discards the
+        whole browser — the unit the crawl hard-kills when a renderer crashes, a page hangs, or a
+        navigation times out; the worker's next reset re-navigates the fresh process. A no-op for
+        an injected test page (no real browser to relaunch)."""
+        if self._browser is None:  # injected test page — nothing to relaunch
+            return
+        # Best-effort teardown of the faulted browser before replacing it, each handle on its own:
+        # the browser may already be dead (target closed) so closing it can raise — but the Playwright
+        # process (`pw`) must still be stopped or it leaks across relaunches, so suppress per handle
+        # rather than around one combined close(). Clear the references, then start fresh. The loud
+        # failure path is the *new* browser failing to start below, which propagates (a real fault).
+        pw_errors = _playwright_error_types()
+        for closer in (
+            getattr(self._context, "close", None),
+            getattr(self._browser, "close", None),
+            getattr(self._pw, "stop", None),
+        ):
+            if closer is not None:
+                with contextlib.suppress(*pw_errors):
+                    closer()
+        self._pw = self._browser = self._context = None
+        self._pw, self._browser, self._context, page = self._starter(self._headless)
+        self._bind(page)
 
     def close(self) -> None:
         if self._browser is not None:
@@ -255,6 +374,7 @@ class PlaywrightDriver:
 
     # --- Driver Protocol ---
 
+    @_wedge_guard
     def query(self) -> list[base.Element]:
         records = self._page.evaluate(QUERY_JS)
         return parse_dom(records if isinstance(records, list) else [])
@@ -263,17 +383,21 @@ class PlaywrightDriver:
         x, y, w, h = base.resolve_unique(self.query(), sel)["frame"]
         return (x + w / 2, y + h / 2)
 
+    @_wedge_guard
     def tap(self, sel: base.Selector) -> None:
         x, y = self._center(sel)
         self._page.mouse.click(x, y)
 
+    @_wedge_guard
     def tap_point(self, p: base.Point) -> None:
         self._page.mouse.click(p[0], p[1])
 
+    @_wedge_guard
     def double_tap(self, sel: base.Selector) -> None:
         x, y = self._center(sel)
         self._page.mouse.dblclick(x, y)
 
+    @_wedge_guard
     def long_press(self, sel: base.Selector, duration: float) -> None:
         x, y = self._center(sel)
         self._page.mouse.move(x, y)
@@ -281,6 +405,7 @@ class PlaywrightDriver:
         time.sleep(duration)
         self._page.mouse.up()
 
+    @_wedge_guard
     def swipe(self, frm: base.Point, to: base.Point) -> None:
         self._page.mouse.move(frm[0], frm[1])
         self._page.mouse.down()
@@ -293,14 +418,17 @@ class PlaywrightDriver:
     def rotate(self, sel: base.Selector, radians: float) -> None:
         raise base.UnsupportedAction("rotate は multiTouch が必要; web backend は v1 では未対応")
 
+    @_wedge_guard
     def type_text(self, text: str) -> None:
         # The orchestrator taps `into` before this (see _do_type), focusing the field — same
         # contract idb relies on, so typing always lands in the just-focused element.
         self._page.keyboard.type(text)
 
+    @_wedge_guard
     def wait_for(self, sel: base.Selector, timeout: float) -> bool:
         return len(base.find_all(self.query(), sel)) >= 1
 
+    @_wedge_guard
     def screenshot(self, path: str) -> None:
         self._page.screenshot(path=path)
 

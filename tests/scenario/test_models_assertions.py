@@ -41,6 +41,94 @@ def test_assertion_one_kind() -> None:
         Assertion.model_validate({"exists": {"id": "a"}, "disabled": {"id": "b"}})
 
 
+def test_event_parses_endpoint_body_and_count() -> None:
+    a = Assertion.model_validate(
+        {
+            "event": {
+                "url": "https://t.example.com/track",
+                "body": {"name": "purchase_completed", "amount": "300"},
+                "count": {"equals": 1},
+            }
+        }
+    )
+    assert a.event is not None
+    assert a.event.url == "https://t.example.com/track"
+    assert a.event.body["name"] == "purchase_completed"
+    assert a.event.count is not None and a.event.count.equals == 1
+
+
+def test_event_requires_a_criterion() -> None:
+    with pytest.raises(ValidationError):  # neither endpoint nor body
+        Assertion.model_validate({"event": {"count": {"equals": 1}}})
+
+
+def test_event_count_requires_exactly_one_operator() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"event": {"path": "/t", "count": {"equals": 1, "atLeast": 2}}})
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"event": {"path": "/t", "count": {}}})
+
+
+def test_event_is_an_exclusive_assertion_kind() -> None:
+    with pytest.raises(ValidationError):  # event + another kind rejected
+        Assertion.model_validate({"event": {"path": "/t"}, "exists": {"id": "a"}})
+
+
+def test_request_sequence_parses_a_list_of_matchers() -> None:
+    a = Assertion.model_validate(
+        {
+            "requestSequence": [
+                {"method": "POST", "urlMatches": ".*/auth/refresh"},
+                {"method": "GET", "urlMatches": ".*/api/account"},
+            ]
+        }
+    )
+    assert a.request_sequence is not None
+    assert len(a.request_sequence) == 2
+    assert a.request_sequence[0].method == "POST"
+
+
+def test_request_sequence_rejects_empty_list() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"requestSequence": []})
+
+
+def test_request_sequence_is_an_exclusive_kind() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"requestSequence": [{"path": "/x"}], "exists": {"id": "a"}})
+
+
+def test_response_schema_parses_request_and_schema() -> None:
+    a = Assertion.model_validate(
+        {
+            "responseSchema": {
+                "request": {"method": "GET", "urlMatches": ".*/api/items"},
+                "schema": "schemas/items.json",
+            }
+        }
+    )
+    assert a.response_schema is not None
+    assert a.response_schema.request.method == "GET"
+    assert a.response_schema.schema_path == "schemas/items.json"
+
+
+def test_response_schema_requires_request_and_schema() -> None:
+    with pytest.raises(ValidationError):  # missing request
+        Assertion.model_validate({"responseSchema": {"schema": "x.json"}})
+    with pytest.raises(ValidationError):  # missing schema
+        Assertion.model_validate({"responseSchema": {"request": {"path": "/x"}}})
+
+
+def test_response_schema_is_an_exclusive_kind() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate(
+            {
+                "responseSchema": {"request": {"path": "/x"}, "schema": "x.json"},
+                "exists": {"id": "a"},
+            }
+        )
+
+
 def test_text_match_one_operator() -> None:
     Assertion.model_validate({"value": {"sel": {"id": "c"}, "equals": "3"}})
     with pytest.raises(ValidationError):

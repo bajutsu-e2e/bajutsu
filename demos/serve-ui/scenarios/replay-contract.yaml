@@ -1,11 +1,11 @@
 # Replay contract — binding a config populates the Replay pickers. This exercises the API
-# contract deterministically: serve was launched with the web demo's config, so /api/apps and
+# contract deterministically: serve was launched with the web demo's config, so /api/targets and
 # /api/scenarios feed the app and scenario <select>s. The page auto-loads the default app's
 # scenarios on bind, so we can assert the selected values without operating a native dropdown
 # (which the coordinate-based web backend cannot drive — see the BE item).
 description: >-
   Replay contract — the bound config's app and its scenarios reach the Replay pickers
-  (config → /api/apps → /api/scenarios → the selects).
+  (config → /api/targets → /api/scenarios → the selects).
 scenarios:
   - name: the bound config populates the app and scenario pickers
     description: Switch to Replay and assert the default app is "web" and its scenario is the web smoke file.
@@ -15,5 +15,5 @@ scenarios:
       # is listed (its option text reaches the select), then assert the bound values.
       - wait: { for: { id: replay.scenario, labelMatches: "smoke" }, timeout: 10 }
     expect:
-      - value: { sel: { id: replay.app }, contains: "web" }
+      - value: { sel: { id: replay.target }, contains: "web" }
       - value: { sel: { id: replay.scenario }, contains: "smoke.yaml" }

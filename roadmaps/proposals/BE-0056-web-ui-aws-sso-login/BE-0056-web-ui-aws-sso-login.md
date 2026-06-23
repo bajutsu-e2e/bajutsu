@@ -8,7 +8,6 @@
 | Proposal | [BE-0056](BE-0056-web-ui-aws-sso-login.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | AI provider configuration |
 <!-- /BE-METADATA -->
 

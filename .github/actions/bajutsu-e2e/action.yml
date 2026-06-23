@@ -9,8 +9,8 @@ inputs:
   scenarios:
     description: A single scenario *.yaml to run (passed as `run --scenario`).
     required: true
-  app:
-    description: App key in bajutsu.config.yaml.
+  target:
+    description: Target key in bajutsu.config.yaml.
     required: true
   udid:
     description: Simulator UDID (or "booted" for the current one).
@@ -43,14 +43,14 @@ runs:
     - name: Preflight (bajutsu doctor — non-blocking)
       shell: bash
       run: >-
-        uv run --no-sync bajutsu doctor --app "${{ inputs.app }}" --udid "${{ inputs.udid }}"
+        uv run --no-sync bajutsu doctor --target "${{ inputs.target }}" --udid "${{ inputs.udid }}"
         --backend "${{ inputs.backend }}" --config "${{ inputs.config }}"
         || echo "doctor: non-blocking (convention score only)"
 
     - name: Run scenarios
       shell: bash
       run: >-
-        uv run --no-sync bajutsu run --scenario "${{ inputs.scenarios }}" --app "${{ inputs.app }}"
+        uv run --no-sync bajutsu run --scenario "${{ inputs.scenarios }}" --target "${{ inputs.target }}"
         --udid "${{ inputs.udid }}" --backend "${{ inputs.backend }}"
         --config "${{ inputs.config }}" --no-erase
 

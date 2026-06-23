@@ -13,15 +13,26 @@ has no untried action left, then — only to reach another unexplored screen —
 state and replays a recorded path to it (the same way `run` reaches any state). Walking forward
 avoids paying a reset/replay for every single action. Every edge is still a replayable step, and
 every node keeps a recorded path to it.
+
+The engine scales out across **N booted simulators** (BE-0064): a *coordinator* owns the shared
+screen map, frontier and budgets under one lock, while *workers* each drive their own simulator,
+taking frontier entries, exploring them, and running the guide on the screen they land on — so the
+guide's AI round-trips overlap across devices, the primary speedup. What parallelism relaxes is
+only the *exploration order* and the recorded canonical `path_to` (which worker reaches a screen
+first is scheduling-dependent); screen identity, transition/crash detection and the map's content
+stay pure deterministic functions of the element tree, so the crawl is never a verdict. A single
+worker (the default) walks exactly as the serial engine always did.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from bajutsu import env
 from bajutsu.drivers import base
 from bajutsu.record import shows_app_ui
 
@@ -40,6 +51,10 @@ _MIN_IDS_FOR_ID_FINGERPRINT = 2
 # doesn't split one screen into many fingerprints.
 _FRAME_BUCKET = 32
 
+# Consecutive device errors after which a parallel worker retires its simulator, so one wedged
+# device can't busy-loop or block the others from finishing (BE-0064 failure isolation).
+_MAX_WORKER_DEVICE_ERRORS = 3
+
 Reset = Callable[[base.Driver], None]
 Settle = Callable[[base.Driver], None]
 # Whether the app is still alive after an action — the crash signal. Default reads the iOS
@@ -47,6 +62,16 @@ Settle = Callable[[base.Driver], None]
 # HTTP status / blank DOM, BE-0066) injects its own. It receives the driver so a backend can read
 # its own health state, plus the landed elements. It only observes; it never decides pass/fail.
 AliveCheck = Callable[[base.Driver, list[base.Element]], bool]
+# Heal a wedged worker lane in place so the crawl keeps going (BE-0077). A backend whose lane
+# can be torn down and relaunched cheaply (web: a fresh browser process) injects this; the worker
+# calls it on a device fault instead of retiring the lane. iOS leaves it unset (a wedged simulator
+# isn't cheaply recoverable mid-crawl), so its workers retire as before. It only heals; it never
+# decides pass/fail.
+Recover = Callable[[base.Driver], None]
+# Builds one extra worker's `(driver, reset)` lane. The engine calls it *inside that worker's own
+# thread*, so a thread-affine driver (Playwright's sync API, BE-0077) is created on the very thread
+# that drives it; idb is thread-agnostic, so this is also where the run pool builds its lanes.
+WorkerFactory = Callable[[], "tuple[base.Driver, Reset]"]
 
 
 @dataclass(frozen=True)
@@ -209,9 +234,11 @@ class ScreenMap:
 # screen is explored next or how a screen is identified, so the crawl stays deterministic.
 OnEvent = Callable[[ScreenMap], None]
 
-# Fires once per newly discovered screen, while the driver is still positioned on it — the moment
-# to capture a per-screen artifact (a screenshot). Pure observation, like `OnEvent`.
-OnNode = Callable[["Node"], None]
+# Fires once per newly discovered screen, while the worker's driver is still positioned on it — the
+# moment to capture a per-screen artifact (a screenshot). It receives that worker's driver, so a
+# parallel crawl screenshots each screen on whichever simulator discovered it. Pure observation,
+# like `OnEvent`.
+OnNode = Callable[[base.Driver, "Node"], None]
 
 
 def _screen_size(driver: base.Driver) -> tuple[float, float]:
@@ -474,6 +501,8 @@ def crawl(
     seed_ops: list[Action] | None = None,
     on_event: OnEvent | None = None,
     on_node: OnNode | None = None,
+    recover: Recover | None = None,
+    extra_workers: Sequence[WorkerFactory] | None = None,
 ) -> ScreenMap:
     """Crawl by a forward walk, resetting + replaying only to backtrack to an unexplored screen.
 
@@ -487,9 +516,19 @@ def crawl(
     the actions to try from a screen (default: the deterministic `candidate_actions`; an AI guide
     proposes richer operations) — it only chooses *what to try*, never what happened. `on_event`,
     if given, fires after each new node, edge, or crash so a caller can stream the growing screen
-    map. `on_node`, if given, fires once per newly discovered
-    screen while the driver is still on it (to capture a screenshot). Stops at `max_screens`
-    distinct screens or `max_steps` actions, whichever first.
+    map. `on_node`, if given, fires once per newly discovered screen while the discovering worker's
+    driver is still on it (to capture a screenshot). `recover`, if given, heals a worker whose
+    device wedged (web: relaunch its browser process) so the lane keeps crawling instead of
+    retiring; only fires in a pool. Stops at `max_screens` distinct screens or `max_steps` actions,
+    whichever first.
+
+    `extra_workers` adds workers beyond the primary `(driver, reset)`: each is a *factory* the engine
+    calls inside that worker's own thread to build one more `(driver, reset)` lane, which explores the
+    *same* shared frontier on its own device/browser so the guide's AI round-trips overlap (BE-0064).
+    Building inside the thread is what lets a thread-affine driver (Playwright's sync API, BE-0077) be
+    created on the very thread that drives it. The default (none) is a single worker that walks exactly
+    as the serial engine always did. A resumed crawl (`seed_path`) is one walk, so `extra_workers` is
+    ignored for it.
     """
     guide = guide or _deterministic_guide
     # Default crash signal = the iOS accessibility-tree check; a backend can inject its own.
@@ -497,140 +536,313 @@ def crawl(
     # Resume continues an existing map (`base_map`): replay `seed_path` back to a pruned branch's
     # screen, then explore from it with `seed_ops` as that screen's frontier, appending findings.
     screen_map = base_map if base_map is not None else ScreenMap()
-    dismissed: list[str] = []  # OS-alert buttons cleared during the most recent observe()
+    # The worker pool: the caller-built primary `(driver, reset)` (used on this thread for bootstrap
+    # and the in-place walk), plus extra-worker factories the engine builds inside each spawned
+    # thread (so a thread-affine driver is created on the thread that drives it). A resume is a
+    # single branch walk, so the extras are dropped regardless of how many were offered.
+    extra_factories = list(extra_workers or []) if seed_path is None else []
+    # One bad device must not be able to sink a multi-device crawl, so a worker isolates device
+    # errors only in a pool; a lone worker lets them propagate (the serial engine's behavior).
+    isolate = (1 + len(extra_factories)) > 1
 
-    def observe() -> list[base.Element]:
+    # --- coordinator: the shared map, frontier and budgets, all under one lock ---
+    cond = threading.Condition()
+    # A known replayable path to each discovered screen (set once at discovery, never mutated), and
+    # the still-untried actions per screen. The strategy is a *forward walk*: a worker keeps acting
+    # on the screen its driver is already on until that screen has no untried action left, and only
+    # resets + replays to reach another screen when the current one is exhausted.
+    path_to: dict[str, list[Action]] = {}
+    pending: dict[str, list[Action]] = {}
+    # When pruning global controls, the first screen to offer an operation (by replay key) claims
+    # and explores it; later screens that offer the same key skip it. A control with a stable id
+    # reused across screens — a tab bar, a nav button — collides and is pruned to one exploration.
+    claimed: dict[str, str] = {}
+    discovering: set[str] = (
+        set()
+    )  # fingerprints a worker is currently discovering (guide in flight)
+    steps = 0  # shared action budget counter
+    active = (
+        0  # workers holding a popped action (mid step) — the crawl is done at 0 with no frontier
+    )
+    stopped = False  # a budget was hit; no worker takes more work
+    failure: list[Exception] = []  # the first unexpected worker error, re-raised after join
+
+    def _observe(d: base.Driver) -> tuple[list[base.Element], list[str]]:
+        # Per-worker so concurrent observations don't clobber each other: settle, dismiss anything
+        # covering the app (so an OS prompt isn't read as a crash), and return the tree + what was
+        # tapped to clear it (recorded against the path and fed to the guide's next strategy).
         if settle is not None:
-            settle(driver)
-        # Dismiss an OS alert (so it isn't read as a crash) and remember what was tapped, so the
-        # caller can record it and feed it to the guide's next strategy.
-        dismissed[:] = clear_blocking(driver) if clear_blocking is not None else []
-        return driver.query()
+            settle(d)
+        dismissed = clear_blocking(d) if clear_blocking is not None else []
+        return d.query(), dismissed
 
-    def emit() -> None:
+    def _emit() -> None:  # call holding the lock (it reads `pending`)
         # Refresh the plan (the live frontier: still-untried operations per screen) before each
         # notification, so a watcher sees what the crawl will try next as it advances.
         screen_map.plan = {fp: [a.describe() for a in acts] for fp, acts in pending.items() if acts}
         if on_event is not None:
             on_event(screen_map)
 
-    # When pruning global controls, the first screen to offer an operation (by replay key) claims
-    # and explores it; later screens that offer the same key skip it. A control with a stable id
-    # reused across screens — a tab bar, a nav button — collides and is pruned to one exploration;
-    # a screen-specific control has a unique key and never collides.
-    claimed: dict[str, str] = {}
-
-    def discover(
-        fp: Fingerprint, elements: list[base.Element], context: GuideContext
-    ) -> list[Action]:
-        # Driver is on this screen; ask the guide for its actions (once, given how we got here),
-        # record the node, and let the on_node hook capture its screenshot — all before reset.
-        actions = guide(driver, elements, context)
-        node = _node_of(fp, elements, actions)
-        screen_map.nodes[fp.value] = node
-        if on_node is not None:
-            on_node(node)
+    def _claim(fp_value: str, actions: list[Action]) -> list[Action]:
+        # Holding the lock. Without pruning, every action is the screen's own to explore. With it,
+        # an op already claimed by another screen is recorded as Pruned (with a replay path) instead.
         if not prune_global:
-            return actions
+            return list(actions)
         kept: list[Action] = []
         for a in actions:
             owner = claimed.get(a.key)
-            if owner is not None and owner != fp.value:
-                path = (*path_to.get(fp.value, []), a)  # replay to src, then the pruned op
-                screen_map.pruned.append(Pruned(fp.value, a.describe(), a.key, owner, path))
+            if owner is not None and owner != fp_value:
+                path = (*path_to.get(fp_value, []), a)  # replay to src, then the pruned op
+                screen_map.pruned.append(Pruned(fp_value, a.describe(), a.key, owner, path))
             else:
-                claimed.setdefault(a.key, fp.value)
+                claimed.setdefault(a.key, fp_value)
                 kept.append(a)
         return kept
 
-    # A known replayable path to each discovered screen (from a clean reset), and the still-untried
-    # actions per screen. The strategy is a *forward walk*: keep acting on the screen the driver is
-    # already on until it has no untried action left, and only reset + replay to reach another
-    # screen when the current one is exhausted — so we don't pay a reset/replay for every action.
-    path_to: dict[str, list[Action]] = {}
-    pending: dict[str, list[Action]] = {}
+    def _finish(reason: str) -> None:  # holding the lock
+        # Signal the stop; the single authoritative final `_emit()` runs after join (so it captures
+        # any late records a worker added between this signal and its own exit, without each finish
+        # re-writing the whole map).
+        nonlocal stopped
+        if not screen_map.stop_reason:
+            screen_map.stop_reason = reason
+        stopped = True
+        cond.notify_all()
 
-    reset(driver)
-    start = observe()
-    if dismissed:
-        screen_map.alerts.append(Alert((), tuple(dismissed)))
-    if seed_path is not None:
-        # Resume: walk back to the pruned branch's screen, then explore onward from it.
-        if not _replay(driver, seed_path, settle, clear_blocking):
-            screen_map.stop_reason = "completed"
-            emit()
-            return screen_map
-        landed = observe()
-        start_fp = fingerprint(landed)
-        path_to[start_fp.value] = list(seed_path)
-        if start_fp.value not in screen_map.nodes:
-            discover(start_fp, landed, GuideContext(tuple(dismissed)))
-        pending[start_fp.value] = list(seed_ops or [])
-    else:
-        start_fp = fingerprint(start)
-        path_to[start_fp.value] = []
-        pending[start_fp.value] = discover(start_fp, start, GuideContext(tuple(dismissed)))
-    emit()
-    current_fp: str | None = start_fp.value  # the screen the driver is on (None ⇒ needs a reset)
-    steps = 0
-
-    while any(pending.values()) and len(screen_map.nodes) < max_screens and steps < max_steps:
-        # Continue from the screen we're already on; else backtrack to the cheapest screen with an
-        # untried action (shortest known path) and replay to it, dismissing any OS prompt en route.
-        if current_fp is not None and pending.get(current_fp):
-            src_fp = current_fp
+    def _bootstrap() -> str | None:
+        # Once, before workers start (so single-threaded — no lock needed): reach the entry screen
+        # on the primary device and seed the frontier. Returns the fingerprint the primary worker is
+        # left on, or None if a resume's replay no longer resolves (nothing to explore).
+        d, rst = driver, reset
+        rst(d)
+        start, dismissed = _observe(d)
+        if dismissed:
+            screen_map.alerts.append(Alert((), tuple(dismissed)))
+        if seed_path is not None:
+            if not _replay(d, seed_path, settle, clear_blocking):
+                screen_map.stop_reason = "completed"
+                _emit()
+                return None
+            landed, dismissed = _observe(d)
+            start_fp = fingerprint(landed)
+            path_to[start_fp.value] = list(seed_path)
+            if start_fp.value not in screen_map.nodes:
+                # Single-threaded here (workers not yet started), so publishing without the lock is
+                # safe; we claim ownership but the resume sets `pending` to its own ops below.
+                node, actions = _discover(d, start_fp, landed, GuideContext(tuple(dismissed)))
+                _publish(start_fp, node, actions)
+            pending[start_fp.value] = list(seed_ops or [])  # explore the resumed branch's op(s)
         else:
-            src_fp = min(
-                (fp for fp, acts in pending.items() if acts),
-                key=lambda fp: (len(path_to[fp]), fp),
-            )
-            reset(driver)
-            observe()
-            if not _replay(driver, path_to[src_fp], settle, clear_blocking):
-                pending[src_fp] = []  # the path no longer resolves — drop this screen
+            start_fp = fingerprint(start)
+            path_to[start_fp.value] = []
+            node, actions = _discover(d, start_fp, start, GuideContext(tuple(dismissed)))
+            pending[start_fp.value] = _publish(start_fp, node, actions)
+        _emit()
+        return start_fp.value
+
+    def _discover(
+        d: base.Driver, fp: Fingerprint, elements: list[base.Element], context: GuideContext
+    ) -> tuple[Node, list[Action]]:
+        # The driver is on this screen: ask the guide what to try (the slow AI step), build the
+        # node, and screenshot it. None of this touches shared coordinator state, so a worker runs
+        # it off-lock — that is what lets the guide's AI round-trips overlap across simulators. The
+        # caller then publishes the result under the lock (see `_publish`).
+        actions = guide(d, elements, context)
+        node = _node_of(fp, elements, actions)
+        if on_node is not None:
+            on_node(d, node)
+        return node, actions
+
+    def _publish(fp: Fingerprint, node: Node, actions: list[Action]) -> list[Action]:
+        # Holding the lock: register the node and claim its operations. Every mutation of shared
+        # state — `screen_map.nodes`, `screen_map.pruned` (via `_claim`), and the `claimed` table —
+        # happens here, so the coordinator lock serializes it against other workers and `on_event`
+        # readers. Returns the screen's frontier (its actions not already claimed elsewhere).
+        screen_map.nodes[fp.value] = node
+        return _claim(fp.value, actions)
+
+    def _worker(d: base.Driver, rst: Reset, current_fp: str | None) -> None:
+        nonlocal steps, active
+        errors = 0  # consecutive device faults → retire so a wedged device can't busy-loop
+
+        def _give_back(src_fp: str, action: Action) -> bool:
+            # Pool failure isolation: a device misbehaved (a broken replay or a device error), so
+            # hand the popped action back to the front of its frontier — a healthy worker retries
+            # it — and report whether this worker has faulted enough times in a row to retire.
+            nonlocal active, errors
+            with cond:
+                pending[src_fp].insert(0, action)
+                active -= 1
+                cond.notify_all()
+            errors += 1
+            return errors >= _MAX_WORKER_DEVICE_ERRORS
+
+        while True:
+            with cond:
+                while True:
+                    if stopped:
+                        return
+                    if len(screen_map.nodes) >= max_screens:
+                        _finish("max_screens")
+                        return
+                    if steps >= max_steps:
+                        _finish("max_steps")
+                        return
+                    # Continue from the screen this worker is on; else backtrack to the cheapest
+                    # frontier entry (shortest known path, then fingerprint) and replay to it.
+                    if current_fp is not None and pending.get(current_fp):
+                        src_fp, replay_needed = current_fp, False
+                    elif candidates := [fp for fp, acts in pending.items() if acts]:
+                        src_fp = min(candidates, key=lambda fp: (len(path_to[fp]), fp))
+                        replay_needed = True
+                    elif active == 0:
+                        _finish("completed")  # no frontier and no worker in flight → all explored
+                        return
+                    else:
+                        cond.wait()  # another worker is mid-step; it may add frontier
+                        continue
+                    action = pending[src_fp].pop(0)  # deterministic order
+                    src_path = list(path_to[src_fp])
+                    steps += 1
+                    active += 1
+                    break
+
+            # --- device work, off-lock: this is what overlaps across simulators ---
+            path = [*src_path, action]
+            try:
+                if replay_needed:
+                    rst(d)
+                    _observe(d)
+                    if not _replay(d, src_path, settle, clear_blocking):
+                        if isolate:  # may be this device misbehaving — let a healthy worker retry
+                            current_fp = None
+                            if _give_back(src_fp, action):
+                                return
+                            continue
+                        with cond:  # the path no longer resolves — drop this screen
+                            pending[src_fp] = []
+                            active -= 1
+                            cond.notify_all()
+                        current_fp = None
+                        continue
+                action.perform(d)
+                landed, dismissed = _observe(d)
+            except base.SelectorError:
+                with cond:  # the selector no longer resolves — drop this action, reset, move on
+                    active -= 1
+                    cond.notify_all()
                 current_fp = None
                 continue
-            # we are now on src_fp; the action's outcome below sets current_fp (dst, or None on a
-            # crash / unresolved selector), so no assignment is needed here.
+            except env.DeviceError:
+                if not isolate:
+                    raise  # a lone worker surfaces the device failure, as the serial engine did
+                current_fp = None
+                retire = _give_back(src_fp, action)
+                if recover is not None and not retire:
+                    # The lane can be healed in place (web: relaunch its browser process), so do
+                    # that and keep crawling rather than abandoning the worker (BE-0077). A clean
+                    # step resets the fault counter, so only persistent wedging (MAX faults in a
+                    # row) still retires. `recover(d)` runs outside any inner try on purpose: if even
+                    # the relaunch fails, that real environment fault propagates (via `_run`, below)
+                    # rather than being swallowed — a browser that can't relaunch isn't a transient
+                    # wedge. Don't wrap this call in a try.
+                    recover(d)
+                elif retire:
+                    return  # retire the wedged device so it can't keep stealing the frontier
+                continue
+            errors = 0
 
-        action = pending[src_fp].pop(0)  # deterministic order
-        steps += 1
-        path = [*path_to[src_fp], action]
+            # Pure deterministic reads, off-lock: the crash signal and the destination's identity.
+            reached = GuideContext(tuple(dismissed))
+            crashed = not alive(d, landed)
+            dst_fp = fingerprint(landed)
+            is_new = False
+            with cond:
+                if dismissed:
+                    screen_map.alerts.append(
+                        Alert(tuple(a.describe() for a in path), tuple(dismissed))
+                    )
+                if crashed:
+                    screen_map.crashes.append(Crash(tuple(a.describe() for a in path)))
+                    active -= 1
+                    _emit()
+                    cond.notify_all()
+                    current_fp = None  # the app collapsed — reset to keep going
+                    continue
+                screen_map.edges.append(
+                    Edge(src_fp, action.describe(), dst_fp.value, tuple(dismissed))
+                )
+                if dst_fp.value not in screen_map.nodes and dst_fp.value not in discovering:
+                    discovering.add(dst_fp.value)  # reserve so two workers don't double-discover
+                    path_to[dst_fp.value] = path
+                    is_new = True
+                else:
+                    active -= 1  # a known/in-flight screen: just the edge, this step is done
+                    _emit()
+                    cond.notify_all()
+            current_fp = dst_fp.value  # the driver is on dst now — keep walking forward from here
+            if not is_new:
+                continue
+            # Discover the new screen: run the guide on THIS worker's driver, off-lock, so AI calls
+            # on different simulators overlap. Then publish the node + frontier under the lock, so
+            # every shared-state mutation stays serialized by the coordinator.
+            node, actions = _discover(d, dst_fp, landed, reached)
+            with cond:
+                pending[dst_fp.value] = _publish(dst_fp, node, actions)
+                discovering.discard(dst_fp.value)
+                active -= 1
+                _emit()
+                cond.notify_all()
+
+    def _run(d: base.Driver, rst: Reset, current_fp: str | None) -> None:
+        # Surface an unexpected worker error after join (a bare thread would otherwise swallow it),
+        # while device-error isolation is handled inside `_worker`.
         try:
-            action.perform(driver)
-        except base.SelectorError:
-            current_fp = None  # unknown state — force a reset before the next action
-            continue
-        landed = observe()
-        # An OS prompt cleared while landing is recorded against the triggering path, and fed to
-        # the destination's guide as context for its next strategy.
-        reached = GuideContext(tuple(dismissed))
-        if dismissed:
-            screen_map.alerts.append(Alert(tuple(a.describe() for a in path), tuple(dismissed)))
+            _worker(d, rst, current_fp)
+        except Exception as exc:  # re-raised on the main thread after join
+            with cond:
+                failure.append(exc)
+                _finish(screen_map.stop_reason or "completed")
 
-        if not alive(driver, landed):
-            screen_map.crashes.append(Crash(tuple(a.describe() for a in path)))
-            current_fp = None  # the app collapsed — reset to keep going
-            emit()
-            continue
+    start_fp = _bootstrap()
+    if start_fp is None:
+        return screen_map  # a resume with nothing to replay (stop_reason set in bootstrap)
 
-        dst_fp = fingerprint(landed)
-        screen_map.edges.append(Edge(src_fp, action.describe(), dst_fp.value, tuple(dismissed)))
-        if dst_fp.value not in screen_map.nodes:
-            path_to[dst_fp.value] = path
-            pending[dst_fp.value] = discover(dst_fp, landed, reached)
-        current_fp = dst_fp.value  # the driver is on dst now — keep walking forward from here
-        emit()
+    def _run_extra(factory: WorkerFactory) -> None:
+        # Build this lane's driver on *this* thread (the Playwright sync API is bound to its creating
+        # thread — BE-0077), then walk. A lane that can't even start is surfaced after join, like any
+        # other worker fault, rather than silently dropping a worker.
+        try:
+            d, rst = factory()
+        except Exception as exc:
+            with cond:
+                failure.append(exc)
+                _finish(screen_map.stop_reason or "completed")
+            return
+        _run(d, rst, None)
 
-    # Why we stopped: no screen has an untried action (everything reachable in the model was
-    # explored), or a budget was hit and untried actions remain.
-    if not any(pending.values()):
-        screen_map.stop_reason = "completed"
-    elif len(screen_map.nodes) >= max_screens:
-        screen_map.stop_reason = "max_screens"
-    else:
-        screen_map.stop_reason = "max_steps"
-    emit()
+    # The primary worker is left on the entry screen; extras start cold and reset to a frontier.
+    threads = [threading.Thread(target=_run_extra, args=(f,), daemon=True) for f in extra_factories]
+    for t in threads:
+        t.start()
+    _run(driver, reset, start_fp)
+    for t in threads:
+        t.join()
+    if failure:
+        raise failure[0]
+
+    # Safety net for the stop reason (a normal finish already set it under the lock), plus a final
+    # event so the returned map and the last streamed snapshot match — including any late records a
+    # worker added after the stop was signalled.
+    if not screen_map.stop_reason:
+        screen_map.stop_reason = (
+            "completed"
+            if not any(pending.values())
+            else "max_screens"
+            if len(screen_map.nodes) >= max_screens
+            else "max_steps"
+        )
+    _emit()
     return screen_map
 
 

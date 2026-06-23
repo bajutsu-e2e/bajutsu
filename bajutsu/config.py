@@ -1,6 +1,6 @@
-"""Configuration — team defaults overlaid by per-app config.
+"""Configuration — team defaults overlaid by per-target config.
 
-resolve() produces the effective config for one app: the app entry overrides
+resolve() produces the effective config for one target: the target entry overrides
 defaults. `backend` may be a single string or a list (normalized to a list).
 `redact` is merged (union). Scenario-level overrides (preconditions) are applied
 later by the runner.
@@ -63,7 +63,7 @@ class Defaults(_Model):
         return _as_list(v)
 
 
-class AppConfig(_Model):
+class TargetConfig(_Model):
     # iOS apps identify the target by bundleId; web apps by baseUrl instead. One of the two is
     # required (the validator below) — defaulting bundleId to "" keeps every iOS `eff.bundle_id`
     # call site a plain `str` while letting a web app omit it.
@@ -92,12 +92,15 @@ class AppConfig(_Model):
     # scenario if the binary is missing (so the Web UI builds on demand). Run from the run's
     # working directory; e.g. "make -C demos/features sample-build".
     build: str | None = None
-    # Directory of this app's scenario *.yaml files. `run` reads them all; `record` writes new
+    # Directory of this target's scenario *.yaml files. `run` reads them all; `record` writes new
     # ones here. Relative to the run's working directory (like app_path/build).
     scenarios: str | None = None
     # Directory of baseline images for `visual` assertions. Relative to the run's
     # working directory. Overrides the default (baselines/ beside the scenario file).
     baselines: str | None = None
+    # Directory of JSON Schema files for `responseSchema` assertions. Relative to the run's
+    # working directory. Overrides the default (schemas/ beside the scenario file).
+    schemas: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
 
@@ -107,32 +110,32 @@ class AppConfig(_Model):
         return _as_list(v) if v is not None else v
 
     @model_validator(mode="after")
-    def _need_target(self) -> AppConfig:
-        # A malformed app entry (neither bundleId nor baseUrl) still fails fast, so dropping
+    def _need_target(self) -> TargetConfig:
+        # A malformed target entry (neither bundleId nor baseUrl) still fails fast, so dropping
         # bundleId's required-ness for web doesn't silently accept a target-less iOS app.
         if not self.bundle_id and not self.base_url:
-            raise ValueError("app needs bundleId (iOS) or baseUrl (web)")
+            raise ValueError("target needs bundleId (iOS) or baseUrl (web)")
         return self
 
 
 class OrgConfig(_Model):
     """One tenant (BE-0015 multi-tenancy): the GitHub logins that belong to it (`members`) and/or the
-    GitHub orgs whose members belong to it (`github_orgs`), plus the apps it owns. A login or app
-    named in no org falls back to the single `default` org, so a config with no `orgs:` block stays
-    single-tenant."""
+    GitHub orgs whose members belong to it (`github_orgs`), plus the targets it owns. A login or
+    target named in no org falls back to the single `default` org, so a config with no `orgs:` block
+    stays single-tenant."""
 
     members: list[str] = Field(default_factory=list)
     github_orgs: list[str] = Field(default_factory=list, alias="githubOrgs")
-    apps: list[str] = Field(default_factory=list)
+    targets: list[str] = Field(default_factory=list)
 
 
 class Config(_Model):
     defaults: Defaults = Field(default_factory=Defaults)
-    apps: dict[str, AppConfig] = Field(default_factory=dict)
+    targets: dict[str, TargetConfig] = Field(default_factory=dict)
     orgs: dict[str, OrgConfig] = Field(default_factory=dict)
 
 
-# The single tenant every unassigned user and app falls into; keep in sync with serve's
+# The single tenant every unassigned user and target falls into; keep in sync with serve's
 # `_DEFAULT_ORG`.
 DEFAULT_ORG = "default"
 
@@ -142,9 +145,9 @@ def org_for_user(config: Config, login: str) -> str:
     return next((org for org, oc in config.orgs.items() if login in oc.members), DEFAULT_ORG)
 
 
-def org_for_app(config: Config, app: str) -> str:
-    """The org whose apps list *app*, or `default` if none do."""
-    return next((org for org, oc in config.orgs.items() if app in oc.apps), DEFAULT_ORG)
+def org_for_target(config: Config, target: str) -> str:
+    """The org whose targets list *target*, or `default` if none do."""
+    return next((org for org, oc in config.orgs.items() if target in oc.targets), DEFAULT_ORG)
 
 
 def org_for_identity(config: Config, login: str, github_orgs: list[str]) -> str:
@@ -162,22 +165,22 @@ def org_for_identity(config: Config, login: str, github_orgs: list[str]) -> str:
     )
 
 
-def apps_for_org(config: Config, org: str) -> list[str]:
-    """The apps belonging to *org*, restricted to apps actually declared under `apps:` (an org that
-    lists an undeclared app name doesn't conjure a runnable app). For `default`, that's every
-    declared app no org claims."""
+def targets_for_org(config: Config, org: str) -> list[str]:
+    """The targets belonging to *org*, restricted to targets actually declared under `targets:` (an
+    org that lists an undeclared target name doesn't conjure a runnable target). For `default`, that's
+    every declared target no org claims."""
     if org == DEFAULT_ORG:
-        claimed = {a for oc in config.orgs.values() for a in oc.apps}
-        return [a for a in config.apps if a not in claimed]
+        claimed = {a for oc in config.orgs.values() for a in oc.targets}
+        return [a for a in config.targets if a not in claimed]
     oc = config.orgs.get(org)
-    return [a for a in oc.apps if a in config.apps] if oc else []
+    return [a for a in oc.targets if a in config.targets] if oc else []
 
 
 @dataclass(frozen=True)
 class Effective:
-    """The resolved config for one app."""
+    """The resolved config for one target."""
 
-    app: str
+    target: str
     bundle_id: str
     deeplink_scheme: str | None
     backend: list[str]
@@ -197,12 +200,15 @@ class Effective:
     # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary
     # is missing. None = no on-demand build.
     build: str | None = None
-    # Directory of this app's scenario *.yaml files (config-driven `run`/`record`). None =
+    # Directory of this target's scenario *.yaml files (config-driven `run`/`record`). None =
     # unset (the caller must pass an explicit scenario path).
     scenarios: str | None = None
     # Baseline images directory for `visual` assertions. None = fall back to
     # baselines/ beside the scenario file (or --baselines CLI flag).
     baselines: str | None = None
+    # JSON Schema directory for `responseSchema` assertions. None = fall back to
+    # schemas/ beside the scenario file (or --schemas CLI flag).
+    schemas: str | None = None
     # Web (Playwright) target URL. None for iOS apps (which use bundle_id instead).
     base_url: str | None = None
     # Web (Playwright): run headless (default) or headed (visible browser). iOS ignores it.
@@ -222,14 +228,14 @@ def _merge_redact(base: Redact, over: Redact) -> Redact:
     )
 
 
-def resolve(config: Config, app: str) -> Effective:
-    """Resolve the effective config for one app (the app entry overrides defaults)."""
-    if app not in config.apps:
-        raise KeyError(f"unknown app: {app!r} (define apps.{app} in config)")
+def resolve(config: Config, target: str) -> Effective:
+    """Resolve the effective config for one target (the target entry overrides defaults)."""
+    if target not in config.targets:
+        raise KeyError(f"unknown target: {target!r} (define targets.{target} in config)")
     d = config.defaults
-    a = config.apps[app]
+    a = config.targets[target]
     return Effective(
-        app=app,
+        target=target,
         bundle_id=a.bundle_id,
         base_url=a.base_url,
         headless=a.headless,
@@ -251,6 +257,7 @@ def resolve(config: Config, app: str) -> Effective:
         build=a.build,
         scenarios=a.scenarios,
         baselines=a.baselines,
+        schemas=a.schemas,
     )
 
 

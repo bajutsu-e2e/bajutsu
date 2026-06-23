@@ -12,13 +12,13 @@ from bajutsu.doctor import render, score
 
 
 def doctor(
-    app_name: str = typer.Option(..., "--app"),
+    target_name: str = typer.Option(..., "--target"),
     udid: str = typer.Option("booted"),
     backend: str = typer.Option(""),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Check the environment is runnable, then score the app's current screen."""
-    eff = _load_effective(config, app_name)
+    eff = _load_effective(config, target_name)
     try:
         actuator = select_actuator(_backends(backend, eff.backend))
     except RuntimeError as e:

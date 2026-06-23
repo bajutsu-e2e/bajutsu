@@ -48,8 +48,8 @@ from collections.abc import Set as AbstractSet
 from pathlib import Path
 
 ROADMAP = Path("roadmaps")
-# New items are proposals, so placeholders land here; IDs are global across both subdirs.
-CATEGORIES = ("implemented", "proposals")
+# New items are proposals, so placeholders land here; IDs are global across all status folders.
+CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 PLACEHOLDER_CATEGORY = "proposals"
 PLACEHOLDER = "BE-XXXX"
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
@@ -67,7 +67,7 @@ BUILD_INDEX = Path(__file__).resolve().parent / "build_roadmap_index.py"
 
 
 def working_tree_ids() -> set[int]:
-    """BE numbers present in the working tree, across both categories."""
+    """BE numbers present in the working tree, across all status folders."""
     return {
         int(m.group(1))
         for category in CATEGORIES

@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | PR 単位の履歴より前（初期インポートの一部・単一 PR なし） |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | プラットフォーム拡張（着手済みスライス） |
 <!-- /BE-METADATA -->
 
@@ -64,7 +63,7 @@ apps:
 
 `platform` はどの **environment manager** と **backend レジストリ** を使うかを選びます。残りのスキーマ（namespaces、redact、setup、capture）は共有のままです。
 
-**済んでいること / 残っていること。** 着手済みなのは、プラットフォームレジストリ、プラットフォームトークンの展開、実装済みかつ利用可能による選択、未実装プラットフォームへの明確なエラーです（今日の実装済み actuator は `idb` / `fake` のみ）。実際の 2 つ目のプラットフォームに向けて残るのは、三点セットの残りです。プラットフォーム別の **environment manager**（`simctl` の対応物）と **actuator driver**（[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) の `adb`、[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) の `playwright`）、そして上記の明示的な `platform` config フィールドです。
+**済んでいること / 残っていること。** 着手済みなのは、プラットフォームレジストリ、プラットフォームトークンの展開、実装済みかつ利用可能による選択、未実装プラットフォームへの明確なエラーです（今日の実装済み actuator は `idb` / `fake` のみ）。実際の 2 つ目のプラットフォームに向けて残るのは、三点セットの残りです。プラットフォーム別の **environment manager**（`simctl` の対応物）と **actuator driver**（[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) の `adb`、[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) の `playwright`）、そして上記の明示的な `platform` config フィールドです。
 
 ## 検討した代替案
 
@@ -73,4 +72,4 @@ apps:
 
 ## 参考
 
-[`bajutsu/backends.py`](../../../bajutsu/backends.py)、[drivers.md](../../../docs/ja/drivers.md#バックエンド選択と-actuator)、[BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)
+[`bajutsu/backends.py`](../../../bajutsu/backends.py)、[drivers.md](../../../docs/ja/drivers.md#バックエンド選択と-actuator)、[BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)

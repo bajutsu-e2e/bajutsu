@@ -106,30 +106,30 @@ def test_run_job_build_failure_skips_the_run(tmp_path: Path) -> None:
     assert any("build failed" in line for line in v["lines"])
 
 
-def test_app_build_info_reads_config(tmp_path: Path) -> None:
+def test_target_build_info_reads_config(tmp_path: Path) -> None:
     cfg = tmp_path / "c.yaml"
     cfg.write_text(
-        "apps:\n  demo:\n    bundleId: com.example.demo\n"
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
         "    appPath: build/Demo.app\n    build: make demo\n  bare: { bundleId: com.example.bare }\n",
         encoding="utf-8",
     )
-    assert srv.app_build_info(cfg, "demo") == ("build/Demo.app", "make demo")
-    assert srv.app_build_info(cfg, "bare") == (None, None)  # neither set
-    assert srv.app_build_info(cfg, "nope") == (None, None)  # unknown app → no build
-    assert srv.app_build_info(tmp_path / "missing.yaml", "demo") == (None, None)  # no config
+    assert srv.target_build_info(cfg, "demo") == ("build/Demo.app", "make demo")
+    assert srv.target_build_info(cfg, "bare") == (None, None)  # neither set
+    assert srv.target_build_info(cfg, "nope") == (None, None)  # unknown app → no build
+    assert srv.target_build_info(tmp_path / "missing.yaml", "demo") == (None, None)  # no config
 
 
-def test_app_scenarios_dir_reads_config(tmp_path: Path) -> None:
+def test_target_scenarios_dir_reads_config(tmp_path: Path) -> None:
     cfg = tmp_path / "c.yaml"
     cfg.write_text(
-        "apps:\n  demo: { bundleId: com.example.demo, scenarios: scn/dir }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, scenarios: scn/dir }\n"
         "  bare: { bundleId: com.example.bare }\n",
         encoding="utf-8",
     )
-    assert srv.app_scenarios_dir(cfg, "demo") == Path("scn/dir")
-    assert srv.app_scenarios_dir(cfg, "bare") is None  # unset
-    assert srv.app_scenarios_dir(cfg, "nope") is None  # unknown app
-    assert srv.app_scenarios_dir(tmp_path / "missing.yaml", "demo") is None  # no config
+    assert srv.target_scenarios_dir(cfg, "demo") == Path("scn/dir")
+    assert srv.target_scenarios_dir(cfg, "bare") is None  # unset
+    assert srv.target_scenarios_dir(cfg, "nope") is None  # unknown app
+    assert srv.target_scenarios_dir(tmp_path / "missing.yaml", "demo") is None  # no config
 
 
 def test_list_fs_lists_dirs_and_yaml(tmp_path: Path) -> None:

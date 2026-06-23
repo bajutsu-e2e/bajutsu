@@ -3,7 +3,7 @@
 #
 # These scenarios use launchEnv + taps only (no literal-scheme deeplinks), so the one
 # file drives both showcase-swiftui and showcase-uikit unchanged. Deeplinks are
-# per-app (their schemes differ); see ../README.md for the per-scheme `openurl` form.
+# per-target (their schemes differ); see ../README.md for the per-scheme `openurl` form.
 - name: push horse detail and pop back
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }

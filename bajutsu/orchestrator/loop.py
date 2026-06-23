@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 
 from bajutsu import assertions, interp, intervals
-from bajutsu.assertions import AssertionResult, VisualContext
+from bajutsu.assertions import AssertionResult, SchemaContext, VisualContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.orchestrator.actions import _action_of, _do_action, _step_label
@@ -86,6 +86,7 @@ def run_scenario(
     control: DeviceControl | None = None,
     progress: ProgressFn | None = None,
     visual_context: VisualContext | None = None,
+    schema_context: SchemaContext | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -134,7 +135,11 @@ def run_scenario(
             if visual_context is not None:
                 driver.screenshot(str(visual_context.screenshot_path))
             expect_results = assertions.evaluate(
-                driver.query(), expect, network(), visual_context=visual_context
+                driver.query(),
+                expect,
+                network(),
+                visual_context=visual_context,
+                schema_context=schema_context,
             )
             if not assertions.passed(expect_results) and on_blocked is not None:
                 event = on_blocked(driver)
@@ -143,7 +148,11 @@ def run_scenario(
                     if visual_context is not None:
                         driver.screenshot(str(visual_context.screenshot_path))
                     expect_results = assertions.evaluate(
-                        driver.query(), expect, network(), visual_context=visual_context
+                        driver.query(),
+                        expect,
+                        network(),
+                        visual_context=visual_context,
+                        schema_context=schema_context,
                     )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)

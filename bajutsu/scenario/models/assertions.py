@@ -124,6 +124,48 @@ class CountMatch(_Model):
         return self
 
 
+class CountOp(_Model):
+    """A count comparison with no element selector — exactly one of equals / atLeast / atMost.
+    The element-free counterpart to `CountMatch`, for aggregating over the network timeline
+    (e.g. an `event`'s multiplicity) rather than over screen elements."""
+
+    equals: int | None = None
+    at_least: int | None = Field(default=None, alias="atLeast")
+    at_most: int | None = Field(default=None, alias="atMost")
+
+    @model_validator(mode="after")
+    def _one_op(self) -> Self:
+        if sum(o is not None for o in (self.equals, self.at_least, self.at_most)) != 1:
+            raise ValueError("count requires exactly one of equals/atLeast/atMost (§6.4)")
+        return self
+
+
+class EventMatch(_Model):
+    """An analytics / telemetry event the app *sent* (BE-0048) — matched over the captured request
+    timeline by endpoint (url / urlMatches / path / pathMatches / method, AND-ed, same meaning as
+    `RequestMatch`) and structured request-body fields (`body`: each given key must be present in
+    the JSON request body and equal — compared as text — the given value). `count` is the expected
+    multiplicity (default: at least one). At least one of an endpoint criterion or `body` is
+    required, so an event always pins *something*."""
+
+    method: str | None = None
+    url: str | None = None
+    url_matches: str | None = Field(default=None, alias="urlMatches")
+    path: str | None = None
+    path_matches: str | None = Field(default=None, alias="pathMatches")
+    body: dict[str, str] = Field(default_factory=dict)
+    count: CountOp | None = None
+
+    @model_validator(mode="after")
+    def _has_criterion(self) -> Self:
+        endpoint = (self.method, self.url, self.url_matches, self.path, self.path_matches)
+        if all(v is None for v in endpoint) and not self.body:
+            raise ValueError(
+                "event requires at least one of method/url/urlMatches/path/pathMatches/body (§6.4)"
+            )
+        return self
+
+
 class ExcludeRegion(_Model):
     """A rectangular region to ignore during visual comparison (e.g. status bar, clock)."""
 
@@ -131,6 +173,16 @@ class ExcludeRegion(_Model):
     y: float
     w: float
     h: float
+
+
+class ResponseSchemaMatch(_Model):
+    """Validate a captured response body against a stored JSON Schema (BE-0048). `request` selects
+    the exchange whose response is checked (reusing the request matcher); `schema` is the schema
+    file, resolved against the app's schemas dir. `schema_path` carries the value (the field is
+    aliased `schema` to avoid shadowing pydantic's own `schema` attribute)."""
+
+    request: RequestMatch
+    schema_path: str = Field(alias="schema")
 
 
 class VisualMatch(_Model):
@@ -152,6 +204,11 @@ class Assertion(_Model):
     disabled: Selector | None = None
     selected: Selector | None = None
     request: RequestMatch | None = None
+    event: EventMatch | None = None
+    request_sequence: list[RequestMatch] | None = Field(
+        default=None, alias="requestSequence", min_length=1
+    )
+    response_schema: ResponseSchemaMatch | None = Field(default=None, alias="responseSchema")
     visual: VisualMatch | None = None
 
     @model_validator(mode="after")

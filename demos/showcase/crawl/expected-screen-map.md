@@ -2,20 +2,20 @@
 
 # Showcase crawl — the screen map it should produce
 
-> `crawl` ([BE-0038](../../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
+> `crawl` ([BE-0038](../../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
 > is a **proposal**, not yet implemented. This file is forward-looking *test data*: the graph a
 > correct breadth-first crawl of the showcase a11y apps should discover, so the crawl can be
 > validated against a known-good map the day it lands. Run it then with:
 >
 > ```bash
-> bajutsu crawl --app showcase-swiftui --config demos/showcase/showcase.config.yaml \
+> bajutsu crawl --target showcase-swiftui --config demos/showcase/showcase.config.yaml \
 >     --seed showcaseswiftui://permissions
 > ```
 
 The showcase is built to be a genuinely branchy crawl target: 5 tabs × navigation pushes ×
 4 modal styles. Because every identifier is data-derived and stable (SPEC §5), the id-based
 **state fingerprint** (the sorted set of on-screen identifiers, hashed —
-[BE-0038](../../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
+[BE-0038](../../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
 is stable across runs.
 
 ## Nodes (reachable screens)

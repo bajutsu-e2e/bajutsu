@@ -2,7 +2,7 @@
 
 [日本語](README.ja.md)
 
-A tiny static web app driven by Bajutsu's **Playwright** backend ([BE-0041](../../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+A tiny static web app driven by Bajutsu's **Playwright** backend ([BE-0041](../../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 Unlike the iOS demos this needs **no Mac and no Simulator** — it runs on Linux inside the same
 toolchain as `make check`.
 
@@ -12,7 +12,7 @@ toolchain as `make check`.
 |---|---|
 | `app/index.html` | the app under test — onboarding → login → counter, vanilla JS, stable `data-testid` ids |
 | `scenarios/smoke.yaml` | the deterministic smoke scenario (same step/expect schema as the iOS demos) |
-| `demo.config.yaml` | `apps.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
+| `demo.config.yaml` | `targets.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
 | `Makefile` | `web-deps` / `app-serve` / `e2e` |
 
 ## Run it

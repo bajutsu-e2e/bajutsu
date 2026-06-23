@@ -3,7 +3,7 @@
 [日本語](README.ja.md)
 
 Bajutsu testing **its own** `serve` Web UI. The app under test is the serve single-page app, driven
-by the **Playwright** backend ([BE-0041](../../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+by the **Playwright** backend ([BE-0041](../../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 Like [demos/web](../web) this needs **no Mac and no Simulator** — it runs on Linux inside the same
 toolchain as `make check`. It is a deterministic regression net for the Web UI: pass/fail comes only
 from machine assertions, never an LLM.
@@ -12,10 +12,10 @@ from machine assertions, never an LLM.
 
 | Path | Purpose |
 |---|---|
-| `dogfood.config.yaml` | `apps.webui` with `baseUrl` (the running serve) + `backend: [web]` (no `bundleId`) |
+| `dogfood.config.yaml` | `targets.webui` with `baseUrl` (the running serve) + `backend: [web]` (no `bundleId`) |
 | `scenarios/shell-navigation.yaml` | the Record / Replay / Crawl tabs swap the visible view |
 | `scenarios/modals.yaml` | the config browser and Settings panel open/close; the AI provider needs an explicit choice (no default — Save is rejected until one is picked) |
-| `scenarios/replay-contract.yaml` | a bound config reaches the Replay pickers (config → `/api/apps` → `/api/scenarios`) |
+| `scenarios/replay-contract.yaml` | a bound config reaches the Replay pickers (config → `/api/targets` → `/api/scenarios`) |
 | `scenarios/record-form.yaml` | Record's Save stays disabled until a scenario exists; the goal field takes input |
 | `scenarios/platform-ui.yaml` | the Replay panel hides its iOS device UI (simulators, workers, erase) for a non-iOS backend |
 | `Makefile` | `web-deps` / `serve-ui` / `e2e` |

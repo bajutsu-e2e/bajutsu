@@ -37,7 +37,7 @@ def _write(tmp_path: Path) -> tuple[Path, Path]:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         "defaults: { backend: [idb] }\n"
-        "apps:\n"
+        "targets:\n"
         f"  demo: {{ bundleId: com.example.demo, idNamespaces: [home], scenarios: {scn_dir} }}\n"
         "  bare: { bundleId: com.example.bare, idNamespaces: [home] }\n"
         f"  empty: {{ bundleId: com.example.empty, idNamespaces: [home], scenarios: {empty_dir} }}\n",
@@ -52,12 +52,12 @@ def _argv(
     command: str, *, cfg: Path, scn: Path, out: Path, app: str, backend: str = ""
 ) -> list[str]:
     """The argv for *command* against *app*, carrying each command's own required flags. Used by the
-    error-path tests that only differ by command (unknown app / no available backend)."""
+    error-path tests that only differ by command (unknown target / no available backend)."""
     base = {
-        "run": ["run", "--scenario", str(scn), "--app", app],
-        "record": ["record", "--out", str(out), "--app", app, "--goal", "x"],
-        "doctor": ["doctor", "--app", app],
-        "crawl": ["crawl", "--app", app],
+        "run": ["run", "--scenario", str(scn), "--target", app],
+        "record": ["record", "--out", str(out), "--target", app, "--goal", "x"],
+        "doctor": ["doctor", "--target", app],
+        "crawl": ["crawl", "--target", app],
     }[command]
     if backend:
         base += ["--backend", backend]
@@ -69,7 +69,14 @@ def test_unknown_app_exits_cleanly(tmp_path: Path, command: str) -> None:
     cfg, scn = _write(tmp_path)
     r = runner.invoke(app, _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="ghost"))
     assert r.exit_code == 2
-    assert "unknown app" in r.output
+    assert "unknown target" in r.output
+
+
+def test_legacy_app_flag_is_rejected(tmp_path: Path) -> None:
+    # Hard cutover (BE-0057): there is no `--app` alias — the old flag exits 2 (unknown option).
+    cfg, scn = _write(tmp_path)
+    r = runner.invoke(app, ["run", "--scenario", str(scn), "--app", "sample", "--config", str(cfg)])
+    assert r.exit_code == 2
 
 
 @pytest.mark.parametrize("command", ["run", "record", "doctor"])
@@ -85,7 +92,7 @@ def test_no_backend_available_exits_cleanly(tmp_path: Path, command: str) -> Non
 
 
 def test_run_missing_config(tmp_path: Path) -> None:
-    r = runner.invoke(app, ["run", "--app", "demo", "--config", str(tmp_path / "nope.yaml")])
+    r = runner.invoke(app, ["run", "--target", "demo", "--config", str(tmp_path / "nope.yaml")])
     assert r.exit_code == 2
     assert "config not found" in r.output
 
@@ -98,7 +105,7 @@ def test_run_missing_scenario(tmp_path: Path) -> None:
             "run",
             "--scenario",
             str(tmp_path / "missing.yaml"),
-            "--app",
+            "--target",
             "demo",
             "--config",
             str(cfg),
@@ -111,21 +118,21 @@ def test_run_missing_scenario(tmp_path: Path) -> None:
 def test_run_reads_configured_dir(tmp_path: Path) -> None:
     # No --scenario: run loads the app's configured scenarios dir, then hits the backend gate.
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["run", "--app", "demo", "--backend", "nope", "--config", str(cfg)])
+    r = runner.invoke(app, ["run", "--target", "demo", "--backend", "nope", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no available actuator" in r.output
 
 
 def test_run_no_scenarios_dir(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["run", "--app", "bare", "--config", str(cfg)])
+    r = runner.invoke(app, ["run", "--target", "bare", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios dir" in r.output
 
 
 def test_run_empty_scenarios_dir(tmp_path: Path) -> None:
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["run", "--app", "empty", "--config", str(cfg)])
+    r = runner.invoke(app, ["run", "--target", "empty", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios found" in r.output
 
@@ -133,7 +140,7 @@ def test_run_empty_scenarios_dir(tmp_path: Path) -> None:
 def test_record_no_scenarios_dir(tmp_path: Path) -> None:
     # No --out and the app has no scenarios dir -> can't decide where to write.
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["record", "--app", "bare", "--goal", "x", "--config", str(cfg)])
+    r = runner.invoke(app, ["record", "--target", "bare", "--goal", "x", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios dir" in r.output
 
@@ -174,7 +181,7 @@ def test_crawl_no_backend_available(tmp_path: Path) -> None:
     out = tmp_path / "crawlrun"
     r = runner.invoke(
         app,
-        ["crawl", "--app", "demo", "--backend", "nope", "--out", str(out), "--config", str(cfg)],
+        ["crawl", "--target", "demo", "--backend", "nope", "--out", str(out), "--config", str(cfg)],
     )
     assert r.exit_code == 2
     assert "no available actuator" in r.output
@@ -184,7 +191,7 @@ def test_crawl_no_backend_available(tmp_path: Path) -> None:
 def test_crawl_unknown_agent(tmp_path: Path) -> None:
     # An invalid --agent is rejected before any device work (clean exit 2).
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["crawl", "--app", "demo", "--agent", "bad", "--config", str(cfg)])
+    r = runner.invoke(app, ["crawl", "--target", "demo", "--agent", "bad", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "unknown --agent" in r.output
 
@@ -196,7 +203,7 @@ def test_crawl_agent_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
     monkeypatch.setenv("BAJUTSU_AGENT", "bad")
     cfg, _ = _write(tmp_path)
-    r = runner.invoke(app, ["crawl", "--app", "demo", "--config", str(cfg)])
+    r = runner.invoke(app, ["crawl", "--target", "demo", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "unknown --agent 'bad'" in r.output
 
@@ -270,7 +277,7 @@ def test_crawl_api_agent_needs_anthropic_key(
     out = tmp_path / "crawlrun"
     r = runner.invoke(
         app,
-        ["crawl", "--app", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
+        ["crawl", "--target", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
     )
     assert r.exit_code == 2
     assert "ANTHROPIC_API_KEY" in r.output
@@ -298,7 +305,7 @@ def test_crawl_bedrock_does_not_require_anthropic_key(
     out = tmp_path / "crawlrun"
     r = runner.invoke(
         app,
-        ["crawl", "--app", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
+        ["crawl", "--target", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
     )
     assert r.exit_code == 2
     assert (
@@ -316,12 +323,77 @@ def test_crawl_bedrock_needs_model(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     out = tmp_path / "crawlrun"
     r = runner.invoke(
         app,
-        ["crawl", "--app", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
+        ["crawl", "--target", "demo", "--backend", "fake", "--out", str(out), "--config", str(cfg)],
     )
     assert r.exit_code == 2
     assert "BAJUTSU_BEDROCK_MODEL" in r.output
     assert "ANTHROPIC_API_KEY" not in r.output
     assert not out.exists()
+
+
+def test_crawl_web_builds_one_browser_lane_per_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Web has no devices, so `--workers N` launches N browser-process lanes that share one screen
+    map (BE-0077) — not the old single-lane pin — and wires the browser-relaunch `recover` hook. The
+    browser launch, target server, and crawl engine are mocked so no Chromium is needed."""
+    import bajutsu.crawl as crawl_engine
+
+    _no_dotenv(monkeypatch)
+    monkeypatch.setattr("bajutsu.cli.commands.crawl.ensure_web_runtime", lambda *a, **k: None)
+    monkeypatch.setattr("bajutsu.cli.commands.crawl.select_actuator", lambda *a, **k: "playwright")
+    monkeypatch.setattr(
+        "bajutsu.cli.commands.crawl.start_launch_server", lambda *a, **k: lambda: None
+    )
+
+    launched = {"n": 0}
+
+    def fake_launch(*_a: object, **_k: object) -> object:
+        launched["n"] += 1
+        return object()  # the engine is mocked, so no driver method is ever called
+
+    monkeypatch.setattr("bajutsu.cli.commands.crawl.launch_driver", fake_launch)
+
+    captured: dict[str, object] = {}
+
+    def fake_crawl(driver: object, reset: object, **kwargs: object) -> crawl_engine.ScreenMap:
+        captured.update(kwargs)
+        return crawl_engine.ScreenMap()
+
+    monkeypatch.setattr(crawl_engine, "crawl", fake_crawl)
+
+    cfg, _ = _write(tmp_path)
+    out = tmp_path / "crawlrun"
+    r = runner.invoke(
+        app,
+        [
+            "crawl",
+            "--target",
+            "demo",
+            "--backend",
+            "web",
+            "--workers",
+            "3",
+            "--agent",
+            "claude-code",
+            "--out",
+            str(out),
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 0, r.output
+    # Only the primary lane is built eagerly (on the main thread, for bootstrap); the other two are
+    # factories the engine calls on each worker's own thread (BE-0077: a Playwright browser must be
+    # created on the thread that drives it).
+    assert launched["n"] == 1
+    extra = captured["extra_workers"]
+    assert isinstance(extra, list) and len(extra) == 2  # primary + 2 extra-worker factories = 3
+    # Each factory builds a real browser lane when invoked — three lanes in total, not pinned to one.
+    for make_lane in extra:
+        make_lane()
+    assert launched["n"] == 3
+    assert captured["recover"] is not None  # the browser-relaunch recover hook is wired for web
 
 
 def _write_visual_run(runs: Path, run_id: str, *, ok: bool) -> Path:

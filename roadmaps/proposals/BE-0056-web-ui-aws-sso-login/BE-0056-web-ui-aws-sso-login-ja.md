@@ -8,7 +8,6 @@
 | 提案 | [BE-0056](BE-0056-web-ui-aws-sso-login-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
 | トピック | AI プロバイダ設定 |
 <!-- /BE-METADATA -->
 

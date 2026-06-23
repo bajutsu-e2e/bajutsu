@@ -8,7 +8,6 @@
 | Proposal | [BE-0072](BE-0072-responsive-web-ui.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

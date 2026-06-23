@@ -34,7 +34,7 @@ GOAL="${GOAL:-$(grep -vE '^[[:space:]]*(#|$)' "$GOALS_FILE" | head -n1)}"
 note() { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 
 run_scenario() {  # run the scenario; returns bajutsu's exit code (0 pass, 1 fail)
-  uv run bajutsu run --scenario "$SCENARIO" --app sample2 --config "$CONFIG" --backend idb --no-network
+  uv run bajutsu run --scenario "$SCENARIO" --target sample2 --config "$CONFIG" --backend idb --no-network
 }
 
 set_expected_count() {  # $1 = new expected counter value — edit the generated scenario in place
@@ -123,7 +123,7 @@ rm -f "$SCENARIO"   # always start from scratch — discard any scenario left by
 # screenshot + the accessibility tree on the booted sample2 app and proposes one step at a
 # time (streamed live: 💭 reasoning → action); the loop writes the executed steps out as the
 # deterministic scenario `run` replays. The claude-code agent bills your Claude subscription.
-uv run bajutsu record --out "$SCENARIO" --app sample2 --goal "$GOAL" \
+uv run bajutsu record --out "$SCENARIO" --target sample2 --goal "$GOAL" \
   --config "$CONFIG" --backend idb --no-erase --agent "$AGENT"
 echo "--- $SCENARIO ---"
 cat "$SCENARIO"
@@ -137,7 +137,7 @@ if run_scenario; then
 else
   echo "-> FAIL. Don't stop — run triage to diagnose and self-heal, then carry on:"
   uv run bajutsu triage --apply "$SCENARIO" --write --rerun \
-    --app sample2 --backend idb --config "$CONFIG" || true
+    --target sample2 --backend idb --config "$CONFIG" || true
 fi
 
 # --- 3) MODIFY ---------------------------------------------------------------
@@ -170,7 +170,7 @@ fi
 echo
 echo "Diagnose the failed run with triage (advisory — it explains the failure and points at the"
 echo "likely fix from the captured element tree, but never judges pass/fail):"
-uv run bajutsu triage --app sample2 --config "$CONFIG" || true
+uv run bajutsu triage --target sample2 --config "$CONFIG" || true
 
 echo
 echo "Restore the selector and re-run — expect PASS again:"
