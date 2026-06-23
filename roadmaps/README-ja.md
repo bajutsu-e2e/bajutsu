@@ -317,6 +317,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 提案 |
 | [BE-0010](proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md) | スコープ文の更新 | 提案 |
 | [BE-0076](proposals/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) | ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend） | 提案 |
+| [BE-0082](proposals/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) | run の前に capability をプリフライト検査する | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### オーサリング体験（record / GUI エディタ）
@@ -385,6 +386,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-codegen -->
 | ID | 項目 | 状態 |
 |---|---|---|
+| [BE-0083](proposals/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md) | codegen の emitter を共通のシナリオ走査へ統一する | 提案 |
 <!-- /GENERATED:proposals-codegen -->
 
 ### 開発基盤（コントリビュータ体験）

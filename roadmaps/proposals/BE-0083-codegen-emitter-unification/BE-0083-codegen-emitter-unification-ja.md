@@ -1,11 +1,11 @@
-[English](BE-XXXX-codegen-emitter-unification.md) · **日本語**
+[English](BE-0083-codegen-emitter-unification.md) · **日本語**
 
-# BE-XXXX — codegen の emitter を共通のシナリオ走査へ統一する
+# BE-0083 — codegen の emitter を共通のシナリオ走査へ統一する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-codegen-emitter-unification-ja.md) |
+| 提案 | [BE-0083](BE-0083-codegen-emitter-unification-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トラック | Proposals |

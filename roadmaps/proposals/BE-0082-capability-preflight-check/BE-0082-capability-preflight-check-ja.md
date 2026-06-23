@@ -1,11 +1,11 @@
-[English](BE-XXXX-capability-preflight-check.md) · **日本語**
+[English](BE-0082-capability-preflight-check.md) · **日本語**
 
-# BE-XXXX — run の前に capability をプリフライト検査する
+# BE-0082 — run の前に capability をプリフライト検査する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-capability-preflight-check-ja.md) |
+| 提案 | [BE-0082](BE-0082-capability-preflight-check-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トラック | Proposals |

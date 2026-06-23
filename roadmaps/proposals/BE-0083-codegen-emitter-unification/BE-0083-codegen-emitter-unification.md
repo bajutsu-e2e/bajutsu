@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-codegen-emitter-unification-ja.md)
+**English** · [日本語](BE-0083-codegen-emitter-unification-ja.md)
 
-# BE-XXXX — Unify the codegen emitters behind a shared scenario walk
+# BE-0083 — Unify the codegen emitters behind a shared scenario walk
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-codegen-emitter-unification.md) |
+| Proposal | [BE-0083](BE-0083-codegen-emitter-unification.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Track | Proposals |
