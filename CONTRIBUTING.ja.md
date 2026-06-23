@@ -77,8 +77,9 @@ make check   # lock-check ＋ format-check ＋ lint ＋ lint-sh ＋ lint-actions
 ## ロードマップ項目（BE ID）
 
 大きめの機能は **Bajutsu Evolution** 項目として
-[`roadmaps/`](roadmaps/README.md) で管理します。項目ごとに `roadmaps/<implemented|proposals>/BE-NNNN-<slug>/`
-ディレクトリを 1 つ作り（出荷済みは `implemented/`、それ以外は `proposals/` 配下）、英語ファイルとその日本語版を
+[`roadmaps/`](roadmaps/README.md) で管理します。項目ごとに `roadmaps/<category>/BE-NNNN-<slug>/`
+ディレクトリを 1 つ作り、`状態` に応じて 4 つのフォルダ（`implemented/` / `in-progress/` / `proposals/` /
+`deferred/`）のいずれかに置きます。英語ファイルとその日本語版を
 Swift-Evolution の提案書式で置きます。ID は
 不変で単調増加し、索引の表は手編集せず生成します。正確な手順（ID の採番、両言語ファイル、
 `make roadmap-index`）は [`docs/ja/ai-development.md`](docs/ja/ai-development.md) に従ってください。

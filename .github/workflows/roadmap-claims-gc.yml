@@ -59,7 +59,8 @@ jobs:
             exit 0
           fi
           # ids on main (the checked-out tree) and ids any open PR currently holds.
-          main_ids="$(find roadmaps/implemented roadmaps/proposals -mindepth 1 -maxdepth 1 \
+          main_ids="$(find roadmaps/implemented roadmaps/in-progress roadmaps/proposals roadmaps/deferred \
+            -mindepth 1 -maxdepth 1 \
             -type d -name 'BE-*' 2>/dev/null | sed -n 's#.*/BE-\([0-9]\{4\}\)-.*#\1#p' | sort -u)"
           open_ids="$(bash scripts/open_pr_be_ids.sh '')"   # exclude nothing -> every open PR
 

@@ -8,7 +8,6 @@
 | 提案 | [BE-0010](BE-0010-update-scope-statement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
@@ -38,11 +37,11 @@
 ## 検討した代替案
 
 - **スコープ文を漂わせておき、後で直す。** 却下しました。コードが Web を操作するのにドキュメントが「iOS Simulator 限定」と言うプロダクトは、自らを誤って説明することになり、元の iOS 限定の論拠は、移し替えられるのではなく陳腐化します。更新を最初のプラットフォームの着地に結びつければ、ドキュメントとコードを誠実に保てます。
-- **これらのドキュメント編集を、プラットフォーム別のバックエンド項目に畳み込む**（[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。却下しました。スコープ変更は横断的（DESIGN、README、architecture 実装状況、docs ナビ）でありかつ戦略的なので、独立した項目として追跡すれば、バックエンドの実装詳細の中に埋もれて見失われるのを防げます。それでいて段階 1 と同じ変更で着地させられます。
+- **これらのドキュメント編集を、プラットフォーム別のバックエンド項目に畳み込む**（[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。却下しました。スコープ変更は横断的（DESIGN、README、architecture 実装状況、docs ナビ）でありかつ戦略的なので、独立した項目として追跡すれば、バックエンドの実装詳細の中に埋もれて見失われるのを防げます。それでいて段階 1 と同じ変更で着地させられます。
 
 ## 参考
 
 - [DESIGN §1](../../../DESIGN.md)（スコープ: やること / やらないこと）
 - [README](../../../README.md)、[README.ja](../../../README.ja.md)
 - [architecture.md](../../../docs/ja/architecture.md)（実装状況）
-- 関連項目: [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド）、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)（Android バックエンド）
+- 関連項目: [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド）、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)（Android バックエンド）

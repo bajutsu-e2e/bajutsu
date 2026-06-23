@@ -8,7 +8,6 @@
 | Proposal | [BE-0025](BE-0025-coordinate-swipe-generation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -60,7 +59,7 @@ This stays within the prime directives:
   across apps, like the existing `el` / `byLabel` / `matchingId` helpers.
 
 The `// TODO` fallback path itself stays — it still catches genuinely unsupported constructs
-(see [BE-0026](../../proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
+(see [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
 This proposal only removes coordinate swipes from that set.
 
 ## Alternatives considered

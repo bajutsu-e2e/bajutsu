@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#197](https://github.com/bajutsu-e2e/bajutsu/pull/197) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -134,7 +133,6 @@ The English file:
 | Proposal | [BE-NNNN](BE-NNNN-<slug>.md) |
 | Author | [@handle](https://github.com/handle) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | <one of the index topics> |
 <!-- /BE-METADATA -->
 

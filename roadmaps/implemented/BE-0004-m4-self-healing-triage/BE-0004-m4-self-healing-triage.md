@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | predates the per-PR history (squashed into the initial import; no single PR) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Milestones (M1–M4) |
 <!-- /BE-METADATA -->
 

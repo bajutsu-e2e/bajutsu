@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#42](https://github.com/bajutsu-e2e/bajutsu/pull/42), [#67](https://github.com/bajutsu-e2e/bajutsu/pull/67) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->

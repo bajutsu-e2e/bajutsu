@@ -8,7 +8,6 @@
 | Proposal | [BE-0013](BE-0013-scenario-gui-editor.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

@@ -257,7 +257,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - clearStatusBar: {}                                                    # ライブのステータスバーに戻す
 ```
 
-`setLocation` / `push` と同様、これらは `simctl` 経由で Simulator を操作するため、デバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。`background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は settle 用の sleep を入れずに復帰するので、必要なら直後に具体的な要素を待ってください。`setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/proposals/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
+`setLocation` / `push` と同様、これらは `simctl` 経由で Simulator を操作するため、デバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。`background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は settle 用の sleep を入れずに復帰するので、必要なら直後に具体的な要素を待ってください。`setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
 ## アサーション DSL
 

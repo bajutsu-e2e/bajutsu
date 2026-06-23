@@ -3,7 +3,7 @@
 [English](README.md)
 
 Bajutsu が**自分自身**の `serve` Web UI をテストします。テスト対象は serve のシングルページアプリで、
-**Playwright** backend（[BE-0041](../../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で
+**Playwright** backend（[BE-0041](../../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で
 駆動します。[demos/web](../web) と同じく **Mac も Simulator も不要**で、`make check` と同じツールチェーンの
 Linux 上で動きます。Web UI の決定的なリグレッション網であり、合否は機械的なアサーションだけから決まり、LLM は
 関与しません。

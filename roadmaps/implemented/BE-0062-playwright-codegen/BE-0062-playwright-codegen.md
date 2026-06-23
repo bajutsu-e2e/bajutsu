@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#183](https://github.com/bajutsu-e2e/bajutsu/pull/183) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -18,7 +17,7 @@
 `bajutsu codegen` turns a passing scenario into a native test in a destination framework's
 own idiom, so a team can run the same flow in their existing CI with no bajutsu runtime and
 no AI at test time. Today `--emit` accepts `xcuitest` only. Now that the web (Playwright)
-backend has landed ([BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
+backend has landed ([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
 a scenario can `run` against a browser — but there is no way to hand that flow off as a
 native browser test. This item adds `--emit playwright`: a second, purely structural emit
 target that renders a scenario as a Playwright test.
@@ -43,7 +42,7 @@ The mapping is a good fit for the same reasons the XCUITest one is:
   with no model consulted at generation time. It does not touch the `run` / CI gate
   ([DESIGN §2](../../../DESIGN.md)), and it adds no LLM anywhere.
 - The web id convention (`data-testid`) and ARIA `role`/name already mirror the
-  `Selector` fields ([BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
+  `Selector` fields ([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
   so each construct has a natural Playwright equivalent — exactly the property that lets the
   XCUITest emitter stay a small, total function.
 
@@ -104,7 +103,7 @@ test.describe('Components', () => {
 ### Selector mapping
 
 Mirrors the `Selector` → web-attribute mapping the driver already uses
-([BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)):
+([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)):
 
 | `Selector` field | Playwright locator |
 |---|---|
@@ -171,7 +170,7 @@ mapping tables.
   identical across apps, like the existing `el` / `byLabel` helpers.
 
 The exact `launchEnv` → web mapping (query params vs. seeded `localStorage` vs. cookies — the
-channels [BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
+channels [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
 lists) is left **TBD**: v1 seeds `localStorage` via `page.addInitScript` by default and emits a
 `// TODO` when an app expects another channel, keeping the per-app difference in config rather
 than in the emitter.
@@ -196,7 +195,7 @@ than in the emitter.
 
 [codegen.md](../../../docs/codegen.md), [`bajutsu/codegen.py`](../../../bajutsu/codegen.py),
 [`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py),
-[BE-0041 — Web (Playwright) backend](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
+[BE-0041 — Web (Playwright) backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
 [BE-0019 — XCUITest backend](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md),
 [BE-0025 — Coordinate swipe generation](../../proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md),
-[BE-0026 — Shrink unsupported syntax](../../proposals/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
+[BE-0026 — Shrink unsupported syntax](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)

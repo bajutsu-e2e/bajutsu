@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Generate the roadmap index tables in README.md / README-ja.md from per-item metadata.
 
-Every ``roadmaps/<implemented|proposals>/BE-NNNN-<slug>/`` item already carries the metadata an
-index row needs (``Status`` / ``Track`` / ``Topic`` / ``Origin``) plus its H1 title. This reads
-metadata and regenerates the **marker-delimited** table bodies in both index pages, so a
-roadmap PR only ever touches its own directory — the shared index never needs a hand-edit,
-removing the single largest merge-conflict source (BE-0043). The hand-written section prose
-outside the markers is preserved untouched.
+Every ``roadmaps/<category>/BE-NNNN-<slug>/`` item already carries the metadata an index row needs
+(``Status`` / ``Topic`` / ``Origin``) plus its H1 title. This reads metadata and regenerates the
+**marker-delimited** table bodies in both index pages, so a roadmap PR only ever touches its own
+directory — the shared index never needs a hand-edit, removing the single largest merge-conflict
+source (BE-0043). The hand-written section prose outside the markers is preserved untouched.
+
+The index has four top-level buckets, ordered most-progressed first — Implemented / In progress /
+Proposals / Deferred — and each item's bucket is **derived from its ``Status``** (BE-0078), not a
+hand-set ``Track`` field. Inside a bucket, ``Topic`` is the secondary grouping; a topic that has
+items in more than one bucket appears once per bucket, each as its own marked section.
 
 Usage::
 
@@ -14,8 +18,9 @@ Usage::
     python scripts/build_roadmap_index.py --check     # exit 1 if any table is out of date
 
 The generated regions are bounded by ``<!-- GENERATED:<key> -->`` /
-``<!-- /GENERATED:<key> -->`` markers; the section keys below map each table to the items it
-lists (by their English ``Track`` + ``Topic``) and to whether it carries an Origin column.
+``<!-- /GENERATED:<key> -->`` markers; a section's key is ``<bucket-key>-<topic-key>`` (see
+``BUCKETS`` / ``TOPICS``), and only ``(bucket, topic)`` pairs that actually have an item get a
+section — so adding the first item of a topic to a bucket needs a new marker pair in the page.
 """
 
 from __future__ import annotations
@@ -27,7 +32,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROADMAP = Path("roadmaps")
-CATEGORIES = ("implemented", "proposals")  # each item lives under one; it prefixes its links
+# Each item lives under exactly one, by its Status (BE-0078); the folder prefixes its index links.
+CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
 # Canonical metadata: a ``| Field | Value |`` table fenced by these markers, mirroring the index's
@@ -39,7 +45,6 @@ META_ROW_RE = re.compile(r"^\| (.+?) \| (.+?) \|\s*$", re.MULTILINE)
 META_HEADER_KEYS = frozenset({"Field", "項目"})
 # Legacy form (unmigrated items): ``* Field: value`` bullet lines. Read when no fence is present.
 FIELD_RE = re.compile(r"^\* ([^:]+): (.+)$", re.MULTILINE)
-BRACKET_RE = re.compile(r"\[([^\]]+)\]")
 
 
 @dataclass(frozen=True)
@@ -50,7 +55,6 @@ class Lang:
     suffix: str  # filename suffix before ".md" ("" for English, "-ja" for Japanese)
     index_file: str
     field_status: str
-    field_track: str
     field_topic: str
     field_origin: str
     status_display: dict[str, str]
@@ -63,12 +67,11 @@ LANGS: tuple[Lang, ...] = (
         suffix="",
         index_file="README.md",
         field_status="Status",
-        field_track="Track",
         field_topic="Topic",
         field_origin="Origin",
         status_display={
             "Implemented": "Implemented",
-            "Accepted, in progress": "In progress",
+            "In progress": "In progress",
             "Proposal": "Proposal",
             "Proposal (deferred)": "Deferred",
         },
@@ -79,12 +82,11 @@ LANGS: tuple[Lang, ...] = (
         suffix="-ja",
         index_file="README-ja.md",
         field_status="状態",
-        field_track="トラック",
         field_topic="トピック",
         field_origin="由来",
         status_display={
             "実装済み": "実装済み",
-            "可決・実装中": "実装中",
+            "実装中": "実装中",
             "提案": "提案",
             "提案（保留）": "保留",
         },
@@ -94,84 +96,82 @@ LANGS: tuple[Lang, ...] = (
 LANG_BY_CODE = {lang.code: lang for lang in LANGS}
 
 
+# Status -> the index bucket (a top-level page heading) it lands in. Derived from Status, not a
+# hand-set Track field (BE-0078): the lone lifecycle field decides both an item's folder and its
+# index bucket, so the two can never disagree.
+STATUS_TO_BUCKET = {
+    "Implemented": "Implemented",
+    "In progress": "In progress",
+    "Proposal": "Proposals",
+    "Proposal (deferred)": "Deferred",
+}
+# Buckets in page order (most-progressed first), each with the key fragment its sections' markers
+# use. A section key is ``<bucket-key>-<topic-key>``.
+BUCKETS: tuple[tuple[str, str], ...] = (
+    ("Implemented", "implemented"),
+    ("In progress", "in-progress"),
+    ("Proposals", "proposals"),
+    ("Deferred", "deferred"),
+)
+# Every topic, in the order it appears inside a bucket, with its marker key fragment and whether it
+# carries an Origin column. A topic with items in more than one bucket is rendered once per bucket.
+TOPICS: tuple[tuple[str, str, bool], ...] = (
+    ("Milestones (M1–M4)", "milestones", False),
+    ("Platform expansion (landed slices)", "platform-landed", False),
+    ("Platform expansion (Android / Web / Flutter)", "platform", False),
+    ("Authoring experience (record / GUI editor)", "authoring", False),
+    ("Self-healing triage (M4)", "self-healing", False),
+    ("Candidates from competitive research (MagicPod / Autify)", "competitive", True),
+    ("Candidates from competitive research (Maestro)", "competitive-maestro", True),
+    ("Integration & automation (MCP)", "mcp", False),
+    ("Backend expansion (iOS actuators)", "backend", False),
+    ("doctor / onboarding", "doctor", False),
+    ("Development infrastructure (contributor workflow)", "dev-infra", False),
+    ("Dogfood fixtures (demo apps)", "dogfood", True),
+    ("Dogfood fixtures (web UI)", "dogfood-web-ui", True),
+    ("AI provider configuration", "ai-provider", False),
+    ("Hosting the web UI (cloud / self-hosted)", "hosting", False),
+    ("Configuration sourcing", "config-sourcing", False),
+    ("codegen coverage", "codegen", False),
+    ("Crawl performance / scale-out", "crawl", False),
+    ("On-device validation (M1 close-out)", "on-device", False),
+    ("Miscellaneous / on hold", "misc", False),
+)
+KNOWN_TOPICS = frozenset(topic for topic, _key, _origin in TOPICS)
+
+
 @dataclass(frozen=True)
 class Section:
-    """One generated table, keyed by the English Track + Topic of the items it lists."""
+    """One generated table: the items of a single Topic that sit in one bucket."""
 
     key: str
-    track: str
+    bucket: str
     topic: str
     has_origin: bool
 
 
-# Ordered to match the layout of the two index pages. The (track, topic) pair selects an
-# item into exactly one section; adding an item to an existing topic needs no edit here.
-SECTIONS: tuple[Section, ...] = (
-    Section("accepted-milestones", "Accepted", "Milestones (M1–M4)", False),
-    Section("accepted-platform-landed", "Accepted", "Platform expansion (landed slices)", False),
-    Section("accepted-authoring", "Accepted", "Authoring experience (record / GUI editor)", False),
-    Section("accepted-self-healing", "Accepted", "Self-healing triage (M4)", False),
-    Section(
-        "accepted-competitive",
-        "Accepted",
-        "Candidates from competitive research (MagicPod / Autify)",
-        True,
-    ),
-    Section(
-        "accepted-competitive-maestro",
-        "Accepted",
-        "Candidates from competitive research (Maestro)",
-        True,
-    ),
-    Section("accepted-mcp", "Accepted", "Integration & automation (MCP)", False),
-    Section(
-        "accepted-dev-infra",
-        "Accepted",
-        "Development infrastructure (contributor workflow)",
-        False,
-    ),
-    Section("accepted-dogfood", "Accepted", "Dogfood fixtures (demo apps)", True),
-    Section("accepted-dogfood-web-ui", "Accepted", "Dogfood fixtures (web UI)", True),
-    Section("accepted-ai-provider", "Accepted", "AI provider configuration", False),
-    Section("accepted-hosting", "Accepted", "Hosting the web UI (cloud / self-hosted)", False),
-    Section("accepted-codegen", "Accepted", "codegen coverage", False),
-    Section("accepted-crawl", "Accepted", "Crawl performance / scale-out", False),
-    Section("accepted-misc", "Accepted", "Miscellaneous / on hold", False),
-    Section("proposals-on-device", "Proposals", "On-device validation (M1 close-out)", False),
-    Section(
-        "proposals-platform", "Proposals", "Platform expansion (Android / Web / Flutter)", False
-    ),
-    Section(
-        "proposals-authoring", "Proposals", "Authoring experience (record / GUI editor)", False
-    ),
-    Section("proposals-hosting", "Proposals", "Hosting the web UI (cloud / self-hosted)", False),
-    Section("proposals-config-sourcing", "Proposals", "Configuration sourcing", False),
-    Section("proposals-mcp", "Proposals", "Integration & automation (MCP)", False),
-    Section("proposals-backend", "Proposals", "Backend expansion (iOS actuators)", False),
-    Section("proposals-doctor", "Proposals", "doctor / onboarding", False),
-    Section("proposals-codegen", "Proposals", "codegen coverage", False),
-    Section("proposals-crawl", "Proposals", "Crawl performance / scale-out", False),
-    Section(
-        "proposals-dev-infra",
-        "Proposals",
-        "Development infrastructure (contributor workflow)",
-        False,
-    ),
-    Section("proposals-dogfood", "Proposals", "Dogfood fixtures (demo apps)", True),
-    Section("proposals-misc", "Proposals", "Miscellaneous / on hold", False),
-    Section(
-        "proposals-competitive",
-        "Proposals",
-        "Candidates from competitive research (MagicPod / Autify)",
-        True,
-    ),
-    Section(
-        "proposals-competitive-maestro",
-        "Proposals",
-        "Candidates from competitive research (Maestro)",
-        True,
-    ),
-)
+def bucket(status: str) -> str:
+    """The index bucket an item with this (English) ``Status`` belongs in (BE-0078)."""
+    try:
+        return STATUS_TO_BUCKET[status]
+    except KeyError as e:
+        raise ValueError(f"unknown status {status!r}") from e
+
+
+def sections_for(items: list[Item]) -> list[Section]:
+    """The sections present in this tree, in page order (bucket-major, topic-minor).
+
+    Only ``(bucket, topic)`` pairs that actually have an item get a section — so the first item of
+    a topic to reach a bucket needs a new marker pair in the page (``replace_region`` will say so),
+    and an emptied section drops out rather than rendering a header with no rows.
+    """
+    present = {(item.bucket, item.topic) for item in items}
+    return [
+        Section(f"{bucket_key}-{topic_key}", bucket_name, topic, has_origin)
+        for bucket_name, bucket_key in BUCKETS
+        for topic, topic_key, has_origin in TOPICS
+        if (bucket_name, topic) in present
+    ]
 
 
 @dataclass(frozen=True)
@@ -180,7 +180,9 @@ class Entry:
 
     id: str
     slug: str
-    category: str  # subdirectory the item lives in ("implemented" / "proposals")
+    category: (
+        str  # status folder the item lives in (implemented / in-progress / proposals / deferred)
+    )
     title: str
     status: str  # raw status, before display mapping
     origin: str | None
@@ -188,11 +190,11 @@ class Entry:
 
 @dataclass(frozen=True)
 class Item:
-    """A roadmap item: its identity, English Track/Topic, and per-language render fields."""
+    """A roadmap item: its identity, index bucket + Topic, and per-language render fields."""
 
     id: str
     slug: str
-    track: str  # canonical (English) track
+    bucket: str  # index bucket, derived from the English Status (BE-0078)
     topic: str  # canonical (English) topic
     by_lang: dict[str, Entry]
 
@@ -223,12 +225,6 @@ def parse_metadata(text: str) -> tuple[str, dict[str, str]]:
             key.strip(): value.replace("**", "").strip() for key, value in FIELD_RE.findall(text)
         }
     return title_match.group(1).strip(), fields
-
-
-def track_label(value: str) -> str:
-    """Extract the human label from a Track value like ``[Accepted](../README.md#accepted)``."""
-    match = BRACKET_RE.search(value)
-    return match.group(1) if match else value.strip()
 
 
 def status_display(raw: str, lang_code: str) -> str:
@@ -318,7 +314,7 @@ def load_items(roadmap: Path) -> list[Item]:
             item_id, slug = f"BE-{match.group(1)}", match.group(2)
 
             by_lang: dict[str, Entry] = {}
-            track = topic = ""
+            item_bucket = topic = ""
             for lang in LANGS:
                 path = d / f"{item_id}-{slug}{lang.suffix}.md"
                 title, fields = parse_metadata(path.read_text(encoding="utf-8"))
@@ -331,25 +327,26 @@ def load_items(roadmap: Path) -> list[Item]:
                     origin=fields.get(lang.field_origin),
                 )
                 if lang.code == "en":
-                    track = track_label(fields[lang.field_track])
+                    item_bucket = bucket(fields[lang.field_status])
                     topic = fields[lang.field_topic]
-
-            items.append(Item(id=item_id, slug=slug, track=track, topic=topic, by_lang=by_lang))
+            if topic not in KNOWN_TOPICS:
+                raise ValueError(
+                    f"{item_id}: unknown Topic {topic!r}; add it to TOPICS (with a key) so it "
+                    "maps to a section"
+                )
+            items.append(
+                Item(id=item_id, slug=slug, bucket=item_bucket, topic=topic, by_lang=by_lang)
+            )
     return items
 
 
 def assign_sections(items: list[Item]) -> dict[str, list[Item]]:
-    """Group items by section key; raise if an item matches no section."""
-    by_key: dict[str, list[Item]] = {s.key: [] for s in SECTIONS}
-    index = {(s.track, s.topic): s for s in SECTIONS}
+    """Group items by section key (bucket + topic)."""
+    sections = sections_for(items)
+    by_key: dict[str, list[Item]] = {s.key: [] for s in sections}
+    index = {(s.bucket, s.topic): s for s in sections}
     for item in items:
-        section = index.get((item.track, item.topic))
-        if section is None:
-            raise ValueError(
-                f"{item.id}: no section for track={item.track!r} topic={item.topic!r}; "
-                "add a Section (and markers) for it"
-            )
-        by_key[section.key].append(item)
+        by_key[index[(item.bucket, item.topic)].key].append(item)
     return by_key
 
 
@@ -358,15 +355,15 @@ def render_index(items: list[Item], lang_code: str) -> dict[str, str]:
     by_key = assign_sections(items)
     return {
         section.key: render_table(by_key[section.key], lang_code, section.has_origin)
-        for section in SECTIONS
+        for section in sections_for(items)
     }
 
 
 def build_index_text(items: list[Item], current: str, lang_code: str) -> str:
     """Apply every section's regenerated body to one index page's current text."""
-    bodies = render_index(items, lang_code)
-    for section in SECTIONS:
-        current = replace_region(current, section.key, bodies[section.key])
+    bodies = render_index(items, lang_code)  # keyed in section order
+    for key, body in bodies.items():
+        current = replace_region(current, key, body)
     return current
 
 

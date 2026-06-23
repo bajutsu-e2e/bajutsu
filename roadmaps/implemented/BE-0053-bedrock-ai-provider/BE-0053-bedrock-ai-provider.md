@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#109](https://github.com/bajutsu-e2e/bajutsu/pull/109) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | AI provider configuration |
 <!-- /BE-METADATA -->
 

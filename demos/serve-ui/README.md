@@ -3,7 +3,7 @@
 [日本語](README.ja.md)
 
 Bajutsu testing **its own** `serve` Web UI. The app under test is the serve single-page app, driven
-by the **Playwright** backend ([BE-0041](../../roadmaps/proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+by the **Playwright** backend ([BE-0041](../../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 Like [demos/web](../web) this needs **no Mac and no Simulator** — it runs on Linux inside the same
 toolchain as `make check`. It is a deterministic regression net for the Web UI: pass/fail comes only
 from machine assertions, never an LLM.

@@ -9,7 +9,6 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#30](https://github.com/bajutsu-e2e/bajutsu/pull/30), [#34](https://github.com/bajutsu-e2e/bajutsu/pull/34) |
-| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | 両社 |
 <!-- /BE-METADATA -->
