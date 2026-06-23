@@ -8,6 +8,7 @@
 | Proposal | [BE-0048](BE-0048-behavioral-protocol-assertions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Accepted, in progress** |
+| Implementing PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) |
 | Track | [Accepted](../../README.md#accepted) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
@@ -83,18 +84,24 @@ expect:
 
 ### Implementation status
 
-The first slice ships the **`event`** assertion (`bajutsu/scenario/models/assertions.py`
-`EventMatch` + `CountOp`; `bajutsu/assertions.py` `_eval_event`). It filters the captured timeline by
-the event's endpoint — reusing the existing `RequestMatch` matcher — then by structured JSON
-request-body fields, and checks the surviving count against an `equals` / `atLeast` / `atMost`
-operator (default: at least one). Pure over the recorded exchanges, AI-free, and on the Tier-2
-run/CI gate like every other assertion. `${vars.*}` / `${secrets.*}` tokens interpolate into body
-values through the existing assertion substitution path, so no per-field wiring was needed.
+The **`event`** assertion shipped first (`bajutsu/scenario/models/assertions.py` `EventMatch` +
+`CountOp`; `bajutsu/assertions.py` `_eval_event`): it filters the captured timeline by the event's
+endpoint — reusing the existing `RequestMatch` matcher — then by structured JSON request-body fields,
+and checks the surviving count against an `equals` / `atLeast` / `atMost` operator (default: at least
+one). `${vars.*}` / `${secrets.*}` tokens interpolate into body values through the existing assertion
+substitution path, so no per-field wiring was needed.
 
-Deferred to later slices: **`requestSequence`** (ordered/multiplicity matching over the timeline —
-also pure, reusing `RequestMatch`, a natural quick follow-up) and **`responseSchema`** (validate a
-captured response body against a stored JSON Schema — carries a new schema-validation dependency,
-an `apps.<name>.schemas` config dir, and runner wiring, so it is a separate slice).
+The **`requestSequence`** assertion then shipped (`Assertion.request_sequence`;
+`bajutsu/assertions.py` `_eval_request_sequence`): a non-empty list of `RequestMatch`es matched as an
+ordered subsequence over the timeline (each matcher matches a distinct exchange strictly after the
+previous; unrelated traffic may interleave). It reuses `match_request`, adds no new dependency, and is
+pure — order is its job, so a matcher's own `count` is ignored.
+
+Both are AI-free and on the Tier-2 run/CI gate like every other assertion.
+
+Deferred to a later slice: **`responseSchema`** (validate a captured response body against a stored
+JSON Schema — carries a new schema-validation dependency, an `apps.<name>.schemas` config dir, and
+runner wiring, so it is a separate slice).
 
 ## Alternatives considered
 

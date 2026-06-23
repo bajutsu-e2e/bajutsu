@@ -34,6 +34,7 @@ _ASSERTION_KINDS = (
     "selected",
     "request",
     "event",
+    "request_sequence",
     "visual",
 )
 
