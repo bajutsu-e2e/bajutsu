@@ -58,8 +58,9 @@ def crawl(
     workers: int = typer.Option(
         1,
         "--workers",
-        help="crawl across this many simulators at once (BE-0064), sharing one screen map; "
-        "capped to the number of --udid devices. Default 1 = single-device crawl. iOS only",
+        help="crawl with this many workers at once, sharing one screen map: across this many "
+        "simulators on iOS (BE-0064, capped to the --udid devices), or this many browser processes "
+        "on web (BE-0077). Default 1 = single-worker crawl.",
     ),
     backend: str = typer.Option(""),
     max_screens: int = typer.Option(
@@ -186,13 +187,14 @@ def crawl(
         _write_screenmap(screenmap_path, crawl_engine.ScreenMap())  # empty map the UI can poll now
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
-    # The device pool (BE-0064): `--udid` may be a comma list and `--workers N` crawls across that
-    # many simulators at once, sharing one screen map. Web is one browser lane (launch_driver
-    # ignores the udid for playwright; resolving "booted" would shell out to simctl and crash
-    # off-macOS). A resumed crawl is a single-branch walk, so it stays one device.
+    # The worker pool, all sharing one screen map. iOS crawls across a `--udid` pool with
+    # `--workers N` capped to it (BE-0064). Web has no devices, so the worker count alone sizes the
+    # lane set: N browser-process lanes (BE-0077). `launch_driver` ignores the udid for playwright,
+    # so each "web" entry is just one more browser; resolving "booted" would shell out to simctl and
+    # crash off-macOS, so web skips udid resolution. A resumed crawl is a single-branch walk → 1 lane.
     if actuator == "playwright":
-        udids = ["web"]
-        workers = 1
+        workers = max(1, workers)
+        udids = ["web"] * workers
     else:
         udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
         workers = max(1, min(workers, len(udids)))
@@ -211,7 +213,8 @@ def crawl(
     atexit.register(stop_server)
 
     if actuator == "playwright":
-        say(f"⚙️  preparing the browser — navigating to {eff.base_url} …")
+        browsers = f"{workers} browsers" if workers > 1 else "the browser"
+        say(f"⚙️  preparing {browsers} — navigating to {eff.base_url} …")
     elif workers > 1:
         say(
             f"⚙️  preparing {workers} simulators — installing and launching {app_name} on each "
@@ -225,12 +228,13 @@ def crawl(
 
     def reset_for(u: str) -> crawl_engine.Reset:
         # Revisit a known screen the way `run` reaches any state — return to a clean start on this
-        # device and let the engine replay the shortest path. For web there is no app to relaunch:
-        # re-navigating to baseUrl is the clean start. For iOS a relaunch (not a full erase) keeps
-        # each frontier visit fast; the app's own UI returns to its entry screen.
+        # device and let the engine replay the shortest path. For web a fresh BrowserContext is the
+        # clean start (the `erase` equivalent): no cookies / storage carried across visits, so a
+        # path recorded in one worker's browser replays identically in another (BE-0077). For iOS a
+        # relaunch (not a full erase) keeps each frontier visit fast; the app returns to its entry.
         def reset(d: base.Driver) -> None:
             if actuator == "playwright":
-                d.navigate()  # type: ignore[attr-defined]  # web-only lifecycle (re-navigate to baseUrl)
+                d.reset_context()  # type: ignore[attr-defined]  # web-only lifecycle (fresh context)
                 _await_ready(d)
                 return
             e = _env.Env(u)
@@ -250,7 +254,6 @@ def crawl(
     except _env.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    driver = pool[0][0]  # the primary device; the web is_alive / dialog hooks read it
 
     def on_event(screen_map: crawl_engine.ScreenMap) -> None:
         _write_screenmap(screenmap_path, screen_map)
@@ -273,18 +276,26 @@ def crawl(
     # dialogs with no model (BE-0066).
     is_alive: crawl_engine.AliveCheck | None = None
     clear_blocking: crawl_engine.ClearBlocking | None = None
+    recover: crawl_engine.Recover | None = None
     if actuator == "playwright":
         from bajutsu.drivers.playwright import PlaywrightDriver, web_is_alive
 
-        web = cast(PlaywrightDriver, driver)
+        # Each web worker owns its own browser, so the health / dialog signals read the worker's own
+        # driver `d` — not the primary — which is essential once `--workers` > 1 (BE-0077).
+        def is_alive(d: base.Driver, elements: list[base.Element]) -> bool:
+            return web_is_alive(cast(PlaywrightDriver, d), elements)
 
-        def is_alive(_d: base.Driver, elements: list[base.Element]) -> bool:
-            return web_is_alive(web, elements)
-
-        def clear_blocking(_d: base.Driver) -> list[str]:
+        def clear_blocking(d: base.Driver) -> list[str]:
             # JS dialogs are auto-dismissed by the driver the moment they appear (they would
             # otherwise block the page); here we just report what was handled, for the screen map.
-            return web.pop_dialogs()
+            return cast(PlaywrightDriver, d).pop_dialogs()
+
+        def recover(d: base.Driver) -> None:
+            # A wedged browser (renderer crash, hung page, navigation timeout) surfaces as a
+            # DeviceError; relaunch this worker's own browser process so its lane heals and keeps
+            # crawling rather than sinking the crawl (BE-0077). Loud, not silent.
+            say("⚠️  a worker's browser wedged — relaunching it")
+            cast(PlaywrightDriver, d).relaunch()
     elif dismiss_alerts:
         # The alert guard (Claude vision) dismisses unexpected OS prompts the crawl would otherwise
         # read as a crash. Best-effort: with no API key it no-ops, so the crawl still runs.
@@ -325,7 +336,10 @@ def crawl(
             seed_ops=seed_ops,
             on_event=on_event,
             on_node=on_node,
-            extra_workers=pool[1:],  # the rest of the simulator pool (BE-0064)
+            recover=recover,  # web: relaunch a wedged browser so its lane keeps crawling (BE-0077)
+            extra_workers=pool[
+                1:
+            ],  # the rest of the worker pool (BE-0064 simulators / BE-0077 browsers)
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

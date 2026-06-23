@@ -331,3 +331,126 @@ def test_web_is_alive_flags_each_crash_signal() -> None:
     assert web_is_alive(drv, els) is False  # navigated to a 5xx
     page.fire("response", _FakeResponse(200, nav=True))
     assert web_is_alive(drv, els) is True  # a later good navigation clears it
+
+
+# --- parallel crawl: fresh-context reset, browser relaunch, wedge → DeviceError (BE-0077) ---
+
+
+class _FakeContext:
+    def __init__(self, page: _FakePage) -> None:
+        self.page = page
+        self.closed = 0
+
+    def new_page(self) -> _FakePage:
+        return self.page
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+class _FakeBrowser:
+    def __init__(self, pages: list[_FakePage]) -> None:
+        self._pages = list(pages)  # one handed out per new_context().new_page()
+        self.contexts: list[_FakeContext] = []
+        self.closed = 0
+
+    def new_context(self) -> _FakeContext:
+        ctx = _FakeContext(self._pages.pop(0))
+        self.contexts.append(ctx)
+        return ctx
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+class _FakePw:
+    def __init__(self) -> None:
+        self.stopped = 0
+
+    def stop(self) -> None:
+        self.stopped += 1
+
+
+def test_reset_context_opens_a_fresh_context_closing_the_old_one() -> None:
+    """The web `erase` (BE-0077): reset_context discards the current context, opens a fresh one, and
+    navigates the new page — clean cookies / storage per frontier visit, one context alive at a
+    time (no leak), with the health handlers rebound to the fresh page."""
+    pw, initial_ctx = _FakePw(), _FakeContext(_FakePage([]))
+    fresh = _FakePage([])
+    browser = _FakeBrowser([fresh])  # hands `fresh` to the next new_context().new_page()
+    drv = PlaywrightDriver(
+        "http://app.test/index.html",
+        starter=lambda _h: (pw, browser, initial_ctx, initial_ctx.page),
+    )
+
+    drv.reset_context()
+
+    assert initial_ctx.closed == 1  # the prior context was discarded, not leaked
+    assert len(browser.contexts) == 1  # exactly one fresh context opened
+    assert fresh.goto_url == "http://app.test/index.html"  # navigated on the fresh page
+    fresh.fire("pageerror", "boom")  # health handlers rebound to the fresh page
+    assert drv.pop_page_errors() == ["boom"]
+
+
+def test_relaunch_replaces_the_browser_process() -> None:
+    """relaunch tears down the wedged browser + Playwright and starts a fresh process (BE-0077), then
+    rebinds the health handlers to the new page so the recovered lane keeps reporting crash signals."""
+    old_pw, old_browser, old_page = _FakePw(), _FakeBrowser([]), _FakePage([])
+    new_pw, new_browser, new_page = _FakePw(), _FakeBrowser([]), _FakePage([])
+    starts = iter(
+        [
+            (old_pw, old_browser, _FakeContext(old_page), old_page),  # initial
+            (new_pw, new_browser, _FakeContext(new_page), new_page),  # the relaunch
+        ]
+    )
+    drv = PlaywrightDriver("http://app.test/", starter=lambda _h: next(starts))
+
+    drv.relaunch()
+
+    assert old_browser.closed == 1 and old_pw.stopped == 1  # the wedged process was torn down
+    new_page.fire("pageerror", "boom")  # the fresh page's signals now feed the driver
+    assert drv.pop_page_errors() == ["boom"]
+
+
+def test_relaunch_is_a_noop_for_an_injected_page() -> None:
+    drv, _ = _driver([])  # an injected test page has no real browser to relaunch
+    drv.relaunch()  # must not raise
+
+
+def test_reset_context_on_an_injected_page_just_navigates() -> None:
+    """With no real browser (an injected page), reset_context has no context to swap — it falls back
+    to re-navigating, the path the crawl uses when a page is injected for tests."""
+    drv, page = _driver([])
+    drv.reset_context()
+    assert page.goto_url == "http://app.test/index.html"
+
+
+def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wedged browser raises a Playwright error from a page op; the driver re-raises it as the
+    crawl's recoverable `env.DeviceError` (BE-0077), so a pool worker relaunches instead of the crawl
+    aborting. A selection failure is not a wedge and still propagates unchanged."""
+    import bajutsu.drivers.playwright as pw_mod
+    from bajutsu import env
+
+    class _PwError(Exception):
+        pass
+
+    # Playwright isn't installed in the gate env, so stand in its error types (cached global).
+    monkeypatch.setattr(pw_mod, "_PW_ERRORS", (_PwError,))
+
+    class _WedgedPage(_FakePage):
+        def evaluate(self, expression: str) -> Any:
+            raise _PwError("Target page, context or browser has been closed")
+
+    wedged = PlaywrightDriver("http://app.test/", page=_WedgedPage([]))
+    with pytest.raises(env.DeviceError):
+        wedged.query()
+    with pytest.raises(env.DeviceError):
+        wedged.tap({"id": "anything"})  # tap → _center → query() wedges → DeviceError
+
+    # A missing selector is a SelectorError, not a wedge — it must not be masked as a DeviceError.
+    healthy = PlaywrightDriver("http://app.test/", page=_FakePage([]))
+    with pytest.raises(base.ElementNotFound):
+        healthy.tap({"id": "missing"})

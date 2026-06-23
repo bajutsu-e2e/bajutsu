@@ -383,6 +383,101 @@ def test_lone_worker_surfaces_a_device_error() -> None:
     raise AssertionError("a lone worker's device error must propagate")
 
 
+def test_parallel_crawl_recovers_a_wedged_lane_instead_of_retiring() -> None:
+    """With a `recover` hook (web's browser relaunch, BE-0077), a worker whose device wedges hands
+    its frontier entry back, heals its lane, and keeps crawling — rather than retiring the lane as
+    the iOS default does. The fault is keyed to an *action* (the first open of leaf0), not a worker,
+    so it fires deterministically whichever worker reaches it; the whole app is still mapped."""
+    react, home = _wide_app(6)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    wedged = {"leaf0": False}  # leaf0's first open wedges once; only one worker holds it at a time
+
+    def flaky(d: FakeDriver, kind: str, arg: object) -> None:
+        opening_leaf0 = kind == "tap" and isinstance(arg, dict) and arg.get("id") == "home.leaf0"
+        if opening_leaf0 and not wedged["leaf0"]:
+            wedged["leaf0"] = True
+            raise crawl.env.DeviceError("browser wedged")
+        react(d, kind, arg)
+
+    recovered = {"n": 0}
+
+    def recover(_d: FakeDriver) -> None:
+        recovered["n"] += 1
+
+    drivers = [FakeDriver(screen=list(home), react=flaky) for _ in range(2)]
+    sm = crawl.crawl(drivers[0], reset, recover=recover, extra_workers=[(drivers[1], reset)])
+
+    assert len(sm.nodes) == 7  # home + 6 leaves — nothing lost, the lane was not retired
+    assert sm.stop_reason == "completed"
+    assert recovered["n"] == 1  # exactly one wedge, healed in place rather than retired
+
+
+def test_lone_worker_ignores_recover_and_surfaces_the_error() -> None:
+    """`recover` only heals a pool lane; a lone worker has no healthy peer to fall back to, so its
+    device error still propagates and recover never fires — a missing pool can't silently swallow a
+    real failure (prime directive #2)."""
+    home = [el(identifier="home.a", traits=["button"])]
+
+    def boom(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":
+            raise crawl.env.DeviceError("device gone")
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    calls = {"n": 0}
+
+    def recover(_d: FakeDriver) -> None:
+        calls["n"] += 1
+
+    try:
+        crawl.crawl(FakeDriver(screen=list(home), react=boom), reset, recover=recover)
+    except crawl.env.DeviceError:
+        assert calls["n"] == 0  # recover was never called for a lone worker
+        return
+    raise AssertionError("a lone worker's device error must propagate even with recover set")
+
+
+def test_parallel_crawl_retires_a_lane_that_never_heals_instead_of_looping() -> None:
+    """The recover safety valve: a browser that keeps wedging even after relaunch must not busy-loop
+    recover() forever. The wedged worker is the primary, so it deterministically faults on its first
+    action; recover (a no-op stand-in here — the lane stays broken) fires at most MAX-1 times, then
+    the lane retires after MAX faults in a row, and the healthy worker still maps the whole app."""
+    react, home = _wide_app(6)
+
+    def reset(d: FakeDriver) -> None:
+        d.screen = list(home)
+
+    def always_wedged(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":
+            raise crawl.env.DeviceError("browser wedged")
+
+    recovered = {"n": 0}
+
+    def recover(_d: FakeDriver) -> None:  # the lane stays broken; recovery never actually heals it
+        recovered["n"] += 1
+
+    # A small settle throttles the healthy worker (it settles after each observe) so the wedged
+    # primary — whose taps fault *before* any observe — reliably runs through its fault budget rather
+    # than the synchronous fake being fully mapped before the primary acts.
+    def settle(_d: FakeDriver) -> None:
+        time.sleep(0.002)
+
+    primary = FakeDriver(screen=list(home), react=always_wedged)
+    healthy = FakeDriver(screen=list(home), react=react)
+    sm = crawl.crawl(
+        primary, reset, recover=recover, settle=settle, extra_workers=[(healthy, reset)]
+    )
+
+    assert len(sm.nodes) == 7  # the healthy worker maps everything despite the unhealable lane
+    assert sm.stop_reason == "completed"
+    # recover was attempted but bounded — the lane retired rather than looping forever.
+    assert 1 <= recovered["n"] <= crawl._MAX_WORKER_DEVICE_ERRORS - 1
+
+
 def test_crawl_records_a_crash_when_app_ui_collapses() -> None:
     home = [el(identifier="home.boom", traits=["button"])]
     crashed = [el(traits=["application"])]  # collapsed tree: no actionable app content

@@ -218,7 +218,7 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
 | `--agent` | `$BAJUTSU_AGENT` または `api` | クロールガイドの AI バックエンド。`api`（Anthropic SDK、従量課金。設定した AI プロバイダを使用し、Anthropic なら `ANTHROPIC_API_KEY`、`BAJUTSU_AI_PROVIDER=bedrock` なら AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）か `claude-code`（Claude Code CLI。サブスクリプションを利用、テキストのみ。`record --agent claude-code` と同様）。省略時は `$BAJUTSU_AGENT`（`serve` が Settings の選択から設定）に従い、なければ `api` |
 | `--udid` | `booted` | 対象 Simulator。カンマ区切り（`A,B,C`）で並列プールも指定できる（`--workers` 参照） |
-| `--workers` | `1` | 複数のシミュレータで同時にクロールする台数（[BE-0064](../../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)）。1 つの画面マップを共有する。`--udid` のデバイス数で上限。`1` はシングルデバイスのクロール。iOS のみ |
+| `--workers` | `1` | 同時に動かすワーカー数。1 つの画面マップを共有する。iOS は同数のシミュレータ（[BE-0064](../../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)、`--udid` のデバイス数で上限）、web は同数のブラウザプロセス（[BE-0077](../../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。`1` はシングルワーカーのクロール |
 | `--backend` | config | actuator 順 |
 | `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | クロール中に予期せぬ OS プロンプトを片付ける（クラッシュ誤判定を防ぐ。設定した AI プロバイダを使用し、`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報） |
@@ -260,7 +260,10 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   画面に先に到達するかは時間依存なので、アプリ自体に非決定性があると記録されるパスや発見順は実行ごとに変わりえますが、
   画面同一性・遷移・クラッシュ判定は要素ツリーの同じ決定的関数のままです（クロールは依然として合否を下しません）。
   固まったデバイスは自分の作業を手放し、残りのワーカーが続行します。既定の `--workers 1` は従来どおりのシングル
-  デバイスのクロールです。（iOS のみ。web のクロールはブラウザ 1 つです。）
+  ワーカーのクロールです。**web** でも同じ仕組みが働き、シミュレータの代わりに N 個の**ブラウザプロセス**を動かします
+  （[BE-0077](../../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。web に端末はない
+  のでワーカー数だけでレーン数が決まり、リセットのたびに新しいブラウザコンテキスト（クリーンな初期状態 = `erase` 相当）
+  を開きます。固まったブラウザは破棄して再起動するので、1 つの不調がクロール全体を沈めることはありません。
 
 ### 画面の同定方法（fingerprint）
 

@@ -62,6 +62,12 @@ Settle = Callable[[base.Driver], None]
 # HTTP status / blank DOM, BE-0066) injects its own. It receives the driver so a backend can read
 # its own health state, plus the landed elements. It only observes; it never decides pass/fail.
 AliveCheck = Callable[[base.Driver, list[base.Element]], bool]
+# Heal a wedged worker lane in place so the crawl keeps going (BE-0077). A backend whose lane
+# can be torn down and relaunched cheaply (web: a fresh browser process) injects this; the worker
+# calls it on a device fault instead of retiring the lane. iOS leaves it unset (a wedged simulator
+# isn't cheaply recoverable mid-crawl), so its workers retire as before. It only heals; it never
+# decides pass/fail.
+Recover = Callable[[base.Driver], None]
 
 
 @dataclass(frozen=True)
@@ -491,6 +497,7 @@ def crawl(
     seed_ops: list[Action] | None = None,
     on_event: OnEvent | None = None,
     on_node: OnNode | None = None,
+    recover: Recover | None = None,
     extra_workers: Sequence[tuple[base.Driver, Reset]] | None = None,
 ) -> ScreenMap:
     """Crawl by a forward walk, resetting + replaying only to backtrack to an unexplored screen.
@@ -506,8 +513,10 @@ def crawl(
     proposes richer operations) — it only chooses *what to try*, never what happened. `on_event`,
     if given, fires after each new node, edge, or crash so a caller can stream the growing screen
     map. `on_node`, if given, fires once per newly discovered screen while the discovering worker's
-    driver is still on it (to capture a screenshot). Stops at `max_screens` distinct screens or
-    `max_steps` actions, whichever first.
+    driver is still on it (to capture a screenshot). `recover`, if given, heals a worker whose
+    device wedged (web: relaunch its browser process) so the lane keeps crawling instead of
+    retiring; only fires in a pool. Stops at `max_screens` distinct screens or `max_steps` actions,
+    whichever first.
 
     `extra_workers` adds simulators beyond the primary `(driver, reset)`: each `(driver, reset)`
     pair is one more worker that explores the *same* shared frontier on its own device, so the
@@ -722,7 +731,17 @@ def crawl(
                 if not isolate:
                     raise  # a lone worker surfaces the device failure, as the serial engine did
                 current_fp = None
-                if _give_back(src_fp, action):
+                retire = _give_back(src_fp, action)
+                if recover is not None and not retire:
+                    # The lane can be healed in place (web: relaunch its browser process), so do
+                    # that and keep crawling rather than abandoning the worker (BE-0077). A clean
+                    # step resets the fault counter, so only persistent wedging (MAX faults in a
+                    # row) still retires. `recover(d)` runs outside any inner try on purpose: if even
+                    # the relaunch fails, that real environment fault propagates (via `_run`, below)
+                    # rather than being swallowed — a browser that can't relaunch isn't a transient
+                    # wedge. Don't wrap this call in a try.
+                    recover(d)
+                elif retire:
                     return  # retire the wedged device so it can't keep stealing the frontier
                 continue
             errors = 0
