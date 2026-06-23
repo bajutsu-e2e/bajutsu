@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0028](BE-0028-evidence-rule-overmatch-guard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Status | **Implemented** |
+| Implementing PR | [#90](https://github.com/bajutsu-e2e/bajutsu/pull/90) · [#91](https://github.com/bajutsu-e2e/bajutsu/pull/91) |
+| Track | [Accepted](../../README.md#accepted) |
 | Topic | Miscellaneous / on hold |
 <!-- /BE-METADATA -->
 
@@ -29,6 +30,17 @@ Two complementary guards, neither of which touches pass/fail.
 - **A pre-run `--explain` dry run.** A command (e.g. `bajutsu trace --explain <scenario>`, as §11 names it) statically walks the scenario against its `capturePolicy`, reports for each rule how many times it would fire and on which steps, and flags heavy captures (`video` / `network`) on broadly-matching rules. This is the *pre-run* counterpart to the existing post-hoc `trace`: that one reads a completed run's manifest, this one previews what a run *would* capture so an author can tighten a glob before paying for it. It is read-only and deterministic — it resolves selectors and matches triggers the same way the run loop will, so its count is the real one, with no LLM involved.
 - **A lighter default policy.** The implicit default capture stays the lightweight trio — `screenshot` + `elements` + `actionLog` — plus the `result: error` safety net that captures the maximum only when a step actually fails. Interval-heavy kinds (`video`, `deviceLog`, `network`) remain strictly opt-in, attached deliberately via an inline `capture:` or a narrowly-scoped rule. So the costly captures only ever run where an author asked for them, and the common case is cheap by construction.
 - **Determinism and app-agnosticism preserved.** Neither guard changes what a run asserts: `--explain` is advisory output, and the default-policy choice only affects which evidence is gathered, never pass/fail. There are no fixed sleeps and selector strictness is unchanged. Any per-app capture preferences live under `apps.<name>` alongside other per-app settings, so the tool and runner stay app-agnostic, and the Tier-2 gate stays LLM-free.
+
+### Implementation status
+
+Both guards shipped. The **`--explain` dry run** is `bajutsu trace --explain <scenario>`
+(`bajutsu/trace.py`, [#90](https://github.com/bajutsu-e2e/bajutsu/pull/90)): it statically walks the
+scenario against its `capturePolicy`, counts how many times each rule would fire and on which steps,
+and flags a heavy capture (`video` / `deviceLog` / `appTrace` / `network`) on a broadly-matching rule
+with a ⚠ — read-only, deterministic, no LLM. The **lighter default policy** is the implicit capture
+trio `screenshot` + `elements` + `actionLog` with the interval-heavy kinds strictly opt-in
+([#91](https://github.com/bajutsu-e2e/bajutsu/pull/91)), so a costly capture only runs where an author
+asked for it. Neither touches pass/fail.
 
 ## Alternatives considered
 
