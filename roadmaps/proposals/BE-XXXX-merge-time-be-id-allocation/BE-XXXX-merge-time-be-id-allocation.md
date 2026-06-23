@@ -99,8 +99,13 @@ runs — against `main`, after a merge — plus the workflow plumbing around it.
 3. Auto-merge (or the merge queue) merges the branch **as-is**, `BE-XXXX` intact. No commit is pushed
    to the branch after approval, so no approval is dismissed.
 4. The merge is a push to `main`. A `roadmap-id` job triggered by `push: main` runs the allocator
-   against `main`, commits the rename + regenerated index directly to `main`, and (best effort)
-   rewrites the merged PR's title `BE-XXXX` → `BE-NNNN`.
+   against `main`, commits the rename + regenerated index directly to `main`, and posts a comment on
+   the merged PR announcing the allocated `BE-NNNN` (with a link to the item).
+
+The PR title is **not** rewritten — it keeps its `[BE-XXXX]` prefix from authoring through merge.
+The real number is never known on the branch (it is allocated only after the merge), so rewriting the
+title would mean editing it post-merge for no functional gain; a bot comment is the natural, durable
+place to record the allocated id and link it to the merged PR.
 
 ### The allocate-on-main workflow
 
@@ -116,7 +121,7 @@ concurrency:
   cancel-in-progress: false   # serialize; never drop a queued allocation
 permissions:
   contents: write             # commit the renumber to main
-  pull-requests: write        # rewrite the merged PR's title
+  pull-requests: write        # comment the allocated id on the merged PR
 ```
 
 The job checks out `main`, runs the allocator, and pushes the renumber commit back to `main`:
@@ -166,9 +171,11 @@ Each load-bearing assumption, made concrete:
   `main` — a GitHub App installation token (or a PAT) on the workflow's bypass list — since the
   default `GITHUB_TOKEN` is typically blocked by `main`'s protection. This is the only genuinely new
   infrastructure requirement; the *Alternatives* note a no-direct-push fallback.
-- **Rewriting the merged PR's title is best-effort.** A `push` event carries no PR number, so the job
+- **Commenting on the merged PR is best-effort.** A `push` event carries no PR number, so the job
   resolves it from the merge commit — `gh api repos/{owner}/{repo}/commits/${SHA}/pulls` — then
-  `gh pr edit`. The title is cosmetic/historical, so a miss is harmless.
+  `gh pr comment <pr> --body "Allocated **BE-NNNN** — <link to the item on main>"`. The comment is
+  informational, so a miss (e.g. a merge commit that maps to no PR) is harmless and never blocks the
+  allocation commit, which has already landed on `main`.
 
 ### Interaction with BE-0061's machinery
 
