@@ -175,6 +175,16 @@ class ExcludeRegion(_Model):
     h: float
 
 
+class ResponseSchemaMatch(_Model):
+    """Validate a captured response body against a stored JSON Schema (BE-0048). `request` selects
+    the exchange whose response is checked (reusing the request matcher); `schema` is the schema
+    file, resolved against the app's schemas dir. `schema_path` carries the value (the field is
+    aliased `schema` to avoid shadowing pydantic's own `schema` attribute)."""
+
+    request: RequestMatch
+    schema_path: str = Field(alias="schema")
+
+
 class VisualMatch(_Model):
     """Visual regression assertion — compare a screenshot to a baseline image."""
 
@@ -198,6 +208,7 @@ class Assertion(_Model):
     request_sequence: list[RequestMatch] | None = Field(
         default=None, alias="requestSequence", min_length=1
     )
+    response_schema: ResponseSchemaMatch | None = Field(default=None, alias="responseSchema")
     visual: VisualMatch | None = None
 
     @model_validator(mode="after")

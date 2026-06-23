@@ -47,6 +47,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--network / --no-network` | `--network` | collect the app's network exchanges for `request` assertions (iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process) |
 | `--workers` | 1 | parallel scenarios over a device pool; needs `--udid u1,u2,…` (capped to the pool size). Each device carries its own network collector, interval recordings, and device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--baselines` | `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
+| `--schemas` | `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
 | `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
 | `--zip` | off | after the run, also write `runs/<id>.zip` — one portable artifact (report + evidence) for CI upload or sharing. Runs **after** the verdict, so it can't affect pass/fail; see [`export`](#export) |

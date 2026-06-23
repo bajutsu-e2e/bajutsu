@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0048](BE-0048-behavioral-protocol-assertions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Accepted, in progress** |
-| Implementing PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) |
+| Status | **Implemented** |
+| Implementing PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) · [#209](https://github.com/bajutsu-e2e/bajutsu/pull/209) |
 | Track | [Accepted](../../README.md#accepted) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
@@ -97,11 +97,15 @@ ordered subsequence over the timeline (each matcher matches a distinct exchange 
 previous; unrelated traffic may interleave). It reuses `match_request`, adds no new dependency, and is
 pure — order is its job, so a matcher's own `count` is ignored.
 
-Both are AI-free and on the Tier-2 run/CI gate like every other assertion.
+The **`responseSchema`** assertion completed the item (`ResponseSchemaMatch`;
+`bajutsu/assertions.py` `_eval_response_schema` + `SchemaContext`): it validates the first matching
+exchange's response body against a stored JSON Schema, resolved within the app's schemas dir
+(`--schemas` flag, config `apps.<name>.schemas`, or `schemas/` beside the scenario — threaded through
+the runner exactly like `visual`'s baselines). Validation uses `jsonschema`, an opt-in `schema`
+extra imported lazily, so the base install stays lean and a missing extra fails cleanly.
 
-Deferred to a later slice: **`responseSchema`** (validate a captured response body against a stored
-JSON Schema — carries a new schema-validation dependency, an `apps.<name>.schemas` config dir, and
-runner wiring, so it is a separate slice).
+All three are AI-free and on the Tier-2 run/CI gate like every other assertion — no model in the
+verdict.
 
 ## Alternatives considered
 

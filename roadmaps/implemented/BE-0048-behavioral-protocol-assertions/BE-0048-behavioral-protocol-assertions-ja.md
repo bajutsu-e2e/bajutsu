@@ -7,8 +7,8 @@
 |---|---|
 | 提案 | [BE-0048](BE-0048-behavioral-protocol-assertions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **可決・実装中** |
-| 実装 PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) |
+| 状態 | **実装済み** |
+| 実装 PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) · [#209](https://github.com/bajutsu-e2e/bajutsu/pull/209) |
 | トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 競合調査（Maestro）由来の候補 |
 | 由来 | Maestro |
@@ -94,10 +94,14 @@ expect:
 挟まってもよい）。`match_request` を再利用し、新依存を加えず、純粋です。役割は順序なので、マッチャ自身の
 `count` は無視します。
 
-どちらも AI を使わず、他のアサーションと同じく Tier-2 の run/CI ゲートに乗ります。
+**`responseSchema`** アサーションで項目を完成させました（`ResponseSchemaMatch`、`bajutsu/assertions.py`
+の `_eval_response_schema` ＋ `SchemaContext`）。最初に一致した交信のレスポンスボディを、保存済みの
+JSON Schema に対して検証します。スキーマはアプリのスキーマディレクトリ（`--schemas` フラグ、config の
+`apps.<name>.schemas`、またはシナリオ脇の `schemas/`）内で解決し、`visual` の baselines とまったく同じ
+ように runner を通して配線します。検証には `jsonschema` を使い、opt-in の `schema` extra として遅延
+import するので、基本インストールは軽量なまま、extra 未導入時はクリーンに失敗します。
 
-後続のスライスに見送り: **`responseSchema`**（捕捉したレスポンスボディを保存済みの JSON Schema で検証。
-スキーマ検証の新依存、`apps.<name>.schemas` 設定ディレクトリ、runner 配線を伴うため独立スライス）。
+三つとも AI を使わず、他のアサーションと同じく Tier-2 の run/CI ゲートに乗ります。判定にモデルは入りません。
 
 ## 検討した代替案
 

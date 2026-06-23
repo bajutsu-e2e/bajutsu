@@ -305,6 +305,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `request` | a matching network exchange was observed (needs `--network`) | `request: { method: POST, path: /login, status: 200, count: 1 }` |
 | `event` | an analytics / telemetry event was sent — endpoint + JSON body fields, with a count (needs `--network`) | `event: { url: "https://t.example.com/track", body: { name: purchase_completed }, count: { equals: 1 } }` |
 | `requestSequence` | matchers were observed in this order (needs `--network`) | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
+| `responseSchema` | a captured response body conforms to a JSON Schema (needs `--network`) | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
@@ -314,6 +315,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `request` matches an **observed network exchange** ([details below](#request-network-assertion)); needs the `--network` run flag.
 - `event` matches an **analytics / telemetry event the app sent** ([details below](#event-analytics-event-assertion)); needs the `--network` run flag.
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
+- `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
@@ -350,7 +352,7 @@ wait and `mocks` (below). At least one match field is required; the listed field
 ### `event` (analytics event assertion)
 
 `event` asserts on a behavior the screen never shows: an analytics / telemetry event the app **sent**
-([BE-0048](../roadmaps/proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure check over the same observed exchanges `request` reads (needs the `--network` run flag),
 so the verdict stays machine-only — no LLM. It filters the timeline by the event's **endpoint** (the
 same `method` / `url` / `urlMatches` / `path` / `pathMatches` matcher as `request`), then by structured
@@ -378,7 +380,7 @@ expect:
 ### `requestSequence` (ordered requests)
 
 `requestSequence` asserts that several requests happened **in a given order** — e.g. a token refresh
-*before* the protected call ([BE-0048](../roadmaps/proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+*before* the protected call ([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
 It is a pure check over the observed timeline (needs the `--network` run flag), so the verdict stays
 machine-only. It takes a non-empty list of [`request` matchers](#request-network-assertion) (the same
 fields) and matches them as an **ordered subsequence**: each matcher must match a distinct exchange at
@@ -395,6 +397,28 @@ expect:
 > Each matcher uses the same fields as `request` (`method` / `url` / `urlMatches` / `path` /
 > `pathMatches` / `status` / `bodyMatches`); a matcher's own `count` is ignored here, since the
 > sequence's job is **order**. For a pure multiplicity check, use `request` with `count`.
+
+### `responseSchema` (JSON Schema of a response)
+
+`responseSchema` asserts that a captured **response body conforms to a JSON Schema** — a contract
+check the screen can't express ([BE-0048](../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md)).
+It is a pure, deterministic check over the observed timeline plus a stored schema file (needs the
+`--network` run flag), so the verdict stays machine-only. `request` selects the exchange (the same
+matcher fields) whose response is validated; `schema` is a file path resolved within the app's
+**schemas directory** (`--schemas` flag, config `apps.<name>.schemas`, or `schemas/` beside the
+scenario). Validation uses the `jsonschema` library — install the `schema` extra
+(`pip install bajutsu[schema]`).
+
+```yaml
+expect:
+  - responseSchema:
+      request: { method: GET, urlMatches: ".*/api/items" }
+      schema: items.json        # resolved within the schemas dir
+```
+
+> It validates the **first** matching exchange's response. It fails (rather than guessing) when no
+> exchange matches, the schema file is missing, the response has no body or isn't JSON, or the body
+> doesn't conform. The schemas dir resolves like `--baselines` for `visual`.
 
 ### `visual` (visual regression)
 

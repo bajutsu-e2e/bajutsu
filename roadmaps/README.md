@@ -155,7 +155,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 <!-- GENERATED:accepted-competitive-maestro -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0048](proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | In progress | Maestro |
+| [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented | Maestro |
 | [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | In progress | Maestro |
 | [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
 <!-- /GENERATED:accepted-competitive-maestro -->

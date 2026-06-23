@@ -274,6 +274,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `request` | 一致するネットワーク通信が観測された（`--network` が必要） | `request: { method: POST, path: /login, status: 200, count: 1 }` |
 | `event` | アプリが送った分析 / テレメトリイベント。エンドポイント＋JSON ボディのフィールドを count とともに検証（`--network` が必要） | `event: { url: "https://t.example.com/track", body: { name: purchase_completed }, count: { equals: 1 } }` |
 | `requestSequence` | 複数のマッチャがこの順序で観測されたか検証（`--network` が必要） | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
+| `responseSchema` | 捕捉したレスポンスボディが JSON Schema に適合するか検証（`--network` が必要） | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | 画面が baseline 画像に一致する（ビジュアルリグレッション） | `visual: { baseline: home.png, threshold: 0.02 }` |
 
 - `exists` はセレクタを **インラインで**書きます（`{ id: ... }` を直書き）。`negate` は任意です。
@@ -283,6 +284,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - `request` は **観測されたネットワーク通信**に一致するか検証します（[下記](#requestネットワークアサーション)）。`--network` 実行フラグが必要です。
 - `event` は **アプリが送った分析 / テレメトリイベント**に一致するか検証します（[下記](#eventイベントアサーション)）。`--network` 実行フラグが必要です。
 - `requestSequence` は複数の request マッチャが **順序どおりに観測された**かを検証します（[下記](#requestsequence順序付きリクエスト)）。`--network` 実行フラグが必要です。
+- `responseSchema` は捕捉した **レスポンスボディが JSON Schema に適合する**かを検証します（[下記](#responseschemaレスポンスの-json-schema)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
 
 > **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらは config の固定 locale を前提に書き、セレクタ自体は `id` で書いてください。
@@ -315,7 +317,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 ### `event`（イベントアサーション）
 
 `event` は、画面には現れない振る舞い、すなわちアプリが**送った**分析 / テレメトリイベントを表明します
-（[BE-0048](../../roadmaps/proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
+（[BE-0048](../../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
 `request` が読むのと同じ観測済み通信に対する純粋な検査なので（`--network` 実行フラグが必要）、判定は機械のみで LLM は介在しません。
 イベントの**エンドポイント**（`request` と同じ `method` / `url` / `urlMatches` / `path` / `pathMatches` マッチャ）でタイムラインを絞り、
 続けて構造化した**リクエストボディのフィールド**で絞り、残った通信数を count 演算子と突き合わせます。
@@ -343,7 +345,7 @@ expect:
 
 `requestSequence` は、複数のリクエストが **指定した順序で**起きたことを表明します。たとえば保護された
 呼び出しの*前に*トークンリフレッシュが起きたこと、といった検証です
-（[BE-0048](../../roadmaps/proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
+（[BE-0048](../../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
 観測済みタイムラインに対する純粋な検査なので（`--network` 実行フラグが必要）、判定は機械のみです。空でない
 [`request` マッチャ](#requestネットワークアサーション)のリスト（同じフィールド）を取り、**順序を保った部分列**
 として照合します。各マッチャは、直前のマッチより厳密に後ろの位置にある別々の通信に一致しなければなりません。
@@ -359,6 +361,27 @@ expect:
 > 各マッチャは `request` と同じフィールド（`method` / `url` / `urlMatches` / `path` / `pathMatches` /
 > `status` / `bodyMatches`）を使います。マッチャ自身の `count` はここでは無視されます。シーケンスの役割は
 > **順序**だからです。純粋な多重度の検査には `request` の `count` を使ってください。
+
+### `responseSchema`（レスポンスの JSON Schema）
+
+`responseSchema` は、捕捉した **レスポンスボディが JSON Schema に適合する**ことを表明します。画面では
+表現できない契約の検査です（[BE-0048](../../roadmaps/implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）。
+観測済みタイムラインと保存済みのスキーマファイルに対する純粋で決定的な検査なので（`--network` 実行フラグが
+必要）、判定は機械のみです。`request`（同じマッチャフィールド）で検証対象の交信を選び、`schema` はアプリの
+**スキーマディレクトリ**（`--schemas` フラグ、config の `apps.<name>.schemas`、またはシナリオ脇の
+`schemas/`）内で解決するファイルパスです。検証には `jsonschema` ライブラリを使うので、`schema` extra を
+インストールしてください（`pip install bajutsu[schema]`）。
+
+```yaml
+expect:
+  - responseSchema:
+      request: { method: GET, urlMatches: ".*/api/items" }
+      schema: items.json        # スキーマディレクトリ内で解決
+```
+
+> 検証するのは**最初に**一致した交信のレスポンスです。一致する交信がない、スキーマファイルが無い、
+> レスポンスにボディが無い、JSON でない、あるいは適合しない場合は（推測せず）失敗します。スキーマ
+> ディレクトリの解決順は `visual` の `--baselines` と同じです。
 
 ### `visual`（ビジュアルリグレッション）
 

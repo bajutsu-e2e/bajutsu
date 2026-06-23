@@ -146,7 +146,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 <!-- GENERATED:accepted-competitive-maestro -->
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
-| [BE-0048](proposals/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md) | 振る舞い／プロトコルアサーション | 実装中 | Maestro |
+| [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md) | 振る舞い／プロトコルアサーション | 実装済み | Maestro |
 | [BE-0049](proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) | 決定性／フレーキネス監査 | 実装中 | Maestro |
 | [BE-0050](proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装中 | Maestro |
 <!-- /GENERATED:accepted-competitive-maestro -->

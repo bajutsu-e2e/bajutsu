@@ -26,6 +26,7 @@ from bajutsu.scenario import (
     EventMatch,
     Exists,
     RequestMatch,
+    ResponseSchemaMatch,
     Selector,
     TextMatch,
     VisualMatch,
@@ -73,6 +74,14 @@ class VisualContext:
     baselines_dir: Path
     diff_dir: Path
     run_dir: Path
+
+
+@dataclass(frozen=True)
+class SchemaContext:
+    """Context needed by `responseSchema` assertions — the directory a schema path resolves against
+    (config `apps.<name>.schemas`, the `--schemas` flag, or `schemas/` beside the scenario)."""
+
+    schemas_dir: Path
 
 
 def _sel_str(sel: Selector) -> str:
@@ -347,6 +356,57 @@ def _eval_request_sequence(
     return AssertionResult(True, "requestSequence", detail)
 
 
+def _eval_response_schema(
+    exchanges: list[NetworkExchange], m: ResponseSchemaMatch, ctx: SchemaContext | None
+) -> AssertionResult:
+    """Validate the first matching exchange's response body against a stored JSON Schema (BE-0048).
+    Pure over the captured exchanges + the schema file; `jsonschema` is imported lazily (the `schema`
+    extra), so the dependency only loads when a responseSchema assertion is actually evaluated."""
+    detail = f"responseSchema {request_label(m.request)} ~ {m.schema_path}"
+    if ctx is None:
+        return AssertionResult(False, "responseSchema", detail, "no schema context provided")
+    ex = next((e for e in exchanges if match_request(e, m.request)), None)
+    if ex is None:
+        return AssertionResult(
+            False, "responseSchema", detail, f"no matching exchange (observed {len(exchanges)})"
+        )
+    schema_file = ctx.schemas_dir / m.schema_path
+    if not schema_file.is_file():
+        return AssertionResult(
+            False, "responseSchema", detail, f"schema not found: {m.schema_path}"
+        )
+    try:
+        schema = json.loads(schema_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return AssertionResult(False, "responseSchema", detail, f"could not read schema: {e}")
+    if ex.response_body is None:
+        return AssertionResult(False, "responseSchema", detail, "response has no body")
+    try:
+        instance = json.loads(ex.response_body)
+    except ValueError:
+        return AssertionResult(False, "responseSchema", detail, "response body is not JSON")
+
+    try:
+        import jsonschema
+    except ImportError:
+        return AssertionResult(
+            False, "responseSchema", detail, "responseSchema needs the 'schema' extra (jsonschema)"
+        )
+    try:
+        jsonschema.validate(instance, schema)
+    except jsonschema.ValidationError as e:
+        return AssertionResult(
+            False, "responseSchema", detail, f"schema validation failed: {e.message}"
+        )
+    except jsonschema.SchemaError as e:
+        return AssertionResult(False, "responseSchema", detail, f"invalid schema: {e.message}")
+    except Exception as e:
+        # A bad schema (e.g. an unresolvable $ref) must fail the assertion loudly with the reason,
+        # never crash the deterministic run — so any other validator error is caught here too.
+        return AssertionResult(False, "responseSchema", detail, f"schema error: {e}")
+    return AssertionResult(True, "responseSchema", detail)
+
+
 def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch]) -> list[int]:
     """Assign each request matcher a *distinct* exchange — one `request` ↔ one exchange.
 
@@ -440,11 +500,13 @@ def evaluate_one(
     exchanges: list[NetworkExchange] | None = None,
     *,
     visual_context: VisualContext | None = None,
+    schema_context: SchemaContext | None = None,
 ) -> AssertionResult:
     """Evaluate one assertion (the kind is guaranteed unique by scenario validation).
 
-    UI kinds check ``elements``; ``request`` checks the observed network ``exchanges``;
-    ``visual`` compares a screenshot to a baseline via *visual_context*."""
+    UI kinds check ``elements``; ``request`` / ``event`` / ``requestSequence`` check the observed
+    network ``exchanges``; ``responseSchema`` validates a response body against a stored schema via
+    *schema_context*; ``visual`` compares a screenshot to a baseline via *visual_context*."""
     if a.exists is not None:
         return _eval_exists(elements, a.exists)
     if a.value is not None:
@@ -465,6 +527,8 @@ def evaluate_one(
         return _eval_event(exchanges or [], a.event)
     if a.request_sequence is not None:
         return _eval_request_sequence(exchanges or [], a.request_sequence)
+    if a.response_schema is not None:
+        return _eval_response_schema(exchanges or [], a.response_schema, schema_context)
     if a.visual is not None:
         return _eval_visual(visual_context, a.visual)
     raise AssertionError("empty assertion (should be caught by scenario validation)")
@@ -476,6 +540,7 @@ def evaluate(
     exchanges: list[NetworkExchange] | None = None,
     *,
     visual_context: VisualContext | None = None,
+    schema_context: SchemaContext | None = None,
 ) -> list[AssertionResult]:
     """Evaluate all of expect/assert (the caller decides AND via passed()).
 
@@ -495,7 +560,9 @@ def evaluate(
     return [
         assigned[i]
         if i in assigned
-        else evaluate_one(elements, a, exs, visual_context=visual_context)
+        else evaluate_one(
+            elements, a, exs, visual_context=visual_context, schema_context=schema_context
+        )
         for i, a in enumerate(assertions)
     ]
 
