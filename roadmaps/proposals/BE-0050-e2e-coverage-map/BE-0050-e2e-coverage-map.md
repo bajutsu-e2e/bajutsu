@@ -64,12 +64,19 @@ reusing the audit selector walk) by namespace, and reports per-namespace coverag
 off-namespace ids — read-only, AI-free, exits 0 even with gaps. It is the suite-level cousin of
 `doctor`'s per-screen convention score.
 
-Deferred to a later slice, each because its denominator depends on an item not yet shipped or on a
-second evidence source: the **screens-visited** dimension (needs a crawl-discovered denominator,
+The second slice adds the **endpoints-observed-vs-declared** dimension, now that the
+behavioral-assertions sibling ([BE-0048](../../implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md))
+ships the "declared" half. `bajutsu coverage --runs <dir>` reads the union of every `network.json`
+under the run set (the first run evidence the map folds in) and measures how many **observed**
+endpoints (`METHOD path`) the suite's network assertions — `request` / `event` / `requestSequence`,
+collected by `coverage.referenced_requests` and tested with `assertions.match_request` — cover,
+reporting the asserted fraction, the **unasserted** observed endpoints (untested traffic), and
+matchers declared but observed in no run. (`responseSchema`'s `request` joins the declared set once
+[#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) lands.)
+
+Still deferred: the **screens-visited** dimension (needs a crawl-discovered denominator,
 [BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
-the **endpoints-observed-vs-declared** dimension (needs the behavioral-assertions sibling for the
-"declared" half), and folding run evidence (`network.json`, per-step `elements.json`) into the map
-alongside the static analysis.
+and folding per-step `elements.json` (observed ids) into the map alongside the static analysis.
 
 ## Alternatives considered
 

@@ -18,17 +18,40 @@ import typer
 
 from bajutsu import coverage as _coverage
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective, load_expanded_scenarios
+from bajutsu.network import NetworkExchange
+
+
+def _observed_exchanges(runs_dir: Path) -> list[NetworkExchange]:
+    """Every exchange recorded across the run set — the union of every `network.json` under
+    `runs_dir` (read-only; a malformed/partial file is skipped, not fatal)."""
+    exchanges: list[NetworkExchange] = []
+    for net in sorted(runs_dir.glob("*/*/network.json")):
+        try:
+            data = json.loads(net.read_text(encoding="utf-8"))
+            if not isinstance(data, list):  # a scalar/object file isn't an exchange list — skip it
+                continue
+            # Validate the whole file into a batch before extending, so a bad entry (pydantic
+            # ValidationError, a ValueError) skips the file wholesale rather than leaving a partial.
+            batch = [NetworkExchange.model_validate(e) for e in data if isinstance(e, dict)]
+        except (OSError, ValueError):
+            continue
+        exchanges.extend(batch)
+    return exchanges
 
 
 def coverage(
     target_name: str = typer.Option(..., "--target"),
     config: str = typer.Option(DEFAULT_CONFIG),
+    runs: str = typer.Option(
+        "", "--runs", help="a runs dir — adds endpoint coverage (observed network.json vs asserted)"
+    ),
     as_json: bool = typer.Option(False, "--json", help="emit the report as JSON instead of text"),
 ) -> None:
     """Statically map which of the target's declared id namespaces its scenario suite touches —
-    per-namespace coverage, the gap list (untested namespaces), and off-namespace ids. Read-only
-    and advisory: it never runs a scenario and never gates CI — it exits 0 even with gaps; only a
-    missing config / scenarios dir or an unreadable scenario exits 2."""
+    per-namespace coverage, the gap list (untested namespaces), and off-namespace ids. With
+    `--runs`, also report endpoint coverage: which observed endpoints (`network.json`) the suite's
+    network assertions cover. Read-only and advisory: it never runs a scenario and never gates CI —
+    it exits 0 even with gaps; only a missing config / scenarios dir or an unreadable scenario exits 2."""
     eff = _load_effective(config, target_name)
     if eff.scenarios is None:
         typer.echo(
@@ -48,10 +71,23 @@ def coverage(
         raise typer.Exit(2) from None
 
     report = _coverage.coverage(scenarios, eff.id_namespaces)
+    endpoints = None
+    if runs:
+        runs_path = Path(runs)
+        if runs_path.is_dir():
+            endpoints = _coverage.endpoint_coverage(scenarios, _observed_exchanges(runs_path))
+        else:  # don't silently ignore the flag — warn (to stderr) and proceed without endpoints
+            typer.echo(f"--runs not found, skipping endpoint coverage: {runs}", err=True)
     if as_json:
-        typer.echo(json.dumps(dataclasses.asdict(report), indent=2))
+        out: dict[str, object] = dataclasses.asdict(report)
+        if endpoints is not None:
+            out["endpoints"] = dataclasses.asdict(endpoints)
+        typer.echo(json.dumps(out, indent=2))
     else:
-        typer.echo(_coverage.render(report))
+        text = _coverage.render(report)
+        if endpoints is not None:
+            text += "\n" + _coverage.render_endpoints(endpoints)
+        typer.echo(text)
 
 
 def register(app: typer.Typer) -> None:

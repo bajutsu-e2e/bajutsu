@@ -65,11 +65,17 @@ LLM は使わず、pass/fail には影響しません。
 off-namespace な id を報告します。読み取り専用・AI 非依存で、gap があっても終了 0 です。`doctor` の
 1画面ごとの規約スコアの、スイート単位の従兄弟にあたります。
 
-後続のスライスに見送った次元は、いずれも分母が未提供の項目や第二の証跡源に依存します。**訪問済み画面**
-の次元（クロールが発見する分母、[BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
-が必要）、**観測済みエンドポイントと宣言済みエンドポイントの突き合わせ**の次元（「宣言済み」の側に
-兄弟項目の振る舞いアサーションが必要）、そして run の証跡（`network.json`、ステップごとの
-`elements.json`）を静的解析と並べてマップに織り込むことです。
+第二のスライスは **観測 vs 宣言エンドポイント**の次元を追加します。「宣言」側を担う兄弟項目
+（[BE-0048](../../implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）が
+出荷されたためです。`bajutsu coverage --runs <dir>` は run セット配下のすべての `network.json` の和集合
+（マップが取り込む最初の run 証跡）を読み、**観測した**エンドポイント（`METHOD path`）のうち、スイートの
+ネットワークアサーション（`request` / `event` / `requestSequence`。`coverage.referenced_requests` で収集し
+`assertions.match_request` で照合）がカバーする割合、**未アサートの**観測エンドポイント（未テストの
+トラフィック）、どの run でも観測されなかった宣言マッチャを報告します。（`responseSchema` の `request` は
+[#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) マージ後に宣言集合へ加わります。）
+
+引き続き見送り: **訪問済み画面**の次元（クロールが発見する分母、[BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
+が必要）、およびステップごとの `elements.json`（観測した id）を静的解析と並べて織り込むことです。
 
 ## 検討した代替案
 
