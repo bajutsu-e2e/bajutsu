@@ -1,5 +1,5 @@
 # An id-driven smoke scenario for the sample app, run on idb:
-#   bajutsu run --scenario sample/scenarios/cross_backend.yaml --app sample --no-erase
+#   bajutsu run --scenario sample/scenarios/cross_backend.yaml --target sample --no-erase
 # Every step addresses elements by id and uses single-touch actions only (idb is
 # single-touch).
 - name: increment the counter and filter the list

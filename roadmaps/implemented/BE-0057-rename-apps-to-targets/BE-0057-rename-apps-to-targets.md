@@ -7,9 +7,10 @@
 |---|---|
 | Proposal | [BE-0057](BE-0057-rename-apps-to-targets.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
-| Topic | Platform expansion (Android / Web / Flutter) |
+| Status | **Implemented** |
+| Implementing PR | [#211](https://github.com/bajutsu-e2e/bajutsu/pull/211) |
+| Track | [Accepted](../../README.md#accepted) |
+| Topic | Platform expansion (landed slices) |
 <!-- /BE-METADATA -->
 
 ## Introduction

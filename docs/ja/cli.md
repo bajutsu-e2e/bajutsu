@@ -3,7 +3,7 @@
 # CLI リファレンス
 
 > 実装: `bajutsu/cli/`（Typer。コマンドごとに `cli/commands/` の 1 ファイル）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
-> この CLI（コマンドラインインターフェース）のすべてのコマンドは `--app <name>` で 1 アプリを選び、
+> この CLI（コマンドラインインターフェース）のすべてのコマンドは `--target <name>` で 1 アプリを選び、
 > `--config`（既定 `bajutsu.config.yaml`）で設定を指します。アプリ固有の差分は config 側にあります（[configuration](configuration.md)）。
 
 関連: [run-loop](run-loop.md) ・ [recording](recording.md) ・ [codegen](codegen.md) ・ [configuration](configuration.md)
@@ -22,15 +22,15 @@
 シナリオを **決定的に実行**します。合否は機械判定のみです。唯一の AI コンポーネントは**アラートガード**（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトを片付けるためだけに動作します。詳しくは [`dismissAlerts`](scenarios.md#dismissalertsシステムアラートガード) を参照してください。
 
 ```bash
-bajutsu run --app <name> [--scenario <file.yaml>] [options]
+bajutsu run --target <name> [--scenario <file.yaml>] [options]
 ```
 
-既定では、そのアプリの設定済みシナリオディレクトリ（`apps.<name>.scenarios`、[configuration](configuration.md) 参照）内の
+既定では、そのアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`、[configuration](configuration.md) 参照）内の
 **すべての `*.yaml`** を読み込んで実行します。config だけで実行できます。単一ファイルだけ実行するには `--scenario <file>` を渡してください。
 
 | オプション | 既定 | 説明 |
 |---|---|---|
-| `--app` | （必須） | 対象アプリ（config の `apps.<name>`） |
+| `--target` | （必須） | 対象アプリ（config の `targets.<name>`） |
 | `--scenario` | config の `scenarios` ディレクトリ | アプリのシナリオディレクトリ全体ではなく単一の `*.yaml` を実行 |
 | `--backend` | config | actuator 順（カンマ区切り。先頭から最初に使えるもの） |
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
@@ -57,8 +57,8 @@ bajutsu run --app <name> [--scenario <file.yaml>] [options]
   かった run では何も出力しません。
 
 ```bash
-bajutsu run --app sample --udid <UDID> --backend idb --no-erase            # アプリのシナリオディレクトリ全体
-bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --no-erase   # 単一ファイル
+bajutsu run --target sample --udid <UDID> --backend idb --no-erase            # アプリのシナリオディレクトリ全体
+bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --target sample --no-erase   # 単一ファイル
 ```
 
 ## `doctor`
@@ -66,7 +66,7 @@ bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --no
 **実行可能ゲート** + 現在画面の **規約充足度スコア**（AI 非依存。[configuration](configuration.md#doctor規約充足度スコア)）。
 
 ```bash
-bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
+bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 ```
 
 - まず env ゲート（`preflight.py`）: actuator が必要とする CLI（`xcrun`、idb なら `idb` /
@@ -90,7 +90,7 @@ bajutsu audit <scenario.yaml> [--json]
 スイートの **静的な e2e カバレッジマップ**です。`doctor` の規約充足度スコアの、read-only な従兄弟にあたります（AI 非依存。[BE-0050](../../roadmaps/proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md)）。`doctor` が1画面の*提供する* id を採点するのに対し、こちらはスイート全体が*行使する* id を採点します。アプリの設定済み `scenarios` ディレクトリの `*.yaml` をすべて読み込み（components / data を展開）、参照している安定した id を namespace ごとにまとめ、アプリが宣言した `idNamespaces`（[configuration](configuration.md#doctor規約充足度スコア)）に対して、実行せずに突き合わせます。
 
 ```bash
-bajutsu coverage --app <name> [--config ...] [--json]
+bajutsu coverage --target <name> [--config ...] [--json]
 ```
 
 - **カバレッジの割合**（スイートが参照する宣言済み namespace 数 / 宣言済み namespace 数）、各 namespace に触れる **namespace ごとの id**、**gap 一覧**（どのシナリオも参照しない宣言済み namespace。すなわち未テストの範囲）、**off-namespace な id**（参照されているが宣言されていない namespace の id）を報告します。テキスト、または `--json` で機械可読に出せます。
@@ -153,34 +153,34 @@ run 内の最初の**失敗**シナリオを診断し、最小の修正案を提
 （`ANTHROPIC_API_KEY` が必要）。
 
 エージェントは適用可能な**構造化 fix**（`renameId` / `addIndex` 曖昧一致の一意化 / `raiseTimeout`）も
-返せます。`--apply <scenario-file>` が **dry-run diff** を表示、`--write` が source に適用、`--rerun --app
+返せます。`--apply <scenario-file>` が **dry-run diff** を表示、`--write` が source に適用、`--rerun --target
 <name>` が patched シナリオを再実行（`--no-erase`）して緑になったか報告します。境界は保たれます: fix はユーザーが
 diff をレビューして opt-in した時のみ適用され、断片が source に一致しなければ安全に no-op です。
 
 ```bash
 bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs] [--ai]
 bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
-               [--rerun --app <name> [--backend idb] [--udid <udid>]]
+               [--rerun --target <name> [--backend idb] [--udid <udid>]]
 ```
 
 - 既定は `runs/` 直下の最新 run。失敗シナリオが無ければ**終了 0**。
-- `--rerun` は `--write` と `--app` が必要。
+- `--rerun` は `--write` と `--target` が必要。
 - `--ai` のときは、診断後に消費トークン量を示す `AI usage:` 行を stderr に出力します。既定のルール
   ベースは AI を使わないので何も出力しません。
 
 ## `record`
 
 AI でゴールに向けて探索し、**記録したシナリオを書き出します**（Tier 1・[recording](recording.md)）。
-既定ではアプリの設定済みシナリオディレクトリ（`apps.<name>.scenarios`）配下に自動命名の `*.yaml` を書きます。
+既定ではアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`）配下に自動命名の `*.yaml` を書きます。
 特定パスに書くには `--out` を渡してください。
 
 ```bash
-bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>] [options]
+bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yaml>] [options]
 ```
 
 | オプション | 既定 | 説明 |
 |---|---|---|
-| `--app` | （必須） | 対象アプリ |
+| `--target` | （必須） | 対象アプリ |
 | `--goal` | （必須） | 著すゴール（自然言語） |
 | `--out` | config の `scenarios` 配下に自動命名 | 出力パスを明示（アプリのシナリオディレクトリを上書き） |
 | `--name` | （ゴールから） | 自動命名するファイル名（`--out` 指定時は無視） |
@@ -208,12 +208,12 @@ bajutsu record --app <name> --goal "<自然言語ゴール>" [--out <file.yaml>]
 決してなりません**。
 
 ```bash
-bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [options]
+bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [options]
 ```
 
 | オプション | 既定 | 説明 |
 |---|---|---|
-| `--app` | （必須） | 対象アプリ |
+| `--target` | （必須） | 対象アプリ |
 | `--max-screens` | `50` | この数の異なる画面を発見したら停止 |
 | `--max-steps` | `200` | この数のアクションを実行したら停止 |
 | `--agent` | `$BAJUTSU_AGENT` または `api` | クロールガイドの AI バックエンド。`api`（Anthropic SDK、従量課金。設定した AI プロバイダを使用し、Anthropic なら `ANTHROPIC_API_KEY`、`BAJUTSU_AI_PROVIDER=bedrock` なら AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）か `claude-code`（Claude Code CLI。サブスクリプションを利用、テキストのみ。`record --agent claude-code` と同様）。省略時は `$BAJUTSU_AGENT`（`serve` が Settings の選択から設定）に従い、なければ `api` |
@@ -298,7 +298,7 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 ### web backend（`--backend web`）
 
 クロールは Simulator に対するのと同じように web アプリにも走ります。探索エンジンはプラットフォーム非依存
-なので、`bajutsu crawl --app <web-app> --backend web` は同じ `screenmap.json`・スクリーンショット・クラッシュ
+なので、`bajutsu crawl --target <web-app> --backend web` は同じ `screenmap.json`・スクリーンショット・クラッシュ
 一覧を出力します。web アプリは `bundleId` ではなく `baseUrl` で指定し、ブラウザは Mac もエミュレータも要らない
 ので、web クロールは Linux の `make check` / CI ゲート内で走ります。iOS と違う点は次の 3 つで、いずれも決定的
 です（[BE-0066](../../roadmaps/implemented/BE-0066-web-crawl/BE-0066-web-crawl-ja.md)）。
@@ -321,7 +321,7 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 **XCUITest**（Swift、iOS）または **Playwright**（TypeScript、web）です。
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
+bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
 ```
 
 | オプション | 既定 | 説明 |
@@ -331,7 +331,7 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o 
 
 - config の `launchEnv` が生成テストに入ります。XCUITest では `app.launchEnvironment`、Playwright では
   `localStorage` のシードに反映されます。
-- `--emit playwright` は対象が web ターゲットであること（`apps.<name>.baseUrl`）を要求し、なければ終了コード 2 で
+- `--emit playwright` は対象が web ターゲットであること（`targets.<name>.baseUrl`）を要求し、なければ終了コード 2 で
   終わります。
 - ファイル出力時は `wrote <N> scenario(s) -> <out>`。
 
@@ -400,7 +400,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   この選択を `BAJUTSU_AI_PROVIDER` / `BAJUTSU_AGENT` として起動ジョブに渡します。タブごとの Agent 選択は
   ありません。Claude Code のときは、API キー（設定済みなら）はアラートガードにのみ使われます。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
-  実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`apps.<name>.build`
+  実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`targets.<name>.build`
   に `appPath` を生成するシェルコマンド（例: `make -C demos/features sample-build`）を設定すると、
   手動ビルド無しに UI からオンデマンドでビルドできます。
 - 操作 UI の下の **History** リストに過去の run（新しい順、pass/fail ドット、シナリオ要約）が並び、

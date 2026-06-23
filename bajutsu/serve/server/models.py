@@ -56,7 +56,7 @@ class Project(Base):
 
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"))
-    name: Mapped[str]  # the config app name
+    name: Mapped[str]  # the config target name
     created_at: Mapped[datetime] = _created_at()
 
 

@@ -20,15 +20,16 @@ from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions, dump_scenarios
 
 
-def _record_out_path(eff: Effective, out: str, name: str, goal: str, app_name: str) -> Path:
+def _record_out_path(eff: Effective, out: str, name: str, goal: str, target_name: str) -> Path:
     """Where `record` writes the authored scenario: `--out` when given, else an auto-named,
-    never-overwriting `*.yaml` under the app's configured `scenarios` dir (same naming as the
+    never-overwriting `*.yaml` under the target's configured `scenarios` dir (same naming as the
     web UI's Record tab)."""
     if out:
         return Path(out)
     if eff.scenarios is None:
         typer.echo(
-            f"app '{app_name}' has no scenarios dir (set apps.{app_name}.scenarios, or pass --out)"
+            f"target '{target_name}' has no scenarios dir "
+            f"(set targets.{target_name}.scenarios, or pass --out)"
         )
         raise typer.Exit(2)
     from bajutsu.serve import scenario_out_path, unique_scenario_path
@@ -37,10 +38,10 @@ def _record_out_path(eff: Effective, out: str, name: str, goal: str, app_name: s
 
 
 def record(
-    app_name: str = typer.Option(..., "--app"),
+    target_name: str = typer.Option(..., "--target"),
     goal: str = typer.Option(..., "--goal", help="natural-language goal to author"),
     out: str = typer.Option(
-        "", "--out", help="explicit output path (overrides the app's configured scenarios dir)"
+        "", "--out", help="explicit output path (overrides the target's configured scenarios dir)"
     ),
     name: str = typer.Option(
         "", "--name", help="file name for the authored scenario (auto-named from the goal if blank)"
@@ -68,17 +69,17 @@ def record(
         None,
         "--headed/--no-headed",
         help="web backend: author against a visible (headed, slow-motion) browser instead of "
-        "headless; default leaves the app's `headless` config",
+        "headless; default leaves the target's `headless` config",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario. With `--out` it
-    writes there; otherwise it auto-names a file under the app's configured `scenarios` dir."""
-    eff = _load_effective(config, app_name)
-    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    writes there; otherwise it auto-names a file under the target's configured `scenarios` dir."""
+    eff = _load_effective(config, target_name)
+    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
-    out_path = _record_out_path(eff, out, name, goal, app_name)
+    out_path = _record_out_path(eff, out, name, goal, target_name)
     before = _usage.snapshot()
     kind = resolve_kind(agent)
     try:
@@ -119,7 +120,7 @@ def record(
         typer.echo(msg, err=True)
 
     say(
-        f"⚙️  preparing the simulator — installing and launching {app_name} (this can take a moment) …"
+        f"⚙️  preparing the simulator — installing and launching {target_name} (this can take a moment) …"
     )
     try:
         driver = launch_driver(udid, eff, actuator, Preconditions(erase=erase))

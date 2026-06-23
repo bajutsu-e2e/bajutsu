@@ -21,8 +21,8 @@ test-support package is [`BajutsuKit/`](BajutsuKit/); runnable examples are in [
    Never introduce an LLM call into the Tier‑2 run/CI gate.
 2. **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector
    fails immediately rather than "tapping whatever matched first".
-3. **App-agnostic.** Per-app differences live in config (`apps.<name>`); the tool, drivers,
-   and runner stay unchanged across apps.
+3. **App-agnostic.** Per-app differences live in config (`targets.<name>`); the tool, drivers,
+   and runner stay unchanged across targets.
 
 See README ["Core principles"](README.md#core-principles) for the full list.
 

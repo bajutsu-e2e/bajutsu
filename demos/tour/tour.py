@@ -60,7 +60,7 @@ def note(title: str) -> None:
 def _eff() -> Effective:
     """A minimal effective config for the FakeDriver-backed sample flow."""
     return Effective(
-        app="sample",
+        target="sample",
         bundle_id="com.bajutsu.sample",
         deeplink_scheme=None,
         backend=["fake"],

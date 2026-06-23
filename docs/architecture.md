@@ -82,7 +82,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `network.py` | Network collector + in-protocol deterministic mocks | [evidence](evidence.md) |
 | `redaction.py` | Redaction of evidence (labels / headers / fields + secret values) | [evidence](evidence.md) |
 | `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
-| `config.py` | Team defaults × per-app resolution (`Effective`) | [configuration](configuration.md) |
+| `config.py` | Team defaults × per-target resolution (`Effective`) | [configuration](configuration.md) |
 | `backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `env.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
 | `preflight.py` | Runnability gate (required CLIs + a booted Simulator) | [configuration](configuration.md) |
@@ -184,7 +184,7 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
 - Network observation + **deterministic mocks** (scenario `mocks` → in-protocol stubs, validated
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
 - Reporting (`manifest.json` / `junit.xml` / `report.html`)
-- Config resolution (defaults × apps, redact merge) and actuator selection
+- Config resolution (defaults × targets, redact merge) and actuator selection
 - The `simctl` command layer · the idb output parser · the `doctor` score + runnability gate
   (`preflight.py`: required CLIs + a booted Simulator)
 - The `trace` command (`trace.py`): a text timeline over a saved run (steps + network + appTrace)

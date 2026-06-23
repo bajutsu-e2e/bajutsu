@@ -209,7 +209,7 @@ def test_rerun_command_builder() -> None:
         "run",
         "--scenario",
         "s.yaml",
-        "--app",
+        "--target",
         "demo",
         "--config",
         "cfg.yaml",
@@ -227,7 +227,7 @@ def test_cli_rerun_needs_write(tmp_path: Path) -> None:
     run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
     src = tmp_path / "src.yaml"
     src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
-    r = runner.invoke(app, ["triage", str(run), "--apply", str(src), "--rerun", "--app", "demo"])
+    r = runner.invoke(app, ["triage", str(run), "--apply", str(src), "--rerun", "--target", "demo"])
     assert r.exit_code == 0
     assert "--rerun needs --write" in r.output
     assert "home.titel" in src.read_text(encoding="utf-8")  # untouched on dry-run
@@ -253,7 +253,7 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
             str(src),
             "--write",
             "--rerun",
-            "--app",
+            "--target",
             "demo",
             "--backend",
             "idb",
@@ -261,7 +261,7 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     )
     assert r.exit_code == 0
     assert "wrote" in r.output and "fix verified" in r.output
-    assert captured["cmd"][2:8] == ["bajutsu", "run", "--scenario", str(src), "--app", "demo"]
+    assert captured["cmd"][2:8] == ["bajutsu", "run", "--scenario", str(src), "--target", "demo"]
     assert "home.titel" not in src.read_text(encoding="utf-8")  # the fix was written
 
 

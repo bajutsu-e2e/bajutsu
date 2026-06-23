@@ -144,9 +144,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.end_headers()
                     self.wfile.write(body)
                 case "/api/scenarios":
-                    self._json(*ops.list_scenarios(state, self._qs("app"), actor=self._actor()))
-                case "/api/apps":
-                    self._json(*ops.list_apps_payload(state, actor=self._actor()))
+                    self._json(*ops.list_scenarios(state, self._qs("target"), actor=self._actor()))
+                case "/api/targets":
+                    self._json(*ops.list_targets_payload(state, actor=self._actor()))
                 case "/api/config":
                     self._json(*ops.config_info(state))
                 case "/api/fs":
@@ -162,7 +162,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/scenario":
                     self._json(
                         *ops.read_scenario(
-                            state, self._qs("app"), self._qs("path"), actor=self._actor()
+                            state, self._qs("target"), self._qs("path"), actor=self._actor()
                         )
                     )
                 case "/api/oauth/login":

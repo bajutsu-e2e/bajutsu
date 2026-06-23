@@ -17,7 +17,7 @@ from bajutsu.serve.server.oauth import Identity
 from bajutsu.serve.server.object_store import org_prefix
 
 CONFIG = """
-apps:
+targets:
   demo: { bundleId: com.example.demo }
   checkout: { bundleId: com.example.checkout }
   other: { bundleId: com.example.other }
@@ -25,10 +25,10 @@ apps:
 orgs:
   acme:
     members: [alice]
-    apps: [demo, checkout]
+    targets: [demo, checkout]
   globex:
     members: [bob]
-    apps: [other]
+    targets: [other]
 """
 
 
@@ -45,21 +45,21 @@ def _state(tmp_path: Path, config_text: str = CONFIG) -> srv.ServeState:
     return srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
 
 
-def test_list_apps_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
+def test_list_targets_is_scoped_to_the_actors_org(tmp_path: Path) -> None:
     state = _state(tmp_path)
-    assert [a["name"] for a in ops.list_apps_payload(state, actor="alice")[0]] == [
+    assert [a["name"] for a in ops.list_targets_payload(state, actor="alice")[0]] == [
         "checkout",
         "demo",
     ]
-    assert [a["name"] for a in ops.list_apps_payload(state, actor="bob")[0]] == ["other"]
+    assert [a["name"] for a in ops.list_targets_payload(state, actor="bob")[0]] == ["other"]
     # No identity → the default org, which owns the apps no org claims (none here).
-    assert [a["name"] for a in ops.list_apps_payload(state, actor=None)[0]] == []
+    assert [a["name"] for a in ops.list_targets_payload(state, actor=None)[0]] == []
 
 
 def test_start_run_on_another_orgs_app_is_forbidden(tmp_path: Path) -> None:
     state = _state(tmp_path)
     payload, status = ops.start_run(
-        state, {"app": "other", "scenario": "smoke.yaml"}, actor="alice"
+        state, {"target": "other", "scenario": "smoke.yaml"}, actor="alice"
     )
     assert status == 403
     assert payload == {"error": "forbidden"}
@@ -69,7 +69,7 @@ def test_start_run_on_own_orgs_app_passes_the_org_check(tmp_path: Path) -> None:
     # alice owns demo; the org check passes, so it fails later (no scenarios dir), not with 403.
     state = _state(tmp_path)
     _payload, status = ops.start_run(
-        state, {"app": "demo", "scenario": "smoke.yaml"}, actor="alice"
+        state, {"target": "demo", "scenario": "smoke.yaml"}, actor="alice"
     )
     assert status != 403
 
@@ -87,7 +87,7 @@ def test_no_orgs_block_keeps_a_single_tenant(tmp_path: Path) -> None:
     # matching what oauth_callback would assign from this config.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "apps:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
+        "targets:\n  demo: { bundleId: com.example.demo }\n  other: { bundleId: com.example.other }\n",
         encoding="utf-8",
     )
     engine = create_engine("sqlite://")
@@ -97,9 +97,12 @@ def test_no_orgs_block_keeps_a_single_tenant(tmp_path: Path) -> None:
     repo.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)
 
-    assert [a["name"] for a in ops.list_apps_payload(state, actor="alice")[0]] == ["demo", "other"]
+    assert [a["name"] for a in ops.list_targets_payload(state, actor="alice")[0]] == [
+        "demo",
+        "other",
+    ]
     _payload, status = ops.start_run(
-        state, {"app": "other", "scenario": "smoke.yaml"}, actor="alice"
+        state, {"target": "other", "scenario": "smoke.yaml"}, actor="alice"
     )
     assert status != 403
 
@@ -136,8 +139,8 @@ def test_oauth_login_assigns_the_org_from_github_org_membership(tmp_path: Path) 
     # A login with no explicit member listing is mapped to a bajutsu org by its GitHub org.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "apps:\n  demo: { bundleId: com.example.demo }\n"
-        "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n    apps: [demo]\n",
+        "targets:\n  demo: { bundleId: com.example.demo }\n"
+        "orgs:\n  acme:\n    githubOrgs: [acme-gh]\n    targets: [demo]\n",
         encoding="utf-8",
     )
     engine = create_engine("sqlite://")
@@ -162,13 +165,13 @@ def test_local_serve_ignores_orgs_without_a_repository(tmp_path: Path) -> None:
     cfg.write_text(CONFIG, encoding="utf-8")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg)  # repository defaults to None
     assert state.repository is None
-    assert [a["name"] for a in ops.list_apps_payload(state, actor="alice")[0]] == [
+    assert [a["name"] for a in ops.list_targets_payload(state, actor="alice")[0]] == [
         "checkout",
         "demo",
         "other",
     ]
     _payload, status = ops.start_run(
-        state, {"app": "other", "scenario": "smoke.yaml"}, actor="alice"
+        state, {"target": "other", "scenario": "smoke.yaml"}, actor="alice"
     )
     assert status != 403
 
@@ -236,7 +239,7 @@ def test_request_resolves_the_org_once(tmp_path: Path) -> None:
     inner.upsert_user("alice", org_id="default", github_login="alice", email="a@x")
     repo = _CountingRepo(inner)
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text("apps:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
+    cfg.write_text("targets:\n  demo: { bundleId: com.example.demo }\n", encoding="utf-8")
     state = srv.ServeState(runs_dir=tmp_path / "runs", config=cfg, repository=repo)  # type: ignore[arg-type]
 
     ops.list_scenarios(state, "demo", actor="alice")

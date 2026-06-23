@@ -3,7 +3,7 @@
 # CLI reference
 
 > Implementation: `bajutsu/cli/` (Typer; one file per command under `cli/commands/`). The entry point is `bajutsu = "bajutsu.cli:app"` in
-> `pyproject.toml`. Every command in this CLI (command-line interface) selects one app with `--app <name>` and points at config with
+> `pyproject.toml`. Every command in this CLI (command-line interface) selects one app with `--target <name>` and points at config with
 > `--config` (default `bajutsu.config.yaml`). App-specific differences live in config
 > ([configuration](configuration.md)).
 
@@ -24,16 +24,16 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 Runs a scenario **deterministically**; pass/fail is machine-only. The only AI component is the **alert guard** (on by default per scenario), which fires only to clear an OS prompt that blocked a step — see [`dismissAlerts`](scenarios.md#dismissalerts-the-system-alert-guard).
 
 ```bash
-bajutsu run --app <name> [--scenario <file.yaml>] [options]
+bajutsu run --target <name> [--scenario <file.yaml>] [options]
 ```
 
 By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
-(`apps.<name>.scenarios`, see [configuration](configuration.md)) — so the config alone is enough
+(`targets.<name>.scenarios`, see [configuration](configuration.md)) — so the config alone is enough
 to run. Pass `--scenario <file>` to run a single file instead.
 
 | Option | Default | Description |
 |---|---|---|
-| `--app` | (required) | the target app (config's `apps.<name>`) |
+| `--target` | (required) | the target app (config's `targets.<name>`) |
 | `--scenario` | config's `scenarios` dir | run one `*.yaml` instead of the app's whole scenarios dir |
 | `--backend` | config | actuator order (comma-separated; first usable wins) |
 | `--tag` | "" | comma list; run only scenarios carrying any of these tags |
@@ -61,8 +61,8 @@ to run. Pass `--scenario <file>` to run a single file instead.
   machine-readable result line. A run that used no AI prints nothing.
 
 ```bash
-bajutsu run --app sample --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
-bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --no-erase   # one file
+bajutsu run --target sample --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
+bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --target sample --no-erase   # one file
 ```
 
 ## `doctor`
@@ -71,7 +71,7 @@ A **runnability gate** + the **convention score** for the current screen (AI-ind
 [configuration](configuration.md#doctor-the-convention-score)).
 
 ```bash
-bajutsu doctor --app <name> [--udid booted] [--backend ...] [--config ...]
+bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 ```
 
 - First the env gate (`preflight.py`): the required CLIs for the actuator (`xcrun`; `idb` /
@@ -113,7 +113,7 @@ the stable ids they reference by namespace, and measures them against the app's 
 `idNamespaces` ([configuration](configuration.md#doctor-the-convention-score)) — without running anything.
 
 ```bash
-bajutsu coverage --app <name> [--config ...] [--json]
+bajutsu coverage --target <name> [--config ...] [--json]
 ```
 
 - Reports the **coverage fraction** (declared namespaces the suite references / declared namespaces),
@@ -201,7 +201,7 @@ failure **screenshot** for richer diagnoses.
 
 An agent may also return a **structured fix** the tool can apply: `renameId`, `addIndex`
 (disambiguate an ambiguous match), or `raiseTimeout`. `--apply <scenario-file>` prints it as a
-**dry-run diff**; `--write` applies it to the source; `--rerun --app <name>` then re-runs the
+**dry-run diff**; `--write` applies it to the source; `--rerun --target <name>` then re-runs the
 patched scenario (`--no-erase`) and reports whether it now passes. The boundary holds: a fix
 is applied only when the user opts in after reviewing the diff, and a fragment that no longer matches the
 source is a safe no-op.
@@ -209,11 +209,11 @@ source is a safe no-op.
 ```bash
 bajutsu triage [<run-dir>] [--scenario <substr>] [--runs runs] [--ai]
 bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
-               [--rerun --app <name> [--backend idb] [--udid <udid>]]
+               [--rerun --target <name> [--backend idb] [--udid <udid>]]
 ```
 
 - Defaults to the latest run under `runs/`. **Exits 0** when the run has no failed scenario.
-- `--rerun` requires `--write` (nothing to verify otherwise) and `--app`.
+- `--rerun` requires `--write` (nothing to verify otherwise) and `--target`.
 - With `--ai`, an `AI usage:` line of the tokens the diagnosis consumed is printed to stderr after
   the diagnosis. The rule-based default uses no AI, so it prints nothing.
 
@@ -221,15 +221,15 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 
 Explores toward a goal with AI and **writes the recorded scenario** (Tier 1; [recording](recording.md)).
 By default it auto-names a `*.yaml` under the app's configured scenarios dir
-(`apps.<name>.scenarios`); pass `--out` to write a specific path instead.
+(`targets.<name>.scenarios`); pass `--out` to write a specific path instead.
 
 ```bash
-bajutsu record --app <name> --goal "<natural-language goal>" [--out <file.yaml>] [options]
+bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yaml>] [options]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `--app` | (required) | the target app |
+| `--target` | (required) | the target app |
 | `--goal` | (required) | the goal to author (natural language) |
 | `--out` | auto-named in config's `scenarios` dir | explicit output path (overrides the app's scenarios dir) |
 | `--name` | (from the goal) | file name for the auto-named scenario (ignored when `--out` is given) |
@@ -257,12 +257,12 @@ tried are pure functions of the element tree); **no AI** is involved, and it is 
 pass/fail gate**.
 
 ```bash
-bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [options]
+bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [options]
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `--app` | (required) | the target app |
+| `--target` | (required) | the target app |
 | `--max-screens` | `50` | stop after discovering this many distinct screens |
 | `--max-steps` | `200` | stop after taking this many actions |
 | `--agent` | `$BAJUTSU_AGENT` or `api` | AI backend for the crawl guide: `api` (the Anthropic SDK, pay-per-token; uses the configured AI provider — `ANTHROPIC_API_KEY` for Anthropic, or AWS credentials + `BAJUTSU_BEDROCK_MODEL` when `BAJUTSU_AI_PROVIDER=bedrock`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`). Omitted, it follows `$BAJUTSU_AGENT` (which `serve` sets from its Settings selector), then `api` |
@@ -361,7 +361,7 @@ hashes to the same value. Each node records both the fingerprint and its `kind`.
 ### Web backend (`--backend web`)
 
 The crawl runs against a web app the same way it runs against the Simulator — the exploration
-engine is platform-neutral, so `bajutsu crawl --app <web-app> --backend web` produces the same
+engine is platform-neutral, so `bajutsu crawl --target <web-app> --backend web` produces the same
 `screenmap.json`, screenshots, and crash list. The web app is identified by `baseUrl` (not
 `bundleId`), and because a browser needs no Mac or emulator a web crawl runs on the Linux
 `make check` / CI gate. Three things differ from iOS, and all stay deterministic
@@ -385,7 +385,7 @@ Generates a **native test** from a scenario (AI-independent · structural mappin
 **XCUITest** (Swift, iOS) or **Playwright** (TypeScript, web).
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
+bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright] [-o <out>] [--config ...]
 ```
 
 | Option | Default | Description |
@@ -395,7 +395,7 @@ bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o 
 
 - Config's `launchEnv` goes into the generated test: `app.launchEnvironment` (XCUITest) or seeded
   `localStorage` (Playwright).
-- `--emit playwright` requires the app to be a web target (`apps.<name>.baseUrl`); otherwise it exits
+- `--emit playwright` requires the app to be a web target (`targets.<name>.baseUrl`); otherwise it exits
   with code 2.
 - On file output: `wrote <N> scenario(s) -> <out>`.
 
@@ -467,7 +467,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   no per-tab agent picker. Under Claude Code, an API key (if set) still powers only the alert guard.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
-  `apps.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features
+  `targets.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features
   sample-build`) to build on demand from the UI without a manual build first.
 - A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
@@ -497,7 +497,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 
 | Option | Default | Description |
 |---|---|---|
-| `--config` | `bajutsu.config.yaml` | config the tools resolve apps against |
+| `--config` | `bajutsu.config.yaml` | config the tools resolve targets against |
 | `--runs` | `runs` | the runs dir exposed as resources |
 | `--transport` | `stdio` | `stdio` (a local agent) or `sse` (HTTP) |
 

@@ -160,7 +160,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 - 証跡: 瞬時（`screenshot`/`elements`/`actionLog`）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク collector（`network.json`）+ **ビジュアルリグレッション**（baseline に対する `visual`。`approve` コマンドで baseline を昇格）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用**
 - ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）: `request` アサーション、`wait: { until: request }`、オフラインのスタブ応答
 - レポート（`manifest.json` / `junit.xml` / `report.html`）
-- config 解決（defaults × apps、redact マージ）と actuator 選択
+- config 解決（defaults × targets、redact マージ）と actuator 選択
 - `simctl` コマンド層、idb の出力パーサ、`doctor` スコア + 実行可能ゲート（`preflight.py`: 必須 CLI + 起動済みシミュレータ）
 - `trace` コマンド（`trace.py`）: 保存済み run のテキストタイムライン（steps + network + appTrace）
 - M4 自己修復トリアージ（`triage.py` + `claude_triage.py`）: 失敗 run のコンテキスト組み立て + `TriageAgent` 診断（ルールベース `HeuristicTriageAgent`、または `--ai` の Claude で失敗スクショ込み）。エージェントは構造化 fix（`renameId` / `addIndex` / `raiseTimeout`）を提案でき、`--apply`/`--write` でシナリオ source に適用（diff プレビュー、opt-in）、`--rerun` で再実行検証

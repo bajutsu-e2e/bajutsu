@@ -1,4 +1,4 @@
-"""Tests for the target-server lifecycle (`apps.<name>.launchServer`)."""
+"""Tests for the target-server lifecycle (`targets.<name>.launchServer`)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def _eff(extra: str = "") -> config.Effective:
     body = "baseUrl: 'http://127.0.0.1:8/'"
     if extra:
         body += ", " + extra
-    return config.resolve(config.load_config(f"apps: {{ web: {{ {body} }} }}"), "web")
+    return config.resolve(config.load_config(f"targets: {{ web: {{ {body} }} }}"), "web")
 
 
 class _FakeProc:
@@ -94,7 +94,7 @@ def test_command_exit_before_ready_raises(monkeypatch: pytest.MonkeyPatch) -> No
 def test_missing_ready_url_raises() -> None:
     # No baseUrl to fall back to and no readyUrl → can't probe, so refuse up front.
     eff = config.resolve(
-        config.load_config("apps: { x: { bundleId: com.x, launchServer: { cmd: 'srv' } } }"), "x"
+        config.load_config("targets: { x: { bundleId: com.x, launchServer: { cmd: 'srv' } } }"), "x"
     )
     with pytest.raises(RuntimeError, match="readyUrl"):
         ls.start_launch_server(eff)

@@ -19,7 +19,7 @@ flag is set.
 | `BajutsuShowcaseSwiftUI` | defined | `com.bajutsu.showcase.swiftui` | Showcase SwiftUI | `showcaseswiftui` |
 | `BajutsuShowcaseSwiftUINoAx` | — | `com.bajutsu.showcase.swiftui.noax` | Showcase SwiftUI (no a11y) | `showcaseswiftuinoax` |
 
-The `-a11y` build exposes every identifier in SPEC §5 (`doctor --app` grades it **Ready**);
+The `-a11y` build exposes every identifier in SPEC §5 (`doctor --target` grades it **Ready**);
 the no-a11y build compiles to a tree with none (graded **Blocked**) — the cost of skipping
 accessibility, made concrete.
 

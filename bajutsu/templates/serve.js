@@ -24,7 +24,7 @@ async function _bjLogin(){
 }
 
 const $=s=>document.querySelector(s);
-let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],apps=[],sims=[];
+let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],sims=[];
 let recJobId=null,runJobId=null;
 // Toggle a run/stop button pair between idle and running (amber + spinner via the .running class).
 function setBusy(btn,stop,on,busyLabel){
@@ -202,26 +202,26 @@ async function chooseConfig(path){
   $('#cfgname').textContent=d.config;closeFs();await loadShared();
 }
 
-// ---- shared data: apps, scenarios, simulators (used by both views) ----
+// ---- shared data: targets, scenarios, simulators (used by both views) ----
 async function loadShared(){
-  try{apps=await (await fetch('/api/apps')).json()}catch(e){apps=[]}
-  // each app carries its primary backend (data-backend) so picking a web app hides the iOS-only UI
-  const opts=apps.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
+  try{targets=await (await fetch('/api/targets')).json()}catch(e){targets=[]}
+  // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
+  const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
-  $('#app').innerHTML=opts;$('#rec-app').innerHTML=opts;$('#crawl-app').innerHTML=opts;
-  syncPlatform('#panel-run','#app');
-  syncPlatform('#panel-record','#rec-app');
-  syncPlatform('#panel-crawl','#crawl-app');
+  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;
+  syncPlatform('#panel-run','#target');
+  syncPlatform('#panel-record','#rec-target');
+  syncPlatform('#panel-crawl','#crawl-target');
   await loadScenarios();
 }
-// Scenarios come from the selected app's configured dir, so reload when the Replay app changes.
+// Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
 async function loadScenarios(){
-  const app=$('#app').value;
-  try{scnFiles=app?await (await fetch('/api/scenarios?app='+encodeURIComponent(app))).json():[]}catch(e){scnFiles=[]}
+  const target=$('#target').value;
+  try{scnFiles=target?await (await fetch('/api/scenarios?target='+encodeURIComponent(target))).json():[]}catch(e){scnFiles=[]}
   $('#scn').innerHTML=scnFiles.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
   showInfo();
 }
-$('#app').addEventListener('change',loadScenarios);
+$('#target').addEventListener('change',loadScenarios);
 async function loadSims(){
   try{sims=await (await fetch('/api/simulators')).json()}catch(e){sims=[]}
   // Replay: multi-select checkboxes (parallel pool).
@@ -247,7 +247,7 @@ $('#rec-go').addEventListener('click',async()=>{
   $('#rec-yaml').value='';$('#rec-save').disabled=true;$('#rec-yamlinfo').textContent='';recPath=null;
   setStatus($('#rec-status'),'','run');
   const r=await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    goal,app:$('#rec-app').value,
+    goal,target:$('#rec-target').value,
     udid:$('#rec-device').value||'booted',name:$('#rec-name').value.trim()||undefined,
     erase:$('#rec-erase').checked,dismissAlerts:$('#rec-nodismiss').checked?false:undefined,
     headed:$('#rec-headed').checked||undefined})});
@@ -266,7 +266,7 @@ async function recDone(j){
 async function loadGenerated(path){
   recPath=path;
   try{
-    const d=await (await fetch('/api/scenario?app='+encodeURIComponent($('#rec-app').value)+'&path='+encodeURIComponent(path))).json();
+    const d=await (await fetch('/api/scenario?target='+encodeURIComponent($('#rec-target').value)+'&path='+encodeURIComponent(path))).json();
     if(d.yaml!=null){$('#rec-yaml').value=d.yaml;$('#rec-save').disabled=false;
       $('#rec-yamlinfo').textContent=path.split('/').pop();}
   }catch(e){}
@@ -275,7 +275,7 @@ $('#rec-save').addEventListener('click',async()=>{
   if(!recPath)return;
   $('#rec-save').disabled=true;$('#rec-save').textContent='Saving…';
   const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({app:$('#rec-app').value,path:recPath,yaml:$('#rec-yaml').value})});
+    body:JSON.stringify({target:$('#rec-target').value,path:recPath,yaml:$('#rec-yaml').value})});
   const d=await r.json();
   $('#rec-save').textContent='Save';$('#rec-save').disabled=false;
   if(d.error){setStatus($('#rec-status'),d.error,'ng')}
@@ -300,7 +300,7 @@ $('#go').addEventListener('click',async()=>{
   setBusy($('#go'),$('#stop'),true,'Running…');$('#out').textContent='';
   setStatus($('#status'),'','run');
   const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    scenario:$('#scn').value,app:$('#app').value,udid:pickedUdids().join(',')||'booted',
+    scenario:$('#scn').value,target:$('#target').value,udid:pickedUdids().join(',')||'booted',
     workers:parseInt($('#workers').value,10)||1,headed:$('#headed').checked||undefined,
     erase:$('#erasedev').checked||undefined,dismissAlerts:$('#nodismiss').checked?false:undefined})});
   const {jobId,error}=await r.json();
@@ -370,7 +370,7 @@ $('#crawl-go').addEventListener('click',async()=>{
   $('#crawl-graph').innerHTML='<div class="empty">Launching the app and reaching the first screen…</div>';
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,udid:crawlPickedUdids().join(',')||'booted',
+    target:$('#crawl-target').value,udid:crawlPickedUdids().join(',')||'booted',
     workers:parseInt($('#crawl-workers').value,10)||1,
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     erase:$('#crawl-erase').checked,
@@ -675,7 +675,7 @@ async function resumePruned(src,key){
   setBusy($('#crawl-go'),$('#crawl-stop'),true,'Resuming…');
   setStatus($('#crawl-status'),'','run');
   const r=await fetch('/api/crawl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    app:$('#crawl-app').value,udid:crawlPickedUdids()[0]||'booted',  // a resume is a single-branch walk
+    target:$('#crawl-target').value,udid:crawlPickedUdids()[0]||'booted',  // a resume is a single-branch walk
     maxScreens:parseInt($('#crawl-maxscreens').value,10)||50,maxSteps:parseInt($('#crawl-maxsteps').value,10)||200,
     dismissAlerts:$('#crawl-nodismiss').checked?false:undefined,headed:$('#crawl-headed').checked||undefined,
     runId:crawlRunId,resumeSrc:src,resumeKey:key})});
@@ -793,9 +793,9 @@ function wirePlatform(panelSel,appSel){
   if($(appSel))$(appSel).addEventListener('change',re);  // selecting an app re-evaluates the platform
   re();
 }
-wirePlatform('#panel-run','#app');
-wirePlatform('#panel-record','#rec-app');
-wirePlatform('#panel-crawl','#crawl-app');
+wirePlatform('#panel-run','#target');
+wirePlatform('#panel-record','#rec-target');
+wirePlatform('#panel-crawl','#crawl-target');
 
 // Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
 // column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.

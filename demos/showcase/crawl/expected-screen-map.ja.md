@@ -8,7 +8,7 @@
 > ようにします。実装後はこう実行します:
 >
 > ```bash
-> bajutsu crawl --app showcase-swiftui --config demos/showcase/showcase.config.yaml \
+> bajutsu crawl --target showcase-swiftui --config demos/showcase/showcase.config.yaml \
 >     --seed showcaseswiftui://permissions
 > ```
 

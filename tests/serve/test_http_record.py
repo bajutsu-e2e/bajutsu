@@ -38,7 +38,7 @@ def test_http_record_authors_scenario(tmp_path: Path) -> None:
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path, popen=popen)
     )
     try:
-        body = json.dumps({"goal": "tap x", "app": "demo", "name": "authored"}).encode()
+        body = json.dumps({"goal": "tap x", "target": "demo", "name": "authored"}).encode()
         req = urllib.request.Request(
             f"http://127.0.0.1:{port}/api/record",
             data=body,
@@ -56,7 +56,7 @@ def test_http_record_authors_scenario(tmp_path: Path) -> None:
         cmd = captured[0]
         assert cmd[1:6] == ["-m", "bajutsu", "record", "--out", str(scn_dir / "authored.yaml")]
         assert cmd[cmd.index("--goal") + 1] == "tap x"
-        got = _get_json(port, "/api/scenario?app=demo&path=" + urllib.parse.quote(resp["path"]))
+        got = _get_json(port, "/api/scenario?target=demo&path=" + urllib.parse.quote(resp["path"]))
         assert got["yaml"] == SCENARIO  # the authored scenario is served back for the editor
     finally:
         server.shutdown()
@@ -89,7 +89,7 @@ def test_http_record_rejects_unknown_backend(tmp_path: Path) -> None:
     )
     try:
         status, resp = _post(
-            port, "/api/record", {"goal": "tap x", "app": "demo", "backend": "rm -rf /"}
+            port, "/api/record", {"goal": "tap x", "target": "demo", "backend": "rm -rf /"}
         )
         assert status == 400 and "unknown backend" in resp["error"]
     finally:
@@ -104,7 +104,7 @@ def test_http_record_rejects_invalid_udid(tmp_path: Path) -> None:
     )
     try:
         status, resp = _post(
-            port, "/api/record", {"goal": "tap x", "app": "demo", "udid": "A;rm -rf /"}
+            port, "/api/record", {"goal": "tap x", "target": "demo", "udid": "A;rm -rf /"}
         )
         assert status == 400 and "invalid udid" in resp["error"]
     finally:

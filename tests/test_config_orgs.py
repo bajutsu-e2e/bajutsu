@@ -5,15 +5,15 @@ member GitHub logins and its apps. A user or app not named in any org falls back
 from __future__ import annotations
 
 from bajutsu.config import (
-    apps_for_org,
     load_config,
-    org_for_app,
     org_for_identity,
+    org_for_target,
     org_for_user,
+    targets_for_org,
 )
 
 CONFIG_YAML = """
-apps:
+targets:
   demo: { bundleId: com.example.demo }
   checkout: { bundleId: com.example.checkout }
   other: { bundleId: com.example.other }
@@ -21,10 +21,10 @@ apps:
 orgs:
   acme:
     members: [alice, bob]
-    apps: [demo, checkout]
+    targets: [demo, checkout]
   globex:
     members: [carol]
-    apps: [other]
+    targets: [other]
 """
 
 
@@ -36,44 +36,44 @@ def test_org_for_user_resolves_membership() -> None:
     assert org_for_user(cfg, "stranger") == "default"
 
 
-def test_org_for_app_resolves_ownership() -> None:
+def test_org_for_target_resolves_ownership() -> None:
     cfg = load_config(CONFIG_YAML)
-    assert org_for_app(cfg, "demo") == "acme"
-    assert org_for_app(cfg, "other") == "globex"
+    assert org_for_target(cfg, "demo") == "acme"
+    assert org_for_target(cfg, "other") == "globex"
     # An app in no org belongs to the default org.
-    assert org_for_app(cfg, "unlisted") == "default"
+    assert org_for_target(cfg, "unlisted") == "default"
 
 
-def test_apps_for_org_lists_its_apps() -> None:
+def test_targets_for_org_lists_its_apps() -> None:
     cfg = load_config(CONFIG_YAML)
-    assert sorted(apps_for_org(cfg, "acme")) == ["checkout", "demo"]
-    assert apps_for_org(cfg, "globex") == ["other"]
+    assert sorted(targets_for_org(cfg, "acme")) == ["checkout", "demo"]
+    assert targets_for_org(cfg, "globex") == ["other"]
 
 
 def test_apps_for_default_org_are_the_unassigned_ones() -> None:
     cfg = load_config(CONFIG_YAML)
     # No app here is unassigned, so default owns none.
-    assert apps_for_org(cfg, "default") == []
+    assert targets_for_org(cfg, "default") == []
 
 
-def test_apps_for_org_excludes_undeclared_app_names() -> None:
-    # An org listing an app that has no `apps:` entry doesn't conjure a runnable app.
+def test_targets_for_org_excludes_undeclared_app_names() -> None:
+    # An org listing an app that has no `targets:` entry doesn't conjure a runnable app.
     cfg = load_config(
-        "apps:\n  demo: { bundleId: com.example.demo }\n"
-        "orgs:\n  acme:\n    members: [alice]\n    apps: [demo, ghost]\n"
+        "targets:\n  demo: { bundleId: com.example.demo }\n"
+        "orgs:\n  acme:\n    members: [alice]\n    targets: [demo, ghost]\n"
     )
-    assert apps_for_org(cfg, "acme") == ["demo"]
+    assert targets_for_org(cfg, "acme") == ["demo"]
 
 
 IDENTITY_YAML = """
-apps:
+targets:
   demo: { bundleId: com.example.demo }
 
 orgs:
   acme:
     members: [alice]
     githubOrgs: [acme-gh]
-    apps: [demo]
+    targets: [demo]
   globex:
     githubOrgs: [globex-gh]
 """
@@ -99,8 +99,8 @@ def test_org_for_identity_falls_back_to_default() -> None:
 
 
 def test_no_orgs_block_is_single_tenant() -> None:
-    cfg = load_config("apps:\n  demo: { bundleId: com.example.demo }\n")
+    cfg = load_config("targets:\n  demo: { bundleId: com.example.demo }\n")
     assert org_for_user(cfg, "alice") == "default"
-    assert org_for_app(cfg, "demo") == "default"
+    assert org_for_target(cfg, "demo") == "default"
     # With no orgs declared, the default org owns every app.
-    assert apps_for_org(cfg, "default") == ["demo"]
+    assert targets_for_org(cfg, "default") == ["demo"]

@@ -78,7 +78,7 @@ def list_scenarios(scenarios_dir: Path) -> list[dict[str, Any]]:
 
 
 # Parsed-config cache, keyed by the resolved path and a freshness stamp ``(st_mtime_ns, st_size)``.
-# The serve config is read on most requests (apps/scenarios listing, org resolution); without this
+# The serve config is read on most requests (targets/scenarios listing, org resolution); without this
 # each one re-reads and re-validates the YAML. The entry is invalidated whenever the file's mtime or
 # size changes; an edit that preserves both (a same-size rewrite that also keeps the timestamp) won't
 # be noticed, which is acceptable for an operator-edited config. A lock guards the dict since serve
@@ -112,7 +112,7 @@ def _load_config_cached(config_path: Path) -> Config:
 
 def load_config_file(config_path: Path | None) -> Config | None:
     """The parsed config, or None if there is none or it can't be read/validated. Used where the
-    org model is needed (resolving a user/app to its org)."""
+    org model is needed (resolving a user/target to its org)."""
     if config_path is None:
         return None
     try:
@@ -121,30 +121,30 @@ def load_config_file(config_path: Path | None) -> Config | None:
         return None
 
 
-def list_apps(config_path: Path) -> list[str]:
+def list_targets(config_path: Path) -> list[str]:
     try:
-        return sorted(_load_config_cached(config_path).apps)
+        return sorted(_load_config_cached(config_path).targets)
     except (OSError, ValueError):
         return []
 
 
-def app_build_info(config_path: Path, app: str) -> tuple[str | None, str | None]:
-    """``(app_path, build)`` for *app* from config — the built ``.app`` path and the shell
+def target_build_info(config_path: Path, target: str) -> tuple[str | None, str | None]:
+    """``(app_path, build)`` for *target* from config — the built ``.app`` path and the shell
     command that builds it.  Either may be ``None`` (unset or any load/resolve error); the run
     then proceeds without an on-demand build (and the runner reports a missing binary as
     before)."""
     try:
-        eff = resolve(_load_config_cached(config_path), app)
+        eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return (None, None)
     return (eff.app_path, eff.build)
 
 
-def app_scenarios_dir(config_path: Path, app: str) -> Path | None:
-    """The configured ``scenarios`` dir for *app*, or None (unset, or any load/resolve error).
-    Mirrors ``app_build_info``; resolved relative to the run's working directory."""
+def target_scenarios_dir(config_path: Path, target: str) -> Path | None:
+    """The configured ``scenarios`` dir for *target*, or None (unset, or any load/resolve error).
+    Mirrors ``target_build_info``; resolved relative to the run's working directory."""
     try:
-        eff = resolve(_load_config_cached(config_path), app)
+        eff = resolve(_load_config_cached(config_path), target)
     except (OSError, ValueError, KeyError):
         return None
     return Path(eff.scenarios) if eff.scenarios else None
@@ -245,7 +245,7 @@ def _int(value: Any, default: int) -> int:
 
 def run_command(
     scenario: str,
-    app: str,
+    target: str,
     *,
     backend: str = "",
     udid: str = "",
@@ -259,8 +259,8 @@ def run_command(
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
     the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` are overrides: True/False force the
-    flag on/off, None leaves the app's own config (each scenario's preconditions.erase /
-    dismissAlerts, or the app's headless) to decide."""
+    flag on/off, None leaves the target's own config (each scenario's preconditions.erase /
+    dismissAlerts, or the target's headless) to decide."""
     cmd = [
         sys.executable,
         "-m",
@@ -268,8 +268,8 @@ def run_command(
         "run",
         "--scenario",
         scenario,
-        "--app",
-        app,
+        "--target",
+        target,
         "--config",
         config,
         "--progress",
@@ -299,7 +299,7 @@ def run_command(
 
 def record_command(
     out: str,
-    app: str,
+    target: str,
     goal: str,
     *,
     agent: str = "",
@@ -310,7 +310,7 @@ def record_command(
     headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
 ) -> list[str]:
-    """The ``python -m bajutsu record --out OUT --app … --goal …`` argv for an authoring request —
+    """The ``python -m bajutsu record --out OUT --target … --goal …`` argv for an authoring request —
     the Tier-1 record loop the Record tab drives.  ``agent`` picks the brain ("api" /
     "claude-code"); ``erase`` / ``dismiss_alerts`` mirror ``run_command`` (None leaves the CLI
     default — record erases and dismisses by default), and ``out`` is the ``*.yaml`` the
@@ -322,8 +322,8 @@ def record_command(
         "record",
         "--out",
         out,
-        "--app",
-        app,
+        "--target",
+        target,
         "--goal",
         goal,
         "--config",
@@ -351,7 +351,7 @@ def record_command(
 
 
 def crawl_command(
-    app: str,
+    target: str,
     *,
     out: str,
     agent: str = "",
@@ -367,7 +367,7 @@ def crawl_command(
     resume_src: str = "",
     resume_key: str = "",
 ) -> list[str]:
-    """The ``python -m bajutsu crawl --app … --out …`` argv for a crawl request — the explorer the
+    """The ``python -m bajutsu crawl --target … --out …`` argv for a crawl request — the explorer the
     Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
     (``<out>/screenmap.json``, which the UI polls live); ``erase`` mirrors ``run_command`` (None
     leaves the CLI default — crawl erases by default). ``udid`` may be a comma list and
@@ -382,8 +382,8 @@ def crawl_command(
         "-m",
         "bajutsu",
         "crawl",
-        "--app",
-        app,
+        "--target",
+        target,
         "--out",
         out,
         "--config",

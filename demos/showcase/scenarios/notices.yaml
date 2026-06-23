@@ -1,7 +1,7 @@
 # Notices: a long vertical list (20 rows) whose bottom rows start off-screen. With lazy
 # row rendering, an off-screen row is not in the accessibility tree at all until scrolled
 # into view — so reaching it genuinely requires a scroll. launchEnv + taps/swipes only
-# (no literal-scheme deeplinks), so this drives both a11y apps.
+# (no literal-scheme deeplinks), so this drives both a11y targets.
 - name: the list has off-screen rows
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: notices }

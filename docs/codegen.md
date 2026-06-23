@@ -17,11 +17,11 @@ Related: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [drivers](drivers
 ## Usage
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>]
+bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright] [-o <out>]
 ```
 
 `--emit` is `xcuitest` (default) or `playwright`. `-o -` (default) writes to stdout; a file path
-writes to the file. `--emit playwright` requires the app to be a web target (`apps.<name>.baseUrl`
+writes to the file. `--emit playwright` requires the app to be a web target (`targets.<name>.baseUrl`
 set); without it the command exits with code 2. Config's `launchEnv` is carried into the generated
 test ([cli](cli.md#codegen)) — `app.launchEnvironment` for XCUITest, seeded `localStorage` for
 Playwright.

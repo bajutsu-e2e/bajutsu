@@ -36,7 +36,7 @@ make -C demos record                 # または直接:
    （観測 → 💭 推論 → アクション）です。オフラインでキー無しのまま動かすには、キーワードの代役
    [`generate_from_nl.py`](generate_from_nl.py) が同じ流れを著作します。
 2. **実行（Execute）**：起動中の Simulator で
-   `bajutsu run --scenario generated.yaml --app sample2 --config demo.config.yaml`。カウンターの流れは
+   `bajutsu run --scenario generated.yaml --target sample2 --config demo.config.yaml`。カウンターの流れは
    PASS します。
 3. **改変（Modify）**：期待するカウント値を誤った値に編集 → 再実行 → 実行は**失敗**（アサーションが
    捕捉）→ 元に戻す → 再び**成功**。これが AI が著作したシナリオを保守する、編集して再実行するループです。
@@ -92,7 +92,7 @@ uv run python demos/record/generate_from_nl.py "<goal>" --out demos/record/gener
 が必要）:
 
 ```bash
-uv run bajutsu record --out demos/record/generated.yaml --app sample2 \
+uv run bajutsu record --out demos/record/generated.yaml --target sample2 \
   --config demos/record/demo.config.yaml --backend idb \
   --goal "increment the counter twice and check it reads 2"
 ```

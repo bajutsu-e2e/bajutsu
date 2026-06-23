@@ -2,7 +2,7 @@
 
 # Bajutsu Showcase — fixture specification
 
-> The single source of truth for the showcase dogfood apps. The UIKit and SwiftUI
+> The single source of truth for the showcase dogfood targets. The UIKit and SwiftUI
 > codebases both implement *this* spec, identifier-for-identifier, so one scenario set
 > drives every variant. Read it before changing any app source. Design rationale:
 > [`DESIGN.md`](../../DESIGN.md); roadmap item: the `dogfood-showcase-apps` BE item.
@@ -23,8 +23,8 @@ design rests on visible:
 
 | Variant | Accessibility identifiers | Demonstrates |
 |---|---|---|
-| **`*-a11y`** (identifiers ON) | every actionable element carries a stable `accessibilityIdentifier` | `run` — id-based selectors resolve uniquely, scenarios replay deterministically; `doctor --app` grades **Ready** |
-| **`*-noax`** (identifiers OFF) | no identifiers at all | `record` — the AI author must fall back down the stability ladder ([DESIGN §5](../../DESIGN.md)) to `label`/`traits`/coordinates; `doctor --app` grades **Blocked**. The cost of skipping accessibility, made concrete |
+| **`*-a11y`** (identifiers ON) | every actionable element carries a stable `accessibilityIdentifier` | `run` — id-based selectors resolve uniquely, scenarios replay deterministically; `doctor --target` grades **Ready** |
+| **`*-noax`** (identifiers OFF) | no identifiers at all | `record` — the AI author must fall back down the stability ladder ([DESIGN §5](../../DESIGN.md)) to `label`/`traits`/coordinates; `doctor --target` grades **Blocked**. The cost of skipping accessibility, made concrete |
 
 > **Why the pairing matters.** Selector stability is the determinism lever
 > ([DESIGN §2](../../DESIGN.md)). The `-a11y` ↔ `-noax` twins are the controlled experiment:
@@ -36,7 +36,7 @@ design rests on visible:
 Each toolkit is **one codebase, two build targets**. The variant difference is a single Swift
 active-compilation condition, `ACCESSIBLE`; there is no forked source. (See §8.)
 
-| App name (`apps.<name>`) | Toolkit | `ACCESSIBLE` | Bundle id | Deeplink scheme | Display name |
+| App name (`targets.<name>`) | Toolkit | `ACCESSIBLE` | Bundle id | Deeplink scheme | Display name |
 |---|---|---|---|---|---|
 | `showcase-swiftui` | SwiftUI | defined | `com.bajutsu.showcase.swiftui` | `showcaseswiftui` | Showcase SwiftUI |
 | `showcase-swiftui-noax` | SwiftUI | — | `com.bajutsu.showcase.swiftui.noax` | `showcaseswiftuinoax` | Showcase SwiftUI (no a11y) |
@@ -257,7 +257,7 @@ skipped accessibility ships, and exactly what `record` must cope with and `docto
 
 ## 9. Identifier namespace summary (`idNamespaces`)
 
-For the `-a11y` apps' `apps.<name>.idNamespaces` ([DESIGN §7.3](../../DESIGN.md)). Reserved
+For the `-a11y` apps' `targets.<name>.idNamespaces` ([DESIGN §7.3](../../DESIGN.md)). Reserved
 the shared namespace `nav` comes from `defaults.reservedNamespaces`.
 
 ```
@@ -265,7 +265,7 @@ nav, stable, horse, search, log, notice, perm, net
 ```
 
 The `-noax` apps declare an **empty** `idNamespaces: []` — an honest declaration that the build
-exposes no identifiers, which is what makes `doctor --app showcase-…-noax` grade **Blocked** on
+exposes no identifiers, which is what makes `doctor --target showcase-…-noax` grade **Blocked** on
 `idCoverage` rather than appearing to "pass".
 
 ## 10. What each Bajutsu command demonstrates against this fixture
@@ -273,6 +273,6 @@ exposes no identifiers, which is what makes `doctor --app showcase-…-noax` gra
 | Command | Variant | Story |
 |---|---|---|
 | `run` | `-a11y` | Deterministic replay of every scenario in `scenarios/` — tabs, push nav, all four modal styles, networking (live + mocked), and the alert-guarded Permissions flow. |
-| `doctor --app` | both | `-a11y` → **Ready**; `-noax` → **Blocked** (`idCoverage` ≈ 0). The pair quantifies accessibility debt. |
+| `doctor --target` | both | `-a11y` → **Ready**; `-noax` → **Blocked** (`idCoverage` ≈ 0). The pair quantifies accessibility debt. |
 | `record` | `-noax` | AI authors a scenario for a natural-language goal against an app with no identifiers, falling to label/traits/coordinates — the stability-ladder cost made visible. The `-a11y` twin shows the clean id-based output for the same goal. |
 | `crawl` ([BE-0038](../../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)) | `-a11y` | Breadth-first exploration over a genuinely branchy app (5 tabs × pushes × 4 modal styles) → a screen map; the id-based state fingerprint is stable because §5 identifiers are. (Forward-looking: lands when BE-0038 ships.) |

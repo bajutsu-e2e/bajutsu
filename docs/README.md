@@ -56,7 +56,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 7 | [run-loop](run-loop.md) | Orchestrator (observe → act → verify) · waits · retries · run results |
 | 8 | [evidence](evidence.md) | Evidence subsystem (instant / interval · capturePolicy · provider · redact) |
 | 9 | [reporting](reporting.md) | Reports (manifest.json / JUnit / HTML) and the `runs/` layout |
-| 10 | [configuration](configuration.md) | Config layering (defaults × apps) · onboarding a new app · the `doctor` convention score |
+| 10 | [configuration](configuration.md) | Config layering (defaults × targets) · onboarding a new target · the `doctor` convention score |
 | 11 | [recording](recording.md) | AI authoring (Tier 1 `record`) · the Agent abstraction · system-alert handling |
 | 12 | [codegen](codegen.md) | Scenario → native XCUITest generation |
 | 13 | [cli](cli.md) | Full reference for CLI commands and options |
@@ -81,10 +81,10 @@ make -C demos/features e2e                             # run the smoke scenario 
 Minimal CLI:
 
 ```bash
-bajutsu run    --app <name> [--scenario file.yaml]      # default: the app's whole scenarios dir
-bajutsu doctor --app <name>                             # convention score
-bajutsu record --app <name> --goal "..." [--out file]   # AI explore + record (needs API key)
-bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift
+bajutsu run    --target <name> [--scenario file.yaml]      # default: the app's whole scenarios dir
+bajutsu doctor --target <name>                             # convention score
+bajutsu record --target <name> --goal "..." [--out file]   # AI explore + record (needs API key)
+bajutsu codegen <scenario.yaml> --target <name> -o UITests/Foo.swift
 bajutsu serve                                           # local web UI (Tier 1; not for CI)
 ```
 

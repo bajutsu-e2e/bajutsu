@@ -50,7 +50,7 @@ tour:
 # secret variable in features.yaml — any non-empty value works for the demo login.
 features: app-build
 	cd $(ROOT) && PASSWORD="$${PASSWORD:-s3cr3t}" uv run bajutsu run \
-		--scenario demos/app/scenarios/features.yaml --app demo --config $(CONFIG) \
+		--scenario demos/app/scenarios/features.yaml --target demo --config $(CONFIG) \
 		--backend ios --no-network --tag smoke --exclude slow
 
 offline: tour features

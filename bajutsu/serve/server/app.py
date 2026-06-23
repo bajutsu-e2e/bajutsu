@@ -122,12 +122,12 @@ def make_app(state: ServeState) -> FastAPI:
     # --- GET (reads) ---
 
     @app.get("/api/scenarios")
-    async def scenarios(request: Request, app: str | None = None) -> JSONResponse:
-        return _result(ops.list_scenarios(state, app, actor=_actor(request)))
+    async def scenarios(request: Request, target: str | None = None) -> JSONResponse:
+        return _result(ops.list_scenarios(state, target, actor=_actor(request)))
 
-    @app.get("/api/apps")
-    async def apps(request: Request) -> JSONResponse:
-        return _result(ops.list_apps_payload(state, actor=_actor(request)))
+    @app.get("/api/targets")
+    async def targets(request: Request) -> JSONResponse:
+        return _result(ops.list_targets_payload(state, actor=_actor(request)))
 
     @app.get("/api/config")
     async def config() -> JSONResponse:
@@ -155,9 +155,9 @@ def make_app(state: ServeState) -> FastAPI:
 
     @app.get("/api/scenario")
     async def read_scenario(
-        request: Request, app: str | None = None, path: str | None = None
+        request: Request, target: str | None = None, path: str | None = None
     ) -> JSONResponse:
-        return _result(ops.read_scenario(state, app, path, actor=_actor(request)))
+        return _result(ops.read_scenario(state, target, path, actor=_actor(request)))
 
     @app.get("/api/jobs/{job_id}")
     async def job(job_id: str) -> JSONResponse:

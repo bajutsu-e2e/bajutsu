@@ -99,5 +99,5 @@ These are the design invariants the whole project rests on; the full list is in
    call into the Tier-2 run/CI gate.
 2. **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector fails
    immediately rather than tapping whatever matched first.
-3. **App-agnostic.** Per-app differences live in config (`apps.<name>`); the tool, drivers, and
-   runner stay unchanged across apps.
+3. **App-agnostic.** Per-app differences live in config (`targets.<name>`); the tool, drivers, and
+   runner stay unchanged across targets.

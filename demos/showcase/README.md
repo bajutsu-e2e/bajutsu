@@ -19,7 +19,7 @@ smallest app that still exercises `record`, `crawl`, and `run` together.
 
 ## The four products
 
-| `apps.<name>` | Toolkit | Accessibility | Demonstrates |
+| `targets.<name>` | Toolkit | Accessibility | Demonstrates |
 |---|---|---|---|
 | `showcase-swiftui` | SwiftUI | on | `run` (id-based), `doctor` → Ready |
 | `showcase-uikit` | UIKit | on | same scenarios, the other toolkit |
@@ -63,8 +63,8 @@ make -C demos/showcase record
 Or drive `bajutsu` directly, always passing this suite's config:
 
 ```bash
-bajutsu run --app showcase-swiftui --backend idb --config demos/showcase/showcase.config.yaml
-bajutsu run --app showcase-swiftui --scenario demos/showcase/scenarios/modals.yaml \
+bajutsu run --target showcase-swiftui --backend idb --config demos/showcase/showcase.config.yaml
+bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals.yaml \
     --backend idb --config demos/showcase/showcase.config.yaml
 ```
 
@@ -74,7 +74,7 @@ bajutsu run --app showcase-swiftui --scenario demos/showcase/scenarios/modals.ya
 |---|---|
 | [`SPEC.md`](SPEC.md) | the screen-by-screen contract (the spec) |
 | [`swiftui/`](swiftui), [`uikit/`](uikit) | the two codebases (xcodegen `project.yml`, two targets each) |
-| [`showcase.config.yaml`](showcase.config.yaml) | the four `apps.<name>` entries |
+| [`showcase.config.yaml`](showcase.config.yaml) | the four `targets.<name>` entries |
 | [`scenarios/`](scenarios) | shared id-based `run` scenarios (drive both a11y apps) |
 | [`record/goals.txt`](record/goals.txt) | natural-language goals for the `record` A/B demo |
 | [`crawl/`](crawl/expected-screen-map.md) | the screen map a future `crawl` should produce (test data) |

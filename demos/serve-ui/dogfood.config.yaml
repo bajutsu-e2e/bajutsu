@@ -1,11 +1,11 @@
 # Config for dogfooding the bajutsu `serve` Web UI itself. The "app under test" is the serve
 # SPA — identified by `baseUrl` (no bundleId), driven by the Playwright (web) backend. Like
 # demos/web this needs no Mac and no Simulator. `launchServer` below brings the inner serve up for
-# the run, so `bajutsu run --app webui` is self-contained — `make -C demos/serve-ui e2e` just runs.
+# the run, so `bajutsu run --target webui` is self-contained — `make -C demos/serve-ui e2e` just runs.
 defaults:
   backend: [web]
 
-apps:
+targets:
   webui:
     baseUrl: "http://127.0.0.1:8799/"
     backend: [web]
