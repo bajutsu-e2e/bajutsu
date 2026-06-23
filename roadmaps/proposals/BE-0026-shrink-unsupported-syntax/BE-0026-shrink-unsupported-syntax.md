@@ -58,19 +58,20 @@ guarantee intact while steadily reducing the hand-porting a team must do.
 
 ### Implementation status
 
-The **compound-selector** slice shipped (`bajutsu/codegen.py`): a single
-`id` / `label` / `idMatches` / `labelMatches` keeps its readable helper, while `value`, `traits`,
-`within`, and `index` (alone or combined) now compose one `NSPredicate` query instead of dropping to
-`el("UNSUPPORTED_SELECTOR")`. Traits map faithfully over the small vocabulary (`button` / `link` →
-`elementType`, `notEnabled` → `enabled == NO`, `selected` → `selected == YES`); `within` scopes into
-the container's `descendants`; a non-negative `index` becomes `element(boundBy:)`. Only a **negative
-index** or an **unknown trait** stays unsupported — an honest gap, never a wrong guess. The
-**device-control** steps (`setLocation` / `push`) now emit a labeled `// TODO` naming the `simctl`
-command, rather than a bare "unsupported step."
+The **compound-selector** slice shipped (`bajutsu/codegen.py`): a single `id` / `label` / `idMatches`
+keeps its readable helper, while `value`, `traits`, `index` (alone or combined) now compose one
+`NSPredicate` query instead of dropping to `el("UNSUPPORTED_SELECTOR")`. Traits map faithfully over
+the small vocabulary (`button` / `link` → `elementType`, `notEnabled` → `enabled == NO`, `selected`
+→ `selected == YES`); a metacharacter-free `labelMatches` is a substring (`label CONTAINS`); a
+non-negative `index` becomes `element(boundBy:)`. The **device-control** steps (`setLocation` /
+`push`) now emit a labeled `// TODO` naming the `simctl` command, rather than a bare "unsupported
+step."
 
-Still an explicit `// TODO` by design (no faithful structural XCUITest form): the network `request`
-assertion and `until: { request }` wait. The governing rule holds — a construct leaves the fallback
-set only when a deterministic, AI-free mapping exists.
+Kept an honest `el("UNSUPPORTED_SELECTOR")` / `// TODO` where no *faithful* structural form exists —
+the governing rule (a construct leaves the fallback set only when a deterministic, AI-free mapping
+exists): a `labelMatches` regex (it is `re.search`, unlike NSPredicate's full-match `MATCHES`),
+`within` (geometric frame containment, not a tree query), a negative `index`, an unknown trait, and
+the network `request` assertion / `until: { request }` wait.
 
 ## Alternatives considered
 

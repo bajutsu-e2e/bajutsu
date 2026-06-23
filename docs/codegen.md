@@ -63,24 +63,30 @@ final class ComponentsUITests: XCTestCase {
 
 ### Selector mapping (XCUITest)
 
-A single `id` / `label` / `idMatches` / `labelMatches` keeps its readable helper above. Any
-**compound** selector — `value`, `traits`, `within`, `index`, or several fields together — composes
-one `NSPredicate` query instead (BE-0026), so it generates structurally rather than dropping to a
-`// TODO`:
+A single `id` / `label` / `idMatches` keeps its readable helper above. Any **compound** selector —
+`value`, `traits`, `index`, or several fields together — composes one `NSPredicate` query instead
+(BE-0026), so it generates structurally rather than dropping to a `// TODO`:
 
 | `Selector` field | Generated XCUITest |
 |---|---|
 | `id` / `idMatches` | `identifier == %@` / `identifier LIKE %@` |
-| `label` / `labelMatches` | `label == %@` / `label LIKE "*…*"` |
+| `label` | `label == %@` |
+| `labelMatches` (literal substring) | `label CONTAINS %@` |
 | `value` | `value == %@` |
 | `traits: [button \| link]` | `elementType == XCUIElement.ElementType.<case>.rawValue` |
 | `traits: [notEnabled]` / `[selected]` | `enabled == NO` / `selected == YES` |
-| `within: <Selector>` | scoped to `<container>.descendants(matching: .any)` |
 | `index: n` (n ≥ 0) | `.element(boundBy: n)` (else `.firstMatch`) |
 
-All set fields are **AND**-ed into the predicate. Only a **negative `index`** or an **unknown
-trait** has no faithful structural form and stays `el("UNSUPPORTED_SELECTOR")` — an honest gap, not
-a wrong guess.
+All set fields are **AND**-ed into the predicate. A field with no *faithful* structural form keeps
+the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong guess:
+
+- **`labelMatches` with regex metacharacters** — it is a Python `re.search` pattern; only a
+  metacharacter-free one is a plain substring (`CONTAINS`). A real regex (e.g. `^Item `) has no
+  faithful NSPredicate form (ICU `MATCHES` is a full, differently-anchored match).
+- **`within`** — a *geometric* frame-containment constraint (the candidate's frame must sit inside
+  the container's; see [selectors](selectors.md)). XCUITest queries are tree-based, not geometric.
+- **a negative `index`** — `element(boundBy:)` has no negative form.
+- **an unknown trait** — outside the `button` / `link` / `notEnabled` / `selected` vocabulary.
 
 ## Mapping table
 

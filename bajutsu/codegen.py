@@ -57,6 +57,10 @@ def _class_name(name: str) -> str:
 _UNSUPPORTED = 'el("UNSUPPORTED_SELECTOR")'
 # Traits that map to an XCUIElement.ElementType (queryable as `elementType == <case>.rawValue`).
 _TRAIT_ELEMENT_TYPE = {base.Trait.BUTTON: "button", base.Trait.LINK: "link"}
+# Regex metacharacters. `labelMatches` is a Python `re.search` pattern; only a metacharacter-free
+# one is a plain substring we can map faithfully to NSPredicate `CONTAINS`. A real regex has no
+# faithful NSPredicate form (ICU `MATCHES` is a full, differently-anchored match), so it stays a TODO.
+_RE_METACHARS = set(r".^$*+?{}[]\|()")
 
 
 def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
@@ -74,8 +78,11 @@ def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
         clauses.append("label == %@")
         args.append(_s(sel["label"]))
     if "labelMatches" in sel:
-        clauses.append("label LIKE %@")
-        args.append(_s(f"*{sel['labelMatches']}*"))
+        pattern = sel["labelMatches"]
+        if set(pattern) & _RE_METACHARS:  # a real regex — no faithful NSPredicate form
+            return None
+        clauses.append("label CONTAINS %@")  # metacharacter-free: a plain substring (re.search)
+        args.append(_s(pattern))
     if "value" in sel:
         clauses.append("value == %@")
         args.append(_s(sel["value"]))
@@ -97,13 +104,12 @@ def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
 def _query(sel: base.Selector) -> str | None:
     """A Swift XCUIElementQuery expression for the selector, scoping into a `within` container's
     subtree when present. None when the selector (or its container) can't be mapped faithfully."""
+    if "within" in sel:
+        # `within` is a *geometric* frame-containment constraint (the candidate's frame must sit
+        # inside the container's; see drivers/base.py). XCUITest queries are tree-based, not
+        # geometric, so there is no faithful structural form — it stays unsupported.
+        return None
     base_query = "app.descendants(matching: .any)"
-    within = sel.get("within")
-    if isinstance(within, dict):
-        container = _element(within)
-        if container == _UNSUPPORTED:
-            return None
-        base_query = f"{container}.descendants(matching: .any)"
     pred = _predicate(sel)
     if pred is None:
         return None
@@ -131,8 +137,6 @@ def _element(sel: base.Selector) -> str:
         return f"byLabel({_s(sel['label'])})"
     if keys == {"idMatches"}:
         return f"matchingId({_s(sel['idMatches'])}).firstMatch"
-    if keys == {"labelMatches"}:
-        return f"{_query(sel)}.firstMatch"
     query = _query(sel)
     if query is None:
         return _UNSUPPORTED

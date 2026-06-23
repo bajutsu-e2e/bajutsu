@@ -119,12 +119,21 @@ def test_negative_index_stays_unsupported() -> None:
     assert 'el("UNSUPPORTED_SELECTOR").tap()' in code
 
 
-def test_within_scopes_to_container_descendants() -> None:
+def test_within_stays_unsupported() -> None:
+    # `within` is geometric frame containment, not tree descendants — no faithful XCUITest query.
     code = _gen("- name: x\n  steps:\n    - tap: { id: row.action, within: { id: list.row } }\n")
-    assert (
-        'el("list.row").descendants(matching: .any).matching(NSPredicate(format: '
-        '"identifier == %@", "row.action")).firstMatch.tap()' in code
-    )
+    assert 'el("UNSUPPORTED_SELECTOR").tap()' in code
+
+
+def test_label_matches_literal_maps_to_contains() -> None:
+    code = _gen("- name: x\n  steps:\n    - tap: { labelMatches: 'Delete' }\n")
+    assert 'matching(NSPredicate(format: "label CONTAINS %@", "Delete")).firstMatch.tap()' in code
+
+
+def test_label_matches_regex_stays_unsupported() -> None:
+    # A real regex (anchors/metachars) has no faithful NSPredicate form (re.search vs full match).
+    code = _gen("- name: x\n  steps:\n    - tap: { labelMatches: '^Item ' }\n")
+    assert 'el("UNSUPPORTED_SELECTOR").tap()' in code
 
 
 def test_traits_map_to_element_type_and_state() -> None:
@@ -147,12 +156,12 @@ def test_traits_only_selector_has_no_trailing_comma() -> None:
     assert ", )" not in code
 
 
-def test_compound_labelmatches_traits_index() -> None:
+def test_compound_label_traits_index() -> None:
     code = _gen(
-        "- name: x\n  steps:\n    - tap: { labelMatches: '^Item ', traits: [button], index: 0 }\n"
+        "- name: x\n  steps:\n    - tap: { labelMatches: 'Item', traits: [button], index: 0 }\n"
     )
     assert (
-        'matching(NSPredicate(format: "label LIKE %@ AND elementType == %ld", "*^Item *", '
+        'matching(NSPredicate(format: "label CONTAINS %@ AND elementType == %ld", "Item", '
         "XCUIElement.ElementType.button.rawValue)).element(boundBy: 0).tap()" in code
     )
 
