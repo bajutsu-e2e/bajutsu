@@ -157,6 +157,7 @@ SECTIONS: tuple[Section, ...] = (
         "Development infrastructure (contributor workflow)",
         False,
     ),
+    Section("proposals-dogfood", "Proposals", "Dogfood fixtures (demo apps)", True),
     Section("proposals-misc", "Proposals", "Miscellaneous / on hold", False),
     Section(
         "proposals-competitive",

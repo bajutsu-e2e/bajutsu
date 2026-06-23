@@ -381,6 +381,18 @@ itself** to the humans and agents working it.
 | [BE-0078](proposals/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) | Status-driven roadmap folders (proposals / deferred / in-progress / implemented) | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
+### Dogfood fixtures (demo apps)
+
+Completing the migration [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md)
+began: making the showcase the **single** iOS fixture and retiring the older `demo` / `sample` /
+`sample2` apps once it covers their on-device CI and Web UI tours — the follow-up BE-0045
+deliberately scoped out.
+
+<!-- GENERATED:proposals-dogfood -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+<!-- /GENERATED:proposals-dogfood -->
+
 ### Miscellaneous / on hold
 
 <!-- GENERATED:proposals-misc -->
