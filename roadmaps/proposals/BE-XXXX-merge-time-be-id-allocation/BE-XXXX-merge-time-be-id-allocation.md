@@ -183,6 +183,36 @@ Each load-bearing assumption, made concrete:
   informational, so a miss (e.g. a merge commit that maps to no PR) is harmless and never blocks the
   allocation commit, which has already landed on `main`.
 
+### Securing the bypass identity
+
+A token that can bypass `main`'s protection is a high-value credential, so the design keeps its power
+structurally small rather than trusting the secret alone:
+
+- **The privileged job only ever runs reviewed code, post-merge.** It triggers on `push: main`, which
+  fires only *after* a merge that already cleared review and required checks, and it checks out
+  **`main`** — running `allocate_roadmap_ids.py` / `build_roadmap_index.py` as they exist on `main`,
+  never a PR branch's copy. It never checks out untrusted PR-head code under the privileged token (the
+  classic `pull_request_target` escalation), so no attacker-supplied code runs in the job.
+- **The output is bounded and verified.** The legitimate push is always the same narrow mechanical
+  diff — a `BE-XXXX` → `BE-NNNN` rename plus the regenerated index, under `roadmaps/**` only. A guard
+  re-runs the allocator in check mode (or diffs the pushed commit) and fails if the bypass commit
+  touches anything outside `roadmaps/**` or deviates from the expected rename, capping the blast radius
+  of any misuse to that shape.
+- **A scoped GitHub App, not a PAT.** Use a dedicated App whose installation token is short-lived
+  (≈1 h), unattached to a person, and limited to `contents: write` + `pull-requests: write` on this
+  repo; put **only that App** on `main`'s ruleset bypass list. Its private key lives in an Actions
+  secret scoped (via an Environment) to the `main` ref.
+- **Supply-chain discipline in the privileged job.** Pin every third-party action to a full commit
+  SHA (the repo's existing rule) and run no dependency install — the allocate scripts are stdlib-only
+  Python — so no third-party code executes alongside the token.
+- **Auditable, signed commits.** Commits the App makes through the API are verified/signed and
+  attributed to the App, so every bypass push is visible in history and the audit log; an App push
+  that does not match the renumber pattern is a detectable anomaly.
+- **The no-bypass fallback removes the credential entirely.** Where even a scoped App bypass is
+  unacceptable, the approval-time-on-branch fallback (see *Alternatives considered*) introduces no
+  `main`-bypass identity at all — the strongest mitigation, at the cost of the
+  stale-approval-dismissal setting.
+
 ### Interaction with BE-0061's machinery
 
 Allocating on `main` **serializes** allocation on a single branch, which makes the same-window race
