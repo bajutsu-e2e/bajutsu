@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-codegen-emitter-unification-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **Proposal** |
+| 状態 | **提案** |
 | トラック | Proposals |
-| トピック | codegen coverage |
+| トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
 ## Introduction
