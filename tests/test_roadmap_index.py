@@ -98,7 +98,8 @@ def test_parse_metadata_japanese_fields() -> None:
 
 
 def test_bucket_derives_index_section_from_status() -> None:
-    # Status is the lone hand-set field; the index bucket is derived from it (BE-0078, Track retired).
+    # Status is the lone lifecycle field; the index bucket is derived from it, not a hand-set Track
+    # (retired in BE-0078) — so folder and bucket can never disagree.
     assert bri.bucket("Implemented") == "Implemented"
     assert bri.bucket("In progress") == "In progress"
     assert bri.bucket("Proposal") == "Proposals"
