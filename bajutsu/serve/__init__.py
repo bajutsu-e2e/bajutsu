@@ -200,6 +200,9 @@ def _build_state(
         scenarios_dir=scenarios_dir,
         root=root or Path.cwd(),
         baselines_dir=resolved_baselines,
+        # Uploaded bundles (BE-0073) extract into a sibling of runs_dir — serve-owned, never the
+        # browse `--root`, so an uploaded tree can't overwrite the operator's files.
+        uploads_dir=runs_dir.parent / "uploads",
         max_concurrent=max_concurrent,
         token=token,
         cwd=cwd or Path.cwd(),

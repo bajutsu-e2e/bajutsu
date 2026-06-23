@@ -51,6 +51,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 | `--headed / --no-headed` | app `headless` (headless) | web backend: show the run in a visible, slow-motion Chromium window instead of headless, so you can watch each step (the window opens on the machine running the command). Omit to use the app's `headless` config; iOS ignores it |
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
 | `--zip` | off | after the run, also write `runs/<id>.zip` — one portable artifact (report + evidence) for CI upload or sharing. Runs **after** the verdict, so it can't affect pass/fail; see [`export`](#export) |
+| `--runs-dir` | `runs` | directory to write the run tree into. Lets a caller run from one working directory but persist the run elsewhere — `serve` uses it to run an uploaded bundle from its extracted dir while keeping the run in `serve`'s store ([BE-0073](../roadmaps/implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)) |
 | `--config` | `bajutsu.config.yaml` | the config file |
 
 - Evidence is written to `FileSink(runs/<runId>, udid=..., log_predicate=...)`
@@ -482,10 +483,13 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 ## `serve`
 
 A local web UI to **author, run, and explore** — a Tier-1 convenience, **not part of the CI
-gate**. Three top-level tabs over the CLI: **Record** authors a scenario from a goal
+gate**. Four top-level tabs over the CLI: **Record** authors a scenario from a goal
 (`python -m bajutsu record ...`), **Replay** runs a scenario and shows its report
-(`python -m bajutsu run ...`), and **Crawl** explores the app and draws its screen map live
-(`python -m bajutsu crawl ...`). Each request spawns the CLI per request on a background thread,
+(`python -m bajutsu run ...`), **Crawl** explores the app and draws its screen map live
+(`python -m bajutsu crawl ...`), and **Upload** runs a `.zip` bundle of config + scenarios + the
+built app binary brought in through the browser (`python -m bajutsu run ...` against the extracted
+tree; [BE-0073](../roadmaps/implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).
+Each request spawns the CLI per request on a background thread,
 streams its output, and serves the produced `runs/<id>/` tree so the report's relative asset
 links (and the crawl's `screenmap.json`) resolve. Stdlib only (no web framework); binds
 `127.0.0.1`.
@@ -529,6 +533,21 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   and a budget (max screens / steps), then `POST /api/crawl` spawns the crawl; the returned run id
   lets the UI poll `runs/<id>/screenmap.json` and draw the screen map as it grows (screens laid out
   in breadth-first layers, transitions as arrows). The **Stop** button aborts it, like Replay.
+- The **Upload** tab lets a browser user **bring their own suite** to a hosted `serve`, with no
+  file-system access to the host ([BE-0073](../roadmaps/implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)).
+  Drop a `.zip` whose layout is just a working local checkout — a `bajutsu.config.yaml`, its
+  `scenarios` tree, and the built app binary the config's `appPath` names (a `.app` dir, a zipped
+  `.app`, or an `.ipa`) — pick the target + scenario the bundle reveals, and **Run**. `serve` extracts
+  it into a confined sandbox (a sibling of `runs/`, never `--root`), runs `bajutsu run` from that
+  dir (so the config's relative paths resolve against the bundle) with `--runs-dir` pointed back at
+  `serve`'s store, and **deletes the extraction afterward** — nothing uploaded lingers. The upload's
+  file name and the zip's **sha256** are recorded into the run's `manifest.json` (`provenance`), so
+  "what did this run execute?" stays answerable. The bundle carries **no secrets**: `${secrets.*}`
+  resolve from the `serve` host's environment as on any run ([BE-0032](../roadmaps/implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)).
+  Extraction is hardened against zip-slip (absolute / `..` / symlink entries are rejected) and
+  zip-bombs (entry-count, total-uncompressed, and per-entry compression-ratio caps), and the
+  endpoint sits behind the same token auth as every other request — uploading and running an
+  arbitrary binary is only exposed on an authenticated, single-Mac `serve`.
 - The **AI backend for authoring** (Record and Crawl) is one global choice in **Settings → AI
   provider**: **Anthropic API** (`ANTHROPIC_API_KEY`), **Amazon Bedrock** (AWS credentials +
   `BAJUTSU_BEDROCK_MODEL`), or **Claude Code** (the local `claude` CLI on your subscription — text

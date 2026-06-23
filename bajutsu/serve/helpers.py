@@ -255,12 +255,15 @@ def run_command(
     config: str = "bajutsu.config.yaml",
     baselines: str = "",
     headed: bool | None = None,
+    runs_dir: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
     the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` are overrides: True/False force the
     flag on/off, None leaves the target's own config (each scenario's preconditions.erase /
-    dismissAlerts, or the target's headless) to decide."""
+    dismissAlerts, or the target's headless) to decide.  ``runs_dir`` (when set) points the run's
+    output tree elsewhere via ``--runs-dir`` — an uploaded bundle runs from its own extracted dir
+    (the working directory) but must still write its run into serve's runs store (BE-0073)."""
     cmd = [
         sys.executable,
         "-m",
@@ -294,6 +297,8 @@ def run_command(
         cmd += ["--no-headed"]
     if baselines:
         cmd += ["--baselines", baselines]
+    if runs_dir:
+        cmd += ["--runs-dir", runs_dir]
     return cmd
 
 

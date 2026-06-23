@@ -26,7 +26,7 @@ main[hidden]{display:none}
 /* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
 /* Record & Replay are tiled (see initTiling); the tile-root fills the block-level <main>.
    The :not([hidden]) keeps these id-level rules from overriding main[hidden]{display:none}. */
-#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]){display:block}
+#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]),#view-upload:not([hidden]){display:block}
 .rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:100%;min-height:0}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{min-height:0;height:auto}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */
@@ -196,6 +196,12 @@ select,input[type=text],input[type=number],textarea{width:100%;padding:.45rem;ba
 textarea.goal{min-height:5.5rem;resize:vertical;line-height:1.4}
 .row{display:flex;gap:1rem}.row>div{flex:1}
 .subhint{color:var(--mut);font-size:.78em;margin:.3rem 0 0;line-height:1.35}
+/* Upload: a dashed drop zone for the bundle .zip, plus a one-line provenance readout. */
+.drop{display:flex;flex-direction:column;align-items:center;gap:.4rem;border:2px dashed var(--line);border-radius:8px;padding:1rem;text-align:center;transition:border-color .12s,background .12s}
+.drop.dragover{border-color:var(--acc);background:var(--bg2)}
+.drop .dropmsg{color:var(--mut);font-size:.85em}
+.upmeta{margin:.5rem 0 .2rem;font-size:.85em;color:var(--fg);word-break:break-all}
+.upmeta code{color:var(--mut)}
 .sims{max-height:24vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:.25rem}
 .sims label{display:flex;align-items:center;gap:.45rem;margin:0;padding:.22rem .35rem;color:var(--fg);cursor:pointer;font-size:.9em;border-radius:4px}
 .sims label:hover{background:var(--bg2)}

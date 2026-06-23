@@ -119,7 +119,15 @@ def _record_audit(
 _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
 _ADMIN_PATHS = frozenset({"/api/config", "/api/apikey", "/api/provider"})  # server-wide settings
 _EDITOR_PATHS = frozenset(
-    {"/api/run", "/api/record", "/api/crawl", "/api/scenario", "/api/approve"}
+    {
+        "/api/run",
+        "/api/record",
+        "/api/crawl",
+        "/api/scenario",
+        "/api/approve",
+        "/api/upload",  # uploading + running a bundle is a mutating, run-class action (BE-0073)
+        "/api/upload/run",
+    }
 )
 
 

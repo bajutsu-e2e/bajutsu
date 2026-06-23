@@ -1,0 +1,155 @@
+"""Tests for the uploaded-bundle extractor (bajutsu/serve/uploads.py, BE-0073).
+
+The extractor materializes an uploaded zip into a sandbox, rejecting zip-slip (absolute paths,
+``..`` traversal, symlink entries) and zip-bombs (too many entries, too much uncompressed data, an
+absurd per-entry compression ratio) — the security-sensitive half of the upload path. Pure
+packaging: no device, no AI, runs on the Linux gate against fixture zips.
+"""
+
+from __future__ import annotations
+
+import io
+import stat
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from bajutsu.serve import uploads
+from bajutsu.serve.uploads import BundleError, extract_bundle, find_bundle_config
+
+
+def _zip(entries: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in entries.items():
+            zf.writestr(name, content)
+    return buf.getvalue()
+
+
+def _written(tmp_path: Path, blob: bytes) -> Path:
+    p = tmp_path / "bundle.zip"
+    p.write_bytes(blob)
+    return p
+
+
+def _dest(tmp_path: Path) -> Path:
+    out = tmp_path / "out"
+    out.mkdir()
+    return out
+
+
+def test_extracts_a_valid_bundle(tmp_path: Path) -> None:
+    blob = _zip(
+        {
+            "bajutsu.config.yaml": b"targets: {}\n",
+            "scenarios/smoke.yaml": b"- name: a\n  steps: []\n",
+            "build/App.app/Info.plist": b"<plist/>",
+        }
+    )
+    dest = _dest(tmp_path)
+    extract_bundle(_written(tmp_path, blob), dest)
+    assert (dest / "bajutsu.config.yaml").read_bytes() == b"targets: {}\n"
+    assert (dest / "scenarios" / "smoke.yaml").is_file()
+    assert (dest / "build" / "App.app" / "Info.plist").is_file()  # nested dirs are created
+
+
+def test_rejects_absolute_path(tmp_path: Path) -> None:
+    with pytest.raises(BundleError, match="unsafe entry"):
+        extract_bundle(_written(tmp_path, _zip({"/etc/evil": b"x"})), _dest(tmp_path))
+
+
+def test_rejects_parent_traversal(tmp_path: Path) -> None:
+    with pytest.raises(BundleError, match=r"unsafe entry|escapes"):
+        extract_bundle(_written(tmp_path, _zip({"../escape.txt": b"x"})), _dest(tmp_path))
+    assert not (tmp_path / "escape.txt").exists()  # nothing written outside the sandbox
+
+
+def test_rejects_symlink_entry(tmp_path: Path) -> None:
+    # A symlink entry could point outside the sandbox, so it's rejected before anything is written.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        info = zipfile.ZipInfo("link")
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        zf.writestr(info, b"/etc/passwd")
+    dest = _dest(tmp_path)
+    with pytest.raises(BundleError, match="symlink"):
+        extract_bundle(_written(tmp_path, buf.getvalue()), dest)
+    assert not (dest / "link").exists()
+
+
+def test_rejects_too_many_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(uploads, "MAX_ENTRIES", 2)
+    blob = _zip({"a": b"1", "b": b"2", "c": b"3"})
+    with pytest.raises(BundleError, match="too many entries"):
+        extract_bundle(_written(tmp_path, blob), _dest(tmp_path))
+
+
+def test_rejects_total_uncompressed_over_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The streamed byte count is the real defense — it stops the moment the cap is crossed.
+    monkeypatch.setattr(uploads, "MAX_TOTAL_BYTES", 8)
+    with pytest.raises(BundleError, match="uncompressed"):
+        extract_bundle(_written(tmp_path, _zip({"big.txt": b"x" * 64})), _dest(tmp_path))
+
+
+def test_rejects_compression_ratio_bomb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(uploads, "MAX_RATIO", 5)
+    # A highly compressible payload above the ratio floor is flagged from the header, pre-stream.
+    with pytest.raises(BundleError, match="ratio"):
+        extract_bundle(_written(tmp_path, _zip({"bomb.txt": b"\x00" * 1_000_000})), _dest(tmp_path))
+
+
+def test_rejects_a_non_zip(tmp_path: Path) -> None:
+    with pytest.raises(BundleError, match="valid zip"):
+        extract_bundle(_written(tmp_path, b"not a zip at all"), _dest(tmp_path))
+
+
+def test_malformed_file_then_subpath_is_a_bundle_error(tmp_path: Path) -> None:
+    # A file entry, then a path *under* it: mkdir/open raises a bare OSError — surface it as a
+    # BundleError (a bad bundle → 400 + cleanup), never an uncaught 500. Entry order is load-bearing
+    # (the file must precede the path under it), and _zip preserves insertion order.
+    blob = _zip({"src": b"i am a file", "src/main.py": b"print()"})
+    with pytest.raises(BundleError, match="could not extract"):
+        extract_bundle(_written(tmp_path, blob), _dest(tmp_path))
+
+
+def test_corrupt_member_is_a_bundle_error(tmp_path: Path) -> None:
+    # A corrupt member raises zipfile.BadZipFile *during the read* (not at open) — it is neither
+    # OSError nor BundleError, so it must be caught in the stream loop, else it drops the connection.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr("data.bin", b"A" * 64)
+    raw = bytearray(buf.getvalue())
+    raw[raw.index(b"A" * 64)] ^= 0xFF  # flip a stored byte → CRC mismatch on read
+    with pytest.raises(BundleError, match="could not extract"):
+        extract_bundle(_written(tmp_path, bytes(raw)), _dest(tmp_path))
+
+
+def test_find_bundle_config_at_root(tmp_path: Path) -> None:
+    (tmp_path / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    assert find_bundle_config(tmp_path) == tmp_path / "bajutsu.config.yaml"
+
+
+def test_find_bundle_config_one_level_down(tmp_path: Path) -> None:
+    # A zip made from a folder nests everything under one dir; the config is found a level down.
+    sub = tmp_path / "my-suite"
+    sub.mkdir()
+    (sub / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    assert find_bundle_config(tmp_path) == sub / "bajutsu.config.yaml"
+
+
+def test_find_bundle_config_one_level_down_ignores_macos_cruft(tmp_path: Path) -> None:
+    # macOS Archive Utility adds a `__MACOSX/` sibling; it must not hide the real top folder.
+    (tmp_path / "__MACOSX").mkdir()
+    (tmp_path / ".git").mkdir()
+    sub = tmp_path / "my-suite"
+    sub.mkdir()
+    (sub / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    assert find_bundle_config(tmp_path) == sub / "bajutsu.config.yaml"
+
+
+def test_find_bundle_config_absent(tmp_path: Path) -> None:
+    (tmp_path / "readme.txt").write_text("hi", encoding="utf-8")
+    assert find_bundle_config(tmp_path) is None
