@@ -8,6 +8,7 @@
 | 提案 | [BE-0077](BE-0077-parallel-web-crawl-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| 実装 PR | [#209](https://github.com/bajutsu-e2e/bajutsu/pull/209) |
 | トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | クロール性能 / スケールアウト |
 | 由来 | ユーザー要望（並列 Web クロール） |

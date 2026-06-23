@@ -8,6 +8,7 @@
 | Proposal | [BE-0077](BE-0077-parallel-web-crawl.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#209](https://github.com/bajutsu-e2e/bajutsu/pull/209) |
 | Track | [Accepted](../../README.md#accepted) |
 | Topic | Crawl performance / scale-out |
 | Origin | User request (parallel web crawl) |
