@@ -213,6 +213,18 @@ class Pruned:
     path: tuple[Action, ...] = ()
 
 
+@dataclass(frozen=True)
+class _Work:
+    """One reserved unit of frontier work, handed from `_select_next_work` to a worker: the popped
+    `action`, the screen `src_fp` it came from and the `src_path` to replay to reach it, and whether
+    the worker must reset+replay first (`replay_needed`) or is already standing on `src_fp`."""
+
+    src_fp: str
+    action: Action
+    src_path: list[Action]
+    replay_needed: bool
+
+
 @dataclass
 class ScreenMap:
     nodes: dict[str, Node] = field(default_factory=dict)
@@ -661,6 +673,40 @@ def crawl(
         screen_map.nodes[fp.value] = node
         return _claim(fp.value, actions)
 
+    def _select_next_work(current_fp: str | None) -> _Work | None:
+        # Pick (and reserve) the next frontier entry to explore, or return None when the worker
+        # should retire — a stop was signalled, a budget is spent, or the frontier is fully drained
+        # with no worker in flight. Continue from the screen the worker is on; else backtrack to the
+        # cheapest entry (shortest known path, then fingerprint) and replay to it. Reserving bumps
+        # steps/active under the lock, so two workers never pop the same action.
+        nonlocal steps, active
+        with cond:
+            while True:
+                if stopped:
+                    return None
+                if len(screen_map.nodes) >= max_screens:
+                    _finish("max_screens")
+                    return None
+                if steps >= max_steps:
+                    _finish("max_steps")
+                    return None
+                if current_fp is not None and pending.get(current_fp):
+                    src_fp, replay_needed = current_fp, False
+                elif candidates := [fp for fp, acts in pending.items() if acts]:
+                    src_fp = min(candidates, key=lambda fp: (len(path_to[fp]), fp))
+                    replay_needed = True
+                elif active == 0:
+                    _finish("completed")  # no frontier and no worker in flight → all explored
+                    return None
+                else:
+                    cond.wait()  # another worker is mid-step; it may add frontier
+                    continue
+                action = pending[src_fp].pop(0)  # deterministic order
+                src_path = list(path_to[src_fp])
+                steps += 1
+                active += 1
+                return _Work(src_fp, action, src_path, replay_needed)
+
     def _worker(d: base.Driver, rst: Reset, current_fp: str | None) -> None:
         nonlocal steps, active
         errors = 0  # consecutive device faults → retire so a wedged device can't busy-loop
@@ -678,34 +724,15 @@ def crawl(
             return errors >= _MAX_WORKER_DEVICE_ERRORS
 
         while True:
-            with cond:
-                while True:
-                    if stopped:
-                        return
-                    if len(screen_map.nodes) >= max_screens:
-                        _finish("max_screens")
-                        return
-                    if steps >= max_steps:
-                        _finish("max_steps")
-                        return
-                    # Continue from the screen this worker is on; else backtrack to the cheapest
-                    # frontier entry (shortest known path, then fingerprint) and replay to it.
-                    if current_fp is not None and pending.get(current_fp):
-                        src_fp, replay_needed = current_fp, False
-                    elif candidates := [fp for fp, acts in pending.items() if acts]:
-                        src_fp = min(candidates, key=lambda fp: (len(path_to[fp]), fp))
-                        replay_needed = True
-                    elif active == 0:
-                        _finish("completed")  # no frontier and no worker in flight → all explored
-                        return
-                    else:
-                        cond.wait()  # another worker is mid-step; it may add frontier
-                        continue
-                    action = pending[src_fp].pop(0)  # deterministic order
-                    src_path = list(path_to[src_fp])
-                    steps += 1
-                    active += 1
-                    break
+            work = _select_next_work(current_fp)
+            if work is None:
+                return
+            src_fp, action, src_path, replay_needed = (
+                work.src_fp,
+                work.action,
+                work.src_path,
+                work.replay_needed,
+            )
 
             # --- device work, off-lock: this is what overlaps across simulators ---
             path = [*src_path, action]
