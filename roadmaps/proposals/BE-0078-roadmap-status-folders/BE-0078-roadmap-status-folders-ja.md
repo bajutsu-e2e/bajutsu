@@ -1,11 +1,11 @@
-[English](BE-XXXX-roadmap-status-folders.md) · **日本語**
+[English](BE-0078-roadmap-status-folders.md) · **日本語**
 
-# BE-XXXX — 状態ごとのロードマップフォルダ（提案 / 保留 / 実装中 / 実装済み）
+# BE-0078 — 状態ごとのロードマップフォルダ（提案 / 保留 / 実装中 / 実装済み）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-roadmap-status-folders-ja.md) |
+| 提案 | [BE-0078](BE-0078-roadmap-status-folders-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トラック | [提案](../../README-ja.md#提案) |

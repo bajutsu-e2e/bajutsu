@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-roadmap-status-folders-ja.md)
+**English** · [日本語](BE-0078-roadmap-status-folders-ja.md)
 
-# BE-XXXX — Status-driven roadmap folders (proposals / deferred / in-progress / implemented)
+# BE-0078 — Status-driven roadmap folders (proposals / deferred / in-progress / implemented)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-status-folders.md) |
+| Proposal | [BE-0078](BE-0078-roadmap-status-folders.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Track | [Proposals](../../README.md#proposals) |
