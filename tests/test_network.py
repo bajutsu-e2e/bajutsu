@@ -346,6 +346,22 @@ def test_response_schema_without_context_fails() -> None:
     assert not r.ok and r.reason
 
 
+def test_response_schema_rejects_path_traversal(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.assertions import SchemaContext
+
+    # a `..` escape (or an absolute path) must be rejected, not read outside the schemas dir
+    d = _schemas_dir(tmp_path, "ok.json", {"type": "object"})
+    (tmp_path / "secret.json").write_text('{"type": "string"}', encoding="utf-8")
+    exs = [_ex("GET", "/api/items", response_body="{}")]
+    r = evaluate_one(
+        [],
+        _rs("../secret.json", path="/api/items"),
+        exs,
+        schema_context=SchemaContext(schemas_dir=d),
+    )
+    assert not r.ok and "escapes" in r.reason
+
+
 def test_mocks_parse_and_serialize() -> None:
     scn = load_scenarios(
         "- name: m\n"

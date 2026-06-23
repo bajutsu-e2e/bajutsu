@@ -179,3 +179,28 @@ def test_baselines_resolution_order() -> None:
     assert _resolve_baselines_dir("", eff_without, scenario_file) == Path(
         "/scenarios/app/baselines"
     )
+
+
+def test_schemas_parsed() -> None:
+    cfg = load_config("targets: { x: { bundleId: com.x, schemas: schemas/x } }")
+    assert resolve(cfg, "x").schemas == "schemas/x"
+
+
+def test_schemas_defaults_to_none() -> None:
+    cfg = load_config("targets: { x: { bundleId: com.x } }")
+    assert resolve(cfg, "x").schemas is None
+
+
+def test_schemas_resolution_order() -> None:
+    """_resolve_schemas_dir respects: --schemas flag > config > scenario-local default."""
+    from pathlib import Path
+
+    from bajutsu.cli.commands.run import _resolve_schemas_dir
+
+    eff_with = resolve(load_config("targets: { x: { bundleId: com.x, schemas: cfg/sc } }"), "x")
+    eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
+    scenario_file = Path("/scenarios/app/smoke.yaml")
+
+    assert _resolve_schemas_dir("flag/sc", eff_with, scenario_file) == Path("flag/sc")  # flag wins
+    assert _resolve_schemas_dir("", eff_with, scenario_file) == Path("cfg/sc")  # then config
+    assert _resolve_schemas_dir("", eff_without, scenario_file) == Path("/scenarios/app/schemas")

@@ -370,7 +370,14 @@ def _eval_response_schema(
         return AssertionResult(
             False, "responseSchema", detail, f"no matching exchange (observed {len(exchanges)})"
         )
-    schema_file = ctx.schemas_dir / m.schema_path
+    # Confine the schema path to the schemas dir: an absolute path or `..` traversal would read
+    # files outside it and make the result depend on the runner's filesystem — reject it.
+    schemas_dir = ctx.schemas_dir.resolve()
+    schema_file = (schemas_dir / m.schema_path).resolve()
+    if not schema_file.is_relative_to(schemas_dir):
+        return AssertionResult(
+            False, "responseSchema", detail, f"schema path escapes the schemas dir: {m.schema_path}"
+        )
     if not schema_file.is_file():
         return AssertionResult(
             False, "responseSchema", detail, f"schema not found: {m.schema_path}"
