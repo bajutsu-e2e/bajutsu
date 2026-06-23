@@ -8,7 +8,6 @@
 | Proposal | [BE-0082](BE-0082-capability-preflight-check.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Track | Proposals |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -76,9 +75,9 @@ resolved scenario (including expanded shared/parameterized steps and data-driven
 sees exactly what will execute), collects the set of required capabilities, and diffs it against
 `driver.capabilities()`. If the difference is non-empty, the run fails immediately with one
 aggregated error naming **every** unsupported construct and the backend it was checked against —
-not one error per action, and not after partial device work. The existing `UnsupportedAction` /
-`UnsupportedCapability` exception type is reused so the failure classifies consistently in the
-report.
+not one error per action, and not after partial device work. The existing `UnsupportedAction`
+exception type (today raised by `_require_multi_touch`) is reused so the failure classifies
+consistently in the report.
 
 `_require_multi_touch` stays as a defense-in-depth assertion (the invariant should already hold by
 the time a gesture runs), but it is no longer the *primary* gate — the preflight is.

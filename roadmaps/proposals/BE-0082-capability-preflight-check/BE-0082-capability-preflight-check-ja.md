@@ -8,11 +8,10 @@
 | 提案 | [BE-0082](BE-0082-capability-preflight-check-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トラック | Proposals |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
-## Introduction
+## はじめに
 
 どの backend も、自分に何ができるかを `Driver.capabilities()` で宣言する。これは
 `bajutsu/drivers/base.py` で定義された capability トークンの集合で、`query`、`semanticTap`、`conditionWait`、`network`、`screenshot`、`elements`、`multiTouch`
@@ -24,7 +23,7 @@ capability を洗い出し、`driver.capabilities()` と突き合わせ、未対
 
 これは決定論的な `run`/CI 経路に対する、決定論と診断の改善である。LLM は関わらない。そして prime directive #2（決定論優先：中途半端に進めて問題を後から表に出すのではなく、速く明確に失敗する）に直接資する。
 
-## Motivation
+## 動機
 
 - **失敗が遅く、action ごとに表面化する。** capability を見張っているのは
   `_require_multi_touch` だけで、それはジェスチャが実行されたときに発火する。5 つの画面をタップして進み、そこでようやく未対応のピンチをするシナリオは、失敗する前に 5 画面分のデバイス作業を払う。時間の無駄であり、失敗レポートも「このシナリオはこの
@@ -40,7 +39,7 @@ capability を洗い出し、`driver.capabilities()` と突き合わせ、未対
   `event` / `requestSequence` のアサーションは `network` を必要とし、条件待ちは
   `conditionWait` を欲しがるかもしれない、といった具合に。この対応を明示することが本項目の中身である。
 
-## Detailed design
+## 詳細設計
 
 ### capability 要求の対応表
 
@@ -62,7 +61,7 @@ run の開始時、driver が選ばれたあと、最初の action の前に、r
 capability の集合を集め、`driver.capabilities()` との差を取る。差が空でなければ、run
 はただちに失敗する。1 つの集約されたエラーで、**すべての**未対応の構文と、それを照合した backend
 を挙げる。action ごとに 1 つのエラーを出すのでもなく、中途半端にデバイス作業をしたあとでもない。失敗がレポート上で一貫して分類されるよう、既存の
-`UnsupportedAction` / `UnsupportedCapability` 例外型を再利用する。
+`UnsupportedAction` 例外型（いまは `_require_multi_touch` が送出している）を再利用する。
 
 `_require_multi_touch` は多層防御のアサーションとして残す（ジェスチャが走る時点では、不変条件はすでに成り立っているはずだ）が、もはや**主たる**門ではない。プリフライトが主になる。
 
@@ -75,7 +74,7 @@ capability の集合を集め、`driver.capabilities()` との差を取る。差
 `base.py` の `Capability` トークンは、いまは部分的にしか使われていない（検査されているのは
 `gestures.py` の `multiTouch` だけ）。実装ではまず、どの構文がどの capability に本当に依存するかを精査する必要がある。アサーションのなかには、capability を必須とせず穏やかに縮退できるものもあるかもしれない。対応表が真に必須なものだけを門にし、実際には走るシナリオを弾かないようにするためだ。
 
-## Alternatives considered
+## 検討した代替案
 
 - **これまでどおり run 時に action ごとに検査する。** 現状の弱点として却下する。失敗する前に中途半端なデバイス作業をし、報告も遅い。同じ機械的検査を前倒しするプリフライトのほうが、厳密に優れている。
 - **`run` ではなく別の `validate` / `lint` コマンドでの静的検査にする。** 補完としては有用だが、未対応の
@@ -87,7 +86,7 @@ capability の集合を集め、`driver.capabilities()` との差を取る。差
   ごとの config ではない。config でモデル化すると、driver が実際に報告する内容と二重になり、ずれる
   risk がある。`driver.capabilities()` を唯一の真実の源として保つ。
 
-## References
+## 参考
 
 - `bajutsu/drivers/base.py`（`Capability`、`Driver.capabilities()`）——本項目が強制する
   capability の契約。`bajutsu/orchestrator/actions/handlers/gestures.py`（`_require_multi_touch`）——本項目が一般化する、既存のより狭い run 時の検査。

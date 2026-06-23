@@ -8,7 +8,6 @@
 | Proposal | [BE-0083](BE-0083-codegen-emitter-unification.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Track | Proposals |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
