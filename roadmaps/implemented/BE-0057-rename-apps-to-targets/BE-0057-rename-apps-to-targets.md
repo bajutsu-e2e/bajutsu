@@ -9,7 +9,6 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#211](https://github.com/bajutsu-e2e/bajutsu/pull/211) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Platform expansion (landed slices) |
 <!-- /BE-METADATA -->
 

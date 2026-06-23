@@ -84,7 +84,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 ## `audit`
 
 A **static determinism score** for a scenario — the device-free cousin of `doctor`'s convention
-score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/proposals/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
+score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
 It reads a scenario file (expanding components / data, like `trace --explain`) and reports, per
 scenario, how reproducible it is — without running it.
 
@@ -107,7 +107,7 @@ bajutsu audit <scenario.yaml> [--json]
 ## `coverage`
 
 A **static e2e coverage map** for a suite — the read-only cousin of `doctor`'s convention score
-(AI-independent; [BE-0050](../roadmaps/proposals/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
+(AI-independent; [BE-0050](../roadmaps/in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
 Where `doctor` grades the ids one screen *exposes*, this grades the ids a whole *suite* exercises:
 it walks every `*.yaml` in the app's configured `scenarios` dir (expanding components / data), groups
 the stable ids they reference by namespace, and measures them against the app's declared
@@ -177,7 +177,7 @@ bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
 
 Re-renders a finished run's `report.html` (and re-emits `junit.xml`) from its **stored data**, with
 the **current** template — no device, no LLM, no re-run
-([BE-0068](../roadmaps/proposals/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
+([BE-0068](../roadmaps/in-progress/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
 template improvement or a rendering-bug fix reaches past runs without re-executing them; the
 verdict is read from the stored model, never recomputed.
 
@@ -255,7 +255,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 ## `crawl`
 
 Explores the app **breadth-first** and writes a **screen map** of the reachable screens and the
-transitions between them (Tier 1; [BE-0038](../roadmaps/proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)). Unlike `record`, which is
+transitions between them (Tier 1; [BE-0038](../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)). Unlike `record`, which is
 *goal-directed* — AI explores toward one natural-language goal and writes one scenario — `crawl`
 is *systematic discovery*: it visits the screens it can reach and reports what it found. The
 exploration engine is **deterministic** (a screen's identity and the order candidate actions are

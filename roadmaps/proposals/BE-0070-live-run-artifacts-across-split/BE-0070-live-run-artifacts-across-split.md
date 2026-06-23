@@ -8,7 +8,6 @@
 | Proposal | [BE-0070](BE-0070-live-run-artifacts-across-split.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -20,7 +19,7 @@ together over Redis and an object store
 ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
 [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)). During a
 run the browser shows three live surfaces: the **console log**, the **final result / report**, and —
-for [`crawl`](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) —
+for [`crawl`](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) —
 the **exploration graph** that grows as the crawl explores. Two of the three already cross the
 instance split; one does not.
 
@@ -144,7 +143,7 @@ element tree. The mechanism is app-agnostic (it moves a file, regardless of the 
 - [BE-0016 — Self-hosting of the web UI](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   — the worker that "leases jobs … streams logs back, and uploads the `runs/<id>/` tree" at job end;
   this item makes the live artifact visible *before* that terminal upload.
-- [BE-0038 — Autonomous crawl exploration](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)
+- [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)
   — the crawl and its local-mode live graph that this extends across the split; the first consumer.
 - [BE-0055 — Operational logging for the hosted serve](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging.md)
   — sibling hosting item; notes that the LogBus already carries run *output* live, i.e. console logs

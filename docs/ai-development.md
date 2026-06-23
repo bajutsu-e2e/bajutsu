@@ -164,7 +164,7 @@ The sections that recur, and what each carries:
 - **`## Summary`** (mandatory) — one to three short paragraphs: what the PR does and *why it
   matters*, with the key nouns in **bold**. Open with the change itself, not its history. When the
   PR is one slice of a larger item, name the slice and say what merging it does to the item's
-  `Status` (e.g. moves it to *Accepted, in progress*).
+  `Status` (e.g. moves it to *In progress*).
 - **`## What changed`** / **`## Changes`** — one bullet per file or component, the **path or
   component in bold**, then an em-dash and what it does *and why this seam* — the design choice, not
   just the edit. Mark new files `(new)`. Group by component, not by commit; the reviewer reads the
@@ -211,7 +211,7 @@ A feature or roadmap-bearing PR fills the full shape:
 ## Summary
 
 The **<slice>** of [BE-NNNN]. <What it does and why it matters, key nouns in bold.> This moves
-the item to **Accepted, in progress**.
+the item to **In progress**.
 
 ## What changed
 
@@ -267,17 +267,18 @@ open until it is decided.
 ## Roadmap items: BE IDs (strict)
 
 The roadmap is **one directory per item** under [`roadmaps/`](../roadmaps/README.md). Each item lives in
-`roadmaps/<implemented|proposals>/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
+`roadmaps/<category>/BE-NNNN-<slug>/`, which holds the English file `BE-NNNN-<slug>.md` and its
 Japanese version `BE-NNNN-<slug>-ja.md` (same ID and slug). **BE** stands for *Bajutsu Evolution* and `NNNN`
-is a **zero-padded, 4-digit, monotonically increasing** ID. Shipped items (`Status: Implemented`) live under
-`roadmaps/implemented/`; everything still in flight lives under `roadmaps/proposals/`.
+is a **zero-padded, 4-digit, monotonically increasing** ID. There are **four** folders, one per `Status`
+value (BE-0078): `roadmaps/implemented/` (`Implemented`), `roadmaps/in-progress/` (`In progress`),
+`roadmaps/proposals/` (`Proposal`), `roadmaps/deferred/` (`Proposal (deferred)`).
 
 When you add a roadmap item:
 
-1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, counting both folders. Find the current
+1. **Allocate the next ID** = the highest existing `BE-NNNN` + 1, counting all four folders. Find the current
    max with:
    ```bash
-   ls -d roadmaps/{implemented,proposals}/BE-*/ | sort | tail -1
+   ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1
    ```
    Never reuse, skip, or guess a number.
 2. **Create the item directory and both language files** under `roadmaps/proposals/` (a new item is always a
@@ -286,9 +287,10 @@ When you add a roadmap item:
    hand-edit the index tables** — they are generated from each item's own metadata. Run
    `make roadmap-index` (or `python scripts/build_roadmap_index.py`) to regenerate the tables between the
    `<!-- GENERATED:* -->` markers in **both** index pages ([en](../roadmaps/README.md), [ja](../roadmaps/README-ja.md)).
-   The item's `Track` + `Topic` decide which section it lands in, so an item in an existing topic needs no
-   manual table edit; `tests/test_roadmap_index.py` (run by `make test`) fails if the committed index drifts.
-   A brand-new topic also needs its own marked section and a `Section` entry in the script.
+   The item's `Status` (its bucket) + `Topic` decide which section it lands in, so an item in an existing
+   section needs no manual table edit; `tests/test_roadmap_index.py` (run by `make test`) fails if the
+   committed index drifts. The first item of a topic to reach a bucket needs its own marked section (the
+   generator names the missing region).
 3. **IDs are permanent.** Never renumber an existing item — not when its status changes, not when
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
@@ -313,26 +315,27 @@ all. (Fork PRs can be neither pushed to nor have claim refs created, so both wor
 same-repo PRs.)
 
 Each file follows the **Swift-Evolution proposal format** — a metadata block (`* Proposal`,
-`* Author`, `* Status`, `* Track`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
+`* Author`, `* Status`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
 `## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`. Fill what
 you can and mark unknowns `TBD`. **Name the author by GitHub handle** —
 `* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
-(for an AI-assisted draft, the person who drove and committed it). The **Status** field decides the
-management track and the index
-section the item appears in:
+(for an AI-assisted draft, the person who drove and committed it). The **Status** field is the single
+source of truth for both the folder an item lives in and the index bucket it appears under — a
+bijection (BE-0078):
 
-| Status | Track |
+| Status | Folder / index bucket |
 |---|---|
-| `Implemented` · `Accepted, in progress` | **Accepted** — a decision & implementation record |
-| `Proposal` · `Proposal (deferred)` | **Proposals** — under consideration |
+| `Implemented` | `roadmaps/implemented/` — shipped |
+| `In progress` | `roadmaps/in-progress/` — accepted, actively being built |
+| `Proposal` | `roadmaps/proposals/` — under consideration |
+| `Proposal (deferred)` | `roadmaps/deferred/` — parked |
 
-As an item advances, **update its Status** and regenerate the index (the row moves to the right group
-automatically). When it ships, set `Status: Implemented`; the **`roadmap-promote`** workflow then
-**moves its directory** from `roadmaps/proposals/` to `roadmaps/implemented/` (keeping the same ID and
-slug) and regenerates the index on your PR — or run `make roadmap-promote` to do it locally. The
-`Status` is the single source of truth for which subdirectory an item lives in, and `make test` fails
-if the two disagree, so a shipped item can never merge while still filed under `roadmaps/proposals/`.
-Milestones M1–M4 are `BE-0001`–`BE-0004` (accepted & implemented).
+As an item advances, **update its Status** and regenerate the index (its row moves to the right bucket
+automatically). When its status changes — it starts being built, or it ships — the **`roadmap-promote`**
+workflow **moves its directory** to the matching folder (keeping the same ID and slug) and regenerates
+the index on your PR — or run `make roadmap-promote` to do it locally. `make test` fails if a folder
+and `Status` disagree, so an item can never merge while filed under the wrong folder.
+Milestones M1–M4 are `BE-0001`–`BE-0004` (implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
 

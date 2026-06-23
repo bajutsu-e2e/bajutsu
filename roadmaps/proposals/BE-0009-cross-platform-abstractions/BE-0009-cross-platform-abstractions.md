@@ -8,13 +8,12 @@
 | Proposal | [BE-0009](BE-0009-cross-platform-abstractions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-Bajutsu is scoped today to the iOS Simulator only ([DESIGN §1](../../../DESIGN.md), [README](../../../README.md)), but its core was deliberately built behind a backend-agnostic `Driver` interface. This item is the cross-cutting abstraction work that lets the same deterministic core also drive Android (emulator) and Web (browser): extracting the iOS-specific seams behind platform-neutral protocols, generalizing the config schema with a `platform` discriminator, and auditing the runner and orchestrator for leaked iOS assumptions. The per-platform backends themselves are separate items — Android is [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), Web is [BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web-playwright-backend), and the already-landed selector/registry slice is [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform-backend-registry). This item is the shared substrate they all build on.
+Bajutsu is scoped today to the iOS Simulator only ([DESIGN §1](../../../DESIGN.md), [README](../../../README.md)), but its core was deliberately built behind a backend-agnostic `Driver` interface. This item is the cross-cutting abstraction work that lets the same deterministic core also drive Android (emulator) and Web (browser): extracting the iOS-specific seams behind platform-neutral protocols, generalizing the config schema with a `platform` discriminator, and auditing the runner and orchestrator for leaked iOS assumptions. The per-platform backends themselves are separate items — Android is [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), Web is [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web-playwright-backend), and the already-landed selector/registry slice is [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform-backend-registry). This item is the shared substrate they all build on.
 
 ## Motivation
 
@@ -96,7 +95,7 @@ apps:
 
 `platform` selects which **environment manager** and **backend registry** are in play; the rest of the schema (namespaces, redact, setup, capture) stays shared. The selector slice of this registry has already landed (`bajutsu/backends.py` keys off a platform registry, and `--backend` / `backend:` accept a platform token); see [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md). This item covers the remaining cross-cutting work: the `platform` config field and the `Environment` protocol the registry hands off to.
 
-> **The web backend's v1 took a shortcut here.** The first Web (Playwright) slice ([BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) needed a target URL but not yet a `platform` discriminator, so it added a single `baseUrl` field to `apps.<name>` and kept the environment lifecycle (fresh `BrowserContext` = `erase`, `goto(baseUrl)` = `launch`) **inside the driver**, branching the runner on `actuator == "playwright"` instead of going through a neutral `Environment` protocol. That was the smallest correct change to land a working web `run`. This item generalizes it: the `platform` field subsumes the `bundleId`-vs-`baseUrl` choice, and the per-platform lifecycle moves behind the `Environment` protocol so the runner stops branching on the actuator name.
+> **The web backend's v1 took a shortcut here.** The first Web (Playwright) slice ([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) needed a target URL but not yet a `platform` discriminator, so it added a single `baseUrl` field to `apps.<name>` and kept the environment lifecycle (fresh `BrowserContext` = `erase`, `goto(baseUrl)` = `launch`) **inside the driver**, branching the runner on `actuator == "playwright"` instead of going through a neutral `Environment` protocol. That was the smallest correct change to land a working web `run`. This item generalizes it: the `platform` field subsumes the `bundleId`-vs-`baseUrl` choice, and the per-platform lifecycle moves behind the `Environment` protocol so the runner stops branching on the actuator name.
 
 ### Determinism is preserved per platform
 
@@ -125,7 +124,7 @@ Concretely, Phase 0 is three pieces of work:
 - **Add `platform` to config + a platform-scoped backend registry.** The registry slice ([BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md)) already routes `--backend` / `backend:` through a platform token; the remaining work is the explicit `platform` config field and wiring it to environment-manager selection.
 - **Audit `runner.py` / `orchestrator.py` for leaked iOS-isms.** The "unchanged" column above is a claim that has to be verified — the first abstraction pass is what forces any latent iOS-specific assumption into the open.
 
-The per-platform backends that build on this (Web first, then Android) are tracked separately: Web in [BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), Android in [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md).
+The per-platform backends that build on this (Web first, then Android) are tracked separately: Web in [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), Android in [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md).
 
 ## Alternatives considered
 
@@ -138,4 +137,4 @@ The per-platform backends that build on this (Web first, then Android) are track
 - [DESIGN §5](../../../DESIGN.md) (backend-agnostic `Driver` interface), [DESIGN §7 / §7.3](../../../DESIGN.md) (stable-id convention)
 - `bajutsu/drivers/` (`base.py` `resolve_unique`, `idb.py`), `bajutsu/backends.py` (platform registry)
 - [architecture.md](../../../docs/architecture.md)
-- Related items: [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md) (Android backend), [BE-0041](../../proposals/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform backend registry), [BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (scope-statement update), [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (XCUITest backend)
+- Related items: [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md) (Android backend), [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform backend registry), [BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (scope-statement update), [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (XCUITest backend)

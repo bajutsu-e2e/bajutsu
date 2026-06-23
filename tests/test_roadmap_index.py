@@ -28,7 +28,6 @@ EN_FILE = """\
 
 * Proposal: [BE-0029](BE-0029-visual-regression-assertions.md)
 * Status: **Implemented**
-* Track: [Accepted](../README.md#accepted)
 * Topic: Candidates from competitive research (MagicPod / Autify)
 * Origin: Both
 
@@ -42,7 +41,6 @@ JA_FILE = """\
 
 * 提案: [BE-0029](BE-0029-visual-regression-assertions-ja.md)
 * 状態: **実装済み**
-* トラック: [可決済み](../README-ja.md#可決済み)
 * トピック: 競合調査（MagicPod / Autify）由来の候補
 * 由来: 両社
 
@@ -60,7 +58,6 @@ FENCED_EN_FILE = """\
 |---|---|
 | Proposal | [BE-0029](BE-0029-visual-regression-assertions.md) |
 | Status | **Implemented** |
-| Track | [Accepted](../README.md#accepted) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | Both |
 <!-- /BE-METADATA -->
@@ -100,23 +97,24 @@ def test_parse_metadata_japanese_fields() -> None:
     assert fields["由来"] == "両社"
 
 
-def test_track_label_extracts_bracket_text() -> None:
-    _, fields = bri.parse_metadata(EN_FILE)
-    assert bri.track_label(fields["Track"]) == "Accepted"
-    _, ja_fields = bri.parse_metadata(JA_FILE)
-    assert bri.track_label(ja_fields["トラック"]) == "可決済み"
+def test_bucket_derives_index_section_from_status() -> None:
+    # Status is the lone hand-set field; the index bucket is derived from it (BE-0078, Track retired).
+    assert bri.bucket("Implemented") == "Implemented"
+    assert bri.bucket("In progress") == "In progress"
+    assert bri.bucket("Proposal") == "Proposals"
+    assert bri.bucket("Proposal (deferred)") == "Deferred"
 
 
 def test_status_display_english() -> None:
     assert bri.status_display("Implemented", "en") == "Implemented"
-    assert bri.status_display("Accepted, in progress", "en") == "In progress"
+    assert bri.status_display("In progress", "en") == "In progress"
     assert bri.status_display("Proposal", "en") == "Proposal"
     assert bri.status_display("Proposal (deferred)", "en") == "Deferred"
 
 
 def test_status_display_japanese() -> None:
     assert bri.status_display("実装済み", "ja") == "実装済み"
-    assert bri.status_display("可決・実装中", "ja") == "実装中"
+    assert bri.status_display("実装中", "ja") == "実装中"
     assert bri.status_display("提案", "ja") == "提案"
     assert bri.status_display("提案（保留）", "ja") == "保留"
 

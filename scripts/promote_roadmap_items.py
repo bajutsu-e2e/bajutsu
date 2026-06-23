@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Move shipped roadmap items so each item's directory matches its ``Status``.
+"""Move roadmap items so each item's directory matches its ``Status``.
 
-CLAUDE.md / docs: "When an item ships, set ``Status: Implemented`` and **move its directory**
-from ``roadmaps/proposals/`` to ``roadmaps/implemented/``." The ``Status`` field is the single
-source of truth for which subdirectory an item belongs in — note this is *Status*, not *Track*:
-BE-0038 is ``Accepted, in progress`` (Track: Accepted) yet correctly lives under ``proposals/``,
-because only a *shipped* item moves.
+CLAUDE.md / docs: ``Status`` is the single source of truth for which subdirectory an item belongs
+in, and each of the four status values has its own folder (BE-0078) — a bijection, so the folder
+and the status can never disagree:
 
-    Status: Implemented                                     -> roadmaps/implemented/
-    Proposal / Proposal (deferred) / Accepted, in progress  -> roadmaps/proposals/
+    Status: Implemented          -> roadmaps/implemented/
+    Status: In progress          -> roadmaps/in-progress/
+    Status: Proposal             -> roadmaps/proposals/
+    Status: Proposal (deferred)  -> roadmaps/deferred/
 
 This script reconciles the directory with the Status: it ``git mv``\\ s any item filed under the
 wrong subdirectory and regenerates the index (a move changes the ``category`` prefix in every
@@ -38,9 +38,18 @@ from pathlib import Path
 
 ROADMAP = Path("roadmaps")
 IMPLEMENTED = "implemented"
+IN_PROGRESS = "in-progress"
 PROPOSALS = "proposals"
-CATEGORIES = (IMPLEMENTED, PROPOSALS)  # each item lives under exactly one
-SHIPPED_STATUS = "Implemented"  # the only Status that belongs under implemented/
+DEFERRED = "deferred"
+CATEGORIES = (IMPLEMENTED, IN_PROGRESS, PROPOSALS, DEFERRED)  # each item lives under exactly one
+# Status -> its one folder (BE-0078). An unrecognised status files under proposals/ rather than
+# crashing the move; the format gate (test_roadmap_format) is what rejects an unknown status.
+STATUS_TO_CATEGORY = {
+    "Implemented": IMPLEMENTED,
+    "In progress": IN_PROGRESS,
+    "Proposal": PROPOSALS,
+    "Proposal (deferred)": DEFERRED,
+}
 NUMBERED_DIR_RE = re.compile(r"^BE-\d{4}-")
 # Status lives in the fenced metadata block (``build_roadmap_index`` defines the same fence). Read
 # the ``| Status | … |`` row there; fall back to the legacy ``* Status: …`` bullet for unmigrated
@@ -81,7 +90,7 @@ def read_status(item_dir: Path) -> str | None:
 
 def expected_category(status: str) -> str:
     """The subdirectory an item with this ``Status`` belongs in (Status is the source of truth)."""
-    return IMPLEMENTED if status == SHIPPED_STATUS else PROPOSALS
+    return STATUS_TO_CATEGORY.get(status, PROPOSALS)
 
 
 def misfiled_items(roadmap: Path) -> list[Misfiled]:

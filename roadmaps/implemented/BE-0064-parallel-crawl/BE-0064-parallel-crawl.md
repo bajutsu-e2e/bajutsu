@@ -9,14 +9,13 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Implementing PR | [#198](https://github.com/bajutsu-e2e/bajutsu/pull/198) |
-| Track | [Accepted](../../README.md#accepted) |
 | Topic | Crawl performance / scale-out |
 | Origin | User request (crawl efficiency) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-Run the [BE-0038 autonomous crawl](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) across **N booted simulators at once**, so independent frontier work overlaps and a full screen map is built in a fraction of the wall-clock time. The crawl stays a discovery tool (Tier 1, never a CI gate); only its *scheduling* becomes concurrent — screen identity, transitions, and crashes are decided exactly as before.
+Run the [BE-0038 autonomous crawl](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) across **N booted simulators at once**, so independent frontier work overlaps and a full screen map is built in a fraction of the wall-clock time. The crawl stays a discovery tool (Tier 1, never a CI gate); only its *scheduling* becomes concurrent — screen identity, transitions, and crashes are decided exactly as before.
 
 ## Motivation
 
@@ -27,7 +26,7 @@ A crawl is serial today: it explores one screen at a time on one device. The per
 
 Both overlap cleanly across independent simulators, so wall-clock time falls roughly with the number of devices until AI rate limits or coordinator contention dominate.
 
-`run` already scales across a simulator pool ([`runner/pool.py`](../../../bajutsu/runner/pool.py)), and the WebUI already lets Replay pick a multi-device pool. Crawl is the one Tier-1 path still pinned to a single device — which makes it slow to use as the front end to `record` and as the whole-app coverage-measurement run ([DESIGN §7.2](../../../DESIGN.md); [BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) motivation #2).
+`run` already scales across a simulator pool ([`runner/pool.py`](../../../bajutsu/runner/pool.py)), and the WebUI already lets Replay pick a multi-device pool. Crawl is the one Tier-1 path still pinned to a single device — which makes it slow to use as the front end to `record` and as the whole-app coverage-measurement run ([DESIGN §7.2](../../../DESIGN.md); [BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) motivation #2).
 
 ## Detailed design
 
@@ -49,7 +48,7 @@ Screen *identity* (the fingerprint), transition detection, crash detection, and 
 
 What parallelism relaxes is **exploration order** and the **recorded canonical `path_to`**: which worker reaches a screen first is scheduling-dependent, so for an app with its own non-determinism the recorded paths (and the tie-broken discovery order) can differ run to run. For a deterministic app the *set* of nodes and edges discovered is invariant; only ordering/path metadata varies.
 
-This is acceptable precisely because crawl is **Tier 1 and emits a discovery artifact, never a pass/fail** — the same reason [BE-0038](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) already states the crawl itself can never be a CI gate. The deterministic *byproducts* keep their guarantees: a recorded repro/flow path still replays AI-free under `run` as a Tier 2 regression.
+This is acceptable precisely because crawl is **Tier 1 and emits a discovery artifact, never a pass/fail** — the same reason [BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) already states the crawl itself can never be a CI gate. The deterministic *byproducts* keep their guarantees: a recorded repro/flow path still replays AI-free under `run` as a Tier 2 regression.
 
 ### Surface
 
@@ -67,7 +66,7 @@ This is acceptable precisely because crawl is **Tier 1 and emits a discovery art
 
 ## References
 
-* [BE-0038 — Autonomous crawl exploration](../../proposals/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the engine this extends.
+* [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the engine this extends.
 * [`bajutsu/runner/pool.py`](../../../bajutsu/runner/pool.py) — `run`'s simulator pool, the existing concurrency model to mirror.
 * [CLAUDE.md](../../../CLAUDE.md) — prime directive #1 (AI never judges) and #2 (determinism first).
 * [DESIGN §7.2](../../../DESIGN.md) — whole-app coverage from crawl dumps; a faster crawl makes it practical.

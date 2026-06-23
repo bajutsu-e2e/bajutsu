@@ -8,7 +8,6 @@
 | Proposal | [BE-0073](BE-0073-serve-zip-bundle-upload.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
