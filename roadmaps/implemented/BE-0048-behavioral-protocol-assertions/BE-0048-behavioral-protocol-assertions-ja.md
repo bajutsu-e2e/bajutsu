@@ -8,7 +8,7 @@
 | 提案 | [BE-0048](BE-0048-behavioral-protocol-assertions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| 実装 PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) · [#209](https://github.com/bajutsu-e2e/bajutsu/pull/209) |
+| 実装 PR | [#205](https://github.com/bajutsu-e2e/bajutsu/pull/205) · [#208](https://github.com/bajutsu-e2e/bajutsu/pull/208) · [#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) |
 | トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | 競合調査（Maestro）由来の候補 |
 | 由来 | Maestro |
