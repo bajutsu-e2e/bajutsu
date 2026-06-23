@@ -93,8 +93,8 @@ def _resolve_one(elements: list[base.Element], sel: Selector) -> tuple[base.Elem
 def _eval_exists(elements: list[base.Element], a: Exists) -> AssertionResult:
     found = len(base.find_all(elements, a.sel.as_selector())) >= 1
     ok = found != a.negate
-    want = "不在" if a.negate else "存在"
-    reason = "" if ok else f"{want}を期待したが{'存在' if found else '不在'}"
+    want = "absent" if a.negate else "present"
+    reason = "" if ok else f"expected {want} but was {'present' if found else 'absent'}"
     return AssertionResult(ok, "exists", f"{want}: {_sel_str(a.sel)}", reason)
 
 
@@ -106,7 +106,7 @@ def _eval_text(elements: list[base.Element], kind: str, a: TextMatch) -> Asserti
     actual = el["value"] if kind == "value" else el["label"]
     op, expected = _text_op(a)
     ok = _text_cmp(actual, op, expected)
-    reason = "" if ok else f"{op}={expected!r} を期待したが actual={actual!r}"
+    reason = "" if ok else f"expected {op}={expected!r} but actual={actual!r}"
     return AssertionResult(ok, kind, f"{kind} {op}={expected!r}: {_sel_str(a.sel)}", reason)
 
 
@@ -133,7 +133,7 @@ def _eval_count(elements: list[base.Element], a: CountMatch) -> AssertionResult:
     n = len(base.find_all(elements, a.sel.as_selector()))
     op, k = _count_op(a)
     ok = {"equals": n == k, "atLeast": n >= k, "atMost": n <= k}[op]
-    reason = "" if ok else f"count {op}={k} を期待したが n={n}"
+    reason = "" if ok else f"expected count {op}={k} but n={n}"
     return AssertionResult(ok, "count", f"count {op}={k}: {_sel_str(a.sel)}", reason)
 
 
@@ -158,7 +158,7 @@ def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> Asser
         ok = base.Trait.NOT_ENABLED in traits
     else:  # selected
         ok = base.Trait.SELECTED in traits
-    reason = "" if ok else f"{kind} を満たさない: traits={traits}"
+    reason = "" if ok else f"not {kind}: traits={traits}"
     return AssertionResult(ok, kind, detail, reason)
 
 
@@ -219,9 +219,9 @@ def _eval_request(exchanges: list[NetworkExchange], req: RequestMatch) -> Assert
     if ok:
         return AssertionResult(True, "request", detail)
     reason = (
-        f"count={req.count} を期待したが {n} 件"
+        f"expected count={req.count} but matched {n}"
         if req.count is not None
-        else f"一致する通信なし（観測 {len(exchanges)} 件）"
+        else f"no matching exchange (observed {len(exchanges)})"
     )
     return AssertionResult(False, "request", detail, reason)
 
@@ -356,9 +356,9 @@ def _request_assignment_result(
         return AssertionResult(True, "request", detail)
     matched_any = any(match_request(ex, req) for ex in exchanges)
     reason = (
-        "一致する通信は他の request と対応済み（request と通信は 1 対 1）"
+        "matching exchange already taken by another request (request ↔ exchange is one-to-one)"
         if matched_any
-        else f"一致する通信なし（観測 {len(exchanges)} 件）"
+        else f"no matching exchange (observed {len(exchanges)})"
     )
     return AssertionResult(False, "request", detail, reason)
 
