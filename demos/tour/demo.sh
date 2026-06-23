@@ -28,7 +28,7 @@ APP_PATH="demos/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuDemo.ap
 note() { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 
 run_scenario() {  # run the working scenario on the Simulator; returns bajutsu's exit code
-  uv run bajutsu run --scenario "$SCENARIO" --app demo --config "$CONFIG" --backend ios --no-network
+  uv run bajutsu run --scenario "$SCENARIO" --target demo --config "$CONFIG" --backend ios --no-network
 }
 
 replace_in_scenario() {  # $1 = exact text to find, $2 = replacement — a plain in-place edit
@@ -65,7 +65,7 @@ if run_scenario; then
 else
   echo "-> FAIL. Don't stop — run triage to diagnose and self-heal, then carry on:"
   uv run bajutsu triage --apply "$SCENARIO" --write --rerun \
-    --app demo --backend ios --config "$CONFIG" || true
+    --target demo --backend ios --config "$CONFIG" || true
 fi
 
 # --- 2) MODIFY ---------------------------------------------------------------
@@ -98,7 +98,7 @@ fi
 echo
 echo "Diagnose the failed run with triage (advisory — it points at the likely fix from the"
 echo "captured element tree, but never judges pass/fail):"
-uv run bajutsu triage --app demo --config "$CONFIG" || true
+uv run bajutsu triage --target demo --config "$CONFIG" || true
 
 echo
 echo "Restore the selector and re-run — expect PASS again:"

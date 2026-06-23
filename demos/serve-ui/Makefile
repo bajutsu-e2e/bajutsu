@@ -8,7 +8,7 @@ ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 HERE := $(ROOT)/demos/serve-ui
 CONFIG := $(HERE)/dogfood.config.yaml
 # The config the *inner* serve loads, so its dropdowns have a real app + scenario to show. We
-# reuse the web demo's config (apps.web → demos/web/scenarios/smoke.yaml) rather than invent a
+# reuse the web demo's config (targets.web → demos/web/scenarios/smoke.yaml) rather than invent a
 # fixture: the dogfood asserts the WebUI renders that config, not what the config contains.
 INNER_CONFIG := $(ROOT)/demos/web/demo.config.yaml
 PORT ?= 8799
@@ -26,7 +26,7 @@ serve-ui:
 
 # End-to-end: drive the serve Web UI through the Playwright backend with the Tier-A deterministic
 # scenarios. The app under test (the inner serve) is brought up and torn down by the config's
-# `launchServer` (apps.webui), so the run is self-contained — no hand-started server here. No
+# `launchServer` (targets.webui), so the run is self-contained — no hand-started server here. No
 # device, no Simulator, no LLM — pass/fail is the scenarios' machine assertions only.
 e2e: web-deps
-	cd $(ROOT) && uv run bajutsu run --app webui --backend web --config $(CONFIG) --no-network
+	cd $(ROOT) && uv run bajutsu run --target webui --backend web --config $(CONFIG) --no-network

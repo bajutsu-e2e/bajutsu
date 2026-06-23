@@ -195,20 +195,20 @@ Tier A と同様に前段を置きます。`tailscale serve --bg 8765`（tailnet
 ### 複数 org
 
 1 つの backend で複数チームをホストするには、マウントした config に org を宣言します。各 org に所属メンバー
-（GitHub login や GitHub org）と、その org が持つ apps を指定します（[configuration](configuration.md#orgsマルチテナントのサーバ-backend)を参照）。
+（GitHub login や GitHub org）と、その org が持つ targets を指定します（[configuration](configuration.md#orgsマルチテナントのサーバ-backend)を参照）。
 
 ```yaml
 orgs:
   acme:
     members: [alice, bob]
     githubOrgs: [acme-gh]    # この GitHub org の全員（ログインは read:org scope を要求）
-    apps: [demo, checkout]
+    targets: [demo, checkout]
   globex:
     members: [carol]
-    apps: [other]
+    targets: [other]
 ```
 
-各ユーザは自分の org にスコープされます。自 org の apps だけが見え、別 org の run／scenario／成果物は not-found
+各ユーザは自分の org にスコープされます。自 org の targets だけが見え、別 org の run／scenario／成果物は not-found
 または 403 になり、各 org の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に
 置かれます。`orgs:` ブロックが無ければ backend はシングルテナント（1 つの default org）のままで、共有トークンと
 GitHub 許可リストがアクセス境界です。フルマネージドの公開クラウド提供（ホスト型の Mac ワーカープール＋IaC）は

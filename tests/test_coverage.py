@@ -119,11 +119,11 @@ def test_cli_reports_coverage_for_an_app(tmp_path) -> None:  # type: ignore[no-u
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "apps:\n  demo:\n    bundleId: com.example.demo\n"
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
         f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
         encoding="utf-8",
     )
-    result = runner.invoke(app, ["coverage", "--app", "demo", "--config", str(config)])
+    result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config)])
     assert result.exit_code == 0  # read-only: never gates
     assert "coverage: 0.50 (1/2)" in result.stdout
     assert "auth" in result.stdout  # the gap
@@ -137,11 +137,11 @@ def test_cli_json_output(tmp_path) -> None:  # type: ignore[no-untyped-def]
     )
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "apps:\n  demo:\n    bundleId: com.example.demo\n"
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
         f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
         encoding="utf-8",
     )
-    result = runner.invoke(app, ["coverage", "--app", "demo", "--config", str(config), "--json"])
+    result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
     assert data["total"] == 2 and data["covered"] == 1
@@ -152,8 +152,8 @@ def test_cli_json_output(tmp_path) -> None:  # type: ignore[no-untyped-def]
 def test_cli_app_without_scenarios_dir_exits_2(tmp_path) -> None:  # type: ignore[no-untyped-def]
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "apps:\n  demo:\n    bundleId: com.example.demo\n    idNamespaces: [home]\n",
+        "targets:\n  demo:\n    bundleId: com.example.demo\n    idNamespaces: [home]\n",
         encoding="utf-8",
     )
-    result = runner.invoke(app, ["coverage", "--app", "demo", "--config", str(config)])
+    result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config)])
     assert result.exit_code == 2

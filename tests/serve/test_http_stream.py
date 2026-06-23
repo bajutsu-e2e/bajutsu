@@ -23,7 +23,7 @@ def test_run_events_stream_delivers_lines_and_done(tmp_path: Path) -> None:
     )
     server, port = _serve(state)
     try:
-        _, body = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
+        _, body = _post(port, "/api/run", {"scenario": "smoke.yaml", "target": "demo"})
         jid = body["jobId"]
         # The buffered bus means a subscriber that attaches even after the job finished still
         # replays every line and the terminal event, so reading to EOF is deterministic.

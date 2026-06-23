@@ -40,9 +40,9 @@ def triage(
     rerun: bool = typer.Option(
         False,
         "--rerun",
-        help="after --write, re-run the patched scenario to verify the fix (needs --app + a device)",
+        help="after --write, re-run the patched scenario to verify the fix (needs --target + a device)",
     ),
-    app_name: str = typer.Option("", "--app", help="app key, for --rerun"),
+    target_name: str = typer.Option("", "--target", help="target key, for --rerun"),
     backend: str = typer.Option("", "--backend", help="actuator backend, for --rerun"),
     udid: str = typer.Option("booted", "--udid", help="simulator udid, for --rerun"),
     config: str = typer.Option(DEFAULT_CONFIG, "--config", help="config path, for --rerun"),
@@ -83,10 +83,10 @@ def triage(
     if rerun:
         if not wrote:
             typer.echo("\n--rerun needs --write (nothing was applied to re-run).")
-        elif not app_name:
-            typer.echo("\n--rerun needs --app to run the patched scenario.")
+        elif not target_name:
+            typer.echo("\n--rerun needs --target to run the patched scenario.")
         else:
-            _verify_rerun(apply, app_name, backend, udid, config)
+            _verify_rerun(apply, target_name, backend, udid, config)
 
 
 def _apply_fix(result: _triage.Triage, target: str, write: bool) -> bool:
@@ -117,7 +117,9 @@ def _apply_fix(result: _triage.Triage, target: str, write: bool) -> bool:
     return True
 
 
-def _rerun_command(target: str, app_name: str, backend: str, udid: str, config: str) -> list[str]:
+def _rerun_command(
+    target: str, target_name: str, backend: str, udid: str, config: str
+) -> list[str]:
     """The `bajutsu run` invocation that re-checks a patched scenario (kept --no-erase to reuse
     the current device state). Built as a list so it is easy to assert in tests."""
     cmd = [
@@ -127,8 +129,8 @@ def _rerun_command(target: str, app_name: str, backend: str, udid: str, config: 
         "run",
         "--scenario",
         target,
-        "--app",
-        app_name,
+        "--target",
+        target_name,
         "--config",
         config,
         "--no-erase",
@@ -140,8 +142,8 @@ def _rerun_command(target: str, app_name: str, backend: str, udid: str, config: 
     return cmd
 
 
-def _verify_rerun(target: str, app_name: str, backend: str, udid: str, config: str) -> None:
-    cmd = _rerun_command(target, app_name, backend, udid, config)
+def _verify_rerun(target: str, target_name: str, backend: str, udid: str, config: str) -> None:
+    cmd = _rerun_command(target, target_name, backend, udid, config)
     typer.echo(f"\nre-running {target} to verify the fix ...")
     code = subprocess.call(cmd)
     typer.echo(

@@ -474,7 +474,7 @@ when it carries at least one `--tag` (or none was given) **and** none of the `--
 ```
 
 ```bash
-uv run bajutsu run --app sample --tag smoke --exclude wip   # run @smoke, skip anything @wip (across the app's scenarios dir)
+uv run bajutsu run --target sample --tag smoke --exclude wip   # run @smoke, skip anything @wip (across the app's scenarios dir)
 ```
 
 ### Secrets (`${secrets.X}`)

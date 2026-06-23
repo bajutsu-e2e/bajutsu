@@ -49,7 +49,7 @@ uv run python demos/features/run_demo.py
 ```bash
 # 先にサンプルをビルド（make -C demos/features sample-build; demos/features/app/README.md を参照）してから:
 PASSWORD='s3cr3t' uv run bajutsu run --scenario demos/features/sample_features.yaml \
-  --app sample --config demos/features/demo.config.yaml --no-erase --no-network
+  --target sample --config demos/features/demo.config.yaml --no-erase --no-network
 ```
 
 [`demo.config.yaml`](demo.config.yaml) は `secrets: [PASSWORD]` を宣言しているので、

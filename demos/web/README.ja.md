@@ -10,7 +10,7 @@ Bajutsu の **Playwright** backend（[BE-0041](../../roadmaps/proposals/BE-0041-
 |---|---|
 | `app/index.html` | テスト対象アプリ。onboarding → login → counter、素の JS、安定した `data-testid` の id |
 | `scenarios/smoke.yaml` | 決定論的なスモークシナリオ（iOS デモと同じ step/expect スキーマ） |
-| `demo.config.yaml` | `apps.web`（`baseUrl` ＋ `scenarios` ＋ `backend: [web]`、`bundleId` なし） |
+| `demo.config.yaml` | `targets.web`（`baseUrl` ＋ `scenarios` ＋ `backend: [web]`、`bundleId` なし） |
 | `Makefile` | `web-deps` / `app-serve` / `e2e` |
 
 ## 実行

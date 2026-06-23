@@ -23,26 +23,26 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from bajutsu.config import DEFAULT_ORG, apps_for_org
+from bajutsu.config import DEFAULT_ORG, targets_for_org
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
 from bajutsu.serve.handler import make_server
 from bajutsu.serve.helpers import (
     _int,
     _scenario_path,
-    app_build_info,
-    app_scenarios_dir,
     crawl_command,
-    list_apps,
     list_fs,
     list_runs,
     list_scenarios,
     list_simulators,
+    list_targets,
     load_config_file,
     mask_secret,
     record_command,
     run_command,
     scenario_out_path,
+    target_build_info,
+    target_scenarios_dir,
     unique_scenario_path,
     valid_backend,
     valid_run_id,
@@ -77,16 +77,14 @@ __all__ = [
     "ServeState",
     "_int",
     "_scenario_path",
-    "app_build_info",
-    "app_scenarios_dir",
     "cancel_job",
     "crawl_command",
     "launchagent_plist",
-    "list_apps",
     "list_fs",
     "list_runs",
     "list_scenarios",
     "list_simulators",
+    "list_targets",
     "make_server",
     "mask_secret",
     "record_command",
@@ -94,6 +92,8 @@ __all__ = [
     "run_job",
     "scenario_out_path",
     "serve",
+    "target_build_info",
+    "target_scenarios_dir",
     "unique_scenario_path",
     "valid_backend",
     "valid_run_id",
@@ -219,7 +219,7 @@ def _build_server_state(
     Redis (``BAJUTSU_REDIS_URL`` / ``BAJUTSU_QUEUE``) backs the run queue + log bus; one
     S3-compatible bucket (``BAJUTSU_S3_BUCKET`` / ``BAJUTSU_S3_ENDPOINT`` / ``BAJUTSU_S3_REGION``,
     optional ``BAJUTSU_S3_PREFIX`` tenant prefix) holds artifacts (``<prefix>artifacts/``) and
-    scenarios (``<prefix>scenarios/<app>/``). Projects come from the bound config's apps — no
+    scenarios (``<prefix>scenarios/<app>/``). Projects come from the bound config's targets — no
     Postgres registry in this path. Redis/RQ/boto3 are imported lazily, only here, so the default
     path and the import guard stay SDK-free."""
     import os
@@ -299,11 +299,11 @@ def _build_server_state(
 
     # Build the object-storage seams per org (BE-0015 multi-tenancy): each org's artifacts/
     # scenarios/baselines live under its own key prefix, and its scenario store only acknowledges
-    # the apps that org owns. The scenario apps are read from the live config, so a config opened
-    # later is reflected.
+    # the targets that org owns. The scenario targets are read from the live config, so a config
+    # opened later is reflected.
     def _org_apps(org: str) -> list[str]:
         cfg = load_config_file(state.config)
-        return apps_for_org(cfg, org) if cfg is not None else []
+        return targets_for_org(cfg, org) if cfg is not None else []
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)

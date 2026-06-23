@@ -204,7 +204,7 @@ def _cli_setup(tmp_path: Path) -> tuple[Path, Path]:
     """A config with one web app (baseUrl) and one iOS app (bundleId), plus a scenario file."""
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
-        "apps:\n"
+        "targets:\n"
         "  web: { baseUrl: 'http://localhost:3000', idNamespaces: [home] }\n"
         "  ios: { bundleId: com.example.ios, idNamespaces: [home] }\n",
         encoding="utf-8",
@@ -222,7 +222,7 @@ def test_cli_emit_playwright_writes_spec(tmp_path: Path) -> None:
         [
             "codegen",
             str(scn),
-            "--app",
+            "--target",
             "web",
             "--emit",
             "playwright",
@@ -241,7 +241,7 @@ def test_cli_emit_playwright_writes_spec(tmp_path: Path) -> None:
 def test_cli_emit_playwright_without_base_url_exits(tmp_path: Path) -> None:
     cfg, scn = _cli_setup(tmp_path)
     r = runner.invoke(
-        app, ["codegen", str(scn), "--app", "ios", "--emit", "playwright", "--config", str(cfg)]
+        app, ["codegen", str(scn), "--target", "ios", "--emit", "playwright", "--config", str(cfg)]
     )
     assert r.exit_code == 2
     assert "baseUrl" in r.output
@@ -250,7 +250,7 @@ def test_cli_emit_playwright_without_base_url_exits(tmp_path: Path) -> None:
 def test_cli_unsupported_emit_exits(tmp_path: Path) -> None:
     cfg, scn = _cli_setup(tmp_path)
     r = runner.invoke(
-        app, ["codegen", str(scn), "--app", "web", "--emit", "bogus", "--config", str(cfg)]
+        app, ["codegen", str(scn), "--target", "web", "--emit", "bogus", "--config", str(cfg)]
     )
     assert r.exit_code == 2
     assert "unsupported --emit" in r.output

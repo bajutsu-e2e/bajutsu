@@ -43,14 +43,14 @@ def resolve_run_dir(run: str, runs_root: str) -> Path:
     return p if p.is_absolute() or len(p.parts) > 1 else Path(runs_root) / run
 
 
-def _load_effective(config: str, app_name: str) -> Effective:
+def _load_effective(config: str, target_name: str) -> Effective:
     cfg_path = Path(config)
     if not cfg_path.exists():
         typer.echo(f"config not found: {config}")
         raise typer.Exit(2)
     cfg = load_config(cfg_path.read_text(encoding="utf-8"))
     try:
-        return resolve(cfg, app_name)
+        return resolve(cfg, target_name)
     except KeyError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

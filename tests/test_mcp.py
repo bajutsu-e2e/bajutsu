@@ -21,7 +21,7 @@ def _run(coro: Any) -> Any:
 
 def test_create_server_returns_fastmcp(tmp_path: Path) -> None:
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\napps:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     from bajutsu.mcp import create_server
 
     server = create_server(config, tmp_path / "runs")
@@ -34,7 +34,7 @@ def test_create_server_returns_fastmcp(tmp_path: Path) -> None:
 def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
-        "defaults: {}\napps:\n  demo:\n    bundleId: com.demo\n    idNamespaces: [home]\n",
+        "defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n    idNamespaces: [home]\n",
         encoding="utf-8",
     )
     from bajutsu.drivers.fake import FakeDriver
@@ -53,7 +53,7 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         "bajutsu.mcp.tools.select_actuator", lambda backends, available=None: "fake"
     )
 
-    result = _run(mcp.call_tool("bajutsu_doctor", {"app": "demo"}))
+    result = _run(mcp.call_tool("bajutsu_doctor", {"target": "demo"}))
     text = result.content[0].text
     assert "Ready" in text
 
@@ -63,7 +63,7 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
 def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\napps:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
     scenario = tmp_path / "test.yaml"
@@ -83,14 +83,14 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     mcp = FastMCP("test")
     register_tools(mcp, config)
 
-    result = _run(mcp.call_tool("bajutsu_run", {"app": "demo", "scenario": str(scenario)}))
+    result = _run(mcp.call_tool("bajutsu_run", {"target": "demo", "scenario": str(scenario)}))
     text = result.content[0].text
     assert "PASS" in text
 
 
 def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
-    config.write_text("defaults: {}\napps:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
 
@@ -108,7 +108,7 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     mcp = FastMCP("test")
     register_tools(mcp, config)
 
-    result = _run(mcp.call_tool("bajutsu_run", {"app": "demo"}))
+    result = _run(mcp.call_tool("bajutsu_run", {"target": "demo"}))
     text = result.content[0].text
     assert "FAIL" in text
 

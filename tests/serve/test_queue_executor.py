@@ -240,7 +240,7 @@ def test_execute_job_spec_materializes_files_into_the_workspace(tmp_path: Path) 
         "build": None,
         "materials": {
             "scenarios/smoke.yaml": "- name: a\n  steps: []\n",
-            "bajutsu.config.yaml": "apps: {demo: {bundleId: x}}\n",
+            "bajutsu.config.yaml": "targets: {demo: {bundleId: x}}\n",
             "../escape.yaml": "nope",  # must not be written outside the workspace
             "": "root",  # resolves to the workspace root — must be ignored, not write_text a dir
             "scenarios/..": "root2",  # also the workspace root via traversal — ignored
@@ -266,7 +266,7 @@ def test_start_run_on_the_server_backend_materializes_scenario_and_config(tmp_pa
         FakeScenarioStorage({"demo": {"smoke.yaml": scenario_text}})
     )
 
-    payload, code = ops.start_run(state, {"scenario": "smoke.yaml", "app": "demo"})
+    payload, code = ops.start_run(state, {"scenario": "smoke.yaml", "target": "demo"})
     assert code == 200 and "jobId" in payload
 
     spec = q.enqueued[0][1][0]
@@ -276,7 +276,7 @@ def test_start_run_on_the_server_backend_materializes_scenario_and_config(tmp_pa
     assert "baselines" in cmd  # workspace-relative --baselines (materialized on the worker)
     assert spec["materialize_baselines"] is True
     assert spec["materials"]["scenarios/smoke.yaml"] == scenario_text
-    assert "apps:" in spec["materials"]["bajutsu.config.yaml"]
+    assert "targets:" in spec["materials"]["bajutsu.config.yaml"]
 
 
 class FakeScenarioStorage:
@@ -456,14 +456,14 @@ def test_start_record_on_the_server_backend_materializes_and_targets_storage(
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, executor=QueueExecutor(q))
     state.scenarios = StorageScenarioStore(FakeScenarioStorage({"demo": {}}))
 
-    payload, code = ops.start_record(state, {"app": "demo", "goal": "log in", "name": "login"})
+    payload, code = ops.start_record(state, {"target": "demo", "goal": "log in", "name": "login"})
     assert code == 200 and payload["path"] == "login.yaml"
 
     spec = q.enqueued[0][1][0]
     assert "scenarios/login.yaml" in spec["cmd"]  # workspace-relative --out
     assert "bajutsu.config.yaml" in spec["cmd"]  # config materialized
     assert spec["record_save"] == ["demo", "login.yaml"]
-    assert "apps:" in spec["materials"]["bajutsu.config.yaml"]
+    assert "targets:" in spec["materials"]["bajutsu.config.yaml"]
 
 
 def test_execute_job_spec_materializes_baselines(tmp_path: Path) -> None:

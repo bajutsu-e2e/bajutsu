@@ -4,7 +4,7 @@
 defaults:
   backend: [idb]
   device: "iPhone 17 Pro"
-apps:
+targets:
   sample:
     bundleId: com.bajutsu.sample
     deeplinkScheme: bajutsusample
@@ -18,5 +18,5 @@ apps:
     # the run's working directory (the repo root).
     appPath: demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
     build: make -C demos/features sample-build
-    # Directory of this app's scenarios — `bajutsu run --app sample` runs every *.yaml here.
+    # Directory of this app's scenarios — `bajutsu run --target sample` runs every *.yaml here.
     scenarios: demos/features/app/scenarios

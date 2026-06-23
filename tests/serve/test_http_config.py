@@ -72,11 +72,11 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
     server, port = _serve(srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path))
     try:
         assert _get_json(port, "/api/config")["hasConfig"] is False
-        assert _get_json(port, "/api/apps") == []  # nothing until a config is opened
+        assert _get_json(port, "/api/targets") == []  # nothing until a config is opened
         status, resp = _post(port, "/api/config", {"path": "bajutsu.config.yaml"})
-        assert status == 200 and resp["ok"] is True and resp["apps"] == ["demo", "other"]
+        assert status == 200 and resp["ok"] is True and resp["targets"] == ["demo", "other"]
         assert _get_json(port, "/api/config")["hasConfig"] is True
-        assert [a["name"] for a in _get_json(port, "/api/apps")] == ["demo", "other"]
+        assert [a["name"] for a in _get_json(port, "/api/targets")] == ["demo", "other"]
         # A path outside the browse root is rejected.
         status, _ = _post(port, "/api/config", {"path": "/etc/hosts"})
         assert status == 400
@@ -95,7 +95,7 @@ def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> 
     root = tmp_path / "root"
     root.mkdir()
     secret = tmp_path / "secret.yaml"  # outside root, but inside tmp_path
-    secret.write_text("apps: {evil: {bundleId: x}}\n", encoding="utf-8")
+    secret.write_text("targets: {evil: {bundleId: x}}\n", encoding="utf-8")
     _, _, runs = project(tmp_path)
     server, port = _serve(srv.ServeState(runs_dir=runs, root=root, cwd=tmp_path))
     try:
@@ -112,8 +112,8 @@ def test_http_scenarios_by_app_from_config(tmp_path: Path) -> None:
     # Config-driven (no --scenarios override): the dir comes from the selected app.
     server, port = _serve(srv.ServeState(runs_dir=runs, config=cfg, root=tmp_path, cwd=tmp_path))
     try:
-        assert _get_json(port, "/api/scenarios?app=demo")[0]["names"] == ["alpha", "beta"]
-        assert _get_json(port, "/api/scenarios?app=other") == []  # app has no scenarios dir
+        assert _get_json(port, "/api/scenarios?target=demo")[0]["names"] == ["alpha", "beta"]
+        assert _get_json(port, "/api/scenarios?target=other") == []  # app has no scenarios dir
         assert _get_json(port, "/api/scenarios") == []  # no app → nothing
     finally:
         server.shutdown()

@@ -12,7 +12,7 @@ toolchain as `make check`.
 |---|---|
 | `app/index.html` | the app under test — onboarding → login → counter, vanilla JS, stable `data-testid` ids |
 | `scenarios/smoke.yaml` | the deterministic smoke scenario (same step/expect schema as the iOS demos) |
-| `demo.config.yaml` | `apps.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
+| `demo.config.yaml` | `targets.web` with `baseUrl` + `scenarios` + `backend: [web]` (no `bundleId`) |
 | `Makefile` | `web-deps` / `app-serve` / `e2e` |
 
 ## Run it

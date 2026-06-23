@@ -13,7 +13,7 @@ from bajutsu.scenario import Redact, Scenario
 
 def _eff() -> Effective:
     return Effective(
-        app="demo",
+        target="demo",
         bundle_id="com.example.demo",
         deeplink_scheme=None,
         backend=["fake"],

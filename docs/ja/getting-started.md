@@ -138,12 +138,12 @@ make -C demos/features e2e
 あるいは CLI を直接叩くこともできます（上と同じ手順を書き下したものです）。
 
 ```bash
-uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
+uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --target sample --backend idb --udid booted --no-erase
 ```
 
 各フラグの意味は次のとおりです。
 
-- `--app sample` は [`bajutsu.config.yaml`](../../bajutsu.config.yaml) の `apps.sample` を選びます
+- `--target sample` は [`bajutsu.config.yaml`](../../bajutsu.config.yaml) の `targets.sample` を選びます
   （bundle id、launch env、許可された id 名前空間を含みます）。ツール自体はアプリ非依存で、アプリ
   ごとの差分はすべて config に置きます（[configuration](configuration.md)）。
 - `--backend idb` で actuator を選び、`--udid booted` で現在 boot 中の Simulator を対象にします。
@@ -159,7 +159,7 @@ PASS  runs/20260610-120000/manifest.json
 インテグレーション）ゲートになります（[run-loop](run-loop.md)）。
 
 > 環境の問題（booted Simulator が無い、idb が未インストールなど）に当たったら、まず
-> `uv run bajutsu doctor --app sample` を走らせてください。必要な CLI と booted デバイスの ✓/✗
+> `uv run bajutsu doctor --target sample` を走らせてください。必要な CLI と booted デバイスの ✓/✗
 > チェックリストを表示し、続けて現在の画面が識別子規約にどれだけ従っているかを採点します
 > （[configuration](configuration.md#doctor規約充足度スコア)）。
 
@@ -202,7 +202,7 @@ uv run bajutsu trace               # runs/ 下の最新実行
 - **AI でオーサリングする。** Claude にゴールへ向けて探索させ、シナリオを書かせます（Tier 1）。
   `.env` ファイルに `ANTHROPIC_API_KEY=sk-ant-…` を置いてから実行します。
   ```bash
-  uv run bajutsu record --app sample --goal "log in and increment the counter to 3"   # アプリのシナリオディレクトリへ書く
+  uv run bajutsu record --target sample --goal "log in and increment the counter to 3"   # アプリのシナリオディレクトリへ書く
   ```
   Web UI（`make serve`）の **API key** ボタンからも、実行中のセッション用に同じキーを設定できます。
   伏字表示にしたうえで表示切り替えで内容を確認できますが、メモリ上に保持するだけでディスクには
@@ -211,7 +211,7 @@ uv run bajutsu trace               # runs/ 下の最新実行
 - **ネイティブ XCUITest を出力する。** シナリオを Swift へ変換します（テスト実行時に Bajutsu の
   ランタイムや AI は不要です）。
   ```bash
-  uv run bajutsu codegen demos/features/app/scenarios/smoke.yaml --app sample -o UITests/Smoke.swift
+  uv run bajutsu codegen demos/features/app/scenarios/smoke.yaml --target sample -o UITests/Smoke.swift
   ```
   構造のマッピングは [codegen](codegen.md) を参照してください。`make -C demos/features ui-test` で
   end-to-end に実行できます。
@@ -219,4 +219,4 @@ uv run bajutsu trace               # runs/ 下の最新実行
 ここからは、各リファレンスページがそれぞれの要素を詳しく説明します。まず設計の根拠を
 [concepts](concepts.md) で確認し、続けて [ドキュメント索引](README.md) の推奨読書順に従ってください。
 サンプル以外の自前のアプリをオンボーディングするには
-[configuration](configuration.md#新しいアプリのオンボーディング) を参照してください。
+[configuration](configuration.md#新しいターゲットのオンボーディング) を参照してください。

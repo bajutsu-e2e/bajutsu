@@ -3,7 +3,7 @@
 # sets dismissAlerts.instruction so it taps "Allow" (granting the prompt) instead of
 # dismissing it. Just run (needs ANTHROPIC_API_KEY for the guard):
 #
-#   bajutsu run --scenario sample/scenarios/permission.yaml --app sample --backend idb --no-erase
+#   bajutsu run --scenario sample/scenarios/permission.yaml --target sample --backend idb --no-erase
 #
 # The prompt only appears while authorization is notDetermined, so reinstall the
 # app first (uninstall + install resets notification authorization).

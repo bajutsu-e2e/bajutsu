@@ -141,13 +141,13 @@ make -C demos/features e2e
 Or drive the CLI directly (the same steps, written out):
 
 ```bash
-uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --backend idb --udid booted --no-erase
+uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --target sample --backend idb --udid booted --no-erase
 ```
 
 What the flags mean:
 
-- `--app sample` selects `apps.sample` from [`bajutsu.config.yaml`](../bajutsu.config.yaml)
-  (bundle id, launch env, allowed id namespaces). The tool itself is app-agnostic; all per-app
+- `--target sample` selects `targets.sample` from [`bajutsu.config.yaml`](../bajutsu.config.yaml)
+  (bundle id, launch env, allowed id namespaces). The tool itself is app-agnostic; all per-target
   differences live in config ([configuration](configuration.md)).
 - `--backend idb` picks the actuator; `--udid booted` targets the currently booted Simulator.
 - `--no-erase` keeps the already-installed app instead of `simctl erase`-ing first.
@@ -162,7 +162,7 @@ PASS  runs/20260610-120000/manifest.json
 ([run-loop](run-loop.md)).
 
 > Hit an environment problem (no booted Simulator, idb not installed)? Run
-> `uv run bajutsu doctor --app sample` first — it prints a ✓/✗ checklist of the required CLIs and
+> `uv run bajutsu doctor --target sample` first — it prints a ✓/✗ checklist of the required CLIs and
 > a booted device, then scores how well the current screen follows the identifier convention
 > ([configuration](configuration.md#doctor-the-convention-score)).
 
@@ -205,7 +205,7 @@ entry points use the same scenario format:
 - **Author with AI.** Let Claude explore toward a goal and write the scenario for you (Tier 1).
   Put `ANTHROPIC_API_KEY=sk-ant-…` in a `.env` file, then:
   ```bash
-  uv run bajutsu record --app sample --goal "log in and increment the counter to 3"   # writes into the app's scenarios dir
+  uv run bajutsu record --target sample --goal "log in and increment the counter to 3"   # writes into the app's scenarios dir
   ```
   In the web UI (`make serve`) the **API key** button sets the same key for the running session,
   showing it redacted with a reveal toggle. It is kept in memory only (not written to disk), so a
@@ -213,10 +213,10 @@ entry points use the same scenario format:
   guard work: [recording](recording.md).
 - **Emit a native XCUITest.** Convert a scenario to Swift (no Bajutsu runtime / AI at test time):
   ```bash
-  uv run bajutsu codegen demos/features/app/scenarios/smoke.yaml --app sample -o UITests/Smoke.swift
+  uv run bajutsu codegen demos/features/app/scenarios/smoke.yaml --target sample -o UITests/Smoke.swift
   ```
   The structural mapping: [codegen](codegen.md). Run it end-to-end with `make -C demos/features ui-test`.
 
 From here, the reference pages cover each piece in depth. Start with [concepts](concepts.md) for the
 rationale, then follow the suggested reading order in the [docs index](README.md). To onboard your own
-app (not the sample), see [configuration](configuration.md#onboarding-a-new-app).
+app (not the sample), see [configuration](configuration.md#onboarding-a-new-target).

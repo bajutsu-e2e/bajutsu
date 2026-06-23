@@ -110,7 +110,7 @@ High-traffic shared surfaces to coordinate on:
 |---|---|---|
 | Driver API | [`bajutsu/drivers/base.py`](../bajutsu/drivers/base.py) | every backend + the orchestrator depend on it |
 | Scenario schema | [`bajutsu/scenario.py`](../bajutsu/scenario.py) | the hub artifact; codegen/runner/report all read it |
-| Config shape | [`bajutsu/config.py`](../bajutsu/config.py) | per-app layering every command resolves through |
+| Config shape | [`bajutsu/config.py`](../bajutsu/config.py) | per-target layering every command resolves through |
 
 ## CI keeps the branches honest
 
@@ -171,7 +171,7 @@ The sections that recur, and what each carries:
   result, not the path you took to it.
 - **`## Prime-directive compliance`** — whenever the change touches tool behavior or the runtime.
   State it plainly: no model is consulted on the verdict, the `run` / CI gate stays deterministic,
-  and per-app differences stay in config — a line per [prime
+  and per-target differences stay in config — a line per [prime
   directive](../CLAUDE.md#prime-directives-do-not-violate) the change bears on. A docs-only or
   infrastructure PR can say so in a sentence instead.
 - **`## Scope`** (often *Scope (deferred to …)*) — what is deliberately **not** in this PR, so a
@@ -221,7 +221,7 @@ the item to **Accepted, in progress**.
 
 ## Prime-directive compliance
 
-No model is consulted on the verdict; the `run` / CI gate stays deterministic; per-app
+No model is consulted on the verdict; the `run` / CI gate stays deterministic; per-target
 differences stay in config.
 
 ## Scope (deferred to later BE-NNNN slices)

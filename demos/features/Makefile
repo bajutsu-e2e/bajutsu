@@ -31,13 +31,13 @@ APP = $(SAMPLE)/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app
 
 e2e: sample-build
 	xcrun simctl install $(SIM) $(APP)
-	cd $(ROOT) && uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --app sample --udid $(SIM) --backend idb --config $(CONFIG) --no-erase
-	cd $(ROOT) && uv run bajutsu doctor --app sample --udid $(SIM) --backend idb --config $(CONFIG)
+	cd $(ROOT) && uv run bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --target sample --udid $(SIM) --backend idb --config $(CONFIG) --no-erase
+	cd $(ROOT) && uv run bajutsu doctor --target sample --udid $(SIM) --backend idb --config $(CONFIG)
 
 # Generate a native XCUITest from a scenario and run it via xcodebuild (no bajutsu
 # runtime / idb / AI at test time) — the codegen output path.
 ui-test:
-	cd $(ROOT) && uv run bajutsu codegen demos/features/app/scenarios/components.yaml --app sample \
+	cd $(ROOT) && uv run bajutsu codegen demos/features/app/scenarios/components.yaml --target sample \
 		--config $(CONFIG) -o demos/features/app/BajutsuSampleUITests/ComponentsUITests.swift
 	cd $(SAMPLE) && xcodegen generate
 	cd $(SAMPLE) && xcodebuild test -project BajutsuSample.xcodeproj -scheme UITests \
@@ -51,7 +51,7 @@ BASELINES = $(SAMPLE)/scenarios/baselines
 # re-run `vrt`: now it pixel-matches and passes. `-` lets the first run's failure not abort make.
 vrt: sample-build
 	xcrun simctl install $(SIM) $(APP)
-	-cd $(ROOT) && uv run bajutsu run demos/features/app/scenarios/visual.yaml --app sample \
+	-cd $(ROOT) && uv run bajutsu run demos/features/app/scenarios/visual.yaml --target sample \
 		--udid $(SIM) --backend idb --config $(CONFIG) --no-erase --baselines $(BASELINES)
 
 # Promote the latest run's captured screenshot(s) to baselines, then re-run to confirm pass.

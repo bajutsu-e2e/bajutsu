@@ -49,7 +49,7 @@ def _write_screenmap(path: Path, screen_map: crawl_engine.ScreenMap) -> None:
 
 
 def crawl(
-    app_name: str = typer.Option(..., "--app"),
+    target_name: str = typer.Option(..., "--target"),
     udid: str = typer.Option(
         "booted",
         help="simulator(s) to crawl on: a single udid, or a comma list for a parallel pool "
@@ -108,7 +108,7 @@ def crawl(
         None,
         "--headed/--no-headed",
         help="web backend: crawl a visible (headed, slow-motion) browser instead of headless; "
-        "default leaves the app's `headless` config",
+        "default leaves the target's `headless` config",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
@@ -116,8 +116,8 @@ def crawl(
     screens and the transitions between them. The engine is deterministic (screen identity,
     transitions, crashes); the AI guide only proposes *what to try*. A discovery tool, never a
     pass/fail gate."""
-    eff = _load_effective(config, app_name)
-    # --headed/--no-headed overrides the app's `headless` config (web backend only; iOS ignores it).
+    eff = _load_effective(config, target_name)
+    # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
 
@@ -217,12 +217,12 @@ def crawl(
         say(f"⚙️  preparing {browsers} — navigating to {eff.base_url} …")
     elif workers > 1:
         say(
-            f"⚙️  preparing {workers} simulators — installing and launching {app_name} on each "
+            f"⚙️  preparing {workers} simulators — installing and launching {target_name} on each "
             "(this can take a moment) …"
         )
     else:
         say(
-            f"⚙️  preparing the simulator — installing and launching {app_name} "
+            f"⚙️  preparing the simulator — installing and launching {target_name} "
             "(this can take a moment) …"
         )
 

@@ -57,7 +57,7 @@ under [`docs/ja/`](docs/ja/README.md).
 - **A platform is a backend.** The deterministic core names no platform; the one platform-specific
   seam is the **backend** (idb / playwright / …) behind the `Driver` interface. Add or swap a
   backend and the same scenario format, runner, and CLI target a new platform unchanged —
-  per-app and per-platform differences live only in config and the chosen backend.
+  per-target and per-platform differences live only in config and the chosen backend.
 - **Evidence as rules.** "Capture on every X" is normalized into reusable rules so the
   second run reproduces the same evidence without AI.
 
@@ -148,7 +148,7 @@ Implemented and covered by tests (run without a Simulator):
   `deviceLog` interval captures (simctl), network observation + `mocks`, **visual regression**
   (baselines + `approve`), `capturePolicy` trigger rules, and secret **redaction**
 - **Reporting** (`manifest.json` + JUnit XML + self-contained interactive HTML)
-- **Config resolution** (team defaults × per-app; iOS `bundleId` or web `baseUrl`) and
+- **Config resolution** (team defaults × per-target; iOS `bundleId` or web `baseUrl`) and
   **backend selection** (stability order)
 - **simctl command layer**, **idb output parsers**, the **Playwright web driver** (first slice),
   and the **doctor** convention score + environment preflight
@@ -198,11 +198,11 @@ uv sync --group dev      # creates .venv (Python 3.13) and installs deps + dev t
 The CLI surface (full reference in [`docs/cli.md`](docs/cli.md)):
 
 ```bash
-bajutsu run    --app <name> [--scenario file.yaml]        # default: the app's whole scenarios dir
-bajutsu record --app <name> --goal "..." [--out file]     # AI explore + record (Tier 1, needs API key/login)
-bajutsu crawl  --app <name> [--max-screens N]             # AI breadth-first crawl → screen map (Tier 1)
-bajutsu doctor --app <name>                               # environment + convention score for the current screen
-bajutsu codegen <scenario.yaml> --app <name> -o UITests/Foo.swift   # emit a native XCUITest
+bajutsu run    --target <name> [--scenario file.yaml]        # default: the app's whole scenarios dir
+bajutsu record --target <name> --goal "..." [--out file]     # AI explore + record (Tier 1, needs API key/login)
+bajutsu crawl  --target <name> [--max-screens N]             # AI breadth-first crawl → screen map (Tier 1)
+bajutsu doctor --target <name>                               # environment + convention score for the current screen
+bajutsu codegen <scenario.yaml> --target <name> -o UITests/Foo.swift   # emit a native XCUITest
 bajutsu approve --baselines <dir> [--scenario s.yaml]     # promote captured screenshots to visual baselines
 bajutsu serve  [--port 8765] [--config c.yaml]            # local web UI: author + run + reports (Tier 1)
 bajutsu mcp    [--config c.yaml] [--transport stdio]      # MCP server for agent integration (needs `bajutsu[mcp]`)
@@ -228,7 +228,7 @@ defaults:
   device: "iPhone 17 Pro"
   locale: en_US
 
-apps:
+targets:
   sample:                   # iOS app — driven on the Simulator via idb
     bundleId: com.bajutsu.sample
     deeplinkScheme: bajutsusample
@@ -285,7 +285,7 @@ bajutsu/
 ├── network.py            # network observation (exchange model + collector)
 ├── visual.py             # visual-regression image comparison
 ├── redaction.py          # mask secrets in captured evidence
-├── config.py             # team defaults × per-app resolution (iOS bundleId / web baseUrl)
+├── config.py             # team defaults × per-target resolution (iOS bundleId / web baseUrl)
 ├── env.py                # simctl command layer (iOS environment)
 ├── preflight.py          # environment runnability gate for doctor / CI
 ├── doctor.py             # convention score

@@ -18,7 +18,7 @@ showcase は Bajutsu の次世代 dogfood 対象です。**同じアプリを 2 
 
 ## 4 つのプロダクト
 
-| `apps.<name>` | ツールキット | アクセシビリティ | 示すもの |
+| `targets.<name>` | ツールキット | アクセシビリティ | 示すもの |
 |---|---|---|---|
 | `showcase-swiftui` | SwiftUI | 有 | `run`（id ベース）、`doctor` → Ready |
 | `showcase-uikit` | UIKit | 有 | 同じシナリオ、別ツールキット |
@@ -62,8 +62,8 @@ make -C demos/showcase record
 または `bajutsu` を直接駆動します（常にこの群の config を渡す）:
 
 ```bash
-bajutsu run --app showcase-swiftui --backend idb --config demos/showcase/showcase.config.yaml
-bajutsu run --app showcase-swiftui --scenario demos/showcase/scenarios/modals.yaml \
+bajutsu run --target showcase-swiftui --backend idb --config demos/showcase/showcase.config.yaml
+bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals.yaml \
     --backend idb --config demos/showcase/showcase.config.yaml
 ```
 
@@ -73,7 +73,7 @@ bajutsu run --app showcase-swiftui --scenario demos/showcase/scenarios/modals.ya
 |---|---|
 | [`SPEC.md`](SPEC.md) | 画面ごとの契約（仕様書） |
 | [`swiftui/`](swiftui)、[`uikit/`](uikit) | 2 つのコードベース（xcodegen `project.yml`、各 2 ターゲット） |
-| [`showcase.config.yaml`](showcase.config.yaml) | 4 つの `apps.<name>` エントリ |
+| [`showcase.config.yaml`](showcase.config.yaml) | 4 つの `targets.<name>` エントリ |
 | [`scenarios/`](scenarios) | 共有の id ベース `run` シナリオ（両 a11y アプリを駆動） |
 | [`record/goals.txt`](record/goals.txt) | `record` A/B デモ用の自然言語ゴール |
 | [`crawl/`](crawl/expected-screen-map.ja.md) | 将来の `crawl` が生成すべき画面マップ（テストデータ） |

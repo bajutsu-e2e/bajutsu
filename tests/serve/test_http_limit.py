@@ -44,11 +44,11 @@ def test_run_rejected_at_concurrency_cap(tmp_path: Path) -> None:
     _running(state, 1)  # below the cap
     server, port = _serve(state)
     try:
-        status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
+        status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "target": "demo"})
         assert status == 200 and "jobId" in resp
 
         _running(state, 1, start=1)  # now at the cap
-        status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
+        status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "target": "demo"})
         assert status == 429 and "too many concurrent jobs" in resp["error"]
     finally:
         server.shutdown()
@@ -63,7 +63,7 @@ def test_record_rejected_at_concurrency_cap(tmp_path: Path) -> None:
     _running(state, 1)  # at the cap
     server, port = _serve(state)
     try:
-        status, resp = _post(port, "/api/record", {"goal": "tap x", "app": "demo"})
+        status, resp = _post(port, "/api/record", {"goal": "tap x", "target": "demo"})
         assert status == 429 and "too many concurrent jobs" in resp["error"]
     finally:
         server.shutdown()
@@ -83,7 +83,7 @@ def test_record_allowed_when_under_concurrency_cap(tmp_path: Path) -> None:
     _running(state, 1)  # below the cap
     server, port = _serve(state)
     try:
-        status, resp = _post(port, "/api/record", {"goal": "tap x", "app": "demo"})
+        status, resp = _post(port, "/api/record", {"goal": "tap x", "target": "demo"})
         assert status == 200 and "jobId" in resp
     finally:
         server.shutdown()
@@ -104,7 +104,7 @@ def test_unlimited_when_cap_is_zero(tmp_path: Path) -> None:
     _running(state, 5)  # would exceed any small cap, but 0 = unlimited
     server, port = _serve(state)
     try:
-        status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "app": "demo"})
+        status, resp = _post(port, "/api/run", {"scenario": "smoke.yaml", "target": "demo"})
         assert status == 200 and "jobId" in resp
     finally:
         server.shutdown()

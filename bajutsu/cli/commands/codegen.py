@@ -16,7 +16,7 @@ _EMIT_TARGETS = ("xcuitest", "playwright")
 
 def codegen(
     scenario: str,
-    app_name: str = typer.Option(..., "--app"),
+    target_name: str = typer.Option(..., "--target"),
     emit: str = typer.Option("xcuitest", "--emit", help="output format (xcuitest | playwright)"),
     out: str = typer.Option("-", "--out", "-o", help="output file, or - for stdout"),
     config: str = typer.Option(DEFAULT_CONFIG),
@@ -25,7 +25,7 @@ def codegen(
     if emit not in _EMIT_TARGETS:
         typer.echo(f"unsupported --emit: {emit} (one of {', '.join(_EMIT_TARGETS)})")
         raise typer.Exit(2)
-    eff = _load_effective(config, app_name)
+    eff = _load_effective(config, target_name)
     scenario_path = Path(scenario)
     if not scenario_path.exists():
         typer.echo(f"scenario not found: {scenario}")
@@ -34,7 +34,7 @@ def codegen(
     stem = Path(out).stem if out != "-" else scenario_path.stem
     if emit == "playwright":
         if not eff.base_url:
-            typer.echo(f"--emit playwright needs apps.{app_name}.baseUrl (a web target)")
+            typer.echo(f"--emit playwright needs targets.{target_name}.baseUrl (a web target)")
             raise typer.Exit(2)
         code = to_playwright(scenarios, describe_name_for(stem), eff.base_url, eff.launch_env)
     else:

@@ -8,7 +8,7 @@
 > validated against a known-good map the day it lands. Run it then with:
 >
 > ```bash
-> bajutsu crawl --app showcase-swiftui --config demos/showcase/showcase.config.yaml \
+> bajutsu crawl --target showcase-swiftui --config demos/showcase/showcase.config.yaml \
 >     --seed showcaseswiftui://permissions
 > ```
 

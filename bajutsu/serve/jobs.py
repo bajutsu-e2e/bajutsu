@@ -26,7 +26,7 @@ from bajutsu.config import DEFAULT_ORG
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
-from bajutsu.serve.helpers import app_scenarios_dir
+from bajutsu.serve.helpers import target_scenarios_dir
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
 from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
@@ -178,7 +178,7 @@ class ServeState:
         # default them to the local stores here (a server backend overwrites them afterwards).
         self.artifacts = LocalArtifactStore(self.runs_dir)
         # Resolve the dir lazily through a closure so a config opened from the UI later is reflected.
-        self.scenarios = LocalScenarioStore(lambda app: _scenarios_dir_for(self, app))
+        self.scenarios = LocalScenarioStore(lambda target: _scenarios_dir_for(self, target))
         self.baselines = LocalBaselineStore(self.baselines_dir)
 
     def org_of(self, actor: str | None) -> str:
@@ -248,14 +248,14 @@ class ServeState:
             return self._register(job)
 
 
-def _scenarios_dir_for(state: ServeState, app: str | None) -> Path | None:
-    """The scenarios dir to list/save for *app*: the ``--scenarios`` override if set, else the
-    app's configured dir.  None when neither is available."""
+def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
+    """The scenarios dir to list/save for *target*: the ``--scenarios`` override if set, else the
+    target's configured dir.  None when neither is available."""
     if state.scenarios_dir is not None:
         return state.scenarios_dir
-    if state.config is None or not app:
+    if state.config is None or not target:
         return None
-    return app_scenarios_dir(state.config, app)
+    return target_scenarios_dir(state.config, target)
 
 
 def _spawn_env() -> dict[str, str]:

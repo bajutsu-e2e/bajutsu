@@ -16,11 +16,11 @@
 ## 使い方
 
 ```bash
-bajutsu codegen <scenario.yaml> --app <name> [--emit xcuitest | playwright] [-o <out>]
+bajutsu codegen <scenario.yaml> --target <name> [--emit xcuitest | playwright] [-o <out>]
 ```
 
 `--emit` は `xcuitest`（既定）または `playwright` です。`-o -`（既定）なら標準出力に、ファイルパスなら
-そのファイルに書き出します。`--emit playwright` は対象が web ターゲットであること（`apps.<name>.baseUrl` の
+そのファイルに書き出します。`--emit playwright` は対象が web ターゲットであること（`targets.<name>.baseUrl` の
 設定）を要求し、未設定なら終了コード 2 で終わります。config の `launchEnv` は生成テストに引き継がれます
 （[cli](cli.md#codegen)）。XCUITest では `app.launchEnvironment` に、Playwright では `localStorage` のシードに
 反映されます。

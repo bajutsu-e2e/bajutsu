@@ -101,9 +101,9 @@ always by `id`, so scenarios do not change
 ## 6. App-agnostic (push differences into config)
 
 The tool core, the drivers, and the runner do not depend on any app. To target a new app, you
-change **the app-side preparation (adding identifiers, etc.) and one `apps.<name>` config entry**
+change **the app-side preparation (adding identifiers, etc.) and one `targets.<name>` config entry**
 — nothing else. Each app's determinism is guaranteed by the same implementation convention
-([onboarding in configuration](configuration.md#onboarding-a-new-app)).
+([onboarding in configuration](configuration.md#onboarding-a-new-target)).
 
 The same move makes Bajutsu **platform-agnostic**: a platform is a **backend** behind the `Driver`
 interface (the actuator, §5). A new target — web (`playwright`) today, Android (`adb`) next — is a

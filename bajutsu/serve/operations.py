@@ -27,20 +27,20 @@ from bajutsu.anthropic_client import (
     PROVIDERS,
     provider,
 )
-from bajutsu.config import apps_for_org, load_config, org_for_app, org_for_identity
+from bajutsu.config import load_config, org_for_identity, org_for_target, targets_for_org
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs
 from bajutsu.serve.helpers import (
     _int,
-    app_build_info,
     crawl_command,
-    list_apps,
     list_fs,
     list_simulators,
+    list_targets,
     load_config_file,
     mask_secret,
     record_command,
     run_command,
+    target_build_info,
     valid_backend,
     valid_run_id,
     valid_scenario_ref,
@@ -82,28 +82,28 @@ def _bool_flag(body: dict[str, Any], key: str) -> bool | None:
 
 
 def list_scenarios(
-    state: ServeState, app: str | None, *, actor: str | None = None
+    state: ServeState, target: str | None, *, actor: str | None = None
 ) -> tuple[Any, int]:
-    # Hide an app that belongs to another org (non-leaky: an empty list, not a 403) — BE-0015
+    # Hide a target that belongs to another org (non-leaky: an empty list, not a 403) — BE-0015
     # multi-tenancy. The scenarios come from the actor's org-scoped store.
     org = state.org_of(actor)
-    if app is not None and _app_forbidden(state, org, app):
+    if target is not None and _target_forbidden(state, org, target):
         return [], 200
-    scope = state.for_org(org).scenarios.scope(app)
+    scope = state.for_org(org).scenarios.scope(target)
     return (scope.list() if scope else []), 200
 
 
 def _primary_backend(config: Any, name: str) -> str:
-    """The app's first (effective) backend token, so the Web UI can tell web from iOS apps."""
-    app = config.apps.get(name)
-    if app is None:
+    """The target's first (effective) backend token, so the Web UI can tell web from iOS apps."""
+    target = config.targets.get(name)
+    if target is None:
         return ""
-    backends = app.backend or config.defaults.backend
+    backends = target.backend or config.defaults.backend
     return backends[0] if backends else ""
 
 
-def list_apps_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
-    # Each app carries its primary backend, so selecting a web app can hide the iOS-only controls
+def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+    # Each target carries its primary backend, so selecting a web target can hide the iOS-only controls
     # (and show the headed toggle) without the user typing the backend by hand.
     if state.config is None:
         return [], 200
@@ -111,11 +111,11 @@ def list_apps_payload(state: ServeState, *, actor: str | None = None) -> tuple[A
     if config is None:
         return [], 200
     # Org scoping applies only on a server backend with a system of record; local serve / token mode
-    # ignores `orgs:` and lists every app (BE-0015 multi-tenancy).
+    # ignores `orgs:` and lists every target (BE-0015 multi-tenancy).
     if state.repository is None:
-        names = list_apps(state.config)
+        names = list_targets(state.config)
     else:
-        names = sorted(apps_for_org(config, state.org_of(actor)))
+        names = sorted(targets_for_org(config, state.org_of(actor)))
     return [{"name": n, "backend": _primary_backend(config, n)} for n in names], 200
 
 
@@ -177,13 +177,13 @@ def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, i
 
 
 def read_scenario(
-    state: ServeState, app: str | None, path: str | None, *, actor: str | None = None
+    state: ServeState, target: str | None, path: str | None, *, actor: str | None = None
 ) -> tuple[Any, int]:
-    # A scenario in another org's app reads as not-found (non-leaky) — BE-0015 multi-tenancy.
+    # A scenario in another org's target reads as not-found (non-leaky) — BE-0015 multi-tenancy.
     org = state.org_of(actor)
-    if app is not None and _app_forbidden(state, org, app):
+    if target is not None and _target_forbidden(state, org, target):
         return {"error": "not found"}, 404
-    scope = state.for_org(org).scenarios.scope(app)
+    scope = state.for_org(org).scenarios.scope(target)
     text = scope.read(path) if scope else None
     if text is None:
         return {"error": "not found"}, 404
@@ -331,18 +331,18 @@ def _org_for_login(state: ServeState, login: str, github_orgs: list[str]) -> str
     return org_for_identity(config, login, github_orgs) if config is not None else _DEFAULT_ORG
 
 
-def _app_forbidden(state: ServeState, org: str, app: str) -> bool:
-    """True when an actor resolved to *org* may not touch *app* because the app belongs to a
+def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
+    """True when an actor resolved to *org* may not touch *target* because the target belongs to a
     different org (BE-0015 multi-tenancy). Org scoping applies only on a server backend with a
     system of record; local serve / token mode has no identity to scope to and ignores `orgs:`
-    entirely. An app not declared under `apps:` is "unknown", not cross-org — the caller handles it
-    as a missing app downstream. *org* is resolved once by the caller (via `ServeState.org_of`)."""
+    entirely. A target not declared under `targets:` is "unknown", not cross-org — the caller handles it
+    as a missing target downstream. *org* is resolved once by the caller (via `ServeState.org_of`)."""
     if state.repository is None:
         return False
     config = load_config_file(state.config)
-    if config is None or app not in config.apps:
+    if config is None or target not in config.targets:
         return False
-    return org_for_app(config, app) != org
+    return org_for_target(config, target) != org
 
 
 def _record_audit(
@@ -420,7 +420,7 @@ def _confined_config_path(root: Path, raw: str) -> Path | None:
 
 def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
-    validate it loads, then re-point ``state.config`` so apps/scenarios come from it."""
+    validate it loads, then re-point ``state.config`` so targets/scenarios come from it."""
     if not raw:
         return {"error": "path is required"}, 400
     target = _confined_config_path(state.root, raw)
@@ -433,7 +433,7 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
     state.config = target
-    return {"ok": True, "config": str(target), "apps": list_apps(target)}, 200
+    return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
 def set_api_key(state: ServeState, value: str) -> tuple[Any, int]:
@@ -489,25 +489,27 @@ def start_run(
     cfg = state.config
     if cfg is None:
         return {"error": "open a config first"}, 400
-    if not body.get("scenario") or not body.get("app"):
-        return {"error": "scenario and app are required"}, 400
-    app = str(body["app"])
+    if not body.get("scenario") or not body.get("target"):
+        return {"error": "scenario and target are required"}, 400
+    target = str(body["target"])
     org = state.org_of(actor)
-    # Deny an app that belongs to another org (BE-0015 multi-tenancy); single-tenant never forbids.
-    if _app_forbidden(state, org, app):
+    # Deny a target that belongs to another org (BE-0015 multi-tenancy); single-tenant never forbids.
+    if _target_forbidden(state, org, target):
         return {"error": "forbidden"}, 403
-    # Confine the scenario to the app's own scenarios dir: a serve client must not be able to run an
+    # Confine the scenario to the target's own scenarios dir: a serve client must not be able to run an
     # arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite). The scenario store
     # is scoped to the actor's org so the run reads that org's scenarios.
-    scope = state.for_org(org).scenarios.scope(app)
+    scope = state.for_org(org).scenarios.scope(target)
     if scope is None:
-        return {"error": f"app '{app}' has no scenarios dir"}, 400
+        return {"error": f"target '{target}' has no scenarios dir"}, 400
     # The store resolves the client value to a trusted runnable — never the client string — so no
     # client-controlled value reaches a filesystem path (BE-0051 arbitrary-path guard). On the
     # server backend it also carries the scenario text as `materials` for a remote worker.
     runnable = scope.runnable(str(body["scenario"]))
     if runnable is None:
-        return {"error": "scenario must be an existing .yaml inside the app's scenarios dir"}, 400
+        return {
+            "error": "scenario must be an existing .yaml inside the target's scenarios dir"
+        }, 400
     backend, udid, err = _device_args(body)
     if err:
         return err
@@ -523,7 +525,7 @@ def start_run(
     # control plane's baselines live in object storage); locally the real dir is used directly.
     cmd = run_command(
         runnable.arg,
-        app,
+        target,
         backend=backend,
         udid=udid,
         workers=_int(body.get("workers"), 1),
@@ -533,7 +535,7 @@ def start_run(
         baselines="baselines" if on_worker else str(state.baselines_dir),
         headed=_bool_flag(body, "headed"),
     )
-    app_path, build = app_build_info(cfg, app)
+    app_path, build = target_build_info(cfg, target)
     # Atomic count + create so concurrent dispatches can't both slip past the cap.
     job = state.try_register(
         Job(
@@ -551,7 +553,7 @@ def start_run(
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)
     _record_audit(
-        state, actor, org, "run", f"{app}/{body['scenario']}", {"backend": backend or None}
+        state, actor, org, "run", f"{target}/{body['scenario']}", {"backend": backend or None}
     )
     return {"jobId": job.id}, 200
 
@@ -560,19 +562,19 @@ def start_record(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
     """Author a scenario from a natural-language goal (the Record tab).  The authored file lands in
-    the selected app's configured scenarios dir."""
+    the selected target's configured scenarios dir."""
     cfg = state.config
     if cfg is None:
         return {"error": "open a config first"}, 400
-    if not body.get("goal") or not body.get("app"):
-        return {"error": "goal and app are required"}, 400
-    app = str(body["app"])
+    if not body.get("goal") or not body.get("target"):
+        return {"error": "goal and target are required"}, 400
+    target = str(body["target"])
     org = state.org_of(actor)
-    if _app_forbidden(state, org, app):
+    if _target_forbidden(state, org, target):
         return {"error": "forbidden"}, 403
-    scope = state.for_org(org).scenarios.scope(app)
+    scope = state.for_org(org).scenarios.scope(target)
     if scope is None:
-        return {"error": f"app '{body['app']}' has no scenarios dir"}, 400
+        return {"error": f"target '{body['target']}' has no scenarios dir"}, 400
     authored = scope.authored(str(body.get("name") or "generated"))
     # Validate the device args the same way start_run does (BE-0051): no free-text backend or udid
     # reaches the spawned `bajutsu record` argv. The output path is confined by `authored` above.
@@ -589,7 +591,7 @@ def start_record(
         materials[config_arg] = cfg.read_text(encoding="utf-8")
     cmd = record_command(
         authored.out,
-        body["app"],
+        body["target"],
         str(body["goal"]),
         agent=body.get("agent", ""),
         backend=backend,
@@ -599,7 +601,7 @@ def start_record(
         headed=_bool_flag(body, "headed"),
         config=config_arg,
     )
-    app_path, build = app_build_info(cfg, body["app"])
+    app_path, build = target_build_info(cfg, body["target"])
     job = state.try_register(
         Job(
             cmd=cmd,
@@ -616,7 +618,7 @@ def start_record(
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)
-    _record_audit(state, actor, org, "record", str(body["app"]), {"goal": str(body["goal"])})
+    _record_audit(state, actor, org, "record", str(body["target"]), {"goal": str(body["goal"])})
     # Report the saved ref on the server (what the UI loads), else the on-disk path.
     return {"jobId": job.id, "path": authored.save[1] if authored.save else authored.out}, 200
 
@@ -624,16 +626,16 @@ def start_record(
 def start_crawl(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
-    """Explore an app breadth-first and build a screen map (the Crawl tab).  The screen map is
+    """Explore a target breadth-first and build a screen map (the Crawl tab).  The screen map is
     streamed into ``runs/<runId>/screenmap.json``; the returned ``runId`` lets the UI poll it."""
     cfg = state.config
     if cfg is None:
         return {"error": "open a config first"}, 400
-    if not body.get("app"):
-        return {"error": "app is required"}, 400
-    app = str(body["app"])
+    if not body.get("target"):
+        return {"error": "target is required"}, 400
+    target = str(body["target"])
     org = state.org_of(actor)
-    if _app_forbidden(state, org, app):
+    if _target_forbidden(state, org, target):
         return {"error": "forbidden"}, 403
     # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
     resume_src = str(body.get("resumeSrc", "") or "")
@@ -648,7 +650,7 @@ def start_crawl(
     if err:
         return err
     cmd = crawl_command(
-        app,
+        target,
         out=str(state.runs_dir / run_id),
         agent=body.get("agent", ""),
         backend=backend,
@@ -663,7 +665,7 @@ def start_crawl(
         resume_src=resume_src if resuming else "",
         resume_key=resume_key if resuming else "",
     )
-    app_path, build = app_build_info(cfg, app)
+    app_path, build = target_build_info(cfg, target)
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
     job = state.try_register(
         Job(
@@ -678,22 +680,22 @@ def start_crawl(
     if job is None:
         return {"error": "too many concurrent jobs; try again shortly"}, 429
     state.executor.dispatch(state, job)
-    _record_audit(state, actor, org, "crawl", app, {"runId": run_id})
+    _record_audit(state, actor, org, "crawl", target, {"runId": run_id})
     return {"jobId": job.id, "runId": run_id}, 200
 
 
 def save_scenario(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
-    """Save an edited scenario back to its ``*.yaml`` (bounded to the app's scenarios dir)."""
-    app = str(body.get("app") or "") or None
+    """Save an edited scenario back to its ``*.yaml`` (bounded to the target's scenarios dir)."""
+    target = str(body.get("target") or "") or None
     org = state.org_of(actor)
-    # Deny saving into another org's app (BE-0015 multi-tenancy); single-tenant never forbids.
-    if app is not None and _app_forbidden(state, org, app):
+    # Deny saving into another org's target (BE-0015 multi-tenancy); single-tenant never forbids.
+    if target is not None and _target_forbidden(state, org, target):
         return {"error": "forbidden"}, 403
     # Resolve the scope and screen the ref before parsing: a non-saveable path is reported ahead of
     # a YAML error (the local store passes an absolute path inside its dir).
-    scope = state.for_org(org).scenarios.scope(app)
+    scope = state.for_org(org).scenarios.scope(target)
     ref = body.get("path")
     ref = ref if isinstance(ref, str) else None
     if scope is None or not valid_scenario_ref(ref, allow_absolute=True):

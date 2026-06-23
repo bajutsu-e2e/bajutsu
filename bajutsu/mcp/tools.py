@@ -14,13 +14,13 @@ from bajutsu.doctor import render, score
 from bajutsu.drivers.base import Driver
 
 
-def _load_effective(config_path: Path, app: str) -> Effective:
+def _load_effective(config_path: Path, target: str) -> Effective:
     """Load config and resolve effective settings. Raises ValueError on failure."""
     if not config_path.exists():
         raise ValueError(f"config not found: {config_path}")
     cfg = load_config(config_path.read_text(encoding="utf-8"))
     try:
-        return resolve(cfg, app)
+        return resolve(cfg, target)
     except KeyError as e:
         raise ValueError(e.args[0] if e.args else str(e)) from None
 
@@ -34,12 +34,12 @@ def make_driver(actuator: str, udid: str) -> Driver:
 def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
     @mcp.tool()
-    def bajutsu_doctor(app: str, udid: str = "booted") -> str:
+    def bajutsu_doctor(target: str, udid: str = "booted") -> str:
         """Score the current screen's accessibility convention readiness.
 
         Returns the grade (Ready / Partial / Blocked) and a breakdown of
         id coverage, namespace conformance, and duplicates."""
-        eff = _load_effective(config_path, app)
+        eff = _load_effective(config_path, target)
         backends = eff.backend
         actuator = select_actuator(backends)
         driver = make_driver(actuator, udid)
@@ -49,7 +49,7 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
     @mcp.tool()
     def bajutsu_run(
-        app: str,
+        target: str,
         scenario: str = "",
         udid: str = "booted",
         tag: str = "",
@@ -60,15 +60,15 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
         """Run E2E scenarios deterministically. Pass/fail is machine-only.
 
         Returns a summary with the manifest path. The scenario parameter is
-        a path to a *.yaml file; if omitted, all scenarios in the app's
+        a path to a *.yaml file; if omitted, all scenarios in the target's
         configured directory are run."""
         cmd = [
             sys.executable,
             "-m",
             "bajutsu",
             "run",
-            "--app",
-            app,
+            "--target",
+            target,
             "--config",
             str(config_path),
             "--udid",
