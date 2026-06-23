@@ -267,7 +267,7 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
 | `--max-steps` | `200` | stop after taking this many actions |
 | `--agent` | `$BAJUTSU_AGENT` or `api` | AI backend for the crawl guide: `api` (the Anthropic SDK, pay-per-token; uses the configured AI provider — `ANTHROPIC_API_KEY` for Anthropic, or AWS credentials + `BAJUTSU_BEDROCK_MODEL` when `BAJUTSU_AI_PROVIDER=bedrock`) or `claude-code` (the Claude Code CLI, drawing on your subscription — text-only, like `record --agent claude-code`). Omitted, it follows `$BAJUTSU_AGENT` (which `serve` sets from its Settings selector), then `api` |
 | `--udid` | `booted` | the target Simulator — or a comma list (`A,B,C`) for a parallel pool (see `--workers`) |
-| `--workers` | `1` | crawl across this many simulators at once ([BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)), sharing one screen map; capped to the number of `--udid` devices. `1` = single-device crawl. iOS only |
+| `--workers` | `1` | crawl with this many workers at once, sharing one screen map: across this many simulators on iOS ([BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md), capped to the `--udid` devices) or this many browser processes on web ([BE-0077](../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)). `1` = single-worker crawl |
 | `--backend` | config | actuator order |
 | `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
 | `--dismiss-alerts / --no-dismiss-alerts` | `--dismiss-alerts` | dismiss unexpected OS prompts while crawling (so they aren't read as crashes; uses the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock) |
@@ -317,7 +317,12 @@ bajutsu crawl --app <name> [--max-screens N] [--max-steps N] [--out <dir>] [opti
   for an app with its own non-determinism the recorded paths and discovery order can vary run to run,
   but screen identity, transitions and crashes stay the same deterministic functions of the element
   tree (the crawl is still never a verdict). A wedged device drops its work and the others carry on.
-  Default `--workers 1` is the single-device crawl, unchanged. (iOS only; a web crawl is one browser.)
+  Default `--workers 1` is the single-worker crawl, unchanged. On **web** the same model runs N
+  **browser processes** instead of simulators
+  ([BE-0077](../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)): the
+  worker count alone sizes the lane set (the web has no devices), each reset is a fresh browser
+  context (the clean-state `erase`), and a browser that wedges is torn down and relaunched so one bad
+  browser can't sink the crawl.
 
 ### How a screen is identified (the fingerprint)
 

@@ -371,8 +371,9 @@ def crawl_command(
     Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
     (``<out>/screenmap.json``, which the UI polls live); ``erase`` mirrors ``run_command`` (None
     leaves the CLI default — crawl erases by default). ``udid`` may be a comma list and
-    ``workers > 1`` crawls across that many simulators at once, sharing one screen map (BE-0064;
-    capped to the pool size by the CLI). Crawl is AI-driven, so ``agent`` is the brain that
+    ``workers > 1`` crawls with that many workers at once, sharing one screen map: across that many
+    simulators on iOS (BE-0064, capped to the pool size by the CLI) or that many browser processes
+    on web (BE-0077). Crawl is AI-driven, so ``agent`` is the brain that
     proposes what to try ("api" / "claude-code"); blank leaves the CLI default. When ``resume_src``
     / ``resume_key`` are set, ``out`` points at an existing run and the crawl resumes one pruned
     branch, appending to that run's map instead of starting a fresh one."""

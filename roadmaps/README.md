@@ -246,6 +246,7 @@ Running the autonomous crawl across more than one device so a full screen map is
 | ID | Item | Status |
 |---|---|---|
 | [BE-0064](implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Implemented |
+| [BE-0077](implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) | Parallel web crawl across multiple browsers | Implemented |
 <!-- /GENERATED:accepted-crawl -->
 
 ## Proposals
@@ -355,7 +356,6 @@ git-tracked files ([DESIGN §6.5](../DESIGN.md)).
 <!-- GENERATED:proposals-crawl -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0077](proposals/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) | Parallel web crawl across multiple browsers | Proposal |
 <!-- /GENERATED:proposals-crawl -->
 
 ### Development infrastructure (contributor workflow)

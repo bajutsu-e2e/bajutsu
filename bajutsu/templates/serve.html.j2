@@ -126,9 +126,10 @@
     <div class="card">
       <div class="panel" id="panel-crawl">
         <label>App</label><select id="crawl-app" data-testid="crawl.app"></select>
-        <div class="row iosonly" style="align-items:flex-end">
+        <div class="row" style="align-items:flex-end">
           <div><label>Workers</label><input id="crawl-workers" type="number" min="1" value="1"></div>
         </div>
+        <div class="subhint webonly">Crawl this many browser processes at once, sharing one screen map (BE-0077): independent branches explore in parallel and the AI guide's round-trips overlap, so the map builds faster. Each worker is its own browser, so one that wedges is relaunched without sinking the crawl. 1 = a single browser.</div>
         <div class="hhead iosonly"><span>Simulators</span><button class="refresh" id="crawl-simrefresh" title="refresh devices">&#8635;</button></div>
         <div class="sims iosonly" id="crawl-sims"></div>
         <div class="subhint iosonly">Pick the simulators to crawl on &mdash; shut-down ones are booted (and waited for) first. Pick two or more (Workers auto-tracks the count) to crawl across them in parallel: they share one screen map, so independent branches explore at once and the AI guide's round-trips overlap (BE-0064). None picked = the already-booted device.</div>
