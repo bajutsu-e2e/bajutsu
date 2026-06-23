@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0025](BE-0025-coordinate-swipe-generation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#217](https://github.com/bajutsu-e2e/bajutsu/pull/217) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
