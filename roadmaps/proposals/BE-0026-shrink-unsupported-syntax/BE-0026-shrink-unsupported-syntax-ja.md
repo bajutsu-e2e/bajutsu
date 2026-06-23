@@ -7,8 +7,8 @@
 |---|---|
 | 提案 | [BE-0026](BE-0026-shrink-unsupported-syntax-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
-| トラック | [提案](../../README-ja.md#提案) |
+| 状態 | **可決・実装中** |
+| トラック | [可決済み](../../README-ja.md#可決済み) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
@@ -54,6 +54,21 @@
 AI 非依存な構造マッピングが存在するときに限る。** 生成時に意図の推測を要するものは `// TODO` の
 ままにします。誤った翻訳よりも、レビュー可能で誠実な欠落の方が良いからです。これにより codegen の
 「純粋に構造的で AI 非依存」という保証を保ったまま、チームに必要な手作業移植を着実に減らします。
+
+### 実装状況
+
+**複合セレクタ**のスライスを提供しました（`bajutsu/codegen.py`）。単一の `id` / `label` / `idMatches` /
+`labelMatches` は読みやすいヘルパをそのまま使い、`value`・`traits`・`within`・`index`（単独でも組み合わせでも）は
+`el("UNSUPPORTED_SELECTOR")` に落とさず 1 つの `NSPredicate` クエリに合成します。trait は小さな語彙の上で忠実に
+写します（`button` / `link` → `elementType`、`notEnabled` → `enabled == NO`、`selected` → `selected == YES`）。
+`within` はコンテナの `descendants` にスコープし、非負の `index` は `element(boundBy:)` になります。**負の index** と
+**未知の trait** だけが未対応として残ります（誤った推測ではなく正直なギャップ）。**デバイス制御**ステップ
+（`setLocation` / `push`）は、素の「unsupported step」ではなく `simctl` コマンド名を明記したラベル付き `// TODO` を
+出力するようにしました。
+
+設計上、引き続き明示的な `// TODO` のままにするもの（忠実な構造的 XCUITest 写像が無いため）: ネットワークの
+`request` アサーションと `until: { request }` wait。統制ルールは不変です。決定的で AI 非依存の写像が存在するときだけ、
+構文はフォールバック集合から外れます。
 
 ## 検討した代替案
 

@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0026](BE-0026-shrink-unsupported-syntax.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
+| Status | **Accepted, in progress** |
+| Track | [Accepted](../../README.md#accepted) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -55,6 +55,22 @@ only when a faithful, deterministic, AI-free structural mapping exists.** Anythi
 require inferring intent at generation time stays a `// TODO` — a reviewable, honest gap is
 better than a wrong translation. This keeps codegen's "purely structural, AI-independent"
 guarantee intact while steadily reducing the hand-porting a team must do.
+
+### Implementation status
+
+The **compound-selector** slice shipped (`bajutsu/codegen.py`): a single
+`id` / `label` / `idMatches` / `labelMatches` keeps its readable helper, while `value`, `traits`,
+`within`, and `index` (alone or combined) now compose one `NSPredicate` query instead of dropping to
+`el("UNSUPPORTED_SELECTOR")`. Traits map faithfully over the small vocabulary (`button` / `link` →
+`elementType`, `notEnabled` → `enabled == NO`, `selected` → `selected == YES`); `within` scopes into
+the container's `descendants`; a non-negative `index` becomes `element(boundBy:)`. Only a **negative
+index** or an **unknown trait** stays unsupported — an honest gap, never a wrong guess. The
+**device-control** steps (`setLocation` / `push`) now emit a labeled `// TODO` naming the `simctl`
+command, rather than a bare "unsupported step."
+
+Still an explicit `// TODO` by design (no faithful structural XCUITest form): the network `request`
+assertion and `until: { request }` wait. The governing rule holds — a construct leaves the fallback
+set only when a deterministic, AI-free mapping exists.
 
 ## Alternatives considered
 

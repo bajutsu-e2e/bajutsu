@@ -56,10 +56,31 @@ final class ComponentsUITests: XCTestCase {
 }
 ```
 
-- The helpers `el(id)` / `byLabel(label)` / `matchingId(glob)` bridge the three selector forms
-  (id / label / idMatches) to an XCUIElement.
+- The helpers `el(id)` / `byLabel(label)` / `matchingId(glob)` bridge the three single-field
+  selector forms (id / label / idMatches) to an XCUIElement.
 - Each method sets `launchEnvironment` then `app.launch()` at the top. The env is the merge of
   **config's `launchEnv` < the scenario's `preconditions.launchEnv`** (the test side wins).
+
+### Selector mapping (XCUITest)
+
+A single `id` / `label` / `idMatches` / `labelMatches` keeps its readable helper above. Any
+**compound** selector — `value`, `traits`, `within`, `index`, or several fields together — composes
+one `NSPredicate` query instead (BE-0026), so it generates structurally rather than dropping to a
+`// TODO`:
+
+| `Selector` field | Generated XCUITest |
+|---|---|
+| `id` / `idMatches` | `identifier == %@` / `identifier LIKE %@` |
+| `label` / `labelMatches` | `label == %@` / `label LIKE "*…*"` |
+| `value` | `value == %@` |
+| `traits: [button \| link]` | `elementType == XCUIElement.ElementType.<case>.rawValue` |
+| `traits: [notEnabled]` / `[selected]` | `enabled == NO` / `selected == YES` |
+| `within: <Selector>` | scoped to `<container>.descendants(matching: .any)` |
+| `index: n` (n ≥ 0) | `.element(boundBy: n)` (else `.firstMatch`) |
+
+All set fields are **AND**-ed into the predicate. Only a **negative `index`** or an **unknown
+trait** has no faithful structural form and stays `el("UNSUPPORTED_SELECTOR")` — an honest gap, not
+a wrong guess.
 
 ## Mapping table
 
@@ -90,9 +111,11 @@ final class ComponentsUITests: XCTestCase {
 
 ## Unsupported constructs fall back to TODO comments
 
-Unsupported constructs (coordinate swipes, unknown selectors, etc.) emit a **`// TODO` line rather
-than failing**. The output is always reviewable and never breaks the generated result. The generated
-file header also states "do not edit by hand; re-generate." This holds for both targets.
+Unsupported constructs (coordinate swipes, `simctl`-level device control like `setLocation` /
+`push`, network `request` assertions, a negative `index`, an unknown trait) emit a **`// TODO` line
+rather than failing** — device-control steps name the `simctl` command a reviewer would run. The
+output is always reviewable and never breaks the generated result. The generated file header also
+states "do not edit by hand; re-generate." This holds for both targets.
 
 ## Playwright (web) target
 
