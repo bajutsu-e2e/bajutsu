@@ -384,7 +384,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-codegen -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation-ja.md) | 座標 swipe の生成 | 提案 |
 <!-- /GENERATED:proposals-codegen -->
 
 ### 開発基盤（コントリビュータ体験）

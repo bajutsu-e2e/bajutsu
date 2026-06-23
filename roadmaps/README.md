@@ -391,7 +391,6 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 <!-- GENERATED:proposals-codegen -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### Development infrastructure (contributor workflow)

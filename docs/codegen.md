@@ -97,7 +97,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `type` (with `into`) | `el(id).tap()` + `.typeText(...)` |
 | `type` (no `into`) | `app.typeText(...)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
-| `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
+| `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))` — an `XCUICoordinate` drag (BE-0025) |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
 | `wait { until: screenChanged/settled }` | a comment (XCUITest auto-waits for hittability) |
@@ -117,11 +117,12 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 
 ## Unsupported constructs fall back to TODO comments
 
-Unsupported constructs (coordinate swipes, `simctl`-level device control like `setLocation` /
-`push`, network `request` assertions, a negative `index`, an unknown trait) emit a **`// TODO` line
-rather than failing** — device-control steps name the `simctl` command a reviewer would run. The
-output is always reviewable and never breaks the generated result. The generated file header also
-states "do not edit by hand; re-generate." This holds for both targets.
+Unsupported constructs (`simctl`-level device control like `setLocation` / `push`, network
+`request` assertions, a negative `index`, an unknown trait, and coordinate swipes on the Playwright
+target) emit a **`// TODO` line rather than failing** — device-control steps name the `simctl`
+command a reviewer would run. The output is always reviewable and never breaks the generated result.
+The generated file header also states "do not edit by hand; re-generate." This holds for both
+targets.
 
 ## Playwright (web) target
 

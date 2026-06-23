@@ -6,7 +6,8 @@ idb, or AI at test time, and XCUITest waits for hittability itself. The mapping 
 purely structural (no AI).
 
 Coverage: tap (by id or label) / doubleTap / type / longPress / swipe
-(on+direction) / pinch (withScale) / rotate (radians) / wait (for, until gone) /
+(on+direction, or from/to as an XCUICoordinate drag) / pinch (withScale) /
+rotate (radians) / wait (for, until gone) /
 assertions (exists, notExists, value, label, enabled, disabled, selected, count).
 Selectors map their compound forms too (BE-0026): a single id/label/idMatches/labelMatches
 keeps its readable helper, while value / traits / within / index (or several fields together)
@@ -195,6 +196,11 @@ def _emit_step(step: Step) -> list[str]:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:
             return [f"{_element(sw.on.as_selector())}.{_SWIFT_DIRECTION[sw.direction]}()"]
+        if sw.from_ is not None and sw.to is not None:
+            # A coordinate drag via XCUICoordinate (BE-0025), mirroring the idb backend's short
+            # press duration so SwiftUI reads it as a pan, not an instantaneous flick.
+            (fx, fy), (tx, ty) = sw.from_, sw.to
+            return [f"coord({fx}, {fy}).press(forDuration: 0.1, thenDragTo: coord({tx}, {ty}))"]
         return ["// TODO: coordinate swipe (from/to) is not generated"]
     if step.wait is not None:
         w = step.wait
@@ -311,6 +317,10 @@ def to_xcuitest(
         "  private func matchingId(_ glob: String) -> XCUIElementQuery {",
         "    app.descendants(matching: .any).matching("
         'NSPredicate(format: "identifier LIKE %@", glob))',
+        "  }",
+        "  private func coord(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {",
+        "    app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))"
+        ".withOffset(CGVector(dx: x, dy: y))",
         "  }",
         "",
     ]

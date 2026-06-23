@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0025](BE-0025-coordinate-swipe-generation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| トラック | [承認済み](../../README-ja.md#承認済み) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 

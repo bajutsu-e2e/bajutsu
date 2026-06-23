@@ -96,7 +96,7 @@ final class ComponentsUITests: XCTestCase {
 | `type`（`into` あり） | `el(id).tap()` + `.typeText(...)` |
 | `type`（`into` なし） | `app.typeText(...)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
-| `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
+| `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))`（`XCUICoordinate` のドラッグ。BE-0025） |
 | `wait { for }` | `XCTAssertTrue(el(...).waitForExistence(timeout:))` |
 | `wait { until: gone }` | `.waitForNonExistence(timeout:)` |
 | `wait { until: screenChanged/settled }` | コメント（XCUITest は hittability を自動待機） |
@@ -116,11 +116,11 @@ final class ComponentsUITests: XCTestCase {
 
 ## 未対応は TODO コメントに落とす
 
-未対応の構文（座標スワイプ、`simctl` レベルのデバイス制御 `setLocation` / `push`、ネットワークの `request`
-アサーション、負の `index`、未知の trait）は、失敗させずに `// TODO` 行を出力します。デバイス制御ステップは
-レビュー担当が実行する `simctl` コマンド名を明記します。出力は常に
-レビューでき、生成結果を壊しません。生成ファイルの先頭にも「手で編集せず再生成せよ」と明記します。これは
-両方の出力先に共通です。
+未対応の構文（`simctl` レベルのデバイス制御 `setLocation` / `push`、ネットワークの `request`
+アサーション、負の `index`、未知の trait、および Playwright 出力先での座標スワイプ）は、失敗させずに
+`// TODO` 行を出力します。デバイス制御ステップはレビュー担当が実行する `simctl` コマンド名を明記します。
+出力は常にレビューでき、生成結果を壊しません。生成ファイルの先頭にも「手で編集せず再生成せよ」と明記します。
+これは両方の出力先に共通です。
 
 ## Playwright（web）の出力
 
