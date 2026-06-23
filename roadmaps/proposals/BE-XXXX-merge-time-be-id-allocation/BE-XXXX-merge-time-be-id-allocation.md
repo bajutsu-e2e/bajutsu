@@ -166,11 +166,17 @@ Each load-bearing assumption, made concrete:
   slug and assigns consecutive ids. The push-back can race a later merge; the `fetch` + `rebase` +
   retry loop above reconciles it. The renumber commit itself touches `roadmaps/**` and so re-triggers
   the workflow, but that run finds no placeholders and exits as a no-op.
-- **Pushing to `main` is the one new prerequisite.** Today the bot pushes renames to *PR branches*;
-  here it must push the renumber commit to *protected* `main`. That needs a token allowed to push to
-  `main` — a GitHub App installation token (or a PAT) on the workflow's bypass list — since the
-  default `GITHUB_TOKEN` is typically blocked by `main`'s protection. This is the only genuinely new
-  infrastructure requirement; the *Alternatives* note a no-direct-push fallback.
+- **Landing the renumber on protected `main` needs a bypass actor — the design's load-bearing
+  prerequisite.** Today the bot pushes renames to *PR branches*; here the renumber commit must land on
+  `main`, which on most repos is protected (no direct push; PRs require review). There are two ways to
+  land it, and **both need the same grant**: a **direct push** by a token on `main`'s ruleset
+  **bypass list** (a GitHub App installation token or a PAT), or a **bot renumber PR with auto-merge**
+  — but auto-merge does *not* waive required approvals, so that PR, too, needs the bot to bypass (or
+  otherwise satisfy) the review requirement. Adding a maintenance bot as a bypass actor is a standard
+  pattern, and the default `GITHUB_TOKEN` is typically blocked by `main`'s protection, so a
+  bypass-capable identity is required either way. **If org policy forbids *any* bypass on `main`, this
+  merge-time-on-`main` design is infeasible** and the approval-time fallback under *Alternatives*
+  (which never pushes to `main`) applies instead.
 - **Commenting on the merged PR is best-effort.** A `push` event carries no PR number, so the job
   resolves it from the merge commit — `gh api repos/{owner}/{repo}/commits/${SHA}/pulls` — then
   `gh pr comment <pr> --body "Allocated **BE-NNNN** — <link to the item on main>"`. The comment is
@@ -199,20 +205,27 @@ and [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.m
 
 ## Alternatives considered
 
-- **Allocate at approval by pushing a rename to the branch, then auto-merge.** The earlier shape of
-  this item. Rejected: the post-approval bot commit trips "dismiss stale approvals" and stalls
-  auto-merge; avoiding that needs disabling stale-dismissal repo-wide (blunt) or a bot re-approval
-  GitHub does not reliably count. Allocating on `main` after the merge avoids any post-approval push,
-  so the problem cannot arise.
+- **Allocate at approval by pushing a rename to the branch, then auto-merge — the no-`main`-push
+  fallback.** This never pushes to `main`: the rename lands on the *PR branch*, and the merge into
+  `main` still goes through the normal protected-PR / auto-merge path. So it is the design to use
+  **when the bot cannot be a bypass actor on `main`** (regime where merge-time-on-`main` is
+  infeasible). Its cost is branch protection's "dismiss stale pull request approvals when new commits
+  are pushed": the post-approval rename commit would dismiss the approval and stall auto-merge. That
+  is avoided by turning off *that one setting* (it is independent of "require a PR" / "require
+  approvals"), or — less cleanly — by a bot re-approval GitHub does not reliably count. Rejected as
+  the *primary* design only because merge-time-on-`main`, where a bypass actor is available, is
+  gap-free with no protection-setting trade-off; this is the proper fallback otherwise.
+- **Renumber via a bot PR instead of a direct push to `main`.** Tempting as a way to avoid a direct
+  push, but it is *not* a way to avoid the bypass requirement: a renumber PR must still merge into
+  protected `main`, and auto-merge does not waive required reviews, so the bot must bypass (or satisfy)
+  them anyway. It only adds a second PR and a longer `BE-XXXX` window for no reduction in the
+  permission it needs. Kept only as a stylistic option where a visible PR trail for the renumber is
+  wanted.
 - **Keep PR-open allocation; switch `max + 1` to smallest-free.** Far lower churn — no trigger change,
   no `main` push — and it would fill the hole a rejected lower-numbered PR leaves. Rejected as the
   primary path because reusing a number whose `[BE-00xx]` already appeared in a rejected PR's title
   and review thread makes that id *ambiguous* in project history, the very thing the "never reuse a
   number" rule prevents. A reasonable lighter-weight fallback.
-- **Renumber via a follow-up auto-merged PR instead of a direct push to `main`.** Avoids the
-  `main`-bypass token requirement by opening a tiny renumber PR. Rejected as the default: it adds a
-  second PR per allocation and lengthens the window in which `BE-XXXX` sits on `main`. It is the
-  natural fallback if direct pushes to `main` are disallowed by policy.
 - **Accept gaps as harmless; document and stop.** Cheapest: ids are permanent and monotonic by
   design, and Swift-Evolution tolerates gaps. Rejected against the stated goal of keeping `main`'s
   numbering contiguous by construction.
