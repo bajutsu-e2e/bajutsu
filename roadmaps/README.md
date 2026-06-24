@@ -108,6 +108,14 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0066](implemented/BE-0066-web-crawl/BE-0066-web-crawl.md) | Web crawl (Playwright backend) | Implemented |
 <!-- /GENERATED:implemented-platform-landed -->
 
+### Platform expansion (Android / Web / Flutter)
+
+<!-- GENERATED:implemented-platform -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |
+<!-- /GENERATED:implemented-platform -->
+
 ### Authoring experience (record / GUI editor)
 
 The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording.md)). These items make the record → edit → re-run cycle easier for humans; the local web UI launcher `bajutsu serve` is the first step.

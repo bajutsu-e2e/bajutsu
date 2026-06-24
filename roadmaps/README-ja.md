@@ -100,6 +100,14 @@
 | [BE-0066](implemented/BE-0066-web-crawl/BE-0066-web-crawl-ja.md) | Web crawl（Playwright backend） | 実装済み |
 <!-- /GENERATED:implemented-platform-landed -->
 
+### プラットフォーム拡張（Android / Web / Flutter）
+
+<!-- GENERATED:implemented-platform -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) | run の前に capability をプリフライト検査する | 実装済み |
+<!-- /GENERATED:implemented-platform -->
+
 ### オーサリング体験（record / GUI エディタ）
 
 AI 駆動の `record`（Tier 1）は実装済みです（[recording.md](../docs/ja/recording.md)）。これらの項目は記録 → 編集 → 再実行のサイクルを人が扱いやすくします。ローカル Web UI ランチャ `bajutsu serve` はその最初のステップです。
