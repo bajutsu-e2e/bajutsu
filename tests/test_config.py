@@ -41,6 +41,24 @@ def test_resolve_sample() -> None:
     assert eff.setup == "./scenarios/sample/_setup.yaml"
 
 
+def test_idb_version_pin_resolves_from_defaults() -> None:
+    # The expected idb version range is environment-level (next to other backend settings in
+    # defaults), not per-app — the pin is the same whichever target a scenario drives (BE-0005).
+    cfg = load_config('defaults:\n  idbVersion: ">=1.1.8"\ntargets:\n  s:\n    bundleId: com.x\n')
+    assert resolve(cfg, "s").idb_version == ">=1.1.8"
+
+
+def test_idb_version_pin_defaults_to_none() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").idb_version is None
+
+
+def test_malformed_idb_version_pin_is_rejected_at_load() -> None:
+    # A typo'd pin must fail loudly at config load, not crash `doctor` when it compares against it.
+    with pytest.raises(ValidationError):
+        load_config('defaults:\n  idbVersion: "1.1.8"\ntargets:\n  s:\n    bundleId: com.x\n')
+
+
 def test_redact_is_merged() -> None:
     eff = resolve(load_config(CONFIG_YAML), "sample")
     assert eff.redact.labels == ["カード番号"]  # from the app

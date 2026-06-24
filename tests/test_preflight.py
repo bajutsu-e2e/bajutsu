@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from bajutsu import preflight
+from bajutsu.idb_version import IdbVersions
 
 
 def _which(present: set[str]) -> Callable[[str], str | None]:
@@ -36,6 +37,30 @@ def test_no_booted_simulator_fails() -> None:
 
 def test_fake_backend_needs_nothing() -> None:
     assert preflight.runnability("fake") == []
+
+
+def test_idb_version_check_skipped_when_no_pin() -> None:
+    # No declared range → no line in doctor (the pin is optional).
+    assert preflight.idb_version_check(None, IdbVersions(companion="1.1.8", client="1.1.8")) is None
+
+
+def test_idb_version_check_passes_when_in_range() -> None:
+    check = preflight.idb_version_check(">=1.1.8", IdbVersions(companion="1.2.0", client=None))
+    assert check is not None and check.ok
+    assert "1.2.0" in check.detail and ">=1.1.8" in check.detail
+
+
+def test_idb_version_check_fails_below_range() -> None:
+    check = preflight.idb_version_check(">=1.1.8", IdbVersions(companion="1.1.7", client=None))
+    assert check is not None and not check.ok
+    assert "1.1.7" in check.detail and ">=1.1.8" in check.detail
+
+
+def test_idb_version_check_fails_when_companion_unknown() -> None:
+    # idb_companion not found / unreadable: can't confirm the pin, so report not-ok, don't guess.
+    check = preflight.idb_version_check(">=1.1.8", IdbVersions(companion=None, client=None))
+    assert check is not None and not check.ok
+    assert "unknown" in check.detail
 
 
 def test_render_marks_pass_and_fail() -> None:

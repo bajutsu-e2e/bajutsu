@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from bajutsu import idb_version
 from bajutsu.assertions import SchemaContext, VisualContext
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
@@ -196,8 +197,13 @@ def run_and_report(
     (run_dir / "scenario.yaml").write_text(
         dump_scenario_file(scenarios, description), encoding="utf-8"
     )
+    # Record the idb versions this run was driven against, but only when idb actually drove it —
+    # provenance for the artifact set, never a pass/fail input (BE-0005). Non-idb runs probe nothing.
+    # idb-by-name is fine while idb is the only backend with a toolchain version; when a second
+    # backend needs versions, generalize this to a `Driver.provenance()` hook instead of a name test.
+    idb_versions = idb_version.probe() if any(r.backend == "idb" for r in results) else None
     manifest = write_report(
-        run_dir, run_id, results, definitions, sources, source_name, description
+        run_dir, run_id, results, definitions, sources, source_name, description, idb_versions
     )
     # Final safety net: scrub any literal secret value that reached a run-level artifact
     # (e.g. an assertion's expected/actual text in the manifest / HTML). The scenario

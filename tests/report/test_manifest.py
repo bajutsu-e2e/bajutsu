@@ -7,6 +7,7 @@ from pathlib import Path
 
 from _report import _failing, _passing
 
+from bajutsu.idb_version import IdbVersions
 from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
 from bajutsu.report import junit_xml, manifest_dict, write_report
 
@@ -32,6 +33,27 @@ def test_manifest_records_backend() -> None:
     m = manifest_dict("run1", [_passing()])
     assert m["backend"] == "fake"
     assert m["scenarios"][0]["backend"] == "fake"
+
+
+def test_manifest_records_idb_versions_as_provenance() -> None:
+    # The idb versions a run was driven against are recorded so any artifact set states exactly
+    # which idb produced it — provenance, never affecting ok/pass-fail (BE-0005).
+    m = manifest_dict(
+        "run1", [_passing()], idb_versions=IdbVersions(companion="1.1.8", client="1.2")
+    )
+    assert m["idb"] == {"companion": "1.1.8", "client": "1.2"}
+    assert m["ok"] is True  # provenance does not change the verdict
+
+
+def test_manifest_omits_idb_versions_when_not_probed() -> None:
+    # A non-idb backend (or a host without idb) records nothing rather than a misleading null block.
+    assert "idb" not in manifest_dict("run1", [_passing()])
+
+
+def test_manifest_omits_idb_block_when_both_versions_unknown() -> None:
+    # A {companion: null, client: null} block carries no provenance — omit it, don't add noise.
+    m = manifest_dict("run1", [_passing()], idb_versions=IdbVersions(companion=None, client=None))
+    assert "idb" not in m
 
 
 def test_junit_pass_and_fail() -> None:
