@@ -8,6 +8,7 @@
 | Proposal | [BE-0082](BE-0082-capability-preflight-check.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
+| Implementing PR | [#229](https://github.com/bajutsu-e2e/bajutsu/pull/229) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
