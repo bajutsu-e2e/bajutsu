@@ -296,11 +296,11 @@ class _XcuitestGen:
             "  }",
             "  private func byLabel(_ label: String) -> XCUIElement {",
             "    app.descendants(matching: .any).matching("
-            'NSPredicate(format: "label == %@", label)).firstMatch',
+            + 'NSPredicate(format: "label == %@", label)).firstMatch',
             "  }",
             "  private func matchingId(_ glob: String) -> XCUIElementQuery {",
             "    app.descendants(matching: .any).matching("
-            'NSPredicate(format: "identifier LIKE %@", glob))',
+            + 'NSPredicate(format: "identifier LIKE %@", glob))',
             "  }",
             "  private func coord(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {",
             "    app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))"

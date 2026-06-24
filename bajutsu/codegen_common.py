@@ -31,35 +31,27 @@ class CodeGenerator(Protocol):
 
     def file_preamble(self) -> list[str]:
         """The lines before the first scenario (header comment, imports, class/describe open)."""
-        ...
 
     def scenario_open(self, name: str) -> str:
         """The line opening one scenario's test function/case (carries its own indent)."""
-        ...
 
     def launch_env_line(self, key: str, value: str) -> str:
         """One launch-environment assignment (un-indented; the walk adds the body indent)."""
-        ...
 
     def launch_line(self) -> str:
         """The line that launches/navigates the app (un-indented)."""
-        ...
 
     def step_lines(self, step: Step) -> list[str]:
         """The lines for one scenario step (un-indented)."""
-        ...
 
     def assertion_lines(self, assertion: Assertion) -> list[str]:
         """The lines for one `expect` assertion (un-indented)."""
-        ...
 
     def scenario_close(self) -> str:
         """The line closing one scenario's test function/case (carries its own indent)."""
-        ...
 
     def file_footer(self) -> list[str]:
         """The lines after the last scenario (class/describe close)."""
-        ...
 
 
 def _scenario_lines(
