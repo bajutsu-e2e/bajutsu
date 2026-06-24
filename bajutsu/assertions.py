@@ -175,6 +175,8 @@ def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
     """Whether one exchange satisfies a `RequestMatch` (set fields AND-ed). Shared by the
     `request` assertion and the web mock router, so a mock stubs exactly what an assertion
     would match."""
+    # Straight-line early returns, kept allocation-free on purpose: this runs in `until: {request}`
+    # polling and per-exchange matching loops, so it must stay lightweight (no per-call closures).
     if req.method is not None and ex.method.upper() != req.method.upper():
         return False
     if req.url is not None and ex.url != req.url:
@@ -356,43 +358,28 @@ def _eval_request_sequence(
     return AssertionResult(True, "requestSequence", detail)
 
 
-def _eval_response_schema(
-    exchanges: list[NetworkExchange], m: ResponseSchemaMatch, ctx: SchemaContext | None
-) -> AssertionResult:
-    """Validate the first matching exchange's response body against a stored JSON Schema (BE-0048).
-    Pure over the captured exchanges + the schema file; `jsonschema` is imported lazily (the `schema`
-    extra), so the dependency only loads when a responseSchema assertion is actually evaluated."""
-    detail = f"responseSchema {request_label(m.request)} ~ {m.schema_path}"
-    if ctx is None:
-        return AssertionResult(False, "responseSchema", detail, "no schema context provided")
-    ex = next((e for e in exchanges if match_request(e, m.request)), None)
-    if ex is None:
-        return AssertionResult(
-            False, "responseSchema", detail, f"no matching exchange (observed {len(exchanges)})"
-        )
-    # Confine the schema path to the schemas dir: an absolute path or `..` traversal would read
-    # files outside it and make the result depend on the runner's filesystem — reject it.
+def _load_schema(schema_path: str, ctx: SchemaContext, detail: str) -> object | AssertionResult:
+    """Load and parse the stored JSON Schema, or an `AssertionResult` carrying why it couldn't be.
+    Confines the path to the schemas dir: an absolute path or `..` traversal would read files
+    outside it and make the result depend on the runner's filesystem — reject it."""
     schemas_dir = ctx.schemas_dir.resolve()
-    schema_file = (schemas_dir / m.schema_path).resolve()
+    schema_file = (schemas_dir / schema_path).resolve()
     if not schema_file.is_relative_to(schemas_dir):
         return AssertionResult(
-            False, "responseSchema", detail, f"schema path escapes the schemas dir: {m.schema_path}"
+            False, "responseSchema", detail, f"schema path escapes the schemas dir: {schema_path}"
         )
     if not schema_file.is_file():
-        return AssertionResult(
-            False, "responseSchema", detail, f"schema not found: {m.schema_path}"
-        )
+        return AssertionResult(False, "responseSchema", detail, f"schema not found: {schema_path}")
     try:
-        schema = json.loads(schema_file.read_text(encoding="utf-8"))
+        parsed: object = json.loads(schema_file.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         return AssertionResult(False, "responseSchema", detail, f"could not read schema: {e}")
-    if ex.response_body is None:
-        return AssertionResult(False, "responseSchema", detail, "response has no body")
-    try:
-        instance = json.loads(ex.response_body)
-    except ValueError:
-        return AssertionResult(False, "responseSchema", detail, "response body is not JSON")
+    return parsed
 
+
+def _validate_instance(instance: object, schema: object, detail: str) -> AssertionResult:
+    """Validate a parsed instance against a parsed schema. `jsonschema` is imported lazily (the
+    `schema` extra), so the dependency only loads when a responseSchema assertion is evaluated."""
     try:
         import jsonschema
     except ImportError:
@@ -412,6 +399,32 @@ def _eval_response_schema(
         # never crash the deterministic run — so any other validator error is caught here too.
         return AssertionResult(False, "responseSchema", detail, f"schema error: {e}")
     return AssertionResult(True, "responseSchema", detail)
+
+
+def _eval_response_schema(
+    exchanges: list[NetworkExchange], m: ResponseSchemaMatch, ctx: SchemaContext | None
+) -> AssertionResult:
+    """Validate the first matching exchange's response body against a stored JSON Schema (BE-0048).
+    Pure over the captured exchanges + the schema file; the schema I/O and the validation are
+    split into `_load_schema` and `_validate_instance`."""
+    detail = f"responseSchema {request_label(m.request)} ~ {m.schema_path}"
+    if ctx is None:
+        return AssertionResult(False, "responseSchema", detail, "no schema context provided")
+    ex = next((e for e in exchanges if match_request(e, m.request)), None)
+    if ex is None:
+        return AssertionResult(
+            False, "responseSchema", detail, f"no matching exchange (observed {len(exchanges)})"
+        )
+    schema = _load_schema(m.schema_path, ctx, detail)
+    if isinstance(schema, AssertionResult):
+        return schema
+    if ex.response_body is None:
+        return AssertionResult(False, "responseSchema", detail, "response has no body")
+    try:
+        instance = json.loads(ex.response_body)
+    except ValueError:
+        return AssertionResult(False, "responseSchema", detail, "response body is not JSON")
+    return _validate_instance(instance, schema, detail)
 
 
 def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch]) -> list[int]:
