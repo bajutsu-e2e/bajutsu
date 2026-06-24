@@ -390,7 +390,12 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
     """
 ```
 
-内部ヘルパは「なぜ」を 1 行で残します（例: `"""Whether `inner`'s frame sits inside `outer`'s."""`）。
+内部ヘルパは「なぜ」を 1 行で残します（`Args:` ブロックは付けません）。
+
+```python
+def _contains(outer: Frame, inner: Frame) -> bool:
+    """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
+```
 
 **移行は段階的かつ漸進的に進めます**（[BE-0065](../../roadmaps/in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md)）。
 サイトは今ある散文 docstring からすでに描画でき（型付きシグネチャだけでも有用なリファレンスになります）、公開 API

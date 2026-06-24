@@ -419,7 +419,12 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
     """
 ```
 
-An internal helper stays one line of *why*: `"""Whether `inner`'s frame sits inside `outer`'s."""`.
+An internal helper stays one line of *why* — no `Args:` block:
+
+```python
+def _contains(outer: Frame, inner: Frame) -> bool:
+    """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
+```
 
 **Migration is phased and incremental** ([BE-0065](../roadmaps/in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
 the site renders today from the existing prose docstrings (typed signatures already give a useful
