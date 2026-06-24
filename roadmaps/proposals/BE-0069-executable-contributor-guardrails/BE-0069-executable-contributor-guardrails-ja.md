@@ -41,7 +41,7 @@ Bajutsu のガードレールは、人間が実行できるかどうかで、す
 - **散文だけのもの** — 読み手が手でたどるために書かれた、複数手順のレシピ。
   - **新しい roadmap 項目の雛形づくり** — ディレクトリと、*両方*の言語のファイルを、決まった
     Swift-Evolution 形式で作り、メタデータブロックを揃え、`BE-0069` プレースホルダを置き、author の
-    GitHub ハンドルを書く。`ideation` skill はその大半をこの説明に割いており、リポジトリの中で最も
+    GitHub ハンドルを書きます。`ideation` skill はその大半をこの説明に割いており、リポジトリの中で最も
     間違えやすく、最も手数の多い手順です。それなのにコマンドがありません。
   - **worktree とブランチの用意** — [`docs/ja/ai-development.md`](../../../docs/ja/ai-development.md)
     にある `git fetch origin && git worktree add … -b … origin/main && make setup` というレシピ。

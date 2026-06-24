@@ -45,6 +45,28 @@ def test_fingerprint_falls_back_to_structural_when_too_few_ids() -> None:
     assert fp.value == crawl.fingerprint(elements).value
 
 
+def test_fingerprint_token_appends_state_markers_in_fixed_order() -> None:
+    # An enabled, empty, unselected element contributes just its id; each interactive state adds a
+    # marker, and a combination appends them in a fixed order (!, =, +) so the hash stays stable.
+    assert crawl._fingerprint_token(el(identifier="btn.go")) == "btn.go"
+    assert crawl._fingerprint_token(el(identifier="btn.go", traits=["notEnabled"])) == "btn.go!"
+    assert (
+        crawl._fingerprint_token(el(identifier="in.email", traits=["textField"], value="x"))
+        == "in.email="
+    )
+    assert (
+        crawl._fingerprint_token(el(identifier="in.email", traits=["textField"], value=""))
+        == "in.email"  # empty input contributes no marker
+    )
+    assert crawl._fingerprint_token(el(identifier="tab.home", traits=["selected"])) == "tab.home+"
+    assert (
+        crawl._fingerprint_token(
+            el(identifier="x", traits=["notEnabled", "textField", "selected"], value="v")
+        )
+        == "x!=+"
+    )
+
+
 # --- candidate actions ---------------------------------------------------------------------
 
 

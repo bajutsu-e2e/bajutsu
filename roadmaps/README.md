@@ -72,6 +72,11 @@ built, or it ships — set its `Status` and **move its directory** to the matchi
 same ID and slug), then regenerate the index. `make roadmap-promote` reconciles any misfiled item
 for you.
 
+Write the Japanese file (`*-ja.md`) in **敬体 (the polite *desu/masu* style, ですます調)**,
+consistent with `docs/ja/` — never the plain *da/dearu* style (常体). This is part of the
+[`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/) norm; a translation must read
+as natural polite Japanese, not a literal rendering of the English.
+
 ---
 
 ## Implemented
@@ -225,7 +230,9 @@ Turning a passing scenario into a native test in a destination framework's idiom
 <!-- GENERATED:implemented-codegen -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0025](implemented/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Implemented |
 | [BE-0062](implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
+| [BE-0083](implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) | Unify the codegen emitters behind a shared scenario walk | Implemented |
 <!-- /GENERATED:implemented-codegen -->
 
 ### Crawl performance / scale-out
@@ -238,6 +245,14 @@ Running the autonomous crawl across more than one device so a full screen map is
 | [BE-0064](implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) | Parallel crawl across multiple simulators | Implemented |
 | [BE-0077](implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) | Parallel web crawl across multiple browsers | Implemented |
 <!-- /GENERATED:implemented-crawl -->
+
+### On-device validation (M1 close-out)
+
+<!-- GENERATED:implemented-on-device -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0005](implemented/BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Implemented |
+<!-- /GENERATED:implemented-on-device -->
 
 ### Miscellaneous / on hold
 
@@ -307,7 +322,6 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 <!-- GENERATED:proposals-on-device -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0005](proposals/BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Proposal |
 | [BE-0006](proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Proposal |
 <!-- /GENERATED:proposals-on-device -->
 
@@ -323,6 +337,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Proposal |
 | [BE-0010](proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Proposal |
 | [BE-0076](proposals/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md) | Selectable browser engines & cross-browser compatibility matrix (web backend) | Proposal |
+| [BE-0082](proposals/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
@@ -395,14 +410,6 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 |---|---|---|---|
 | [BE-0079](proposals/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
-
-### codegen coverage
-
-<!-- GENERATED:proposals-codegen -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0025](proposals/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Proposal |
-<!-- /GENERATED:proposals-codegen -->
 
 ### Development infrastructure (contributor workflow)
 

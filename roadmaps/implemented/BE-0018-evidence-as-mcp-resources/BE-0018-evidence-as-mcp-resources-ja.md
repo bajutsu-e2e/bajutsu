@@ -36,9 +36,9 @@ MCP（Model Context Protocol）サーバはすでに `bajutsu_run` と `bajutsu_
 run の証跡を `bajutsu://runs/...` という URI スキームの MCP リソースとして公開します。ツールを公開するのと
 同じ `bajutsu mcp` サーバが配信します。
 
-- `bajutsu://runs/{run_id}/manifest.json`：指定した run の構造化 manifest。
-- `bajutsu://runs/{run_id}/report.html`：その run の自己完結 HTML レポート。
-- `bajutsu://runs/latest/manifest.json`：直近の run の manifest。`bajutsu_run` を呼んだばかりの
+- `bajutsu://runs/{run_id}/manifest.json`：指定した run の構造化 manifest です。
+- `bajutsu://runs/{run_id}/report.html`：その run の自己完結 HTML レポートです。
+- `bajutsu://runs/latest/manifest.json`：直近の run の manifest です。`bajutsu_run` を呼んだばかりの
   エージェントが、応答から run id を取り出すことなく結果を読めるようにするためです。
 
 各ハンドラは、設定された `runs/` ディレクトリに対して run id を解決し、読み取り前に**パストラバーサルを

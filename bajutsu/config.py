@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from bajutsu import _yaml
+from bajutsu import _yaml, idb_version
 from bajutsu.scenario import Redact
 
 
@@ -56,11 +56,26 @@ class Defaults(_Model):
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
     reserved_namespaces: list[str] = Field(default_factory=list, alias="reservedNamespaces")
+    # Expected idb version range (e.g. ">=1.1.8" or ">=1.1.0,<2.0.0"). Environment-level, not
+    # per-app: the pin is the same whichever target a scenario drives. `doctor` reports the
+    # installed companion against it; None = no pin declared (BE-0005).
+    idb_version: str | None = Field(default=None, alias="idbVersion")
 
     @field_validator("backend", mode="before")
     @classmethod
     def _norm(cls, v: Any) -> Any:
         return _as_list(v)
+
+    @field_validator("idb_version")
+    @classmethod
+    def _valid_idb_version(cls, v: str | None) -> str | None:
+        # Reject a malformed pin at load time (fail loudly, the right place) rather than letting it
+        # surface as a crash when `doctor` later compares against it (BE-0005).
+        if v is not None and not idb_version.is_valid_spec(v):
+            raise ValueError(
+                f"invalid idbVersion {v!r}: use a constraint like '>=1.1.8' or '>=1.1.0,<2.0.0'"
+            )
+        return v
 
 
 class TargetConfig(_Model):
@@ -215,6 +230,9 @@ class Effective:
     headless: bool = True
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
     launch_server: LaunchServer | None = None
+    # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
+    # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
+    idb_version: str | None = None
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:
@@ -258,6 +276,7 @@ def resolve(config: Config, target: str) -> Effective:
         scenarios=a.scenarios,
         baselines=a.baselines,
         schemas=a.schemas,
+        idb_version=d.idb_version,
     )
 
 

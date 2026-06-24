@@ -80,6 +80,28 @@ Headless, coordinate-based. For CI (continuous integration). With no semantic ta
 > if the installed idb version changes the schema (the note atop `idb.py`). The idb client is
 > `uv sync --extra idb`; `idb_companion` is `brew install facebook/fb/idb-companion`.
 
+### Tracking the idb version (BE-0005)
+
+idb is the only on-device backend, so a new Simulator runtime an older `idb_companion` can't
+drive — or a companion upgrade that reshapes the describe-all JSON — breaks a run without any
+Bajutsu change. The version idb runs against is therefore a tracked, recorded input rather than
+whatever happens to be installed:
+
+- **Pin a range in config.** `defaults.idbVersion` holds a constraint like `">=1.1.8"` or
+  `">=1.1.0,<2.0.0"` (environment-level — the same pin regardless of which target a scenario
+  drives). `bajutsu doctor` reports the installed `idb_companion` against it, e.g.
+  `✓ idb_companion version: 1.1.8 (expected >=1.1.8)`, so a mismatch surfaces in the pre-flight
+  checklist instead of as a confusing downstream failure. A malformed pin is rejected at config
+  load. With no pin declared, `doctor` shows no version line.
+- **Recorded in the manifest.** Every idb-backed run writes the `idb_companion` and idb client
+  versions into `manifest.json` (`"idb": { "companion": …, "client": … }`), so any artifact set
+  states exactly which idb produced it. This is provenance only — it never affects pass/fail, so
+  the run/CI verdict stays deterministic.
+- **A scheduled compatibility monitor.** `idb-monitor.yml` runs the smoke scenario through idb
+  against the latest `idb_companion` on a weekly cadence (separate from the per-PR gate). Because
+  the smoke run goes through `parse_describe_all` → Element normalization, a schema or behaviour
+  drift fails it loudly there, on a cadence we control, rather than being discovered ad hoc.
+
 ## Playwright (web)
 
 Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Simulator**, so it

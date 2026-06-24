@@ -57,6 +57,14 @@ def test_long_press_and_swipe() -> None:
     assert 'el("comp.area").swipeLeft()' in code
 
 
+def test_coordinate_swipe_maps_to_coordinate_drag() -> None:
+    # `swipe { from, to }` (BE-0025): a coordinate drag via XCUICoordinate, not a `// TODO`.
+    code = _gen("- name: x\n  steps:\n    - swipe: { from: [10, 20], to: [30, 40] }\n")
+    assert "coord(10.0, 20.0).press(forDuration: 0.1, thenDragTo: coord(30.0, 40.0))" in code
+    assert "private func coord(" in code  # the anchor helper is emitted
+    assert "coordinate swipe" not in code  # the TODO fallback is gone for this form
+
+
 def test_wait_until_gone() -> None:
     code = _gen(
         "- name: x\n  steps:\n    - wait: { until: { gone: { id: spinner } }, timeout: 3 }\n"

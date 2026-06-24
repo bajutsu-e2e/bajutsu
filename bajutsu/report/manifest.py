@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from xml.etree import ElementTree as ET
 
+from bajutsu.idb_version import IdbVersions
 from bajutsu.orchestrator import RunResult
 
 
@@ -17,17 +18,25 @@ def _run_backend(results: list[RunResult]) -> str:
 
 # The render model's version. Bump when a field the report needs is added, so an older run can be
 # detected and its newer-only sections shown as "not captured" rather than failing (BE-0068).
-SCHEMA_VERSION = 1
+# v2 (BE-0005): optional top-level "idb" version provenance.
+SCHEMA_VERSION = 2
 
 
 def manifest_dict(
-    run_id: str, results: list[RunResult], *, source_name: str | None = None
+    run_id: str,
+    results: list[RunResult],
+    *,
+    source_name: str | None = None,
+    idb_versions: IdbVersions | None = None,
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068). RunResult and
     its parts are dataclasses, so asdict() captures step/expect outcomes verbatim. `backend` is the
     actuator that drove the run (each scenario also carries its own `backend`); `sourceName` is the
-    label the report's YAML toggle shows, persisted here so a re-render can recover it."""
-    return {
+    label the report's YAML toggle shows, persisted here so a re-render can recover it.
+
+    `idb_versions`, when the run used the idb backend, records the `idb_companion` / client versions
+    it was driven against — provenance only, so it never enters `ok` (BE-0005)."""
+    manifest: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
         "runId": run_id,
         "ok": all(r.ok for r in results),
@@ -35,6 +44,13 @@ def manifest_dict(
         "sourceName": source_name,
         "scenarios": [asdict(r) for r in results],
     }
+    # Only record the block when at least one version is known: a `{companion: null, client: null}`
+    # block carries no provenance and is indistinguishable from "not captured", so omit it.
+    if idb_versions is not None and (
+        idb_versions.companion is not None or idb_versions.client is not None
+    ):
+        manifest["idb"] = {"companion": idb_versions.companion, "client": idb_versions.client}
+    return manifest
 
 
 def _details(r: RunResult) -> str:
