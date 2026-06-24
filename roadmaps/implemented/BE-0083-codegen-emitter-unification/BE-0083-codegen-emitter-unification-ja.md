@@ -8,6 +8,7 @@
 | 提案 | [BE-0083](BE-0083-codegen-emitter-unification-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
+| 実装 PR | [#228](https://github.com/bajutsu-e2e/bajutsu/pull/228) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
