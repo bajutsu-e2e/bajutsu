@@ -52,3 +52,5 @@ DerivedData/
 **/.swiftpm/**
 
 worktree
+# Generated API reference output (BE-0065; `make docs`) — built, never committed.
+site/

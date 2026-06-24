@@ -1,0 +1,36 @@
+# Generated API reference for the Python core (BE-0065). Built by `make docs` — a separate,
+# heavier path kept out of `make check`. mkdocstrings reads each public symbol's typed signature
+# and docstring statically (via griffe), so it renders the surface without importing the lazy /
+# optional backends (playwright, fb-idb, fastapi, redis, boto3) — no mocking needed.
+site_name: Bajutsu API reference
+site_description: The Python core's public API, generated from its docstrings and typed signatures.
+repo_url: https://github.com/bajutsu-e2e/bajutsu
+docs_dir: docs/api
+use_directory_urls: false
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - toc.integrate
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_if_no_docstring: false
+            members_order: source
+            filters: ["!^_"]  # exclude private (`_`-prefixed) members from the reference
+
+nav:
+  - Overview: index.md
+  - Driver & selectors: drivers.md
+  - Runner: runner.md
+  - Assertions: assertions.md
+  - Network: network.md

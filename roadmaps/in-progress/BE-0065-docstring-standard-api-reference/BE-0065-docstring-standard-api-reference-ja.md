@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0065](BE-0065-docstring-standard-api-reference-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->
 

@@ -345,3 +345,58 @@ GitHub のアカウント名で明記**します。書式は `* Author: [@handle
   常体のままにし、見出しや純粋な体言止めのラベルには繋辞を付けません。
 
 このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。
+
+## コードのドキュメンテーションコメント（docstring）— BE-0065
+
+上の「ドキュメントの書き方」は散文ドキュメント向けのルールです。こちらは **Python コアの docstring**
+についての対のルールで、生成 API リファレンス（`make docs`、MkDocs + `mkdocstrings`）が描画する対象です。
+リファレンスのビルドは `make check` から外した別の重い経路で、LLM を一切加えず、`run` の中で動くこともないので、
+prime directive は構成上そのまま保たれます。
+
+- **英語で書きます。** コード（とその docstring）は両言語にしません。両言語にするのは `docs/` 配下の散文ドキュメントだけです。
+- **公開面は Google style。** 公開 API——[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) の `Driver`
+  プロトコルと共有型、CLI、MCP ツール、シナリオスキーマ、runner / `assertions` / `network` の公開関数——は、
+  1 行の要約に続けて `Args:` / `Returns:` / `Raises:`（必要なら `Yields:` / `Examples:`）を、**情報が増えるときだけ**
+  付けます。生成リファレンスは非公開（`_` 始まり）メンバーを除外します。
+- **内部ヘルパは散文のまま。** モジュール内部の `_helper` は「なぜあるか」を 1 行で書きます。小さなヘルパに `Args:`
+  ブロックを強いるのは、このリポジトリが避ける「何をするか」の説明です。
+- **型は書き直しません。** 型は注釈に置きます（`mypy` は strict、`ruff` の `ANN` ルールも有効）。生成器はシグネチャ
+  から型を読みます。`Args:` / `Returns:` は型ではなく**意味**——単位・制約・`None` が何を表すか——を書きます。
+- **なぜを書き、何をは書きません。** 根拠、不変条件（特に決定論を守るもの）、トレードオフ、エッジケースを書き、
+  挙動の根拠は `BE-NNNN` 項目に結び付けます。周囲の密度に合わせ、短く目的を持って書き、ナレーションはしません。
+- **per-field の流儀を保ちます。** `TypedDict` や定数を保持するクラスでは、フィールドごとのインラインコメントが
+  各フィールドの「なぜ」を散文ブロックよりよく伝えるので、`Args:` 形式に変換せずそのまま残します。
+
+例——公開関数は構造化セクションを持ちます（決定論の不変条件を先頭に置き、根拠を BE 項目に結び付け、型は繰り返しません）。
+
+```python
+def resolve_unique(elements: list[Element], sel: Selector) -> Element:
+    """Resolve a selector to exactly one element for a single action.
+
+    A single action requires a unique match, so an ambiguous selector fails rather than acting on
+    "whatever matched first" (the determinism core, BE-0001).
+
+    Args:
+        elements: One `query()` snapshot of the on-screen elements.
+        sel: The selector to resolve. `index` is honored only as a last resort, picking the nth of
+            several candidates.
+
+    Returns:
+        The one element the selector resolves to.
+
+    Raises:
+        ElementNotFound: Nothing matched, or `index` is out of range.
+        AmbiguousSelector: Two or more matched and no `index` disambiguates.
+    """
+```
+
+内部ヘルパは「なぜ」を 1 行で残します（例: `"""Whether `inner`'s frame sits inside `outer`'s."""`）。
+
+**移行は段階的かつ漸進的に進めます**（[BE-0065](../../roadmaps/in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md)）。
+サイトは今ある散文 docstring からすでに描画でき（型付きシグネチャだけでも有用なリファレンスになります）、公開 API
+の docstring はモジュール単位の小さな PR で Google style へ移し、scoped な `ruff` `D` の強制と Pages ホスティングは
+その後に入れます。**無関係な変更のついでにモジュール全体の docstring を書き換えないでください**——移行は 1 つずつ
+小さな PR にします。
+
+リファレンスはローカルで `make docs`（プレビューは `make docs-serve`）でビルドします。`docs` extra が要ります。
+このルールの短縮版は [`CLAUDE.md`](../../CLAUDE.md) にあります。

@@ -368,3 +368,64 @@ apply equally when reporting on or summarizing work.
   usual, and headings or pure noun-phrase labels (体言止め) need no copula.
 
 The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).
+
+## Code documentation comments (docstrings) — BE-0065
+
+The *Documentation style* rules above govern the prose docs. This is the companion rule for
+**docstrings in the Python core** — what the generated API reference (`make docs`, MkDocs +
+`mkdocstrings`) renders. The reference build is a separate, heavier path kept out of `make check`,
+adds no LLM, and never runs inside `run`, so the prime directives hold by construction.
+
+- **English, like every code comment.** Code (and its docstrings) is not bilingual; only the prose
+  docs under `docs/` are.
+- **Google style on the public surface.** The public API — the `Driver` protocol and shared types
+  in [`bajutsu/drivers/base.py`](../bajutsu/drivers/base.py), the CLI, the MCP tools, the scenario
+  schema, and the public functions of the runner / `assertions` / `network` — uses a one-line
+  summary followed by `Args:` / `Returns:` / `Raises:` (and `Yields:` / `Examples:`) **only where
+  they add information**. The generated reference excludes private (`_`-prefixed) members.
+- **Internal helpers stay prose.** A module-private `_helper` keeps one purposeful line of *why*;
+  forcing an `Args:` block onto a small helper is the *what*-narration this repo avoids.
+- **Never restate types.** Types live in the annotations (`mypy` is strict, `ruff`'s `ANN` rules are
+  on), and the generator reads them from the signature. `Args:` / `Returns:` describe *meaning* —
+  units, constraints, what `None` means — not the type.
+- **Why, not what.** Rationale, invariants (especially anything protecting determinism),
+  trade-offs, edge cases; tie a behavior's rationale to its `BE-NNNN` item. Match the surrounding
+  density — short and purposeful, no narration.
+- **Keep the per-field idiom.** For a `TypedDict` or a constant-holder class, the per-field inline
+  comment carries each field's *why* better than a prose block — keep it rather than converting to
+  `Args:`-style sections.
+
+Example — a public function carries the structured sections (the determinism invariant leads, the
+rationale ties to a BE item, and the types are *not* repeated):
+
+```python
+def resolve_unique(elements: list[Element], sel: Selector) -> Element:
+    """Resolve a selector to exactly one element for a single action.
+
+    A single action requires a unique match, so an ambiguous selector fails rather than acting on
+    "whatever matched first" (the determinism core, BE-0001).
+
+    Args:
+        elements: One `query()` snapshot of the on-screen elements.
+        sel: The selector to resolve. `index` is honored only as a last resort, picking the nth of
+            several candidates.
+
+    Returns:
+        The one element the selector resolves to.
+
+    Raises:
+        ElementNotFound: Nothing matched, or `index` is out of range.
+        AmbiguousSelector: Two or more matched and no `index` disambiguates.
+    """
+```
+
+An internal helper stays one line of *why*: `"""Whether `inner`'s frame sits inside `outer`'s."""`.
+
+**Migration is phased and incremental** ([BE-0065](../roadmaps/in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
+the site renders today from the existing prose docstrings (typed signatures already give a useful
+reference); public-API docstrings move to Google style module by module in small PRs, and the
+scoped `ruff` `D` enforcement and Pages hosting land after. **Don't rewrite a whole module's
+docstrings as a side effect of an unrelated change** — keep each migration its own small PR.
+
+Build the reference locally with `make docs` (or `make docs-serve` to preview); it needs the `docs`
+extra.
