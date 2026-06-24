@@ -31,31 +31,32 @@ from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs
 
 # Identity / RBAC / audit live in `authz` now; re-exported here so the HTTP shells keep reaching
-# them through the `operations` facade (`ops.login`, `ops.forbidden_for_role`, …) unchanged. The
-# `as` form marks the re-exports as intentional public API; `_target_forbidden` / `_record_audit`
-# are also used internally by the endpoints below.
-from bajutsu.serve.authz import _record_audit, _target_forbidden
+# them through the `operations` facade (`ops.login`, `ops.forbidden_for_role`, …) unchanged.
+# `_target_forbidden` / `_record_audit` are also used internally by the endpoints below; the rest are
+# pure re-exports, declared in `__all__` so they read as intentional public API, not dead imports.
 from bajutsu.serve.authz import (
-    forbidden_for_role as forbidden_for_role,
+    _record_audit,
+    _target_forbidden,
+    forbidden_for_role,
+    login,
+    oauth_callback,
+    oauth_login,
+    required_role,
+    role_allows,
+    role_for,
 )
-from bajutsu.serve.authz import (
-    login as login,
-)
-from bajutsu.serve.authz import (
-    oauth_callback as oauth_callback,
-)
-from bajutsu.serve.authz import (
-    oauth_login as oauth_login,
-)
-from bajutsu.serve.authz import (
-    required_role as required_role,
-)
-from bajutsu.serve.authz import (
-    role_allows as role_allows,
-)
-from bajutsu.serve.authz import (
-    role_for as role_for,
-)
+
+# The auth surface re-exported through this facade (the endpoint functions defined below are reached
+# by attribute access, so they need no entry here). Keeps the re-exports off the unused-import lint.
+__all__ = [
+    "forbidden_for_role",
+    "login",
+    "oauth_callback",
+    "oauth_login",
+    "required_role",
+    "role_allows",
+    "role_for",
+]
 from bajutsu.serve.helpers import (
     _int,
     crawl_command,
