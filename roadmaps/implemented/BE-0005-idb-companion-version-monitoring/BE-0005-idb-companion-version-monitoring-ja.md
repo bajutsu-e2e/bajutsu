@@ -8,6 +8,7 @@
 | 提案 | [BE-0005](BE-0005-idb-companion-version-monitoring-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| 実装 PR | [#227](https://github.com/bajutsu-e2e/bajutsu/pull/227) |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
