@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0083](BE-0083-codegen-emitter-unification.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#228](https://github.com/bajutsu-e2e/bajutsu/pull/228) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
