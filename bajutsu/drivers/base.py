@@ -138,11 +138,13 @@ def matches(el: Element, sel: Selector) -> bool:
 
     Args:
         el: One element from a `query()` snapshot.
-        sel: The selector to test. `within` is a cross-element (spatial) constraint resolved by
-            `find_all`, so it is ignored here.
+        sel: The selector to test. Only the per-element fields are checked here
+            (`id` / `idMatches` / `label` / `labelMatches` / `traits` / `value`); `within` (a
+            cross-element spatial constraint, resolved by `find_all`) and `index` (a positional
+            pick among matches, applied by `resolve_unique`) are ignored.
 
     Returns:
-        True when every field set on the selector matches the element.
+        True when every per-element field set on the selector matches the element.
     """
     if "id" in sel and el["identifier"] != sel["id"]:
         return False
