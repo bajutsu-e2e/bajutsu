@@ -29,8 +29,11 @@ def doctor(
     env_checks = preflight.runnability(actuator, booted_count=lambda: len(_env.booted_udids()))
     # When a pin is declared (defaults.idbVersion), report the installed idb_companion against it
     # so a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
-    # Only probe when a pin exists — no point spawning idb subprocesses to discard the result.
-    if actuator == "idb" and eff.idb_version is not None:
+    # Only probe when a pin exists *and* idb_companion is actually present — runnability already
+    # reports a missing companion, so probing it would only spawn a doomed subprocess and print a
+    # redundant "installed unknown" line.
+    companion_ok = any(c.name == "idb_companion" and c.ok for c in env_checks)
+    if actuator == "idb" and eff.idb_version is not None and companion_ok:
         version_check = preflight.idb_version_check(eff.idb_version, idb_version.probe())
         if version_check is not None:
             env_checks.append(version_check)

@@ -44,7 +44,11 @@ def manifest_dict(
         "sourceName": source_name,
         "scenarios": [asdict(r) for r in results],
     }
-    if idb_versions is not None:
+    # Only record the block when at least one version is known: a `{companion: null, client: null}`
+    # block carries no provenance and is indistinguishable from "not captured", so omit it.
+    if idb_versions is not None and (
+        idb_versions.companion is not None or idb_versions.client is not None
+    ):
         manifest["idb"] = {"companion": idb_versions.companion, "client": idb_versions.client}
     return manifest
 

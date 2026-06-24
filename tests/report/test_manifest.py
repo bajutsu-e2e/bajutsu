@@ -50,6 +50,12 @@ def test_manifest_omits_idb_versions_when_not_probed() -> None:
     assert "idb" not in manifest_dict("run1", [_passing()])
 
 
+def test_manifest_omits_idb_block_when_both_versions_unknown() -> None:
+    # A {companion: null, client: null} block carries no provenance — omit it, don't add noise.
+    m = manifest_dict("run1", [_passing()], idb_versions=IdbVersions(companion=None, client=None))
+    assert "idb" not in m
+
+
 def test_junit_pass_and_fail() -> None:
     ok_xml = junit_xml([_passing()])
     assert 'tests="1"' in ok_xml
