@@ -28,6 +28,30 @@ def test_run_all() -> None:
     assert [r.ok for r in results] == [True, False]
 
 
+def test_preflight_fails_unsupported_scenario_before_leasing() -> None:
+    # A pinch needs multiTouch, which idb lacks — the preflight fails the scenario up front, so the
+    # lease (device work) is never reached (BE-0082).
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "z", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+        )
+    ]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the preflight rejects the scenario")
+
+    results = run_all(_eff(), scenarios, lease_must_not_run, actuator="idb")
+    assert len(results) == 1 and not results[0].ok
+    assert results[0].backend == "idb"
+    assert "multiTouch" in (results[0].failure or "")
+
+
+def test_preflight_allows_supported_scenario_on_idb() -> None:
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, _lease, actuator="idb")
+    assert results[0].ok
+
+
 def test_run_all_parallel_preserves_order_and_releases() -> None:
     scenarios = [
         Scenario.model_validate({"name": n, "steps": [{"tap": {"id": "ok"}}]})

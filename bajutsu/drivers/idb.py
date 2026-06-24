@@ -246,6 +246,11 @@ class IdbDriver:
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path))
 
+    # No semantic tap and no native network monitoring. Exposed as a class constant so the preflight
+    # (BE-0082) can read it via `backends.capabilities_for` without constructing a driver.
+    CAPABILITIES = frozenset(
+        {base.Capability.QUERY, base.Capability.ELEMENTS, base.Capability.SCREENSHOT}
+    )
+
     def capabilities(self) -> set[str]:
-        # No semantic tap and no native network monitoring.
-        return {base.Capability.QUERY, base.Capability.ELEMENTS, base.Capability.SCREENSHOT}
+        return set(self.CAPABILITIES)

@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0082](BE-0082-capability-preflight-check-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 

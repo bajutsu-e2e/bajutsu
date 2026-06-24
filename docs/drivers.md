@@ -39,8 +39,8 @@ class Driver(Protocol):
 
 ### Capabilities (`Capability`)
 
-The set of tokens returned by `capabilities()`, used for actuator selection and evidence fallback
-resolution.
+The set of tokens returned by `capabilities()`, used for actuator selection, evidence fallback
+resolution, and the **preflight capability check** (below).
 
 | Capability | Meaning | idb | playwright | fake |
 |---|---|:--:|:--:|:--:|
@@ -60,6 +60,24 @@ resolution.
 > both natively) and `network` — the **first backend with native network**, observing and stubbing
 > traffic in-process with no app-side cooperation (BE-0054). `multiTouch` is still deferred
 > (tracked in [BE-0054](../roadmaps/in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)).
+
+### Preflight capability check (BE-0082)
+
+A backend's capability set is static, so a scenario that needs a capability the chosen actuator
+lacks is knowable before any device work. At run start — after the actuator is selected, before
+the first device is leased — the runner checks each scenario against the actuator's capabilities
+(`bajutsu/capability_preflight.py`) and fails an unsupported scenario immediately, with one
+aggregated `UnsupportedAction`-style reason, instead of booting a device and failing partway
+through (prime directive #2: fail fast and clearly). It is a pure function of (scenario, capability
+set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.
+
+The check gates only the **hard** requirements the capability set cleanly decides: `pinch` /
+`rotate` need `multiTouch`, a `visual` assertion needs `screenshot`, and every run needs `query` +
+`elements`. It deliberately does **not** gate `conditionWait` (the run loop polls for every wait,
+so no backend needs the token) or `network` (idb captures traffic through the app-side collector
+despite not advertising `network`, so `request` / `event` / `requestSequence` / `responseSchema`
+assertions and `until: { request }` waits run on idb). `gestures.py`'s `_require_multi_touch` stays
+as a defense-in-depth check at gesture time.
 
 ## idb
 

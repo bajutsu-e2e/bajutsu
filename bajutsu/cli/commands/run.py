@@ -358,6 +358,7 @@ def run(
             progress=progress_fn,
             baselines_dir=baselines_dir,
             schemas_dir=schemas_dir,
+            actuator=actuator,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

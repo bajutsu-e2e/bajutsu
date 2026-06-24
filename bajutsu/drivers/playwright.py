@@ -440,10 +440,11 @@ class PlaywrightDriver:
 
         return WebNetworkCollector(self._page, mocks)
 
-    def capabilities(self) -> set[str]:
-        # Playwright has a genuine semantic click, native auto-waiting, and native network
-        # observation + stubbing (BE-0054); multi-touch is still deferred.
-        return {
+    # Playwright has a genuine semantic click, native auto-waiting, and native network observation +
+    # stubbing (BE-0054); multi-touch is still deferred. Class constant so the preflight (BE-0082)
+    # reads it via `backends.capabilities_for` without starting a browser.
+    CAPABILITIES = frozenset(
+        {
             base.Capability.QUERY,
             base.Capability.ELEMENTS,
             base.Capability.SCREENSHOT,
@@ -451,3 +452,7 @@ class PlaywrightDriver:
             base.Capability.CONDITION_WAIT,
             base.Capability.NETWORK,
         }
+    )
+
+    def capabilities(self) -> set[str]:
+        return set(self.CAPABILITIES)
