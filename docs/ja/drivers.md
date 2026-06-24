@@ -61,6 +61,14 @@ class Driver(Protocol):
 
 > describe-all の JSON キー名は fb-idb の出力に従い、`make -C demos/features e2e` ＋ `e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。インストール済み idb がスキーマを変えたときだけ再確認すれば十分です（`idb.py` 冒頭の注記参照）。idb クライアントは `uv sync --extra idb`、`idb_companion` は `brew install facebook/fb/idb-companion` でインストールします。
 
+### idb のバージョン追跡（BE-0005）
+
+idb は唯一の on-device backend なので、新しい Simulator ランタイムを古い `idb_companion` が駆動できない、あるいは companion のアップグレードが describe-all の JSON を変える、といった事態が Bajutsu 側の変更なしに run を壊す。そこで idb を走らせるバージョンを、たまたまインストールされているものではなく、記録・比較できる入力として扱う。
+
+- **設定で範囲を固定する。** `defaults.idbVersion` に `">=1.1.8"` や `">=1.1.0,<2.0.0"` のような制約を置く（環境レベル＝どの target を駆動しても同じ pin）。`bajutsu doctor` がインストール済みの `idb_companion` をこれと突き合わせて報告する（例: `✓ idb_companion version: 1.1.8 (expected >=1.1.8)`）。不一致が、分かりにくい後続の失敗としてではなく、起動前チェックの一覧に現れる。不正な pin は設定の読み込み時に弾く。pin を宣言しなければ、`doctor` はバージョン行を出さない。
+- **manifest に記録する。** idb で実行した run はすべて `idb_companion` と idb クライアントのバージョンを `manifest.json` に書き込む（`"idb": { "companion": …, "client": … }`）。これでどの成果物がどの idb で生成されたかが正確に分かる。これは来歴（provenance）であって、pass/fail には一切関与しない。run/CI の判定は決定論的なまま保たれる。
+- **定期的な互換性監視。** `idb-monitor.yml` が、最新の `idb_companion` に対して smoke シナリオを idb 経由で週次（per-PR ゲートとは分離）実行する。smoke の実行は `parse_describe_all` → Element 正規化を通るので、スキーマや挙動の drift があればそこで明確に失敗する。場当たり的に発見されるのではなく、こちらが制御する周期で捕まえられる。
+
 ## Playwright（web）
 
 Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。

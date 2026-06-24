@@ -1,0 +1,80 @@
+# idb compatibility monitor (BE-0005) — a scheduled on-device check, deliberately separate from
+# the per-PR gate (which stays fast and Simulator-free). idb is the only on-device backend, so a
+# new Simulator runtime an older `idb_companion` can't drive, or a companion upgrade that reshapes
+# `describe-all` JSON, breaks a run with no Bajutsu change. This job boots a Simulator and runs the
+# existing condition-waited smoke scenario through idb against the latest `idb_companion`: because
+# the smoke run goes through `parse_describe_all` → Element normalization, a schema/behaviour drift
+# fails it loudly here — on a cadence we control — instead of surfacing later as a confusing run
+# failure. It also records the versions it ran against in the job summary. This is monitoring, not
+# a gate: it never feeds a run's pass/fail (the verdict stays deterministic and LLM-free).
+name: idb monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 06:00 UTC. Decoupled from PR activity so an upstream idb / runtime release is
+    # caught on its own cadence, not only when someone happens to open a device-touching PR.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: idb-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    name: idb compatibility (smoke + version)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Build the sample app
+        run: make -C demos/features sample-build
+
+      - name: Boot a Simulator
+        id: sim
+        uses: ./.github/actions/boot-simulator
+
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
+
+      # Record the versions this run was driven against, before the smoke run, so the summary
+      # states them even if the run then fails. `idb_companion` is brewed here (idempotent; the
+      # bajutsu-e2e action installs it too) so the version is available regardless of run outcome.
+      - name: Record idb versions
+        run: |
+          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion
+          companion=$(idb_companion --version 2>&1 | head -1 || echo "unknown")
+          runtimes=$(xcrun simctl list runtimes --json | python3 -c 'import json,sys; print(", ".join(r["name"] for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable")))')
+          {
+            echo "## idb compatibility monitor"
+            echo "- idb_companion: \`$companion\`"
+            echo "- Simulator runtimes: $runtimes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The behavioural schema assertion: the smoke scenario drives the app through idb, so it
+      # exercises `idb ui describe-all` → `parse_describe_all` → Element normalization end to end.
+      # A reshaped describe-all schema that breaks normalization fails this run.
+      - name: Run smoke scenarios (schema/behaviour assertion)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/features/app/scenarios/smoke.yaml
+          target: sample
+          config: demos/features/demo.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: idb-monitor-run

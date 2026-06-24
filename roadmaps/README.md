@@ -240,6 +240,14 @@ Running the autonomous crawl across more than one device so a full screen map is
 | [BE-0077](implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md) | Parallel web crawl across multiple browsers | Implemented |
 <!-- /GENERATED:implemented-crawl -->
 
+### On-device validation (M1 close-out)
+
+<!-- GENERATED:implemented-on-device -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0005](implemented/BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Implemented |
+<!-- /GENERATED:implemented-on-device -->
+
 ### Miscellaneous / on hold
 
 <!-- GENERATED:implemented-misc -->
@@ -308,7 +316,6 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 <!-- GENERATED:proposals-on-device -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0005](proposals/BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Proposal |
 | [BE-0006](proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Proposal |
 <!-- /GENERATED:proposals-on-device -->
 

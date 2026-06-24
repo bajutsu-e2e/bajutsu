@@ -12,6 +12,9 @@ import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from bajutsu import idb_version
+from bajutsu.idb_version import IdbVersions
+
 Which = Callable[[str], str | None]
 
 # backend -> the extra CLIs an on-device run needs beyond Xcode's `xcrun`.
@@ -57,6 +60,21 @@ def runnability(
             )
         )
     return checks
+
+
+def idb_version_check(expected: str | None, versions: IdbVersions) -> Check | None:
+    """Compare the installed `idb_companion` against the config-declared range (BE-0005).
+
+    None `expected` means no pin is declared, so there is no line to show. An unreadable installed
+    version (idb absent / unparseable) fails the check rather than guessing — the same fail-loudly
+    stance as a missing tool. This is a `doctor` pre-flight signal, never a run pass/fail gate."""
+    if expected is None:
+        return None
+    installed = versions.companion
+    if installed is None:
+        return Check("idb_companion version", False, f"expected {expected}, installed unknown")
+    ok = idb_version.satisfies(installed, expected)
+    return Check("idb_companion version", ok, f"{installed} (expected {expected})")
 
 
 def passed(checks: list[Check]) -> bool:
