@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
 from collections.abc import Generator, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,9 +26,37 @@ from bajutsu.anthropic_client import (
     PROVIDERS,
     provider,
 )
-from bajutsu.config import load_config, org_for_identity, org_for_target, targets_for_org
+from bajutsu.config import load_config, targets_for_org
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs
+
+# Identity / RBAC / audit live in `authz` now; re-exported here so the HTTP shells keep reaching
+# them through the `operations` facade (`ops.login`, `ops.forbidden_for_role`, …) unchanged.
+# `_target_forbidden` / `_record_audit` are also used internally by the endpoints below; the rest are
+# pure re-exports, declared in `__all__` so they read as intentional public API, not dead imports.
+from bajutsu.serve.authz import (
+    _record_audit,
+    _target_forbidden,
+    forbidden_for_role,
+    login,
+    oauth_callback,
+    oauth_login,
+    required_role,
+    role_allows,
+    role_for,
+)
+
+# The auth surface re-exported through this facade (the endpoint functions defined below are reached
+# by attribute access, so they need no entry here). Keeps the re-exports off the unused-import lint.
+__all__ = [
+    "forbidden_for_role",
+    "login",
+    "oauth_callback",
+    "oauth_login",
+    "required_role",
+    "role_allows",
+    "role_for",
+]
 from bajutsu.serve.helpers import (
     _int,
     crawl_command,
@@ -46,7 +73,7 @@ from bajutsu.serve.helpers import (
     valid_scenario_ref,
     valid_udid,
 )
-from bajutsu.serve.jobs import _DEFAULT_ORG, Job, ServeState
+from bajutsu.serve.jobs import Job, ServeState
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
@@ -264,150 +291,6 @@ def _job_sse_frames(state: ServeState, job: Job, job_id: str, keepalive: float) 
 # --- POST (actions) ---
 
 
-def login(state: ServeState, token: str) -> tuple[Any, int, str | None]:
-    """Validate the shared token and, on success, mint a session id for the shell to set as a
-    cookie. Returns ``(payload, status, session_id | None)``."""
-    if not state.check_token(token):
-        return {"error": "invalid token"}, 401, None
-    return {"ok": True}, 200, state.issue_session()
-
-
-def oauth_login(state: ServeState) -> tuple[Any, int, str | None]:
-    """Begin GitHub OAuth (BE-0015 7b-2). Returns the authorize URL to redirect to plus a fresh CSRF
-    *state* value the transport sets as a short-lived cookie and compares on callback. 404 when OAuth
-    is not configured. Returns ``(payload, status, state | None)``."""
-    if state.oauth is None:
-        return {"error": "oauth not configured"}, 404, None
-    csrf = secrets.token_urlsafe(24)
-    return {"redirect": state.oauth.authorize_url(csrf)}, 200, csrf
-
-
-def oauth_callback(
-    state: ServeState, code: str, state_param: str, state_cookie: str
-) -> tuple[Any, int, str | None]:
-    """Complete GitHub OAuth (BE-0015 7b-2): verify the CSRF state (the query value must match the
-    cookie), exchange the code for a GitHub identity (login + org memberships), check the login
-    against the allowlist, persist the user under their resolved org, and on success mint a session
-    bound to that login. Returns ``(payload, status, session_id | None)``."""
-    if state.oauth is None:
-        return {"error": "oauth not configured"}, 404, None
-    if not (state_param and state_cookie and secrets.compare_digest(state_param, state_cookie)):
-        return {"error": "invalid oauth state"}, 403, None
-    try:
-        identity = state.oauth.fetch_identity(code)
-    except Exception:
-        # The exchange talks to GitHub (network / token parsing); a failure is an upstream error,
-        # not a 500 — surface it as a clean 502 rather than a traceback.
-        return {"error": "oauth exchange failed"}, 502, None
-    if identity is None or not identity.login:
-        return {"error": "oauth exchange failed"}, 403, None
-    login = identity.login
-    if login not in state.oauth_allowed_users:
-        return {"error": "user not allowed"}, 403, None
-    if state.repository is not None:
-        # Persist the identity into the system of record, so audit entries and RBAC can reference
-        # the user. The org comes from the config-declared org model — an explicit member listing or
-        # the user's GitHub org membership — defaulting to the single `default` org. email is unknown
-        # from this scope, so we store GitHub's canonical no-reply form (valid + unique per login).
-        org = _org_for_login(state, login, identity.orgs)
-        state.repository.ensure_org(org, slug=org, name=org)
-        state.repository.upsert_user(
-            login,
-            org_id=org,
-            github_login=login,
-            email=f"{login}@users.noreply.github.com",
-            # Recompute the role from the env policy on every login, so changing the policy takes
-            # effect on next login without a data migration (BE-0015 7c-2).
-            role=role_for(login, admins=state.oauth_admins, viewers=state.oauth_viewers),
-        )
-    return {"ok": True, "user": login}, 200, state.issue_session(identity=login)
-
-
-def _org_for_login(state: ServeState, login: str, github_orgs: list[str]) -> str:
-    """The org to assign *login* at OAuth login, from the config-declared org model (BE-0015
-    multi-tenancy): an explicit member listing or a matching GitHub org from *github_orgs*. The
-    single `default` org when no `orgs:` block maps them."""
-    config = load_config_file(state.config)
-    return org_for_identity(config, login, github_orgs) if config is not None else _DEFAULT_ORG
-
-
-def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
-    """True when an actor resolved to *org* may not touch *target* because the target belongs to a
-    different org (BE-0015 multi-tenancy). Org scoping applies only on a server backend with a
-    system of record; local serve / token mode has no identity to scope to and ignores `orgs:`
-    entirely. A target not declared under `targets:` is "unknown", not cross-org — the caller handles it
-    as a missing target downstream. *org* is resolved once by the caller (via `ServeState.org_of`)."""
-    if state.repository is None:
-        return False
-    config = load_config_file(state.config)
-    if config is None or target not in config.targets:
-        return False
-    return org_for_target(config, target) != org
-
-
-def _record_audit(
-    state: ServeState, actor: str | None, org: str, action: str, target: str, detail: dict[str, Any]
-) -> None:
-    """Append an audit entry (who did what, when) when a database is wired and the actor is known.
-    A no-op otherwise — local, no database, or a shared-token request with no identity (BE-0015 7c-1).
-    *org* is the actor's org, resolved once by the caller."""
-    if state.repository is None or not actor:
-        return
-    state.repository.record_audit(
-        org_id=org,
-        actor_id=actor,
-        action=action,
-        target=target,
-        detail=detail,
-    )
-
-
-# --- RBAC (BE-0015 7c-2): role-based access control over the mutating endpoints ---
-
-_ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
-_ADMIN_PATHS = frozenset({"/api/config", "/api/apikey", "/api/provider"})  # server-wide settings
-_EDITOR_PATHS = frozenset(
-    {"/api/run", "/api/record", "/api/crawl", "/api/scenario", "/api/approve"}
-)
-
-
-def role_for(login: str, *, admins: frozenset[str], viewers: frozenset[str]) -> str:
-    """The role for *login* under the env policy: admin if listed, viewer if listed, else editor
-    (the default — an allowlisted user can run). Recomputed on every login (BE-0015 7c-2)."""
-    if login in admins:
-        return "admin"
-    if login in viewers:
-        return "viewer"
-    return "editor"
-
-
-def required_role(method: str, path: str) -> str | None:
-    """The minimum role a request needs, or None for reads (GET) and the open auth endpoints.
-    Cancelling a job is an editor action (it stops a run)."""
-    if method != "POST":
-        return None
-    if path in _ADMIN_PATHS:
-        return "admin"
-    if path in _EDITOR_PATHS or (path.startswith("/api/jobs/") and path.endswith("/cancel")):
-        return "editor"
-    return None  # /api/login, /api/oauth/* — authenticated/guarded elsewhere, no role gate
-
-
-def role_allows(role: str, required: str) -> bool:
-    """Whether *role* meets the *required* minimum (viewer < editor < admin)."""
-    return _ROLE_RANK.get(role, 0) >= _ROLE_RANK.get(required, 0)
-
-
-def forbidden_for_role(state: ServeState, login: str, method: str, path: str) -> bool:
-    """Whether *login* lacks the role for this request — the transport gate calls it for an
-    OAuth-authenticated session when a database is wired. A user with no row defaults to viewer."""
-    required = required_role(method, path)
-    if required is None or state.repository is None:
-        return False  # reads, open endpoints, or no database wired (DB-less = full access)
-    role = state.repository.user_role(login) or "viewer"  # an unknown user defaults to viewer
-    return not role_allows(role, required)
-
-
 def _confined_config_path(root: Path, raw: str) -> Path | None:
     """Resolve *raw* (relative to *root*, or an absolute path) to a path confined to *root*, or None
     if it escapes — the one barrier between client input and a filesystem read. Resolving **first**
@@ -483,6 +366,31 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     return {"ok": True, "provider": "bedrock", "region": region, "model": model}, 200
 
 
+def _resolve_org_or_forbid(
+    state: ServeState, target: str, actor: str | None
+) -> tuple[str, tuple[Any, int] | None]:
+    """The org resolution + cross-org guard shared by every start_* endpoint: resolve the actor's
+    org and deny a target that belongs to another org (BE-0015; single-tenant never forbids).
+    Returns ``(org, None)`` when allowed, or ``(org, (error, 403))`` for the caller to return."""
+    org = state.org_of(actor)
+    if _target_forbidden(state, org, target):
+        return org, ({"error": "forbidden"}, 403)
+    return org, None
+
+
+def _register_and_dispatch(
+    state: ServeState, job: Job
+) -> tuple[Job | None, tuple[Any, int] | None]:
+    """Register *job* under the concurrency cap and dispatch it, the tail shared by every start_*
+    endpoint. Returns ``(job, None)`` once dispatched, or ``(None, (error, 429))`` when the cap is
+    hit. The atomic count+create in `try_register` is what keeps concurrent dispatches under the cap."""
+    registered = state.try_register(job)
+    if registered is None:
+        return None, ({"error": "too many concurrent jobs; try again shortly"}, 429)
+    state.executor.dispatch(state, registered)
+    return registered, None
+
+
 def start_run(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
@@ -492,10 +400,9 @@ def start_run(
     if not body.get("scenario") or not body.get("target"):
         return {"error": "scenario and target are required"}, 400
     target = str(body["target"])
-    org = state.org_of(actor)
-    # Deny a target that belongs to another org (BE-0015 multi-tenancy); single-tenant never forbids.
-    if _target_forbidden(state, org, target):
-        return {"error": "forbidden"}, 403
+    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
     # Confine the scenario to the target's own scenarios dir: a serve client must not be able to run an
     # arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite). The scenario store
     # is scoped to the actor's org so the run reads that org's scenarios.
@@ -536,8 +443,8 @@ def start_run(
         headed=_bool_flag(body, "headed"),
     )
     app_path, build = target_build_info(cfg, target)
-    # Atomic count + create so concurrent dispatches can't both slip past the cap.
-    job = state.try_register(
+    job, capped = _register_and_dispatch(
+        state,
         Job(
             cmd=cmd,
             udids=_boot_targets(udid),
@@ -547,11 +454,11 @@ def start_run(
             materialize_baselines=on_worker,
             actor=actor,
             org=org,
-        )
+        ),
     )
-    if job is None:
-        return {"error": "too many concurrent jobs; try again shortly"}, 429
-    state.executor.dispatch(state, job)
+    if capped:
+        return capped
+    assert job is not None
     _record_audit(
         state, actor, org, "run", f"{target}/{body['scenario']}", {"backend": backend or None}
     )
@@ -569,9 +476,9 @@ def start_record(
     if not body.get("goal") or not body.get("target"):
         return {"error": "goal and target are required"}, 400
     target = str(body["target"])
-    org = state.org_of(actor)
-    if _target_forbidden(state, org, target):
-        return {"error": "forbidden"}, 403
+    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
     scope = state.for_org(org).scenarios.scope(target)
     if scope is None:
         return {"error": f"target '{body['target']}' has no scenarios dir"}, 400
@@ -602,7 +509,8 @@ def start_record(
         config=config_arg,
     )
     app_path, build = target_build_info(cfg, body["target"])
-    job = state.try_register(
+    job, capped = _register_and_dispatch(
+        state,
         Job(
             cmd=cmd,
             udids=_boot_targets(udid),
@@ -613,11 +521,11 @@ def start_record(
             record_save=authored.save,
             actor=actor,
             org=org,
-        )
+        ),
     )
-    if job is None:
-        return {"error": "too many concurrent jobs; try again shortly"}, 429
-    state.executor.dispatch(state, job)
+    if capped:
+        return capped
+    assert job is not None
     _record_audit(state, actor, org, "record", str(body["target"]), {"goal": str(body["goal"])})
     # Report the saved ref on the server (what the UI loads), else the on-disk path.
     return {"jobId": job.id, "path": authored.save[1] if authored.save else authored.out}, 200
@@ -634,9 +542,9 @@ def start_crawl(
     if not body.get("target"):
         return {"error": "target is required"}, 400
     target = str(body["target"])
-    org = state.org_of(actor)
-    if _target_forbidden(state, org, target):
-        return {"error": "forbidden"}, 403
+    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
     # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
     resume_src = str(body.get("resumeSrc", "") or "")
     resume_key = str(body.get("resumeKey", "") or "")
@@ -667,7 +575,8 @@ def start_crawl(
     )
     app_path, build = target_build_info(cfg, target)
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
-    job = state.try_register(
+    job, capped = _register_and_dispatch(
+        state,
         Job(
             cmd=cmd,
             udids=_boot_targets(udid),
@@ -675,11 +584,11 @@ def start_crawl(
             build=build,
             actor=actor,
             org=org,
-        )
+        ),
     )
-    if job is None:
-        return {"error": "too many concurrent jobs; try again shortly"}, 429
-    state.executor.dispatch(state, job)
+    if capped:
+        return capped
+    assert job is not None
     _record_audit(state, actor, org, "crawl", target, {"runId": run_id})
     return {"jobId": job.id, "runId": run_id}, 200
 
