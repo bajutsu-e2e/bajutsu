@@ -73,8 +73,8 @@ worker から成り、org でスコープされます。ところが、ツール
    - **キーベース**：機密になりうる構造化フィールドのキー（`authorization`、`token`、`secret`、`password`、
      `cookie`、`api_key`）を、値に関係なくキー名でマスクします。
 
-   *テスト*：素の `logging.getLogger("anything").info(<機密>)` が生の機密を出さない。`{"authorization": "Bearer …"}`
-   を持つ record がマスクされる。
+   *テスト*：素の `logging.getLogger("anything").info(<機密>)` が生の機密を出しません。`{"authorization": "Bearer …"}`
+   を持つ record がマスクされます。
 
 2. **相関 id の貫通。** リクエスト入口で `request_id` を採番し、dispatch された run は `job_id` / `run_id` /
    `org` / `actor` を持ちます。id はリクエスト（および worker 側ではジョブ）の境界で bind した `contextvars` に
@@ -82,13 +82,13 @@ worker から成り、org でスコープされます。ところが、ツール
    アプリの両方で動きます。プロセスをまたぐ相関は、context の伝播ではなく**共有 id** で行います（`job_id` /
    `run_id` / `org` はすでに job spec で運ばれています）。
 
-   *テスト*：アプリに 1 リクエストを流すと、その間の record がすべて同じ `request_id` を持つ。worker の
-   `execute_job_spec` の record が `job_id` + `run_id` + `org` を持つ。
+   *テスト*：アプリに 1 リクエストを流すと、その間の record がすべて同じ `request_id` を持ちます。worker の
+   `execute_job_spec` の record が `job_id` + `run_id` + `org` を持ちます。
 
 3. **構造化スキーマ（serve）。** serve のログ行は 1 行 JSON で、形は固定です。
    `ts, level, logger, event?, msg, request_id?, org?, actor?, job_id?, run_id?`。
 
-   *テスト*：出力された各行が、必須キーと型を備えた JSON として parse できる。
+   *テスト*：出力された各行が、必須キーと型を備えた JSON として parse できます。
 
 4. **ゲートを汚さない（2 層）。** 運用ログは run の合否に絡まない側チャネルであり、その設定は既定経路で重い依存を
    引きません。
@@ -99,7 +99,7 @@ worker から成り、org でスコープされます。ところが、ツール
    持ちます。例：`run.dispatched`、`run.recorded`、`oauth.login`、`quota.rejected`、`worker.job.started`、
    `worker.job.finished`、`artifact.upload.failed`。
 
-   *テスト*：主要なフローが期待する `event` を出す。
+   *テスト*：主要なフローが期待する `event` を出します。
 
 ### redaction の再利用
 

@@ -361,5 +361,10 @@ apply equally when reporting on or summarizing work.
   [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/): it is the authoritative style
   for Japanese prose in this repo, and a translation must read as natural Japanese under those norms,
   not a literal rendering of the English.
+- **Japanese documents use 敬体 (the polite *desu/masu* style, ですます調).** Every Japanese file
+  under `docs/ja/` and every roadmap `*-ja.md` is written in 敬体, never the plain *da/dearu* style
+  (常体). Keep the whole document consistent: only sentence-final predicates take the polite form —
+  embedded clauses, conditionals, and connective forms (連体修飾・〜すると・〜であり) stay plain as
+  usual, and headings or pure noun-phrase labels (体言止め) need no copula.
 
 The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).

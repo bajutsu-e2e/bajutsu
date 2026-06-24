@@ -106,7 +106,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   **When generating the Japanese side — writing it fresh, or translating the English `docs/` into
   `docs/ja/` (and roadmap `*-ja.md`) — follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/)
   skill: it is the authoritative style for Japanese prose here, and a translation must read as
-  natural Japanese under those norms, not a literal rendering of the English.** Full guidance:
+  natural Japanese under those norms, not a literal rendering of the English.** Every Japanese
+  document — `docs/ja/` and every roadmap `*-ja.md` — is written in **敬体 (the polite *desu/masu*
+  style, ですます調)**, never the plain *da/dearu* style (常体). Full guidance:
   [`docs/ai-development.md`](docs/ai-development.md).
 - **Roadmap items use BE IDs (strict).** Every roadmap item is a directory
   `roadmaps/<category>/BE-NNNN-<slug>/` holding the English file `BE-NNNN-<slug>.md`

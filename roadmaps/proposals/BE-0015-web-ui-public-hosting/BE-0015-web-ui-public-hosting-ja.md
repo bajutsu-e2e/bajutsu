@@ -114,7 +114,7 @@ Orka が払い出す各 Mac 上の小さな Python エージェント（launchd 
   単位で Postgres/R2 に保存。
 - **シークレット**は Fly/Doppler。各 org が自分の `ANTHROPIC_API_KEY` を持ち込みます。
 - ゴール: ログイン済みユーザがプロジェクト + シナリオを選び Run を実行し、ライブログを見て、レポートを
-  閲覧する。共有インフラ上で安全に、end-to-end で行えるようにします。
+  閲覧します。共有インフラ上で安全に、end-to-end で行えるようにします。
 
 #### フェーズ 2：スケール
 - コントロールプレーン → **Kubernetes**（GKE/EKS）、マネージド **Cloud SQL/RDS** +
