@@ -44,6 +44,7 @@ summary header and each scenario card) and in the `bajutsu serve` UI.
 |---|---|---|---|
 | `name` | str | required | Scenario name (used for the report / JUnit testcase / codegen method name) |
 | `description` | str | none | Optional human description; shown on the scenario's report card and in the serve UI |
+| `from` | str | none | **Provenance** — the natural-language goal `record` authored this scenario from ([provenance](#from-provenance)). Authoring metadata only; `run` ignores it |
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
@@ -175,6 +176,7 @@ Modifiers:
 
 - `capture: [<token>...]` — evidence for this step only ([evidence](evidence.md#b-inline-evidence)).
 - `name: <str>` — the step id (the evidence output directory name · report label). Defaults to `step<i>`.
+- `from: <str>` — **provenance** ([below](#from-provenance)): the phrase this step was recorded from. Authoring metadata; `run` ignores it.
 
 ### `tap`
 
@@ -608,6 +610,38 @@ acquisition timing per kind, and which are captured, are in
 PyYAML (YAML 1.1) resolves `on`/`off`/`yes`/`no` to booleans. To prevent the `capturePolicy`
 trigger key `on:` from becoming `True`, Bajutsu's YAML loader (`_yaml.py`) treats **only
 `true`/`false` as booleans** and keeps `on`/`off`/`yes`/`no` as strings.
+
+## `from` (provenance)
+
+`from:` records **which natural-language phrase a construct was recorded from** (BE-0044). It is an
+optional string attached at four levels — the scenario (the original goal), each step, each `expect`
+assertion, and each `capturePolicy` rule — so a reviewer can see *why* each part exists and judge
+whether `record` normalized the intent faithfully.
+
+```yaml
+- name: open settings and reindex
+  from: "設定を開いて、再インデックスして、正規化設定が消えていることを確認して"   # the original goal
+  steps:
+    - tap: { id: settings.open }
+      from: "設定を開く"
+  expect:
+    - exists: { label: "正規化設定が変更されています", negate: true }
+      from: "正規化設定が消えていること"
+  capturePolicy:
+    - on: { action: tap, idMatches: "*.submit" }
+      capture: [screenshot.after, network]
+      from: "送信を押すたびにスクショとネットワークログを残して"
+```
+
+- **`record` (Tier 1, AI) is the only writer.** It fills `from:` while normalizing the goal into the
+  structured scenario; a hand-authored scenario simply omits it (and a dumped scenario stays clean —
+  `from:` is pruned when unset).
+- **`run` (Tier 2) ignores it entirely** — provenance is authoring metadata, never read by the
+  orchestrator, so it adds no AI to the gate and cannot affect pass/fail.
+- **Grouping is emergent:** when one utterance produces several steps, they carry the **same** `from:`
+  string; there is no span syntax. `lint` reports an advisory provenance-coverage figure (how many
+  steps carry `from:`); it never fails a run.
+- The phrase is kept **verbatim** in whatever language the author wrote (not translated).
 
 ## Round-trip (load ⇄ dump)
 

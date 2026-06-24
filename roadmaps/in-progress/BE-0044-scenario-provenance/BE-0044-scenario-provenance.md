@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0044](BE-0044-scenario-provenance.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | Authoring experience (record / GUI editor) |
 | Origin | BE-0002 follow-up (provenance was deferred there as "remaining light") |
 <!-- /BE-METADATA -->

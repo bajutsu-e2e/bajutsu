@@ -118,6 +118,38 @@ def test_dump_round_trip() -> None:
     assert s.capture_policy[0].on.action == "tap"
 
 
+def test_provenance_from_round_trips_at_every_level() -> None:
+    # `from:` (BE-0044) is provenance attached to the scenario, each step, each expect assertion,
+    # and each capturePolicy rule; it must survive load -> dump -> load by its `from` alias.
+    text = """
+- name: open settings and reindex
+  from: 設定を開いて再インデックスし、正規化設定が消えていることを確認する
+  steps:
+    - tap: { id: settings.open }
+      from: 設定を開く
+  expect:
+    - exists: { label: "正規化設定が変更されています", negate: true }
+      from: 正規化設定が消えていること
+  capturePolicy:
+    - on: { action: tap, idMatches: "*.submit" }
+      capture: [screenshot.after]
+      from: 送信を押すたびにスクショ
+"""
+    s = load_scenarios(dump_scenarios(load_scenarios(text)))[0]
+    assert s.from_ == "設定を開いて再インデックスし、正規化設定が消えていることを確認する"
+    assert s.steps[0].from_ == "設定を開く"
+    assert s.expect[0].from_ == "正規化設定が消えていること"
+    assert s.capture_policy[0].from_ == "送信を押すたびにスクショ"
+
+
+def test_provenance_is_pruned_when_absent() -> None:
+    # A hand-authored scenario carries no provenance, so a dumped scenario stays clean — no stray
+    # `from:` keys appear.
+    text = "- name: plain\n  steps:\n    - tap: { id: home.go }\n"
+    dumped = dump_scenarios(load_scenarios(text))
+    assert "from:" not in dumped
+
+
 def _step(sid: str) -> Step:
     return Step.model_validate({"tap": {"id": sid}})
 

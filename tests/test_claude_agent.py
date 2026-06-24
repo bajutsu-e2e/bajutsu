@@ -7,7 +7,7 @@ import base64
 from conftest import FakeAnthropic, FakeBlock
 
 from bajutsu.agent import Observation
-from bajutsu.claude_agent import ClaudeAgent
+from bajutsu.claude_agent import ClaudeAgent, proposal_from_call
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.record import record
@@ -69,6 +69,28 @@ def test_finish_proposal_with_assertions() -> None:
     assert proposal.expect[0].exists is not None
     assert proposal.expect[1].value is not None and proposal.expect[1].value.equals == "3"
     assert proposal.expect[2].exists is not None and proposal.expect[2].exists.negate is True
+
+
+def test_action_reason_becomes_step_provenance() -> None:
+    # The tool's `reason` (why this action advances the goal) is the natural-language intent, so
+    # it lands in the step's `from:` provenance (BE-0044).
+    p = proposal_from_call("tap", {"id": "settings.open", "reason": "open settings"})
+    assert p.step is not None and p.step.from_ == "open settings"
+
+
+def test_assertion_intent_becomes_provenance_optional() -> None:
+    p = proposal_from_call(
+        "finish",
+        {
+            "reason": "the goal is reached",
+            "assertions": [
+                {"id": "title", "check": "exists", "intent": "the settings title is shown"},
+                {"id": "x", "check": "exists"},  # no intent -> no provenance
+            ],
+        },
+    )
+    assert p.expect[0].from_ == "the settings title is shown"
+    assert p.expect[1].from_ is None
 
 
 def test_request_uses_forced_tool_choice_and_cache() -> None:

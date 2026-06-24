@@ -60,6 +60,9 @@ class Scenario(_Model):
 
     name: str
     description: str | None = None
+    # Provenance (BE-0044): the original natural-language goal `record` authored this scenario
+    # from. Authoring metadata only — `run` never reads it. Kept None (pruned) when unset.
+    from_: str | None = Field(default=None, alias="from")
     tags: list[str] = Field(default_factory=list)
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")

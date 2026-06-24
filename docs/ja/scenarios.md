@@ -41,6 +41,7 @@ scenarios:
 |---|---|---|---|
 | `name` | str | 必須 | シナリオ名（レポート / JUnit testcase / codegen のメソッド名に使う） |
 | `description` | str | なし | 任意の説明文。シナリオの report カードと serve UI に表示 |
+| `from` | str | なし | **来歴（provenance）** — `record` がこのシナリオを書き起こした元の自然言語ゴール（[来歴](#from来歴)）。オーサリング用のメタデータで、`run` は読みません |
 | `tags` | list[str] | `[]` | 選択ラベル。CLI の `--tag` / `--exclude` で実行対象を絞る（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `preconditions` | object | `{}` | テスト前の環境準備（下記） |
@@ -166,6 +167,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 
 - `capture: [<token>...]`：このステップだけの証跡（[evidence](evidence.md#b-インライン証跡)）。
 - `name: <str>`：ステップ ID（証跡の出力先ディレクトリ名やレポート表示に使う）。省略時は `step<i>`。
+- `from: <str>`：**来歴**（[後述](#from来歴)）。このステップを記録した元のフレーズ。オーサリング用のメタデータで、`run` は読みません。
 
 ### `tap`
 
@@ -544,6 +546,30 @@ steps:
 ## YAML の注意点
 
 PyYAML（YAML 1.1）は `on`/`off`/`yes`/`no` を真偽値に解決します。`capturePolicy` のトリガーキー `on:` が `True` になるのを防ぐため、Bajutsu の YAML ローダ（`_yaml.py`）は **`true`/`false` だけを真偽値**として扱い、`on`/`off`/`yes`/`no` は文字列のまま読みます。
+
+## `from`（来歴）
+
+`from:` は、**ある構成要素がどの自然言語フレーズから記録されたか**を残します（BE-0044）。任意の文字列で、4 つのレベル——シナリオ（元のゴール）、各ステップ、各 `expect` アサーション、各 `capturePolicy` ルール——に付きます。これにより、レビュアーは各部分が*なぜ*存在するのかを見て、`record` が意図を忠実に正規化できているかを判断できます。
+
+```yaml
+- name: 設定を開いて再生成する
+  from: "設定を開いて、再インデックスして、正規化設定が消えていることを確認して"   # 元のゴール
+  steps:
+    - tap: { id: settings.open }
+      from: "設定を開く"
+  expect:
+    - exists: { label: "正規化設定が変更されています", negate: true }
+      from: "正規化設定が消えていること"
+  capturePolicy:
+    - on: { action: tap, idMatches: "*.submit" }
+      capture: [screenshot.after, network]
+      from: "送信を押すたびにスクショとネットワークログを残して"
+```
+
+- **書き込むのは `record`（Tier 1、AI）だけです。** ゴールを構造化シナリオへ正規化する際に `from:` を埋めます。手書きのシナリオは単に省略でき、書き出した YAML も汚れません（未設定の `from:` は間引かれます）。
+- **`run`（Tier 2）は一切読みません。** 来歴はオーサリング用のメタデータで、オーケストレータは参照しないので、ゲートに AI を加えず、pass/fail にも影響しません。
+- **グルーピングは創発的です。** 1 つの発話が複数ステップを生むとき、それらは**同じ** `from:` 文字列を持ちます。範囲（span）構文はありません。`lint` は来歴カバレッジ（`from:` を持つステップ数）を advisory として報告しますが、run を落とすことはありません。
+- フレーズは、著者が書いた言語のまま**逐語的**に保ちます（翻訳しません）。
 
 ## ラウンドトリップ（読込 ⇄ 書出）
 
