@@ -43,7 +43,9 @@ def provenance_coverage(scenarios: list[Scenario]) -> str | None:
     steps = [step for s in scenarios for step in s.steps]
     if not steps:
         return None
-    with_from = sum(1 for step in steps if step.from_ is not None)
+    # A non-empty phrase counts as provenance — matching the writer (`_provenance`), which omits an
+    # empty `from:` rather than emitting one, so an empty string never reads as "covered".
+    with_from = sum(1 for step in steps if step.from_)
     return f"provenance: {with_from}/{len(steps)} step(s) carry `from:`"
 
 
