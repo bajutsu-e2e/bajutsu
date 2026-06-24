@@ -483,6 +483,31 @@ def set_provider(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     return {"ok": True, "provider": "bedrock", "region": region, "model": model}, 200
 
 
+def _resolve_org_or_forbid(
+    state: ServeState, target: str, actor: str | None
+) -> tuple[str, tuple[Any, int] | None]:
+    """The org resolution + cross-org guard shared by every start_* endpoint: resolve the actor's
+    org and deny a target that belongs to another org (BE-0015; single-tenant never forbids).
+    Returns ``(org, None)`` when allowed, or ``(org, (error, 403))`` for the caller to return."""
+    org = state.org_of(actor)
+    if _target_forbidden(state, org, target):
+        return org, ({"error": "forbidden"}, 403)
+    return org, None
+
+
+def _register_and_dispatch(
+    state: ServeState, job: Job
+) -> tuple[Job | None, tuple[Any, int] | None]:
+    """Register *job* under the concurrency cap and dispatch it, the tail shared by every start_*
+    endpoint. Returns ``(job, None)`` once dispatched, or ``(None, (error, 429))`` when the cap is
+    hit. The atomic count+create in `try_register` is what keeps concurrent dispatches under the cap."""
+    registered = state.try_register(job)
+    if registered is None:
+        return None, ({"error": "too many concurrent jobs; try again shortly"}, 429)
+    state.executor.dispatch(state, registered)
+    return registered, None
+
+
 def start_run(
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
@@ -492,10 +517,9 @@ def start_run(
     if not body.get("scenario") or not body.get("target"):
         return {"error": "scenario and target are required"}, 400
     target = str(body["target"])
-    org = state.org_of(actor)
-    # Deny a target that belongs to another org (BE-0015 multi-tenancy); single-tenant never forbids.
-    if _target_forbidden(state, org, target):
-        return {"error": "forbidden"}, 403
+    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
     # Confine the scenario to the target's own scenarios dir: a serve client must not be able to run an
     # arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite). The scenario store
     # is scoped to the actor's org so the run reads that org's scenarios.
@@ -536,8 +560,8 @@ def start_run(
         headed=_bool_flag(body, "headed"),
     )
     app_path, build = target_build_info(cfg, target)
-    # Atomic count + create so concurrent dispatches can't both slip past the cap.
-    job = state.try_register(
+    job, capped = _register_and_dispatch(
+        state,
         Job(
             cmd=cmd,
             udids=_boot_targets(udid),
@@ -547,11 +571,11 @@ def start_run(
             materialize_baselines=on_worker,
             actor=actor,
             org=org,
-        )
+        ),
     )
-    if job is None:
-        return {"error": "too many concurrent jobs; try again shortly"}, 429
-    state.executor.dispatch(state, job)
+    if capped:
+        return capped
+    assert job is not None
     _record_audit(
         state, actor, org, "run", f"{target}/{body['scenario']}", {"backend": backend or None}
     )
@@ -569,9 +593,9 @@ def start_record(
     if not body.get("goal") or not body.get("target"):
         return {"error": "goal and target are required"}, 400
     target = str(body["target"])
-    org = state.org_of(actor)
-    if _target_forbidden(state, org, target):
-        return {"error": "forbidden"}, 403
+    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
     scope = state.for_org(org).scenarios.scope(target)
     if scope is None:
         return {"error": f"target '{body['target']}' has no scenarios dir"}, 400
@@ -602,7 +626,8 @@ def start_record(
         config=config_arg,
     )
     app_path, build = target_build_info(cfg, body["target"])
-    job = state.try_register(
+    job, capped = _register_and_dispatch(
+        state,
         Job(
             cmd=cmd,
             udids=_boot_targets(udid),
@@ -613,11 +638,11 @@ def start_record(
             record_save=authored.save,
             actor=actor,
             org=org,
-        )
+        ),
     )
-    if job is None:
-        return {"error": "too many concurrent jobs; try again shortly"}, 429
-    state.executor.dispatch(state, job)
+    if capped:
+        return capped
+    assert job is not None
     _record_audit(state, actor, org, "record", str(body["target"]), {"goal": str(body["goal"])})
     # Report the saved ref on the server (what the UI loads), else the on-disk path.
     return {"jobId": job.id, "path": authored.save[1] if authored.save else authored.out}, 200
@@ -634,9 +659,9 @@ def start_crawl(
     if not body.get("target"):
         return {"error": "target is required"}, 400
     target = str(body["target"])
-    org = state.org_of(actor)
-    if _target_forbidden(state, org, target):
-        return {"error": "forbidden"}, 403
+    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
     # Resume continues an existing run (a pruned branch tapped in the UI); otherwise a new run.
     resume_src = str(body.get("resumeSrc", "") or "")
     resume_key = str(body.get("resumeKey", "") or "")
@@ -667,7 +692,8 @@ def start_crawl(
     )
     app_path, build = target_build_info(cfg, target)
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).
-    job = state.try_register(
+    job, capped = _register_and_dispatch(
+        state,
         Job(
             cmd=cmd,
             udids=_boot_targets(udid),
@@ -675,11 +701,11 @@ def start_crawl(
             build=build,
             actor=actor,
             org=org,
-        )
+        ),
     )
-    if job is None:
-        return {"error": "too many concurrent jobs; try again shortly"}, 429
-    state.executor.dispatch(state, job)
+    if capped:
+        return capped
+    assert job is not None
     _record_audit(state, actor, org, "crawl", target, {"runId": run_id})
     return {"jobId": job.id, "runId": run_id}, 200
 
