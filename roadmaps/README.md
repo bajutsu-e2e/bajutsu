@@ -72,6 +72,11 @@ built, or it ships — set its `Status` and **move its directory** to the matchi
 same ID and slug), then regenerate the index. `make roadmap-promote` reconciles any misfiled item
 for you.
 
+Write the Japanese file (`*-ja.md`) in **敬体 (the polite *desu/masu* style, ですます調)**,
+consistent with `docs/ja/` — never the plain *da/dearu* style (常体). This is part of the
+[`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/) norm; a translation must read
+as natural polite Japanese, not a literal rendering of the English.
+
 ---
 
 ## Implemented

@@ -53,7 +53,7 @@ HTTP ハーネスで Simulator 無しにテストできます。
    `/api/approve`・`/runs/...` 配信）は既にパスを封じ込め済みです。
 2. **トークン認証 + 非 loopback ガード**（#94 で実装）。任意の共有トークン（`--token` / `BAJUTSU_SERVE_TOKEN`）を
    定数時間比較します。API クライアントは `Bearer` ヘッダで提示し、ブラウザは **POST のログインエンドポイント経由で
-   HttpOnly・SameSite=Strict Cookie を確立**します（トークンは URL に載せない。クエリ文字列は履歴・ログ・`Referer`
+   HttpOnly・SameSite=Strict Cookie を確立**します（トークンは URL に載せません。クエリ文字列は履歴・ログ・`Referer`
    から漏えいするため）。**非 loopback host をトークン無しで bind するのは起動時に拒否**するので、無認証で誤って
    公開されることがありません。
 3. **同じ入力検証を他の run 起動エンドポイントにも適用**（#95 で実装、`/api/crawl` は #114）。`/api/record`
