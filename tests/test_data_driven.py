@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.scenario import expand_data, load_scenarios, read_csv
+from bajutsu.scenario import Assertion, Step, expand_data, load_scenarios, read_csv
 
 
 def _no_csv(_ref: str) -> list[dict[str, str]]:
@@ -107,10 +107,13 @@ def test_row_substitution_into_multiple_fields_stays_fully_typed() -> None:
     assert s.data is None and s.data_file is None
 
 
-def test_token_bearing_rows_are_revalidated() -> None:
-    # The token-bearing path keeps the full re-validation: each derived instance is built via
-    # Scenario.model_validate, so model-level invariants (here: a selector with no condition)
-    # are enforced on every row exactly as before, not bypassed by an unchecked construct.
+def test_expanded_rows_are_fully_typed_models() -> None:
+    # The optimization hoists model_dump out of the per-row loop but keeps Scenario.model_validate
+    # per row, so each derived row is a *fully constructed* model — nested fields are typed objects,
+    # not raw dicts. This is the guard against regressing to model_construct(dict), which would leave
+    # steps/expect as dicts (passing no value through, breaking every downstream consumer): the
+    # isinstance checks below fail under that construction, and attribute access proves the
+    # interpolated values landed in the typed tree.
     scns = load_scenarios(
         """
 - name: guarded
@@ -125,6 +128,8 @@ def test_token_bearing_rows_are_revalidated() -> None:
     out = expand_data(scns, _no_csv)
     assert len(out) == 1
     s = out[0]
+    assert isinstance(s.steps[0], Step)  # not a dict — full model construction, not model_construct
+    assert isinstance(s.expect[0], Assertion)
     assert s.steps[0].tap is not None and s.steps[0].tap.id_matches == "btn.within"
     assert s.expect[0].exists is not None and s.expect[0].exists.sel.id == "panel.within"
 
