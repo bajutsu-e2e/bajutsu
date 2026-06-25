@@ -483,8 +483,10 @@ def _action_targets(
     action's description (matching the edge/plan strings the web UI shows) — so the UI can highlight
     where a transition's tap lands on the screenshot. A coordinate tap (a vision-located tab) yields
     a small box around its point; a tap/type/fill yields its element frame over the screen size."""
-    w = max((f[2] for el in elements if (f := el.get("frame"))), default=0.0)
-    h = max((f[3] for el in elements if (f := el.get("frame"))), default=0.0)
+    # Single pass over elements for both bounds (each frame is read once, not twice).
+    frames = [f for el in elements if (f := el.get("frame"))]
+    w = max((f[2] for f in frames), default=0.0)
+    h = max((f[3] for f in frames), default=0.0)
     if w <= 0 or h <= 0:
         return ()
     out: list[tuple[str, tuple[float, float, float, float]]] = []
