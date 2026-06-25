@@ -34,9 +34,12 @@ _HEAVY_KINDS = INTERVAL_KINDS | {"network"}
 
 @dataclass(frozen=True)
 class RuleExplain:
-    """How one capturePolicy rule would fire. `countable` action rules carry an exact `count`
-    and the `steps` they match; `event`/`result` rules are runtime-dependent (reported, not
-    counted). `warn` = a heavy capture on a broadly-matching rule."""
+    """How one capturePolicy rule would fire.
+
+    `countable` action rules carry an exact `count` and the `steps` they match; `event`/`result`
+    rules are runtime-dependent (reported, not counted). `warn` = a heavy capture on a
+    broadly-matching rule.
+    """
 
     trigger: str
     capture: list[str]
@@ -73,9 +76,11 @@ def _trigger_desc(rule: CaptureRule) -> str:
 
 
 def _is_broad(rule: CaptureRule) -> bool:
-    """A rule matches broadly when it isn't pinned to a specific element: an action rule with no
-    `idMatches` (every step of that action) or a leading-`*` glob, or a `screenChanged` event.
-    `result: error` is the safety net — rare by design, so not broad."""
+    """Whether a rule matches broadly — not pinned to a specific element.
+
+    An action rule with no `idMatches` (every step of that action) or a leading-`*` glob, or a
+    `screenChanged` event. `result: error` is the safety net — rare by design, so not broad.
+    """
     on = rule.on
     if on.action is not None:
         return on.id_matches is None or on.id_matches.startswith("*")
@@ -119,8 +124,11 @@ def explain_capture(scenario: Scenario) -> list[RuleExplain]:
 
 
 def _step_fires(rule: CaptureRule, step: Step) -> bool:
-    """Whether an action-triggered `rule` fires on `step`, using the run loop's own matcher with
-    neutral runtime signals so the count matches what a real run would record."""
+    """Whether an action-triggered `rule` fires on `step`.
+
+    Uses the run loop's own matcher with neutral runtime signals, so the count matches what a real
+    run would record.
+    """
     from bajutsu.orchestrator.actions._registry import _action_of
     from bajutsu.orchestrator.evidence_rules import _primary_selector, _rule_fires
 
@@ -284,8 +292,10 @@ def _scenario_lines(
 
 
 def trace_run(run_dir: Path, scenario_filter: str | None = None) -> str:
-    """Render the run at `run_dir` as a text timeline. `scenario_filter` (substring,
-    case-insensitive) limits which scenarios are shown."""
+    """Render the run at `run_dir` as a text timeline.
+
+    `scenario_filter` (substring, case-insensitive) limits which scenarios are shown.
+    """
     manifest = _read_json(run_dir / "manifest.json")
     if not isinstance(manifest, dict):
         return f"no readable manifest.json in {run_dir}"
