@@ -25,10 +25,12 @@ PROVIDER = "simctl"
 
 
 def record_video_cmd(udid: str, path: str) -> list[str]:
+    """Build the simctl command that records the screen to `path` (h264)."""
     return ["xcrun", "simctl", "io", udid, "recordVideo", "--codec", "h264", path]
 
 
 def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
+    """Build the simctl command that streams the device log, optionally filtered by `predicate`."""
     cmd = [
         "xcrun",
         "simctl",
@@ -47,6 +49,7 @@ def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
 
 
 def app_trace_cmd(udid: str, subsystem: str) -> list[str]:
+    """Build the simctl command that streams the app's os_log `subsystem` as ndjson."""
     return [
         "xcrun",
         "simctl",

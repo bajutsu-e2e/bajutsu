@@ -51,8 +51,11 @@ _OPS = {">=": operator.ge, "<=": operator.le, "==": operator.eq, ">": operator.g
 
 
 def is_valid_spec(spec: str) -> bool:
-    """Whether every comma-separated constraint in `spec` parses (e.g. ">=1.1.0,<2.0.0"). The config
-    layer validates a declared pin with this so a typo fails loudly at load, not as a later crash."""
+    """Whether every comma-separated constraint in `spec` parses (e.g. ">=1.1.0,<2.0.0").
+
+    The config layer validates a declared pin with this so a typo fails loudly at load,
+    not as a later crash.
+    """
     return all(_CONSTRAINT_RE.match(c.strip()) is not None for c in spec.split(","))
 
 
