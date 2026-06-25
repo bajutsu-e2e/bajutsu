@@ -371,7 +371,15 @@ def test_read_artifact_applies_loader_and_returns_default_on_miss(tmp_path: Path
     assert len(calls) == 1 and calls[0] == tmp_path / "step0/elements.dat"
 
     # kind not present anywhere -> default is returned without calling loader
+    # artifact present but its file is missing: the loader IS called and returns None, so the
+    # default kicks in (step1 has a screenshot artifact pointing at an unwritten file).
     calls.clear()
     result2 = _read_artifact(tmp_path, steps, 1, "screenshot", loader, sentinel)
-    # step1 has screenshot at "step1/screenshot.dat" but no file written -> loader returns None
-    assert result2 is sentinel  # loader returned None, so default kicks in
+    assert calls == [tmp_path / "step1/screenshot.dat"]  # loader was called
+    assert result2 is sentinel  # ...and returned None, so the default is used
+
+    # kind absent from every step: the default is returned WITHOUT calling the loader at all.
+    calls.clear()
+    result3 = _read_artifact(tmp_path, steps, 1, "video", loader, sentinel)
+    assert calls == []  # no artifact of that kind -> loader never invoked
+    assert result3 is sentinel
