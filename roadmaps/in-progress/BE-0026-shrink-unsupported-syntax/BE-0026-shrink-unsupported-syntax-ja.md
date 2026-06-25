@@ -40,7 +40,7 @@
   と `XCUIElementQuery` の合成で追加します。`within` は `descendants(matching:)` に対する入れ子の
   クエリへ、`index` は `element(boundBy:)` へマッピングします。
 - **デバイス制御ステップ。** `setLocation` と `push`（および
-  [BE-0035](../../proposals/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md) の
+  [BE-0035](../../implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives-ja.md) の
   プリミティブ）には、アプリレベルで対応する XCUITest API がありません。これらは `simctl` を
   通じてシミュレータを操作します。よって誠実なマッピングは、素っ気ない「unsupported step」では
   なく、レビュアが実行すべき `simctl` コマンドを明記した、ラベル付きの `// TODO` です。黙って

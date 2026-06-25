@@ -23,7 +23,7 @@ to **acquire** a config-and-scenarios-and-binary bundle: the schema, the runner,
 deterministic gate are untouched, and no LLM is added anywhere.
 
 It is the natural counterpart to two existing items. It is the **import** mirror of
-[BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) (which **exports** a
+[BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) (which **exports** a
 finished run as a zip); and it is the **push** sibling of
 [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md) (which **pulls** a config and
 its scenario tree from a Git repository) — both answer "where does a hosted serve get the config and
@@ -46,7 +46,7 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
    and `runs/` all live on *that* machine. Today's UI config picker is a **file browser confined to
    `--root`** (`bajutsu/serve/operations.py` `_confined_config_path`), so it can only choose from
    what an operator has already hand-placed on the host. A browser user cannot bring their own suite.
-   This is the exact mirror of [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
+   This is the exact mirror of [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
    motivation #3 (no file-system access to *retrieve* a run) — here the missing direction is **putting
    a suite in**.
 
@@ -65,7 +65,7 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
    turns "ask the operator to scp a build over and edit `--root`" into "drag a zip onto the page and
    press run".
 
-No archive *import* exists in the codebase today — [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
+No archive *import* exists in the codebase today — [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
 proposes the **export** half (stdlib `zipfile`, one archiver); this proposes the **import** half on
 the same stdlib foundation. Together they make a run bundle a portable unit in both directions.
 
@@ -120,7 +120,7 @@ introduces the same seam. The two are designed to share it.)
   (`bajutsu/serve/artifacts.py`).
 - **UI.** An **Upload & run** panel: drop a `.zip`, pick the `--app` from the contained config's
   `apps:` (parsed after extraction), press run. The job streams logs and produces a report exactly
-  like any other run, and [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
+  like any other run, and [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
   download closes the round trip (upload a suite → run → download the result).
 
 ### Security — the heart of the design (on top of BE-0051)
@@ -200,7 +200,7 @@ lands.
   two are complementary, not redundant.
 - **Hand-place files on the host and use the existing file-browser picker.** Works on a local Mac but
   gives a *browser* user of a hosted serve no way to bring their own suite — the same gap
-  [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) closes for the
+  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) closes for the
   download direction.
 - **Upload only the config YAML, not the tree.** Rejected for the same reason as in BE-0063: the
   config's `scenarios` / `appPath` are relative paths, so a config without its tree (and its binary)
@@ -210,7 +210,7 @@ lands.
   paths and BE-0063's path-base mechanism, inventing nothing.
 - **A tarball instead of a zip.** Rejected for symmetry and reach: `.ipa` and zipped `.app` are
   already zips, stdlib `zipfile` is the same foundation
-  [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) uses for export, and a
+  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) uses for export, and a
   zip opens by double-click on every OS.
 - **Persist uploads as a reusable library.** Deferred: that is versioned storage, which Git
   ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)) already is. Uploads stay
@@ -221,7 +221,7 @@ lands.
 - [CLAUDE.md](../../../CLAUDE.md), [DESIGN §1](../../../DESIGN.md) (Bajutsu receives a prebuilt app,
   does not build it), [DESIGN §2](../../../DESIGN.md) (AI never judges; determinism first; clean
   environment per test).
-- [BE-0060 — Download / export a run report as a zip](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
+- [BE-0060 — Download / export a run report as a zip](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)
   — the **export** mirror; the shared stdlib `zipfile` foundation and the round-trip partner.
 - [BE-0063 — Load config (and its scenario tree) from a Git repository + ref](../BE-0063-git-config-source/BE-0063-git-config-source.md)
   — the **pull** sibling; the `ConfigSource` seam and the "materialize a tree, resolve config against

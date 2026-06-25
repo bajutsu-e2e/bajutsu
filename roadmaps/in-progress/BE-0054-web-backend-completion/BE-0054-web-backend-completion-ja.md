@@ -64,8 +64,8 @@ Playwright が `capabilities()` のリッチ端 —— `semanticTap`、ネイテ
 driver がリッチな capability を広告すれば、AI の `record` による Web シナリオの作成はすでに可能です
 （driver は `query`/`tap`/`type` を実装しています）。Web の `record` デモは**新規項目ではありません**。任意の
 backend に適用される既存の record 体験の提案
-（[BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) アクション捕捉 record、
-[BE-0014](../BE-0014-demarcation-from-existing-ai-record/BE-0014-demarcation-from-existing-ai-record-ja.md)）
+（[BE-0012](../../proposals/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) アクション捕捉 record、
+[BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)）
 の下で扱います。
 
 ## 検討した代替案
@@ -80,6 +80,6 @@ backend に適用される既存の record 体験の提案
 ## 参考
 
 [BE-0041 — Web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、
-[BE-0009 — クロスプラットフォーム抽象](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、
+[BE-0009 — クロスプラットフォーム抽象](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、
 [multi-platform.md](../../../docs/multi-platform.md)、`bajutsu/drivers/playwright.py`、
 `bajutsu/runner/pool.py`、`bajutsu/evidence.py`

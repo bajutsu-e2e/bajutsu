@@ -1,5 +1,5 @@
 .PHONY: setup hooks deps deps-check serve test lint lint-docstrings format format-check typecheck \
-        lock-check lint-sh lint-actions check roadmap-index roadmap-promote roadmap-id-repair \
+        lock-check lint-sh lint-actions lint-roadmap check roadmap-index roadmap-promote roadmap-id-repair \
         docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -90,6 +90,13 @@ lint-sh:
 lint-actions:
 	@command -v actionlint >/dev/null 2>&1 && actionlint -color || echo "lint-actions: actionlint not installed — skipping (CI enforces it)"
 
+# Lint roadmap items: every item-to-item markdown link resolves, and each Author is a handle link
+# (BE-0069). Folded into `check` so a broken cross-reference fails the gate, not a reader's click.
+# Pass flags through ARGS, e.g. `make lint-roadmap ARGS="--fix"` rewrites broken item links to the
+# target's current status folder.
+lint-roadmap:
+	uv run python scripts/lint_roadmap.py $(ARGS)
+
 # Regenerate the roadmap index tables (README.md / README-ja.md) from each BE item's own
 # metadata, so a roadmap PR only touches its own directory (BE-0043). The committed result is
 # enforced by tests/test_roadmap_index.py — part of `make test`, so the gate fails on drift.
@@ -115,7 +122,7 @@ roadmap-id-repair:
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-docstrings lint-sh lint-actions lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-sh lint-actions lint-roadmap lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the

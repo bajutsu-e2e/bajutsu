@@ -140,6 +140,16 @@ def promote(roadmap: Path) -> list[Misfiled]:
         git_mv(src, dst)
         print(f"Moved {item.name}: {item.current}/ -> {item.expected}/ (Status: {item.status})")
     if moves:
+        # A move changes the moved item's folder, so item-body links into and out of it now point
+        # at the wrong folder. Repair them (BE-0069) before reindexing, so a promotion self-heals
+        # the cross-links the same way it rebuilds the index — neither is left to hand-editing.
+        # Imported here (sibling script under scripts/, added to the path) so the dependency is
+        # local to where it's used, not a module-level import after path setup.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from lint_roadmap import fix_links
+
+        if fixed := fix_links(roadmap):
+            print(f"Repaired {fixed} cross-link(s) after the move(s)")
         regenerate_index()
     return moves
 
