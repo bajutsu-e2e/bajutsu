@@ -56,7 +56,13 @@ def resolve_run_dir(run: str, runs_root: str) -> Path:
 
 
 def _load_effective(config: str, target_name: str) -> Effective:
-    """Load and resolve the effective config, echoing a user-friendly message and exiting 2 on failure."""
+    """Load and resolve the effective config for *target_name*.
+
+    Exits 2 (via ``typer.Exit``) for two specific failures that produce a user-friendly
+    message: the config file not existing, and an unknown target name.  Other errors —
+    YAML parse failures and schema validation errors from ``load_config`` — are *not*
+    caught and propagate as exceptions to the caller.
+    """
     cfg_path = Path(config)
     if not cfg_path.exists():
         typer.echo(f"config not found: {config}")
