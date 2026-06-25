@@ -93,7 +93,9 @@ def github_token() -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return out.stdout.strip() or None if out.returncode == 0 else None
+    if out.returncode != 0:
+        return None
+    return out.stdout.strip() or None  # a logged-out `gh` can exit 0 with blank stdout → no token
 
 
 class _GitHubTransport:
@@ -133,7 +135,12 @@ def materialize(
     and extracted under `<cache>/<host>/<owner>/<repo>/<sha>/`. Because the directory is keyed by the
     SHA, a cache hit is always valid and a pinned-SHA run is offline after the first fetch.
     """
-    transport = transport or _GitHubTransport(github_token())
+    if transport is None:
+        # The general `git+https://…` spec form is parsed (the door is open for other hosts) but only
+        # GitHub is implemented today — fail clearly rather than silently hitting github.com.
+        if spec.host != "github.com":
+            raise ValueError(f"only github.com is supported today, got host {spec.host!r}")
+        transport = _GitHubTransport(github_token())
     cache_root = cache_root or _default_cache_root()
 
     # A pinned full SHA is already the immutable id — use it directly so a cache hit is fully offline
@@ -145,9 +152,17 @@ def materialize(
         else transport.commit_sha(spec, spec.ref or "HEAD")
     )
     root = cache_root / spec.host / spec.owner / spec.repo / sha
+    config_path = root / (spec.path or DEFAULT_CONFIG)
+    # The spec's components and in-repo path become filesystem paths, so refuse any (`..`, an absolute
+    # `:path`) that escapes the cache before fetching or reading anything.
+    cache_resolved = cache_root.resolve()
+    if not root.resolve().is_relative_to(
+        cache_resolved
+    ) or not config_path.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"git spec resolves outside the cache: {spec}")
     if not root.exists():
         _extract_into(transport.tarball_bytes(spec, sha), root)
-    return Materialized(root / (spec.path or DEFAULT_CONFIG), root, sha)
+    return Materialized(config_path, root, sha)
 
 
 def _extract_into(tarball: bytes, root: Path) -> None:

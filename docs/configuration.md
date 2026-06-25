@@ -119,9 +119,12 @@ local checkout — `bajutsu run --config github:acme/mobile-tests@v1.4.0:e2e/baj
 
 ```
 github:<owner>/<repo>[@<ref>][:<path>]                          # GitHub shorthand
-git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # any Git host
+git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (host reserved)
 ```
 
+- **GitHub is the only host implemented today.** The general `git+https://<host>/…` form is parsed
+  (the door is open for GitHub Enterprise / GitLab later), but a non-`github.com` host currently
+  fails with a clear error rather than silently hitting github.com.
 - `<ref>` is a branch, tag, or commit SHA (default: the repo's default branch); `<path>` is the
   config within the repo (default: `bajutsu.config.yaml` at the root). A value with no recognized
   scheme is a **local path**, exactly as before.

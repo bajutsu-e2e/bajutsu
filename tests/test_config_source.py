@@ -136,6 +136,25 @@ def test_materialize_pinned_sha_skips_the_commits_api(tmp_path) -> None:  # type
     assert transport.tarball_calls == 1 and transport.commit_calls == 0  # cache hit, fully offline
 
 
+def test_materialize_rejects_non_github_host(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # The git+https form parses for any host, but only GitHub is implemented — fail clearly rather
+    # than silently hitting github.com (default transport only).
+    spec = parse_config_spec("git+https://gitlab.example.com/acme/repo.git@main")
+    assert spec is not None and spec.host == "gitlab.example.com"
+    with pytest.raises(ValueError, match="only github"):
+        materialize(spec, cache_root=tmp_path)
+
+
+def test_materialize_refuses_a_path_escaping_the_cache(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A spec component or in-repo path that climbs out of the cache (`..`) is refused before any fetch.
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
+    spec = GitConfigSpec("github.com", "acme", "repo", sha, "../../../../etc/passwd")
+    with pytest.raises(ValueError, match="outside the cache"):
+        materialize(spec, transport=transport, cache_root=tmp_path)
+    assert transport.tarball_calls == 0  # refused before fetching
+
+
 # --- _load_effective wiring: a Git-sourced config rebases its relative paths against the checkout ---
 
 
