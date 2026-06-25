@@ -156,6 +156,12 @@ would write as the lead commit:
   scoped subject. When the PR *introduces* a new roadmap item, draft with the literal `[BE-XXXX]`
   placeholder — the `roadmap-id` workflow rewrites it to the allocated number (see
   [Roadmap items](#roadmap-items-be-ids-strict)).
+- **CI enforces the title.** The `pr-title` workflow (`.github/workflows/pr-title.yml`) runs
+  `scripts/lint_pr.py --title-only` on every PR — and re-runs when the title is edited. It fails the
+  check when the title is not a scoped conventional subject, and when the branch name encodes a
+  roadmap id (`claude/be-0050-<slug>`) but the title doesn't lead with the matching `[BE-0050]`
+  prefix (a missing or mismatched id). The branch — not the diff — is the authoritative id signal,
+  so a copy-pasted `[BE-0046]` on a `be-0050` branch is caught.
 
 ### Body
 

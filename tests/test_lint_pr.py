@@ -23,6 +23,8 @@ bad_commit_subjects = lp.bad_commit_subjects
 behavior_without_test = lp.behavior_without_test
 title_prefix_problem = lp.title_prefix_problem
 touches_roadmap = lp.touches_roadmap
+be_id_from_ref = lp.be_id_from_ref
+pr_title_problems = lp.pr_title_problems
 
 
 def test_bad_commit_subjects_accepts_scoped_conventional_subjects() -> None:
@@ -126,3 +128,66 @@ def test_title_prefix_problem_flags_roadmap_title_missing_prefix() -> None:
 def test_title_prefix_problem_none_when_title_missing() -> None:
     # No PR title available locally — nothing to validate (the reminder path handles that).
     assert title_prefix_problem(None, touches_roadmap_=True) is None
+
+
+# --- branch-name BE id detection (the trigger for the strict CI title check) ---
+
+
+def test_be_id_from_ref_extracts_canonical_id_from_branch() -> None:
+    assert be_id_from_ref("claude/be-0050-observed-ids") == "BE-0050"
+
+
+def test_be_id_from_ref_is_case_insensitive() -> None:
+    assert be_id_from_ref("user/BE-0046-totp") == "BE-0046"
+
+
+def test_be_id_from_ref_none_for_a_topic_branch_without_an_id() -> None:
+    assert be_id_from_ref("claude/dedup-endpoint-match") is None
+
+
+def test_be_id_from_ref_ignores_a_non_four_digit_number() -> None:
+    # The id is a zero-padded 4-digit token; "be-12" is not a roadmap id.
+    assert be_id_from_ref("claude/be-12-quick") is None
+
+
+def test_be_id_from_ref_ignores_be_substring_inside_a_word() -> None:
+    # "probe-0050" contains "be-0050" but isn't the `be-NNNN` path segment; only a token at the
+    # start of the ref or right after a `/` is a roadmap id.
+    assert be_id_from_ref("claude/probe-0050-fix") is None
+    assert be_id_from_ref("claude/describe-0001") is None
+
+
+# --- PR-title validation (form + exact-id prefix) ---
+
+
+def test_pr_title_problems_accepts_well_formed_roadmap_title_matching_branch() -> None:
+    assert pr_title_problems("[BE-0050] feat(coverage): observed ids", "BE-0050") == []
+
+
+def test_pr_title_problems_accepts_plain_scoped_title_when_branch_has_no_id() -> None:
+    assert pr_title_problems("fix(record): handle empty selector", None) == []
+
+
+def test_pr_title_problems_flags_missing_id_prefix_when_branch_encodes_one() -> None:
+    # Branch says BE-0050 but the title carries no prefix — the missing id this check exists to catch.
+    problems = pr_title_problems("feat(coverage): observed ids", "BE-0050")
+    assert len(problems) == 1 and "BE-0050" in problems[0]
+
+
+def test_pr_title_problems_flags_mismatched_id_prefix() -> None:
+    # Branch BE-0050 but title prefixed BE-0046 — a copy-paste of another PR's id.
+    problems = pr_title_problems("[BE-0046] feat(coverage): observed ids", "BE-0050")
+    assert len(problems) == 1 and "BE-0050" in problems[0]
+
+
+def test_pr_title_problems_flags_non_conventional_title() -> None:
+    assert pr_title_problems("Add observed-id coverage", None) != []
+
+
+def test_pr_title_problems_flags_unscoped_feat_title() -> None:
+    assert pr_title_problems("feat: no scope", None) != []
+
+
+def test_pr_title_problems_reports_both_form_and_id_when_both_wrong() -> None:
+    # A malformed title on a BE branch with no prefix fails both checks.
+    assert len(pr_title_problems("WIP observed ids", "BE-0050")) == 2
