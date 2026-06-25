@@ -68,27 +68,25 @@ which you're choosing and why:
 
 ### 4. Draft a new BE item — leave the ID undetermined (`BE-XXXX`)
 
-**Never invent a BE number.** Allocation is CI's job (step 6). Use the literal placeholder
-token `BE-XXXX`; uniqueness between several new items in one PR comes from the slug.
+**Never invent a BE number.** Allocation is CI's job (step 6). Scaffold the item with the
+command rather than authoring the files by hand — it emits the literal `BE-XXXX` placeholder,
+the exact canonical format, and skips the index (so the gate stays green locally):
 
-Create the directory and **both** language files under `roadmaps/proposals/` (new items are
-proposals):
+```
+make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
+```
 
-- `roadmaps/proposals/BE-XXXX-<slug>/BE-XXXX-<slug>.md` (English)
-- `roadmaps/proposals/BE-XXXX-<slug>/BE-XXXX-<slug>-ja.md` (Japanese, same slug)
+This creates `roadmaps/proposals/BE-XXXX-<slug>/` with both `BE-XXXX-<slug>.md` and its `-ja.md`
+mirror — the bilingual header link, the metadata block (`Proposal` / `Author` / `Status` /
+`Topic`), and the five sections (`Introduction` / `Motivation` / `Detailed design` /
+`Alternatives considered` / `References`) seeded with `TBD`. `TOPIC` is validated against the
+index's known topics; `HANDLE` is the author's GitHub handle (defaults from `git config`).
 
-Match the existing format exactly (see any `BE-00NN-*` file as a template): the bilingual
-header link, a metadata block (`* Proposal: [BE-XXXX](BE-XXXX-<slug>.md)`,
-`* Author: [@handle](https://github.com/handle)` for whoever is authoring the item, `* Status`,
-`* Track`, `* Topic`, and `* Origin` when relevant), then `## Introduction` /
-`## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`.
-Fill what the discussion produced; mark the rest `TBD`. New items are normally
-`Status: **Proposal**` on the **Proposals** track.
-
-Then add a row for the item to the matching topic table in **both** index pages
-(`README.md` and `README-ja.md`), using `BE-XXXX` in the link text and the path — e.g.
-`| [BE-XXXX](proposals/BE-XXXX-<slug>/BE-XXXX-<slug>.md) | … | Proposal |`. Create a new topic
-subsection if none fits. Use the literal `BE-XXXX` everywhere; CI rewrites it.
+Then **fill the `TBD` sections** with what the discussion produced, and **localize the Japanese**
+side (the title, the `トピック`, and the prose) — the scaffolder seeds both files from the same
+English input, so the Japanese is a starting point to rewrite into natural Japanese, not a finished
+translation. Do **not** add an index row: the generator skips `BE-XXXX` items, so the committed
+index stays row-free for the placeholder until CI numbers it.
 
 > Why a placeholder and not a real number: IDs are permanent and monotonic, and several
 > branches may be in flight at once. Picking a number by hand races — two PRs grab the

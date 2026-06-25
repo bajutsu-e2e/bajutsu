@@ -1,5 +1,5 @@
 .PHONY: setup hooks deps deps-check serve test lint lint-docstrings format format-check typecheck \
-        lock-check lint-sh lint-actions lint-roadmap check roadmap-index roadmap-promote roadmap-id-repair \
+        lock-check lint-sh lint-actions lint-roadmap check new-roadmap-item roadmap-index roadmap-promote roadmap-id-repair \
         docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -96,6 +96,14 @@ lint-actions:
 # target's current status folder.
 lint-roadmap:
 	uv run python scripts/lint_roadmap.py $(ARGS)
+
+# Scaffold a new roadmap (BE) item — both language files in the canonical format, with the literal
+# BE-XXXX placeholder (CI allocates the real id). The error-prone item-authoring recipe as one
+# command (BE-0069). Usage:
+#   make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
+new-roadmap-item:
+	uv run python scripts/new_roadmap_item.py --slug "$(SLUG)" --title "$(TITLE)" \
+	  $(if $(TOPIC),--topic "$(TOPIC)") $(if $(STATUS),--status "$(STATUS)") $(if $(HANDLE),--handle "$(HANDLE)")
 
 # Regenerate the roadmap index tables (README.md / README-ja.md) from each BE item's own
 # metadata, so a roadmap PR only touches its own directory (BE-0043). The committed result is
