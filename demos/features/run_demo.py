@@ -127,6 +127,9 @@ def demo_device() -> None:
         def set_clipboard(self, text: str) -> None:
             pass
 
+        def get_clipboard(self) -> str:
+            return ""
+
         def home(self) -> None:
             pass
 

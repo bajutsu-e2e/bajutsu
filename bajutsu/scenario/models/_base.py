@@ -40,6 +40,7 @@ _ASSERTION_KINDS = (
     "request_sequence",
     "response_schema",
     "visual",
+    "clipboard",
 )
 
 

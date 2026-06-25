@@ -36,11 +36,20 @@ from bajutsu.orchestrator.types import (
     scenario_slug,
 )
 from bajutsu.orchestrator.waits import _wait
-from bajutsu.scenario import ForEach, If, Scenario, Selector, Step
+from bajutsu.scenario import Assertion, ForEach, If, Scenario, Selector, Step
 
 
 def _fail_reason(results: list[AssertionResult]) -> str:
     return "; ".join(r.reason for r in results if not r.ok)
+
+
+def _clipboard_for(block: list[Assertion], control: DeviceControl | None) -> str | None:
+    """The device pasteboard, read once when `block` has a `clipboard` assertion; None otherwise, or
+    when no device-control channel is available (fake driver / parallel run) — a `clipboard`
+    assertion then fails cleanly via `evaluate`, mirroring how the device-state steps degrade."""
+    if control is None or not any(a.clipboard is not None for a in block):
+        return None
+    return control.get_clipboard()
 
 
 def _run_step_body(
@@ -64,7 +73,8 @@ def _run_step_body(
             return ok, reason, []
         if kind == "assert_":
             assert step.assert_ is not None
-            results = assertions.evaluate(driver.query(), step.assert_, network())
+            clip = _clipboard_for(step.assert_, control)
+            results = assertions.evaluate(driver.query(), step.assert_, network(), clipboard=clip)
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results
         _do_action(driver, step, relaunch, control, bindings)
@@ -132,6 +142,7 @@ def run_scenario(
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
+            clip = _clipboard_for(expect, control)
             if visual_context is not None:
                 driver.screenshot(str(visual_context.screenshot_path))
             expect_results = assertions.evaluate(
@@ -140,6 +151,7 @@ def run_scenario(
                 network(),
                 visual_context=visual_context,
                 schema_context=schema_context,
+                clipboard=clip,
             )
             if not assertions.passed(expect_results) and on_blocked is not None:
                 event = on_blocked(driver)
@@ -153,6 +165,7 @@ def run_scenario(
                         network(),
                         visual_context=visual_context,
                         schema_context=schema_context,
+                        clipboard=clip,
                     )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)

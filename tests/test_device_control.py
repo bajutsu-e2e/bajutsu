@@ -88,6 +88,7 @@ class _RecordingControl:
         self.status_bar_overrides: list[dict[str, str | int]] = []
         self.clear_status_bar_calls: int = 0
         self.clipboards: list[str] = []
+        self.clipboard_value: str = ""
         self.foreground_calls: int = 0
 
     def set_location(self, lat: float, lon: float) -> None:
@@ -113,6 +114,9 @@ class _RecordingControl:
 
     def set_clipboard(self, text: str) -> None:
         self.clipboards.append(text)
+
+    def get_clipboard(self) -> str:
+        return self.clipboard_value
 
     def foreground(self) -> None:
         self.foreground_calls += 1
@@ -192,6 +196,56 @@ def test_device_step_without_control_fails_cleanly() -> None:
     result = run_scenario(FakeDriver(), scn)
     assert not result.ok
     assert "setLocation" in (result.failure or "")
+
+
+# --- clipboard read-back (BE-0052) ---
+
+
+def test_pbpaste_command_builder() -> None:
+    assert env.pbpaste_cmd("U") == ["xcrun", "simctl", "pbpaste", "U"]
+
+
+def test_env_get_clipboard_returns_stdout() -> None:
+    # Env.get_clipboard returns pbpaste's stdout via the injected RunFn (no real simctl).
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        calls.append(args)
+        return "COUPON123"
+
+    assert env.Env("U", run=fake_run).get_clipboard() == "COUPON123"
+    assert calls == [["xcrun", "simctl", "pbpaste", "U"]]
+
+
+def test_clipboard_assertion_reads_through_control() -> None:
+    ctrl = _RecordingControl()
+    ctrl.clipboard_value = "COUPON123"
+    scn = Scenario.model_validate(
+        {"name": "s", "steps": [{"assert": [{"clipboard": {"equals": "COUPON123"}}]}]}
+    )
+    result = run_scenario(FakeDriver(), scn, control=ctrl)
+    assert result.ok
+
+
+def test_clipboard_assertion_mismatch_fails() -> None:
+    ctrl = _RecordingControl()
+    ctrl.clipboard_value = "WRONG"
+    scn = Scenario.model_validate(
+        {"name": "s", "steps": [{"assert": [{"clipboard": {"equals": "COUPON123"}}]}]}
+    )
+    result = run_scenario(FakeDriver(), scn, control=ctrl)
+    assert not result.ok
+    assert "clipboard" in (result.failure or "")
+
+
+def test_clipboard_assertion_without_control_fails_cleanly() -> None:
+    # No device-control channel (fake driver / parallel run): a clean failure, not a crash.
+    scn = Scenario.model_validate(
+        {"name": "s", "steps": [{"assert": [{"clipboard": {"equals": "x"}}]}]}
+    )
+    result = run_scenario(FakeDriver(), scn)
+    assert not result.ok
+    assert "clipboard" in (result.failure or "")
 
 
 def test_set_clipboard_without_control_fails_cleanly() -> None:

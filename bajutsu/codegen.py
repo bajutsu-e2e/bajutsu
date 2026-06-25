@@ -275,6 +275,12 @@ def _emit_assertion(a: Assertion) -> list[str]:
         if a.count.at_least is not None:
             return [f"XCTAssertGreaterThanOrEqual({expr}, {a.count.at_least})"]
         return [f"XCTAssertLessThanOrEqual({expr}, {a.count.at_most})"]
+    if a.clipboard is not None:
+        # simctl-level (pbpaste); no XCUITest equivalent, so emit a labeled TODO like the
+        # device-state steps (BE-0052), naming the value asserted.
+        op = "equals" if a.clipboard.equals is not None else "matches"
+        want = a.clipboard.equals if a.clipboard.equals is not None else a.clipboard.matches
+        return [f"// TODO: clipboard({op}: {_s(want or '')}) — simctl pbpaste; not generated"]
     return ["// TODO: unsupported assertion"]
 
 

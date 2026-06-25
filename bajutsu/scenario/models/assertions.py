@@ -212,6 +212,23 @@ class VisualMatch(_Model):
     exclude: list[ExcludeRegion] | None = None
 
 
+class ClipboardMatch(_Model):
+    """`clipboard`: verify what the app copied to the pasteboard — exactly one of equals / matches.
+
+    Read off the device (`simctl pbpaste`), so it needs the per-device control channel and is
+    unavailable on the fake driver / in parallel runs.
+    """
+
+    equals: str | None = None
+    matches: str | None = None  # regex over the clipboard text
+
+    @model_validator(mode="after")
+    def _one_op(self) -> Self:
+        if sum(o is not None for o in (self.equals, self.matches)) != 1:
+            raise ValueError("clipboard requires exactly one of equals/matches (§6.4)")
+        return self
+
+
 class Assertion(_Model):
     """One machine check. Exactly one kind may be set."""
 
@@ -229,6 +246,7 @@ class Assertion(_Model):
     )
     response_schema: ResponseSchemaMatch | None = Field(default=None, alias="responseSchema")
     visual: VisualMatch | None = None
+    clipboard: ClipboardMatch | None = None
     # Provenance (BE-0044): the natural-language phrase this check was normalized from. Not one of
     # the assertion kinds (`_ASSERTION_KINDS`), so it doesn't disturb the one-kind rule; `run`
     # ignores it.

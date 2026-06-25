@@ -309,6 +309,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `requestSequence` | matchers were observed in this order (needs `--network`) | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `responseSchema` | a captured response body conforms to a JSON Schema (needs `--network`) | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
+| `clipboard` | the device pasteboard matches (read back via `simctl pbpaste`) | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
 - `value` / `label` take `sel:` + **exactly one** of `equals` / `contains` / `matches`.
@@ -319,6 +320,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
+- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
 > text break under translation. Write these against config's fixed locale, and write the selector

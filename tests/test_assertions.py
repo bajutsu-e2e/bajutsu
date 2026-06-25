@@ -66,6 +66,33 @@ def test_not_found_fails_with_reason() -> None:
     assert r.reason  # a failure reason is set
 
 
+# --- clipboard read-back (BE-0052) ---
+
+
+def test_clipboard_equals_matches_the_read_value() -> None:
+    r = evaluate_one(SCREEN, _a({"clipboard": {"equals": "COUPON123"}}), clipboard="COUPON123")
+    assert r.ok and r.kind == "clipboard"
+
+
+def test_clipboard_equals_mismatch_fails_with_reason() -> None:
+    r = evaluate_one(SCREEN, _a({"clipboard": {"equals": "COUPON123"}}), clipboard="other")
+    assert not r.ok
+    assert "COUPON123" in r.reason and "other" in r.reason
+
+
+def test_clipboard_matches_regex() -> None:
+    r = evaluate_one(SCREEN, _a({"clipboard": {"matches": r"\d{6}"}}), clipboard="code 482913")
+    assert r.ok
+
+
+def test_clipboard_without_device_control_fails_cleanly() -> None:
+    # No clipboard supplied (fake driver / parallel run): a clean not-ok, not a crash — mirrors how
+    # the visual assertion degrades when no visual context is provided.
+    r = evaluate_one(SCREEN, _a({"clipboard": {"equals": "x"}}), clipboard=None)
+    assert not r.ok
+    assert "clipboard" in r.reason.lower()
+
+
 def test_ambiguous_state_fails() -> None:
     # State assertion on a selector that matches multiple -> cannot resolve uniquely.
     r = evaluate_one(SCREEN, _a({"enabled": {"idMatches": "result.row.*"}}))
