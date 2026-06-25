@@ -89,7 +89,10 @@ class Triage:
 
 
 class TriageAgent(Protocol):
-    """The triage interface: turn a failed scenario's context into a `Triage` verdict (Tier 1, AI)."""
+    """The triage interface: turn a failed scenario's context into a `Triage` verdict.
+
+    Implemented by the deterministic `HeuristicTriageAgent` (no AI) and by AI-backed agents alike.
+    """
 
     def triage(self, context: TriageContext) -> Triage: ...
 
