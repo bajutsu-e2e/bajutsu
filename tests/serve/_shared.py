@@ -76,10 +76,12 @@ def _serve(state: srv.ServeState):  # type: ignore[no-untyped-def]
     """Start the serve HTTP handler on an ephemeral port; return (server, port)."""
     server = srv.make_server(state, port=0)
     # serve_forever polls the shutdown flag every `poll_interval` (default 0.5s), so each test's
-    # `server.shutdown()` in teardown blocks ~0.5s waiting for the loop to notice. With ~70 http
-    # tests that dominated the suite; a short interval makes shutdown near-instant (request handling
-    # is unaffected — the interval is only the select() timeout between flag checks).
-    threading.Thread(target=lambda: server.serve_forever(poll_interval=0.02), daemon=True).start()
+    # `server.shutdown()` in teardown blocked ~0.5s waiting for the loop to notice — and with ~70
+    # http tests that fixed wait dominated the suite. A short interval makes shutdown near-instant;
+    # request handling is unaffected (the interval is only the select() timeout between flag checks).
+    threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+    ).start()
     return server, server.server_address[1]
 
 
