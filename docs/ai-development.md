@@ -48,10 +48,15 @@ other session from your change.
 ## Rebase early, integrate small conflicts
 
 ```bash
-git fetch origin
-git rebase origin/main      # pull in others' merged work; resolve while conflicts are tiny
-make check                  # re-verify after the rebase
+make preflight   # git fetch origin && git rebase origin/main && make check, then a done-checklist
 ```
+
+`make preflight` ([`scripts/preflight.sh`](../scripts/preflight.sh), BE-0069) is the run-it-early
+version of the pre-push routine: it syncs, rebases onto `origin/main`, runs the gate, then prints
+the "definition of done" reminder (both-language docs touched? a test changed with the behavior?
+`Status` flipped if shipping?). It is **advisory and human-initiated** — the pre-push hook already
+*gates* `make check`, so this is the do-it-early version a human runs before they think they are
+done, not a second hard gate. Run it whenever; you don't need to remember the individual steps.
 
 Rebasing frequently means you meet other sessions' merged work early, when conflicts are a line
 or two — not at the end as a tangled merge.
@@ -76,16 +81,19 @@ Two agents must never edit the same checkout. Give each session its own
 
 ```bash
 # from the main checkout
-git fetch origin            # always sync main first — branch off the latest, not a stale ref
-git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main
-cd ../bajutsu-<topic>
-make setup                   # uv sync --group dev + wire the hooks for this worktree
+make worktree TOPIC=<topic>             # branch claude/<topic> at ../bajutsu-<topic>
+make worktree TOPIC=<topic> PREFIX=<user>   # a human's <user>/<topic> branch
 ```
 
-The `git fetch origin` is not optional: `origin/main` is a local tracking ref that only
-advances when you fetch, so skipping it branches the new worktree off whatever main looked like
-last time — re-introducing conflicts that other sessions already merged away. Fetch, then branch
-off the fresh `origin/main`.
+`make worktree` ([`scripts/worktree.sh`](../scripts/worktree.sh), BE-0069) does the whole recipe:
+`git fetch origin`, `git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main`, then
+`make setup` in the new tree (deps + the self-healing git hooks). The branch prefix defaults to
+`claude`; pass `PREFIX=<user>` for a human branch.
+
+The `git fetch origin` is baked in and *not* optional: `origin/main` is a local tracking ref that
+only advances when you fetch, so skipping it would branch the new worktree off whatever main
+looked like last time — re-introducing conflicts that other sessions already merged away. The
+command fetches first so that foot-gun cannot happen.
 
 When the branch is merged (or abandoned), clean up:
 
