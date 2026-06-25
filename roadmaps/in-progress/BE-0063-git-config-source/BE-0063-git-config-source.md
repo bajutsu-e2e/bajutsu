@@ -216,7 +216,11 @@ offline against a fake; the token comes from `GITHUB_TOKEN` / `GH_TOKEN` / `gh a
 
 Still to come: recording the resolved SHA as **run provenance** in `manifest.json` (the
 determinism anchor the design promises), the `--config-offline` / `--require-pinned-config`
-switches, `build`'s working directory for a Git source, and the **serve "from Git" picker**.
+switches, `build`'s working directory for a Git source, the **serve "from Git" picker**, treating a
+Git source as **read-only input for `record` / `crawl`** (so an authored artifact goes to a local
+`--out`, never into the SHA-keyed cache), and **confining** a config's path fields to the checkout
+root (rejecting an absolute or `../` value that escapes it, mirroring
+[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)).
 
 ## Alternatives considered
 

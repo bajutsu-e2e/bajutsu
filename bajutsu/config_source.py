@@ -34,6 +34,8 @@ _GITHUB_RE = re.compile(
 _GIT_URL_RE = re.compile(
     r"^git\+https://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/@#]+?)(?:\.git)?(?:@(?P<ref>[^#]+))?(?:#(?P<path>.+))?$"
 )
+# A full 40-hex commit SHA — already immutable, so it needs no commits-API resolution.
+_FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 @dataclass(frozen=True)
@@ -49,12 +51,11 @@ class GitConfigSpec:
 
 @dataclass(frozen=True)
 class Materialized:
-    """A repo subtree checked out at an immutable SHA: the config file, the checkout root, and provenance."""
+    """A repo subtree checked out at an immutable SHA: the config file, the checkout root, and the SHA."""
 
     config_path: Path
     root: Path
-    sha: str
-    ref: str  # the ref as resolved (the requested ref, or the default branch when none was given)
+    sha: str  # the resolved commit SHA (the determinism anchor / cache key)
 
 
 def parse_config_spec(value: str) -> GitConfigSpec | None:
@@ -120,11 +121,6 @@ def _default_cache_root() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "bajutsu" / "gitsrc"
 
 
-def _default_branch_ref(spec: GitConfigSpec, transport: Transport) -> str:
-    # The commits API needs a ref; "HEAD" resolves to the default branch on every Git host.
-    return spec.ref or "HEAD"
-
-
 def materialize(
     spec: GitConfigSpec,
     *,
@@ -140,12 +136,18 @@ def materialize(
     transport = transport or _GitHubTransport(github_token())
     cache_root = cache_root or _default_cache_root()
 
-    ref = _default_branch_ref(spec, transport)
-    sha = transport.commit_sha(spec, ref)
+    # A pinned full SHA is already the immutable id — use it directly so a cache hit is fully offline
+    # (the determinism anchor the design promises). A branch/tag is resolved to its SHA; no ref ⇒ the
+    # default branch, which "HEAD" resolves to on every Git host.
+    sha = (
+        spec.ref
+        if spec.ref and _FULL_SHA_RE.match(spec.ref)
+        else transport.commit_sha(spec, spec.ref or "HEAD")
+    )
     root = cache_root / spec.host / spec.owner / spec.repo / sha
     if not root.exists():
         _extract_into(transport.tarball_bytes(spec, sha), root)
-    return Materialized(root / (spec.path or DEFAULT_CONFIG), root, sha, ref)
+    return Materialized(root / (spec.path or DEFAULT_CONFIG), root, sha)
 
 
 def _extract_into(tarball: bytes, root: Path) -> None:

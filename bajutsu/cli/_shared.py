@@ -6,7 +6,6 @@ genuinely cross-command pieces belong here, so adding a command rarely edits thi
 
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 
 import typer
@@ -72,13 +71,15 @@ def _load_effective(config: str, target_name: str) -> Effective:
     spec = parse_config_spec(config)
     if spec is None:
         cfg_path = Path(config)
-        if not cfg_path.exists():
-            typer.echo(f"config not found: {config}")
-            raise typer.Exit(2)
         root = None
     else:
         mat = materialize(spec)
         cfg_path, root = mat.config_path, mat.root
+    # The same friendly exit-2 for a missing config, whether local or a wrong in-repo path for a
+    # Git source (the materialized tree exists but doesn't hold `spec.path`).
+    if not cfg_path.exists():
+        typer.echo(f"config not found: {config}")
+        raise typer.Exit(2)
     cfg = load_config(cfg_path.read_text(encoding="utf-8"))
     try:
         eff = resolve(cfg, target_name)
@@ -86,27 +87,8 @@ def _load_effective(config: str, target_name: str) -> Effective:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     # A Git-sourced config's relative paths are relative to the checked-out tree, not the caller's
-    # cwd — rebase them to absolute under the checkout root (local configs keep cwd-relative paths).
-    return eff if root is None else _rebase_paths(eff, root)
-
-
-def _rebase_paths(eff: Effective, root: Path) -> Effective:
-    """Resolve the config's relative path fields against the materialized checkout *root*.
-
-    Only the fields ``run`` / ``doctor`` consume (`scenarios` / `baselines` / `schemas` / `app_path`);
-    ``build`` (a shell command, run for `serve`'s on-demand builds) is left to the serve slice.
-    """
-
-    def at(value: str | None) -> str | None:
-        return str(root / value) if value else value
-
-    return dataclasses.replace(
-        eff,
-        scenarios=at(eff.scenarios),
-        baselines=at(eff.baselines),
-        schemas=at(eff.schemas),
-        app_path=at(eff.app_path),
-    )
+    # cwd — rebase them against the checkout root (local configs keep cwd-relative paths).
+    return eff if root is None else eff.rebased(root)
 
 
 def _backends(backend: str, fallback: list[str]) -> list[str]:

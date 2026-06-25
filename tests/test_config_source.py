@@ -9,6 +9,8 @@ from __future__ import annotations
 import io
 import tarfile
 
+import pytest
+
 from bajutsu.config_source import GitConfigSpec, materialize, parse_config_spec
 
 # --- parse_config_spec ---
@@ -120,6 +122,20 @@ def test_materialize_is_cached_by_sha(tmp_path) -> None:  # type: ignore[no-unty
     assert transport.tarball_calls == 1
 
 
+def test_materialize_pinned_sha_skips_the_commits_api(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A full 40-hex SHA is already the immutable id, so no commits-API call is needed; a cache hit
+    # is then fully offline (the determinism anchor the design promises).
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "defaults: {}\n"}))
+    spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
+    assert spec is not None and spec.ref == sha
+
+    materialize(spec, transport=transport, cache_root=tmp_path)
+    assert transport.commit_calls == 0  # the SHA is used directly, not resolved
+    materialize(spec, transport=transport, cache_root=tmp_path)
+    assert transport.tarball_calls == 1 and transport.commit_calls == 0  # cache hit, fully offline
+
+
 # --- _load_effective wiring: a Git-sourced config rebases its relative paths against the checkout ---
 
 
@@ -137,7 +153,7 @@ def test_load_effective_rebases_paths_against_git_checkout(tmp_path, monkeypatch
     )
 
     def fake_materialize(spec):  # type: ignore[no-untyped-def]
-        return Materialized(root / "e2e" / "bajutsu.config.yaml", root, "deadbeef", "main")
+        return Materialized(root / "e2e" / "bajutsu.config.yaml", root, "deadbeef")
 
     monkeypatch.setattr(_shared, "materialize", fake_materialize)
 
@@ -145,3 +161,22 @@ def test_load_effective_rebases_paths_against_git_checkout(tmp_path, monkeypatch
     # relative config entries are now absolute under the checkout root, not the caller's cwd
     assert eff.scenarios == str(root / "e2e/scenarios")
     assert eff.app_path == str(root / "build/Demo.app")
+
+
+def test_load_effective_git_wrong_path_exits_cleanly(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A materialized tree that doesn't hold the requested config path gets the same friendly exit-2
+    # as a missing local config — not a raw FileNotFoundError.
+    import typer
+
+    from bajutsu.cli import _shared
+    from bajutsu.config_source import Materialized
+
+    root = tmp_path / "co"
+    root.mkdir()  # the checkout exists, but bajutsu.config.yaml does not
+
+    monkeypatch.setattr(
+        _shared, "materialize", lambda spec: Materialized(root / "bajutsu.config.yaml", root, "sha")
+    )
+    with pytest.raises(typer.Exit) as exc:
+        _shared._load_effective("github:acme/mobile-tests@main", "demo")
+    assert exc.value.exit_code == 2
