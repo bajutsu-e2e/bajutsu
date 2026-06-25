@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import typer
 
 from bajutsu import env as _env
@@ -60,14 +62,17 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
             typer.echo("web target needs baseUrl (set targets.<name>.baseUrl)")
             raise typer.Exit(2)
         # Lazy import keeps Playwright (a heavy optional dep) off the default path.
-        from bajutsu.drivers.playwright import PlaywrightDriver
+        from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
 
         driver = PlaywrightDriver(eff.base_url, headless=eff.headless)
         try:
             driver.navigate()
             return driver.query()
         finally:
-            driver.close()
+            # Suppress browser-side errors on teardown so a close() failure during a
+            # faulted browser does not mask the original navigate/query exception.
+            with contextlib.suppress(*_playwright_error_types()):
+                driver.close()
     return make_driver(actuator, _env.resolve_udid(udid)).query()
 
 
