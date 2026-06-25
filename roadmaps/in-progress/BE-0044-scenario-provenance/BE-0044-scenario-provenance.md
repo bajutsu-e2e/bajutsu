@@ -67,21 +67,21 @@ not disturb the "exactly one action / one assertion kind" validators (`_STEP_ACT
 | Capture rule | `CaptureRule.from_` (alias `from`) | The instruction the evidence rule was normalized from (e.g. "screenshot every time submit is tapped") |
 
 ```yaml
-- name: 設定を開いて再生成する
-  from: "設定を開いて、再インデックスして、正規化設定が消えていることを確認して"   # ← original goal
+- name: open settings and reindex
+  from: "Open settings, reindex, and confirm the normalization setting is gone"   # ← original goal
   steps:
     - tap: { id: settings.open }
-      from: "設定を開く"
+      from: "Open settings"
     - tap: { id: settings.reindex }
-      from: "再インデックスする"
+      from: "Reindex"
       capture: [screenshot.after, deviceLog]
   expect:
-    - exists: { label: "正規化設定が変更されています", negate: true }
-      from: "正規化設定が消えていること"
+    - exists: { label: "Normalization setting changed", negate: true }
+      from: "The normalization setting is gone"
   capturePolicy:
     - on: { action: tap, idMatches: "*.submit" }
       capture: [screenshot.after, elements, network]
-      from: "送信を押すたびにスクショとネットワークログを残して"
+      from: "Capture a screenshot and network log on every submit"
 ```
 
 - **Grouping is emergent, not a new construct.** When one utterance produces several steps, those

@@ -620,17 +620,17 @@ whether `record` normalized the intent faithfully.
 
 ```yaml
 - name: open settings and reindex
-  from: "設定を開いて、再インデックスして、正規化設定が消えていることを確認して"   # the original goal
+  from: "Open settings, reindex, and confirm the normalization setting is gone"   # the original goal
   steps:
     - tap: { id: settings.open }
-      from: "設定を開く"
+      from: "Open settings"
   expect:
-    - exists: { label: "正規化設定が変更されています", negate: true }
-      from: "正規化設定が消えていること"
+    - exists: { label: "Normalization setting changed", negate: true }
+      from: "The normalization setting is gone"
   capturePolicy:
     - on: { action: tap, idMatches: "*.submit" }
       capture: [screenshot.after, network]
-      from: "送信を押すたびにスクショとネットワークログを残して"
+      from: "Capture a screenshot and network log on every submit"
 ```
 
 - **`record` (Tier 1, AI) is the only writer.** It fills `from:` while normalizing the goal into the
