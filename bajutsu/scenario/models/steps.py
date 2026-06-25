@@ -33,6 +33,7 @@ from bajutsu.scenario.models.actions import (
     SetClipboard,
     SetLocation,
     Swipe,
+    Totp,
     TypeText,
 )
 from bajutsu.scenario.models.assertions import Assertion, Wait
@@ -97,6 +98,7 @@ class Step(_Model):
     push: Push | None = None
     use: Use | None = None
     http: HttpRequest | None = None
+    totp: Totp | None = None
     clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
     clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")
     set_clipboard: SetClipboard | None = Field(default=None, alias="setClipboard")

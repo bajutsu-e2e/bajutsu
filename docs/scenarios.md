@@ -163,6 +163,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
+| `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
@@ -270,6 +271,19 @@ its `payload` as the APNs JSON to the app under test.
 `http` issues the request from the runner over HTTP — it does **not** go through the UI driver — so a
 `status` mismatch fails the step, and `saveBody` stores the response body text as `${vars.<name>}` for
 later steps. Touching no device, it is the one device-independent action here.
+
+### `totp` (two-factor one-time password)
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", into: { var: code } }   # vars.code ← current 6-digit OTP
+- type: { text: "${vars.code}", into: { id: auth.code } }
+```
+
+`totp` computes an [RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238) time-based one-time
+password locally — from the shared `secret` (base32; keep it in `${secrets.*}`, not in the YAML) and
+the current time — and stores the current code in `${vars.<var>}` for a later `type` / `assert`.
+This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
+function of the secret and the clock ([BE-0046](../roadmaps/in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### Device & system control (iOS)
 

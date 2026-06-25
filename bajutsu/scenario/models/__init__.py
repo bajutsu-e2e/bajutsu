@@ -36,7 +36,9 @@ from bajutsu.scenario.models.actions import (
     SetClipboard,
     SetLocation,
     Swipe,
+    Totp,
     TypeText,
+    VarTarget,
 )
 from bajutsu.scenario.models.assertions import (
     Assertion,
@@ -116,9 +118,11 @@ __all__ = [
     "Step",
     "Swipe",
     "TextMatch",
+    "Totp",
     "Trigger",
     "TypeText",
     "Use",
+    "VarTarget",
     "VisualMatch",
     "Wait",
     "WaitRequest",
