@@ -154,11 +154,21 @@ def endpoint_coverage(
     observed exchanges come from `network.json`, the declared matchers from the scenarios."""
     matchers = [m for s in scenarios for m in referenced_requests(s)]
     observed = sorted({_endpoint(ex) for ex in exchanges})
-    asserted_eps = {
-        _endpoint(ex) for ex in exchanges if any(match_request(ex, m) for m in matchers)
-    }
+    # One pass over the matcher-vs-exchange relation: an exchange's endpoint is *asserted* if any
+    # matcher matches it, and a matcher is *unobserved* if no exchange matches it. Deriving both in
+    # a single sweep avoids re-computing the same relation twice (it was O(N*E), computed twice).
+    asserted_eps: set[str] = set()
+    matched_matchers: set[int] = set()
+    for ex in exchanges:
+        hit = False
+        for i, m in enumerate(matchers):
+            if match_request(ex, m):
+                hit = True
+                matched_matchers.add(i)
+        if hit:
+            asserted_eps.add(_endpoint(ex))
     declared_unobserved = sorted(
-        {request_label(m) for m in matchers if not any(match_request(ex, m) for ex in exchanges)}
+        {request_label(m) for i, m in enumerate(matchers) if i not in matched_matchers}
     )
     asserted = sorted(asserted_eps)
     return EndpointCoverage(
