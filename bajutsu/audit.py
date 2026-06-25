@@ -12,10 +12,14 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step
+
+if TYPE_CHECKING:
+    from bajutsu.orchestrator import RunResult
 
 # `until` conditions that wait for no concrete element / event — best-effort settles, not a
 # condition the run can prove was met, so they are a determinism risk worth surfacing.
@@ -231,4 +235,97 @@ def render(report: AuditReport) -> str:
     )
     lines = [f"scenario: {report.scenario}", f"grade: {report.grade}", stability]
     lines.extend(f"  {f.where}: {f.detail}" for f in report.findings)
+    return "\n".join(lines)
+
+
+# --- repeat-and-diff: prove determinism dynamically (BE-0049) ---
+#
+# Run a scenario K times under identical preconditions and compare outcomes. Anything that varies
+# is reported as non-deterministic — a *finding to fix*, never a retry that turns red into green.
+# The audit never changes a verdict and never feeds the run/CI gate (the opposite of flakiness
+# tolerance / auto-retry, which hides instability).
+
+
+@dataclass(frozen=True)
+class RepeatReport:
+    """The verdict of running one scenario K times and diffing the outcomes."""
+
+    scenario: str
+    runs: int  # K — how many times it was executed
+    deterministic: bool  # every run agreed (or K < 2, nothing to compare)
+    divergences: list[str] = field(default_factory=list)  # what varied, for a human to fix
+
+
+def _verdicts(oks: list[bool]) -> list[str]:
+    return ["pass" if o else "fail" for o in oks]
+
+
+def repeat_diff(results: list[RunResult]) -> RepeatReport:
+    """Classify K runs of one scenario as deterministic or flaky by diffing their outcomes.
+
+    Compares the per-step pass/fail, per-assertion pass/fail, and the overall verdict across runs;
+    any variation is a divergence. With fewer than two runs there is nothing to compare, so the
+    result is trivially deterministic (unproven, not flaky).
+    """
+    scenario = results[0].scenario if results else ""
+    if len(results) < 2:
+        return RepeatReport(scenario, len(results), deterministic=True)
+
+    def signature(r: RunResult) -> object:
+        return (
+            r.ok,
+            tuple(
+                (s.index, s.action, s.ok, tuple((a.ok, a.kind) for a in s.assertion_results))
+                for s in r.steps
+            ),
+            tuple((a.ok, a.kind) for a in r.expect_results),
+        )
+
+    if all(signature(r) == signature(results[0]) for r in results):
+        return RepeatReport(scenario, len(results), deterministic=True)
+
+    divergences: list[str] = []
+    if len({r.ok for r in results}) > 1:
+        divergences.append(f"overall verdict varied: {_verdicts([r.ok for r in results])}")
+    if len({len(r.steps) for r in results}) > 1:
+        counts = sorted({len(r.steps) for r in results})
+        divergences.append(f"step count varied across runs: {counts}")
+
+    # Compare step- and assertion-level pass/fail over the common prefix (a varying step count is
+    # already reported above; here we surface *which* shared step or assertion flips).
+    common = min(len(r.steps) for r in results)
+    for i in range(common):
+        if len({r.steps[i].ok for r in results}) > 1:
+            action = results[0].steps[i].action
+            divergences.append(
+                f"step {i} ({action}) verdict varied: {_verdicts([r.steps[i].ok for r in results])}"
+            )
+        acounts = {len(r.steps[i].assertion_results) for r in results}
+        if len(acounts) == 1:
+            for j in range(next(iter(acounts))):
+                aoks = [r.steps[i].assertion_results[j].ok for r in results]
+                if len(set(aoks)) > 1:
+                    kind = results[0].steps[i].assertion_results[j].kind
+                    divergences.append(f"step {i} assertion {j} ({kind}) varied: {_verdicts(aoks)}")
+
+    ecounts = {len(r.expect_results) for r in results}
+    if len(ecounts) == 1:
+        for j in range(next(iter(ecounts))):
+            eoks = [r.expect_results[j].ok for r in results]
+            if len(set(eoks)) > 1:
+                kind = results[0].expect_results[j].kind
+                divergences.append(f"expect {j} ({kind}) varied: {_verdicts(eoks)}")
+
+    # The signatures differed but none of the above pinpointed it (e.g. a step's action or an
+    # assertion kind changed between runs) — still report it as flaky rather than swallow it.
+    if not divergences:
+        divergences.append("run outcomes differed across repeats (see the attached evidence)")
+    return RepeatReport(scenario, len(results), deterministic=False, divergences=divergences)
+
+
+def render_repeat(report: RepeatReport) -> str:
+    """Human-readable repeat-and-diff verdict, pointing at what varied."""
+    classification = "deterministic" if report.deterministic else "flaky"
+    lines = [f"scenario: {report.scenario}", f"{report.runs} runs: {classification}"]
+    lines.extend(f"  {d}" for d in report.divergences)
     return "\n".join(lines)

@@ -12,11 +12,136 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from bajutsu.audit import audit_scenario, render
+from bajutsu.assertions import AssertionResult
+from bajutsu.audit import audit_scenario, render, render_repeat, repeat_diff
 from bajutsu.cli import app
+from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.scenario import load_scenarios
 
 runner = CliRunner()
+
+
+# --- repeat-and-diff (dynamic determinism audit, BE-0049) ---
+
+
+def _run(
+    ok: bool, steps: list[StepOutcome], expect: list[AssertionResult] | None = None
+) -> RunResult:
+    return RunResult(scenario="s", ok=ok, steps=steps, expect_results=expect or [])
+
+
+def test_repeat_diff_identical_runs_are_deterministic() -> None:
+    runs = [_run(True, [StepOutcome(index=0, action="tap", ok=True)]) for _ in range(3)]
+    report = repeat_diff(runs)
+    assert report.deterministic and report.runs == 3 and report.divergences == []
+
+
+def test_repeat_diff_single_run_is_trivially_deterministic() -> None:
+    # Nothing to compare against — not "flaky", just unproven; reported as deterministic.
+    assert repeat_diff([_run(True, [])]).deterministic
+
+
+def test_repeat_diff_flags_varying_step_verdict() -> None:
+    report = repeat_diff(
+        [
+            _run(True, [StepOutcome(index=0, action="tap", ok=True)]),
+            _run(False, [StepOutcome(index=0, action="tap", ok=False, reason="not found")]),
+        ]
+    )
+    assert not report.deterministic
+    assert any("step 0 (tap)" in d for d in report.divergences)
+
+
+def test_repeat_diff_flags_varying_assertion_even_when_step_ok_matches() -> None:
+    ok = StepOutcome(
+        index=0, action="assert", ok=True, assertion_results=[AssertionResult(True, "exists", "x")]
+    )
+    bad = StepOutcome(
+        index=0, action="assert", ok=True, assertion_results=[AssertionResult(False, "exists", "x")]
+    )
+    report = repeat_diff([_run(True, [ok]), _run(True, [bad])])
+    assert not report.deterministic
+    assert any("assertion 0 (exists)" in d for d in report.divergences)
+
+
+def test_repeat_diff_flags_varying_step_count() -> None:
+    report = repeat_diff(
+        [
+            _run(True, [StepOutcome(index=0, action="tap", ok=True)]),
+            _run(False, []),
+        ]
+    )
+    assert not report.deterministic
+    assert any("step count" in d for d in report.divergences)
+
+
+def test_repeat_diff_flags_varying_scenario_level_assertion() -> None:
+    # Same steps, but a scenario-level `expect` assertion flips between runs.
+    report = repeat_diff(
+        [
+            _run(True, [], [AssertionResult(True, "exists", "x")]),
+            _run(True, [], [AssertionResult(False, "exists", "x")]),
+        ]
+    )
+    assert not report.deterministic
+    assert any("expect 0 (exists)" in d for d in report.divergences)
+
+
+def test_repeat_diff_reports_flaky_when_only_action_shape_differs() -> None:
+    # Verdicts and counts all agree, but the step *action* differs between runs — the signature
+    # still diverges, so it must be reported as flaky rather than swallowed.
+    report = repeat_diff(
+        [
+            _run(True, [StepOutcome(index=0, action="tap", ok=True)]),
+            _run(True, [StepOutcome(index=0, action="swipe", ok=True)]),
+        ]
+    )
+    assert not report.deterministic
+    assert any("differed across repeats" in d for d in report.divergences)
+
+
+def test_render_repeat_marks_classification() -> None:
+    det = render_repeat(repeat_diff([_run(True, []), _run(True, [])]))
+    assert "deterministic" in det.lower()
+    flaky = render_repeat(repeat_diff([_run(True, []), _run(False, [])]))
+    assert "flaky" in flaky.lower()
+
+
+def _audit_project(tmp_path: Path) -> tuple[Path, Path]:
+    """A scenario file + a minimal config with a `demo` target, for the --repeat CLI path."""
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
+    return scn, cfg
+
+
+def test_repeat_cli_requires_target(tmp_path: Path) -> None:
+    # --repeat without --target can't reach a device, so it exits 2 before touching any backend.
+    scn, _ = _audit_project(tmp_path)
+    result = runner.invoke(app, ["audit", str(scn), "--repeat", "2"])
+    assert result.exit_code == 2 and "--repeat needs --target" in result.output
+
+
+def test_repeat_cli_unavailable_backend_exits_two(tmp_path: Path) -> None:
+    # An unknown / unavailable actuator fails the preflight (no simctl/browser) and exits 2.
+    scn, cfg = _audit_project(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "audit",
+            str(scn),
+            "--repeat",
+            "2",
+            "--target",
+            "demo",
+            "--backend",
+            "nope",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert result.exit_code == 2 and "no available actuator" in result.output
 
 
 def _audit(yaml: str):  # type: ignore[no-untyped-def]
