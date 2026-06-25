@@ -309,6 +309,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | ID | Item | Status |
 |---|---|---|
 | [BE-0065](in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) | Docstring standard & generated API reference | In progress |
+| [BE-0069](in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | In progress |
 <!-- /GENERATED:in-progress-dev-infra -->
 
 ### codegen coverage

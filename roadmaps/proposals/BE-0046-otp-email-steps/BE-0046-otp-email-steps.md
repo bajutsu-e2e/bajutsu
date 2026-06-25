@@ -79,7 +79,7 @@ Prime directives preserved:
   secrets differ.
 - **Codegen.** These run in the bajutsu runner, not the app, and have no XCUITest equivalent, so
   codegen emits a labeled `// TODO` (per
-  [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
+  [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
 
 ## Alternatives considered
 

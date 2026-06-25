@@ -65,8 +65,8 @@ stays unchanged, exactly as in v1.
 Once the driver advertises the richer capabilities, authoring a web scenario by AI `record` is
 already possible (the driver implements `query`/`tap`/`type`). A web `record` demo is **not** a
 new item: it is tracked under the existing record-experience proposals
-([BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md) action-capture record,
-[BE-0014](../BE-0014-demarcation-from-existing-ai-record/BE-0014-demarcation-from-existing-ai-record.md)),
+([BE-0012](../../proposals/BE-0012-action-capture-record/BE-0012-action-capture-record.md) action-capture record,
+[BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md)),
 which apply to any backend.
 
 ## Alternatives considered
@@ -81,6 +81,6 @@ which apply to any backend.
 ## References
 
 [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
-[BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md),
+[BE-0009 — Cross-platform abstractions](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md),
 [drivers.md](../../../docs/drivers.md), [multi-platform.md](../../../docs/multi-platform.md),
 `bajutsu/drivers/playwright.py`, `bajutsu/runner/pool.py`, `bajutsu/evidence.py`

@@ -40,7 +40,7 @@ rough order of value:
   `XCUIElementQuery` rather than falling through to `el("UNSUPPORTED_SELECTOR")`. `within` maps
   to a nested query over `descendants(matching:)`; `index` to `element(boundBy:)`.
 - **Device-control steps.** `setLocation` and `push` (and any primitives from
-  [BE-0035](../../proposals/BE-0035-device-control-primitives/BE-0035-device-control-primitives.md)) have no
+  [BE-0035](../../implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives.md)) have no
   XCUITest API equivalent at the app level — they drive the simulator through `simctl`. For
   these the honest mapping is a clearly-labeled `// TODO` that names the `simctl` command a
   reviewer would run, rather than a bare "unsupported step." They are documented out of scope,

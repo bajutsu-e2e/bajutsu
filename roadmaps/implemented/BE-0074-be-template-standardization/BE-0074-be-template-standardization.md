@@ -231,7 +231,7 @@ Japanese mirror) is updated to describe the fenced block. The tree is green unde
   fails. Rejected as the first step: rewriting prose-bearing files risks touching content, and the
   drift is small enough to fix by hand. An auto-fixer could be a later convenience once the checker
   exists.
-- **Fold into [BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)**
+- **Fold into [BE-0069](../../in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)**
   (executable contributor guardrails). Related — both make a contributor procedure machine-checked —
   but distinct surfaces: BE-0069 turns multi-step *procedures* into commands, this pins one *file
   format* and its validator. Kept separate; cross-referenced.
@@ -259,5 +259,5 @@ Japanese mirror) is updated to describe the fenced block. The tree is green unde
   table, and the existing generate-and-gate treatment of the *index* it mirrors for the *body*.
 - [BE-0043 — Conflict-resistant file flow](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
   — the contributor-workflow sibling that established "make the invariant machine-checked".
-- [BE-0069 — Executable contributor guardrails](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
+- [BE-0069 — Executable contributor guardrails](../../in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
   — the related procedures-as-commands item, kept distinct.

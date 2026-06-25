@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0069](BE-0069-executable-contributor-guardrails.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -89,7 +89,7 @@ Four mechanisms, in order of leverage.
 
 - Creates `roadmaps/proposals/BE-0069-<slug>/` with both `BE-0069-<slug>.md` and
   `BE-0069-<slug>-ja.md`, pre-filled from a template: the bilingual header link, the metadata block
-  (`Proposal` / `Author` / `Status` / `Track` / `Topic`), and the five Swift-Evolution sections
+  (`Proposal` / `Author` / `Status` / `Topic`), and the five Swift-Evolution sections
   (`Introduction` / `Motivation` / `Detailed design` / `Alternatives considered` / `References`)
   seeded with `TBD`.
 - **Always emits the literal `BE-0069` placeholder** — never a number. IDs are permanent and
@@ -100,7 +100,7 @@ Four mechanisms, in order of leverage.
   [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py) so the item lands in a
   real section. (A `Topic` matching no section makes the index builder *crash* after CI numbers the
   item — not merely drift — a sharp edge worth catching at creation.) Defaults: `Status=Proposal`,
-  `Track=Proposals`, author resolved from `git config` (overridable via `HANDLE=`).
+  author resolved from `git config` (overridable via `HANDLE=`).
 - **Does not add a manual index row.** The generator skips `BE-0069` items, so the committed index
   stays row-free for the placeholder and `make check` is green locally; the `roadmap-id` workflow
   regenerates the index once it numbers the item. (This is a known trap — the scaffolder encodes the
@@ -118,7 +118,7 @@ checks the well-formedness rules now scattered across prose and reviewer judgeme
 - the bilingual pair exists (both files present);
 - the slug matches the directory name, and the in-file `BE-0069`/`BE-NNNN` token matches the
   directory;
-- the metadata block is complete (`Proposal`, `Author`, `Status`, `Track`, `Topic` all present);
+- the metadata block is complete (`Proposal`, `Author`, `Status`, `Topic` all present);
 - `Author` is a GitHub-handle link (`[@handle](https://github.com/handle)`);
 - `Status` is one of the known values and consistent with the subdirectory (`Implemented` ⇒
   `implemented/`, otherwise `proposals/`);
@@ -206,7 +206,7 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
   target count grows.
 - **A dedicated new roadmap topic.** Filed instead under *Development infrastructure (contributor
   workflow)* — the BE-0043 topic — following the precedent
-  ([BE-0065](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md))
+  ([BE-0065](../../in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md))
   of not splitting a topic for a single item.
 
 ## References

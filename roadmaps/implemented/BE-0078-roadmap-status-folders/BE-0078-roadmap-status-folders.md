@@ -149,7 +149,7 @@ This repository has **no link checker** in the gate, so a stale `proposals/…` 
 `make check` — it just 404s for a reader. The implementation must sweep these paths in the same
 change (a scripted rewrite over the known slugs is enough), and adding a roadmap-link check to the
 gate is a reasonable companion (it fits the *executable contributor guardrails* direction of
-[BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)).
+[BE-0069](../../in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)).
 
 ### Scripts and tests touched
 
@@ -212,5 +212,5 @@ contributor-workflow refactor, in the same family as BE-0043 / BE-0061 / BE-0074
 - [BE-0043 — Conflict-resistant file flow](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
   [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
   — the contributor-workflow siblings whose "structure carries the invariant" approach this follows.
-- [BE-0069 — Executable contributor guardrails](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
+- [BE-0069 — Executable contributor guardrails](../../in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
   — where an optional roadmap-link check (to catch stale `proposals/…` paths after a move) would fit.
