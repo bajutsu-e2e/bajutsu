@@ -26,9 +26,10 @@ OnBlockedFor = Callable[[Scenario], "BlockedHandler | None"]
 
 @dataclass
 class Lease:
-    """A leased device for one scenario run: its live driver plus the per-device
-    resources bound to that device. `release()` terminates the app and returns the
-    device to the pool.
+    """A leased device for one scenario run.
+
+    Its live driver plus the per-device resources bound to that device. `release()` terminates the
+    app and returns the device to the pool.
 
     `collector` is None when network collection is off; otherwise it observes the leased
     device's traffic (iOS: the app POSTs to an HTTP receiver; web: Playwright events),
