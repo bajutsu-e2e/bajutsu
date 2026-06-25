@@ -7,7 +7,11 @@ from bajutsu.scenario.models import Component, Scenario, ScenarioFile
 
 
 def load_scenario_file(text: str) -> ScenarioFile:
-    """Parse a scenario file (a list of scenarios, or a `{description, scenarios}` mapping)."""
+    """Parse a scenario file: a list of scenarios, or a `{description, scenarios}` mapping.
+
+    Raises:
+        ValueError: The top level is neither a list nor a mapping (§6.1).
+    """
     data = _yaml.safe_load(text)
     if isinstance(data, list):
         return ScenarioFile.model_validate({"scenarios": data})
