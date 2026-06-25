@@ -30,6 +30,8 @@ FAIL_COVERAGE = 0.7
 
 @dataclass(frozen=True)
 class Score:
+    """The current screen's accessibility-convention score — id coverage, conformance, and grade."""
+
     actionable: int
     with_id: int
     id_coverage: float

@@ -114,7 +114,8 @@ def _assertion_requests(a: Assertion) -> Iterator[RequestMatch]:
     """The endpoint matcher(s) a network assertion declares (request / event / requestSequence).
 
     `event` is reduced to its endpoint fields (its body/count are not about *which* endpoint), so
-    every form yields a `RequestMatch` the observed exchanges can be tested against."""
+    every form yields a `RequestMatch` the observed exchanges can be tested against.
+    """
     if a.request is not None:
         yield a.request
     if a.event is not None:
@@ -135,8 +136,11 @@ def _assertion_requests(a: Assertion) -> Iterator[RequestMatch]:
 
 
 def referenced_requests(scenario: Scenario) -> list[RequestMatch]:
-    """Every network-endpoint matcher a scenario declares — across steps' `assert`s, nested control
-    flow, and scenario-level `expect`. The endpoint side of the coverage map (BE-0048 assertions)."""
+    """Every network-endpoint matcher a scenario declares.
+
+    Covers steps' `assert`s, nested control flow, and scenario-level `expect` — the endpoint side of
+    the coverage map (BE-0048 assertions).
+    """
     return [
         *(r for step in scenario.steps for r in _step_requests(step)),
         *(r for a in scenario.expect for r in _assertion_requests(a)),
@@ -150,8 +154,10 @@ def _endpoint(ex: NetworkExchange) -> str:
 def endpoint_coverage(
     scenarios: list[Scenario], exchanges: list[NetworkExchange]
 ) -> EndpointCoverage:
-    """Measure how the suite's network assertions cover the endpoints its runs hit. Pure: the
-    observed exchanges come from `network.json`, the declared matchers from the scenarios."""
+    """Measure how the suite's network assertions cover the endpoints its runs hit.
+
+    Pure: the observed exchanges come from `network.json`, the declared matchers from the scenarios.
+    """
     matchers = [m for s in scenarios for m in referenced_requests(s)]
     observed = sorted({_endpoint(ex) for ex in exchanges})
     # One pass over the matcher-vs-exchange relation: an exchange's endpoint is *asserted* if any
@@ -208,7 +214,8 @@ class ObservedIdCoverage:
 
     The run-evidence counterpart to `Coverage` (static references): `coverage()` grades the ids the
     scenarios *write* (statically reference); this grades the ids the runs *showed* (observed across
-    every `elements.json`), exposing namespaces the suite never exercised at runtime."""
+    every `elements.json`), exposing namespaces the suite never exercised at runtime.
+    """
 
     namespaces: list[
         NamespaceCoverage
@@ -221,8 +228,11 @@ class ObservedIdCoverage:
 
 
 def observed_id_coverage(observed_ids: list[str], id_namespaces: list[str]) -> ObservedIdCoverage:
-    """Group observed ids by the app's declared namespaces. Pure: the observed ids come from the
-    run set's `elements.json` files, the namespaces from the app config. Mirrors `coverage()`."""
+    """Group observed ids by the app's declared namespaces.
+
+    Pure: the observed ids come from the run set's `elements.json` files, the namespaces from the app
+    config. Mirrors `coverage()`.
+    """
     declared = list(dict.fromkeys(id_namespaces))  # de-dupe, keep declared order
     declared_set = set(declared)
     observed = sorted(set(observed_ids))
