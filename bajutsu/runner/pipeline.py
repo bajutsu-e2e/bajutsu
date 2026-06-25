@@ -72,21 +72,37 @@ def run_all(
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
 ) -> list[RunResult]:
-    """Run every scenario, each on a freshly leased device.
+    """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
-    `lease(eff, scenario)` blocks until a device is free, launches the app, and returns a
-    Lease bundling the live driver with that device's evidence sink / relaunch / control /
-    network collector. After the scenario finishes, `lease.release()` terminates the app and
-    returns the device to the pool. When the lease carries a collector, its exchanges are
-    cleared per scenario, exposed to `request` assertions, and written to <sid>/network.json
-    (redacted with `secret_values`).
+    `lease(eff, scenario)` blocks until a device is free, launches the app, and returns a `Lease`
+    bundling the live driver with that device's evidence sink / relaunch / control / network
+    collector; `lease.release()` afterwards terminates the app and returns the device to the pool.
+    A lease's collector, when present, has its exchanges cleared per scenario, exposed to `request`
+    assertions, and written to `<sid>/network.json` (redacted with `secret_values`).
 
-    `on_blocked_for`, when given, picks each scenario's alert-guard handler (honoring its
-    `dismissAlerts`); it takes precedence over the single `on_blocked` (used by tests).
+    Args:
+        eff: The resolved target config (drives redaction, backend, launch).
+        scenarios: The scenarios to run; results come back in this declaration order.
+        lease: Leases a device and launches the app for one scenario (a single-device run is a pool
+            of one).
+        clock: Injectable time source for condition waits, so tests need no real sleeps. None uses
+            the real clock.
+        on_blocked: A single alert-guard handler, used by tests.
+        on_blocked_for: Picks each scenario's alert-guard handler (honoring its `dismissAlerts`);
+            takes precedence over `on_blocked`.
+        run_dir: Where per-scenario artifacts (network.json, visual diffs) are written. None skips
+            writing them.
+        workers: Concurrent scenarios; >1 hands each worker its own device + per-device resources,
+            so the loop keeps no shared mutable state.
+        bindings: `secrets.<name>` → value substitutions applied to step inputs.
+        secret_values: The raw secret values to redact from evidence.
+        progress: Receives one-line progress messages (the web UI streams these). None is silent.
+        baselines_dir: Baseline images for `visual` assertions. None disables visual comparison.
+        schemas_dir: Directory the `responseSchema` assertions' schema files resolve against. None
+            disables them.
 
-    With `workers > 1` scenarios run concurrently (results stay in declaration order). The
-    pool hands each worker its own device and per-device resources, so the run loop has no
-    shared mutable state.
+    Returns:
+        One result per scenario, in the same order as `scenarios`.
     """
     redactor = Redactor(eff.redact, values=secret_values)
 
@@ -168,11 +184,25 @@ def run_and_report(
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
 ) -> tuple[list[RunResult], Path]:
-    """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id.
+    """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
-    When `baselines_dir` is given, `visual` assertions compare each scenario's end-state
-    screenshot against a baseline image in that directory; `schemas_dir` likewise resolves
-    `responseSchema` assertions' schema files (see run_all)."""
+    Wraps `run_all` and persists the report: `manifest.json`, JUnit XML, and the executed
+    `scenario.yaml` (so a run is re-runnable / reviewable). idb toolchain versions are recorded as
+    provenance only when idb actually drove the run — never a pass/fail input (BE-0005).
+
+    Args:
+        runs_dir: The root runs directory; this run's artifacts go under `runs_dir/run_id`.
+        run_id: This run's id, naming its artifact directory.
+        source_name: The scenario source's display name, for the report.
+        description: A human description stored with the run.
+
+    The remaining arguments are passed through to `run_all` (`eff`, `scenarios`, `lease`, `clock`,
+    the alert handlers, `workers`, `bindings`, `secret_values`, `progress`, `baselines_dir`,
+    `schemas_dir`).
+
+    Returns:
+        The per-scenario results and the path to the written `manifest.json`.
+    """
     run_dir = runs_dir / run_id
     results = run_all(
         eff,

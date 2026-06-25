@@ -49,11 +49,25 @@ def _probe(url: str, timeout: float = 2.0) -> bool:
 def start_launch_server(
     eff: Effective, *, log: Callable[[str], None] | None = None
 ) -> Callable[[], None]:
-    """Bring up `eff.launch_server` if declared, returning a teardown callable (idempotent).
+    """Bring up `eff.launch_server` (the web target's host) if declared, returning a teardown call.
 
-    No-op (returns a no-op stop) when no server is declared, or when `readyUrl` already answers
-    (reuse an externally-started server, and leave it running). Raises `RuntimeError` if the command
-    exits or the server isn't ready within `readyTimeout` — the caller exits 2 with the message.
+    Idempotent: a no-op stop is returned when no server is declared, or when `readyUrl` already
+    answers (an externally-started server is reused and left running). Otherwise the command is
+    started and probed until `readyUrl` responds within `readyTimeout`.
+
+    Args:
+        eff: The resolved target config; `launch_server` and `base_url` decide what to start and
+            probe.
+        log: Receives one-line status messages. None uses the default logger.
+
+    Returns:
+        A teardown callable that stops the server bajutsu started — a no-op when nothing was started
+        (none declared, or an existing one reused).
+
+    Raises:
+        RuntimeError: `launchServer` declares no `readyUrl` and the target has no `baseUrl`, or the
+            command exited / the server wasn't ready within `readyTimeout` (the caller exits 2 with
+            the message).
     """
     ls = eff.launch_server
     if ls is None:
