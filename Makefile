@@ -1,5 +1,5 @@
 .PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings format format-check typecheck \
-        lock-check lint-sh lint-actions lint-roadmap check new-roadmap-item roadmap-index roadmap-promote roadmap-id-repair \
+        lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index roadmap-promote roadmap-id-repair \
         docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -118,6 +118,15 @@ lint-roadmap:
 new-roadmap-item:
 	uv run python scripts/new_roadmap_item.py --slug "$(SLUG)" --title "$(TITLE)" \
 	  $(if $(TOPIC),--topic "$(TOPIC)") $(if $(STATUS),--status "$(STATUS)") $(if $(HANDLE),--handle "$(HANDLE)")
+
+# Check the mechanical PR-metadata conventions on this branch vs origin/main (BE-0069):
+# conventional scoped commit subjects, a [BE-NNNN] PR-title prefix on a roadmap change, and a
+# behaviour-change-without-test reminder. ADVISORY and deliberately NOT in `check` — it needs
+# branch/PR context (the gate runs on any checkout) and most of it is a reminder, not a gate. It
+# exits nonzero only on a clear violation (a non-scoped commit; in CI with $PR_TITLE, a roadmap PR
+# missing the prefix). Run before pushing; CI can run it with PR_TITLE set to validate the title.
+lint-pr:
+	uv run python scripts/lint_pr.py
 
 # Regenerate the roadmap index tables (README.md / README-ja.md) from each BE item's own
 # metadata, so a roadmap PR only touches its own directory (BE-0043). The committed result is
