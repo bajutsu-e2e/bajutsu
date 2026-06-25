@@ -1,5 +1,4 @@
-"""Evidence-rule models: the capturePolicy trigger/rule, redaction config, and the per-scenario
-network-filter settings that scope which observed requests reach the report timeline."""
+"""Evidence-rule models: capturePolicy trigger/rule, redaction config, and per-scenario network-filter settings."""
 
 from __future__ import annotations
 
@@ -11,8 +10,11 @@ from bajutsu.scenario.models._base import _exactly_one, _Model, _validate_captur
 
 
 class Trigger(_Model):
-    """A `capturePolicy` trigger — the condition (one of `action` / `event` / `result`, with an
-    optional `idMatches` narrowing an `action`) that fires its `CaptureRule`."""
+    """A `capturePolicy` trigger that fires its `CaptureRule` when a condition holds.
+
+    The condition is exactly one of `action` / `event` / `result`; `idMatches` narrows an
+    `action` trigger to a specific element ID.
+    """
 
     action: str | None = None
     id_matches: str | None = Field(default=None, alias="idMatches")
@@ -40,8 +42,10 @@ class CaptureRule(_Model):
 
 
 class Redact(_Model):
-    """Redaction config — element `labels`, network `headers`, and JSON `fields` scrubbed from
-    evidence before it is written."""
+    """Redaction config — element `labels`, network `headers`, and JSON `fields` to scrub from evidence.
+
+    Each list names items that are zeroed out before evidence is written to the report.
+    """
 
     labels: list[str] = Field(default_factory=list)
     headers: list[str] = Field(default_factory=list)
@@ -49,16 +53,20 @@ class Redact(_Model):
 
 
 class NetworkFilter(_Model):
-    """Which observed requests to interleave into the report's Steps timeline. With
-    `domains` set, only exchanges whose URL host matches one of them — exactly or as a
+    """Which observed requests to interleave into the report's Steps timeline.
+
+    With `domains` set, only exchanges whose URL host matches one of them — exactly or as a
     parent suffix (`example.com` matches `api.example.com`) — appear in Steps; empty /
-    unset shows every captured exchange. The Network tab always lists them all."""
+    unset shows every captured exchange. The Network tab always lists them all.
+    """
 
     domains: list[str] = Field(default_factory=list)
 
 
 class Network(_Model):
-    """Per-scenario network settings. `filter` scopes which observed requests are
-    interleaved into the report's Steps timeline."""
+    """Per-scenario network settings.
+
+    `filter` scopes which observed requests are interleaved into the report's Steps timeline.
+    """
 
     filter: NetworkFilter | None = None
