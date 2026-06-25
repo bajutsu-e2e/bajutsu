@@ -143,6 +143,7 @@ def _rerun_command(
 
 
 def _verify_rerun(target: str, target_name: str, backend: str, udid: str, config: str) -> None:
+    """Run the patched scenario and report whether the fix holds."""
     cmd = _rerun_command(target, target_name, backend, udid, config)
     typer.echo(f"\nre-running {target} to verify the fix ...")
     code = subprocess.call(cmd)

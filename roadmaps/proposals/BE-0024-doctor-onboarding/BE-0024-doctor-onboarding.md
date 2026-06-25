@@ -53,6 +53,17 @@ When a candidate grows large enough to deserve its own design discussion, it gra
 dedicated BE item and is removed from here. Until then, this item keeps the onboarding backlog
 visible in one place.
 
+### Shipped candidates
+
+- **`doctor` covers the web (Playwright) backend.** The runnability gate (`preflight.py`) was
+  iOS-shaped — it always required Xcode's `xcrun` and a booted Simulator and never checked the
+  Playwright runtime, so `bajutsu doctor` for a web target demanded the wrong tools and then crashed
+  resolving a simctl udid. The gate now branches by backend family: the web backend checks the
+  Playwright package and its Chromium browser (with `uv sync --extra web` / `playwright install
+  chromium` remedies, no Xcode/Simulator), and `doctor` navigates a fresh browser to the target's
+  `baseUrl` and scores that page. The convention score itself was already backend-agnostic (it
+  reads each element's id and traits), so the web backend's `data-testid` ids score unchanged.
+
 ## Alternatives considered
 
 **Fold each onboarding idea into an existing item.** Some candidates do have a natural home — a

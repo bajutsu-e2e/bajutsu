@@ -151,9 +151,13 @@ The sample app's id catalog is in [sample-app](sample-app.md#accessibilityidenti
 Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It analyzes one screen's
 `query()` (the CLI uses the screen obtained via the actuator) and produces a score.
 
-> `doctor` runs a **runnability gate** first (`preflight.py`: the required CLIs for the actuator
-> — `xcrun`, and `idb` / `idb_companion` for idb — plus a booted Simulator), then the score. The
-> score still covers only the currently displayed screen (entry / current screen, not all screens).
+> `doctor` runs a **runnability gate** first (`preflight.py`), then the score. The gate checks what
+> the chosen backend needs: the iOS (idb) backend needs the CLIs `xcrun` and `idb` / `idb_companion`
+> plus a booted Simulator; the web (Playwright) backend needs the Playwright package and its Chromium
+> browser (`uv sync --extra web` + `playwright install chromium`). It then scores the current screen:
+> for a web target it navigates a fresh browser to the target's `baseUrl` and scores that page; for
+> iOS it scores the screen on the booted Simulator. The score still covers only the currently
+> displayed screen (entry / current screen, not all screens).
 
 ### Metrics (`Score`)
 

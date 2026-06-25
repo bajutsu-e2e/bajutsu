@@ -1,6 +1,8 @@
-"""Machine-checkable assertions and the wait conditions that reuse them: the network-traffic
-matcher, existence/text/count/state checks, visual regression, and the `Assertion` aggregator
-that selects exactly one kind."""
+"""Machine-checkable assertions and the wait conditions that reuse them.
+
+Covers the network-traffic matcher, existence/text/count/state checks, visual regression,
+and the `Assertion` aggregator that selects exactly one kind.
+"""
 
 from __future__ import annotations
 
@@ -13,13 +15,14 @@ from bajutsu.scenario.models.selector import Selector
 
 
 class RequestMatch(_Model):
-    """Network-traffic matcher, shared by the `request` assertion and the
-    `until: { request: ... }` wait. The fields (method / url / urlMatches / path /
-    pathMatches / status / bodyMatches) are AND-ed; `count` is how many exchanges matched
-    — exact for the assertion, a lower bound for the wait. The endpoint can be pinned by
-    `url` (exact full URL) or `urlMatches` (regex/substring; query strings live here), or
-    just the `path`; `bodyMatches` checks the request body. At least one match field is
-    required."""
+    """Network-traffic matcher, shared by the `request` assertion and `until: { request: ... }`.
+
+    The fields (method / url / urlMatches / path / pathMatches / status / bodyMatches) are AND-ed;
+    `count` is how many exchanges matched — exact for the assertion, a lower bound for the wait.
+    The endpoint can be pinned by `url` (exact full URL) or `urlMatches` (regex/substring; query
+    strings live here), or just the `path`; `bodyMatches` checks the request body. At least one
+    match field is required.
+    """
 
     method: str | None = None
     url: str | None = None  # exact full URL (the endpoint)
@@ -55,17 +58,26 @@ class RequestMatch(_Model):
 
 
 class Gone(_Model):
+    """`until: { gone: <Selector> }` — wait until a selector no longer matches any element."""
+
     gone: Selector
 
 
 class WaitRequest(_Model):
-    """`until: { request: <RequestMatch> }` — wait until a matching network exchange has
-    been observed by the collector (needs the run's network collector active)."""
+    """`until: { request: <RequestMatch> }` — wait until a matching network exchange has been observed.
+
+    Requires the run's network collector to be active.
+    """
 
     request: RequestMatch
 
 
 class Wait(_Model):
+    """`wait` step — block until a selector appears (`for`) or a condition holds (`until`).
+
+    Bounded by `timeout`; always a condition wait, never a fixed sleep.
+    """
+
     for_: Selector | None = Field(default=None, alias="for")
     # settled = wait until the screen stops changing (best-effort; for transition settle)
     until: Literal["screenChanged", "settled"] | Gone | WaitRequest | None = None
