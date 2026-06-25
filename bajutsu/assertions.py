@@ -45,7 +45,8 @@ class VisualEvidence:
 
     Paths are *run-dir-relative* (the same scheme as artifacts), so the self-contained
     report and the serve UI can reference them. `baseline_name` is the YAML key into the
-    baselines dir — what `approve` promotes the actual screenshot to."""
+    baselines dir — what `approve` promotes the actual screenshot to.
+    """
 
     baseline_name: str
     actual: str  # the captured screenshot
@@ -57,6 +58,8 @@ class VisualEvidence:
 
 @dataclass(frozen=True)
 class AssertionResult:
+    """The outcome of one assertion check, carried into the manifest/report."""
+
     ok: bool
     kind: str
     detail: str  # what was checked (for the report)
@@ -66,9 +69,11 @@ class AssertionResult:
 
 @dataclass(frozen=True)
 class VisualContext:
-    """Context needed by visual assertions — paths to the current screenshot,
-    the baselines directory, where to write diff images, and the run dir root
-    (so image paths can be expressed run-dir-relative for the report)."""
+    """Paths a visual assertion needs.
+
+    The current screenshot, the baselines directory, where to write diff images, and the run dir
+    root (so image paths can be expressed run-dir-relative for the report).
+    """
 
     screenshot_path: Path
     baselines_dir: Path
@@ -78,8 +83,10 @@ class VisualContext:
 
 @dataclass(frozen=True)
 class SchemaContext:
-    """Context needed by `responseSchema` assertions — the directory a schema path resolves against
-    (config `apps.<name>.schemas`, the `--schemas` flag, or `schemas/` beside the scenario)."""
+    """The directory a `responseSchema` assertion's schema path resolves against.
+
+    One of config `apps.<name>.schemas`, the `--schemas` flag, or `schemas/` beside the scenario.
+    """
 
     schemas_dir: Path
 
@@ -172,9 +179,18 @@ def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> Asser
 
 
 def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
-    """Whether one exchange satisfies a `RequestMatch` (set fields AND-ed). Shared by the
-    `request` assertion and the web mock router, so a mock stubs exactly what an assertion
-    would match."""
+    """Whether one observed exchange satisfies a request matcher.
+
+    Shared by the `request` assertion and the web mock router, so a mock stubs exactly what an
+    assertion would match.
+
+    Args:
+        ex: One observed network exchange.
+        req: The matcher; only its set (non-`None`) fields are checked, AND-ed together.
+
+    Returns:
+        True iff every set field of `req` matches `ex`.
+    """
     # Straight-line early returns, kept allocation-free on purpose: this runs in `until: {request}`
     # polling and per-exchange matching loops, so it must stay lightweight (no per-call closures).
     if req.method is not None and ex.method.upper() != req.method.upper():
@@ -196,15 +212,25 @@ def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
 
 
 def count_matching(exchanges: list[NetworkExchange], req: RequestMatch) -> int:
-    """How many observed exchanges satisfy the request matcher (shared by the `request`
-    assertion and the `until: { request }` wait)."""
+    """How many observed exchanges satisfy the request matcher.
+
+    Shared by the `request` assertion and the `until: { request }` wait.
+    """
     return sum(1 for ex in exchanges if match_request(ex, req))
 
 
 def request_label(req: RequestMatch, *, with_count: bool = True) -> str:
-    """Compact human description of a request matcher (e.g. "GET /items status=200"). `with_count`
-    is False where a matcher's `count` is not part of the check (e.g. `requestSequence`, which is
-    about order), so the label doesn't imply a field that is ignored."""
+    """A compact human description of a request matcher (e.g. ``GET /items status=200``).
+
+    Args:
+        req: The request matcher to describe.
+        with_count: When False, the matcher's `count` is left out of the label — used where `count`
+            is not part of the check (e.g. `requestSequence`, which is about order), so the label
+            doesn't imply a field that is ignored.
+
+    Returns:
+        The matcher's set fields joined into one space-separated line.
+    """
     parts: list[str] = []
     if req.method is not None:
         parts.append(req.method.upper())
@@ -259,10 +285,12 @@ def _count_satisfied(n: int, c: CountOp | None) -> bool:
 
 
 def _json_text(value: object) -> str:
-    """Canonical text form of a JSON value for comparing an event body field — booleans and null
-    render JSON-style (`true` / `false` / `null`), and a nested array / object renders as compact
-    JSON, so a YAML matcher reads the way the captured body does, not as a Python `repr` (`True` /
-    `None` / single-quoted dicts). Numbers / strings keep their plain form."""
+    """Canonical text form of a JSON value for comparing an event body field.
+
+    Booleans and null render JSON-style (`true` / `false` / `null`), and a nested array / object
+    renders as compact JSON, so a YAML matcher reads the way the captured body does, not as a Python
+    `repr` (`True` / `None` / single-quoted dicts). Numbers / strings keep their plain form.
+    """
     if isinstance(value, bool):
         return "true" if value else "false"
     if value is None:
@@ -273,8 +301,10 @@ def _json_text(value: object) -> str:
 
 
 def _event_body_matches(ex: NetworkExchange, body: dict[str, str]) -> bool:
-    """Whether the exchange's JSON request body carries every given field, each equal (as text)
-    to the expected value. A non-JSON / non-object / absent body matches no body criterion."""
+    """Whether the exchange's JSON request body carries every given field, each equal (as text).
+
+    A non-JSON / non-object / absent body matches no body criterion.
+    """
     if not body:
         return True
     if ex.request_body is None:
@@ -309,9 +339,12 @@ def _event_label(m: EventMatch) -> str:
 
 
 def _eval_event(exchanges: list[NetworkExchange], m: EventMatch) -> AssertionResult:
-    """Assert an analytics/telemetry event the app sent (BE-0048): filter the timeline by the
-    event's endpoint (reusing the request matcher), then by its structured request-body fields,
-    and check the surviving count against the operator. Pure over the captured exchanges."""
+    """Assert an analytics/telemetry event the app sent (BE-0048).
+
+    Filter the timeline by the event's endpoint (reusing the request matcher), then by its
+    structured request-body fields, and check the surviving count against the operator. Pure over
+    the captured exchanges.
+    """
     endpoint = (m.method, m.url, m.url_matches, m.path, m.path_matches)
     if any(v is not None for v in endpoint):
         req = RequestMatch(
@@ -340,9 +373,12 @@ def _eval_event(exchanges: list[NetworkExchange], m: EventMatch) -> AssertionRes
 def _eval_request_sequence(
     exchanges: list[NetworkExchange], seq: list[RequestMatch]
 ) -> AssertionResult:
-    """Assert a set of request matchers were observed in order (BE-0048): each matches a distinct
-    exchange at a strictly later position than the previous, so unrelated traffic may interleave.
-    A greedy forward scan is optimal for this order-preserving subsequence. Pure over the timeline."""
+    """Assert a set of request matchers were observed in order (BE-0048).
+
+    Each matches a distinct exchange at a strictly later position than the previous, so unrelated
+    traffic may interleave. A greedy forward scan is optimal for this order-preserving subsequence.
+    Pure over the timeline.
+    """
     detail = "requestSequence " + " → ".join(request_label(r, with_count=False) for r in seq)
     i = 0
     for pos, req in enumerate(seq):
@@ -360,8 +396,10 @@ def _eval_request_sequence(
 
 def _load_schema(schema_path: str, ctx: SchemaContext, detail: str) -> object | AssertionResult:
     """Load and parse the stored JSON Schema, or an `AssertionResult` carrying why it couldn't be.
+
     Confines the path to the schemas dir: an absolute path or `..` traversal would read files
-    outside it and make the result depend on the runner's filesystem — reject it."""
+    outside it and make the result depend on the runner's filesystem — reject it.
+    """
     schemas_dir = ctx.schemas_dir.resolve()
     schema_file = (schemas_dir / schema_path).resolve()
     if not schema_file.is_relative_to(schemas_dir):
@@ -378,8 +416,11 @@ def _load_schema(schema_path: str, ctx: SchemaContext, detail: str) -> object | 
 
 
 def _validate_instance(instance: object, schema: object, detail: str) -> AssertionResult:
-    """Validate a parsed instance against a parsed schema. `jsonschema` is imported lazily (the
-    `schema` extra), so the dependency only loads when a responseSchema assertion is evaluated."""
+    """Validate a parsed instance against a parsed schema.
+
+    `jsonschema` is imported lazily (the `schema` extra), so the dependency only loads when a
+    responseSchema assertion is evaluated.
+    """
     try:
         import jsonschema
     except ImportError:
@@ -405,8 +446,10 @@ def _eval_response_schema(
     exchanges: list[NetworkExchange], m: ResponseSchemaMatch, ctx: SchemaContext | None
 ) -> AssertionResult:
     """Validate the first matching exchange's response body against a stored JSON Schema (BE-0048).
-    Pure over the captured exchanges + the schema file; the schema I/O and the validation are
-    split into `_load_schema` and `_validate_instance`."""
+
+    Pure over the captured exchanges + the schema file; the schema I/O and the validation are split
+    into `_load_schema` and `_validate_instance`.
+    """
     detail = f"responseSchema {request_label(m.request)} ~ {m.schema_path}"
     if ctx is None:
         return AssertionResult(False, "responseSchema", detail, "no schema context provided")
@@ -432,7 +475,8 @@ def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch])
 
     Maximum bipartite matching (Kuhn's augmenting paths) so a broad matcher never steals
     the only exchange a more specific one needs. Returns, per matcher, the exchange index
-    it was assigned, or -1 when none is left for it."""
+    it was assigned, or -1 when none is left for it.
+    """
     adj = [[j for j, ex in enumerate(exchanges) if match_request(ex, req)] for req in reqs]
     ex_to_req = [-1] * len(exchanges)
     assigned = [-1] * len(reqs)
@@ -522,11 +566,28 @@ def evaluate_one(
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
 ) -> AssertionResult:
-    """Evaluate one assertion (the kind is guaranteed unique by scenario validation).
+    """Evaluate one assertion against the screen and the observed network.
 
-    UI kinds check ``elements``; ``request`` / ``event`` / ``requestSequence`` check the observed
-    network ``exchanges``; ``responseSchema`` validates a response body against a stored schema via
-    *schema_context*; ``visual`` compares a screenshot to a baseline via *visual_context*."""
+    The assertion's kind is guaranteed unique by scenario validation, so exactly one branch fires.
+    Evaluation is total — a *failed* check returns a not-ok result rather than raising.
+
+    Args:
+        elements: One `query()` snapshot; the UI kinds (`exists` / `value` / `label` / `count` /
+            `enabled` / `disabled` / `selected`) check it.
+        a: The assertion to evaluate.
+        exchanges: The network exchanges observed so far; the `request` / `event` /
+            `requestSequence` kinds check these (None is treated as empty).
+        visual_context: Paths the `visual` kind needs (screenshot, baselines, diff dir, run dir);
+            required only for a `visual` assertion.
+        schema_context: The directory a `responseSchema` path resolves against; required only for a
+            `responseSchema` assertion.
+
+    Returns:
+        The single assertion's result.
+
+    Raises:
+        AssertionError: The assertion has no kind set — scenario validation should have caught this.
+    """
     if a.exists is not None:
         return _eval_exists(elements, a.exists)
     if a.value is not None:
@@ -562,11 +623,22 @@ def evaluate(
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
 ) -> list[AssertionResult]:
-    """Evaluate all of expect/assert (the caller decides AND via passed()).
+    """Evaluate every assertion in an expect/assert block (the caller AND-s them via `passed`).
 
-    Plain `request` assertions (no `count`) in the block are matched **one-to-one** to
-    distinct exchanges: two `request` lines need two separate exchanges. (`count` is an
-    explicit aggregate and stays independent.)"""
+    Plain `request` assertions (no `count`) in the block are matched **one-to-one** to distinct
+    exchanges: two `request` lines need two separate exchanges. `count` is an explicit aggregate and
+    stays independent of that one-to-one assignment.
+
+    Args:
+        elements: One `query()` snapshot for the UI kinds.
+        assertions: The block's assertions, evaluated in order.
+        exchanges: The network exchanges observed so far (None is treated as empty).
+        visual_context: Forwarded to any `visual` assertion (see `evaluate_one`).
+        schema_context: Forwarded to any `responseSchema` assertion (see `evaluate_one`).
+
+    Returns:
+        One result per assertion, positionally aligned with `assertions`.
+    """
     exs = exchanges or []
     bare: list[tuple[int, RequestMatch]] = []
     for i, a in enumerate(assertions):

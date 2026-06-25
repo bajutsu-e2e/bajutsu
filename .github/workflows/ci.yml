@@ -48,6 +48,9 @@ jobs:
       - name: Lint (ruff)
         run: make lint
 
+      - name: Lint docstrings (ruff D, migrated surface)
+        run: make lint-docstrings
+
       - name: Lint shell scripts (shellcheck)
         run: make lint-sh
 

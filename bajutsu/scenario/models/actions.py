@@ -1,6 +1,8 @@
-"""One-shot device actions: gestures, text entry, relaunch, location/push, http, and the
-device-control steps. Each is a step payload validated on its own; the `Step` aggregator that
-selects exactly one lives in `steps.py`."""
+"""One-shot device actions.
+
+Gestures, text entry, relaunch, location/push, http, and the device-control steps. Each is a step
+payload validated on its own; the `Step` aggregator that selects exactly one lives in `steps.py`.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +15,8 @@ from bajutsu.scenario.models.selector import Selector
 
 
 class LongPress(_Model):
+    """`longPress` action — press and hold a selector for `duration` seconds."""
+
     sel: Selector
     duration: float
 
@@ -38,12 +42,16 @@ class Rotate(_Model):
 
 
 class TypeText(_Model):
+    """`type` action — enter text, optionally into a selector and optionally submitting after."""
+
     text: str
     into: Selector | None = None
     submit: bool = False
 
 
 class Swipe(_Model):
+    """`swipe` action — by `direction` on an element (`on`), or between two points (`from`/`to`)."""
+
     on: Selector | None = None
     direction: Literal["up", "down", "left", "right"] | None = None
     from_: Point | None = Field(default=None, alias="from")
@@ -63,6 +71,8 @@ class Swipe(_Model):
 
 
 class Relaunch(_Model):
+    """`relaunch` action — restart the app process, optionally overriding its launch env/args."""
+
     env: dict[str, str] | None = None
     args: list[str] | None = None
 
@@ -75,8 +85,10 @@ class SetLocation(_Model):
 
 
 class Push(_Model):
-    """Deliver a simulated push notification (simctl push) with this APNs payload
-    (e.g. {"aps": {"alert": "..."}}) to the app under test."""
+    """Deliver a simulated push notification (simctl push) to the app under test.
+
+    Carries this APNs payload, e.g. `{"aps": {"alert": "..."}}`.
+    """
 
     payload: dict[str, Any]
 
@@ -86,7 +98,8 @@ class HttpRequest(_Model):
 
     The response status is checked against ``status`` (if given); a mismatch
     fails the step. ``saveBody`` stores the response body text as
-    ``vars.<saveBody>`` for subsequent ``${vars.*}`` interpolation."""
+    ``vars.<saveBody>`` for subsequent ``${vars.*}`` interpolation.
+    """
 
     method: str = "GET"
     url: str
@@ -118,13 +131,15 @@ class Foreground(_Model):
     """Resume a backgrounded app to the foreground (simctl launch, without terminating it).
 
     The other half of `background`. It adds no settle sleep — any wait after resuming is the
-    scenario's own condition wait."""
+    scenario's own condition wait.
+    """
 
 
 class OverrideStatusBar(_Model):
     """Override the Simulator's status bar for deterministic screenshots.
 
-    All fields are optional; only the provided fields are overridden."""
+    All fields are optional; only the provided fields are overridden.
+    """
 
     time: str | None = None
     battery_level: int | None = Field(default=None, alias="batteryLevel")

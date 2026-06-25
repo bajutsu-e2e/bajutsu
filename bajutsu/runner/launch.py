@@ -22,16 +22,29 @@ def launch_driver(
     env_run: env.RunFn = env._real_run,
     extra_env: Mapping[str, str] | None = None,
 ) -> base.Driver:
-    """Erase/boot/launch the app (with config + scenario env) and return a driver.
+    """Bring a device up, launch the app under config + scenario env, and return a ready driver.
 
-    simctl `erase` requires a shut-down device, so an erase run shuts the device
-    down first (shutdown -> erase -> boot); otherwise erasing a booted Simulator
-    fails. Any simctl step that still fails (e.g. the app isn't installed) is
-    surfaced as a clean env.DeviceError so the CLI can exit 2 instead of dumping a
-    traceback.
+    The iOS backend runs the simctl lifecycle (erase → boot → install → launch). simctl `erase`
+    needs a shut-down device, so an erase run shuts down first (shutdown → erase → boot); any simctl
+    step that fails (e.g. the app isn't installed) is surfaced as a clean `env.DeviceError` so the
+    CLI exits 2 instead of dumping a traceback. The web backend has no device to boot: a fresh
+    browser context is the clean state and `navigate()` is the launch.
 
-    `extra_env` is merged last into the launch env (e.g. the per-device
-    `BAJUTSU_COLLECTOR` url so the app reports to its own collector).
+    Args:
+        udid: The booted Simulator's udid; the web backend ignores it (one browser lane).
+        eff: The resolved target config (bundle id / baseUrl, launch env/args, app path, locale).
+        actuator: The selected actuator (`idb` / `playwright` / `fake`).
+        preconditions: The scenario's preconditions (erase, reinstall mode, locale, deeplink, extra
+            launch env/args). None applies the defaults.
+        env_run: The subprocess runner for simctl, injectable for tests (iOS only).
+        extra_env: Launch env merged in last — e.g. the per-device `BAJUTSU_COLLECTOR` url so the
+            app reports to its own collector.
+
+    Returns:
+        A driver bound to the launched app, already polled until its UI has rendered.
+
+    Raises:
+        env.DeviceError: A simctl step failed, or a web target declares no `baseUrl`.
     """
     pre = preconditions or Preconditions()
     # Web has no device to erase/boot/install: a fresh browser context (made in the driver) is
@@ -86,7 +99,8 @@ def _await_ready(
 
     Uses exponential backoff: the first poll is short (the app is often ready quickly)
     and subsequent intervals double up to `poll_max`, reducing wasted subprocess calls
-    when the app takes longer to start."""
+    when the app takes longer to start.
+    """
     deadline = time.monotonic() + timeout
     poll = min(poll_init, poll_max)
     while time.monotonic() < deadline:

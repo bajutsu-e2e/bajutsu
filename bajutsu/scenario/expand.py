@@ -15,7 +15,9 @@ from bajutsu.scenario.models import Component, Scenario, Step
 
 def _interp_steps(steps: list[Step], bindings: dict[str, str]) -> list[Step]:
     """Substitute `bindings` into each step (via a model_dump round-trip) and re-validate.
-    Aliases are preserved (by_alias) so the dump re-parses cleanly."""
+
+    Aliases are preserved (by_alias) so the dump re-parses cleanly.
+    """
     out: list[Step] = []
     for st in steps:
         dumped = st.model_dump(by_alias=True, exclude_none=True)
@@ -28,11 +30,21 @@ def expand_components(
     resolve: Callable[[str], Component],
     max_depth: int = 25,
 ) -> None:
-    """Replace every `use` step with the referenced component's steps (params
-    substituted), recursively and in place. A component may itself `use` another. Raises
-    on a missing/unknown param, a residual `${params.*}` token (referencing an undeclared
-    param), a reference cycle, or excessive nesting depth. Pure compile-time expansion —
-    after this no `use` steps remain, so the run loop is unaffected."""
+    """Replace every `use` step with the referenced component's steps, recursively and in place.
+
+    Pure compile-time expansion: a component may itself `use` another, and after this no `use`
+    steps remain, so the run loop is unaffected.
+
+    Args:
+        scenarios: The scenarios to expand; their `steps` are rewritten in place.
+        resolve: Maps a component name to its `Component` (e.g. by loading a shared file).
+        max_depth: The deepest `use` nesting allowed before giving up on a runaway chain.
+
+    Raises:
+        ValueError: A required param is missing, an unknown param is passed, a `${params.*}` token
+            references an undeclared param, a reference cycle is detected, or nesting exceeds
+            `max_depth`.
+    """
     cache: dict[str, Component] = {}
 
     def expand(steps: list[Step], stack: list[str]) -> list[Step]:
@@ -94,10 +106,19 @@ def expand_data(
     scenarios: list[Scenario],
     resolve_csv: Callable[[str], list[dict[str, str]]],
 ) -> list[Scenario]:
-    """Expand each data-driven scenario into one scenario per data row, substituting
-    `${row.<col>}` tokens. A scenario with neither `data` nor `dataFile` passes through
-    unchanged. Each derived scenario keeps the original's preconditions (erase default
-    intact), so every row runs in its own clean environment — isolation is preserved."""
+    """Expand each data-driven scenario into one scenario per data row.
+
+    `${row.<col>}` tokens are substituted per row. A scenario with neither `data` nor `dataFile`
+    passes through unchanged. Each derived scenario keeps the original's preconditions (erase
+    default intact), so every row runs in its own clean environment — isolation is preserved.
+
+    Args:
+        scenarios: The scenarios to expand.
+        resolve_csv: Loads a `dataFile` reference into a list of `{column: value}` rows.
+
+    Returns:
+        The scenarios with every data-driven one replaced by its per-row instances, in order.
+    """
     out: list[Scenario] = []
     for s in scenarios:
         if s.data is not None:
@@ -118,13 +139,16 @@ def apply_setups(
     default_setup: str | None,
     resolve: Callable[[str], list[Step]],
 ) -> None:
-    """Prepend each scenario's reusable setup prelude in place.
+    """Prepend each scenario's reusable setup prelude, in place.
 
-    A scenario's `setup` precondition (falling back to the app/config default) names a
-    reusable prelude; `resolve` turns that reference into a list of steps (e.g. by loading
-    a shared scenario file and taking its steps). Those steps run before the scenario's
-    own — so a shared login / navigation flow is written once and reused. The same
-    reference is resolved at most once.
+    A scenario's `setup` precondition (falling back to the app/config default) names a reusable
+    prelude; those steps run before the scenario's own, so a shared login / navigation flow is
+    written once and reused. The same reference is resolved at most once.
+
+    Args:
+        scenarios: The scenarios to prepend setups to; their `steps` are rewritten in place.
+        default_setup: The setup reference used when a scenario declares none. None means none.
+        resolve: Maps a setup reference to its list of steps (e.g. by loading a shared file).
     """
     cache: dict[str, list[Step]] = {}
     for scenario in scenarios:

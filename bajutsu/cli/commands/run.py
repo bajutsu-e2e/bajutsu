@@ -36,13 +36,7 @@ from bajutsu.scenario import (
 
 
 def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
-    """Resolve the baseline images directory for visual assertions.
-
-    Resolution order (highest to lowest priority):
-    1. --baselines flag: explicit path on the command line
-    2. config baselines: targets.<name>.baselines in the config file
-    3. scenario-local default: baselines/ beside the scenario file
-    """
+    """Resolve the baseline images dir: --baselines flag > config baselines > baselines/ beside the scenario."""
     # flag > config > scenario-local default
     if flag:
         return Path(flag)
@@ -53,10 +47,7 @@ def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Pa
 
 
 def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
-    """Resolve the JSON Schema directory for `responseSchema` assertions.
-
-    Resolution order: --schemas flag > config `targets.<name>.schemas` > schemas/ beside the scenario.
-    """
+    """Resolve the JSON Schema dir: --schemas flag > config schemas > schemas/ beside the scenario."""
     if flag:
         return Path(flag)
     elif eff.schemas:

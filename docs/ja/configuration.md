@@ -128,7 +128,7 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 実装: `bajutsu/doctor.py`。**AI 非依存で決定的**です。1 画面の `query()`（CLI は actuator で取得した現在画面）を解析してスコアを出します。
 
-> `doctor` はまず**実行可能ゲート**（`preflight.py`: actuator が必要とする CLI（`xcrun`、idb なら `idb` / `idb_companion`）と起動済みシミュレータ）を確認し、その後でスコアを出します。スコアの対象は、依然として現在表示されている画面だけです（入口や現在画面のみで、全画面は網羅しません）。
+> `doctor` はまず**実行可能ゲート**（`preflight.py`）を確認し、その後でスコアを出します。ゲートが確認する内容は、選んだバックエンドが必要とするものです。iOS（idb）バックエンドなら CLI の `xcrun` と `idb` / `idb_companion`、および起動済みシミュレータ。web（Playwright）バックエンドなら Playwright パッケージとその Chromium ブラウザ（`uv sync --extra web` と `playwright install chromium`）です。続いて現在画面を採点します。web ターゲットでは新しいブラウザをターゲットの `baseUrl` に遷移させてそのページを採点し、iOS では起動済みシミュレータの画面を採点します。スコアの対象は、依然として現在表示されている画面だけです（入口や現在画面のみで、全画面は網羅しません）。
 
 ### 指標（`Score`）
 

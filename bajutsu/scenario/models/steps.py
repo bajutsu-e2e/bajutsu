@@ -1,6 +1,9 @@
-"""The step: exactly one action plus optional modifiers. Includes the macro (`use`), the
-runtime variable capture (`extract`), and the deterministic control-flow steps (`if`/`forEach`)
-whose nested step lists make this the one module where a forward reference to `Step` is needed."""
+"""The step: exactly one action plus optional modifiers.
+
+Includes the macro (`use`), the runtime variable capture (`extract`), and the deterministic
+control-flow steps (`if`/`forEach`) whose nested step lists make this the one module where a
+forward reference to `Step` is needed.
+"""
 
 from __future__ import annotations
 
@@ -37,9 +40,11 @@ from bajutsu.scenario.models.selector import Selector
 
 
 class Use(_Model):
-    """Invoke a reusable component, substituting its declared params with `with`. The
-    `use` step is expanded away (replaced by the component's steps) before the run, so it
-    is a compile-time macro, not a runtime action — determinism is unaffected."""
+    """Invoke a reusable component, substituting its declared params with `with`.
+
+    The `use` step is expanded away (replaced by the component's steps) before the run, so it is a
+    compile-time macro, not a runtime action — determinism is unaffected.
+    """
 
     component: str
     with_: dict[str, str] = Field(default_factory=dict, alias="with")
@@ -53,8 +58,11 @@ class Extract(_Model):
 
 
 class If(_Model):
-    """Conditional execution: evaluate an assertion as the condition, then run
-    ``then`` steps if it passes or ``else`` steps otherwise."""
+    """Conditional execution.
+
+    Evaluate an assertion as the condition, then run ``then`` steps if it passes or ``else`` steps
+    otherwise.
+    """
 
     condition: Assertion
     then: list[Step] = Field(default_factory=list)
@@ -62,8 +70,10 @@ class If(_Model):
 
 
 class ForEach(_Model):
-    """Iterate over elements matching a selector. Each element's identifier is
-    stored as ``vars.<as>`` and the nested steps are executed."""
+    """Iterate over elements matching a selector.
+
+    Each element's identifier is stored as ``vars.<as>`` and the nested steps are executed.
+    """
 
     sel: Selector
     as_: str = Field(alias="as")

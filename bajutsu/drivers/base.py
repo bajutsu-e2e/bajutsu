@@ -120,9 +120,11 @@ class SelectorError(Exception):
 
 
 class UnsupportedAction(Exception):
-    """The actuator backend cannot perform this action (e.g. a multi-touch gesture
-    on idb, which is single-touch). Surfaced as a step failure with a clear reason
-    rather than silently passing."""
+    """The actuator backend cannot perform this action.
+
+    For example, a multi-touch gesture on idb, which is single-touch. The tool surfaces it as a step
+    failure with a clear reason rather than letting it pass silently.
+    """
 
 
 class ElementNotFound(SelectorError):
@@ -134,10 +136,17 @@ class AmbiguousSelector(SelectorError):
 
 
 def matches(el: Element, sel: Selector) -> bool:
-    """Whether an element satisfies the per-element selector conditions (AND).
+    """Whether an element satisfies a selector's per-element conditions (all AND-ed).
 
-    `within` is a cross-element (spatial) constraint and is resolved by `find_all`,
-    not here; it is ignored if present in `sel`.
+    Args:
+        el: One element from a `query()` snapshot.
+        sel: The selector to test. Only the per-element fields are checked here
+            (`id` / `idMatches` / `label` / `labelMatches` / `traits` / `value`); `within` (a
+            cross-element spatial constraint, resolved by `find_all`) and `index` (a positional
+            pick among matches, applied by `resolve_unique`) are ignored.
+
+    Returns:
+        True when every per-element field set on the selector matches the element.
     """
     if "id" in sel and el["identifier"] != sel["id"]:
         return False
@@ -166,7 +175,8 @@ def _id_index(elements: list[Element]) -> dict[str | None, list[Element]]:
 
     The cache holds one entry keyed by ``id(elements)``; a new list auto-invalidates it.
     Multiple ``find_all`` calls on the same query() result (e.g. a multi-assertion step)
-    share a single O(n) build and then do O(1) lookups."""
+    share a single O(n) build and then do O(1) lookups.
+    """
     global _cached_index
     if _cached_index is not None and _cached_index[0] == id(elements):
         return _cached_index[2]
@@ -185,12 +195,17 @@ def _contains(outer: Frame, inner: Frame) -> bool:
 
 
 def find_all(elements: list[Element], sel: Selector) -> list[Element]:
-    """All matching elements (for idMatches triggers and count assertions).
+    """Every element matching the selector — backs `idMatches` resolution and `count` assertions.
 
-    `within` scopes the result to elements spatially contained in a parent the `within`
-    selector resolves to. The accessibility tree is flat, so "parent" is geometric: the
-    `within` selector picks one or more container elements and a candidate qualifies when
-    its frame sits inside one of theirs. `within` may nest.
+    Args:
+        elements: One `query()` snapshot.
+        sel: The selector to match. `within` scopes the result to elements spatially contained in
+            a container the `within` selector resolves to: the accessibility tree is flat, so
+            "parent" is geometric — a candidate qualifies when its frame sits inside a container's,
+            and `within` may nest.
+
+    Returns:
+        The matching elements, in `elements` order.
     """
     base_sel = cast(Selector, {k: v for k, v in sel.items() if k != "within"})
     # Fast path: id-only selector uses cached index for O(1) lookup.
@@ -205,11 +220,22 @@ def find_all(elements: list[Element], sel: Selector) -> list[Element]:
 
 
 def resolve_unique(elements: list[Element], sel: Selector) -> Element:
-    """Resolve to exactly one element for a single action.
+    """Resolve a selector to exactly one element for a single action.
 
-    - 0 matches -> ElementNotFound
-    - 2+ matches -> AmbiguousSelector (rules out "tap whatever matched first")
-    - only with `index` do we pick the nth of multiple candidates (last resort)
+    A single action requires a unique match, so an ambiguous selector fails rather than acting on
+    "whatever matched first" — the determinism core (BE-0001).
+
+    Args:
+        elements: One `query()` snapshot of the on-screen elements.
+        sel: The selector to resolve. `index` is honored only as a last resort, picking the nth of
+            several candidates (negative values count from the end).
+
+    Returns:
+        The one element the selector resolves to.
+
+    Raises:
+        ElementNotFound: Nothing matched, or `index` is out of range.
+        AmbiguousSelector: Two or more matched and no `index` disambiguates.
     """
     candidates = find_all(elements, sel)
     if "index" in sel:

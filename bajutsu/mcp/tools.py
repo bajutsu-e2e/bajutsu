@@ -26,19 +26,26 @@ def _load_effective(config_path: Path, target: str) -> Effective:
 
 
 def make_driver(actuator: str, udid: str) -> Driver:
+    """Instantiate a driver for the given actuator and device — thin delegation to the backends registry."""
     from bajutsu.backends import make_driver as _make
 
     return _make(actuator, udid)
 
 
 def register_tools(mcp: FastMCP, config_path: Path) -> None:
+    """Register ``bajutsu_doctor`` and ``bajutsu_run`` as MCP tools on *mcp*.
+
+    Both tools close over ``config_path`` so callers need only pass ``target``
+    (and optional tuning parameters) at invocation time.
+    """
 
     @mcp.tool()
     def bajutsu_doctor(target: str, udid: str = "booted") -> str:
         """Score the current screen's accessibility convention readiness.
 
         Returns the grade (Ready / Partial / Blocked) and a breakdown of
-        id coverage, namespace conformance, and duplicates."""
+        id coverage, namespace conformance, and duplicates.
+        """
         eff = _load_effective(config_path, target)
         backends = eff.backend
         actuator = select_actuator(backends)
@@ -61,7 +68,8 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
         Returns a summary with the manifest path. The scenario parameter is
         a path to a *.yaml file; if omitted, all scenarios in the target's
-        configured directory are run."""
+        configured directory are run.
+        """
         cmd = [
             sys.executable,
             "-m",
