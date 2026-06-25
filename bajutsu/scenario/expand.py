@@ -88,18 +88,34 @@ def read_csv(text: str) -> list[dict[str, str]]:
     return [dict(row) for row in csv.DictReader(io.StringIO(text))]
 
 
-def _instantiate(scenario: Scenario, row: dict[str, str], index: int) -> Scenario:
-    dumped = scenario.model_dump(by_alias=True, exclude_none=True)
-    dumped.pop("data", None)
-    dumped.pop("dataFile", None)
-    out = cast(
-        "dict[str, Any]", interp.interpolate(dumped, {f"row.{k}": v for k, v in row.items()})
-    )
+def _row_name(scenario_name: str, row: dict[str, str], index: int) -> str:
     kv = ", ".join(f"{k}={v}" for k, v in row.items())
-    out["name"] = (
-        f"{scenario.name} [row {index + 1}: {kv}]" if kv else f"{scenario.name} [row {index + 1}]"
+    return (
+        f"{scenario_name} [row {index + 1}: {kv}]" if kv else f"{scenario_name} [row {index + 1}]"
     )
-    return Scenario.model_validate(out)
+
+
+def _instantiate_rows(scenario: Scenario, rows: list[dict[str, str]]) -> list[Scenario]:
+    """Build one scenario per data row, substituting `${row.*}` tokens.
+
+    The source scenario is dumped once (data/dataFile dropped) and that base dict is reused for
+    every row — `interp.interpolate` returns fresh containers and never mutates its input, so the
+    cache is safe — instead of re-dumping the (unchanging) source on every row. Each row is still
+    re-validated through `Scenario.model_validate`, so the per-row validation guarantee is
+    unchanged: we never skip validation for a row substitution touched.
+    """
+    base = scenario.model_dump(by_alias=True, exclude_none=True)
+    base.pop("data", None)
+    base.pop("dataFile", None)
+
+    def instantiate(row: dict[str, str], index: int) -> Scenario:
+        out = cast(
+            "dict[str, Any]", interp.interpolate(base, {f"row.{k}": v for k, v in row.items()})
+        )
+        out["name"] = _row_name(scenario.name, row, index)
+        return Scenario.model_validate(out)
+
+    return [instantiate(row, i) for i, row in enumerate(rows)]
 
 
 def expand_data(
@@ -130,7 +146,7 @@ def expand_data(
         if rows is None:
             out.append(s)
             continue
-        out.extend(_instantiate(s, row, i) for i, row in enumerate(rows))
+        out.extend(_instantiate_rows(s, rows))
     return out
 
 
