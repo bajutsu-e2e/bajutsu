@@ -39,6 +39,12 @@ def _read_text_or_binary(path: Path) -> str | bytes:
 
 
 def register_resources(mcp: FastMCP, runs_dir: Path) -> None:
+    """Register run-evidence resources on *mcp* rooted at *runs_dir*.
+
+    All resource handlers reject path traversal so callers cannot escape
+    ``runs_dir``. Text formats (JSON/XML/HTML/YAML) are returned as strings;
+    binary formats (images, video) as bytes.
+    """
 
     @mcp.resource("bajutsu://runs/{run_id}/manifest.json")
     def run_manifest(run_id: str) -> str:

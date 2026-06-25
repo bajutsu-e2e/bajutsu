@@ -19,9 +19,16 @@ from bajutsu.mcp.tools import register_tools
 def create_server(config_path: Path, runs_dir: Path = Path("runs")) -> FastMCP:
     """Build a configured MCP server with all tools and resources registered.
 
-    ``runs_dir`` controls where the resource endpoints read evidence from.
-    The ``bajutsu_run`` tool writes to the CLI's default ``runs/`` (relative
-    to cwd), so ``runs_dir`` should match that location."""
+    Args:
+        config_path: Path to the Bajutsu config file (passed through to all tools).
+        runs_dir: Root directory for run evidence. Resource endpoints read from here;
+            should match the CLI's default ``runs/`` (relative to cwd) so the
+            ``bajutsu_run`` tool and the resource URIs resolve to the same location.
+
+    Returns:
+        A ``FastMCP`` instance with ``bajutsu_doctor``, ``bajutsu_run``, and all
+        run-evidence resources already registered.
+    """
     mcp = FastMCP("bajutsu")
     register_tools(mcp, config_path)
     register_resources(mcp, runs_dir)
