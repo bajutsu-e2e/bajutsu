@@ -14,14 +14,13 @@ from bajutsu.scenario.models._base import _ASSERTION_KINDS, _exactly_one, _Model
 from bajutsu.scenario.models.selector import Selector
 
 
-class RequestMatch(_Model):
-    """Network-traffic matcher, shared by the `request` assertion and `until: { request: ... }`.
+class _EndpointMatch(_Model):
+    """The endpoint criteria shared by `RequestMatch` and `EventMatch`.
 
-    The fields (method / url / urlMatches / path / pathMatches / status / bodyMatches) are AND-ed;
-    `count` is how many exchanges matched — exact for the assertion, a lower bound for the wait.
-    The endpoint can be pinned by `url` (exact full URL) or `urlMatches` (regex/substring; query
-    strings live here), or just the `path`; `bodyMatches` checks the request body. At least one
-    match field is required.
+    Pins which exchange to match by `url` (exact full URL), `urlMatches` (regex/substring; query
+    strings live here), or just the `path` (`pathMatches` for a regex over the path), optionally
+    AND-ed with `method`. Subclasses add their own extra criteria (status / body) and require at
+    least one criterion overall.
     """
 
     method: str | None = None
@@ -31,6 +30,25 @@ class RequestMatch(_Model):
     )  # regex/substring over the URL
     path: str | None = None  # exact path (query ignored)
     path_matches: str | None = Field(default=None, alias="pathMatches")  # regex over path
+
+    def _endpoint_is_empty(self) -> bool:
+        """Whether no endpoint criterion (method / url / urlMatches / path / pathMatches) is set."""
+        return all(
+            v is None
+            for v in (self.method, self.url, self.url_matches, self.path, self.path_matches)
+        )
+
+
+class RequestMatch(_EndpointMatch):
+    """Network-traffic matcher, shared by the `request` assertion and `until: { request: ... }`.
+
+    The fields (method / url / urlMatches / path / pathMatches / status / bodyMatches) are AND-ed;
+    `count` is how many exchanges matched — exact for the assertion, a lower bound for the wait.
+    The endpoint can be pinned by `url` (exact full URL) or `urlMatches` (regex/substring; query
+    strings live here), or just the `path`; `bodyMatches` checks the request body. At least one
+    match field is required.
+    """
+
     status: int | None = None
     body_matches: str | None = Field(
         default=None, alias="bodyMatches"
@@ -39,18 +57,7 @@ class RequestMatch(_Model):
 
     @model_validator(mode="after")
     def _has_criterion(self) -> Self:
-        if all(
-            v is None
-            for v in (
-                self.method,
-                self.url,
-                self.url_matches,
-                self.path,
-                self.path_matches,
-                self.status,
-                self.body_matches,
-            )
-        ):
+        if self._endpoint_is_empty() and self.status is None and self.body_matches is None:
             raise ValueError(
                 "request requires at least one of method/url/urlMatches/path/pathMatches/status/bodyMatches"
             )
@@ -154,7 +161,7 @@ class CountOp(_Model):
         return self
 
 
-class EventMatch(_Model):
+class EventMatch(_EndpointMatch):
     """An analytics / telemetry event the app *sent* (BE-0048).
 
     Matched over the captured request timeline by endpoint (url / urlMatches / path / pathMatches /
@@ -164,18 +171,12 @@ class EventMatch(_Model):
     criterion or `body` is required, so an event always pins *something*.
     """
 
-    method: str | None = None
-    url: str | None = None
-    url_matches: str | None = Field(default=None, alias="urlMatches")
-    path: str | None = None
-    path_matches: str | None = Field(default=None, alias="pathMatches")
     body: dict[str, str] = Field(default_factory=dict)
     count: CountOp | None = None
 
     @model_validator(mode="after")
     def _has_criterion(self) -> Self:
-        endpoint = (self.method, self.url, self.url_matches, self.path, self.path_matches)
-        if all(v is None for v in endpoint) and not self.body:
+        if self._endpoint_is_empty() and not self.body:
             raise ValueError(
                 "event requires at least one of method/url/urlMatches/path/pathMatches/body (§6.4)"
             )
