@@ -170,6 +170,11 @@ TOOLS: list[dict[str, Any]] = [
                                 "type": "string",
                                 "description": "expected text for valueEquals / labelContains",
                             },
+                            "intent": {
+                                "type": "string",
+                                "description": "the natural-language phrase this check verifies "
+                                "(recorded as the assertion's `from:` provenance)",
+                            },
                         },
                         "required": ["check"],
                     },
@@ -235,33 +240,45 @@ def _target(args: Any) -> dict[str, Any]:
     return sel
 
 
+def _provenance(value: str | None) -> dict[str, str]:
+    """`{"from": value}` when there is a phrase to record, else `{}` — so an empty provenance is
+    omitted rather than written as `from: ""` (BE-0044)."""
+    return {"from": value} if value else {}
+
+
 def _to_assertion(item: Any) -> Assertion:
     sel = _target(item)
     check = item["check"]
     text = item.get("text")
+    # The natural-language phrase this check verifies (BE-0044 provenance) — optional.
+    prov = _provenance(item.get("intent"))
     if check == "exists":
-        return Assertion.model_validate({"exists": sel})
+        return Assertion.model_validate({"exists": sel, **prov})
     if check == "notExists":
-        return Assertion.model_validate({"exists": {**sel, "negate": True}})
+        return Assertion.model_validate({"exists": {**sel, "negate": True}, **prov})
     if check == "valueEquals":
-        return Assertion.model_validate({"value": {"sel": sel, "equals": text}})
+        return Assertion.model_validate({"value": {"sel": sel, "equals": text}, **prov})
     if check == "labelContains":
-        return Assertion.model_validate({"label": {"sel": sel, "contains": text}})
+        return Assertion.model_validate({"label": {"sel": sel, "contains": text}, **prov})
     raise ValueError(f"unknown assertion check: {check!r}")
 
 
 def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
     """Turn one tool/action call — `(name, args)` — into a Proposal. Shared by the API agent
     (a Claude tool_use block) and the Claude Code agent (a structured-output object), so both
-    backends map the same action shape to the same scenario step."""
+    backends map the same action shape to the same scenario step.
+
+    The tool's `reason` (why this action advances the goal) is the natural-language intent behind
+    the action, so it is recorded as the step's `from:` provenance (BE-0044) as well as the note."""
     note = args.get("reason", "")
+    prov = _provenance(note)
     if name == "tap":
-        return Proposal(step=Step.model_validate({"tap": _target(args)}), note=note)
+        return Proposal(step=Step.model_validate({"tap": _target(args), **prov}), note=note)
     if name == "type_text":
-        step = {"type": {"into": _target(args), "text": args["text"]}}
+        step = {"type": {"into": _target(args), "text": args["text"]}, **prov}
         return Proposal(step=Step.model_validate(step), note=note)
     if name == "wait_for":
-        step = {"wait": {"for": _target(args), "timeout": args["timeout"]}}
+        step = {"wait": {"for": _target(args), "timeout": args["timeout"]}, **prov}
         return Proposal(step=Step.model_validate(step), note=note)
     if name == "finish":
         expect = [_to_assertion(a) for a in args.get("assertions", [])]

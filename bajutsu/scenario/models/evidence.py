@@ -34,6 +34,9 @@ class CaptureRule(_Model):
 
     on: Trigger
     capture: list[str]
+    # Provenance (BE-0044): the instruction this evidence rule was normalized from. Authoring
+    # metadata only — `run` never reads it.
+    from_: str | None = Field(default=None, alias="from")
 
     @field_validator("capture")
     @classmethod

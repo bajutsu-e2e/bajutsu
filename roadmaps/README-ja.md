@@ -282,6 +282,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:in-progress-authoring -->
 | ID | 項目 | 状態 |
 |---|---|---|
+| [BE-0044](in-progress/BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md) | シナリオの来歴（`from:` — ステップ ↔ 自然言語の対応） | 実装中 |
 | [BE-0068](in-progress/BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md) | 再生成できるレポート（保存済み run データから描画する） | 実装中 |
 <!-- /GENERATED:in-progress-authoring -->
 
@@ -355,7 +356,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0012](proposals/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) | 操作キャプチャ record | 提案 |
 | [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md) | シナリオ GUI エディタ | 提案 |
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) | 既存 AI record との棲み分け | 提案 |
-| [BE-0044](proposals/BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md) | シナリオの来歴（`from:` — ステップ ↔ 自然言語の対応） | 提案 |
 | [BE-0072](proposals/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui-ja.md) | serve Web UI のレスポンシブ対応（小さい画面・タッチ操作） | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 

@@ -14,7 +14,7 @@ from bajutsu.scenario import (
 
 # Top-level example.
 SCENARIO_YAML = """
-- name: 設定を開いて再生成する
+- name: open settings and reindex
   preconditions:
     erase: true
     launchEnv: { SAMPLE_SCREEN: "settings" }
@@ -25,7 +25,7 @@ SCENARIO_YAML = """
     - tap: { id: settings.reindex }
       capture: [screenshot.after, deviceLog]
   expect:
-    - exists: { label: "正規化設定が変更されています", negate: true }
+    - exists: { label: "Normalization setting changed", negate: true }
 """
 
 
@@ -65,14 +65,14 @@ def test_load_scenario_example() -> None:
     scenarios = load_scenarios(SCENARIO_YAML)
     assert len(scenarios) == 1
     s = scenarios[0]
-    assert s.name == "設定を開いて再生成する"
+    assert s.name == "open settings and reindex"
     assert s.preconditions.erase is True
     assert s.preconditions.launch_env == {"SAMPLE_SCREEN": "settings"}
     assert len(s.steps) == 2
     assert s.steps[1].capture == ["screenshot.after", "deviceLog"]
     assert s.expect[0].exists is not None
     assert s.expect[0].exists.negate is True
-    assert s.expect[0].exists.sel.label == "正規化設定が変更されています"
+    assert s.expect[0].exists.sel.label == "Normalization setting changed"
 
 
 def test_capture_policy_on_key_is_not_yaml_bool() -> None:
@@ -116,6 +116,38 @@ def test_dump_round_trip() -> None:
     assert s.expect[0].value is not None and s.expect[0].value.equals == "3"
     assert s.expect[1].exists is not None and s.expect[1].exists.negate is True
     assert s.capture_policy[0].on.action == "tap"
+
+
+def test_provenance_from_round_trips_at_every_level() -> None:
+    # `from:` (BE-0044) is provenance attached to the scenario, each step, each expect assertion,
+    # and each capturePolicy rule; it must survive load -> dump -> load by its `from` alias.
+    text = """
+- name: open settings and reindex
+  from: Open settings, reindex, and confirm the normalization setting is gone
+  steps:
+    - tap: { id: settings.open }
+      from: Open settings
+  expect:
+    - exists: { label: "Normalization setting changed", negate: true }
+      from: The normalization setting is gone
+  capturePolicy:
+    - on: { action: tap, idMatches: "*.submit" }
+      capture: [screenshot.after]
+      from: Capture a screenshot on every submit
+"""
+    s = load_scenarios(dump_scenarios(load_scenarios(text)))[0]
+    assert s.from_ == "Open settings, reindex, and confirm the normalization setting is gone"
+    assert s.steps[0].from_ == "Open settings"
+    assert s.expect[0].from_ == "The normalization setting is gone"
+    assert s.capture_policy[0].from_ == "Capture a screenshot on every submit"
+
+
+def test_provenance_is_pruned_when_absent() -> None:
+    # A hand-authored scenario carries no provenance, so a dumped scenario stays clean — no stray
+    # `from:` keys appear.
+    text = "- name: plain\n  steps:\n    - tap: { id: home.go }\n"
+    dumped = dump_scenarios(load_scenarios(text))
+    assert "from:" not in dumped
 
 
 def _step(sid: str) -> Step:

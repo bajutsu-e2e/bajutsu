@@ -109,6 +109,10 @@ class Step(_Model):
     capture: list[str] | None = None
     extract: dict[str, Extract] | None = None
     name: str | None = None
+    # Provenance (BE-0044): the natural-language phrase `record` normalized this step from. Pure
+    # authoring metadata — `run` never reads it. A modifier, not an action, so it doesn't disturb
+    # the one-action rule; allowed on every step, control-flow included.
+    from_: str | None = Field(default=None, alias="from")
 
     @field_validator("capture")
     @classmethod
@@ -137,5 +141,5 @@ ForEach.model_rebuild()
 # The action field names, derived from the model so a new action is declared in exactly one
 # place — adding a `Step` field — instead of also appending to a parallel hand-maintained tuple
 # (a per-action merge-conflict point). `_MODIFIERS` are the non-action fields.
-_MODIFIERS = ("capture", "extract", "name")
+_MODIFIERS = ("capture", "extract", "name", "from_")
 _STEP_ACTIONS = tuple(f for f in Step.model_fields if f not in _MODIFIERS)

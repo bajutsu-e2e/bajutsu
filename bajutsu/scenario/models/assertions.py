@@ -228,6 +228,10 @@ class Assertion(_Model):
     )
     response_schema: ResponseSchemaMatch | None = Field(default=None, alias="responseSchema")
     visual: VisualMatch | None = None
+    # Provenance (BE-0044): the natural-language phrase this check was normalized from. Not one of
+    # the assertion kinds (`_ASSERTION_KINDS`), so it doesn't disturb the one-kind rule; `run`
+    # ignores it.
+    from_: str | None = Field(default=None, alias="from")
 
     @model_validator(mode="after")
     def _one_kind(self) -> Self:

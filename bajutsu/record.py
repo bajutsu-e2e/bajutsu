@@ -271,4 +271,8 @@ def record(
             break  # the proposed action did not resolve, even after clearing prompts
         steps.append(proposal.step)
 
-    return Scenario(name=name, steps=steps, expect=expect)
+    scenario = Scenario(name=name, steps=steps, expect=expect)
+    # The goal is the scenario-level provenance (BE-0044): the natural language this whole scenario
+    # was authored from. Set by attribute since the field's `from` alias is a Python keyword.
+    scenario.from_ = goal
+    return scenario
