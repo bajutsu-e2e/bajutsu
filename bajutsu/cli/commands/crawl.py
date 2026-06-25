@@ -34,15 +34,20 @@ from bajutsu.scenario import Preconditions
 
 
 def _ai_credential_gap(agent: str) -> str | None:
-    """The crawl guide's credential gap for `--agent` (BE-0053: crawl is a Tier-1 Bedrock path):
+    """The crawl guide's credential gap for `--agent` (BE-0053: crawl is a Tier-1 Bedrock path).
+
     `claude-code` brings its own auth (always None), while `api` uses the Anthropic SDK and so needs
-    the configured provider's credentials — see `credential_gap`."""
+    the configured provider's credentials — see `credential_gap`.
+    """
     return None if agent != "api" else credential_gap()
 
 
 def _write_screenmap(path: Path, screen_map: crawl_engine.ScreenMap) -> None:
-    """Atomically (re)write the screen map JSON: write a sibling temp file then rename, so a
-    concurrent reader (the web UI polling it) never sees a half-written file."""
+    """Atomically (re)write the screen map JSON.
+
+    Write a sibling temp file then rename, so a concurrent reader (the web UI polling it) never sees
+    a half-written file.
+    """
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(crawl_engine.screenmap_dict(screen_map), indent=2), encoding="utf-8")
     tmp.replace(path)
@@ -112,10 +117,12 @@ def crawl(
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Explore the app breadth-first and write a screen map (`screenmap.json`) of the reachable
-    screens and the transitions between them. The engine is deterministic (screen identity,
-    transitions, crashes); the AI guide only proposes *what to try*. A discovery tool, never a
-    pass/fail gate."""
+    """Explore the app breadth-first and write a screen map (`screenmap.json`).
+
+    Maps the reachable screens and the transitions between them. The engine is deterministic (screen
+    identity, transitions, crashes); the AI guide only proposes *what to try*. A discovery tool,
+    never a pass/fail gate.
+    """
     eff = _load_effective(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
@@ -368,4 +375,5 @@ def crawl(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(crawl)

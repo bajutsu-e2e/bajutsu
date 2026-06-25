@@ -22,8 +22,11 @@ from bajutsu.network import NetworkExchange
 
 
 def _observed_exchanges(runs_dir: Path) -> list[NetworkExchange]:
-    """Every exchange recorded across the run set — the union of every `network.json` under
-    `runs_dir` (read-only; a malformed/partial file is skipped, not fatal)."""
+    """Every exchange recorded across the run set.
+
+    The union of every `network.json` under `runs_dir` (read-only; a malformed/partial file is
+    skipped, not fatal).
+    """
     exchanges: list[NetworkExchange] = []
     for net in sorted(runs_dir.glob("*/*/network.json")):
         try:
@@ -47,11 +50,13 @@ def coverage(
     ),
     as_json: bool = typer.Option(False, "--json", help="emit the report as JSON instead of text"),
 ) -> None:
-    """Statically map which of the target's declared id namespaces its scenario suite touches —
-    per-namespace coverage, the gap list (untested namespaces), and off-namespace ids. With
+    """Statically map which of the target's declared id namespaces its scenario suite touches.
+
+    Per-namespace coverage, the gap list (untested namespaces), and off-namespace ids. With
     `--runs`, also report endpoint coverage: which observed endpoints (`network.json`) the suite's
     network assertions cover. Read-only and advisory: it never runs a scenario and never gates CI —
-    it exits 0 even with gaps; only a missing config / scenarios dir or an unreadable scenario exits 2."""
+    it exits 0 even with gaps; only a missing config / scenarios dir or an unreadable scenario exits 2.
+    """
     eff = _load_effective(config, target_name)
     if eff.scenarios is None:
         typer.echo(
@@ -91,4 +96,5 @@ def coverage(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(coverage)

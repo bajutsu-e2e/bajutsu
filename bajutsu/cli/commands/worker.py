@@ -23,7 +23,8 @@ def worker(
 
     Requires the `worker` extra (`pip install 'bajutsu[worker]'`): RQ + Redis. The enqueued spec
     carries only the job's argv/devices/build (see `bajutsu.serve.server.worker_job`); this process
-    supplies the real subprocess and Simulator."""
+    supplies the real subprocess and Simulator.
+    """
     url = (
         redis_url
         or os.environ.get("BAJUTSU_REDIS_URL")
@@ -49,4 +50,5 @@ def worker(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(worker)
