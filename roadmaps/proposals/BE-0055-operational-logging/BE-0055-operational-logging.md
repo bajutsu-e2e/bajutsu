@@ -64,6 +64,30 @@ by environment so the difference lives in config, not per-app code:
   *deployment's* job and stays in BE-0015's observability scope — this item adds no such dependency, so
   it remains testable on the Linux gate.
 
+### Where it plugs in (the seams)
+
+The codebase today has no operational logging to speak of: a lone `logging.getLogger(__name__)` in
+[`serve/jobs.py`](../../../bajutsu/serve/jobs.py), and both HTTP request handlers deliberately silence
+per-request logging (`serve/handler.py`'s `Handler.log_message`, `network.py`'s stub). There is no root
+configuration and no `contextvars` anywhere — so this is greenfield wiring, installed in one place:
+
+- **A new `bajutsu/serve/oplog.py`** (named to avoid shadowing the stdlib `logging`) owns the whole
+  contract: `configure(format, level)` installs the root formatter + the redacting/correlation filters;
+  it also holds the `contextvars`, the event-name registry, and the JSON formatter. `serve` calls it at
+  startup; the CLI/`run` path never imports it (keeping the gate stdlib-only and quiet).
+- **Two HTTP surfaces, one filter.** Because the filter sits at the **root logger**, it covers both the
+  hosted FastAPI app ([`serve/server/app.py`](../../../bajutsu/serve/server/app.py), which already has an
+  `@app.middleware("http")` at the request boundary — the natural place to mint `request_id` and bind the
+  contextvar) and the local stdlib server ([`serve/handler.py`](../../../bajutsu/serve/handler.py)'s
+  `do_GET` / `do_POST`). JSON is enabled in serve mode; the local CLI stays text.
+- **Worker boundary.** [`serve/server/worker_job.py`](../../../bajutsu/serve/server/worker_job.py)'s
+  `execute_job_spec(spec, …)` is where the job's ids bind. The job spec carries **`job_id` / `org` /
+  `actor`** (built in `worker_job.py`); **`run_id` is minted when the run starts on the worker**, not in
+  the spec, so it is bound there (correcting the invariant below). Cross-process correlation is therefore
+  by *shared id values* that already exist on both sides, never by propagating a context object.
+- **Redaction reuse.** The filter wraps the existing `Redactor` ([`redaction.py`](../../../bajutsu/redaction.py),
+  `redact_text`) for value-masking, plus the new key-based masker.
+
 ### The contract — machine-checkable invariants
 
 Operational logs are **non-deterministic** (timestamps, ordering), so — unlike evidence
@@ -82,11 +106,13 @@ and a set of invariants**, each verified by a gate test:
    *Tests:* a raw `logging.getLogger("anything").info(<secret>)` emits no raw secret; a record carrying
    `{"authorization": "Bearer …"}` is masked.
 
-2. **Correlation-id propagation.** A `request_id` is minted at request entry; a dispatched run carries
-   `job_id` / `run_id` / `org` / `actor`. Ids are held in `contextvars` bound at the request (and, on
-   the worker, the job) boundary, and a logging `Filter` injects them into every record — framework-
-   agnostic, so it works for both the stdlib handler and the FastAPI app. Cross-process correlation is
-   by **shared id**, not propagated context (`job_id` / `run_id` / `org` already travel in the job spec).
+2. **Correlation-id propagation.** A `request_id` is minted at request entry (the FastAPI middleware,
+   and the stdlib handler's `do_*`). On the worker, `execute_job_spec` binds `job_id` / `org` / `actor`
+   from the spec, and `run_id` once the run mints it. Ids are held in `contextvars` and a logging
+   `Filter` injects them into every record — framework-agnostic, so it works for both the stdlib handler
+   and the FastAPI app. Cross-process correlation is by **shared id**, not propagated context:
+   `job_id` / `org` / `actor` travel in the job spec and `run_id` is the run's own id, so both sides log
+   the same values without threading a context object across the process boundary.
 
    *Tests:* one request through the app yields records that all share its `request_id`; the worker's
    `execute_job_spec` records carry `job_id` + `run_id` + `org`.
@@ -114,6 +140,19 @@ key-based masking above. This keeps a single source of truth for "what counts as
 secret variables ([BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)) and
 the redacted-AI-path direction
 ([BE-0047](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
+
+The value-mask set has **two sources**, because secrets live at two scopes:
+
+- **Static (process-lifetime), on the control plane** — `BAJUTSU_SERVE_TOKEN`, the OAuth client secret /
+  session ids, `ANTHROPIC_API_KEY`. Read once at `oplog.configure`, masked for the whole process.
+- **Per-run (scoped), on the worker** — the values a run resolves from `${secrets.X}`. These are not
+  process-global, so the worker binds a **run-scoped `Redactor`** (seeded with the run's resolved secret
+  values) into a `contextvar` when the run starts; the root filter consults it for records emitted during
+  that run, and the scope falls away when the run ends. This closes the gap that env-only masking would
+  leave for run-resolved secrets, without making them process-global.
+
+Key-based masking (sensitive field *names*) backstops both, catching a structured value whose literal
+isn't in either set.
 
 ### Out of scope
 
