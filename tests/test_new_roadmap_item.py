@@ -92,3 +92,30 @@ def test_handle_is_stripped_of_leading_at(tmp_path: Path) -> None:
         encoding="utf-8"
     )
     assert "| Author | [@octocat](https://github.com/octocat) |" in text
+
+
+def test_in_progress_item_lands_in_in_progress_folder(tmp_path: Path) -> None:
+    # Status is the source of truth for the folder; scaffolding into proposals/ regardless of
+    # Status would make the promote gate flag the item immediately after creation.
+    item = _scaffold(tmp_path, status="In progress")
+    assert item.parent.name == "in-progress"
+
+
+def test_implemented_item_lands_in_implemented_folder(tmp_path: Path) -> None:
+    item = _scaffold(tmp_path, status="Implemented")
+    assert item.parent.name == "implemented"
+
+
+def test_deferred_item_lands_in_deferred_folder(tmp_path: Path) -> None:
+    item = _scaffold(tmp_path, status="Proposal (deferred)")
+    assert item.parent.name == "deferred"
+
+
+def test_empty_title_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit, match="TITLE"):
+        _scaffold(tmp_path, title="")
+
+
+def test_whitespace_only_title_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit, match="TITLE"):
+        _scaffold(tmp_path, title="   ")

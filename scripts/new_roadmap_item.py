@@ -39,6 +39,16 @@ ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
 PLACEHOLDER = "BE-XXXX"
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
+# Status -> its folder (mirrors STATUS_TO_CATEGORY in promote_roadmap_items.py).
+# Defined locally to avoid a module-level import after the sys.path tweak that _known_topics()
+# applies — keeping every cross-script dependency scoped to the function that needs it.
+STATUS_TO_FOLDER = {
+    "Proposal": "proposals",
+    "In progress": "in-progress",
+    "Implemented": "implemented",
+    "Proposal (deferred)": "deferred",
+}
+
 # Status -> the word shown in each language's metadata block (the pairing test_roadmap_format pins).
 STATUS_JA = {
     "Proposal": "提案",
@@ -119,6 +129,8 @@ def _ja_body(slug: str, title: str, status: str, topic: str, handle: str) -> str
 
 def scaffold(roadmap: Path, slug: str, title: str, *, topic: str, status: str, handle: str) -> Path:
     """Create the placeholder item directory and both language files; return the directory."""
+    if not title.strip():
+        raise SystemExit("TITLE must not be empty")
     if not SLUG_RE.match(slug):
         raise SystemExit(f"SLUG must be kebab-case (lower-case words joined by '-'): {slug!r}")
     known_topics = _known_topics()
@@ -129,7 +141,10 @@ def scaffold(roadmap: Path, slug: str, title: str, *, topic: str, status: str, h
         raise SystemExit(f"unknown STATUS {status!r}. One of: {', '.join(STATUS_JA)}")
     handle = handle.lstrip("@")  # accept either "octocat" or "@octocat"
 
-    item_dir = roadmap / "proposals" / f"{PLACEHOLDER}-{slug}"
+    # Use the folder that matches Status (Status is the source of truth per BE-0078), so the item
+    # is filed correctly from creation and the promote gate never has to move it.
+    folder = STATUS_TO_FOLDER[status]
+    item_dir = roadmap / folder / f"{PLACEHOLDER}-{slug}"
     if item_dir.exists():
         raise SystemExit(f"{item_dir} already exists")
     item_dir.mkdir(parents=True)
