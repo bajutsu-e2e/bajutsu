@@ -55,6 +55,8 @@ class RequestMatch(_Model):
 
 
 class Gone(_Model):
+    """`until: { gone: <Selector> }` — wait until a selector no longer matches any element."""
+
     gone: Selector
 
 
@@ -66,6 +68,9 @@ class WaitRequest(_Model):
 
 
 class Wait(_Model):
+    """`wait` step — block until a selector appears (`for`) or a condition holds (`until`),
+    bounded by `timeout` (a condition wait, never a fixed sleep)."""
+
     for_: Selector | None = Field(default=None, alias="for")
     # settled = wait until the screen stops changing (best-effort; for transition settle)
     until: Literal["screenChanged", "settled"] | Gone | WaitRequest | None = None

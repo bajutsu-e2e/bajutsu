@@ -11,6 +11,9 @@ from bajutsu.scenario.models._base import _exactly_one, _Model, _validate_captur
 
 
 class Trigger(_Model):
+    """A `capturePolicy` trigger — the condition (one of `action` / `event` / `result`, with an
+    optional `idMatches` narrowing an `action`) that fires its `CaptureRule`."""
+
     action: str | None = None
     id_matches: str | None = Field(default=None, alias="idMatches")
     event: Literal["screenChanged"] | None = None
@@ -25,6 +28,8 @@ class Trigger(_Model):
 
 
 class CaptureRule(_Model):
+    """A `capturePolicy` rule — capture the artifacts in `capture` when its `on` trigger fires."""
+
     on: Trigger
     capture: list[str]
 
@@ -35,6 +40,9 @@ class CaptureRule(_Model):
 
 
 class Redact(_Model):
+    """Redaction config — element `labels`, network `headers`, and JSON `fields` scrubbed from
+    evidence before it is written."""
+
     labels: list[str] = Field(default_factory=list)
     headers: list[str] = Field(default_factory=list)
     fields: list[str] = Field(default_factory=list)

@@ -8,9 +8,19 @@ from bajutsu.scenario.models import Scenario
 def select_scenarios(
     scenarios: list[Scenario], include: list[str], exclude: list[str]
 ) -> list[Scenario]:
-    """Filter scenarios by tag, preserving order. A scenario is kept when it carries at
-    least one `include` tag (or `include` is empty) and none of the `exclude` tags;
-    `exclude` wins over `include`. Pure metadata filtering — never mutates or reorders."""
+    """Filter scenarios by tag, preserving order.
+
+    Pure metadata filtering — never mutates or reorders.
+
+    Args:
+        scenarios: The scenarios to filter.
+        include: A scenario is kept only if it carries at least one of these tags; an empty
+            `include` keeps everything.
+        exclude: A scenario carrying any of these tags is dropped. `exclude` wins over `include`.
+
+    Returns:
+        The kept scenarios, in their original order.
+    """
     inc, exc = set(include), set(exclude)
     out: list[Scenario] = []
     for s in scenarios:

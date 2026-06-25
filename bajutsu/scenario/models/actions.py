@@ -13,6 +13,8 @@ from bajutsu.scenario.models.selector import Selector
 
 
 class LongPress(_Model):
+    """`longPress` action — press and hold a selector for `duration` seconds."""
+
     sel: Selector
     duration: float
 
@@ -38,12 +40,16 @@ class Rotate(_Model):
 
 
 class TypeText(_Model):
+    """`type` action — enter text, optionally into a selector and optionally submitting after."""
+
     text: str
     into: Selector | None = None
     submit: bool = False
 
 
 class Swipe(_Model):
+    """`swipe` action — by `direction` on an element (`on`), or between two points (`from`/`to`)."""
+
     on: Selector | None = None
     direction: Literal["up", "down", "left", "right"] | None = None
     from_: Point | None = Field(default=None, alias="from")
@@ -63,6 +69,8 @@ class Swipe(_Model):
 
 
 class Relaunch(_Model):
+    """`relaunch` action — restart the app process, optionally overriding its launch env/args."""
+
     env: dict[str, str] | None = None
     args: list[str] | None = None
 
