@@ -130,10 +130,12 @@ def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
 
 
 def _located_selectors(scenario: Scenario) -> Iterator[tuple[str, base.Selector]]:
-    """Every selector the scenario addresses — across steps and scenario-level assertions — each
-    followed by the selectors nested in its `within` scope. The single lazy walk both the
-    determinism audit and the coverage map (BE-0050) consume, so a new selector source is added in
-    one place and the two never diverge."""
+    """Every selector the scenario addresses, each followed by the selectors nested in its `within` scope.
+
+    Covers steps and scenario-level assertions. The single lazy walk both the determinism audit and
+    the coverage map (BE-0050) consume, so a new selector source is added in one place and the two
+    never diverge.
+    """
     for step in scenario.steps:
         for where, sel in _step_selectors(step):
             yield from _with_nested(where, sel)
@@ -143,9 +145,12 @@ def _located_selectors(scenario: Scenario) -> Iterator[tuple[str, base.Selector]
 
 
 def referenced_ids(scenario: Scenario) -> set[str]:
-    """The stable ids (`id` / `idMatches`) a scenario statically references — across steps, nested
-    control flow, `within` scopes, and assertions. The coverage map (BE-0050) measures these
-    against an app's declared `idNamespaces`. Pure: no device, no model, no side effects."""
+    """The stable ids (`id` / `idMatches`) a scenario statically references.
+
+    Covers steps, nested control flow, `within` scopes, and assertions. The coverage map (BE-0050)
+    measures these against an app's declared `idNamespaces`. Pure: no device, no model, no side
+    effects.
+    """
     ids: set[str] = set()
     for _, sel in _located_selectors(scenario):
         if "id" in sel:
