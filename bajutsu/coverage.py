@@ -162,6 +162,13 @@ def endpoint_coverage(
     for ex in exchanges:
         hit = False
         for i, m in enumerate(matchers):
+            # Once this exchange is already asserted, a matcher we've *already* seen match some
+            # exchange can be skipped — it changes neither result. A not-yet-matched matcher is
+            # always tested (it may be the one this exchange asserts, and we must learn whether it
+            # ever matches, for `declared_unobserved`), so the relation stays exact while broad /
+            # overlapping matchers stop re-matching every exchange.
+            if hit and i in matched_matchers:
+                continue
             if match_request(ex, m):
                 hit = True
                 matched_matchers.add(i)
