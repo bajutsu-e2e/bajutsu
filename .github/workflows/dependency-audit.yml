@@ -1,0 +1,50 @@
+# Audit the locked dependency graph (runtime + all shipped extras) against the advisory DB. The
+# result is a function of the lockfile and the advisory DB, so it runs when the locked graph changes
+# (pyproject.toml / uv.lock) and on a weekly schedule that catches advisories newly disclosed against
+# unchanged pins. It is not a required check, so the path filter simply skips PRs that don't touch
+# dependencies — no unrelated PR is blocked.
+#
+# uv.lock is the source of truth: export the pinned versions and audit them directly with --no-deps
+# (no resolution). Hashes are dropped because pip-audit's hash-verified resolve picks platform-
+# specific binary wheels (e.g. psycopg-binary) whose exact hash isn't in uv's pinned set on the
+# runner's Python. A known CVE fails the job; accept a reviewed advisory with
+# `--ignore-vuln <GHSA-or-CVE>` (with a comment) on the pip-audit call. pip-audit is version-pinned
+# (Dependabot doesn't track uvx pins) — bump it here manually.
+name: dependency audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'  # weekly, Monday 06:23 UTC — catch advisories disclosed against unchanged pins
+  push:
+    branches: [main]
+    paths: &dep-paths
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/dependency-audit.yml'
+  pull_request:
+    paths: *dep-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Audit dependencies (pip-audit)
+        run: |
+          uv export --frozen --all-extras --no-dev --no-emit-project --no-hashes --format requirements-txt -o pip-audit-requirements.txt
+          uvx pip-audit@2.10.1 --no-deps -r pip-audit-requirements.txt

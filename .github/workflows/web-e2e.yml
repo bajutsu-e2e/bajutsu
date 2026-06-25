@@ -1,0 +1,55 @@
+# Real-browser E2E for the web (Playwright) backend (BE-0041): a headless Chromium drives the demo
+# web app end to end. Unlike the iOS E2E (e2e.yml) it runs on Linux — no Mac, no Simulator — but
+# installing Chromium + running a browser is heavy enough to gate. It is not a required check, so a
+# path filter is enough: it simply doesn't run on a PR that can't affect the web path, and an
+# unrelated PR isn't blocked. The paths mirror the iOS E2E's relevance rule — the core run path,
+# the web backend, the web demo, and the dependency/build files — minus the serve / mcp / lint /
+# worker surfaces the web smoke never exercises (the Linux `check` gate already covers those).
+name: web e2e
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &web-paths
+      - 'bajutsu/**'
+      - '!bajutsu/serve/**'
+      - '!bajutsu/mcp/**'
+      - '!bajutsu/lint.py'
+      - '!bajutsu/cli/commands/serve.py'
+      - '!bajutsu/cli/commands/worker.py'
+      - '!bajutsu/cli/commands/mcp.py'
+      - '!bajutsu/cli/commands/lint.py'
+      - '!bajutsu/cli/commands/schema.py'
+      - 'demos/web/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Makefile'
+      - '.github/workflows/web-e2e.yml'
+  pull_request:
+    paths: *web-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-e2e:
+    name: web e2e (playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install the web backend (Playwright + Chromium)
+        run: uv sync --extra web && uv run --no-sync playwright install --with-deps chromium
+
+      - name: Web smoke (demos/web)
+        run: make -C demos/web e2e
