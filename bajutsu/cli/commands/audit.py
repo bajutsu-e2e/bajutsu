@@ -22,9 +22,12 @@ def audit(
     scenario: str = typer.Argument(..., help="scenario file to audit"),
     as_json: bool = typer.Option(False, "--json", help="emit the reports as JSON instead of text"),
 ) -> None:
-    """Statically score a scenario's determinism — selector stability, loose waits, coordinate
-    gestures. Read-only and advisory: it never runs the scenario and never gates CI — a successful
-    audit exits 0 even with findings; only a missing / unreadable scenario file exits 2."""
+    """Statically score a scenario's determinism.
+
+    Selector stability, loose waits, coordinate gestures. Read-only and advisory: it never runs the
+    scenario and never gates CI — a successful audit exits 0 even with findings; only a missing /
+    unreadable scenario file exits 2.
+    """
     path = Path(scenario)
     if not path.is_file():
         typer.echo(f"scenario not found: {scenario}")
@@ -43,4 +46,5 @@ def audit(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(audit)

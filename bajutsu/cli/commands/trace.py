@@ -22,8 +22,10 @@ def trace(
         help="dry-run: preview how a scenario's capturePolicy would fire, without running it",
     ),
 ) -> None:
-    """Inspect a finished run as a text timeline (steps + network + appTrace), or — with
-    `--explain` — preview how a scenario's capturePolicy would fire before running it."""
+    """Inspect a finished run as a text timeline (steps + network + appTrace).
+
+    Or — with `--explain` — preview how a scenario's capturePolicy would fire before running it.
+    """
     if explain:
         _explain(run_dir)
         return
@@ -35,8 +37,11 @@ def trace(
 
 
 def _explain(scenario_path: str) -> None:
-    """Load a scenario file (expanding components + data, resolved relative to the file) and
-    print the capturePolicy dry-run report. Setup preludes from config are not included."""
+    """Load a scenario file and print the capturePolicy dry-run report.
+
+    Components + data are expanded, resolved relative to the file. Setup preludes from config are
+    not included.
+    """
     path = Path(scenario_path)
     if not scenario_path or not path.is_file():
         typer.echo("--explain needs a scenario file path")
@@ -50,4 +55,5 @@ def _explain(scenario_path: str) -> None:
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(trace)

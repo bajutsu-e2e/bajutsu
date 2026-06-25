@@ -21,9 +21,11 @@ from bajutsu.scenario import Preconditions, dump_scenarios
 
 
 def _record_out_path(eff: Effective, out: str, name: str, goal: str, target_name: str) -> Path:
-    """Where `record` writes the authored scenario: `--out` when given, else an auto-named,
-    never-overwriting `*.yaml` under the target's configured `scenarios` dir (same naming as the
-    web UI's Record tab)."""
+    """Where `record` writes the authored scenario.
+
+    `--out` when given, else an auto-named, never-overwriting `*.yaml` under the target's configured
+    `scenarios` dir (same naming as the web UI's Record tab).
+    """
     if out:
         return Path(out)
     if eff.scenarios is None:
@@ -73,8 +75,11 @@ def record(
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Explore the app with AI toward a goal and write the recorded scenario. With `--out` it
-    writes there; otherwise it auto-names a file under the target's configured `scenarios` dir."""
+    """Explore the app with AI toward a goal and write the recorded scenario.
+
+    With `--out` it writes there; otherwise it auto-names a file under the target's configured
+    `scenarios` dir.
+    """
     eff = _load_effective(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
@@ -148,4 +153,5 @@ def record(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(record)

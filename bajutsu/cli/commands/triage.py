@@ -120,8 +120,11 @@ def _apply_fix(result: _triage.Triage, target: str, write: bool) -> bool:
 def _rerun_command(
     target: str, target_name: str, backend: str, udid: str, config: str
 ) -> list[str]:
-    """The `bajutsu run` invocation that re-checks a patched scenario (kept --no-erase to reuse
-    the current device state). Built as a list so it is easy to assert in tests."""
+    """The `bajutsu run` invocation that re-checks a patched scenario.
+
+    Kept `--no-erase` to reuse the current device state. Built as a list so it is easy to assert in
+    tests.
+    """
     cmd = [
         sys.executable,
         "-m",
@@ -155,4 +158,5 @@ def _verify_rerun(target: str, target_name: str, backend: str, udid: str, config
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(triage)

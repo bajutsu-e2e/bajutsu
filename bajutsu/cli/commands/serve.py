@@ -10,8 +10,11 @@ import typer
 
 
 def _is_loopback(host: str) -> bool:
-    """Whether binding `host` keeps the server private to this machine. Uses real loopback
-    semantics (so `127.0.0.2`, `::1` in any form, etc. all count), plus the `localhost` name."""
+    """Whether binding `host` keeps the server private to this machine.
+
+    Uses real loopback semantics (so `127.0.0.2`, `::1` in any form, etc. all count), plus the
+    `localhost` name.
+    """
     if host == "localhost":
         return True
     try:
@@ -73,7 +76,8 @@ def serve(
     With `--emit-launchagent`, print a LaunchAgent plist matching these flags (for self-hosting)
     and exit without starting the server. With `--asgi`, serve the same UI/API as a FastAPI app
     over uvicorn (the transport the hosted backend will use); `--backend` selects which seams to
-    assemble (only `local` for now)."""
+    assemble (only `local` for now).
+    """
     from bajutsu.serve import SERVE_BACKENDS, MissingServerExtra, launchagent_plist
     from bajutsu.serve import serve as _serve
 
@@ -132,4 +136,5 @@ def serve(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(serve)
