@@ -311,6 +311,14 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
+### Development infrastructure (contributor workflow)
+
+<!-- GENERATED:in-progress-dev-infra -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0065](in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) | Docstring standard & generated API reference | In progress |
+<!-- /GENERATED:in-progress-dev-infra -->
+
 ### codegen coverage
 
 <!-- GENERATED:in-progress-codegen -->
@@ -415,7 +423,6 @@ Lower the cost for the many parallel sessions — human and AI — that read and
 <!-- GENERATED:proposals-dev-infra -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0065](proposals/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) | Docstring standard & generated API reference | Proposal |
 | [BE-0069](proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
