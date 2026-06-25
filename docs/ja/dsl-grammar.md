@@ -131,6 +131,7 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs ペイロード 例 {aps:{alert:"…"}}
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method 既定 GET; saveBody → vars.<name>
+  | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
   | { background:       {} }                               # Home ボタン（simctl ui home）
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
   | { clearClipboard:   {} }                               # ペーストボードをクリア

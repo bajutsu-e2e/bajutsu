@@ -109,6 +109,24 @@ class HttpRequest(_Model):
     save_body: str | None = Field(default=None, alias="saveBody")
 
 
+class VarTarget(_Model):
+    """`into: { var: <name> }` — the `${vars.<name>}` slot a step writes its produced value to."""
+
+    var: str
+
+
+class Totp(_Model):
+    """`totp` — generate an RFC 6238 time-based one-time password into `${vars.*}` (BE-0046).
+
+    `secret` is the shared base32 key (commonly `${secrets.*}`); the current code is written to
+    `into.var` for a later `type` / `assert` to consume. Local and deterministic — no LLM, no
+    network, no scripting escape hatch.
+    """
+
+    secret: str
+    into: VarTarget
+
+
 class ClearKeychain(_Model):
     """Reset the Simulator's keychain (saved passwords, certificates)."""
 

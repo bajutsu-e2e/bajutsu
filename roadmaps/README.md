@@ -300,6 +300,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0038](in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | In progress | Autify VAX |
+| [BE-0046](in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | In progress | MagicPod |
 | [BE-0052](in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | In progress | MagicPod |
 <!-- /GENERATED:in-progress-competitive -->
 
@@ -433,7 +434,6 @@ Lower the cost for the many parallel sessions — human and AI — that read and
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
-| [BE-0046](proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Proposal | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)

@@ -235,6 +235,9 @@ def _emit_step(step: Step) -> list[str]:
         ]
     if step.push is not None:
         return ["// TODO: push — simctl push (APNs payload); not generated"]
+    if step.totp is not None:
+        # A locally-computed RFC 6238 OTP into vars.*; no XCUITest equivalent (BE-0046).
+        return [f"// TODO: totp(into: {step.totp.into.var}) — RFC 6238 OTP; not generated"]
     return ["// TODO: unsupported step"]
 
 

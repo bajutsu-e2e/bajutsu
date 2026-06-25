@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0046](BE-0046-otp-email-steps-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
@@ -81,6 +81,18 @@ prime directive の保持：
 - **codegen。** これらはアプリではなく bajutsu ランナーで動き、XCUITest 等価物がないため、codegen
   はラベル付き `// TODO` を出力します
   （[BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) に従います）。
+
+### 実装状況
+
+外部依存のない **`totp`** スライスを出荷します。`totp: { secret, into: { var } }` は、base32 の
+`secret`（通常は `${secrets.*}`。ステップ実行前に補間されます）と現在時刻から RFC 6238 のコードを
+計算し、後続の `type` / `assert` 用に `${vars.<var>}` へ書き込みます。アルゴリズムは純粋でゲート検証済みの
+関数（`bajutsu/totp.py`。RFC 6238 のテストベクタで検証）で、ステップはそれを実時刻で呼ぶ薄いハンドラです
+（`bajutsu/orchestrator/actions/handlers/totp.py`）。値を `vars.*` に入れる点で `http`/`saveBody` の前例に
+倣い、デバイスには触れず、codegen はラベル付き `// TODO` を出力します。
+
+**`email` は見送ります**。テストメールボックスのポーリングには外部のメール連携（IMAP / プロバイダ API）が
+必要で、依存を抱える重いスライスになるため、メールボックスの表面が固まり次第、別途実装します。
 
 ## 検討した代替案
 

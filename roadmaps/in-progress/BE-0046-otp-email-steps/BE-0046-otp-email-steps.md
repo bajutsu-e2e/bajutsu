@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0046](BE-0046-otp-email-steps.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->
@@ -80,6 +80,19 @@ Prime directives preserved:
 - **Codegen.** These run in the bajutsu runner, not the app, and have no XCUITest equivalent, so
   codegen emits a labeled `// TODO` (per
   [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
+
+### Implementation status
+
+The **`totp`** slice ships — the half with no external dependency. `totp: { secret, into: { var } }`
+computes an RFC 6238 code from the base32 `secret` (commonly `${secrets.*}`, interpolated before the
+step runs) and the current time, writing it to `${vars.<var>}` for a later `type` / `assert`. The
+algorithm is a pure, gate-tested function (`bajutsu/totp.py`, checked against the RFC 6238 vectors);
+the step is a thin handler that calls it at wall-clock time (`bajutsu/orchestrator/actions/handlers/totp.py`).
+It follows the `http`/`saveBody` precedent for producing a value into `vars.*`, touches no device,
+and emits a labeled `// TODO` from codegen.
+
+**`email` is deferred**: polling a test mailbox needs an external mail integration (IMAP / a provider
+API) — a heavier, dependency-bearing slice — so it lands separately once the mailbox surface is settled.
 
 ## Alternatives considered
 

@@ -292,6 +292,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
 | [BE-0038](in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) | 自律クロール探索（App Explorer 風） | 実装中 | Autify VAX |
+| [BE-0046](in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) | OTP・メールの側方チャネルステップ | 実装中 | MagicPod |
 | [BE-0052](in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md) | デバイス状態プリミティブ: タイムゾーン・クリップボード・シェイク | 実装中 | MagicPod |
 <!-- /GENERATED:in-progress-competitive -->
 
@@ -425,7 +426,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
 | [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) | WebView / ハイブリッド対応 | 提案 | MagicPod |
-| [BE-0046](proposals/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) | OTP・メールの側方チャネルステップ | 提案 | MagicPod |
 <!-- /GENERATED:proposals-competitive -->
 
 ### 競合調査（Maestro）由来の候補
