@@ -57,3 +57,21 @@ def test_capture_elements_and_screenshot(tmp_path: Path) -> None:
     assert (tmp_path / "step0" / "elements.json").exists()
     # FakeDriver records the screenshot call with the path it was given.
     assert ("screenshot", str(tmp_path / "step0" / "after.png")) in driver.actions
+
+
+def test_capture_no_writing_kinds_leaves_dir_uncreated(tmp_path: Path) -> None:
+    """capture() creates the step dir only when it actually writes a file; a kind it
+    does not handle here (e.g. an interval kind) must leave the dir untouched, as before."""
+    driver = FakeDriver([_el("a", "A")])
+    step_dir = tmp_path / "step0"
+    assert capture(driver, step_dir, ["video"]) == []
+    assert not step_dir.exists()
+
+
+def test_capture_creates_dir_once_for_writing_kinds(tmp_path: Path) -> None:
+    """A capture with both writing kinds lands both files under a freshly created step dir."""
+    driver = FakeDriver([_el("a", "A")])
+    step_dir = tmp_path / "step0"
+    capture(driver, step_dir, ["elements", "screenshot.after"])
+    assert (step_dir / "elements.json").exists()
+    assert ("screenshot", str(step_dir / "after.png")) in driver.actions

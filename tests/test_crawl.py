@@ -1084,3 +1084,25 @@ def test_is_alive_dispatch_records_a_crash_via_injected_health_check() -> None:
     # the dead screen is recorded as a crash, not as a normal edge/node
     assert not any(e.action == "tap home.boom" for e in screen_map.edges)
     assert crawl.fingerprint(broken).value not in screen_map.nodes
+
+
+# --- _action_targets (per-action tap rectangles, normalized to the screen) -----------------
+
+
+def test_action_targets_normalizes_to_screen_max_dimensions() -> None:
+    """The screen size is the max frame width/height over all elements, in a single pass;
+    each tappable element's rectangle is normalized against it."""
+    elements = [
+        el(identifier="a", traits=["button"], frame=(0.0, 0.0, 50.0, 20.0)),
+        el(identifier="b", traits=["button"], frame=(100.0, 200.0, 200.0, 400.0)),
+    ]
+    actions = [crawl.Action(kind="tap", target="a")]
+    targets = crawl._action_targets(elements, actions)
+    # screen is (max width 200, max height 400); element "a" at (0,0,50,20) normalizes to those.
+    assert targets == (("tap a", (0.0, 0.0, 50.0 / 200.0, 20.0 / 400.0)),)
+
+
+def test_action_targets_empty_without_dimensions() -> None:
+    """No frames means no derivable screen size, so there are no targets."""
+    elements = [el(identifier="a", traits=["button"], frame=(0.0, 0.0, 0.0, 0.0))]
+    assert crawl._action_targets(elements, [crawl.Action(kind="tap", target="a")]) == ()
