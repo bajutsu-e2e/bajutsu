@@ -98,8 +98,15 @@ def _screen_rect(elements: list[dict[str, Any]]) -> tuple[str | None, str | None
 
 
 def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
-    shot = next((a for a in out.artifacts if a.kind == "screenshot"), None)
-    tree = next((a for a in out.artifacts if a.kind == "elements"), None)
+    # Build a kind -> artifact index once so later lookups are O(1) instead of repeated
+    # O(n) scans over the same list. Use setdefault so the first artifact of each kind
+    # wins, matching the previous next(...) semantics (a kind can appear more than once
+    # when e.g. screenshot.before and screenshot.after are both requested).
+    by_kind: dict[str, Any] = {}
+    for a in out.artifacts:
+        by_kind.setdefault(a.kind, a)
+    shot = by_kind.get("screenshot")
+    tree = by_kind.get("elements")
     # Embed the captured elements inline so the report shows them in an overlay (no
     # new tab), matching how logs/network are embedded for offline (file://) viewing.
     tree_rows: list[dict[str, Any]] | None = None
