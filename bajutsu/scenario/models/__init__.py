@@ -40,6 +40,7 @@ from bajutsu.scenario.models.actions import (
 )
 from bajutsu.scenario.models.assertions import (
     Assertion,
+    ClipboardMatch,
     CountMatch,
     CountOp,
     EventMatch,
@@ -80,6 +81,7 @@ __all__ = [
     "ClearClipboard",
     "ClearKeychain",
     "ClearStatusBar",
+    "ClipboardMatch",
     "Component",
     "CountMatch",
     "CountOp",

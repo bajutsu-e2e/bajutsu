@@ -95,6 +95,14 @@ prime directive の保持：
 踏襲し（アクションモデル → `Step` フィールド → `DeviceControl` ハンドラ → `Env` コマンド → `_Control`）、
 fake ドライバや並列実行ではクリーンに失敗し、codegen はラベル付きの `// TODO` を出力します。
 
+続くスライスでは、Motivation が挙げる **クリップボードの読み戻し** を提供します。`clipboard` アサーション
+（`expect: - clipboard: { equals | matches }`）で、`simctl pbpaste`（注入可能な `RunFn` 経由の
+`Env.get_clipboard`）でペーストボードを読み出して比較し、`setClipboard` で仕込んだ値に対する「コピー」操作を
+検証できます。アサーション自体は純粋関数（`_eval_clipboard`。捏造した値に対してゲートで検証）で、ペーストボードの
+読み出し値は実行ループがデバイスごとの `DeviceControl` から供給します。デバイス状態ステップと同様、fake ドライバや
+並列実行では利用できずクリーンに失敗し（`visual` アサーションがコンテキスト無しで劣化するのと同じ）、XCUITest 等価物が
+ないため codegen はラベル付きの `// TODO` を出力します。
+
 **`setTimezone` と `shake` は見送りました**。どちらも確実な `simctl` の actuation が無いためです。デバイスの
 タイムゾーンを変える `simctl` サブコマンドは存在せず（`status_bar override --time` は表示上のクロック文字列を
 変えるだけ、`spawn launchctl setenv TZ` は spawn したプロセスにしか効かずアプリの `NSTimeZone` には効かない）、

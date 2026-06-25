@@ -102,6 +102,11 @@ def pbcopy_cmd(udid: str) -> list[str]:
     return ["xcrun", "simctl", "pbcopy", udid]
 
 
+def pbpaste_cmd(udid: str) -> list[str]:
+    """Read the pasteboard via simctl pbpaste (the content comes back on stdout)."""
+    return ["xcrun", "simctl", "pbpaste", udid]
+
+
 def home_cmd(udid: str) -> list[str]:
     """Press the Home button (sends the foreground app to the background)."""
     return ["xcrun", "simctl", "ui", udid, "home"]
@@ -299,6 +304,10 @@ class Env:
     @staticmethod
     def _run_pbcopy(cmd: list[str], text: str = "") -> None:
         subprocess.run(cmd, input=text, capture_output=True, text=True, check=True)
+
+    def get_clipboard(self) -> str:
+        # pbpaste returns the pasteboard content on stdout; RunFn already yields stdout.
+        return self._run(pbpaste_cmd(self.udid), None)
 
     def home(self) -> None:
         self._run(home_cmd(self.udid), None)

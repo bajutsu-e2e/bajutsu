@@ -21,6 +21,7 @@ from bajutsu.drivers import base
 from bajutsu.network import NetworkExchange
 from bajutsu.scenario import (
     Assertion,
+    ClipboardMatch,
     CountMatch,
     CountOp,
     EventMatch,
@@ -550,6 +551,25 @@ def _eval_visual(ctx: VisualContext | None, a: VisualMatch) -> AssertionResult:
     return AssertionResult(result.ok, "visual", detail, result.reason, visual=ev)
 
 
+def _eval_clipboard(clipboard: str | None, m: ClipboardMatch) -> AssertionResult:
+    op = "equals" if m.equals is not None else "matches"
+    expected = m.equals if m.equals is not None else m.matches
+    detail = f"clipboard {op}={expected!r}"
+    if clipboard is None:
+        # No device-control channel read the pasteboard (fake driver / parallel run, or the read
+        # failed). A clean not-ok, like the visual assertion with no context — never a crash.
+        return AssertionResult(
+            False, "clipboard", detail, "no clipboard read (device control unavailable)"
+        )
+    if m.equals is not None:
+        ok = clipboard == m.equals
+    else:
+        assert m.matches is not None
+        ok = re.search(m.matches, clipboard) is not None
+    reason = "" if ok else f"clipboard was {clipboard!r}, expected {op}={expected!r}"
+    return AssertionResult(ok, "clipboard", detail, reason)
+
+
 def _rel(run_dir: Path, p: Path) -> str:
     """A run-dir-relative POSIX path for the report; falls back to the name if unrelated."""
     try:
@@ -565,6 +585,7 @@ def evaluate_one(
     *,
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
+    clipboard: str | None = None,
 ) -> AssertionResult:
     """Evaluate one assertion against the screen and the observed network.
 
@@ -581,6 +602,8 @@ def evaluate_one(
             required only for a `visual` assertion.
         schema_context: The directory a `responseSchema` path resolves against; required only for a
             `responseSchema` assertion.
+        clipboard: The device pasteboard text the `clipboard` kind checks; None when unread (no
+            device-control channel), which fails the assertion cleanly.
 
     Returns:
         The single assertion's result.
@@ -612,6 +635,8 @@ def evaluate_one(
         return _eval_response_schema(exchanges or [], a.response_schema, schema_context)
     if a.visual is not None:
         return _eval_visual(visual_context, a.visual)
+    if a.clipboard is not None:
+        return _eval_clipboard(clipboard, a.clipboard)
     raise AssertionError("empty assertion (should be caught by scenario validation)")
 
 
@@ -622,6 +647,7 @@ def evaluate(
     *,
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
+    clipboard: str | None = None,
 ) -> list[AssertionResult]:
     """Evaluate every assertion in an expect/assert block (the caller AND-s them via `passed`).
 
@@ -635,6 +661,7 @@ def evaluate(
         exchanges: The network exchanges observed so far (None is treated as empty).
         visual_context: Forwarded to any `visual` assertion (see `evaluate_one`).
         schema_context: Forwarded to any `responseSchema` assertion (see `evaluate_one`).
+        clipboard: Forwarded to any `clipboard` assertion (see `evaluate_one`).
 
     Returns:
         One result per assertion, positionally aligned with `assertions`.
@@ -653,7 +680,12 @@ def evaluate(
         assigned[i]
         if i in assigned
         else evaluate_one(
-            elements, a, exs, visual_context=visual_context, schema_context=schema_context
+            elements,
+            a,
+            exs,
+            visual_context=visual_context,
+            schema_context=schema_context,
+            clipboard=clipboard,
         )
         for i, a in enumerate(assertions)
     ]

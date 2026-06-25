@@ -165,7 +165,8 @@ def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
     """A `DeviceControl` bound to one device.
 
     Backs the `setLocation` / `push` / `clearKeychain` / `clearClipboard` / `setClipboard` /
-    `background` / `foreground` / `overrideStatusBar` / `clearStatusBar` steps via simctl.
+    `background` / `foreground` / `overrideStatusBar` / `clearStatusBar` steps and the `clipboard`
+    assertion (read-back) via simctl.
 
     Args:
         udid: The target device.
@@ -189,6 +190,9 @@ def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
 
         def set_clipboard(self, text: str) -> None:
             e.set_clipboard(text)
+
+        def get_clipboard(self) -> str:
+            return e.get_clipboard()
 
         def home(self) -> None:
             e.home()
