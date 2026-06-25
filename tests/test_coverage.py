@@ -13,7 +13,14 @@ import json
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
-from bajutsu.coverage import coverage, endpoint_coverage, referenced_requests, render
+from bajutsu.coverage import (
+    coverage,
+    endpoint_coverage,
+    observed_id_coverage,
+    referenced_requests,
+    render,
+    render_observed_ids,
+)
 from bajutsu.network import NetworkExchange
 from bajutsu.scenario import load_scenarios
 
@@ -288,6 +295,27 @@ def test_cli_skips_scalar_network_json(tmp_path) -> None:  # type: ignore[no-unt
     assert result.exit_code == 0  # a scalar file is skipped, not iterated/crashed
 
 
+def test_cli_skips_invalid_json_elements(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    step = tmp_path / "runs" / "20260101-000000" / "00-x"
+    step.mkdir(parents=True)
+    # invalid JSON (json.JSONDecodeError is a ValueError) must be skipped, not crash the command
+    (step / "elements.json").write_text("{not json", encoding="utf-8")
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
+    )
+    assert result.exit_code == 0  # skipped the bad file, did not crash
+
+
 def test_cli_runs_path_missing_warns_and_proceeds(tmp_path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
@@ -315,7 +343,7 @@ def test_cli_runs_path_missing_warns_and_proceeds(tmp_path) -> None:  # type: ig
     )
     assert result.exit_code == 0
     assert json.loads(result.stdout).get("endpoints") is None  # omitted, not crashed
-    assert "skipping endpoint coverage" in result.stderr  # but the flag wasn't ignored silently
+    assert "skipping run-evidence coverage" in result.stderr  # but the flag wasn't ignored silently
 
 
 def test_cli_endpoint_coverage_with_runs(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -370,3 +398,208 @@ def test_cli_without_runs_omits_endpoint_section(tmp_path) -> None:  # type: ign
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
     assert result.exit_code == 0
     assert json.loads(result.stdout).get("endpoints") is None
+
+
+# --- BE-0050: observed-id coverage (ids rendered across a run set vs declared namespaces) ---
+
+
+def test_observed_id_coverage_groups_by_namespace() -> None:
+    cov = observed_id_coverage(["home.start", "home.title", "auth.email"], ["home", "auth", "cart"])
+    assert cov.total == 3 and cov.covered == 2
+    assert cov.coverage == 2 / 3
+    assert cov.unobserved == ["cart"]  # declared, but rendered in no run
+    assert [ns.namespace for ns in cov.namespaces] == ["home", "auth"]  # declared order
+    assert cov.namespaces[0].ids == ["home.start", "home.title"]  # sorted, deduped
+    assert cov.off_namespace == []
+
+
+def test_observed_id_outside_declared_namespaces_is_off_namespace() -> None:
+    cov = observed_id_coverage(["legacy.button", "home.start"], ["home"])
+    assert cov.covered == 1
+    assert cov.off_namespace == ["legacy.button"]  # rendered, but its namespace was never declared
+    assert cov.unobserved == []
+
+
+def test_observed_id_coverage_dedupes_across_runs() -> None:
+    # The same id rendered in several runs counts once.
+    cov = observed_id_coverage(["home.start", "home.start", "home.menu"], ["home"])
+    [ns] = cov.namespaces
+    assert ns.ids == ["home.menu", "home.start"]
+
+
+def test_observed_id_coverage_no_declared_namespaces_is_full() -> None:
+    cov = observed_id_coverage(["home.start"], [])
+    assert cov.total == 0 and cov.covered == 0
+    assert cov.coverage == 1.0
+    assert cov.unobserved == []
+
+
+def test_observed_id_coverage_nothing_observed_is_all_gaps() -> None:
+    cov = observed_id_coverage([], ["home", "auth"])
+    assert cov.covered == 0
+    assert cov.coverage == 0.0
+    assert cov.unobserved == ["home", "auth"]
+
+
+def test_render_observed_ids_reports_coverage_gaps_and_off_namespace() -> None:
+    cov = observed_id_coverage(["home.start", "legacy.x"], ["home", "auth"])
+    text = render_observed_ids(cov)
+    assert "observed ids: 0.50 (1/2)" in text
+    assert "home" in text and "home.start" in text
+    assert "auth" in text  # the unobserved namespace
+    assert "off-namespace" in text and "legacy.x" in text
+
+
+def _write_elements(step_dir, identifiers) -> None:  # type: ignore[no-untyped-def]
+    step_dir.mkdir(parents=True, exist_ok=True)
+    els = [
+        {"identifier": i, "label": None, "traits": [], "value": None, "frame": [0, 0, 1, 1]}
+        for i in identifiers
+    ]
+    (step_dir / "elements.json").write_text(json.dumps(els), encoding="utf-8")
+
+
+def test_cli_observed_id_coverage_with_runs(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8"
+    )
+    # two step dirs under a run, each with an elements.json
+    _write_elements(tmp_path / "runs" / "20260101-000000" / "00-x", ["home.start", None])
+    _write_elements(tmp_path / "runs" / "20260101-000000" / "01-x", ["auth.email"])
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth, cart]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    obs = json.loads(result.stdout)["observed_ids"]
+    assert obs["covered"] == 2 and obs["total"] == 3
+    assert obs["unobserved"] == ["cart"]  # declared but rendered in no run
+    assert obs["namespaces"][0]["namespace"] == "home"
+    assert obs["namespaces"][0]["ids"] == ["home.start"]  # null identifiers ignored
+
+
+def test_cli_observed_id_coverage_ignores_empty_identifiers(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8"
+    )
+    # an element with an empty-string identifier carries no stable id — it must not contribute
+    _write_elements(tmp_path / "runs" / "20260101-000000" / "00-x", ["home.start", ""])
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    obs = json.loads(result.stdout)["observed_ids"]
+    assert obs["namespaces"][0]["ids"] == ["home.start"]  # the "" id is dropped, not bucketed
+    assert obs["off_namespace"] == []  # an empty id must not become an off-namespace ("") entry
+
+
+def test_cli_observed_id_coverage_text_output(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8"
+    )
+    _write_elements(tmp_path / "runs" / "20260101-000000" / "00-x", ["home.start"])
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
+    )
+    assert result.exit_code == 0
+    assert "observed ids:" in result.stdout
+    assert "auth" in result.stdout  # the unobserved namespace
+
+
+def test_cli_skips_malformed_elements_json(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: a }\n", "utf-8")
+    step = tmp_path / "runs" / "20260101-000000" / "00-x"
+    step.mkdir(parents=True)
+    (step / "elements.json").write_text("null", encoding="utf-8")  # a scalar, not a list
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
+    )
+    assert result.exit_code == 0  # a scalar file is skipped, not crashed
+    assert (
+        json.loads(  # observed-id section still emitted, just empty
+            runner.invoke(
+                app,
+                [
+                    "coverage",
+                    "--target",
+                    "demo",
+                    "--config",
+                    str(config),
+                    "--runs",
+                    str(tmp_path / "runs"),
+                    "--json",
+                ],
+            ).stdout
+        )["observed_ids"]["covered"]
+        == 0
+    )
+
+
+def test_cli_without_runs_omits_observed_id_section(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8"
+    )
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout).get("observed_ids") is None

@@ -73,9 +73,17 @@ reporting the asserted fraction, the **unasserted** observed endpoints (untested
 matchers declared but observed in no run. (`responseSchema`'s `request` joins the declared set once
 [#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) lands.)
 
+The third slice folds **observed ids** into the id-namespace map alongside the static analysis,
+under the same `--runs` flag. `coverage.observed_id_coverage` collects the stable ids the runs
+actually *rendered* — each element's `identifier` from every per-step `elements.json` under the run
+set (null ids dropped) — and groups them by the declared `idNamespaces`, mirroring the static
+`coverage()`: per-namespace observed ids, namespaces *observed in no run*, and off-namespace
+observed ids. It complements the static "referenced" figure (which ids the scenarios *write*) with
+the run-evidence "observed" figure (which ids the runs *showed*), exposing namespaces a run set
+never actually exercised. Still read-only, AI-free, and exits 0 even with gaps.
+
 Still deferred: the **screens-visited** dimension (needs a crawl-discovered denominator,
-[BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)),
-and folding per-step `elements.json` (observed ids) into the map alongside the static analysis.
+[BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)).
 
 ## Alternatives considered
 
