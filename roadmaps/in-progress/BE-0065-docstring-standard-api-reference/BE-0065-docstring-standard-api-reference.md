@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0065](BE-0065-docstring-standard-api-reference.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
+| Implementing PR | [#232](https://github.com/bajutsu-e2e/bajutsu/pull/232) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 

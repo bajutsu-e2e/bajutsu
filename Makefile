@@ -1,5 +1,6 @@
 .PHONY: setup hooks deps deps-check serve test lint format format-check typecheck \
-        lock-check lint-sh lint-actions check roadmap-index roadmap-promote roadmap-id-repair
+        lock-check lint-sh lint-actions check roadmap-index roadmap-promote roadmap-id-repair \
+        docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -102,6 +103,15 @@ roadmap-id-repair:
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
 check: hooks format-check lint lint-sh lint-actions lock-check typecheck test
+
+# Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
+# reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the
+# gate. `--strict` fails on a broken reference (e.g. an unresolved symbol). `docs-serve` previews
+# it locally with live reload.
+docs:
+	uv run --extra docs mkdocs build --strict
+docs-serve:
+	uv run --extra docs mkdocs serve
 
 # Sample-app build / E2E targets live with their demos:
 #   make -C demos/features sample-gen|sample-build|e2e|ui-test   (demos/features/app)
