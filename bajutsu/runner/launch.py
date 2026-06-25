@@ -99,7 +99,8 @@ def _await_ready(
 
     Uses exponential backoff: the first poll is short (the app is often ready quickly)
     and subsequent intervals double up to `poll_max`, reducing wasted subprocess calls
-    when the app takes longer to start."""
+    when the app takes longer to start.
+    """
     deadline = time.monotonic() + timeout
     poll = min(poll_init, poll_max)
     while time.monotonic() < deadline:

@@ -22,7 +22,8 @@ def _safe_artifact_path(runs_dir: Path, run_id: str, rel_path: str) -> Path:
     """Resolve a nested artifact path, rejecting path traversal.
 
     Ensures the resolved path stays under ``runs_dir/run_id``, preventing
-    both escape from runs_dir and cross-run reads."""
+    both escape from runs_dir and cross-run reads.
+    """
     run_base = (runs_dir / run_id).resolve()
     target = (run_base / rel_path).resolve()
     if run_base not in target.parents and target != run_base:
@@ -72,9 +73,10 @@ def register_resources(mcp: FastMCP, runs_dir: Path) -> None:
 
     @mcp.resource("bajutsu://runs/{run_id}/artifact/{path*}")
     def run_artifact(run_id: str, path: str) -> str | bytes:
-        """Any artifact under a run directory (screenshots, elements.json,
-        network.json, video, etc.). Text files are returned as strings;
-        binary files (images, video) as bytes."""
+        """Any artifact under a run directory (screenshots, elements.json, network.json, video, …).
+
+        Text files are returned as strings; binary files (images, video) as bytes.
+        """
         target = _safe_artifact_path(runs_dir, run_id, path)
         if not target.is_file():
             raise ValueError(f"artifact not found: {run_id}/{path}")

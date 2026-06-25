@@ -15,7 +15,9 @@ from bajutsu.scenario.models import Component, Scenario, Step
 
 def _interp_steps(steps: list[Step], bindings: dict[str, str]) -> list[Step]:
     """Substitute `bindings` into each step (via a model_dump round-trip) and re-validate.
-    Aliases are preserved (by_alias) so the dump re-parses cleanly."""
+
+    Aliases are preserved (by_alias) so the dump re-parses cleanly.
+    """
     out: list[Step] = []
     for st in steps:
         dumped = st.model_dump(by_alias=True, exclude_none=True)

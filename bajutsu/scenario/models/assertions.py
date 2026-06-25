@@ -138,8 +138,10 @@ class CountMatch(_Model):
 
 class CountOp(_Model):
     """A count comparison with no element selector — exactly one of equals / atLeast / atMost.
-    The element-free counterpart to `CountMatch`, for aggregating over the network timeline
-    (e.g. an `event`'s multiplicity) rather than over screen elements."""
+
+    The element-free counterpart to `CountMatch`, for aggregating over the network timeline (e.g. an
+    `event`'s multiplicity) rather than over screen elements.
+    """
 
     equals: int | None = None
     at_least: int | None = Field(default=None, alias="atLeast")
@@ -153,12 +155,14 @@ class CountOp(_Model):
 
 
 class EventMatch(_Model):
-    """An analytics / telemetry event the app *sent* (BE-0048) — matched over the captured request
-    timeline by endpoint (url / urlMatches / path / pathMatches / method, AND-ed, same meaning as
-    `RequestMatch`) and structured request-body fields (`body`: each given key must be present in
-    the JSON request body and equal — compared as text — the given value). `count` is the expected
-    multiplicity (default: at least one). At least one of an endpoint criterion or `body` is
-    required, so an event always pins *something*."""
+    """An analytics / telemetry event the app *sent* (BE-0048).
+
+    Matched over the captured request timeline by endpoint (url / urlMatches / path / pathMatches /
+    method, AND-ed, same meaning as `RequestMatch`) and structured request-body fields (`body`: each
+    given key must be present in the JSON request body and equal — compared as text — the given
+    value). `count` is the expected multiplicity (default: at least one). At least one of an endpoint
+    criterion or `body` is required, so an event always pins *something*.
+    """
 
     method: str | None = None
     url: str | None = None
@@ -188,10 +192,12 @@ class ExcludeRegion(_Model):
 
 
 class ResponseSchemaMatch(_Model):
-    """Validate a captured response body against a stored JSON Schema (BE-0048). `request` selects
-    the exchange whose response is checked (reusing the request matcher); `schema` is the schema
-    file, resolved against the app's schemas dir. `schema_path` carries the value (the field is
-    aliased `schema` to avoid shadowing pydantic's own `schema` attribute)."""
+    """Validate a captured response body against a stored JSON Schema (BE-0048).
+
+    `request` selects the exchange whose response is checked (reusing the request matcher); `schema`
+    is the schema file, resolved against the app's schemas dir. `schema_path` carries the value (the
+    field is aliased `schema` to avoid shadowing pydantic's own `schema` attribute).
+    """
 
     request: RequestMatch
     schema_path: str = Field(alias="schema")

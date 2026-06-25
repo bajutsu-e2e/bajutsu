@@ -44,7 +44,8 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
         """Score the current screen's accessibility convention readiness.
 
         Returns the grade (Ready / Partial / Blocked) and a breakdown of
-        id coverage, namespace conformance, and duplicates."""
+        id coverage, namespace conformance, and duplicates.
+        """
         eff = _load_effective(config_path, target)
         backends = eff.backend
         actuator = select_actuator(backends)
@@ -67,7 +68,8 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
         Returns a summary with the manifest path. The scenario parameter is
         a path to a *.yaml file; if omitted, all scenarios in the target's
-        configured directory are run."""
+        configured directory are run.
+        """
         cmd = [
             sys.executable,
             "-m",

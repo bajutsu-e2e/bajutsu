@@ -120,9 +120,11 @@ class SelectorError(Exception):
 
 
 class UnsupportedAction(Exception):
-    """The actuator backend cannot perform this action (e.g. a multi-touch gesture
-    on idb, which is single-touch). Surfaced as a step failure with a clear reason
-    rather than silently passing."""
+    """The actuator backend cannot perform this action.
+
+    For example, a multi-touch gesture on idb, which is single-touch. The tool surfaces it as a step
+    failure with a clear reason rather than letting it pass silently.
+    """
 
 
 class ElementNotFound(SelectorError):
@@ -173,7 +175,8 @@ def _id_index(elements: list[Element]) -> dict[str | None, list[Element]]:
 
     The cache holds one entry keyed by ``id(elements)``; a new list auto-invalidates it.
     Multiple ``find_all`` calls on the same query() result (e.g. a multi-assertion step)
-    share a single O(n) build and then do O(1) lookups."""
+    share a single O(n) build and then do O(1) lookups.
+    """
     global _cached_index
     if _cached_index is not None and _cached_index[0] == id(elements):
         return _cached_index[2]
