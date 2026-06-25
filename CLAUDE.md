@@ -168,4 +168,7 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
 - **Prefix the PR title with the roadmap ID** when the PR is tied to a roadmap item: start the
   title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap
-  item keep the plain scoped title.
+  item keep the plain scoped title. **CI enforces this** ([`pr-title.yml`](.github/workflows/pr-title.yml)
+  runs `scripts/lint_pr.py --title-only` on every PR): the title must be a scoped conventional
+  subject, and when the branch name encodes a roadmap id (`claude/be-0050-<slug>`) the title must
+  carry the matching `[BE-0050]` prefix — a missing or mismatched id fails the check.

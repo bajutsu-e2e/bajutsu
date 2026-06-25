@@ -1,0 +1,30 @@
+# Validate the PR title: a scoped conventional subject (`feat(run): …`), and — when the branch name
+# encodes a roadmap id (`claude/be-0050-<slug>`) — the matching `[BE-0050]` prefix. The branch, not
+# the diff, is the authoritative roadmap-id signal, so this catches a missing or mismatched id and a
+# malformed title. Re-runs on `edited` so a later title change can't slip past. Title-only and
+# stdlib-only (scripts/lint_pr.py --title-only) — no checkout history or uv needed.
+name: pr-title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Check the PR title (form + roadmap-id prefix from the branch)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: python3 scripts/lint_pr.py --title-only
