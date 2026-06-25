@@ -124,6 +124,27 @@ def ensure_web_runtime(backends: list[str]) -> None:
     importlib.invalidate_caches()  # so the find_spec() in select_actuator sees the freshly-added package
 
 
+def capabilities_for(actuator: str) -> frozenset[str]:
+    """The static capability set a backend advertises — read without constructing a driver, so the
+    preflight (BE-0082) needs no device (idb) or browser (playwright). Same source as
+    `Driver.capabilities()`: each driver's `CAPABILITIES` class constant."""
+    if actuator == "idb":
+        return IdbDriver.CAPABILITIES
+    if actuator == "fake":
+        return FakeDriver.CAPABILITIES
+    if actuator == "playwright":
+        # Lazy import (heavy optional dep) — only reached on a web run; reading the class constant
+        # does not start a browser (only constructing PlaywrightDriver does).
+        from bajutsu.drivers.playwright import PlaywrightDriver
+
+        return PlaywrightDriver.CAPABILITIES
+    if actuator in KNOWN_ACTUATORS:
+        raise NotImplementedError(
+            f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
+        )
+    raise ValueError(f"unknown backend: {actuator!r}")
+
+
 def make_driver(
     actuator: str, udid: str, *, base_url: str | None = None, headless: bool = True
 ) -> base.Driver:

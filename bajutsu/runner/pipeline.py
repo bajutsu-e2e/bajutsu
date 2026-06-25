@@ -9,8 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from bajutsu import idb_version
+from bajutsu import capability_preflight, idb_version
 from bajutsu.assertions import SchemaContext, VisualContext
+from bajutsu.backends import capabilities_for
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
 from bajutsu.network import NetworkExchange
@@ -71,6 +72,7 @@ def run_all(
     progress: ProgressFn | None = None,
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
+    actuator: str | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -100,11 +102,20 @@ def run_all(
         baselines_dir: Baseline images for `visual` assertions. None disables visual comparison.
         schemas_dir: Directory the `responseSchema` assertions' schema files resolve against. None
             disables them.
+        actuator: The selected actuator (e.g. `idb` / `playwright`); when given, each scenario is
+            preflighted against its static capability set and failed up front if it needs a
+            capability the actuator lacks (BE-0082). None skips the preflight (a lease driven
+            directly in tests).
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
     """
     redactor = Redactor(eff.redact, values=secret_values)
+    # Preflight: a backend's capability set is static, so a scenario that needs a capability the
+    # actuator lacks (e.g. pinch on idb) is failed here — before any device is leased — instead of
+    # mid-run after partial device work (BE-0082). Skipped when no actuator is passed (tests that
+    # drive a lease directly), so the gesture handler's own check still backstops it.
+    caps = capabilities_for(actuator) if actuator is not None else None
 
     total = len(scenarios)
 
@@ -112,6 +123,16 @@ def run_all(
         sid = f"{i:02d}-{scenario_slug(s.name)}"
         if progress is not None:
             progress(f"▶ scenario {i + 1}/{total}: {s.name}")
+        if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
+            if progress is not None:
+                progress(f"✘ scenario {i + 1}/{total}: {s.name} (unsupported on {actuator})")
+            return RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=actuator or "",
+                failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
+            )
         lz = lease(eff, s)
         handler = on_blocked_for(s) if on_blocked_for is not None else on_blocked
         try:
@@ -183,6 +204,7 @@ def run_and_report(
     progress: ProgressFn | None = None,
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
+    actuator: str | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -211,6 +233,7 @@ def run_and_report(
         progress=progress,
         baselines_dir=baselines_dir,
         schemas_dir=schemas_dir,
+        actuator=actuator,
     )
     # The merged Result tab renders each scenario as a structured view (definitions) with a toggle
     # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match.

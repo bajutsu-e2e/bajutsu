@@ -100,6 +100,14 @@
 | [BE-0066](implemented/BE-0066-web-crawl/BE-0066-web-crawl-ja.md) | Web crawl（Playwright backend） | 実装済み |
 <!-- /GENERATED:implemented-platform-landed -->
 
+### プラットフォーム拡張（Android / Web / Flutter）
+
+<!-- GENERATED:implemented-platform -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) | run の前に capability をプリフライト検査する | 実装済み |
+<!-- /GENERATED:implemented-platform -->
+
 ### オーサリング体験（record / GUI エディタ）
 
 AI 駆動の `record`（Tier 1）は実装済みです（[recording.md](../docs/ja/recording.md)）。これらの項目は記録 → 編集 → 再実行のサイクルを人が扱いやすくします。ローカル Web UI ランチャ `bajutsu serve` はその最初のステップです。
@@ -337,7 +345,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 提案 |
 | [BE-0010](proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md) | スコープ文の更新 | 提案 |
 | [BE-0076](proposals/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) | ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend） | 提案 |
-| [BE-0082](proposals/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) | run の前に capability をプリフライト検査する | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### オーサリング体験（record / GUI エディタ）
