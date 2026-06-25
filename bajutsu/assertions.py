@@ -216,6 +216,7 @@ def request_label(req: RequestMatch, *, with_count: bool = True) -> str:
     """A compact human description of a request matcher (e.g. ``GET /items status=200``).
 
     Args:
+        req: The request matcher to describe.
         with_count: When False, the matcher's `count` is left out of the label — used where `count`
             is not part of the check (e.g. `requestSequence`, which is about order), so the label
             doesn't imply a field that is ignored.

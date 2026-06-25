@@ -48,21 +48,10 @@ class Collector(Protocol):
     the traffic. The iOS `NetworkCollector` receives POSTs over HTTP; the web `WebNetworkCollector`
     hooks Playwright events — both satisfy this, so the pipeline stays backend-agnostic."""
 
-    def snapshot(self) -> list[NetworkExchange]:
-        """The exchanges observed so far, in arrival order."""
-        ...
-
-    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
-        """Each exchange paired with its receive time (monotonic), in arrival order."""
-        ...
-
-    def clear(self) -> None:
-        """Drop all observed exchanges — called between scenarios to scope them to one run."""
-        ...
-
-    def stop(self) -> None:
-        """Release the underlying observation resource (the HTTP receiver / event hooks)."""
-        ...
+    def snapshot(self) -> list[NetworkExchange]: ...  # observed exchanges, in arrival order
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]: ...  # each + receive time
+    def clear(self) -> None: ...  # drop observed exchanges (scoped per scenario by the run loop)
+    def stop(self) -> None: ...  # release the observation resource (HTTP receiver / event hooks)
 
 
 class NetworkCollector:

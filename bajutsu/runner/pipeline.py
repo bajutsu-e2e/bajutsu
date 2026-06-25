@@ -190,15 +190,8 @@ def run_and_report(
     `scenario.yaml` (so a run is re-runnable / reviewable). idb toolchain versions are recorded as
     provenance only when idb actually drove the run — never a pass/fail input (BE-0005).
 
-    Args:
-        runs_dir: The root runs directory; this run's artifacts go under `runs_dir/run_id`.
-        run_id: This run's id, naming its artifact directory.
-        source_name: The scenario source's display name, for the report.
-        description: A human description stored with the run.
-
-    The remaining arguments are passed through to `run_all` (`eff`, `scenarios`, `lease`, `clock`,
-    the alert handlers, `workers`, `bindings`, `secret_values`, `progress`, `baselines_dir`,
-    `schemas_dir`).
+    Beyond `run_all`'s arguments, `runs_dir` + `run_id` locate this run's artifact directory
+    (`runs_dir/run_id`), and `source_name` / `description` are recorded in the report.
 
     Returns:
         The per-scenario results and the path to the written `manifest.json`.
