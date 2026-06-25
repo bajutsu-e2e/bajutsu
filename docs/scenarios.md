@@ -657,6 +657,9 @@ whether `record` normalized the intent faithfully.
 - **Grouping is emergent:** when one utterance produces several steps, they carry the **same** `from:`
   string; there is no span syntax. `lint` reports an advisory provenance-coverage figure (how many
   steps carry `from:`); it never fails a run.
+- **Shown in `trace` and the report.** [`bajutsu trace`](cli.md#trace) prints each step's phrase
+  inline (`← "<phrase>"`) and `report.html` shows it under the step, collapsing a run of the same
+  phrase into one label — turning the timeline into a natural-language ↔ action map.
 - The phrase is kept **verbatim** in whatever language the author wrote (not translated).
 
 ## Round-trip (load ⇄ dump)

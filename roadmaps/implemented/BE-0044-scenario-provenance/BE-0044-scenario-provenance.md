@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0044](BE-0044-scenario-provenance.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
-| Implementing PR | [#235](https://github.com/bajutsu-e2e/bajutsu/pull/235) |
+| Status | **Implemented** |
+| Implementing PR | [#235](https://github.com/bajutsu-e2e/bajutsu/pull/235) (schema, record, lint), [#264](https://github.com/bajutsu-e2e/bajutsu/pull/264) (trace + report display) |
 | Topic | Authoring experience (record / GUI editor) |
 | Origin | BE-0002 follow-up (provenance was deferred there as "remaining light") |
 <!-- /BE-METADATA -->

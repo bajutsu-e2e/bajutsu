@@ -21,7 +21,7 @@
 {%- elif d.kind == 'asserts' -%}<table class="atbl"><tbody>{% for kind, target, comp in d.rows %}<tr><td><span class="act act-assert">{{ kind }}</span></td><td class="adesc">{{ parts(target) }}</td><td class="adesc">{{ parts(comp) }}</td></tr>{% endfor %}</tbody></table>
 {%- elif d.kind == 'nxsummary' -%}<span class="xmark">▸</span> {{ parts(d.summary) }}
 {%- endif -%}
-{%- if d.name %} <span class="stepname">{{ d.name }}</span>{% endif %}{% for c in d.caps %} <span class="cap">{{ c }}</span>{% endfor %}
+{%- if d.name %} <span class="stepname">{{ d.name }}</span>{% endif %}{% for c in d.caps %} <span class="cap">{{ c }}</span>{% endfor %}{% if d.from_ %}<div class="stepfrom" title="the natural-language phrase this was recorded from">← {{ d.from_ }}</div>{% endif %}
 {%- endmacro -%}
 
 {%- macro treetable(rows, sw, sh) -%}

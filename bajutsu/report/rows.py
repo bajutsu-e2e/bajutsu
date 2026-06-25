@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.orchestrator import RunResult
+from bajutsu.provenance import grouped_provenance
 from bajutsu.report.format import (
     _ACTION_META,
     Part,
@@ -23,10 +24,13 @@ from bajutsu.report.richtext import (
 # --- detail / row data (the merged Result table) ---
 
 
-def _step_detail(step_def: dict[str, Any] | None) -> dict[str, Any]:
+def _step_detail(step_def: dict[str, Any] | None, from_: str | None = None) -> dict[str, Any]:
     """The 'detail' cell content for a planned step: tokenized parts (or a nested
-    assert table), plus the optional step name and capture tags."""
-    empty: dict[str, Any] = {"kind": "parts", "parts": [], "name": None, "caps": []}
+    assert table), plus the optional step name, capture tags, and `from:` provenance.
+
+    `from_` is the already-grouped provenance to show (None when this step continues a run of the
+    same phrase), not the step's raw `from:` — the caller dedupes consecutive equal values."""
+    empty: dict[str, Any] = {"kind": "parts", "parts": [], "name": None, "caps": [], "from_": None}
     if step_def is None:
         return empty
     action = next((k for k in _ACTION_META if k in step_def), None)
@@ -40,12 +44,14 @@ def _step_detail(step_def: dict[str, Any] | None) -> dict[str, Any]:
             "rows": [_assert_parts(a) for a in step_def["assert"]],
             "name": name,
             "caps": caps,
+            "from_": from_,
         }
     return {
         "kind": "parts",
         "parts": _step_desc_parts(action, step_def[action]),
         "name": name,
         "caps": caps,
+        "from_": from_,
     }
 
 
@@ -129,7 +135,11 @@ def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
 
 
 def _step_run_row(
-    i: int, step_def: dict[str, Any] | None, out: Any, run_dir: Path | None
+    i: int,
+    step_def: dict[str, Any] | None,
+    out: Any,
+    run_dir: Path | None,
+    from_: str | None = None,
 ) -> dict[str, Any]:
     return {
         "rowcls": f"srow {'ok' if out.ok else 'ng'}",
@@ -139,7 +149,7 @@ def _step_run_row(
         "numcls": None,
         "result": {"cls": "ok" if out.ok else "ng", "text": "PASS" if out.ok else "FAIL"},
         "action": _action_data(step_def, out.action),
-        "detail": _step_detail(step_def),
+        "detail": _step_detail(step_def, from_),
         "at": f"{out.started_at:.1f}s",
         "view": _view_data(out, run_dir),
         "reason": out.reason if (not out.ok and out.reason) else None,
@@ -148,7 +158,9 @@ def _step_run_row(
     }
 
 
-def _step_skip_row(i: int, step_def: dict[str, Any] | None) -> dict[str, Any]:
+def _step_skip_row(
+    i: int, step_def: dict[str, Any] | None, from_: str | None = None
+) -> dict[str, Any]:
     return {
         "rowcls": "skip",
         "data_t": None,
@@ -157,7 +169,7 @@ def _step_skip_row(i: int, step_def: dict[str, Any] | None) -> dict[str, Any]:
         "numcls": None,
         "result": {"cls": "", "text": "—"},
         "action": _action_data(step_def, None),
-        "detail": _step_detail(step_def),
+        "detail": _step_detail(step_def, from_),
         "at": "",
         "view": None,
         "reason": None,
@@ -273,15 +285,22 @@ def _merged_rows(
     time offset; not-run steps trail at the end in plan order."""
     by_index = {s.index: s for s in r.steps}
     total = max(len(plan), len(r.steps))
+    # Provenance to display per step, grouped in plan order so a run of identical consecutive
+    # `from:` is labeled once (BE-0044); each step keeps its own value regardless of time sorting.
+    shown_from = grouped_provenance(
+        [(plan[i].get("from") if i < len(plan) else None) for i in range(total)]
+    )
     timed: list[tuple[float, int, dict[str, Any]]] = []
     skipped: list[dict[str, Any]] = []
     for i in range(total):
         step_def = plan[i] if i < len(plan) else None
         out = by_index.get(i)
         if out is None:
-            skipped.append(_step_skip_row(i, step_def))
+            skipped.append(_step_skip_row(i, step_def, shown_from[i]))
         else:
-            timed.append((out.started_at, 0, _step_run_row(i, step_def, out, run_dir)))
+            timed.append(
+                (out.started_at, 0, _step_run_row(i, step_def, out, run_dir, shown_from[i]))
+            )
     for d in exchanges:
         t0 = _as_float(d.get("startedAt"))
         dur_s = _as_float(d.get("durationMs")) / 1000.0

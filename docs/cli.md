@@ -165,7 +165,12 @@ bajutsu export <run-id | run-dir> [-o out.zip] [--force]
 
 Inspects a finished run as a **text timeline**: per scenario, steps and observed network
 exchanges interleaved chronologically, followed by expectations, app-trace intervals, and an evidence
-summary. Read-only (reads the saved `manifest.json` / `network.json` / `appTrace.json`).
+summary. Read-only (reads the saved `manifest.json` / `network.json` / `appTrace.json`, and
+`scenario.yaml` for provenance).
+
+- Each step shows the natural-language phrase it was recorded from — its [`from:`](scenarios.md#from-provenance)
+  provenance (BE-0044) — inline as `← "<phrase>"`; a run of steps sharing one phrase is labeled once.
+  A hand-authored scenario or an older run without provenance simply shows none.
 
 ```bash
 bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
