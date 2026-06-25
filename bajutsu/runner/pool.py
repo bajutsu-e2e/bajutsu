@@ -1,5 +1,8 @@
-"""The device pool: lease a device per scenario (a single-device run is a pool of one), and the
-per-device relaunch / device-control bound to a leased udid."""
+"""The device pool.
+
+Lease a device per scenario (a single-device run is a pool of one), and the per-device relaunch /
+device-control bound to a leased udid.
+"""
 
 from __future__ import annotations
 

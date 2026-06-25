@@ -45,7 +45,8 @@ class VisualEvidence:
 
     Paths are *run-dir-relative* (the same scheme as artifacts), so the self-contained
     report and the serve UI can reference them. `baseline_name` is the YAML key into the
-    baselines dir — what `approve` promotes the actual screenshot to."""
+    baselines dir — what `approve` promotes the actual screenshot to.
+    """
 
     baseline_name: str
     actual: str  # the captured screenshot
@@ -57,6 +58,8 @@ class VisualEvidence:
 
 @dataclass(frozen=True)
 class AssertionResult:
+    """The outcome of one assertion check, carried into the manifest/report."""
+
     ok: bool
     kind: str
     detail: str  # what was checked (for the report)
@@ -66,9 +69,11 @@ class AssertionResult:
 
 @dataclass(frozen=True)
 class VisualContext:
-    """Context needed by visual assertions — paths to the current screenshot,
-    the baselines directory, where to write diff images, and the run dir root
-    (so image paths can be expressed run-dir-relative for the report)."""
+    """Paths a visual assertion needs.
+
+    The current screenshot, the baselines directory, where to write diff images, and the run dir
+    root (so image paths can be expressed run-dir-relative for the report).
+    """
 
     screenshot_path: Path
     baselines_dir: Path
@@ -78,8 +83,10 @@ class VisualContext:
 
 @dataclass(frozen=True)
 class SchemaContext:
-    """Context needed by `responseSchema` assertions — the directory a schema path resolves against
-    (config `apps.<name>.schemas`, the `--schemas` flag, or `schemas/` beside the scenario)."""
+    """The directory a `responseSchema` assertion's schema path resolves against.
+
+    One of config `apps.<name>.schemas`, the `--schemas` flag, or `schemas/` beside the scenario.
+    """
 
     schemas_dir: Path
 
@@ -278,10 +285,12 @@ def _count_satisfied(n: int, c: CountOp | None) -> bool:
 
 
 def _json_text(value: object) -> str:
-    """Canonical text form of a JSON value for comparing an event body field — booleans and null
-    render JSON-style (`true` / `false` / `null`), and a nested array / object renders as compact
-    JSON, so a YAML matcher reads the way the captured body does, not as a Python `repr` (`True` /
-    `None` / single-quoted dicts). Numbers / strings keep their plain form."""
+    """Canonical text form of a JSON value for comparing an event body field.
+
+    Booleans and null render JSON-style (`true` / `false` / `null`), and a nested array / object
+    renders as compact JSON, so a YAML matcher reads the way the captured body does, not as a Python
+    `repr` (`True` / `None` / single-quoted dicts). Numbers / strings keep their plain form.
+    """
     if isinstance(value, bool):
         return "true" if value else "false"
     if value is None:
@@ -292,8 +301,10 @@ def _json_text(value: object) -> str:
 
 
 def _event_body_matches(ex: NetworkExchange, body: dict[str, str]) -> bool:
-    """Whether the exchange's JSON request body carries every given field, each equal (as text)
-    to the expected value. A non-JSON / non-object / absent body matches no body criterion."""
+    """Whether the exchange's JSON request body carries every given field, each equal (as text).
+
+    A non-JSON / non-object / absent body matches no body criterion.
+    """
     if not body:
         return True
     if ex.request_body is None:
@@ -328,9 +339,12 @@ def _event_label(m: EventMatch) -> str:
 
 
 def _eval_event(exchanges: list[NetworkExchange], m: EventMatch) -> AssertionResult:
-    """Assert an analytics/telemetry event the app sent (BE-0048): filter the timeline by the
-    event's endpoint (reusing the request matcher), then by its structured request-body fields,
-    and check the surviving count against the operator. Pure over the captured exchanges."""
+    """Assert an analytics/telemetry event the app sent (BE-0048).
+
+    Filter the timeline by the event's endpoint (reusing the request matcher), then by its
+    structured request-body fields, and check the surviving count against the operator. Pure over
+    the captured exchanges.
+    """
     endpoint = (m.method, m.url, m.url_matches, m.path, m.path_matches)
     if any(v is not None for v in endpoint):
         req = RequestMatch(
@@ -359,9 +373,12 @@ def _eval_event(exchanges: list[NetworkExchange], m: EventMatch) -> AssertionRes
 def _eval_request_sequence(
     exchanges: list[NetworkExchange], seq: list[RequestMatch]
 ) -> AssertionResult:
-    """Assert a set of request matchers were observed in order (BE-0048): each matches a distinct
-    exchange at a strictly later position than the previous, so unrelated traffic may interleave.
-    A greedy forward scan is optimal for this order-preserving subsequence. Pure over the timeline."""
+    """Assert a set of request matchers were observed in order (BE-0048).
+
+    Each matches a distinct exchange at a strictly later position than the previous, so unrelated
+    traffic may interleave. A greedy forward scan is optimal for this order-preserving subsequence.
+    Pure over the timeline.
+    """
     detail = "requestSequence " + " → ".join(request_label(r, with_count=False) for r in seq)
     i = 0
     for pos, req in enumerate(seq):
@@ -379,8 +396,10 @@ def _eval_request_sequence(
 
 def _load_schema(schema_path: str, ctx: SchemaContext, detail: str) -> object | AssertionResult:
     """Load and parse the stored JSON Schema, or an `AssertionResult` carrying why it couldn't be.
+
     Confines the path to the schemas dir: an absolute path or `..` traversal would read files
-    outside it and make the result depend on the runner's filesystem — reject it."""
+    outside it and make the result depend on the runner's filesystem — reject it.
+    """
     schemas_dir = ctx.schemas_dir.resolve()
     schema_file = (schemas_dir / schema_path).resolve()
     if not schema_file.is_relative_to(schemas_dir):
@@ -397,8 +416,11 @@ def _load_schema(schema_path: str, ctx: SchemaContext, detail: str) -> object | 
 
 
 def _validate_instance(instance: object, schema: object, detail: str) -> AssertionResult:
-    """Validate a parsed instance against a parsed schema. `jsonschema` is imported lazily (the
-    `schema` extra), so the dependency only loads when a responseSchema assertion is evaluated."""
+    """Validate a parsed instance against a parsed schema.
+
+    `jsonschema` is imported lazily (the `schema` extra), so the dependency only loads when a
+    responseSchema assertion is evaluated.
+    """
     try:
         import jsonschema
     except ImportError:
@@ -424,8 +446,10 @@ def _eval_response_schema(
     exchanges: list[NetworkExchange], m: ResponseSchemaMatch, ctx: SchemaContext | None
 ) -> AssertionResult:
     """Validate the first matching exchange's response body against a stored JSON Schema (BE-0048).
-    Pure over the captured exchanges + the schema file; the schema I/O and the validation are
-    split into `_load_schema` and `_validate_instance`."""
+
+    Pure over the captured exchanges + the schema file; the schema I/O and the validation are split
+    into `_load_schema` and `_validate_instance`.
+    """
     detail = f"responseSchema {request_label(m.request)} ~ {m.schema_path}"
     if ctx is None:
         return AssertionResult(False, "responseSchema", detail, "no schema context provided")
@@ -451,7 +475,8 @@ def _assign_requests(exchanges: list[NetworkExchange], reqs: list[RequestMatch])
 
     Maximum bipartite matching (Kuhn's augmenting paths) so a broad matcher never steals
     the only exchange a more specific one needs. Returns, per matcher, the exchange index
-    it was assigned, or -1 when none is left for it."""
+    it was assigned, or -1 when none is left for it.
+    """
     adj = [[j for j, ex in enumerate(exchanges) if match_request(ex, req)] for req in reqs]
     ex_to_req = [-1] * len(exchanges)
     assigned = [-1] * len(reqs)

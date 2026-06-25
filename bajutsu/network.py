@@ -24,8 +24,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class NetworkExchange(BaseModel):
-    """One request/response the app reported. Extra keys from the SDK are ignored
-    (forward-compatible); field names accept their JSON aliases."""
+    """One request/response the app reported.
+
+    Extra keys from the SDK are ignored (forward-compatible); field names accept their JSON aliases.
+    """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -44,9 +46,12 @@ class NetworkExchange(BaseModel):
 
 @runtime_checkable
 class Collector(Protocol):
-    """The exchange source the run loop and evidence writer drive, independent of how it observed
-    the traffic. The iOS `NetworkCollector` receives POSTs over HTTP; the web `WebNetworkCollector`
-    hooks Playwright events — both satisfy this, so the pipeline stays backend-agnostic."""
+    """The exchange source the run loop and evidence writer drive.
+
+    Independent of how it observed the traffic: the iOS `NetworkCollector` receives POSTs over HTTP;
+    the web `WebNetworkCollector` hooks Playwright events — both satisfy this, so the pipeline stays
+    backend-agnostic.
+    """
 
     def snapshot(self) -> list[NetworkExchange]: ...  # observed exchanges, in arrival order
     def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]: ...  # each + receive time

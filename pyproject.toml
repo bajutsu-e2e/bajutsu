@@ -129,6 +129,12 @@ ignore = [
 "bajutsu/backends.py" = ["S607"]
 "bajutsu/runner/launch_server.py" = ["S310"]
 
+# Docstring rules (D) are NOT in the global `select` above; they are enforced only on the migrated
+# public surface, by `make lint-docstrings` (BE-0065 phase 5). Setting the convention here keeps the
+# rule choice in one place — it has no effect on `make lint` (which never selects D).
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
 [tool.pytest.ini_options]
 addopts = "-n auto"
 # Collect only the project's own suite; ignore local git worktrees under worktree/.

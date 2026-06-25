@@ -1,4 +1,4 @@
-.PHONY: setup hooks deps deps-check serve test lint format format-check typecheck \
+.PHONY: setup hooks deps deps-check serve test lint lint-docstrings format format-check typecheck \
         lock-check lint-sh lint-actions check roadmap-index roadmap-promote roadmap-id-repair \
         docs docs-serve
 
@@ -44,6 +44,11 @@ serve:
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
 SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
+# Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
+# enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
+# allowlist (not an ignore list) so an unmigrated module never accidentally falls under the gate.
+DOCSTRING_PATHS := bajutsu/drivers/base.py bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp
+
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
 test:
@@ -51,6 +56,14 @@ test:
 
 lint:
 	uv run ruff check .
+
+# BE-0065 phase 5: enforce the Google-style docstring standard on the migrated public surface
+# ($(DOCSTRING_PATHS)). Scoped (not repo-wide) because the migration is phased — unmigrated modules
+# keep their prose docstrings until their turn. D102/D105/D107 are excluded by design: D102 would
+# force docstrings onto the compact `Driver`/`Collector` Protocol `: ...` stubs, and D105/D107
+# (magic methods / __init__) are noise. The google convention is set in pyproject's pydocstyle.
+lint-docstrings:
+	uv run ruff check --select D --ignore D102,D105,D107 $(DOCSTRING_PATHS)
 
 # Apply the formatter; `format-check` (in the gate) only verifies, never rewrites.
 format:
@@ -102,7 +115,7 @@ roadmap-id-repair:
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is
 # the lone exception (see lint-actions above).
-check: hooks format-check lint lint-sh lint-actions lock-check typecheck test
+check: hooks format-check lint lint-docstrings lint-sh lint-actions lock-check typecheck test
 
 # Generated API reference (BE-0065). Deliberately NOT in `check`: like on-device E2E, the
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the
