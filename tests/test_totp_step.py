@@ -53,3 +53,19 @@ def test_totp_without_bindings_is_a_noop() -> None:
     # No var scope (e.g. a bare condition eval): nothing to write, and it must not crash.
     step = Step.model_validate({"totp": {"secret": _SECRET, "into": {"var": "code"}}})
     _do_totp(None, step, None, None, None)
+
+
+def test_totp_step_invalid_secret_fails_the_step_cleanly() -> None:
+    # An invalid base32 secret must fail the step (a SelectorError the run loop catches), not
+    # bubble a decode error that aborts the whole run — and the message must not echo the secret.
+    import pytest
+
+    from bajutsu.drivers import base
+
+    secret = "not!valid!base32"
+    step = Step.model_validate({"totp": {"secret": secret, "into": {"var": "code"}}})
+    bindings: dict[str, str] = {}
+    with pytest.raises(base.SelectorError) as exc:
+        _do_totp(None, step, None, None, bindings)
+    assert secret not in str(exc.value)
+    assert "base32" in str(exc.value)

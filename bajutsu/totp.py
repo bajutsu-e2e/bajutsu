@@ -8,16 +8,20 @@ hatch. No network, no device — the only input beyond the secret is the clock.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
+import re
 import struct
+
+_WHITESPACE = re.compile(r"\s+")
 
 
 def totp(secret: str, *, now: float, digits: int = 6, period: int = 30) -> str:
     """The RFC 6238 TOTP for `secret` at Unix time `now`.
 
     Args:
-        secret: The shared key as base32 (case-insensitive; spaces are ignored, as authenticator
+        secret: The shared key as base32 (case-insensitive; whitespace is ignored, as authenticator
             apps group and lower-case it).
         now: Unix time in seconds; the code is constant within each `period`-second window.
         digits: Length of the returned code, zero-padded.
@@ -39,7 +43,15 @@ def totp(secret: str, *, now: float, digits: int = 6, period: int = 30) -> str:
 
 
 def _decode_base32(secret: str) -> bytes:
-    """Decode a user-entered base32 secret, tolerating spaces, lower case, and missing padding."""
-    cleaned = secret.replace(" ", "").upper()
+    """Decode a user-entered base32 secret, tolerating whitespace, lower case, and missing padding.
+
+    Raises a `ValueError` with a stable, secret-free message on an invalid secret — CPython's
+    `b32decode` raises `binascii.Error` (a `ValueError` subtype), so callers can rely on the
+    documented `ValueError` and a message that never echoes the seed.
+    """
+    cleaned = _WHITESPACE.sub("", secret).upper()
     cleaned += "=" * (-len(cleaned) % 8)  # b32decode requires the padding authenticators omit
-    return base64.b32decode(cleaned, casefold=True)
+    try:
+        return base64.b32decode(cleaned, casefold=True)
+    except binascii.Error as e:
+        raise ValueError(f"secret is not valid base32: {e}") from e

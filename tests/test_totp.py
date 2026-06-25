@@ -42,3 +42,10 @@ def test_secret_is_case_and_space_insensitive() -> None:
 def test_invalid_base32_secret_raises_value_error() -> None:
     with pytest.raises(ValueError, match="base32"):
         totp("not!base32", now=59)
+
+
+def test_secret_ignores_all_whitespace_not_just_spaces() -> None:
+    # Authenticator apps group with spaces, but a pasted secret may carry tabs/newlines too;
+    # all whitespace is stripped, so the code matches the unspaced secret.
+    spaced = "GEZD\tGNBV GY3T\nQOJQ GEZD GNBV GY3T QOJQ"
+    assert totp(spaced, now=59) == totp(_SECRET, now=59)
