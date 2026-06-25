@@ -37,8 +37,11 @@ def dump_scenarios(scenarios: list[Scenario]) -> str:
 
 
 def dump_scenario_file(scenarios: list[Scenario], description: str | None = None) -> str:
-    """Serialize a scenario file. With a file-level `description`, emits the `{description,
-    scenarios}` mapping form; otherwise the bare list (round-trips through load_scenario_file)."""
+    """Serialize a scenario file.
+
+    With a file-level `description`, emits the `{description, scenarios}` mapping form; otherwise the
+    bare list (round-trips through `load_scenario_file`).
+    """
     body = [scenario_dict(s) for s in scenarios]
     if description:
         return _yaml.safe_dump({"description": description, "scenarios": body})
@@ -46,8 +49,10 @@ def dump_scenario_file(scenarios: list[Scenario], description: str | None = None
 
 
 def dump_mocks(mocks: list[Mock]) -> str:
-    """Serialize a scenario's mocks to the compact JSON BajutsuKit reads from
-    BAJUTSU_MOCKS (alias keys, omitting unset fields)."""
+    """Serialize a scenario's mocks to the compact JSON BajutsuKit reads from `BAJUTSU_MOCKS`.
+
+    Alias keys, omitting unset fields.
+    """
     import json
 
     return json.dumps([m.model_dump(by_alias=True, exclude_none=True) for m in mocks])

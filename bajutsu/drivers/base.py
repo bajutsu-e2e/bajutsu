@@ -122,8 +122,8 @@ class SelectorError(Exception):
 class UnsupportedAction(Exception):
     """The actuator backend cannot perform this action.
 
-    For example a multi-touch gesture on idb, which is single-touch. Surfaced as a step failure with
-    a clear reason rather than silently passing.
+    For example, a multi-touch gesture on idb, which is single-touch. The tool surfaces it as a step
+    failure with a clear reason rather than letting it pass silently.
     """
 
 

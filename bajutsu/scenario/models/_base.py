@@ -1,6 +1,9 @@
-"""Shared base for the scenario models: the strict pydantic base, small validators, and the
-token grammars (capture kinds, step actions, assertion kinds). Everything here is dependency-free
-so every model module can import it without cycles."""
+"""Shared base for the scenario models.
+
+The strict pydantic base, small validators, and the token grammars (capture kinds, step actions,
+assertion kinds). Everything here is dependency-free so every model module can import it without
+cycles.
+"""
 
 from __future__ import annotations
 
