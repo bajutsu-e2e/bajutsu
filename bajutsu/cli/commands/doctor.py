@@ -8,7 +8,9 @@ from bajutsu import env as _env
 from bajutsu import idb_version, preflight
 from bajutsu.backends import make_driver, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.config import Effective
 from bajutsu.doctor import render, score
+from bajutsu.drivers import base
 
 
 def doctor(
@@ -43,11 +45,30 @@ def doctor(
         if not preflight.passed(env_checks):
             raise typer.Exit(1)
         typer.echo("")
-    udid = _env.resolve_udid(udid)
-    driver = make_driver(actuator, udid)
-    result = score(driver.query(), eff.id_namespaces)
+    elements = _current_screen(actuator, udid, eff)
+    result = score(elements, eff.id_namespaces)
     typer.echo(render(result))
     raise typer.Exit(0 if result.grade != "Blocked" else 1)
+
+
+def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Element]:
+    """The elements of the screen to score. Web (Playwright) has no simctl udid: it navigates a
+    fresh browser to the target's baseUrl (the `launch` equivalent) and scores that page, tearing
+    the browser down after. iOS scores whatever is on the booted Simulator at the resolved udid."""
+    if actuator == "playwright":
+        if not eff.base_url:
+            typer.echo("web target needs baseUrl (set targets.<name>.baseUrl)")
+            raise typer.Exit(2)
+        # Lazy import keeps Playwright (a heavy optional dep) off the default path.
+        from bajutsu.drivers.playwright import PlaywrightDriver
+
+        driver = PlaywrightDriver(eff.base_url, headless=eff.headless)
+        try:
+            driver.navigate()
+            return driver.query()
+        finally:
+            driver.close()
+    return make_driver(actuator, _env.resolve_udid(udid)).query()
 
 
 def register(app: typer.Typer) -> None:

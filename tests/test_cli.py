@@ -145,6 +145,36 @@ def test_record_no_scenarios_dir(tmp_path: Path) -> None:
     assert "no scenarios dir" in r.output
 
 
+def test_doctor_web_target_requires_base_url() -> None:
+    # Forcing the web backend on a target with no baseUrl (e.g. an iOS target) exits cleanly (2)
+    # with a fixable message, rather than constructing a browser with nowhere to navigate.
+    import typer
+
+    from bajutsu.cli.commands.doctor import _current_screen
+    from bajutsu.config import Effective
+    from bajutsu.scenario import Redact
+
+    eff = Effective(
+        target="web",
+        bundle_id="com.example.demo",  # iOS-shaped target: no baseUrl
+        deeplink_scheme=None,
+        backend=["playwright"],
+        device="",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+    with pytest.raises(typer.Exit) as exc:
+        _current_screen("playwright", "booted", eff)
+    assert exc.value.exit_code == 2
+
+
 def test_serve_refuses_non_loopback_without_token() -> None:
     # Binding a non-loopback host with no token would expose an unauthenticated server (BE-0051).
     r = runner.invoke(app, ["serve", "--host", "0.0.0.0"])

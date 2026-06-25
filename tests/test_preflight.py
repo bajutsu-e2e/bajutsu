@@ -39,6 +39,35 @@ def test_fake_backend_needs_nothing() -> None:
     assert preflight.runnability("fake") == []
 
 
+def test_web_all_present_passes() -> None:
+    checks = preflight.runnability("playwright", web_pkg=lambda: True, web_browser=lambda: True)
+    assert [c.name for c in checks] == ["playwright", "chromium browser"]
+    assert preflight.passed(checks)
+
+
+def test_web_does_not_require_xcode_or_simulator() -> None:
+    # The web backend needs no Xcode and no Simulator — only the iOS path checks those.
+    names = [
+        c.name
+        for c in preflight.runnability("playwright", web_pkg=lambda: True, web_browser=lambda: True)
+    ]
+    assert "xcrun" not in names and "Simulator booted" not in names
+
+
+def test_web_missing_package_fails_with_hint() -> None:
+    checks = preflight.runnability("playwright", web_pkg=lambda: False, web_browser=lambda: False)
+    assert not preflight.passed(checks)
+    pkg = next(c for c in checks if c.name == "playwright")
+    assert not pkg.ok and "--extra web" in pkg.detail
+
+
+def test_web_missing_browser_fails_with_hint() -> None:
+    checks = preflight.runnability("playwright", web_pkg=lambda: True, web_browser=lambda: False)
+    assert not preflight.passed(checks)
+    browser = next(c for c in checks if c.name == "chromium browser")
+    assert not browser.ok and "playwright install" in browser.detail
+
+
 def test_idb_version_check_skipped_when_no_pin() -> None:
     # No declared range → no line in doctor (the pin is optional).
     assert preflight.idb_version_check(None, IdbVersions(companion="1.1.8", client="1.1.8")) is None
