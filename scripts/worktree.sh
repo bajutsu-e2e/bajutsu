@@ -22,6 +22,20 @@ if [ -z "$topic" ]; then
   exit 1
 fi
 
+# TOPIC and PREFIX are interpolated into a filesystem path (../bajutsu-<topic>) and a git ref
+# (<prefix>/<topic>), so restrict both to a conservative slug — letters, digits, '.', '_', '-'.
+# This refuses spaces, '/', '..' (path traversal / nested worktrees) and a leading '-' (parsed as
+# a flag) before they reach `git worktree` as a confusing error or a surprising location.
+for pair in "TOPIC:$topic" "PREFIX:$prefix"; do
+  name="${pair%%:*}"
+  value="${pair#*:}"
+  case "$value" in
+    -*) echo "worktree: $name must not start with '-': '$value'" >&2; exit 1 ;;
+    *..*) echo "worktree: $name must not contain '..': '$value'" >&2; exit 1 ;;
+    *[!A-Za-z0-9._-]*) echo "worktree: $name may only contain letters, digits, '.', '_', '-': '$value'" >&2; exit 1 ;;
+  esac
+done
+
 branch="$prefix/$topic"
 path="../bajutsu-$topic"
 
