@@ -1,4 +1,4 @@
-.PHONY: setup hooks deps deps-check serve test lint lint-docstrings format format-check typecheck \
+.PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings format format-check typecheck \
         lock-check lint-sh lint-actions lint-roadmap check new-roadmap-item roadmap-index roadmap-promote roadmap-id-repair \
         docs docs-serve
 
@@ -41,8 +41,22 @@ deps-check:
 serve:
 	@./scripts/serve.sh $(ARGS)
 
+# Create an isolated worktree + branch for a focused session, off the latest origin/main, and
+# bootstrap it (the docs/ai-development.md "worktree" recipe as one command, BE-0069 C). The
+# `git fetch origin` is baked in so the "branched off a stale origin/main" foot-gun can't happen.
+# Branch prefix defaults to `claude`; override for a human, e.g. PREFIX=<user>. Usage:
+#   make worktree TOPIC=<topic> [PREFIX=<user>]
+worktree:
+	@./scripts/worktree.sh "$(TOPIC)"
+
+# Run-it-early pre-push routine: fetch + rebase onto origin/main + run the gate, then print the
+# "definition of done" reminder (BE-0069 C). Advisory and human-initiated — the pre-push hook
+# already GATES `make check`; this is the do-it-early version, not a second hard gate or a hook.
+preflight:
+	@./scripts/preflight.sh
+
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the

@@ -81,13 +81,16 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   [`.gitattributes`](.gitattributes)) instead of line-merging resolver output, and `rerere` so a
   once-resolved conflict replays automatically. No manual `git config` needed.
 - **Rebase, don't drift.** Before pushing, `git fetch origin && git rebase origin/main` so you
-  integrate others' merged work early and surface conflicts while they're small.
+  integrate others' merged work early and surface conflicts while they're small. `make preflight`
+  (BE-0069) does this and runs the gate, then prints the "definition of done" reminder — the
+  advisory, run-it-early version of the pre-push gate.
 - **Stay in your lane.** Touch only the files your task needs. If a change must cut across many
   modules (e.g. a driver-API change), say so up front so others can avoid that surface.
 - **Isolate concurrent sessions with worktrees.** Run each session in its own
-  `git worktree` + branch so two agents never edit the same checkout. Always `git fetch origin`
-  first so the worktree branches off the latest `origin/main`, never a stale ref. See the guide
-  for the one-liner. Generated/scratch output (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way.
+  `git worktree` + branch so two agents never edit the same checkout. `make worktree TOPIC=<topic>`
+  (BE-0069) does it — fetches `origin/main` first (so the worktree never branches off a stale ref),
+  creates `../bajutsu-<topic>` on `claude/<topic>` (override with `PREFIX=<user>`), and runs
+  `make setup` in it. Generated/scratch output (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way.
 - **Don't create PRs unless asked.** Push to your branch; let the human open the PR.
 
 ## Conventions
