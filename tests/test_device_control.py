@@ -248,6 +248,50 @@ def test_clipboard_assertion_without_control_fails_cleanly() -> None:
     assert "clipboard" in (result.failure or "")
 
 
+def test_clipboard_assertion_read_failure_fails_cleanly() -> None:
+    # A pbpaste failure (simctl errored) must fail the assertion cleanly, not abort the run.
+    import subprocess
+
+    class _FailingClipboard(_RecordingControl):
+        def get_clipboard(self) -> str:
+            raise subprocess.CalledProcessError(72, ["xcrun", "simctl", "pbpaste"])
+
+    scn = Scenario.model_validate(
+        {"name": "s", "steps": [{"assert": [{"clipboard": {"equals": "x"}}]}]}
+    )
+    result = run_scenario(FakeDriver(), scn, control=_FailingClipboard())
+    assert not result.ok
+    assert "clipboard" in (result.failure or "")
+
+
+def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
+    # When on_blocked clears a block and the app then updates the pasteboard, the expect retry must
+    # compare against the fresh clipboard, not the stale pre-block value.
+    from conftest import el
+
+    from bajutsu.drivers import base
+    from bajutsu.orchestrator.types import AlertEvent
+
+    ctrl = _RecordingControl()
+    ctrl.clipboard_value = "STALE"
+
+    def on_blocked(_driver: base.Driver) -> AlertEvent:
+        ctrl.clipboard_value = "COUPON123"  # the cleared block let the app write the pasteboard
+        return AlertEvent(label="Not Now")
+
+    scn = Scenario.model_validate(
+        {
+            "name": "s",
+            "steps": [{"tap": {"id": "a"}}],
+            "expect": [{"clipboard": {"equals": "COUPON123"}}],
+        }
+    )
+    result = run_scenario(
+        FakeDriver([el("a", "A", ["button"])]), scn, control=ctrl, on_blocked=on_blocked
+    )
+    assert result.ok  # first read STALE failed, on_blocked fired, re-read COUPON123 passed
+
+
 def test_set_clipboard_without_control_fails_cleanly() -> None:
     scn = Scenario(name="s", steps=[Step(set_clipboard=SetClipboard(text="x"))])
     result = run_scenario(FakeDriver(), scn)
