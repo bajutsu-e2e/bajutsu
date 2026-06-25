@@ -14,7 +14,7 @@ from bajutsu.report.html import (
     write_report,
 )
 from bajutsu.report.load import load_run, rebake, rerender_html, results_from_manifest
-from bajutsu.report.manifest import junit_xml, manifest_dict
+from bajutsu.report.manifest import junit_xml, manifest_dict, run_provenance
 
 __all__ = [
     "html_report",
@@ -24,6 +24,7 @@ __all__ = [
     "rebake",
     "rerender_html",
     "results_from_manifest",
+    "run_provenance",
     "scenario_render_inputs",
     "write_html_and_junit",
     "write_report",

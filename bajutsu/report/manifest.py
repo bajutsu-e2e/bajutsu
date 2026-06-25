@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict
 from xml.etree import ElementTree as ET
 
+from bajutsu import __version__
 from bajutsu.idb_version import IdbVersions
 from bajutsu.orchestrator import RunResult
 
@@ -19,7 +21,32 @@ def _run_backend(results: list[RunResult]) -> str:
 # The render model's version. Bump when a field the report needs is added, so an older run can be
 # detected and its newer-only sections shown as "not captured" rather than failing (BE-0068).
 # v2 (BE-0005): optional top-level "idb" version provenance.
-SCHEMA_VERSION = 2
+# v3 (BE-0049): optional top-level "provenance" block (scenario hash + tool/git version).
+SCHEMA_VERSION = 3
+
+
+def run_provenance(scenario_yaml: str, *, git_revision: str | None) -> dict[str, str]:
+    """Stamp identifying the executed scenario and the tooling, for the longitudinal flakiness view.
+
+    A stable fingerprint of the executed scenario plus the tool (and git) version lets accumulated
+    runs be grouped by identity, so a verdict that flips while the fingerprint is unchanged is true
+    flakiness — not an edited scenario (BE-0049). Pure metadata: it never enters a verdict.
+
+    Args:
+        scenario_yaml: The executed scenario's serialized form. Its content is what the hash
+            fingerprints — the logical scenario, so two runs of the same scenario share a hash and
+            group together (the fingerprint is taken before any evidence redaction, which keeps the
+            identity stable regardless of which secrets a run resolved).
+        git_revision: The current git revision (the working tree's HEAD), or None when the run isn't
+            under git (the key is then omitted rather than recorded as null).
+    """
+    prov = {
+        "scenarioHash": "sha256:" + hashlib.sha256(scenario_yaml.encode("utf-8")).hexdigest(),
+        "toolVersion": __version__,
+    }
+    if git_revision is not None:
+        prov["gitRevision"] = git_revision
+    return prov
 
 
 def manifest_dict(
@@ -28,6 +55,7 @@ def manifest_dict(
     *,
     source_name: str | None = None,
     idb_versions: IdbVersions | None = None,
+    provenance: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068). RunResult and
     its parts are dataclasses, so asdict() captures step/expect outcomes verbatim. `backend` is the
@@ -35,7 +63,8 @@ def manifest_dict(
     label the report's YAML toggle shows, persisted here so a re-render can recover it.
 
     `idb_versions`, when the run used the idb backend, records the `idb_companion` / client versions
-    it was driven against — provenance only, so it never enters `ok` (BE-0005)."""
+    it was driven against — provenance only, so it never enters `ok` (BE-0005). `provenance` is the
+    run-identity stamp from `run_provenance` (BE-0049), likewise never part of the verdict."""
     manifest: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
         "runId": run_id,
@@ -50,6 +79,8 @@ def manifest_dict(
         idb_versions.companion is not None or idb_versions.client is not None
     ):
         manifest["idb"] = {"companion": idb_versions.companion, "client": idb_versions.client}
+    if provenance:
+        manifest["provenance"] = provenance
     return manifest
 
 

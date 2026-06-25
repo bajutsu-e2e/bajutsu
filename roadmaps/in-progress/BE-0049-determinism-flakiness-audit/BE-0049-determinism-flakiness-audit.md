@@ -89,6 +89,20 @@ Whether this lands as a new `audit` command or as flags on `doctor` / `run` is a
 implementation choice deferred to adoption; the static half is a close cousin of `doctor` and
 may simply extend it.
 
+### Implementation status
+
+- **Stability score (static)** and **repeat-and-diff (dynamic)** both shipped as the `bajutsu audit`
+  command: `bajutsu audit <scenario>` grades selector/wait stability without a device, and
+  `bajutsu audit <scenario> --repeat K --target <app>` runs it K times and reports any step or
+  assertion whose outcome varied. Advisory and read-only — it never gates CI.
+- **Run provenance & version stamping** shipped: each `manifest.json` now carries an optional
+  `provenance` block — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`),
+  `toolVersion`, and `gitRevision` (when the run is under git). This is the cheap prerequisite that
+  lets accumulated runs be grouped by identity. Pure metadata; never part of a verdict.
+- **Still to come:** the **longitudinal view** that mines the accumulated, now-stamped run records
+  (grouping by content hash to report pass-rate over time), and stamping the same provenance onto
+  the serve DB run record ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) 7c-4).
+
 ## Alternatives considered
 
 * **Adopt flaky-test quarantine + automatic retry (the common industry answer / Maestro `retry`).**
