@@ -295,6 +295,27 @@ def test_cli_skips_scalar_network_json(tmp_path) -> None:  # type: ignore[no-unt
     assert result.exit_code == 0  # a scalar file is skipped, not iterated/crashed
 
 
+def test_cli_skips_invalid_json_elements(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    step = tmp_path / "runs" / "20260101-000000" / "00-x"
+    step.mkdir(parents=True)
+    # invalid JSON (json.JSONDecodeError is a ValueError) must be skipped, not crash the command
+    (step / "elements.json").write_text("{not json", encoding="utf-8")
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
+    )
+    assert result.exit_code == 0  # skipped the bad file, did not crash
+
+
 def test_cli_runs_path_missing_warns_and_proceeds(tmp_path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()

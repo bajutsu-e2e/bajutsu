@@ -55,7 +55,7 @@ def _observed_ids(runs_dir: Path) -> list[str]:
             data = json.loads(els.read_text(encoding="utf-8"))
             if not isinstance(data, list):  # a scalar/object file isn't an element list — skip it
                 continue
-        except OSError:
+        except (OSError, ValueError):  # unreadable or invalid JSON — skip, like _observed_exchanges
             continue
         ids.extend(
             e["identifier"]
