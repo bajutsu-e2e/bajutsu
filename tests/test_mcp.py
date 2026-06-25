@@ -150,6 +150,38 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert "step 0 failed" in text
 
 
+def test_run_tool_no_manifest_keeps_stderr_off_the_verdict_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # When `run` crashes before emitting a verdict line, there is no manifest path. stderr must not
+    # land in the manifest slot ("FAIL  <stderr>") — the first line stays the verdict, stderr goes
+    # on its own line, so the `PASS|FAIL  <manifest>` first-line shape is never faked.
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    (tmp_path / "runs").mkdir()
+
+    import subprocess as sp
+
+    def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="Traceback (most recent call last): boom\n"
+        )
+
+    monkeypatch.setattr("bajutsu.mcp.tools.subprocess.run", fake_run)
+
+    from fastmcp import FastMCP
+
+    from bajutsu.mcp.tools import register_tools
+
+    mcp = FastMCP("test")
+    register_tools(mcp, config)
+
+    text = _run(mcp.call_tool("bajutsu_run", {"target": "demo"})).content[0].text
+    lines = text.splitlines()
+    assert lines[0] == "FAIL"  # verdict only — stderr is not in the manifest slot
+    assert any("boom" in line for line in lines[1:])  # stderr on its own line
+
+
 # --- resources ---
 
 

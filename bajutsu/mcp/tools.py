@@ -118,11 +118,11 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
         # rather than substring-matching its prose, so the MCP layer isn't coupled to the wording.
         manifest_path = _parse_verdict(result.stdout)
 
-        ok = result.returncode == 0
-        parts = ["PASS" if ok else "FAIL"]
-        if manifest_path:
-            parts.append(manifest_path)
-        if not ok and result.stderr:
-            parts.append(result.stderr.strip())
-
-        return "  ".join(parts[:2]) + ("\n" + parts[2] if len(parts) > 2 else "")
+        # First line is the verdict, with the manifest path when one was parsed — never stderr, so
+        # the `PASS|FAIL  <manifest>` shape can't be faked when the manifest is unavailable (e.g.
+        # `run` crashed before its verdict line). stderr, if any, follows on its own line.
+        verdict = "PASS" if result.returncode == 0 else "FAIL"
+        out = f"{verdict}  {manifest_path}" if manifest_path else verdict
+        if result.returncode != 0 and result.stderr.strip():
+            out += "\n" + result.stderr.strip()
+        return out
