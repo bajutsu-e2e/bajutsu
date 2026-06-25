@@ -62,6 +62,13 @@ def test_bad_commit_subjects_flags_missing_colon_and_description() -> None:
     assert bad_commit_subjects(["feat(run): "]) == ["feat(run): "]
 
 
+def test_bad_commit_subjects_flags_whitespace_only_description() -> None:
+    # A description of only spaces (more than one, so the colon-space isn't the whole tail) must
+    # still be rejected — the subject needs a real, non-blank description.
+    assert bad_commit_subjects(["feat(run):   "]) == ["feat(run):   "]
+    assert bad_commit_subjects(["docs:  "]) == ["docs:  "]
+
+
 def test_bad_commit_subjects_returns_only_the_bad_ones_in_order() -> None:
     subjects = ["feat(run): ok", "broken subject", "docs: ok", "WIP"]
     assert bad_commit_subjects(subjects) == ["broken subject", "WIP"]

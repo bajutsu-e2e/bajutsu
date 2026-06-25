@@ -40,7 +40,7 @@ import sys
 # ``,_-``) covers a multi-area scope like ``feat(run,record): …``. ``docs`` may omit the scope
 # (``docs: …``), matching CLAUDE.md's stated convention; every other type requires one.
 _SUBJECT_RE = re.compile(
-    r"^(?:feat|fix|chore|ci|refactor|test|perf)\([a-z0-9,_-]+\): .+$|^docs(?:\([a-z0-9,_-]+\))?: .+$"
+    r"^(?:feat|fix|chore|ci|refactor|test|perf)\([a-z0-9,_-]+\): \S.*$|^docs(?:\([a-z0-9,_-]+\))?: \S.*$"
 )
 
 # A PR title carrying the roadmap prefix: ``[BE-NNNN]`` (a real id) or the ``[BE-XXXX]`` placeholder
@@ -100,8 +100,14 @@ def title_prefix_problem(title: str | None, *, touches_roadmap_: bool) -> str | 
 
 
 def _git_lines(args: list[str]) -> list[str]:
-    """Run a git command and return its nonempty stdout lines (empty on failure)."""
+    """Run a git command and return its nonempty stdout lines.
+
+    Exits with a clear message if git fails (e.g. no `origin/main`): a silent empty list would
+    print a false "no advisories" without having checked anything.
+    """
     result = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise SystemExit(f"lint-pr: `git {' '.join(args)}` failed: {result.stderr.strip()}")
     return [line for line in result.stdout.splitlines() if line]
 
 
