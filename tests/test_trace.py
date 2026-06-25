@@ -107,3 +107,96 @@ def test_scenario_filter(tmp_path: Path) -> None:
     run = _write_run(tmp_path / "runs", "20260101-000000")
     assert "▸ s" in trace.trace_run(run, "s")
     assert "▸ s" not in trace.trace_run(run, "other")
+
+
+def _add_scenario_yaml(run: Path, *, step0_from: str, step1_from: str) -> None:
+    # scenario "s" with two steps (matching the manifest's tap/wait), carrying `from:` provenance.
+    run.joinpath("scenario.yaml").write_text(
+        "- name: s\n"
+        f"  steps:\n"
+        f"    - tap: {{ id: a }}\n      from: {step0_from!r}\n"
+        f"    - wait: {{ until: screenChanged, timeout: 5 }}\n      from: {step1_from!r}\n",
+        encoding="utf-8",
+    )
+
+
+def test_trace_shows_from_provenance(tmp_path: Path) -> None:
+    run = _write_run(tmp_path / "runs", "20260101-000000")
+    _add_scenario_yaml(run, step0_from="Open settings", step1_from="Wait for the screen")
+    out = trace.trace_run(run)
+    # each step carries its originating phrase inline on the timeline
+    assert "Open settings" in out and "Wait for the screen" in out
+    # the phrase sits on its step's line, after the action
+    tap_line = next(line for line in out.splitlines() if "✓ tap" in line)
+    assert "Open settings" in tap_line
+
+
+def test_trace_groups_consecutive_equal_from(tmp_path: Path) -> None:
+    run = _write_run(tmp_path / "runs", "20260101-000000")
+    _add_scenario_yaml(run, step0_from="Open settings", step1_from="Open settings")
+    out = trace.trace_run(run)
+    # one utterance produced both steps — the shared phrase is labeled once, not repeated
+    assert out.count("Open settings") == 1
+
+
+def test_trace_groups_from_over_the_full_plan_not_only_executed_steps(tmp_path: Path) -> None:
+    # Plan is [A, B, A]; only steps 0 and 2 ran. Grouping is over the *whole plan*, so step 1 (B)
+    # breaks the run and both A steps keep their label — matching how the report groups. (Grouping
+    # over executed steps alone would wrongly collapse the two A's into one.)
+    run = tmp_path / "runs" / "20260101-000000"
+    (run / "00-s").mkdir(parents=True)
+    run.joinpath("manifest.json").write_text(
+        json.dumps(
+            {
+                "runId": "20260101-000000",
+                "ok": True,
+                "backend": "idb",
+                "scenarios": [
+                    {
+                        "scenario": "s",
+                        "ok": True,
+                        "backend": "idb",
+                        "steps": [
+                            {"index": 0, "action": "tap", "ok": True, "started_at": 0.0},
+                            {"index": 2, "action": "tap", "ok": True, "started_at": 0.5},
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run.joinpath("scenario.yaml").write_text(
+        "- name: s\n"
+        "  steps:\n"
+        "    - tap: { id: a }\n      from: 'Sign in'\n"
+        "    - tap: { id: b }\n      from: 'Dismiss the banner'\n"
+        "    - tap: { id: c }\n      from: 'Sign in'\n",
+        encoding="utf-8",
+    )
+    out = trace.trace_run(run)
+    assert out.count("Sign in") == 2  # the two non-consecutive (plan-wise) A steps each keep it
+
+
+def test_trace_omits_provenance_for_control_flow_scenarios(tmp_path: Path) -> None:
+    # The manifest indexes steps over a flat counter that also counts steps nested in if/forEach,
+    # while our `from:` list is top-level only — so the index spaces diverge. Rather than pair a
+    # step's action with another step's phrase, a scenario using control flow shows no provenance.
+    run = _write_run(tmp_path / "runs", "20260101-000000")
+    run.joinpath("scenario.yaml").write_text(
+        "- name: s\n"
+        "  steps:\n"
+        "    - tap: { id: a }\n      from: 'Open it'\n"
+        "    - forEach: { sel: { idMatches: 'row-*' }, as: r, steps: [ { tap: { id: x } } ] }\n"
+        "      from: 'For each row'\n",
+        encoding="utf-8",
+    )
+    out = trace.trace_run(run)
+    assert "Open it" not in out and "For each row" not in out  # omitted, not mislabeled
+    assert "✓ tap" in out  # the timeline itself still renders
+
+
+def test_trace_without_scenario_yaml_still_renders(tmp_path: Path) -> None:
+    # an older run (no scenario.yaml) has no provenance to show, but the timeline still renders
+    out = trace.trace_run(_write_run(tmp_path / "runs", "20260101-000000"))
+    assert "✓ tap" in out and "✓ wait" in out

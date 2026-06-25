@@ -49,6 +49,6 @@ Bajutsu が競合に対して掲げる中心的な主張は、ゲートが吸収
 `bajutsu/doctor.py`、[selectors.md](../../../docs/ja/selectors.md)、
 [BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)、
 [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — 経時ビューが掘る DB 記録の run（run の provenance はそこにスタンプする）、
-[BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md) — *別軸*の provenance（ステップ↔自然言語の出自）で、run のバージョン付けではない、
+[BE-0044](../../implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md) — *別軸*の provenance（ステップ↔自然言語の出自）で、run のバージョン付けではない、
 [ロードマップ → 取り込まない](../../README-ja.md#取り込まない既に充足--スコープ外)、
 [DESIGN §2 / §10](../../../DESIGN.md)

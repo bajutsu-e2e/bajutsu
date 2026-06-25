@@ -124,6 +124,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | ID | Item | Status |
 |---|---|---|
 | [BE-0011](implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) | Local web UI (`bajutsu serve`) | Implemented |
+| [BE-0044](implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Implemented |
 | [BE-0060](implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Implemented |
 <!-- /GENERATED:implemented-authoring -->
 
@@ -290,7 +291,6 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 <!-- GENERATED:in-progress-authoring -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0044](in-progress/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | In progress |
 | [BE-0068](in-progress/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | In progress |
 <!-- /GENERATED:in-progress-authoring -->
 

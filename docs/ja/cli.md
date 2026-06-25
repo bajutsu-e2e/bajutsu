@@ -119,7 +119,11 @@ bajutsu export <run-id | run-dir> [-o out.zip] [--force]
 
 完了した run を**テキストタイムライン**で検査します。シナリオごとに、ステップと観測した通信を
 時系列で交互に並べ、続けて expectations、app-trace 区間、証跡サマリを出力します。読み取り専用
-（保存済みの `manifest.json` / `network.json` / `appTrace.json` を読む）。
+（保存済みの `manifest.json` / `network.json` / `appTrace.json`、来歴のための `scenario.yaml` を読む）。
+
+- 各ステップには、それを記録した元の自然言語フレーズ — [`from:`](scenarios.md#from来歴) 来歴（BE-0044）
+  — を `← "<フレーズ>"` の形でインライン表示します。1 つのフレーズを共有する連続ステップはまとめて 1 回だけ
+  ラベル表示します。手書きのシナリオや来歴のない古い run では、単に何も表示されません。
 
 ```bash
 bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]

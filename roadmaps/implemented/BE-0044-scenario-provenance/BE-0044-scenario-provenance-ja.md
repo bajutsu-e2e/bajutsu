@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0044](BE-0044-scenario-provenance-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | 実装 PR | [#235](https://github.com/bajutsu-e2e/bajutsu/pull/235) |
 | トピック | オーサリング体験（record / GUI エディタ） |
 | 由来 | BE-0002 の follow-up（来歴はそこで「軽いままの後続作業」として先送りされた） |

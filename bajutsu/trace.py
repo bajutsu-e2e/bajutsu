@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from bajutsu.intervals import INTERVAL_KINDS
+from bajutsu.provenance import grouped_provenance
+from bajutsu.scenario import load_scenario_file
 
 if TYPE_CHECKING:
     from bajutsu.scenario import CaptureRule, Scenario, Step
@@ -175,12 +177,14 @@ def _at(value: Any) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
-def _step_event(step: dict[str, Any]) -> tuple[float, str]:
+def _step_event(step: dict[str, Any], from_: str | None = None) -> tuple[float, str]:
     mark = "✓" if step.get("ok") else "✗"
     desc = f"{mark} {step.get('action', '')!s:<9}"
     dur = step.get("duration_s")
     if isinstance(dur, (int, float)) and not isinstance(dur, bool):
         desc += f"  ({dur:.2f}s)"
+    if from_:  # the natural-language phrase this step was recorded from (BE-0044), if shown here
+        desc += f'   ← "{from_}"'
     if not step.get("ok") and step.get("reason"):
         desc += f"   ✗ {step['reason']}"
     return _at(step.get("started_at")), desc
@@ -199,11 +203,46 @@ def _net_event(exchange: dict[str, Any]) -> tuple[float, str]:
     return _at(exchange.get("startedAt")), desc
 
 
-def _scenario_lines(run_dir: Path, scenario: dict[str, Any]) -> list[str]:
+def _provenance_by_scenario(run_dir: Path) -> dict[str, list[str | None]]:
+    """Each scenario's `from:` phrase per top-level step, in order (None where absent), from `scenario.yaml`.
+
+    The timeline keys provenance by each manifest step's `index`, which the run loop assigns over a
+    flat counter that also counts steps nested in `if`/`forEach`; our list is top-level only, so the
+    two index spaces diverge once a control-flow step runs. Rather than mislabel, a scenario that uses
+    control flow is omitted (it simply shows no phrases). Provenance is metadata the timeline only
+    displays; an older run with no `scenario.yaml` (or an unreadable one) yields none, so the timeline
+    still renders (BE-0068's spirit).
+    """
+    try:
+        text = (run_dir / "scenario.yaml").read_text(encoding="utf-8")
+        scenarios = load_scenario_file(text).scenarios
+    except (OSError, ValueError):
+        return {}
+    return {
+        s.name: [st.from_ for st in s.steps]
+        for s in scenarios
+        if not any(st.if_ is not None or st.for_each is not None for st in s.steps)
+    }
+
+
+def _step_index(step: dict[str, Any]) -> int:
+    idx = step.get("index")
+    return idx if isinstance(idx, int) and not isinstance(idx, bool) else 0
+
+
+def _scenario_lines(
+    run_dir: Path, scenario: dict[str, Any], plan_froms: list[str | None] | None = None
+) -> list[str]:
     grade = "PASS" if scenario.get("ok") else "FAIL"
     lines = [f"▸ {scenario.get('scenario', '')}   {grade}   [{scenario.get('backend', '')}]"]
 
-    events: list[tuple[float, str]] = [_step_event(s) for s in scenario.get("steps") or []]
+    steps = scenario.get("steps") or []
+    # Group over the full plan so the label collapses the same way the report does, then show each
+    # executed step the value at its plan index.
+    shown = grouped_provenance(plan_froms or [])
+    events: list[tuple[float, str]] = [
+        _step_event(s, shown[i] if 0 <= (i := _step_index(s)) < len(shown) else None) for s in steps
+    ]
     net_name = _artifact(scenario, "network")
     network = _read_json(run_dir / net_name) if net_name else None
     if isinstance(network, list):
@@ -253,9 +292,10 @@ def trace_run(run_dir: Path, scenario_filter: str | None = None) -> str:
         f"bajutsu trace · run {manifest.get('runId', '')} · {grade} · driver: {manifest.get('backend', '')}",
         "",
     ]
+    provenance = _provenance_by_scenario(run_dir)
     for scenario in manifest.get("scenarios") or []:
         name = str(scenario.get("scenario", ""))
         if scenario_filter and scenario_filter.lower() not in name.lower():
             continue
-        out += _scenario_lines(run_dir, scenario)
+        out += _scenario_lines(run_dir, scenario, provenance.get(name))
     return "\n".join(out).rstrip() + "\n"

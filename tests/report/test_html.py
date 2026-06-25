@@ -140,6 +140,25 @@ def test_merged_steps_show_rich_definition() -> None:
     assert "class='skip'" in out  # planned-but-not-run steps are marked
 
 
+def test_steps_show_from_provenance_grouped() -> None:
+    # Each planned step renders the natural-language phrase it was recorded from (BE-0044);
+    # a run of identical consecutive `from:` is labeled once (emergent grouping). Only
+    # `definitions` is passed (no `sources`), so the raw YAML isn't embedded and the count
+    # reflects the rendered labels alone.
+    definition = {
+        "name": "s1",
+        "steps": [
+            {"tap": {"id": "settings.open"}, "from": "Open settings"},
+            {"tap": {"id": "settings.reindex"}, "from": "Open settings"},
+            {"wait": {"until": "settled", "timeout": 3.0}, "from": "Wait for the reindex"},
+        ],
+    }
+    out = html_report("run9", [_passing()], definitions=[definition])
+    assert 'class="stepfrom"' in out  # provenance rendered in the step detail
+    assert "Wait for the reindex" in out
+    assert out.count("Open settings") == 1  # the shared phrase is labeled once, not per step
+
+
 def test_assert_step_splits_into_cells() -> None:
     # An assert step's multiple checks become a nested table, each split into
     # kind / target / comparison cells (instead of a joined "a; b; c" string).
