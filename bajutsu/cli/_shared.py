@@ -24,9 +24,15 @@ DEFAULT_CONFIG = "bajutsu.config.yaml"
 
 
 def load_expanded_scenarios(path: Path) -> list[Scenario]:
-    """Load a scenario file and expand its components + data rows (resolved relative to the file),
-    device-free. Raises OSError / ValueError on a bad file for the caller to surface — the shared
-    read-only loader behind `trace --explain` and `audit` (setup-prefixing `run` keeps its own)."""
+    """Load a scenario file and expand its components + data rows, resolving refs relative to the file.
+
+    The shared device-free loader behind `trace --explain` and `audit` (setup-prefixing
+    `run` keeps its own loader).
+
+    Raises:
+        OSError: The scenario file or a referenced component / CSV cannot be read.
+        ValueError: The file parses but its content is invalid.
+    """
     base = path.parent
     scenarios = load_scenario_file(path.read_text(encoding="utf-8")).scenarios
     expand_components(
@@ -36,14 +42,27 @@ def load_expanded_scenarios(path: Path) -> list[Scenario]:
 
 
 def resolve_run_dir(run: str, runs_root: str) -> Path:
-    """The run directory for *run*: a bare id (`r1`) resolves under *runs_root*, while an absolute
-    or multi-segment value (`/abs/run`, `runs/r1`) is taken as a path — so a mistyped path isn't
-    silently re-rooted under the runs dir. Shared by `export` and `report`."""
+    """Resolve a run id or path to its directory.
+
+    A bare id (``r1``) resolves under *runs_root*; an absolute or multi-segment value
+    (``/abs/run``, ``runs/r1``) is taken verbatim — so a mistyped path is never silently
+    re-rooted under the runs dir. Shared by ``export`` and ``report``.
+
+    Returns:
+        The resolved run directory path (not checked for existence).
+    """
     p = Path(run)
     return p if p.is_absolute() or len(p.parts) > 1 else Path(runs_root) / run
 
 
 def _load_effective(config: str, target_name: str) -> Effective:
+    """Load and resolve the effective config for *target_name*.
+
+    Exits 2 (via ``typer.Exit``) for two specific failures that produce a user-friendly
+    message: the config file not existing, and an unknown target name.  Other errors —
+    YAML parse failures and schema validation errors from ``load_config`` — are *not*
+    caught and propagate as exceptions to the caller.
+    """
     cfg_path = Path(config)
     if not cfg_path.exists():
         typer.echo(f"config not found: {config}")
@@ -57,4 +76,5 @@ def _load_effective(config: str, target_name: str) -> Effective:
 
 
 def _backends(backend: str, fallback: list[str]) -> list[str]:
+    """Parse a comma-separated backend string into a list, or return *fallback* when the string is empty."""
     return [b.strip() for b in backend.split(",") if b.strip()] if backend else fallback
