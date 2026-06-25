@@ -106,7 +106,7 @@ may simply extend it.
 [BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md),
 [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the
 DB-backed run records the longitudinal view mines (run provenance is stamped onto them);
-[BE-0044](../../proposals/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) — a *different*
+[BE-0044](../BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) — a *different*
 provenance axis (step ↔ natural-language origin), not run versioning;
 [roadmap → Not adopting](../../README.md#not-adopting-already-covered--out-of-scope),
 [DESIGN §2 / §10](../../../DESIGN.md)
