@@ -94,6 +94,14 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
 
 - Comments explain **why**, not what; match the surrounding density and tone (the codebase
   favors short, purposeful comments). Don't add narration.
+- **Docstrings (BE-0065).** The public API surface (`Driver` + shared types, CLI, MCP tools,
+  scenario schema, the public functions of runner / `assertions` / `network`) uses **Google-style**
+  docstrings — a one-line summary then `Args:` / `Returns:` / `Raises:` *only where they add
+  information*; internal `_helpers` keep one prose line of *why*, and `TypedDict` / constant classes
+  keep their per-field inline comments. **Never restate types** (they live in the annotations);
+  describe meaning. English, like all code. The generated reference is `make docs` (out of the gate).
+  Migrate to the structured form module by module in small PRs — don't rewrite a module's docstrings
+  as a side effect. Full rule: [`docs/ai-development.md`](docs/ai-development.md).
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
 - **Documentation style (both languages, every doc and every update).** Write natural prose —
