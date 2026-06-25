@@ -8,6 +8,7 @@
 | Proposal | [BE-0069](BE-0069-executable-contributor-guardrails.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
+| Implementing PR | [#243](https://github.com/bajutsu-e2e/bajutsu/pull/243) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
