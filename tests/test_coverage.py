@@ -217,6 +217,24 @@ def test_endpoint_coverage_no_observed_is_full() -> None:
     assert ec.observed == [] and ec.coverage == 1.0
 
 
+def test_endpoint_coverage_many_matchers_and_exchanges() -> None:
+    # Exercises the full matcher-vs-exchange relation in one shot: a matcher that matches (path /a),
+    # one that matches via regex (pathMatches /b), one that matches nothing (/never), an exchange
+    # asserted by a matcher, and an exchange (/c) no matcher covers.
+    [scn] = load_scenarios(
+        "- name: x\n  steps:\n    - assert:\n"
+        "        - { request: { path: /a } }\n"
+        "        - { request: { pathMatches: /b } }\n"
+        "        - { request: { path: /never } }\n"
+    )
+    ec = endpoint_coverage([scn], [_ex("GET", "/a"), _ex("POST", "/b"), _ex("GET", "/c")])
+    assert ec.observed == ["GET /a", "GET /c", "POST /b"]
+    assert ec.asserted == ["GET /a", "POST /b"]
+    assert ec.unasserted == ["GET /c"]  # observed but no matcher covers it
+    assert ec.declared_unobserved == ["/never"]  # matcher that hit no exchange
+    assert ec.coverage == 2 / 3
+
+
 def test_body_only_event_contributes_no_endpoint_matcher() -> None:
     # A body-only event pins no endpoint — it must not crash building a (field-less) RequestMatch.
     [scn] = load_scenarios(
