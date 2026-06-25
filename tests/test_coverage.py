@@ -488,11 +488,44 @@ def test_cli_observed_id_coverage_with_runs(tmp_path) -> None:  # type: ignore[n
         ],
     )
     assert result.exit_code == 0
-    obs = json.loads(result.stdout)["observedIds"]
+    obs = json.loads(result.stdout)["observed_ids"]
     assert obs["covered"] == 2 and obs["total"] == 3
     assert obs["unobserved"] == ["cart"]  # declared but rendered in no run
     assert obs["namespaces"][0]["namespace"] == "home"
     assert obs["namespaces"][0]["ids"] == ["home.start"]  # null identifiers ignored
+
+
+def test_cli_observed_id_coverage_ignores_empty_identifiers(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8"
+    )
+    # an element with an empty-string identifier carries no stable id — it must not contribute
+    _write_elements(tmp_path / "runs" / "20260101-000000" / "00-x", ["home.start", ""])
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    obs = json.loads(result.stdout)["observed_ids"]
+    assert obs["namespaces"][0]["ids"] == ["home.start"]  # the "" id is dropped, not bucketed
+    assert obs["off_namespace"] == []  # an empty id must not become an off-namespace ("") entry
 
 
 def test_cli_observed_id_coverage_text_output(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -550,7 +583,7 @@ def test_cli_skips_malformed_elements_json(tmp_path) -> None:  # type: ignore[no
                     "--json",
                 ],
             ).stdout
-        )["observedIds"]["covered"]
+        )["observed_ids"]["covered"]
         == 0
     )
 
@@ -569,4 +602,4 @@ def test_cli_without_runs_omits_observed_id_section(tmp_path) -> None:  # type: 
     )
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
     assert result.exit_code == 0
-    assert json.loads(result.stdout).get("observedIds") is None
+    assert json.loads(result.stdout).get("observed_ids") is None

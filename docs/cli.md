@@ -130,7 +130,8 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json]
     the **unasserted** observed endpoints (traffic the suite never asserts on), and matchers
     **declared but not observed** in any run.
   - **Observed-id coverage**: it reads every per-step `elements.json` under the runs dir and collects
-    the stable ids the runs actually **rendered** (each element's `identifier`; null ids are dropped),
+    the stable ids the runs actually **rendered** (each element's `identifier`; null and empty ids
+    are dropped),
     grouping them by the declared namespaces — the run-evidence counterpart to the static id map. It
     reports the per-namespace observed ids, the namespaces **observed in no run**, and observed ids
     whose namespace was never declared (**off-namespace**).

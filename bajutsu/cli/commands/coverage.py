@@ -46,8 +46,8 @@ def _observed_ids(runs_dir: Path) -> list[str]:
     """Every stable id rendered across the run set.
 
     The union of each element's `identifier` from every per-step `elements.json` under `runs_dir`
-    (read-only; a malformed/partial file is skipped, not fatal). Null identifiers are dropped —
-    only elements that carry a stable id contribute.
+    (read-only; a malformed/partial file is skipped, not fatal). Null and empty identifiers are
+    dropped — only elements that carry a stable id contribute.
     """
     ids: list[str] = []
     for els in sorted(runs_dir.glob("*/*/elements.json")):
@@ -60,7 +60,7 @@ def _observed_ids(runs_dir: Path) -> list[str]:
         ids.extend(
             e["identifier"]
             for e in data
-            if isinstance(e, dict) and isinstance(e.get("identifier"), str)
+            if isinstance(e, dict) and isinstance(e.get("identifier"), str) and e["identifier"]
         )
     return ids
 
@@ -69,7 +69,10 @@ def coverage(
     target_name: str = typer.Option(..., "--target"),
     config: str = typer.Option(DEFAULT_CONFIG),
     runs: str = typer.Option(
-        "", "--runs", help="a runs dir — adds endpoint coverage (observed network.json vs asserted)"
+        "",
+        "--runs",
+        help="a runs dir — adds endpoint coverage (network.json vs asserted) "
+        "and observed-id coverage (elements.json vs declared namespaces)",
     ),
     as_json: bool = typer.Option(False, "--json", help="emit the report as JSON instead of text"),
 ) -> None:
@@ -117,7 +120,7 @@ def coverage(
         if endpoints is not None:
             out["endpoints"] = dataclasses.asdict(endpoints)
         if observed_ids is not None:
-            out["observedIds"] = dataclasses.asdict(observed_ids)
+            out["observed_ids"] = dataclasses.asdict(observed_ids)
         typer.echo(json.dumps(out, indent=2))
     else:
         text = _coverage.render(report)
