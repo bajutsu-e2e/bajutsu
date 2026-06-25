@@ -25,6 +25,25 @@ def _load_effective(config_path: Path, target: str) -> Effective:
         raise ValueError(e.args[0] if e.args else str(e)) from None
 
 
+def _parse_verdict(stdout: str) -> str:
+    """Extract the manifest path from `run`'s final stdout line.
+
+    `run` ends its stdout with a single deterministic verdict line — `"PASS  <manifest>"` or
+    `"FAIL  <manifest>"`, the token and path separated by two spaces — while progress, usage, and
+    warnings go to stderr (any pre-run note also lands on stdout, so the verdict is the *last*
+    non-empty line). Stripping only the leading PASS/FAIL token keeps a path that contains spaces
+    intact. Returns the manifest path, or "" when stdout has no verdict line.
+    """
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    verdict = lines[-1].strip()
+    for token in ("PASS  ", "FAIL  "):
+        if verdict.startswith(token):
+            return verdict[len(token) :].strip()
+    return ""
+
+
 def make_driver(actuator: str, udid: str) -> Driver:
     """Instantiate a driver for the given actuator and device — thin delegation to the backends registry."""
     from bajutsu.backends import make_driver as _make
@@ -95,12 +114,9 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
-        manifest_lines = [
-            line.strip()
-            for line in result.stdout.splitlines()
-            if "manifest" in line.lower() and ".json" in line
-        ]
-        manifest_path = manifest_lines[0] if manifest_lines else ""
+        # `run` prints a deterministic final stdout line (PASS/FAIL + manifest path); parse that
+        # rather than substring-matching its prose, so the MCP layer isn't coupled to the wording.
+        manifest_path = _parse_verdict(result.stdout)
 
         ok = result.returncode == 0
         parts = ["PASS" if ok else "FAIL"]

@@ -61,6 +61,30 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 # --- run tool ---
 
 
+def test_parse_verdict_extracts_manifest_from_final_line() -> None:
+    from bajutsu.mcp.tools import _parse_verdict
+
+    # run's stdout may carry a leading note line (e.g. the alert-guard credential note);
+    # the verdict is always the last non-empty line: "PASS|FAIL  <manifest path>".
+    stdout = "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset\nPASS  runs/20260101-000000/manifest.json\n"
+    assert _parse_verdict(stdout) == "runs/20260101-000000/manifest.json"
+
+
+def test_parse_verdict_handles_fail_and_spaced_path() -> None:
+    from bajutsu.mcp.tools import _parse_verdict
+
+    # The verdict separates the token from the path by two spaces; a path could itself
+    # contain spaces, so only the leading PASS/FAIL token is stripped.
+    assert _parse_verdict("FAIL  runs/has space/manifest.json\n") == "runs/has space/manifest.json"
+
+
+def test_parse_verdict_empty_stdout_yields_empty_path() -> None:
+    from bajutsu.mcp.tools import _parse_verdict
+
+    assert _parse_verdict("") == ""
+    assert _parse_verdict("\n\n") == ""
+
+
 def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
@@ -72,7 +96,12 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     import subprocess as sp
 
     def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
-        return sp.CompletedProcess(args=[], returncode=0, stdout="done\n", stderr="")
+        return sp.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="PASS  runs/20260101-000000/manifest.json\n",
+            stderr="",
+        )
 
     monkeypatch.setattr("bajutsu.mcp.tools.subprocess.run", fake_run)
 
@@ -86,6 +115,7 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     result = _run(mcp.call_tool("bajutsu_run", {"target": "demo", "scenario": str(scenario)}))
     text = result.content[0].text
     assert "PASS" in text
+    assert "runs/20260101-000000/manifest.json" in text
 
 
 def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -97,7 +127,12 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     import subprocess as sp
 
     def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
-        return sp.CompletedProcess(args=[], returncode=1, stdout="", stderr="step 0 failed\n")
+        return sp.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="FAIL  runs/20260101-000000/manifest.json\n",
+            stderr="step 0 failed\n",
+        )
 
     monkeypatch.setattr("bajutsu.mcp.tools.subprocess.run", fake_run)
 
@@ -111,6 +146,8 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     result = _run(mcp.call_tool("bajutsu_run", {"target": "demo"}))
     text = result.content[0].text
     assert "FAIL" in text
+    assert "runs/20260101-000000/manifest.json" in text
+    assert "step 0 failed" in text
 
 
 # --- resources ---
