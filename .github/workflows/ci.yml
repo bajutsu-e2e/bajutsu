@@ -65,6 +65,19 @@ jobs:
       - name: Lint workflows (actionlint)
         run: ./actionlint -color
 
+      # Persist mypy's incremental cache across runs so typecheck is a warm re-check (a few seconds)
+      # instead of a full cold scan (~18s here). mypy invalidates per-file by content, so a restored
+      # cache is always safe; the per-commit key with prefix restore-keys keeps it fresh (each run
+      # saves a new entry, restoring from the most recent matching one).
+      - name: Cache mypy
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8  # v6.0.0
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ runner.os }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-
+            mypy-${{ runner.os }}-
+
       - name: Typecheck (mypy)
         run: make typecheck
 
