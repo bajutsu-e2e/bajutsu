@@ -200,3 +200,13 @@ def test_trace_without_scenario_yaml_still_renders(tmp_path: Path) -> None:
     # an older run (no scenario.yaml) has no provenance to show, but the timeline still renders
     out = trace.trace_run(_write_run(tmp_path / "runs", "20260101-000000"))
     assert "✓ tap" in out and "✓ wait" in out
+
+
+def test_step_index_missing_or_invalid_is_a_non_matching_sentinel() -> None:
+    # A step with a usable index keeps it; a missing/invalid one returns a negative sentinel so the
+    # caller's bounds check omits provenance rather than mislabeling it with step 0's phrase.
+    assert trace._step_index({"index": 3}) == 3
+    assert trace._step_index({"index": 0}) == 0
+    assert trace._step_index({}) < 0
+    assert trace._step_index({"index": "x"}) < 0
+    assert trace._step_index({"index": True}) < 0  # bool is not a step index

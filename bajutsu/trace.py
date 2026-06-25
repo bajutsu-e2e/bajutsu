@@ -226,8 +226,10 @@ def _provenance_by_scenario(run_dir: Path) -> dict[str, list[str | None]]:
 
 
 def _step_index(step: dict[str, Any]) -> int:
+    # A missing/invalid index returns -1 (never a valid plan position), so the caller's bounds check
+    # omits provenance rather than mislabeling the step with step 0's phrase.
     idx = step.get("index")
-    return idx if isinstance(idx, int) and not isinstance(idx, bool) else 0
+    return idx if isinstance(idx, int) and not isinstance(idx, bool) else -1
 
 
 def _scenario_lines(
