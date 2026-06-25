@@ -54,9 +54,12 @@ def doctor(
 
 
 def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Element]:
-    """The elements of the screen to score. Web (Playwright) has no simctl udid: it navigates a
-    fresh browser to the target's baseUrl (the `launch` equivalent) and scores that page, tearing
-    the browser down after. iOS scores whatever is on the booted Simulator at the resolved udid."""
+    """The elements of the screen to score.
+
+    Web (Playwright) has no simctl udid: it navigates a fresh browser to the target's baseUrl (the
+    `launch` equivalent) and scores that page, tearing the browser down after. iOS scores whatever
+    is on the booted Simulator at the resolved udid.
+    """
     if actuator == "playwright":
         if not eff.base_url:
             typer.echo("web target needs baseUrl (set targets.<name>.baseUrl)")
@@ -77,4 +80,5 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(doctor)

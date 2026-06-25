@@ -57,9 +57,12 @@ def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path
 
 
 def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[list[Path], bool]:
-    """The scenario files `run` should load: `[--scenario]` when given (an explicit override),
-    else every `*.yaml` in the target's configured `scenarios` dir. Returns `(files, single)` where
-    `single` flags the one-file override (so the report can carry that file's name/description)."""
+    """The scenario files `run` should load.
+
+    `[--scenario]` when given (an explicit override), else every `*.yaml` in the target's configured
+    `scenarios` dir. Returns `(files, single)` where `single` flags the one-file override (so the
+    report can carry that file's name/description).
+    """
     if scenario:
         path = Path(scenario)
         if not path.exists():
@@ -84,9 +87,11 @@ def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[li
 
 
 def _expand_file(path: Path, eff: Effective) -> tuple[list[Scenario], str | None]:
-    """Load one scenario file and expand its setup/component/data refs (each resolved relative
-    to THIS file's directory, so a multi-file dir run keeps every file's refs local). Returns
-    the expanded scenarios plus the file-level description."""
+    """Load one scenario file and expand its setup/component/data refs.
+
+    Each ref is resolved relative to THIS file's directory, so a multi-file dir run keeps every
+    file's refs local. Returns the expanded scenarios plus the file-level description.
+    """
     scenario_file = load_scenario_file(path.read_text(encoding="utf-8"))
     scenarios = scenario_file.scenarios
     # Refs (setup/use/data) resolve relative to this scenario file's own directory.
@@ -195,9 +200,11 @@ def run(
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Run a scenario deterministically. Pass/fail is machine-only; the sole AI is the
-    alert guard (on by default per scenario), which only fires to clear an OS prompt that
-    blocked a step — see each scenario's `dismissAlerts`."""
+    """Run a scenario deterministically.
+
+    Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
+    only fires to clear an OS prompt that blocked a step — see each scenario's `dismissAlerts`.
+    """
     eff = _load_effective(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
@@ -380,4 +387,5 @@ def run(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(run)
