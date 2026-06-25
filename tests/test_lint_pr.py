@@ -150,6 +150,13 @@ def test_be_id_from_ref_ignores_a_non_four_digit_number() -> None:
     assert be_id_from_ref("claude/be-12-quick") is None
 
 
+def test_be_id_from_ref_ignores_be_substring_inside_a_word() -> None:
+    # "probe-0050" contains "be-0050" but isn't the `be-NNNN` path segment; only a token at the
+    # start of the ref or right after a `/` is a roadmap id.
+    assert be_id_from_ref("claude/probe-0050-fix") is None
+    assert be_id_from_ref("claude/describe-0001") is None
+
+
 # --- PR-title validation (form + exact-id prefix) ---
 
 

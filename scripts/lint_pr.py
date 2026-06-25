@@ -51,8 +51,10 @@ _SUBJECT_RE = re.compile(
 _TITLE_PREFIX_RE = re.compile(r"^\[BE-(?:\d{4}|XXXX)\] ")
 
 # A BE id embedded in a branch name (the convention ``claude/be-0050-<slug>``). Case-insensitive,
-# and the number is exactly four digits — the zero-padded roadmap id, not an arbitrary number.
-_REF_BE_RE = re.compile(r"be-(\d{4})(?![0-9])", re.IGNORECASE)
+# and the number is exactly four digits — the zero-padded roadmap id, not an arbitrary number. The
+# ``(?:^|/)`` anchor ties the match to a path-segment boundary so a substring inside a longer word
+# (``claude/probe-0050-fix`` → no match) isn't mistaken for an id.
+_REF_BE_RE = re.compile(r"(?:^|/)be-(\d{4})(?![0-9])", re.IGNORECASE)
 
 
 def bad_commit_subjects(subjects: list[str]) -> list[str]:

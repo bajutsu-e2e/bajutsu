@@ -22,6 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          # Fork PRs run the linter from the trusted base SHA so a PR can't edit scripts/lint_pr.py
+          # to bypass the gate; same-repo PRs check out the PR head so linter/workflow changes are
+          # tested. The title and branch ref the linter reads come from the (trusted) github.event
+          # context via env, so only the script itself needs a trusted source.
+          ref: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
 
       - name: Check the PR title (form + roadmap-id prefix from the branch)
         env:
