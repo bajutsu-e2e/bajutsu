@@ -172,9 +172,18 @@ def _eval_state(elements: list[base.Element], kind: str, sel: Selector) -> Asser
 
 
 def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
-    """Whether one exchange satisfies a `RequestMatch` (set fields AND-ed). Shared by the
-    `request` assertion and the web mock router, so a mock stubs exactly what an assertion
-    would match."""
+    """Whether one observed exchange satisfies a request matcher.
+
+    Shared by the `request` assertion and the web mock router, so a mock stubs exactly what an
+    assertion would match.
+
+    Args:
+        ex: One observed network exchange.
+        req: The matcher; only its set (non-`None`) fields are checked, AND-ed together.
+
+    Returns:
+        True iff every set field of `req` matches `ex`.
+    """
     # Straight-line early returns, kept allocation-free on purpose: this runs in `until: {request}`
     # polling and per-exchange matching loops, so it must stay lightweight (no per-call closures).
     if req.method is not None and ex.method.upper() != req.method.upper():
@@ -196,15 +205,25 @@ def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:
 
 
 def count_matching(exchanges: list[NetworkExchange], req: RequestMatch) -> int:
-    """How many observed exchanges satisfy the request matcher (shared by the `request`
-    assertion and the `until: { request }` wait)."""
+    """How many observed exchanges satisfy the request matcher.
+
+    Shared by the `request` assertion and the `until: { request }` wait.
+    """
     return sum(1 for ex in exchanges if match_request(ex, req))
 
 
 def request_label(req: RequestMatch, *, with_count: bool = True) -> str:
-    """Compact human description of a request matcher (e.g. "GET /items status=200"). `with_count`
-    is False where a matcher's `count` is not part of the check (e.g. `requestSequence`, which is
-    about order), so the label doesn't imply a field that is ignored."""
+    """A compact human description of a request matcher (e.g. ``GET /items status=200``).
+
+    Args:
+        req: The request matcher to describe.
+        with_count: When False, the matcher's `count` is left out of the label — used where `count`
+            is not part of the check (e.g. `requestSequence`, which is about order), so the label
+            doesn't imply a field that is ignored.
+
+    Returns:
+        The matcher's set fields joined into one space-separated line.
+    """
     parts: list[str] = []
     if req.method is not None:
         parts.append(req.method.upper())
@@ -522,11 +541,28 @@ def evaluate_one(
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
 ) -> AssertionResult:
-    """Evaluate one assertion (the kind is guaranteed unique by scenario validation).
+    """Evaluate one assertion against the screen and the observed network.
 
-    UI kinds check ``elements``; ``request`` / ``event`` / ``requestSequence`` check the observed
-    network ``exchanges``; ``responseSchema`` validates a response body against a stored schema via
-    *schema_context*; ``visual`` compares a screenshot to a baseline via *visual_context*."""
+    The assertion's kind is guaranteed unique by scenario validation, so exactly one branch fires.
+    Evaluation is total — a *failed* check returns a not-ok result rather than raising.
+
+    Args:
+        elements: One `query()` snapshot; the UI kinds (`exists` / `value` / `label` / `count` /
+            `enabled` / `disabled` / `selected`) check it.
+        a: The assertion to evaluate.
+        exchanges: The network exchanges observed so far; the `request` / `event` /
+            `requestSequence` kinds check these (None is treated as empty).
+        visual_context: Paths the `visual` kind needs (screenshot, baselines, diff dir, run dir);
+            required only for a `visual` assertion.
+        schema_context: The directory a `responseSchema` path resolves against; required only for a
+            `responseSchema` assertion.
+
+    Returns:
+        The single assertion's result.
+
+    Raises:
+        AssertionError: The assertion has no kind set — scenario validation should have caught this.
+    """
     if a.exists is not None:
         return _eval_exists(elements, a.exists)
     if a.value is not None:
@@ -562,11 +598,22 @@ def evaluate(
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
 ) -> list[AssertionResult]:
-    """Evaluate all of expect/assert (the caller decides AND via passed()).
+    """Evaluate every assertion in an expect/assert block (the caller AND-s them via `passed`).
 
-    Plain `request` assertions (no `count`) in the block are matched **one-to-one** to
-    distinct exchanges: two `request` lines need two separate exchanges. (`count` is an
-    explicit aggregate and stays independent.)"""
+    Plain `request` assertions (no `count`) in the block are matched **one-to-one** to distinct
+    exchanges: two `request` lines need two separate exchanges. `count` is an explicit aggregate and
+    stays independent of that one-to-one assignment.
+
+    Args:
+        elements: One `query()` snapshot for the UI kinds.
+        assertions: The block's assertions, evaluated in order.
+        exchanges: The network exchanges observed so far (None is treated as empty).
+        visual_context: Forwarded to any `visual` assertion (see `evaluate_one`).
+        schema_context: Forwarded to any `responseSchema` assertion (see `evaluate_one`).
+
+    Returns:
+        One result per assertion, positionally aligned with `assertions`.
+    """
     exs = exchanges or []
     bare: list[tuple[int, RequestMatch]] = []
     for i, a in enumerate(assertions):
