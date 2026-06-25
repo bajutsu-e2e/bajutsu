@@ -155,6 +155,44 @@ def test_run_and_report(tmp_path: Path) -> None:
     # The executed scenario is kept alongside its results.
     scn_file = tmp_path / "runs" / "run1" / "scenario.yaml"
     assert scn_file.exists() and "name: a" in scn_file.read_text(encoding="utf-8")
+    # The run is stamped with provenance: a fingerprint of exactly the saved scenario.yaml plus the
+    # tool version (BE-0049), so accumulated runs can be grouped by identity.
+    import hashlib
+
+    from bajutsu import __version__
+
+    prov = data["provenance"]
+    expected = "sha256:" + hashlib.sha256(scn_file.read_text(encoding="utf-8").encode()).hexdigest()
+    assert prov["scenarioHash"] == expected
+    assert prov["toolVersion"] == __version__
+
+
+def test_git_revision_maps_failure_and_blank_to_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The subprocess is an external dependency, so it's the one place a stub is warranted. A
+    # non-zero exit, a thrown error, and a 0-exit-but-blank stdout (a shimmed `git`) all mean
+    # "unknown revision" — None, never an empty stamp.
+    import subprocess as sp
+
+    from bajutsu.runner import pipeline
+
+    def fake(result: sp.CompletedProcess[str] | Exception):  # type: ignore[no-untyped-def]
+        def run(*a: object, **k: object) -> sp.CompletedProcess[str]:
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        return run
+
+    monkeypatch.setattr(pipeline.subprocess, "run", fake(sp.CompletedProcess([], 128, "", "fatal")))
+    assert pipeline._git_revision() is None  # not a repo
+    monkeypatch.setattr(pipeline.subprocess, "run", fake(sp.CompletedProcess([], 0, "   \n", "")))
+    assert pipeline._git_revision() is None  # 0 exit but blank stdout → unknown, not ""
+    monkeypatch.setattr(pipeline.subprocess, "run", fake(FileNotFoundError("git")))
+    assert pipeline._git_revision() is None  # git absent
+    monkeypatch.setattr(
+        pipeline.subprocess, "run", fake(sp.CompletedProcess([], 0, "abc123\n", ""))
+    )
+    assert pipeline._git_revision() == "abc123"  # normal: trimmed sha
 
 
 def test_run_and_report_forwards_baselines_dir(tmp_path: Path) -> None:

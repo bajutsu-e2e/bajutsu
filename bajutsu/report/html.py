@@ -122,15 +122,23 @@ def write_report(
     source_name: str | None = None,
     description: str | None = None,
     idb_versions: IdbVersions | None = None,
+    provenance: dict[str, str] | None = None,
 ) -> Path:
     """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir;
     return the manifest path. `definitions` / `sources`, aligned with `results`, feed the report's
-    merged Result tab and its Rich/YAML toggle. `idb_versions` records the idb provenance (BE-0005)."""
+    merged Result tab and its Rich/YAML toggle. `idb_versions` records the idb provenance (BE-0005);
+    `provenance` is the run-identity stamp (BE-0049)."""
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "manifest.json"
     manifest_path.write_text(
         json.dumps(
-            manifest_dict(run_id, results, source_name=source_name, idb_versions=idb_versions),
+            manifest_dict(
+                run_id,
+                results,
+                source_name=source_name,
+                idb_versions=idb_versions,
+                provenance=provenance,
+            ),
             ensure_ascii=False,
             indent=2,
         ),

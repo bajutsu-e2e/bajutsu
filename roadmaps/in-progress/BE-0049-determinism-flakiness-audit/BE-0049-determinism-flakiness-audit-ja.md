@@ -37,6 +37,12 @@ Bajutsu が競合に対して掲げる中心的な主張は、ゲートが吸収
 
 新しい `audit` コマンドとして実装するか、`doctor` ／ `run` のフラグとして実装するかは、採用時に先送りする実装上の選択です。静的な部分は `doctor` の近縁であり、単にそれを拡張する形でもよいでしょう。
 
+### 実装状況
+
+- **静的な安定度スコア**と**反復＆差分（動的）**は、どちらも `bajutsu audit` コマンドとして出荷済みです。`bajutsu audit <scenario>` はデバイス無しでセレクタ／wait の安定度を採点し、`bajutsu audit <scenario> --repeat K --target <app>` は K 回実行して、結果が変動したステップやアサーションを報告します。助言的かつ read-only で、CI ゲートにはなりません。
+- **run の来歴・バージョンスタンプ**を出荷しました。各 `manifest.json` に任意の `provenance` ブロック（`scenarioHash`＝実行した `scenario.yaml` の `sha256:` フィンガープリント、`toolVersion`、git 配下の run なら `gitRevision`）が載ります。蓄積した run を同一性でグルーピングするための、安価な前提部分です。純粋なメタデータで、判定には一切入りません。
+- **残り:** スタンプ済みの run 記録を採掘する**縦断ビュー**（内容ハッシュでグルーピングし、経時の合格率を報告）と、同じ来歴を serve の DB run 記録に刻むこと（[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) 7c-4）です。
+
 ## 検討した代替案
 
 * **フレーキーテストの隔離 + 自動リトライを採用する（業界の一般的な答え／Maestro の `retry`）。**

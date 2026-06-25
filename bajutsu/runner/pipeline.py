@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import time
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -24,7 +25,7 @@ from bajutsu.orchestrator import (
     scenario_slug,
 )
 from bajutsu.redaction import Redactor
-from bajutsu.report import scenario_render_inputs, write_report
+from bajutsu.report import run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
 from bajutsu.scenario import Scenario, dump_scenario_file
 
@@ -240,22 +241,54 @@ def run_and_report(
     definitions, sources = scenario_render_inputs(scenarios)
     run_dir.mkdir(parents=True, exist_ok=True)
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
-    (run_dir / "scenario.yaml").write_text(
-        dump_scenario_file(scenarios, description), encoding="utf-8"
-    )
+    scenario_yaml = dump_scenario_file(scenarios, description)
+    (run_dir / "scenario.yaml").write_text(scenario_yaml, encoding="utf-8")
     # Record the idb versions this run was driven against, but only when idb actually drove it —
     # provenance for the artifact set, never a pass/fail input (BE-0005). Non-idb runs probe nothing.
     # idb-by-name is fine while idb is the only backend with a toolchain version; when a second
     # backend needs versions, generalize this to a `Driver.provenance()` hook instead of a name test.
     idb_versions = idb_version.probe() if any(r.backend == "idb" for r in results) else None
+    # Stamp the run's identity (scenario fingerprint + tool/git version) so accumulated runs can be
+    # grouped to tell true flakiness from an edited scenario (BE-0049); pure metadata, never a verdict.
+    provenance = run_provenance(scenario_yaml, git_revision=_git_revision())
     manifest = write_report(
-        run_dir, run_id, results, definitions, sources, source_name, description, idb_versions
+        run_dir,
+        run_id,
+        results,
+        definitions,
+        sources,
+        source_name=source_name,
+        description=description,
+        idb_versions=idb_versions,
+        provenance=provenance,
     )
     # Final safety net: scrub any literal secret value that reached a run-level artifact
     # (e.g. an assertion's expected/actual text in the manifest / HTML). The scenario
     # definitions already hold tokens, not values, so this only catches result text.
     _scrub_secret_values(run_dir, secret_values)
     return results, manifest
+
+
+def _git_revision() -> str | None:
+    """The current git commit, or None when the run isn't inside a git checkout.
+
+    Best-effort run provenance (BE-0049): any failure — not a repo, git absent — yields None so the
+    stamp simply omits the revision rather than aborting the run.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],  # noqa: S607 — git resolved on PATH; any failure → None below
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    # A shimmed/aliased `git` could exit 0 with blank stdout; treat that as "unknown", not an empty stamp.
+    return out.stdout.strip() or None
 
 
 def _scrub_secret_values(run_dir: Path, secret_values: list[str] | None) -> None:
