@@ -296,6 +296,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装中 | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
+### 開発基盤（コントリビュータ体験）
+
+<!-- GENERATED:in-progress-dev-infra -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0065](in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md) | docstring の規範と API リファレンス生成 | 実装中 |
+<!-- /GENERATED:in-progress-dev-infra -->
+
 ### codegen 網羅性
 
 <!-- GENERATED:in-progress-codegen -->
@@ -400,7 +408,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-dev-infra -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0065](proposals/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md) | docstring の規範と API リファレンス生成 | 提案 |
 | [BE-0069](proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md) | コントリビュータ向けガードレールの実行可能化（手順をコマンドに） | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
