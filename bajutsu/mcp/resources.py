@@ -9,11 +9,28 @@ from fastmcp import FastMCP
 from bajutsu.trace import latest_run
 
 
+def _run_base(runs_dir: Path, run_id: str) -> Path:
+    """Resolve ``run_id`` to its run directory, rejecting a `run_id` that escapes ``runs_dir``.
+
+    The directory must sit strictly under ``runs_dir`` — so a `..` in ``run_id`` (or an absolute
+    one) can't reach a sibling of, or anything above, the runs root before any filename is joined.
+    """
+    runs_root = runs_dir.resolve()
+    run_base = (runs_dir / run_id).resolve()
+    if runs_root not in run_base.parents:
+        raise ValueError(f"invalid run_id: {run_id}")
+    return run_base
+
+
 def _safe_run_path(runs_dir: Path, run_id: str, filename: str) -> Path:
-    """Resolve a run artifact path, rejecting path traversal."""
-    target = (runs_dir / run_id / filename).resolve()
-    base = runs_dir.resolve()
-    if base not in target.parents:
+    """Resolve a top-level run file, confining it to that run's directory.
+
+    Symmetric with ``_safe_artifact_path``: the resolved path must stay inside ``runs_dir/run_id``,
+    so a `..` in either ``run_id`` or ``filename`` can't escape the runs root or reach another run.
+    """
+    run_base = _run_base(runs_dir, run_id)
+    target = (run_base / filename).resolve()
+    if run_base not in target.parents and target != run_base:
         raise ValueError(f"invalid run_id: {run_id}")
     return target
 
@@ -21,10 +38,10 @@ def _safe_run_path(runs_dir: Path, run_id: str, filename: str) -> Path:
 def _safe_artifact_path(runs_dir: Path, run_id: str, rel_path: str) -> Path:
     """Resolve a nested artifact path, rejecting path traversal.
 
-    Ensures the resolved path stays under ``runs_dir/run_id``, preventing
-    both escape from runs_dir and cross-run reads.
+    Ensures the resolved path stays under ``runs_dir/run_id``, preventing escape from runs_dir
+    (via either the ``run_id`` or the artifact ``rel_path``) and cross-run reads.
     """
-    run_base = (runs_dir / run_id).resolve()
+    run_base = _run_base(runs_dir, run_id)
     target = (run_base / rel_path).resolve()
     if run_base not in target.parents and target != run_base:
         raise ValueError(f"invalid artifact path: {rel_path}")

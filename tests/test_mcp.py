@@ -159,6 +159,18 @@ def test_safe_run_path_rejects_traversal(tmp_path: Path) -> None:
         _safe_run_path(runs_dir, "../secret", "manifest.json")
 
 
+def test_safe_run_path_confines_to_the_run_directory(tmp_path: Path) -> None:
+    # Symmetric with _safe_artifact_path: the resolved path must stay inside this run, so a
+    # `..` in the filename can't reach a sibling run's manifest.
+    from bajutsu.mcp.resources import _safe_run_path
+
+    runs_dir = tmp_path / "runs"
+    (runs_dir / "run1").mkdir(parents=True)
+    (runs_dir / "run2").mkdir(parents=True)
+    with pytest.raises(ValueError, match="invalid run_id"):
+        _safe_run_path(runs_dir, "run1", "../run2/manifest.json")
+
+
 def test_artifact_resource_reads_screenshot(tmp_path: Path) -> None:
     runs_dir = tmp_path / "runs"
     step_dir = runs_dir / "run1" / "00-scenario" / "step0"
@@ -230,6 +242,17 @@ def test_safe_artifact_path_rejects_cross_run(tmp_path: Path) -> None:
     (runs_dir / "run2" / "secret.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="invalid artifact path"):
         _safe_artifact_path(runs_dir, "run1", "../run2/secret.json")
+
+
+def test_safe_artifact_path_rejects_run_id_traversal(tmp_path: Path) -> None:
+    # A `..` in the run_id itself must not escape runs_dir — the run_id has to name a directory
+    # under runs_dir before the artifact path is even joined.
+    from bajutsu.mcp.resources import _safe_artifact_path
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    with pytest.raises(ValueError, match="invalid run_id"):
+        _safe_artifact_path(runs_dir, "../secret", "x.json")
 
 
 def test_artifact_resource_missing_file(tmp_path: Path) -> None:
