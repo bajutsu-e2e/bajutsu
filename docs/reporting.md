@@ -137,9 +137,10 @@ Device Log / App Trace remain separate tabs.
 ## Write API
 
 ```python
-def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> Path  # all 3 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description
+def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # all 3 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description; idb_versions = idb provenance (BE-0005), provenance = run-identity stamp (BE-0049)
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> None  # the renderable half (report.html + junit.xml), leaving manifest.json untouched — used by re-render
-def manifest_dict(run_id, results, *, source_name=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
+def manifest_dict(run_id, results, *, source_name=None, idb_versions=None, provenance=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
+def run_provenance(scenario_yaml, *, git_revision) -> dict  # the run-identity stamp (BE-0049): scenarioHash + toolVersion + optional gitRevision
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (definitions, sources); shared by the bake and the re-render

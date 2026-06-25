@@ -155,8 +155,9 @@ def test_run_and_report(tmp_path: Path) -> None:
     # The executed scenario is kept alongside its results.
     scn_file = tmp_path / "runs" / "run1" / "scenario.yaml"
     assert scn_file.exists() and "name: a" in scn_file.read_text(encoding="utf-8")
-    # The run is stamped with provenance: a fingerprint of exactly the saved scenario.yaml plus the
-    # tool version (BE-0049), so accumulated runs can be grouped by identity.
+    # The run is stamped with provenance (BE-0049): a fingerprint of the executed scenario YAML
+    # (taken pre-redaction) plus the tool version, so accumulated runs group by identity. With no
+    # secret_values here nothing is scrubbed, so the stamp also equals a hash of the saved file.
     import hashlib
 
     from bajutsu import __version__
