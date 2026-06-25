@@ -25,11 +25,14 @@ from bajutsu.report.richtext import (
 
 
 def _step_detail(step_def: dict[str, Any] | None, from_: str | None = None) -> dict[str, Any]:
-    """The 'detail' cell content for a planned step: tokenized parts (or a nested
-    assert table), plus the optional step name, capture tags, and `from:` provenance.
+    """The 'detail' cell content for a planned step.
+
+    Tokenized parts (or a nested assert table), plus the optional step name, capture tags, and
+    `from:` provenance.
 
     `from_` is the already-grouped provenance to show (None when this step continues a run of the
-    same phrase), not the step's raw `from:` — the caller dedupes consecutive equal values."""
+    same phrase), not the step's raw `from:` — the caller dedupes consecutive equal values.
+    """
     empty: dict[str, Any] = {"kind": "parts", "parts": [], "name": None, "caps": [], "from_": None}
     if step_def is None:
         return empty
@@ -67,8 +70,10 @@ def _action_data(step_def: dict[str, Any] | None, out_action: str | None) -> dic
 
 
 def _tree_row(e: dict[str, Any]) -> dict[str, Any]:
-    """One captured element rendered as a row for the in-report element viewer. `rect`
-    carries the raw frame (points) so the viewer can highlight it on the screenshot."""
+    """One captured element rendered as a row for the in-report element viewer.
+
+    `rect` carries the raw frame (points) so the viewer can highlight it on the screenshot.
+    """
     frame = e.get("frame")
     fr = ""
     rect: dict[str, str] | None = None
@@ -88,10 +93,12 @@ def _tree_row(e: dict[str, Any]) -> dict[str, Any]:
 
 
 def _screen_rect(elements: list[dict[str, Any]]) -> tuple[str | None, str | None]:
-    """The screen extent in points — the bounding box of every element frame. The
-    element viewer maps a hovered frame onto the (full-screen) screenshot as a
-    percentage of this, so it needs no device scale. The JS refines the height from the
-    screenshot's true pixel size, so a long scrolling list does not distort the mapping."""
+    """The screen extent in points — the bounding box of every element frame.
+
+    The element viewer maps a hovered frame onto the (full-screen) screenshot as a percentage of
+    this, so it needs no device scale. The JS refines the height from the screenshot's true pixel
+    size, so a long scrolling list does not distort the mapping.
+    """
     w = h = 0.0
     for e in elements:
         fr = e.get("frame")
@@ -178,8 +185,10 @@ def _step_skip_row(
 
 
 def _nx_pairs(d: dict[str, Any], fields: list[tuple[str, str]]) -> list[tuple[str, dict[str, Any]]]:
-    """Build (label, value) pairs for an exchange's collapsible settings table from a
-    list of (label, key) — tokens for scalars, header lists, and body blocks."""
+    """Build (label, value) pairs for an exchange's collapsible settings table.
+
+    Built from a list of (label, key) — tokens for scalars, header lists, and body blocks.
+    """
     pairs: list[tuple[str, dict[str, Any]]] = []
     for label, key in fields:
         v = d.get(key)
@@ -206,9 +215,11 @@ def _exchange_summary(d: dict[str, Any], fallback: str) -> list[Part]:
 
 
 def _request_row(d: dict[str, Any], at: float) -> dict[str, Any]:
-    """A request row. Its detail cell is just the endpoint (a click target); the full
-    settings table renders in a separate full-width row below (so it gets the whole
-    width instead of the cramped detail column)."""
+    """A request row.
+
+    Its detail cell is just the endpoint (a click target); the full settings table renders in a
+    separate full-width row below (so it gets the whole width instead of the cramped detail column).
+    """
     method = str(d.get("method") or "req")
     pairs = _nx_pairs(
         d,
@@ -281,8 +292,10 @@ def _merged_rows(
     exchanges: list[dict[str, Any]],
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
-    """Step rows plus the observed exchanges (split request/response) interleaved by
-    time offset; not-run steps trail at the end in plan order."""
+    """Step rows plus the observed exchanges (split request/response) interleaved by time offset.
+
+    Not-run steps trail at the end in plan order.
+    """
     by_index = {s.index: s for s in r.steps}
     total = max(len(plan), len(r.steps))
     # Provenance to display per step, grouped in plan order so a run of identical consecutive
@@ -328,9 +341,11 @@ def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, st
 
 
 def _visual_row(ev: Any, ok: bool) -> dict[str, Any] | None:
-    """The baseline/actual/diff image strip for a `visual` expectation. `ev` is the
-    AssertionResult.visual evidence (run-dir-relative image paths). The Approve button
-    (functional only under `serve`) is offered whenever the comparison did not pass."""
+    """The baseline/actual/diff image strip for a `visual` expectation.
+
+    `ev` is the AssertionResult.visual evidence (run-dir-relative image paths). The Approve button
+    (functional only under `serve`) is offered whenever the comparison did not pass.
+    """
     if ev is None:
         return None
     sid = ev.actual.rsplit("/", 1)[0] if "/" in ev.actual else ""

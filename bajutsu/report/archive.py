@@ -29,7 +29,8 @@ def zip_tree(files: Iterable[tuple[str, bytes]]) -> bytes:
 
     Entries are written in sorted name order with a pinned timestamp, so the same set of files
     yields byte-identical output regardless of input order. The shared zip builder behind the
-    filesystem and object-store archivers."""
+    filesystem and object-store archivers.
+    """
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name, content in sorted(files, key=lambda f: f[0]):
@@ -44,7 +45,8 @@ def archive_run_dir(run_dir: Path) -> bytes:
 
     Walks strictly inside `run_dir` (never above it), so a sibling `.env` or another run is never
     pulled in. Entry names are `<run_dir.name>/<path-relative-to-run_dir>`, preserving the layout
-    `report.html`'s relative links depend on."""
+    `report.html`'s relative links depend on.
+    """
     root = run_dir.name
     # Skip symlinks: `is_file()` follows them, so a symlink in the run dir pointing outside would
     # otherwise read its target into the zip — escaping the run dir. (rglob's `**` does not recurse

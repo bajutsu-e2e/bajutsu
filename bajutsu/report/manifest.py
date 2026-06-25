@@ -12,8 +12,11 @@ from bajutsu.orchestrator import RunResult
 
 
 def _run_backend(results: list[RunResult]) -> str:
-    """The actuator that drove the run. One actuator is fixed per run, so this is
-    normally a single name; if scenarios somehow differ, they are joined."""
+    """The actuator that drove the run.
+
+    One actuator is fixed per run, so this is normally a single name; if scenarios somehow differ,
+    they are joined.
+    """
     names = dict.fromkeys(r.backend for r in results if r.backend)  # ordered-unique
     return ", ".join(names)
 
@@ -57,14 +60,17 @@ def manifest_dict(
     idb_versions: IdbVersions | None = None,
     provenance: dict[str, str] | None = None,
 ) -> dict[str, object]:
-    """Build the manifest — the run's canonical, versioned render model (BE-0068). RunResult and
-    its parts are dataclasses, so asdict() captures step/expect outcomes verbatim. `backend` is the
-    actuator that drove the run (each scenario also carries its own `backend`); `sourceName` is the
-    label the report's YAML toggle shows, persisted here so a re-render can recover it.
+    """Build the manifest — the run's canonical, versioned render model (BE-0068).
+
+    RunResult and its parts are dataclasses, so asdict() captures step/expect outcomes verbatim.
+    `backend` is the actuator that drove the run (each scenario also carries its own `backend`);
+    `sourceName` is the label the report's YAML toggle shows, persisted here so a re-render can
+    recover it.
 
     `idb_versions`, when the run used the idb backend, records the `idb_companion` / client versions
     it was driven against — provenance only, so it never enters `ok` (BE-0005). `provenance` is the
-    run-identity stamp from `run_provenance` (BE-0049), likewise never part of the verdict."""
+    run-identity stamp from `run_provenance` (BE-0049), likewise never part of the verdict.
+    """
     manifest: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
         "runId": run_id,

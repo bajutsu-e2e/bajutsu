@@ -1,5 +1,7 @@
-"""Rich-text decomposition: turn selectors / matchers / assertions into (class, text)
-token parts the template renders."""
+"""Rich-text decomposition.
+
+Turn selectors / matchers / assertions into (class, text) token parts the template renders.
+"""
 
 from __future__ import annotations
 
@@ -64,9 +66,11 @@ def _countmatch_parts(m: dict[str, Any]) -> list[Part]:
 
 
 def _request_parts(m: dict[str, Any]) -> tuple[list[Part], list[Part]]:
-    """(target, comparison) for a request matcher — target is the matched method /
-    endpoint, comparison is the expected status / count. Shared by the `request`
-    assertion and the `until: { request }` wait."""
+    """(target, comparison) for a request matcher.
+
+    Target is the matched method / endpoint, comparison is the expected status / count. Shared by
+    the `request` assertion and the `until: { request }` wait.
+    """
     tg: list[list[Part]] = []
     if m.get("method") is not None:
         tg.append([("kw", str(m["method"]).upper())])

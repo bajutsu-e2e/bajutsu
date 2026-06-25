@@ -1,5 +1,8 @@
-"""Jinja rendering: turn RunResults into a pure-data context and render the self-contained
-report.html (templates live in bajutsu/templates/)."""
+"""Jinja rendering.
+
+Turn RunResults into a pure-data context and render the self-contained report.html (templates
+live in bajutsu/templates/).
+"""
 
 from __future__ import annotations
 
@@ -21,9 +24,11 @@ from bajutsu.scenario import Scenario, dump_scenarios, scenario_dict
 def scenario_render_inputs(
     scenarios: list[Scenario],
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """The renderer's per-scenario plan inputs: `definitions` (structured) and `sources` (raw
-    YAML), aligned with the scenarios. Shared by the run pipeline (initial bake) and the offline
-    re-render (BE-0068), so both feed the renderer identical inputs."""
+    """The renderer's per-scenario plan inputs, aligned with the scenarios.
+
+    Returns `definitions` (structured) and `sources` (raw YAML). Shared by the run pipeline
+    (initial bake) and the offline re-render (BE-0068), so both feed the renderer identical inputs.
+    """
     return [scenario_dict(s) for s in scenarios], [dump_scenarios([s]) for s in scenarios]
 
 
@@ -124,10 +129,15 @@ def write_report(
     idb_versions: IdbVersions | None = None,
     provenance: dict[str, str] | None = None,
 ) -> Path:
-    """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir;
-    return the manifest path. `definitions` / `sources`, aligned with `results`, feed the report's
-    merged Result tab and its Rich/YAML toggle. `idb_versions` records the idb provenance (BE-0005);
-    `provenance` is the run-identity stamp (BE-0049)."""
+    """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir.
+
+    `definitions` / `sources`, aligned with `results`, feed the report's merged Result tab and its
+    Rich/YAML toggle. `idb_versions` records the idb provenance (BE-0005); `provenance` is the
+    run-identity stamp (BE-0049).
+
+    Returns:
+        The manifest.json path.
+    """
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "manifest.json"
     manifest_path.write_text(

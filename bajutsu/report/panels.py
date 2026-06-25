@@ -1,5 +1,8 @@
-"""Panel data for the report tabs: Result, Network, Device Log, App Trace, plus the
-per-scenario assembly that ties the rows and panels together."""
+"""Panel data for the report tabs.
+
+Result, Network, Device Log, App Trace, plus the per-scenario assembly that ties the rows and
+panels together.
+"""
 
 from __future__ import annotations
 
@@ -35,8 +38,10 @@ def _exchange_host(url: str) -> str:
 
 
 def _domain_allowed(host: str, domains: list[str]) -> bool:
-    """No filter -> every exchange; otherwise the host must equal a listed domain or be
-    a subdomain of one (`api.example.com` is allowed by `example.com`)."""
+    """No filter -> every exchange; otherwise the host must equal a listed domain or be a subdomain.
+
+    `api.example.com` is allowed by `example.com`.
+    """
     if not domains:
         return True
     host = host.lower()
@@ -63,8 +68,10 @@ def _result_panel(
 
 
 def _environment_panel(r: RunResult) -> dict[str, Any]:
-    """The simulator the scenario ran on — device model / OS / actuator / udid — shown as a
-    tab beside Result. Unknown fields (e.g. the fake driver names no device) are omitted."""
+    """The simulator the scenario ran on — device model / OS / actuator / udid — shown beside Result.
+
+    Unknown fields (e.g. the fake driver names no device) are omitted.
+    """
     sim: list[tuple[str, str]] = []
     if r.device_name:
         sim.append(("device", r.device_name))

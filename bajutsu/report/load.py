@@ -85,8 +85,14 @@ class RenderModel:
 
 
 def load_run(run_dir: Path) -> RenderModel:
-    """Recover the render model from a finished run: outcomes from `manifest.json`, the scenario
-    plan from `scenario.yaml`. Raises OSError / ValueError if either is missing or unreadable."""
+    """Recover the render model from a finished run.
+
+    Outcomes come from `manifest.json`, the scenario plan from `scenario.yaml`.
+
+    Raises:
+        OSError: If either file is missing or unreadable.
+        ValueError: If either file is malformed.
+    """
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     scenario_file = load_scenario_file((run_dir / "scenario.yaml").read_text(encoding="utf-8"))
     definitions, sources = scenario_render_inputs(scenario_file.scenarios)
@@ -109,8 +115,10 @@ def rerender_html(run_dir: Path) -> str:
 
 
 def rebake(run_dir: Path) -> None:
-    """Rewrite a finished run's `report.html` and `junit.xml` in place from its stored model
-    (the manifest — the source of truth — is left untouched)."""
+    """Rewrite a finished run's `report.html` and `junit.xml` in place from its stored model.
+
+    The manifest — the source of truth — is left untouched.
+    """
     m = load_run(run_dir)
     write_html_and_junit(
         run_dir, m.run_id, m.results, m.definitions, m.sources, m.source_name, m.description
