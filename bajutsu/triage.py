@@ -12,6 +12,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -162,29 +163,51 @@ def _nearest_artifact(
     return None
 
 
+def _read_artifact[T](
+    run_dir: Path,
+    steps: list[dict[str, Any]],
+    failed_index: int | None,
+    kind: str,
+    loader: Callable[[Path], T | None],
+    default: T,
+) -> T:
+    """Find the nearest artifact of `kind` (backward from `failed_index`) and apply `loader`.
+
+    Separates the backward-scan concern (_nearest_artifact) from the per-type deserialization
+    so callers only declare what they want, not how to walk the step list.
+    """
+    art = _nearest_artifact(steps, failed_index, kind)
+    if art is not None:
+        result = loader(run_dir / str(art.get("name")))
+        if result is not None:
+            return result
+    return default
+
+
+def _load_elements(path: Path) -> list[base.Element] | None:
+    data = _read_json(path)
+    return data if isinstance(data, list) else None
+
+
+def _load_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
 def _elements_near(
     run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None
 ) -> list[base.Element]:
     """The element tree from the failing step (or the nearest earlier step that has one)."""
-    art = _nearest_artifact(steps, failed_index, "elements")
-    if art is not None:
-        data = _read_json(run_dir / str(art.get("name")))
-        if isinstance(data, list):
-            return data
-    return []
+    return _read_artifact(run_dir, steps, failed_index, "elements", _load_elements, [])
 
 
 def _screenshot_near(
     run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None
 ) -> bytes | None:
     """The screenshot from the failing step (or the nearest earlier step that has one)."""
-    art = _nearest_artifact(steps, failed_index, "screenshot")
-    if art is not None:
-        try:
-            return (run_dir / str(art.get("name"))).read_bytes()
-        except OSError:
-            return None
-    return None
+    return _read_artifact(run_dir, steps, failed_index, "screenshot", _load_bytes, None)
 
 
 def assemble(run_dir: Path, scenario_filter: str | None = None) -> TriageContext | None:
