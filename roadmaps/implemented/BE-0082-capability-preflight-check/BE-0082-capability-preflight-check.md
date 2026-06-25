@@ -42,7 +42,7 @@ rather than do partial work and surface the problem late).
   it can run as a pure preflight — exactly the kind of thing that should fail before, not during, the
   run.
 - **It is per-backend, and the backend matrix is growing.** With iOS (idb), Web (Playwright), and
-  Android planned ([BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)),
+  Android planned ([BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)),
   capability gaps between backends are a structural, recurring fact, not a one-off. A scenario
   authored against one backend and run on another is precisely where a clear "unsupported on this
   backend" message earns its keep. (BE-0009's per-platform table already centers `capabilities()` as
@@ -116,7 +116,7 @@ map gates only true hard requirements and does not reject scenarios that would a
 - `bajutsu/drivers/base.py` (`Capability`, `Driver.capabilities()`) — the capability contract this
   enforces; `bajutsu/orchestrator/actions/handlers/gestures.py` (`_require_multi_touch`) — the
   existing, narrower, run-time check this generalizes.
-- [BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
+- [BE-0009 — Cross-platform abstractions](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
   — the per-platform backend matrix where `capabilities()` is the backend contract; this item makes
   the runner enforce it up front.
 - [CLAUDE.md](../../../CLAUDE.md) — prime directive #2 (determinism first: fail fast rather than
