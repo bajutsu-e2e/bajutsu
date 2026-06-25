@@ -102,6 +102,10 @@ def run_all(
         baselines_dir: Baseline images for `visual` assertions. None disables visual comparison.
         schemas_dir: Directory the `responseSchema` assertions' schema files resolve against. None
             disables them.
+        actuator: The selected actuator (e.g. `idb` / `playwright`); when given, each scenario is
+            preflighted against its static capability set and failed up front if it needs a
+            capability the actuator lacks (BE-0082). None skips the preflight (a lease driven
+            directly in tests).
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
