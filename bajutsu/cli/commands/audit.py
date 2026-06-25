@@ -27,6 +27,7 @@ from bajutsu import env as _env
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective, load_expanded_scenarios
 from bajutsu.runner import device_pool, run_all
+from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Scenario
 
 
@@ -59,6 +60,13 @@ def audit(
         typer.echo(f"failed to load scenario: {e}")
         raise typer.Exit(2) from None
 
+    if repeat and repeat < 2:
+        # One run can't be diffed against anything, so a single (or negative) repeat is a usage
+        # error rather than a silent fall-through to the static audit.
+        typer.echo(
+            "--repeat needs K>=2 (one run can't be compared); omit --repeat for the static audit"
+        )
+        raise typer.Exit(2)
     if repeat >= 2:
         _repeat_audit(scenarios, repeat, target_name, backend, udid, config, as_json)
         return
@@ -93,10 +101,23 @@ def _repeat_audit(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    udids = ["web"] if actuator == "playwright" else [_env.resolve_udid(udid)]
+    try:
+        udids = ["web"] if actuator == "playwright" else [_env.resolve_udid(udid)]
+    except _env.DeviceError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
     run_id = datetime.now(tz=UTC).strftime("audit-%Y%m%d-%H%M%S")
     lease, shutdown = device_pool(udids, backends, eff, Path("runs") / run_id)
+    # Bring up the target's `launchServer` (the web baseUrl host) if declared, like `run` does, so a
+    # web target with a server-backed baseUrl can be audited; reused if already serving, torn down
+    # in the finally below.
+    try:
+        stop_server = start_launch_server(eff)
+    except RuntimeError as e:
+        typer.echo(str(e))
+        shutdown()
+        raise typer.Exit(2) from None
     try:
         # One scenario at a time, K times each (workers=1 keeps the K runs under identical
         # conditions — the point of the diff). run_dir=None: the audit compares outcomes, not
@@ -105,8 +126,13 @@ def _repeat_audit(
             _audit.repeat_diff(run_all(eff, [s] * repeat, lease, workers=1, actuator=actuator))
             for s in scenarios
         ]
+    except _env.DeviceError as e:
+        # Parity with `run`/`record`: a device failure (lease/launch) exits 2 cleanly, not a traceback.
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
     finally:
         shutdown()
+        stop_server()
 
     if as_json:
         typer.echo(json.dumps([dataclasses.asdict(r) for r in reports], indent=2))

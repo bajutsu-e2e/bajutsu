@@ -98,6 +98,43 @@ def test_repeat_diff_reports_flaky_when_only_action_shape_differs() -> None:
     )
     assert not report.deterministic
     assert any("differed across repeats" in d for d in report.divergences)
+    # The fallback is pure — it must not imply attached evidence (repeat_diff has none).
+    assert not any("evidence" in d for d in report.divergences)
+
+
+def test_repeat_diff_flags_varying_step_assertion_count() -> None:
+    # A step keeps its verdict but emits a different number of assertion results across runs.
+    one = StepOutcome(
+        index=0, action="assert", ok=True, assertion_results=[AssertionResult(True, "exists", "x")]
+    )
+    two = StepOutcome(
+        index=0,
+        action="assert",
+        ok=True,
+        assertion_results=[
+            AssertionResult(True, "exists", "x"),
+            AssertionResult(True, "value", "y"),
+        ],
+    )
+    report = repeat_diff([_run(True, [one]), _run(True, [two])])
+    assert not report.deterministic
+    assert any("step 0 assertion count varied" in d for d in report.divergences)
+
+
+def test_repeat_diff_flags_varying_expect_count() -> None:
+    # The scenario-level expect block has a different length across runs.
+    report = repeat_diff(
+        [
+            _run(True, [], [AssertionResult(True, "exists", "x")]),
+            _run(
+                True,
+                [],
+                [AssertionResult(True, "exists", "x"), AssertionResult(True, "value", "y")],
+            ),
+        ]
+    )
+    assert not report.deterministic
+    assert any("expect-assertion count varied" in d for d in report.divergences)
 
 
 def test_render_repeat_marks_classification() -> None:
@@ -114,6 +151,13 @@ def _audit_project(tmp_path: Path) -> tuple[Path, Path]:
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
     return scn, cfg
+
+
+def test_repeat_one_exits_two(tmp_path: Path) -> None:
+    # --repeat 1 can't be diffed; it's a usage error, not a silent fall-through to the static audit.
+    scn, _ = _audit_project(tmp_path)
+    result = runner.invoke(app, ["audit", str(scn), "--repeat", "1"])
+    assert result.exit_code == 2 and "K>=2" in result.output
 
 
 def test_repeat_cli_requires_target(tmp_path: Path) -> None:

@@ -307,6 +307,8 @@ def repeat_diff(results: list[RunResult]) -> RepeatReport:
                 if len(set(aoks)) > 1:
                     kind = results[0].steps[i].assertion_results[j].kind
                     divergences.append(f"step {i} assertion {j} ({kind}) varied: {_verdicts(aoks)}")
+        else:
+            divergences.append(f"step {i} assertion count varied across runs: {sorted(acounts)}")
 
     ecounts = {len(r.expect_results) for r in results}
     if len(ecounts) == 1:
@@ -315,11 +317,16 @@ def repeat_diff(results: list[RunResult]) -> RepeatReport:
             if len(set(eoks)) > 1:
                 kind = results[0].expect_results[j].kind
                 divergences.append(f"expect {j} ({kind}) varied: {_verdicts(eoks)}")
+    else:
+        divergences.append(f"expect-assertion count varied across runs: {sorted(ecounts)}")
 
-    # The signatures differed but none of the above pinpointed it (e.g. a step's action or an
-    # assertion kind changed between runs) — still report it as flaky rather than swallow it.
+    # The signatures differed but none of the above pinpointed it — a step's action name or an
+    # assertion kind changed between runs while every verdict and count matched. Still flaky, so
+    # report it rather than swallow it. (repeat_diff is pure — there is no evidence to point at.)
     if not divergences:
-        divergences.append("run outcomes differed across repeats (see the attached evidence)")
+        divergences.append(
+            "run outcomes differed across repeats (a step action or assertion kind changed)"
+        )
     return RepeatReport(scenario, len(results), deterministic=False, divergences=divergences)
 
 
