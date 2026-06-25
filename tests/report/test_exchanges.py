@@ -3,12 +3,46 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
+import pytest
 from _report import _passing
 
 from bajutsu.evidence import Artifact
 from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.report import html_report
+
+
+def test_network_json_is_read_once_per_render(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The result timeline and the Network tab both need the exchanges; they must share one read,
+    # not parse the (potentially large, body-carrying) network.json twice per scenario.
+    sid = "00-s1"
+    (tmp_path / sid).mkdir(parents=True)
+    (tmp_path / sid / "network.json").write_text(
+        '[{"method":"GET","url":"https://example.com/x","status":200,"startedAt":0.1}]',
+        encoding="utf-8",
+    )
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[],
+        expect_results=[],
+        artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
+    )
+    from bajutsu.report import panels
+
+    reads: list[str] = []
+    real = panels._read_json
+
+    def counting(run_dir: Path, name: str) -> Any:
+        reads.append(name)
+        return real(run_dir, name)
+
+    monkeypatch.setattr(panels, "_read_json", counting)
+    html_report("run1", [r], tmp_path)
+    assert reads.count(f"{sid}/network.json") == 1
 
 
 def test_html_network_tab(tmp_path: Path) -> None:

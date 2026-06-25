@@ -118,8 +118,9 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _network_panel(run_dir: Path | None, art: Artifact) -> dict[str, Any]:
-    data = _read_json(run_dir, art.name) if run_dir else None
+def _network_panel(art: Artifact, data: Any) -> dict[str, Any]:
+    # `data` is the already-parsed network.json (or None) — read once in `_scenario_data` and
+    # shared with the result timeline, so a body-carrying network.json isn't parsed twice.
     if not isinstance(data, list) or not data:
         return {
             "kind": "network",
@@ -212,7 +213,7 @@ def _scenario_data(
         _environment_panel(r),
     ]
     if net is not None:
-        panels.append(_network_panel(run_dir, net))
+        panels.append(_network_panel(net, net_data))
     dev = _artifact(r, "deviceLog")
     if dev is not None:
         panels.append(_log_panel(run_dir, dev))
