@@ -330,6 +330,16 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0026](in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | In progress |
 <!-- /GENERATED:in-progress-codegen -->
 
+### Configuration sourcing
+
+Where `bajutsu` reads its config and scenario tree from — naming a **Git repository at a ref** so a CI runner or a hosted / self-hosted `serve` can pull a team's test repo directly, not just a local path.
+
+<!-- GENERATED:in-progress-config-sourcing -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0063](in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | In progress |
+<!-- /GENERATED:in-progress-config-sourcing -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *In progress* once work starts, or to *Implemented* when it ships.
@@ -389,7 +399,6 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 <!-- GENERATED:proposals-config-sourcing -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0063](proposals/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Proposal |
 | [BE-0073](proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 

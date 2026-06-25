@@ -112,6 +112,31 @@ Every command in the CLI (command-line interface) selects one app with `--target
 config with `--config` (default `bajutsu.config.yaml`). `--backend ios` (or a comma list of
 platforms/actuators) overrides the resolved order ([cli](cli.md)).
 
+### Config from a Git repository (BE-0063)
+
+`--config` also accepts a **Git source**, so a command can run a test repository's suite without a
+local checkout — `bajutsu run --config github:acme/mobile-tests@v1.4.0:e2e/bajutsu.config.yaml --target checkout`:
+
+```
+github:<owner>/<repo>[@<ref>][:<path>]                          # GitHub shorthand
+git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # any Git host
+```
+
+- `<ref>` is a branch, tag, or commit SHA (default: the repo's default branch); `<path>` is the
+  config within the repo (default: `bajutsu.config.yaml` at the root). A value with no recognized
+  scheme is a **local path**, exactly as before.
+- Bajutsu resolves the ref to an immutable commit SHA, materializes that subtree into a
+  content-addressed cache (`~/.cache/bajutsu/gitsrc/<host>/<owner>/<repo>/<sha>/`), and loads the
+  config from it. Because the config's `scenarios` / `baselines` / `schemas` / `appPath` are relative
+  paths, they resolve **against the checkout root**, not the caller's working directory — so the whole
+  tree comes along, not just the YAML.
+- A **pinned ref** (`@<tag>` / `@<sha>`) is reproducible and offline after the first fetch; a bare
+  branch is resolved fresh each load. Private repos use a token from `GITHUB_TOKEN` / `GH_TOKEN`, else
+  `gh auth token`; the token is never logged.
+- This first slice covers the CLI read path (`run` / `doctor`). Recording the resolved SHA as run
+  provenance, the `--config-offline` / `--require-pinned-config` switches, and the serve "from Git"
+  picker are follow-ups.
+
 ## Onboarding a new target
 
 To add a new app, add **app-side preparation and one config entry**. No changes to the tool itself are required.

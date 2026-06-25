@@ -15,7 +15,7 @@
 
 `bajutsu.config.yaml`・そのシナリオ木・**ビルド済みアプリバイナリ**（`.app` / `.app.zip` / `.ipa`）を 1 つの `.zip` にまとめ、**`bajutsu serve` の Web UI からアップロードして実行する**ための機能です。serve ホストのファイルシステムに触れないブラウザだけで完結します。serve は zip を隔離された一時ディレクトリへ展開し、ローカルのファイルブラウザで選んだ config と同じ流儀でそれをバインドし、バイナリを run の Simulator にインストールし、展開したツリーに対して既存の決定的な `run` 経路を走らせます。これは config + シナリオ + バイナリの束を**取得する経路を増やすだけ**であり、スキーマ・ランナー・ドライバ・決定的ゲートはいずれも変更せず、LLM をどこにも追加しません。
 
-この提案は、既存の 2 項目とちょうど対になります。完了した run を zip に**エクスポート**する [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) の**インポート**側の鏡像であり、config とシナリオ木を Git リポジトリから**プル**する [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) の**プッシュ**側の兄弟です。後者の 2 つは「ホスト型 serve は実行する config とシナリオをどこから得るのか」という同じ問いに、片方は Git で、片方はアップロードで答えます。本提案は [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)（token 認証 + パス封じ込め）として既に出荷済みの serve hardening の上に乗ります。これなしに任意のバイナリをアップロードして実行する機能を公開するのは安全ではありません。
+この提案は、既存の 2 項目とちょうど対になります。完了した run を zip に**エクスポート**する [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) の**インポート**側の鏡像であり、config とシナリオ木を Git リポジトリから**プル**する [BE-0063](../../in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) の**プッシュ**側の兄弟です。後者の 2 つは「ホスト型 serve は実行する config とシナリオをどこから得るのか」という同じ問いに、片方は Git で、片方はアップロードで答えます。本提案は [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)（token 認証 + パス封じ込め）として既に出荷済みの serve hardening の上に乗ります。これなしに任意のバイナリをアップロードして実行する機能を公開するのは安全ではありません。
 
 ## 動機
 
@@ -23,7 +23,7 @@
 
 1. **ホスト型 serve のブラウザ利用者はホストのファイルシステムに触れない。** serve がリモートのワーカーや共有 Mac で動くとき（[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、config・シナリオ・`runs/` はすべて*その*マシンにあります。現在の UI の config 選択は **`--root` に封じ込められたファイルブラウザ**（`bajutsu/serve/operations.py` の `_confined_config_path`）なので、運用者が事前にホストへ手で置いたものからしか選べません。ブラウザ利用者は自分のスイートを持ち込めないのです。これは [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) のモチベーション 3（run を*取り出す*ためのファイルシステムアクセスが無い）のちょうど鏡像で、ここで欠けている方向は**スイートを*入れる***ことです。
 
-2. **Git source はビルド済みバイナリを運べない。** [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) は ref で指定したリポジトリの部分木を materialize します。これは*テキスト*（config + YAML シナリオ）には理想的ですが、**コンパイル済みアプリ**には向きません。チームは `.app` / `.ipa` 成果物を Git にコミットしませんし、BE-0063 自身も config の `build:` コマンドでホスト上でバイナリを（再）生成する設計に寄っています。これにはそのホストに完全なツールチェーンが要ります。zip は、**ビルド済み**成果物を config・シナリオと一緒に束ねられる唯一の転送手段であり、これはまさに [DESIGN §1](../../../DESIGN.md) が「Bajutsu が消費する」と述べているものです。2 つの取得経路は補完的です。バージョン管理されたテキストには Git、ビルド済みバイナリにはアップロードです。
+2. **Git source はビルド済みバイナリを運べない。** [BE-0063](../../in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) は ref で指定したリポジトリの部分木を materialize します。これは*テキスト*（config + YAML シナリオ）には理想的ですが、**コンパイル済みアプリ**には向きません。チームは `.app` / `.ipa` 成果物を Git にコミットしませんし、BE-0063 自身も config の `build:` コマンドでホスト上でバイナリを（再）生成する設計に寄っています。これにはそのホストに完全なツールチェーンが要ります。zip は、**ビルド済み**成果物を config・シナリオと一緒に束ねられる唯一の転送手段であり、これはまさに [DESIGN §1](../../../DESIGN.md) が「Bajutsu が消費する」と述べているものです。2 つの取得経路は補完的です。バージョン管理されたテキストには Git、ビルド済みバイナリにはアップロードです。
 
 3. **今日はホストへ手で配置するしか道がない。** セルフホストの Tier A ガイド（[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）では、運用者がチームの config・シナリオ・バイナリを Mac へコピーし、手で同期し続けます。アップロードは「運用者に build を scp してもらい `--root` を編集する」を「ページに zip をドラッグして実行を押す」に変えます。
 
@@ -33,7 +33,7 @@
 
 ### 束は「materialize するツリー」にすぎない（新しいレイアウトを発明しない）
 
-[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) の核心がそのまま当てはまります。**config だけでは足りません**。`scenarios` / `baselines` / `setup` / `appPath` / `build` は run の作業ディレクトリからの相対パスだからです（`bajutsu/config.py` の `AppConfig`）。したがってアップロードされた zip は、BE-0063 が Git checkout を扱うのとまったく同じく **config が住む自己完結した部分木**として扱い、config の相対エントリは**展開ルートを基準に**解決します。これは BE-0063 が導入する「パスの基準をプロセスの作業ディレクトリではなく明示的な値にする」仕組みの再利用です。
+[BE-0063](../../in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) の核心がそのまま当てはまります。**config だけでは足りません**。`scenarios` / `baselines` / `setup` / `appPath` / `build` は run の作業ディレクトリからの相対パスだからです（`bajutsu/config.py` の `AppConfig`）。したがってアップロードされた zip は、BE-0063 が Git checkout を扱うのとまったく同じく **config が住む自己完結した部分木**として扱い、config の相対エントリは**展開ルートを基準に**解決します。これは BE-0063 が導入する「パスの基準をプロセスの作業ディレクトリではなく明示的な値にする」仕組みの再利用です。
 
 つまり最小の束は、動くローカル checkout がもともと持っている形そのものです。
 
@@ -83,22 +83,22 @@ my-suite.zip
 
 - **ソースからのアプリビルド。** [DESIGN §1](../../../DESIGN.md) は Bajutsu がビルド済み成果物を受け取ると明言しています。束はビルド成果物を運ぶのであって、ビルドはしません。（config の `build:` によるオンデマンドビルドは、ツールチェーンのある*ローカル* / Git の場合のために残ります。）
 - **マルチテナントの実行アイソレーション。** テナントごとの Simulator、ジョブごとの egress 制御、org 単位のストレージは [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) の領域です。本項目は単一 Mac の Tier A serve を対象にします。
-- **保持／アップロード束のライブラリ化。** アップロードはエフェメラルです。それを永続化しバージョン管理するのは Git source（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）の仕事であり、本項目の仕事ではありません。
+- **保持／アップロード束のライブラリ化。** アップロードはエフェメラルです。それを永続化しバージョン管理するのは Git source（[BE-0063](../../in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）の仕事であり、本項目の仕事ではありません。
 
 ## 検討した代替案
 
-- **Git source だけ（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。** 完全な代替としては却下します。Git は*テキスト*をよく運びますが、[DESIGN §1](../../../DESIGN.md) が Bajutsu の消費対象とする*ビルド済みバイナリ*は運びません。バイナリを Git に通すには、ビルド成果物をコミットするか、ホストで完全なビルドを走らせるかになり、これこそアップロードが避けるものです。両者は冗長ではなく補完的です。
+- **Git source だけ（[BE-0063](../../in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。** 完全な代替としては却下します。Git は*テキスト*をよく運びますが、[DESIGN §1](../../../DESIGN.md) が Bajutsu の消費対象とする*ビルド済みバイナリ*は運びません。バイナリを Git に通すには、ビルド成果物をコミットするか、ホストで完全なビルドを走らせるかになり、これこそアップロードが避けるものです。両者は冗長ではなく補完的です。
 - **ホストへ手で配置し、既存のファイルブラウザ選択を使う。** ローカル Mac では動きますが、ホスト型 serve の*ブラウザ*利用者には自分のスイートを持ち込む手段を与えません。これはダウンロード方向で [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) が閉じるのと同じ隙間です。
 - **config の YAML だけをアップロードし、ツリーは送らない。** BE-0063 と同じ理由で却下します。config の `scenarios` / `appPath` は相対パスなので、ツリー（とバイナリ）のない config は実行できません。
 - **独自マニフェスト付きの専用バンドル形式。** 却下します。動くローカル checkout が*すでに*形式そのものです。zip を「materialize するツリー」として扱えば、config の既存の相対パスと BE-0063 のパス基準機構を再利用でき、何も発明しません。
 - **zip ではなく tarball。** 対称性と到達範囲のため却下します。`.ipa` や zip 化した `.app` は既に zip であり、stdlib の `zipfile` は [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) がエクスポートに使うのと同じ土台で、zip はどの OS でもダブルクリックで開けます。
-- **アップロードを再利用ライブラリとして永続化する。** 先送りします。それはバージョン管理されたストレージであり、Git（[BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）が既にそれです。アップロードはエフェメラルのままにします。
+- **アップロードを再利用ライブラリとして永続化する。** 先送りします。それはバージョン管理されたストレージであり、Git（[BE-0063](../../in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）が既にそれです。アップロードはエフェメラルのままにします。
 
 ## 参考
 
 - [CLAUDE.md](../../../CLAUDE.md)、[DESIGN §1](../../../DESIGN.md)（Bajutsu はビルド済みアプリを受け取り、ビルドはしない）、[DESIGN §2](../../../DESIGN.md)（AI は判定者にならない・決定性優先・テストごとにクリーン環境）。
 - [BE-0060 — run レポートを zip でダウンロード／エクスポート](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) — **エクスポート**側の鏡像。共有する stdlib `zipfile` の土台であり、往復の相手。
-- [BE-0063 — config（とそのシナリオ木）を Git リポジトリ + ref から読む](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) — **プル**側の兄弟。本提案が再利用する `ConfigSource` シームと「ツリーを materialize し展開ルートを基準に config を解決する」機構。
+- [BE-0063 — config（とそのシナリオ木）を Git リポジトリ + ref から読む](../../in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) — **プル**側の兄弟。本提案が再利用する `ConfigSource` シームと「ツリーを materialize し展開ルートを基準に config を解決する」機構。
 - [BE-0051 — ホスティングのための serve hardening](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) — 本提案が乗る token 認証 + パス封じ込め。`_confined_config_path` の不変条件を展開へ拡張。
 - [BE-0015 — Web UI の公開ホスティング](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016 — Web UI のセルフホスティング](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) — なぜブラウザ利用者にアップロードが要るか。より深いマルチテナント隔離の置き場所。
 - [BE-0059 — run のために対象サーバを起動する（`launchServer`）](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md) — 後続スライス向けの web backend の対応物（束ねた静的サイトを配信）。
