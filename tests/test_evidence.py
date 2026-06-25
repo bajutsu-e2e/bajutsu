@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import capture, write_elements
@@ -68,10 +70,26 @@ def test_capture_no_writing_kinds_leaves_dir_uncreated(tmp_path: Path) -> None:
     assert not step_dir.exists()
 
 
-def test_capture_creates_dir_once_for_writing_kinds(tmp_path: Path) -> None:
-    """A capture with both writing kinds lands both files under a freshly created step dir."""
+def test_capture_creates_dir_once_for_writing_kinds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A capture of two writing kinds creates the step dir exactly once, not once per writer.
+
+    Counts `Path.mkdir` calls on the step dir: a regression to per-writer `mkdir()` would make it
+    fire two-plus times. Both files still land under the freshly created dir.
+    """
+    mkdirs: list[Path] = []
+    real_mkdir = Path.mkdir
+
+    def counting_mkdir(self: Path, *args: object, **kwargs: object) -> None:
+        mkdirs.append(self)
+        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", counting_mkdir)
+
     driver = FakeDriver([_el("a", "A")])
     step_dir = tmp_path / "step0"
     capture(driver, step_dir, ["elements", "screenshot.after"])
     assert (step_dir / "elements.json").exists()
     assert ("screenshot", str(step_dir / "after.png")) in driver.actions
+    assert mkdirs.count(step_dir) == 1  # the step dir is created once, not per writing kind
