@@ -98,7 +98,9 @@ def _suggest(
     item_file = item_dir / f"{item_dir.name}{lang_suffix}"
     if not item_file.is_file():
         return None
-    return os.path.relpath(item_file, source.parent)
+    # POSIX form so a fix produces forward-slash links that work on GitHub and every OS, even when
+    # the linter runs on Windows (os.path.relpath would emit backslashes there).
+    return Path(os.path.relpath(item_file, source.parent)).as_posix()
 
 
 def broken_links(roadmap: Path) -> list[BrokenLink]:
@@ -108,14 +110,18 @@ def broken_links(roadmap: Path) -> list[BrokenLink]:
     broken: list[BrokenLink] = []
     for source in _item_files(roadmap):
         for m in _ITEM_LINK_RE.finditer(source.read_text(encoding="utf-8")):
-            target = m.group("target")
+            target = m.group("target")  # the path, without any #fragment
             if (source.parent / target).is_file():
                 continue
+            frag = m.group("frag") or ""
+            suggestion = _suggest(source, target, item_dirs, dirs_by_id)
+            # Carry any #fragment through on both sides, so an anchored link (`](path#frag)`) is
+            # matched and rewritten verbatim — the path resolves the same with or without it.
             broken.append(
                 BrokenLink(
                     source=source,
-                    target=target,
-                    suggestion=_suggest(source, target, item_dirs, dirs_by_id),
+                    target=target + frag,
+                    suggestion=(suggestion + frag) if suggestion is not None else None,
                 )
             )
     return broken
@@ -139,17 +145,19 @@ def fix_links(roadmap: Path) -> int:
     untouched — there is nothing to point it at.
     """
     fixed = 0
-    by_source: dict[Path, list[BrokenLink]] = {}
+    # Per file, map each broken target to its fix. A dict dedupes a target that occurs N times, so
+    # the rewrite + count happen once per distinct link (counting actual occurrences), not per match.
+    by_source: dict[Path, dict[str, str]] = {}
     for link in broken_links(roadmap):
         if link.suggestion is not None:
-            by_source.setdefault(link.source, []).append(link)
-    for source, links in by_source.items():
+            by_source.setdefault(link.source, {})[link.target] = link.suggestion
+    for source, repls in by_source.items():
         text = source.read_text(encoding="utf-8")
-        for link in links:
-            # Replace the exact ``(target)`` occurrence so a fragment / surrounding text is untouched.
-            assert link.suggestion is not None
-            text = text.replace(f"]({link.target})", f"]({link.suggestion})")
-            fixed += 1
+        for target, suggestion in repls.items():
+            occurrences = text.count(f"]({target})")
+            if occurrences:
+                text = text.replace(f"]({target})", f"]({suggestion})")
+                fixed += occurrences
         source.write_text(text, encoding="utf-8")
     return fixed
 

@@ -73,6 +73,32 @@ def test_fix_rewrites_broken_link(tmp_path: Path) -> None:
     assert "../../proposals/BE-9002-target/BE-9002-target.md" in text
 
 
+def test_fix_preserves_anchor_fragment(tmp_path: Path) -> None:
+    # A link with a #fragment must be matched and rewritten verbatim (the path resolves the same).
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    link = "see [BE-9002](../BE-9002-target/BE-9002-target.md#motivation)\n"
+    source = _write_item(roadmap, "implemented", "BE-9001-source", body=link)
+
+    assert lr.fix_links(roadmap) == 1
+    text = (source / "BE-9001-source.md").read_text(encoding="utf-8")
+    assert "../../proposals/BE-9002-target/BE-9002-target.md#motivation" in text
+    assert lr.broken_links(roadmap) == []
+
+
+def test_fix_count_matches_occurrences_not_matches(tmp_path: Path) -> None:
+    # The same broken link twice in one file counts as two rewrites, not one — and not four
+    # (str.replace fixes both at once; the count must reflect actual occurrences).
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    link = "../BE-9002-target/BE-9002-target.md"
+    body = f"first [a]({link}) and second [b]({link})\n"
+    _write_item(roadmap, "implemented", "BE-9001-source", body=body)
+
+    assert lr.fix_links(roadmap) == 2
+    assert lr.broken_links(roadmap) == []
+
+
 def test_stale_slug_resolved_by_id(tmp_path: Path) -> None:
     # The item was renamed (slug changed) but the link still carries the old slug; the BE id
     # alone must still resolve it, rewriting to the current slug + folder.

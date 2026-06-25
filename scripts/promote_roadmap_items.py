@@ -36,12 +36,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# Sibling script under scripts/; ensure that dir is importable whether this runs as a script
-# (scripts/ is already sys.path[0]) or is loaded by another module / the test suite.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from lint_roadmap import fix_links
-
 ROADMAP = Path("roadmaps")
 IMPLEMENTED = "implemented"
 IN_PROGRESS = "in-progress"
@@ -149,6 +143,11 @@ def promote(roadmap: Path) -> list[Misfiled]:
         # A move changes the moved item's folder, so item-body links into and out of it now point
         # at the wrong folder. Repair them (BE-0069) before reindexing, so a promotion self-heals
         # the cross-links the same way it rebuilds the index — neither is left to hand-editing.
+        # Imported here (sibling script under scripts/, added to the path) so the dependency is
+        # local to where it's used, not a module-level import after path setup.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from lint_roadmap import fix_links
+
         if fixed := fix_links(roadmap):
             print(f"Repaired {fixed} cross-link(s) after the move(s)")
         regenerate_index()

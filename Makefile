@@ -92,9 +92,10 @@ lint-actions:
 
 # Lint roadmap items: every item-to-item markdown link resolves, and each Author is a handle link
 # (BE-0069). Folded into `check` so a broken cross-reference fails the gate, not a reader's click.
-# `--fix` rewrites a broken item link to the target's current status folder.
+# Pass flags through ARGS, e.g. `make lint-roadmap ARGS="--fix"` rewrites broken item links to the
+# target's current status folder.
 lint-roadmap:
-	uv run python scripts/lint_roadmap.py
+	uv run python scripts/lint_roadmap.py $(ARGS)
 
 # Regenerate the roadmap index tables (README.md / README-ja.md) from each BE item's own
 # metadata, so a roadmap PR only touches its own directory (BE-0043). The committed result is

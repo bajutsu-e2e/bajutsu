@@ -339,8 +339,7 @@ and `Status` disagree, so an item can never merge while filed under the wrong fo
 link is wrong once the target sits in a different status folder) — the same self-healing the index
 already had (BE-0069). **`make lint-roadmap`** (in `make check`) is the gate for this: it fails if any
 item's markdown link to another item does not resolve, or if an `Author` is not a `[@handle](…)` link;
-`make lint-roadmap` with `--fix` (via `python scripts/lint_roadmap.py --fix`) rewrites a broken item
-link to the target's current folder.
+`make lint-roadmap ARGS="--fix"` rewrites a broken item link to the target's current folder.
 Milestones M1–M4 are `BE-0001`–`BE-0004` (implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
