@@ -47,7 +47,7 @@ SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/merge-uv-lock.sh sc
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
 # allowlist (not an ignore list) so an unmigrated module never accidentally falls under the gate.
-DOCSTRING_PATHS := bajutsu/drivers/base.py bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp
+DOCSTRING_PATHS := bajutsu/drivers/base.py bajutsu/assertions.py bajutsu/network.py bajutsu/runner bajutsu/scenario bajutsu/mcp bajutsu/cli
 
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).

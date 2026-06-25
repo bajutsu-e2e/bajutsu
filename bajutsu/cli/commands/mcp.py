@@ -32,4 +32,5 @@ def mcp(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(mcp)
