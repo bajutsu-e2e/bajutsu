@@ -11,7 +11,16 @@ from typer.testing import CliRunner
 from bajutsu import triage
 from bajutsu.cli import app
 from bajutsu.cli.commands.triage import _rerun_command
-from bajutsu.triage import FailedStep, Fix, HeuristicTriageAgent, TriageContext, apply_fix, diff_fix
+from bajutsu.triage import (
+    FailedStep,
+    Fix,
+    HeuristicTriageAgent,
+    TriageContext,
+    _nearest_artifact,
+    _read_artifact,
+    apply_fix,
+    diff_fix,
+)
 
 runner = CliRunner()
 
@@ -300,3 +309,77 @@ def test_render_has_diagnosis_and_fixes(tmp_path: Path) -> None:
     assert "triage · s" in out
     assert "diagnosis [selector]:" in out
     assert "suggested fixes:" in out
+
+
+# --- _read_artifact unit tests ---
+
+
+def _make_steps(
+    *kinds: str,
+) -> list[dict[str, object]]:
+    """Build a minimal steps list where each step has one artifact of the given kind."""
+    return [
+        {"index": i, "artifacts": [{"kind": k, "name": f"step{i}/{k}.dat"}]}
+        for i, k in enumerate(kinds)
+    ]
+
+
+def test_nearest_artifact_prefers_failed_step_then_walks_back() -> None:
+    # steps: [elements@0, screenshot@1, elements@2], failed at index 2
+    steps = _make_steps("elements", "screenshot", "elements")
+    # screenshot is only at step 1 -- nearest backward from index 2
+    art = _nearest_artifact(steps, 2, "screenshot")
+    assert art is not None and art["name"] == "step1/screenshot.dat"
+    # elements is at the failed step itself (index 2)
+    art2 = _nearest_artifact(steps, 2, "elements")
+    assert art2 is not None and art2["name"] == "step2/elements.dat"
+
+
+def test_nearest_artifact_ignores_steps_after_failed_index() -> None:
+    # steps: [screenshot@0, elements@1], failed at index 0 -- step 1 must not be used
+    steps = _make_steps("screenshot", "elements")
+    art = _nearest_artifact(steps, 0, "elements")
+    assert art is None  # step 1 is after the failure, so it is not scanned
+
+
+def test_nearest_artifact_falls_back_to_last_when_no_failed_index() -> None:
+    steps = _make_steps("screenshot", "elements", "screenshot")
+    # no failed index -> scan from the end; last "screenshot" is at step 2
+    art = _nearest_artifact(steps, None, "screenshot")
+    assert art is not None and art["name"] == "step2/screenshot.dat"
+
+
+def test_read_artifact_applies_loader_and_returns_default_on_miss(tmp_path: Path) -> None:
+    # write a file for step0/elements.dat; step1 has no file
+    (tmp_path / "step0").mkdir()
+    (tmp_path / "step0" / "elements.dat").write_text("loaded", encoding="utf-8")
+
+    steps = _make_steps("elements", "screenshot")  # step1 has screenshot, not elements
+    sentinel: list[str] = []
+    calls: list[Path] = []
+
+    def loader(p: Path) -> list[str] | None:
+        calls.append(p)
+        try:
+            return [p.read_text(encoding="utf-8")]
+        except OSError:
+            return None
+
+    # failed at step 1: nearest elements is at step 0
+    result = _read_artifact(tmp_path, steps, 1, "elements", loader, sentinel)
+    assert result == ["loaded"]
+    assert len(calls) == 1 and calls[0] == tmp_path / "step0/elements.dat"
+
+    # kind not present anywhere -> default is returned without calling loader
+    # artifact present but its file is missing: the loader IS called and returns None, so the
+    # default kicks in (step1 has a screenshot artifact pointing at an unwritten file).
+    calls.clear()
+    result2 = _read_artifact(tmp_path, steps, 1, "screenshot", loader, sentinel)
+    assert calls == [tmp_path / "step1/screenshot.dat"]  # loader was called
+    assert result2 is sentinel  # ...and returned None, so the default is used
+
+    # kind absent from every step: the default is returned WITHOUT calling the loader at all.
+    calls.clear()
+    result3 = _read_artifact(tmp_path, steps, 1, "video", loader, sentinel)
+    assert calls == []  # no artifact of that kind -> loader never invoked
+    assert result3 is sentinel
