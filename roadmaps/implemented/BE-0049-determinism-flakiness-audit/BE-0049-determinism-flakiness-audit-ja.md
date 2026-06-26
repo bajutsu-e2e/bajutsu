@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0049](BE-0049-determinism-flakiness-audit-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トピック | 競合調査（Maestro）由来の候補 |
 | 由来 | Maestro |
 <!-- /BE-METADATA -->
@@ -41,7 +41,8 @@ Bajutsu が競合に対して掲げる中心的な主張は、ゲートが吸収
 
 - **静的な安定度スコア**と**反復＆差分（動的）**は、どちらも `bajutsu audit` コマンドとして出荷済みです。`bajutsu audit <scenario>` はデバイス無しでセレクタ／wait の安定度を採点し、`bajutsu audit <scenario> --repeat K --target <app>` は K 回実行して、結果が変動したステップやアサーションを報告します。助言的かつ read-only で、CI ゲートにはなりません。
 - **run の来歴・バージョンスタンプ**を出荷しました。各 `manifest.json` に任意の `provenance` ブロック（`scenarioHash`＝実行した `scenario.yaml` の `sha256:` フィンガープリント、`toolVersion`、git 配下の run なら `gitRevision`）が載ります。蓄積した run を同一性でグルーピングするための、安価な前提部分です。純粋なメタデータで、判定には一切入りません。
-- **残り:** スタンプ済みの run 記録を採掘する**縦断ビュー**（内容ハッシュでグルーピングし、経時の合格率を報告）と、同じ来歴を serve の DB run 記録に刻むこと（[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) 7c-4）です。
+- **縦断ビュー**を出荷しました。`bajutsu audit --history <runs-dir>` がスタンプ済みの run 記録を採掘し、各シナリオの結果を `(scenarioHash, シナリオ名)` でキー付けして、シナリオごとの合格率と分類（`flaky` / `deterministic` / `unproven`）を報告します。フィンガープリントが一定のまま verdict がブレていれば真のフレーキネスで、編集されたシナリオはハッシュが変わって新しいグループになり、provenance 導入前の run は skip として報告します。1 つの run は自身の `scenarios` 全体に 1 つのフィンガープリントを刻むため、名前でもキーを引くことで、スイートの*どの*シナリオがブレたのかまで特定できます。read-only かつ助言的で、フレーキネスを検出しても終了 0、CI ゲートにもなりません。
+- **残り:** 同じ来歴を serve の DB run 記録に刻むこと（[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) 7c-4）。これにより縦断ビューがローカルの `runs/` ツリーだけでなくサーバーがホストする履歴も採掘できるようになります。
 
 ## 検討した代替案
 

@@ -13,7 +13,14 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from bajutsu.assertions import AssertionResult
-from bajutsu.audit import audit_scenario, render, render_repeat, repeat_diff
+from bajutsu.audit import (
+    audit_scenario,
+    longitudinal,
+    render,
+    render_longitudinal,
+    render_repeat,
+    repeat_diff,
+)
 from bajutsu.cli import app
 from bajutsu.orchestrator import RunResult, StepOutcome
 from bajutsu.scenario import load_scenarios
@@ -142,6 +149,136 @@ def test_render_repeat_marks_classification() -> None:
     assert "deterministic" in det.lower()
     flaky = render_repeat(repeat_diff([_run(True, []), _run(False, [])]))
     assert "flaky" in flaky.lower()
+
+
+# --- longitudinal view (mine accumulated runs by scenario hash, BE-0049) ---
+
+
+def _manifest(scenario_hash: str | None, ok: bool, names: tuple[str, ...] = ("s",)) -> dict:
+    """A minimal manifest dict — the parsed shape `longitudinal` reads (provenance + verdict)."""
+    m: dict = {"ok": ok, "scenarios": [{"scenario": n, "ok": ok} for n in names]}
+    if scenario_hash is not None:
+        m["provenance"] = {"scenarioHash": scenario_hash}
+    return m
+
+
+def test_longitudinal_flaky_when_verdict_flips_at_constant_hash() -> None:
+    # Same fingerprint, a verdict that flips across runs — true flakiness, not an edit.
+    report = longitudinal([_manifest("sha256:a", True), _manifest("sha256:a", False)])
+    assert report.skipped == 0
+    (h,) = report.histories
+    assert h.scenario_hash == "sha256:a"
+    assert h.runs == 2 and h.passed == 1 and h.failed == 1
+    assert h.pass_rate == 0.5
+    assert h.classification == "flaky"
+
+
+def test_longitudinal_single_run_is_unproven() -> None:
+    # One run can't be diffed against anything — unproven, not flaky (mirrors repeat_diff K<2).
+    (h,) = longitudinal([_manifest("sha256:a", True)]).histories
+    assert h.runs == 1 and h.classification == "unproven"
+
+
+def test_longitudinal_all_pass_is_deterministic() -> None:
+    report = longitudinal([_manifest("sha256:a", True), _manifest("sha256:a", True)])
+    (h,) = report.histories
+    assert h.passed == 2 and h.failed == 0 and h.pass_rate == 1.0
+    assert h.classification == "deterministic"
+
+
+def test_longitudinal_separates_distinct_hashes() -> None:
+    # Editing the scenario changes the hash → a separate group; neither looks flaky.
+    report = longitudinal(
+        [_manifest("sha256:a", True), _manifest("sha256:a", True), _manifest("sha256:b", False)]
+    )
+    assert len(report.histories) == 2
+    assert {h.scenario_hash for h in report.histories} == {"sha256:a", "sha256:b"}
+    assert all(h.classification != "flaky" for h in report.histories)
+
+
+def test_longitudinal_skips_runs_without_provenance() -> None:
+    # Older runs carry no scenarioHash, so they can't be grouped by identity — counted, not grouped.
+    report = longitudinal([_manifest(None, True), _manifest("sha256:a", True)])
+    assert report.skipped == 1
+    assert len(report.histories) == 1
+
+
+def test_longitudinal_keys_by_scenario_name() -> None:
+    report = longitudinal(
+        [
+            _manifest("sha256:a", True, names=("login",)),
+            _manifest("sha256:a", False, names=("login",)),
+        ]
+    )
+    (h,) = report.histories
+    assert h.name == "login" and h.scenario_hash == "sha256:a"
+
+
+def test_longitudinal_localizes_the_flaky_scenario_within_a_run() -> None:
+    # A run stamps one fingerprint over its whole suite; per-scenario keying pins which one flaked.
+    a_pass_b_pass = {
+        "ok": True,
+        "provenance": {"scenarioHash": "sha256:a"},
+        "scenarios": [{"scenario": "login", "ok": True}, {"scenario": "pay", "ok": True}],
+    }
+    a_pass_b_fail = {
+        "ok": False,
+        "provenance": {"scenarioHash": "sha256:a"},
+        "scenarios": [{"scenario": "login", "ok": True}, {"scenario": "pay", "ok": False}],
+    }
+    report = longitudinal([a_pass_b_pass, a_pass_b_fail])
+    by_name = {h.name: h.classification for h in report.histories}
+    assert by_name == {"login": "deterministic", "pay": "flaky"}
+
+
+def test_longitudinal_sorts_flaky_first() -> None:
+    report = longitudinal(
+        [
+            _manifest("sha256:stable", True),
+            _manifest("sha256:stable", True),
+            _manifest("sha256:flaky", True),
+            _manifest("sha256:flaky", False),
+        ]
+    )
+    assert report.histories[0].scenario_hash == "sha256:flaky"
+
+
+def test_render_longitudinal_marks_flaky() -> None:
+    out = render_longitudinal(
+        longitudinal([_manifest("sha256:a", True), _manifest("sha256:a", False)])
+    )
+    assert "flaky" in out.lower()
+
+
+def test_cli_history_reports_flaky_and_exits_zero(tmp_path: Path) -> None:
+    # A runs dir with the same scenario hash passing then failing is flagged flaky, exit 0 (advisory).
+    runs = tmp_path / "runs"
+    for i, ok in enumerate((True, False)):
+        d = runs / f"run-{i}"
+        d.mkdir(parents=True)
+        (d / "manifest.json").write_text(json.dumps(_manifest("sha256:a", ok)), encoding="utf-8")
+    result = runner.invoke(app, ["audit", "--history", str(runs)])
+    assert result.exit_code == 0
+    assert "flaky" in result.output.lower()
+
+
+def test_cli_history_json(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    d = runs / "run-0"
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps(_manifest("sha256:a", True)), encoding="utf-8")
+    result = runner.invoke(app, ["audit", "--history", str(runs), "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    h = payload["histories"][0]
+    # classification / pass_rate are real fields, so tooling reading the JSON gets the verdict.
+    assert h["scenario_hash"] == "sha256:a"
+    assert h["classification"] == "unproven" and h["pass_rate"] == 1.0
+
+
+def test_cli_history_missing_dir_exits_two(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["audit", "--history", str(tmp_path / "nope")])
+    assert result.exit_code == 2
 
 
 def _audit_project(tmp_path: Path) -> tuple[Path, Path]:

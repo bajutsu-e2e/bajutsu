@@ -1,6 +1,6 @@
 """`bajutsu audit` — score a scenario's determinism (BE-0049).
 
-Two modes, both read-only and advisory — they never decide a verdict and never gate CI:
+Three modes, all read-only and advisory — they never decide a verdict and never gate CI:
 
 - **Static (default)**: no device, no AI. Grade selectors on the stability ladder, flag over-loose
   waits and coordinate gestures.
@@ -8,9 +8,12 @@ Two modes, both read-only and advisory — they never decide a verdict and never
   preconditions and report anything whose outcome varied (`deterministic` vs `flaky`). This is the
   *opposite* of flakiness tolerance / auto-retry — a divergence is a finding to fix, not a retry
   that turns red into green.
+- **Longitudinal** (`--history <runs-dir>`): mine accumulated runs, grouping each scenario's
+  outcomes by its `provenance.scenarioHash`, and classify any whose verdict flipped at a constant
+  fingerprint as flaky. No device, no AI.
 
-A successful audit exits 0 *even with findings*; only a missing / unreadable scenario file (or, for
-`--repeat`, an unavailable target / backend) exits 2.
+A successful audit exits 0 *even with findings*; only a missing / unreadable input (scenario file or
+runs dir; or, for `--repeat`, an unavailable target / backend) exits 2.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import dataclasses
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -32,10 +36,15 @@ from bajutsu.scenario import Scenario
 
 
 def audit(
-    scenario: str = typer.Argument(..., help="scenario file to audit"),
+    scenario: str = typer.Argument("", help="scenario file to audit (omit with --history)"),
     as_json: bool = typer.Option(False, "--json", help="emit the reports as JSON instead of text"),
     repeat: int = typer.Option(
         0, "--repeat", "-k", help="run the scenario K times and diff outcomes (K>=2); 0 = static"
+    ),
+    history: str = typer.Option(
+        "",
+        "--history",
+        help="dir of past runs to mine for flakiness, grouping by scenario fingerprint",
     ),
     target_name: str = typer.Option(
         "", "--target", help="app/target to run against (for --repeat)"
@@ -44,12 +53,28 @@ def audit(
     udid: str = typer.Option("booted", "--udid"),
     config: str = typer.Option(DEFAULT_CONFIG, "--config"),
 ) -> None:
-    """Score a scenario's determinism — statically, or by repeated execution with `--repeat`.
+    """Score a scenario's determinism — statically, by repeated execution, or over run history.
 
-    Read-only and advisory: it never decides a verdict and never gates CI. A successful audit exits
-    0 even with findings; a missing / unreadable scenario file (or, for `--repeat`, an unavailable
-    target / backend) exits 2.
+    Three read-only, advisory modes: the static audit (default), repeat-and-diff (`--repeat`), and
+    the longitudinal view (`--history <runs-dir>`, which groups accumulated runs by scenario
+    fingerprint and flags any whose verdict flipped). None decides a verdict or gates CI. A
+    successful audit exits 0 even with findings; a missing input (scenario file, runs dir) or an
+    unavailable `--repeat` target / backend exits 2.
     """
+    if history:
+        if repeat:
+            # The longitudinal view reads past runs; --repeat executes new ones. Asking for both is a
+            # usage error rather than silently dropping one.
+            typer.echo("--history reads past runs and can't be combined with --repeat")
+            raise typer.Exit(2)
+        _history_audit(history, as_json)
+        return
+
+    if not scenario:
+        typer.echo(
+            "audit needs a scenario file (or --history <runs-dir> for the longitudinal view)"
+        )
+        raise typer.Exit(2)
     path = Path(scenario)
     if not path.is_file():
         typer.echo(f"scenario not found: {scenario}")
@@ -76,6 +101,39 @@ def audit(
         typer.echo(json.dumps([dataclasses.asdict(r) for r in reports], indent=2))
     else:
         typer.echo("\n\n".join(_audit.render(r) for r in reports))
+
+
+def _history_audit(history: str, as_json: bool) -> None:
+    """Mine a runs directory for flakiness — group runs by scenario fingerprint and classify each."""
+    runs_dir = Path(history)
+    if not runs_dir.is_dir():
+        typer.echo(f"runs directory not found: {history}")
+        raise typer.Exit(2)
+    report = _audit.longitudinal(_read_manifests(runs_dir))
+    if as_json:
+        typer.echo(json.dumps(dataclasses.asdict(report), indent=2))
+    else:
+        typer.echo(_audit.render_longitudinal(report))
+
+
+def _read_manifests(runs_dir: Path) -> list[dict[str, Any]]:
+    """The parsed `manifest.json` of each run under *runs_dir*; unreadable/malformed ones are skipped.
+
+    A run that can't be parsed carries no usable provenance, so dropping it here is equivalent to its
+    being skipped for lacking a fingerprint — the audit is advisory and never gates on completeness.
+    """
+    manifests: list[dict[str, Any]] = []
+    for d in sorted(runs_dir.iterdir()):
+        manifest = d / "manifest.json"
+        if not (d.is_dir() and manifest.is_file()):
+            continue
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(data, dict):
+            manifests.append(data)
+    return manifests
 
 
 def _repeat_audit(

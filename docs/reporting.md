@@ -67,7 +67,7 @@ verbatim.
 - `steps[].artifacts`: the provenance of evidence captured for that step
   ([evidence](evidence.md#artifact-provenance-provider)).
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
-- `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
+- `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
   — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`), `toolVersion`
   (`bajutsu.__version__`), `gitRevision` (the commit, present only when the run is inside a git
   checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
