@@ -38,6 +38,11 @@ _GIT_URL_RE = re.compile(
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
+def is_full_sha(ref: str | None) -> bool:
+    """Whether `ref` is a full 40-hex commit SHA — the only ref that is an immutable, offline pin."""
+    return bool(ref and _FULL_SHA_RE.match(ref))
+
+
 @dataclass(frozen=True)
 class GitConfigSpec:
     """A parsed Git config source: which repo subtree, at which ref, to load the config from."""
@@ -143,12 +148,16 @@ def materialize(
     *,
     transport: Transport | None = None,
     cache_root: Path | None = None,
+    offline: bool = False,
 ) -> Materialized:
     """Check out `spec`'s subtree at its resolved commit SHA into a content-addressed cache.
 
     The ref is resolved to an immutable SHA (the determinism anchor), then the tree is fetched once
     and extracted under `<cache>/<host>/<owner>/<repo>/<sha>/`. Because the directory is keyed by the
     SHA, a cache hit is always valid and a pinned-SHA run is offline after the first fetch.
+
+    With `offline` (the `--config-offline` switch) it never touches the network: the ref must already
+    be a full SHA (a branch/tag can't be resolved offline) and that SHA must already be cached.
     """
     if transport is None:
         # The general `git+https://…` spec form is parsed (the door is open for other hosts) but only
@@ -158,14 +167,17 @@ def materialize(
         transport = _GitHubTransport(github_token())
     cache_root = cache_root or _default_cache_root()
 
+    pinned = is_full_sha(spec.ref)
+    if offline and not pinned:
+        raise ValueError(
+            f"--config-offline needs a pinned commit SHA; cannot resolve ref {spec.ref or 'HEAD'!r} "
+            "without the network"
+        )
     # A pinned full SHA is already the immutable id — use it directly so a cache hit is fully offline
     # (the determinism anchor the design promises). A branch/tag is resolved to its SHA; no ref ⇒ the
     # default branch, which "HEAD" resolves to on every Git host.
-    sha = (
-        spec.ref
-        if spec.ref and _FULL_SHA_RE.match(spec.ref)
-        else transport.commit_sha(spec, spec.ref or "HEAD")
-    )
+    sha = spec.ref if pinned else transport.commit_sha(spec, spec.ref or "HEAD")
+    assert sha is not None  # `pinned` implies spec.ref is set
     root = cache_root / spec.host / spec.owner / spec.repo / sha
     config_path = root / (spec.path or DEFAULT_CONFIG)
     # The spec's components and in-repo path become filesystem paths, so refuse any (`..`, an absolute
@@ -175,6 +187,8 @@ def materialize(
         cache_resolved
     ) or not config_path.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"git spec resolves outside the cache: {spec}")
+    if offline and not root.exists():
+        raise ValueError(f"--config-offline: {spec.owner}/{spec.repo}@{sha} is not in the cache")
     if not root.exists():
         _extract_into(transport.tarball_bytes(spec, sha), root)
     return Materialized(config_path, root, sha)

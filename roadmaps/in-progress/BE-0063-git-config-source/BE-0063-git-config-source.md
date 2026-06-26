@@ -218,9 +218,14 @@ A `run` from a Git source also **records the resolved commit** as run provenance
 `provenance.configSource` carries `{ host, owner, repo, ref, sha }`, so a branch-based run states the
 exact commit it executed (extending the BE-0049 provenance block; pure metadata, never a verdict).
 
-Still to come: the `--config-offline` / `--require-pinned-config`
-switches, `build`'s working directory for a Git source, the **serve "from Git" picker**, treating a
-Git source as **read-only input for `record` / `crawl`** (so an authored artifact goes to a local
+The **`--config-offline` and `--require-pinned-config`** gate switches shipped on `bajutsu run`:
+`--config-offline` materializes from the cache without touching the network (so it needs a pinned
+`@<sha>`), and `--require-pinned-config` fails unless the Git config pins a full commit SHA — a
+strengthening of the proposal's "tag or SHA", since a tag can be force-moved and only a SHA is an
+immutable, offline-provable pin.
+
+Still to come: `build`'s working directory for a Git source, the **serve "from Git" picker**, treating
+a Git source as **read-only input for `record` / `crawl`** (so an authored artifact goes to a local
 `--out`, never into the SHA-keyed cache), and **confining** a config's path fields to the checkout
 root (rejecting an absolute or `../` value that escapes it, mirroring
 [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)).
