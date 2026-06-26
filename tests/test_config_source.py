@@ -193,6 +193,17 @@ def test_materialize_refuses_a_path_escaping_the_cache(tmp_path) -> None:  # typ
     assert transport.tarball_calls == 0  # refused before fetching
 
 
+def test_materialize_corrupt_tarball_raises_value_error(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A truncated/corrupt body (a rate-limit page, a proxy interstitial) is a clean ValueError, not a
+    # bare tarfile.ReadError — so callers' fetch-error handling catches it instead of a traceback.
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, b"not a gzip tarball at all")
+    spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
+    assert spec is not None
+    with pytest.raises(ValueError, match="could not read the repository tarball"):
+        materialize(spec, transport=transport, cache_root=tmp_path)
+
+
 def test_source_provenance_records_repo_and_resolved_sha() -> None:
     # A branch-based run records the exact commit it executed (BE-0063), so the manifest is
     # reproducible after the fact.

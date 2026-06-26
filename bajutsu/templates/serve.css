@@ -274,6 +274,14 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .fslist li.file .nm{color:var(--acc)}
 .fslist li.muted{color:var(--mut);cursor:default}.fslist li.muted:hover{background:none}
 .fshint{color:var(--mut);font-size:.78em;margin-top:.5rem}
+/* From-Git config source (BE-0063), above the local file browser */
+.gitsrc{margin-bottom:.6rem}
+.gitsrclbl{display:block;font-weight:600;font-size:.85em;margin-bottom:.35rem}
+.gitsrcrow{display:flex;gap:.5rem}
+.gitsrcrow input{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);padding:.35rem .55rem;font:inherit;border-radius:8px}
+.gitsrchint{color:var(--mut);font-size:.78em;margin-top:.35rem}
+.gitsrcerr{color:var(--bad,#e5534b);font-size:.8em;margin-top:.35rem;word-break:break-word}
+.fsor{color:var(--mut);font-size:.78em;text-transform:uppercase;letter-spacing:.04em;margin:.5rem 0 .4rem}
 /* Settings modal (AI provider + Claude API key) */
 .setsection{padding-top:.85rem;margin-top:.85rem;border-top:1px solid var(--line)}
 .setsection:first-of-type{padding-top:0;margin-top:0;border-top:0}

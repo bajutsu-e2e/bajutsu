@@ -236,8 +236,17 @@ working directory (where `build`'s relative parts, e.g. `make -C demos/features 
 rooted) before the run loop. A failed build exits cleanly. A local-path `run` is unchanged — it never
 builds, and a missing binary still errors at launch.
 
-Still to come: the **serve "from Git" picker**, and treating a Git source as **read-only input for
-`record` / `crawl`** (so an authored artifact goes to a local `--out`, never into the SHA-keyed cache).
+The **serve "from Git" picker** shipped: `serve --config github:…` binds a Git source at startup the
+same way `--config <path>` binds a local one, and the "Open config" dialog gains a "From a Git
+repository" field for the same spec. Either way serve materializes the checkout (`bind_git_config`)
+and repoints its working directory to the checkout root, so the config's relative `scenarios` /
+`appPath` / `build` resolve against the fetched tree — the [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
+Tier-A payoff (point serve at the team repository instead of hand-syncing files). The file browser
+stays confined to `--root`; the checkout is a managed content-addressed cache, and a Git-sourced run
+confines the config's path fields to the checkout root (`Effective.rebased`).
+
+Still to come: treating a Git source as **read-only input for `record` / `crawl`** (so an authored
+artifact goes to a local `--out`, never into the SHA-keyed cache).
 
 ## Alternatives considered
 

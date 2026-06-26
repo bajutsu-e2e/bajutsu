@@ -214,7 +214,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/login":
                     self._post_login(body)
                 case "/api/config":
-                    self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
+                    # A `git` key selects the from-Git picker (BE-0063); `path` the local file
+                    # browser. Key presence (not truthiness) routes, so an empty `git` still reaches
+                    # the Git binder and gets its "spec is required" 400, not the local one.
+                    if "git" in body:
+                        self._json(*ops.bind_git_config(state, str(body.get("git") or "")))
+                    else:
+                        self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
                 case "/api/apikey":
                     self._json(*ops.set_api_key(state, str(body.get("value", "") or "")))
                 case "/api/provider":

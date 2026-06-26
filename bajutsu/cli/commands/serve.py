@@ -113,12 +113,29 @@ def serve(
         )
         return
 
+    # `--config github:…` binds a Git source at startup (BE-0063), the same way a local path does:
+    # materialize the checkout and serve from its root, so the config's relative scenarios/build/
+    # baselines resolve against the fetched tree. A non-spec value stays a local path.
+    config_path = Path(config) if config else None
+    cwd: Path | None = None
+    if config:
+        from bajutsu.config_source import materialize, parse_config_spec
+
+        spec = parse_config_spec(config)
+        if spec is not None:
+            try:
+                mat = materialize(spec)
+            except (OSError, ValueError) as e:
+                typer.echo(f"--config {config}: {e}")
+                raise typer.Exit(2) from None
+            config_path, cwd = mat.config_path, mat.root
+
     try:
         _serve(
             host=host,
             port=port,
             scenarios_dir=Path(scenarios) if scenarios else None,
-            config=Path(config) if config else None,
+            config=config_path,
             runs_dir=Path(runs),
             root=Path(root) if root else Path.cwd(),
             baselines_dir=Path(baselines) if baselines else None,
@@ -126,6 +143,7 @@ def serve(
             token=resolved_token or None,
             asgi=asgi,
             backend=backend,
+            cwd=cwd,
         )
     except MissingServerExtra as e:
         # The server backend was selected without its optional extras: show the install hint and

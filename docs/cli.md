@@ -470,6 +470,16 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `--config` is **optional**. Omit it and open a `config.yml` from the UI's file browser (an
   "Open config" button); the browser is confined to `--root` (default: the current directory).
   `--scenarios <dir>` is available as an override of the selected app's configured dir.
+- **From a Git repository ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)).**
+  `--config` also accepts a Git source (`github:owner/repo@ref:path`), and the "Open config" dialog
+  has a **From a Git repository** field for the same spec: serve materializes the repo subtree at the
+  ref into its cache, binds that config, and serves from the checkout root — so the config's relative
+  `scenarios` / `appPath` / `build` resolve against the fetched tree. This is the self-hosted payoff
+  ([BE-0016](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
+  point serve at the team's test repository instead of hand-syncing files, and switch branches in the
+  UI rather than redeploying. The file browser stays confined to `--root`; the checkout is a managed
+  content-addressed cache, and a Git-sourced run confines the config's path fields to the checkout
+  root ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)).
 - `--baselines` sets the visual-regression baselines dir (default: a `baselines/` folder under
   the app's scenarios dir); runs launched from the UI use it, and the report's **Approve** button
   promotes the captured screenshot into it via `POST /api/approve`.

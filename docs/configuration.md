@@ -148,8 +148,11 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
   network (it needs a pinned `@<sha>`, since a branch can't be resolved offline), and
   **`--require-pinned-config`** fails unless the Git config pins a commit SHA — a branch or even a tag
   can move under a gate, so only a SHA is accepted.
-- Remaining follow-ups: the serve "from Git" picker, read-only Git input for `record` / `crawl`, and
-  confining the config's path fields to the checkout root.
+- The serve UI also binds a Git source — `serve --config github:…` at startup, or the "From a Git
+  repository" field in the "Open config" dialog — materializing the checkout and serving from its
+  root ([cli → serve](cli.md#serve)).
+- Remaining follow-ups: read-only Git input for `record` / `crawl` (an authored artifact goes to a
+  local `--out`, never into the SHA-keyed cache).
 
 ## Onboarding a new target
 

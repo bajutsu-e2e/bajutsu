@@ -394,6 +394,14 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `--config` は**任意**です。省略すると UI のファイルブラウザ（「Open config」ボタン）から `config.yml` を開けます。
   ブラウザの走査は `--root`（既定: カレントディレクトリ）配下に限定されます。`--scenarios <dir>` は選択アプリの設定済み
   ディレクトリの上書きとして使えます。
+- **Git リポジトリから（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。**
+  `--config` は Git ソース（`github:owner/repo@ref:path`）も受け付け、「Open config」ダイアログにも同じ spec を入れる
+  **From a Git repository** 欄があります。serve はその ref のリポジトリ部分木をキャッシュへ実体化し、その config を bind し、
+  チェックアウトのルートから serve します。これにより config の相対パス（`scenarios` / `appPath` / `build`）は取得したツリーを
+  基準に解決されます。これはセルフホストの狙い（[BE-0016](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)
+  Tier A）そのもので、ファイルを手で同期する代わりにチームのテストリポジトリを serve に向け、ブランチの切り替えを再デプロイではなく
+  UI 上で行えます。ファイルブラウザは `--root` 配下に限定されたままです。チェックアウトは管理された content-addressed キャッシュで、
+  Git ソースの run は config のパス項目をチェックアウトのルートに閉じ込めます（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。
 - `--baselines` でビジュアルリグレッションのベースラインディレクトリを指定します（既定: アプリのシナリオ
   ディレクトリ配下の `baselines/`）。UI から起動した実行はこれを使い、レポートの **Approve** ボタンが
   `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させます。
