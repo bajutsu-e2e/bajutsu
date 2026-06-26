@@ -216,3 +216,16 @@ def test_commit_msg_problem_does_not_gate_merge_revert_fixup_squash() -> None:
 
 def test_commit_msg_problem_none_for_an_empty_message() -> None:
     assert lp.commit_msg_problem("\n\n# only comments\n") is None
+
+
+def test_commit_msg_problem_skips_an_indented_comment_line() -> None:
+    # Some templates indent git's `#` comments; the comment-skip must still find the real subject.
+    assert lp.commit_msg_problem("feat(x): y\n  # indented comment, not the subject") is None
+
+
+def test_commit_msg_does_not_block_a_non_utf8_message_file(tmp_path: Path) -> None:
+    # A non-UTF-8 commit message file must not crash the hook (UnicodeDecodeError is not OSError);
+    # an ASCII subject still validates, so a scoped subject in a latin-1 file passes (exit 0).
+    p = tmp_path / "COMMIT_EDITMSG"
+    p.write_bytes("feat(x): caf\xe9\n".encode("latin-1"))  # 0xe9 is invalid UTF-8
+    assert lp._commit_msg(str(p)) == 0

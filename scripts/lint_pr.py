@@ -70,7 +70,9 @@ def commit_msg_problem(message: str) -> str | None:
     for an empty message or a merge / revert / fixup / squash commit, which a commit-msg hook must
     let through (BE-0069 D).
     """
-    subject = next((ln for ln in message.splitlines() if ln.strip() and not ln.startswith("#")), "")
+    subject = next(
+        (ln for ln in message.splitlines() if ln.strip() and not ln.lstrip().startswith("#")), ""
+    )
     if not subject or _SKIP_COMMIT_RE.match(subject):
         return None
     if bad_commit_subjects([subject]):
@@ -206,7 +208,9 @@ def _commit_msg(path: str) -> int:
     empty message, or an unreadable file passes (never block a commit on the hook's own failure).
     """
     try:
-        with open(path, encoding="utf-8") as f:
+        # errors="replace": a non-UTF-8 message file degrades to a pass-through rather than raising
+        # UnicodeDecodeError out of the hook (an ASCII subject still validates intact).
+        with open(path, encoding="utf-8", errors="replace") as f:
             message = f.read()
     except OSError:
         return 0
