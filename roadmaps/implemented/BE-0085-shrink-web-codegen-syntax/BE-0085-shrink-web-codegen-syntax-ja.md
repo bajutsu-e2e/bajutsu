@@ -43,9 +43,16 @@ XCUITest エミッタのフォールバック処理は磨かれました（BE-00
 
 ### 実装状況
 
-`bajutsu/codegen_playwright.py` で実装しました。`request` アサーションと `until: { request }` 待機は、マッチャの設定フィールドを AND で連結した述語（`match_request` と同じ並び）を `page.waitForResponse(r => …)` / `page.waitForRequest(r => …)` として出します。`status`（唯一のレスポンス専用フィールド）を持つ場合は `waitForResponse`、それ以外は `waitForRequest` を選び、待機はステップの `{ timeout }` で包みます。`path` / `pathMatches` はランナーと同じくパスのみ（`new URL(r.url()).pathname`）と比較し、`urlMatches` / `pathMatches` / `bodyMatches` は `RegExp.test(...)` に（ランナーは `re.search` を使うため）、`status` は `r.status()` を見ます。`requestSequence` は要素ごとに 1 つの待機を順序どおりに、単一の `requestSequence …` ラベルの下に出します。`responseSchema` はエンドポイントとスキーマファイルを明記したラベル付き `// TODO` のままです。描画できないセレクタは、妨げているフィールド（`within` / `value` / `idMatches`）と Playwright locator を持たない理由を明記した `// TODO` を出します。
+`bajutsu/codegen_playwright.py` で実装しました。ランナーはリクエストマッチャを、**それまでに収集した**交換（コレクタが完了した交換を記録します）に対して評価し、未来のトラフィックに対しては評価しません。`page.waitForResponse` は未来しか観測しないため、直前のステップ中に起きたリクエストを取りこぼし、ランタイムなら通る場面でハングしかねません。ランタイムに合わせるため、生成テストはナビゲーションの前に交換レコーダを設置し（ランタイムの web コレクタが使うのと同じ `requestfinished` イベントで `page.on('requestfinished', …)` が `{ method, url, status, body }` を `exchanges` 配列へ push します。`bajutsu/web_network.py` と同じく、レスポンスのないリクエストでは `status` は null になります）、各アサーションはそのリストを読みます。
 
-**`bodyMatches` はレスポンスではなくリクエストボディに対応づけます。** ランナーの `match_request` は `bodyMatches` を `ex.request_body`（`bajutsu/assertions.py`）と照合するため、エミッタはこれを `r.postData()`（`waitForRequest` 配下）または `r.request().postData()`（`waitForResponse` 配下）として描画し、`response.text()` には決して向けません。レスポンス側を選ぶとコンパイルは通るものの交換の誤った半分を検査してしまうので、マッピングはランタイム意味論に従い、その理由をコードコメントに残しています。
+- **`request`** → 記録した交換に対する時点評価です。`count` が設定されていれば `expect(exchanges.filter(e => …).length).toBe(count)`（厳密一致、ランタイムと同じ）、なければ `expect(exchanges.some(e => …)).toBeTruthy()` を出します。
+- **`until: { request }`** → `await expect.poll(() => exchanges.filter(e => …).length, { timeout }).toBeGreaterThanOrEqual(count ?? 1)` を出します。すでに観測済みの交換は即座に充足し、未来のものは待機します（`until` 待機では `count` は下限です）。収集済みの交換を先に確認してからポーリングを続けるランタイムと一致します。
+- **`requestSequence`** → 記録した交換に対する順方向の走査です（交換を順に見ながらマッチャを進め、すべてのマッチャに到達したことを確認します）。`_eval_request_sequence` の順序判定と一致します。
+- **`responseSchema`** → エンドポイントとスキーマファイルを明記したラベル付き `// TODO` のままです。描画できないセレクタは、妨げているフィールド（`within` / `value` / `idMatches`）と理由を明記した `// TODO` を出します。
+
+述語は記録した交換 `e`（その `method` / `url` / `status` / `body`）に対して評価します。`path` / `pathMatches` はランナーと同じくパスのみ（`new URL(e.url).pathname`）と比較し、`urlMatches` / `pathMatches` / `bodyMatches` は `RegExp.test(...)` に（ランナーは `re.search` を使うため）、`status` は `e.status` を見ます。
+
+**`bodyMatches` はリクエストボディに対応づけ、ボディ欠落をガードします。** ランナーの `match_request` は `bodyMatches` を `ex.request_body` と照合し、それが `None` のときは失敗します（`bajutsu/assertions.py`）。そこで述語は `e.body` を読み、テストの前に `e.body !== null` をガードします。ガードがなければ `.*` のようなパターンがボディのないリクエストにマッチして誤って通ってしまいます。
 
 ## 検討した代替案
 

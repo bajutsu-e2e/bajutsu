@@ -66,13 +66,32 @@ def _re_raw(pattern: str) -> str:
     return "/" + pattern.replace("/", "\\/") + "/"
 
 
-# Playwright observes network natively, so a request matcher maps to a `waitForRequest` /
-# `waitForResponse` predicate (BE-0085) rather than a labeled TODO — the opposite of the XCUITest
-# emitter, which has no interception surface. `status` is the only response-only field, so a matcher
-# carrying it must wait for the *response* (`waitForResponse`, predicate over a `Response`); otherwise
-# the request side alone suffices (`waitForRequest`, predicate over a `Request`). `bodyMatches` is a
-# regex over the *request* body in the runner (`match_request` tests `ex.request_body`), so it always
-# maps to the request's `postData()` — never `response.text()` — regardless of which call we emit.
+# Playwright observes network natively, but the runner evaluates a request matcher over the
+# exchanges collected *so far* (its collector records each finished exchange), not over future
+# traffic. `page.waitForResponse` only sees the future, so it would miss requests made during the
+# preceding steps and could hang where the runtime passes. To match the runtime, the generated test
+# installs an exchange recorder up front (see `_RECORDER_SETUP`) and the assertions read that list:
+# `request` is a point-in-time `filter`/`some`, `requestSequence` a forward scan, and `until:{request}`
+# an `expect.poll` (an already-observed exchange passes at once; otherwise it waits). `bodyMatches`
+# is a regex over the *request* body (`match_request` tests `ex.request_body`, failing when it is
+# None), so the predicate reads `e.body` and guards `!== null` first.
+
+# Installed before navigation so it captures the whole flow. Captured on 'requestfinished' — the same
+# event the runtime web collector uses (`bajutsu/web_network.py`), so `status` is null when a request
+# has no response, matching the collector's finished-exchange list (an earlier 'response' hook could
+# not represent that case). The explicit `+` joins keep each list item one string (no implicit
+# adjacent-literal concatenation, which reads as a missing comma).
+_RECORDER_SETUP = [
+    "// Record finished exchanges so the request assertions below read the traffic observed so far",
+    "// (like the runner's collector), not only future traffic.",
+    "const exchanges: { method: string; url: string; status: number | null; "
+    + "body: string | null }[] = [];",
+    "page.on('requestfinished', async req => {",
+    "  const res = await req.response();",
+    "  exchanges.push({ method: req.method(), url: req.url(), "
+    + "status: res ? res.status() : null, body: req.postData() });",
+    "});",
+]
 
 
 def _re_test_js(pattern: str, subject: str) -> str:
@@ -80,48 +99,94 @@ def _re_test_js(pattern: str, subject: str) -> str:
     return f"{_re_raw(pattern)}.test({subject})"
 
 
-def _request_predicate(req: RequestMatch, *, on_response: bool) -> str:
-    """The JS boolean predicate body for a request matcher, over `r` (a Request or Response).
+def _request_predicate(req: RequestMatch) -> str:
+    """The JS boolean predicate for a request matcher, over a recorded exchange `e`.
 
-    `on_response` selects the accessor shape: a `Response` reaches the request via `r.request()`,
-    a `Request` is `r` itself. Only set matcher fields are emitted, AND-ed, mirroring `match_request`.
+    `e` carries `method` / `url` / `status` / `body`. Only set matcher fields are emitted, AND-ed,
+    mirroring `match_request`. `body_matches` guards `e.body !== null` first: the runner fails a body
+    matcher when the request has no body, so without the guard a pattern like `.*` would match a
+    body-less request and pass incorrectly.
     """
-    req_ref = "r.request()" if on_response else "r"
-    method = f"{req_ref}.method()"
-    post_data = f"{req_ref}.postData() ?? ''"  # null when no body; an empty string matches nothing
-    pathname = "new URL(r.url()).pathname"  # `path` is path-only in the runner, so drop the query
+    pathname = "new URL(e.url).pathname"  # `path` is path-only in the runner, so drop the query
     clauses: list[str] = []
     if req.method is not None:
-        clauses.append(f"{method} === {_ts(req.method.upper())}")
+        clauses.append(f"e.method === {_ts(req.method.upper())}")
     if req.url is not None:
-        clauses.append(f"r.url() === {_ts(req.url)}")
+        clauses.append(f"e.url === {_ts(req.url)}")
     if req.url_matches is not None:
-        clauses.append(_re_test_js(req.url_matches, "r.url()"))
+        clauses.append(_re_test_js(req.url_matches, "e.url"))
     if req.path is not None:
         clauses.append(f"{pathname} === {_ts(req.path)}")
     if req.path_matches is not None:
         clauses.append(_re_test_js(req.path_matches, pathname))
     if req.status is not None:
-        clauses.append(f"r.status() === {req.status}")
+        clauses.append(f"e.status === {req.status}")
     if req.body_matches is not None:
-        clauses.append(_re_test_js(req.body_matches, post_data))
-    return " && ".join(clauses)
+        clauses.append(f"e.body !== null && {_re_test_js(req.body_matches, 'e.body')}")
+    return " && ".join(clauses) if clauses else "true"
 
 
-def _emit_request_wait(req: RequestMatch, timeout_ms: int | None = None) -> list[str]:
-    """A `waitForResponse` / `waitForRequest` over one request matcher, optionally timeout-bounded.
+def _emit_request_assertion(req: RequestMatch) -> list[str]:
+    """A `request` assertion as a check over the recorded exchanges.
 
-    A labeled comment (the shared `request_label`) precedes it so the generated test reads the same
-    way across backends and a reviewer sees the endpoint at a glance.
+    `count` (when set) is exact, mirroring the runtime `request` check; otherwise at least one match
+    is required. Point-in-time over what was observed so far — never a `waitForResponse`.
     """
-    on_response = req.status is not None
-    call = "waitForResponse" if on_response else "waitForRequest"
-    predicate = _request_predicate(req, on_response=on_response)
-    timeout = f", {{ timeout: {timeout_ms} }}" if timeout_ms is not None else ""
+    pred = _request_predicate(req)
+    label = f"// request {request_label(req)}"
+    if req.count is not None:
+        return [label, f"expect(exchanges.filter(e => {pred}).length).toBe({req.count});"]
+    return [label, f"expect(exchanges.some(e => {pred})).toBeTruthy();"]
+
+
+def _emit_until_request(req: RequestMatch, timeout_ms: int) -> list[str]:
+    """An `until: { request }` wait: poll the growing recorder to the step's timeout.
+
+    `count` is a lower bound for an `until` wait (the runner keeps polling until it is reached); an
+    already-observed exchange satisfies `expect.poll` immediately, matching the runtime which checks
+    the collected exchanges before continuing to poll.
+    """
+    pred = _request_predicate(req)
+    need = req.count if req.count is not None else 1
     return [
-        f"// request {request_label(req)}",
-        f"await page.{call}(r => {predicate}{timeout});",
+        f"// wait until request {request_label(req)}",
+        f"await expect.poll(() => exchanges.filter(e => {pred}).length, "
+        f"{{ timeout: {timeout_ms} }}).toBeGreaterThanOrEqual({need});",
     ]
+
+
+def _emit_request_sequence(seq: list[RequestMatch]) -> list[str]:
+    """A `requestSequence` as an in-order forward scan over the recorded exchanges.
+
+    Mirrors `_eval_request_sequence`: advance through the matchers as exchanges are seen in order and
+    require every matcher to be reached. Order is the check, so `count` is left off the labels.
+    """
+    header = "// requestSequence " + " → ".join(request_label(m, with_count=False) for m in seq)
+    return [
+        header,
+        "{",
+        "  const seq = [",
+        *[f"    (e) => {_request_predicate(m)}," for m in seq],
+        "  ];",
+        "  let i = 0;",
+        "  for (const e of exchanges) if (i < seq.length && seq[i](e)) i++;",
+        "  expect(i).toBe(seq.length);",
+        "}",
+    ]
+
+
+def _scenario_uses_network(scenario: Scenario) -> bool:
+    """Whether any step or `expect` reads the network (request / requestSequence / until request)."""
+
+    def asserts_network(assertions: list[Assertion]) -> bool:
+        return any(a.request is not None or a.request_sequence is not None for a in assertions)
+
+    for step in scenario.steps:
+        if step.wait is not None and isinstance(step.wait.until, WaitRequest):
+            return True
+        if step.assert_ is not None and asserts_network(step.assert_):
+            return True
+    return asserts_network(scenario.expect)
 
 
 def _glob_to_css(glob: str) -> str | None:
@@ -282,9 +347,9 @@ def _emit_wait(w: Wait) -> list[str]:
             return [_unsupported_selector_todo(sel)]
         return [f"await expect({loc}).toBeHidden({{ timeout: {timeout} }});"]
     if isinstance(w.until, WaitRequest):
-        # Playwright observes network natively, so the wait maps to the same request predicate,
-        # bounded by the step's timeout (BE-0085).
-        return _emit_request_wait(w.until.request, timeout)
+        # Poll the recorded exchanges to the step's timeout, so an already-observed request passes at
+        # once and a future one is awaited — matching the runtime (BE-0085).
+        return _emit_until_request(w.until.request, timeout)
     # "screenChanged" / "settled" — Playwright auto-waits, so a comment suffices.
     return [f"// {w.until} — Playwright auto-waits"]
 
@@ -310,17 +375,9 @@ def _emit_assertion(a: Assertion) -> list[str]:
     if a.count is not None:
         return _emit_count(a.count)
     if a.request is not None:
-        return _emit_request_wait(a.request)
+        return _emit_request_assertion(a.request)
     if a.request_sequence is not None:
-        # The sequence check is about order, so emit one awaited matcher per element in order,
-        # mirroring the runtime forward scan (BE-0085).
-        seq = " → ".join(request_label(m, with_count=False) for m in a.request_sequence)
-        return [f"// requestSequence {seq}"] + [
-            line
-            for m in a.request_sequence
-            # The per-element label is redundant under the sequence header, so drop it.
-            for line in _emit_request_wait(m)[1:]
-        ]
+        return _emit_request_sequence(a.request_sequence)
     if a.response_schema is not None:
         # Validating a body against a JSON Schema needs a schema library in the emitted test (an
         # external dependency the generated file shouldn't assume), so this stays a labeled TODO
@@ -387,6 +444,11 @@ class _PlaywrightGen:
 
     def scenario_open(self, name: str) -> str:
         return f"  test({_ts(name)}, async ({{ page }}) => {{"
+
+    def setup_lines(self, scenario: Scenario) -> list[str]:
+        # Install the network-exchange recorder before navigation, but only when the scenario asserts
+        # over the network — otherwise the scaffold stays free of unused plumbing.
+        return list(_RECORDER_SETUP) if _scenario_uses_network(scenario) else []
 
     def launch_env_line(self, key: str, value: str) -> str:
         return f"await page.addInitScript(() => localStorage.setItem({_ts(key)}, {_ts(value)}));"
