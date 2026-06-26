@@ -97,9 +97,9 @@ def test_id_matches_glob_maps_to_css_operators() -> None:
 
 def test_id_matches_complex_glob_is_todo() -> None:
     interior = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'a*b*c' }\n")
-    assert "// TODO: unsupported selector" in interior
+    assert "// TODO: unsupported selector ('idMatches':" in interior
     charclass = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row[0-9]' }\n")
-    assert "// TODO: unsupported selector" in charclass
+    assert "// TODO: unsupported selector ('idMatches':" in charclass
 
 
 def test_label_matches_is_a_regexp() -> None:
@@ -114,9 +114,9 @@ def test_index_narrows_with_nth() -> None:
 
 def test_value_and_within_constraints_are_todo() -> None:
     with_value = _gen("- name: x\n  steps:\n    - tap: { id: f, value: '5' }\n")
-    assert "// TODO: unsupported selector" in with_value
+    assert "// TODO: unsupported selector ('value':" in with_value
     with_within = _gen("- name: x\n  steps:\n    - tap: { id: c, within: { id: parent } }\n")
-    assert "// TODO: unsupported selector" in with_within
+    assert "// TODO: unsupported selector ('within':" in with_within
 
 
 def test_assertions_existence_and_negate() -> None:
@@ -181,12 +181,134 @@ def test_unsupported_constructs_emit_todo() -> None:
         "- name: x\n  steps:\n"
         "    - pinch: { sel: { id: photo }, scale: 2.0 }\n"
         "    - rotate: { sel: { id: photo }, radians: 1.5 }\n"
-        "  expect:\n"
-        "    - request: { path: /api/login, count: 1 }\n"
     )
     assert "// TODO: multi-touch (pinch) is not generated for web" in code
     assert "// TODO: multi-touch (rotate) is not generated for web" in code
-    assert "// TODO: network 'request' assertion" in code
+
+
+def test_request_assertion_with_status_is_wait_for_response() -> None:
+    # A matcher carrying `status` (a response field) must observe the response, not just the request.
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { method: GET, path: /api/items, status: 200 }\n"
+    )
+    assert "await page.waitForResponse(r =>" in code
+    assert "r.request().method() === 'GET'" in code
+    assert "new URL(r.url()).pathname === '/api/items'" in code
+    assert "r.status() === 200" in code
+
+
+def test_request_assertion_without_response_field_is_wait_for_request() -> None:
+    # No `status` (the only response-only field), so the request side alone is enough.
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { method: POST, path: /api/login }\n"
+    )
+    assert "await page.waitForRequest(r =>" in code
+    assert "r.method() === 'POST'" in code
+    assert "new URL(r.url()).pathname === '/api/login'" in code
+
+
+def test_request_assertion_url_and_url_matches() -> None:
+    exact = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { url: 'https://api.test/v1/items' }\n"
+    )
+    assert "r.url() === 'https://api.test/v1/items'" in exact
+    regex = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { urlMatches: '/items/[0-9]+' }\n"
+    )
+    assert "/\\/items\\/[0-9]+/.test(r.url())" in regex
+
+
+def test_request_assertion_path_matches_is_regexp_over_pathname() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { pathMatches: '^/api/' }\n"
+    )
+    assert "/^\\/api\\//.test(new URL(r.url()).pathname)" in code
+
+
+def test_request_assertion_body_matches_checks_request_post_data() -> None:
+    # bodyMatches is a regex over the *request* body (runtime: match_request over ex.request_body),
+    # so it maps to request.postData(), never the response body — even when status forces waitForResponse.
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { path: /api/login, bodyMatches: 'token' }\n"
+    )
+    assert "/token/.test(r.postData() ?? '')" in code
+
+
+def test_request_assertion_body_matches_with_status_uses_request_post_data() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { path: /api/login, status: 201, bodyMatches: 'token' }\n"
+    )
+    assert "await page.waitForResponse(r =>" in code
+    assert "r.status() === 201" in code
+    # Even under waitForResponse, the body predicate reads the *request* postData (runtime semantics).
+    assert "/token/.test(r.request().postData() ?? '')" in code
+
+
+def test_request_assertion_labels_the_endpoint() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { method: GET, path: /api/items, status: 200 }\n"
+    )
+    assert "// request GET /api/items status=200" in code
+
+
+def test_wait_until_request_wraps_to_timeout() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - wait: { until: { request: { path: /api/items, status: 200 } }, timeout: 4 }\n"
+    )
+    assert "await page.waitForResponse(r =>" in code
+    assert "{ timeout: 4000 }" in code
+
+
+def test_wait_until_request_without_status_is_wait_for_request() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - wait: { until: { request: { path: /api/items } }, timeout: 2 }\n"
+    )
+    assert "await page.waitForRequest(r =>" in code
+    assert "{ timeout: 2000 }" in code
+
+
+def test_request_sequence_emits_one_wait_per_element_in_order() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - requestSequence:\n"
+        "        - { path: /api/a }\n"
+        "        - { path: /api/b, status: 200 }\n"
+    )
+    # Order is mirrored: /api/a's wait precedes /api/b's.
+    a_idx = code.index("/api/a")
+    b_idx = code.index("/api/b")
+    assert a_idx < b_idx
+    assert "// requestSequence /api/a → /api/b status=200" in code
+    assert code.count("await page.waitForRequest(r =>") == 1  # /api/a (request only)
+    assert code.count("await page.waitForResponse(r =>") == 1  # /api/b (carries status)
+
+
+def test_response_schema_is_labeled_todo() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - responseSchema: { request: { path: /api/items }, schema: items.json }\n"
+    )
+    assert "// TODO: responseSchema assertion (/api/items ~ items.json)" in code
+    assert "JSON Schema" in code
+
+
+def test_unsupported_selector_todo_names_field_and_reason() -> None:
+    with_within = _gen("- name: x\n  steps:\n    - tap: { id: c, within: { id: parent } }\n")
+    assert "// TODO: unsupported selector ('within':" in with_within
+    with_value = _gen("- name: x\n  steps:\n    - tap: { id: f, value: '5' }\n")
+    assert "// TODO: unsupported selector ('value':" in with_value
+    interior_glob = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'a*b*c' }\n")
+    assert "// TODO: unsupported selector ('idMatches':" in interior_glob
 
 
 def test_string_escaping() -> None:
