@@ -8,7 +8,8 @@ later by the runner.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -233,6 +234,27 @@ class Effective:
     # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
     # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
     idb_version: str | None = None
+
+    def rebased(self, root: Path) -> Effective:
+        """A copy with the relative path fields resolved against `root` (a Git checkout, BE-0063).
+
+        The fields `run` / `doctor` read — `scenarios` / `baselines` / `schemas` / `app_path`; listed
+        beside the type so a future path field is rebased by adding it here. `build` (a shell command)
+        and `setup` (resolved relative to the scenario, not the cwd) are intentionally absent. Local
+        configs keep their cwd-relative paths; only a Git source calls this, so the caller's working
+        directory no longer has anything to do with the fetched tree.
+        """
+
+        def at(value: str | None) -> str | None:
+            return str(root / value) if value else value
+
+        return replace(
+            self,
+            scenarios=at(self.scenarios),
+            baselines=at(self.baselines),
+            schemas=at(self.schemas),
+            app_path=at(self.app_path),
+        )
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:

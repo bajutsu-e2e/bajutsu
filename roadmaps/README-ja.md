@@ -322,6 +322,16 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0026](in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) | 未対応構文の縮小 | 実装中 |
 <!-- /GENERATED:in-progress-codegen -->
 
+### config の取得元
+
+`bajutsu` が config とシナリオ一式をどこから読むか。ローカルパスだけでなく、**ある ref を指す Git リポジトリ**を指定できるようにし、CI のランナーやホスト型／セルフホストの `serve` が、チームのテストリポジトリを直接取得できるようにする。
+
+<!-- GENERATED:in-progress-config-sourcing -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0063](in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) | Git リポジトリ + ref から config（とシナリオ一式）を読み込む | 実装中 |
+<!-- /GENERATED:in-progress-config-sourcing -->
+
 ## 提案
 
 検討中で、まだ決定していません。着手したら *実装中* に、出荷したら *実装済み* に昇格してください。
@@ -381,7 +391,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-config-sourcing -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0063](proposals/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) | Git リポジトリ + ref から config（とシナリオ一式）を読み込む | 提案 |
 | [BE-0073](proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) | config・シナリオ・アプリバイナリを zip でまとめてアップロードし Web UI から実行する | 提案 |
 <!-- /GENERATED:proposals-config-sourcing -->
 

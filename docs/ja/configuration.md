@@ -93,6 +93,21 @@ OAuth ログイン時にユーザは自分の org に割り当てられます（
 
 CLI（コマンドラインインターフェース）のすべてのコマンドは、`--target <name>` で 1 つのターゲットを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend ios`（またはプラットフォーム/actuator のカンマ区切り）で解決順序を上書きできます（[cli](cli.md)）。
 
+### Git リポジトリからの config（BE-0063）
+
+`--config` は **Git ソース**も受け付けます。ローカルにチェックアウトせずに、テストリポジトリのスイートを実行できます — `bajutsu run --config github:acme/mobile-tests@v1.4.0:e2e/bajutsu.config.yaml --target checkout`。
+
+```
+github:<owner>/<repo>[@<ref>][:<path>]                          # GitHub ショートハンド
+git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # 一般形（ホストは将来用に予約）
+```
+
+- **現状で実装済みのホストは GitHub だけです。** 一般形 `git+https://<host>/…` は解析します（GitHub Enterprise / GitLab などへの拡張の余地を残すため）が、`github.com` 以外のホストは今のところ、黙って github.com を叩くのではなく明確なエラーで失敗します。
+- `<ref>` はブランチ・タグ・コミット SHA（既定はリポジトリのデフォルトブランチ）、`<path>` はリポジトリ内の config パス（既定はルートの `bajutsu.config.yaml`）です。スキームを認識できない値は、従来どおり**ローカルパス**として扱います。
+- ref を不変のコミット SHA に解決し、その部分木を content-addressed なキャッシュ（`~/.cache/bajutsu/gitsrc/<host>/<owner>/<repo>/<sha>/`）に展開して、そこから config を読みます。config の `scenarios` / `baselines` / `schemas` / `appPath` は相対パスなので、呼び出し元の作業ディレクトリではなく**チェックアウトのルート**を基準に解決します。YAML だけでなくツリー全体が付いてきます。
+- **固定 ref**（`@<tag>` / `@<sha>`）は再現可能で、初回取得後はオフラインで動きます。素のブランチは毎回解決し直します。private リポジトリは `GITHUB_TOKEN` / `GH_TOKEN`、無ければ `gh auth token` のトークンを使い、トークンはログに出しません。
+- この第一スライスは CLI の読み取り経路（`run` / `doctor`）が対象です。解決した SHA を run の来歴として記録すること、`--config-offline` / `--require-pinned-config` スイッチ、serve の「Git から」ピッカーは後続です。
+
 ## 新しいターゲットのオンボーディング
 
 新しいターゲットを追加するには、**アプリ側の準備と config への 1 エントリ追加**を行います。ツール本体への変更は不要です。
