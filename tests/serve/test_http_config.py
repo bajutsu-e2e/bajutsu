@@ -126,6 +126,38 @@ def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -
         # A value with no recognized scheme is not a Git spec → a clear 400, not a local-path read.
         status, resp = _post(port, "/api/config", {"git": "/etc/passwd"})
         assert status == 400
+        # An explicit but empty `git` routes to the Git binder (key presence, not truthiness), so it
+        # gets the "spec is required" 400 rather than silently falling back to the local file binder.
+        status, resp = _post(port, "/api/config", {"git": ""})
+        assert status == 400 and "spec is required" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_git_config_with_escaping_path_is_refused(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A fetched config whose path field climbs out of the checkout is rejected at bind, so serve's
+    # (unconfined) scenario/build resolution never sees a host path outside the tree (BE-0063/BE-0051).
+    import bajutsu.serve.operations as ops
+    from bajutsu.config_source import Materialized
+
+    _, _, runs = project(tmp_path)
+    checkout = tmp_path / "gitsrc"
+    checkout.mkdir()
+    git_cfg = checkout / "bajutsu.config.yaml"
+    git_cfg.write_text(
+        "targets:\n  evil: { bundleId: com.example.evil, scenarios: ../../../etc }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "sha")
+    )
+    state = srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/config", {"git": "github:acme/repo@main"})
+        assert status == 400 and "invalid config" in resp["error"]
+        assert state.config is None  # the escaping config was not bound
     finally:
         server.shutdown()
         server.server_close()

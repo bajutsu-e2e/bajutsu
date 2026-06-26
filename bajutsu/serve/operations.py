@@ -26,7 +26,7 @@ from bajutsu.anthropic_client import (
     PROVIDERS,
     provider,
 )
-from bajutsu.config import load_config, targets_for_org
+from bajutsu.config import load_config, resolve, targets_for_org
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs
@@ -328,8 +328,9 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
     `state.config` at the checkout's config **and** `state.cwd` at the checkout root — so the config's
     relative `scenarios` / `appPath` / `build` resolve against the fetched tree, not serve's launch
     directory. This does not widen the file browser, which stays confined to `--root`; the checkout is
-    a Bajutsu-managed cache (`materialize` refuses tar path-traversal on extraction), and a Git-sourced
-    run confines the config's own path fields to the checkout root (`Effective.rebased`, BE-0063)."""
+    a Bajutsu-managed cache (`materialize` refuses tar path-traversal on extraction), and each target's
+    path fields are **confined to the checkout root** at bind (`Effective.rebased`) so a fetched config
+    can't point serve's scenario/build logic at host paths outside the tree (BE-0063)."""
     if not spec_str:
         return {"error": "a Git config spec is required"}, 400
     spec = parse_config_spec(spec_str)
@@ -346,7 +347,12 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
             "error": f"config not found in the repository at {spec.path or 'bajutsu.config.yaml'}"
         }, 404
     try:
-        load_config(mat.config_path.read_text(encoding="utf-8"))
+        cfg = load_config(mat.config_path.read_text(encoding="utf-8"))
+        # Confine every target's path fields to the checkout: a fetched config that points
+        # `scenarios`/`appPath`/… at an absolute or `../` path outside the tree is rejected here, so
+        # serve's (unconfined) scenario/build resolution only ever sees in-checkout paths (BE-0051).
+        for name in cfg.targets:
+            resolve(cfg, name).rebased(mat.root)
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
     state.config = mat.config_path
