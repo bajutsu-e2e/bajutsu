@@ -224,11 +224,14 @@ The **`--config-offline` and `--require-pinned-config`** gate switches shipped o
 strengthening of the proposal's "tag or SHA", since a tag can be force-moved and only a SHA is an
 immutable, offline-provable pin.
 
-Still to come: `build`'s working directory for a Git source, the **serve "from Git" picker**, treating
-a Git source as **read-only input for `record` / `crawl`** (so an authored artifact goes to a local
-`--out`, never into the SHA-keyed cache), and **confining** a config's path fields to the checkout
-root (rejecting an absolute or `../` value that escapes it, mirroring
-[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)).
+A Git config's path fields are also **confined to the checkout root** (`Effective.rebased`): an
+absolute or `../` value that would escape the fetched tree is rejected with a clean exit-2 rather than
+reaching outside it — mirroring the serve-hardening path confinement
+([BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)).
+
+Still to come: `build`'s working directory for a Git source, the **serve "from Git" picker**, and
+treating a Git source as **read-only input for `record` / `crawl`** (so an authored artifact goes to a
+local `--out`, never into the SHA-keyed cache).
 
 ## Alternatives considered
 
