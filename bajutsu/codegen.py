@@ -231,7 +231,7 @@ def _emit_step(step: Step) -> list[str]:
             ]
         if isinstance(w.until, WaitRequest):
             return [
-                f"// TODO: wait until request ({request_label(w.until.request, with_count=False)}) — {_NO_NETWORK}"
+                f"// TODO: wait until request ({request_label(w.until.request)}) — {_NO_NETWORK}"
             ]
         return [f"// settle wait ({w.until}) — XCUITest auto-waits for hittability"]
     if step.assert_ is not None:
@@ -303,15 +303,16 @@ def _emit_assertion(a: Assertion) -> list[str]:
         want = a.clipboard.equals if a.clipboard.equals is not None else a.clipboard.matches
         return [f"// TODO: clipboard({op}: {_s(want or '')}) — simctl pbpaste; not generated"]
     if a.request is not None:
-        return [
-            f"// TODO: request assertion ({request_label(a.request, with_count=False)}) — {_NO_NETWORK}"
-        ]
+        # Match the runtime/coverage detail (`request_label` with count) so the TODO reads identically;
+        # `count` is part of the assertion, so keep it.
+        return [f"// TODO: request assertion ({request_label(a.request)}) — {_NO_NETWORK}"]
     if a.request_sequence is not None:
+        # The sequence check is about order, not count — `with_count=False`, mirroring the runtime detail.
         seq = ", ".join(request_label(m, with_count=False) for m in a.request_sequence)
         return [f"// TODO: requestSequence assertion ({seq}) — {_NO_NETWORK}"]
     if a.response_schema is not None:
         return [
-            f"// TODO: responseSchema assertion ({request_label(a.response_schema.request, with_count=False)}) — "
+            f"// TODO: responseSchema assertion ({request_label(a.response_schema.request)}) — "
             f"{_NO_NETWORK}"
         ]
     return ["// TODO: unsupported assertion"]

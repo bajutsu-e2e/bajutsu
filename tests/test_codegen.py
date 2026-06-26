@@ -206,6 +206,15 @@ def test_request_assertion_emits_labeled_todo() -> None:
     assert "unsupported assertion" not in code  # the bare fallback is gone for this form
 
 
+def test_request_assertion_label_keeps_count() -> None:
+    # `count` is part of the assertion, so the TODO keeps it — matching the runtime/coverage label
+    # (`request_label` with count), not a count-less description.
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n        - request: { path: /api/items, count: 3 }\n"
+    )
+    assert "// TODO: request assertion (/api/items count=3)" in code
+
+
 def test_request_sequence_and_response_schema_emit_labeled_todos() -> None:
     seq = _gen(
         "- name: x\n  steps:\n    - assert:\n"
