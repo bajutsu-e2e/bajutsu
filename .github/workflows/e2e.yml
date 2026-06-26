@@ -85,6 +85,26 @@ jobs:
       - name: Install xcodegen
         run: brew install xcodegen
 
+      # Same cache-key discipline as the xcuitest job: DerivedData must not cross Xcode
+      # upgrades (a different Xcode's compiled modules cause stale-artifact failures), so
+      # capture the active build version for the key.
+      - name: Resolve Xcode version (for the cache key)
+        id: xcode
+        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
+
+      # Cache the app build's DerivedData so `sample-build` is incremental across runs.
+      # Keyed on a distinct `-smoke-` prefix from the xcuitest job: that job builds the
+      # app + UITests target into the same dd path, so a shared key would let the two jobs
+      # clobber each other's cache. The restore-keys fallback warms compiled modules when
+      # only sources change; a miss just rebuilds cold, so the cache only speeds the build.
+      - name: Cache DerivedData
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: demos/features/app/build/dd
+          key: xcode-dd-smoke-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/features/app/**/*.swift', 'demos/features/app/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-smoke-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
+
       - name: Build the sample app
         run: make -C demos/features sample-build
 
