@@ -11,7 +11,7 @@ scenario is never run, and the verdict / CI gate is never touched.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -341,3 +341,107 @@ def render_repeat(report: RepeatReport) -> str:
     lines = [f"scenario: {report.scenario}", f"{report.runs} runs: {classification}"]
     lines.extend(f"  {d}" for d in report.divergences)
     return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class ScenarioHistory:
+    """One scenario's verdict history at a fixed fingerprint — the unit of the longitudinal view."""
+
+    scenario_hash: (
+        str  # the run's `provenance.scenarioHash` — the executed file's content fingerprint
+    )
+    name: str  # the scenario whose outcomes these are (the manifest's per-scenario `scenario`)
+    runs: int  # how many accumulated runs exercised this scenario at this fingerprint
+    passed: int  # runs in which it passed
+    failed: int  # runs in which it failed
+    pass_rate: float  # passed / runs
+    classification: str  # flaky | deterministic | unproven (see `_history`)
+
+
+@dataclass(frozen=True)
+class LongitudinalReport:
+    """Flakiness mined from accumulated run history — each scenario's verdict over its own past."""
+
+    histories: list[
+        ScenarioHistory
+    ]  # one per (fingerprint, scenario), flaky first then by run count
+    skipped: int  # runs with no `scenarioHash` provenance — can't be grouped by identity
+
+
+def longitudinal(manifests: Iterable[Mapping[str, object]]) -> LongitudinalReport:
+    """Group accumulated runs by scenario fingerprint and classify each scenario's stability (BE-0049).
+
+    The longitudinal half of the determinism audit. A run stamps one `provenance.scenarioHash` (the
+    executed file's content) over its whole `scenarios` list, so each scenario's outcomes are keyed by
+    that fingerprint *and* the scenario's name: a verdict that flips at a constant fingerprint is true
+    flakiness, while an edited scenario gets a new fingerprint and a fresh group (an edit can't look
+    like a flake). Pure and observational — it reads the identity stamp and the recorded per-scenario
+    verdict only, never deciding or changing a verdict.
+
+    Args:
+        manifests: Parsed `manifest.json` mappings, in any order. A manifest with no
+            `provenance.scenarioHash` (a pre-provenance run) can't be grouped and is counted in
+            `skipped` instead of contributing history.
+
+    Returns:
+        The per-(fingerprint, scenario) histories, flaky first then by descending run count, plus the
+        count of runs skipped for lacking a fingerprint.
+    """
+    groups: dict[tuple[str, str], list[bool]] = {}
+    skipped = 0
+    for m in manifests:
+        prov = m.get("provenance")
+        scenario_hash = prov.get("scenarioHash") if isinstance(prov, dict) else None
+        if not isinstance(scenario_hash, str):
+            skipped += 1
+            continue
+        scenarios = m.get("scenarios")
+        for s in scenarios if isinstance(scenarios, list) else []:
+            name = s.get("scenario") if isinstance(s, dict) else None
+            if isinstance(name, str) and name:
+                groups.setdefault((scenario_hash, name), []).append(bool(s.get("ok")))
+
+    histories = [_history(h, name, oks) for (h, name), oks in groups.items()]
+    # Flaky first (the findings to act on), then the most-observed scenarios — both descending.
+    histories.sort(key=lambda h: (h.classification != "flaky", -h.runs, h.scenario_hash, h.name))
+    return LongitudinalReport(histories=histories, skipped=skipped)
+
+
+def _history(scenario_hash: str, name: str, oks: list[bool]) -> ScenarioHistory:
+    """Tally one scenario's verdicts at a fingerprint into a classified history.
+
+    A single run proves nothing (mirrors repeat-and-diff with K<2): `unproven`, not flaky. With two
+    or more, a mix of pass and fail at the *same* fingerprint is true flakiness; an all-pass or
+    all-fail history is `deterministic` (a consistent failure is reproducible, not flaky).
+    """
+    passed = sum(oks)
+    runs = len(oks)
+    if runs < 2:
+        classification = "unproven"
+    elif passed and passed < runs:
+        classification = "flaky"
+    else:
+        classification = "deterministic"
+    return ScenarioHistory(
+        scenario_hash=scenario_hash,
+        name=name,
+        runs=runs,
+        passed=passed,
+        failed=runs - passed,
+        pass_rate=passed / runs,
+        classification=classification,
+    )
+
+
+def render_longitudinal(report: LongitudinalReport) -> str:
+    """Human-readable longitudinal view: each scenario's classification and pass rate."""
+    if not report.histories:
+        body = ["no runs with a scenario fingerprint to analyze"]
+    else:
+        body = [
+            f"{h.name}: {h.classification} ({h.passed}/{h.runs} passed, {h.pass_rate:.0%})"
+            for h in report.histories
+        ]
+    if report.skipped:
+        body.append(f"skipped {report.skipped} run(s) with no scenario fingerprint")
+    return "\n".join(body)

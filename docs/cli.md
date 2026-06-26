@@ -84,7 +84,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 ## `audit`
 
 A **static determinism score** for a scenario — the device-free cousin of `doctor`'s convention
-score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
+score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
 It reads a scenario file (expanding components / data, like `trace --explain`) and reports, per
 scenario, how reproducible it is — without running it.
 
@@ -103,6 +103,25 @@ bajutsu audit <scenario.yaml> [--json]
   a successful audit **exits 0 even with findings** (only a missing / unreadable scenario file
   exits 2). A finding is something to harden, not a verdict — the opposite of retry-to-pass, which
   hides flakiness.
+
+Two further modes prove determinism by *observation* rather than static grading:
+
+```bash
+bajutsu audit <scenario.yaml> --repeat K --target <name>   # run K times, diff the outcomes
+bajutsu audit --history <runs-dir>                         # mine past runs for flakiness
+```
+
+- `--repeat K` runs the scenario `K` times under identical preconditions and reports anything whose
+  outcome varied (`deterministic` vs `flaky`) — a divergence is a finding to fix, never a retry that
+  turns red into green.
+- `--history <runs-dir>` is the **longitudinal view**: it groups each scenario's accumulated runs by
+  the run's scenario **fingerprint** (the `provenance.scenarioHash` each `manifest.json` carries) and
+  classifies each scenario (`flaky` / `deterministic` / `unproven`). A verdict that flipped while the
+  fingerprint stayed constant is *true* flakiness — not an edited scenario, since editing changes the
+  hash and starts a fresh group. Keying by scenario name as well as fingerprint pins *which* scenario
+  in a suite flaked. Runs with no fingerprint (pre-provenance) can't be grouped and are reported as
+  skipped. Like the other modes it is read-only and **exits 0 even when it finds flakiness** (only a
+  missing runs dir exits 2).
 
 ## `coverage`
 

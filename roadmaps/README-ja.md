@@ -159,6 +159,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
 | [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md) | 振る舞い／プロトコルアサーション | 実装済み | Maestro |
+| [BE-0049](implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) | 決定性／フレーキネス監査 | 実装済み | Maestro |
 <!-- /GENERATED:implemented-competitive-maestro -->
 
 ### 統合と自動化（MCP）
@@ -307,7 +308,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:in-progress-competitive-maestro -->
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
-| [BE-0049](in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) | 決定性／フレーキネス監査 | 実装中 | Maestro |
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装中 | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 

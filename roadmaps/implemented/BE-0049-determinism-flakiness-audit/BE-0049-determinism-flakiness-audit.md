@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0049](BE-0049-determinism-flakiness-audit.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
+| Implementing PR | [#285](https://github.com/bajutsu-e2e/bajutsu/pull/285) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->
@@ -99,9 +100,16 @@ may simply extend it.
   `provenance` block — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`),
   `toolVersion`, and `gitRevision` (when the run is under git). This is the cheap prerequisite that
   lets accumulated runs be grouped by identity. Pure metadata; never part of a verdict.
-- **Still to come:** the **longitudinal view** that mines the accumulated, now-stamped run records
-  (grouping by content hash to report pass-rate over time), and stamping the same provenance onto
-  the serve DB run record ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) 7c-4).
+- **Longitudinal view** shipped: `bajutsu audit --history <runs-dir>` mines the accumulated,
+  now-stamped run records — keying each scenario's outcomes by `(scenarioHash, scenario name)` and
+  reporting its pass rate and classification (`flaky` / `deterministic` / `unproven`). A verdict that
+  flipped at a constant fingerprint is true flakiness; an edited scenario starts a fresh group
+  (different hash), and pre-provenance runs are reported as skipped. Keying on the name as well as the
+  fingerprint pins which scenario in a suite flaked (a run stamps one fingerprint over its whole
+  `scenarios` list). Read-only and advisory — it exits 0 even when it finds flakiness, never gates CI.
+- **Still to come:** stamping the same provenance onto the serve DB run record
+  ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) 7c-4), so
+  the longitudinal view can mine server-hosted history as well as the local `runs/` tree.
 
 ## Alternatives considered
 

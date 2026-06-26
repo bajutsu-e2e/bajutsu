@@ -167,6 +167,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented | Maestro |
+| [BE-0049](implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Implemented | Maestro |
 <!-- /GENERATED:implemented-competitive-maestro -->
 
 ### Integration & automation (MCP)
@@ -315,7 +316,6 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 <!-- GENERATED:in-progress-competitive-maestro -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0049](in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | In progress | Maestro |
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 

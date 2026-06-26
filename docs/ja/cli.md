@@ -76,7 +76,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 
 ## `audit`
 
-シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)・[BE-0049](../../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
+シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)・[BE-0049](../../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
 
 ```bash
 bajutsu audit <scenario.yaml> [--json]
@@ -85,6 +85,16 @@ bajutsu audit <scenario.yaml> [--json]
 - 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）を指摘します。
 - シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。成功した監査は **finding があっても終了 0**（シナリオファイルが無い/読めないときだけ終了 2）です。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
+
+静的な採点に加えて、**観測**によって決定性を示すモードが2つあります。
+
+```bash
+bajutsu audit <scenario.yaml> --repeat K --target <name>   # K 回実行して結果を差分する
+bajutsu audit --history <runs-dir>                         # 過去の run からフレーキネスを掘り起こす
+```
+
+- `--repeat K` は同一の前提条件でシナリオを `K` 回実行し、結果が変動したものを報告します（`deterministic` か `flaky` か）。変動は直すべき finding であって、赤を緑に変える retry ではありません。
+- `--history <runs-dir>` は**経時ビュー**です。各シナリオの蓄積した run を、その run のシナリオ**フィンガープリント**（各 `manifest.json` が持つ `provenance.scenarioHash`）でグルーピングし、シナリオごとに分類します（`flaky` / `deterministic` / `unproven`）。フィンガープリントが一定のまま verdict がブレていれば、それは*真の*フレーキネスです。シナリオを編集するとハッシュが変わって新しいグループになるため、編集とは区別されます。フィンガープリントに加えてシナリオ名でもキーを引くので、スイートの*どの*シナリオがブレたのかまで特定できます。フィンガープリントを持たない run（provenance 導入前）はグルーピングできず、skip として報告します。他のモードと同様 read-only で、**フレーキネスを検出しても終了 0**（runs ディレクトリが無いときだけ終了 2）です。
 
 ## `coverage`
 
