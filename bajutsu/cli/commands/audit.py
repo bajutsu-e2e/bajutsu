@@ -67,6 +67,11 @@ def audit(
             # usage error rather than silently dropping one.
             typer.echo("--history reads past runs and can't be combined with --repeat")
             raise typer.Exit(2)
+        if scenario:
+            # --history mines a whole runs dir; a positional scenario can't filter it, so taking both
+            # is a usage error rather than silently ignoring the scenario the user passed.
+            typer.echo("--history mines past runs and takes no scenario argument; omit it")
+            raise typer.Exit(2)
         _history_audit(history, as_json)
         return
 
@@ -129,7 +134,7 @@ def _read_manifests(runs_dir: Path) -> list[dict[str, Any]]:
             continue
         try:
             data = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             continue
         if isinstance(data, dict):
             manifests.append(data)

@@ -281,6 +281,33 @@ def test_cli_history_missing_dir_exits_two(tmp_path: Path) -> None:
     assert result.exit_code == 2
 
 
+def test_cli_history_with_scenario_is_usage_error(tmp_path: Path) -> None:
+    # --history mines past runs; a positional scenario can't filter it, so combining them is a usage
+    # error rather than silently ignoring the scenario the user passed.
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: x\n  steps: []\n", encoding="utf-8")
+    result = runner.invoke(app, ["audit", str(scn), "--history", str(runs)])
+    assert result.exit_code == 2 and "--history" in result.output
+
+
+def test_cli_history_skips_non_utf8_manifest(tmp_path: Path) -> None:
+    # A manifest that isn't valid UTF-8 carries no usable provenance; it's skipped like a malformed
+    # one rather than crashing the whole longitudinal view on one bad file.
+    runs = tmp_path / "runs"
+    bad = runs / "run-bad"
+    bad.mkdir(parents=True)
+    (bad / "manifest.json").write_bytes(b"\xff\xfe not valid utf-8")
+    good = runs / "run-good"
+    good.mkdir(parents=True)
+    (good / "manifest.json").write_text(json.dumps(_manifest("sha256:a", True)), encoding="utf-8")
+    result = runner.invoke(app, ["audit", "--history", str(runs), "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert [h["scenario_hash"] for h in payload["histories"]] == ["sha256:a"]
+
+
 def _audit_project(tmp_path: Path) -> tuple[Path, Path]:
     """A scenario file + a minimal config with a `demo` target, for the --repeat CLI path."""
     scn = tmp_path / "s.yaml"
