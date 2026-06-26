@@ -41,8 +41,10 @@ class ArtifactStore(Protocol):
 
     def render_report(self, run_id: str) -> Artifact | None:
         """Render *run_id*'s report.html **on view** from its stored model with the current template
-        (BE-0068), or None if the run is missing / has no manifest. Returning fresh HTML means an
-        upgraded serve refreshes every report with no per-run re-bake; the baked file is a cache."""
+        (BE-0068). None when the report can't be rendered — the run is missing, has no manifest, the
+        model can't be loaded (malformed manifest/scenario), or this store doesn't render on view —
+        so the caller falls back to the baked file. Returning fresh HTML means an upgraded serve
+        refreshes every report with no per-run re-bake; the baked file is then a cache/export."""
 
     def archive(self, run_id: str) -> Artifact | None:
         """A zip of the whole run *run_id* (rooted under `<run_id>/`), or None if it's missing
