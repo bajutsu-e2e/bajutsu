@@ -195,6 +195,43 @@ def test_device_control_steps_emit_labeled_todo() -> None:
     assert "// TODO: push" in code and "simctl push" in code
 
 
+def test_request_assertion_emits_labeled_todo() -> None:
+    # XCUITest has no network interception, so a `request` assertion stays a TODO — but a labeled one
+    # naming the endpoint and why, like the device-control steps, not a bare "unsupported" (BE-0026).
+    code = _gen(
+        "- name: x\n  steps:\n    - assert:\n        - request: { method: GET, path: /api/items }\n"
+    )
+    assert "// TODO: request assertion (GET /api/items)" in code
+    assert "no network interception" in code
+    assert "unsupported assertion" not in code  # the bare fallback is gone for this form
+
+
+def test_request_sequence_and_response_schema_emit_labeled_todos() -> None:
+    seq = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "        - requestSequence: [ { method: POST, path: /a }, { method: GET, path: /b } ]\n"
+    )
+    assert "// TODO: requestSequence assertion (POST /a, GET /b)" in seq
+    schema = _gen(
+        "- name: x\n  steps:\n    - assert:\n"
+        "        - responseSchema: { request: { path: /api/items }, schema: items.json }\n"
+    )
+    assert "// TODO: responseSchema assertion (/api/items)" in schema
+    assert "unsupported assertion" not in seq and "unsupported assertion" not in schema
+
+
+def test_wait_until_request_emits_labeled_todo() -> None:
+    # `until: { request }` is a network wait, not a settle — a labeled TODO naming the endpoint, not
+    # the generic "settle wait" comment that would misdescribe it (BE-0026).
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - wait: { until: { request: { method: POST, path: /api/login } }, timeout: 5 }\n"
+    )
+    assert "// TODO: wait until request (POST /api/login)" in code
+    assert "no network interception" in code
+    assert "settle wait" not in code
+
+
 def test_class_name_for() -> None:
     assert class_name_for("smoke") == "SmokeUITests"
     assert class_name_for("my-flow_v2") == "MyFlowV2UITests"

@@ -21,9 +21,16 @@ from __future__ import annotations
 
 import re
 
+from bajutsu.assertions import request_label
 from bajutsu.codegen_common import render_test_file
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Gone, Scenario, Step
+from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
+
+# XCUITest drives the UI on-device and has no network-interception surface, so a network `request`
+# assertion / `until: { request }` wait has no faithful translation — it stays a TODO, but a labeled
+# one naming the endpoint and the reason (like the device-control steps), not a bare "unsupported".
+# `request_label` (the same matcher description the runner / coverage use) names the endpoint.
+_NO_NETWORK = "XCUITest has no network interception; assert via a mock/proxy; not generated"
 
 _SWIFT_DIRECTION = {
     "up": "swipeUp",
@@ -222,6 +229,10 @@ def _emit_step(step: Step) -> list[str]:
                 f"XCTAssertTrue({_element(w.until.gone.as_selector())}"
                 f'.waitForNonExistence(timeout: {w.timeout}), "wait until gone")'
             ]
+        if isinstance(w.until, WaitRequest):
+            return [
+                f"// TODO: wait until request ({request_label(w.until.request, with_count=False)}) — {_NO_NETWORK}"
+            ]
         return [f"// settle wait ({w.until}) — XCUITest auto-waits for hittability"]
     if step.assert_ is not None:
         return [line for a in step.assert_ for line in _emit_assertion(a)]
@@ -291,6 +302,18 @@ def _emit_assertion(a: Assertion) -> list[str]:
         op = "equals" if a.clipboard.equals is not None else "matches"
         want = a.clipboard.equals if a.clipboard.equals is not None else a.clipboard.matches
         return [f"// TODO: clipboard({op}: {_s(want or '')}) — simctl pbpaste; not generated"]
+    if a.request is not None:
+        return [
+            f"// TODO: request assertion ({request_label(a.request, with_count=False)}) — {_NO_NETWORK}"
+        ]
+    if a.request_sequence is not None:
+        seq = ", ".join(request_label(m, with_count=False) for m in a.request_sequence)
+        return [f"// TODO: requestSequence assertion ({seq}) — {_NO_NETWORK}"]
+    if a.response_schema is not None:
+        return [
+            f"// TODO: responseSchema assertion ({request_label(a.response_schema.request, with_count=False)}) — "
+            f"{_NO_NETWORK}"
+        ]
     return ["// TODO: unsupported assertion"]
 
 
