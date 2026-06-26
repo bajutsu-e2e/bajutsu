@@ -402,6 +402,14 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 | [BE-0073](proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
+### codegen coverage
+
+Turning a passing scenario into a native test in a destination framework's idiom. These items shrink the range of constructs an emitter drops to a `// TODO`.
+
+<!-- GENERATED:proposals-codegen -->
+
+<!-- /GENERATED:proposals-codegen -->
+
 ### Backend expansion (iOS actuators)
 
 <!-- GENERATED:proposals-backend -->

@@ -394,6 +394,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0073](proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) | config・シナリオ・アプリバイナリを zip でまとめてアップロードし Web UI から実行する | 提案 |
 <!-- /GENERATED:proposals-config-sourcing -->
 
+### codegen 網羅性
+
+通過したシナリオを出力先フレームワークの流儀のネイティブテストに変換する取り組み。ここで扱う項目は、エミッタが `// TODO` に落とす構文の範囲を減らします。
+
+<!-- GENERATED:proposals-codegen -->
+
+<!-- /GENERATED:proposals-codegen -->
+
 ### バックエンド拡張（iOS actuator）
 
 <!-- GENERATED:proposals-backend -->
