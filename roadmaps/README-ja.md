@@ -181,6 +181,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0061](implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md) | 衝突しない BE ID 採番（原子的な予約と自動修復） | 実装済み |
 | [BE-0065](implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md) | docstring の規範と API リファレンス生成 | 実装済み |
 | [BE-0067](implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md) | コード品質ゲートの強化（CI の忠実性、セキュリティ lint、サプライチェーン） | 実装済み |
+| [BE-0069](implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md) | コントリビュータ向けガードレールの実行可能化（手順をコマンドに） | 実装済み |
 | [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) | BE 項目テンプレートの標準化（EN / JA） | 実装済み |
 | [BE-0078](implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md) | 状態ごとのロードマップフォルダ（提案 / 保留 / 実装中 / 実装済み） | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
@@ -309,14 +310,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装中 | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
-### 開発基盤（コントリビュータ体験）
-
-<!-- GENERATED:in-progress-dev-infra -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0069](in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md) | コントリビュータ向けガードレールの実行可能化（手順をコマンドに） | 実装中 |
-<!-- /GENERATED:in-progress-dev-infra -->
-
 ### codegen 網羅性
 
 <!-- GENERATED:in-progress-codegen -->
@@ -421,16 +414,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|---|
 | [BE-0079](proposals/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md) | デモ／dogfood 用アプリを showcase 群へ統合する | 提案 | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
-
-### 開発基盤（コントリビュータ体験）
-
-このリポジトリを読み書きする多数の並行セッション（人間と AI）のコストを下げます。ここでの提案は、コードベースが働き手（人間とエージェント）に向けて**自身をどう説明するか**を良くします。
-
-<!-- GENERATED:proposals-dev-infra -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0069](proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md) | コントリビュータ向けガードレールの実行可能化（手順をコマンドに） | 提案 |
-<!-- /GENERATED:proposals-dev-infra -->
 
 ### 競合調査（MagicPod / Autify）由来の候補
 

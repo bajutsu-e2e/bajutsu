@@ -189,6 +189,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0061](implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md) | Collision-proof BE-ID allocation (atomic reservation + auto-repair) | Implemented |
 | [BE-0065](implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) | Docstring standard & generated API reference | Implemented |
 | [BE-0067](implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) | Code-quality gate hardening (CI fidelity, security lint, supply-chain) | Implemented |
+| [BE-0069](implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | Implemented |
 | [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) | Standardize the BE item template (EN / JA) | Implemented |
 | [BE-0078](implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) | Status-driven roadmap folders (proposals / deferred / in-progress / implemented) | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
@@ -317,14 +318,6 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
-### Development infrastructure (contributor workflow)
-
-<!-- GENERATED:in-progress-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0069](in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | In progress |
-<!-- /GENERATED:in-progress-dev-infra -->
-
 ### codegen coverage
 
 <!-- GENERATED:in-progress-codegen -->
@@ -429,16 +422,6 @@ Turning a passing scenario into a native test in a destination framework's idiom
 |---|---|---|---|
 | [BE-0079](proposals/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
-
-### Development infrastructure (contributor workflow)
-
-Lower the cost for the many parallel sessions — human and AI — that read and change this repo. The proposals here improve how the codebase **documents itself** to the humans and agents working it.
-
-<!-- GENERATED:proposals-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0069](proposals/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | Proposal |
-<!-- /GENERATED:proposals-dev-infra -->
 
 ### Candidates from competitive research (MagicPod / Autify)
 

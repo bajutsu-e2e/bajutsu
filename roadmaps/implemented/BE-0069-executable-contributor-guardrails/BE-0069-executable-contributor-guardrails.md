@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0069](BE-0069-executable-contributor-guardrails.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Implementing PR | [#243](https://github.com/bajutsu-e2e/bajutsu/pull/243) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
@@ -184,6 +184,17 @@ commits, or in CI against the PR title. It deliberately never blocks on the un-m
    `make hooks`.
 
 Each phase is a small, independent PR (the parallel-work model, BE-0043).
+
+### Implementation status
+
+All four mechanisms shipped: **A** `make new-roadmap-item` (the `ideation` skill invokes it), **B**
+`make lint-roadmap` (folded into `make check`), **C** `make worktree` / `make preflight` (the doc
+recipes repointed at the commands), and **D** `make lint-pr` plus the `pr-title.yml` CI title gate.
+The prose in `CLAUDE.md`, `docs/ai-development.md` (+ `docs/ja/`), and the `ideation` / `implement-be`
+skills points at the commands rather than narrating the steps. Phase 5's optional tail also landed: a
+tracked **`.githooks/commit-msg`** hook (wired by `core.hooksPath`, like the pre-push gate) blocks a
+non-scoped commit subject at commit time via `lint_pr.py --commit-msg`, skipping merge / revert /
+fixup / squash and no-opping without `uv` — mechanical only, never a judgement call.
 
 ## Alternatives considered
 

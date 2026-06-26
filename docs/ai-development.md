@@ -42,6 +42,12 @@ every time, so the gate self-heals right before you push. Claude Code web sessio
 automatically via [`.claude/hooks/session-start.sh`](../.claude/hooks/session-start.sh). In a real
 emergency you can bypass with `git push --no-verify`, but the next CI run will still gate the PR.
 
+The same `core.hooksPath` also wires a tracked **commit-msg hook**
+([`.githooks/commit-msg`](../.githooks/commit-msg), BE-0069): it blocks a commit whose subject isn't
+a scoped conventional subject (`type(scope): …`, or `docs: …`), catching the mechanical convention at
+commit time instead of in review. It is deliberately narrow — merge / revert / fixup / squash commits
+pass, and it no-ops when `uv` isn't on PATH; bypass a one-off with `git commit --no-verify`.
+
 When you change behavior, change a test with it — the suite is the contract that protects every
 other session from your change.
 

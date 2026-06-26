@@ -9,7 +9,7 @@ setup: hooks
 
 # Wire per-clone local git settings that clone/pull never carry over, so this self-heals
 # existing clones too — `check` runs it before every gate, right when it matters. Idempotent:
-#   - core.hooksPath    -> the tracked pre-push gate
+#   - core.hooksPath    -> the tracked hooks dir (pre-push gate + commit-msg scope check, BE-0069)
 #   - merge.uv-lock     -> regenerate uv.lock from pyproject.toml on conflict (BE-0043)
 #   - merge.roadmap-index -> regenerate the roadmap index tables on conflict (BE-0043)
 #   - rerere            -> replay a once-resolved conflict automatically (BE-0043)
@@ -56,7 +56,7 @@ preflight:
 	@./scripts/preflight.sh
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
