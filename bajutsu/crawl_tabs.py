@@ -30,8 +30,7 @@ TAB_LOCATOR_MODEL = "claude-opus-4-8"
 
 @dataclass
 class TabTarget:
-    """One tab bar item to try: its center as a fraction [0,1] of the screen, plus its visible
-    text (for logging) when readable."""
+    """One tab bar item to try: its center as a fraction [0,1] of the screen, plus its visible text (for logging) when readable."""
 
     x: float
     y: float
@@ -57,10 +56,12 @@ def _is_tab(element: base.Element) -> bool:
 
 
 def addressable_tabs(elements: list[base.Element]) -> bool:
-    """Whether individual tabs are already tappable from the tree — so no vision is needed (and
-    firing it would just duplicate those taps). Today: a tab element carrying an identifier, which
-    the deterministic `candidate_actions` taps directly. UIKit support is provisional — see
-    `_uikit_addressable_tabs`."""
+    """Whether individual tabs are already tappable from the tree — so no vision is needed.
+
+    Firing vision then would just duplicate those taps. Today: a tab element carrying an
+    identifier, which the deterministic `candidate_actions` taps directly. UIKit support is
+    provisional — see `_uikit_addressable_tabs`.
+    """
     return any(_is_tab(el) and el.get("identifier") for el in elements) or _uikit_addressable_tabs(
         elements
     )
@@ -75,14 +76,18 @@ def _uikit_addressable_tabs(_elements: list[base.Element]) -> bool:
     vision. We haven't yet confirmed idb's exact representation, so this recognizes nothing for now
     (leaving the vision fallback in charge). To complete UIKit support: capture an
     `idb ui describe-all` of a UIKit tab bar, then recognize its tab elements here (by trait / label
-    / id) — `addressable_tabs` and `needs_vision_tabs` pick the result up automatically."""
+    / id) — `addressable_tabs` and `needs_vision_tabs` pick the result up automatically.
+    """
     return False  # TODO(BE-0038): recognize UIKit UITabBarButton elements once idb output is known
 
 
 def tab_bar_present(elements: list[base.Element]) -> bool:
-    """Whether a tab bar is on screen at all: a tab / tabBar element, or the container iOS labels
-    "Tab Bar" (its auto-assigned accessibility label) — how idb surfaces a SwiftUI TabView, as a
-    lone `group` with that label and no addressable per-tab children."""
+    """Whether a tab bar is on screen at all.
+
+    A tab / tabBar element, or the container iOS labels "Tab Bar" (its auto-assigned accessibility
+    label) — how idb surfaces a SwiftUI TabView, as a lone `group` with that label and no
+    addressable per-tab children.
+    """
     for el in elements:
         if _is_tab(el):
             return True
@@ -92,9 +97,7 @@ def tab_bar_present(elements: list[base.Element]) -> bool:
 
 
 def needs_vision_tabs(elements: list[base.Element]) -> bool:
-    """The one case the vision locator should fire: a tab bar is present but its individual tabs
-    can't be addressed from the tree. This keeps vision off an ordinary screen (no tab bar) and off
-    a bar whose tabs are already tappable by id."""
+    """The one case the vision locator should fire: a tab bar present but its tabs unaddressable from the tree, keeping vision off ordinary screens and id-tappable bars."""
     return tab_bar_present(elements) and not addressable_tabs(elements)
 
 
@@ -160,8 +163,11 @@ def _targets_of(message: Any, width: int, height: int) -> list[TabTarget]:
 
 
 class ClaudeTabLocator:
-    """TabLocator backed by Claude vision; `anthropic` is lazy-imported so the module loads without
-    the SDK or an API key, like the alert locator."""
+    """TabLocator backed by Claude vision.
+
+    `anthropic` is lazy-imported so the module loads without the SDK or an API key, like the alert
+    locator.
+    """
 
     def __init__(self, client: Any = None, model: str | None = None) -> None:
         self._client = client

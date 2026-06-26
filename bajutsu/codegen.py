@@ -66,8 +66,11 @@ _RE_METACHARS = set(r".^$*+?{}[]\|()")
 
 
 def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
-    """Build the NSPredicate (format, Swift args) ANDing every set field, or None if any field
-    has no faithful structural mapping (so the caller falls back to a TODO/unsupported marker)."""
+    """Build the NSPredicate (format, Swift args) ANDing every set field.
+
+    None if any field has no faithful structural mapping (so the caller falls back to a
+    TODO/unsupported marker).
+    """
     clauses: list[str] = []
     args: list[str] = []
     if "id" in sel:
@@ -104,8 +107,11 @@ def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
 
 
 def _query(sel: base.Selector) -> str | None:
-    """A Swift XCUIElementQuery expression for the selector, scoping into a `within` container's
-    subtree when present. None when the selector (or its container) can't be mapped faithfully."""
+    """A Swift XCUIElementQuery expression for the selector.
+
+    Scopes into a `within` container's subtree when present. None when the selector (or its
+    container) can't be mapped faithfully.
+    """
     if "within" in sel:
         # `within` is a *geometric* frame-containment constraint (the candidate's frame must sit
         # inside the container's; see drivers/base.py). XCUITest queries are tree-based, not
@@ -131,7 +137,8 @@ def _element(sel: base.Selector) -> str:
 
     Single addressing fields keep their readable helper; compound selectors (value / traits /
     `within` / `index`, or several fields) compose an NSPredicate query, picking the element by
-    `index` (`element(boundBy:)`, non-negative only) or `firstMatch`."""
+    `index` (`element(boundBy:)`, non-negative only) or `firstMatch`.
+    """
     keys = set(sel)
     if keys == {"id"}:
         return f"el({_s(sel['id'])})"
@@ -349,4 +356,5 @@ def to_xcuitest(
 
 
 def class_name_for(stem: str) -> str:
+    """Derive the XCTestCase class name from a file stem (public wrapper of `_class_name`)."""
     return _class_name(stem)

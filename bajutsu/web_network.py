@@ -108,7 +108,8 @@ def _mock_matches(probe: NetworkExchange, match: RequestMatch) -> bool:
     `status` / `count` don't apply to mock matching (the iOS BajutsuKit matcher ignores them), so
     they are stripped first — otherwise a mock with `status` set would never match here (the probe
     has no status yet) and behave differently than on iOS. A matcher left with no request-side
-    criterion would match every request, so it is treated as no-match instead."""
+    criterion would match every request, so it is treated as no-match instead.
+    """
     request_side = match.model_copy(update={"status": None, "count": None})
     if not any(
         (

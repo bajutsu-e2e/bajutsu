@@ -103,11 +103,13 @@ def _execute(driver: base.Driver, step: Step, clock: Clock) -> None:
 
 
 def shows_app_ui(elements: list[base.Element]) -> bool:
-    """Whether the tree shows the app's own UI (rather than being collapsed under a system
-    overlay). A SpringBoard alert collapses the app's tree to a bare window; a live app screen
+    """Whether the tree shows the app's own UI (rather than being collapsed under a system overlay).
+
+    A SpringBoard alert collapses the app's tree to a bare window; a live app screen
     has actionable content. "Actionable" = any non-application element carrying an `id` OR a
     `label`, so apps WITHOUT accessibility identifiers (label/coordinate-driven, e.g. sample2)
-    are not mistaken for a blocked screen — the bug that made the guard fire every turn."""
+    are not mistaken for a blocked screen — the bug that made the guard fire every turn.
+    """
     return any(
         (el.get("identifier") or el.get("label")) and "application" not in (el.get("traits") or [])
         for el in elements
@@ -121,8 +123,9 @@ def _clear_blocking(
     max_tries: int = 3,
     report: Reporter | None = None,
 ) -> list[str]:
-    """Dismiss anything covering the app (e.g. a system alert) before the agent observes; return
-    the dismiss-button label(s) tapped (empty if nothing was blocking).
+    """Dismiss anything covering the app (e.g. a system alert) before the agent observes.
+
+    Return the dismiss-button label(s) tapped (empty if nothing was blocking).
 
     A SpringBoard alert has no queryable app content and collapses the tree to a bare
     window — leaving the agent nothing to act on. While the tree stays collapsed, keep

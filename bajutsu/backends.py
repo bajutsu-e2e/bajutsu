@@ -46,16 +46,22 @@ _EXECUTABLE = {"idb": "idb", "adb": "adb"}
 
 
 def _playwright_available() -> bool:
-    """Whether the `playwright` package is installed — without importing it (so the default
-    import path stays free of the heavy dependency; see tests/serve/test_import_guard.py)."""
+    """Whether the `playwright` package is installed.
+
+    Checked without importing it, so the default import path stays free of the heavy
+    dependency; see tests/serve/test_import_guard.py.
+    """
     import importlib.util
 
     return importlib.util.find_spec("playwright") is not None
 
 
 def default_available(actuator: str) -> bool:
-    """Available if implemented and its backing tool is present. `fake` is always available;
-    `playwright` is gated on the python package, every other actuator on a PATH executable."""
+    """Whether the actuator is implemented and its backing tool is present.
+
+    `fake` is always available; `playwright` is gated on the python package, every other
+    actuator on a PATH executable.
+    """
     if actuator not in IMPLEMENTED:
         return False
     if actuator == "fake":
@@ -95,12 +101,15 @@ def select_actuator(
 
 
 def ensure_web_runtime(backends: list[str]) -> None:
-    """Provision the web backend on demand: when a `web`/`playwright` backend is requested but
-    the Playwright package is absent (e.g. the venv currently carries the idb extra, as after
-    `make serve`), install it *additively* — `uv pip install` so it doesn't evict idb — plus the
-    Chromium browser, then let the run proceed. Idempotent and a no-op unless web is requested and
-    missing; mirrors how `make serve` provisions idb on demand. The deterministic run/CI gate
-    drives the fake backend and never reaches this."""
+    """Provision the web backend on demand.
+
+    When a `web`/`playwright` backend is requested but the Playwright package is absent
+    (e.g. the venv currently carries the idb extra, as after `make serve`), install it
+    *additively* — `uv pip install` so it doesn't evict idb — plus the Chromium browser,
+    then let the run proceed. Idempotent and a no-op unless web is requested and missing;
+    mirrors how `make serve` provisions idb on demand. The deterministic run/CI gate
+    drives the fake backend and never reaches this.
+    """
     if "playwright" not in resolve_actuators(backends) or _playwright_available():
         return
     import importlib
@@ -125,9 +134,12 @@ def ensure_web_runtime(backends: list[str]) -> None:
 
 
 def capabilities_for(actuator: str) -> frozenset[str]:
-    """The static capability set a backend advertises — read without constructing a driver, so the
-    preflight (BE-0082) needs no device (idb) or browser (playwright). Same source as
-    `Driver.capabilities()`: each driver's `CAPABILITIES` class constant."""
+    """The static capability set a backend advertises.
+
+    Read without constructing a driver, so the preflight (BE-0082) needs no device (idb)
+    or browser (playwright). Same source as `Driver.capabilities()`: each driver's
+    `CAPABILITIES` class constant.
+    """
     if actuator == "idb":
         return IdbDriver.CAPABILITIES
     if actuator == "fake":
@@ -148,6 +160,7 @@ def capabilities_for(actuator: str) -> frozenset[str]:
 def make_driver(
     actuator: str, udid: str, *, base_url: str | None = None, headless: bool = True
 ) -> base.Driver:
+    """Construct the driver for an actuator, wiring up its backend-specific arguments."""
     if actuator == "idb":
         return IdbDriver(udid)
     if actuator == "fake":

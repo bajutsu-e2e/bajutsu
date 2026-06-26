@@ -20,6 +20,8 @@ from bajutsu.scenario import ExcludeRegion
 
 @dataclass(frozen=True)
 class CompareResult:
+    """Outcome of comparing two screenshots: pass/fail, how much differed, and why."""
+
     ok: bool
     diff_pct: float  # percentage of pixels that differ (0.0-100.0)
     reason: str = ""

@@ -25,9 +25,11 @@ _EXPECT_COMMENT = "// expect"
 
 
 class CodeGenerator(Protocol):
-    """The target-specific parts of a generated test file. The shared walk supplies the structure
-    (scenario loop, env merge, body indentation, the expect divider); a generator supplies only the
-    syntax of each line for its target language."""
+    """The target-specific parts of a generated test file.
+
+    The shared walk supplies the structure (scenario loop, env merge, body indentation, the
+    expect divider); a generator supplies only the syntax of each line for its target language.
+    """
 
     def file_preamble(self) -> list[str]:
         """The lines before the first scenario (header comment, imports, class/describe open)."""

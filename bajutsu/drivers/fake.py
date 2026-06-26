@@ -15,6 +15,8 @@ React = Callable[["FakeDriver", str, object], None]
 
 
 class FakeDriver:
+    """In-memory Driver implementation backing the runner's tests."""
+
     name = "fake"
 
     def __init__(
