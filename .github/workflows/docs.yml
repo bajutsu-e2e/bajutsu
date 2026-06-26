@@ -1,8 +1,13 @@
-# Publish the generated API reference (BE-0065) to GitHub Pages on merge to main. The reference is
-# built by `make docs` (MkDocs + mkdocstrings); mkdocstrings reads signatures statically via griffe,
-# so the build imports none of the lazy/optional backends and needs no Simulator. Path-filtered so it
-# runs only when the surface it renders (the Python core or the docs config) actually changes — it is
-# a separate, heavier path kept out of the `make check` gate, like on-device E2E.
+# Build (and, when run manually, publish to GitHub Pages) the generated API reference (BE-0065). The
+# reference is built by `make docs` (MkDocs + mkdocstrings); mkdocstrings reads signatures statically
+# via griffe, so the build imports none of the lazy/optional backends and needs no Simulator.
+# Path-filtered so it runs only when the surface it renders (the Python core or the docs config)
+# actually changes — a separate, heavier path kept out of the `make check` gate, like on-device E2E.
+#
+# On a main push only the `build` job runs (it validates the site with `--strict`); the `deploy` job
+# is gated to a manual run because GitHub Pages isn't enabled on this repo yet. Enable Pages (Settings
+# → Pages → source "GitHub Actions"), then run this workflow from the Actions tab to publish — and
+# drop the `deploy` job's `workflow_dispatch`-only guard if you want every main push to publish.
 name: docs
 
 on:
@@ -54,6 +59,12 @@ jobs:
   deploy:
     name: deploy
     needs: build
+    # Publish only on a manual run. GitHub Pages isn't enabled on this repo yet (Settings → Pages →
+    # source "GitHub Actions"), so an automatic deploy on every main push fails with "Ensure GitHub
+    # Pages has been enabled". Keeping `build` on push still validates the site (`--strict`); once
+    # Pages is enabled, run this workflow from the Actions tab to publish. Flip this to also deploy on
+    # push once Pages is on.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
