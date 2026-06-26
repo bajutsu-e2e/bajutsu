@@ -1,11 +1,11 @@
-[English](BE-XXXX-shrink-web-codegen-syntax.md) · **日本語**
+[English](BE-0085-shrink-web-codegen-syntax.md) · **日本語**
 
-# BE-XXXX — web（Playwright）codegen の未対応構文の縮小
+# BE-0085 — web（Playwright）codegen の未対応構文の縮小
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-shrink-web-codegen-syntax-ja.md) |
+| 提案 | [BE-0085](BE-0085-shrink-web-codegen-syntax-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トピック | codegen 網羅性 |

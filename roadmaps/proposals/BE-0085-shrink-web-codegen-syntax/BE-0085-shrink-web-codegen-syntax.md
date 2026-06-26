@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-shrink-web-codegen-syntax-ja.md)
+**English** · [日本語](BE-0085-shrink-web-codegen-syntax-ja.md)
 
-# BE-XXXX — Shrink unsupported web (Playwright) codegen syntax
+# BE-0085 — Shrink unsupported web (Playwright) codegen syntax
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-shrink-web-codegen-syntax.md) |
+| Proposal | [BE-0085](BE-0085-shrink-web-codegen-syntax.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | codegen coverage |

@@ -407,7 +407,9 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 Turning a passing scenario into a native test in a destination framework's idiom. These items shrink the range of constructs an emitter drops to a `// TODO`.
 
 <!-- GENERATED:proposals-codegen -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0085](proposals/BE-0085-shrink-web-codegen-syntax/BE-0085-shrink-web-codegen-syntax.md) | Shrink unsupported web (Playwright) codegen syntax | Proposal |
 <!-- /GENERATED:proposals-codegen -->
 
 ### Backend expansion (iOS actuators)
