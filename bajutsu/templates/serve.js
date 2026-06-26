@@ -201,6 +201,19 @@ async function chooseConfig(path){
   if(d.error){$('#fslist').innerHTML='<li class="muted">'+esc(d.error)+'</li>';return}
   $('#cfgname').textContent=d.config;closeFs();await loadShared();
 }
+// From-Git picker (BE-0063): POST the github:… spec; the server materializes the checkout, binds
+// its config, and repoints its cwd there. Errors (a bad spec, a fetch/auth failure) show inline.
+async function chooseGitConfig(){
+  const git=$('#gitspec').value.trim();
+  const err=$('#gitsrcerr');err.hidden=true;
+  if(!git){err.textContent='Enter a github:owner/repo[@ref][:path] spec.';err.hidden=false;return}
+  const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({git})});
+  const d=await r.json();
+  if(d.error){err.textContent=d.error;err.hidden=false;return}
+  $('#cfgname').textContent=d.config;closeFs();await loadShared();
+}
+$('#gitload').addEventListener('click',chooseGitConfig);
+$('#gitspec').addEventListener('keydown',e=>{if(e.key==='Enter')chooseGitConfig()});
 
 // ---- shared data: targets, scenarios, simulators (used by both views) ----
 async function loadShared(){

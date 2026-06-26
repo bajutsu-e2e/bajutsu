@@ -178,10 +178,21 @@
   </div>
 </main>
 
-<!-- ===== Open config: a server-side file browser confined to the serve --root ===== -->
+<!-- ===== Open config: a local file browser (confined to --root) + a "from Git" source ===== -->
 <div class="modal" id="fsmodal" data-testid="config.modal" hidden>
   <div class="fsbox">
     <div class="fshead"><span class="ttl">Open config</span><button class="fsclose" id="fsclose" data-testid="config.close">&#10005;</button></div>
+    <!-- From Git (BE-0063): materialize a repo subtree at a ref and bind its config. -->
+    <div class="gitsrc">
+      <label class="gitsrclbl" for="gitspec">From a Git repository</label>
+      <div class="gitsrcrow">
+        <input type="text" id="gitspec" data-testid="config.git-spec" placeholder="github:owner/repo@ref:path/to/bajutsu.config.yaml">
+        <button class="cfgbtn" id="gitload" data-testid="config.git-load">Load</button>
+      </div>
+      <div class="gitsrchint">A branch, tag, or commit SHA (default: the repo's default branch). The whole subtree is fetched, so the config's scenarios and build come along.</div>
+      <div class="gitsrcerr" id="gitsrcerr" data-testid="config.git-error" hidden></div>
+    </div>
+    <div class="fsor">or browse the server</div>
     <div class="fspath" id="fspath" data-testid="config.path"></div>
     <ul class="fslist" id="fslist" data-testid="config.list"></ul>
     <div class="fshint">Pick a <code>.yml</code>/<code>.yaml</code> config file. Browsing is limited to the server's <code>--root</code>.</div>

@@ -214,7 +214,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/login":
                     self._post_login(body)
                 case "/api/config":
-                    self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
+                    # `git` selects the from-Git picker (BE-0063); `path` the local file browser.
+                    if body.get("git"):
+                        self._json(*ops.bind_git_config(state, str(body.get("git") or "")))
+                    else:
+                        self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
                 case "/api/apikey":
                     self._json(*ops.set_api_key(state, str(body.get("value", "") or "")))
                 case "/api/provider":

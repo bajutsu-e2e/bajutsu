@@ -96,10 +96,16 @@ def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -
 
     _, _, runs = project(tmp_path)
     checkout = tmp_path / "gitsrc"
-    checkout.mkdir()
+    # A scenarios dir relative to the checkout root (the common case) — it must resolve against the
+    # checkout, not serve's launch dir, for the UI listing to find these files.
+    (checkout / "e2e").mkdir(parents=True)
+    (checkout / "e2e" / "smoke.yaml").write_text(
+        "- name: s\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
+    )
     git_cfg = checkout / "bajutsu.config.yaml"
     git_cfg.write_text(
-        "defaults: { backend: [idb] }\ntargets:\n  fromgit: { bundleId: com.example.fromgit }\n",
+        "defaults: { backend: [idb] }\n"
+        "targets:\n  fromgit: { bundleId: com.example.fromgit, scenarios: e2e }\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -114,6 +120,8 @@ def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -
         assert resp["source"]["sha"] == "deadbeefcafe"  # the resolved commit is surfaced
         assert state.config == git_cfg  # config repointed to the checkout
         assert state.cwd == checkout  # cwd repointed so the checkout's relative paths resolve
+        # The relative `scenarios: e2e` resolves against the checkout, so the listing finds smoke.yaml.
+        assert _get_json(port, "/api/scenarios?target=fromgit")[0]["names"] == ["s"]
         assert _get_json(port, "/api/config")["hasConfig"] is True
         # A value with no recognized scheme is not a Git spec → a clear 400, not a local-path read.
         status, resp = _post(port, "/api/config", {"git": "/etc/passwd"})

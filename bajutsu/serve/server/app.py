@@ -237,6 +237,12 @@ def make_app(state: ServeState) -> FastAPI:
 
     @app.post("/api/config")
     async def bind_config(body: dict[str, Any]) -> JSONResponse:
+        # `git` selects the from-Git picker (BE-0063); `path` the local file browser. The Git path
+        # does blocking network I/O (materialize), so run it off the event loop like oauth_callback.
+        if body.get("git"):
+            return _result(
+                await run_in_threadpool(ops.bind_git_config, state, str(body.get("git") or ""))
+            )
         return _result(ops.bind_config(state, str(body.get("path", "") or "")))
 
     @app.post("/api/apikey")

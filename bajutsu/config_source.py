@@ -203,8 +203,13 @@ def _extract_into(tarball: bytes, root: Path) -> None:
     root.parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(dir=root.parent, prefix=f".{root.name}.tmp-"))
     try:
-        with tarfile.open(fileobj=io.BytesIO(tarball), mode="r:gz") as tar:
-            _extract_stripped(tar, tmp)
+        try:
+            with tarfile.open(fileobj=io.BytesIO(tarball), mode="r:gz") as tar:
+                _extract_stripped(tar, tmp)
+        except tarfile.TarError as e:
+            # A truncated/corrupt/non-tar body (a rate-limit page, a proxy interstitial) — present it
+            # as a ValueError so callers' fetch-error handling catches it, not a bare traceback.
+            raise ValueError(f"could not read the repository tarball: {e}") from e
         try:
             tmp.rename(root)
         except OSError:

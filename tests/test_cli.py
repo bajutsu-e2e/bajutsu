@@ -191,6 +191,26 @@ def test_serve_emit_launchagent_prints_plist_and_exits() -> None:
     assert "bajutsu" in r.output and "serve" in r.output
 
 
+def test_serve_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # `serve --config github:…` materializes the checkout at startup and serves from its root, so
+    # the config's relative paths resolve against the fetched tree (BE-0063).
+    import bajutsu.config_source as cs
+    import bajutsu.serve as srv
+    from bajutsu.config_source import Materialized
+
+    checkout = tmp_path / "co"
+    checkout.mkdir()
+    cfg = checkout / "bajutsu.config.yaml"
+    cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
+    monkeypatch.setattr(cs, "materialize", lambda spec, **kw: Materialized(cfg, checkout, "sha1"))
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
+    r = runner.invoke(app, ["serve", "--config", "github:acme/repo@main"])
+    assert r.exit_code == 0
+    assert captured["config"] == cfg  # bound to the checkout's config
+    assert captured["cwd"] == checkout  # served from the checkout root
+
+
 def test_serve_loopback_detection() -> None:
     from bajutsu.cli.commands.serve import _is_loopback
 

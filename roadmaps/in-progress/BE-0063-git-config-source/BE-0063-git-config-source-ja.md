@@ -119,7 +119,9 @@ Git config のパス項目も **チェックアウトのルートに閉じ込め
 
 Git ソースの `run` は **アプリをオンデマンドでビルド**もします。content-addressed なチェックアウトにはビルド済みバイナリが無く、手元で先にビルドする「最初の一回」もありません。そこで `appPath` が設定されていてバイナリが無いとき、run ループの前に config の `build` コマンドを**チェックアウトのルート**を作業ディレクトリとして実行します（`make -C demos/features sample-build` のような `build` の相対パスはそこを基準にします）。ビルドが失敗すれば明快に終了します。ローカルパスの `run` は従来どおりで、ビルドはせず、バイナリが無ければ launch でエラーになります。
 
-残り: serve の「Git から」ピッカー、そして Git ソースを `record` / `crawl` の **読み取り専用入力**として扱うこと（生成物は SHA キーのキャッシュではなくローカルの `--out` に書く）です。
+**serve の「Git から」ピッカー**を出荷しました。起動時の `serve --config github:…` は、`--config <path>` がローカルを bind するのと同じように Git ソースを bind し、「Open config」ダイアログにも同じ spec を入れる「From a Git repository」欄が付きます。どちらの経路でも serve はチェックアウトを実体化し（`bind_git_config`）、作業ディレクトリをチェックアウトのルートに切り替えるので、config の相対パス（`scenarios` / `appPath` / `build`）は取得したツリーを基準に解決されます。これは [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) Tier A の狙い（ファイルを手で同期する代わりに serve をチームのリポジトリへ向ける）そのものです。ファイルブラウザは `--root` 配下に限定されたままです。チェックアウトは管理された content-addressed キャッシュで、Git ソースの run は config のパス項目をチェックアウトのルートに閉じ込めます（`Effective.rebased`）。
+
+残り: Git ソースを `record` / `crawl` の **読み取り専用入力**として扱うこと（生成物は SHA キーのキャッシュではなくローカルの `--out` に書く）です。
 
 ## 検討した代替案
 

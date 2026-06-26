@@ -27,6 +27,7 @@ from bajutsu.anthropic_client import (
     provider,
 )
 from bajutsu.config import load_config, targets_for_org
+from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs
 
@@ -317,6 +318,45 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         return {"error": f"invalid config: {e}"}, 400
     state.config = target
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
+
+
+def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
+    """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
+
+    *spec_str* is a `github:owner/repo@ref:path` (or `git+https://…`) string. We materialize the
+    repo subtree at the ref into the content-addressed cache, validate the config loads, then point
+    `state.config` at the checkout's config **and** `state.cwd` at the checkout root — so the config's
+    relative `scenarios` / `appPath` / `build` resolve against the fetched tree, not serve's launch
+    directory. This does not widen the file browser, which stays confined to `--root`; the checkout is
+    a Bajutsu-managed cache (`materialize` refuses tar path-traversal on extraction), and a Git-sourced
+    run confines the config's own path fields to the checkout root (`Effective.rebased`, BE-0063)."""
+    if not spec_str:
+        return {"error": "a Git config spec is required"}, 400
+    spec = parse_config_spec(spec_str)
+    if spec is None:
+        return {
+            "error": f"not a Git config spec: {spec_str!r} (use github:owner/repo@ref:path)"
+        }, 400
+    try:
+        mat = materialize(spec)
+    except (OSError, ValueError) as e:
+        return {"error": f"could not fetch the Git config: {e}"}, 400
+    if not mat.config_path.is_file():
+        return {
+            "error": f"config not found in the repository at {spec.path or 'bajutsu.config.yaml'}"
+        }, 404
+    try:
+        load_config(mat.config_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        return {"error": f"invalid config: {e}"}, 400
+    state.config = mat.config_path
+    state.cwd = mat.root  # the checkout root: the config's relative paths resolve from here
+    return {
+        "ok": True,
+        "config": str(mat.config_path),
+        "targets": list_targets(mat.config_path),
+        "source": source_provenance(spec, mat),
+    }, 200
 
 
 def set_api_key(state: ServeState, value: str) -> tuple[Any, int]:
