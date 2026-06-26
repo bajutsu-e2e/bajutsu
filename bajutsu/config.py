@@ -27,18 +27,22 @@ def _as_list(v: Any) -> Any:
 
 
 class MockServer(_Model):
+    """A mock server that stubs the dependencies the app under test *calls* (`mockServer:` config)."""
+
     cmd: str
     port: int
     stubs: str | None = None
 
 
 class LaunchServer(_Model):
-    """How to bring up the app's target server (the host behind `baseUrl`) for a run. Unlike
-    `mockServer` (which stubs the dependencies the app *calls*), this hosts the app *under test*
-    itself — e.g. the static page for `demos/web`, or the inner `serve` the WebUI dogfood drives.
-    `run` probes `readyUrl` first: if it already answers it reuses it (started externally), else it
-    runs `cmd`, waits on the readiness probe (a condition wait, never a fixed sleep), and tears the
-    process down afterwards."""
+    """How to bring up the app's target server (the host behind `baseUrl`) for a run.
+
+    Unlike `mockServer` (which stubs the dependencies the app *calls*), this hosts the app *under
+    test* itself — e.g. the static page for `demos/web`, or the inner `serve` the WebUI dogfood
+    drives. `run` probes `readyUrl` first: if it already answers it reuses it (started externally),
+    else it runs `cmd`, waits on the readiness probe (a condition wait, never a fixed sleep), and
+    tears the process down afterwards.
+    """
 
     cmd: str  # shell command that starts the server (run in its own process group)
     ready_url: str | None = Field(default=None, alias="readyUrl")  # probe target; default: baseUrl
@@ -48,6 +52,8 @@ class LaunchServer(_Model):
 
 
 class Defaults(_Model):
+    """Team-wide defaults under `defaults:`, overlaid by each target (see `resolve`)."""
+
     backend: list[str] = Field(default_factory=lambda: ["idb"])
     device: str = "iPhone 15"
     locale: str = "en_US"
@@ -80,6 +86,8 @@ class Defaults(_Model):
 
 
 class TargetConfig(_Model):
+    """One app's config under `targets.<name>`, overriding `defaults` for that target."""
+
     # iOS apps identify the target by bundleId; web apps by baseUrl instead. One of the two is
     # required (the validator below) — defaulting bundleId to "" keeps every iOS `eff.bundle_id`
     # call site a plain `str` while letting a web app omit it.
@@ -135,10 +143,12 @@ class TargetConfig(_Model):
 
 
 class OrgConfig(_Model):
-    """One tenant (BE-0015 multi-tenancy): the GitHub logins that belong to it (`members`) and/or the
-    GitHub orgs whose members belong to it (`github_orgs`), plus the targets it owns. A login or
-    target named in no org falls back to the single `default` org, so a config with no `orgs:` block
-    stays single-tenant."""
+    """One tenant under `orgs.<name>` (BE-0015 multi-tenancy).
+
+    Holds the GitHub logins that belong to it (`members`) and/or the GitHub orgs whose members
+    belong to it (`github_orgs`), plus the targets it owns. A login or target named in no org falls
+    back to the single `default` org, so a config with no `orgs:` block stays single-tenant.
+    """
 
     members: list[str] = Field(default_factory=list)
     github_orgs: list[str] = Field(default_factory=list, alias="githubOrgs")
@@ -146,6 +156,8 @@ class OrgConfig(_Model):
 
 
 class Config(_Model):
+    """A parsed `bajutsu.config.yaml`: team `defaults`, per-target config, and (optional) `orgs`."""
+
     defaults: Defaults = Field(default_factory=Defaults)
     targets: dict[str, TargetConfig] = Field(default_factory=dict)
     orgs: dict[str, OrgConfig] = Field(default_factory=dict)
@@ -167,10 +179,11 @@ def org_for_target(config: Config, target: str) -> str:
 
 
 def org_for_identity(config: Config, login: str, github_orgs: list[str]) -> str:
-    """The org for a user logging in as *login* with the given GitHub *github_orgs* memberships
-    (BE-0015). An explicit `members` listing wins; otherwise the first org whose `github_orgs`
-    intersects the user's GitHub orgs; otherwise `default`. Resolution is deterministic in config
-    order."""
+    """The org for a user logging in as *login* with the given GitHub *github_orgs* memberships (BE-0015).
+
+    An explicit `members` listing wins; otherwise the first org whose `github_orgs` intersects the
+    user's GitHub orgs; otherwise `default`. Resolution is deterministic in config order.
+    """
     explicit = org_for_user(config, login)
     if explicit != DEFAULT_ORG:
         return explicit
@@ -182,9 +195,11 @@ def org_for_identity(config: Config, login: str, github_orgs: list[str]) -> str:
 
 
 def targets_for_org(config: Config, org: str) -> list[str]:
-    """The targets belonging to *org*, restricted to targets actually declared under `targets:` (an
-    org that lists an undeclared target name doesn't conjure a runnable target). For `default`, that's
-    every declared target no org claims."""
+    """The targets belonging to *org*, restricted to targets actually declared under `targets:`.
+
+    An org that lists an undeclared target name doesn't conjure a runnable target. For `default`,
+    that's every declared target no org claims.
+    """
     if org == DEFAULT_ORG:
         claimed = {a for oc in config.orgs.values() for a in oc.targets}
         return [a for a in config.targets if a not in claimed]
