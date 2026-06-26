@@ -28,8 +28,14 @@
 </header>
 
 <!-- ===== Record: author a scenario from a natural-language goal ===== -->
-<main id="view-record" data-testid="view.record">
-  <div class="left">
+<main id="view-record" data-testid="view.record" data-pane="form">
+  <!-- Per-view switcher (shown only at the phone tier): brings one stacked pane to full width. -->
+  <div class="viewswitch" role="tablist" data-testid="record.switch">
+    <button class="vstab active" data-pane="form">Form</button>
+    <button class="vstab" data-pane="log">Progress</button>
+    <button class="vstab" data-pane="yaml">Output</button>
+  </div>
+  <div class="left" data-pane="form">
     <div class="card">
       <div class="panel" id="panel-record">
         <label>Goal (natural language)</label>
@@ -58,14 +64,14 @@
   </div>
   <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
   <div class="rec-stack">
-    <div class="card logpanel">
+    <div class="card logpanel" data-pane="log">
       <button class="run" id="rec-go" data-testid="record.generate" data-idle="Generate scenario">Generate scenario</button>
       <button class="stop" id="rec-stop" hidden>Stop</button>
       <div class="status" id="rec-status"></div>
       <pre class="out" id="rec-out" data-empty="Enter a goal and press Generate to watch the agent author it, turn by turn."></pre>
     </div>
     <div class="gutter row" data-var="--rec-top" data-min="120" data-max="700"></div>
-    <div class="card yamlpanel" id="rec-yamlpanel">
+    <div class="card yamlpanel" id="rec-yamlpanel" data-pane="yaml">
       <div class="yamlhead">
         <span class="ttl">Generated scenario</span>
         <span class="muted" id="rec-yamlinfo" style="font-size:.8em"></span>
@@ -77,8 +83,13 @@
 </main>
 
 <!-- ===== Replay: run a scenario and view its report ===== -->
-<main id="view-replay" data-testid="view.replay" hidden>
-  <div class="left">
+<main id="view-replay" data-testid="view.replay" data-pane="form" hidden>
+  <div class="viewswitch" role="tablist" data-testid="replay.switch">
+    <button class="vstab active" data-pane="form">Form</button>
+    <button class="vstab" data-pane="log">Log</button>
+    <button class="vstab" data-pane="report">Report</button>
+  </div>
+  <div class="left" data-pane="form">
     <div class="card">
       <div class="tabs">
         <button class="tab active" data-tab="run" data-testid="replay.tab-run">Run</button>
@@ -110,19 +121,25 @@
     </div>
   </div>
   <div class="gutter" data-var="--rep-left" data-min="260" data-max="560"></div>
-  <div class="card logpanel">
+  <div class="card logpanel" data-pane="log">
     <button class="run" id="go" data-testid="replay.run" data-idle="Run">Run</button>
     <button class="stop" id="stop" hidden>Stop</button>
     <div class="status" id="status"></div>
     <pre class="out" id="out" data-empty="Run a scenario to see its output here."></pre>
   </div>
   <div class="gutter" data-var="--rep-mid" data-min="220" data-max="640"></div>
-  <div class="report" id="report" data-testid="replay.report"><div class="empty">Run a scenario to see its report here.</div></div>
+  <div class="report" id="report" data-testid="replay.report" data-pane="report"><div class="empty">Run a scenario to see its report here.</div></div>
 </main>
 
 <!-- ===== Crawl: explore the app breadth-first and map its screens live ===== -->
-<main id="view-crawl" data-testid="view.crawl" hidden>
-  <div class="left">
+<main id="view-crawl" data-testid="view.crawl" data-pane="form" hidden>
+  <div class="viewswitch" role="tablist" data-testid="crawl.switch">
+    <button class="vstab active" data-pane="form">Form</button>
+    <button class="vstab" data-pane="graph">Graph</button>
+    <button class="vstab" data-pane="plan">Plan</button>
+    <button class="vstab" data-pane="console">Console</button>
+  </div>
+  <div class="left" data-pane="form">
     <div class="card">
       <div class="panel" id="panel-crawl">
         <label>Target</label><select id="crawl-target" data-testid="crawl.target"></select>
@@ -154,7 +171,7 @@
       </div>
     </div>
   </div>
-  <div class="card crawl-graph-panel">
+  <div class="card crawl-graph-panel" data-pane="graph">
     <div class="crawlhead">
       <span class="ttl">Screen map</span>
       <span class="crawlcounts" id="crawl-counts"></span>
@@ -166,13 +183,13 @@
     </div>
     <div class="crawlgraph" id="crawl-graph"><div class="empty">Start a crawl to watch the screen map grow.</div></div>
   </div>
-  <div class="card crawl-plan-panel">
+  <div class="card crawl-plan-panel" data-pane="plan">
     <div class="crawlsub planhd"><span>Exploration plan<span class="planpct" id="crawl-planpct"></span></span>
       <label class="prunetog" title="Show the operations the crawl pruned as duplicate global controls (a tab/nav explored once), struck through and tappable to resume. Uncheck to hide them."><input type="checkbox" id="crawl-prune" checked> show pruned</label></div>
     <div class="planbar" title="share of planned operations explored"><div class="planfill" id="crawl-planfill"></div></div>
     <div class="crawlplan" id="crawl-plan"><div class="empty">The plan tree grows as the crawl explores.</div></div>
   </div>
-  <div class="card crawl-console-panel">
+  <div class="card crawl-console-panel" data-pane="console">
     <div class="crawlsub">Console</div>
     <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
   </div>

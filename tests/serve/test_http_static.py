@@ -50,6 +50,40 @@ def test_http_index_inlines_assets(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_index_carries_responsive_layout(tmp_path: Path) -> None:
+    """The served doc carries the small-screen reflow (BE-0072), all inlined — no asset pipeline.
+
+    Structural facts only (the rules / markup / handlers are present), never a "looks good" check:
+      * a phone-tier `@media (max-width: …)` breakpoint exists (serve.css has none on desktop),
+      * the per-view segmented switcher markup + its active-pane CSS ship,
+      * the narrow-tier guard that skips the persisted desktop tile/split layouts exists (serve.js),
+      * the crawl graph gained touch pan/pinch handlers (touchstart/touchmove).
+    """
+    scn_dir, cfg, runs = project(tmp_path)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        text = _get(port, "/")[1].decode("utf-8")
+        # The phone breakpoint — the load-bearing decision the desktop CSS never had.
+        assert "@media (max-width:640px)" in text
+        # The per-view switcher: markup (one container per view) + the active-pane CSS class.
+        assert text.count('class="viewswitch"') == 3
+        for label in ("Form", "Log", "Report", "Progress", "Output", "Graph", "Plan", "Console"):
+            assert f">{label}</button>" in text
+        assert ".viewswitch" in text  # the switcher's own styling ships
+        # The narrow guard in serve.js: don't apply the persisted desktop layouts on a phone.
+        assert "NARROW_MQ" in text
+        # Crawl-graph touch: pan + pinch reuse the existing zoom/pan math.
+        assert "touchstart" in text and "touchmove" in text
+        # A cancelled touch (gesture takeover, context switch) must reset the pan/pinch state, so it
+        # can't leave the graph stuck — touchcancel runs the same cleanup as touchend.
+        assert "touchcancel" in text
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_serve_assets_present() -> None:
     """Guard against a template file going missing from the package."""
     for name in ("serve.html.j2", "serve.css", "serve.themes.css", "serve.js"):

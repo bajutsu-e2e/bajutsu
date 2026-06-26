@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0072](BE-0072-responsive-web-ui.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#288](https://github.com/bajutsu-e2e/bajutsu/pull/288) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
