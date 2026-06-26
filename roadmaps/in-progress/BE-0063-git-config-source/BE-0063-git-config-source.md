@@ -245,8 +245,15 @@ Tier-A payoff (point serve at the team repository instead of hand-syncing files)
 stays confined to `--root`; the checkout is a managed content-addressed cache, and a Git-sourced run
 confines the config's path fields to the checkout root (`Effective.rebased`).
 
-Still to come: treating a Git source as **read-only input for `record` / `crawl`** (so an authored
-artifact goes to a local `--out`, never into the SHA-keyed cache).
+`record` and `crawl` treat a Git source as **read-only input**: they read the config (and existing
+scenarios) from the checkout, but their output goes to a **local path**, never into the SHA-keyed
+cache. `crawl`'s screen map already lands under a local `runs/` dir; `record` now auto-names the
+authored scenario under the **current directory** (rather than the configured `scenarios` dir, which
+is inside the checkout) when no `--out` is given, and an explicit `--out` inside the checkout is
+refused — so an authored artifact is always a reviewable local file the human commits through git
+([DESIGN §6.5](../../../DESIGN.md)).
+
+With these, every follow-up in this item has shipped.
 
 ## Alternatives considered
 

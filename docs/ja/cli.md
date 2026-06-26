@@ -204,6 +204,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 
 - 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
+- **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
 - 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
   stderr に出力します。`claude-code` エージェントはここで API トークンを消費しないため、何も表示
   されません。
@@ -236,6 +237,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
 | `--config` | `bajutsu.config.yaml` | config |
 
+- **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`crawl` は config を取得したチェックアウトから読みますが、画面マップ／スクリーンショットはローカルの `--out` run ディレクトリ（既定 `runs/<timestamp>`）に書き、読み取り専用の SHA キーのキャッシュには書きません。チェックアウト内を指す `--out` は拒否します。
 - 走査は**決定的リプレイ**で行い、その場での後戻りはしません。既知の画面を再訪するには、アプリを
   クリーンな状態に再起動し、そこへの最短経路を再生してから次の未試行アクションを取ります。これは
   `run` が任意の状態へ到達するのと同じやり方です。
