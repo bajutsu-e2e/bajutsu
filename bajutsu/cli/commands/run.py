@@ -15,7 +15,7 @@ from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
 from bajutsu.backends import ensure_web_runtime, select_actuator
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective_with_source
 from bajutsu.config import Effective
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.runner import device_pool, run_and_report
@@ -199,13 +199,25 @@ def run(
         "for CI upload or sharing; runs after the verdict, so it can't affect pass/fail",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
+    config_offline: bool = typer.Option(
+        False,
+        "--config-offline",
+        help="for a Git --config: use the cache, never touch the network (needs a pinned @<sha>)",
+    ),
+    require_pinned_config: bool = typer.Option(
+        False,
+        "--require-pinned-config",
+        help="for a Git --config: fail unless it pins a commit SHA (a branch/tag can move — for a gate)",
+    ),
 ) -> None:
     """Run a scenario deterministically.
 
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
     only fires to clear an OS prompt that blocked a step — see each scenario's `dismissAlerts`.
     """
-    eff = _load_effective(config, target_name)
+    eff, config_source = _load_effective_with_source(
+        config, target_name, offline=config_offline, require_pinned=require_pinned_config
+    )
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
@@ -357,6 +369,7 @@ def run(
             baselines_dir=baselines_dir,
             schemas_dir=schemas_dir,
             actuator=actuator,
+            config_source=config_source,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

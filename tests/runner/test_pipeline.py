@@ -166,6 +166,18 @@ def test_run_and_report(tmp_path: Path) -> None:
     expected = "sha256:" + hashlib.sha256(scn_file.read_text(encoding="utf-8").encode()).hexdigest()
     assert prov["scenarioHash"] == expected
     assert prov["toolVersion"] == __version__
+    assert "configSource" not in prov  # a local config records no Git source
+
+
+def test_run_and_report_records_git_config_source(tmp_path: Path) -> None:
+    # A run from a Git config source stamps which repo@sha it executed into the manifest (BE-0063).
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    src = {"host": "github.com", "owner": "acme", "repo": "tests", "ref": "main", "sha": "deadbeef"}
+    _, manifest = run_and_report(
+        _eff(), scenarios, _lease, tmp_path / "runs", "run1", config_source=src
+    )
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["provenance"]["configSource"] == src
 
 
 def test_git_revision_maps_failure_and_blank_to_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]

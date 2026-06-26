@@ -93,6 +93,22 @@ def test_manifest_omits_provenance_when_absent() -> None:
     assert "provenance" not in manifest_dict("run1", [_passing()])
 
 
+def test_run_provenance_records_the_git_config_source() -> None:
+    # A run whose config came from a Git source records which commit it executed (BE-0063), so the
+    # manifest states the exact repo@sha behind a branch-based run.
+    from bajutsu.report.manifest import run_provenance
+
+    src = {"host": "github.com", "owner": "acme", "repo": "tests", "ref": "main", "sha": "deadbeef"}
+    prov = run_provenance("x", git_revision=None, config_source=src)
+    assert prov["configSource"] == src
+
+
+def test_run_provenance_omits_config_source_for_a_local_config() -> None:
+    from bajutsu.report.manifest import run_provenance
+
+    assert "configSource" not in run_provenance("x", git_revision=None)
+
+
 def test_manifest_omits_idb_block_when_both_versions_unknown() -> None:
     # A {companion: null, client: null} block carries no provenance — omit it, don't add noise.
     m = manifest_dict("run1", [_passing()], idb_versions=IdbVersions(companion=None, client=None))

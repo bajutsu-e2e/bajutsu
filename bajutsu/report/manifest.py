@@ -28,7 +28,12 @@ def _run_backend(results: list[RunResult]) -> str:
 SCHEMA_VERSION = 3
 
 
-def run_provenance(scenario_yaml: str, *, git_revision: str | None) -> dict[str, str]:
+def run_provenance(
+    scenario_yaml: str,
+    *,
+    git_revision: str | None,
+    config_source: dict[str, str] | None = None,
+) -> dict[str, object]:
     """Stamp identifying the executed scenario and the tooling, for the longitudinal flakiness view.
 
     A stable fingerprint of the executed scenario plus the tool (and git) version lets accumulated
@@ -42,13 +47,18 @@ def run_provenance(scenario_yaml: str, *, git_revision: str | None) -> dict[str,
             identity stable regardless of which secrets a run resolved).
         git_revision: The current git revision (the working tree's HEAD), or None when the run isn't
             under git (the key is then omitted rather than recorded as null).
+        config_source: When the config came from a Git source (BE-0063), the repo + resolved commit
+            (`host` / `owner` / `repo` / `ref` / `sha`), so a branch-based run states the exact commit
+            it executed. None for a local config (the key is then omitted).
     """
-    prov = {
+    prov: dict[str, object] = {
         "scenarioHash": "sha256:" + hashlib.sha256(scenario_yaml.encode("utf-8")).hexdigest(),
         "toolVersion": __version__,
     }
     if git_revision is not None:
         prov["gitRevision"] = git_revision
+    if config_source is not None:
+        prov["configSource"] = config_source
     return prov
 
 
@@ -58,7 +68,7 @@ def manifest_dict(
     *,
     source_name: str | None = None,
     idb_versions: IdbVersions | None = None,
-    provenance: dict[str, str] | None = None,
+    provenance: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the manifest — the run's canonical, versioned render model (BE-0068).
 

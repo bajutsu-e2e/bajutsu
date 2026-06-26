@@ -127,7 +127,7 @@ def write_report(
     source_name: str | None = None,
     description: str | None = None,
     idb_versions: IdbVersions | None = None,
-    provenance: dict[str, str] | None = None,
+    provenance: dict[str, object] | None = None,
 ) -> Path:
     """Write manifest.json (the versioned render model), junit.xml, and report.html under run_dir.
 

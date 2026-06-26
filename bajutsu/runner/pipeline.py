@@ -206,6 +206,7 @@ def run_and_report(
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
     actuator: str | None = None,
+    config_source: dict[str, str] | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -214,7 +215,9 @@ def run_and_report(
     provenance only when idb actually drove the run — never a pass/fail input (BE-0005).
 
     Beyond `run_all`'s arguments, `runs_dir` + `run_id` locate this run's artifact directory
-    (`runs_dir/run_id`), and `source_name` / `description` are recorded in the report.
+    (`runs_dir/run_id`), `source_name` / `description` are recorded in the report, and
+    `config_source` — the Git source the config came from (BE-0063), or None for a local config — is
+    stamped into the manifest's provenance so a branch-based run states the exact commit it executed.
 
     Returns:
         The per-scenario results and the path to the written `manifest.json`.
@@ -250,7 +253,9 @@ def run_and_report(
     idb_versions = idb_version.probe() if any(r.backend == "idb" for r in results) else None
     # Stamp the run's identity (scenario fingerprint + tool/git version) so accumulated runs can be
     # grouped to tell true flakiness from an edited scenario (BE-0049); pure metadata, never a verdict.
-    provenance = run_provenance(scenario_yaml, git_revision=_git_revision())
+    provenance = run_provenance(
+        scenario_yaml, git_revision=_git_revision(), config_source=config_source
+    )
     manifest = write_report(
         run_dir,
         run_id,

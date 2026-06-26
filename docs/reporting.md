@@ -69,10 +69,12 @@ verbatim.
 - `failure`: a summary on failure (e.g. `"step 3 (tap): no match: {...}"`). null on success.
 - `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
   — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`), `toolVersion`
-  (`bajutsu.__version__`), and `gitRevision` (the commit, present only when the run is inside a git
-  checkout). It lets accumulated runs be grouped by identity, so a verdict that flips while the
-  fingerprint is unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like
-  the `idb` version block, it never enters `ok`. (`schemaVersion` is `3` once this block can appear.)
+  (`bajutsu.__version__`), `gitRevision` (the commit, present only when the run is inside a git
+  checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
+  `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
+  It lets accumulated runs be grouped by identity, so a verdict that flips while the fingerprint is
+  unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like the `idb`
+  version block, it never enters `ok`. (`schemaVersion` is `3` once this block can appear.)
 - `idb` (top, optional): the `idb_companion` / client versions, when idb drove the run (BE-0005).
 
 ## junit.xml
@@ -140,7 +142,7 @@ Device Log / App Trace remain separate tabs.
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # all 3 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description; idb_versions = idb provenance (BE-0005), provenance = run-identity stamp (BE-0049)
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> None  # the renderable half (report.html + junit.xml), leaving manifest.json untouched — used by re-render
 def manifest_dict(run_id, results, *, source_name=None, idb_versions=None, provenance=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
-def run_provenance(scenario_yaml, *, git_revision) -> dict  # the run-identity stamp (BE-0049): scenarioHash + toolVersion + optional gitRevision
+def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # the run-identity stamp: scenarioHash + toolVersion + optional gitRevision (BE-0049) + optional configSource (BE-0063)
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (definitions, sources); shared by the bake and the re-render

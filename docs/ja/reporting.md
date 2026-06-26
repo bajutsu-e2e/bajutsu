@@ -65,7 +65,7 @@ runs/<runId>/
 - `steps[].duration_s`: 各ステップの計時です（`actionLog` 相当の情報）。
 - `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
 - `failure`: 失敗時の要約です（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null です。
-- `provenance`（トップ・任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。`idb` 版ブロックと同じく純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` です。）
+- `provenance`（トップ・任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。`idb` 版ブロックと同じく純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` です。）
 - `idb`（トップ・任意）: idb が run を操作したときの `idb_companion` / client のバージョンです（BE-0005）。
 
 ## junit.xml
@@ -122,7 +122,7 @@ baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: diff
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # 3 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名、description=ファイルレベルの説明、idb_versions=idb の来歴（BE-0005）、provenance=run の同一性スタンプ（BE-0049）
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> None  # 描画される側だけ（report.html + junit.xml）。manifest.json は触らない。再描画が使う
 def manifest_dict(run_id, results, *, source_name=None, idb_versions=None, provenance=None) -> dict  # バージョン付き render モデル（schemaVersion）。manifest の素（テスト、検査用）
-def run_provenance(scenario_yaml, *, git_revision) -> dict  # run の同一性スタンプ（BE-0049）: scenarioHash + toolVersion + 任意の gitRevision
+def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # run の同一性スタンプ: scenarioHash + toolVersion + 任意の gitRevision（BE-0049）+ 任意の configSource（BE-0063）
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (definitions, sources)。初回 bake と再描画で共有

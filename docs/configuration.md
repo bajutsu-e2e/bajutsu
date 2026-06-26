@@ -125,6 +125,9 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
 - **GitHub is the only host implemented today.** The general `git+https://<host>/…` form is parsed
   (the door is open for GitHub Enterprise / GitLab later), but a non-`github.com` host currently
   fails with a clear error rather than silently hitting github.com.
+- A run from a Git source **records the resolved commit** in its `manifest.json` provenance
+  (`configSource: { host, owner, repo, ref, sha }`), so a branch-based run states the exact commit it
+  executed and is reproducible after the fact ([reporting](reporting.md#manifestjson)).
 - `<ref>` is a branch, tag, or commit SHA (default: the repo's default branch); `<path>` is the
   config within the repo (default: `bajutsu.config.yaml` at the root). A value with no recognized
   scheme is a **local path**, exactly as before.
@@ -133,12 +136,15 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
   config from it. Because the config's `scenarios` / `baselines` / `schemas` / `appPath` are relative
   paths, they resolve **against the checkout root**, not the caller's working directory — so the whole
   tree comes along, not just the YAML.
-- A **pinned ref** (`@<tag>` / `@<sha>`) is reproducible and offline after the first fetch; a bare
-  branch is resolved fresh each load. Private repos use a token from `GITHUB_TOKEN` / `GH_TOKEN`, else
+- A **pinned commit SHA** (`@<sha>`) is reproducible and runs offline after the first fetch; a branch
+  (or tag) is resolved fresh each load. Private repos use a token from `GITHUB_TOKEN` / `GH_TOKEN`, else
   `gh auth token`; the token is never logged.
-- This first slice covers the CLI read path (`run` / `doctor`). Recording the resolved SHA as run
-  provenance, the `--config-offline` / `--require-pinned-config` switches, and the serve "from Git"
-  picker are follow-ups.
+- `bajutsu run` takes two gate switches: **`--config-offline`** uses the cache and never touches the
+  network (it needs a pinned `@<sha>`, since a branch can't be resolved offline), and
+  **`--require-pinned-config`** fails unless the Git config pins a commit SHA — a branch or even a tag
+  can move under a gate, so only a SHA is accepted.
+- Remaining follow-ups: the serve "from Git" picker, read-only Git input for `record` / `crawl`, and
+  confining the config's path fields to the checkout root.
 
 ## Onboarding a new target
 
