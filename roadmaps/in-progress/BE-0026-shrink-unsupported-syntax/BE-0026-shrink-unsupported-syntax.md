@@ -66,11 +66,17 @@ non-negative `index` becomes `element(boundBy:)`. The **device-control** steps (
 `push`) now emit a labeled `// TODO` naming the `simctl` command, rather than a bare "unsupported
 step."
 
-Kept an honest `el("UNSUPPORTED_SELECTOR")` / `// TODO` where no *faithful* structural form exists —
-the governing rule (a construct leaves the fallback set only when a deterministic, AI-free mapping
+The **network assertions / wait** are now labeled too: the `request` / `requestSequence` /
+`responseSchema` assertions and the `until: { request }` wait emit a `// TODO` naming the matched
+endpoint (`METHOD path`) and the reason — *XCUITest has no network interception; assert via a
+mock/proxy* — instead of a bare "unsupported assertion" or, for the wait, the misleading generic
+"settle wait" comment. They remain TODOs (no faithful XCUITest form exists), but reviewable, honest
+ones in the device-control style.
+
+Kept an honest `el("UNSUPPORTED_SELECTOR")` where no *faithful* structural form exists — the
+governing rule (a construct leaves the fallback set only when a deterministic, AI-free mapping
 exists): a `labelMatches` regex (it is `re.search`, unlike NSPredicate's full-match `MATCHES`),
-`within` (geometric frame containment, not a tree query), a negative `index`, an unknown trait, and
-the network `request` assertion / `until: { request }` wait.
+`within` (geometric frame containment, not a tree query), a negative `index`, and an unknown trait.
 
 ## Alternatives considered
 
