@@ -127,6 +127,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | [BE-0044](implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Implemented |
 | [BE-0060](implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Implemented |
 | [BE-0068](implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | Implemented |
+| [BE-0072](implemented/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md) | Responsive serve Web UI (small-screen & touch layout) | Implemented |
 <!-- /GENERATED:implemented-authoring -->
 
 ### Self-healing triage (M4)
@@ -363,7 +364,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0012](proposals/BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | Proposal |
 | [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Proposal |
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
-| [BE-0072](proposals/BE-0072-responsive-web-ui/BE-0072-responsive-web-ui.md) | Responsive serve Web UI (small-screen & touch layout) | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Hosting the web UI (cloud / self-hosted)
