@@ -23,8 +23,9 @@ app-serve:
 e2e: web-deps
 	cd $(APP) && python3 -m http.server $(PORT) >/dev/null 2>&1 & srv=$$!; \
 	trap 'kill $$srv 2>/dev/null' EXIT; \
-	for i in $$(seq 1 100); do \
-	  curl -sf -o /dev/null "http://localhost:$(PORT)/" && break; \
+	ready=0; for i in $$(seq 1 100); do \
+	  if curl -sf --max-time 2 -o /dev/null "http://localhost:$(PORT)/"; then ready=1; break; fi; \
 	  sleep 0.1; \
 	done; \
+	if [ "$$ready" -ne 1 ]; then echo "demo server did not answer on port $(PORT) within the readiness timeout" >&2; exit 1; fi; \
 	cd $(ROOT) && uv run bajutsu run --target web --backend web --config $(CONFIG) --no-network
