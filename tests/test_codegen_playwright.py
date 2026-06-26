@@ -194,15 +194,19 @@ def test_network_assertions_install_an_exchange_recorder_before_navigation() -> 
         "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
         "    - request: { path: /api/items }\n"
     )
-    assert "page.on('response', res => {" in code
+    # 'requestfinished' is the same event the runtime web collector hooks (web_network.py), so the
+    # generated recorder records the same finished exchanges (and status=null when there's no
+    # response) rather than the earlier-firing 'response'.
+    assert "page.on('requestfinished', async req => {" in code
+    assert "status: res ? res.status() : null" in code
     assert "exchanges.push({" in code
-    assert code.index("page.on('response'") < code.index("await page.goto(BASE_URL)")
+    assert code.index("page.on('requestfinished'") < code.index("await page.goto(BASE_URL)")
 
 
 def test_no_recorder_without_network_constructs() -> None:
     # A scenario that asserts nothing over the network must not carry the recorder scaffold.
     code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n    - exists: { id: t }\n")
-    assert "page.on('response'" not in code
+    assert "page.on('requestfinished'" not in code
     assert "exchanges" not in code
 
 

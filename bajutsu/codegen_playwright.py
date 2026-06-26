@@ -76,17 +76,20 @@ def _re_raw(pattern: str) -> str:
 # is a regex over the *request* body (`match_request` tests `ex.request_body`, failing when it is
 # None), so the predicate reads `e.body` and guards `!== null` first.
 
-# Installed before navigation so it captures the whole flow. Captured on 'response' (synchronous, so
-# the recorded order is the order responses arrive) mirroring the runtime's finished-exchange list.
+# Installed before navigation so it captures the whole flow. Captured on 'requestfinished' — the same
+# event the runtime web collector uses (`bajutsu/web_network.py`), so `status` is null when a request
+# has no response, matching the collector's finished-exchange list (an earlier 'response' hook could
+# not represent that case). The explicit `+` joins keep each list item one string (no implicit
+# adjacent-literal concatenation, which reads as a missing comma).
 _RECORDER_SETUP = [
     "// Record finished exchanges so the request assertions below read the traffic observed so far",
     "// (like the runner's collector), not only future traffic.",
     "const exchanges: { method: string; url: string; status: number | null; "
-    "body: string | null }[] = [];",
-    "page.on('response', res => {",
-    "  const req = res.request();",
-    "  exchanges.push({ method: req.method(), url: req.url(), status: res.status(), "
-    "body: req.postData() });",
+    + "body: string | null }[] = [];",
+    "page.on('requestfinished', async req => {",
+    "  const res = await req.response();",
+    "  exchanges.push({ method: req.method(), url: req.url(), "
+    + "status: res ? res.status() : null, body: req.postData() });",
     "});",
 ]
 

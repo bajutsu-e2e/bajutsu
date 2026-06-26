@@ -83,8 +83,9 @@ Shipped in `bajutsu/codegen_playwright.py`. The runner evaluates a request match
 it has collected *so far* (its collector records each finished exchange), not over future traffic. A
 `page.waitForResponse` only observes the future, so it would miss requests made during the preceding
 steps and could hang where the runtime passes. To match the runtime, the generated test installs an
-exchange recorder before navigation — `page.on('response', …)` pushing `{ method, url, status, body }`
-into an `exchanges` array — and the assertions read that list:
+exchange recorder before navigation — `page.on('requestfinished', …)` (the same event the runtime web
+collector hooks, `bajutsu/web_network.py`) pushing `{ method, url, status, body }` into an `exchanges`
+array, with `status` null when a request has no response — and the assertions read that list:
 
 - **`request`** → a point-in-time check over the recorded exchanges:
   `expect(exchanges.filter(e => …).length).toBe(count)` when `count` is set (exact, mirroring the

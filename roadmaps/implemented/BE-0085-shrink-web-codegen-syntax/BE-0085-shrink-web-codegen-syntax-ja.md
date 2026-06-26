@@ -43,7 +43,7 @@ XCUITest エミッタのフォールバック処理は磨かれました（BE-00
 
 ### 実装状況
 
-`bajutsu/codegen_playwright.py` で実装しました。ランナーはリクエストマッチャを、**それまでに収集した**交換（コレクタが完了した交換を記録します）に対して評価し、未来のトラフィックに対しては評価しません。`page.waitForResponse` は未来しか観測しないため、直前のステップ中に起きたリクエストを取りこぼし、ランタイムなら通る場面でハングしかねません。ランタイムに合わせるため、生成テストはナビゲーションの前に交換レコーダを設置し（`page.on('response', …)` が `{ method, url, status, body }` を `exchanges` 配列へ push します）、各アサーションはそのリストを読みます。
+`bajutsu/codegen_playwright.py` で実装しました。ランナーはリクエストマッチャを、**それまでに収集した**交換（コレクタが完了した交換を記録します）に対して評価し、未来のトラフィックに対しては評価しません。`page.waitForResponse` は未来しか観測しないため、直前のステップ中に起きたリクエストを取りこぼし、ランタイムなら通る場面でハングしかねません。ランタイムに合わせるため、生成テストはナビゲーションの前に交換レコーダを設置し（ランタイムの web コレクタが使うのと同じ `requestfinished` イベントで `page.on('requestfinished', …)` が `{ method, url, status, body }` を `exchanges` 配列へ push します。`bajutsu/web_network.py` と同じく、レスポンスのないリクエストでは `status` は null になります）、各アサーションはそのリストを読みます。
 
 - **`request`** → 記録した交換に対する時点評価です。`count` が設定されていれば `expect(exchanges.filter(e => …).length).toBe(count)`（厳密一致、ランタイムと同じ）、なければ `expect(exchanges.some(e => …)).toBeTruthy()` を出します。
 - **`until: { request }`** → `await expect.poll(() => exchanges.filter(e => …).length, { timeout }).toBeGreaterThanOrEqual(count ?? 1)` を出します。すでに観測済みの交換は即座に充足し、未来のものは待機します（`until` 待機では `count` は下限です）。収集済みの交換を先に確認してからポーリングを続けるランタイムと一致します。
