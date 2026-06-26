@@ -1,0 +1,12 @@
+#!/bin/bash
+# commit-msg hook (BE-0069 D): catch a clearly non-scoped commit subject at commit time, before it
+# reaches review/CI. Mechanical only — it blocks a non-conventional subject (`type(scope): …` or
+# `docs: …`) and lets everything else through: merge / revert / fixup / squash commits, and (when
+# `uv` isn't on PATH) it no-ops rather than blocking the commit.
+#
+# Wired by `core.hooksPath -> .githooks` (`make hooks`), like the pre-push gate — no separate setup.
+# Bypass for a genuine one-off:   git commit --no-verify
+set -euo pipefail
+
+command -v uv >/dev/null 2>&1 || exit 0  # no toolchain → don't block the commit
+exec uv run --no-sync python scripts/lint_pr.py --commit-msg "$1"

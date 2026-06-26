@@ -191,3 +191,28 @@ def test_pr_title_problems_flags_unscoped_feat_title() -> None:
 def test_pr_title_problems_reports_both_form_and_id_when_both_wrong() -> None:
     # A malformed title on a BE branch with no prefix fails both checks.
     assert len(pr_title_problems("WIP observed ids", "BE-0050")) == 2
+
+
+# --- commit_msg_problem (the commit-msg hook, BE-0069 phase 5) ---
+
+
+def test_commit_msg_problem_none_for_a_scoped_subject() -> None:
+    assert lp.commit_msg_problem("feat(serve): add a thing\n\nbody") is None
+
+
+def test_commit_msg_problem_flags_a_non_scoped_subject() -> None:
+    assert lp.commit_msg_problem("add a thing") is not None
+
+
+def test_commit_msg_problem_skips_the_comment_lines_git_appends() -> None:
+    # git's commit template puts the subject first, then `#`-comments — read the subject, not a comment.
+    assert lp.commit_msg_problem("docs: update\n# Please enter the commit message ...") is None
+
+
+def test_commit_msg_problem_does_not_gate_merge_revert_fixup_squash() -> None:
+    for subject in ("Merge branch 'main'", 'Revert "feat(x): y"', "fixup! feat(x): y", "squash! x"):
+        assert lp.commit_msg_problem(subject) is None
+
+
+def test_commit_msg_problem_none_for_an_empty_message() -> None:
+    assert lp.commit_msg_problem("\n\n# only comments\n") is None

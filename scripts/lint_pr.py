@@ -57,6 +57,27 @@ _TITLE_PREFIX_RE = re.compile(r"^\[BE-(?:\d{4}|XXXX)\] ")
 _REF_BE_RE = re.compile(r"(?:^|/)be-(\d{4})(?![0-9])", re.IGNORECASE)
 
 
+# Commits git creates or that target another commit — a commit-msg hook must not gate these (their
+# subjects are conventional for their own reason: a merge, a revert, an autosquash marker).
+_SKIP_COMMIT_RE = re.compile(r"^(Merge |Revert |fixup! |squash! |amend! )")
+
+
+def commit_msg_problem(message: str) -> str | None:
+    """The scope problem with a commit *message*, or None when its subject is fine.
+
+    Reads the subject (the first non-blank, non-``#`` line, skipping git's appended comment block)
+    and applies the same scoped-subject rule as `bad_commit_subjects`. Returns None — never gating —
+    for an empty message or a merge / revert / fixup / squash commit, which a commit-msg hook must
+    let through (BE-0069 D).
+    """
+    subject = next((ln for ln in message.splitlines() if ln.strip() and not ln.startswith("#")), "")
+    if not subject or _SKIP_COMMIT_RE.match(subject):
+        return None
+    if bad_commit_subjects([subject]):
+        return f"non-scoped commit subject (want `type(scope): …`, or `docs: …`): {subject!r}"
+    return None
+
+
 def bad_commit_subjects(subjects: list[str]) -> list[str]:
     """The commit subjects, in order, that are not conventional scoped subjects.
 
@@ -178,9 +199,34 @@ def _title_only() -> int:
     return 0
 
 
+def _commit_msg(path: str) -> int:
+    """Validate one commit message file — the `commit-msg` git hook (BE-0069 D).
+
+    Blocks (exit 1) only a clearly non-scoped subject; a merge / revert / fixup / squash commit, an
+    empty message, or an unreadable file passes (never block a commit on the hook's own failure).
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            message = f.read()
+    except OSError:
+        return 0
+    problem = commit_msg_problem(message)
+    if problem is None:
+        return 0
+    print(f"commit-msg: {problem}", file=sys.stderr)
+    print(
+        "  Use a scoped subject like `feat(serve): …`, `fix(run): …`, or `docs: …` "
+        "(bypass once with `git commit --no-verify`).",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def main() -> int:
     if "--title-only" in sys.argv[1:]:
         return _title_only()
+    if len(sys.argv) >= 3 and sys.argv[1] == "--commit-msg":
+        return _commit_msg(sys.argv[2])
 
     # `A..B` lists commits on the branch but not on origin/main; `A...B` diffs against the merge
     # base, so a stale origin/main doesn't show others' merged changes as ours.

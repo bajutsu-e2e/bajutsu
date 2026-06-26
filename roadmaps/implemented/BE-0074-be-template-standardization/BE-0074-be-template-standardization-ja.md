@@ -203,7 +203,7 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
 - **失敗する検査ではなく、ファイルを形に書き換える整形器**（`make format` の方式）。最初の一歩としては却下
   します。散文を含むファイルの書き換えは内容に触れる危険があり、逸脱は手で直せる程度に小さいものです。検査ができた
   あとの利便として、自動修正は後続にできます。
-- **[BE-0069](../../in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
+- **[BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
   （実行可能なコントリビュータガードレール）に統合する。** 近縁ではあります。どちらもコントリビュータの手続きを
   機械検査にかけます。ただし対象が異なります。BE-0069 は複数手順の**手続き**をコマンド化するもので、本項目は一つの
   **ファイル書式**とその検証器を固定します。別項目として保ち、相互参照します。
@@ -228,5 +228,5 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
   索引への既存の「生成して検査する」扱い。
 - [BE-0043 —— 衝突に強いファイルフロー](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)
   —— 「不変条件を機械検査にかける」を確立した、コントリビュータ体験の兄弟項目。
-- [BE-0069 —— 実行可能なコントリビュータガードレール](../../in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
+- [BE-0069 —— 実行可能なコントリビュータガードレール](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
   —— 近縁の手続きのコマンド化の項目。別物として保ちます。
