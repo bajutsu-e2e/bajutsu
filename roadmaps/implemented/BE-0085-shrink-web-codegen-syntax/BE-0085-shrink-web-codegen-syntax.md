@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0085](BE-0085-shrink-web-codegen-syntax.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#287](https://github.com/bajutsu-e2e/bajutsu/pull/287) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
@@ -75,6 +76,25 @@ backends.
 
 The work is incremental — one construct per small PR, like BE-0026 — and each slice ships with golden
 codegen tests on the Linux gate (codegen is pure; no browser needed to test the emitted text).
+
+### Implementation status
+
+Shipped in `bajutsu/codegen_playwright.py`. The `request` assertion and the `until: { request }` wait
+now emit a `page.waitForResponse(r => …)` / `page.waitForRequest(r => …)` predicate over the matcher's
+set fields (AND-ed, mirroring `match_request`): `waitForResponse` when the matcher carries `status`
+(the only response-only field), `waitForRequest` otherwise, with the wait wrapped to the step's
+`{ timeout }`. `path` / `pathMatches` compare against `new URL(r.url()).pathname` (path-only, like the
+runner), `urlMatches` / `pathMatches` / `bodyMatches` become `RegExp.test(...)` (the runner uses
+`re.search`), and `status` checks `r.status()`. `requestSequence` emits one awaited matcher per element
+in order under a single `requestSequence …` label. `responseSchema` stays a labeled `// TODO` naming
+the endpoint and the schema file. An unrenderable selector emits a `// TODO` naming the blocking field
+(`within` / `value` / `idMatches`) and why it has no Playwright locator.
+
+**`bodyMatches` maps to the request body, not the response.** The runner's `match_request` tests
+`bodyMatches` against `ex.request_body` (`bajutsu/assertions.py`), so the emitter renders it as
+`r.postData()` (under `waitForRequest`) or `r.request().postData()` (under `waitForResponse`) — never
+`response.text()`. Choosing the response side would compile but check the wrong half of the exchange,
+so the mapping follows the runtime semantics, with a code comment recording why.
 
 ## Alternatives considered
 

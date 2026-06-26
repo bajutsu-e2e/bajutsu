@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import re
 
+from bajutsu.assertions import request_label
 from bajutsu.codegen_common import render_test_file
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Gone, Scenario, Step
+from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
 
 # Element-center drag distance (px) for a directional swipe — intrinsic to the gesture.
@@ -63,6 +64,64 @@ def _re_contains(text: str) -> str:
 def _re_raw(pattern: str) -> str:
     """A JS RegExp literal from an already-regex pattern (only `/` needs escaping)."""
     return "/" + pattern.replace("/", "\\/") + "/"
+
+
+# Playwright observes network natively, so a request matcher maps to a `waitForRequest` /
+# `waitForResponse` predicate (BE-0085) rather than a labeled TODO — the opposite of the XCUITest
+# emitter, which has no interception surface. `status` is the only response-only field, so a matcher
+# carrying it must wait for the *response* (`waitForResponse`, predicate over a `Response`); otherwise
+# the request side alone suffices (`waitForRequest`, predicate over a `Request`). `bodyMatches` is a
+# regex over the *request* body in the runner (`match_request` tests `ex.request_body`), so it always
+# maps to the request's `postData()` — never `response.text()` — regardless of which call we emit.
+
+
+def _re_test_js(pattern: str, subject: str) -> str:
+    """A JS `regexp.test(subject)` for a `re.search`-style matcher (substring or regex)."""
+    return f"{_re_raw(pattern)}.test({subject})"
+
+
+def _request_predicate(req: RequestMatch, *, on_response: bool) -> str:
+    """The JS boolean predicate body for a request matcher, over `r` (a Request or Response).
+
+    `on_response` selects the accessor shape: a `Response` reaches the request via `r.request()`,
+    a `Request` is `r` itself. Only set matcher fields are emitted, AND-ed, mirroring `match_request`.
+    """
+    req_ref = "r.request()" if on_response else "r"
+    method = f"{req_ref}.method()"
+    post_data = f"{req_ref}.postData() ?? ''"  # null when no body; an empty string matches nothing
+    pathname = "new URL(r.url()).pathname"  # `path` is path-only in the runner, so drop the query
+    clauses: list[str] = []
+    if req.method is not None:
+        clauses.append(f"{method} === {_ts(req.method.upper())}")
+    if req.url is not None:
+        clauses.append(f"r.url() === {_ts(req.url)}")
+    if req.url_matches is not None:
+        clauses.append(_re_test_js(req.url_matches, "r.url()"))
+    if req.path is not None:
+        clauses.append(f"{pathname} === {_ts(req.path)}")
+    if req.path_matches is not None:
+        clauses.append(_re_test_js(req.path_matches, pathname))
+    if req.status is not None:
+        clauses.append(f"r.status() === {req.status}")
+    if req.body_matches is not None:
+        clauses.append(_re_test_js(req.body_matches, post_data))
+    return " && ".join(clauses)
+
+
+def _emit_request_wait(req: RequestMatch, timeout_ms: int | None = None) -> list[str]:
+    """A `waitForResponse` / `waitForRequest` over one request matcher, optionally timeout-bounded.
+
+    A labeled comment (the shared `request_label`) precedes it so the generated test reads the same
+    way across backends and a reviewer sees the endpoint at a glance.
+    """
+    on_response = req.status is not None
+    call = "waitForResponse" if on_response else "waitForRequest"
+    predicate = _request_predicate(req, on_response=on_response)
+    timeout = f", {{ timeout: {timeout_ms} }}" if timeout_ms is not None else ""
+    return [
+        f"// request {request_label(req)}",
+        f"await page.{call}(r => {predicate}{timeout});",
+    ]
 
 
 def _glob_to_css(glob: str) -> str | None:
@@ -124,11 +183,29 @@ def _locator(sel: base.Selector) -> str | None:
     return loc
 
 
+# Why a selector field has no faithful Playwright locator (BE-0085) — named in the labeled TODO so a
+# reviewer sees *which* field blocked the locator and *why*, rather than a bare "unsupported selector".
+_WITHIN_REASON = "geometric frame containment, not a Playwright locator scope"
+_VALUE_REASON = "no Playwright locator constrains an element's current value"
+_GLOB_REASON = "fnmatch glob has no CSS attribute-selector equivalent (interior `*`, `?`, or `[…]`)"
+
+
+def _unsupported_selector_todo(sel: base.Selector) -> str:
+    """A labeled `// TODO` naming which selector field has no Playwright locator, and why."""
+    if "within" in sel:
+        field, reason = "within", _WITHIN_REASON
+    elif "value" in sel:
+        field, reason = "value", _VALUE_REASON
+    else:  # an `idMatches` glob the CSS attribute operators cannot express
+        field, reason = "idMatches", _GLOB_REASON
+    return f"// TODO: unsupported selector ('{field}': {reason})"
+
+
 def _act(sel: base.Selector, call: str) -> list[str]:
     """A `await <locator>.<call>;` line, or a TODO when the selector can't be rendered."""
     loc = _locator(sel)
     if loc is None:
-        return ["// TODO: unsupported selector"]
+        return [_unsupported_selector_todo(sel)]
     return [f"await {loc}.{call};"]
 
 
@@ -171,9 +248,10 @@ def _emit_step(step: Step) -> list[str]:
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:
-            loc = _locator(sw.on.as_selector())
+            sel = sw.on.as_selector()
+            loc = _locator(sel)
             if loc is None:
-                return ["// TODO: unsupported selector"]
+                return [_unsupported_selector_todo(sel)]
             return _emit_swipe_direction(loc, sw.direction)
         return ["// TODO: coordinate swipe (from/to) is not generated"]
     if step.wait is not None:
@@ -192,26 +270,31 @@ def _emit_step(step: Step) -> list[str]:
 def _emit_wait(w: Wait) -> list[str]:
     timeout = _ms(w.timeout)
     if w.for_ is not None:
-        loc = _locator(w.for_.as_selector())
+        sel = w.for_.as_selector()
+        loc = _locator(sel)
         if loc is None:
-            return ["// TODO: unsupported selector"]
+            return [_unsupported_selector_todo(sel)]
         return [f"await expect({loc}).toBeVisible({{ timeout: {timeout} }});"]
     if isinstance(w.until, Gone):
-        loc = _locator(w.until.gone.as_selector())
+        sel = w.until.gone.as_selector()
+        loc = _locator(sel)
         if loc is None:
-            return ["// TODO: unsupported selector"]
+            return [_unsupported_selector_todo(sel)]
         return [f"await expect({loc}).toBeHidden({{ timeout: {timeout} }});"]
     if isinstance(w.until, WaitRequest):
-        return ["// TODO: wait until network request (no bajutsu runtime in the emitted test)"]
+        # Playwright observes network natively, so the wait maps to the same request predicate,
+        # bounded by the step's timeout (BE-0085).
+        return _emit_request_wait(w.until.request, timeout)
     # "screenChanged" / "settled" — Playwright auto-waits, so a comment suffices.
     return [f"// {w.until} — Playwright auto-waits"]
 
 
 def _emit_assertion(a: Assertion) -> list[str]:
     if a.exists is not None:
-        loc = _locator(a.exists.sel.as_selector())
+        sel = a.exists.sel.as_selector()
+        loc = _locator(sel)
         if loc is None:
-            return ["// TODO: unsupported selector"]
+            return [_unsupported_selector_todo(sel)]
         check = "toBeHidden()" if a.exists.negate else "toBeVisible()"
         return [f"await expect({loc}).{check};"]
     if a.value is not None:
@@ -227,7 +310,26 @@ def _emit_assertion(a: Assertion) -> list[str]:
     if a.count is not None:
         return _emit_count(a.count)
     if a.request is not None:
-        return ["// TODO: network 'request' assertion (no bajutsu runtime in the emitted test)"]
+        return _emit_request_wait(a.request)
+    if a.request_sequence is not None:
+        # The sequence check is about order, so emit one awaited matcher per element in order,
+        # mirroring the runtime forward scan (BE-0085).
+        seq = " → ".join(request_label(m, with_count=False) for m in a.request_sequence)
+        return [f"// requestSequence {seq}"] + [
+            line
+            for m in a.request_sequence
+            # The per-element label is redundant under the sequence header, so drop it.
+            for line in _emit_request_wait(m)[1:]
+        ]
+    if a.response_schema is not None:
+        # Validating a body against a JSON Schema needs a schema library in the emitted test (an
+        # external dependency the generated file shouldn't assume), so this stays a labeled TODO
+        # naming the endpoint and the schema file (BE-0085), like the XCUITest network TODOs.
+        m = a.response_schema
+        return [
+            f"// TODO: responseSchema assertion ({request_label(m.request)} ~ {m.schema_path}) — "
+            "validating a JSON Schema needs a schema library in the test; not generated"
+        ]
     if a.visual is not None:
         return ["// TODO: visual assertion is not generated"]
     return ["// TODO: unsupported assertion"]
@@ -236,14 +338,15 @@ def _emit_assertion(a: Assertion) -> list[str]:
 def _expect(sel: base.Selector, matcher: str) -> list[str]:
     loc = _locator(sel)
     if loc is None:
-        return ["// TODO: unsupported selector"]
+        return [_unsupported_selector_todo(sel)]
     return [f"await expect({loc}).{matcher};"]
 
 
 def _emit_text_match(m: TextMatch, equals_matcher: str, contains_matcher: str) -> list[str]:
-    loc = _locator(m.sel.as_selector())
+    sel = m.sel.as_selector()
+    loc = _locator(sel)
     if loc is None:
-        return ["// TODO: unsupported selector"]
+        return [_unsupported_selector_todo(sel)]
     if m.equals is not None:
         return [f"await expect({loc}).{equals_matcher}({_ts(m.equals)});"]
     if m.contains is not None:
@@ -254,9 +357,10 @@ def _emit_text_match(m: TextMatch, equals_matcher: str, contains_matcher: str) -
 
 
 def _emit_count(c: CountMatch) -> list[str]:
-    loc = _locator(c.sel.as_selector())
+    sel = c.sel.as_selector()
+    loc = _locator(sel)
     if loc is None:
-        return ["// TODO: unsupported selector"]
+        return [_unsupported_selector_todo(sel)]
     if c.equals is not None:
         return [f"await expect({loc}).toHaveCount({c.equals});"]
     if c.at_least is not None:

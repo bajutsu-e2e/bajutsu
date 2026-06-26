@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0085](BE-0085-shrink-web-codegen-syntax-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | [#287](https://github.com/bajutsu-e2e/bajutsu/pull/287) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
@@ -39,6 +40,12 @@ XCUITest エミッタのフォールバック処理は磨かれました（BE-00
 エンドポイント記述は `bajutsu.assertions.request_label`（ランナー・coverage・XCUITest エミッタがすでに共有しているマッチャ記述）を再利用するので、生成コメントはバックエンド間で同一表記になります。
 
 作業は BE-0026 と同じく漸進的（1 構文 1 小 PR）で、各スライスは Linux ゲート上の golden codegen テストと共に出します（codegen は純粋で、生成テキストの検証にブラウザは不要です）。
+
+### 実装状況
+
+`bajutsu/codegen_playwright.py` で実装しました。`request` アサーションと `until: { request }` 待機は、マッチャの設定フィールドを AND で連結した述語（`match_request` と同じ並び）を `page.waitForResponse(r => …)` / `page.waitForRequest(r => …)` として出します。`status`（唯一のレスポンス専用フィールド）を持つ場合は `waitForResponse`、それ以外は `waitForRequest` を選び、待機はステップの `{ timeout }` で包みます。`path` / `pathMatches` はランナーと同じくパスのみ（`new URL(r.url()).pathname`）と比較し、`urlMatches` / `pathMatches` / `bodyMatches` は `RegExp.test(...)` に（ランナーは `re.search` を使うため）、`status` は `r.status()` を見ます。`requestSequence` は要素ごとに 1 つの待機を順序どおりに、単一の `requestSequence …` ラベルの下に出します。`responseSchema` はエンドポイントとスキーマファイルを明記したラベル付き `// TODO` のままです。描画できないセレクタは、妨げているフィールド（`within` / `value` / `idMatches`）と Playwright locator を持たない理由を明記した `// TODO` を出します。
+
+**`bodyMatches` はレスポンスではなくリクエストボディに対応づけます。** ランナーの `match_request` は `bodyMatches` を `ex.request_body`（`bajutsu/assertions.py`）と照合するため、エミッタはこれを `r.postData()`（`waitForRequest` 配下）または `r.request().postData()`（`waitForResponse` 配下）として描画し、`response.text()` には決して向けません。レスポンス側を選ぶとコンパイルは通るものの交換の誤った半分を検査してしまうので、マッピングはランタイム意味論に従い、その理由をコードコメントに残しています。
 
 ## 検討した代替案
 
