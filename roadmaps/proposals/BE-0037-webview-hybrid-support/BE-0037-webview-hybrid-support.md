@@ -43,13 +43,19 @@ explicit *web context* for the WebView's DOM, rather than silently blending the 
   (and, where stable, by the element's accessible name), the web analogue of `id`. The
   ambiguity rule is unchanged: a selector that matches zero or more-than-one DOM node fails the
   step rather than acting on whichever matched first.
-- **Backend mapping.** Driving the DOM requires a capability idb does not provide. It maps to
-  `WKWebView.evaluateJavaScript` to query and act on DOM nodes — surfaced through BajutsuKit
-  in the app under test, or through a WebView-capable actuator. This fits the existing
-  `Driver` / capability model: a new `webView` capability gates the web context, and a backend
-  lacking it fails the step cleanly (the same contract as the multi-touch gestures today). The
-  scenario and config are unchanged when a richer actuator lands — the
-  [stability-ladder](../../../docs/drivers.md) `backend` list picks it up.
+- **Backend mapping.** Driving the DOM requires a capability idb does not provide: querying and
+  acting on DOM nodes via `WKWebView.evaluateJavaScript`. The primary path runs that JavaScript
+  through BajutsuKit in the app under test, over the same resident loopback channel the XCUITest
+  backend (BE-0019) uses — `network.py` binds `127.0.0.1` and the launch env injects its address
+  into the app, carrying the requests in the Python→app direction. This keeps the web context
+  **independent of BE-0019 landing first**, so it works with idb as the actuator (which matters
+  for headless CI, where a full XCUITest host is awkward). The DOM the bridge returns is
+  normalized by the same logic the web (Playwright) backend already uses to turn a page into
+  elements, so selector resolution and the "ambiguous fails" rule carry over unchanged. This fits
+  the existing `Driver` / capability model: a new `webView` capability gates the web context, and a
+  backend lacking it fails the step cleanly (the same contract as the multi-touch gestures today).
+  A WebView-capable actuator that arrives later (e.g. via XCUITest) is picked up by the
+  [stability-ladder](../../../docs/drivers.md) `backend` list with the scenario and config unchanged.
 - **Waits and assertions** carry over unchanged in form (condition waits with a mandatory
   timeout, machine-checkable assertions), evaluated against the DOM query inside the web
   context. No fixed sleeps; the run/CI gate stays AI-free.
@@ -67,6 +73,12 @@ tool, drivers, and runner stay app-agnostic.
   content).** When present it needs no JavaScript, but coverage is partial and inconsistent
   across content, and it gives accessible names rather than stable `id`s, so selectors would
   often be ambiguous. Kept as a possible read path for assertions, not the addressing model.
+- **Gate WebView support on the XCUITest backend (BE-0019) reaching the DOM natively.** XCUITest
+  can address some WebView content through the native tree, so the web context could wait for that
+  actuator. Rejected as the primary path: it would defer all WebView support until BE-0019 ships
+  and would leave headless CI (where the XCUITest host is awkward) unable to drive WebViews at all.
+  The BajutsuKit bridge runs in-process alongside idb today; an XCUITest path is a later complement
+  the stability ladder picks up, not a prerequisite.
 - **Spin up a separate web-automation backend (e.g. a Playwright actuator) and switch to it for
   web screens.** The platform map already reserves `web: (playwright,)`, but mid-flow handoff
   between a native session and a separate browser session is complex and doesn't match a hybrid

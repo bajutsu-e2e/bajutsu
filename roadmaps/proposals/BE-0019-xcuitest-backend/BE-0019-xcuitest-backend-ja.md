@@ -26,6 +26,7 @@ idb に次ぐ 2 つ目の actuator です。安定度順ラダーの上位とし
 XCUITest は既存の `Driver` Protocol を満たす登録済み actuator になるので、シナリオ DSL、セレクタ解決、run ループ、証跡サブシステム、レポータのいずれも変わりません。
 
 - **レジストリでの配置。** `bajutsu/backends.py` で iOS プラットフォームを `("xcuitest", "idb")`（XCUITest が先、idb が後）に展開し、`xcuitest` を実行可否チェックとともに `IMPLEMENTED` に加えます。actuator は「順に並べた中で最初に実装済みかつ利用可能な backend」なので、`--backend ios` は、どのシナリオも config も変えずに、XCUITest が動くなら自動的にそれを優先し、動かなければ idb にフォールバックします。これはまさに、このレジストリが備える前方互換の挙動です。
+- **ランナーの駆動。** サブプロセスの CLI である idb と違い、XCUITest は Simulator 上に常駐するランナーの内側から操作するので、Python とそのランナーのあいだに通信路が必要です。ランナーは run のあいだ常駐し、小さなループバック HTTP エンドポイントを提供します。Python 側のドライバはそこへ `query` / `tap` / ジェスチャの要求を送ります。これは bajutsu が既に持つループバックの仕組みを流用します。`network.py` は `ThreadingHTTPServer` を `127.0.0.1` にバインドし、起動 env がそのアドレスをテスト対象アプリ（`BajutsuKit` の `BajutsuNet`）へ注入します。同じループバックを Python からランナーへの向きで使い、操作の要求を運びます。ランナー側の最小サーバは、大きな外部依存を取り込むのではなく `BajutsuKit` 内に実装し、通信路をプロジェクトの管理下に保ちます（「検討した代替案」を参照）。ランナーをどう**配布・ビルドするか**、すなわち `apps.<name>` で指定する事前ビルド済みの `.xctestrun` にするか、`xcodebuild test` で都度ビルドするかは、実装時に決める論点として残します。どちらも per-app モデルに収まり、作業を始めるときに最初に確定させる選択です。
 - **より豊かな capability、同じ契約。** XCUITest ドライバの `capabilities()` は、idb が提供するものに加えて `semanticTap`、ネイティブの `conditionWait`、`multiTouch` を返します。選択が決定性の核であることは変わらないので、`tap` は依然としてちょうど 1 要素に解決します。XCUITest はそれを frame 中心の座標ではなく識別子で操作するだけで、座標往復が消えます。idb では `UnsupportedAction` を上げる `pinch` / `rotate` が、直接実行できるようになります。
 - **決定性を保つ。** XCUITest がネイティブの条件待機を提供する場面でも、オーケストレータの待機は固定 sleep のない条件待機のままで、ambiguous なセレクタは依然として即時に失敗します。新しい capability は表現できることを広げるだけで、規則を緩めません。XCUITest が使われるのは `run` 時の決定的 actuator としてのみで、LLM は Tier-2 ゲートに入りません。（これは、完成したシナリオを XCUITest テストソースへ構造的にマップする `codegen` とは別物で、その経路は影響を受けません。）
 - **app-agnostic、必要な所は per-app。** ドライバ自体はアプリ非依存です。XCUITest で駆動されるためにアプリが用意すべきもの（例: テストホストや起動引数）は、既存の per-app 設定と並べて `apps.<name>` の下に置くので、ツールと runner はアプリをまたいで不変です。`doctor --app` は、idb の可否を報告するのと同じ仕方で XCUITest の可否を報告します。
@@ -35,6 +36,7 @@ XCUITest は既存の `Driver` Protocol を満たす登録済み actuator にな
 
 - **idb を XCUITest で丸ごと置き換える。** XCUITest はより豊かな actuator ですが、idb のヘッドレスかつ座標ベースの動作は、まさに XCUITest の完全なホストが扱いづらい CI 環境で価値があります。両方を順序付きラダーに保つことで双方の良さが得られます。XCUITest を優先し、動かなければ idb にフォールバックし、シナリオは不変のままです。
 - **欠けているジェスチャを idb に後付けする。** idb の単一タッチのプリミティブから pinch/rotate を合成する手もあります。idb は本質的に単一タッチを露出するので、これは多指ジェスチャの不確実な近似にしかなりません。プロジェクトが避ける、まさに脆く非決定的な挙動です。本物の多指 backend が誠実な解です。
+- **ランナーの通信路として WebDriverAgent を採用する。** WebDriverAgent は実績のある HTTP+XCTest サーバで、Python とランナーの通信路を既製で供給します。最初の一歩としては不採用です。取り込んで保守するには大きすぎる依存で、backend を絞り込んだツールへの subprocess 呼び出しで駆動するという薄い依存方針（DESIGN §4）からプロジェクトを引き離します。`network.py` / `BajutsuNet` の既存のループバックの仕組みを流用して `BajutsuKit` 内に最小のランナー側サーバを置けば、面積を小さくプロジェクトの管理下に保てます。最小サーバで不十分だと分かった場合のフォールバックとして WebDriverAgent を残します。
 - **特定のジェスチャだけ XCUITest へ流し、idb を actuator のままにする。** 2 つのドライバが 1 つのデバイスを操作することは、単一 actuator の規則（DESIGN §3.3 / §5）が防ぐためにある非決定性を再導入します。actuator は run ごとに一度固定されます。*証跡*の能力差は read-only フォールバックの設計（BE-0020）で別途扱いますが、*操作*は 1 つの backend にとどまります。
 
 ## 参考
