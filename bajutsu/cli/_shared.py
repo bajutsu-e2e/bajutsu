@@ -106,8 +106,15 @@ def _load_effective_with_source(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     # A Git-sourced config's relative paths are relative to the checked-out tree, not the caller's
-    # cwd — rebase them against the checkout root (local configs keep cwd-relative paths).
-    return (eff if root is None else eff.rebased(root)), source
+    # cwd — rebase them against the checkout root (local configs keep cwd-relative paths). A field
+    # that escapes the checkout (absolute / `..`) is a clean exit-2, not a traceback.
+    if root is None:
+        return eff, source
+    try:
+        return eff.rebased(root), source
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
 
 
 def _backends(backend: str, fallback: list[str]) -> list[str]:

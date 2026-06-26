@@ -115,7 +115,9 @@ Git ソースからの `run` は、解決したコミットも **run の来歴**
 
 ゲート向けスイッチ **`--config-offline` と `--require-pinned-config`** を `bajutsu run` に出荷しました。`--config-offline` はネットワークに触れずキャッシュから実体化します（オフラインでは解決できないので固定 `@<sha>` が必要）。`--require-pinned-config` は Git config がフル commit SHA を固定していなければ失敗します。提案の「タグか SHA」より厳格にしたのは、タグは force-move されうるので、不変でオフラインに検証できる pin は SHA だけだからです。
 
-残り: Git ソースでの `build` の作業ディレクトリ、serve の「Git から」ピッカー、Git ソースを `record` / `crawl` の **読み取り専用入力**として扱うこと（生成物は SHA キーのキャッシュではなくローカルの `--out` に書く）、そして config のパス項目をチェックアウトのルートに**閉じ込める**こと（ルートを抜ける絶対パスや `../` を拒否。[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) に倣う）です。
+Git config のパス項目も **チェックアウトのルートに閉じ込めます**（`Effective.rebased`）。取得したツリーの外へ出る絶対パスや `../` の値は、トレースバックではなく明快な終了コード 2 で拒否します。serve のハードニングのパス閉じ込め（[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)）に倣ったものです。
+
+残り: Git ソースでの `build` の作業ディレクトリ、serve の「Git から」ピッカー、そして Git ソースを `record` / `crawl` の **読み取り専用入力**として扱うこと（生成物は SHA キーのキャッシュではなくローカルの `--out` に書く）です。
 
 ## 検討した代替案
 

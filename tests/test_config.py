@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -178,8 +180,6 @@ def test_baselines_defaults_to_none() -> None:
 
 def test_baselines_resolution_order() -> None:
     """_resolve_baselines_dir respects: --baselines flag > config > scenario-local default."""
-    from pathlib import Path
-
     from bajutsu.cli.commands.run import _resolve_baselines_dir
 
     eff_with = resolve(load_config("targets: { x: { bundleId: com.x, baselines: cfg/bl } }"), "x")
@@ -211,8 +211,6 @@ def test_schemas_defaults_to_none() -> None:
 
 def test_schemas_resolution_order() -> None:
     """_resolve_schemas_dir respects: --schemas flag > config > scenario-local default."""
-    from pathlib import Path
-
     from bajutsu.cli.commands.run import _resolve_schemas_dir
 
     eff_with = resolve(load_config("targets: { x: { bundleId: com.x, schemas: cfg/sc } }"), "x")
@@ -222,3 +220,26 @@ def test_schemas_resolution_order() -> None:
     assert _resolve_schemas_dir("flag/sc", eff_with, scenario_file) == Path("flag/sc")  # flag wins
     assert _resolve_schemas_dir("", eff_with, scenario_file) == Path("cfg/sc")  # then config
     assert _resolve_schemas_dir("", eff_without, scenario_file) == Path("/scenarios/app/schemas")
+
+
+def test_rebased_resolves_relative_paths_under_the_checkout_root() -> None:
+    """Effective.rebased makes a Git config's relative path fields absolute under the checkout (BE-0063)."""
+    eff = resolve(
+        load_config(
+            "targets:\n  x:\n    bundleId: com.x\n    scenarios: e2e/scn\n    appPath: build/A.app\n"
+        ),
+        "x",
+    )
+    rebased = eff.rebased(Path("/co"))
+    assert rebased.scenarios == "/co/e2e/scn"
+    assert rebased.app_path == "/co/build/A.app"
+
+
+def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
+    """A config path that climbs out of the checkout (`..` or absolute) is refused — confinement (BE-0051)."""
+    for bad in ("../../etc", "/etc/passwd"):
+        eff = resolve(
+            load_config(f"targets:\n  x:\n    bundleId: com.x\n    scenarios: {bad}\n"), "x"
+        )
+        with pytest.raises(ValueError, match="escapes the checkout"):
+            eff.rebased(Path("/co"))

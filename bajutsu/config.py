@@ -243,17 +243,27 @@ class Effective:
         and `setup` (resolved relative to the scenario, not the cwd) are intentionally absent. Local
         configs keep their cwd-relative paths; only a Git source calls this, so the caller's working
         directory no longer has anything to do with the fetched tree.
-        """
 
-        def at(value: str | None) -> str | None:
-            return str(root / value) if value else value
+        Each field is **confined** to the checkout: an absolute or `../` value that would escape `root`
+        is rejected (a fetched config can't reach outside its own tree — mirroring the serve-hardening
+        path confinement, BE-0051). Raises ValueError on such a field.
+        """
+        root_resolved = root.resolve()
+
+        def at(field: str, value: str | None) -> str | None:
+            if not value:
+                return value
+            candidate = root / value
+            if not candidate.resolve().is_relative_to(root_resolved):
+                raise ValueError(f"config field {field!r} escapes the checkout root: {value!r}")
+            return str(candidate)
 
         return replace(
             self,
-            scenarios=at(self.scenarios),
-            baselines=at(self.baselines),
-            schemas=at(self.schemas),
-            app_path=at(self.app_path),
+            scenarios=at("scenarios", self.scenarios),
+            baselines=at("baselines", self.baselines),
+            schemas=at("schemas", self.schemas),
+            app_path=at("appPath", self.app_path),
         )
 
 

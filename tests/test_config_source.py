@@ -295,3 +295,26 @@ def test_require_pinned_allows_a_full_sha(tmp_path, monkeypatch) -> None:  # typ
         f"github:acme/repo@{sha}", "demo", require_pinned=True
     )
     assert source is not None and source["sha"] == sha  # accepted; the pinned SHA is recorded
+
+
+def test_load_effective_git_config_escaping_path_exits_cleanly(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A Git config whose scenarios path climbs out of the checkout is refused with a clean exit-2,
+    # not a traceback (confinement, BE-0051).
+    import typer
+
+    from bajutsu.cli import _shared
+
+    root = tmp_path / "co"
+    root.mkdir()
+    (root / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n    scenarios: ../../../etc\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        _shared,
+        "materialize",
+        lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, "sha"),
+    )
+    with pytest.raises(typer.Exit) as exc:
+        _shared._load_effective("github:acme/repo@main", "demo")
+    assert exc.value.exit_code == 2
