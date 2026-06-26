@@ -204,8 +204,9 @@ bajutsu report --all [--runs runs]     # re-render every run dir (with a manifes
   the executed `scenario.yaml`; the renderer reads only the run dir. An **older** run renders
   without error, with any newer-only section shown as "not captured" rather than invented.
 - It re-presents recorded outcomes — it never re-evaluates an assertion or alters a verdict — so it
-  sits inside the determinism contract. `serve` rendering each report on view from the same model
-  is a planned follow-on.
+  sits inside the determinism contract. `serve` uses the **same renderer on view**: it renders
+  `report.html` fresh from each run's stored model on every request (falling back to the baked file
+  if the model can't be loaded), so upgrading `serve` refreshes every report with no re-bake.
 - **Exits 2** if the run (or, with `--all`, the runs root) has no readable `manifest.json`.
 
 ## `triage`

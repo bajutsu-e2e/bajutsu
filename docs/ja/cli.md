@@ -150,7 +150,7 @@ bajutsu report --all [--runs runs]     # runs/ 配下で manifest.json を持つ
 ```
 
 - レンダリングモデルは `manifest.json`（バージョン付き・無損失の render 入力。`schemaVersion`）と、実行した `scenario.yaml` です。レンダラは run dir だけを読みます。**古い** run もエラーにならず描画でき、新しいバージョンにしかないセクションは値を捏造せず「not captured」と表示します。
-- 記録済みの outcome を再提示するだけで、assertion を再評価したり verdict を変えたりしません。決定性の契約の内側に収まります。`serve` が同じモデルから表示のたびに描画する形は後続の予定です。
+- 記録済みの outcome を再提示するだけで、assertion を再評価したり verdict を変えたりしません。決定性の契約の内側に収まります。`serve` も**同じレンダラを表示時に使い**、リクエストごとに各 run の保存済みモデルから `report.html` を都度描画します（モデルを読めない場合は baked ファイルにフォールバック）。これにより `serve` を上げれば再 bake 不要で全レポートが最新化されます。
 - run（`--all` の場合は runs ルート）に読める `manifest.json` が無ければ**終了 2**。
 
 ## `triage`

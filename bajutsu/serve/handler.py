@@ -317,7 +317,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(data)
 
         def _serve_run_file(self, rel: str) -> None:
-            self._serve_artifact(self._artifacts().get(rel))
+            # report.html is rendered on view from the stored model (BE-0068); other files served as-is.
+            self._serve_artifact(ops.run_file(self._artifacts(), rel))
 
         def _serve_run_archive(self, run_id: str) -> None:
             # A one-file download of the whole run (BE-0060), through the same org-scoped store, so

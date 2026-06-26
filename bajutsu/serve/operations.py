@@ -58,6 +58,7 @@ __all__ = [
     "role_allows",
     "role_for",
 ]
+from bajutsu.serve.artifacts import Artifact, ArtifactStore
 from bajutsu.serve.helpers import (
     _int,
     crawl_command,
@@ -75,6 +76,25 @@ from bajutsu.serve.helpers import (
     valid_udid,
 )
 from bajutsu.serve.jobs import Job, ServeState
+
+_REPORT_SUFFIX = "/report.html"
+
+
+def run_file(store: ArtifactStore, rel: str) -> Artifact | None:
+    """Serve a run-relative artifact, rendering `report.html` **on view** (BE-0068).
+
+    For `<run_id>/report.html` the report is rendered fresh from the stored model with the current
+    template (`store.render_report`), falling back to the baked file when the model can't be loaded;
+    any other artifact (screenshots, videos, manifest.json, …) is served byte-for-byte.
+    """
+    if rel.endswith(_REPORT_SUFFIX):
+        # `render_report` validates + confines the run id itself (returning None for a non-run or a
+        # nested path), so containment stays in one place and we fall back to the baked file via get.
+        rendered = store.render_report(rel[: -len(_REPORT_SUFFIX)])
+        if rendered is not None:
+            return rendered
+    return store.get(rel)
+
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"

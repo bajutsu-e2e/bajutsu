@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0068](BE-0068-regenerable-reports.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
