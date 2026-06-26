@@ -263,6 +263,11 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
 - Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
+- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)):
+  `record` reads the config from the fetched checkout, but the authored scenario goes **local** — with
+  no `--out` it auto-names under the **current directory** (not the checkout's `scenarios` dir, which
+  is the read-only SHA-keyed cache), and an `--out` inside the checkout is refused. Review the file
+  and commit it to the repository through normal git.
 - An `AI usage:` line with the tokens the authoring (and any alert-guard) AI consumed follows on
   stderr. The `claude-code` agent bills no API tokens here, so it shows nothing.
 
@@ -295,6 +300,10 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--config` | `bajutsu.config.yaml` | config |
 
+- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)):
+  `crawl` reads the config from the fetched checkout, but the screen map / screenshots go to the local
+  `--out` run dir (default `runs/<timestamp>`), never into the read-only SHA-keyed cache; an `--out`
+  inside the checkout is refused.
 - Traversal is by **deterministic replay**, not in-place backtracking: to revisit a known screen
   the crawl relaunches the app to a clean start and replays the shortest recorded path to it,
   then takes the next untried action — the same way `run` reaches any state.

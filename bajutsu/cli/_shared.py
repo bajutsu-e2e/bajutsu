@@ -118,6 +118,26 @@ def _load_effective_with_source(
         raise typer.Exit(2) from None
 
 
+def _refuse_out_in_checkout(out_path: Path, checkout_root: Path | None) -> None:
+    """Refuse a generated artifact path that lands inside a read-only Git checkout (BE-0063).
+
+    `record` / `crawl` take a Git source as **read-only input**: they may read its config and
+    scenarios, but their output (a scenario, a screen map) goes to a local path, never into the
+    SHA-keyed content-addressed cache. A no-op for a local config (`checkout_root` is None).
+
+    Raises:
+        typer.Exit: *out_path* resolves inside *checkout_root* (exit code 2).
+    """
+    if checkout_root is None:
+        return
+    if out_path.resolve().is_relative_to(checkout_root.resolve()):
+        typer.echo(
+            f"a Git --config is read-only: --out must be a local path, not inside the checkout "
+            f"({out_path})"
+        )
+        raise typer.Exit(2)
+
+
 def _backends(backend: str, fallback: list[str]) -> list[str]:
     """Parse a comma-separated backend string into a list, or return *fallback* when the string is empty."""
     return [b.strip() for b in backend.split(",") if b.strip()] if backend else fallback
