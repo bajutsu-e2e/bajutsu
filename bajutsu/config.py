@@ -250,20 +250,20 @@ class Effective:
         """
         root_resolved = root.resolve()
 
-        def at(value: str | None) -> str | None:
+        def at(field: str, value: str | None) -> str | None:
             if not value:
                 return value
             candidate = root / value
             if not candidate.resolve().is_relative_to(root_resolved):
-                raise ValueError(f"config path escapes the checkout root: {value!r}")
+                raise ValueError(f"config field {field!r} escapes the checkout root: {value!r}")
             return str(candidate)
 
         return replace(
             self,
-            scenarios=at(self.scenarios),
-            baselines=at(self.baselines),
-            schemas=at(self.schemas),
-            app_path=at(self.app_path),
+            scenarios=at("scenarios", self.scenarios),
+            baselines=at("baselines", self.baselines),
+            schemas=at("schemas", self.schemas),
+            app_path=at("appPath", self.app_path),
         )
 
 
