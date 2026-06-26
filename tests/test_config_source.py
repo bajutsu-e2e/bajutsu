@@ -8,10 +8,17 @@ from __future__ import annotations
 
 import io
 import tarfile
+from pathlib import Path
 
 import pytest
 
-from bajutsu.config_source import GitConfigSpec, materialize, parse_config_spec
+from bajutsu.config_source import (
+    GitConfigSpec,
+    Materialized,
+    materialize,
+    parse_config_spec,
+    source_provenance,
+)
 
 # --- parse_config_spec ---
 
@@ -155,12 +162,29 @@ def test_materialize_refuses_a_path_escaping_the_cache(tmp_path) -> None:  # typ
     assert transport.tarball_calls == 0  # refused before fetching
 
 
+def test_source_provenance_records_repo_and_resolved_sha() -> None:
+    # A branch-based run records the exact commit it executed (BE-0063), so the manifest is
+    # reproducible after the fact.
+    spec = GitConfigSpec("github.com", "acme", "tests", "main", "e2e/cfg.yaml")
+    mat = Materialized(Path("/c/e2e/cfg.yaml"), Path("/c"), "deadbeef")
+    assert source_provenance(spec, mat) == {
+        "host": "github.com",
+        "owner": "acme",
+        "repo": "tests",
+        "ref": "main",
+        "sha": "deadbeef",
+    }
+    # no @ref ⇒ the default branch is labeled rather than left blank
+    assert source_provenance(GitConfigSpec("github.com", "a", "b", None, None), mat)["ref"] == (
+        "(default)"
+    )
+
+
 # --- _load_effective wiring: a Git-sourced config rebases its relative paths against the checkout ---
 
 
 def test_load_effective_rebases_paths_against_git_checkout(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     from bajutsu.cli import _shared
-    from bajutsu.config_source import Materialized
 
     # A materialized checkout: the config plus its relative scenarios/appPath, as they'd sit in a repo.
     root = tmp_path / "co"
@@ -188,7 +212,6 @@ def test_load_effective_git_wrong_path_exits_cleanly(tmp_path, monkeypatch) -> N
     import typer
 
     from bajutsu.cli import _shared
-    from bajutsu.config_source import Materialized
 
     root = tmp_path / "co"
     root.mkdir()  # the checkout exists, but bajutsu.config.yaml does not

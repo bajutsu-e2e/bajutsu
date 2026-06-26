@@ -119,6 +119,21 @@ class _GitHubTransport:
         return self._get(url, "application/vnd.github+json")
 
 
+def source_provenance(spec: GitConfigSpec, mat: Materialized) -> dict[str, str]:
+    """The run-provenance stamp for a Git config source: repo + the ref it was asked for + the SHA.
+
+    Recording the resolved `sha` makes a branch-based run reproducible after the fact (BE-0063) — it
+    states the exact commit executed, not just the moving branch.
+    """
+    return {
+        "host": spec.host,
+        "owner": spec.owner,
+        "repo": spec.repo,
+        "ref": spec.ref or "(default)",
+        "sha": mat.sha,
+    }
+
+
 def _default_cache_root() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "bajutsu" / "gitsrc"
 

@@ -125,6 +125,9 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
 - **GitHub is the only host implemented today.** The general `git+https://<host>/…` form is parsed
   (the door is open for GitHub Enterprise / GitLab later), but a non-`github.com` host currently
   fails with a clear error rather than silently hitting github.com.
+- A run from a Git source **records the resolved commit** in its `manifest.json` provenance
+  (`configSource: { host, owner, repo, ref, sha }`), so a branch-based run states the exact commit it
+  executed and is reproducible after the fact ([reporting](reporting.md#manifestjson)).
 - `<ref>` is a branch, tag, or commit SHA (default: the repo's default branch); `<path>` is the
   config within the repo (default: `bajutsu.config.yaml` at the root). A value with no recognized
   scheme is a **local path**, exactly as before.

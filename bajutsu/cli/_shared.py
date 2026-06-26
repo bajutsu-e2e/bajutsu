@@ -11,7 +11,7 @@ from pathlib import Path
 import typer
 
 from bajutsu.config import Effective, load_config, resolve
-from bajutsu.config_source import materialize, parse_config_spec
+from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.scenario import (
     Scenario,
     expand_components,
@@ -57,11 +57,19 @@ def resolve_run_dir(run: str, runs_root: str) -> Path:
 
 
 def _load_effective(config: str, target_name: str) -> Effective:
-    """Load and resolve the effective config for *target_name*.
+    """Load and resolve the effective config for *target_name* (see `_load_effective_with_source`)."""
+    return _load_effective_with_source(config, target_name)[0]
+
+
+def _load_effective_with_source(
+    config: str, target_name: str
+) -> tuple[Effective, dict[str, str] | None]:
+    """Load the effective config, plus the Git source provenance when one was used.
 
     *config* is a local path (today's behavior) or a Git source
     (``github:owner/repo@ref:path``, BE-0063), materialized at an immutable commit SHA; a Git-sourced
-    config has its relative paths rebased against the checkout root.
+    config has its relative paths rebased against the checkout root, and its repo + resolved commit is
+    returned as the second tuple element (None for a local config) so `run` can stamp the manifest.
 
     Exits 2 (via ``typer.Exit``) for two specific failures that produce a user-friendly
     message: the config file not existing, and an unknown target name.  Other errors —
@@ -69,12 +77,14 @@ def _load_effective(config: str, target_name: str) -> Effective:
     caught and propagate as exceptions to the caller.
     """
     spec = parse_config_spec(config)
+    source: dict[str, str] | None = None
     if spec is None:
         cfg_path = Path(config)
         root = None
     else:
         mat = materialize(spec)
         cfg_path, root = mat.config_path, mat.root
+        source = source_provenance(spec, mat)
     # The same friendly exit-2 for a missing config, whether local or a wrong in-repo path for a
     # Git source (the materialized tree exists but doesn't hold `spec.path`).
     if not cfg_path.exists():
@@ -88,7 +98,7 @@ def _load_effective(config: str, target_name: str) -> Effective:
         raise typer.Exit(2) from None
     # A Git-sourced config's relative paths are relative to the checked-out tree, not the caller's
     # cwd — rebase them against the checkout root (local configs keep cwd-relative paths).
-    return eff if root is None else eff.rebased(root)
+    return (eff if root is None else eff.rebased(root)), source
 
 
 def _backends(backend: str, fallback: list[str]) -> list[str]:
