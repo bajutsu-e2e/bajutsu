@@ -48,6 +48,19 @@ jobs:
         with:
           enable-cache: true
 
+      # Cache the Chromium binary `playwright install` downloads (~150MB) so it isn't
+      # re-fetched every run. Keyed on uv.lock (the pinned Playwright version lives there);
+      # the restore-keys fallback warms the cache when uv.lock changes for an unrelated dep —
+      # `playwright install` below is idempotent, so a stale browser is simply re-downloaded
+      # and the cache only ever skips work, never changes the result.
+      - name: Cache Playwright browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install the web backend (Playwright + Chromium)
         run: uv sync --extra web && uv run --no-sync playwright install --with-deps chromium
 
