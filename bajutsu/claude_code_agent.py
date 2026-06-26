@@ -103,9 +103,12 @@ Runner = Callable[[list[str]], str]
 
 
 def _subscription_env() -> dict[str, str]:
-    """The child env with ANTHROPIC_API_KEY stripped. The CLI's auth precedence puts an API key
-    above the subscription OAuth token, so leaving the key in (bajutsu loads it from .env into
-    the process) would silently bill the API — the very thing the Claude Code agent avoids."""
+    """The child env with ANTHROPIC_API_KEY stripped.
+
+    The CLI's auth precedence puts an API key above the subscription OAuth token, so leaving
+    the key in (bajutsu loads it from .env into the process) would silently bill the API —
+    the very thing the Claude Code agent avoids.
+    """
     env = dict(os.environ)
     env.pop("ANTHROPIC_API_KEY", None)
     return env

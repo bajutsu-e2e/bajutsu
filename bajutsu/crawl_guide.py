@@ -34,14 +34,19 @@ Report = Callable[[str], None]
 
 @dataclass
 class Proposal:
-    """The proposer's output for one screen: the operations to try, plus `thought` — the model's
-    short reasoning, surfaced live so a watcher sees what the AI is doing."""
+    """The proposer's output for one screen.
+
+    The operations to try, plus `thought` — the model's short reasoning, surfaced live so a watcher
+    sees what the AI is doing.
+    """
 
     actions: list[crawl.Action] = field(default_factory=list)
     thought: str = ""
 
 
 class ActionProposer(Protocol):
+    """Proposes the operations to try from a screen, given its elements, screenshot, the deterministic candidates, and any OS prompt just dismissed."""
+
     def propose(
         self,
         elements: list[base.Element],
@@ -56,8 +61,9 @@ def ai_guide(
     report: Report | None = None,
     tab_locator: crawl_tabs.TabLocator | None = None,
 ) -> crawl.Guide:
-    """Adapt an `ActionProposer` to the crawl `Guide` signature, running the BE-0038 pipeline:
-    first **inspect deterministically** (`candidate_actions`), then hand those operations + the
+    """Adapt an `ActionProposer` to the crawl `Guide` signature, running the BE-0038 pipeline.
+
+    First **inspect deterministically** (`candidate_actions`), then hand those operations + the
     screen (and any OS prompt just dismissed to reach it) to the proposer so it can reason about
     what's possible and **combine** them (realistic inputs, multi-field fills, id-less elements);
     finally union the proposal with the deterministic baseline (proposer first, so its values win
@@ -66,7 +72,8 @@ def ai_guide(
     When `tab_locator` is set and a tab bar is present whose individual tabs the tree can't address
     (idb surfaces a SwiftUI TabView as one "Tab Bar" group with no per-tab ids), it locates the
     tabs by vision — the same fallback the alert guard uses — and prepends a coordinate tap per tab,
-    so the crawl still switches tabs first."""
+    so the crawl still switches tabs first.
+    """
 
     def guide(
         driver: base.Driver, elements: list[base.Element], context: crawl.GuideContext
@@ -95,8 +102,7 @@ def _locate_tabs(
     shot: bytes | None,
     report: Report | None,
 ) -> list[crawl.Action]:
-    """Vision fallback for an un-addressable tab bar: only when a locator is set, a screenshot
-    exists, and a tab bar is present whose tabs the tree can't address. A coordinate tap per tab."""
+    """Vision fallback for an un-addressable tab bar: a coordinate tap per tab, only when a locator and screenshot exist and such a tab bar is present."""
     if tab_locator is None or shot is None or not crawl_tabs.needs_vision_tabs(elements):
         return []
     targets = tab_locator.locate(shot)
@@ -110,8 +116,7 @@ def _locate_tabs(
 
 
 def _dedup(actions: list[crawl.Action]) -> list[crawl.Action]:
-    """Drop later duplicates by (kind, selector key) so the proposer's choice for an element wins
-    over the deterministic baseline's."""
+    """Drop later duplicates by (kind, selector key) so the proposer's choice for an element wins over the deterministic baseline's."""
     seen: set[tuple[str, str]] = set()
     out: list[crawl.Action] = []
     for a in actions:
@@ -123,14 +128,16 @@ def _dedup(actions: list[crawl.Action]) -> list[crawl.Action]:
 
 
 def make_guide(report: Report | None = None, agent: str = "api") -> crawl.Guide:
-    """The AI crawl guide, narrating its reasoning through `report`. `agent` picks the backend:
-    ``api`` (the Anthropic API, pay-per-token) or ``claude-code`` (the Claude Code CLI, drawing on a
-    subscription — text-only). The vision tab locator stays on the API either way; it only runs for
-    a tab bar the tree can't address.
+    """The AI crawl guide, narrating its reasoning through `report`.
+
+    `agent` picks the backend: ``api`` (the Anthropic API, pay-per-token) or ``claude-code`` (the
+    Claude Code CLI, drawing on a subscription — text-only). The vision tab locator stays on the API
+    either way; it only runs for a tab bar the tree can't address.
 
     (Crawl is AI-driven: the AI proposes *what to try* while the engine keeps screen identity,
     transitions and crashes deterministic. The deterministic `candidate_actions` is still the
-    baseline the AI builds on and the engine's test default — it just isn't a standalone mode.)"""
+    baseline the AI builds on and the engine's test default — it just isn't a standalone mode.)
+    """
     proposer: ActionProposer = (
         ClaudeCodeActionProposer() if agent == "claude-code" else ClaudeActionProposer()
     )
@@ -237,8 +244,7 @@ def _text_block(
     candidates: list[crawl.Action],
     dismissed: tuple[str, ...],
 ) -> str:
-    """The textual description of the screen for the model: its elements, the operations the
-    deterministic inspector already found, and any OS prompt just dismissed to reach it."""
+    """The textual screen description for the model: its elements, the deterministic inspector's operations, and any OS prompt just dismissed to reach it."""
     found = "\n".join(f"- {a.describe()}" for a in candidates) or "(none)"
     text = (
         f"Screen elements:\n{_render_elements(elements)}\n\n"
@@ -272,8 +278,7 @@ def _content(
 
 
 def _actions_from(payload: dict[str, Any], cap: int) -> list[crawl.Action]:
-    """Turn the tool call's `actions` array into crawl Actions, skipping malformed entries and
-    capping the count so one screen can't blow the step budget."""
+    """Turn the tool call's `actions` array into crawl Actions, skipping malformed entries and capping the count so one screen can't blow the step budget."""
     out: list[crawl.Action] = []
     for item in payload.get("actions") or []:
         if not isinstance(item, dict):
@@ -315,7 +320,9 @@ def _proposal_from(payload: dict[str, Any], cap: int) -> Proposal:
 
 class ClaudeActionProposer:
     """Asks Claude (Anthropic SDK) for the screen's candidate operations via a forced tool call.
-    `anthropic` is lazy-imported so the module loads without the SDK or an API key."""
+
+    `anthropic` is lazy-imported so the module loads without the SDK or an API key.
+    """
 
     def __init__(
         self,
@@ -372,10 +379,12 @@ _CC_NOTE = (
 
 
 class ClaudeCodeActionProposer:
-    """Asks the Claude Code CLI (`claude -p`) for the screen's operations via structured output —
-    the same proposer contract as `ClaudeActionProposer`, but drawing on a Claude Code subscription
+    """Asks the Claude Code CLI (`claude -p`) for the screen's operations via structured output.
+
+    The same proposer contract as `ClaudeActionProposer`, but drawing on a Claude Code subscription
     instead of the pay-per-token API. Text-only: it reasons from the element list (no screenshot),
-    like the Claude Code authoring agent."""
+    like the Claude Code authoring agent.
+    """
 
     def __init__(
         self,

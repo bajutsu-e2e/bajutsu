@@ -77,8 +77,11 @@ class SystemAlertGuard:
         self._instruction = instruction
 
     def dismiss(self, driver: base.Driver) -> AlertEvent | None:
-        """Tap to clear a blocking prompt if one is on screen. Returns the AlertEvent it
-        dismissed (the button it tapped), or None when nothing on screen needed clearing."""
+        """Tap to clear a blocking prompt if one is on screen.
+
+        Returns the AlertEvent it dismissed (the button it tapped), or None when nothing
+        on screen needed clearing.
+        """
         png = _screenshot_png(driver)
         if png is None:
             return None

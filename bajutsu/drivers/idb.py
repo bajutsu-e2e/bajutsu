@@ -35,10 +35,12 @@ def _real_run(args: list[str]) -> str:
 
 
 def describe_all_cmd(udid: str) -> list[str]:
+    """The `idb` argv that dumps the accessibility tree as JSON."""
     return ["idb", "ui", "describe-all", "--udid", udid, "--json"]
 
 
 def tap_cmd(udid: str, x: float, y: float) -> list[str]:
+    """The `idb` argv that taps the point (x, y)."""
     return [
         "idb",
         "ui",
@@ -53,6 +55,7 @@ def tap_cmd(udid: str, x: float, y: float) -> list[str]:
 
 
 def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str]:
+    """The `idb` argv that drags from (x1, y1) to (x2, y2)."""
     # A finite duration makes it a real drag; an instantaneous swipe isn't recognized
     # as a pan/drag gesture by SwiftUI.
     return [
@@ -71,10 +74,12 @@ def swipe_cmd(udid: str, x1: float, y1: float, x2: float, y2: float) -> list[str
 
 
 def text_cmd(udid: str, text: str) -> list[str]:
+    """The `idb` argv that types text into the focused field."""
     return ["idb", "ui", "text", "--udid", udid, text]
 
 
 def screenshot_cmd(udid: str, path: str) -> list[str]:
+    """The argv that writes a Simulator screenshot to path (via simctl)."""
     # idb's own frame capture is unreliable ("No Image available to encode"),
     # so screenshot via simctl, which is always available on the Simulator.
     return ["xcrun", "simctl", "io", udid, "screenshot", path]
@@ -146,6 +151,8 @@ def parse_describe_all(text: str) -> list[base.Element]:
 
 
 class IdbDriver:
+    """Driver implementation for the iOS Simulator via idb."""
+
     name = "idb"
 
     # During a SwiftUI screen transition idb intermittently returns a near-empty
@@ -183,9 +190,11 @@ class IdbDriver:
         return parse_describe_all(self._run(describe_all_cmd(self.udid)))
 
     def _is_transient_empty(self, els: list[base.Element]) -> bool:
-        """Whether a result looks like idb's mid-transition empty tree rather than a
-        real screen — fewer than _READY_MIN elements, but only once a richer tree has
-        been observed (so the first sparse screen seen is taken at face value)."""
+        """Whether a result looks like idb's mid-transition empty tree rather than a real screen.
+
+        Fewer than _READY_MIN elements, but only once a richer tree has been observed
+        (so the first sparse screen seen is taken at face value).
+        """
         return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
 
     def _resolve(self, sel: base.Selector, timeout: float = 3.0, poll: float = 0.2) -> base.Element:

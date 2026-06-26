@@ -1,6 +1,9 @@
-"""Authoring-agent selection: the API agent (Anthropic API, pay-per-token) or the Claude Code
-agent (the `claude` CLI, billed to a Claude subscription). Both satisfy the `Agent` protocol,
-so `record` is identical apart from how the model is reached."""
+"""Authoring-agent selection.
+
+The API agent (Anthropic API, pay-per-token) or the Claude Code agent (the `claude` CLI,
+billed to a Claude subscription). Both satisfy the `Agent` protocol, so `record` is
+identical apart from how the model is reached.
+"""
 
 from __future__ import annotations
 

@@ -219,8 +219,7 @@ def _render(observation: Observation) -> str:
 
 
 def _target(args: Any) -> dict[str, Any]:
-    """A selector dict addressing one element: id when given, else any of label / value /
-    traits (ANDed), with index as a last-resort disambiguator."""
+    """A selector dict addressing one element: id when given, else label/value/traits (ANDed), index as last resort."""
     if args.get("id"):
         sel: dict[str, Any] = {"id": args["id"]}
         if args.get("index") is not None:
@@ -241,8 +240,7 @@ def _target(args: Any) -> dict[str, Any]:
 
 
 def _provenance(value: str | None) -> dict[str, str]:
-    """`{"from": value}` when there is a phrase to record, else `{}` — so an empty provenance is
-    omitted rather than written as `from: ""` (BE-0044)."""
+    """`{"from": value}` when there is a phrase to record, else `{}` so empty provenance is omitted (BE-0044)."""
     return {"from": value} if value else {}
 
 
@@ -264,12 +262,15 @@ def _to_assertion(item: Any) -> Assertion:
 
 
 def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
-    """Turn one tool/action call — `(name, args)` — into a Proposal. Shared by the API agent
-    (a Claude tool_use block) and the Claude Code agent (a structured-output object), so both
-    backends map the same action shape to the same scenario step.
+    """Turn one tool/action call — `(name, args)` — into a Proposal.
+
+    Shared by the API agent (a Claude tool_use block) and the Claude Code agent (a
+    structured-output object), so both backends map the same action shape to the same
+    scenario step.
 
     The tool's `reason` (why this action advances the goal) is the natural-language intent behind
-    the action, so it is recorded as the step's `from:` provenance (BE-0044) as well as the note."""
+    the action, so it is recorded as the step's `from:` provenance (BE-0044) as well as the note.
+    """
     note = args.get("reason", "")
     prov = _provenance(note)
     if name == "tap":
@@ -288,7 +289,9 @@ def proposal_from_call(name: str, args: dict[str, Any]) -> Proposal:
 
 def steps_from_plan(raw: Any) -> list[str]:
     """Normalize a `plan` tool/structured-output result into a clean list of step strings.
-    Shared by both backends so the API agent and the Claude Code agent return the same shape."""
+
+    Shared by both backends so the API agent and the Claude Code agent return the same shape.
+    """
     if not isinstance(raw, (list, tuple)):
         return []
     return [str(step).strip() for step in raw if str(step).strip()]

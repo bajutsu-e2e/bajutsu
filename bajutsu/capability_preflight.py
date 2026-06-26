@@ -44,9 +44,12 @@ class _Requirement:
 
 
 def _walk_steps(steps: list[Step]) -> Iterator[Step]:
-    """Every step, recursing into the nested blocks of `if` / `forEach`. Those run at runtime (only
-    `use` is expanded away before the run), so a construct nested inside them must still be seen —
-    otherwise the preflight misses it and the run fails late, the very thing it exists to prevent."""
+    """Every step, recursing into the nested blocks of `if` / `forEach`.
+
+    Those blocks run at runtime (only `use` is expanded away before the run), so a construct
+    nested inside them must still be seen — otherwise the preflight misses it and the run
+    fails late, the very thing it exists to prevent.
+    """
     for step in steps:
         yield step
         if step.if_ is not None:
@@ -57,8 +60,10 @@ def _walk_steps(steps: list[Step]) -> Iterator[Step]:
 
 
 def _assertions(scenario: Scenario) -> Iterator[Assertion]:
-    """Every assertion the scenario evaluates — the scenario `expect`, each step's `assert`, and an
-    `if` condition — across the whole step tree."""
+    """Every assertion the scenario evaluates across the whole step tree.
+
+    Covers the scenario `expect`, each step's `assert`, and every `if` condition.
+    """
     yield from scenario.expect or []
     for step in _walk_steps(scenario.steps):
         yield from step.assert_ or []
@@ -86,9 +91,12 @@ _REQUIREMENTS = (
 
 
 def unsupported(scenario: Scenario, capabilities: Set[str]) -> list[str]:
-    """The reasons `scenario` can't run on a backend with `capabilities` — one per unsupported
-    construct, empty when it is runnable. Pure: no device, no clock, no network. `capabilities` is
-    any set type (the runner passes the driver's frozen `CAPABILITIES` directly)."""
+    """The reasons `scenario` can't run on a backend with `capabilities`.
+
+    One reason per unsupported construct, empty when it is runnable. Pure: no device, no
+    clock, no network. `capabilities` is any set type (the runner passes the driver's frozen
+    `CAPABILITIES` directly).
+    """
     reasons = [f"running needs '{cap}'" for cap in _BASELINE if cap not in capabilities]
     reasons += [
         f"{req.label} needs '{req.capability}'"
