@@ -63,13 +63,14 @@ def _load_effective(config: str, target_name: str) -> Effective:
 
 def _load_effective_with_source(
     config: str, target_name: str, *, offline: bool = False, require_pinned: bool = False
-) -> tuple[Effective, dict[str, str] | None]:
-    """Load the effective config, plus the Git source provenance when one was used.
+) -> tuple[Effective, dict[str, str] | None, Path | None]:
+    """Load the effective config, the Git source provenance, and the checkout root when Git-sourced.
 
     *config* is a local path (today's behavior) or a Git source
     (``github:owner/repo@ref:path``, BE-0063), materialized at an immutable commit SHA; a Git-sourced
-    config has its relative paths rebased against the checkout root, and its repo + resolved commit is
-    returned as the second tuple element (None for a local config) so `run` can stamp the manifest.
+    config has its relative paths rebased against the checkout root. The tuple's second element is the
+    repo + resolved commit (None for a local config) so `run` can stamp the manifest; the third is the
+    materialized checkout root (None for a local config) so `run` can build the app from it.
 
     `offline` (``--config-offline``) materializes from the cache without touching the network.
     `require_pinned` (``--require-pinned-config``) rejects a Git source on a mutable ref — a gate must
@@ -109,9 +110,9 @@ def _load_effective_with_source(
     # cwd — rebase them against the checkout root (local configs keep cwd-relative paths). A field
     # that escapes the checkout (absolute / `..`) is a clean exit-2, not a traceback.
     if root is None:
-        return eff, source
+        return eff, source, None
     try:
-        return eff.rebased(root), source
+        return eff.rebased(root), source, root
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

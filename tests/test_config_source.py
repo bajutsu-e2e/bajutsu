@@ -291,10 +291,11 @@ def test_require_pinned_allows_a_full_sha(tmp_path, monkeypatch) -> None:  # typ
         "materialize",
         lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, sha),
     )
-    _eff, source = _shared._load_effective_with_source(
+    _eff, source, checkout_root = _shared._load_effective_with_source(
         f"github:acme/repo@{sha}", "demo", require_pinned=True
     )
     assert source is not None and source["sha"] == sha  # accepted; the pinned SHA is recorded
+    assert checkout_root == root  # the materialized checkout root is returned for the build step
 
 
 def test_load_effective_git_config_escaping_path_exits_cleanly(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -318,3 +319,35 @@ def test_load_effective_git_config_escaping_path_exits_cleanly(tmp_path, monkeyp
     with pytest.raises(typer.Exit) as exc:
         _shared._load_effective("github:acme/repo@main", "demo")
     assert exc.value.exit_code == 2
+
+
+def test_run_builds_a_git_sourced_app_from_the_checkout_root(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A Git-sourced run builds the missing binary on demand, with the checkout root as the working
+    # directory — the config's `build` and relative `appPath` are rooted there (BE-0063).
+    from typer.testing import CliRunner
+
+    from bajutsu.cli import _shared, app
+
+    root = tmp_path / "co"
+    (root / "e2e").mkdir(parents=True)
+    (root / "bajutsu.config.yaml").write_text(
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    appPath: build/Demo.app\n"  # relative → rebased under the checkout root
+        "    build: mkdir -p build/Demo.app\n"  # rooted at the checkout, not the test's cwd
+        "    scenarios: e2e\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        _shared,
+        "materialize",
+        lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, "sha"),
+    )
+    # `--backend nope` makes the run exit cleanly after the build (the sandbox has no Simulator),
+    # so the test asserts only that the build ran — producing the binary under the checkout root.
+    r = CliRunner().invoke(
+        app, ["run", "--target", "demo", "--backend", "nope", "--config", "github:acme/repo@main"]
+    )
+    assert (root / "build" / "Demo.app").exists()  # built under the checkout, not the process cwd
+    assert r.exit_code == 2  # then the unavailable backend exits cleanly
