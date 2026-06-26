@@ -82,7 +82,12 @@ jobs:
         with:
           enable-cache: true
 
+      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes and never
+      # changes which xcodegen we get) and the post-install cleanup.
       - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install xcodegen
 
       - name: Build the sample app
@@ -125,7 +130,12 @@ jobs:
         with:
           enable-cache: true
 
+      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes and never
+      # changes which xcodegen we get) and the post-install cleanup.
       - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install xcodegen
 
       # The DerivedData cache must not cross Xcode upgrades: a different Xcode's compiled modules
