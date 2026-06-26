@@ -88,6 +88,41 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The "from Git" picker: a github: spec materializes a checkout, binds its config, and repoints
+    # state.cwd to the checkout root so build/scenarios resolve there (BE-0063).
+    import bajutsu.serve.operations as ops
+    from bajutsu.config_source import Materialized
+
+    _, _, runs = project(tmp_path)
+    checkout = tmp_path / "gitsrc"
+    checkout.mkdir()
+    git_cfg = checkout / "bajutsu.config.yaml"
+    git_cfg.write_text(
+        "defaults: { backend: [idb] }\ntargets:\n  fromgit: { bundleId: com.example.fromgit }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "deadbeefcafe")
+    )
+    state = srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/config", {"git": "github:acme/repo@main"})
+        assert status == 200 and resp["ok"] is True
+        assert resp["targets"] == ["fromgit"]  # targets come from the fetched config
+        assert resp["source"]["sha"] == "deadbeefcafe"  # the resolved commit is surfaced
+        assert state.config == git_cfg  # config repointed to the checkout
+        assert state.cwd == checkout  # cwd repointed so the checkout's relative paths resolve
+        assert _get_json(port, "/api/config")["hasConfig"] is True
+        # A value with no recognized scheme is not a Git spec → a clear 400, not a local-path read.
+        status, resp = _post(port, "/api/config", {"git": "/etc/passwd"})
+        assert status == 400
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> None:
     # An absolute path with `..` that resolves outside the browse root must be rejected, not read
     # (CodeQL py/path-injection): the containment check resolves the path first, so the literal
