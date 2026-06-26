@@ -196,13 +196,14 @@ def test_serve_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> No
     # the config's relative paths resolve against the fetched tree (BE-0063).
     import bajutsu.config_source as cs
     import bajutsu.serve as srv
-    from bajutsu.config_source import Materialized
 
     checkout = tmp_path / "co"
     checkout.mkdir()
     cfg = checkout / "bajutsu.config.yaml"
     cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
-    monkeypatch.setattr(cs, "materialize", lambda spec, **kw: Materialized(cfg, checkout, "sha1"))
+    monkeypatch.setattr(
+        cs, "materialize", lambda spec, **kw: cs.Materialized(cfg, checkout, "sha1")
+    )
     captured: dict[str, object] = {}
     monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
     r = runner.invoke(app, ["serve", "--config", "github:acme/repo@main"])
