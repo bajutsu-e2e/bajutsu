@@ -82,8 +82,8 @@ jobs:
         with:
           enable-cache: true
 
-      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes and never
-      # changes which xcodegen we get) and the post-install cleanup.
+      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes) and the
+      # post-install cleanup; rely on the runner image's pre-installed Homebrew state for xcodegen.
       - name: Install xcodegen
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
@@ -130,8 +130,8 @@ jobs:
         with:
           enable-cache: true
 
-      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes and never
-      # changes which xcodegen we get) and the post-install cleanup.
+      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes) and the
+      # post-install cleanup; rely on the runner image's pre-installed Homebrew state for xcodegen.
       - name: Install xcodegen
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
