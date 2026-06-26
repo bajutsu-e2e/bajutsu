@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu.report.archive import archive_run_dir
+from bajutsu.report.load import rerender_html
 from bajutsu.serve.helpers import list_runs, valid_run_id
 
 
@@ -37,6 +38,13 @@ class ArtifactStore(Protocol):
 
     def list_runs(self) -> list[dict[str, Any]]:
         """Past runs, newest first, each summarized for the history list."""
+
+    def render_report(self, run_id: str) -> Artifact | None:
+        """Render *run_id*'s report.html **on view** from its stored model with the current template
+        (BE-0068). None when the report can't be rendered — the run is missing, has no manifest, the
+        model can't be loaded (malformed manifest/scenario), or this store doesn't render on view —
+        so the caller falls back to the baked file. Returning fresh HTML means an upgraded serve
+        refreshes every report with no per-run re-bake; the baked file is then a cache/export."""
 
     def archive(self, run_id: str) -> Artifact | None:
         """A zip of the whole run *run_id* (rooted under `<run_id>/`), or None if it's missing
@@ -75,6 +83,21 @@ class LocalArtifactStore:
             return None
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         return Artifact(content_type=ctype, body=target.read_bytes())
+
+    def render_report(self, run_id: str) -> Artifact | None:
+        # Render from the stored model (manifest.json + scenario.yaml) with the current template, so
+        # serving the report reflects template/feature changes without a re-bake (BE-0068). A run is a
+        # single id segment (reject `r1/sub`), confined to runs_dir; a dir with no manifest → None.
+        if not valid_run_id(run_id):
+            return None
+        run_dir = self._confined_dir(run_id)
+        if run_dir is None or not (run_dir / "manifest.json").is_file():
+            return None
+        try:
+            html = rerender_html(run_dir)
+        except (OSError, ValueError):
+            return None  # a manifest with a missing/corrupt scenario.yaml — fall back to the baked file
+        return Artifact(content_type="text/html", body=html.encode("utf-8"))
 
     def list_runs(self) -> list[dict[str, Any]]:
         return list_runs(self._runs_dir)

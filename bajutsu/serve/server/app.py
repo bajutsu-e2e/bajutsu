@@ -111,8 +111,8 @@ def make_app(state: ServeState) -> FastAPI:
     @app.get("/runs/{rel:path}")
     async def run_file(rel: str, request: Request) -> Response:
         # The actor's org-scoped artifact store: a run in another org's prefix reads as not-found
-        # (BE-0015 multi-tenancy).
-        art = state.for_org(state.org_of(_actor(request))).artifacts.get(rel)
+        # (BE-0015 multi-tenancy). report.html renders on view from the stored model (BE-0068).
+        art = ops.run_file(state.for_org(state.org_of(_actor(request))).artifacts, rel)
         if art is None:
             return _result(({"error": "not found"}, 404))
         if art.redirect is not None:  # a server store hands back a signed URL
