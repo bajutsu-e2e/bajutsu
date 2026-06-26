@@ -136,6 +136,11 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
   config from it. Because the config's `scenarios` / `baselines` / `schemas` / `appPath` are relative
   paths, they resolve **against the checkout root**, not the caller's working directory — so the whole
   tree comes along, not just the YAML.
+- A fresh checkout holds **no built binary**, and there is no local "first" in which to build one, so a
+  Git-sourced `run` **builds the app on demand**: when `appPath` is set but missing, it runs the
+  config's `build` command from the **checkout root** (where `build`'s relative parts, e.g.
+  `make -C demos/features sample-build`, are rooted), then proceeds. A failed build exits cleanly.
+  A local-path `run` is unchanged (it never builds; a missing binary still errors).
 - A **pinned commit SHA** (`@<sha>`) is reproducible and runs offline after the first fetch; a branch
   (or tag) is resolved fresh each load. Private repos use a token from `GITHUB_TOKEN` / `GH_TOKEN`, else
   `gh auth token`; the token is never logged.

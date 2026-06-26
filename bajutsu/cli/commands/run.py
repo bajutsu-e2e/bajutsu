@@ -19,6 +19,7 @@ from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective_with_
 from bajutsu.config import Effective
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.runner import device_pool, run_and_report
+from bajutsu.runner.build import BuildError, build_if_missing
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import (
     DismissAlerts,
@@ -215,9 +216,19 @@ def run(
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
     only fires to clear an OS prompt that blocked a step — see each scenario's `dismissAlerts`.
     """
-    eff, config_source = _load_effective_with_source(
+    eff, config_source, checkout_root = _load_effective_with_source(
         config, target_name, offline=config_offline, require_pinned=require_pinned_config
     )
+    # A Git-sourced config is fetched into a content-addressed checkout that holds no built binary,
+    # with no chance to build it by hand first — so build it on demand from the checkout root (where
+    # the config's `build` command is rooted). Local configs keep today's behavior: launch errors if
+    # the binary is missing (BE-0063).
+    if checkout_root is not None:
+        try:
+            build_if_missing(eff.build, eff.app_path, cwd=checkout_root)
+        except BuildError as e:
+            typer.echo(str(e))
+            raise typer.Exit(2) from None
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)

@@ -229,9 +229,15 @@ absolute or `../` value that would escape the fetched tree is rejected with a cl
 reaching outside it — mirroring the serve-hardening path confinement
 ([BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)).
 
-Still to come: `build`'s working directory for a Git source, the **serve "from Git" picker**, and
-treating a Git source as **read-only input for `record` / `crawl`** (so an authored artifact goes to a
-local `--out`, never into the SHA-keyed cache).
+A Git-sourced `run` also **builds the app on demand** from the checkout root: a content-addressed
+checkout holds no built binary, and there is no local "first" in which to build one, so when `appPath`
+is set but missing, `run` executes the config's `build` command with the **checkout root** as the
+working directory (where `build`'s relative parts, e.g. `make -C demos/features sample-build`, are
+rooted) before the run loop. A failed build exits cleanly. A local-path `run` is unchanged — it never
+builds, and a missing binary still errors at launch.
+
+Still to come: the **serve "from Git" picker**, and treating a Git source as **read-only input for
+`record` / `crawl`** (so an authored artifact goes to a local `--out`, never into the SHA-keyed cache).
 
 ## Alternatives considered
 
