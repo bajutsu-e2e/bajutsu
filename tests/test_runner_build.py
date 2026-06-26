@@ -34,3 +34,9 @@ def test_build_is_a_noop_without_a_build_command_or_app_path(tmp_path: Path) -> 
 def test_failing_build_raises_build_error(tmp_path: Path) -> None:
     with pytest.raises(BuildError, match="build failed"):
         build_if_missing("false", str(tmp_path / "Demo.app"), cwd=tmp_path)
+
+
+def test_unparseable_build_string_raises_build_error(tmp_path: Path) -> None:
+    # A mis-quoted build command fails cleanly (BuildError → exit 2), not with a shlex traceback.
+    with pytest.raises(BuildError, match="not valid shell syntax"):
+        build_if_missing("make 'unterminated", str(tmp_path / "Demo.app"), cwd=tmp_path)

@@ -15,6 +15,7 @@ long-running, cancellable, log-streaming job model; this is the synchronous, rai
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import sys
@@ -23,6 +24,14 @@ from pathlib import Path
 
 class BuildError(RuntimeError):
     """A needed build command failed, so the run must not start against a missing binary."""
+
+
+def _build_env() -> dict[str, str]:
+    # The build child's env, with the venv's bin dir on PATH so a venv-installed build tool resolves
+    # — matching serve's `_spawn_env`, so a Git-sourced build behaves the same either way.
+    env = dict(os.environ)
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
+    return env
 
 
 def build_if_missing(build: str | None, app_path: str | None, *, cwd: Path) -> None:
@@ -37,13 +46,17 @@ def build_if_missing(build: str | None, app_path: str | None, *, cwd: Path) -> N
         cwd: The working directory the build runs in — the materialized checkout root.
 
     Raises:
-        BuildError: The build command exited non-zero, or could not be spawned.
+        BuildError: The build command is unparseable, exited non-zero, or could not be spawned.
     """
     if not build or not app_path or Path(app_path).exists():
         return
     sys.stderr.write(f"app binary missing ({app_path}) — building: {build}\n")
     try:
-        code = subprocess.run(shlex.split(build), cwd=cwd, check=False).returncode
+        argv = shlex.split(build)  # a mis-quoted build string is a clean failure, not a traceback
+    except ValueError as e:
+        raise BuildError(f"build command is not valid shell syntax: {build!r} ({e})") from e
+    try:
+        code = subprocess.run(argv, cwd=cwd, check=False, env=_build_env()).returncode
     except OSError as e:
         raise BuildError(f"build failed: {e}") from e
     if code != 0:
