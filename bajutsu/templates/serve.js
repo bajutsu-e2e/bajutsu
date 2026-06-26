@@ -678,7 +678,11 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
     else if(tpan&&e.touches.length===1){e.preventDefault();const t=e.touches[0],dx=t.clientX-tpan.x,dy=t.clientY-tpan.y;
       if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=tpan.ox+dx;gview.y=tpan.oy+dy;applyView();}
   },{passive:false});
-  window.addEventListener('touchend',e=>{if(e.touches.length===0){tpan=null;pinch=null;box.classList.remove('panning');}});
+  const endTouch=()=>{tpan=null;pinch=null;box.classList.remove('panning');};
+  window.addEventListener('touchend',e=>{if(e.touches.length===0)endTouch();});
+  // A touchcancel (gesture takeover, OS context switch) aborts the gesture outright — reset the same
+  // way as touchend so a cancelled pan/pinch can't leave stuck state that breaks the next tap/pan.
+  window.addEventListener('touchcancel',endTouch);
   // A click that wasn't a drag either expands/collapses a group or opens a screen's lightbox.
   box.addEventListener('click',e=>{if(moved){moved=false;return}
     const col=e.target.closest('.gcollapse');

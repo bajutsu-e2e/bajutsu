@@ -76,6 +76,9 @@ def test_http_index_carries_responsive_layout(tmp_path: Path) -> None:
         assert "NARROW_MQ" in text
         # Crawl-graph touch: pan + pinch reuse the existing zoom/pan math.
         assert "touchstart" in text and "touchmove" in text
+        # A cancelled touch (gesture takeover, context switch) must reset the pan/pinch state, so it
+        # can't leave the graph stuck — touchcancel runs the same cleanup as touchend.
+        assert "touchcancel" in text
     finally:
         server.shutdown()
         server.server_close()
