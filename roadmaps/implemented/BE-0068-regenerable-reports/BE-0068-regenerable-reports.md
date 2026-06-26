@@ -8,6 +8,7 @@
 | Proposal | [BE-0068](BE-0068-regenerable-reports.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#282](https://github.com/bajutsu-e2e/bajutsu/pull/282) (the render-on-view slice completing the item) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 
