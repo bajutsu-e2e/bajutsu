@@ -353,6 +353,10 @@ class _XcuitestGen:
     def scenario_open(self, name: str) -> str:
         return f"  func {_ident(name)}() {{"
 
+    def setup_lines(self, scenario: Scenario) -> list[str]:
+        # XCUITest has no network-interception surface, so there is no pre-launch observer to install.
+        return []
+
     def launch_env_line(self, key: str, value: str) -> str:
         return f"app.launchEnvironment[{_s(key)}] = {_s(value)}"
 
