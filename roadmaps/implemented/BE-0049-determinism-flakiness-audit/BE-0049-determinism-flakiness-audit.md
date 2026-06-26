@@ -8,6 +8,7 @@
 | Proposal | [BE-0049](BE-0049-determinism-flakiness-audit.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#285](https://github.com/bajutsu-e2e/bajutsu/pull/285) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->
