@@ -178,6 +178,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 |---|---|---|
 | [BE-0043](implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) | コンフリクトに強いファイル流動（索引の生成・ファイル分割・git 衛生） | 実装済み |
 | [BE-0061](implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening-ja.md) | 衝突しない BE ID 採番（原子的な予約と自動修復） | 実装済み |
+| [BE-0065](implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md) | docstring の規範と API リファレンス生成 | 実装済み |
 | [BE-0067](implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md) | コード品質ゲートの強化（CI の忠実性、セキュリティ lint、サプライチェーン） | 実装済み |
 | [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) | BE 項目テンプレートの標準化（EN / JA） | 実装済み |
 | [BE-0078](implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md) | 状態ごとのロードマップフォルダ（提案 / 保留 / 実装中 / 実装済み） | 実装済み |
@@ -320,7 +321,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:in-progress-dev-infra -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0065](in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md) | docstring の規範と API リファレンス生成 | 実装中 |
 | [BE-0069](in-progress/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md) | コントリビュータ向けガードレールの実行可能化（手順をコマンドに） | 実装中 |
 <!-- /GENERATED:in-progress-dev-infra -->
 

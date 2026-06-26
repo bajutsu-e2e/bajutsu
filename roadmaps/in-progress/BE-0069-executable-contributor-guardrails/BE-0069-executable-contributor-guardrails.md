@@ -207,7 +207,7 @@ Each phase is a small, independent PR (the parallel-work model, BE-0043).
   target count grows.
 - **A dedicated new roadmap topic.** Filed instead under *Development infrastructure (contributor
   workflow)* — the BE-0043 topic — following the precedent
-  ([BE-0065](../../in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md))
+  ([BE-0065](../../implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md))
   of not splitting a topic for a single item.
 
 ## References
