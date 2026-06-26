@@ -38,7 +38,8 @@ class Redactor:
     `values` are literal secret values (resolved from the environment) masked wherever
     they appear — this catches a secret the app echoes into a log / element / response,
     which key-based patterns alone would miss. Longest values are masked first so a value
-    that is a substring of another does not leave a partial leak."""
+    that is a substring of another does not leave a partial leak.
+    """
 
     def __init__(self, redact: Redact | None, values: list[str] | None = None) -> None:
         redact = redact or Redact()
@@ -53,8 +54,10 @@ class Redactor:
         return bool(self._keys or self._labels or self._values)
 
     def redact_text(self, text: str) -> str:
-        """Mask the value after any configured key, and any literal secret value, in free
-        text (logs/traces)."""
+        """Mask secrets in free text (logs/traces).
+
+        Masks the value after any configured key, and any literal secret value.
+        """
         for pattern in self._patterns:
             text = pattern.sub(lambda m: m.group(1) + PLACEHOLDER, text)
         for value in self._values:
@@ -62,8 +65,11 @@ class Redactor:
         return text
 
     def redact_elements(self, elements: list[base.Element]) -> list[base.Element]:
-        """Mask element values: fully when the label is configured, otherwise scrub
-        the label/value text in case a secret is embedded there."""
+        """Mask secrets in an element tree.
+
+        Mask an element's value fully when its label is configured; otherwise scrub
+        the label/value text in case a secret is embedded there.
+        """
         if not self.active:
             return elements
         out: list[base.Element] = []
@@ -80,10 +86,13 @@ class Redactor:
         return out
 
     def redact_exchange(self, exchange: dict[str, Any]) -> dict[str, Any]:
-        """Mask secrets in one network-exchange dict: a header value is masked whole when
-        its name is a configured header (else scrubbed as free text), and the url / bodies
-        are scrubbed as free text so query params and body fields (token / password) are
-        caught — which a whole-JSON text pass misses, since bodies are escaped strings."""
+        """Mask secrets in one network-exchange dict.
+
+        A header value is masked whole when its name is a configured header (else
+        scrubbed as free text), and the url / bodies are scrubbed as free text so query
+        params and body fields (token / password) are caught — which a whole-JSON text
+        pass misses, since bodies are escaped strings.
+        """
         if not self.active:
             return exchange
         out = dict(exchange)
