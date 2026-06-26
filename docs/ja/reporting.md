@@ -122,7 +122,7 @@ baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: diff
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, idb_versions=None, provenance=None) -> Path  # 3 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名、description=ファイルレベルの説明、idb_versions=idb の来歴（BE-0005）、provenance=run の同一性スタンプ（BE-0049）
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None) -> None  # 描画される側だけ（report.html + junit.xml）。manifest.json は触らない。再描画が使う
 def manifest_dict(run_id, results, *, source_name=None, idb_versions=None, provenance=None) -> dict  # バージョン付き render モデル（schemaVersion）。manifest の素（テスト、検査用）
-def run_provenance(scenario_yaml, *, git_revision) -> dict  # run の同一性スタンプ（BE-0049）: scenarioHash + toolVersion + 任意の gitRevision
+def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # run の同一性スタンプ: scenarioHash + toolVersion + 任意の gitRevision（BE-0049）+ 任意の configSource（BE-0063）
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None) -> str
 def scenario_render_inputs(scenarios) -> tuple[list[dict], list[str]]  # (definitions, sources)。初回 bake と再描画で共有

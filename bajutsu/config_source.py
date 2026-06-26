@@ -169,9 +169,9 @@ def materialize(
 
     pinned = is_full_sha(spec.ref)
     if offline and not pinned:
+        ref_label = repr(spec.ref) if spec.ref else "the default branch"
         raise ValueError(
-            f"--config-offline needs a pinned commit SHA; cannot resolve ref {spec.ref or 'HEAD'!r} "
-            "without the network"
+            f"--config-offline needs a pinned commit SHA; cannot resolve {ref_label} without the network"
         )
     # A pinned full SHA is already the immutable id — use it directly so a cache hit is fully offline
     # (the determinism anchor the design promises). A branch/tag is resolved to its SHA; no ref ⇒ the
