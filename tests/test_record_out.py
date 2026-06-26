@@ -50,5 +50,17 @@ def test_refuse_out_in_checkout_allows_local_and_no_source(tmp_path: Path) -> No
     # No Git source → never refuses. A path outside the checkout → allowed.
     _refuse_out_in_checkout(tmp_path / "x.yaml", None)
     _refuse_out_in_checkout(tmp_path / "out" / "x.yaml", tmp_path / "co")
-    with pytest.raises(typer.Exit):
+    with pytest.raises(typer.Exit) as exc:
         _refuse_out_in_checkout(tmp_path / "co" / "x.yaml", tmp_path / "co")
+    assert exc.value.exit_code == 2  # the exit-2 CLI contract used across this file
+
+
+def test_record_auto_name_inside_the_checkout_is_refused(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # If `record` is run from inside the materialized checkout (cwd under it), even the auto-named
+    # (no --out) path would land in the read-only cache — it is refused, not silently written.
+    checkout = tmp_path / "co"
+    (checkout / "sub").mkdir(parents=True)
+    monkeypatch.chdir(checkout / "sub")  # cwd is now inside the checkout
+    with pytest.raises(typer.Exit) as exc:
+        _record_out_path(_eff("e2e"), "", "n", "g", "x", checkout_root=checkout)
+    assert exc.value.exit_code == 2

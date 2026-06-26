@@ -47,18 +47,25 @@ def _record_out_path(
 
     if out:
         target = Path(out)
-        _refuse_out_in_checkout(target, checkout_root)
-        return target
-    # The auto-name base: the current directory for a Git source (its configured `scenarios` dir is
-    # inside the read-only cache), else the local config's configured dir.
-    base = Path() if checkout_root is not None else (Path(eff.scenarios) if eff.scenarios else None)
-    if base is None:
-        typer.echo(
-            f"target '{target_name}' has no scenarios dir "
-            f"(set targets.{target_name}.scenarios, or pass --out)"
+    else:
+        # The auto-name base: the current directory for a Git source (its configured `scenarios` dir
+        # is inside the read-only cache), else the local config's configured dir.
+        base = (
+            Path()
+            if checkout_root is not None
+            else (Path(eff.scenarios) if eff.scenarios else None)
         )
-        raise typer.Exit(2)
-    return unique_scenario_path(scenario_out_path(base, name or goal))
+        if base is None:
+            typer.echo(
+                f"target '{target_name}' has no scenarios dir "
+                f"(set targets.{target_name}.scenarios, or pass --out)"
+            )
+            raise typer.Exit(2)
+        target = unique_scenario_path(scenario_out_path(base, name or goal))
+    # Guard whatever we resolved — including the auto-named cwd path, in case `record` runs from
+    # inside the checkout itself — so a generated scenario never lands in the read-only cache.
+    _refuse_out_in_checkout(target, checkout_root)
+    return target
 
 
 def record(
