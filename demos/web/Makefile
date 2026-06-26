@@ -17,10 +17,14 @@ web-deps:
 app-serve:
 	cd $(APP) && python3 -m http.server $(PORT)
 
-# End-to-end: serve the app in the background, run the smoke scenario through the Playwright
-# backend, then tear the server down. No device, no Simulator — pure Linux.
+# End-to-end: serve the app in the background, wait for it to answer (poll, never a fixed
+# sleep — matches the runner's condition-wait discipline), run the smoke scenario through the
+# Playwright backend, then tear the server down. No device, no Simulator — pure Linux.
 e2e: web-deps
 	cd $(APP) && python3 -m http.server $(PORT) >/dev/null 2>&1 & srv=$$!; \
 	trap 'kill $$srv 2>/dev/null' EXIT; \
-	sleep 1; \
+	for i in $$(seq 1 100); do \
+	  curl -sf -o /dev/null "http://localhost:$(PORT)/" && break; \
+	  sleep 0.1; \
+	done; \
 	cd $(ROOT) && uv run bajutsu run --target web --backend web --config $(CONFIG) --no-network
