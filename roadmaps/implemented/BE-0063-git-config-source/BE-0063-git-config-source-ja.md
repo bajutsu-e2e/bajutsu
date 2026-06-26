@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0063](BE-0063-git-config-source-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
+| 実装 PR | [#277](https://github.com/bajutsu-e2e/bajutsu/pull/277)（BE-0063 の複数 PR の最後） |
 | トピック | config の取得元 |
 <!-- /BE-METADATA -->
 

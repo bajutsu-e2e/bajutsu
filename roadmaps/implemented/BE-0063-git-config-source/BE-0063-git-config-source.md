@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0063](BE-0063-git-config-source.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
+| Implementing PR | [#277](https://github.com/bajutsu-e2e/bajutsu/pull/277) (the last of several BE-0063 PRs) |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
