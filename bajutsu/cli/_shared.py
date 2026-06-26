@@ -11,7 +11,7 @@ from pathlib import Path
 import typer
 
 from bajutsu.config import Effective, load_config, resolve
-from bajutsu.config_source import materialize, parse_config_spec, source_provenance
+from bajutsu.config_source import is_full_sha, materialize, parse_config_spec, source_provenance
 from bajutsu.scenario import (
     Scenario,
     expand_components,
@@ -62,7 +62,7 @@ def _load_effective(config: str, target_name: str) -> Effective:
 
 
 def _load_effective_with_source(
-    config: str, target_name: str
+    config: str, target_name: str, *, offline: bool = False, require_pinned: bool = False
 ) -> tuple[Effective, dict[str, str] | None]:
     """Load the effective config, plus the Git source provenance when one was used.
 
@@ -71,10 +71,13 @@ def _load_effective_with_source(
     config has its relative paths rebased against the checkout root, and its repo + resolved commit is
     returned as the second tuple element (None for a local config) so `run` can stamp the manifest.
 
-    Exits 2 (via ``typer.Exit``) for two specific failures that produce a user-friendly
-    message: the config file not existing, and an unknown target name.  Other errors —
-    YAML parse failures and schema validation errors from ``load_config`` — are *not*
-    caught and propagate as exceptions to the caller.
+    `offline` (``--config-offline``) materializes from the cache without touching the network.
+    `require_pinned` (``--require-pinned-config``) rejects a Git source on a mutable ref — a gate must
+    name an immutable commit SHA, since a branch (or even a tag) can move under it.
+
+    Exits 2 (via ``typer.Exit``) for the user-friendly failures: a missing config file, an unknown
+    target name, and (with `require_pinned`) a Git source that isn't pinned to a commit SHA. Other
+    errors — YAML parse / schema validation from ``load_config`` — propagate as exceptions.
     """
     spec = parse_config_spec(config)
     source: dict[str, str] | None = None
@@ -82,7 +85,13 @@ def _load_effective_with_source(
         cfg_path = Path(config)
         root = None
     else:
-        mat = materialize(spec)
+        if require_pinned and not is_full_sha(spec.ref):
+            typer.echo(
+                f"--require-pinned-config: a Git config must pin a commit SHA, got ref "
+                f"{spec.ref or '(default branch)'!r} (a branch or tag can move; pin @<40-hex-sha>)"
+            )
+            raise typer.Exit(2)
+        mat = materialize(spec, offline=offline)
         cfg_path, root = mat.config_path, mat.root
         source = source_provenance(spec, mat)
     # The same friendly exit-2 for a missing config, whether local or a wrong in-repo path for a

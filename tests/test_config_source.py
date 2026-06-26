@@ -143,6 +143,37 @@ def test_materialize_pinned_sha_skips_the_commits_api(tmp_path) -> None:  # type
     assert transport.tarball_calls == 1 and transport.commit_calls == 0  # cache hit, fully offline
 
 
+def test_materialize_offline_uses_a_cached_pinned_sha_without_network(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # --config-offline: a pinned SHA already in the cache runs with no transport calls at all.
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
+    spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
+    assert spec is not None
+    materialize(spec, transport=transport, cache_root=tmp_path)  # warm the cache (online)
+    transport.tarball_calls = transport.commit_calls = 0
+    mat = materialize(spec, transport=transport, cache_root=tmp_path, offline=True)
+    assert mat.sha == sha and transport.tarball_calls == 0 and transport.commit_calls == 0
+
+
+def test_materialize_offline_cache_miss_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
+    spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
+    assert spec is not None
+    with pytest.raises(ValueError, match="offline"):
+        materialize(spec, transport=transport, cache_root=tmp_path, offline=True)
+
+
+def test_materialize_offline_branch_ref_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A branch can't be resolved to a SHA without the network, so offline refuses it before any call.
+    transport = _FakeTransport("deadbeef", b"")
+    spec = parse_config_spec("github:acme/mobile-tests@main")
+    assert spec is not None
+    with pytest.raises(ValueError, match="offline"):
+        materialize(spec, transport=transport, cache_root=tmp_path, offline=True)
+    assert transport.commit_calls == 0
+
+
 def test_materialize_rejects_non_github_host(tmp_path) -> None:  # type: ignore[no-untyped-def]
     # The git+https form parses for any host, but only GitHub is implemented — fail clearly rather
     # than silently hitting github.com (default transport only).
@@ -195,7 +226,7 @@ def test_load_effective_rebases_paths_against_git_checkout(tmp_path, monkeypatch
         encoding="utf-8",
     )
 
-    def fake_materialize(spec):  # type: ignore[no-untyped-def]
+    def fake_materialize(spec, *, offline=False):  # type: ignore[no-untyped-def]
         return Materialized(root / "e2e" / "bajutsu.config.yaml", root, "deadbeef")
 
     monkeypatch.setattr(_shared, "materialize", fake_materialize)
@@ -217,8 +248,50 @@ def test_load_effective_git_wrong_path_exits_cleanly(tmp_path, monkeypatch) -> N
     root.mkdir()  # the checkout exists, but bajutsu.config.yaml does not
 
     monkeypatch.setattr(
-        _shared, "materialize", lambda spec: Materialized(root / "bajutsu.config.yaml", root, "sha")
+        _shared,
+        "materialize",
+        lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, "sha"),
     )
     with pytest.raises(typer.Exit) as exc:
         _shared._load_effective("github:acme/mobile-tests@main", "demo")
     assert exc.value.exit_code == 2
+
+
+def test_require_pinned_rejects_a_non_sha_ref(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # --require-pinned-config: a gate must run an immutable commit. A branch/tag/default ref is
+    # refused before any fetch; only a full commit SHA is accepted.
+    import typer
+
+    from bajutsu.cli import _shared
+
+    called = False
+
+    def must_not_materialize(spec, *, offline=False):  # type: ignore[no-untyped-def]
+        nonlocal called
+        called = True
+        raise AssertionError("materialize must not run when the ref is rejected")
+
+    monkeypatch.setattr(_shared, "materialize", must_not_materialize)
+    with pytest.raises(typer.Exit) as exc:
+        _shared._load_effective_with_source("github:acme/repo@main", "demo", require_pinned=True)
+    assert exc.value.exit_code == 2 and not called
+
+
+def test_require_pinned_allows_a_full_sha(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.cli import _shared
+
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    root = tmp_path / "co"
+    root.mkdir()
+    (root / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        _shared,
+        "materialize",
+        lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, sha),
+    )
+    _eff, source = _shared._load_effective_with_source(
+        f"github:acme/repo@{sha}", "demo", require_pinned=True
+    )
+    assert source is not None and source["sha"] == sha  # accepted; the pinned SHA is recorded
