@@ -315,6 +315,7 @@ class PlaywrightDriver:
         self._page_errors = []
         self._last_nav_status = None
         self._dialogs = []
+        self._cdp = None  # the old CDP session belonged to the previous context; re-open lazily
         self._register_health_handlers()
 
     def _register_health_handlers(self) -> None:
@@ -399,6 +400,7 @@ class PlaywrightDriver:
             with contextlib.suppress(*_playwright_error_types()):
                 self._context.close()
             self._context = None  # finalized; the lease's close() just stops the browser
+            self._cdp = None  # its CDP session went with the closed context
         if video is None:
             return
         # Let a failed move surface (like the iOS interval providers): swallowing it would record a
@@ -556,9 +558,13 @@ class PlaywrightDriver:
         self._touch_drag(start, end)
 
     def _gesture_anchor(self, sel: base.Selector) -> tuple[float, float, float]:
-        """The element's center and a finger half-distance for a two-finger gesture."""
+        """The element's center and a finger half-distance for a two-finger gesture.
+
+        The half-distance is a quarter of the smaller side, so the two fingers (and a pinch-out up
+        to ~2x) stay within the element's bounds rather than landing on a neighbour.
+        """
         x, y, w, h = base.resolve_unique(self.query(), sel)["frame"]
-        return x + w / 2, y + h / 2, max(10.0, min(w, h) / 4)
+        return x + w / 2, y + h / 2, min(w, h) / 4
 
     def _touch_drag(self, start: list[base.Point], end: list[base.Point], steps: int = 5) -> None:
         """Synthesize a two-finger drag from `start` to `end` via CDP touch events (Chromium).

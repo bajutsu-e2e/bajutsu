@@ -78,7 +78,7 @@
         }
       });
       gbox.addEventListener("touchmove", (e) => {
-        if (e.touches.length === 2 && startDist) {
+        if (e.touches.length === 2 && startDist !== null) {
           const ratio = dist(e.touches) / startDist;
           const deg = ((angle(e.touches) - startAngle) * 180) / Math.PI;
           if (Math.abs(deg) > 15) gstatus.textContent = "rotated";
