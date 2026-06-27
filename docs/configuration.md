@@ -86,6 +86,29 @@ into the action (`${secrets.X}`), and **masks the literal value everywhere it wo
 evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
 token, never the value.
 
+### Mailbox (the `email` step)
+
+`apps.<name>.mailbox` configures the generic HTTP mailbox the [`email`](scenarios.md#email-poll-a-mailbox-for-a-received-code)
+step polls for a 2FA / verification code, so the endpoint and credentials live in config (not the
+scenario):
+
+```yaml
+targets:
+  myapp:
+    mailbox:
+      url: "${secrets.MAILBOX_URL}"                       # inbox endpoint (GET); ${secrets.*} resolved at run time
+      headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
+      # Optional response mapping, to read any provider's JSON without per-provider code:
+      messages: "items"                                   # dotted path to the message array (default: the response is the array)
+      fields: { to: to, subject: subject, body: text, receivedAt: receivedAt, id: id }
+```
+
+The defaults match the common shape (an array of messages with `to` / `subject` / `body` /
+`receivedAt` / `id`), so a conforming API needs no `messages` / `fields` mapping. The `email` step
+reads the inbox over HTTP, keeps only messages newer than the step's start (keyed on `id`), waits
+for one that matches, and extracts the code — deterministic and LLM-free
+([BE-0046](../roadmaps/in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+
 ### Orgs (`orgs:`, the multi-tenant server backend)
 
 `orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).

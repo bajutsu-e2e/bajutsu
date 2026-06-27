@@ -51,6 +51,22 @@ class LaunchServer(_Model):
     env: dict[str, str] = Field(default_factory=dict)  # extra environment for the server
 
 
+class Mailbox(_Model):
+    """A generic HTTP mailbox the `email` step polls (`apps.<name>.mailbox`, BE-0046).
+
+    `url` is the inbox endpoint (GET; commonly `${secrets.*}`), `headers` any auth. The optional
+    response mapping absorbs a provider's JSON shape without per-provider code: `messages` is a
+    dotted path to the message array (empty = the response is the array), and `fields` maps each
+    normalized field (`to` / `subject` / `body` / `receivedAt` / `id`) to the provider's key,
+    defaulting to the field's own name.
+    """
+
+    url: str
+    headers: dict[str, str] = Field(default_factory=dict)
+    messages: str = ""
+    fields: dict[str, str] = Field(default_factory=dict)
+
+
 class Defaults(_Model):
     """Team-wide defaults under `defaults:`, overlaid by each target (see `resolve`)."""
 
@@ -108,6 +124,7 @@ class TargetConfig(_Model):
     launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
     id_namespaces: list[str] = Field(default_factory=list, alias="idNamespaces")
     mock_server: MockServer | None = Field(default=None, alias="mockServer")
+    mailbox: Mailbox | None = None
     setup: str | None = None
     # Path to the built .app. When set, a run installs it on each device before launch (if
     # missing) — so a freshly-picked/booted simulator works without a manual `simctl install`.
@@ -226,6 +243,9 @@ class Effective:
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
+    # Generic HTTP mailbox the `email` step polls (`apps.<name>.mailbox`, BE-0046). None = no
+    # mailbox configured, so an `email` step fails cleanly.
+    mailbox: Mailbox | None = None
     # Built .app to install on each device before launch (if missing). None = manual install.
     app_path: str | None = None
     # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary
@@ -314,6 +334,7 @@ def resolve(config: Config, target: str) -> Effective:
         id_namespaces=list(a.id_namespaces),
         reserved_namespaces=list(d.reserved_namespaces),
         mock_server=a.mock_server,
+        mailbox=a.mailbox,
         setup=a.setup,
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),

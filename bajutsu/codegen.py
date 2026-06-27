@@ -256,6 +256,11 @@ def _emit_step(step: Step) -> list[str]:
     if step.totp is not None:
         # A locally-computed RFC 6238 OTP into vars.*; no XCUITest equivalent (BE-0046).
         return [f"// TODO: totp(into: {step.totp.into.var}) — RFC 6238 OTP; not generated"]
+    if step.email is not None:
+        # Polls an HTTP mailbox in the bajutsu runner; no XCUITest equivalent (BE-0046).
+        return [
+            f"// TODO: email(into: {step.email.extract.var}) — poll mailbox + extract; not generated"
+        ]
     return ["// TODO: unsupported step"]
 
 

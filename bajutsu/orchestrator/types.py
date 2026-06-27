@@ -15,6 +15,7 @@ from typing import Protocol
 from bajutsu.assertions import AssertionResult
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact
+from bajutsu.mailbox import MailboxMessage
 from bajutsu.network import NetworkExchange
 from bajutsu.scenario import Relaunch
 
@@ -27,6 +28,15 @@ RelaunchFn = Callable[[Relaunch], None]
 # Injected from the CLI (`--progress`) so the web UI can stream per-scenario/step progress; None
 # (the default everywhere) keeps the pipeline silent.
 ProgressFn = Callable[[str], None]
+
+
+class MailboxReader(Protocol):
+    """Fetches the current inbox for the `email` step (BE-0046). Injected by the runner, built from
+    `apps.<name>.mailbox`; None means no mailbox is configured (or the fake driver), in which case an
+    `email` step fails cleanly. `fetch` may raise `base.SelectorError` on an unreachable / non-2xx
+    endpoint — a clean step failure, never a silent wrong value."""
+
+    def fetch(self) -> list[MailboxMessage]: ...
 
 
 class DeviceControl(Protocol):

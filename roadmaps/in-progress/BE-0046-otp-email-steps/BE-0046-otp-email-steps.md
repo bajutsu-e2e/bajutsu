@@ -122,20 +122,24 @@ differently-named response without a code change.
   combined with AND. At least one criterion is required (a match-anything `email` is rejected at load
   time, like an empty selector).
 - **`extract`** pulls the value from the matched message's body into `${vars.<var>}`: `bodyMatches`
-  is a regex whose **first capturing group** (or whole match, if none) is the value; `body` would be
-  an exact-substring form. The extracted value is masked in evidence like any secret-derived value.
+  is a regex whose **first capturing group** (or whole match, if none) is the value. The value lives
+  only in runtime `vars.*`; the recorded scenario keeps the `${vars.*}` token (like `totp` / `http`
+  `saveBody`), so it never enters the manifest/report.
 - **`timeout`** (mandatory, seconds) bounds the poll — the same condition-wait rule as every other
   wait, no fixed sleep, no infinite poll.
 
 **Determinism — the parts that matter.**
 
-- **Only mail that arrives *after* the step starts counts.** The step records a start instant and
-  ignores any message whose `receivedAt` predates it, so a stale code left in the mailbox by an
-  earlier run is never matched. (When a provider exposes no `receivedAt`, the fallback is the set of
-  message ids already present when the step began — anything new since is eligible.)
-- **A unique awaited message.** With the `after`-start boundary the expected case is exactly one new
+- **Only mail that arrives *after* the step starts counts.** The step records the set of **message
+  ids** present when it began, and ignores those ids — so a stale code left in the mailbox by an
+  earlier run is never matched. Keying on id (rather than comparing the provider's `receivedAt` to
+  the local run clock) is **skew-free**: it needs no agreement between the mailbox's clock and the
+  runner's. A message with no provider id gets a stable content-hash id, so the baseline still
+  distinguishes it.
+- **A unique awaited message.** With the after-start boundary the expected case is exactly one new
   matching message. If more than one matches, the **newest by `receivedAt`** wins (stable tie-break
-  by message id), so the result never depends on arrival-order races.
+  by message id), so the result never depends on arrival-order races. `receivedAt` is used only for
+  this ordering, never as the after-start gate.
 - **Bounded poll.** Re-fetch and re-check until a match or the `timeout` deadline — the standard
   condition-wait pattern (repeat fetch + test), not a fixed sleep. A timeout, a matched message
   whose body the `extract` regex does not hit, or a non-2xx fetch is a **clean step failure**, never
@@ -157,12 +161,20 @@ the step is a thin handler that calls it at wall-clock time (`bajutsu/orchestrat
 It follows the `http`/`saveBody` precedent for producing a value into `vars.*`, touches no device,
 and emits a labeled `// TODO` from codegen.
 
-**`email` — design settled (this revision), implementation pending.** The mailbox surface is now
-fixed: a generic HTTP polling mailbox configured under `apps.<name>.mailbox`, with the contract,
-config, and determinism rules above. Implementation is a follow-up slice: the `email` action model +
-`Step` field, a thin handler that drives the bounded poll over the injectable HTTP client, the
-`match` / `extract` logic (pure, gate-tested over fabricated responses), masking of the extracted
-value, and a labeled `// TODO` from codegen. No device, no LLM.
+The **`email`** slice ships, completing the item. `email: { match, extract, timeout }`
+(`bajutsu/scenario/models/actions.py`) polls the configured `apps.<name>.mailbox`
+(`bajutsu/config.py`) until a message arriving *after* the step started satisfies `match`, then
+extracts the value by `bodyMatches` into `${vars.<var>}`. The match / extraction / response-shape
+reading / after-start selection are pure, gate-tested functions (`bajutsu/mailbox.py`); the bounded
+poll runs in the run loop (`_do_email`, `orchestrator/loop.py`) over an **injected** `MailboxReader`
+(`orchestrator/types.py`), built once per run from config with `${secrets.*}` resolved
+(`runner/mailbox.py`) — so only the live HTTP GET touches the network and the logic is tested with no
+network. The after-start boundary keys on **message id** (the set present at the step start), which
+is skew-free — it never compares the provider's timestamp to the local clock; `receivedAt` only
+orders newest-first among new matches. A timeout, a matched message whose body the regex can't hit,
+or an unreachable / non-2xx mailbox is a clean step failure. The produced value lives only in runtime
+`vars.*`; the recorded scenario keeps the `${vars.*}` token (like `totp` / `http`), so it never
+enters the manifest/report. Codegen emits a labeled `// TODO`. No device, no LLM.
 
 ## Alternatives considered
 
