@@ -412,7 +412,7 @@ def _contains(outer: Frame, inner: Frame) -> bool:
     """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
 ```
 
-**移行は段階的かつ漸進的に進めます**（[BE-0065](../../roadmaps/in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md)）。
+**移行は段階的かつ漸進的に進めます**（[BE-0065](../../roadmaps/implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md)）。
 サイトは今ある散文 docstring からすでに描画でき（型付きシグネチャだけでも有用なリファレンスになります）、公開 API
 の docstring はモジュール単位の小さな PR で Google style へ移し、scoped な `ruff` `D` の強制と Pages ホスティングは
 その後に入れます。**無関係な変更のついでにモジュール全体の docstring を書き換えないでください**——移行は 1 つずつ

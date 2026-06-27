@@ -124,7 +124,7 @@ whatever happens to be installed:
 
 Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Simulator**, so it
 fits the same toolchain as `make check`. Implementation: `drivers/playwright.py` (roadmap
-[BE-0041](../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+[BE-0041](../roadmaps/implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
 - `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of

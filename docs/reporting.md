@@ -70,7 +70,7 @@ verbatim.
 - `provenance` (top, optional): a run-identity stamp ([BE-0049](../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
   — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`), `toolVersion`
   (`bajutsu.__version__`), `gitRevision` (the commit, present only when the run is inside a git
-  checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
+  checkout), and — when the config came from a Git source ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)) —
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It lets accumulated runs be grouped by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like the `idb`
