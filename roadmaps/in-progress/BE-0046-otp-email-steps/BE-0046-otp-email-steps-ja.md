@@ -8,6 +8,7 @@
 | 提案 | [BE-0046](BE-0046-otp-email-steps-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
+| 実装 PR | [#260](https://github.com/bajutsu-e2e/bajutsu/pull/260) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->

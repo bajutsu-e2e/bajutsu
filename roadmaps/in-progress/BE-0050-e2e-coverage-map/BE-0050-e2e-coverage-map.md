@@ -8,6 +8,7 @@
 | Proposal | [BE-0050](BE-0050-e2e-coverage-map.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
+| Implementing PR | [#204](https://github.com/bajutsu-e2e/bajutsu/pull/204), [#213](https://github.com/bajutsu-e2e/bajutsu/pull/213), [#259](https://github.com/bajutsu-e2e/bajutsu/pull/259), [#306](https://github.com/bajutsu-e2e/bajutsu/pull/306) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->

@@ -172,3 +172,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   runs `scripts/lint_pr.py --title-only` on every PR): the title must be a scoped conventional
   subject, and when the branch name encodes a roadmap id (`claude/be-0050-<slug>`) the title must
   carry the matching `[BE-0050]` prefix — a missing or mismatched id fails the check.
+- **Always link a PR and its BE item, both ways.** Any PR that advances a roadmap item must name
+  that item, and any roadmap item that has been worked on must name the PRs behind it — the link is
+  never one-directional. Concretely: (1) the PR carries the `[BE-NNNN]` title prefix (above) and
+  references the item in its body; (2) the BE item records every PR that delivered code under its
+  `Implementing PR` row (`実装 PR` on the Japanese side) — a single `[#NNN](…)` or a
+  comma-separated list when several PRs landed, kept in both language files. This holds for
+  `In progress` items too, not just shipped ones: when a PR lands, add it to the item's
+  `Implementing PR` row in the same change. A roadmap item is `Implemented` or `In progress` only
+  if its PRs are discoverable from the item, and a roadmap-tied PR is traceable to its item.
