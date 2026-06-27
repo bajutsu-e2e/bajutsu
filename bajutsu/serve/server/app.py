@@ -23,6 +23,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from bajutsu.serve import operations as ops
+from bajutsu.serve import oplog
 from bajutsu.serve.handler import _OAUTH_STATE_COOKIE, _SESSION_COOKIE, _index_html
 from bajutsu.serve.jobs import ServeState
 
@@ -67,6 +68,7 @@ def make_app(state: ServeState) -> FastAPI:
     async def gate(request: Request, call_next: Any) -> Response:
         """Auth + CSRF + hardening headers, mirroring the stdlib handler's `_gate`/`_csrf_ok`/
         `end_headers` exactly so the two backends enforce the same policy."""
+        oplog.bind_request(oplog.new_request_id())
         if state.token is not None:
             path, method = request.url.path, request.method
             open_path = (method == "GET" and path in _OPEN_GET) or (

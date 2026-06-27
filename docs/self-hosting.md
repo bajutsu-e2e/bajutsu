@@ -221,3 +221,42 @@ its own object-store prefix. With no `orgs:` block the backend stays single-tena
 and the shared token plus the GitHub allowlist are the access boundary. The fully managed public
 cloud offering (a hosted Mac worker pool + IaC) is still future work in BE-0015.
 
+## Operational logging
+
+The hosted serve emits its own diagnostic trace — **structured JSON, written to stdout, with
+secrets redacted** — so you can follow one user action across the control plane and its workers.
+This is separate from the three log surfaces you already have: the test subject's **evidence**, the
+live **run output** stream, and the **audit log** of who-did-what. Aggregating these lines (shipping
+stdout to your log stack) is the deployment's job — the tool only produces them.
+
+Two environment variables select the format and verbosity (read once at startup):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BAJUTSU_LOG_FORMAT` | `json` | `json` for the structured serve channel, or `text` for a human-readable line. |
+| `BAJUTSU_LOG_LEVEL` | `INFO` | Standard level name (`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`). |
+
+The deterministic `run` / CI path is unaffected: it never configures this channel, so it stays
+quiet and stdlib-only.
+
+**Correlation.** Each JSON line carries the ids that let you trace one action end to end —
+`request_id` minted at the request boundary, and `job_id` / `org` / `actor` / `run_id` bound on the
+worker — so a control-plane request and the worker run it triggered share the same id *values*
+across processes. A line looks like:
+
+```json
+{"ts": "2026-06-28T12:00:00+00:00", "level": "INFO", "logger": "bajutsu.serve.operations",
+ "event": "run.dispatched", "msg": "job dispatched", "request_id": "…", "org": "acme",
+ "job_id": "…"}
+```
+
+The `event` field names a stable event (`run.dispatched`, `quota.rejected`, `worker.job.started`,
+`worker.job.finished`, `artifact.upload.failed`, …) so you can grep and alert on it.
+
+**Redaction is structural.** A single filter sits at the root logger, so *every* line — including
+ones from third-party libraries — is scrubbed before it is written; correctness does not depend on
+each call site remembering to mask. It masks known secret **values** (the operator token, the OAuth
+client secret, `ANTHROPIC_API_KEY`, and a run's resolved `${secrets.X}` while that run is in flight)
+and sensitive field **names** (`authorization`, `token`, `secret`, `password`, `cookie`, `api_key`),
+replacing them with `[REDACTED]`.
+

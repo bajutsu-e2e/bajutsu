@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0055](BE-0055-operational-logging.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#334](https://github.com/bajutsu-e2e/bajutsu/pull/334) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 

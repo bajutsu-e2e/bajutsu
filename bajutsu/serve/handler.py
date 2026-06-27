@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.serve import operations as ops
+from bajutsu.serve import oplog
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.jobs import ServeState
 from bajutsu.serve.uploads import MAX_UPLOAD_BYTES
@@ -138,6 +139,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             return state.sessions.identity(morsel.value) if morsel is not None else None
 
         def do_GET(self) -> None:
+            oplog.bind_request(oplog.new_request_id())
             if not self._gate():
                 return
             path = urlparse(self.path).path
@@ -196,6 +198,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             return urlparse(origin).netloc == (self.headers.get("Host") or "")
 
         def do_POST(self) -> None:
+            oplog.bind_request(oplog.new_request_id())
             if not self._gate():
                 return
             path = urlparse(self.path).path

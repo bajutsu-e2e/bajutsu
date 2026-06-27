@@ -13,14 +13,17 @@ lazily (inside `_redis_log_bus`), so this module stays safe to import without th
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 from bajutsu import env
 from bajutsu.config import DEFAULT_ORG as _DEFAULT_ORG
+from bajutsu.serve import oplog
 from bajutsu.serve.jobs import Job, ServeState, run_job
 from bajutsu.serve.logbus import LogBus
 from bajutsu.serve.server.object_store import (
@@ -195,18 +198,44 @@ def execute_job_spec(
         org=org,
         actor=spec.get("actor"),
     )
-    run_job(state, job)
-    uploader = store if store is not None else object_store_from_env()
-    if uploader is not None:
-        # A `run` produced a run tree: upload it (scoped to this run id — the worker's CWD is shared
-        # across jobs). A `record` authored a scenario: persist it to per-project storage.
+    # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
+    # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.
+    with oplog.job_context(job_id=job.id, org=org, actor=spec.get("actor")):
+        oplog.log_event(_logger, "worker.job.started", "worker started job")
+        run_job(state, job)
+        # Bind run_id for correlation only: the run resolves `${secrets.X}` inside the `bajutsu run`
+        # subprocess, so those values aren't in this process to seed a run-scoped redactor here.
+        with oplog.run_context(job.run_id) if job.run_id else nullcontext():
+            oplog.log_event(_logger, "worker.job.finished", "worker finished job")
+            uploader = store if store is not None else object_store_from_env()
+            if uploader is not None:
+                _upload_outputs(work, uploader, base, job, spec)
+    return job
+
+
+_logger = logging.getLogger("bajutsu.serve.worker")
+
+
+def _upload_outputs(
+    work: Path, uploader: ObjectStore, base: str, job: Job, spec: dict[str, Any]
+) -> None:
+    """Upload the finished job's outputs; surface (never swallow) an upload failure.
+
+    A `run` produced a run tree: upload it (scoped to this run id — the worker's CWD is shared
+    across jobs). A `record` authored a scenario: persist it to per-project storage.
+    """
+    try:
         if job.run_id:
             _upload_runs(work, uploader, artifact_prefix(base), job.run_id)
         save = spec.get("record_save")
         # Validate the queue payload's shape before indexing — a malformed spec must not crash here.
         if isinstance(save, (list, tuple)) and len(save) == 2 and job.out_path:
             _save_authored(work, uploader, job.out_path, str(save[0]), str(save[1]), prefix=base)
-    return job
+    except Exception:
+        oplog.log_event(
+            _logger, "artifact.upload.failed", "uploading job outputs failed", level=logging.ERROR
+        )
+        raise
 
 
 def _materialize_baselines(work: Path, store: ObjectStore, *, prefix: str = "") -> None:
