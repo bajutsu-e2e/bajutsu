@@ -34,7 +34,7 @@ The design is largely an **assembly of primitives the codebase already has**, no
 
 ### Capture flow (per action)
 
-1. **Snapshot.** The backend takes a fresh `driver.query()` + `driver.screenshot()` and `_screen_size(driver)`, and shows the screenshot in the `serve` UI.
+1. **Snapshot.** The backend takes a fresh `driver.query()` + `driver.screenshot(path)` and `_screen_size(driver)`, and shows the saved screenshot in the `serve` UI.
 2. **Mark.** The author clicks a point (tap / type) or drags two points (swipe) on the screenshot. The browser converts the click from displayed-pixel space → normalized `[0,1]` → points space (mirroring `Action.perform`'s `tap_point` scaling) and POSTs it.
 3. **Hit-test.** The server finds every element whose frame contains the point via `_contains`, and chooses the **most specific actionable** element (smallest frame among `doctor.ACTIONABLE_TRAITS`), so it resolves the button rather than the screen-filling window behind it.
 4. **Resolve + validate.** Build the selector with the stability-ladder policy, then validate uniqueness with `resolve_unique`. If it is not unique, capture **surfaces the ambiguity** to the author (the competing elements) instead of emitting — never guessing.
@@ -54,7 +54,7 @@ The design is largely an **assembly of primitives the codebase already has**, no
 
 ### Timing as condition waits, not sleeps
 
-When an action lands on a screen whose fingerprint (`crawl.py:_fingerprint`) differs from the previous one, capture inserts a `wait` for the first element the next action targets — the same self-sufficiency the AI loop gets from `record._settle_step` — so replay never relies on wall-clock timing.
+When an action lands on a screen whose fingerprint (`crawl.py:fingerprint`) differs from the previous one, capture inserts a `wait` for the first element the next action targets — the same self-sufficiency the AI loop gets from `record._settle_step` — so replay never relies on wall-clock timing.
 
 ### Where it lives
 
@@ -99,6 +99,6 @@ Fits the Linux `make check` gate, no Simulator, minimal mocks (the fake driver /
 
 ## References
 
-[DESIGN §6.5](../../../DESIGN.md); `bajutsu/record.py` (the AI loop, `_settle_step`, screenshot plumbing), `bajutsu/drivers/base.py` (`_contains`, `resolve_unique`, `Selector` / `Element`), `bajutsu/crawl.py` (`Action.as_selector` / `Action.perform` / `_screen_size`, normalized `Node.targets`), `bajutsu/crawl_repro.py` (`_selector`, the "faithful or nothing" stance), `bajutsu/doctor.py` (`score`, `ACTIONABLE_TRAITS`), `bajutsu/scenario/models` (`Step` / `TypeText` / `Swipe`) + `scenario/serialize.py` (`dump_scenario_file`), `bajutsu/serve/` (`handler.py` routing, `operations.py`, `scenarios.py` `ScenarioScope`), `bajutsu/templates/serve.js` + `crawl.html.j2` (the screenshot + overlay precedent).
+[DESIGN §6.5](../../../DESIGN.md); `bajutsu/record.py` (the AI loop, `_settle_step`, screenshot plumbing), `bajutsu/drivers/base.py` (`_contains`, `resolve_unique`, `Selector` / `Element`), `bajutsu/crawl.py` (`Action.as_selector` / `Action.perform` / `_screen_size`, normalized `Node.targets`), `bajutsu/crawl_repro.py` (`_selector`, the "faithful or nothing" stance), `bajutsu/doctor.py` (`score`, `ACTIONABLE_TRAITS`), `bajutsu/scenario/models` (`Step` / `TypeText` / `Swipe`) + `bajutsu/scenario/serialize.py` (`dump_scenario_file`), `bajutsu/serve/` (`handler.py` routing, `operations.py`, `scenarios.py` `ScenarioScope`), `bajutsu/templates/serve.js` + `crawl.html.j2` (the screenshot + overlay precedent).
 
 **Dependencies / related items:** [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) (the `serve` host, `ScenarioScope`, screenshot plumbing this extends), [BE-0013](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) (shares the point → element picker + doctor score; the picker should be one shared component), [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md) (the role demarcation vs the AI loop and the capture → assertion enrichment), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (a future real event source behind the same resolver/emitter interface).
