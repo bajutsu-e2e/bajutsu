@@ -193,7 +193,7 @@ class IdbDriver:
         Recovers fast when the empty clears on the first retry and spaces out later, while
         the cap keeps the total added wait within the previous fixed bound.
         """
-        return min(float(self._EMPTY_BACKOFF_S * (2**attempt)), self._EMPTY_BACKOFF_MAX_S)
+        return min(self._EMPTY_BACKOFF_S * (2**attempt), self._EMPTY_BACKOFF_MAX_S)
 
     def _describe(self) -> list[base.Element]:
         return parse_describe_all(self._run(describe_all_cmd(self.udid)))
