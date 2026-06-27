@@ -8,6 +8,7 @@
 | 提案 | [BE-0087](BE-0087-idb-action-settle-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装中** |
+| 実装 PR | [#295](https://github.com/bajutsu-e2e/bajutsu/pull/295), [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296) |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 

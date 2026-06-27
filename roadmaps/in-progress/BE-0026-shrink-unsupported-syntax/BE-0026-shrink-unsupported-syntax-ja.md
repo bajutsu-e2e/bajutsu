@@ -8,6 +8,7 @@
 | 提案 | [BE-0026](BE-0026-shrink-unsupported-syntax-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
+| 実装 PR | [#210](https://github.com/bajutsu-e2e/bajutsu/pull/210), [#280](https://github.com/bajutsu-e2e/bajutsu/pull/280) |
 | トピック | codegen 網羅性 |
 <!-- /BE-METADATA -->
 
