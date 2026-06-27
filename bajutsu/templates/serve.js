@@ -411,7 +411,7 @@ async function chooseUploadConfig(file){
   $('#cfgname').textContent=d.config;closeFs();await loadShared();
 }
 $('#up-pick').addEventListener('click',()=>$('#up-file').click());
-$('#up-file').addEventListener('change',e=>{if(e.target.files[0])chooseUploadConfig(e.target.files[0]);});
+$('#up-file').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)chooseUploadConfig(f);});  // clear value so re-picking the same .zip still fires change
 (function(){
   const drop=$('#up-drop');if(!drop)return;
   const stop=e=>{e.preventDefault();e.stopPropagation();};

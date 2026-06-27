@@ -150,6 +150,15 @@ def test_find_bundle_config_one_level_down_ignores_macos_cruft(tmp_path: Path) -
     assert find_bundle_config(tmp_path) == sub / "bajutsu.config.yaml"
 
 
+def test_find_bundle_config_in_underscore_named_folder(tmp_path: Path) -> None:
+    # Only the known cruft (`__MACOSX/`, dot-dirs) is skipped — a real top folder that merely starts
+    # with `__` must still be found, not mistaken for cruft and dropped.
+    sub = tmp_path / "__suite"
+    sub.mkdir()
+    (sub / "bajutsu.config.yaml").write_text("targets: {}\n", encoding="utf-8")
+    assert find_bundle_config(tmp_path) == sub / "bajutsu.config.yaml"
+
+
 def test_find_bundle_config_absent(tmp_path: Path) -> None:
     (tmp_path / "readme.txt").write_text("hi", encoding="utf-8")
     assert find_bundle_config(tmp_path) is None

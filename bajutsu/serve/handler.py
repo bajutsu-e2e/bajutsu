@@ -9,6 +9,7 @@ FastAPI control plane so the two backends stay in lockstep (BE-0015).
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
 import tempfile
 from http.cookies import SimpleCookie
@@ -274,6 +275,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             filename = self._qs("name") or "bundle.zip"
             tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)  # noqa: SIM115
             tmp_path = Path(tmp.name)
+            digest = (
+                hashlib.sha256()
+            )  # hash while streaming so the file is read once, not again to hash
             try:
                 remaining = length
                 with tmp:
@@ -282,6 +286,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                         if not chunk:
                             break  # client closed early; `remaining > 0` below catches the short read
                         remaining -= len(chunk)
+                        digest.update(chunk)
                         tmp.write(chunk)
                 if remaining > 0:
                     # Body ended before Content-Length: a truncated upload. Fail explicitly (don't
@@ -290,7 +295,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.close_connection = True
                     self._json({"error": "upload incomplete (body ended early)"}, 400)
                     return
-                self._json(*ops.bind_upload_config(state, tmp_path, filename, actor=self._actor()))
+                self._json(
+                    *ops.bind_upload_config(
+                        state, tmp_path, filename, sha256=digest.hexdigest(), actor=self._actor()
+                    )
+                )
             except OSError:
                 self.close_connection = True
                 self._json({"error": "upload interrupted"}, 400)

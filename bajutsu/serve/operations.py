@@ -10,7 +10,6 @@ SSE streaming, static asset serving).
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
@@ -561,15 +560,6 @@ def start_run(
 # --- Upload a bundle as the active config (BE-0073): config + scenarios + app binary as one zip ---
 
 
-def _sha256_file(path: Path) -> str:
-    """The sha256 of *path*, read in chunks (the upload can be large). Recorded as run provenance."""
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        while chunk := f.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _safe_filename(name: str) -> str:
     """A display-safe basename for the uploaded zip (provenance only): strip any directory and
     non-printable characters, bound the length, and fall back to a default when nothing remains."""
@@ -578,23 +568,24 @@ def _safe_filename(name: str) -> str:
 
 
 def bind_upload_config(
-    state: ServeState, zip_path: Path, filename: str, *, actor: str | None = None
+    state: ServeState, zip_path: Path, filename: str, *, sha256: str, actor: str | None = None
 ) -> tuple[Any, int]:
     """Bind an uploaded zip bundle as the active config (BE-0073) — a third source in the "Open
     config" UI, alongside the file browser and the Git picker.
 
     The zip is a self-contained checkout — a ``bajutsu.config.yaml``, its scenario tree, and the
-    built ``appPath`` binary it names — delivered over the wire. We hash it, extract it into a
-    serve-owned sandbox, then bind it exactly like the Git source binds a checkout (`bind_git_config`):
-    `state.config` points at the bundle's config and `state.cwd` at the bundle root, so the config's
-    relative `appPath`/`scenarios`/`baselines` resolve against the extracted tree and the Replay /
-    Record / Crawl tabs all run from it. Every target's path fields are confined to the bundle at bind
-    (`Effective.rebased`), so an uploaded config can't point serve's scenario/build logic at host
-    paths outside the tree (BE-0051). Only one bundle is bound at a time — binding any other config
-    removes this sandbox (`state.bind_upload`). Returns `{config, targets, source}` like the other
-    sources; on any validation failure the freshly-extracted dir is removed and a 4xx is returned."""
+    built ``appPath`` binary it names — delivered over the wire. *sha256* is the digest the handler
+    computed while streaming the upload to *zip_path* (so the file is read once, not again to hash).
+    We extract it into a serve-owned sandbox, then bind it exactly like the Git source binds a
+    checkout (`bind_git_config`): `state.config` points at the bundle's config and `state.cwd` at the
+    bundle root, so the config's relative `appPath`/`scenarios`/`baselines` resolve against the
+    extracted tree and the Replay / Record / Crawl tabs all run from it. Every target's path fields
+    are confined to the bundle at bind (`Effective.rebased`), so an uploaded config can't point
+    serve's scenario/build logic at host paths outside the tree (BE-0051). Only one bundle is bound at
+    a time — binding any other config removes this sandbox (`state.bind_upload`). Returns
+    `{config, targets, source}` like the other sources; on any validation failure the freshly-extracted
+    dir is removed and a 4xx is returned."""
     size = zip_path.stat().st_size
-    sha256 = _sha256_file(zip_path)
     state.uploads_dir.mkdir(parents=True, exist_ok=True)
     dest = Path(tempfile.mkdtemp(dir=state.uploads_dir))
     try:

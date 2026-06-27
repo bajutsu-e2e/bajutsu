@@ -36,6 +36,11 @@ _CHUNK = 1024 * 1024  # stream entries in 1 MiB chunks so a huge member never lo
 # The config file a bundle must contain at its root (or one level down, see find_bundle_config).
 _CONFIG_NAMES = ("bajutsu.config.yaml", "bajutsu.config.yml")
 
+# Top-level entries that aren't the bundle's real nesting folder: the `__MACOSX/` dir macOS Archive
+# Utility adds beside the zipped folder. Dot-prefixed dirs (`.git/`, …) are skipped separately, so a
+# legitimately-named folder (even one starting with `__`) is never mistaken for cruft.
+_CRUFT_DIRS = frozenset({"__MACOSX"})
+
 
 class BundleError(ValueError):
     """An uploaded bundle is rejected: a malformed zip, a zip-slip entry, or a crossed resource
@@ -163,9 +168,14 @@ def find_bundle_config(root: Path) -> Path | None:
     for name in _CONFIG_NAMES:
         if (root / name).is_file():
             return root / name
-    # A zip made from a folder nests everything under one dir. Ignore macOS / VCS cruft (a
-    # `__MACOSX/` folder Archive Utility adds, a `.git/`) so the one real top folder is still found.
-    subdirs = [d for d in root.iterdir() if d.is_dir() and not d.name.startswith((".", "__"))]
+    # A zip made from a folder nests everything under one dir. Ignore macOS / VCS cruft (the
+    # `__MACOSX/` folder Archive Utility adds, dot-dirs like `.git/`) so the one real top folder is
+    # still found — but only the *known* cruft, so a real folder named e.g. `__suite/` is not skipped.
+    subdirs = [
+        d
+        for d in root.iterdir()
+        if d.is_dir() and not d.name.startswith(".") and d.name not in _CRUFT_DIRS
+    ]
     if len(subdirs) == 1:
         for name in _CONFIG_NAMES:
             if (subdirs[0] / name).is_file():
