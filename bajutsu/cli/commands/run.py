@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,6 +35,25 @@ from bajutsu.scenario import (
     read_csv,
     select_scenarios,
 )
+
+
+def _resolve_lanes(
+    actuator: str,
+    udid: str,
+    workers: int,
+    resolve_udid: Callable[[str], str],
+) -> tuple[list[str], int]:
+    """Resolve the device pool and worker count for the selected actuator.
+
+    Web has no simctl udid: each lane is a near-free BrowserContext, so `--workers N` alone is
+    N parallel lanes (BE-0054), keyed by synthetic udids. For idb, `--udid` is a comma list of
+    concrete devices and `--workers` is capped to that pool size.
+    """
+    if actuator == "playwright":
+        workers = max(1, workers)
+        return [f"web-{i}" for i in range(workers)], workers
+    udids = [resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
+    return udids, max(1, min(workers, len(udids)))
 
 
 def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
@@ -274,17 +294,11 @@ def run(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    if actuator == "playwright":
-        # Web has no simctl udid to resolve: one browser lane, keyed by a dummy udid. Network
-        # collection is native (Playwright observes the page), so `--network` works here too
-        # (BE-0054) — the pool builds a page-hooked collector instead of an HTTP receiver.
-        udids = ["web"]
-        workers = 1
-    else:
-        # The idb CLI needs concrete UDIDs (not the simctl "booted" alias). `--udid` may be a
-        # comma list — a device pool for parallel runs (`--workers`), capped to the pool size.
-        udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
-        workers = max(1, min(workers, len(udids)))
+    # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054), each
+    # built on its own worker thread (Playwright's sync API is thread-affine). Network collection
+    # is native there, so `--network` works per lane. For idb, `--udid` is a concrete comma list
+    # capped to the pool size. (The `--udid` "booted" default is unused on web.)
+    udids, workers = _resolve_lanes(actuator, udid, workers, _env.resolve_udid)
     # --dismiss-alerts / --no-dismiss-alerts, when given, forces every scenario's guard on/off
     # (preserving any per-scenario instruction); otherwise each scenario's own `dismissAlerts`
     # (default on) decides. Mirrors the --erase override.
