@@ -9,7 +9,20 @@ import pytest
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import capture, write_elements
+from bajutsu.evidence import FileSink, capture, write_elements
+
+
+class _StubInterval:
+    """A finished recording, standing in for the subprocess-backed `Interval` (an external
+    boundary): `finish_scenario_intervals` only needs `stop()` / `kind` / `provider`."""
+
+    def __init__(self, path: Path, kind: str = "deviceLog", provider: str = "idb") -> None:
+        self._path = path
+        self.kind = kind
+        self.provider = provider
+
+    def stop(self) -> Path:
+        return self._path
 
 
 def _el(identifier: str, label: str) -> base.Element:
@@ -124,3 +137,37 @@ def test_filesink_without_web_provider_uses_udid_gate(tmp_path: Path) -> None:
     # No udid and no web provider: intervals are skipped (the fake/headless path).
     sink = FileSink(tmp_path, udid=None)
     assert sink.start_scenario_intervals("00-s", ["deviceLog"]) == []
+
+
+def test_finish_scenario_intervals_redacts_then_emits_a_readable_file(tmp_path: Path) -> None:
+    sink = FileSink(tmp_path, udid="u", secrets=["topsecret"])
+    f = tmp_path / "deviceLog.txt"
+    f.write_text("auth token=topsecret here", encoding="utf-8")
+    out = sink.finish_scenario_intervals("s", [_StubInterval(f)])
+    assert [a.name for a in out] == ["deviceLog.txt"]
+    assert "topsecret" not in f.read_text(encoding="utf-8")
+
+
+def test_finish_scenario_intervals_drops_an_artifact_it_cannot_redact(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Redaction is a security control: if the evidence file can't be read to scrub it, the artifact
+    # must not ship (fail closed) rather than reach the report unredacted. A directory at the file
+    # path makes read_text raise IsADirectoryError (a real OSError) without mocking the filesystem.
+    sink = FileSink(tmp_path, udid="u", secrets=["topsecret"])
+    unreadable = tmp_path / "deviceLog.txt"
+    unreadable.mkdir()
+    with caplog.at_level("WARNING"):
+        out = sink.finish_scenario_intervals("s", [_StubInterval(unreadable)])
+    assert out == []
+    assert any("redact" in r.message.lower() for r in caplog.records)
+
+
+def test_finish_scenario_intervals_emits_when_no_redactor_is_active(tmp_path: Path) -> None:
+    # With no secrets configured the redactor is inactive, so an unreadable file is not a leak risk
+    # and is still emitted (the fail-closed guard is scoped to the active-redaction case).
+    sink = FileSink(tmp_path, udid="u")
+    f = tmp_path / "deviceLog.txt"
+    f.write_text("nothing secret", encoding="utf-8")
+    out = sink.finish_scenario_intervals("s", [_StubInterval(f)])
+    assert [a.name for a in out] == ["deviceLog.txt"]
