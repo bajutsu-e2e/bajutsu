@@ -88,7 +88,7 @@ token, never the value.
 
 ### Mailbox (the `email` step)
 
-`apps.<name>.mailbox` configures the generic HTTP mailbox the [`email`](scenarios.md#email-poll-a-mailbox-for-a-received-code)
+`targets.<name>.mailbox` configures the generic HTTP mailbox the [`email`](scenarios.md#email-poll-a-mailbox-for-a-received-code)
 step polls for a 2FA / verification code, so the endpoint and credentials live in config (not the
 scenario):
 
@@ -107,7 +107,7 @@ The defaults match the common shape (an array of messages with `to` / `subject` 
 `receivedAt` / `id`), so a conforming API needs no `messages` / `fields` mapping. The `email` step
 reads the inbox over HTTP, keeps only messages newer than the step's start (keyed on `id`), waits
 for one that matches, and extracts the code — deterministic and LLM-free
-([BE-0046](../roadmaps/in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### Orgs (`orgs:`, the multi-tenant server backend)
 

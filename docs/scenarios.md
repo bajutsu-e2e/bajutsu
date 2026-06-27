@@ -284,7 +284,7 @@ later steps. Touching no device, it is the one device-independent action here.
 password locally — from the shared `secret` (base32; keep it in `${secrets.*}`, not in the YAML) and
 the current time — and stores the current code in `${vars.<var>}` for a later `type` / `assert`.
 This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
-function of the secret and the clock ([BE-0046](../roadmaps/in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+function of the secret and the clock ([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### `email` (poll a mailbox for a received code)
 
@@ -297,7 +297,7 @@ function of the secret and the clock ([BE-0046](../roadmaps/in-progress/BE-0046-
 ```
 
 `email` waits for a 2FA / verification code delivered by email: it polls a generic HTTP mailbox
-(configured under `apps.<name>.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
+(configured under `targets.<name>.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
 until a message that arrived **after the step started** satisfies `match`, then extracts the value
 from its body by the `bodyMatches` regex (first capturing group, or the whole match) into
 `${vars.<var>}`. The wait is a **condition wait with a mandatory `timeout`** (no fixed sleep): a
@@ -305,7 +305,7 @@ timeout, a matched message whose body the regex can't hit, or an unreachable / n
 clean step failure — never a silent wrong value. Only mail newer than the step's start counts (keyed
 on message id, so a stale code from an earlier run is never matched), and among new matches the
 newest wins. Deterministic and LLM-free; the endpoint and credentials live in config-referenced
-`${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+`${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### Device & system control (iOS)
 

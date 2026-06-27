@@ -33,12 +33,14 @@ def build_mailbox_reader(cfg: Mailbox | None, bindings: Mapping[str, str]) -> Ma
     fields = dict(cfg.fields)
 
     class _HttpMailbox:
-        def fetch(self) -> list[MailboxMessage]:
+        def fetch(self, timeout: float) -> list[MailboxMessage]:
             if not url.startswith(("http://", "https://")):
                 raise base.SelectorError(f"email: mailbox url must be http/https, got {url!r}")
             req = urllib.request.Request(url, headers=headers)  # noqa: S310 (scheme checked above)
             try:
-                with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 (http/https only)
+                # Bound a single request by the poll's remaining budget (capped at 30s), so one slow
+                # request can't overrun the step's `email.timeout`.
+                with urllib.request.urlopen(req, timeout=min(timeout, 30.0)) as resp:  # noqa: S310 (http/https only)
                     payload = json.loads(resp.read().decode("utf-8", errors="replace"))
             except urllib.error.HTTPError as e:
                 raise base.SelectorError(f"email: mailbox returned status {e.code}") from e

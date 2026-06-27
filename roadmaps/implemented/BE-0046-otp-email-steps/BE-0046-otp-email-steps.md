@@ -67,7 +67,7 @@ Mapping and contract:
 
 Secrets (TOTP seeds, mailbox credentials, API base URLs) are referenced as `${secrets.X}` and
 declared in config, so the scenario file stores tokens, never values, and they are auto-masked in
-evidence. Endpoint configuration shared across scenarios lives in `apps.<name>`.
+evidence. Endpoint configuration shared across scenarios lives in `targets.<name>`.
 
 Prime directives preserved:
 
@@ -91,7 +91,7 @@ regex. This reuses the `http` step's HTTP plumbing (BE-0036), keeps the tool pro
 mailbox with a readable HTTP API works — Mailosaur, MailSlurp, a team's own test SMTP-to-HTTP
 bridge), and adds no provider SDK dependency.
 
-**Config (`apps.<name>.mailbox`).** The endpoint and how to read its response live in config, so the
+**Config (`targets.<name>.mailbox`).** The endpoint and how to read its response live in config, so the
 scenario stays app-agnostic and credential-free:
 
 ```yaml
@@ -162,7 +162,7 @@ It follows the `http`/`saveBody` precedent for producing a value into `vars.*`, 
 and emits a labeled `// TODO` from codegen.
 
 The **`email`** slice ships, completing the item. `email: { match, extract, timeout }`
-(`bajutsu/scenario/models/actions.py`) polls the configured `apps.<name>.mailbox`
+(`bajutsu/scenario/models/actions.py`) polls the configured `targets.<name>.mailbox`
 (`bajutsu/config.py`) until a message arriving *after* the step started satisfies `match`, then
 extracts the value by `bodyMatches` into `${vars.<var>}`. The match / extraction / response-shape
 reading / after-start selection are pure, gate-tested functions (`bajutsu/mailbox.py`); the bounded

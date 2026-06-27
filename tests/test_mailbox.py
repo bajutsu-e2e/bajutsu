@@ -159,7 +159,7 @@ class _FakeMailbox:
         self._responses = list(responses)
         self.calls = 0
 
-    def fetch(self) -> list[MailboxMessage]:
+    def fetch(self, timeout: float = 0) -> list[MailboxMessage]:
         r = self._responses[min(self.calls, len(self._responses) - 1)]
         self.calls += 1
         if isinstance(r, Exception):
@@ -310,10 +310,10 @@ def test_on_blocked_retry_preserves_the_mailbox() -> None:
     from bajutsu.orchestrator import AlertEvent
 
     msg = _msg(id="new", subject="Verify", body="PIN 135790", at="2026-01-01T00:01:00Z")
-    # First attempt (timeout 1s, ~1s poll) makes 3 fetches, all empty -> times out -> on_blocked
-    # fires -> retry baselines empty (4th fetch) then sees the message (5th) -> succeeds via the same
-    # mailbox. Were the retry to drop the mailbox, it would report "no mailbox configured" instead.
-    mailbox = _FakeMailbox([], [], [], [], [msg])
+    # First attempt (timeout 1s, ~1s poll) baselines + polls empty -> times out -> on_blocked fires
+    # -> retry baselines empty then sees the message -> succeeds via the same mailbox. Were the retry
+    # to drop the mailbox, it would report "no mailbox configured" instead.
+    mailbox = _FakeMailbox([], [], [], [msg])
     scenario = Scenario.model_validate(
         {
             "name": "x",

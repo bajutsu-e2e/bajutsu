@@ -173,7 +173,7 @@ class Email(_Model):
 
     `match` selects the awaited message, `extract` pulls the value, and `timeout` (seconds, required)
     bounds the poll — a condition wait, never a fixed sleep (BE-0046). The mailbox endpoint lives in
-    config (`apps.<name>.mailbox`), so the scenario stays app-agnostic and credential-free.
+    config (`targets.<name>.mailbox`), so the scenario stays app-agnostic and credential-free.
     """
 
     match: EmailMatch

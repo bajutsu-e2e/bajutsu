@@ -80,23 +80,24 @@ def _do_email(
     unreachable / non-2xx endpoint) propagates to the caller's handler, which records it as a failure.
     """
     if mailbox is None:
-        return False, "email: no mailbox configured (set apps.<name>.mailbox)"
+        return False, "email: no mailbox configured (set targets.<name>.mailbox)"
     if bindings is None:  # defensive: the run loop always passes a dict for a step
         return True, ""
-    baseline = frozenset(m.id for m in mailbox.fetch())
     deadline = clock.now() + email.timeout
+    baseline = frozenset(m.id for m in mailbox.fetch(email.timeout))
     while True:
-        picked = select(mailbox.fetch(), email.match, baseline)
+        remaining = deadline - clock.now()
+        if remaining <= 0:
+            return False, f"email: no matching message within {email.timeout:g}s"
+        # Bound each fetch by the time left, so a single hung request can't overrun email.timeout.
+        picked = select(mailbox.fetch(remaining), email.match, baseline)
         if picked is not None:
             value = extract_value(picked.body, email.extract)
             if value is None:
                 return False, "email: matched a message but extract regex did not match its body"
             bindings[f"vars.{email.extract.var}"] = value
             return True, ""
-        remaining = deadline - clock.now()
-        if remaining <= 0:
-            return False, f"email: no matching message within {email.timeout:g}s"
-        clock.sleep(min(_EMAIL_POLL, remaining))
+        clock.sleep(min(_EMAIL_POLL, deadline - clock.now()))
 
 
 def _run_step_body(

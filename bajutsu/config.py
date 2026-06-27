@@ -52,7 +52,7 @@ class LaunchServer(_Model):
 
 
 class Mailbox(_Model):
-    """A generic HTTP mailbox the `email` step polls (`apps.<name>.mailbox`, BE-0046).
+    """A generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046).
 
     `url` is the inbox endpoint (GET; commonly `${secrets.*}`), `headers` any auth. The optional
     response mapping absorbs a provider's JSON shape without per-provider code: `messages` is a
@@ -243,7 +243,7 @@ class Effective:
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
-    # Generic HTTP mailbox the `email` step polls (`apps.<name>.mailbox`, BE-0046). None = no
+    # Generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046). None = no
     # mailbox configured, so an `email` step fails cleanly.
     mailbox: Mailbox | None = None
     # Built .app to install on each device before launch (if missing). None = manual install.

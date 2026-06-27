@@ -67,7 +67,7 @@
 
 シークレット（TOTP シード、メールボックスの認証情報、API のベース URL）は `${secrets.X}` として参照
 し、config で宣言します。これによりシナリオファイルはトークンを保持し値は保持せず、証跡では自動的
-にマスクされます。複数シナリオで共有するエンドポイント設定は `apps.<name>` に置きます。
+にマスクされます。複数シナリオで共有するエンドポイント設定は `targets.<name>` に置きます。
 
 prime directive の保持：
 
@@ -92,7 +92,7 @@ prime directive の保持：
 （HTTP API で読める受信箱ならどれでも動きます。Mailosaur、MailSlurp、チーム自前のテスト用
 SMTP-to-HTTP ブリッジなど）、プロバイダ SDK への依存を増やしません。
 
-**設定（`apps.<name>.mailbox`）。** エンドポイントと、そのレスポンスの読み方を config に置きます。これで
+**設定（`targets.<name>.mailbox`）。** エンドポイントと、そのレスポンスの読み方を config に置きます。これで
 シナリオはアプリ非依存で、認証情報も持ちません。
 
 ```yaml
@@ -160,7 +160,7 @@ apps:
 倣い、デバイスには触れず、codegen はラベル付き `// TODO` を出力します。
 
 **`email`** スライスを出荷し、本項目を完了します。`email: { match, extract, timeout }`
-（`bajutsu/scenario/models/actions.py`）は、設定した `apps.<name>.mailbox`（`bajutsu/config.py`）を、
+（`bajutsu/scenario/models/actions.py`）は、設定した `targets.<name>.mailbox`（`bajutsu/config.py`）を、
 ステップ開始*後*に届いたメッセージが `match` を満たすまでポーリングし、その本文から `bodyMatches` で値を
 `${vars.<var>}` に取り出します。match／extract／レスポンス形の読み取り／開始後の選択は純粋でゲート検証済みの
 関数です（`bajutsu/mailbox.py`）。上限つきポーリングは run ループ（`_do_email`、`orchestrator/loop.py`）で、
