@@ -256,6 +256,7 @@ def run_command(
     baselines: str = "",
     headed: bool | None = None,
     runs_dir: str = "",
+    upload_exec: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
@@ -299,6 +300,8 @@ def run_command(
         cmd += ["--baselines", baselines]
     if runs_dir:
         cmd += ["--runs-dir", runs_dir]
+    if upload_exec:
+        cmd += ["--upload-exec", upload_exec]
     return cmd
 
 
@@ -314,6 +317,7 @@ def record_command(
     dismiss_alerts: bool | None = None,
     headed: bool | None = None,
     config: str = "bajutsu.config.yaml",
+    upload_exec: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu record --out OUT --target … --goal …`` argv for an authoring request —
     the Tier-1 record loop the Record tab drives.  ``agent`` picks the brain ("api" /
@@ -352,6 +356,8 @@ def record_command(
         cmd += ["--headed"]
     elif headed is False:
         cmd += ["--no-headed"]
+    if upload_exec:
+        cmd += ["--upload-exec", upload_exec]
     return cmd
 
 
@@ -371,6 +377,7 @@ def crawl_command(
     config: str = "bajutsu.config.yaml",
     resume_src: str = "",
     resume_key: str = "",
+    upload_exec: str = "",
 ) -> list[str]:
     """The ``python -m bajutsu crawl --target … --out …`` argv for a crawl request — the explorer the
     Crawl tab drives.  ``out`` is the run dir the screen map is streamed into
@@ -421,6 +428,8 @@ def crawl_command(
     if resume_src and resume_key:
         # Resuming appends to the existing run: don't erase the device's app state mid-walk.
         cmd += ["--resume-src", resume_src, "--resume-key", resume_key, "--no-erase"]
+    if upload_exec:
+        cmd += ["--upload-exec", upload_exec]
     return cmd
 
 

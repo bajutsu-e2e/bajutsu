@@ -102,6 +102,13 @@ def record(
         help="web backend: author against a visible (headed, slow-motion) browser instead of "
         "headless; default leaves the target's `headless` config",
     ),
+    upload_exec: str = typer.Option(
+        "",
+        "--upload-exec",
+        hidden=True,
+        help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
+        "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app with AI toward a goal and write the recorded scenario.
@@ -141,7 +148,7 @@ def record(
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise. Stopped when this command exits (atexit).
     try:
-        stop_server = start_launch_server(eff)
+        stop_server, _exec_decision = start_launch_server(eff, upload_exec=upload_exec or None)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

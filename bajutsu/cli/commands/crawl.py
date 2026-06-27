@@ -124,6 +124,13 @@ def crawl(
         help="web backend: crawl a visible (headed, slow-motion) browser instead of headless; "
         "default leaves the target's `headless` config",
     ),
+    upload_exec: str = typer.Option(
+        "",
+        "--upload-exec",
+        hidden=True,
+        help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
+        "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app breadth-first and write a screen map (`screenmap.json`).
@@ -225,7 +232,7 @@ def crawl(
     # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
     # command exits (atexit), since the crawl is a single linear flow with no run-style teardown.
     try:
-        stop_server = start_launch_server(eff)
+        stop_server, _exec_decision = start_launch_server(eff, upload_exec=upload_exec or None)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

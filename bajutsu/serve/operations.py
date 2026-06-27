@@ -545,6 +545,9 @@ def start_run(
         else ("baselines" if on_worker else str(state.baselines_dir)),
         headed=_bool_flag(body, "headed"),
         runs_dir=runs_dir,
+        # Govern the uploaded bundle's launchServer command (BE-0090); a local/Git config is
+        # operator-trusted and ungoverned, so it gets no flag.
+        upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, target)
     if state.upload is not None:
@@ -687,6 +690,7 @@ def start_record(
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
         headed=_bool_flag(body, "headed"),
         config=config_arg,
+        upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, body["target"])
     job, capped = _register_and_dispatch(
@@ -752,6 +756,7 @@ def start_crawl(
         config=str(cfg),
         resume_src=resume_src if resuming else "",
         resume_key=resume_key if resuming else "",
+        upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, target)
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).

@@ -37,9 +37,10 @@ def test_no_launch_server_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     # No `launchServer` declared: never shells out, and the stop callable is a no-op.
     started: list[Any] = []
     monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
-    stop = ls.start_launch_server(_eff())
+    stop, decision = ls.start_launch_server(_eff())
     stop()
     assert started == []
+    assert decision is None  # no launchServer → nothing governed
 
 
 def test_reuses_already_serving(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -47,9 +48,10 @@ def test_reuses_already_serving(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: True)
     started: list[Any] = []
     monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
-    stop = ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
+    stop, decision = ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
     stop()
     assert started == []
+    assert decision is None  # ungoverned (local/Git) reuse records no policy decision
 
 
 def test_starts_and_waits_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -60,7 +62,7 @@ def test_starts_and_waits_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: fake)
     terminated: list[Any] = []
     monkeypatch.setattr(ls, "_terminate", lambda proc, say: terminated.append(proc))
-    stop = ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
+    stop, _decision = ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"))
     assert terminated == []  # not torn down until we stop it
     stop()
     assert terminated == [fake]
@@ -127,6 +129,60 @@ def test_probe_status_branches(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(ls.urllib.request, "urlopen", _raise)
     assert ls._probe("http://x/") is False  # a live 5xx is "up" but not "ready"
+
+
+def test_upload_exec_reuse_accepts_an_external_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    # reuse: never runs the uploaded cmd; an externally-answering readyUrl is accepted (decision reused).
+    monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: True)
+    started: list[Any] = []
+    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
+    stop, decision = ls.start_launch_server(
+        _eff("launchServer: { cmd: 'serve it' }"), upload_exec="reuse"
+    )
+    stop()
+    assert started == []  # uploaded cmd never runs
+    assert decision == {
+        "decision": "reused",
+        "field": "launchServer",
+        "source": None,
+        "image": None,
+    }
+
+
+def test_upload_exec_deny_fails_loud_with_no_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    # deny + nothing answering readyUrl: the run that needs the server fails loud (no bare-host run).
+    monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
+    started: list[Any] = []
+    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
+    with pytest.raises(RuntimeError, match="deny"):
+        ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"), upload_exec="deny")
+    assert started == []  # never reaches the bare-host Popen
+
+
+def test_upload_exec_unknown_mode_fails_loud() -> None:
+    with pytest.raises(RuntimeError, match="unknown --upload-exec"):
+        ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"), upload_exec="bogus")
+
+
+def test_upload_exec_sandbox_delegates_to_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    # sandbox mode hands off to the sandbox module rather than the bare-host Popen.
+    from bajutsu.runner import sandbox
+
+    called: list[Any] = []
+
+    def _fake_sandbox(eff: Any, **_k: Any) -> Any:
+        called.append(eff)
+        return (lambda: None), {"decision": "sandboxed"}
+
+    monkeypatch.setattr(sandbox, "start_sandboxed_server", _fake_sandbox)
+    started: list[Any] = []
+    monkeypatch.setattr(ls.subprocess, "Popen", lambda *a, **k: started.append(a))
+    _stop, decision = ls.start_launch_server(
+        _eff("launchServer: { cmd: 'serve it', port: 8080, dockerImage: 'img' }"),
+        upload_exec="sandbox",
+    )
+    assert len(called) == 1 and started == []
+    assert decision == {"decision": "sandboxed"}
 
 
 def test_terminate_kills_a_real_process() -> None:
