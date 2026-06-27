@@ -8,7 +8,6 @@
 | Proposal | [BE-0089](BE-0089-merge-time-be-id-allocation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -17,14 +16,14 @@
 A roadmap item's permanent `BE-NNNN` id is assigned the moment its pull request opens: the
 [`roadmap-id`](../../../.github/workflows/roadmap-id.yml) workflow runs on `pull_request`,
 allocates the next free number, claims it atomically as a `refs/be-claims/*` ref, pushes the rename
-back onto the branch, and rewrites the PR title's `BE-0089` to the allocated id.
+back onto the branch, and rewrites the PR title's `BE-XXXX` to the allocated id.
 [BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
 hardened that path so two branches can never take the same number. The consequence is that a number
 is **spent at PR-open time — before the proposal is accepted.**
 
 This item moves allocation to **after the PR merges**, and runs it **on `main`**. An item keeps the
-`BE-0089` placeholder all the way through authoring, review, and the merge itself: the branch is
-merged *as-is*, with `BE-0089` intact, by auto-merge (or a merge queue). Then a workflow triggered by
+`BE-XXXX` placeholder all the way through authoring, review, and the merge itself: the branch is
+merged *as-is*, with `BE-XXXX` intact, by auto-merge (or a merge queue). Then a workflow triggered by
 the push to `main` runs the existing allocator against `main`'s tree, renames the placeholder to the
 next free `BE-NNNN`, and commits the result directly to `main`. The number is therefore assigned only
 to an item that has actually shipped, in merge order — so the `BE-NNNN` sequence on `main` is
@@ -79,30 +78,30 @@ dismissal repo-wide (blunt — every post-approval push then keeps its approval)
 that GitHub does not reliably count toward required reviews.
 
 Allocating on `main` after the merge sidesteps the whole problem: the reviewed branch is merged
-exactly as approved, with `BE-0089` still in it, and the number is assigned by a commit to `main`,
+exactly as approved, with `BE-XXXX` still in it, and the number is assigned by a commit to `main`,
 not to the branch. No post-approval push to the branch means no dismissal — and, as a bonus, the
 trigger collapses from "approval, then auto-merge, then rename" to a single "push to `main`".
 
 ## Detailed design
 
 The allocation logic ([`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py))
-is reused **unchanged**: it already finds every `BE-0089-<slug>/` placeholder in the working tree,
+is reused **unchanged**: it already finds every `BE-XXXX-<slug>/` placeholder in the working tree,
 allocates `max(used) + 1` per item (sorted by slug for determinism), `git mv`s the directory and
 files, rewrites the in-file token, and fixes the index rows. What changes is *where* and *when* it
 runs — against `main`, after a merge — plus the workflow plumbing around it.
 
 ### Flow
 
-1. The `ideation` skill authors the item as `BE-0089-<slug>` (unchanged). The PR opens with a
-   `[BE-0089]` title.
-2. The reviewer reviews and approves the `BE-0089` content. **No allocation happens on the branch.**
-3. Auto-merge (or the merge queue) merges the branch **as-is**, `BE-0089` intact. No commit is pushed
+1. The `ideation` skill authors the item as `BE-XXXX-<slug>` (unchanged). The PR opens with a
+   `[BE-XXXX]` title.
+2. The reviewer reviews and approves the `BE-XXXX` content. **No allocation happens on the branch.**
+3. Auto-merge (or the merge queue) merges the branch **as-is**, `BE-XXXX` intact. No commit is pushed
    to the branch after approval, so no approval is dismissed.
 4. The merge is a push to `main`. A `roadmap-id` job triggered by `push: main` runs the allocator
    against `main`, commits the rename + regenerated index directly to `main`, and posts a comment on
    the merged PR announcing the allocated `BE-NNNN` (with a link to the item).
 
-The PR title is **not** rewritten — it keeps its `[BE-0089]` prefix from authoring through merge.
+The PR title is **not** rewritten — it keeps its `[BE-XXXX]` prefix from authoring through merge.
 The real number is never known on the branch (it is allocated only after the merge), so rewriting the
 title would mean editing it post-merge for no functional gain; a bot comment is the natural, durable
 place to record the allocated id and link it to the merged PR.
@@ -127,7 +126,7 @@ permissions:
 The job checks out `main`, runs the allocator, and pushes the renumber commit back to `main`:
 
 ```bash
-out="$(python3 scripts/allocate_roadmap_ids.py)"      # renames BE-0089 dirs in place
+out="$(python3 scripts/allocate_roadmap_ids.py)"      # renames BE-XXXX dirs in place
 echo "$out" | grep -q '^Allocated ' || exit 0          # no placeholders -> no-op (see self-trigger)
 python3 scripts/build_roadmap_index.py                 # add the now-numbered rows
 git add -A && git commit -m "docs(roadmap): allocate BE IDs for merged placeholder items"
@@ -178,12 +177,12 @@ the bypass identity*).
 
 Each load-bearing assumption, made concrete:
 
-- **A transient `BE-0089` on `main` keeps the gate green.** All three roadmap tools key on
+- **A transient `BE-XXXX` on `main` keeps the gate green.** All three roadmap tools key on
   `^BE-(\d{4})-` and skip anything else: [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)
   and [`tests/test_roadmap_index.py`](../../../tests/test_roadmap_index.py) (through
   [`build_roadmap_index.py`](../../../scripts/build_roadmap_index.py), whose `load_items` `continue`s
   on a non-numbered dir) and [`promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py).
-  So a `BE-0089` directory is invisible to the format check, contributes no index row (no drift), and
+  So a `BE-XXXX` directory is invisible to the format check, contributes no index row (no drift), and
   is not promoted. Empirically, `make check` passes with this very placeholder item present in the
   tree. There is therefore **no red window** on `main` between the merge commit and the renumber
   commit.
@@ -226,7 +225,7 @@ structurally small rather than trusting the secret alone:
   never a PR branch's copy. It never checks out untrusted PR-head code under the privileged token (the
   classic `pull_request_target` escalation), so no attacker-supplied code runs in the job.
 - **The output is bounded and verified.** The legitimate push is always the same narrow mechanical
-  diff — a `BE-0089` → `BE-NNNN` rename plus the regenerated index, under `roadmaps/**` only. A guard
+  diff — a `BE-XXXX` → `BE-NNNN` rename plus the regenerated index, under `roadmaps/**` only. A guard
   re-runs the allocator in check mode (or diffs the pushed commit) and fails if the bypass commit
   touches anything outside `roadmaps/**` or deviates from the expected rename, capping the blast radius
   of any misuse to that shape.
@@ -263,7 +262,7 @@ family as
 [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
 BE-0061,
 [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md),
-and [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md).
+and [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md).
 
 ## Alternatives considered
 
@@ -280,7 +279,7 @@ and [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.m
 - **Renumber via a bot PR instead of a direct push to `main`.** Tempting as a way to avoid a direct
   push, but it is *not* a way to avoid the bypass requirement: a renumber PR must still merge into
   protected `main`, and auto-merge does not waive required reviews, so the bot must bypass (or satisfy)
-  them anyway. It only adds a second PR and a longer `BE-0089` window for no reduction in the
+  them anyway. It only adds a second PR and a longer `BE-XXXX` window for no reduction in the
   permission it needs. Kept only as a stylistic option where a visible PR trail for the renumber is
   wanted.
 - **Keep PR-open allocation; switch `max + 1` to smallest-free.** Far lower churn — no trigger change,
@@ -307,7 +306,7 @@ and [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.m
 - [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) (reused unchanged),
   [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py),
   [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py) — the three tools
-  that all skip a `BE-0089` directory, which is what keeps `main` green during the transient window.
+  that all skip a `BE-XXXX` directory, which is what keeps `main` green during the transient window.
 - [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token) — mints the
   short-lived installation token for the bypass App in the workflow; pinned to a full commit SHA like
   every other third-party action.
@@ -319,4 +318,4 @@ and [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.m
   [`docs/ai-development.md`](../../../docs/ai-development.md) — the authoring rules updated to say the
   number is allocated on `main` after the merge, not at PR-open.
 - GitHub docs — *Automatically merging a pull request* (auto-merge) and *Managing a merge queue* — the
-  native mechanisms that merge the `BE-0089` branch as-is.
+  native mechanisms that merge the `BE-XXXX` branch as-is.

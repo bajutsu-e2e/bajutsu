@@ -426,6 +426,14 @@ Turning a passing scenario into a native test in a destination framework's idiom
 | [BE-0024](proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Proposal |
 <!-- /GENERATED:proposals-doctor -->
 
+### Development infrastructure (contributor workflow)
+
+<!-- GENERATED:proposals-dev-infra -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Proposal |
+<!-- /GENERATED:proposals-dev-infra -->
+
 ### Dogfood fixtures (demo apps)
 
 <!-- GENERATED:proposals-dogfood -->
