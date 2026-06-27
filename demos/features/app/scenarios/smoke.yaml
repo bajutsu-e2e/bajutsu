@@ -13,6 +13,10 @@ scenarios:
       - type: { text: "pw", into: { id: auth.password } }
       - tap: { id: auth.submit }
       - wait: { for: { id: home.title }, timeout: 5 }
+      # Wait for the counter control itself before tapping it: on a freshly-navigated home
+      # screen the title can render a beat before the counter row, so gate the tap on the
+      # element we act on (a condition wait, not a fixed sleep) to keep the smoke run stable.
+      - wait: { for: { id: counter.increment }, timeout: 10 }
       - tap: { id: counter.increment }
       - tap: { id: counter.increment }
     expect:
