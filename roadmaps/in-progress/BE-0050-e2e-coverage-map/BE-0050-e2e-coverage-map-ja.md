@@ -8,6 +8,7 @@
 | 提案 | [BE-0050](BE-0050-e2e-coverage-map-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
+| 実装 PR | [#204](https://github.com/bajutsu-e2e/bajutsu/pull/204), [#213](https://github.com/bajutsu-e2e/bajutsu/pull/213), [#259](https://github.com/bajutsu-e2e/bajutsu/pull/259), [#306](https://github.com/bajutsu-e2e/bajutsu/pull/306) |
 | トピック | 競合調査（Maestro）由来の候補 |
 | 由来 | Maestro |
 <!-- /BE-METADATA -->

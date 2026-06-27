@@ -8,6 +8,7 @@
 | Proposal | [BE-0038](BE-0038-autonomous-crawl-exploration.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
+| Implementing PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | Autify VAX |
 <!-- /BE-METADATA -->
