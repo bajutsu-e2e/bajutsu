@@ -330,6 +330,14 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
+### Hosting the web UI (cloud / self-hosted)
+
+<!-- GENERATED:in-progress-hosting -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0090](in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | In progress |
+<!-- /GENERATED:in-progress-hosting -->
+
 ### codegen coverage
 
 <!-- GENERATED:in-progress-codegen -->
@@ -394,7 +402,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
 | [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
 | [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Proposal |
-| [BE-0090](proposals/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing

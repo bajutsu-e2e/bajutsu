@@ -322,6 +322,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装中 | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
+### Web UI のホスティング（クラウド / セルフホスト）
+
+<!-- GENERATED:in-progress-hosting -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0090](in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md) | アップロードされたバンドル config からのコマンド実行を統制し、サンドボックス化する | 実装中 |
+<!-- /GENERATED:in-progress-hosting -->
+
 ### codegen 網羅性
 
 <!-- GENERATED:in-progress-codegen -->
@@ -386,7 +394,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開ホスティング | 提案 |
 | [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) | Web UI のセルフホスティング | 提案 |
 | [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split-ja.md) | 制御プレーンと worker をまたいだ実行中アーティファクトのライブ表示 | 提案 |
-| [BE-0090](proposals/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md) | アップロードされたバンドル config からのコマンド実行を統制し、サンドボックス化する | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
 ### config の取得元

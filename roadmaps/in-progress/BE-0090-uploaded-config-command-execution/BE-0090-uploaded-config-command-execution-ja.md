@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0090](BE-0090-uploaded-config-command-execution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
+| 実装 PR | [#335](https://github.com/bajutsu-e2e/bajutsu/pull/335) |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 <!-- /BE-METADATA -->
 
