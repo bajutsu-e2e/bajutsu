@@ -170,6 +170,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 |---|---|---|---|
 | [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented | Maestro |
 | [BE-0049](implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Implemented | Maestro |
+| [BE-0050](implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Implemented | Maestro |
 <!-- /GENERATED:implemented-competitive-maestro -->
 
 ### Integration & automation (MCP)

@@ -133,7 +133,7 @@ the stable ids they reference by namespace, and measures them against the app's 
 `idNamespaces` ([configuration](configuration.md#doctor-the-convention-score)) — without running anything.
 
 ```bash
-bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json] [--html <path>]
+bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenmap>] [--json] [--html <path>]
 ```
 
 - Reports the **coverage fraction** (declared namespaces the suite references / declared namespaces),
@@ -156,10 +156,19 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json] [--html 
     whose namespace was never declared (**off-namespace**).
 
   Omit `--runs` for the static id-namespace map only.
+- **`--crawl <screenmap>`** (with `--runs`) folds in a **screens-visited** dimension against an
+  autonomous crawl's discovered surface ([BE-0038](../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)):
+  the **denominator** is the screens the crawl found (`screenmap.json` nodes; pass the file or its
+  run dir), the **numerator** is the screens the run set reached — each per-step `elements.json` is
+  fingerprinted with the *same* `crawl.fingerprint`, so a visited screen matches a discovered one.
+  It reports the fraction reached and the **unvisited** screens the crawl discovered but no run
+  touched. Needs `--runs` for the visited evidence; given `--crawl` without it, the dimension is
+  skipped with a warning.
 - **`--html <path>`** also writes a **self-contained HTML report** of the same figures (inline CSS,
   no JavaScript, no external asset — it opens straight from disk), with a coverage bar per dimension
-  and the gap / off-namespace lists called out. The endpoint and observed-id sections render only when
-  `--runs` supplies them. The text (or `--json`) output is unchanged; the path is confirmed on stderr.
+  and the gap / off-namespace / unvisited lists called out. The endpoint, observed-id, and
+  screens-visited sections render only when `--runs` (and, for screens, `--crawl`) supply them. The
+  text (or `--json`) output is unchanged; the path is confirmed on stderr.
 - **Advisory and read-only**: it never runs a scenario, never edits anything, and **never gates CI** —
   it **exits 0 even with gaps** (only a missing config / scenarios dir or an unreadable scenario exits
   2). A gap is a namespace to cover, not a verdict.

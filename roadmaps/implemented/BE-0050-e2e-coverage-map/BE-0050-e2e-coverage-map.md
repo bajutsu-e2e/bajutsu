@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0050](BE-0050-e2e-coverage-map.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
-| Implementing PR | [#204](https://github.com/bajutsu-e2e/bajutsu/pull/204), [#213](https://github.com/bajutsu-e2e/bajutsu/pull/213), [#259](https://github.com/bajutsu-e2e/bajutsu/pull/259), [#306](https://github.com/bajutsu-e2e/bajutsu/pull/306) |
+| Status | **Implemented** |
+| Implementing PR | [#204](https://github.com/bajutsu-e2e/bajutsu/pull/204), [#213](https://github.com/bajutsu-e2e/bajutsu/pull/213), [#259](https://github.com/bajutsu-e2e/bajutsu/pull/259), [#306](https://github.com/bajutsu-e2e/bajutsu/pull/306), [#309](https://github.com/bajutsu-e2e/bajutsu/pull/309) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->
@@ -91,8 +91,20 @@ called out. It visualizes whichever dimensions are present — the static id-nam
 endpoint and observed-id maps when `--runs` supplies them — and stays read-only and AI-free: the
 flag only writes a file, it never changes the verdict or the text/JSON output.
 
-Still deferred: the **screens-visited** dimension (needs a crawl-discovered denominator,
-[BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)).
+The fifth slice ships the **screens-visited** dimension the *Motivation* names — the last one, now
+that autonomous crawl ([BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
+supplies its crawl-discovered denominator. `bajutsu coverage --crawl <screenmap> --runs <dir>`
+measures how many of a crawl's discovered screens the run set reached: the denominator is the
+`screenmap.json` nodes; the numerator is each per-step `elements.json` fingerprinted with the *same*
+`crawl.fingerprint`, so a visited screen matches a discovered one. `coverage.screen_coverage` reports
+the fraction reached and the **unvisited** screens (discovered, no run touched), and feeds the text /
+JSON / HTML outputs like the other dimensions. A run fingerprint the crawl never found cannot inflate
+the figure — only the discovered set is the denominator. Still read-only, AI-free, and exits 0 even
+with gaps; the `crawl.fingerprint` reuse keeps the visited and discovered identities comparable
+without a second algorithm.
+
+With the static, endpoint, observed-id, and screens-visited dimensions all shipped, every dimension
+the proposal named is implemented.
 
 ## Alternatives considered
 
