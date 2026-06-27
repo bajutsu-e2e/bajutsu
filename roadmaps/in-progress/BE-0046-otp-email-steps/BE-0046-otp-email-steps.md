@@ -81,6 +81,70 @@ Prime directives preserved:
   codegen emits a labeled `// TODO` (per
   [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)).
 
+### Email step — the mailbox surface
+
+The open design question the `totp` slice deferred was *what mailbox* `email` talks to. The decision
+is a **generic HTTP polling mailbox**, not a provider-specific client: the step `GET`s a configured
+endpoint that returns the inbox as JSON, filters for the awaited message, and extracts the code by
+regex. This reuses the `http` step's HTTP plumbing (BE-0036), keeps the tool provider-neutral (any
+mailbox with a readable HTTP API works — Mailosaur, MailSlurp, a team's own test SMTP-to-HTTP
+bridge), and adds no provider SDK dependency.
+
+**Config (`apps.<name>.mailbox`).** The endpoint and how to read its response live in config, so the
+scenario stays app-agnostic and credential-free:
+
+```yaml
+apps:
+  myapp:
+    mailbox:
+      url: "${secrets.MAILBOX_URL}"        # the inbox endpoint (GET); may carry a query/box id
+      headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
+      # How to read this provider's JSON (dotted paths into the response), so no per-provider code:
+      messages: "items"                     # path to the message array (default: the root array)
+      fields: { to: "to", subject: "subject", body: "text", receivedAt: "receivedAt" }
+```
+
+Defaults match the common "array of messages with `to` / `subject` / `body` / `receivedAt`" shape, so
+a conforming API needs no `messages` / `fields` mapping at all; the mapping exists only to absorb a
+differently-named response without a code change.
+
+**Step contract.**
+
+```yaml
+- email:
+    match: { to: "test@example.com", subjectMatches: "verification" }   # which message to wait for
+    extract: { var: code, bodyMatches: "[0-9]{6}" }                     # pull the value into vars.code
+    timeout: 30
+```
+
+- **`match`** selects the message: `to` (exact) and/or `subject` (exact) / `subjectMatches` (regex),
+  combined with AND. At least one criterion is required (a match-anything `email` is rejected at load
+  time, like an empty selector).
+- **`extract`** pulls the value from the matched message's body into `${vars.<var>}`: `bodyMatches`
+  is a regex whose **first capturing group** (or whole match, if none) is the value; `body` would be
+  an exact-substring form. The extracted value is masked in evidence like any secret-derived value.
+- **`timeout`** (mandatory, seconds) bounds the poll — the same condition-wait rule as every other
+  wait, no fixed sleep, no infinite poll.
+
+**Determinism — the parts that matter.**
+
+- **Only mail that arrives *after* the step starts counts.** The step records a start instant and
+  ignores any message whose `receivedAt` predates it, so a stale code left in the mailbox by an
+  earlier run is never matched. (When a provider exposes no `receivedAt`, the fallback is the set of
+  message ids already present when the step began — anything new since is eligible.)
+- **A unique awaited message.** With the `after`-start boundary the expected case is exactly one new
+  matching message. If more than one matches, the **newest by `receivedAt`** wins (stable tie-break
+  by message id), so the result never depends on arrival-order races.
+- **Bounded poll.** Poll at a fixed small interval until a match or the deadline; a timeout, a
+  matched message whose body the `extract` regex does not hit, or a non-2xx fetch is a **clean step
+  failure** — never a silent wrong value.
+
+**Gate-testability.** The fetch is taken behind an injectable HTTP function (the `http` step's
+client / a `RunFn`-style seam), so the poll loop, the `after`-start filter, the match/extract, the
+newest-wins tie-break, and the timeout are all unit-tested over fabricated mailbox responses with no
+network. The live HTTP call is the only mocked surface — the permitted "external API call" exception
+— exactly as `http` is tested.
+
 ### Implementation status
 
 The **`totp`** slice ships — the half with no external dependency. `totp: { secret, into: { var } }`
@@ -91,8 +155,12 @@ the step is a thin handler that calls it at wall-clock time (`bajutsu/orchestrat
 It follows the `http`/`saveBody` precedent for producing a value into `vars.*`, touches no device,
 and emits a labeled `// TODO` from codegen.
 
-**`email` is deferred**: polling a test mailbox needs an external mail integration (IMAP / a provider
-API) — a heavier, dependency-bearing slice — so it lands separately once the mailbox surface is settled.
+**`email` — design settled (this revision), implementation pending.** The mailbox surface is now
+fixed: a generic HTTP polling mailbox configured under `apps.<name>.mailbox`, with the contract,
+config, and determinism rules above. Implementation is a follow-up slice: the `email` action model +
+`Step` field, a thin handler that drives the bounded poll over the injectable HTTP client, the
+`match` / `extract` logic (pure, gate-tested over fabricated responses), masking of the extracted
+value, and a labeled `// TODO` from codegen. No device, no LLM.
 
 ## Alternatives considered
 
@@ -106,7 +174,18 @@ API) — a heavier, dependency-bearing slice — so it lands separately once the
   common 2FA case. Kept as complementary, not a replacement.
 - **Reuse `http` (BE-0036) for everything.** `http` fetches a value from an endpoint, which covers
   a backend-issued token but not a locally computed TOTP nor a polled inbox. Kept for the HTTP
-  case; `totp` / `email` cover the rest.
+  case; `totp` / `email` cover the rest. (`email` *reuses* `http`'s HTTP plumbing internally, but
+  adds the polling, the match/extract, and the after-start determinism boundary that a one-shot
+  `http` fetch cannot express.)
+- **A provider-specific mailbox client (Mailosaur / MailSlurp SDK).** Quickest to wire for one
+  provider, but it binds the tool to that vendor's SDK and API, and a second provider means a second
+  client. Rejected in favour of the generic HTTP surface with configurable field paths, which reads
+  any provider's JSON inbox with no added dependency; a provider that only offers a non-HTTP API can
+  still be fronted by a tiny bridge.
+- **Poll a raw IMAP mailbox.** Works against a real inbox without a test-mail provider, but pulls in
+  an IMAP client and credential handling, and parsing MIME for the body is its own surface. Deferred:
+  the HTTP mailbox covers the test-provider case the motivating 2FA flows use; an IMAP source can be
+  added later behind the same `email` step contract if demand appears.
 
 ## References
 
