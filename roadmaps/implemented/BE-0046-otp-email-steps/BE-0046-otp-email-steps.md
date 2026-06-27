@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0046](BE-0046-otp-email-steps.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
-| Implementing PR | [#260](https://github.com/bajutsu-e2e/bajutsu/pull/260) |
+| Status | **Implemented** |
+| Implementing PR | [#260](https://github.com/bajutsu-e2e/bajutsu/pull/260) (totp), [#308](https://github.com/bajutsu-e2e/bajutsu/pull/308) (email design), [#311](https://github.com/bajutsu-e2e/bajutsu/pull/311) (email) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->
