@@ -8,7 +8,7 @@
 | 提案 | [BE-0038](BE-0038-autonomous-crawl-exploration-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| 実装 PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) |
+| 実装 PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307), [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | Autify VAX |
 <!-- /BE-METADATA -->
@@ -110,7 +110,9 @@ bajutsu crawl --app <name>
 
 最新のスライスは、*出力*の節が掲げる **描画済みの画面マップグラフ**を、オフライン／CLI 用に提供します。`bajutsu crawl` は JSON と並べて自己完結した `screenmap.html`（`bajutsu/crawl_report.py`、`crawl.html.j2`）も書き出すようになりました。画面を幅優先の深さ列に並べ（web UI の実証済みレイアウトを移植）、遷移を**静的なインライン SVG** で描き（OS アラートをタップして通過した遷移はアンバー色＋🛡️）、各画面をスクリーンショットへリンクし、クラッシュと閉じたアラートの経路を一覧にします。CSS は埋め込み、JavaScript も外部アセットも無しなので、run ディレクトリから直接開けます。この描画は `ScreenMap` の純粋・決定的・モデル非依存な関数で、決定的な探索にも判定にも一切触れません。
 
-この先に残るもの: フォーム中心のフローに対する AI ガイドのテキスト入力供給、発見したフローごとの候補シナリオ提案、クラッシュ再現シナリオの自動生成です。
+さらに次のスライスは、*出力*の節が掲げる**クラッシュ再現シナリオの自動生成**を提供します。`bajutsu crawl` は、忠実に再現できるクラッシュごとに `crashes/crash-NNN.yaml` を 1 件書き出すようになりました（`bajutsu/crawl_repro.py`）。各クラッシュは到達までの正確なアクション経路をすでに記録しており、`crash_scenario` がその経路を実行可能な `Scenario` に戻します（tap／type／fill はそれぞれ対応するステップに写像します）。生成物は `dump_scenario_file` で YAML として書き出され、`run` がそのまま再生できます。つまり、発見したクラッシュは人間のレビューを経て、コミットされた Tier 2 のリグレッションになります。この変換は `ScreenMap` の純粋・決定的・モデル非依存な関数です。正規化座標をタップする経路（`tap_point`）は指定できるセレクタを持たないため、欠損のあるシナリオを出すのではなく、何も出力しません（忠実に再現できないなら出さない）。構造化された経路を運ぶため、`Crash` は人間可読の `path` に加えて再生可能な `actions` を保持するようになりました（`screenmap.json` に直列化し、それを欠く古いマップも読み込めます）。
+
+この先に残るもの：フォーム中心のフローに対する AI ガイドのテキスト入力供給と、発見したフローごとの候補シナリオ提案です。
 
 ## 検討した代替案
 

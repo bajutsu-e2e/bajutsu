@@ -378,6 +378,12 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   (amber, with a 🛡️ marker, where a step tapped through an OS alert), and the crash / dismissed-alert
   paths listed below. It sits beside `screenmap.json` and `screens/`, so it opens straight from the
   run dir — share or archive it without the web UI. Read-only and model-free, like the JSON.
+- On completion it also writes one `<out>/crashes/crash-NNN.yaml` per faithfully reproducible crash
+  — a **repro scenario** built from the crash's recorded action path, directly runnable by `run`, so
+  a discovered crash becomes a committed Tier 2 regression after human review. The conversion is
+  pure, deterministic and model-free (`tap` / `type` / `fill` map to their steps). A path that taps a
+  normalized coordinate (a vision-located control) has no selector to address, so it emits no
+  scenario rather than a lossy one.
 - **Parallel pool** ([BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)):
   with `--workers N` over a `--udid A,B,C` pool the crawl runs across N booted simulators at once,
   all sharing the one screen map and frontier — independent branches explore concurrently and the AI

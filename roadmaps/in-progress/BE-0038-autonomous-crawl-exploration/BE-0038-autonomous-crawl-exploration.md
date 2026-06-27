@@ -8,7 +8,7 @@
 | Proposal | [BE-0038](BE-0038-autonomous-crawl-exploration.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) |
+| Implementing PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307), [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | Autify VAX |
 <!-- /BE-METADATA -->
@@ -123,8 +123,19 @@ dismissed-alert paths. Inline CSS, no JavaScript, no external asset, so it opens
 run dir. The rendering is a pure, deterministic, model-free function of the `ScreenMap`; it never
 touches the (deterministic) exploration or any verdict.
 
-Still ahead: AI-guided text-input supply for form-heavy flows, candidate-scenario proposals per
-discovered flow, and automatic crash-repro scenario emission.
+A further slice ships **automatic crash-repro scenario emission** the *Outputs* section names:
+`bajutsu crawl` now writes one `crashes/crash-NNN.yaml` per faithfully reproducible crash
+(`bajutsu/crawl_repro.py`). Each crash already records its exact action path; `crash_scenario`
+turns that path back into a runnable `Scenario` (tap / type / fill map to their steps), emitted as
+YAML via `dump_scenario_file` and directly replayable by `run` — a discovered crash becomes a
+committed Tier 2 regression after human review. The conversion is a pure, deterministic, model-free
+function of the `ScreenMap`. A path that taps a normalized coordinate (`tap_point`) has no selector
+to address, so it emits no scenario rather than a lossy one (faithful or nothing). To carry the
+structured path, `Crash` now keeps the replayable `actions` alongside the human-readable `path`
+(serialized into `screenmap.json`, tolerant of older maps that lack it).
+
+Still ahead: AI-guided text-input supply for form-heavy flows, and candidate-scenario proposals per
+discovered flow.
 
 ## Alternatives considered
 

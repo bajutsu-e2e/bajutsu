@@ -4,9 +4,10 @@ Drives the same `launch_driver` / actuator path as `run` and `record`, hands the
 the crawl engine ([`crawl.py`](../../crawl.py)), and streams the growing screen map to
 `runs/<id>/screenmap.json` so the web UI can render it live. On completion it also writes a
 self-contained `runs/<id>/screenmap.html` (`crawl_report.py`) — the offline counterpart to the
-live graph, openable straight from the run dir. The engine is deterministic (screen identity,
-transitions, crashes); the AI guide only proposes *what to try*, and the alert guard dismisses
-unexpected OS prompts. Discovery only — never a pass/fail gate.
+live graph, openable straight from the run dir — plus one `runs/<id>/crashes/crash-NNN.yaml` repro
+scenario per faithfully replayable crash (`crawl_repro.py`), directly runnable by `run`. The engine
+is deterministic (screen identity, transitions, crashes); the AI guide only proposes *what to try*,
+and the alert guard dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from typing import cast
 import typer
 
 from bajutsu import crawl as crawl_engine
-from bajutsu import crawl_report
+from bajutsu import crawl_report, crawl_repro
 from bajutsu import env as _env
 from bajutsu.agents import AGENT_KINDS, resolve_kind
 from bajutsu.anthropic_client import credential_gap
@@ -374,6 +375,7 @@ def crawl(
         raise typer.Exit(2) from None
     _write_screenmap(screenmap_path, screen_map)
     report_path = crawl_report.write_html(out_dir, screen_map, out_dir.name)
+    repros = crawl_repro.write_repros(out_dir, screen_map)
     why = {
         "completed": "explored everything reachable",
         "max_screens": f"reached the --max-screens limit ({max_screens})",
@@ -385,6 +387,8 @@ def crawl(
         f"({why}) -> {screenmap_path}"
     )
     typer.echo(f"screen map report -> {report_path}")
+    if repros:
+        typer.echo(f"crash repro scenarios -> {len(repros)} under {out_dir / 'crashes'}")
 
 
 def register(app: typer.Typer) -> None:

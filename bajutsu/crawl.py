@@ -199,9 +199,15 @@ class Edge:
 
 @dataclass(frozen=True)
 class Crash:
-    """A path (sequence of action descriptions) whose last action collapsed the app UI."""
+    """A path whose last action collapsed the app UI.
+
+    `path` holds the human-readable action descriptions (for the report); `actions` the structured,
+    replayable sequence the same path is built from, so a deterministic repro scenario can be
+    emitted from it (BE-0038). `actions` is empty for a map saved before crashes carried it.
+    """
 
     path: tuple[str, ...]
+    actions: tuple[Action, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -813,7 +819,7 @@ def crawl(
                         Alert(tuple(a.describe() for a in path), tuple(dismissed))
                     )
                 if crashed:
-                    screen_map.crashes.append(Crash(tuple(a.describe() for a in path)))
+                    screen_map.crashes.append(Crash(tuple(a.describe() for a in path), tuple(path)))
                     active -= 1
                     _emit()
                     cond.notify_all()
@@ -968,7 +974,13 @@ def screenmap_from_dict(data: dict[str, Any]) -> ScreenMap:
             Edge(str(e["src"]), str(e["action"]), str(e["dst"]), tuple(e.get("alert") or []))
             for e in data.get("edges") or []
         ],
-        crashes=[Crash(tuple(c.get("path") or [])) for c in data.get("crashes") or []],
+        crashes=[
+            Crash(
+                tuple(c.get("path") or []),
+                tuple(action_from_dict(a) for a in (c.get("actions") or [])),
+            )
+            for c in data.get("crashes") or []
+        ],
         alerts=[
             Alert(tuple(a.get("path") or []), tuple(a.get("buttons") or []))
             for a in data.get("alerts") or []
@@ -1016,7 +1028,10 @@ def screenmap_dict(screen_map: ScreenMap) -> dict[str, object]:
             {"src": e.src, "action": e.action, "dst": e.dst, "alert": list(e.alert)}
             for e in screen_map.edges
         ],
-        "crashes": [{"path": list(c.path)} for c in screen_map.crashes],
+        "crashes": [
+            {"path": list(c.path), "actions": [action_to_dict(a) for a in c.actions]}
+            for c in screen_map.crashes
+        ],
         "alerts": [{"path": list(a.path), "buttons": list(a.buttons)} for a in screen_map.alerts],
         "plan": {fp: list(ops) for fp, ops in sorted(screen_map.plan.items())},
         "pruned": [
