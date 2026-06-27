@@ -30,6 +30,7 @@ plugins:
 
 nav:
   - Overview: index.md
+  - Roadmap status: roadmap.md
   - Configuration: config.md
   - Scenario schema: scenario.md
   - Driver & selectors: drivers.md

@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0092](BE-0092-crawl-coordinator-extraction.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#321](https://github.com/bajutsu-e2e/bajutsu/pull/321) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
