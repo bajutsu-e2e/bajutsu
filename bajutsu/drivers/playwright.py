@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import math
 import shutil
 import time
 from collections.abc import Callable
@@ -102,6 +103,13 @@ def _to_element(rec: dict[str, Any]) -> base.Element:
 def parse_dom(records: list[dict[str, Any]]) -> list[base.Element]:
     """Map the QUERY_JS records to normalized Elements (the browser-free, unit-tested core)."""
     return [_to_element(r) for r in records if isinstance(r, dict)]
+
+
+def _rotate_point(p: base.Point, center: base.Point, radians: float) -> base.Point:
+    """Rotate point `p` about `center` by `radians` (for two-finger rotate synthesis)."""
+    dx, dy = p[0] - center[0], p[1] - center[1]
+    cos, sin = math.cos(radians), math.sin(radians)
+    return (center[0] + dx * cos - dy * sin, center[1] + dx * sin + dy * cos)
 
 
 # The subset of Playwright's Page the driver uses — kept as a Protocol so tests can inject a
@@ -271,6 +279,7 @@ class PlaywrightDriver:
         self._pw: Any = None
         self._browser: Any = None
         self._context: Any = None  # current BrowserContext (web); closed + replaced on each reset
+        self._cdp: Any = None  # lazily-opened CDP session for multi-touch synthesis
         # Deterministic web health / dialog signals the crawl reads (BE-0066): an uncaught JS
         # exception, a 4xx/5xx main-frame navigation, and a JS dialog are all machine facts — no
         # model is consulted. A JS dialog blocks the page until handled, so it is auto-dismissed by
@@ -530,11 +539,60 @@ class PlaywrightDriver:
         self._page.mouse.move(to[0], to[1])
         self._page.mouse.up()
 
+    @_wedge_guard
     def pinch(self, sel: base.Selector, scale: float) -> None:
-        raise base.UnsupportedAction("pinch は multiTouch が必要; web backend は v1 では未対応")
+        # Two fingers level on the element's center; `scale` spreads (>1) or closes (<1) their gap.
+        cx, cy, r = self._gesture_anchor(sel)
+        start = [(cx - r, cy), (cx + r, cy)]
+        end = [(cx - r * scale, cy), (cx + r * scale, cy)]
+        self._touch_drag(start, end)
 
+    @_wedge_guard
     def rotate(self, sel: base.Selector, radians: float) -> None:
-        raise base.UnsupportedAction("rotate は multiTouch が必要; web backend は v1 では未対応")
+        # Two fingers level on the center, rotated about it by `radians`.
+        cx, cy, r = self._gesture_anchor(sel)
+        start = [(cx - r, cy), (cx + r, cy)]
+        end = [_rotate_point(p, (cx, cy), radians) for p in start]
+        self._touch_drag(start, end)
+
+    def _gesture_anchor(self, sel: base.Selector) -> tuple[float, float, float]:
+        """The element's center and a finger half-distance for a two-finger gesture."""
+        x, y, w, h = base.resolve_unique(self.query(), sel)["frame"]
+        return x + w / 2, y + h / 2, max(10.0, min(w, h) / 4)
+
+    def _touch_drag(self, start: list[base.Point], end: list[base.Point], steps: int = 5) -> None:
+        """Synthesize a two-finger drag from `start` to `end` via CDP touch events (Chromium).
+
+        Playwright's `mouse` is single-pointer, so multi-touch goes through the DevTools protocol's
+        `Input.dispatchTouchEvent` — the same path a real gesture takes, so the page's touch / gesture
+        listeners fire, unlike a synthetic DOM event.
+        """
+        self._dispatch_touch("touchStart", start)
+        for k in range(1, steps + 1):
+            t = k / steps
+            self._dispatch_touch(
+                "touchMove",
+                [
+                    (s[0] + (e[0] - s[0]) * t, s[1] + (e[1] - s[1]) * t)
+                    for s, e in zip(start, end, strict=True)
+                ],
+            )
+        self._dispatch_touch("touchEnd", [])
+
+    def _dispatch_touch(self, event_type: str, points: list[base.Point]) -> None:
+        self._cdp_session().send(
+            "Input.dispatchTouchEvent",
+            {
+                "type": event_type,
+                "touchPoints": [{"x": x, "y": y, "id": i} for i, (x, y) in enumerate(points)],
+            },
+        )
+
+    def _cdp_session(self) -> Any:
+        """The page's Chromium DevTools session, created once and reused for touch synthesis."""
+        if self._cdp is None:
+            self._cdp = cast(Any, self._page).context.new_cdp_session(self._page)
+        return self._cdp
 
     @_wedge_guard
     def type_text(self, text: str) -> None:
@@ -560,9 +618,9 @@ class PlaywrightDriver:
 
         return WebNetworkCollector(self._page, mocks)
 
-    # Playwright has a genuine semantic click, native auto-waiting, and native network observation +
-    # stubbing (BE-0054); multi-touch is still deferred. Class constant so the preflight (BE-0082)
-    # reads it via `backends.capabilities_for` without starting a browser.
+    # Playwright has a genuine semantic click, native auto-waiting, native network observation +
+    # stubbing, and (via CDP touch synthesis) two-finger gestures (BE-0054). Class constant so the
+    # preflight (BE-0082) reads it via `backends.capabilities_for` without starting a browser.
     CAPABILITIES = frozenset(
         {
             base.Capability.QUERY,
@@ -571,6 +629,7 @@ class PlaywrightDriver:
             base.Capability.SEMANTIC_TAP,
             base.Capability.CONDITION_WAIT,
             base.Capability.NETWORK,
+            base.Capability.MULTI_TOUCH,
         }
     )
 

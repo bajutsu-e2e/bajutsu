@@ -37,6 +37,13 @@
       <h1 data-testid="home.title">Home</h1>
       <input data-testid="counter.value" readonly value="0" aria-label="Counter value" />
       <button data-testid="counter.increment">Increment</button>
+      <div
+        data-testid="gesture.box"
+        style="width: 200px; height: 200px; background: #eee; touch-action: none"
+      >
+        Pinch / rotate me
+      </div>
+      <output data-testid="gesture.status">idle</output>
     </section>
 
     <script>
@@ -54,6 +61,31 @@
       document.querySelector('[data-testid="counter.increment"]').addEventListener("click", () => {
         n += 1;
         counter.value = String(n);
+      });
+
+      // A two-finger gesture target: classify the live touches as a pinch (distance change) or a
+      // rotate (angle change) so a scenario can assert the multiTouch path drove the page.
+      const gbox = document.querySelector('[data-testid="gesture.box"]');
+      const gstatus = document.querySelector('[data-testid="gesture.status"]');
+      let startDist = null;
+      let startAngle = null;
+      const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      const angle = (t) => Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX);
+      gbox.addEventListener("touchstart", (e) => {
+        if (e.touches.length === 2) {
+          startDist = dist(e.touches);
+          startAngle = angle(e.touches);
+        }
+      });
+      gbox.addEventListener("touchmove", (e) => {
+        if (e.touches.length === 2 && startDist) {
+          const ratio = dist(e.touches) / startDist;
+          const deg = ((angle(e.touches) - startAngle) * 180) / Math.PI;
+          if (Math.abs(deg) > 15) gstatus.textContent = "rotated";
+          else if (ratio > 1.1) gstatus.textContent = "pinched-out";
+          else if (ratio < 0.9) gstatus.textContent = "pinched-in";
+          e.preventDefault();
+        }
       });
     </script>
   </body>

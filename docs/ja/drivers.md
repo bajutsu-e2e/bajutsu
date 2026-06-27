@@ -46,9 +46,9 @@ class Driver(Protocol):
 | `semanticTap` | id/label で直接タップ（座標不要） | — | ✅ | ✅ |
 | `conditionWait` | ネイティブ条件待機 | — | ✅ | ✅ |
 | `network` | ネイティブネットワーク監視 | — | ✅ | — |
-| `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | — | ✅ |
+| `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | ✅ | ✅ |
 
-> idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network` も公開します。アプリ側の協力なしに通信を観測し、その場でスタブもできる**初めてのネイティブネットワーク対応バックエンド**です（BE-0054）。`multiTouch` は引き続き先送りです（[BE-0054](../../roadmaps/in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) で追跡）。
+> idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network`（アプリ側の協力なしに通信を観測・スタブできる**初めてのネイティブネットワーク対応バックエンド**）と `multiTouch`（Chromium DevTools プロトコルの `Input.dispatchTouchEvent` で pinch / rotate を合成）を公開します（BE-0054）。
 
 ### プリフライト能力検査（BE-0082）
 
@@ -82,7 +82,8 @@ Playwright（Python）によるヘッドレス Chromium です。Mac も Simulat
 - `query()`: 1 本の `page.evaluate()` が、可視・操作可能・アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`、input の `value` → `value`。
 - `tap(sel)`: idb と同様、`query()` のスナップショットに対し共有の `resolve_unique`/`find_all` で要素を**一意に**確定し、**frame 中心**を座標クリック（`page.mouse.click`）します。Playwright 自身の `get_by_test_id().click()` は**あえて使いません**。これによりセレクタの意味が他のどの backend ともバイト単位で一致します。
 - `type_text` は `page.keyboard` で入力します（オーケストレータが先に `into` をタップしてフィールドにフォーカスします）。`screenshot` は `page.screenshot`、`wait_for` は `find_all` による単発（idb と同じ）です。
-- ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(baseUrl)`）が `launch`、`close()` でブラウザを破棄します。simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません（v1 では `pinch`/`rotate` が `UnsupportedAction`）。
+- ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(baseUrl)`）が `launch`、`close()` でブラウザを破棄します。simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません。
+- **マルチタッチ**（BE-0054）: `pinch` / `rotate` は Chromium DevTools プロトコル（`Input.dispatchTouchEvent`）で 2 本指のドラッグとして合成します。`mouse` は単一ポインタなので、ジェスチャは CDP 経由——実際のタッチと同じ経路——で送り、ページのタッチリスナが発火します。要素の中心を 2 本指の基準点とし、`scale` が指の間隔を広げ/狭め、`radians` がその中心まわりに回転させます。
 - **ネイティブネットワーク**（BE-0054）: Playwright はページが出すすべてのリクエストを見られるので、`--network` はアプリ側の協力なしに web でも動きます。`network_collector()` がページの `requestfinished` イベントを iOS と同じ `NetworkExchange` に変換するため、`request` アサーションも `network.json` 証跡もそのまま使えます。シナリオの `mocks` は `page.route` でその場で fulfill します。一致したリクエストには既定のレスポンスを返し、`mocked: true` を立てて記録します。一致判定は決定論的な `request` マッチャを再利用し、モデルは一切使いません。
 - **コンソール / ページエラー・動画 証跡**（BE-0054）: `deviceLog` キャプチャ種別はブラウザのコンソールと未捕捉のページエラーを `<scenario>/device.log` にストリームし、`video` はシナリオ全体を録画します。どちらも simctl ではなく Playwright ネイティブで、iOS の os_log / simctl 動画に相当します。録画はシナリオの `capture` に `video` がある時だけ有効化し（`BrowserContext` を `record_video_dir` 付きで生成）、`video` インターバルが context クローズ時に `<scenario>/scenario.mp4`（中身は webm）へ確定させます。プールがドライバの `web_interval` を `FileSink` に注入するので、バックエンド非依存の同じ `capture` ポリシーが両方を運びます。
 

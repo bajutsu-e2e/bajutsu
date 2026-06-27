@@ -118,6 +118,22 @@ class _FakeKeyboard:
         self.typed.append(text)
 
 
+class _FakeCDP:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Any]] = []
+
+    def send(self, method: str, params: Any) -> None:
+        self.calls.append((method, params))
+
+
+class _FakeBrowserContext:
+    def __init__(self, cdp: _FakeCDP) -> None:
+        self._cdp = cdp
+
+    def new_cdp_session(self, page: Any) -> _FakeCDP:
+        return self._cdp
+
+
 class _FakePage:
     def __init__(self, records: list[dict[str, Any]]) -> None:
         self._records = records
@@ -126,6 +142,8 @@ class _FakePage:
         self.goto_url: str | None = None
         self.shot: str | None = None
         self._handlers: dict[str, list[Any]] = {}
+        self.cdp = _FakeCDP()
+        self.context = _FakeBrowserContext(self.cdp)
 
     def evaluate(self, expression: str) -> Any:
         return list(self._records)
@@ -260,12 +278,42 @@ def test_wait_for() -> None:
     assert drv.wait_for({"id": "nope"}, 1.0) is False
 
 
-def test_pinch_and_rotate_unsupported() -> None:
-    drv, _ = _driver([_rec(identifier="x")])
-    with pytest.raises(base.UnsupportedAction):
-        drv.pinch({"id": "x"}, 2.0)
-    with pytest.raises(base.UnsupportedAction):
-        drv.rotate({"id": "x"}, 1.0)
+def _touch_points(params: Any) -> list[tuple[float, float]]:
+    return [(p["x"], p["y"]) for p in params["touchPoints"]]
+
+
+def test_pinch_dispatches_two_diverging_touch_points() -> None:
+    # An element centered at (50,50); a scale>1 pinch ends with the two fingers farther apart.
+    drv, page = _driver([_rec(identifier="img", frame=[0, 0, 100, 100])])
+    drv.pinch({"id": "img"}, 2.0)
+    events = [m for m, _ in page.cdp.calls]
+    assert events[0] == "Input.dispatchTouchEvent"
+    types = [p["type"] for _, p in page.cdp.calls]
+    assert types[0] == "touchStart" and types[-1] == "touchEnd"
+    start = _touch_points(page.cdp.calls[0][1])
+    last_move = _touch_points(page.cdp.calls[-2][1])  # final touchMove before touchEnd
+    assert len(start) == 2  # two fingers
+    start_span = abs(start[1][0] - start[0][0])
+    end_span = abs(last_move[1][0] - last_move[0][0])
+    assert end_span > start_span  # scale 2.0 spreads the fingers apart
+
+
+def test_pinch_in_converges_touch_points() -> None:
+    drv, page = _driver([_rec(identifier="img", frame=[0, 0, 100, 100])])
+    drv.pinch({"id": "img"}, 0.5)
+    start = _touch_points(page.cdp.calls[0][1])
+    last_move = _touch_points(page.cdp.calls[-2][1])
+    assert abs(last_move[1][0] - last_move[0][0]) < abs(start[1][0] - start[0][0])
+
+
+def test_rotate_moves_points_off_the_starting_axis() -> None:
+    # The fingers start on a horizontal axis; a rotation gives them a vertical component.
+    drv, page = _driver([_rec(identifier="img", frame=[0, 0, 100, 100])])
+    drv.rotate({"id": "img"}, 1.0)  # ~57°
+    start = _touch_points(page.cdp.calls[0][1])
+    last_move = _touch_points(page.cdp.calls[-2][1])
+    assert start[0][1] == start[1][1]  # started level (same y)
+    assert last_move[0][1] != last_move[1][1]  # rotated out of the horizontal
 
 
 def test_screenshot_and_navigate_and_close() -> None:
@@ -283,7 +331,9 @@ def test_capabilities() -> None:
     assert base.Capability.SEMANTIC_TAP in caps
     assert base.Capability.CONDITION_WAIT in caps
     assert base.Capability.NETWORK in caps  # native observe + stub (BE-0054)
-    assert base.Capability.MULTI_TOUCH not in caps  # still deferred
+    assert (
+        base.Capability.MULTI_TOUCH in caps
+    )  # two-finger gestures via CDP touch synthesis (BE-0054)
 
 
 def test_importing_module_does_not_load_playwright() -> None:
