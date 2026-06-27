@@ -79,8 +79,8 @@ next to the percentage so the number is transparent.
 page — adds the interaction. On load it collapses every category to a compact overview (just the
 heading and its progress bar), so the landing view is the shape of the whole roadmap at a glance.
 From there: clicking a heading expands that category's cards; the summary counts double as **status
-toggles**, each an independent on/off switch (all on by default). Turning one off removes that
-status's cards everywhere and hides any category or group left empty; turning every status back on
+checkboxes**, each an independent on/off control (all checked by default). Unchecking one removes that
+status's cards everywhere and hides any category or group left empty; re-checking every status
 returns to the collapsed overview. The collapsed state is applied *by the script*, never baked into
 the markup — so with scripting off every status is on, every category stays open, every card is
 visible, and the page is fully readable without it. Nothing fetches or computes; it only shows and

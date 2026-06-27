@@ -56,13 +56,14 @@ def test_per_category_progress_is_implemented_share() -> None:
 
 
 def test_status_filter_toggles_present() -> None:
-    """Each bucket is an independent on/off toggle (pressed by default); each card carries its status.
+    """Each bucket is an independent checkbox (checked by default); each card carries its status.
 
-    There is no aggregate "all" chip — every status is its own switch.
+    There is no aggregate "all" control — every status is its own checkbox.
     """
     assert 'data-filter="all"' not in _PAGE
+    assert _PAGE.count('type="checkbox"') == len(brd.bri.BUCKETS)
     for name, _key in brd.bri.BUCKETS:
-        assert f'data-filter="{name}" aria-pressed="true"' in _PAGE
+        assert f'data-filter="{name}" checked' in _PAGE
     for item in _ITEMS:
         assert f'data-status="{item.bucket}"' in _PAGE
 

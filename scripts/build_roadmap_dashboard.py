@@ -113,18 +113,19 @@ def render_html(items: list[Any]) -> str:
         by_bucket[item.bucket].append(item)
         by_topic[item.topic].append(item)
 
-    # Each status is an independent on/off toggle (all on = everything shown). A chip carries a tick
-    # box and its count; a small script (below) flips its status. Without JavaScript the chips are
-    # inert and every card stays visible, so the page is still fully readable — progressive enhancement.
+    # Each status is an independent on/off checkbox (all checked = everything shown). The chip is a
+    # label around a real <input type="checkbox">, so clicking toggles it natively; a small script
+    # (below) reacts to the change. Without JavaScript the boxes stay checked and inert and every card
+    # stays visible, so the page is still fully readable — progressive enhancement.
     chips = "".join(
-        f'<button type="button" class="be-stat be-filter is-active" '
-        f'data-filter="{html.escape(name)}" aria-pressed="true" style="border-color:{BUCKET_COLOR[name]}">'
-        '<span class="be-tick" aria-hidden="true"></span>'
+        f'<label class="be-stat be-filter is-active" style="border-color:{BUCKET_COLOR[name]}">'
+        f'<input type="checkbox" class="be-check" data-filter="{html.escape(name)}" '
+        f'checked style="accent-color:{BUCKET_COLOR[name]}">'
         f'<b style="color:{BUCKET_COLOR[name]}">{len(by_bucket[name])}</b> {html.escape(name)}'
-        "</button>"
+        "</label>"
         for name, _key in bri.BUCKETS
     )
-    summary = f'<div class="be-summary" role="group" aria-label="Toggle statuses">{chips}</div>'
+    summary = f'<div class="be-summary" role="group" aria-label="Filter by status">{chips}</div>'
 
     # Split categories into those with work left and those fully implemented; the 100% ones move to a
     # separate "Completed" group so the main view is the work still in flight.
@@ -180,10 +181,9 @@ _STYLE = """
 .be-summary{display:flex;flex-wrap:wrap;gap:.6rem;margin:.5rem 0 1.5rem}
 .be-stat{border:1px solid;border-radius:8px;padding:.25rem .7rem;font-size:13px}
 .be-stat b{font-weight:600}
-.be-filter{display:inline-flex;align-items:center;gap:.4rem;cursor:pointer;background:none;font:inherit;color:inherit;opacity:.45}
-.be-filter.is-active{opacity:1;background:rgba(128,128,128,.12)}
-.be-tick{width:12px;height:12px;border:1.5px solid currentColor;border-radius:3px;opacity:.55}
-.be-filter.is-active .be-tick{background:currentColor;opacity:.85}
+.be-filter{display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;user-select:none;opacity:.5}
+.be-filter.is-active{opacity:1;background:rgba(128,128,128,.1)}
+.be-check{width:15px;height:15px;margin:0;cursor:pointer;flex:none}
 .be-group.is-hidden,.be-cat.is-hidden,.be-card.is-hidden{display:none}
 .be-group-head{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
   color:#888;border-bottom:1px solid rgba(128,128,128,.2);padding-bottom:.3rem;margin:1.6rem 0 .6rem}
@@ -222,19 +222,19 @@ _STYLE = """
 _SCRIPT = """
 <script>
 (function(){
-  var ALL=['Implemented','In progress','Proposals','Deferred'];
-  var filters=document.querySelectorAll('.be-filter');
+  var checks=document.querySelectorAll('.be-check');
   var cards=document.querySelectorAll('.be-card');
   var cats=document.querySelectorAll('.be-cat');
   var groups=document.querySelectorAll('.be-group');
-  var on={}; ALL.forEach(function(s){ on[s]=true; });
+  var on={};
+  checks.forEach(function(c){ on[c.getAttribute('data-filter')]=c.checked; });
   function setCollapsed(cat, collapsed){
     cat.classList.toggle('is-collapsed', collapsed);
     var head=cat.querySelector('.be-cat-head');
     if(head) head.setAttribute('aria-expanded', String(!collapsed));
   }
   function apply(){
-    var allOn=ALL.every(function(s){ return on[s]; });
+    var allOn=Object.keys(on).every(function(s){ return on[s]; });
     cards.forEach(function(c){
       c.classList.toggle('is-hidden', !on[c.getAttribute('data-status')]);
     });
@@ -246,14 +246,12 @@ _SCRIPT = """
     groups.forEach(function(g){
       g.classList.toggle('is-hidden', !g.querySelector('.be-cat:not(.is-hidden)'));
     });
-    filters.forEach(function(f){
-      var s=f.getAttribute('data-filter');
-      f.classList.toggle('is-active', on[s]);
-      f.setAttribute('aria-pressed', String(on[s]));
+    checks.forEach(function(c){
+      c.closest('.be-filter').classList.toggle('is-active', c.checked);
     });
   }
-  filters.forEach(function(f){
-    f.addEventListener('click', function(){ var s=f.getAttribute('data-filter'); on[s]=!on[s]; apply(); });
+  checks.forEach(function(c){
+    c.addEventListener('change', function(){ on[c.getAttribute('data-filter')]=c.checked; apply(); });
   });
   cats.forEach(function(cat){
     var head=cat.querySelector('.be-cat-head');
