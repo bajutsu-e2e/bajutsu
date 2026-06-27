@@ -8,6 +8,7 @@
 | 提案 | [BE-0055](BE-0055-operational-logging-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
+| 実装 PR | [#334](https://github.com/bajutsu-e2e/bajutsu/pull/334) |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 <!-- /BE-METADATA -->
 
