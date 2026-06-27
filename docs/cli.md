@@ -127,7 +127,7 @@ bajutsu audit --history <runs-dir>                         # mine past runs for 
 ## `coverage`
 
 A **static e2e coverage map** for a suite — the read-only cousin of `doctor`'s convention score
-(AI-independent; [BE-0050](../roadmaps/in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
+(AI-independent; [BE-0050](../roadmaps/implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)).
 Where `doctor` grades the ids one screen *exposes*, this grades the ids a whole *suite* exercises:
 it walks every `*.yaml` in the app's configured `scenarios` dir (expanding components / data), groups
 the stable ids they reference by namespace, and measures them against the app's declared
@@ -224,7 +224,7 @@ bajutsu trace --explain <scenario.yaml>     # pre-run dry run (no device)
 
 Re-renders a finished run's `report.html` (and re-emits `junit.xml`) from its **stored data**, with
 the **current** template — no device, no LLM, no re-run
-([BE-0068](../roadmaps/in-progress/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
+([BE-0068](../roadmaps/implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md)). So a
 template improvement or a rendering-bug fix reaches past runs without re-executing them; the
 verdict is read from the stored model, never recomputed.
 
@@ -297,7 +297,7 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
 - Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
-- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)):
+- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)):
   `record` reads the config from the fetched checkout, but the authored scenario goes **local** — with
   no `--out` it auto-names under the **current directory** (not the checkout's `scenarios` dir, which
   is the read-only SHA-keyed cache), and an `--out` inside the checkout is refused. Review the file
@@ -334,7 +334,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--config` | `bajutsu.config.yaml` | config |
 
-- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)):
+- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)):
   `crawl` reads the config from the fetched checkout, but the screen map / screenshots go to the local
   `--out` run dir (default `runs/<timestamp>`), never into the read-only SHA-keyed cache; an `--out`
   inside the checkout is refused.
@@ -527,7 +527,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `--config` is **optional**. Omit it and open a `config.yml` from the UI's file browser (an
   "Open config" button); the browser is confined to `--root` (default: the current directory).
   `--scenarios <dir>` is available as an override of the selected app's configured dir.
-- **From a Git repository ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)).**
+- **From a Git repository ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)).**
   `--config` also accepts a Git source (`github:owner/repo@ref:path`), and the "Open config" dialog
   has a **From a Git repository** field for the same spec: serve materializes the repo subtree at the
   ref into its cache, binds that config, and serves from the checkout root — so the config's relative
@@ -536,7 +536,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   point serve at the team's test repository instead of hand-syncing files, and switch branches in the
   UI rather than redeploying. The file browser stays confined to `--root`; the checkout is a managed
   content-addressed cache, and a Git-sourced run confines the config's path fields to the checkout
-  root ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)).
+  root ([BE-0063](../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)).
 - `--baselines` sets the visual-regression baselines dir (default: a `baselines/` folder under
   the app's scenarios dir); runs launched from the UI use it, and the report's **Approve** button
   promotes the captured screenshot into it via `POST /api/approve`.

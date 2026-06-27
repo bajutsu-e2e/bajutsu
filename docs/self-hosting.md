@@ -6,7 +6,7 @@
 > private Tailscale network, from the self-hosting roadmap
 > ([BE-0016](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
 > Two tiers are available today, both made safe to expose by
-> [BE-0051](../roadmaps/proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
+> [BE-0051](../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
 > auth + input validation:
 >
 > - **Tier A — a single Mac.** One `bajutsu serve` process, token-authenticated, on one Mac. The
@@ -109,7 +109,7 @@ session cookie). API clients send `Authorization: Bearer $TOKEN`.
 ## Security recap (BE-0051)
 
 A self-hosted serve relies on the hardening from
-[BE-0051](../roadmaps/proposals/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md):
+[BE-0051](../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md):
 token auth on every request, `/api/run` and `/api/record` confined to the app's scenarios dir with
 validated `backend`/`udid`, a CSRF Origin check plus security headers, and a concurrency cap on run
 dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patched.

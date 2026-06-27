@@ -451,7 +451,7 @@ def _contains(outer: Frame, inner: Frame) -> bool:
     """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
 ```
 
-**Migration is phased and incremental** ([BE-0065](../roadmaps/in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
+**Migration is phased and incremental** ([BE-0065](../roadmaps/implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
 the site renders today from the existing prose docstrings (typed signatures already give a useful
 reference); public-API docstrings move to Google style module by module in small PRs, and the
 scoped `ruff` `D` enforcement and Pages hosting land after. **Don't rewrite a whole module's
