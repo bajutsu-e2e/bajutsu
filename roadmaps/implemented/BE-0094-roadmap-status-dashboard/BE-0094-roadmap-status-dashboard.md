@@ -1,13 +1,14 @@
-**English** · [日本語](BE-XXXX-roadmap-status-dashboard-ja.md)
+**English** · [日本語](BE-0094-roadmap-status-dashboard-ja.md)
 
-# BE-XXXX — Generated roadmap status dashboard on GitHub Pages
+# BE-0094 — Generated roadmap status dashboard on GitHub Pages
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-status-dashboard.md) |
+| Proposal | [BE-0094](BE-0094-roadmap-status-dashboard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#322](https://github.com/bajutsu-e2e/bajutsu/pull/322) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -54,11 +55,11 @@ gitignored, exactly like the generated API reference `site/`. This is the load-b
 
 - It **cannot drift.** `make docs` / `make docs-serve` regenerate it first, and the `docs` workflow
   regenerates it before publishing, so the published page always matches the committed roadmap.
-- It is **decoupled from BE-id allocation.** Placeholder items carry the literal `BE-XXXX` id until
+- It is **decoupled from BE-id allocation.** Placeholder items carry the literal `BE-0094` id until
   CI assigns the real number on a PR ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)).
-  The directory regex (`^BE-\d{4}-`) skips `BE-XXXX`, so the placeholder is excluded from the
+  The directory regex (`^BE-\d{4}-`) skips `BE-0094`, so the placeholder is excluded from the
   dashboard just as it is from the index — and because the page is never committed, nothing has to be
-  re-rendered when allocation later rewrites `BE-XXXX` to `BE-NNNN`.
+  re-rendered when allocation later rewrites `BE-0094` to `BE-NNNN`.
 
 **Rendering.** Cards are grouped category-major (by Topic, in the index's topic order). Each card
 carries its own status as a colour and a badge (Implemented / In progress / Proposal / Deferred) and
@@ -107,7 +108,7 @@ API reference — to be served. That one-time repository setting is outside this
 ## Alternatives considered
 
 - **A committed, drift-checked page (like the index).** Rejected: committing the rendered page would
-  couple it to the BE-id-allocation machinery — when CI rewrites `BE-XXXX` to `BE-NNNN` it would also
+  couple it to the BE-id-allocation machinery — when CI rewrites `BE-0094` to `BE-NNNN` it would also
   have to re-render and re-commit the page, or the drift check would fail. Generating it as a build
   artifact removes that coupling and the whole class of "forgot to regenerate" failures.
 - **A standalone dashboard site/URL.** Rejected: a second Pages target is more infrastructure for no
