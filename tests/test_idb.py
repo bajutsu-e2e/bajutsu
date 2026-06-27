@@ -118,6 +118,15 @@ def test_query_returns_after_bounded_retries_when_empty_persists() -> None:
     assert calls[0] == 1 + IdbDriver._EMPTY_RETRIES  # initial + bounded retries
 
 
+def test_empty_backoff_grows_exponentially_then_caps() -> None:
+    # The transient-empty retry backs off exponentially (recovering fast when the empty
+    # clears quickly, spacing out later) and caps so the total stays within the prior bound.
+    driver = IdbDriver("U", run=lambda a: "[]")
+    seq = [driver._empty_backoff(i) for i in range(IdbDriver._EMPTY_RETRIES)]
+    assert seq == [0.05, 0.1, 0.2, 0.2, 0.2]  # base 0.05, doubling, capped at 0.2
+    assert sum(seq) <= 1.0  # no further than the previous fixed-0.2 * 5 bound
+
+
 def test_wait_for_returns_true_when_already_present() -> None:
     driver = IdbDriver("U", run=lambda a: FIXTURE)
     assert driver.wait_for({"id": "settings.open"}, timeout=1, poll=0) is True
