@@ -362,6 +362,12 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   screen is a label+info node, and screens that are the same UI in different states (a form empty vs
   filled) collapse into one node you can expand in place. Stops at the first of `--max-screens` /
   `--max-steps`.
+- On completion it also writes `<out>/screenmap.html` — a **self-contained** report (inline CSS, no
+  JavaScript, no external asset) and the offline counterpart to the live **Crawl** tab: the screens
+  laid out in BFS depth columns with their screenshots, the transitions drawn as a static inline SVG
+  (amber, with a 🛡️ marker, where a step tapped through an OS alert), and the crash / dismissed-alert
+  paths listed below. It sits beside `screenmap.json` and `screens/`, so it opens straight from the
+  run dir — share or archive it without the web UI. Read-only and model-free, like the JSON.
 - **Parallel pool** ([BE-0064](../roadmaps/implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md)):
   with `--workers N` over a `--udid A,B,C` pool the crawl runs across N booted simulators at once,
   all sharing the one screen map and frontier — independent branches explore concurrently and the AI
