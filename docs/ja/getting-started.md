@@ -217,6 +217,6 @@ uv run bajutsu trace               # runs/ 下の最新実行
   end-to-end に実行できます。
 
 ここからは、各リファレンスページがそれぞれの要素を詳しく説明します。まず設計の根拠を
-[concepts](concepts.md) で確認し、続けて [ドキュメント索引](README.md) の推奨読書順に従ってください。
+[concepts](concepts.md) で確認し、続けて [ドキュメント概要](overview.md) の推奨読書順に従ってください。
 サンプル以外の自前のアプリをオンボーディングするには
 [configuration](configuration.md#新しいターゲットのオンボーディング) を参照してください。

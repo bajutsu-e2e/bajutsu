@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0093](BE-0093-public-docs-site-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | [#326](https://github.com/bajutsu-e2e/bajutsu/pull/326) |
 | トピック | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -78,5 +79,5 @@ mkdocs-material では、テーマのオーバーライド（`overrides/home.htm
 - [`mkdocs.yml`](../../../mkdocs.yml)：現在のサイト設定（API リファレンスのみ）。
 - [`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml)：眠っているビルド／デプロイ workflow。
 - [`docs/vision.md`](../../../docs/vision.md) · [`README`](../../../README.md)：ランディングページの素材。
-- [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) · [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)：`serve` という**アプリ**のホスティング（この静的サイトとは別物）。
+- [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) · [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)：`serve` という**アプリ**のホスティング（この静的サイトとは別物）。
 - [mkdocs-static-i18n](https://github.com/ultrabug/mkdocs-static-i18n)：ポータルのバイリンガル表示。

@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0093](BE-0093-public-docs-site.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#326](https://github.com/bajutsu-e2e/bajutsu/pull/326) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -135,5 +136,5 @@ publishes. No LLM, no Simulator, Linux-only — consistent with the existing doc
 - [`mkdocs.yml`](../../../mkdocs.yml) — current site config (API reference only).
 - [`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml) — the dormant build/deploy workflow.
 - [`docs/vision.md`](../../../docs/vision.md) · [`README`](../../../README.md) — source material for the landing page.
-- [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) · [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — hosting the `serve` *app* (distinct from this static site).
+- [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) · [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — hosting the `serve` *app* (distinct from this static site).
 - [mkdocs-static-i18n](https://github.com/ultrabug/mkdocs-static-i18n) — bilingual rendering for the portal.
