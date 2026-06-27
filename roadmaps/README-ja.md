@@ -96,6 +96,7 @@
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0042](implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md) | プラットフォーム対応の backend レジストリと選択 | 実装済み |
+| [BE-0054](implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) | Web backend の完成（リッチな capability と並列実行） | 実装済み |
 | [BE-0057](implemented/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets-ja.md) | 設定の `apps` キーを `targets` に改名 | 実装済み |
 | [BE-0066](implemented/BE-0066-web-crawl/BE-0066-web-crawl-ja.md) | Web crawl（Playwright backend） | 実装済み |
 <!-- /GENERATED:implemented-platform-landed -->
@@ -291,7 +292,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0041](in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) | Web (Playwright) backend | 実装中 |
-| [BE-0054](in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) | Web backend の完成（リッチな capability と並列実行） | 実装中 |
 <!-- /GENERATED:in-progress-platform-landed -->
 
 ### 競合調査（MagicPod / Autify）由来の候補

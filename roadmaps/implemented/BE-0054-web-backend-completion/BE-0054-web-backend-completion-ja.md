@@ -7,14 +7,14 @@
 |---|---|
 | 提案 | [BE-0054](BE-0054-web-backend-completion-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | 実装 PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187)（native network スライス）、[#297](https://github.com/bajutsu-e2e/bajutsu/pull/297)（並列レーン）、[#298](https://github.com/bajutsu-e2e/bajutsu/pull/298)（console / page-error 証跡）、[#299](https://github.com/bajutsu-e2e/bajutsu/pull/299)（動画証跡）、[#300](https://github.com/bajutsu-e2e/bajutsu/pull/300)（擬似 multiTouch） |
 | トピック | プラットフォーム拡張（着手済みスライス） |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-Web（Playwright）backend の最初のスライス（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、
+Web（Playwright）backend の最初のスライス（[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、
 意図的に絞った capability セット `{query, elements, screenshot, semanticTap, conditionWait}` で
 決定論的な `run` パスを出荷し、Linux 上で小さなデモ Web アプリを駆動できるようにしました。本項目は、
 BE-0041 が「Web を最初に選ぶ理由」とした capability モデルの**リッチ端**まで backend を引き上げます。
@@ -79,7 +79,7 @@ backend に適用される既存の record 体験の提案
 
 ## 参考
 
-[BE-0041 — Web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、
+[BE-0041 — Web（Playwright）backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、
 [BE-0009 — クロスプラットフォーム抽象](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、
 [multi-platform.md](../../../docs/multi-platform.md)、`bajutsu/drivers/playwright.py`、
 `bajutsu/runner/pool.py`、`bajutsu/evidence.py`

@@ -7,14 +7,14 @@
 |---|---|
 | Proposal | [BE-0054](BE-0054-web-backend-completion.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Implementing PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187) (native network slice), [#297](https://github.com/bajutsu-e2e/bajutsu/pull/297) (parallel lanes), [#298](https://github.com/bajutsu-e2e/bajutsu/pull/298) (console / page-error evidence), [#299](https://github.com/bajutsu-e2e/bajutsu/pull/299) (video evidence), [#300](https://github.com/bajutsu-e2e/bajutsu/pull/300) (emulated multiTouch) |
 | Topic | Platform expansion (landed slices) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-The first slice of the Web (Playwright) backend ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md))
+The first slice of the Web (Playwright) backend ([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md))
 shipped the deterministic `run` path with a deliberately lean capability set —
 `{query, elements, screenshot, semanticTap, conditionWait}` — driving a tiny demo web app on
 Linux. This item completes the backend up to the **rich end** of the capability model that
@@ -80,7 +80,7 @@ which apply to any backend.
 
 ## References
 
-[BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
+[BE-0041 — Web (Playwright) backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
 [BE-0009 — Cross-platform abstractions](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md),
 [drivers.md](../../../docs/drivers.md), [multi-platform.md](../../../docs/multi-platform.md),
 `bajutsu/drivers/playwright.py`, `bajutsu/runner/pool.py`, `bajutsu/evidence.py`
