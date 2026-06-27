@@ -8,7 +8,7 @@
 | Proposal | [BE-0054](BE-0054-web-backend-completion.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187) (native network slice) |
+| Implementing PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187) (native network slice), [#297](https://github.com/bajutsu-e2e/bajutsu/pull/297) (parallel lanes) |
 | Topic | Platform expansion (landed slices) |
 <!-- /BE-METADATA -->
 
@@ -52,7 +52,7 @@ into "Web exercises the whole capability gradient":
 | video evidence | — | `BrowserContext` `record_video_dir` → the `video` capture kind |
 | console / page-error log | — | `page.on("console")` / `on("pageerror")` → a `deviceLog`-equivalent kind |
 | `multiTouch` (pinch / rotate) | `UnsupportedAction` | synthesized touch points → advertise `MULTI_TOUCH` |
-| parallel lanes | single-lane (`workers = 1`) | N `BrowserContext` lanes in the pool's web branch |
+| parallel lanes | single-lane (`workers = 1`) | N `BrowserContext` lanes in the pool's web branch — **shipped (#297)**: `--workers N` is N web lanes |
 
 Each maps onto an existing seam: the capture providers extend `FileSink`'s interval handling
 (today gated on a simctl `udid`), the network capability plugs into the same `request` assertion

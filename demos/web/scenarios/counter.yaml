@@ -1,0 +1,21 @@
+# A second web scenario so `make -C demos/web e2e` runs two scenarios — exercising the
+# parallel BrowserContext lanes (BE-0054) when invoked with --workers 2. Same path as the
+# smoke, but increments three times to keep it a distinct check.
+description: >-
+  Web counter — onboard, log in, reach home, and increment the counter three times,
+  asserting the count reads 3. Runs alongside the smoke as a second parallel lane.
+scenarios:
+  - name: onboard, log in, and increment the counter three times
+    description: Onboard, sign in, tap increment three times, and assert the count reads 3.
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "a@b.com", into: { id: auth.email } }
+      - type: { text: "pw", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+      - tap: { id: counter.increment }
+      - tap: { id: counter.increment }
+      - tap: { id: counter.increment }
+    expect:
+      - exists: { id: home.title }
+      - value: { sel: { id: counter.value }, equals: "3" }
