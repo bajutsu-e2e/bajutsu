@@ -12,14 +12,7 @@ scenarios:
       - type: { text: "a@b.com", into: { id: auth.email } }
       - type: { text: "pw", into: { id: auth.password } }
       - tap: { id: auth.submit }
-      # Generous timeout: log in + navigate to home can take well over 5s on a loaded CI
-      # Simulator. A condition wait returns as soon as home.title appears, so a larger bound
-      # only tolerates a slow runner — it never slows the common case.
-      - wait: { for: { id: home.title }, timeout: 20 }
-      # Wait for the counter control itself before tapping it: on a freshly-navigated home
-      # screen the title can render a beat before the counter row, so gate the tap on the
-      # element we act on (a condition wait, not a fixed sleep) to keep the smoke run stable.
-      - wait: { for: { id: counter.increment }, timeout: 15 }
+      - wait: { for: { id: home.title }, timeout: 5 }
       - tap: { id: counter.increment }
       - tap: { id: counter.increment }
     expect:
