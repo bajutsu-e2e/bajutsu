@@ -63,7 +63,7 @@ visible in one place.
   chromium` remedies, no Xcode/Simulator), and `doctor` navigates a fresh browser to the target's
   `baseUrl` and scores that page. The convention score itself was already backend-agnostic (it
   reads each element's id and traits), so the web backend's `data-testid` ids score unchanged.
-- **A screen with no actionable elements is graded `Blocked`, not `Ready`.**
+- **A screen with no actionable elements is graded `Blocked`, not `Ready`** ([#337](https://github.com/bajutsu-e2e/bajutsu/pull/337)).
   `doctor.score` derived id coverage as `1.0` when there were no actionable elements, so a blank,
   not-yet-loaded, or wrong screen graded `Ready` — a confusing false-positive that told a first-run
   user their setup was sound when `doctor` had in fact found nothing to test. The score now treats
