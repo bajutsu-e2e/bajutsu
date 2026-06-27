@@ -135,9 +135,10 @@ differently-named response without a code change.
 - **A unique awaited message.** With the `after`-start boundary the expected case is exactly one new
   matching message. If more than one matches, the **newest by `receivedAt`** wins (stable tie-break
   by message id), so the result never depends on arrival-order races.
-- **Bounded poll.** Poll at a fixed small interval until a match or the deadline; a timeout, a
-  matched message whose body the `extract` regex does not hit, or a non-2xx fetch is a **clean step
-  failure** — never a silent wrong value.
+- **Bounded poll.** Re-fetch and re-check until a match or the `timeout` deadline — the standard
+  condition-wait pattern (repeat fetch + test), not a fixed sleep. A timeout, a matched message
+  whose body the `extract` regex does not hit, or a non-2xx fetch is a **clean step failure**, never
+  a silent wrong value.
 
 **Gate-testability.** The fetch is taken behind an injectable HTTP function (the `http` step's
 client / a `RunFn`-style seam), so the poll loop, the `after`-start filter, the match/extract, the
