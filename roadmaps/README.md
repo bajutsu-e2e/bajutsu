@@ -328,6 +328,14 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0026](in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | In progress |
 <!-- /GENERATED:in-progress-codegen -->
 
+### On-device validation (M1 close-out)
+
+<!-- GENERATED:in-progress-on-device -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0087](in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | In progress |
+<!-- /GENERATED:in-progress-on-device -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *In progress* once work starts, or to *Implemented* when it ships.
@@ -340,7 +348,6 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 | ID | Item | Status |
 |---|---|---|
 | [BE-0006](proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Proposal |
-| [BE-0087](proposals/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Proposal |
 <!-- /GENERATED:proposals-on-device -->
 
 ### Platform expansion (Android / Web / Flutter)

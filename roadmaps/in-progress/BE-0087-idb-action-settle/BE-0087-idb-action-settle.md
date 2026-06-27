@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0087](BE-0087-idb-action-settle.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
@@ -44,7 +44,7 @@ All changes live in `bajutsu/drivers/idb.py` (the idb backend). The web (Playwri
 
 - **Determinism preserved.** Selector strictness is untouched: ambiguous still fails immediately, missing still fails. Settle and backoff only change *when* the screen is read, never *which* element a selector matches. No part of this adds an LLM to the run/CI gate.
 
-This is deliberately **not** tree repair. [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) covers asserting the *steady-state* normalized shape of SwiftUI controls against a golden; this proposal only governs *when* the driver reads a settled tree. The two stay separate: BE-0006's golden is asserted after settle has done its job, and neither masks the other.
+This is deliberately **not** tree repair. [BE-0006](../../proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) covers asserting the *steady-state* normalized shape of SwiftUI controls against a golden; this proposal only governs *when* the driver reads a settled tree. The two stay separate: BE-0006's golden is asserted after settle has done its job, and neither masks the other.
 
 ### Validation
 
@@ -66,5 +66,5 @@ Small, focused PRs in order of value: (1) settle-before-actuation; (2) `wait_for
 ## References
 
 - [DESIGN §11](../../../DESIGN.md) — idb normalization and the transient-empty note
-- [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — steady-state golden normalization (complementary)
+- [BE-0006](../../proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — steady-state golden normalization (complementary)
 - [BE-0049](../../implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) — determinism / flakiness audit (before/after measurement)
