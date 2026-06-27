@@ -20,11 +20,11 @@ refuses one part of it: a target's `build` command is **never** executed on the 
 ships a prebuilt binary; [DESIGN §1](../../../DESIGN.md)). But a config carries other fields that run
 a shell command on the `serve` host — chiefly `launchServer.cmd` — and that command is **not**
 governed: when the bound bundle runs, the `bajutsu run` subprocess spawns it as written, on the bare
-host, with the operator's environment. This item gives that surface an explicit, tier-aware policy
-**and** a safe way to run it: a `sandbox` mode that executes the uploaded command inside a throwaway
-**Docker** container so it cannot touch the `serve` host. The policy decides *whether* a command runs;
-the sandbox decides *how safely* — together they make "yes, run the uploaded server" something a
-multi-tenant host can actually allow.
+host, with the operator's environment. This item replaces that bare-host execution with a `sandbox`
+mode that runs the uploaded command inside a throwaway **Docker** container so it cannot touch the
+`serve` host, and pairs it with an explicit policy (`deny` / `reuse` / `sandbox`) over *whether* the
+command runs at all. There is no longer any mode that reaches the bare host: running the uploaded
+server becomes something a multi-tenant host can allow, because the only way it runs is contained.
 
 ## Motivation
 
@@ -53,7 +53,9 @@ The gap matters at the deployment boundary, not on a laptop:
 
 - **Tier-A (authenticated single-Mac `serve`).** Running an uploaded config's `launchServer.cmd` is
   no worse than running the uploaded `.app` binary the same bundle ships — the authenticated operator
-  is already trusted to bring and run their own suite. Today's behavior is the *intended* model here.
+  is already trusted to bring and run their own suite, so bare-host execution has been tolerable here.
+  But it is the same mechanism that is unacceptable when hosted, which is why this item routes every
+  deployment, Tier-A included, through the sandbox rather than keeping a bare-host escape hatch.
 - **Hosted / multi-tenant `serve`** ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
   [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)). An
   authenticated-but-untrusted tenant uploading a bundle whose config sets `launchServer.cmd: rm -rf …`
@@ -79,7 +81,7 @@ that runs the command inside a container. Both halves are fully deterministic (n
 gate path), host-level (not per-app), and configured through `targets.<name>`, so they respect the
 prime directives.
 
-- **Policy knob — now four modes.** A `serve` option `--upload-exec=<deny|reuse|sandbox|allow>`
+- **Policy knob — three modes.** A `serve` option `--upload-exec=<deny|reuse|sandbox>`
   (mirrored by an env var for the hosted backend) decides what happens when the *active config is an
   uploaded bundle* and a run would spawn one of these commands. It applies only to upload-sourced
   configs; a local or Git-sourced config (already operator-trusted) is unaffected.
@@ -87,14 +89,15 @@ prime directives.
   - **`reuse`** — don't run the uploaded `cmd`; only `launchServer`'s existing `readyUrl` probe may
     *use* an operator-provisioned server already answering at `baseUrl`.
   - **`sandbox`** — run the uploaded `cmd`, but **inside a throwaway Docker container**, never on the
-    `serve` host. This is the new safe-yes (detailed below).
-  - **`allow`** — run the uploaded `cmd` directly on the `serve` host (today's behavior).
-- **Sandbox by default.** `serve` treats Docker as a required dependency of the upload path, so
-  `sandbox` is the default for an uploaded config's commands on *every* deployment — there is no
-  Docker-absent case to fall back from. `allow` is an explicit operator opt-out for a trusted local
-  single-Mac `serve` that wants bare-host parity with running the uploaded binary (the BYO-suite
-  Tier-A model); a hosted/multi-tenant `serve` keeps the `sandbox` default. The operator opts *into*
-  bare-host `allow`, never out of containment.
+    `serve` host. This is the safe-yes and the default (detailed below).
+- **No bare-host execution; sandbox by default.** There is deliberately **no mode that runs an
+  uploaded `cmd` directly on the `serve` host** — that path is exactly the RCE surface this item
+  closes, so it does not exist even as an opt-in. `serve` treats Docker as a required dependency of
+  the upload path, so `sandbox` is the default on *every* deployment, with no Docker-absent case to
+  fall back from. The same rule holds on a single-Mac Tier-A `serve`: it too runs an uploaded
+  `launchServer.cmd` in a container, since Docker is present and the containment costs nothing it
+  would miss. An operator who does not want the uploaded command to run at all chooses `deny` or
+  `reuse`; none of the three modes ever reaches the bare host.
 - **The `sandbox` mode — virtualizing the server command.** When `sandbox` is in effect and a run
   needs `launchServer.cmd` (or, once wired, `mockServer.cmd`), bajutsu runs the command in a fresh
   container rather than via `subprocess.Popen` on the host:
@@ -120,11 +123,11 @@ prime directives.
   cannot satisfy — `deny`/`reuse` with no server answering `readyUrl`, or `sandbox` with no `image` —
   the run fails with a clear error naming the offending field and the reason
   ([DESIGN §2](../../../DESIGN.md): fail loud, no silent fallback). A blocked or sandbox-misconfigured
-  `launchServer` must not read as a flaky run, and `sandbox` must never quietly degrade to bare-host
-  `allow`. `build` keeps its existing always-denied treatment for uploads, folded into this policy as
-  the precedent rather than a separate special case.
-- **Provenance.** Record the policy decision (allowed / denied / reused / sandboxed, which field, and
-  the image when sandboxed) into the run's `manifest.json` alongside BE-0073's upload provenance, so
+  `launchServer` must not read as a flaky run, and `sandbox` must never quietly fall back to running
+  the command on the bare host. `build` keeps its existing always-denied treatment for uploads, folded
+  into this policy as the precedent rather than a separate special case.
+- **Provenance.** Record the policy decision (denied / reused / sandboxed, which field, and the image
+  when sandboxed) into the run's `manifest.json` alongside BE-0073's upload provenance, so
   "what did this run execute, where, and what was suppressed?" stays answerable.
 
 The scope is the **policy seam plus a containerized execution mode** for the upload path — deciding
@@ -139,12 +142,16 @@ extend.
   insufficient for hosting: it can decide *whether* a command runs but cannot make "yes" safe, so a
   multi-tenant host is left choosing between a broken `deny` and bare-host RCE. The `sandbox` mode is
   the missing safe-yes, which is the whole point of the multi-tenant seam.
-- **Make `sandbox` the only mode (drop the other three).** Rejected even though Docker is always
-  available: `reuse` against an operator-provisioned server is a legitimate hosted pattern (the run
-  needs no container at all), `allow` lets a trusted Tier-A operator skip the container for bare-host
-  parity with running the uploaded binary, and `deny` is the right answer when an operator wants to
-  refuse uploaded commands outright. `sandbox` is the safe *default*, not the only path — keeping the
-  other three modes costs little and each earns its place.
+- **Keep a bare-host `allow` opt-out (e.g. for Tier-A).** Rejected: bare-host execution of an
+  uploaded command is the exact RCE surface this item closes, so leaving it as an opt-in keeps the
+  dangerous path one flag away and one misconfiguration from being the live default. With Docker
+  always present, `sandbox` covers the Tier-A case at no cost worth a bare-host escape hatch, so
+  `allow` is removed outright rather than retained as a mode.
+- **Make `sandbox` the only mode (drop `reuse` and `deny` too).** Rejected: `reuse` against an
+  operator-provisioned server is a legitimate hosted pattern (the run needs no container at all), and
+  `deny` is the right answer when an operator wants to refuse uploaded commands outright. `sandbox` is
+  the safe *default* and the only path that *executes* the command, but keeping `reuse` and `deny`
+  costs little and each earns its place — neither reaches the bare host.
 - **Block `launchServer` / `mockServer` outright for uploads, like `build`.** Rejected: `launchServer`
   is required at run time to bring up the app under test, and a web bundle has no other way to be
   self-contained, so a blanket block breaks the legitimate Tier-A use case the upload path exists for.
@@ -153,8 +160,8 @@ extend.
   latent foot-gun and a hard blocker for BE-0015 / BE-0016. Defining the seam now, while the upload
   path is fresh, is cheaper than retrofitting it under a hosting deadline.
 - **Allowlist specific command strings.** Rejected as brittle: a string allowlist is easy to bypass
-  and hard to get right; a tier-based mode with an explicit operator opt-in and a container boundary
-  is simpler and has a clearer security story.
+  and hard to get right; a small fixed set of modes behind a container boundary is simpler and has a
+  clearer security story.
 - **A non-Docker sandbox (macOS `sandbox-exec`/seatbelt, bubblewrap, a VM).** Deferred, not opposed:
   seatbelt is macOS-only (no Linux control plane), bubblewrap is Linux-only, and a VM is far heavier.
   Docker is the one mechanism already shipped in the project's hosting stack and available on both the
