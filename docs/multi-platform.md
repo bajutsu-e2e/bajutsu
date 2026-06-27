@@ -1,13 +1,13 @@
 **English** · [日本語](ja/multi-platform.md)
 
-# Extending to Android and Web (multi-platform) — overview
+# Extending to Android (multi-platform) — overview
 
-> Forward-looking — mostly **planned, not implemented yet**. Today Bajutsu is centered on the **iOS
-> Simulator** ([DESIGN §1](../DESIGN.md), [README](../README.md)); the **Web (Playwright) backend has
-> landed a first slice** (a deterministic `run` against a browser, on the Linux gate — see
-> [drivers](drivers.md#playwright-web) and `demos/web`), while Android / Flutter remain planned. This
-> page is the **big-picture overview**
-> of how the existing abstractions extend to **Android** (emulator) and **Web** (browser): what stays
+> Forward-looking overview. Bajutsu is **multi-platform via a backend-agnostic driver**: the **iOS
+> Simulator** (idb) and a **Web (Playwright) backend** have both landed ([DESIGN §1](../DESIGN.md),
+> [README](../README.md)) — the web backend runs a deterministic `run` against a browser on the Linux
+> gate (see [drivers](drivers.md#playwright-web) and `demos/web`) — while **Android** (emulator) and
+> **Flutter** remain planned. This page is the **big-picture overview**
+> of how the existing abstractions extend to a new platform: what stays
 > unchanged, what each platform adds, and the order to build it in. The **concrete, per-platform design
 > and the implementation plan live in the roadmap** — each item is linked below. Read this for the
 > direction; follow the roadmap items for the specifics.

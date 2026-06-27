@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0010](BE-0010-update-scope-statement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#327](https://github.com/bajutsu-e2e/bajutsu/pull/327) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 

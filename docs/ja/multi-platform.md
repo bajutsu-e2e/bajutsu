@@ -1,15 +1,15 @@
 [English](../multi-platform.md) · **日本語**
 
-# Android と Web への拡張（マルチプラットフォーム）の概要
+# Android への拡張（マルチプラットフォーム）の概要
 
-> 将来構想であり、**大半は計画段階でまだ実装していません**。現在 Bajutsu の中心は **iOS Simulator** です
-> （[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）。ただし **Web（Playwright）backend は最初の
-> スライスを着手済み**で（Linux ゲート上でブラウザに対する決定論的な `run`。[drivers](drivers.md#playwrightweb)
-> と `demos/web` を参照）、Android / Flutter は計画段階のままです。本ページは、既存の抽象を **Android**
-> （エミュレータ）と **Web**（ブラウザ）へどう広げるかの **全体像（大枠）** を示します。すなわち、何が変わらず、
-> 各プラットフォームが何を足し、どの順で作るかです。**プラットフォーム別の具体的な設計と実装計画は
-> ロードマップ**にあり、各項目を下にリンクしています。方向性は本ページで、具体はロードマップ項目で
-> 把握してください。
+> 将来構想の概要です。Bajutsu は **backend 非依存のドライバを土台とするマルチプラットフォーム**で、
+> **iOS Simulator**（idb）と **Web（Playwright）backend** はどちらも実装済みです
+> （[DESIGN §1](../../DESIGN.md)、[README](../../README.md)）。web backend は Linux ゲート上でブラウザに対する
+> 決定的な `run` を実行します（[drivers](drivers.md#playwrightweb) と `demos/web` を参照）。**Android**
+> （エミュレータ）と **Flutter** は計画段階のままです。本ページは、既存の抽象を新しいプラットフォームへ
+> どう広げるかの **全体像（大枠）** を示します。すなわち、何が変わらず、各プラットフォームが何を足し、
+> どの順で作るかです。**プラットフォーム別の具体的な設計と実装計画はロードマップ**にあり、各項目を下に
+> リンクしています。方向性は本ページで、具体はロードマップ項目で把握してください。
 
 関連: [drivers](drivers.md) · [selectors](selectors.md) · [concepts](concepts.md) · [vision](vision.md) · [roadmap → プラットフォーム拡張](../../roadmaps/README-ja.md#プラットフォーム拡張android--web--flutter)
 

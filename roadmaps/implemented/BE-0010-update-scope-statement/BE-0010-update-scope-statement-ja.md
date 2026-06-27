@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0010](BE-0010-update-scope-statement-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | [#327](https://github.com/bajutsu-e2e/bajutsu/pull/327) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
