@@ -193,7 +193,9 @@ class IdbDriver:
         Recovers fast when the empty clears on the first retry and spaces out later, while
         the cap keeps the total added wait within the previous fixed bound.
         """
-        return min(self._EMPTY_BACKOFF_S * (2**attempt), self._EMPTY_BACKOFF_MAX_S)
+        # 2.0** (not 2**) keeps the result a float: mypy types int**int as Any (it is float
+        # for a negative exponent), which would leak through min() as an Any return.
+        return min(self._EMPTY_BACKOFF_S * 2.0**attempt, self._EMPTY_BACKOFF_MAX_S)
 
     def _describe(self) -> list[base.Element]:
         return parse_describe_all(self._run(describe_all_cmd(self.udid)))
