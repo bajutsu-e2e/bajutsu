@@ -103,6 +103,14 @@ bajutsu crawl --app <name>
 - **[BE-0012 アクションキャプチャ record](../../proposals/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) / [BE-0014 record の切り分け](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)**：これらは *人間駆動* のキャプチャと、AI `record` からの切り分けを扱います。クロールは第 3 の、完全に自律的なオーサリング入口であり、それらと並べて切り分けるべきです。
 - **[BE-0024 doctor / onboarding](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)**：クロールは doctor の §7.2 計測が必要とするアプリ全体カバレッジの入力を供給します。
 
+### 実装状況
+
+クロールの**エンジン**（`bajutsu/crawl.py`）と CLI（`bajutsu crawl`）は出荷済みです。決定的リプレイによる幅優先巡回、状態グラフ（`ScreenMap` —— ノード／エッジ／クラッシュ／アラート／フロンティアの plan／停止理由）、クラッシュと行き詰まり状態の検出、任意の `--guide ai` レイヤ、並列プール（[BE-0064](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) / [BE-0077](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）を備えます。クロールは `screenmap.json` と画面ごとの `screens/<fingerprint>.png` を書き出し、`serve` の **Crawl** タブがマップをリアルタイムに描きます。
+
+最新のスライスは、*出力*の節が掲げる **描画済みの画面マップグラフ**を、オフライン／CLI 用に提供します。`bajutsu crawl` は JSON と並べて自己完結した `screenmap.html`（`bajutsu/crawl_report.py`、`crawl.html.j2`）も書き出すようになりました。画面を幅優先の深さ列に並べ（web UI の実証済みレイアウトを移植）、遷移を**静的なインライン SVG** で描き（OS アラートをタップして通過した遷移はアンバー色＋🛡️）、各画面をスクリーンショットへリンクし、クラッシュと閉じたアラートの経路を一覧にします。CSS は埋め込み、JavaScript も外部アセットも無しなので、run ディレクトリから直接開けます。この描画は `ScreenMap` の純粋・決定的・モデル非依存な関数で、決定的な探索にも判定にも一切触れません。
+
+この先に残るもの: フォーム中心のフローに対する AI ガイドのテキスト入力供給、発見したフローごとの候補シナリオ提案、クラッシュ再現シナリオの自動生成です。
+
 ## 検討した代替案
 
 **純粋なランダム「モンキー」テスト**（Android Monkey / UIAutomation のファジングのようなランダムタップ）。作るのは容易でクラッシュのあぶり出しは得意ですが、きれいな画面マップを生まず、id の安定性を尊重せず、経路が再現不能です。そのため `record` や `doctor` に供給できず、決定的な再現も書き出せません。体系的な id 駆動の幅優先巡回を優先します。ランダムなファズモードは、識別子がほぼ無い座標専用アプリ向けのフォールバックとしてのみ残す価値があります。

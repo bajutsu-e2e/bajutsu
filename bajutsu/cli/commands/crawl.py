@@ -2,9 +2,11 @@
 
 Drives the same `launch_driver` / actuator path as `run` and `record`, hands the live driver to
 the crawl engine ([`crawl.py`](../../crawl.py)), and streams the growing screen map to
-`runs/<id>/screenmap.json` so the web UI can render it live. The engine is deterministic (screen
-identity, transitions, crashes); the AI guide only proposes *what to try*, and the alert guard
-dismisses unexpected OS prompts. Discovery only — never a pass/fail gate.
+`runs/<id>/screenmap.json` so the web UI can render it live. On completion it also writes a
+self-contained `runs/<id>/screenmap.html` (`crawl_report.py`) — the offline counterpart to the
+live graph, openable straight from the run dir. The engine is deterministic (screen identity,
+transitions, crashes); the AI guide only proposes *what to try*, and the alert guard dismisses
+unexpected OS prompts. Discovery only — never a pass/fail gate.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from typing import cast
 import typer
 
 from bajutsu import crawl as crawl_engine
+from bajutsu import crawl_report
 from bajutsu import env as _env
 from bajutsu.agents import AGENT_KINDS, resolve_kind
 from bajutsu.anthropic_client import credential_gap
@@ -370,6 +373,7 @@ def crawl(
         typer.echo(str(e))
         raise typer.Exit(2) from None
     _write_screenmap(screenmap_path, screen_map)
+    report_path = crawl_report.write_html(out_dir, screen_map, out_dir.name)
     why = {
         "completed": "explored everything reachable",
         "max_screens": f"reached the --max-screens limit ({max_screens})",
@@ -380,6 +384,7 @@ def crawl(
         f"{len(screen_map.crashes)} crashes, {len(screen_map.alerts)} alerts dismissed "
         f"({why}) -> {screenmap_path}"
     )
+    typer.echo(f"screen map report -> {report_path}")
 
 
 def register(app: typer.Typer) -> None:
