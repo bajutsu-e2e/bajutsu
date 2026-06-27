@@ -6,12 +6,21 @@ payload validated on its own; the `Step` aggregator that selects exactly one liv
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
 from bajutsu.scenario.models._base import Point, _Model
 from bajutsu.scenario.models.selector import Selector
+
+
+def _check_regex(pattern: str, field: str) -> None:
+    """Reject an uncompilable regex at load time, so a typo is a scenario error, not a mid-run crash."""
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise ValueError(f"{field} is not a valid regex: {e}") from e
 
 
 class LongPress(_Model):
@@ -125,6 +134,51 @@ class Totp(_Model):
 
     secret: str
     into: VarTarget
+
+
+class EmailMatch(_Model):
+    """Which message `email` waits for: recipient and/or subject, AND-ed. At least one is required."""
+
+    to: str | None = None
+    subject: str | None = None
+    subject_matches: str | None = Field(default=None, alias="subjectMatches")
+
+    @model_validator(mode="after")
+    def _has_criterion(self) -> Self:
+        if self.to is None and self.subject is None and self.subject_matches is None:
+            raise ValueError("email.match needs at least one of: to / subject / subjectMatches")
+        if self.subject_matches is not None:
+            _check_regex(self.subject_matches, "email.match.subjectMatches")
+        return self
+
+
+class EmailExtract(_Model):
+    """Pull a value from the matched message body into `${vars.<var>}` via a regex.
+
+    `bodyMatches` is a regex; its first capturing group (or the whole match, if it has none) is the
+    value written to `var`. A matched message whose body the regex does not hit fails the step.
+    """
+
+    var: str
+    body_matches: str = Field(alias="bodyMatches")
+
+    @model_validator(mode="after")
+    def _valid_regex(self) -> Self:
+        _check_regex(self.body_matches, "email.extract.bodyMatches")
+        return self
+
+
+class Email(_Model):
+    """`email` — poll a mailbox until a matching message arrives, extract a value into `${vars.*}`.
+
+    `match` selects the awaited message, `extract` pulls the value, and `timeout` (seconds, required)
+    bounds the poll — a condition wait, never a fixed sleep (BE-0046). The mailbox endpoint lives in
+    config (`targets.<name>.mailbox`), so the scenario stays app-agnostic and credential-free.
+    """
+
+    match: EmailMatch
+    extract: EmailExtract
+    timeout: float = Field(gt=0)
 
 
 class ClearKeychain(_Model):
