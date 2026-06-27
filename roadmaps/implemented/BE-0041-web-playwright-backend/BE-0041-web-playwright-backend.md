@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0041](BE-0041-web-playwright-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Implementing PR | [#158](https://github.com/bajutsu-e2e/bajutsu/pull/158) |
 | Topic | Platform expansion (landed slices) |
 <!-- /BE-METADATA -->

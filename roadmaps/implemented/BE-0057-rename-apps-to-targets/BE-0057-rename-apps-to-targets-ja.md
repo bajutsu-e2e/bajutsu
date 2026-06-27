@@ -14,7 +14,7 @@
 
 ## はじめに
 
-Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つのキーにまとめ、各コマンドは `--app <name>` で対象を 1 つ選びます（[DESIGN §8](../../../DESIGN.md)、[configuration.md](../../../docs/ja/configuration.md)）。この名前は iOS Simulator 限定だった頃の名残で、当時はテスト対象が常に iOS アプリでした。その後 Web（Playwright）バックエンドが着地し（[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、web のテスト対象は「アプリ」ではなく URL です。スキーマはこのために `bundleId` と並べて `baseUrl` を既に持っています。本項目は文法を `apps` から `targets` へ（`--app` を `--target` へ）改名し、このキーが実際に保持しているもの、すなわちプラットフォームを問わないテスト対象を、名前で正しく表します。
+Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つのキーにまとめ、各コマンドは `--app <name>` で対象を 1 つ選びます（[DESIGN §8](../../../DESIGN.md)、[configuration.md](../../../docs/ja/configuration.md)）。この名前は iOS Simulator 限定だった頃の名残で、当時はテスト対象が常に iOS アプリでした。その後 Web（Playwright）バックエンドが着地し（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、web のテスト対象は「アプリ」ではなく URL です。スキーマはこのために `bundleId` と並べて `baseUrl` を既に持っています。本項目は文法を `apps` から `targets` へ（`--app` を `--target` へ）改名し、このキーが実際に保持しているもの、すなわちプラットフォームを問わないテスト対象を、名前で正しく表します。
 
 ## 動機
 
@@ -79,4 +79,4 @@ Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つの
 - [DESIGN §8](../../../DESIGN.md)（CLI と設定: per-app / マルチアプリ）、[DESIGN §2](../../../DESIGN.md)（app-agnostic の prime directive）
 - [configuration.md](../../../docs/ja/configuration.md)、[cli.md](../../../docs/ja/cli.md)（設定の階層と `--app` フラグ）
 - `bajutsu/config.py`（`AppConfig`、`Config.apps`、`OrgConfig.apps`、`resolve` / `org_for_app` / `apps_for_org`）
-- 関連項目: [BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)（スコープ文の更新。この改名が相乗りするマルチプラットフォームのドキュメント移行）、[BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド。「アプリ」を実態に合わない名前にした、着地済みのプラットフォーム）、[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（プラットフォーム対応バックエンドレジストリ）
+- 関連項目: [BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)（スコープ文の更新。この改名が相乗りするマルチプラットフォームのドキュメント移行）、[BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド。「アプリ」を実態に合わない名前にした、着地済みのプラットフォーム）、[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（プラットフォーム対応バックエンドレジストリ）

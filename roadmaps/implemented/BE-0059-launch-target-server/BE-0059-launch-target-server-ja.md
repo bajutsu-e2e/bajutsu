@@ -58,6 +58,6 @@ apps:
 ## 参考
 
 * [BE-0058 — serve Web UI の Dogfood](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui-ja.md) — この機能を必要とした利用側です。
-* [BE-0041 — web（Playwright）backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)。
+* [BE-0041 — web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)。
 * iOS の `build` / `appPath` による必要時の事前準備フック（`bajutsu/config.py`、`bajutsu/serve/jobs.py`）。
 * [DESIGN.md](../../../DESIGN.md) — 決定性（条件待ち、固定 sleep の禁止）と app 非依存の原則。

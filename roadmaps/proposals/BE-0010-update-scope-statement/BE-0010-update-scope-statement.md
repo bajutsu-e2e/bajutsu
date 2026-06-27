@@ -37,11 +37,11 @@ The scope **widens**, but the prime directives do **not** change. Determinism-fi
 ## Alternatives considered
 
 - **Let the scope statement drift and fix it later.** Rejected: a product whose docs say "iOS-Simulator-only" while the code drives Web misrepresents itself, and the original iOS-only rationale goes stale rather than being relocated. Coupling the update to the first platform's landing keeps docs and code honest.
-- **Fold these doc edits into the per-platform backend items** ([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md)). Rejected: the scope change is cross-cutting (DESIGN, README, architecture status, docs nav) and strategic, so tracking it as its own item keeps it from being lost inside a backend's implementation detail — while still landing in the same change as Phase 1.
+- **Fold these doc edits into the per-platform backend items** ([BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md)). Rejected: the scope change is cross-cutting (DESIGN, README, architecture status, docs nav) and strategic, so tracking it as its own item keeps it from being lost inside a backend's implementation detail — while still landing in the same change as Phase 1.
 
 ## References
 
 - [DESIGN §1](../../../DESIGN.md) (scope: what we do / don't do)
 - [README](../../../README.md), [README.ja](../../../README.ja.md)
 - [architecture.md](../../../docs/architecture.md) (implementation status)
-- Related items: [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) (cross-platform abstractions), [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md) (Android backend)
+- Related items: [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) (cross-platform abstractions), [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md) (Android backend)

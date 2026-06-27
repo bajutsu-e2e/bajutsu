@@ -14,7 +14,7 @@
 
 ## Introduction
 
-The first slice of the Web (Playwright) backend ([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md))
+The first slice of the Web (Playwright) backend ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md))
 shipped the deterministic `run` path with a deliberately lean capability set —
 `{query, elements, screenshot, semanticTap, conditionWait}` — driving a tiny demo web app on
 Linux. This item completes the backend up to the **rich end** of the capability model that
@@ -80,7 +80,7 @@ which apply to any backend.
 
 ## References
 
-[BE-0041 — Web (Playwright) backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
+[BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
 [BE-0009 — Cross-platform abstractions](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md),
 [drivers.md](../../../docs/drivers.md), [multi-platform.md](../../../docs/multi-platform.md),
 `bajutsu/drivers/playwright.py`, `bajutsu/runner/pool.py`, `bajutsu/evidence.py`
