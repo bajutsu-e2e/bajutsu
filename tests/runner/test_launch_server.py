@@ -164,6 +164,19 @@ def test_upload_exec_unknown_mode_fails_loud() -> None:
         ls.start_launch_server(_eff("launchServer: { cmd: 'serve it' }"), upload_exec="bogus")
 
 
+def test_fail_loud_message_escapes_untrusted_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The cmd is untrusted (upload-sourced); a newline in it must be escaped in the error, not
+    # injected raw into logs/CLI output.
+    monkeypatch.setattr(ls, "_probe", lambda url, timeout=2.0: False)
+    with pytest.raises(RuntimeError) as exc:
+        ls.start_launch_server(
+            _eff('launchServer: { cmd: "serve\\nINJECTED" }'), upload_exec="deny"
+        )
+    msg = str(exc.value)
+    assert "\\nINJECTED" in msg  # repr-escaped
+    assert "\nINJECTED" not in msg  # no raw newline reached the message
+
+
 def test_upload_exec_sandbox_delegates_to_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
     # sandbox mode hands off to the sandbox module rather than the bare-host Popen.
     from bajutsu.runner import sandbox

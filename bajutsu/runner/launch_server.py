@@ -108,7 +108,7 @@ def start_launch_server(
             return (lambda: None), _decision(verdict)
         raise SandboxError(
             f"launchServer({upload_exec}): nothing answering {ready_url} and the uploaded cmd is "
-            f"not run under '{upload_exec}' — cmd: {ls.cmd}"
+            f"not run under '{upload_exec}' — cmd: {ls.cmd!r}"
         )
     if upload_exec is not None:
         raise SandboxError(f"unknown --upload-exec mode: {upload_exec!r}")
@@ -117,7 +117,7 @@ def start_launch_server(
         say(f"launchServer: {ready_url} already serving — reusing it (not started by bajutsu)")
         return (lambda: None), None
 
-    say(f"launchServer: starting target server — {ls.cmd}")
+    say(f"launchServer: starting target server — {ls.cmd!r}")
     proc = subprocess.Popen(
         shlex.split(ls.cmd),
         cwd=ls.cwd,
@@ -131,7 +131,7 @@ def start_launch_server(
         if proc.poll() is not None:
             raise RuntimeError(
                 f"launchServer: command exited (code {proc.returncode}) before {ready_url} "
-                f"was ready — cmd: {ls.cmd}"
+                f"was ready — cmd: {ls.cmd!r}"
             )
         if _probe(ready_url):
             say(f"launchServer: {ready_url} ready")
@@ -139,7 +139,7 @@ def start_launch_server(
         time.sleep(_POLL_INTERVAL)
     _terminate(proc, say)
     raise RuntimeError(
-        f"launchServer: {ready_url} not ready after {ls.ready_timeout}s — cmd: {ls.cmd}"
+        f"launchServer: {ready_url} not ready after {ls.ready_timeout}s — cmd: {ls.cmd!r}"
     )
 
 
