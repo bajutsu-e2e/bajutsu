@@ -49,6 +49,9 @@ EVENTS: frozenset[str] = frozenset(
     }
 )
 
+# The two output formats the operator may select via BAJUTSU_LOG_FORMAT.
+_FORMATS: frozenset[str] = frozenset({"json", "text"})
+
 # Sensitive structured-field *names*, masked by name regardless of value (substring, case-folded).
 _SENSITIVE_KEYS: tuple[str, ...] = (
     "authorization",
@@ -196,9 +199,12 @@ def make_handler(
         fmt: ``json`` for the structured serve channel, ``text`` for the human-readable CLI.
         secrets: Process-lifetime secret values to mask wherever they appear.
     """
+    normalized = fmt.lower()
+    if normalized not in _FORMATS:
+        raise ValueError(f"BAJUTSU_LOG_FORMAT must be one of json/text, got {fmt!r}")
     handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
     static = Redactor(None, values=list(secrets))
-    handler.setFormatter(_JsonFormatter(static) if fmt == "json" else _TextFormatter(static))
+    handler.setFormatter(_JsonFormatter(static) if normalized == "json" else _TextFormatter(static))
     handler.addFilter(_ContextFilter())
     handler.addFilter(_NameMaskFilter())
     handler._bajutsu_oplog = True  # type: ignore[attr-defined]  # marks ours, so reset() finds it
@@ -241,7 +247,13 @@ def reset() -> None:
 def log_event(
     logger: logging.Logger, event: str, msg: str = "", *, level: int = logging.INFO, **fields: Any
 ) -> None:
-    """Emit *msg* tagged with a stable ``event`` name (and any extra structured *fields*)."""
+    """Emit *msg* tagged with a stable ``event`` name (and any extra structured *fields*).
+
+    The event must be registered in ``EVENTS`` — a typo at a call site is a programming error, not
+    a new event, so it fails loudly here rather than silently fragmenting an SRE's grep/alerts.
+    """
+    if event not in EVENTS:
+        raise ValueError(f"unknown operational event {event!r}; add it to oplog.EVENTS first")
     logger.log(level, msg, extra={"event": event, **fields})
 
 

@@ -92,6 +92,26 @@ def test_invalid_log_level_is_rejected_with_a_clear_error() -> None:
         oplog.configure(level="verbose", stream=io.StringIO())
 
 
+def test_invalid_log_format_is_rejected_with_a_clear_error() -> None:
+    with pytest.raises(ValueError, match="BAJUTSU_LOG_FORMAT"):
+        oplog.configure(fmt="yaml", stream=io.StringIO())
+
+
+def test_log_format_is_case_insensitive() -> None:
+    stream = io.StringIO()
+    logger = _emit(stream, fmt="JSON")
+    logger.info("hi")
+    (record,) = _lines(stream)  # parses as JSON, so "JSON" selected the json formatter
+    assert record["msg"] == "hi"
+
+
+def test_log_event_rejects_an_unregistered_event() -> None:
+    stream = io.StringIO()
+    logger = _emit(stream)
+    with pytest.raises(ValueError, match="unknown operational event"):
+        oplog.log_event(logger, "run.not_a_real_event", "unregistered name")
+
+
 def test_configure_takes_over_a_preexisting_root_handler() -> None:
     # A handler installed before serve startup must not write an unredacted line past our sink.
     leaked = io.StringIO()
