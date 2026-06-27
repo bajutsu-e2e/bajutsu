@@ -133,7 +133,7 @@ the stable ids they reference by namespace, and measures them against the app's 
 `idNamespaces` ([configuration](configuration.md#doctor-the-convention-score)) — without running anything.
 
 ```bash
-bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json]
+bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json] [--html <path>]
 ```
 
 - Reports the **coverage fraction** (declared namespaces the suite references / declared namespaces),
@@ -156,6 +156,10 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json]
     whose namespace was never declared (**off-namespace**).
 
   Omit `--runs` for the static id-namespace map only.
+- **`--html <path>`** also writes a **self-contained HTML report** of the same figures (inline CSS,
+  no JavaScript, no external asset — it opens straight from disk), with a coverage bar per dimension
+  and the gap / off-namespace lists called out. The endpoint and observed-id sections render only when
+  `--runs` supplies them. The text (or `--json`) output is unchanged; the path is confirmed on stderr.
 - **Advisory and read-only**: it never runs a scenario, never edits anything, and **never gates CI** —
   it **exits 0 even with gaps** (only a missing config / scenarios dir or an unreadable scenario exits
   2). A gap is a namespace to cover, not a verdict.

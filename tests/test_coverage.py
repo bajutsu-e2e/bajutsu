@@ -19,6 +19,7 @@ from bajutsu.coverage import (
     observed_id_coverage,
     referenced_requests,
     render,
+    render_html,
     render_observed_ids,
 )
 from bajutsu.network import NetworkExchange
@@ -603,3 +604,71 @@ def test_cli_without_runs_omits_observed_id_section(tmp_path) -> None:  # type: 
     result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
     assert result.exit_code == 0
     assert json.loads(result.stdout).get("observed_ids") is None
+
+
+# --- BE-0050: HTML coverage report (visualizes the three dimensions on one self-contained page) ---
+
+
+def test_render_html_is_self_contained_and_shows_the_static_dimension() -> None:
+    cov = _cov(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n    - tap: { id: legacy.x }\n",
+        ["home", "auth"],
+    )
+    html = render_html(cov, target="demo")
+    assert html.lstrip().startswith("<!DOCTYPE html>")
+    assert (
+        "<style>" in html and 'src="' not in html
+    )  # self-contained: inline CSS, no external asset
+    assert "demo" in html  # the target name
+    assert "1/2" in html  # covered / total
+    assert "home.start" in html  # a referenced id under a covered namespace
+    assert "auth" in html  # the gap namespace
+    assert "legacy.x" in html  # an off-namespace id
+
+
+def test_render_html_without_run_evidence_omits_those_sections() -> None:
+    cov = _cov("- name: x\n  steps:\n    - tap: { id: home.start }\n", ["home"])
+    html = render_html(cov)
+    assert "endpoint" not in html.lower()
+    assert "observed" not in html.lower()
+
+
+def test_render_html_includes_endpoint_and_observed_sections_when_given() -> None:
+    cov = _cov("- name: x\n  steps:\n    - assert: [ { request: { path: /a } } ]\n", ["home"])
+    ec = endpoint_coverage(load_scenarios("- name: x\n  steps: []\n"), [_ex("POST", "/b")])
+    oc = observed_id_coverage(["home.start"], ["home", "auth"])
+    html = render_html(cov, endpoints=ec, observed=oc)
+    assert "POST /b" in html  # unasserted observed traffic
+    assert "auth" in html  # namespace observed in no run
+
+
+def test_render_html_escapes_ids() -> None:
+    # ids never normally carry markup, but the report must not emit raw "<" into the page.
+    cov = _cov("- name: x\n  steps:\n    - tap: { id: '<svg>.x' }\n", ["<svg>"])
+    html = render_html(cov)
+    assert "<svg>.x" not in html  # escaped, not injected verbatim
+    assert "&lt;svg&gt;.x" in html
+
+
+def test_cli_writes_html_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8"
+    )
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "coverage.html"
+    result = runner.invoke(
+        app,
+        ["coverage", "--target", "demo", "--config", str(config), "--html", str(out)],
+    )
+    assert result.exit_code == 0  # read-only: never gates
+    assert out.is_file()
+    body = out.read_text(encoding="utf-8")
+    assert body.lstrip().startswith("<!DOCTYPE html>")
+    assert "home.start" in body and "auth" in body  # a covered id and the gap

@@ -11,8 +11,12 @@ touched: a coverage report is advisory, never a CI gate.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.assertions import match_request, request_label
 from bajutsu.audit import referenced_ids
@@ -266,3 +270,33 @@ def render_observed_ids(oc: ObservedIdCoverage) -> str:
     if oc.off_namespace:
         lines.append(f"  off-namespace ids: {oc.off_namespace}")
     return "\n".join(lines)
+
+
+# --- HTML report: the three dimensions visualized on one self-contained page (BE-0050) ---
+
+_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+
+
+@functools.lru_cache(maxsize=1)
+def _env() -> Environment:
+    # autoescape so a stray "<" in an id can never inject markup into the page.
+    return Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=True)
+
+
+def render_html(
+    c: Coverage,
+    endpoints: EndpointCoverage | None = None,
+    observed: ObservedIdCoverage | None = None,
+    target: str = "",
+) -> str:
+    """A self-contained HTML coverage report (inline CSS, no JS, no external asset).
+
+    The visual counterpart to the `render*` text summaries: the static id-namespace dimension
+    always renders; the endpoint and observed-id dimensions render only when run evidence supplies
+    them. Read-only and AI-free, like every other coverage output.
+    """
+    return (
+        _env()
+        .get_template("coverage.html.j2")
+        .render(static=c, endpoints=endpoints, observed=observed, target=target)
+    )

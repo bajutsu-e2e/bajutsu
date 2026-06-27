@@ -82,6 +82,13 @@ run セット配下のステップごとの `elements.json` から各要素の `
 run セットが一度も行使しなかった namespace が見えるようになります。引き続き read-only かつ AI 非依存で、
 gap があっても終了 0 です。
 
+第四のスライスは、提案の*出力*が掲げる **HTML レポート**を、既存のテキスト／JSON 出力と並べて提供します。
+`bajutsu coverage --html <path>` は `coverage.render_html` と `coverage.html.j2` テンプレートを通じて、
+自己完結したページ（CSS は埋め込み、JavaScript も外部アセットも無し。ディスクから直接開けます）を書き出します。
+次元ごとにカバレッジバーを描き、gap と off-namespace の一覧を目立たせます。揃っている次元だけを描画し
+（静的な id 名前空間マップは常に、エンドポイントと観測 id のマップは `--runs` が供給したときに）、
+read-only かつ AI 非依存のままです。このフラグはファイルを書き出すだけで、判定もテキスト／JSON 出力も変えません。
+
 引き続き見送り: **訪問済み画面**の次元（クロールが発見する分母、[BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
 が必要）。
 

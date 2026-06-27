@@ -75,15 +75,19 @@ def coverage(
         "and observed-id coverage (elements.json vs declared namespaces)",
     ),
     as_json: bool = typer.Option(False, "--json", help="emit the report as JSON instead of text"),
+    html: str = typer.Option(
+        "", "--html", help="also write a self-contained HTML coverage report to this path"
+    ),
 ) -> None:
     """Statically map which of the target's declared id namespaces its scenario suite touches.
 
     Per-namespace coverage, the gap list (untested namespaces), and off-namespace ids. With
     `--runs`, also fold in two run-evidence dimensions: endpoint coverage (which observed endpoints
     in `network.json` the suite's network assertions cover) and observed-id coverage (which declared
-    namespaces the runs actually rendered ids under, from each `elements.json`). Read-only and
-    advisory: it never runs a scenario and never gates CI — it exits 0 even with gaps; only a missing
-    config / scenarios dir or an unreadable scenario exits 2.
+    namespaces the runs actually rendered ids under, from each `elements.json`). With `--html`, also
+    write a self-contained HTML report of the same figures. Read-only and advisory: it never runs a
+    scenario and never gates CI — it exits 0 even with gaps; only a missing config / scenarios dir or
+    an unreadable scenario exits 2.
     """
     eff = _load_effective(config, target_name)
     if eff.scenarios is None:
@@ -115,6 +119,14 @@ def coverage(
             )
         else:  # don't silently ignore the flag — warn (to stderr) and proceed without run evidence
             typer.echo(f"--runs not found, skipping run-evidence coverage: {runs}", err=True)
+    if html:
+        # Write the report first; the stdout below (text or JSON) stays the same with or without it,
+        # so a confirmation goes to stderr rather than polluting a piped `--json` payload.
+        html_path = Path(html)
+        html_path.write_text(
+            _coverage.render_html(report, endpoints, observed_ids, target_name), encoding="utf-8"
+        )
+        typer.echo(f"wrote HTML coverage report: {html_path}", err=True)
     if as_json:
         out: dict[str, object] = dataclasses.asdict(report)
         if endpoints is not None:
