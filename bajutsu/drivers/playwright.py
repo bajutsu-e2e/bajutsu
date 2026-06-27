@@ -392,9 +392,10 @@ class PlaywrightDriver:
             self._context = None  # finalized; the lease's close() just stops the browser
         if video is None:
             return
-        with contextlib.suppress(Exception):
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(video.path(), str(target))
+        # Let a failed move surface (like the iOS interval providers): swallowing it would record a
+        # video artifact path that doesn't exist, turning a real problem into a silent one.
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(video.path(), str(target))
 
     def _console_interval(self, path: Path) -> intervals.Interval:
         """Stream the live page's console messages and uncaught errors to `path` until stopped."""
