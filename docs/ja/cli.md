@@ -420,7 +420,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   交換し（401 で UI が入力を促す）、HttpOnly かつ SameSite のセッション Cookie を受け取ります。トークンは URL に
   載せません。**非 loopback の `--host`（例 `0.0.0.0`）への bind はトークン必須**で、無認証での公開を防ぎます
   （無ければ起動を中止）。トークン未設定なら従来どおり全開放で、loopback でのみ安全です。完全なマルチユーザー認証
-  （OAuth/RBAC）は対象外です（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)）。
+  （OAuth/RBAC）は対象外です（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
 - **CSRF + セキュリティヘッダ（BE-0051）。** トークン設定時、`Origin` が `Host` と一致しない状態変更 POST は
   拒否します（`SameSite=Strict` セッション Cookie に対する多層防御）。`Origin` を送らない非ブラウザ
   クライアントは影響を受けません。全レスポンスに `X-Content-Type-Options: nosniff` /
@@ -481,7 +481,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   なりません（任意のホストパスや `..` トラバーサル不可）。`backend` / `udid` も既知のトークンに限定され、
   自由入力は拒否されます。これにより、リクエストが任意ファイルを実行したり想定外の argv を紛れ込ませたりするのを防ぎます。
   これは `serve` を loopback を越えてホスティングするための前提です
-  （[BE-0015 / BE-0016](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)）。
+  （[BE-0015 / BE-0016](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
@@ -506,7 +506,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 
 ## `worker`
 
-Redis からキュー済みの run をリースして実行します。ホスティング用サーバ backend の実行側です（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)、[self-hosting](self-hosting.md)）。オプションの `bajutsu[worker]` extra（`redis` / `rq`）が必要です。ローカル利用には不要です。
+Redis からキュー済みの run をリースして実行します。ホスティング用サーバ backend の実行側です（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[self-hosting](self-hosting.md)）。オプションの `bajutsu[worker]` extra（`redis` / `rq`）が必要です。ローカル利用には不要です。
 
 ```bash
 bajutsu worker [--redis-url <url>] [--queue bajutsu]
