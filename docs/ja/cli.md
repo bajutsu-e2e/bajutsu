@@ -48,6 +48,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--headed / --no-headed` | アプリの `headless`（既定はヘッドレス） | web backend: ヘッドレスの代わりにブラウザを画面に表示し（低速再生）、実行の各ステップを確認できる（コマンドを実行しているマシン上でウィンドウが開く）。省略時はアプリの `headless` 設定に従う。iOS は無視する |
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流す（`serve` UI が消費する） |
 | `--zip` | off | run の後に `runs/<id>.zip` も書き出す。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使える。**判定の後**に走るので pass/fail に影響しない。[`export`](#export) 参照 |
+| `--runs-dir` | `runs` | run ツリーを書き出すディレクトリ。作業ディレクトリと出力先を分けられる。`serve` は、アクティブな config が別のツリー（Git チェックアウトやアップロードされたバンドル）からバインドされているとき、そのツリーで走らせつつ run を `serve` のストアに残すためにこれを使う（[BE-0073](../../roadmaps/implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
@@ -396,7 +397,9 @@ bajutsu approve [<run_dir>] --baselines <dir> [--scenario <id>] [--all] [--runs 
 **オーサリング、実行、探索**のためのローカル Web UI です。Tier 1 の利便機能で、**CI ゲートには含まれません**。
 CLI を覆う 3 つのトップレベルタブがあります。**Record** はゴールからシナリオを著し（`python -m bajutsu
 record ...`）、**Replay** はシナリオを実行してレポートを表示し（`python -m bajutsu run ...`）、**Crawl** は
-アプリを探索して画面マップをリアルタイムに描きます（`python -m bajutsu crawl ...`）。リクエストごとに CLI を
+アプリを探索して画面マップをリアルタイムに描きます（`python -m bajutsu crawl ...`）。3 つとも**アクティブな
+config** に対して動きます。config はファイルブラウザ、Git リポジトリ、アップロードした `.zip` バンドルの
+いずれかから開きます（後述の「Open config」を参照）。リクエストごとに CLI を
 バックグラウンドスレッドで起動し、出力をストリームし、生成された `runs/<id>/` ツリーを配信します（report の
 相対アセットリンクと crawl の `screenmap.json` が解決します）。stdlib のみ（Web フレームワーク不要）、
 `127.0.0.1` バインド。
@@ -437,6 +440,24 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   予算（max screens / steps）を選び、`POST /api/crawl` で crawl を起動します。返ってきた run id で UI が
   `runs/<id>/screenmap.json` をポーリングし、画面マップを成長に合わせて描きます（画面は幅優先の層に配置し、
   遷移は矢印で表示）。**Stop** ボタンで Replay と同様に中止できます。
+- **バンドルのアップロード（[BE-0073](../../roadmaps/implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。**
+  「Open config」ダイアログには 3 つめのソース **Upload a bundle** があり、ホストのファイルシステムに触れない
+  ブラウザ利用者が、ホスト型の `serve` に**自分のスイートを持ち込め**ます。レイアウトが動くローカル checkout
+  そのものの `.zip`、つまり `bajutsu.config.yaml`・その `scenarios` ツリー・config の `appPath` が指すビルド済み
+  アプリバイナリ（`.app` ディレクトリ・zip 化した `.app`・`.ipa`）を投下します。`serve` はそれを封じ込めた
+  サンドボックス（`runs/` の兄弟で、`--root` ではない）へ展開し、ファイルブラウザや Git ソースとまったく同じく
+  **アクティブな config としてバインド**します。以後 **Replay / Record / Crawl** タブはその展開先から動きます
+  （config の相対パス `appPath` / `scenarios` / `baselines` はバンドルを基準に解決されます）。run は
+  サンドボックスではなく `serve` 自身のストアに着地するので（`--runs-dir`）、**History** に残ります。アップロードの
+  ファイル名と zip の **sha256** は各 run の `manifest.json`（`provenance`）に記録するので、「この run は何を実行
+  したか」を後から辿れます。バインドできるバンドルは同時に一つだけで、別の config（どのソースでも）を開くと
+  サンドボックスは削除されます。バンドルは**秘匿情報を運びません**。`${secrets.*}` は通常の run と同じく `serve`
+  ホストの環境から解決し（[BE-0032](../../roadmaps/implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）、
+  アップロードされた config の `build` コマンドはホスト上で**決して実行しません**（バンドルはビルド済みバイナリを
+  同梱します。DESIGN §1）。展開は zip-slip（絶対パス・`..`・symlink エントリは拒否）と zip-bomb（エントリ数・
+  展開後の総サイズ・エントリごとの圧縮率の上限）に対して堅牢で、各ターゲットのパス項目はバインド時にバンドル内へ
+  封じ込められ、config のバインドは他のリクエストと同じトークン認証の裏にある admin ロールの操作です。任意の
+  バイナリを持ち込むことは、認証済みの単一 Mac の `serve` でのみ公開されます。
 - オーサリング（Record と Crawl）の **AI バックエンド**は **Settings → AI プロバイダ** の一箇所で選びます。
   **Anthropic API**（`ANTHROPIC_API_KEY`）、**Amazon Bedrock**（AWS 認証情報 + `BAJUTSU_BEDROCK_MODEL`）、
   **Claude Code**（ローカルの `claude` CLI。サブスクリプションを利用、テキストのみ）の 3 択で、`serve` は

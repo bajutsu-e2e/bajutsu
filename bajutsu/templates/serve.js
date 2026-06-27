@@ -349,9 +349,9 @@ function runDone(j){
 // Show a run's report inline (no iframe): render report.html into a shadow root so its CSS/JS stay
 // isolated, plus an "open full report ↗" link to view it as its own page. report.js is root-aware
 // (window.__bajutsuReportRoot), so its queries + delegated listeners run against the shadow root.
-async function setReport(id){
+async function setReport(id,repSel){
   selectedRun=id;
-  const rep=$('#report');
+  const rep=$(repSel||'#report');
   rep.innerHTML=`<div class="repbar"><a class="repdl" href="/runs/${esc(id)}/archive.zip" download>⬇ download .zip</a><a class="repopen" href="/runs/${esc(id)}/report.html" target="_blank" rel="noopener">open full report ↗</a></div><div class="rephost"></div>`;
   const host=rep.querySelector('.rephost');
   let html;
@@ -387,6 +387,39 @@ function showTab(name){
   if(name==='history')loadHistory();
 }
 document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
+
+// ---- Upload a bundle as the active config (BE-0073) ----
+// A self-contained .zip (config + scenarios + the built app binary its appPath names) is POSTed as a
+// raw body (not multipart: the SPA controls the request, so a streamed body needs no parser). The
+// server extracts it into a sandbox and binds it as the active config — exactly like the file-browser
+// and Git sources — so the Replay / Record / Crawl tabs run from it. Provenance (file name + sha256)
+// shows briefly before the modal closes.
+function fmtSize(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(0)+' KB';return (n/1048576).toFixed(1)+' MB';}
+async function chooseUploadConfig(file){
+  if(!file)return;
+  const meta=$('#up-meta'),err=$('#up-error');err.hidden=true;
+  meta.hidden=false;meta.textContent='Uploading '+file.name+' ('+fmtSize(file.size)+')…';
+  let d;
+  try{
+    const r=await fetch('/api/upload?name='+encodeURIComponent(file.name),
+      {method:'POST',headers:{'Content-Type':'application/zip'},body:file});
+    d=await r.json();
+  }catch(e){meta.hidden=true;err.textContent='upload failed';err.hidden=false;return;}
+  if(d.error){meta.hidden=true;err.textContent=d.error;err.hidden=false;return;}
+  const s=d.source||{};
+  // textContent (not innerHTML): the file name comes from a file input, so never reinterpret it as HTML.
+  meta.textContent='Bound '+(s.filename||file.name)+' · '+fmtSize(s.size||file.size)+' · sha256 '+(s.sha256||'').slice(0,12)+'…';
+  $('#cfgname').textContent=d.config;closeFs();await loadShared();
+}
+$('#up-pick').addEventListener('click',()=>$('#up-file').click());
+$('#up-file').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)chooseUploadConfig(f);});  // clear value so re-picking the same .zip still fires change
+(function(){
+  const drop=$('#up-drop');if(!drop)return;
+  const stop=e=>{e.preventDefault();e.stopPropagation();};
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.add('dragover');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.remove('dragover');}));
+  drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)chooseUploadConfig(f);});
+})();
 
 // ---- Crawl: explore the app and watch the screen map grow live ----
 let crawlPoll=null,crawlJobId=null,crawlRunId=null;

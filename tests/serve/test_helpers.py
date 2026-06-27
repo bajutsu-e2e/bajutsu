@@ -192,6 +192,14 @@ def test_run_command_includes_baselines() -> None:
     assert "--baselines" not in srv.run_command("s.yaml", "demo")  # omitted when empty
 
 
+def test_run_command_includes_runs_dir() -> None:
+    # An uploaded bundle (BE-0073) runs from its extracted dir but writes its run into serve's
+    # runs store via --runs-dir; omitted (current-dir runs/) for a normal run.
+    cmd = srv.run_command("s.yaml", "demo", runs_dir="/serve/runs")
+    assert cmd[cmd.index("--runs-dir") + 1] == "/serve/runs"
+    assert "--runs-dir" not in srv.run_command("s.yaml", "demo")
+
+
 def test_record_command_builder() -> None:
     cmd = srv.record_command(
         "out.yaml",

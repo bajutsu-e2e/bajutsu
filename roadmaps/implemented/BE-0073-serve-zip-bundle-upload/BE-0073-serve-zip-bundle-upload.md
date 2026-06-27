@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0073](BE-0073-serve-zip-bundle-upload.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#216](https://github.com/bajutsu-e2e/bajutsu/pull/216) |
 | Topic | Configuration sourcing |
 <!-- /BE-METADATA -->
 
@@ -41,8 +42,8 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
 
 1. **A browser user of a hosted serve has no file-system access to the host.** When serve runs on a
    remote worker or a shared Mac
-   ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-   [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), the config, scenarios,
+   ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
+   [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), the config, scenarios,
    and `runs/` all live on *that* machine. Today's UI config picker is a **file browser confined to
    `--root`** (`bajutsu/serve/operations.py` `_confined_config_path`), so it can only choose from
    what an operator has already hand-placed on the host. A browser user cannot bring their own suite.
@@ -60,7 +61,7 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
    complementary: Git for the versioned text, an upload for the prebuilt binary.
 
 3. **Hand-placing files on the host is the only path today.** The self-hosting Tier-A guide
-   ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) has the operator copy
+   ([BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) has the operator copy
    the team's config, scenarios, and binary onto the Mac and keep them in sync by hand. An upload
    turns "ask the operator to scp a build over and edit `--root`" into "drag a zip onto the page and
    press run".
@@ -109,19 +110,27 @@ introduces the same seam. The two are designed to share it.)
 
 ### serve surface
 
-- **Endpoint.** A new authenticated `POST` accepts the zip as a `multipart/form-data` upload (the
-  first multipart handling in `bajutsu/serve/handler.py`, which today reads JSON bodies). It streams
-  the upload to a temp file (bounded memory), validates it (below), extracts it into a fresh
-  per-upload directory, and returns a handle the existing run path consumes — so "upload" and "run"
-  reuse the same job machinery (`bajutsu/serve/jobs.py`) as a normal run, only the *source* differs.
+- **Endpoint.** A new authenticated `POST /api/upload` accepts the zip as a **raw body**
+  (`Content-Type: application/zip`, filename via `?name=`) — the SPA controls the request, so a
+  streamed body needs no multipart parser. It streams the upload to a temp file (bounded memory),
+  validates it (below), extracts it into a fresh serve-owned directory, and **binds the contained
+  config as the active config** — `state.config` points at the bundle's config and `state.cwd` at the
+  bundle root — exactly as `bind_git_config` binds a Git checkout. Binding a config is an admin-role
+  action (it repoints which config the whole server serves), behind BE-0051 token auth.
 - **Confinement.** The extraction directory is a dedicated, serve-owned sandbox (a sibling of
   `runs/`, never the browse `--root`), so an uploaded tree can never overwrite the operator's files.
-  Reading run artifacts back stays on the existing `ArtifactStore` boundary
+  Every target's path fields are confined to the bundle at bind (`Effective.rebased`), the same guard
+  the Git source applies. Reading run artifacts back stays on the existing `ArtifactStore` boundary
   (`bajutsu/serve/artifacts.py`).
-- **UI.** An **Upload & run** panel: drop a `.zip`, pick the `--app` from the contained config's
-  `apps:` (parsed after extraction), press run. The job streams logs and produces a report exactly
-  like any other run, and [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
-  download closes the round trip (upload a suite → run → download the result).
+- **UI.** The **Open config** dialog gains a third source, **Upload a bundle**, beside the file
+  browser and the Git picker: drop a `.zip` and it becomes the active config the **Replay / Record /
+  Crawl** tabs run from — the same job machinery (`bajutsu/serve/jobs.py`) as any other run, only the
+  *source* differs. Runs from a bound bundle (whose cwd is the extracted tree) write into serve's own
+  runs store via `--runs-dir`, so they show in **History**, and
+  [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)'s
+  download closes the round trip (upload a suite → run → download the result). An uploaded config's
+  `build` command is never executed on the host: the bundle ships a prebuilt binary
+  ([DESIGN §1](../../../DESIGN.md)).
 
 ### Security — the heart of the design (on top of BE-0051)
 
@@ -141,11 +150,11 @@ Tier-A serve**; deeper multi-tenant isolation is deferred to BE-0015 / BE-0016 (
 - **Resource bounds (zip-bomb defense).** Enforce a max upload size, a max number of entries, a max
   total uncompressed size, and a max per-entry compression ratio; abort extraction the moment a bound
   is crossed, rather than after filling the disk.
-- **Ephemeral by default.** Each upload extracts into its own directory, the binary installs into the
-  run's Simulator, and the extraction directory (and the uploaded zip) are deleted after the run —
-  no uploaded code lingers. On iOS the run uses a clean/`--erase` Simulator
-  ([DESIGN §2](../../../DESIGN.md)), so an uploaded app gets today's per-run execution isolation for
-  free.
+- **Ephemeral by default.** Each upload extracts into its own serve-owned directory, and **only one
+  bundle is bound at a time** — binding another config (from any source) removes the previous bundle's
+  sandbox, so no uploaded code lingers past the session or accumulates on disk. On iOS the run uses a
+  clean/`--erase` Simulator ([DESIGN §2](../../../DESIGN.md)), so an uploaded app gets today's per-run
+  execution isolation for free.
 - **Provenance.** The uploaded filename and the **sha256 of the zip** are recorded into the run's
   `manifest.json`, mirroring how BE-0063 records the resolved commit SHA — so "what did this run
   execute?" is always answerable after the fact, preserving [DESIGN §2](../../../DESIGN.md)'s "never
@@ -184,8 +193,8 @@ lands.
   `build:` on-demand build remains available for the *local* / Git case, where a toolchain is present.)
 - **Multi-tenant execution isolation.** Per-tenant Simulators, per-job egress controls, and
   org-scoped storage are the domain of
-  [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
-  [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md); this item targets the
+  [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
+  [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md); this item targets the
   single-Mac Tier-A serve.
 - **Retention / a library of uploaded bundles.** Uploads are ephemeral; persisting and versioning
   them is the Git source's job ([BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)),
@@ -229,15 +238,16 @@ lands.
 - [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   — token auth + path confinement this builds on; the `_confined_config_path` invariant extended to
   extraction.
-- [BE-0015 — Public hosting of the web UI](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-  [BE-0016 — Self-hosting of the web UI](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
+- [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
+  [BE-0016 — Self-hosting of the web UI](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   — why a browser user needs upload; where deeper multi-tenant isolation lives.
 - [BE-0059 — Bring up the target server for a run (`launchServer`)](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)
   — the web-backend analogue (serve a bundled static site) for a future slice.
 - [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
   — secrets come from the host environment, not the bundle.
 - `bajutsu/config.py` (`AppConfig.appPath` / `build` / `bundleId` / `baseUrl`), `bajutsu/serve/handler.py`
-  (the `do_POST` body handling that gains multipart), `bajutsu/serve/operations.py`
-  (`_confined_config_path`, the config-bind path), `bajutsu/serve/jobs.py` (the run job machinery),
-  `bajutsu/serve/artifacts.py` (the confined artifact store) — the surfaces this touches.
+  (the `do_POST` body handling that gains a raw-zip upload path), `bajutsu/serve/operations.py`
+  (`bind_config` / `bind_git_config` / `bind_upload_config`, the config-bind path), `bajutsu/serve/jobs.py`
+  (the run job machinery and `ServeState.bind_upload`), `bajutsu/serve/artifacts.py` (the confined
+  artifact store) — the surfaces this touches.
 - [docs/configuration.md](../../../docs/configuration.md), [docs/cli.md](../../../docs/cli.md#serve).

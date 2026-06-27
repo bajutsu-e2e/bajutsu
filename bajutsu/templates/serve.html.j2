@@ -209,6 +209,18 @@
       <div class="gitsrchint">A branch, tag, or commit SHA (default: the repo's default branch). The whole subtree is fetched, so the config's scenarios and build come along.</div>
       <div class="gitsrcerr" id="gitsrcerr" data-testid="config.git-error" hidden></div>
     </div>
+    <!-- Upload a bundle (BE-0073): a self-contained .zip becomes the active config the tabs run from. -->
+    <div class="gitsrc">
+      <label class="gitsrclbl">Upload a bundle (.zip)</label>
+      <div class="drop" id="up-drop" data-testid="upload.drop">
+        <input type="file" id="up-file" data-testid="upload.file" accept=".zip,application/zip" hidden>
+        <button class="cfgbtn" id="up-pick" type="button" data-testid="upload.pick">Choose a .zip…</button>
+        <div class="dropmsg">or drop a bundle here</div>
+      </div>
+      <div class="gitsrchint">A <code>.zip</code> of a <code>bajutsu.config.yaml</code>, its scenarios, and the built app binary the config's <code>appPath</code> names &mdash; the same tree a local checkout has, delivered as one file. It extracts into a sandbox on the server and becomes the active config the Replay / Record / Crawl tabs run from. The bundle carries <b>no secrets</b>: <code>${secrets.*}</code> resolve from the server's environment.</div>
+      <div class="upmeta" id="up-meta" data-testid="upload.meta" hidden></div>
+      <div class="gitsrcerr" id="up-error" data-testid="upload.error" hidden></div>
+    </div>
     <div class="fsor">or browse the server</div>
     <div class="fspath" id="fspath" data-testid="config.path"></div>
     <ul class="fslist" id="fslist" data-testid="config.list"></ul>

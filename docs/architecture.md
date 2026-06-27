@@ -195,7 +195,7 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
 - The CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
 - AI **crawl** (`crawl.py`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
-- The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; browse reports and evidence; approve visual baselines; live job streaming — from a browser (not for CI)
+- The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073); browse reports and evidence; approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)
 - **Scenario linter** (`bajutsu lint` / `bajutsu schema`): validate scenarios without running them; JSON Schema output for editor integration
 - XCUITest code generation

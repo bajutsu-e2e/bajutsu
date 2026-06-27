@@ -10,6 +10,7 @@ import pytest
 from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
+from bajutsu.serve.uploads import Upload
 
 
 def test_run_job_captures_output_and_run_id(tmp_path: Path) -> None:
@@ -329,3 +330,50 @@ def test_try_new_job_per_user_unlimited_by_default(tmp_path: Path) -> None:
     state = srv.ServeState(runs_dir=tmp_path / "runs")
     assert state.try_register(srv.Job(cmd=[], actor="alice")) is not None
     assert state.try_register(srv.Job(cmd=[], actor="alice")) is not None
+
+
+def _bundle(uploads_dir: Path, name: str) -> Upload:
+    """An Upload backed by a real extraction dir under *uploads_dir* (BE-0073)."""
+    d = uploads_dir / name
+    d.mkdir(parents=True)
+    cfg = d / "bajutsu.config.yaml"
+    cfg.write_text("targets: {}\n", encoding="utf-8")
+    return Upload(dir=d, config=cfg, filename=f"{name}.zip", sha256="x", size=1, org="default")
+
+
+def test_bind_upload_points_config_and_cwd_at_the_bundle(tmp_path: Path) -> None:
+    # Binding a bundle makes it the active config: `config`/`cwd` point into the extracted tree, so
+    # the normal run/record/crawl flow resolves the bundle's relative paths (BE-0073).
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
+    up = _bundle(uploads, "u1")
+    state.bind_upload(up)
+    assert state.upload is up
+    assert state.config == up.config and state.cwd == up.root
+
+
+def test_bind_upload_replaces_the_previous_bundle(tmp_path: Path) -> None:
+    # Only one bundle is bound at a time: binding a second drops the first's extracted tree.
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
+    first = _bundle(uploads, "first")
+    state.bind_upload(first)
+    second = _bundle(uploads, "second")
+    state.bind_upload(second)
+    assert state.upload is second and not first.dir.exists()  # the first sandbox is removed
+    assert second.dir.exists()
+
+
+def test_release_upload_removes_sandbox_and_resets_cwd(tmp_path: Path) -> None:
+    # Switching away from a bundle (any other config source) drops its sandbox and restores cwd to
+    # serve's launch dir, so the file-browser/Git sources don't inherit a stale bundle cwd.
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
+    up = _bundle(uploads, "u1")
+    state.bind_upload(up)
+    state.release_upload()
+    assert state.upload is None and not up.dir.exists()
+    assert state.cwd == state.base_cwd == tmp_path

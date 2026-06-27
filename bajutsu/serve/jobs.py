@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -26,10 +27,11 @@ from bajutsu.config import DEFAULT_ORG
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
-from bajutsu.serve.helpers import target_scenarios_dir
+from bajutsu.serve.helpers import target_scenarios_dir, valid_run_id
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.scenarios import LocalScenarioStore, ScenarioStore
 from bajutsu.serve.sessions import InMemorySessionStore, SessionStore
+from bajutsu.serve.uploads import Upload
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,12 @@ class Job:
     # For a server-backend `run`: download the visual baselines into the workspace before running
     # (the cmd points `--baselines` at a workspace dir). False for local (the real dir is used).
     materialize_baselines: bool = False
+    # Working directory override for the spawned run/build (default: state.cwd, which already points
+    # at a Git checkout or an uploaded bundle when one is bound). None uses state.cwd.
+    cwd: Path | None = None
+    # Provenance to record into the produced run's manifest.json after it finishes (the bound bundle's
+    # filename + zip sha256 + size). None for a normal run. Set for a run off an uploaded bundle (BE-0073).
+    provenance: dict[str, str] | None = None
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
         """The job's state for the UI. `include_lines=False` omits the log buffer — used for the
@@ -118,7 +126,18 @@ class ServeState:
     # where `visual` baselines live (and where Approve promotes to); serve() defaults it to
     # <scenarios_dir>/baselines.
     baselines_dir: Path = field(default_factory=lambda: Path("baselines"))
+    # Sandbox for uploaded bundles (BE-0073): each upload extracts into its own dir here, a sibling
+    # of runs_dir, never the browse `--root`, so an uploaded tree can't overwrite the operator's
+    # files. serve() defaults it to a sibling of runs_dir.
+    uploads_dir: Path = field(default_factory=lambda: Path("uploads"))
     cwd: Path = field(default_factory=Path.cwd)
+    # serve's launch directory, captured at construction (see __post_init__) before a config bind can
+    # repoint `cwd`. Runs off a Git/upload bind still land their tree here (BE-0063/BE-0073).
+    base_cwd: Path = field(init=False)
+    # The currently bound uploaded bundle (BE-0073), or None when the active config came from the
+    # file browser / Git / startup. Holds the extraction sandbox (removed when another config is
+    # bound) and the run provenance. Only one bundle is bound at a time.
+    upload: Upload | None = None
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
@@ -174,6 +193,10 @@ class ServeState:
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
+        # serve's own launch directory, captured before any config bind repoints `cwd` at a Git
+        # checkout / uploaded bundle. A run off such a bind writes its tree into `base_cwd/runs_dir`
+        # (serve's store), not under the transient checkout/bundle (BE-0063/BE-0073).
+        self.base_cwd = self.cwd
         # `artifacts`/`scenarios` are init=False so existing ServeState(...) calls don't change;
         # default them to the local stores here (a server backend overwrites them afterwards).
         self.artifacts = LocalArtifactStore(self.runs_dir)
@@ -246,6 +269,23 @@ class ServeState:
                 if mine >= self.max_concurrent_per_user:
                     return None
             return self._register(job)
+
+    def bind_upload(self, upload: Upload) -> None:
+        """Make *upload* the active config (BE-0073): release any previously bound bundle's sandbox,
+        then point `config`/`cwd` at this one so runs/record/crawl resolve from the extracted tree."""
+        self.release_upload()
+        self.upload = upload
+        self.config = upload.config
+        self.cwd = upload.root
+
+    def release_upload(self) -> None:
+        """Drop the currently bound bundle's sandbox, if any, and reset `cwd` to serve's launch
+        directory. Called whenever a new config is bound (from any source), so only one bundle is
+        ever materialized and the file-browser/Git sources don't inherit a stale bundle cwd."""
+        if self.upload is not None:
+            shutil.rmtree(self.upload.dir, ignore_errors=True)
+            self.upload = None
+        self.cwd = self.base_cwd
 
 
 def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
@@ -362,13 +402,14 @@ def _build_app(state: ServeState, job: Job) -> bool:
     a needed build fails — so the run isn't spawned against a missing binary."""
     if not job.build or not job.app_path:
         return True
-    if (state.cwd / job.app_path).exists():
+    cwd = job.cwd or state.cwd
+    if (cwd / job.app_path).exists():
         return True
     _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
     try:
         proc = state.popen(
             shlex.split(job.build),
-            cwd=str(state.cwd),
+            cwd=str(cwd),
             env=_spawn_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -407,6 +448,7 @@ def run_job(state: ServeState, job: Job) -> None:
     try:
         _run_job(state, job)
     finally:
+        _record_provenance(state, job)
         _persist_run(state, job)
         if job.bus is not None:  # run_job returning means the job finished — end the live stream
             # Record the terminal status on the bus so a control-plane replica reading a
@@ -414,6 +456,31 @@ def run_job(state: ServeState, job: Job) -> None:
             # Exclude the log buffer — the lines already live in the bus's stream, so duplicating
             # them into the done payload would needlessly bloat it (Redis memory).
             job.bus.close(job.id, json.dumps(job.view(include_lines=False)))
+
+
+def _record_provenance(state: ServeState, job: Job) -> None:
+    """Record an uploaded bundle's provenance into its run's manifest.json (BE-0073). The run
+    subprocess owns the manifest; serve, which alone knows the upload's filename + zip sha256, adds
+    a `provenance` block afterward so "what did this run execute?" is answerable (DESIGN §2). A
+    no-op for a normal run (`provenance` unset) or one that produced no run id (a build/boot
+    failure). Best-effort: a failure here is logged, never raised — it must not strand job
+    finalization (this runs in run_job's `finally`)."""
+    if job.provenance is None or job.run_id is None or not valid_run_id(job.run_id):
+        return
+    # The run wrote into the --runs-dir we passed (serve's store under base_cwd, since the run's cwd
+    # is the bundle root); the run id is a single safe segment (checked above), so this can't escape
+    # that tree. Resolve to match the absolute --runs-dir the subprocess was given.
+    manifest = (state.base_cwd / state.runs_dir / job.run_id / "manifest.json").resolve()
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        data["provenance"] = job.provenance
+        # Write atomically (temp + replace): the report viewer / list_runs may read the manifest
+        # concurrently, and a plain write_text truncates first — a reader could catch it empty.
+        tmp = manifest.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(manifest)
+    except (OSError, ValueError):
+        logger.warning("failed to record bundle provenance into %s", manifest, exc_info=True)
 
 
 def _persist_run(state: ServeState, job: Job) -> None:
@@ -485,7 +552,7 @@ def _run_job(state: ServeState, job: Job) -> None:
         return
     proc = state.popen(
         job.cmd,
-        cwd=str(state.cwd),
+        cwd=str(job.cwd or state.cwd),
         env=_spawn_env(),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

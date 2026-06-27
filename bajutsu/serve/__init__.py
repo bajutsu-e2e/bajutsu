@@ -19,6 +19,7 @@ Split into three submodules:
 
 from __future__ import annotations
 
+import shutil
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -200,6 +201,9 @@ def _build_state(
         scenarios_dir=scenarios_dir,
         root=root or Path.cwd(),
         baselines_dir=resolved_baselines,
+        # Uploaded bundles (BE-0073) extract into a sibling of runs_dir — serve-owned, never the
+        # browse `--root`, so an uploaded tree can't overwrite the operator's files.
+        uploads_dir=runs_dir.parent / "uploads",
         max_concurrent=max_concurrent,
         token=token,
         cwd=cwd or Path.cwd(),
@@ -375,6 +379,10 @@ def serve(
         backend=backend,
         cwd=cwd,
     )
+    # Clear upload sandboxes orphaned by a prior serve process — the dir is serve-owned and
+    # ephemeral, and nothing is bound at startup, so this just stops them accumulating across
+    # restarts (BE-0073; a bound bundle is removed when another config is bound while running).
+    shutil.rmtree(state.uploads_dir, ignore_errors=True)
     hint = str(config) if config else "open a config.yml in the UI"
     if asgi:
         # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now

@@ -219,6 +219,13 @@ def run(
         help="after the run, also write runs/<id>.zip — one portable artifact (report + evidence) "
         "for CI upload or sharing; runs after the verdict, so it can't affect pass/fail",
     ),
+    runs_dir: str = typer.Option(
+        "runs",
+        "--runs-dir",
+        help="directory to write the run tree into (default: ./runs). Lets a caller run from one "
+        "working directory but persist the run elsewhere — e.g. serve running an uploaded bundle "
+        "from its extracted dir while keeping the run in serve's store (BE-0073)",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
     config_offline: bool = typer.Option(
         False,
@@ -358,7 +365,7 @@ def run(
         udids,
         backends,
         eff,
-        Path("runs") / run_id,
+        Path(runs_dir) / run_id,
         network=network,
         log_predicate=log_predicate or None,
         log_subsystem=log_subsystem or eff.bundle_id,
@@ -382,7 +389,7 @@ def run(
             eff,
             scenarios,
             lease,
-            Path("runs"),
+            Path(runs_dir),
             run_id,
             on_blocked_for=on_blocked_for,
             workers=workers,
