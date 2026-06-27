@@ -332,6 +332,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0006](proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization-ja.md) | idb 要素ツリー正規化の精度 | 提案 |
+| [BE-0087](proposals/BE-0087-idb-action-settle/BE-0087-idb-action-settle-ja.md) | idb アクションのタイミング堅牢化（操作前の settle） | 提案 |
 <!-- /GENERATED:proposals-on-device -->
 
 ### プラットフォーム拡張（Android / Web / Flutter）
