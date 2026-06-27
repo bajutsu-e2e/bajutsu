@@ -26,6 +26,7 @@ from bajutsu.orchestrator import (
 )
 from bajutsu.redaction import Redactor
 from bajutsu.report import run_provenance, scenario_render_inputs, write_report
+from bajutsu.runner.mailbox import build_mailbox_reader
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
 from bajutsu.scenario import Scenario, dump_scenario_file
 
@@ -112,6 +113,9 @@ def run_all(
         One result per scenario, in the same order as `scenarios`.
     """
     redactor = Redactor(eff.redact, values=secret_values)
+    # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
+    # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
+    mailbox = build_mailbox_reader(eff.mailbox, bindings or {})
     # Preflight: a backend's capability set is static, so a scenario that needs a capability the
     # actuator lacks (e.g. pinch on idb) is failed here — before any device is leased — instead of
     # mid-run after partial device work (BE-0082). Skipped when no actuator is passed (tests that
@@ -165,6 +169,7 @@ def run_all(
                 progress=progress,
                 visual_context=vc,
                 schema_context=sc,
+                mailbox=mailbox,
             )
             result.device = lz.udid  # attribute the scenario to the device that ran it
             result.device_name = lz.device_name  # for the report's Environment tab

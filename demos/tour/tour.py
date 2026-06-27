@@ -71,6 +71,7 @@ def _eff() -> Effective:
         id_namespaces=[],
         reserved_namespaces=[],
         mock_server=None,
+        mailbox=None,
         setup=None,
         capture=["screenshot.after", "elements.after"],
         redact=Redact(),

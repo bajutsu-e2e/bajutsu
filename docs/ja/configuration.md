@@ -75,6 +75,23 @@ config の `defaults.redact` と `targets.<name>.redact` は **union** されま
 
 `secrets:` は **環境変数名のリスト**で（`defaults` と `targets.<name>` の両方で宣言でき、`resolve` が和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
 
+### mailbox（`email` ステップ）
+
+`targets.<name>.mailbox` は、[`email`](scenarios.md#emailメールで届くコードをメールボックスから取得) ステップが 2FA / 検証コードを取得するためにポーリングする汎用 HTTP メールボックスを設定します。エンドポイントと認証情報をシナリオではなく config に置くためのものです。
+
+```yaml
+targets:
+  myapp:
+    mailbox:
+      url: "${secrets.MAILBOX_URL}"                       # 受信箱エンドポイント（GET）。${secrets.*} は実行時に解決
+      headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
+      # 任意のレスポンスマッピング。プロバイダ固有コードなしで任意の JSON を読むため:
+      messages: "items"                                   # メッセージ配列へのドット区切りパス（既定: レスポンス自体が配列）
+      fields: { to: to, subject: subject, body: text, receivedAt: receivedAt, id: id }
+```
+
+既定値はよくある形（`to` / `subject` / `body` / `receivedAt` / `id` を持つメッセージの配列）に合わせるので、準拠 API では `messages` / `fields` のマッピングは不要です。`email` ステップは受信箱を HTTP で読み、ステップ開始より新しいメッセージ（`id` で判定）だけを残し、一致するものを待ってコードを取り出します。決定的で LLM 非依存です（[BE-0046](../../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+
 ### org（`orgs:`、マルチテナントのサーバ backend）
 
 `orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、その org が持つ targets を列挙します。

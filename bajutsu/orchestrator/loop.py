@@ -14,6 +14,7 @@ from bajutsu import assertions, interp, intervals
 from bajutsu.assertions import AssertionResult, SchemaContext, VisualContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
+from bajutsu.mailbox import extract_value, select
 from bajutsu.orchestrator.actions import _action_of, _do_action, _step_label
 from bajutsu.orchestrator.evidence_rules import (
     _collect_captures,
@@ -27,6 +28,7 @@ from bajutsu.orchestrator.types import (
     BlockedHandler,
     Clock,
     DeviceControl,
+    MailboxReader,
     NetworkSource,
     ProgressFn,
     RealClock,
@@ -37,7 +39,11 @@ from bajutsu.orchestrator.types import (
     scenario_slug,
 )
 from bajutsu.orchestrator.waits import _wait
-from bajutsu.scenario import Assertion, ForEach, If, Scenario, Selector, Step
+from bajutsu.scenario import Assertion, Email, ForEach, If, Scenario, Selector, Step
+
+# How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick is a remote HTTP
+# request to a (often rate-limited / metered) provider, so it polls about once a second.
+_EMAIL_POLL = 1.0
 
 
 def _fail_reason(results: list[AssertionResult]) -> str:
@@ -59,6 +65,41 @@ def _clipboard_for(block: list[Assertion], control: DeviceControl | None) -> str
         return None
 
 
+def _do_email(
+    email: Email,
+    clock: Clock,
+    mailbox: MailboxReader | None,
+    bindings: dict[str, str] | None,
+) -> tuple[bool, str]:
+    """Poll the mailbox until a matching message arrives, then extract its value into `vars.*`.
+
+    A condition wait bounded by `email.timeout` (never a fixed sleep): it baselines the ids present
+    at the start so only mail arriving *after* counts (skew-free), then re-fetches until a match or
+    the deadline. A missing mailbox, a timeout, or a matched message whose body the regex can't hit
+    is a clean failure — never a silent wrong value. `mailbox.fetch` raising `SelectorError` (an
+    unreachable / non-2xx endpoint) propagates to the caller's handler, which records it as a failure.
+    """
+    if mailbox is None:
+        return False, "email: no mailbox configured (set targets.<name>.mailbox)"
+    if bindings is None:  # defensive: the run loop always passes a dict for a step
+        return True, ""
+    deadline = clock.now() + email.timeout
+    baseline = frozenset(m.id for m in mailbox.fetch(email.timeout))
+    while True:
+        remaining = deadline - clock.now()
+        if remaining <= 0:
+            return False, f"email: no matching message within {email.timeout:g}s"
+        # Bound each fetch by the time left, so a single hung request can't overrun email.timeout.
+        picked = select(mailbox.fetch(remaining), email.match, baseline)
+        if picked is not None:
+            value = extract_value(picked.body, email.extract)
+            if value is None:
+                return False, "email: matched a message but extract regex did not match its body"
+            bindings[f"vars.{email.extract.var}"] = value
+            return True, ""
+        clock.sleep(min(_EMAIL_POLL, deadline - clock.now()))
+
+
 def _run_step_body(
     driver: base.Driver,
     step: Step,
@@ -68,6 +109,7 @@ def _run_step_body(
     relaunch: RelaunchFn | None = None,
     bindings: dict[str, str] | None = None,
     control: DeviceControl | None = None,
+    mailbox: MailboxReader | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results).
 
@@ -77,6 +119,10 @@ def _run_step_body(
         if kind == "wait":
             assert step.wait is not None
             ok, reason = _wait(driver, step.wait, clock, network)
+            return ok, reason, []
+        if kind == "email":
+            assert step.email is not None
+            ok, reason = _do_email(step.email, clock, mailbox, bindings)
             return ok, reason, []
         if kind == "assert_":
             assert step.assert_ is not None
@@ -104,6 +150,7 @@ def run_scenario(
     progress: ProgressFn | None = None,
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
+    mailbox: MailboxReader | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -146,6 +193,7 @@ def run_scenario(
             live_bindings,
             control,
             progress,
+            mailbox,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
@@ -254,6 +302,7 @@ def _run_steps(
     bindings: dict[str, str] | None = None,
     control: DeviceControl | None = None,
     progress: ProgressFn | None = None,
+    mailbox: MailboxReader | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
 
@@ -298,14 +347,22 @@ def _run_steps(
             interp_step = _interp_step(step, bindings)
             before = driver.query() if wants_screen_changed else None
             ok, reason, results = _run_step_body(
-                driver, interp_step, kind, clock, network, relaunch, bindings, control
+                driver, interp_step, kind, clock, network, relaunch, bindings, control, mailbox
             )
             if not ok and on_blocked is not None:
                 event = on_blocked(driver)
                 if event is not None:
                     outcome.alerts.append(event)
                     ok, reason, results = _run_step_body(
-                        driver, interp_step, kind, clock, network, relaunch, bindings, control
+                        driver,
+                        interp_step,
+                        kind,
+                        clock,
+                        network,
+                        relaunch,
+                        bindings,
+                        control,
+                        mailbox,
                     )
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start

@@ -75,7 +75,7 @@ A single `id` / `label` / `idMatches` keeps its readable helper above. Any **com
 | `value` | `value == %@` |
 | `traits: [button \| link]` | `elementType == XCUIElement.ElementType.<case>.rawValue` |
 | `traits: [notEnabled]` / `[selected]` | `enabled == NO` / `selected == YES` |
-| `index: n` (n ≥ 0) | `.element(boundBy: n)` (else `.firstMatch`) |
+| `index: n` | `.element(boundBy: n)` (a negative `n` counts from the end: `.element(boundBy: query.count - k)`; else `.firstMatch`) |
 
 All set fields are **AND**-ed into the predicate. A field with no *faithful* structural form keeps
 the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong guess:
@@ -85,7 +85,6 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
   faithful NSPredicate form (ICU `MATCHES` is a full, differently-anchored match).
 - **`within`** — a *geometric* frame-containment constraint (the candidate's frame must sit inside
   the container's; see [selectors](selectors.md)). XCUITest queries are tree-based, not geometric.
-- **a negative `index`** — `element(boundBy:)` has no negative form.
 - **an unknown trait** — outside the `button` / `link` / `notEnabled` / `selected` vocabulary.
 
 ## Mapping table
@@ -118,7 +117,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 ## Unsupported constructs fall back to TODO comments
 
 Unsupported constructs (`simctl`-level device control like `setLocation` / `push`, network
-`request` assertions, a negative `index`, an unknown trait, and coordinate swipes on the Playwright
+`request` assertions, an unknown trait, and coordinate swipes on the Playwright
 target) emit a **`// TODO` line rather than failing** — device-control steps name the `simctl`
 command a reviewer would run. The output is always reviewable and never breaks the generated result.
 The generated file header also states "do not edit by hand; re-generate." This holds for both

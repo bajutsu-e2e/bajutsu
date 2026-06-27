@@ -159,6 +159,7 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0035](implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives.md) | Device-control steps (background, status-bar override) | Implemented | MagicPod |
 | [BE-0036](implemented/BE-0036-utility-steps/BE-0036-utility-steps.md) | HTTP utility step | Implemented | MagicPod |
 | [BE-0039](implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
+| [BE-0046](implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Implemented | MagicPod |
 <!-- /GENERATED:implemented-competitive -->
 
 ### Candidates from competitive research (Maestro)
@@ -247,6 +248,7 @@ Where a project's config and scenarios come from. A Git repository + ref is a to
 | ID | Item | Status |
 |---|---|---|
 | [BE-0063](implemented/BE-0063-git-config-source/BE-0063-git-config-source.md) | Load config (and its scenario tree) from a Git repository + ref | Implemented |
+| [BE-0073](implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Implemented |
 <!-- /GENERATED:implemented-config-sourcing -->
 
 ### codegen coverage
@@ -310,7 +312,6 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0038](in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) | Autonomous crawl exploration (App Explorer style) | In progress | Autify VAX |
-| [BE-0046](in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | In progress | MagicPod |
 | [BE-0052](in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md) | Device-state primitives: timezone, clipboard, shake | In progress | MagicPod |
 <!-- /GENERATED:in-progress-competitive -->
 
@@ -387,6 +388,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
 | [BE-0055](proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Proposal |
 | [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Proposal |
+| [BE-0090](proposals/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing
@@ -396,7 +398,6 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 <!-- GENERATED:proposals-config-sourcing -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0073](proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) | Upload a config + scenarios + app-binary bundle as a zip and run it from the web UI | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage
@@ -425,6 +426,15 @@ Turning a passing scenario into a native test in a destination framework's idiom
 |---|---|---|
 | [BE-0024](proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Proposal |
 <!-- /GENERATED:proposals-doctor -->
+
+### Development infrastructure (contributor workflow)
+
+<!-- GENERATED:proposals-dev-infra -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Proposal |
+| [BE-0092](proposals/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Proposal |
+<!-- /GENERATED:proposals-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
 

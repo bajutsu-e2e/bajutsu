@@ -9,7 +9,9 @@ FastAPI control plane so the two backends stay in lockstep (BE-0015).
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
+import tempfile
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,6 +23,10 @@ from jinja2 import Environment, FileSystemLoader
 from bajutsu.serve import operations as ops
 from bajutsu.serve.helpers import valid_run_id
 from bajutsu.serve.jobs import ServeState
+from bajutsu.serve.uploads import MAX_UPLOAD_BYTES
+
+# Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.
+_UPLOAD_CHUNK = 1024 * 1024
 
 # Session cookie set at login when a serve token is configured (BE-0051).
 _SESSION_COOKIE = "bajutsu_session"
@@ -193,6 +199,11 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             if not self._gate():
                 return
             path = urlparse(self.path).path
+            # A bundle upload (BE-0073) carries a raw zip body, not JSON, and can be large — handle
+            # it before the JSON read so it streams to disk instead of loading into memory.
+            if path == "/api/upload":
+                self._handle_upload()
+                return
             length = int(self.headers.get("Content-Length") or 0)
             # Block cross-origin state-changing requests when auth (the cookie) is in play.
             if state.token is not None and not self._csrf_ok():
@@ -239,6 +250,61 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.cancel_job(state, path[len("/api/jobs/") : -len("/cancel")]))
                 case _:
                     self._json({"error": "not found"}, 404)
+
+        def _handle_upload(self) -> None:
+            """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
+            (BE-0073). Raw body (`Content-Type: application/zip`, filename via `?name=`), not
+            multipart: the SPA controls the request, and a streamed body needs no parser — the first
+            POST here that doesn't read a JSON body. The size cap is enforced both up front
+            (Content-Length) and while reading, so a lying length can't overrun it."""
+            # These early returns don't read the (possibly huge) body, so the connection still holds
+            # the unread upload bytes. Close it rather than draining gigabytes or leaving them to
+            # corrupt the next request on a keep-alive connection.
+            if state.token is not None and not self._csrf_ok():
+                self.close_connection = True
+                self._json({"error": "cross-origin request blocked"}, 403)
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0:
+                self._json({"error": "empty upload"}, 400)
+                return
+            if length > MAX_UPLOAD_BYTES:
+                self.close_connection = True
+                self._json({"error": f"upload too large (max {MAX_UPLOAD_BYTES} bytes)"}, 413)
+                return
+            filename = self._qs("name") or "bundle.zip"
+            tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)  # noqa: SIM115
+            tmp_path = Path(tmp.name)
+            digest = (
+                hashlib.sha256()
+            )  # hash while streaming so the file is read once, not again to hash
+            try:
+                remaining = length
+                with tmp:
+                    while remaining > 0:
+                        chunk = self.rfile.read(min(_UPLOAD_CHUNK, remaining))
+                        if not chunk:
+                            break  # client closed early; `remaining > 0` below catches the short read
+                        remaining -= len(chunk)
+                        digest.update(chunk)
+                        tmp.write(chunk)
+                if remaining > 0:
+                    # Body ended before Content-Length: a truncated upload. Fail explicitly (don't
+                    # hand a partial zip downstream as an "invalid bundle"), and close the connection
+                    # since its framing is now unreliable.
+                    self.close_connection = True
+                    self._json({"error": "upload incomplete (body ended early)"}, 400)
+                    return
+                self._json(
+                    *ops.bind_upload_config(
+                        state, tmp_path, filename, sha256=digest.hexdigest(), actor=self._actor()
+                    )
+                )
+            except OSError:
+                self.close_connection = True
+                self._json({"error": "upload interrupted"}, 400)
+            finally:
+                tmp_path.unlink(missing_ok=True)
 
         def _post_login(self, body: dict[str, Any]) -> None:
             """Exchange the shared token for a session cookie (BE-0051). The token is sent in the

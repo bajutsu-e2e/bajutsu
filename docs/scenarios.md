@@ -164,6 +164,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
 | `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
+| `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
@@ -283,7 +284,28 @@ later steps. Touching no device, it is the one device-independent action here.
 password locally — from the shared `secret` (base32; keep it in `${secrets.*}`, not in the YAML) and
 the current time — and stores the current code in `${vars.<var>}` for a later `type` / `assert`.
 This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
-function of the secret and the clock ([BE-0046](../roadmaps/in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+function of the secret and the clock ([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+
+### `email` (poll a mailbox for a received code)
+
+```yaml
+- email:
+    match: { to: "test@example.com", subjectMatches: "verification" }   # which message to wait for
+    extract: { var: code, bodyMatches: "[0-9]{6}" }                     # vars.code ← first capture group
+    timeout: 30
+- type: { text: "${vars.code}", into: { id: auth.otp } }
+```
+
+`email` waits for a 2FA / verification code delivered by email: it polls a generic HTTP mailbox
+(configured under `targets.<name>.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
+until a message that arrived **after the step started** satisfies `match`, then extracts the value
+from its body by the `bodyMatches` regex (first capturing group, or the whole match) into
+`${vars.<var>}`. The wait is a **condition wait with a mandatory `timeout`** (no fixed sleep): a
+timeout, a matched message whose body the regex can't hit, or an unreachable / non-2xx mailbox is a
+clean step failure — never a silent wrong value. Only mail newer than the step's start counts (keyed
+on message id, so a stale code from an earlier run is never matched), and among new matches the
+newest wins. Deterministic and LLM-free; the endpoint and credentials live in config-referenced
+`${secrets.*}`, so the scenario stays app-agnostic ([BE-0046](../roadmaps/implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
 
 ### Device & system control (iOS)
 
