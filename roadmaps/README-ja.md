@@ -430,6 +430,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) | マージ後に main で BE ID を採番する | 提案 |
 | [BE-0093](proposals/BE-0093-public-docs-site/BE-0093-public-docs-site-ja.md) | 公式サイトとドキュメントポータルの公開（GitHub Pages） | 提案 |
+| [BE-0096](proposals/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity-ja.md) | 項目昇格で docs のロードマップリンクが腐るのを防ぐ | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）
