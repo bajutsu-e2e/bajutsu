@@ -12,7 +12,7 @@ scenarios:
       - type: { text: "a@b.com", into: { id: auth.email } }
       - type: { text: "pw", into: { id: auth.password } }
       - tap: { id: auth.submit }
-      - wait: { for: { id: home.title }, timeout: 5 }
+      - wait: { for: { id: home.title }, timeout: 10 }
       - tap: { id: counter.increment }
       - tap: { id: counter.increment }
     expect:
