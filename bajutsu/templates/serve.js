@@ -407,7 +407,8 @@ async function chooseUploadConfig(file){
   }catch(e){meta.hidden=true;err.textContent='upload failed';err.hidden=false;return;}
   if(d.error){meta.hidden=true;err.textContent=d.error;err.hidden=false;return;}
   const s=d.source||{};
-  meta.innerHTML='Bound <b>'+esc(s.filename||file.name)+'</b> · '+fmtSize(s.size||file.size)+' · sha256 <code>'+esc((s.sha256||'').slice(0,12))+'…</code>';
+  // textContent (not innerHTML): the file name comes from a file input, so never reinterpret it as HTML.
+  meta.textContent='Bound '+(s.filename||file.name)+' · '+fmtSize(s.size||file.size)+' · sha256 '+(s.sha256||'').slice(0,12)+'…';
   $('#cfgname').textContent=d.config;closeFs();await loadShared();
 }
 $('#up-pick').addEventListener('click',()=>$('#up-file').click());
