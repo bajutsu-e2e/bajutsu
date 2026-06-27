@@ -122,9 +122,14 @@ def test_index_maps_to_bound_by() -> None:
     )
 
 
-def test_negative_index_stays_unsupported() -> None:
-    code = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row.*', index: -1 }\n")
-    assert 'el("UNSUPPORTED_SELECTOR").tap()' in code
+def test_negative_index_maps_to_count_offset() -> None:
+    # Bajutsu's negative index counts from the end (`candidates[i]`), which XCUITest expresses
+    # faithfully as `element(boundBy: query.count + index)` — `count - 1` is the last match.
+    query = 'app.descendants(matching: .any).matching(NSPredicate(format: "identifier LIKE %@", "row.*"))'
+    last = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row.*', index: -1 }\n")
+    assert f"{query}.element(boundBy: {query}.count - 1).tap()" in last
+    second_last = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row.*', index: -2 }\n")
+    assert f"{query}.element(boundBy: {query}.count - 2).tap()" in second_last
 
 
 def test_within_stays_unsupported() -> None:

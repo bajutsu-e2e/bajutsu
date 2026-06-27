@@ -74,7 +74,7 @@ final class ComponentsUITests: XCTestCase {
 | `value` | `value == %@` |
 | `traits: [button \| link]` | `elementType == XCUIElement.ElementType.<case>.rawValue` |
 | `traits: [notEnabled]` / `[selected]` | `enabled == NO` / `selected == YES` |
-| `index: n`（n ≥ 0） | `.element(boundBy: n)`（それ以外は `.firstMatch`） |
+| `index: n` | `.element(boundBy: n)`（負の `n` は末尾から数え `.element(boundBy: query.count - k)`。それ以外は `.firstMatch`） |
 
 設定された全フィールドを **AND** で結合します。*忠実な*構造写像が無いフィールドがあると、セレクタは
 `el("UNSUPPORTED_SELECTOR")` のまま残ります（誤った推測ではなく、正直なギャップ）。
@@ -84,7 +84,6 @@ final class ComponentsUITests: XCTestCase {
   ありません（ICU の `MATCHES` は全体一致でアンカーの意味も異なる）。
 - **`within`** — *幾何的*なフレーム包含制約です（候補のフレームがコンテナのフレーム内に収まること。
   [selectors](selectors.md) 参照）。XCUITest のクエリはツリーベースで幾何的ではありません。
-- **負の `index`** — `element(boundBy:)` に負の形はありません。
 - **未知の trait** — `button` / `link` / `notEnabled` / `selected` の語彙の外。
 
 ## マッピング表
@@ -117,7 +116,7 @@ final class ComponentsUITests: XCTestCase {
 ## 未対応は TODO コメントに落とす
 
 未対応の構文（`simctl` レベルのデバイス制御 `setLocation` / `push`、ネットワークの `request`
-アサーション、負の `index`、未知の trait、および Playwright 出力先での座標スワイプ）は、失敗させずに
+アサーション、未知の trait、および Playwright 出力先での座標スワイプ）は、失敗させずに
 `// TODO` 行を出力します。デバイス制御ステップはレビュー担当が実行する `simctl` コマンド名を明記します。
 出力は常にレビューでき、生成結果を壊しません。生成ファイルの先頭にも「手で編集せず再生成せよ」と明記します。
 これは両方の出力先に共通です。

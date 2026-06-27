@@ -10,8 +10,9 @@ Coverage: tap (by id or label) / doubleTap / type / longPress / swipe
 rotate (radians) / wait (for, until gone) /
 assertions (exists, notExists, value, label, enabled, disabled, selected, count).
 Selectors map their compound forms too (BE-0026): a single id/label/idMatches/labelMatches
-keeps its readable helper, while value / traits / within / index (or several fields together)
-compose one NSPredicate query — only a negative index or an unknown trait stays unsupported.
+keeps its readable helper, while value / traits / index (or several fields together) compose
+one NSPredicate query, a negative index counting from the live `count`. Only a `labelMatches`
+regex, a `within` (geometric) scope, or an unknown trait stays unsupported.
 Unsupported constructs emit a `// TODO` line rather than failing, so the output is
 always reviewable. (pinch / rotate need multi-touch, which idb cannot drive at run
 time — XCUITest is their on-device home.)
@@ -143,8 +144,8 @@ def _element(sel: base.Selector) -> str:
     """A Swift expression resolving to a single XCUIElement.
 
     Single addressing fields keep their readable helper; compound selectors (value / traits /
-    `within` / `index`, or several fields) compose an NSPredicate query, picking the element by
-    `index` (`element(boundBy:)`, non-negative only) or `firstMatch`.
+    `index`, or several fields) compose an NSPredicate query, picking the element by `index`
+    (`element(boundBy:)`, a negative index offset from `count`) or `firstMatch`.
     """
     keys = set(sel)
     if keys == {"id"}:
@@ -159,8 +160,10 @@ def _element(sel: base.Selector) -> str:
     index = sel.get("index")
     if index is None:
         return f"{query}.firstMatch"
-    if index < 0:  # element(boundBy:) has no negative form — an honest gap, not a wrong guess
-        return _UNSUPPORTED
+    if index < 0:
+        # A negative index counts from the end (`candidates[i]` in drivers/base.py); `boundBy:`
+        # takes no negative literal, so offset from the live `count` — `count - 1` is the last.
+        return f"{query}.element(boundBy: {query}.count - {-index})"
     return f"{query}.element(boundBy: {index})"
 
 
