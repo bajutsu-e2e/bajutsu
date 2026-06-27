@@ -57,6 +57,9 @@ DerivedData/
 worktree
 # Generated API reference output (BE-0065; `make docs`) — built, never committed.
 site/
+# Generated roadmap dashboard page (BE-XXXX; `make roadmap-dashboard`) — built from live BE
+# metadata on every docs build, never committed (cannot drift, no CI-id-allocation coupling).
+docs/api/roadmap.md
 
 # serve upload temp dirs (BE-0073) — never commit extracted bundles
 uploads/

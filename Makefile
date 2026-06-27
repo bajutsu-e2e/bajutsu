@@ -1,6 +1,6 @@
 .PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings format format-check typecheck \
         lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index roadmap-promote roadmap-id-repair \
-        docs docs-serve
+        roadmap-dashboard docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain and wires the tracked git hooks.
@@ -159,9 +159,15 @@ check: hooks format-check lint lint-docstrings lint-sh lint-actions lint-roadmap
 # reference build is a separate, heavier path (it pulls the `docs` extra) and must not slow the
 # gate. `--strict` fails on a broken reference (e.g. an unresolved symbol). `docs-serve` previews
 # it locally with live reload.
-docs:
+# Regenerate the roadmap dashboard page from live BE metadata (BE-XXXX). A docs build artifact
+# (gitignored), so every `docs` / `docs-serve` regenerates it first — the page can never drift from
+# the committed roadmap. Needs only stdlib, so it runs without the docs extra.
+roadmap-dashboard:
+	uv run python scripts/build_roadmap_dashboard.py
+
+docs: roadmap-dashboard
 	uv run --extra docs mkdocs build --strict
-docs-serve:
+docs-serve: roadmap-dashboard
 	uv run --extra docs mkdocs serve
 
 # Sample-app build / E2E targets live with their demos:
