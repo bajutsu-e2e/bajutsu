@@ -8,7 +8,7 @@
 | 提案 | [BE-0038](BE-0038-autonomous-crawl-exploration-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| 実装 PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) |
+| 実装 PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307), [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | Autify VAX |
 <!-- /BE-METADATA -->
