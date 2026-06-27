@@ -27,7 +27,7 @@
 
 ### 現状（前提）
 
-`backends.py:select_actuator()` は順序付きの `backend` リストを展開し、**最初に利用可能な** actuator を返します。それ以外のトークンはその後捨てられ、runner は 2 つ目の backend を生成しません。`capabilities_for(actuator)` は driver を構築せずに backend の*静的な*能力集合を返します（BE-0082 の preflight 用に追加されました）。これは gap 検出器が必要とする、まさにその部品です。`Capability.network` は**ネイティブ**観測を意味します。idb はこれを表明せず（アプリ側のコレクタ `BAJUTSU_COLLECTOR` → `NetworkCollector` で通信を取得します）、Playwright は表明します（`WebNetworkCollector`）。`evidence.py:Artifact` はすでに `provider` フィールドを持ち、`runner/pool.py:device_pool()` が唯一の継ぎ目です。ここで 1 つの actuator を選び、デバイスごとのコレクタを事前起動し、`driver` + `FileSink` + `collector` を各 `Lease` に束ねます。`pipeline.py:run_all` はシナリオごとにコレクタを `clear()` し、`_write_network`（provider は `"collector"` 固定）で `network.json` を書きます。
+`backends.py:select_actuator()` は順序付きの `backend` リストを展開し、**最初に利用可能な** actuator を返します。それ以外のトークンはその後捨てられ、runner は 2 つ目の backend を生成しません。`capabilities_for(actuator)` は driver を構築せずに backend の*静的な*能力集合を返します（BE-0082 の preflight 用に追加されました）。これは gap 検出器が必要とする、まさにその部品です。`Capability.NETWORK` は**ネイティブ**観測を意味します。idb はこれを表明せず（アプリ側のコレクタ `BAJUTSU_COLLECTOR` → `NetworkCollector` で通信を取得します）、Playwright は表明します（`WebNetworkCollector`）。`evidence.py:Artifact` はすでに `provider` フィールドを持ち、`runner/pool.py:device_pool()` が唯一の継ぎ目です。ここで 1 つの actuator を選び、デバイスごとのコレクタを事前起動し、`driver` + `FileSink` + `collector` を各 `Lease` に束ねます。`pipeline.py:run_all` はシナリオごとにコレクタを `clear()` し、`_write_network`（provider は `"collector"` 固定）で `network.json` を書きます。
 
 ### 1 つのリストから 2 つの役割
 
