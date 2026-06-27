@@ -278,6 +278,7 @@ Running the autonomous crawl across more than one device so a full screen map is
 | ID | Item | Status |
 |---|---|---|
 | [BE-0005](implemented/BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Implemented |
+| [BE-0088](implemented/BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) | Overlap the Simulator boot with the build | Implemented |
 <!-- /GENERATED:implemented-on-device -->
 
 ### Miscellaneous / on hold
