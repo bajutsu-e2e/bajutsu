@@ -93,3 +93,34 @@ def test_capture_creates_dir_once_for_writing_kinds(
     assert (step_dir / "elements.json").exists()
     assert ("screenshot", str(step_dir / "after.png")) in driver.actions
     assert mkdirs.count(step_dir) == 1  # the step dir is created once, not per writing kind
+
+
+def test_filesink_dispatches_intervals_to_web_provider(tmp_path: Path) -> None:
+    # When a web interval provider is injected, the sink uses it (Playwright-native) instead of
+    # the simctl starters, even though the web lane carries a (synthetic) udid.
+    from bajutsu import intervals
+    from bajutsu.evidence import FileSink
+
+    calls: list[tuple[str, str]] = []
+
+    def web_interval(kind: str, path: Path) -> intervals.Interval | None:
+        calls.append((kind, path.name))
+        if kind == "deviceLog":
+            return intervals.Interval(kind="deviceLog", path=path, provider="playwright")
+        return None  # video etc. not provided in this slice
+
+    sink = FileSink(tmp_path, udid="web-0", web_interval=web_interval)
+    started = sink.start_scenario_intervals("00-s", ["deviceLog", "video"])
+
+    assert calls == [("deviceLog", "device.log"), ("video", "scenario.mp4")]
+    # Only the provided (deviceLog) interval is started; the unsupported video is skipped.
+    assert [iv.kind for iv in started] == ["deviceLog"]
+    assert started[0].provider == "playwright"
+
+
+def test_filesink_without_web_provider_uses_udid_gate(tmp_path: Path) -> None:
+    from bajutsu.evidence import FileSink
+
+    # No udid and no web provider: intervals are skipped (the fake/headless path).
+    sink = FileSink(tmp_path, udid=None)
+    assert sink.start_scenario_intervals("00-s", ["deviceLog"]) == []

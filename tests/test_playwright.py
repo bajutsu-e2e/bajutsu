@@ -141,9 +141,22 @@ class _FakePage:
     def on(self, event: str, handler: Any) -> None:
         self._handlers.setdefault(event, []).append(handler)
 
+    def remove_listener(self, event: str, handler: Any) -> None:
+        handlers = self._handlers.get(event, [])
+        if handler in handlers:
+            handlers.remove(handler)
+
     def fire(self, event: str, arg: Any) -> None:
         for handler in self._handlers.get(event, []):
             handler(arg)
+
+
+class _FakeConsole:
+    """A Playwright ConsoleMessage stand-in (has .type and .text)."""
+
+    def __init__(self, type: str, text: str) -> None:
+        self.type = type
+        self.text = text
 
 
 class _FakeDialog:
@@ -487,3 +500,40 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
     healthy = PlaywrightDriver("http://app.test/", page=_FakePage([]))
     with pytest.raises(base.ElementNotFound):
         healthy.tap({"id": "missing"})
+
+
+def test_web_interval_captures_console_and_pageerror(tmp_path: Any) -> None:
+    # The web `deviceLog` evidence kind streams the browser console + uncaught page errors.
+    drv, page = _driver([])
+    path = tmp_path / "device.log"
+    interval = drv.web_interval("deviceLog", path)
+    assert interval is not None
+    assert interval.kind == "deviceLog"
+    assert interval.provider == "playwright"
+
+    page.fire("console", _FakeConsole("log", "hello"))
+    page.fire("console", _FakeConsole("error", "oops"))
+    page.fire("pageerror", "boom")
+    interval.stop()
+
+    text = path.read_text(encoding="utf-8")
+    assert "[log] hello" in text
+    assert "[error] oops" in text
+    assert "[pageerror] boom" in text
+
+
+def test_web_interval_stop_detaches_handlers(tmp_path: Any) -> None:
+    # After stop(), further console events must not be written (the listener is removed).
+    drv, page = _driver([])
+    path = tmp_path / "device.log"
+    interval = drv.web_interval("deviceLog", path)
+    assert interval is not None
+    interval.stop()
+    page.fire("console", _FakeConsole("log", "after-stop"))
+    assert "after-stop" not in path.read_text(encoding="utf-8")
+
+
+def test_web_interval_unsupported_kind_is_none(tmp_path: Any) -> None:
+    # Only deviceLog (console) is supported in this slice; video comes later.
+    drv, _ = _driver([])
+    assert drv.web_interval("video", tmp_path / "scenario.mp4") is None

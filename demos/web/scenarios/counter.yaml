@@ -13,6 +13,9 @@ scenarios:
       - type: { text: "pw", into: { id: auth.password } }
       - tap: { id: auth.submit }
       - wait: { for: { id: home.title }, timeout: 5 }
+        # Capture the browser console + uncaught page errors for the whole scenario (the web
+        # `deviceLog` evidence — Playwright-native, no simctl). Exercises the web interval path.
+        capture: [deviceLog]
       - tap: { id: counter.increment }
       - tap: { id: counter.increment }
       - tap: { id: counter.increment }
