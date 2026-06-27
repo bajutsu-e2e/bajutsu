@@ -91,17 +91,20 @@ jobs:
         run: brew install xcodegen
 
       # Start the boot first so it runs concurrently with the app build below — the first
-      # boot of a fresh Simulator costs ~80s and does not depend on the build. We only
-      # block on "booted" (the wait step) right before installing the app.
+      # boot of a fresh Simulator costs ~80s and does not depend on the build. `wait: 'false'`
+      # returns once the boot is initiated; we block on "booted" (the wait step) right before
+      # installing the app.
       - name: Boot a Simulator
         id: sim
         uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
 
       - name: Build the sample app
         run: make -C demos/features sample-build
 
       - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}"
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
       - name: Install the app
         run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
@@ -163,11 +166,14 @@ jobs:
             xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
 
       # Start the boot before the codegen build so the ~80s first boot overlaps with it.
-      # No explicit wait is needed: `xcodebuild test` blocks on the destination becoming
-      # ready when it reaches the test phase, by which point the boot has finished.
+      # `wait: 'false'` returns once the boot is initiated; no explicit wait is needed because
+      # `xcodebuild test` blocks on the destination becoming ready when it reaches the test
+      # phase, by which point the boot has finished.
       - name: Boot a Simulator
         id: sim
         uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
 
       # `make -C demos/features ui-test` re-generates ComponentsUITests.swift from the
       # scenario, regenerates the project, then `xcodebuild test`s it. xcodebuild builds the

@@ -1,22 +1,30 @@
 name: Boot a Simulator
 description: >-
-  Select an iPhone Simulator and start its boot asynchronously, returning the UDID
-  immediately. `simctl boot` only asks CoreSimulator (a launchd service) to boot the
-  device — the boot then proceeds independently of this step, so callers can run the
-  build concurrently and wait for "booted" only right before they install/run.
-  Prefers an already-booted device, then a pre-installed available one (guaranteed
-  compatible with the runner's Xcode); falls back to creating one with the default
-  runtime. Shared by the on-device jobs so the selection logic lives in one place.
+  Boot an iPhone Simulator and return its UDID. By default it blocks until the device is fully
+  booted (bootstatus), so callers can install/actuate immediately. Set `wait: 'false'` to start
+  the boot asynchronously and return at once: `simctl boot` only asks CoreSimulator (a launchd
+  service) to boot the device, so the caller can run other work concurrently and wait for
+  "booted" itself before actuating. Prefers an already-booted device, then a pre-installed
+  available iPhone (guaranteed compatible with the runner's Xcode); falls back to creating one
+  with simctl's default runtime. Shared by the on-device jobs so the boot logic lives in one place.
+
+inputs:
+  wait:
+    description: >-
+      Block until the device finishes booting before returning. Set 'false' to overlap the boot
+      with later steps — the caller must then wait for "booted" itself before actuating.
+    required: false
+    default: "true"
 
 outputs:
   udid:
-    description: The selected simulator's UDID (boot started, not necessarily finished).
+    description: The selected simulator's UDID (fully booted when `wait` is 'true').
     value: ${{ steps.boot.outputs.udid }}
 
 runs:
   using: composite
   steps:
-    - name: Start boot
+    - name: Boot
       id: boot
       shell: bash
       run: |
@@ -35,7 +43,14 @@ runs:
           devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
           udid=$(xcrun simctl create ci-iphone "$devtype")
         fi
-        echo "Starting boot of simulator $udid"
-        # Async: returns once boot is initiated; CoreSimulator finishes it in the background.
-        xcrun simctl boot "$udid" || true
+        echo "Booting simulator $udid"
+        # Fail loudly: the device was Shutdown (already-booted ones returned above), so a boot
+        # rejection is a real error, not the harmless "already booted" case.
+        xcrun simctl boot "$udid"
+        # Default: block until fully booted so callers can install/actuate right away. With
+        # wait=false the boot proceeds in the background; the caller waits before actuating,
+        # letting the boot overlap intervening work (e.g. the app build).
+        if [ "${{ inputs.wait }}" = "true" ]; then
+          xcrun simctl bootstatus "$udid" -b
+        fi
         echo "udid=$udid" >> "$GITHUB_OUTPUT"
