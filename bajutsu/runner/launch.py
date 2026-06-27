@@ -21,6 +21,7 @@ def launch_driver(
     preconditions: Preconditions | None = None,
     env_run: env.RunFn = env._real_run,
     extra_env: Mapping[str, str] | None = None,
+    record_video_dir: Path | None = None,
 ) -> base.Driver:
     """Bring a device up, launch the app under config + scenario env, and return a ready driver.
 
@@ -39,6 +40,8 @@ def launch_driver(
         env_run: The subprocess runner for simctl, injectable for tests (iOS only).
         extra_env: Launch env merged in last — e.g. the per-device `BAJUTSU_COLLECTOR` url so the
             app reports to its own collector.
+        record_video_dir: Web only — when set, the browser context records video here for the
+            whole scenario (the `video` capture kind collects it). None records no video.
 
     Returns:
         A driver bound to the launched app, already polled until its UI has rendered.
@@ -52,7 +55,13 @@ def launch_driver(
     if actuator == "playwright":
         if not eff.base_url:
             raise env.DeviceError("web backend requires baseUrl (set apps.<app>.baseUrl)")
-        driver = make_driver(actuator, udid, base_url=eff.base_url, headless=eff.headless)
+        driver = make_driver(
+            actuator,
+            udid,
+            base_url=eff.base_url,
+            headless=eff.headless,
+            record_video_dir=record_video_dir,
+        )
         driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
         _await_ready(driver)
         return driver

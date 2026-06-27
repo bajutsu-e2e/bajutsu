@@ -533,7 +533,93 @@ def test_web_interval_stop_detaches_handlers(tmp_path: Any) -> None:
     assert "after-stop" not in path.read_text(encoding="utf-8")
 
 
-def test_web_interval_unsupported_kind_is_none(tmp_path: Any) -> None:
-    # Only deviceLog (console) is supported in this slice; video comes later.
+def test_web_interval_unknown_kind_is_none(tmp_path: Any) -> None:
+    drv, _ = _driver([])
+    assert drv.web_interval("appTrace", tmp_path / "appTrace.raw") is None
+
+
+# --- video evidence (BE-0054) ---
+
+
+class _FakeVideo:
+    def __init__(self, src: Any) -> None:
+        self._src = src
+
+    def path(self) -> str:
+        return str(self._src)
+
+
+class _FakeVideoPage(_FakePage):
+    def __init__(self, records: list[dict[str, Any]], video: _FakeVideo) -> None:
+        super().__init__(records)
+        self.video = video
+
+
+class _VideoContext:
+    def __init__(self, page: Any, record_video_dir: Any = None) -> None:
+        self.record_video_dir = record_video_dir
+        self._page = page
+        self.closed = False
+
+    def new_page(self) -> Any:
+        return self._page
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _VideoBrowser:
+    def __init__(self, page: Any) -> None:
+        self._page = page
+        self.contexts: list[_VideoContext] = []
+
+    def new_context(self, **kwargs: Any) -> _VideoContext:
+        ctx = _VideoContext(self._page, kwargs.get("record_video_dir"))
+        self.contexts.append(ctx)
+        return ctx
+
+    def close(self) -> None:
+        return None
+
+
+class _VideoPw:
+    def stop(self) -> None:
+        return None
+
+
+def _video_driver(video_dir: Any, src: Any) -> tuple[PlaywrightDriver, _VideoBrowser]:
+    page = _FakeVideoPage([], _FakeVideo(src))
+    browser = _VideoBrowser(page)
+    pw = _FakePw()
+    starter = lambda _h: (pw, browser, _FakeContext(page), page)  # noqa: E731
+    drv = PlaywrightDriver("http://app.test/", record_video_dir=video_dir, starter=starter)
+    return drv, browser
+
+
+def test_web_driver_records_video_when_dir_set(tmp_path: Any) -> None:
+    src = tmp_path / "raw.webm"
+    src.write_bytes(b"vid")
+    _, browser = _video_driver(tmp_path / "vtmp", src)
+    # The live context was (re)created with record_video_dir so Playwright records it.
+    assert browser.contexts[-1].record_video_dir == str(tmp_path / "vtmp")
+
+
+def test_web_interval_video_finalizes_to_target(tmp_path: Any) -> None:
+    src = tmp_path / "raw.webm"
+    src.write_bytes(b"vid")
+    target = tmp_path / "out" / "scenario.mp4"
+    drv, browser = _video_driver(tmp_path / "vtmp", src)
+    interval = drv.web_interval("video", target)
+    assert interval is not None
+    assert interval.kind == "video"
+    assert interval.provider == "playwright"
+    interval.stop()
+    assert browser.contexts[-1].closed  # context closed to finalize the recording
+    assert target.read_bytes() == b"vid"  # the saved video moved to the artifact path
+    assert not src.exists()
+
+
+def test_web_interval_video_none_without_recording(tmp_path: Any) -> None:
+    # No record_video_dir on this lane (video not requested): no video interval.
     drv, _ = _driver([])
     assert drv.web_interval("video", tmp_path / "scenario.mp4") is None
