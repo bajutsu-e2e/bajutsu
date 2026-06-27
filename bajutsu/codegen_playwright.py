@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import re
 
+from bajutsu.assertions import request_label
 from bajutsu.codegen_common import render_test_file
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Gone, Scenario, Step
+from bajutsu.scenario import Assertion, Gone, RequestMatch, Scenario, Step
 from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
 
 # Element-center drag distance (px) for a directional swipe — intrinsic to the gesture.
@@ -63,6 +64,129 @@ def _re_contains(text: str) -> str:
 def _re_raw(pattern: str) -> str:
     """A JS RegExp literal from an already-regex pattern (only `/` needs escaping)."""
     return "/" + pattern.replace("/", "\\/") + "/"
+
+
+# Playwright observes network natively, but the runner evaluates a request matcher over the
+# exchanges collected *so far* (its collector records each finished exchange), not over future
+# traffic. `page.waitForResponse` only sees the future, so it would miss requests made during the
+# preceding steps and could hang where the runtime passes. To match the runtime, the generated test
+# installs an exchange recorder up front (see `_RECORDER_SETUP`) and the assertions read that list:
+# `request` is a point-in-time `filter`/`some`, `requestSequence` a forward scan, and `until:{request}`
+# an `expect.poll` (an already-observed exchange passes at once; otherwise it waits). `bodyMatches`
+# is a regex over the *request* body (`match_request` tests `ex.request_body`, failing when it is
+# None), so the predicate reads `e.body` and guards `!== null` first.
+
+# Installed before navigation so it captures the whole flow. Captured on 'requestfinished' — the same
+# event the runtime web collector uses (`bajutsu/web_network.py`), so `status` is null when a request
+# has no response, matching the collector's finished-exchange list (an earlier 'response' hook could
+# not represent that case). The explicit `+` joins keep each list item one string (no implicit
+# adjacent-literal concatenation, which reads as a missing comma).
+_RECORDER_SETUP = [
+    "// Record finished exchanges so the request assertions below read the traffic observed so far",
+    "// (like the runner's collector), not only future traffic.",
+    "const exchanges: { method: string; url: string; status: number | null; "
+    + "body: string | null }[] = [];",
+    "page.on('requestfinished', async req => {",
+    "  const res = await req.response();",
+    "  exchanges.push({ method: req.method(), url: req.url(), "
+    + "status: res ? res.status() : null, body: req.postData() });",
+    "});",
+]
+
+
+def _re_test_js(pattern: str, subject: str) -> str:
+    """A JS `regexp.test(subject)` for a `re.search`-style matcher (substring or regex)."""
+    return f"{_re_raw(pattern)}.test({subject})"
+
+
+def _request_predicate(req: RequestMatch) -> str:
+    """The JS boolean predicate for a request matcher, over a recorded exchange `e`.
+
+    `e` carries `method` / `url` / `status` / `body`. Only set matcher fields are emitted, AND-ed,
+    mirroring `match_request`. `body_matches` guards `e.body !== null` first: the runner fails a body
+    matcher when the request has no body, so without the guard a pattern like `.*` would match a
+    body-less request and pass incorrectly.
+    """
+    pathname = "new URL(e.url).pathname"  # `path` is path-only in the runner, so drop the query
+    clauses: list[str] = []
+    if req.method is not None:
+        clauses.append(f"e.method === {_ts(req.method.upper())}")
+    if req.url is not None:
+        clauses.append(f"e.url === {_ts(req.url)}")
+    if req.url_matches is not None:
+        clauses.append(_re_test_js(req.url_matches, "e.url"))
+    if req.path is not None:
+        clauses.append(f"{pathname} === {_ts(req.path)}")
+    if req.path_matches is not None:
+        clauses.append(_re_test_js(req.path_matches, pathname))
+    if req.status is not None:
+        clauses.append(f"e.status === {req.status}")
+    if req.body_matches is not None:
+        clauses.append(f"e.body !== null && {_re_test_js(req.body_matches, 'e.body')}")
+    return " && ".join(clauses) if clauses else "true"
+
+
+def _emit_request_assertion(req: RequestMatch) -> list[str]:
+    """A `request` assertion as a check over the recorded exchanges.
+
+    `count` (when set) is exact, mirroring the runtime `request` check; otherwise at least one match
+    is required. Point-in-time over what was observed so far — never a `waitForResponse`.
+    """
+    pred = _request_predicate(req)
+    label = f"// request {request_label(req)}"
+    if req.count is not None:
+        return [label, f"expect(exchanges.filter(e => {pred}).length).toBe({req.count});"]
+    return [label, f"expect(exchanges.some(e => {pred})).toBeTruthy();"]
+
+
+def _emit_until_request(req: RequestMatch, timeout_ms: int) -> list[str]:
+    """An `until: { request }` wait: poll the growing recorder to the step's timeout.
+
+    `count` is a lower bound for an `until` wait (the runner keeps polling until it is reached); an
+    already-observed exchange satisfies `expect.poll` immediately, matching the runtime which checks
+    the collected exchanges before continuing to poll.
+    """
+    pred = _request_predicate(req)
+    need = req.count if req.count is not None else 1
+    return [
+        f"// wait until request {request_label(req)}",
+        f"await expect.poll(() => exchanges.filter(e => {pred}).length, "
+        f"{{ timeout: {timeout_ms} }}).toBeGreaterThanOrEqual({need});",
+    ]
+
+
+def _emit_request_sequence(seq: list[RequestMatch]) -> list[str]:
+    """A `requestSequence` as an in-order forward scan over the recorded exchanges.
+
+    Mirrors `_eval_request_sequence`: advance through the matchers as exchanges are seen in order and
+    require every matcher to be reached. Order is the check, so `count` is left off the labels.
+    """
+    header = "// requestSequence " + " → ".join(request_label(m, with_count=False) for m in seq)
+    return [
+        header,
+        "{",
+        "  const seq = [",
+        *[f"    (e) => {_request_predicate(m)}," for m in seq],
+        "  ];",
+        "  let i = 0;",
+        "  for (const e of exchanges) if (i < seq.length && seq[i](e)) i++;",
+        "  expect(i).toBe(seq.length);",
+        "}",
+    ]
+
+
+def _scenario_uses_network(scenario: Scenario) -> bool:
+    """Whether any step or `expect` reads the network (request / requestSequence / until request)."""
+
+    def asserts_network(assertions: list[Assertion]) -> bool:
+        return any(a.request is not None or a.request_sequence is not None for a in assertions)
+
+    for step in scenario.steps:
+        if step.wait is not None and isinstance(step.wait.until, WaitRequest):
+            return True
+        if step.assert_ is not None and asserts_network(step.assert_):
+            return True
+    return asserts_network(scenario.expect)
 
 
 def _glob_to_css(glob: str) -> str | None:
@@ -124,11 +248,29 @@ def _locator(sel: base.Selector) -> str | None:
     return loc
 
 
+# Why a selector field has no faithful Playwright locator (BE-0085) — named in the labeled TODO so a
+# reviewer sees *which* field blocked the locator and *why*, rather than a bare "unsupported selector".
+_WITHIN_REASON = "geometric frame containment, not a Playwright locator scope"
+_VALUE_REASON = "no Playwright locator constrains an element's current value"
+_GLOB_REASON = "fnmatch glob has no CSS attribute-selector equivalent (interior `*`, `?`, or `[…]`)"
+
+
+def _unsupported_selector_todo(sel: base.Selector) -> str:
+    """A labeled `// TODO` naming which selector field has no Playwright locator, and why."""
+    if "within" in sel:
+        field, reason = "within", _WITHIN_REASON
+    elif "value" in sel:
+        field, reason = "value", _VALUE_REASON
+    else:  # an `idMatches` glob the CSS attribute operators cannot express
+        field, reason = "idMatches", _GLOB_REASON
+    return f"// TODO: unsupported selector ('{field}': {reason})"
+
+
 def _act(sel: base.Selector, call: str) -> list[str]:
     """A `await <locator>.<call>;` line, or a TODO when the selector can't be rendered."""
     loc = _locator(sel)
     if loc is None:
-        return ["// TODO: unsupported selector"]
+        return [_unsupported_selector_todo(sel)]
     return [f"await {loc}.{call};"]
 
 
@@ -171,9 +313,10 @@ def _emit_step(step: Step) -> list[str]:
     if step.swipe is not None:
         sw = step.swipe
         if sw.on is not None and sw.direction is not None:
-            loc = _locator(sw.on.as_selector())
+            sel = sw.on.as_selector()
+            loc = _locator(sel)
             if loc is None:
-                return ["// TODO: unsupported selector"]
+                return [_unsupported_selector_todo(sel)]
             return _emit_swipe_direction(loc, sw.direction)
         return ["// TODO: coordinate swipe (from/to) is not generated"]
     if step.wait is not None:
@@ -192,26 +335,31 @@ def _emit_step(step: Step) -> list[str]:
 def _emit_wait(w: Wait) -> list[str]:
     timeout = _ms(w.timeout)
     if w.for_ is not None:
-        loc = _locator(w.for_.as_selector())
+        sel = w.for_.as_selector()
+        loc = _locator(sel)
         if loc is None:
-            return ["// TODO: unsupported selector"]
+            return [_unsupported_selector_todo(sel)]
         return [f"await expect({loc}).toBeVisible({{ timeout: {timeout} }});"]
     if isinstance(w.until, Gone):
-        loc = _locator(w.until.gone.as_selector())
+        sel = w.until.gone.as_selector()
+        loc = _locator(sel)
         if loc is None:
-            return ["// TODO: unsupported selector"]
+            return [_unsupported_selector_todo(sel)]
         return [f"await expect({loc}).toBeHidden({{ timeout: {timeout} }});"]
     if isinstance(w.until, WaitRequest):
-        return ["// TODO: wait until network request (no bajutsu runtime in the emitted test)"]
+        # Poll the recorded exchanges to the step's timeout, so an already-observed request passes at
+        # once and a future one is awaited — matching the runtime (BE-0085).
+        return _emit_until_request(w.until.request, timeout)
     # "screenChanged" / "settled" — Playwright auto-waits, so a comment suffices.
     return [f"// {w.until} — Playwright auto-waits"]
 
 
 def _emit_assertion(a: Assertion) -> list[str]:
     if a.exists is not None:
-        loc = _locator(a.exists.sel.as_selector())
+        sel = a.exists.sel.as_selector()
+        loc = _locator(sel)
         if loc is None:
-            return ["// TODO: unsupported selector"]
+            return [_unsupported_selector_todo(sel)]
         check = "toBeHidden()" if a.exists.negate else "toBeVisible()"
         return [f"await expect({loc}).{check};"]
     if a.value is not None:
@@ -227,7 +375,18 @@ def _emit_assertion(a: Assertion) -> list[str]:
     if a.count is not None:
         return _emit_count(a.count)
     if a.request is not None:
-        return ["// TODO: network 'request' assertion (no bajutsu runtime in the emitted test)"]
+        return _emit_request_assertion(a.request)
+    if a.request_sequence is not None:
+        return _emit_request_sequence(a.request_sequence)
+    if a.response_schema is not None:
+        # Validating a body against a JSON Schema needs a schema library in the emitted test (an
+        # external dependency the generated file shouldn't assume), so this stays a labeled TODO
+        # naming the endpoint and the schema file (BE-0085), like the XCUITest network TODOs.
+        m = a.response_schema
+        return [
+            f"// TODO: responseSchema assertion ({request_label(m.request)} ~ {m.schema_path}) — "
+            "validating a JSON Schema needs a schema library in the test; not generated"
+        ]
     if a.visual is not None:
         return ["// TODO: visual assertion is not generated"]
     return ["// TODO: unsupported assertion"]
@@ -236,14 +395,15 @@ def _emit_assertion(a: Assertion) -> list[str]:
 def _expect(sel: base.Selector, matcher: str) -> list[str]:
     loc = _locator(sel)
     if loc is None:
-        return ["// TODO: unsupported selector"]
+        return [_unsupported_selector_todo(sel)]
     return [f"await expect({loc}).{matcher};"]
 
 
 def _emit_text_match(m: TextMatch, equals_matcher: str, contains_matcher: str) -> list[str]:
-    loc = _locator(m.sel.as_selector())
+    sel = m.sel.as_selector()
+    loc = _locator(sel)
     if loc is None:
-        return ["// TODO: unsupported selector"]
+        return [_unsupported_selector_todo(sel)]
     if m.equals is not None:
         return [f"await expect({loc}).{equals_matcher}({_ts(m.equals)});"]
     if m.contains is not None:
@@ -254,9 +414,10 @@ def _emit_text_match(m: TextMatch, equals_matcher: str, contains_matcher: str) -
 
 
 def _emit_count(c: CountMatch) -> list[str]:
-    loc = _locator(c.sel.as_selector())
+    sel = c.sel.as_selector()
+    loc = _locator(sel)
     if loc is None:
-        return ["// TODO: unsupported selector"]
+        return [_unsupported_selector_todo(sel)]
     if c.equals is not None:
         return [f"await expect({loc}).toHaveCount({c.equals});"]
     if c.at_least is not None:
@@ -283,6 +444,11 @@ class _PlaywrightGen:
 
     def scenario_open(self, name: str) -> str:
         return f"  test({_ts(name)}, async ({{ page }}) => {{"
+
+    def setup_lines(self, scenario: Scenario) -> list[str]:
+        # Install the network-exchange recorder before navigation, but only when the scenario asserts
+        # over the network — otherwise the scaffold stays free of unused plumbing.
+        return list(_RECORDER_SETUP) if _scenario_uses_network(scenario) else []
 
     def launch_env_line(self, key: str, value: str) -> str:
         return f"await page.addInitScript(() => localStorage.setItem({_ts(key)}, {_ts(value)}));"

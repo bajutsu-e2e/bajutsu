@@ -112,6 +112,48 @@ Every command in the CLI (command-line interface) selects one app with `--target
 config with `--config` (default `bajutsu.config.yaml`). `--backend ios` (or a comma list of
 platforms/actuators) overrides the resolved order ([cli](cli.md)).
 
+### Config from a Git repository (BE-0063)
+
+`--config` also accepts a **Git source**, so a command can run a test repository's suite without a
+local checkout — `bajutsu run --config github:acme/mobile-tests@v1.4.0:e2e/bajutsu.config.yaml --target checkout`:
+
+```
+github:<owner>/<repo>[@<ref>][:<path>]                          # GitHub shorthand
+git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (host reserved)
+```
+
+- **GitHub is the only host implemented today.** The general `git+https://<host>/…` form is parsed
+  (the door is open for GitHub Enterprise / GitLab later), but a non-`github.com` host currently
+  fails with a clear error rather than silently hitting github.com.
+- A run from a Git source **records the resolved commit** in its `manifest.json` provenance
+  (`configSource: { host, owner, repo, ref, sha }`), so a branch-based run states the exact commit it
+  executed and is reproducible after the fact ([reporting](reporting.md#manifestjson)).
+- `<ref>` is a branch, tag, or commit SHA (default: the repo's default branch); `<path>` is the
+  config within the repo (default: `bajutsu.config.yaml` at the root). A value with no recognized
+  scheme is a **local path**, exactly as before.
+- Bajutsu resolves the ref to an immutable commit SHA, materializes that subtree into a
+  content-addressed cache (`~/.cache/bajutsu/gitsrc/<host>/<owner>/<repo>/<sha>/`), and loads the
+  config from it. Because the config's `scenarios` / `baselines` / `schemas` / `appPath` are relative
+  paths, they resolve **against the checkout root**, not the caller's working directory — so the whole
+  tree comes along, not just the YAML.
+- A fresh checkout holds **no built binary**, and there is no local "first" in which to build one, so a
+  Git-sourced `run` **builds the app on demand**: when `appPath` is set but missing, it runs the
+  config's `build` command from the **checkout root** (where `build`'s relative parts, e.g.
+  `make -C demos/features sample-build`, are rooted), then proceeds. A failed build exits cleanly.
+  A local-path `run` is unchanged (it never builds; a missing binary still errors).
+- A **pinned commit SHA** (`@<sha>`) is reproducible and runs offline after the first fetch; a branch
+  (or tag) is resolved fresh each load. Private repos use a token from `GITHUB_TOKEN` / `GH_TOKEN`, else
+  `gh auth token`; the token is never logged.
+- `bajutsu run` takes two gate switches: **`--config-offline`** uses the cache and never touches the
+  network (it needs a pinned `@<sha>`, since a branch can't be resolved offline), and
+  **`--require-pinned-config`** fails unless the Git config pins a commit SHA — a branch or even a tag
+  can move under a gate, so only a SHA is accepted.
+- The serve UI also binds a Git source — `serve --config github:…` at startup, or the "From a Git
+  repository" field in the "Open config" dialog — materializing the checkout and serving from its
+  root ([cli → serve](cli.md#serve)).
+- Remaining follow-ups: read-only Git input for `record` / `crawl` (an authored artifact goes to a
+  local `--out`, never into the SHA-keyed cache).
+
 ## Onboarding a new target
 
 To add a new app, add **app-side preparation and one config entry**. No changes to the tool itself are required.
@@ -151,9 +193,13 @@ The sample app's id catalog is in [sample-app](sample-app.md#accessibilityidenti
 Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It analyzes one screen's
 `query()` (the CLI uses the screen obtained via the actuator) and produces a score.
 
-> `doctor` runs a **runnability gate** first (`preflight.py`: the required CLIs for the actuator
-> — `xcrun`, and `idb` / `idb_companion` for idb — plus a booted Simulator), then the score. The
-> score still covers only the currently displayed screen (entry / current screen, not all screens).
+> `doctor` runs a **runnability gate** first (`preflight.py`), then the score. The gate checks what
+> the chosen backend needs: the iOS (idb) backend needs the CLIs `xcrun` and `idb` / `idb_companion`
+> plus a booted Simulator; the web (Playwright) backend needs the Playwright package and its Chromium
+> browser (`uv sync --extra web` + `playwright install chromium`). It then scores the current screen:
+> for a web target it navigates a fresh browser to the target's `baseUrl` and scores that page; for
+> iOS it scores the screen on the booted Simulator. The score still covers only the currently
+> displayed screen (entry / current screen, not all screens).
 
 ### Metrics (`Score`)
 

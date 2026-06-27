@@ -12,6 +12,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -24,6 +25,8 @@ _ACT_TARGETS = ("tap", "double_tap", "long_press", "type", "swipe", "pinch", "ro
 
 @dataclass(frozen=True)
 class FailedStep:
+    """The step that failed — its index, action, and failure reason."""
+
     index: int
     action: str
     reason: str
@@ -53,14 +56,15 @@ _FIX_LABELS = {
 
 
 def fix_summary(kind: str, find: str, replace: str) -> str:
+    """A human-readable one-line label for a fix: the kind's label plus find -> replace."""
     return f"{_FIX_LABELS.get(kind, kind)} `{find}` -> `{replace}`"
 
 
 @dataclass(frozen=True)
 class Fix:
-    """A mechanically-applicable edit a human reviews before it is written — `find` -> `replace`
-    over the scenario source.
+    """A mechanically-applicable edit a human reviews before it is written (`find` -> `replace`).
 
+    Applied over the scenario source.
     `renameId` replaces a selector id as a whole token (safe to apply everywhere it appears —
     the classic self-heal). `addIndex` / `raiseTimeout` replace an exact fragment of the
     failing step (disambiguate an ambiguous match, or lengthen a wait). The boundary still
@@ -76,6 +80,8 @@ class Fix:
 
 @dataclass(frozen=True)
 class Triage:
+    """The triage verdict for one failed scenario — a summary, a category, and suggested fixes."""
+
     summary: str
     category: str  # selector | timing | assertion | unknown
     suggestions: list[str]
@@ -83,6 +89,11 @@ class Triage:
 
 
 class TriageAgent(Protocol):
+    """The triage interface: turn a failed scenario's context into a `Triage` verdict.
+
+    Implemented by the deterministic `HeuristicTriageAgent` (no AI) and by AI-backed agents alike.
+    """
+
     def triage(self, context: TriageContext) -> Triage: ...
 
 
@@ -95,7 +106,8 @@ def apply_fix(text: str, fix: Fix) -> tuple[str, int]:
     `renameId` replaces whole-token occurrences of the id — the negative lookarounds keep
     `nav.setting` from matching inside `nav.settings`. The fragment kinds (`addIndex`,
     `raiseTimeout`) replace an exact substring; when it no longer matches the source the count
-    is 0 and the text is unchanged — a safe no-op the diff makes obvious."""
+    is 0 and the text is unchanged — a safe no-op the diff makes obvious.
+    """
     if not fix.find:
         return text, 0
     if fix.kind == "renameId":
@@ -162,34 +174,58 @@ def _nearest_artifact(
     return None
 
 
+def _read_artifact[T](
+    run_dir: Path,
+    steps: list[dict[str, Any]],
+    failed_index: int | None,
+    kind: str,
+    loader: Callable[[Path], T | None],
+    default: T,
+) -> T:
+    """Find the nearest artifact of `kind` (backward from `failed_index`) and apply `loader`.
+
+    Separates the backward-scan concern (_nearest_artifact) from the per-type deserialization
+    so callers only declare what they want, not how to walk the step list.
+    """
+    art = _nearest_artifact(steps, failed_index, kind)
+    if art is not None:
+        result = loader(run_dir / str(art.get("name")))
+        if result is not None:
+            return result
+    return default
+
+
+def _load_elements(path: Path) -> list[base.Element] | None:
+    data = _read_json(path)
+    return data if isinstance(data, list) else None
+
+
+def _load_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
 def _elements_near(
     run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None
 ) -> list[base.Element]:
     """The element tree from the failing step (or the nearest earlier step that has one)."""
-    art = _nearest_artifact(steps, failed_index, "elements")
-    if art is not None:
-        data = _read_json(run_dir / str(art.get("name")))
-        if isinstance(data, list):
-            return data
-    return []
+    return _read_artifact(run_dir, steps, failed_index, "elements", _load_elements, [])
 
 
 def _screenshot_near(
     run_dir: Path, steps: list[dict[str, Any]], failed_index: int | None
 ) -> bytes | None:
     """The screenshot from the failing step (or the nearest earlier step that has one)."""
-    art = _nearest_artifact(steps, failed_index, "screenshot")
-    if art is not None:
-        try:
-            return (run_dir / str(art.get("name"))).read_bytes()
-        except OSError:
-            return None
-    return None
+    return _read_artifact(run_dir, steps, failed_index, "screenshot", _load_bytes, None)
 
 
 def assemble(run_dir: Path, scenario_filter: str | None = None) -> TriageContext | None:
     """Build the triage context for the first failed scenario (matching `scenario_filter`).
-    Returns None when the run has no readable manifest or no failed scenario."""
+
+    Returns None when the run has no readable manifest or no failed scenario.
+    """
     manifest = _read_json(run_dir / "manifest.json")
     if not isinstance(manifest, dict):
         return None
@@ -262,9 +298,12 @@ def _close(target: str, elements: list[base.Element]) -> list[str]:
 
 
 class HeuristicTriageAgent:
-    """A deterministic, rule-based triage (no AI): categorize the failure by its shape and
-    point at the likely fix — including a "did you mean" when the target id is absent but a
-    similar id is on screen (the classic self-heal: an id was renamed)."""
+    """A deterministic, rule-based triage (no AI).
+
+    Categorizes the failure by its shape and points at the likely fix — including a "did you mean"
+    when the target id is absent but a similar id is on screen (the classic self-heal: an id was
+    renamed).
+    """
 
     def triage(self, context: TriageContext) -> Triage:
         fs = context.failed_step
@@ -336,6 +375,7 @@ class HeuristicTriageAgent:
 
 
 def render(context: TriageContext, triage: Triage) -> str:
+    """Render a triage as a text report: the failure, diagnosis, and suggested fixes."""
     lines = [f"triage · {context.scenario}", f"  failure: {context.failure}"]
     if context.failed_step is not None:
         fs = context.failed_step

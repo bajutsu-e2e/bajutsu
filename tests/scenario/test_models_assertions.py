@@ -41,6 +41,23 @@ def test_assertion_one_kind() -> None:
         Assertion.model_validate({"exists": {"id": "a"}, "disabled": {"id": "b"}})
 
 
+def test_clipboard_parses_equals_and_matches() -> None:
+    assert Assertion.model_validate({"clipboard": {"equals": "X"}}).clipboard is not None
+    assert Assertion.model_validate({"clipboard": {"matches": r"\d+"}}).clipboard is not None
+
+
+def test_clipboard_requires_exactly_one_operator() -> None:
+    with pytest.raises(ValidationError):  # neither equals nor matches
+        Assertion.model_validate({"clipboard": {}})
+    with pytest.raises(ValidationError):  # both
+        Assertion.model_validate({"clipboard": {"equals": "X", "matches": "Y"}})
+
+
+def test_clipboard_is_an_exclusive_assertion_kind() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({"clipboard": {"equals": "X"}, "exists": {"id": "a"}})
+
+
 def test_event_parses_endpoint_body_and_count() -> None:
     a = Assertion.model_validate(
         {

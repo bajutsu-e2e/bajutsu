@@ -86,6 +86,17 @@ def test_record_produces_scenario() -> None:
     assert reloaded[0].steps[1].wait is not None
 
 
+def test_record_sets_scenario_provenance_from_goal() -> None:
+    # The goal is the scenario-level `from:` provenance (BE-0044), and it round-trips.
+    driver = FakeDriver([_el("go", "Go")])
+    agent = FakeAgent(
+        [Proposal(step=Step.model_validate({"tap": {"id": "go"}})), Proposal(done=True)]
+    )
+    scenario = record(driver, "reach the done screen", agent, name="reach")
+    assert scenario.from_ == "reach the done screen"
+    assert load_scenarios(dump_scenarios([scenario]))[0].from_ == "reach the done screen"
+
+
 def test_record_streams_plan_and_feeds_it_to_the_agent() -> None:
     driver = FakeDriver([_el("go", "Go")])
     agent = PlanningAgent(

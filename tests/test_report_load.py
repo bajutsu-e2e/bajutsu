@@ -8,11 +8,14 @@ tolerance (an older manifest still loads), and that the manifest carries the ren
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
+import pytest
 
 from bajutsu.assertions import AssertionResult, VisualEvidence
 from bajutsu.evidence import Artifact
 from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
-from bajutsu.report.load import results_from_manifest
+from bajutsu.report.load import load_run, results_from_manifest
 from bajutsu.report.manifest import manifest_dict
 
 
@@ -62,7 +65,7 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    assert data["schemaVersion"] == 2  # bumped for the optional idb version block (BE-0005)
+    assert data["schemaVersion"] == 3  # bumped for the optional run-provenance block (BE-0049)
     assert data["sourceName"] == "smoke.yaml"
 
 
@@ -83,3 +86,21 @@ def test_ignores_unknown_newer_fields() -> None:
     data = manifest_dict("r1", [_result()])
     data["scenarios"][0]["futureField"] = "ignored"  # type: ignore[index]
     assert results_from_manifest(data)[0].scenario == "checkout"
+
+
+def test_load_run_normalizes_malformed_scenario_to_valueerror(tmp_path: Path) -> None:
+    # A manifest present but a corrupt scenario.yaml is "malformed" — load_run raises ValueError
+    # (not a bare yaml.YAMLError), honoring its one documented malformed-input type so callers can
+    # catch a single type for "can't load this run" (BE-0068 serve render-on-view falls back then).
+    run = tmp_path / "r1"
+    run.mkdir()
+    (run / "manifest.json").write_text('{"runId": "r1", "scenarios": []}', encoding="utf-8")
+    (run / "scenario.yaml").write_text("{ bad: yaml ::", encoding="utf-8")
+    with pytest.raises(ValueError, match="malformed run model"):
+        load_run(run)
+
+
+def test_load_run_missing_file_raises_oserror(tmp_path: Path) -> None:
+    # A missing run (no manifest.json) stays an OSError, distinct from malformed content.
+    with pytest.raises(OSError, match="manifest"):
+        load_run(tmp_path / "nope")

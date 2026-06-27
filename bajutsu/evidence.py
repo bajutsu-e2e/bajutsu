@@ -1,7 +1,7 @@
-"""Evidence capture: instant artifacts (screenshot / elements) written after each
-step, plus interval artifacts (video / deviceLog / appTrace) recorded for the whole
-scenario.
+"""Evidence capture: instant and interval artifacts written during a run.
 
+Instant artifacts (screenshot / elements) are written after each step; interval
+artifacts (video / deviceLog / appTrace) are recorded for the whole scenario.
 Instant captures land in run_dir/<step_id>/; interval captures run for the whole
 scenario and land in run_dir/<scenario_id>/. Every artifact records its provider so
 the manifest shows where it came from.
@@ -38,8 +38,15 @@ def write_elements(
     redactor: Redactor | None = None,
     *,
     elements: list[base.Element] | None = None,
+    mkdir: bool = True,
 ) -> Path:
-    step_dir.mkdir(parents=True, exist_ok=True)
+    """Write the element tree (redacted if a redactor is given) to elements.json.
+
+    Uses `elements` if given, otherwise queries the driver now. `mkdir` creates the
+    step dir first, and is skipped when the caller already made it.
+    """
+    if mkdir:
+        step_dir.mkdir(parents=True, exist_ok=True)
     path = step_dir / "elements.json"
     els = elements if elements is not None else driver.query()
     if redactor is not None:
@@ -51,8 +58,15 @@ def write_elements(
     return path
 
 
-def write_screenshot(driver: base.Driver, step_dir: Path, name: str = "after.png") -> Path:
-    step_dir.mkdir(parents=True, exist_ok=True)
+def write_screenshot(
+    driver: base.Driver, step_dir: Path, name: str = "after.png", *, mkdir: bool = True
+) -> Path:
+    """Write a screenshot to the step dir.
+
+    `mkdir` creates the step dir first, and is skipped when the caller already made it.
+    """
+    if mkdir:
+        step_dir.mkdir(parents=True, exist_ok=True)
     path = step_dir / name
     driver.screenshot(str(path))
     return path
@@ -67,13 +81,18 @@ def capture(
     elements: list[base.Element] | None = None,
 ) -> list[Artifact]:
     """Capture the requested instant kinds; return their artifact records."""
+    # Create the step dir once here, only for kinds we actually write, so the per-kind
+    # writers can skip their own mkdir (every kind targets the same step_dir, so repeating
+    # it per writer is wasted syscalls); unmatched-only kinds leave the dir untouched as before.
+    if any(token.partition(".")[0] in ("elements", "screenshot") for token in kinds):
+        step_dir.mkdir(parents=True, exist_ok=True)
     out: list[Artifact] = []
     for token in kinds:
         kind, _, modifier = token.partition(".")
         if kind == "elements":
             out.append(
                 Artifact(
-                    write_elements(driver, step_dir, redactor, elements=elements).name,
+                    write_elements(driver, step_dir, redactor, elements=elements, mkdir=False).name,
                     "elements",
                     "driver",
                 )
@@ -81,16 +100,22 @@ def capture(
         elif kind == "screenshot":
             name = f"{modifier or 'after'}.png"
             out.append(
-                Artifact(write_screenshot(driver, step_dir, name).name, "screenshot", "driver")
+                Artifact(
+                    write_screenshot(driver, step_dir, name, mkdir=False).name,
+                    "screenshot",
+                    "driver",
+                )
             )
         # actionLog lives in the manifest; video / deviceLog / appTrace are intervals.
     return out
 
 
 class EvidenceSink(Protocol):
-    """Where evidence goes. The orchestrator captures instant artifacts after each
-    step, and records the interval artifacts (video / deviceLog / appTrace) for the
-    whole scenario."""
+    """Where evidence goes during a run.
+
+    The orchestrator captures instant artifacts after each step, and records the
+    interval artifacts (video / deviceLog / appTrace) for the whole scenario.
+    """
 
     def capture(
         self,
@@ -133,12 +158,13 @@ class NullSink:
 
 
 class FileSink:
-    """Write instant artifacts under run_dir/<step_id>/ and the scenario's interval
-    recordings under run_dir/<scenario_id>/.
+    """Write artifacts to disk under the run dir.
 
-    `udid` is needed for interval captures (simctl video / log); without it they are
-    skipped. `log_predicate` narrows the device-log stream (e.g. by subsystem);
-    `log_subsystem` is the app's os_log subsystem for appTrace.
+    Instant artifacts go under run_dir/<step_id>/ and the scenario's interval
+    recordings under run_dir/<scenario_id>/. `udid` is needed for interval captures
+    (simctl video / log); without it they are skipped. `log_predicate` narrows the
+    device-log stream (e.g. by subsystem); `log_subsystem` is the app's os_log
+    subsystem for appTrace.
     """
 
     def __init__(
@@ -202,8 +228,11 @@ class FileSink:
     def finish_scenario_intervals(
         self, scenario_id: str, started: list[intervals.Interval]
     ) -> list[Artifact]:
-        """Finalize each recording; artifact names are relative to the run dir so the
-        HTML report (written there) can link/embed them directly."""
+        """Finalize each recording into an artifact.
+
+        Artifact names are relative to the run dir so the HTML report (written there)
+        can link/embed them directly.
+        """
         out: list[Artifact] = []
         for interval in started:
             path = interval.stop()

@@ -17,6 +17,8 @@ from bajutsu.scenario import Assertion, Step
 
 @dataclass
 class Observation:
+    """What the agent sees one turn: the goal, the current screen, and history so far."""
+
     goal: str
     screen: list[base.Element]
     history: list[Step]
@@ -35,6 +37,8 @@ class Proposal:
 
 
 class Agent(Protocol):
+    """The authoring agent: proposes the next action from an observation."""
+
     def next_action(self, observation: Observation) -> Proposal: ...
 
     def plan(self, goal: str) -> list[str]:

@@ -1,0 +1,80 @@
+# Build (and, when run manually, publish to GitHub Pages) the generated API reference (BE-0065). The
+# reference is built by `make docs` (MkDocs + mkdocstrings); mkdocstrings reads signatures statically
+# via griffe, so the build imports none of the lazy/optional backends and needs no Simulator.
+# Path-filtered so it runs only when the surface it renders (the Python core or the docs config)
+# actually changes — a separate, heavier path kept out of the `make check` gate, like on-device E2E.
+#
+# On a main push only the `build` job runs (it validates the site with `--strict`); the `deploy` job
+# is gated to a manual run because GitHub Pages isn't enabled on this repo yet. Enable Pages (Settings
+# → Pages → source "GitHub Actions"), then run this workflow from the Actions tab to publish — and
+# drop the `deploy` job's `workflow_dispatch`-only guard if you want every main push to publish.
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bajutsu/**"
+      - "docs/api/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# The least privilege Pages deployment needs: read the repo, write the Pages artifact, and mint the
+# OIDC token `deploy-pages` exchanges for the deployment.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight Pages deployment at a time; don't cancel a running publish (it would leave Pages
+# half-updated).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      # `--strict` fails the build on a broken reference (a bad autodoc path, a dead link), so a
+      # merge that breaks the site is caught here rather than published silently.
+      - name: Build the site
+        run: uv run --extra docs mkdocs build --strict
+
+      # Only the manual (publish) run consumes the artifact — `deploy` is workflow_dispatch-only. On a
+      # push the build above still validates the site (`--strict`); skip the upload so a push doesn't
+      # produce a Pages artifact nothing deploys. Drop this guard with the deploy guard when Pages is
+      # enabled and you want every main push to publish.
+      - name: Upload the Pages artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    needs: build
+    # Publish only on a manual run. GitHub Pages isn't enabled on this repo yet (Settings → Pages →
+    # source "GitHub Actions"), so an automatic deploy on every main push fails with "Ensure GitHub
+    # Pages has been enabled". Keeping `build` on push still validates the site (`--strict`); once
+    # Pages is enabled, run this workflow from the Actions tab to publish. Flip this to also deploy on
+    # push once Pages is on.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0

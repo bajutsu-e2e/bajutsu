@@ -74,6 +74,23 @@ function initTheme(){
   else if(SYS_MQ.addListener)SYS_MQ.addListener(onSys);
 }
 
+// Phone tier (BE-0072): below this width the single-column stack + per-view switcher take over, so
+// the desktop drag-resize / tiling layouts are not applied (they have no touch equivalent and no
+// room). One matchMedia, shared by the layout guards and the switcher wiring.
+const NARROW_MQ=matchMedia('(max-width:640px)');
+
+// ---- per-view switcher (BE-0072): at the phone tier, bring one stacked pane to full width ----
+// Each switcher's buttons carry data-pane; clicking one sets the view's data-pane, which the
+// narrow CSS reads to show that pane and collapse the rest. A no-op on desktop (the switcher is
+// display:none and every pane shows at once), so it's safe to wire unconditionally.
+document.querySelectorAll('.viewswitch').forEach(sw=>{
+  const view=sw.closest('main');
+  sw.querySelectorAll('.vstab').forEach(b=>b.addEventListener('click',()=>{
+    view.dataset.pane=b.dataset.pane;
+    sw.querySelectorAll('.vstab').forEach(x=>x.classList.toggle('active',x===b));
+  }));
+});
+
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
@@ -245,6 +262,19 @@ async function chooseConfig(path){
   if(d.error){$('#fslist').innerHTML='<li class="muted">'+esc(d.error)+'</li>';return}
   $('#cfgname').textContent=d.config;closeFs();await loadShared();
 }
+// From-Git picker (BE-0063): POST the github:… spec; the server materializes the checkout, binds
+// its config, and repoints its cwd there. Errors (a bad spec, a fetch/auth failure) show inline.
+async function chooseGitConfig(){
+  const git=$('#gitspec').value.trim();
+  const err=$('#gitsrcerr');err.hidden=true;
+  if(!git){err.textContent='Enter a github:owner/repo[@ref][:path] spec.';err.hidden=false;return}
+  const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({git})});
+  const d=await r.json();
+  if(d.error){err.textContent=d.error;err.hidden=false;return}
+  $('#cfgname').textContent=d.config;closeFs();await loadShared();
+}
+$('#gitload').addEventListener('click',chooseGitConfig);
+$('#gitspec').addEventListener('keydown',e=>{if(e.key==='Enter')chooseGitConfig()});
 
 // ---- shared data: targets, scenarios, simulators (used by both views) ----
 async function loadShared(){
@@ -675,6 +705,28 @@ function resetView(){gview.x=0;gview.y=0;gview.k=1;applyView()}
   box.addEventListener('mousedown',e=>{if(!$('.graphwrap'))return;drag={x:e.clientX,y:e.clientY,ox:gview.x,oy:gview.y};moved=false;box.classList.add('panning')});
   window.addEventListener('mousemove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=drag.ox+dx;gview.y=drag.oy+dy;applyView()});
   window.addEventListener('mouseup',()=>{if(drag){drag=null;box.classList.remove('panning')}});
+  // Touch (BE-0072): one finger pans, two fingers pinch-zoom — both reuse the existing translate +
+  // `zoom` math (zoomBy keeps a point fixed while scaling, same as wheel). The view is already a
+  // pan+zoom model, so the mapping is unchanged; this is purely an additional input path. A touch
+  // that didn't drift still falls through to `click` for expand/collapse/lightbox.
+  let tpan=null,pinch=null;
+  const dist=(a,b)=>Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+  const mid=(a,b)=>({x:(a.clientX+b.clientX)/2,y:(a.clientY+b.clientY)/2});
+  box.addEventListener('touchstart',e=>{if(!$('.graphwrap'))return;
+    if(e.touches.length===1){const t=e.touches[0];tpan={x:t.clientX,y:t.clientY,ox:gview.x,oy:gview.y};pinch=null;moved=false;box.classList.add('panning');}
+    else if(e.touches.length===2){const m=mid(e.touches[0],e.touches[1]);pinch={d:dist(e.touches[0],e.touches[1]),cx:m.x,cy:m.y};tpan=null;moved=true;}
+  },{passive:true});
+  box.addEventListener('touchmove',e=>{if(!$('.graphwrap'))return;
+    if(pinch&&e.touches.length===2){e.preventDefault();const d=dist(e.touches[0],e.touches[1]),m=mid(e.touches[0],e.touches[1]);
+      if(pinch.d>0)zoomBy(d/pinch.d,m.x,m.y);pinch.d=d;pinch.cx=m.x;pinch.cy=m.y;}
+    else if(tpan&&e.touches.length===1){e.preventDefault();const t=e.touches[0],dx=t.clientX-tpan.x,dy=t.clientY-tpan.y;
+      if(Math.abs(dx)+Math.abs(dy)>3)moved=true;gview.x=tpan.ox+dx;gview.y=tpan.oy+dy;applyView();}
+  },{passive:false});
+  const endTouch=()=>{tpan=null;pinch=null;box.classList.remove('panning');};
+  window.addEventListener('touchend',e=>{if(e.touches.length===0)endTouch();});
+  // A touchcancel (gesture takeover, OS context switch) aborts the gesture outright — reset the same
+  // way as touchend so a cancelled pan/pinch can't leave stuck state that breaks the next tap/pan.
+  window.addEventListener('touchcancel',endTouch);
   // A click that wasn't a drag either expands/collapses a group or opens a screen's lightbox.
   box.addEventListener('click',e=>{if(moved){moved=false;return}
     const col=e.target.closest('.gcollapse');
@@ -869,8 +921,9 @@ function initSplitters(){
     drag=null;
   });
 }
-restoreSplits();
-initSplitters();
+// At the phone tier the persisted desktop column widths and the splitter drags are skipped — the
+// single-column stack takes over, so applying saved px widths would only fight the reflow (BE-0072).
+if(!NARROW_MQ.matches){restoreSplits();initSplitters();}
 
 // Tiling layout (Record/Replay): drag a panel's grip and drop on another panel's edge to split
 // that way (up/down/left/right), or on its center to swap the two. Dividers resize both axes and
@@ -971,7 +1024,9 @@ function initTiling(){
     V.panel[pdrag.key].classList.remove('tile-dragging');document.body.classList.remove('reordering-active');document.body.style.userSelect='';document.body.style.cursor='';hideInd();pdrag=null;
   });
 }
-initTiling();
+// Likewise the drag-to-split/swap tiling is a desktop power feature with no touch equivalent and no
+// room on a phone; skip it at the narrow tier so the markup stays in its single-column stack form.
+if(!NARROW_MQ.matches)initTiling();
 
 initTheme();
 loadConfig();

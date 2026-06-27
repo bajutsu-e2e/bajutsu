@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from bajutsu.scenario import load_scenario_file
+from bajutsu.scenario import Scenario, load_scenario_file
 
 
 def lint_text(text: str) -> list[str]:
@@ -34,6 +34,19 @@ def lint_file(path: Path) -> list[str]:
     except OSError as e:
         return [f"read error: {e}"]
     return lint_text(text)
+
+
+def provenance_coverage(scenarios: list[Scenario]) -> str | None:
+    """An advisory line on how many top-level steps carry `from:` provenance (BE-0044), or None
+    when there are no steps to report on. Never an error: a hand-authored scenario legitimately
+    carries none, so this mirrors `doctor`'s advisory style rather than failing the lint."""
+    steps = [step for s in scenarios for step in s.steps]
+    if not steps:
+        return None
+    # A non-empty phrase counts as provenance — matching the writer (`_provenance`), which omits an
+    # empty `from:` rather than emitting one, so an empty string never reads as "covered".
+    with_from = sum(1 for step in steps if step.from_)
+    return f"provenance: {with_from}/{len(steps)} step(s) carry `from:`"
 
 
 def scenario_json_schema() -> str:

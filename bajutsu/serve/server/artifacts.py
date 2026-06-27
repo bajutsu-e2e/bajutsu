@@ -57,6 +57,12 @@ class ObjectStorageArtifactStore:
         key = self._key(rel)
         return self._store.get_bytes(key) if key is not None else None
 
+    def render_report(self, run_id: str) -> Artifact | None:
+        # Render-on-view (BE-0068) is a filesystem path for now: it loads the run dir's model with
+        # the local renderer. The object store keeps the run in storage, not on disk, so serve the
+        # baked report.html (via `get`) here — dynamic render on the hosted backend is BE-0015 scope.
+        return None
+
     def archive(self, run_id: str) -> Artifact | None:
         # Zip the run's objects on read (the same confinement as `_key`); entries are rooted under
         # `<run_id>/` exactly like the filesystem store, so the two surfaces produce the same zip.

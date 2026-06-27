@@ -21,9 +21,16 @@ from __future__ import annotations
 
 import re
 
+from bajutsu.assertions import request_label
 from bajutsu.codegen_common import render_test_file
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Gone, Scenario, Step
+from bajutsu.scenario import Assertion, Gone, Scenario, Step, WaitRequest
+
+# XCUITest drives the UI on-device and has no network-interception surface, so a network `request`
+# assertion / `until: { request }` wait has no faithful translation — it stays a TODO, but a labeled
+# one naming the endpoint and the reason (like the device-control steps), not a bare "unsupported".
+# `request_label` (the same matcher description the runner / coverage use) names the endpoint.
+_NO_NETWORK = "XCUITest has no network interception; assert via a mock/proxy; not generated"
 
 _SWIFT_DIRECTION = {
     "up": "swipeUp",
@@ -66,8 +73,11 @@ _RE_METACHARS = set(r".^$*+?{}[]\|()")
 
 
 def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
-    """Build the NSPredicate (format, Swift args) ANDing every set field, or None if any field
-    has no faithful structural mapping (so the caller falls back to a TODO/unsupported marker)."""
+    """Build the NSPredicate (format, Swift args) ANDing every set field.
+
+    None if any field has no faithful structural mapping (so the caller falls back to a
+    TODO/unsupported marker).
+    """
     clauses: list[str] = []
     args: list[str] = []
     if "id" in sel:
@@ -104,8 +114,11 @@ def _predicate(sel: base.Selector) -> tuple[str, list[str]] | None:
 
 
 def _query(sel: base.Selector) -> str | None:
-    """A Swift XCUIElementQuery expression for the selector, scoping into a `within` container's
-    subtree when present. None when the selector (or its container) can't be mapped faithfully."""
+    """A Swift XCUIElementQuery expression for the selector.
+
+    Scopes into a `within` container's subtree when present. None when the selector (or its
+    container) can't be mapped faithfully.
+    """
     if "within" in sel:
         # `within` is a *geometric* frame-containment constraint (the candidate's frame must sit
         # inside the container's; see drivers/base.py). XCUITest queries are tree-based, not
@@ -131,7 +144,8 @@ def _element(sel: base.Selector) -> str:
 
     Single addressing fields keep their readable helper; compound selectors (value / traits /
     `within` / `index`, or several fields) compose an NSPredicate query, picking the element by
-    `index` (`element(boundBy:)`, non-negative only) or `firstMatch`."""
+    `index` (`element(boundBy:)`, non-negative only) or `firstMatch`.
+    """
     keys = set(sel)
     if keys == {"id"}:
         return f"el({_s(sel['id'])})"
@@ -215,6 +229,10 @@ def _emit_step(step: Step) -> list[str]:
                 f"XCTAssertTrue({_element(w.until.gone.as_selector())}"
                 f'.waitForNonExistence(timeout: {w.timeout}), "wait until gone")'
             ]
+        if isinstance(w.until, WaitRequest):
+            return [
+                f"// TODO: wait until request ({request_label(w.until.request)}) — {_NO_NETWORK}"
+            ]
         return [f"// settle wait ({w.until}) — XCUITest auto-waits for hittability"]
     if step.assert_ is not None:
         return [line for a in step.assert_ for line in _emit_assertion(a)]
@@ -235,6 +253,9 @@ def _emit_step(step: Step) -> list[str]:
         ]
     if step.push is not None:
         return ["// TODO: push — simctl push (APNs payload); not generated"]
+    if step.totp is not None:
+        # A locally-computed RFC 6238 OTP into vars.*; no XCUITest equivalent (BE-0046).
+        return [f"// TODO: totp(into: {step.totp.into.var}) — RFC 6238 OTP; not generated"]
     return ["// TODO: unsupported step"]
 
 
@@ -275,6 +296,25 @@ def _emit_assertion(a: Assertion) -> list[str]:
         if a.count.at_least is not None:
             return [f"XCTAssertGreaterThanOrEqual({expr}, {a.count.at_least})"]
         return [f"XCTAssertLessThanOrEqual({expr}, {a.count.at_most})"]
+    if a.clipboard is not None:
+        # simctl-level (pbpaste); no XCUITest equivalent, so emit a labeled TODO like the
+        # device-state steps (BE-0052), naming the value asserted.
+        op = "equals" if a.clipboard.equals is not None else "matches"
+        want = a.clipboard.equals if a.clipboard.equals is not None else a.clipboard.matches
+        return [f"// TODO: clipboard({op}: {_s(want or '')}) — simctl pbpaste; not generated"]
+    if a.request is not None:
+        # Match the runtime/coverage detail (`request_label` with count) so the TODO reads identically;
+        # `count` is part of the assertion, so keep it.
+        return [f"// TODO: request assertion ({request_label(a.request)}) — {_NO_NETWORK}"]
+    if a.request_sequence is not None:
+        # The sequence check is about order, not count — `with_count=False`, mirroring the runtime detail.
+        seq = ", ".join(request_label(m, with_count=False) for m in a.request_sequence)
+        return [f"// TODO: requestSequence assertion ({seq}) — {_NO_NETWORK}"]
+    if a.response_schema is not None:
+        return [
+            f"// TODO: responseSchema assertion ({request_label(a.response_schema.request)}) — "
+            f"{_NO_NETWORK}"
+        ]
     return ["// TODO: unsupported assertion"]
 
 
@@ -313,6 +353,10 @@ class _XcuitestGen:
     def scenario_open(self, name: str) -> str:
         return f"  func {_ident(name)}() {{"
 
+    def setup_lines(self, scenario: Scenario) -> list[str]:
+        # XCUITest has no network-interception surface, so there is no pre-launch observer to install.
+        return []
+
     def launch_env_line(self, key: str, value: str) -> str:
         return f"app.launchEnvironment[{_s(key)}] = {_s(value)}"
 
@@ -340,4 +384,5 @@ def to_xcuitest(
 
 
 def class_name_for(stem: str) -> str:
+    """Derive the XCTestCase class name from a file stem (public wrapper of `_class_name`)."""
     return _class_name(stem)

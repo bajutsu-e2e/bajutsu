@@ -1,5 +1,8 @@
-"""Panel data for the report tabs: Result, Network, Device Log, App Trace, plus the
-per-scenario assembly that ties the rows and panels together."""
+"""Panel data for the report tabs.
+
+Result, Network, Device Log, App Trace, plus the per-scenario assembly that ties the rows and
+panels together.
+"""
 
 from __future__ import annotations
 
@@ -35,8 +38,10 @@ def _exchange_host(url: str) -> str:
 
 
 def _domain_allowed(host: str, domains: list[str]) -> bool:
-    """No filter -> every exchange; otherwise the host must equal a listed domain or be
-    a subdomain of one (`api.example.com` is allowed by `example.com`)."""
+    """No filter -> every exchange; otherwise the host must equal a listed domain or be a subdomain.
+
+    `api.example.com` is allowed by `example.com`.
+    """
     if not domains:
         return True
     host = host.lower()
@@ -63,8 +68,10 @@ def _result_panel(
 
 
 def _environment_panel(r: RunResult) -> dict[str, Any]:
-    """The simulator the scenario ran on — device model / OS / actuator / udid — shown as a
-    tab beside Result. Unknown fields (e.g. the fake driver names no device) are omitted."""
+    """The simulator the scenario ran on — device model / OS / actuator / udid — shown beside Result.
+
+    Unknown fields (e.g. the fake driver names no device) are omitted.
+    """
     sim: list[tuple[str, str]] = []
     if r.device_name:
         sim.append(("device", r.device_name))
@@ -118,8 +125,9 @@ def _network_item(d: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _network_panel(run_dir: Path | None, art: Artifact) -> dict[str, Any]:
-    data = _read_json(run_dir, art.name) if run_dir else None
+def _network_panel(art: Artifact, data: Any) -> dict[str, Any]:
+    # `data` is the already-parsed network.json (or None) — read once in `_scenario_data` and
+    # shared with the result timeline, so a body-carrying network.json isn't parsed twice.
     if not isinstance(data, list) or not data:
         return {
             "kind": "network",
@@ -212,7 +220,7 @@ def _scenario_data(
         _environment_panel(r),
     ]
     if net is not None:
-        panels.append(_network_panel(run_dir, net))
+        panels.append(_network_panel(net, net_data))
     dev = _artifact(r, "deviceLog")
     if dev is not None:
         panels.append(_log_panel(run_dir, dev))

@@ -42,16 +42,27 @@ every time, so the gate self-heals right before you push. Claude Code web sessio
 automatically via [`.claude/hooks/session-start.sh`](../.claude/hooks/session-start.sh). In a real
 emergency you can bypass with `git push --no-verify`, but the next CI run will still gate the PR.
 
+The same `core.hooksPath` also wires a tracked **commit-msg hook**
+([`.githooks/commit-msg`](../.githooks/commit-msg), BE-0069): it blocks a commit whose subject isn't
+a scoped conventional subject (`type(scope): …`, or `docs: …`), catching the mechanical convention at
+commit time instead of in review. It is deliberately narrow — merge / revert / fixup / squash commits
+pass, and it no-ops when `uv` isn't on PATH; bypass a one-off with `git commit --no-verify`.
+
 When you change behavior, change a test with it — the suite is the contract that protects every
 other session from your change.
 
 ## Rebase early, integrate small conflicts
 
 ```bash
-git fetch origin
-git rebase origin/main      # pull in others' merged work; resolve while conflicts are tiny
-make check                  # re-verify after the rebase
+make preflight   # git fetch origin && git rebase origin/main && make check, then a done-checklist
 ```
+
+`make preflight` ([`scripts/preflight.sh`](../scripts/preflight.sh), BE-0069) is the run-it-early
+version of the pre-push routine: it syncs, rebases onto `origin/main`, runs the gate, then prints
+the "definition of done" reminder (both-language docs touched? a test changed with the behavior?
+`Status` flipped if shipping?). It is **advisory and human-initiated** — the pre-push hook already
+*gates* `make check`, so this is the do-it-early version a human runs before they think they are
+done, not a second hard gate. Run it whenever; you don't need to remember the individual steps.
 
 Rebasing frequently means you meet other sessions' merged work early, when conflicts are a line
 or two — not at the end as a tangled merge.
@@ -76,16 +87,19 @@ Two agents must never edit the same checkout. Give each session its own
 
 ```bash
 # from the main checkout
-git fetch origin            # always sync main first — branch off the latest, not a stale ref
-git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main
-cd ../bajutsu-<topic>
-make setup                   # uv sync --group dev + wire the hooks for this worktree
+make worktree TOPIC=<topic>             # branch claude/<topic> at ../bajutsu-<topic>
+make worktree TOPIC=<topic> PREFIX=<user>   # a human's <user>/<topic> branch
 ```
 
-The `git fetch origin` is not optional: `origin/main` is a local tracking ref that only
-advances when you fetch, so skipping it branches the new worktree off whatever main looked like
-last time — re-introducing conflicts that other sessions already merged away. Fetch, then branch
-off the fresh `origin/main`.
+`make worktree` ([`scripts/worktree.sh`](../scripts/worktree.sh), BE-0069) does the whole recipe:
+`git fetch origin`, `git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main`, then
+`make setup` in the new tree (deps + the self-healing git hooks). The branch prefix defaults to
+`claude`; pass `PREFIX=<user>` for a human branch.
+
+The `git fetch origin` is baked in and *not* optional: `origin/main` is a local tracking ref that
+only advances when you fetch, so skipping it would branch the new worktree off whatever main
+looked like last time — re-introducing conflicts that other sessions already merged away. The
+command fetches first so that foot-gun cannot happen.
 
 When the branch is merged (or abandoned), clean up:
 
@@ -148,6 +162,12 @@ would write as the lead commit:
   scoped subject. When the PR *introduces* a new roadmap item, draft with the literal `[BE-XXXX]`
   placeholder — the `roadmap-id` workflow rewrites it to the allocated number (see
   [Roadmap items](#roadmap-items-be-ids-strict)).
+- **CI enforces the title.** The `pr-title` workflow (`.github/workflows/pr-title.yml`) runs
+  `scripts/lint_pr.py --title-only` on every PR — and re-runs when the title is edited. It fails the
+  check when the title is not a scoped conventional subject, and when the branch name encodes a
+  roadmap id (`claude/be-0050-<slug>`) but the title doesn't lead with the matching `[BE-0050]`
+  prefix (a missing or mismatched id). The branch — not the diff — is the authoritative id signal,
+  so a copy-pasted `[BE-0046]` on a `be-0050` branch is caught.
 
 ### Body
 
@@ -334,7 +354,12 @@ As an item advances, **update its Status** and regenerate the index (its row mov
 automatically). When its status changes — it starts being built, or it ships — the **`roadmap-promote`**
 workflow **moves its directory** to the matching folder (keeping the same ID and slug) and regenerates
 the index on your PR — or run `make roadmap-promote` to do it locally. `make test` fails if a folder
-and `Status` disagree, so an item can never merge while filed under the wrong folder.
+and `Status` disagree, so an item can never merge while filed under the wrong folder. A promotion also
+**repairs the item-to-item cross-links** that the move would otherwise break (a sibling `../BE-NNNN/`
+link is wrong once the target sits in a different status folder) — the same self-healing the index
+already had (BE-0069). **`make lint-roadmap`** (in `make check`) is the gate for this: it fails if any
+item's markdown link to another item does not resolve, or if an `Author` is not a `[@handle](…)` link;
+`make lint-roadmap ARGS="--fix"` rewrites a broken item link to the target's current folder.
 Milestones M1–M4 are `BE-0001`–`BE-0004` (implemented).
 
 This is a hard rule agents must follow; the short form is in [`CLAUDE.md`](../CLAUDE.md).
@@ -368,3 +393,69 @@ apply equally when reporting on or summarizing work.
   usual, and headings or pure noun-phrase labels (体言止め) need no copula.
 
 The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).
+
+## Code documentation comments (docstrings) — BE-0065
+
+The *Documentation style* rules above govern the prose docs. This is the companion rule for
+**docstrings in the Python core** — what the generated API reference (`make docs`, MkDocs +
+`mkdocstrings`) renders. The reference build is a separate, heavier path kept out of `make check`,
+adds no LLM, and never runs inside `run`, so the prime directives hold by construction.
+
+- **English, like every code comment.** Code (and its docstrings) is not bilingual; only the prose
+  docs under `docs/` are.
+- **Google style on the public surface.** The public API — the `Driver` protocol and shared types
+  in [`bajutsu/drivers/base.py`](../bajutsu/drivers/base.py), the CLI, the MCP tools, the scenario
+  schema, and the public functions of the runner / `assertions` / `network` — uses a one-line
+  summary followed by `Args:` / `Returns:` / `Raises:` (and `Yields:` / `Examples:`) **only where
+  they add information**. The generated reference excludes private (`_`-prefixed) members.
+- **Internal helpers stay prose.** A module-private `_helper` keeps one purposeful line of *why*;
+  forcing an `Args:` block onto a small helper is the *what*-narration this repo avoids.
+- **Never restate types.** Types live in the annotations (`mypy` is strict, `ruff`'s `ANN` rules are
+  on), and the generator reads them from the signature. `Args:` / `Returns:` describe *meaning* —
+  units, constraints, what `None` means — not the type.
+- **Why, not what.** Rationale, invariants (especially anything protecting determinism),
+  trade-offs, edge cases; tie a behavior's rationale to its `BE-NNNN` item. Match the surrounding
+  density — short and purposeful, no narration.
+- **Keep the per-field idiom.** For a `TypedDict` or a constant-holder class, the per-field inline
+  comment carries each field's *why* better than a prose block — keep it rather than converting to
+  `Args:`-style sections.
+
+Example — a public function carries the structured sections (the determinism invariant leads, the
+rationale ties to a BE item, and the types are *not* repeated):
+
+```python
+def resolve_unique(elements: list[Element], sel: Selector) -> Element:
+    """Resolve a selector to exactly one element for a single action.
+
+    A single action requires a unique match, so an ambiguous selector fails rather than acting on
+    "whatever matched first" (the determinism core, BE-0001).
+
+    Args:
+        elements: One `query()` snapshot of the on-screen elements.
+        sel: The selector to resolve. `index` is honored only as a last resort, picking the nth of
+            several candidates.
+
+    Returns:
+        The one element the selector resolves to.
+
+    Raises:
+        ElementNotFound: Nothing matched, or `index` is out of range.
+        AmbiguousSelector: Two or more matched and no `index` disambiguates.
+    """
+```
+
+An internal helper stays one line of *why* — no `Args:` block:
+
+```python
+def _contains(outer: Frame, inner: Frame) -> bool:
+    """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
+```
+
+**Migration is phased and incremental** ([BE-0065](../roadmaps/in-progress/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)):
+the site renders today from the existing prose docstrings (typed signatures already give a useful
+reference); public-API docstrings move to Google style module by module in small PRs, and the
+scoped `ruff` `D` enforcement and Pages hosting land after. **Don't rewrite a whole module's
+docstrings as a side effect of an unrelated change** — keep each migration its own small PR.
+
+Build the reference locally with `make docs` (or `make docs-serve` to preview); it needs the `docs`
+extra.

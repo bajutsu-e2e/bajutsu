@@ -1,6 +1,9 @@
-"""The step: exactly one action plus optional modifiers. Includes the macro (`use`), the
-runtime variable capture (`extract`), and the deterministic control-flow steps (`if`/`forEach`)
-whose nested step lists make this the one module where a forward reference to `Step` is needed."""
+"""The step: exactly one action plus optional modifiers.
+
+Includes the macro (`use`), the runtime variable capture (`extract`), and the deterministic
+control-flow steps (`if`/`forEach`) whose nested step lists make this the one module where a
+forward reference to `Step` is needed.
+"""
 
 from __future__ import annotations
 
@@ -30,6 +33,7 @@ from bajutsu.scenario.models.actions import (
     SetClipboard,
     SetLocation,
     Swipe,
+    Totp,
     TypeText,
 )
 from bajutsu.scenario.models.assertions import Assertion, Wait
@@ -37,9 +41,11 @@ from bajutsu.scenario.models.selector import Selector
 
 
 class Use(_Model):
-    """Invoke a reusable component, substituting its declared params with `with`. The
-    `use` step is expanded away (replaced by the component's steps) before the run, so it
-    is a compile-time macro, not a runtime action — determinism is unaffected."""
+    """Invoke a reusable component, substituting its declared params with `with`.
+
+    The `use` step is expanded away (replaced by the component's steps) before the run, so it is a
+    compile-time macro, not a runtime action — determinism is unaffected.
+    """
 
     component: str
     with_: dict[str, str] = Field(default_factory=dict, alias="with")
@@ -53,8 +59,11 @@ class Extract(_Model):
 
 
 class If(_Model):
-    """Conditional execution: evaluate an assertion as the condition, then run
-    ``then`` steps if it passes or ``else`` steps otherwise."""
+    """Conditional execution.
+
+    Evaluate an assertion as the condition, then run ``then`` steps if it passes or ``else`` steps
+    otherwise.
+    """
 
     condition: Assertion
     then: list[Step] = Field(default_factory=list)
@@ -62,8 +71,10 @@ class If(_Model):
 
 
 class ForEach(_Model):
-    """Iterate over elements matching a selector. Each element's identifier is
-    stored as ``vars.<as>`` and the nested steps are executed."""
+    """Iterate over elements matching a selector.
+
+    Each element's identifier is stored as ``vars.<as>`` and the nested steps are executed.
+    """
 
     sel: Selector
     as_: str = Field(alias="as")
@@ -87,6 +98,7 @@ class Step(_Model):
     push: Push | None = None
     use: Use | None = None
     http: HttpRequest | None = None
+    totp: Totp | None = None
     clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
     clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")
     set_clipboard: SetClipboard | None = Field(default=None, alias="setClipboard")
@@ -99,6 +111,10 @@ class Step(_Model):
     capture: list[str] | None = None
     extract: dict[str, Extract] | None = None
     name: str | None = None
+    # Provenance (BE-0044): the natural-language phrase `record` normalized this step from. Pure
+    # authoring metadata — `run` never reads it. A modifier, not an action, so it doesn't disturb
+    # the one-action rule; allowed on every step, control-flow included.
+    from_: str | None = Field(default=None, alias="from")
 
     @field_validator("capture")
     @classmethod
@@ -127,5 +143,5 @@ ForEach.model_rebuild()
 # The action field names, derived from the model so a new action is declared in exactly one
 # place — adding a `Step` field — instead of also appending to a parallel hand-maintained tuple
 # (a per-action merge-conflict point). `_MODIFIERS` are the non-action fields.
-_MODIFIERS = ("capture", "extract", "name")
+_MODIFIERS = ("capture", "extract", "name", "from_")
 _STEP_ACTIONS = tuple(f for f in Step.model_fields if f not in _MODIFIERS)

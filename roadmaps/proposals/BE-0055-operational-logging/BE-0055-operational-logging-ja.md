@@ -60,6 +60,29 @@ worker から成り、org でスコープされます。ところが、ツール
   BE-0015 の可観測性スコープに残します。本項目はそうした依存を足さないので、Linux ゲートでテスト可能なまま
   です。
 
+### どこに差し込むか（継ぎ目）
+
+いまのコードベースには運用ログと呼べるものがほぼありません。[`serve/jobs.py`](../../../bajutsu/serve/jobs.py)
+に `logging.getLogger(__name__)` が 1 つあるだけで、HTTP リクエストハンドラ（`serve/handler.py` の
+`Handler.log_message`、`network.py` のスタブ）はどちらも per-request ログを意図的に黙らせています。ルート設定も
+`contextvars` の利用もありません。つまりここは更地への配線で、1 か所に据えます。
+
+- **新規 `bajutsu/serve/oplog.py`**（stdlib の `logging` を隠さない名前）が契約一式を持ちます。`configure(format, level)`
+  がルートのフォーマッタと redact／相関フィルタを据え、`contextvars`・event 名のレジストリ・JSON フォーマッタも
+  ここに置きます。`serve` が起動時に呼び、CLI／`run` 経路は import しません（ゲートを stdlib のみ・静かに保ちます）。
+- **HTTP surface は 2 つ、フィルタは 1 枚。** フィルタは**ルートロガー**に座るので、hosted の FastAPI アプリ
+  （[`serve/server/app.py`](../../../bajutsu/serve/server/app.py)。リクエスト境界に `@app.middleware("http")` がすでに
+  あり、`request_id` を採番して contextvar に bind する自然な場所）と、ローカルの stdlib サーバ
+  （[`serve/handler.py`](../../../bajutsu/serve/handler.py) の `do_GET`／`do_POST`）の両方を覆います。JSON は serve
+  モードで有効化し、ローカル CLI は text のままです。
+- **worker の境界。** [`serve/server/worker_job.py`](../../../bajutsu/serve/server/worker_job.py) の
+  `execute_job_spec(spec, …)` が、ジョブの id を bind する場所です。job spec は **`job_id` / `org` / `actor`** を運び
+  （`worker_job.py` で組み立て）、**`run_id` は worker 上で run が始まるときに採番**されるので、そこで bind します
+  （下の不変条件を訂正）。したがってプロセスをまたぐ相関は、両側にすでに在る**共有 id の値**で行い、context
+  オブジェクトを伝播しません。
+- **redaction の再利用。** フィルタは既存の `Redactor`（[`redaction.py`](../../../bajutsu/redaction.py) の `redact_text`）
+  を値マスクに使い、新しいキーベースのマスクを足します。
+
 ### 契約 — 機械チェック可能な不変条件
 
 運用ログは**非決定的**（タイムスタンプや順序）なので、証跡（[DESIGN §2](../../../DESIGN.md)）と違って
@@ -76,11 +99,12 @@ worker から成り、org でスコープされます。ところが、ツール
    *テスト*：素の `logging.getLogger("anything").info(<機密>)` が生の機密を出しません。`{"authorization": "Bearer …"}`
    を持つ record がマスクされます。
 
-2. **相関 id の貫通。** リクエスト入口で `request_id` を採番し、dispatch された run は `job_id` / `run_id` /
-   `org` / `actor` を持ちます。id はリクエスト（および worker 側ではジョブ）の境界で bind した `contextvars` に
-   保持し、ロギングの `Filter` がすべての record に注入します。framework 非依存なので、stdlib ハンドラと FastAPI
-   アプリの両方で動きます。プロセスをまたぐ相関は、context の伝播ではなく**共有 id** で行います（`job_id` /
-   `run_id` / `org` はすでに job spec で運ばれています）。
+2. **相関 id の貫通。** リクエスト入口（FastAPI のミドルウェアと stdlib ハンドラの `do_*`）で `request_id` を
+   採番します。worker 側では `execute_job_spec` が spec から `job_id` / `org` / `actor` を bind し、run が採番した
+   時点で `run_id` も bind します。id は `contextvars` に保持し、ロギングの `Filter` がすべての record に注入します。
+   framework 非依存なので、stdlib ハンドラと FastAPI アプリの両方で動きます。プロセスをまたぐ相関は context の
+   伝播ではなく**共有 id** で行います。`job_id` / `org` / `actor` は job spec で運ばれ、`run_id` は run 自身の id
+   なので、context オブジェクトを境界越しに渡さずとも両側が同じ値を出力できます。
 
    *テスト*：アプリに 1 リクエストを流すと、その間の record がすべて同じ `request_id` を持ちます。worker の
    `execute_job_spec` の record が `job_id` + `run_id` + `org` を持ちます。
@@ -107,6 +131,17 @@ worker から成り、org でスコープされます。ところが、ツール
 の単一の真実を保ち、secret 変数
 （[BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）や、AI 経路を redact する
 方向（[BE-0047](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）と共有します。
+
+値マスクの対象は、機密が 2 つのスコープに在るため、**2 つのソース**を持ちます。
+
+- **静的（プロセス存続中）・制御プレーン側** — `BAJUTSU_SERVE_TOKEN`、OAuth の client secret／session id、
+  `ANTHROPIC_API_KEY`。`oplog.configure` で一度読み、プロセス全体でマスクします。
+- **run スコープ・worker 側** — run が `${secrets.X}` から解決した値です。これらはプロセス全体では共有されないので、
+  worker は run 開始時に、その run の解決済み機密値を入れた **run スコープの `Redactor`** を `contextvar` に bind し、
+  ルートのフィルタはその run の間だけそれを参照します。スコープは run 終了で外れます。これで、env 由来だけのマスクが
+  残す「run が解決した機密」の穴を、プロセス全体に晒すことなく塞ぎます。
+
+キーベースのマスク（機密になりうるフィールド*名*）が両者を下支えし、どちらの集合にも値が無い構造化値も拾います。
 
 ### スコープ外
 

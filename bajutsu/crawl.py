@@ -76,8 +76,11 @@ WorkerFactory = Callable[[], "tuple[base.Driver, Reset]"]
 
 @dataclass(frozen=True)
 class Fingerprint:
-    """A screen's identity. `kind` is "id" (stable, identifier-derived) or "structural"
-    (the less-stable fallback for screens with too few accessibility identifiers)."""
+    """A screen's identity.
+
+    `kind` is "id" (stable, identifier-derived) or "structural" (the less-stable fallback for
+    screens with too few accessibility identifiers).
+    """
 
     value: str
     kind: str
@@ -85,14 +88,17 @@ class Fingerprint:
 
 @dataclass(frozen=True)
 class Action:
-    """A replayable action against a screen. `kind` is "tap", "type" (text input), "fill" (enter
-    several fields in one step, to cross a precondition that needs more than one field), or
-    "tap_point" (tap a normalized [0,1] coordinate — for a control the accessibility tree can't
-    address, e.g. a custom tab bar a vision guide located). The element is named by `target` (its
-    accessibility identifier — stable, preferred) or, for an id-less element, by `label` (+ `index`
-    to disambiguate duplicates); a "type" carries the text in `value`, a "fill" its (id, value)
-    pairs in `fields`, a "tap_point" its (x, y) in `point` (`label` optional, for logging). All
-    fields are hashable so an Action can key the frontier / tried set."""
+    """A replayable action against a screen.
+
+    `kind` is "tap", "type" (text input), "fill" (enter several fields in one step, to cross a
+    precondition that needs more than one field), or "tap_point" (tap a normalized [0,1]
+    coordinate — for a control the accessibility tree can't address, e.g. a custom tab bar a
+    vision guide located). The element is named by `target` (its accessibility identifier —
+    stable, preferred) or, for an id-less element, by `label` (+ `index` to disambiguate
+    duplicates); a "type" carries the text in `value`, a "fill" its (id, value) pairs in `fields`,
+    a "tap_point" its (x, y) in `point` (`label` optional, for logging). All fields are hashable so
+    an Action can key the frontier / tried set.
+    """
 
     kind: str
     target: str = ""
@@ -104,8 +110,10 @@ class Action:
 
     @property
     def key(self) -> str:
-        """Stable identity for de-duplication and the frontier: the id, the label[#index], the
-        fill's field set, or the normalized coordinate."""
+        """Stable identity for de-duplication and the frontier.
+
+        The id, the label[#index], the fill's field set, or the normalized coordinate.
+        """
         if self.kind == "fill":
             return "fill:" + ",".join(i for i, _ in self.fields)
         if self.kind == "tap_point" and self.point is not None:
@@ -135,10 +143,13 @@ class Action:
         return f"{self.kind} {what}"
 
     def perform(self, driver: base.Driver) -> None:
-        """Execute against the live screen: a type action focuses the field (tap) then enters its
-        value; a fill does that for each of its fields in order; a tap_point taps a coordinate (the
-        normalized point scaled to the live screen size); a tap just taps. Replayable because every
-        selector is id- or label-based and every coordinate is normalized to the screen."""
+        """Execute against the live screen.
+
+        A type action focuses the field (tap) then enters its value; a fill does that for each of
+        its fields in order; a tap_point taps a coordinate (the normalized point scaled to the live
+        screen size); a tap just taps. Replayable because every selector is id- or label-based and
+        every coordinate is normalized to the screen.
+        """
         if self.kind == "fill":
             for fid, val in self.fields:
                 driver.tap({"id": fid})
@@ -155,11 +166,14 @@ class Action:
 
 @dataclass(frozen=True)
 class Node:
-    """A discovered screen: its fingerprint, the identifiers present, the candidate action keys
-    leaving it, `blocked` — actionable controls present but disabled (known but un-pressable until a
-    precondition is met) — and `targets`: per candidate action, the on-screen rectangle it taps,
-    normalized to [0,1] of the screen and keyed by the action's description, so the web UI can
-    highlight on the screenshot where a transition's tap lands."""
+    """A discovered screen.
+
+    Its fingerprint, the identifiers present, the candidate action keys leaving it, `blocked` —
+    actionable controls present but disabled (known but un-pressable until a precondition is met) —
+    and `targets`: per candidate action, the on-screen rectangle it taps, normalized to [0,1] of
+    the screen and keyed by the action's description, so the web UI can highlight on the screenshot
+    where a transition's tap lands.
+    """
 
     fingerprint: str
     kind: str
@@ -171,9 +185,11 @@ class Node:
 
 @dataclass(frozen=True)
 class Edge:
-    """A transition: taking `action` from screen `src` landed on screen `dst`. `alert` holds the
-    OS-prompt button(s) the guard dismissed during this transition (empty when none) — so the
-    graph can show that the step required tapping through a system alert."""
+    """A transition: taking `action` from screen `src` landed on screen `dst`.
+
+    `alert` holds the OS-prompt button(s) the guard dismissed during this transition (empty when
+    none) — so the graph can show that the step required tapping through a system alert.
+    """
 
     src: str
     action: str
@@ -190,8 +206,11 @@ class Crash:
 
 @dataclass(frozen=True)
 class Alert:
-    """An OS prompt that appeared mid-crawl and was dismissed by the alert guard: `path` is the
-    action sequence that triggered it, `buttons` the dismiss button(s) tapped to clear it."""
+    """An OS prompt that appeared mid-crawl and was dismissed by the alert guard.
+
+    `path` is the action sequence that triggered it, `buttons` the dismiss button(s) tapped to
+    clear it.
+    """
 
     path: tuple[str, ...]
     buttons: tuple[str, ...]
@@ -199,12 +218,14 @@ class Alert:
 
 @dataclass(frozen=True)
 class Pruned:
-    """A candidate operation skipped because the same operation was already claimed by another
-    screen — a *global* control (e.g. a tab switch) the crawl explores once instead of from every
-    screen that shows it. `src` is the screen where it was skipped, `action` its description, `key`
-    its replay identity, `owner` the screen that did explore it, and `path` the replayable action
+    """A candidate operation skipped because the same operation was already claimed by another screen.
+
+    A *global* control (e.g. a tab switch) the crawl explores once instead of from every screen
+    that shows it. `src` is the screen where it was skipped, `action` its description, `key` its
+    replay identity, `owner` the screen that did explore it, and `path` the replayable action
     sequence to reach `src` and perform the op (so a resume can re-walk to here). The WebUI shows
-    these struck through, and a viewer can tap one to resume exploring that branch from `src`."""
+    these struck through, and a viewer can tap one to resume exploring that branch from `src`.
+    """
 
     src: str
     action: str
@@ -215,12 +236,14 @@ class Pruned:
 
 @dataclass
 class _Work:
-    """One reserved unit of frontier work, handed from `_select_next_work` to a worker: the popped
-    `action`, the screen `src_fp` it came from and the `src_path` to replay to reach it, and whether
-    the worker must reset+replay first (`replay_needed`) or is already standing on `src_fp`. Not
-    frozen: `src_path` is a mutable list (it feeds `_replay`, typed `list[Action]`), so `frozen=True`
-    would be only a shallow, misleading guarantee. It is created and consumed within the coordinator,
-    never hashed or shared, so plain mutability is fine."""
+    """One reserved unit of frontier work, handed from `_select_next_work` to a worker.
+
+    The popped `action`, the screen `src_fp` it came from and the `src_path` to replay to reach it,
+    and whether the worker must reset+replay first (`replay_needed`) or is already standing on
+    `src_fp`. Not frozen: `src_path` is a mutable list (it feeds `_replay`, typed `list[Action]`),
+    so `frozen=True` would be only a shallow, misleading guarantee. It is created and consumed
+    within the coordinator, never hashed or shared, so plain mutability is fine.
+    """
 
     src_fp: str
     action: Action
@@ -230,6 +253,8 @@ class _Work:
 
 @dataclass
 class ScreenMap:
+    """The crawl's accumulated model: the discovered screens, transitions, crashes, alerts, the live exploration plan, and why it stopped."""
+
     nodes: dict[str, Node] = field(default_factory=dict)
     edges: list[Edge] = field(default_factory=list)
     crashes: list[Crash] = field(default_factory=list)
@@ -257,9 +282,7 @@ OnNode = Callable[[base.Driver, "Node"], None]
 
 
 def _screen_size(driver: base.Driver) -> tuple[float, float]:
-    """Full-screen size in points: the largest element frame (the app window). A vision-located
-    coordinate is stored normalized to [0,1] and replayed against this, so it maps to point-space
-    regardless of the device's pixel scale."""
+    """Full-screen size in points (the largest element frame), the basis a normalized [0,1] coordinate replays against regardless of pixel scale."""
     frames = [f for el in driver.query() if (f := el.get("frame"))]
     return (max((f[2] for f in frames), default=0.0), max((f[3] for f in frames), default=0.0))
 
@@ -273,15 +296,12 @@ def _traits(element: base.Element) -> set[str]:
 
 
 def _is_enabled(element: base.Element) -> bool:
-    """Whether the control is interactive (not flagged `notEnabled`). A disabled button can't be
-    driven forward by a tap, so the crawl skips it and reports it as blocked instead."""
+    """Whether the control is interactive (not flagged `notEnabled`); a disabled one is skipped and reported as blocked instead."""
     return base.Trait.NOT_ENABLED not in _traits(element)
 
 
 def _input_value(element: base.Element) -> str:
-    """A deterministic placeholder to type into a field (the `--guide off` path; an AI guide
-    supplies context-appropriate values). Good enough to clear "must be non-empty" preconditions;
-    validation-gated fields (a valid email, password rules) need the AI guide."""
+    """A deterministic placeholder to type into a field (the `--guide off` path), good enough to clear "must be non-empty" preconditions but not validation-gated ones."""
     hint = f"{_id_of(element) or ''} {element.get('label') or ''}".lower()
     if "mail" in hint:
         return "test@example.com"
@@ -291,12 +311,7 @@ def _input_value(element: base.Element) -> str:
 
 
 def _fingerprint_token(element: base.Element) -> str:
-    """An id-bearing element's contribution to the screen fingerprint: its id, plus a marker when
-    its *interactive* state differs — disabled (`!`), a filled input (`=`), or a selected/toggled
-    control (`+`). An enabled, empty, unselected element contributes just its id, so screens with
-    no such state hash exactly as the plain id set did. Folding these in makes the reachable
-    states distinct (form empty vs filled, switch off vs on), so the crawl explores the
-    combinations of control states — and can act on a control it just enabled."""
+    """An id-bearing element's contribution to the screen fingerprint: its id plus a marker for differing interactive state, so the crawl explores distinct control-state combinations."""
     ident = _id_of(element) or ""
     traits = _traits(element)
     # (present?, marker) in a fixed order — the markers append as `!`, `=`, `+`, so the hash stays
@@ -387,8 +402,11 @@ def candidate_actions(elements: list[base.Element]) -> list[Action]:
 
 
 def blocked_controls(elements: list[base.Element]) -> list[str]:
-    """Ids of actionable controls present but disabled (`notEnabled`) — known yet un-pressable
-    until a precondition is met. Reported on each node so the screen map can flag the gap."""
+    """Ids of actionable controls present but disabled (`notEnabled`).
+
+    Known yet un-pressable until a precondition is met. Reported on each node so the screen map can
+    flag the gap.
+    """
     return sorted(
         {
             i
@@ -400,14 +418,19 @@ def blocked_controls(elements: list[base.Element]) -> list[str]:
 
 def is_app_alive(elements: list[base.Element]) -> bool:
     """Whether the app's own UI is showing (not collapsed under a system overlay or crashed).
-    Reuses record's public check so "app UI vs. collapsed tree" has a single definition."""
+
+    Reuses record's public check so "app UI vs. collapsed tree" has a single definition.
+    """
     return shows_app_ui(elements)
 
 
 @dataclass(frozen=True)
 class GuideContext:
-    """Side information for the guide about how this screen was reached — currently the OS-alert
-    button(s) just dismissed to get here, so an AI guide can factor them into its next moves."""
+    """Side information for the guide about how this screen was reached.
+
+    Currently the OS-alert button(s) just dismissed to get here, so an AI guide can factor them
+    into its next moves.
+    """
 
     dismissed: tuple[str, ...] = ()
 
@@ -452,9 +475,7 @@ def _bbox(
 def _action_rect(
     elements: list[base.Element], action: Action
 ) -> tuple[float, float, float, float] | None:
-    """The point-space rectangle the action taps: the target element's frame (by id, or by
-    label + index for an id-less element), or the bounding box of a fill's fields. None when the
-    element can't be located."""
+    """The point-space rectangle the action taps (target frame, or a fill's bounding box), or None when the element can't be located."""
     if action.kind == "fill":
         frames = [
             f
@@ -479,12 +500,11 @@ def _action_rect(
 def _action_targets(
     elements: list[base.Element], actions: list[Action]
 ) -> tuple[tuple[str, tuple[float, float, float, float]], ...]:
-    """For each action, the rectangle it taps normalized to [0,1] of the screen, keyed by the
-    action's description (matching the edge/plan strings the web UI shows) — so the UI can highlight
-    where a transition's tap lands on the screenshot. A coordinate tap (a vision-located tab) yields
-    a small box around its point; a tap/type/fill yields its element frame over the screen size."""
-    w = max((f[2] for el in elements if (f := el.get("frame"))), default=0.0)
-    h = max((f[3] for el in elements if (f := el.get("frame"))), default=0.0)
+    """Per action, the [0,1]-normalized rectangle it taps keyed by its description, so the web UI can highlight where a transition's tap lands on the screenshot."""
+    # Single pass over elements for both bounds (each frame is read once, not twice).
+    frames = [f for el in elements if (f := el.get("frame"))]
+    w = max((f[2] for f in frames), default=0.0)
+    h = max((f[3] for f in frames), default=0.0)
     if w <= 0 or h <= 0:
         return ()
     out: list[tuple[str, tuple[float, float, float, float]]] = []
@@ -877,8 +897,10 @@ def crawl(
 
 
 def action_to_dict(a: Action) -> dict[str, object]:
-    """A JSON-friendly dict of an Action, omitting empty fields — so a replayable path can be
-    persisted (in `pruned`) and reconstructed for a resume."""
+    """A JSON-friendly dict of an Action, omitting empty fields.
+
+    Lets a replayable path be persisted (in `pruned`) and reconstructed for a resume.
+    """
     d: dict[str, object] = {"kind": a.kind}
     if a.target:
         d["target"] = a.target
@@ -910,8 +932,11 @@ def action_from_dict(d: dict[str, Any]) -> Action:
 
 
 def screenmap_from_dict(data: dict[str, Any]) -> ScreenMap:
-    """Rebuild a ScreenMap from `screenmap_dict` output — so a saved map can be loaded as the base
-    for a resume (continue exploring a pruned branch and append to it)."""
+    """Rebuild a ScreenMap from `screenmap_dict` output.
+
+    Lets a saved map be loaded as the base for a resume (continue exploring a pruned branch and
+    append to it).
+    """
     nodes: dict[str, Node] = {}
     for n in data.get("nodes") or []:
         targets = tuple(
@@ -960,9 +985,7 @@ def _replay(
     settle: Settle | None,
     clear_blocking: ClearBlocking | None,
 ) -> bool:
-    """Re-walk a recorded path from the current (clean) state, dismissing any OS prompt that pops
-    between steps (so a path through a system alert replays). Returns False if a step no longer
-    resolves — the app changed under us — so the caller skips this frontier entry."""
+    """Re-walk a recorded path from the current clean state (dismissing OS prompts), returning False if a step no longer resolves so the caller skips this frontier entry."""
     for action in path:
         try:
             action.perform(driver)

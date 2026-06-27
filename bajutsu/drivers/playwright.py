@@ -144,11 +144,14 @@ class _Page(Protocol):
 
 
 class _Started(NamedTuple):
-    """What a `Starter` returns. `browser` / `pw` are held to tear down in close(); `context` is held
+    """What a `Starter` returns.
+
+    `browser` / `pw` are held to tear down in close(); `context` is held
     so a per-visit reset can close it before opening a fresh one (BE-0077), bounding live contexts to
     one per worker rather than leaking one per frontier visit. The three handles are `Any` because
     playwright is imported lazily — its types aren't in scope at module load — and naming the slots
-    here (vs. a bare 4-tuple) keeps the adjacent `browser` / `context` handles from being transposed."""
+    here (vs. a bare 4-tuple) keeps the adjacent `browser` / `context` handles from being transposed.
+    """
 
     pw: Any
     browser: Any
@@ -160,8 +163,11 @@ Starter = Callable[[bool], _Started]
 
 
 def _start_chromium(headless: bool) -> _Started:  # pragma: no cover - needs a browser
-    """Start Playwright + a fresh Chromium context. A fresh context is the `erase` equivalent
-    (no cookies / storage carried over). Lazily imports playwright so the default path stays free."""
+    """Start Playwright + a fresh Chromium context.
+
+    A fresh context is the `erase` equivalent (no cookies / storage carried over). Lazily imports
+    playwright so the default path stays free.
+    """
     from playwright.sync_api import sync_playwright
 
     pw = sync_playwright().start()
@@ -200,11 +206,13 @@ def _playwright_error_types() -> tuple[type[BaseException], ...]:
 
 
 def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
-    """Turn a browser-side failure into the crawl's recoverable "lane wedged" signal (BE-0077). A
-    renderer crash, a hung page, a navigation timeout — any Playwright error from a page operation —
+    """Turn a browser-side failure into the crawl's recoverable "lane wedged" signal (BE-0077).
+
+    A renderer crash, a hung page, a navigation timeout — any Playwright error from a page operation —
     re-raises as `env.DeviceError`, which a pool worker isolates (handing its frontier entry back and
     relaunching the browser) instead of sinking the crawl. Selection failures (`base.SelectorError`)
-    are not wedges and pass through unchanged, as do real bugs (any non-Playwright exception)."""
+    are not wedges and pass through unchanged, as do real bugs (any non-Playwright exception).
+    """
 
     @functools.wraps(method)
     def wrapper(self: PlaywrightDriver, *args: Any, **kwargs: Any) -> Any:
@@ -221,10 +229,13 @@ def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
 
 
 def web_is_alive(driver: PlaywrightDriver, elements: list[base.Element]) -> bool:
-    """The web crash signal for the crawl (BE-0066): False on an uncaught JS exception, a 4xx/5xx
-    main-frame navigation, or a blank document. All three are machine facts (an event fired, a
-    status number, an empty element set), so prime directive #1 holds — AI stays out of the
-    verdict. This is the web counterpart of the iOS accessibility-tree `is_app_alive`."""
+    """The web crash signal for the crawl (BE-0066).
+
+    False on an uncaught JS exception, a 4xx/5xx main-frame navigation, or a blank document. All
+    three are machine facts (an event fired, a status number, an empty element set), so prime
+    directive #1 holds — AI stays out of the verdict. This is the web counterpart of the iOS
+    accessibility-tree `is_app_alive`.
+    """
     if driver.pop_page_errors():
         return False
     status = driver.last_nav_status()
@@ -234,6 +245,8 @@ def web_is_alive(driver: PlaywrightDriver, elements: list[base.Element]) -> bool
 
 
 class PlaywrightDriver:
+    """Driver implementation for the web via Playwright."""
+
     name = "playwright"
 
     def __init__(
@@ -266,9 +279,11 @@ class PlaywrightDriver:
         self._bind(page)
 
     def _bind(self, page: _Page) -> None:
-        """Adopt a freshly created page (a new context, or a relaunched browser) as the live page:
-        clear the consuming health buffers and (re)register the dialog / health handlers on it, so
-        the new page starts with a clean signal slate."""
+        """Adopt a freshly created page (a new context, or a relaunched browser) as the live page.
+
+        Clear the consuming health buffers and (re)register the dialog / health handlers on it, so
+        the new page starts with a clean signal slate.
+        """
         self._page = page
         self._page_errors = []
         self._last_nav_status = None
@@ -325,11 +340,13 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def reset_context(self) -> None:
-        """The crawl's clean start (the `erase` equivalent): open a fresh BrowserContext + page —
-        no cookies / storage / history carried across frontier visits — then navigate to the base
-        URL. Cheap (no browser-process restart), and it lets a `path_to` recorded in one worker's
-        browser replay from the same clean state in another (BE-0077). An injected test page has no
-        contexts, so it just re-navigates."""
+        """The crawl's clean start (the `erase` equivalent).
+
+        Open a fresh BrowserContext + page — no cookies / storage / history carried across frontier
+        visits — then navigate to the base URL. Cheap (no browser-process restart), and it lets a
+        `path_to` recorded in one worker's browser replay from the same clean state in another
+        (BE-0077). An injected test page has no contexts, so it just re-navigates.
+        """
         if self._browser is not None:
             # Discard the current context (its cookies / storage / history) and open a clean one, so
             # at most one context is alive per worker — the per-visit `erase`, not a slow leak.
@@ -342,10 +359,12 @@ class PlaywrightDriver:
 
     def relaunch(self) -> None:
         """Tear down a wedged browser process and start a fresh one (BE-0077 fault isolation).
+
         Unlike `reset_context` (a cheap fresh context inside the same browser), this discards the
         whole browser — the unit the crawl hard-kills when a renderer crashes, a page hangs, or a
         navigation times out; the worker's next reset re-navigates the fresh process. A no-op for
-        an injected test page (no real browser to relaunch)."""
+        an injected test page (no real browser to relaunch).
+        """
         if self._browser is None:  # injected test page — nothing to relaunch
             return
         # Best-effort teardown of the faulted browser before replacing it, each handle on its own:
@@ -433,17 +452,20 @@ class PlaywrightDriver:
         self._page.screenshot(path=path)
 
     def network_collector(self, mocks: list[Mock] | None = None) -> WebNetworkCollector:
-        """A collector hooked to this driver's page (Playwright sees every request natively), so
-        the run loop's `request` assertion + network evidence work on web (BE-0054). `mocks` are
-        fulfilled in-process via `page.route`. Imported lazily to keep the page private."""
+        """A collector hooked to this driver's page (Playwright sees every request natively).
+
+        Lets the run loop's `request` assertion + network evidence work on web (BE-0054). `mocks` are
+        fulfilled in-process via `page.route`. Imported lazily to keep the page private.
+        """
         from bajutsu.web_network import WebNetworkCollector
 
         return WebNetworkCollector(self._page, mocks)
 
-    def capabilities(self) -> set[str]:
-        # Playwright has a genuine semantic click, native auto-waiting, and native network
-        # observation + stubbing (BE-0054); multi-touch is still deferred.
-        return {
+    # Playwright has a genuine semantic click, native auto-waiting, and native network observation +
+    # stubbing (BE-0054); multi-touch is still deferred. Class constant so the preflight (BE-0082)
+    # reads it via `backends.capabilities_for` without starting a browser.
+    CAPABILITIES = frozenset(
+        {
             base.Capability.QUERY,
             base.Capability.ELEMENTS,
             base.Capability.SCREENSHOT,
@@ -451,3 +473,7 @@ class PlaywrightDriver:
             base.Capability.CONDITION_WAIT,
             base.Capability.NETWORK,
         }
+    )
+
+    def capabilities(self) -> set[str]:
+        return set(self.CAPABILITIES)

@@ -41,6 +41,7 @@ scenarios:
 |---|---|---|---|
 | `name` | str | 必須 | シナリオ名（レポート / JUnit testcase / codegen のメソッド名に使う） |
 | `description` | str | なし | 任意の説明文。シナリオの report カードと serve UI に表示 |
+| `from` | str | なし | **来歴（provenance）** — `record` がこのシナリオを書き起こした元の自然言語ゴール（[来歴](#from来歴)）。オーサリング用のメタデータで、`run` は読みません |
 | `tags` | list[str] | `[]` | 選択ラベル。CLI の `--tag` / `--exclude` で実行対象を絞る（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `preconditions` | object | `{}` | テスト前の環境準備（下記） |
@@ -153,6 +154,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（`simctl push`） |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する |
+| `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
 | `background` | `background: {}` | アプリをバックグラウンドへ送る（Home ボタン） |
 | `foreground` | `foreground: {}` | バックグラウンドのアプリを前面へ復帰する（`simctl launch`。settle 用の sleep なし） |
 | `clearKeychain` | `clearKeychain: {}` | Simulator のキーチェーンをリセットする（保存済みパスワード / 証明書） |
@@ -166,6 +168,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 
 - `capture: [<token>...]`：このステップだけの証跡（[evidence](evidence.md#b-インライン証跡)）。
 - `name: <str>`：ステップ ID（証跡の出力先ディレクトリ名やレポート表示に使う）。省略時は `step<i>`。
+- `from: <str>`：**来歴**（[後述](#from来歴)）。このステップを記録した元のフレーズ。オーサリング用のメタデータで、`run` は読みません。
 
 ### `tap`
 
@@ -245,6 +248,15 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 
 `http` はリクエストを runner から HTTP で送ります。UI ドライバは経由しません。そのため `status` の不一致はステップ失敗になり、`saveBody` はレスポンスボディのテキストを `${vars.<name>}` に保存して後続ステップで使えます。デバイスに触れない、ここで唯一のデバイス非依存アクションです。
 
+### `totp`（二要素認証のワンタイムパスワード）
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", into: { var: code } }   # vars.code ← 現在の 6 桁 OTP
+- type: { text: "${vars.code}", into: { id: auth.code } }
+```
+
+`totp` は [RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238) の時刻ベースワンタイムパスワードを、共有 `secret`（base32。YAML に直書きせず `${secrets.*}` に置く）と現在時刻からローカルで計算し、現在のコードを `${vars.<var>}` に保存します。後続の `type` / `assert` で使えます。スクリプトのエスケープハッチも LLM も使わずに 2FA サインインを自動化でき、値は secret と時刻の決定的な関数です（[BE-0046](../../roadmaps/in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+
 ### デバイス / システム制御（iOS）
 
 ```yaml
@@ -276,6 +288,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 | `requestSequence` | 複数のマッチャがこの順序で観測されたか検証（`--network` が必要） | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `responseSchema` | 捕捉したレスポンスボディが JSON Schema に適合するか検証（`--network` が必要） | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | 画面が baseline 画像に一致する（ビジュアルリグレッション） | `visual: { baseline: home.png, threshold: 0.02 }` |
+| `clipboard` | デバイスのペーストボードが一致する（`simctl pbpaste` で読み戻す） | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
 
 - `exists` はセレクタを **インラインで**書きます（`{ id: ... }` を直書き）。`negate` は任意です。
 - `value` / `label` は `sel:` と、`equals` / `contains` / `matches` の **いずれか 1 つ**を指定します。
@@ -286,6 +299,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 - `requestSequence` は複数の request マッチャが **順序どおりに観測された**かを検証します（[下記](#requestsequence順序付きリクエスト)）。`--network` 実行フラグが必要です。
 - `responseSchema` は捕捉した **レスポンスボディが JSON Schema に適合する**かを検証します（[下記](#responseschemaレスポンスの-json-schema)）。`--network` 実行フラグが必要です。
 - `visual` はスクリーンショットを baseline 画像とピクセル比較します（[下記](#visualビジュアルリグレッション)）。
+- `clipboard` はデバイスのペーストボードを `simctl pbpaste` で読み戻し、`equals` / `matches`（正規表現）の **いずれか 1 つ**を検証します。`setClipboard` の読み戻し側で、「コピー」操作の検証に使います。デバイスごとの制御チャネルが必要なため、fake ドライバや並列実行では利用できず、その場合はクリーンに失敗します（[BE-0052](../../roadmaps/in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
 > **ロケール注意**: `label`/`value` の文字列比較や、可視テキストを見るアサーションは翻訳で壊れます。これらは config の固定 locale を前提に書き、セレクタ自体は `id` で書いてください。
 
@@ -544,6 +558,31 @@ steps:
 ## YAML の注意点
 
 PyYAML（YAML 1.1）は `on`/`off`/`yes`/`no` を真偽値に解決します。`capturePolicy` のトリガーキー `on:` が `True` になるのを防ぐため、Bajutsu の YAML ローダ（`_yaml.py`）は **`true`/`false` だけを真偽値**として扱い、`on`/`off`/`yes`/`no` は文字列のまま読みます。
+
+## `from`（来歴）
+
+`from:` は、**ある構成要素がどの自然言語フレーズから記録されたか**を残します（BE-0044）。任意の文字列で、4 つのレベル——シナリオ（元のゴール）、各ステップ、各 `expect` アサーション、各 `capturePolicy` ルール——に付きます。これにより、レビュアーは各部分が*なぜ*存在するのかを見て、`record` が意図を忠実に正規化できているかを判断できます。
+
+```yaml
+- name: 設定を開いて再生成する
+  from: "設定を開いて、再インデックスして、正規化設定が消えていることを確認して"   # 元のゴール
+  steps:
+    - tap: { id: settings.open }
+      from: "設定を開く"
+  expect:
+    - exists: { label: "正規化設定が変更されています", negate: true }
+      from: "正規化設定が消えていること"
+  capturePolicy:
+    - on: { action: tap, idMatches: "*.submit" }
+      capture: [screenshot.after, network]
+      from: "送信を押すたびにスクショとネットワークログを残して"
+```
+
+- **書き込むのは `record`（Tier 1、AI）だけです。** ゴールを構造化シナリオへ正規化する際に `from:` を埋めます。手書きのシナリオは単に省略でき、書き出した YAML も汚れません（未設定の `from:` は間引かれます）。
+- **`run`（Tier 2）は一切読みません。** 来歴はオーサリング用のメタデータで、オーケストレータは参照しないので、ゲートに AI を加えず、pass/fail にも影響しません。
+- **グルーピングは創発的です。** 1 つの発話が複数ステップを生むとき、それらは**同じ** `from:` 文字列を持ちます。範囲（span）構文はありません。`lint` は来歴カバレッジ（`from:` を持つステップ数）を advisory として報告しますが、run を落とすことはありません。
+- **`trace` とレポートに表示します。** [`bajutsu trace`](cli.md#trace) は各ステップのフレーズを `← "<フレーズ>"` としてインライン表示し、`report.html` はステップの下に表示します。どちらも同じフレーズの連続を 1 つのラベルにまとめ、タイムラインを「自然言語 ↔ 操作」の対応図にします。
+- フレーズは、著者が書いた言語のまま**逐語的**に保ちます（翻訳しません）。
 
 ## ラウンドトリップ（読込 ⇄ 書出）
 

@@ -114,7 +114,8 @@ def _assertion_requests(a: Assertion) -> Iterator[RequestMatch]:
     """The endpoint matcher(s) a network assertion declares (request / event / requestSequence).
 
     `event` is reduced to its endpoint fields (its body/count are not about *which* endpoint), so
-    every form yields a `RequestMatch` the observed exchanges can be tested against."""
+    every form yields a `RequestMatch` the observed exchanges can be tested against.
+    """
     if a.request is not None:
         yield a.request
     if a.event is not None:
@@ -135,8 +136,11 @@ def _assertion_requests(a: Assertion) -> Iterator[RequestMatch]:
 
 
 def referenced_requests(scenario: Scenario) -> list[RequestMatch]:
-    """Every network-endpoint matcher a scenario declares — across steps' `assert`s, nested control
-    flow, and scenario-level `expect`. The endpoint side of the coverage map (BE-0048 assertions)."""
+    """Every network-endpoint matcher a scenario declares.
+
+    Covers steps' `assert`s, nested control flow, and scenario-level `expect` — the endpoint side of
+    the coverage map (BE-0048 assertions).
+    """
     return [
         *(r for step in scenario.steps for r in _step_requests(step)),
         *(r for a in scenario.expect for r in _assertion_requests(a)),
@@ -150,15 +154,34 @@ def _endpoint(ex: NetworkExchange) -> str:
 def endpoint_coverage(
     scenarios: list[Scenario], exchanges: list[NetworkExchange]
 ) -> EndpointCoverage:
-    """Measure how the suite's network assertions cover the endpoints its runs hit. Pure: the
-    observed exchanges come from `network.json`, the declared matchers from the scenarios."""
+    """Measure how the suite's network assertions cover the endpoints its runs hit.
+
+    Pure: the observed exchanges come from `network.json`, the declared matchers from the scenarios.
+    """
     matchers = [m for s in scenarios for m in referenced_requests(s)]
     observed = sorted({_endpoint(ex) for ex in exchanges})
-    asserted_eps = {
-        _endpoint(ex) for ex in exchanges if any(match_request(ex, m) for m in matchers)
-    }
+    # One pass over the matcher-vs-exchange relation: an exchange's endpoint is *asserted* if any
+    # matcher matches it, and a matcher is *unobserved* if no exchange matches it. Deriving both in
+    # a single sweep avoids re-computing the same relation twice (it was O(N*E), computed twice).
+    asserted_eps: set[str] = set()
+    matched_matchers: set[int] = set()
+    for ex in exchanges:
+        hit = False
+        for i, m in enumerate(matchers):
+            # Once this exchange is already asserted, a matcher we've *already* seen match some
+            # exchange can be skipped — it changes neither result. A not-yet-matched matcher is
+            # always tested (it may be the one this exchange asserts, and we must learn whether it
+            # ever matches, for `declared_unobserved`), so the relation stays exact while broad /
+            # overlapping matchers stop re-matching every exchange.
+            if hit and i in matched_matchers:
+                continue
+            if match_request(ex, m):
+                hit = True
+                matched_matchers.add(i)
+        if hit:
+            asserted_eps.add(_endpoint(ex))
     declared_unobserved = sorted(
-        {request_label(m) for m in matchers if not any(match_request(ex, m) for ex in exchanges)}
+        {request_label(m) for i, m in enumerate(matchers) if i not in matched_matchers}
     )
     asserted = sorted(asserted_eps)
     return EndpointCoverage(
@@ -179,4 +202,67 @@ def render_endpoints(ec: EndpointCoverage) -> str:
         lines.append(f"  unasserted (observed, no assertion): {ec.unasserted}")
     if ec.declared_unobserved:
         lines.append(f"  declared but not observed: {ec.declared_unobserved}")
+    return "\n".join(lines)
+
+
+# --- observed-id coverage: ids rendered across a run set (elements.json) vs declared namespaces ---
+
+
+@dataclass(frozen=True)
+class ObservedIdCoverage:
+    """Which declared namespaces a run set actually rendered ids under.
+
+    The run-evidence counterpart to `Coverage` (static references): `coverage()` grades the ids the
+    scenarios *write* (statically reference); this grades the ids the runs *showed* (observed across
+    every `elements.json`), exposing namespaces the suite never exercised at runtime.
+    """
+
+    namespaces: list[
+        NamespaceCoverage
+    ]  # declared namespaces with at least one observed id, in declared order
+    unobserved: list[str]  # declared namespaces rendered in no run
+    off_namespace: list[str]  # observed ids whose namespace was never declared
+    total: int  # declared namespaces
+    covered: int  # declared namespaces with at least one observed id
+    coverage: float  # covered / total (1.0 when no namespaces are declared)
+
+
+def observed_id_coverage(observed_ids: list[str], id_namespaces: list[str]) -> ObservedIdCoverage:
+    """Group observed ids by the app's declared namespaces.
+
+    Pure: the observed ids come from the run set's `elements.json` files, the namespaces from the app
+    config. Mirrors `coverage()`.
+    """
+    declared = list(dict.fromkeys(id_namespaces))  # de-dupe, keep declared order
+    declared_set = set(declared)
+    observed = sorted(set(observed_ids))
+
+    by_namespace: dict[str, list[str]] = {}
+    off_namespace: list[str] = []
+    for oid in observed:
+        ns = namespace_of(oid)
+        if ns in declared_set:
+            by_namespace.setdefault(ns, []).append(oid)
+        else:
+            off_namespace.append(oid)
+
+    namespaces = [NamespaceCoverage(ns, by_namespace[ns]) for ns in declared if ns in by_namespace]
+    return ObservedIdCoverage(
+        namespaces=namespaces,
+        unobserved=[ns for ns in declared if ns not in by_namespace],
+        off_namespace=off_namespace,
+        total=len(declared),
+        covered=len(namespaces),
+        coverage=len(namespaces) / len(declared) if declared else 1.0,
+    )
+
+
+def render_observed_ids(oc: ObservedIdCoverage) -> str:
+    """Human-readable summary that points at namespaces the runs never rendered."""
+    lines = [f"observed ids: {oc.coverage:.2f} ({oc.covered}/{oc.total})"]
+    lines.extend(f"  {ns.namespace}: {ns.ids}" for ns in oc.namespaces)
+    if oc.unobserved:
+        lines.append(f"  unobserved (no run rendered): {oc.unobserved}")
+    if oc.off_namespace:
+        lines.append(f"  off-namespace ids: {oc.off_namespace}")
     return "\n".join(lines)

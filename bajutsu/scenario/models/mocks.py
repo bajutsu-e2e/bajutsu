@@ -1,5 +1,8 @@
-"""Deterministic network stubs: a mock matches an outgoing request (reusing the request-side
-fields of the traffic matcher) and returns a canned response instead of hitting the network."""
+"""Deterministic network stubs.
+
+A mock matches an outgoing request (reusing the request-side fields of the traffic matcher) and
+returns a canned response instead of hitting the network.
+"""
 
 from __future__ import annotations
 
@@ -19,10 +22,13 @@ class MockResponse(_Model):
 
 
 class Mock(_Model):
-    """A deterministic network stub: when an outgoing request matches `match`, BajutsuKit
-    returns `respond` instead of hitting the network (so tests don't depend on a live
-    server). `match` reuses the request matcher's request-side fields (method / url /
-    urlMatches / path / pathMatches / bodyMatches); status / count do not apply here."""
+    """A deterministic network stub.
+
+    When an outgoing request matches `match`, BajutsuKit returns `respond` instead of hitting the
+    network (so tests don't depend on a live server). `match` reuses the request matcher's
+    request-side fields (method / url / urlMatches / path / pathMatches / bodyMatches); status /
+    count do not apply here.
+    """
 
     match: RequestMatch
     respond: MockResponse = Field(default_factory=MockResponse)

@@ -28,6 +28,30 @@ def test_run_all() -> None:
     assert [r.ok for r in results] == [True, False]
 
 
+def test_preflight_fails_unsupported_scenario_before_leasing() -> None:
+    # A pinch needs multiTouch, which idb lacks — the preflight fails the scenario up front, so the
+    # lease (device work) is never reached (BE-0082).
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "z", "steps": [{"pinch": {"sel": {"id": "m"}, "scale": 2.0}}]}
+        )
+    ]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the preflight rejects the scenario")
+
+    results = run_all(_eff(), scenarios, lease_must_not_run, actuator="idb")
+    assert len(results) == 1 and not results[0].ok
+    assert results[0].backend == "idb"
+    assert "multiTouch" in (results[0].failure or "")
+
+
+def test_preflight_allows_supported_scenario_on_idb() -> None:
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_eff(), scenarios, _lease, actuator="idb")
+    assert results[0].ok
+
+
 def test_run_all_parallel_preserves_order_and_releases() -> None:
     scenarios = [
         Scenario.model_validate({"name": n, "steps": [{"tap": {"id": "ok"}}]})
@@ -131,6 +155,57 @@ def test_run_and_report(tmp_path: Path) -> None:
     # The executed scenario is kept alongside its results.
     scn_file = tmp_path / "runs" / "run1" / "scenario.yaml"
     assert scn_file.exists() and "name: a" in scn_file.read_text(encoding="utf-8")
+    # The run is stamped with provenance (BE-0049): a fingerprint of the executed scenario YAML
+    # (taken pre-redaction) plus the tool version, so accumulated runs group by identity. With no
+    # secret_values here nothing is scrubbed, so the stamp also equals a hash of the saved file.
+    import hashlib
+
+    from bajutsu import __version__
+
+    prov = data["provenance"]
+    expected = "sha256:" + hashlib.sha256(scn_file.read_text(encoding="utf-8").encode()).hexdigest()
+    assert prov["scenarioHash"] == expected
+    assert prov["toolVersion"] == __version__
+    assert "configSource" not in prov  # a local config records no Git source
+
+
+def test_run_and_report_records_git_config_source(tmp_path: Path) -> None:
+    # A run from a Git config source stamps which repo@sha it executed into the manifest (BE-0063).
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    src = {"host": "github.com", "owner": "acme", "repo": "tests", "ref": "main", "sha": "deadbeef"}
+    _, manifest = run_and_report(
+        _eff(), scenarios, _lease, tmp_path / "runs", "run1", config_source=src
+    )
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["provenance"]["configSource"] == src
+
+
+def test_git_revision_maps_failure_and_blank_to_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The subprocess is an external dependency, so it's the one place a stub is warranted. A
+    # non-zero exit, a thrown error, and a 0-exit-but-blank stdout (a shimmed `git`) all mean
+    # "unknown revision" — None, never an empty stamp.
+    import subprocess as sp
+
+    from bajutsu.runner import pipeline
+
+    def fake(result: sp.CompletedProcess[str] | Exception):  # type: ignore[no-untyped-def]
+        def run(*a: object, **k: object) -> sp.CompletedProcess[str]:
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        return run
+
+    monkeypatch.setattr(pipeline.subprocess, "run", fake(sp.CompletedProcess([], 128, "", "fatal")))
+    assert pipeline._git_revision() is None  # not a repo
+    monkeypatch.setattr(pipeline.subprocess, "run", fake(sp.CompletedProcess([], 0, "   \n", "")))
+    assert pipeline._git_revision() is None  # 0 exit but blank stdout → unknown, not ""
+    monkeypatch.setattr(pipeline.subprocess, "run", fake(FileNotFoundError("git")))
+    assert pipeline._git_revision() is None  # git absent
+    monkeypatch.setattr(
+        pipeline.subprocess, "run", fake(sp.CompletedProcess([], 0, "abc123\n", ""))
+    )
+    assert pipeline._git_revision() == "abc123"  # normal: trimmed sha
 
 
 def test_run_and_report_forwards_baselines_dir(tmp_path: Path) -> None:

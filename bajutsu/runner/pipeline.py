@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import time
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from bajutsu import idb_version
+from bajutsu import capability_preflight, idb_version
 from bajutsu.assertions import SchemaContext, VisualContext
+from bajutsu.backends import capabilities_for
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
 from bajutsu.network import NetworkExchange
@@ -23,7 +25,7 @@ from bajutsu.orchestrator import (
     scenario_slug,
 )
 from bajutsu.redaction import Redactor
-from bajutsu.report import scenario_render_inputs, write_report
+from bajutsu.report import run_provenance, scenario_render_inputs, write_report
 from bajutsu.runner.types import LeaseFn, OnBlockedFor, _no_net
 from bajutsu.scenario import Scenario, dump_scenario_file
 
@@ -71,24 +73,50 @@ def run_all(
     progress: ProgressFn | None = None,
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
+    actuator: str | None = None,
 ) -> list[RunResult]:
-    """Run every scenario, each on a freshly leased device.
+    """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
-    `lease(eff, scenario)` blocks until a device is free, launches the app, and returns a
-    Lease bundling the live driver with that device's evidence sink / relaunch / control /
-    network collector. After the scenario finishes, `lease.release()` terminates the app and
-    returns the device to the pool. When the lease carries a collector, its exchanges are
-    cleared per scenario, exposed to `request` assertions, and written to <sid>/network.json
-    (redacted with `secret_values`).
+    `lease(eff, scenario)` blocks until a device is free, launches the app, and returns a `Lease`
+    bundling the live driver with that device's evidence sink / relaunch / control / network
+    collector; `lease.release()` afterwards terminates the app and returns the device to the pool.
+    A lease's collector, when present, has its exchanges cleared per scenario, exposed to `request`
+    assertions, and written to `<sid>/network.json` (redacted with `secret_values`).
 
-    `on_blocked_for`, when given, picks each scenario's alert-guard handler (honoring its
-    `dismissAlerts`); it takes precedence over the single `on_blocked` (used by tests).
+    Args:
+        eff: The resolved target config (drives redaction, backend, launch).
+        scenarios: The scenarios to run; results come back in this declaration order.
+        lease: Leases a device and launches the app for one scenario (a single-device run is a pool
+            of one).
+        clock: Injectable time source for condition waits, so tests need no real sleeps. None uses
+            the real clock.
+        on_blocked: A single alert-guard handler, used by tests.
+        on_blocked_for: Picks each scenario's alert-guard handler (honoring its `dismissAlerts`);
+            takes precedence over `on_blocked`.
+        run_dir: Where per-scenario artifacts (network.json, visual diffs) are written. None skips
+            writing them.
+        workers: Concurrent scenarios; >1 hands each worker its own device + per-device resources,
+            so the loop keeps no shared mutable state.
+        bindings: `secrets.<name>` → value substitutions applied to step inputs.
+        secret_values: The raw secret values to redact from evidence.
+        progress: Receives one-line progress messages (the web UI streams these). None is silent.
+        baselines_dir: Baseline images for `visual` assertions. None disables visual comparison.
+        schemas_dir: Directory the `responseSchema` assertions' schema files resolve against. None
+            disables them.
+        actuator: The selected actuator (e.g. `idb` / `playwright`); when given, each scenario is
+            preflighted against its static capability set and failed up front if it needs a
+            capability the actuator lacks (BE-0082). None skips the preflight (a lease driven
+            directly in tests).
 
-    With `workers > 1` scenarios run concurrently (results stay in declaration order). The
-    pool hands each worker its own device and per-device resources, so the run loop has no
-    shared mutable state.
+    Returns:
+        One result per scenario, in the same order as `scenarios`.
     """
     redactor = Redactor(eff.redact, values=secret_values)
+    # Preflight: a backend's capability set is static, so a scenario that needs a capability the
+    # actuator lacks (e.g. pinch on idb) is failed here — before any device is leased — instead of
+    # mid-run after partial device work (BE-0082). Skipped when no actuator is passed (tests that
+    # drive a lease directly), so the gesture handler's own check still backstops it.
+    caps = capabilities_for(actuator) if actuator is not None else None
 
     total = len(scenarios)
 
@@ -96,6 +124,16 @@ def run_all(
         sid = f"{i:02d}-{scenario_slug(s.name)}"
         if progress is not None:
             progress(f"▶ scenario {i + 1}/{total}: {s.name}")
+        if caps is not None and (reasons := capability_preflight.unsupported(s, caps)):
+            if progress is not None:
+                progress(f"✘ scenario {i + 1}/{total}: {s.name} (unsupported on {actuator})")
+            return RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=actuator or "",
+                failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
+            )
         lz = lease(eff, s)
         handler = on_blocked_for(s) if on_blocked_for is not None else on_blocked
         try:
@@ -167,12 +205,23 @@ def run_and_report(
     progress: ProgressFn | None = None,
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
+    actuator: str | None = None,
+    config_source: dict[str, str] | None = None,
 ) -> tuple[list[RunResult], Path]:
-    """Run scenarios and write manifest.json + JUnit + scenario.yaml under runs_dir/run_id.
+    """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
-    When `baselines_dir` is given, `visual` assertions compare each scenario's end-state
-    screenshot against a baseline image in that directory; `schemas_dir` likewise resolves
-    `responseSchema` assertions' schema files (see run_all)."""
+    Wraps `run_all` and persists the report: `manifest.json`, JUnit XML, and the executed
+    `scenario.yaml` (so a run is re-runnable / reviewable). idb toolchain versions are recorded as
+    provenance only when idb actually drove the run — never a pass/fail input (BE-0005).
+
+    Beyond `run_all`'s arguments, `runs_dir` + `run_id` locate this run's artifact directory
+    (`runs_dir/run_id`), `source_name` / `description` are recorded in the report, and
+    `config_source` — the Git source the config came from (BE-0063), or None for a local config — is
+    stamped into the manifest's provenance so a branch-based run states the exact commit it executed.
+
+    Returns:
+        The per-scenario results and the path to the written `manifest.json`.
+    """
     run_dir = runs_dir / run_id
     results = run_all(
         eff,
@@ -188,28 +237,63 @@ def run_and_report(
         progress=progress,
         baselines_dir=baselines_dir,
         schemas_dir=schemas_dir,
+        actuator=actuator,
     )
     # The merged Result tab renders each scenario as a structured view (definitions) with a toggle
     # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match.
     definitions, sources = scenario_render_inputs(scenarios)
     run_dir.mkdir(parents=True, exist_ok=True)
     # Keep the executed scenario alongside its results (re-runnable / reviewable).
-    (run_dir / "scenario.yaml").write_text(
-        dump_scenario_file(scenarios, description), encoding="utf-8"
-    )
+    scenario_yaml = dump_scenario_file(scenarios, description)
+    (run_dir / "scenario.yaml").write_text(scenario_yaml, encoding="utf-8")
     # Record the idb versions this run was driven against, but only when idb actually drove it —
     # provenance for the artifact set, never a pass/fail input (BE-0005). Non-idb runs probe nothing.
     # idb-by-name is fine while idb is the only backend with a toolchain version; when a second
     # backend needs versions, generalize this to a `Driver.provenance()` hook instead of a name test.
     idb_versions = idb_version.probe() if any(r.backend == "idb" for r in results) else None
+    # Stamp the run's identity (scenario fingerprint + tool/git version) so accumulated runs can be
+    # grouped to tell true flakiness from an edited scenario (BE-0049); pure metadata, never a verdict.
+    provenance = run_provenance(
+        scenario_yaml, git_revision=_git_revision(), config_source=config_source
+    )
     manifest = write_report(
-        run_dir, run_id, results, definitions, sources, source_name, description, idb_versions
+        run_dir,
+        run_id,
+        results,
+        definitions,
+        sources,
+        source_name=source_name,
+        description=description,
+        idb_versions=idb_versions,
+        provenance=provenance,
     )
     # Final safety net: scrub any literal secret value that reached a run-level artifact
     # (e.g. an assertion's expected/actual text in the manifest / HTML). The scenario
     # definitions already hold tokens, not values, so this only catches result text.
     _scrub_secret_values(run_dir, secret_values)
     return results, manifest
+
+
+def _git_revision() -> str | None:
+    """The current git commit, or None when the run isn't inside a git checkout.
+
+    Best-effort run provenance (BE-0049): any failure — not a repo, git absent — yields None so the
+    stamp simply omits the revision rather than aborting the run.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],  # noqa: S607 — git resolved on PATH; any failure → None below
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    # A shimmed/aliased `git` could exit 0 with blank stdout; treat that as "unknown", not an empty stamp.
+    return out.stdout.strip() or None
 
 
 def _scrub_secret_values(run_dir: Path, secret_values: list[str] | None) -> None:

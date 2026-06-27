@@ -218,7 +218,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/login":
                     self._post_login(body)
                 case "/api/config":
-                    self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
+                    # A `git` key selects the from-Git picker (BE-0063); `path` the local file
+                    # browser. Key presence (not truthiness) routes, so an empty `git` still reaches
+                    # the Git binder and gets its "spec is required" 400, not the local one.
+                    if "git" in body:
+                        self._json(*ops.bind_git_config(state, str(body.get("git") or "")))
+                    else:
+                        self._json(*ops.bind_config(state, str(body.get("path", "") or "")))
                 case "/api/apikey":
                     self._json(*ops.set_api_key(state, str(body.get("value", "") or "")))
                 case "/api/provider":
@@ -319,7 +325,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(data)
 
         def _serve_run_file(self, rel: str) -> None:
-            self._serve_artifact(self._artifacts().get(rel))
+            # report.html is rendered on view from the stored model (BE-0068); other files served as-is.
+            self._serve_artifact(ops.run_file(self._artifacts(), rel))
 
         def _serve_run_archive(self, run_id: str) -> None:
             # A one-file download of the whole run (BE-0060), through the same org-scoped store, so

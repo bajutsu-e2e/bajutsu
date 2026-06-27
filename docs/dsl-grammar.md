@@ -133,6 +133,7 @@ Action    ::=
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method default GET; saveBody → vars.<name>
+  | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
   | { background:       {} }                               # Home button (simctl ui home)
   | { clearKeychain:    {} }                               # reset saved passwords / certificates
   | { clearClipboard:   {} }                               # clear the pasteboard
@@ -180,9 +181,11 @@ Assertion ::=
   | { selected: <Selector> }
   | { request:  <RequestMatch> }
   | { visual:   <VisualMatch> }
+  | { clipboard: <ClipboardMatch> }   # read-back of the device pasteboard (simctl pbpaste)
 
 TextMatch  ::= { sel: <Selector> } & ( {equals:string} | {contains:string} | {matches:string} )
 CountMatch ::= { sel: <Selector> } & ( {equals:integer} | {atLeast:integer} | {atMost:integer} )
+ClipboardMatch ::= ( {equals:string} | {matches:string} )   # exactly one; matches is a regex
 
 VisualMatch ::= {                  # pixel-compare the screen against a baseline image
   baseline:   string,             # filename resolved inside --baselines (default: baselines/ beside the scenario)
@@ -256,6 +259,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Assertion` | **exactly one** kind (`exists` … `request` … `visual`) | `scenario/models/assertions.py` |
 | `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario/models/assertions.py` |
 | `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
+| `ClipboardMatch` (`clipboard`) | **exactly one** of `equals` / `matches` | `scenario/models/assertions.py` |
 | `RequestMatch` | **≥ 1** of `method`/`url`/`urlMatches`/`path`/`pathMatches`/`status`/`bodyMatches` (`count` is not a match field) | `scenario/models/assertions.py` |
 | `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario/models/evidence.py` |
 | `Scenario` | `data` and `dataFile` **not both** | `scenario/models/scenario.py` |

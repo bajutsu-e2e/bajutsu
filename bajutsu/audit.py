@@ -11,11 +11,15 @@ scenario is never run, and the verdict / CI gate is never touched.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from bajutsu.drivers import base
 from bajutsu.scenario import Assertion, Gone, Scenario, Step
+
+if TYPE_CHECKING:
+    from bajutsu.orchestrator import RunResult
 
 # `until` conditions that wait for no concrete element / event — best-effort settles, not a
 # condition the run can prove was met, so they are a determinism risk worth surfacing.
@@ -126,10 +130,12 @@ def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
 
 
 def _located_selectors(scenario: Scenario) -> Iterator[tuple[str, base.Selector]]:
-    """Every selector the scenario addresses — across steps and scenario-level assertions — each
-    followed by the selectors nested in its `within` scope. The single lazy walk both the
-    determinism audit and the coverage map (BE-0050) consume, so a new selector source is added in
-    one place and the two never diverge."""
+    """Every selector the scenario addresses, each followed by the selectors nested in its `within` scope.
+
+    Covers steps and scenario-level assertions. The single lazy walk both the determinism audit and
+    the coverage map (BE-0050) consume, so a new selector source is added in one place and the two
+    never diverge.
+    """
     for step in scenario.steps:
         for where, sel in _step_selectors(step):
             yield from _with_nested(where, sel)
@@ -139,9 +145,12 @@ def _located_selectors(scenario: Scenario) -> Iterator[tuple[str, base.Selector]
 
 
 def referenced_ids(scenario: Scenario) -> set[str]:
-    """The stable ids (`id` / `idMatches`) a scenario statically references — across steps, nested
-    control flow, `within` scopes, and assertions. The coverage map (BE-0050) measures these
-    against an app's declared `idNamespaces`. Pure: no device, no model, no side effects."""
+    """The stable ids (`id` / `idMatches`) a scenario statically references.
+
+    Covers steps, nested control flow, `within` scopes, and assertions. The coverage map (BE-0050)
+    measures these against an app's declared `idNamespaces`. Pure: no device, no model, no side
+    effects.
+    """
     ids: set[str] = set()
     for _, sel in _located_selectors(scenario):
         if "id" in sel:
@@ -232,3 +241,207 @@ def render(report: AuditReport) -> str:
     lines = [f"scenario: {report.scenario}", f"grade: {report.grade}", stability]
     lines.extend(f"  {f.where}: {f.detail}" for f in report.findings)
     return "\n".join(lines)
+
+
+# --- repeat-and-diff: prove determinism dynamically (BE-0049) ---
+#
+# Run a scenario K times under identical preconditions and compare outcomes. Anything that varies
+# is reported as non-deterministic — a *finding to fix*, never a retry that turns red into green.
+# The audit never changes a verdict and never feeds the run/CI gate (the opposite of flakiness
+# tolerance / auto-retry, which hides instability).
+
+
+@dataclass(frozen=True)
+class RepeatReport:
+    """The verdict of running one scenario K times and diffing the outcomes."""
+
+    scenario: str
+    runs: int  # K — how many times it was executed
+    deterministic: bool  # every run agreed (or K < 2, nothing to compare)
+    divergences: list[str] = field(default_factory=list)  # what varied, for a human to fix
+
+
+def _verdicts(oks: list[bool]) -> list[str]:
+    return ["pass" if o else "fail" for o in oks]
+
+
+def repeat_diff(results: list[RunResult]) -> RepeatReport:
+    """Classify K runs of one scenario as deterministic or flaky by diffing their outcomes.
+
+    Compares the per-step pass/fail, per-assertion pass/fail, and the overall verdict across runs;
+    any variation is a divergence. With fewer than two runs there is nothing to compare, so the
+    result is trivially deterministic (unproven, not flaky).
+    """
+    scenario = results[0].scenario if results else ""
+    if len(results) < 2:
+        return RepeatReport(scenario, len(results), deterministic=True)
+
+    def signature(r: RunResult) -> object:
+        return (
+            r.ok,
+            tuple(
+                (s.index, s.action, s.ok, tuple((a.ok, a.kind) for a in s.assertion_results))
+                for s in r.steps
+            ),
+            tuple((a.ok, a.kind) for a in r.expect_results),
+        )
+
+    if all(signature(r) == signature(results[0]) for r in results):
+        return RepeatReport(scenario, len(results), deterministic=True)
+
+    divergences: list[str] = []
+    if len({r.ok for r in results}) > 1:
+        divergences.append(f"overall verdict varied: {_verdicts([r.ok for r in results])}")
+    if len({len(r.steps) for r in results}) > 1:
+        counts = sorted({len(r.steps) for r in results})
+        divergences.append(f"step count varied across runs: {counts}")
+
+    # Compare step- and assertion-level pass/fail over the common prefix (a varying step count is
+    # already reported above; here we surface *which* shared step or assertion flips).
+    common = min(len(r.steps) for r in results)
+    for i in range(common):
+        if len({r.steps[i].ok for r in results}) > 1:
+            action = results[0].steps[i].action
+            divergences.append(
+                f"step {i} ({action}) verdict varied: {_verdicts([r.steps[i].ok for r in results])}"
+            )
+        acounts = {len(r.steps[i].assertion_results) for r in results}
+        if len(acounts) == 1:
+            for j in range(next(iter(acounts))):
+                aoks = [r.steps[i].assertion_results[j].ok for r in results]
+                if len(set(aoks)) > 1:
+                    kind = results[0].steps[i].assertion_results[j].kind
+                    divergences.append(f"step {i} assertion {j} ({kind}) varied: {_verdicts(aoks)}")
+        else:
+            divergences.append(f"step {i} assertion count varied across runs: {sorted(acounts)}")
+
+    ecounts = {len(r.expect_results) for r in results}
+    if len(ecounts) == 1:
+        for j in range(next(iter(ecounts))):
+            eoks = [r.expect_results[j].ok for r in results]
+            if len(set(eoks)) > 1:
+                kind = results[0].expect_results[j].kind
+                divergences.append(f"expect {j} ({kind}) varied: {_verdicts(eoks)}")
+    else:
+        divergences.append(f"expect-assertion count varied across runs: {sorted(ecounts)}")
+
+    # The signatures differed but none of the above pinpointed it — a step's action name or an
+    # assertion kind changed between runs while every verdict and count matched. Still flaky, so
+    # report it rather than swallow it. (repeat_diff is pure — there is no evidence to point at.)
+    if not divergences:
+        divergences.append(
+            "run outcomes differed across repeats (a step action or assertion kind changed)"
+        )
+    return RepeatReport(scenario, len(results), deterministic=False, divergences=divergences)
+
+
+def render_repeat(report: RepeatReport) -> str:
+    """Human-readable repeat-and-diff verdict, pointing at what varied."""
+    classification = "deterministic" if report.deterministic else "flaky"
+    lines = [f"scenario: {report.scenario}", f"{report.runs} runs: {classification}"]
+    lines.extend(f"  {d}" for d in report.divergences)
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class ScenarioHistory:
+    """One scenario's verdict history at a fixed fingerprint — the unit of the longitudinal view."""
+
+    scenario_hash: (
+        str  # the run's `provenance.scenarioHash` — the executed file's content fingerprint
+    )
+    name: str  # the scenario whose outcomes these are (the manifest's per-scenario `scenario`)
+    runs: int  # how many accumulated runs exercised this scenario at this fingerprint
+    passed: int  # runs in which it passed
+    failed: int  # runs in which it failed
+    pass_rate: float  # passed / runs
+    classification: str  # flaky | deterministic | unproven (see `_history`)
+
+
+@dataclass(frozen=True)
+class LongitudinalReport:
+    """Flakiness mined from accumulated run history — each scenario's verdict over its own past."""
+
+    histories: list[
+        ScenarioHistory
+    ]  # one per (fingerprint, scenario), flaky first then by run count
+    skipped: int  # runs with no `scenarioHash` provenance — can't be grouped by identity
+
+
+def longitudinal(manifests: Iterable[Mapping[str, object]]) -> LongitudinalReport:
+    """Group accumulated runs by scenario fingerprint and classify each scenario's stability (BE-0049).
+
+    The longitudinal half of the determinism audit. A run stamps one `provenance.scenarioHash` (the
+    executed file's content) over its whole `scenarios` list, so each scenario's outcomes are keyed by
+    that fingerprint *and* the scenario's name: a verdict that flips at a constant fingerprint is true
+    flakiness, while an edited scenario gets a new fingerprint and a fresh group (an edit can't look
+    like a flake). Pure and observational — it reads the identity stamp and the recorded per-scenario
+    verdict only, never deciding or changing a verdict.
+
+    Args:
+        manifests: Parsed `manifest.json` mappings, in any order. A manifest with no
+            `provenance.scenarioHash` (a pre-provenance run) can't be grouped and is counted in
+            `skipped` instead of contributing history.
+
+    Returns:
+        The per-(fingerprint, scenario) histories, flaky first then by descending run count, plus the
+        count of runs skipped for lacking a fingerprint.
+    """
+    groups: dict[tuple[str, str], list[bool]] = {}
+    skipped = 0
+    for m in manifests:
+        prov = m.get("provenance")
+        scenario_hash = prov.get("scenarioHash") if isinstance(prov, dict) else None
+        if not isinstance(scenario_hash, str):
+            skipped += 1
+            continue
+        scenarios = m.get("scenarios")
+        for s in scenarios if isinstance(scenarios, list) else []:
+            name = s.get("scenario") if isinstance(s, dict) else None
+            if isinstance(name, str) and name:
+                groups.setdefault((scenario_hash, name), []).append(bool(s.get("ok")))
+
+    histories = [_history(h, name, oks) for (h, name), oks in groups.items()]
+    # Flaky first (the findings to act on), then the most-observed scenarios — both descending.
+    histories.sort(key=lambda h: (h.classification != "flaky", -h.runs, h.scenario_hash, h.name))
+    return LongitudinalReport(histories=histories, skipped=skipped)
+
+
+def _history(scenario_hash: str, name: str, oks: list[bool]) -> ScenarioHistory:
+    """Tally one scenario's verdicts at a fingerprint into a classified history.
+
+    A single run proves nothing (mirrors repeat-and-diff with K<2): `unproven`, not flaky. With two
+    or more, a mix of pass and fail at the *same* fingerprint is true flakiness; an all-pass or
+    all-fail history is `deterministic` (a consistent failure is reproducible, not flaky).
+    """
+    passed = sum(oks)
+    runs = len(oks)
+    if runs < 2:
+        classification = "unproven"
+    elif passed and passed < runs:
+        classification = "flaky"
+    else:
+        classification = "deterministic"
+    return ScenarioHistory(
+        scenario_hash=scenario_hash,
+        name=name,
+        runs=runs,
+        passed=passed,
+        failed=runs - passed,
+        pass_rate=passed / runs,
+        classification=classification,
+    )
+
+
+def render_longitudinal(report: LongitudinalReport) -> str:
+    """Human-readable longitudinal view: each scenario's classification and pass rate."""
+    if not report.histories:
+        body = ["no runs with a scenario fingerprint to analyze"]
+    else:
+        body = [
+            f"{h.name}: {h.classification} ({h.passed}/{h.runs} passed, {h.pass_rate:.0%})"
+            for h in report.histories
+        ]
+    if report.skipped:
+        body.append(f"skipped {report.skipped} run(s) with no scenario fingerprint")
+    return "\n".join(body)

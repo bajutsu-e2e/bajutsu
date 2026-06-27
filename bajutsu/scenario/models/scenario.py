@@ -1,5 +1,8 @@
-"""The top-level shapes a scenario file is made of: preconditions, the alert-guard control, the
-scenario and its reusable component, and the scenario-file wrapper that ties them together."""
+"""The top-level shapes a scenario file is made of.
+
+Preconditions, the alert-guard control, the scenario and its reusable component, and the
+scenario-file wrapper that ties them together.
+"""
 
 from __future__ import annotations
 
@@ -33,10 +36,10 @@ class Preconditions(_Model):
 
 
 class DismissAlerts(_Model):
-    """Per-scenario control of the system-alert guard — the vision-based dismissal of OS
-    prompts (e.g. iOS "Save Password?", a permission request) that idb cannot see or tap.
+    """Per-scenario control of the system-alert guard.
 
-    The guard is ON by default and fires only when a step (or `expect`) is blocked: it
+    The vision-based dismissal of OS prompts (e.g. iOS "Save Password?", a permission request) that
+    idb cannot see or tap. The guard is ON by default and fires only when a step (or `expect`) is blocked: it
     screenshots, asks the locator where to tap, taps the prompt away, and retries once.
     Two on-disk forms (the bare boolean is shorthand for `{ enabled: <bool> }`):
         dismissAlerts: false                  — disable the guard for this scenario
@@ -60,6 +63,9 @@ class Scenario(_Model):
 
     name: str
     description: str | None = None
+    # Provenance (BE-0044): the original natural-language goal `record` authored this scenario
+    # from. Authoring metadata only — `run` never reads it. Kept None (pruned) when unset.
+    from_: str | None = Field(default=None, alias="from")
     tags: list[str] = Field(default_factory=list)
     data: list[dict[str, str]] | None = None
     data_file: str | None = Field(default=None, alias="dataFile")
@@ -82,8 +88,11 @@ class Scenario(_Model):
 
 
 class Component(_Model):
-    """A reusable, parameterized sequence of steps. `params` are the names a caller must
-    supply via `use: { with: {...} }`; the steps reference them as `${params.<name>}`."""
+    """A reusable, parameterized sequence of steps.
+
+    `params` are the names a caller must supply via `use: { with: {...} }`; the steps reference them
+    as `${params.<name>}`.
+    """
 
     params: list[str] = Field(default_factory=list)
     steps: list[Step]

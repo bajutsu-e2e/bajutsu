@@ -1,6 +1,8 @@
-"""Report formatting primitives: the inline rich-text Part type, byte/line/duration
-helpers, artifact lookup, and the action display metadata. Dependency-free so every other
-report module can import it."""
+"""Report formatting primitives.
+
+The inline rich-text Part type, byte/line/duration helpers, artifact lookup, and the action
+display metadata. Dependency-free so every other report module can import it.
+"""
 
 from __future__ import annotations
 

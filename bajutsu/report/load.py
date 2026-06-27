@@ -17,6 +17,8 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from bajutsu.assertions import AssertionResult, VisualEvidence
 from bajutsu.evidence import Artifact
 from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
@@ -85,19 +87,34 @@ class RenderModel:
 
 
 def load_run(run_dir: Path) -> RenderModel:
-    """Recover the render model from a finished run: outcomes from `manifest.json`, the scenario
-    plan from `scenario.yaml`. Raises OSError / ValueError if either is missing or unreadable."""
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    scenario_file = load_scenario_file((run_dir / "scenario.yaml").read_text(encoding="utf-8"))
-    definitions, sources = scenario_render_inputs(scenario_file.scenarios)
-    return RenderModel(
-        run_id=str(manifest.get("runId") or run_dir.name),
-        results=results_from_manifest(manifest),
-        definitions=definitions,
-        sources=sources,
-        source_name=manifest.get("sourceName"),
-        description=scenario_file.description,
-    )
+    """Recover the render model from a finished run.
+
+    Outcomes come from `manifest.json`, the scenario plan from `scenario.yaml`.
+
+    Raises:
+        OSError: If either file is missing or unreadable.
+        ValueError: If either file is malformed — bad JSON/YAML, or a manifest whose shape the
+            reconstruction can't read (so callers can catch one type for "can't load this run").
+    """
+    manifest_text = (run_dir / "manifest.json").read_text(encoding="utf-8")  # OSError if missing
+    scenario_text = (run_dir / "scenario.yaml").read_text(encoding="utf-8")
+    try:
+        manifest = json.loads(manifest_text)
+        scenario_file = load_scenario_file(scenario_text)
+        definitions, sources = scenario_render_inputs(scenario_file.scenarios)
+        return RenderModel(
+            run_id=str(manifest.get("runId") or run_dir.name),
+            results=results_from_manifest(manifest),
+            definitions=definitions,
+            sources=sources,
+            source_name=manifest.get("sourceName"),
+            description=scenario_file.description,
+        )
+    except (yaml.YAMLError, TypeError, KeyError, AttributeError) as e:
+        # json.JSONDecodeError and pydantic's ValidationError are already ValueErrors; normalize the
+        # rest (a YAML parse error, a manifest missing fields the dataclasses require) to ValueError
+        # so the loader honors its one documented malformed-input type.
+        raise ValueError(f"malformed run model in {run_dir}: {e}") from e
 
 
 def rerender_html(run_dir: Path) -> str:
@@ -109,8 +126,10 @@ def rerender_html(run_dir: Path) -> str:
 
 
 def rebake(run_dir: Path) -> None:
-    """Rewrite a finished run's `report.html` and `junit.xml` in place from its stored model
-    (the manifest — the source of truth — is left untouched)."""
+    """Rewrite a finished run's `report.html` and `junit.xml` in place from its stored model.
+
+    The manifest — the source of truth — is left untouched.
+    """
     m = load_run(run_dir)
     write_html_and_junit(
         run_dir, m.run_id, m.results, m.definitions, m.sources, m.source_name, m.description

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.orchestrator import RunResult
+from bajutsu.provenance import grouped_provenance
 from bajutsu.report.format import (
     _ACTION_META,
     Part,
@@ -23,10 +24,16 @@ from bajutsu.report.richtext import (
 # --- detail / row data (the merged Result table) ---
 
 
-def _step_detail(step_def: dict[str, Any] | None) -> dict[str, Any]:
-    """The 'detail' cell content for a planned step: tokenized parts (or a nested
-    assert table), plus the optional step name and capture tags."""
-    empty: dict[str, Any] = {"kind": "parts", "parts": [], "name": None, "caps": []}
+def _step_detail(step_def: dict[str, Any] | None, from_: str | None = None) -> dict[str, Any]:
+    """The 'detail' cell content for a planned step.
+
+    Tokenized parts (or a nested assert table), plus the optional step name, capture tags, and
+    `from:` provenance.
+
+    `from_` is the already-grouped provenance to show (None when this step continues a run of the
+    same phrase), not the step's raw `from:` — the caller dedupes consecutive equal values.
+    """
+    empty: dict[str, Any] = {"kind": "parts", "parts": [], "name": None, "caps": [], "from_": None}
     if step_def is None:
         return empty
     action = next((k for k in _ACTION_META if k in step_def), None)
@@ -40,12 +47,14 @@ def _step_detail(step_def: dict[str, Any] | None) -> dict[str, Any]:
             "rows": [_assert_parts(a) for a in step_def["assert"]],
             "name": name,
             "caps": caps,
+            "from_": from_,
         }
     return {
         "kind": "parts",
         "parts": _step_desc_parts(action, step_def[action]),
         "name": name,
         "caps": caps,
+        "from_": from_,
     }
 
 
@@ -61,8 +70,10 @@ def _action_data(step_def: dict[str, Any] | None, out_action: str | None) -> dic
 
 
 def _tree_row(e: dict[str, Any]) -> dict[str, Any]:
-    """One captured element rendered as a row for the in-report element viewer. `rect`
-    carries the raw frame (points) so the viewer can highlight it on the screenshot."""
+    """One captured element rendered as a row for the in-report element viewer.
+
+    `rect` carries the raw frame (points) so the viewer can highlight it on the screenshot.
+    """
     frame = e.get("frame")
     fr = ""
     rect: dict[str, str] | None = None
@@ -82,10 +93,12 @@ def _tree_row(e: dict[str, Any]) -> dict[str, Any]:
 
 
 def _screen_rect(elements: list[dict[str, Any]]) -> tuple[str | None, str | None]:
-    """The screen extent in points — the bounding box of every element frame. The
-    element viewer maps a hovered frame onto the (full-screen) screenshot as a
-    percentage of this, so it needs no device scale. The JS refines the height from the
-    screenshot's true pixel size, so a long scrolling list does not distort the mapping."""
+    """The screen extent in points — the bounding box of every element frame.
+
+    The element viewer maps a hovered frame onto the (full-screen) screenshot as a percentage of
+    this, so it needs no device scale. The JS refines the height from the screenshot's true pixel
+    size, so a long scrolling list does not distort the mapping.
+    """
     w = h = 0.0
     for e in elements:
         fr = e.get("frame")
@@ -98,8 +111,15 @@ def _screen_rect(elements: list[dict[str, Any]]) -> tuple[str | None, str | None
 
 
 def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
-    shot = next((a for a in out.artifacts if a.kind == "screenshot"), None)
-    tree = next((a for a in out.artifacts if a.kind == "elements"), None)
+    # Build a kind -> artifact index once so later lookups are O(1) instead of repeated
+    # O(n) scans over the same list. Use setdefault so the first artifact of each kind
+    # wins, matching the previous next(...) semantics (a kind can appear more than once
+    # when e.g. screenshot.before and screenshot.after are both requested).
+    by_kind: dict[str, Any] = {}
+    for a in out.artifacts:
+        by_kind.setdefault(a.kind, a)
+    shot = by_kind.get("screenshot")
+    tree = by_kind.get("elements")
     # Embed the captured elements inline so the report shows them in an overlay (no
     # new tab), matching how logs/network are embedded for offline (file://) viewing.
     tree_rows: list[dict[str, Any]] | None = None
@@ -122,7 +142,11 @@ def _view_data(out: Any, run_dir: Path | None) -> dict[str, Any]:
 
 
 def _step_run_row(
-    i: int, step_def: dict[str, Any] | None, out: Any, run_dir: Path | None
+    i: int,
+    step_def: dict[str, Any] | None,
+    out: Any,
+    run_dir: Path | None,
+    from_: str | None = None,
 ) -> dict[str, Any]:
     return {
         "rowcls": f"srow {'ok' if out.ok else 'ng'}",
@@ -132,7 +156,7 @@ def _step_run_row(
         "numcls": None,
         "result": {"cls": "ok" if out.ok else "ng", "text": "PASS" if out.ok else "FAIL"},
         "action": _action_data(step_def, out.action),
-        "detail": _step_detail(step_def),
+        "detail": _step_detail(step_def, from_),
         "at": f"{out.started_at:.1f}s",
         "view": _view_data(out, run_dir),
         "reason": out.reason if (not out.ok and out.reason) else None,
@@ -141,7 +165,9 @@ def _step_run_row(
     }
 
 
-def _step_skip_row(i: int, step_def: dict[str, Any] | None) -> dict[str, Any]:
+def _step_skip_row(
+    i: int, step_def: dict[str, Any] | None, from_: str | None = None
+) -> dict[str, Any]:
     return {
         "rowcls": "skip",
         "data_t": None,
@@ -150,7 +176,7 @@ def _step_skip_row(i: int, step_def: dict[str, Any] | None) -> dict[str, Any]:
         "numcls": None,
         "result": {"cls": "", "text": "—"},
         "action": _action_data(step_def, None),
-        "detail": _step_detail(step_def),
+        "detail": _step_detail(step_def, from_),
         "at": "",
         "view": None,
         "reason": None,
@@ -159,8 +185,10 @@ def _step_skip_row(i: int, step_def: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _nx_pairs(d: dict[str, Any], fields: list[tuple[str, str]]) -> list[tuple[str, dict[str, Any]]]:
-    """Build (label, value) pairs for an exchange's collapsible settings table from a
-    list of (label, key) — tokens for scalars, header lists, and body blocks."""
+    """Build (label, value) pairs for an exchange's collapsible settings table.
+
+    Built from a list of (label, key) — tokens for scalars, header lists, and body blocks.
+    """
     pairs: list[tuple[str, dict[str, Any]]] = []
     for label, key in fields:
         v = d.get(key)
@@ -187,9 +215,11 @@ def _exchange_summary(d: dict[str, Any], fallback: str) -> list[Part]:
 
 
 def _request_row(d: dict[str, Any], at: float) -> dict[str, Any]:
-    """A request row. Its detail cell is just the endpoint (a click target); the full
-    settings table renders in a separate full-width row below (so it gets the whole
-    width instead of the cramped detail column)."""
+    """A request row.
+
+    Its detail cell is just the endpoint (a click target); the full settings table renders in a
+    separate full-width row below (so it gets the whole width instead of the cramped detail column).
+    """
     method = str(d.get("method") or "req")
     pairs = _nx_pairs(
         d,
@@ -262,19 +292,28 @@ def _merged_rows(
     exchanges: list[dict[str, Any]],
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
-    """Step rows plus the observed exchanges (split request/response) interleaved by
-    time offset; not-run steps trail at the end in plan order."""
+    """Step rows plus the observed exchanges (split request/response) interleaved by time offset.
+
+    Not-run steps trail at the end in plan order.
+    """
     by_index = {s.index: s for s in r.steps}
     total = max(len(plan), len(r.steps))
+    # Provenance to display per step, grouped in plan order so a run of identical consecutive
+    # `from:` is labeled once (BE-0044); each step keeps its own value regardless of time sorting.
+    shown_from = grouped_provenance(
+        [(plan[i].get("from") if i < len(plan) else None) for i in range(total)]
+    )
     timed: list[tuple[float, int, dict[str, Any]]] = []
     skipped: list[dict[str, Any]] = []
     for i in range(total):
         step_def = plan[i] if i < len(plan) else None
         out = by_index.get(i)
         if out is None:
-            skipped.append(_step_skip_row(i, step_def))
+            skipped.append(_step_skip_row(i, step_def, shown_from[i]))
         else:
-            timed.append((out.started_at, 0, _step_run_row(i, step_def, out, run_dir)))
+            timed.append(
+                (out.started_at, 0, _step_run_row(i, step_def, out, run_dir, shown_from[i]))
+            )
     for d in exchanges:
         t0 = _as_float(d.get("startedAt"))
         dur_s = _as_float(d.get("durationMs")) / 1000.0
@@ -302,9 +341,11 @@ def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, st
 
 
 def _visual_row(ev: Any, ok: bool) -> dict[str, Any] | None:
-    """The baseline/actual/diff image strip for a `visual` expectation. `ev` is the
-    AssertionResult.visual evidence (run-dir-relative image paths). The Approve button
-    (functional only under `serve`) is offered whenever the comparison did not pass."""
+    """The baseline/actual/diff image strip for a `visual` expectation.
+
+    `ev` is the AssertionResult.visual evidence (run-dir-relative image paths). The Approve button
+    (functional only under `serve`) is offered whenever the comparison did not pass.
+    """
     if ev is None:
         return None
     sid = ev.actual.rsplit("/", 1)[0] if "/" in ev.actual else ""

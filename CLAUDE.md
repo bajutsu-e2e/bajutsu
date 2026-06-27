@@ -81,19 +81,30 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   [`.gitattributes`](.gitattributes)) instead of line-merging resolver output, and `rerere` so a
   once-resolved conflict replays automatically. No manual `git config` needed.
 - **Rebase, don't drift.** Before pushing, `git fetch origin && git rebase origin/main` so you
-  integrate others' merged work early and surface conflicts while they're small.
+  integrate others' merged work early and surface conflicts while they're small. `make preflight`
+  (BE-0069) does this and runs the gate, then prints the "definition of done" reminder — the
+  advisory, run-it-early version of the pre-push gate.
 - **Stay in your lane.** Touch only the files your task needs. If a change must cut across many
   modules (e.g. a driver-API change), say so up front so others can avoid that surface.
 - **Isolate concurrent sessions with worktrees.** Run each session in its own
-  `git worktree` + branch so two agents never edit the same checkout. Always `git fetch origin`
-  first so the worktree branches off the latest `origin/main`, never a stale ref. See the guide
-  for the one-liner. Generated/scratch output (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way.
+  `git worktree` + branch so two agents never edit the same checkout. `make worktree TOPIC=<topic>`
+  (BE-0069) does it — fetches `origin/main` first (so the worktree never branches off a stale ref),
+  creates `../bajutsu-<topic>` on `claude/<topic>` (override with `PREFIX=<user>`), and runs
+  `make setup` in it. Generated/scratch output (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way.
 - **Don't create PRs unless asked.** Push to your branch; let the human open the PR.
 
 ## Conventions
 
 - Comments explain **why**, not what; match the surrounding density and tone (the codebase
   favors short, purposeful comments). Don't add narration.
+- **Docstrings (BE-0065).** The public API surface (`Driver` + shared types, CLI, MCP tools,
+  scenario schema, the public functions of runner / `assertions` / `network`) uses **Google-style**
+  docstrings — a one-line summary then `Args:` / `Returns:` / `Raises:` *only where they add
+  information*; internal `_helpers` keep one prose line of *why*, and `TypedDict` / constant classes
+  keep their per-field inline comments. **Never restate types** (they live in the annotations);
+  describe meaning. English, like all code. The generated reference is `make docs` (out of the gate).
+  Migrate to the structured form module by module in small PRs — don't rewrite a module's docstrings
+  as a side effect. Full rule: [`docs/ai-development.md`](docs/ai-development.md).
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
 - **Documentation style (both languages, every doc and every update).** Write natural prose —
@@ -157,4 +168,7 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
 - **Prefix the PR title with the roadmap ID** when the PR is tied to a roadmap item: start the
   title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap
-  item keep the plain scoped title.
+  item keep the plain scoped title. **CI enforces this** ([`pr-title.yml`](.github/workflows/pr-title.yml)
+  runs `scripts/lint_pr.py --title-only` on every PR): the title must be a scoped conventional
+  subject, and when the branch name encodes a roadmap id (`claude/be-0050-<slug>`) the title must
+  carry the matching `[BE-0050]` prefix — a missing or mismatched id fails the check.

@@ -1,5 +1,8 @@
-"""The device pool: lease a device per scenario (a single-device run is a pool of one), and the
-per-device relaunch / device-control bound to a leased udid."""
+"""The device pool.
+
+Lease a device per scenario (a single-device run is a pool of one), and the per-device relaunch /
+device-control bound to a leased udid.
+"""
 
 from __future__ import annotations
 
@@ -33,19 +36,32 @@ def device_pool(
     available: Callable[[str], bool] = default_available,
     env_run: env.RunFn = env._real_run,
 ) -> tuple[LeaseFn, Callable[[], None]]:
-    """A pool of N>=1 devices for (parallel) runs.
+    """A pool of N≥1 devices for (parallel) runs.
 
     `lease(eff, scenario)` leases a free udid (blocking until one frees up), launches the app
-    pointed at that device's own network collector, and returns a Lease whose evidence sink
-    (interval recordings under `run_dir`), relaunch, and device control are all bound to the
-    leased device. The Lease's `release()` terminates the app and returns the udid to the
-    pool. `shutdown()` stops every device's collector.
+    pointed at that device's own network collector, and returns a `Lease` whose evidence sink
+    (interval recordings under `run_dir`), relaunch, and device control are all bound to the leased
+    device; `Lease.release()` terminates the app and returns the udid to the pool. A single-device
+    run is just a pool of one, so network collection / interval evidence / device control work the
+    same whether `workers` is 1 or N. The only shared state is the thread-safe free-device queue and
+    the read-only collectors map, so leases need no lock.
 
-    A single-device run is just a pool of one, so network collection / interval evidence /
-    device control work the same whether `workers` is 1 or N. The only shared state is the
-    free-device queue (thread-safe) and the read-only collectors map, so leases need no lock.
+    Args:
+        udids: The devices to pool; the web backend ignores these (one browser lane).
+        backends: Requested platforms/actuators; the first available one is selected.
+        eff: The resolved target config.
+        run_dir: Where each lease's interval evidence is written.
+        network: Observe network traffic — iOS starts one HTTP collector per device up front; web
+            hooks the page per lease.
+        log_predicate: An `os_log` predicate scoping captured device logs. None captures none.
+        log_subsystem: The app log subsystem to capture. None captures none.
+        secret_values: Raw secret values to redact from evidence.
+        available: Actuator-availability probe, injectable for tests.
+        env_run: The subprocess runner for simctl, injectable for tests.
 
-    Returns (lease, shutdown).
+    Returns:
+        A `(lease, shutdown)` pair: `lease` leases a device for one scenario; `shutdown` stops every
+        device's collector.
     """
     actuator = select_actuator(backends, available)
     is_web = actuator == "playwright"
@@ -146,9 +162,17 @@ def device_pool(
 
 
 def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run) -> DeviceControl:
-    """A DeviceControl bound to one device, backing `setLocation` / `push` /
-    `clearKeychain` / `clearClipboard` / `setClipboard` / `background` / `foreground` /
-    `overrideStatusBar` / `clearStatusBar` steps via simctl."""
+    """A `DeviceControl` bound to one device.
+
+    Backs the `setLocation` / `push` / `clearKeychain` / `clearClipboard` / `setClipboard` /
+    `background` / `foreground` / `overrideStatusBar` / `clearStatusBar` steps and the `clipboard`
+    assertion (read-back) via simctl.
+
+    Args:
+        udid: The target device.
+        bundle_id: The app the control acts on (e.g. for `push` / `foreground`).
+        env_run: The subprocess runner for simctl, injectable for tests.
+    """
     e = env.Env(udid, run=env_run)
 
     class _Control:
@@ -166,6 +190,9 @@ def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
 
         def set_clipboard(self, text: str) -> None:
             e.set_clipboard(text)
+
+        def get_clipboard(self) -> str:
+            return e.get_clipboard()
 
         def home(self) -> None:
             e.home()
@@ -195,12 +222,20 @@ def _web_relauncher(driver: base.Driver) -> RelaunchFn:
 def device_relauncher(
     udid: str, env_run: env.RunFn = env._real_run, extra_env: Mapping[str, str] | None = None
 ) -> RelaunchFactory:
-    """A relauncher for a `relaunch` step: terminate the app and launch it again (re-applying
-    the scenario's launch env/args, plus any per-relaunch overrides), then wait until ready.
-    The device is not erased/rebooted — only the app process restarts.
+    """A relauncher factory for the `relaunch` step.
 
-    `extra_env` (e.g. the device's collector url) is re-applied so it survives the relaunch;
-    an explicit per-relaunch `env` override still wins over it.
+    Restarts only the app process — terminate then launch again, re-applying the scenario's launch
+    env/args plus any per-relaunch overrides, then wait until ready. The device is not erased or
+    rebooted.
+
+    Args:
+        udid: The target device.
+        env_run: The subprocess runner for simctl, injectable for tests.
+        extra_env: Launch env re-applied across the relaunch (e.g. the device's collector url) so it
+            survives; an explicit per-relaunch `env` override still wins over it.
+
+    Returns:
+        A factory that, given a scenario + driver, yields that scenario's `relaunch` function.
     """
     e = env.Env(udid, run=env_run)
 

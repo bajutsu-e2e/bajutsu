@@ -93,6 +93,26 @@ OAuth ログイン時にユーザは自分の org に割り当てられます（
 
 CLI（コマンドラインインターフェース）のすべてのコマンドは、`--target <name>` で 1 つのターゲットを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend ios`（またはプラットフォーム/actuator のカンマ区切り）で解決順序を上書きできます（[cli](cli.md)）。
 
+### Git リポジトリからの config（BE-0063）
+
+`--config` は **Git ソース**も受け付けます。ローカルにチェックアウトせずに、テストリポジトリのスイートを実行できます — `bajutsu run --config github:acme/mobile-tests@v1.4.0:e2e/bajutsu.config.yaml --target checkout`。
+
+```
+github:<owner>/<repo>[@<ref>][:<path>]                          # GitHub ショートハンド
+git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # 一般形（ホストは将来用に予約）
+```
+
+- **現状で実装済みのホストは GitHub だけです。** 一般形 `git+https://<host>/…` は解析します（GitHub Enterprise / GitLab などへの拡張の余地を残すため）が、`github.com` 以外のホストは今のところ、黙って github.com を叩くのではなく明確なエラーで失敗します。
+- Git ソースから実行した run は、解決したコミットを `manifest.json` の provenance（`configSource: { host, owner, repo, ref, sha }`）に**記録**します。ブランチ指定の run でも、実際に実行した正確なコミットが分かり、後から再現できます（[reporting](reporting.md#manifestjson)）。
+- `<ref>` はブランチ・タグ・コミット SHA（既定はリポジトリのデフォルトブランチ）、`<path>` はリポジトリ内の config パス（既定はルートの `bajutsu.config.yaml`）です。スキームを認識できない値は、従来どおり**ローカルパス**として扱います。
+- ref を不変のコミット SHA に解決し、その部分木を content-addressed なキャッシュ（`~/.cache/bajutsu/gitsrc/<host>/<owner>/<repo>/<sha>/`）に展開して、そこから config を読みます。config の `scenarios` / `baselines` / `schemas` / `appPath` は相対パスなので、呼び出し元の作業ディレクトリではなく**チェックアウトのルート**を基準に解決します。YAML だけでなくツリー全体が付いてきます。
+- 取得したばかりのチェックアウトにはビルド済みバイナリが無く、手元で先にビルドする「最初の一回」もありません。そこで Git ソースの `run` は**アプリをオンデマンドでビルド**します。`appPath` が設定されていてバイナリが無いとき、config の `build` コマンドを**チェックアウトのルート**から実行し（`make -C demos/features sample-build` のような `build` の相対パスはそこを基準にします）、その後に実行を続けます。ビルドが失敗すれば明快に終了します。ローカルパスの `run` は従来どおりで、ビルドはせず、バイナリが無ければエラーになります。
+- **固定コミット SHA**（`@<sha>`）は再現可能で、初回取得後はオフラインで動きます。ブランチ（やタグ）は毎回解決し直します。private リポジトリは `GITHUB_TOKEN` / `GH_TOKEN`、無ければ `gh auth token` のトークンを使い、トークンはログに出しません。
+- `bajutsu run` にはゲート向けスイッチが 2 つあります。**`--config-offline`** はキャッシュを使いネットワークに触れません（オフラインでは解決できないので固定 `@<sha>` が必要）。**`--require-pinned-config`** は Git config がコミット SHA を固定していなければ失敗します。ゲートではブランチもタグも動きうるので、SHA だけを認めます。
+- serve の UI も Git ソースを bind します。起動時の `serve --config github:…`、または「Open config」ダイアログの
+  「From a Git repository」欄でチェックアウトを実体化し、そのルートから serve します（[cli → serve](cli.md#serve)）。
+- 残りの後続: `record` / `crawl` の読み取り専用入力（生成物は SHA キーのキャッシュではなくローカルの `--out` に書く）です。
+
 ## 新しいターゲットのオンボーディング
 
 新しいターゲットを追加するには、**アプリ側の準備と config への 1 エントリ追加**を行います。ツール本体への変更は不要です。
@@ -128,7 +148,7 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 実装: `bajutsu/doctor.py`。**AI 非依存で決定的**です。1 画面の `query()`（CLI は actuator で取得した現在画面）を解析してスコアを出します。
 
-> `doctor` はまず**実行可能ゲート**（`preflight.py`: actuator が必要とする CLI（`xcrun`、idb なら `idb` / `idb_companion`）と起動済みシミュレータ）を確認し、その後でスコアを出します。スコアの対象は、依然として現在表示されている画面だけです（入口や現在画面のみで、全画面は網羅しません）。
+> `doctor` はまず**実行可能ゲート**（`preflight.py`）を確認し、その後でスコアを出します。ゲートが確認する内容は、選んだバックエンドが必要とするものです。iOS（idb）バックエンドなら CLI の `xcrun` と `idb` / `idb_companion`、および起動済みシミュレータ。web（Playwright）バックエンドなら Playwright パッケージとその Chromium ブラウザ（`uv sync --extra web` と `playwright install chromium`）です。続いて現在画面を採点します。web ターゲットでは新しいブラウザをターゲットの `baseUrl` に遷移させてそのページを採点し、iOS では起動済みシミュレータの画面を採点します。スコアの対象は、依然として現在表示されている画面だけです（入口や現在画面のみで、全画面は網羅しません）。
 
 ### 指標（`Score`）
 

@@ -21,7 +21,7 @@ model calls authenticate with **AWS credentials (IAM)** instead of an `ANTHROPIC
 identical to the default `Anthropic` client, so the prompt code at the call sites does not change;
 what is needed is a small **provider seam** (one client factory + config) and **per-provider model
 IDs**. Anthropic stays the default. This is the first concrete realization of the "provider is
-pluggable" guarantee in [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
+pluggable" guarantee in [BE-0047](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
 scoped to one provider. It stays strictly on the Tier-1 side: `run` and the CI gate call no model
 and are unaffected ([DESIGN §2 / §3.1](../../../DESIGN.md)).
 
@@ -45,7 +45,7 @@ Today this is impossible without code changes. All five AI entry points lazily c
 environment, and each hardcodes a `claude-opus-4-8` model constant. There is no seam to point them
 at Bedrock and no way to supply the Bedrock-form model ID.
 
-Relationship to [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md): that
+Relationship to [BE-0047](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md): that
 item is the broad trust/positioning guarantee (provider pluggability **plus** redaction on AI
 inputs **plus** fail-closed-without-a-key). This item delivers one concrete provider and the
 minimal seam it needs; BE-0047's redaction and fail-closed guarantees remain its own scope. The
@@ -145,7 +145,7 @@ gate ([DESIGN §7.2](../../../DESIGN.md)). **TBD** whether to include it in this
 
 ## Alternatives considered
 
-- **Fold this into [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
+- **Fold this into [BE-0047](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
   instead of a new item.** Rejected: BE-0047 is the broad guarantee (provider pluggability +
   redaction + fail-closed); Bedrock is a concrete, independently shippable provider integration
   with its own AWS-specific surface (auth chain, model-ID prefixes, dependency, region). Keeping it
@@ -165,6 +165,6 @@ gate ([DESIGN §7.2](../../../DESIGN.md)). **TBD** whether to include it in this
 `bajutsu/agents.py`, `bajutsu/claude_agent.py`, `bajutsu/alerts.py`, `bajutsu/claude_triage.py`,
 `bajutsu/crawl_guide.py`, `bajutsu/crawl_tabs.py`, `bajutsu/config.py`, `bajutsu/usage.py`,
 `bajutsu/claude_code_agent.py`, [DESIGN §2 / §3.1 / §5 / §8](../../../DESIGN.md),
-[BE-0047 — AI data sovereignty](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
+[BE-0047 — AI data sovereignty](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
 [BE-0042 — Platform-aware backend registry](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md),
 Anthropic docs — "Claude on Amazon Bedrock" (`AnthropicBedrock`, `anthropic.`-prefixed model IDs).

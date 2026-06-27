@@ -255,12 +255,19 @@ class ServeState:
 
 def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
     """The scenarios dir to list/save for *target*: the ``--scenarios`` override if set, else the
-    target's configured dir.  None when neither is available."""
+    target's configured dir.  None when neither is available.
+
+    A configured dir is **relative to the config's base** — `state.cwd` — so a Git-sourced config
+    (whose `cwd` is the checkout root) lists scenarios from the fetched tree, not serve's launch
+    directory. For a local config `state.cwd` is serve's launch dir, so this is unchanged (BE-0063)."""
     if state.scenarios_dir is not None:
         return state.scenarios_dir
     if state.config is None or not target:
         return None
-    return target_scenarios_dir(state.config, target)
+    configured = target_scenarios_dir(state.config, target)
+    if configured is None or configured.is_absolute():
+        return configured
+    return state.cwd / configured
 
 
 def _spawn_env() -> dict[str, str]:

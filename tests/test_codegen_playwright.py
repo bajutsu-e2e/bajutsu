@@ -97,9 +97,9 @@ def test_id_matches_glob_maps_to_css_operators() -> None:
 
 def test_id_matches_complex_glob_is_todo() -> None:
     interior = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'a*b*c' }\n")
-    assert "// TODO: unsupported selector" in interior
+    assert "// TODO: unsupported selector ('idMatches':" in interior
     charclass = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'row[0-9]' }\n")
-    assert "// TODO: unsupported selector" in charclass
+    assert "// TODO: unsupported selector ('idMatches':" in charclass
 
 
 def test_label_matches_is_a_regexp() -> None:
@@ -114,9 +114,9 @@ def test_index_narrows_with_nth() -> None:
 
 def test_value_and_within_constraints_are_todo() -> None:
     with_value = _gen("- name: x\n  steps:\n    - tap: { id: f, value: '5' }\n")
-    assert "// TODO: unsupported selector" in with_value
+    assert "// TODO: unsupported selector ('value':" in with_value
     with_within = _gen("- name: x\n  steps:\n    - tap: { id: c, within: { id: parent } }\n")
-    assert "// TODO: unsupported selector" in with_within
+    assert "// TODO: unsupported selector ('within':" in with_within
 
 
 def test_assertions_existence_and_negate() -> None:
@@ -181,12 +181,149 @@ def test_unsupported_constructs_emit_todo() -> None:
         "- name: x\n  steps:\n"
         "    - pinch: { sel: { id: photo }, scale: 2.0 }\n"
         "    - rotate: { sel: { id: photo }, radians: 1.5 }\n"
-        "  expect:\n"
-        "    - request: { path: /api/login, count: 1 }\n"
     )
     assert "// TODO: multi-touch (pinch) is not generated for web" in code
     assert "// TODO: multi-touch (rotate) is not generated for web" in code
-    assert "// TODO: network 'request' assertion" in code
+
+
+def test_network_assertions_install_an_exchange_recorder_before_navigation() -> None:
+    # Network assertions are evaluated over the exchanges observed *so far* (like the runner's
+    # collector), so the test records finished exchanges up front rather than only waiting for
+    # future traffic. The recorder is installed before navigation, so it captures the whole flow.
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { path: /api/items }\n"
+    )
+    # 'requestfinished' is the same event the runtime web collector hooks (web_network.py), so the
+    # generated recorder records the same finished exchanges (and status=null when there's no
+    # response) rather than the earlier-firing 'response'.
+    assert "page.on('requestfinished', async req => {" in code
+    assert "status: res ? res.status() : null" in code
+    assert "exchanges.push({" in code
+    assert code.index("page.on('requestfinished'") < code.index("await page.goto(BASE_URL)")
+
+
+def test_no_recorder_without_network_constructs() -> None:
+    # A scenario that asserts nothing over the network must not carry the recorder scaffold.
+    code = _gen("- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n    - exists: { id: t }\n")
+    assert "page.on('requestfinished'" not in code
+    assert "exchanges" not in code
+
+
+def test_request_assertion_evaluates_over_recorded_exchanges() -> None:
+    # A `request` assertion is a point-in-time check over the exchanges observed so far — never a
+    # `waitForResponse`, which would miss traffic that already happened during the steps.
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { method: GET, path: /api/items, status: 200 }\n"
+    )
+    assert "expect(exchanges.some(e =>" in code
+    assert "e.method === 'GET'" in code
+    assert "new URL(e.url).pathname === '/api/items'" in code
+    assert "e.status === 200" in code
+    assert "// request GET /api/items status=200" in code
+    assert "waitForResponse" not in code and "waitForRequest" not in code
+
+
+def test_request_assertion_with_count_checks_exact_match_count() -> None:
+    # `count` is part of the `request` assertion's semantics (exact), so the generated test enforces
+    # it rather than passing on the first matching exchange.
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { path: /api/items, count: 2 }\n"
+    )
+    assert "expect(exchanges.filter(e =>" in code
+    assert ".length).toBe(2);" in code
+
+
+def test_request_assertion_url_and_url_matches() -> None:
+    exact = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { url: 'https://api.test/v1/items' }\n"
+    )
+    assert "e.url === 'https://api.test/v1/items'" in exact
+    regex = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { urlMatches: '/items/[0-9]+' }\n"
+    )
+    assert "/\\/items\\/[0-9]+/.test(e.url)" in regex
+
+
+def test_request_assertion_path_matches_is_regexp_over_pathname() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { pathMatches: '^/api/' }\n"
+    )
+    assert "/^\\/api\\//.test(new URL(e.url).pathname)" in code
+
+
+def test_request_assertion_body_matches_guards_against_missing_body() -> None:
+    # bodyMatches is a regex over the *request* body; the runner fails when the body is missing
+    # (match_request returns False for ex.request_body is None), so the predicate guards
+    # `e.body !== null` before testing — otherwise a pattern like `.*` would match a body-less
+    # request and pass incorrectly.
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - request: { path: /api/login, bodyMatches: 'token' }\n"
+    )
+    assert "e.body !== null && /token/.test(e.body)" in code
+
+
+def test_wait_until_request_polls_recorded_exchanges_to_timeout() -> None:
+    # until:{request} is satisfied if a matching exchange was already observed, otherwise it waits;
+    # expect.poll over the growing recorder captures both (an already-seen exchange passes at once).
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - wait: { until: { request: { path: /api/items, status: 200 } }, timeout: 4 }\n"
+    )
+    assert "await expect.poll(() => exchanges.filter(e =>" in code
+    assert "{ timeout: 4000 }" in code
+    assert ".toBeGreaterThanOrEqual(1)" in code
+    assert "waitForResponse" not in code and "waitForRequest" not in code
+
+
+def test_wait_until_request_with_count_is_a_lower_bound() -> None:
+    # For an `until` wait, `count` is a lower bound (the runner keeps polling until it is reached).
+    code = _gen(
+        "- name: x\n  steps:\n"
+        "    - wait: { until: { request: { path: /api/items, count: 3 } }, timeout: 2 }\n"
+    )
+    assert ".toBeGreaterThanOrEqual(3)" in code
+
+
+def test_request_sequence_checks_order_over_recorded_exchanges() -> None:
+    # The sequence check is about order over the observed exchanges — a forward scan mirroring the
+    # runtime, not sequential future-only waits (which would impose a different ordering constraint).
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - requestSequence:\n"
+        "        - { path: /api/a }\n"
+        "        - { path: /api/b, status: 200 }\n"
+    )
+    assert "// requestSequence /api/a → /api/b status=200" in code
+    assert "const seq = [" in code
+    assert "for (const e of exchanges) if (i < seq.length && seq[i](e)) i++;" in code
+    assert "expect(i).toBe(seq.length);" in code
+    assert code.index("/api/a") < code.index("/api/b")
+    assert "waitForResponse" not in code and "waitForRequest" not in code
+
+
+def test_response_schema_is_labeled_todo() -> None:
+    code = _gen(
+        "- name: x\n  steps:\n    - tap: { id: a }\n  expect:\n"
+        "    - responseSchema: { request: { path: /api/items }, schema: items.json }\n"
+    )
+    assert "// TODO: responseSchema assertion (/api/items ~ items.json)" in code
+    assert "JSON Schema" in code
+
+
+def test_unsupported_selector_todo_names_field_and_reason() -> None:
+    with_within = _gen("- name: x\n  steps:\n    - tap: { id: c, within: { id: parent } }\n")
+    assert "// TODO: unsupported selector ('within':" in with_within
+    with_value = _gen("- name: x\n  steps:\n    - tap: { id: f, value: '5' }\n")
+    assert "// TODO: unsupported selector ('value':" in with_value
+    interior_glob = _gen("- name: x\n  steps:\n    - tap: { idMatches: 'a*b*c' }\n")
+    assert "// TODO: unsupported selector ('idMatches':" in interior_glob
 
 
 def test_string_escaping() -> None:

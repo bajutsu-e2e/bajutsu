@@ -24,8 +24,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class NetworkExchange(BaseModel):
-    """One request/response the app reported. Extra keys from the SDK are ignored
-    (forward-compatible); field names accept their JSON aliases."""
+    """One request/response the app reported.
+
+    Extra keys from the SDK are ignored (forward-compatible); field names accept their JSON aliases.
+    """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -44,14 +46,17 @@ class NetworkExchange(BaseModel):
 
 @runtime_checkable
 class Collector(Protocol):
-    """The exchange source the run loop and evidence writer drive, independent of how it observed
-    the traffic. The iOS `NetworkCollector` receives POSTs over HTTP; the web `WebNetworkCollector`
-    hooks Playwright events — both satisfy this, so the pipeline stays backend-agnostic."""
+    """The exchange source the run loop and evidence writer drive.
 
-    def snapshot(self) -> list[NetworkExchange]: ...
-    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]: ...
-    def clear(self) -> None: ...
-    def stop(self) -> None: ...
+    Independent of how it observed the traffic: the iOS `NetworkCollector` receives POSTs over HTTP;
+    the web `WebNetworkCollector` hooks Playwright events — both satisfy this, so the pipeline stays
+    backend-agnostic.
+    """
+
+    def snapshot(self) -> list[NetworkExchange]: ...  # observed exchanges, in arrival order
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]: ...  # each + receive time
+    def clear(self) -> None: ...  # drop observed exchanges (scoped per scenario by the run loop)
+    def stop(self) -> None: ...  # release the observation resource (HTTP receiver / event hooks)
 
 
 class NetworkCollector:
@@ -74,6 +79,11 @@ class NetworkCollector:
     # --- data ---
 
     def add(self, data: dict[str, Any]) -> None:
+        """Validate and store one reported exchange.
+
+        A payload that fails validation is dropped rather than raised, so an SDK change can't break
+        the run mid-flight (forward-compatible, matching `NetworkExchange`'s `extra="ignore"`).
+        """
         try:
             ex = NetworkExchange.model_validate(data)
         except ValidationError:
@@ -82,6 +92,7 @@ class NetworkCollector:
             self._items.append((ex, self._now()))
 
     def snapshot(self) -> list[NetworkExchange]:
+        """The exchanges received so far, in arrival order."""
         with self._lock:
             return [ex for ex, _ in self._items]
 
@@ -91,14 +102,22 @@ class NetworkCollector:
             return list(self._items)
 
     def clear(self) -> None:
+        """Drop all stored exchanges — called between scenarios to scope them to one run."""
         with self._lock:
             self._items.clear()
 
     # --- lifecycle ---
 
     def start(self, port: int = 0) -> int:
-        """Start the receiver on 127.0.0.1:port (0 = an ephemeral port). Returns the
-        bound port."""
+        """Start the receiver on the loopback interface and begin accepting the app's POSTs.
+
+        Args:
+            port: TCP port to bind on `127.0.0.1`; `0` requests an ephemeral port.
+
+        Returns:
+            The actual bound port (resolved when `port` is `0`), to inject into the app via
+            `BAJUTSU_COLLECTOR`.
+        """
         server = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(self))
         self.port = server.server_address[1]
         self._server = server
@@ -107,6 +126,7 @@ class NetworkCollector:
         return self.port
 
     def stop(self) -> None:
+        """Stop the receiver and release its socket. Idempotent — a no-op if never started."""
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()

@@ -4,13 +4,28 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.lint import lint_file, lint_text
+from bajutsu.lint import lint_file, lint_text, provenance_coverage
+from bajutsu.scenario import load_scenario_file
 
 
 def test_valid_scenario_passes() -> None:
     text = "- name: a\n  steps:\n    - tap: { id: ok }\n"
     errors = lint_text(text)
     assert errors == []
+
+
+def test_provenance_coverage_counts_steps_with_from() -> None:
+    # Advisory only (BE-0044): how many top-level steps carry `from:`.
+    text = (
+        "- name: a\n  steps:\n    - tap: { id: one }\n      from: tap one\n    - tap: { id: two }\n"
+    )
+    scenarios = load_scenario_file(text).scenarios
+    assert provenance_coverage(scenarios) == "provenance: 1/2 step(s) carry `from:`"
+
+
+def test_provenance_coverage_is_none_without_steps() -> None:
+    # No steps to report on (e.g. an empty file) → no advisory, never an error.
+    assert provenance_coverage([]) is None
 
 
 def test_missing_name_fails() -> None:

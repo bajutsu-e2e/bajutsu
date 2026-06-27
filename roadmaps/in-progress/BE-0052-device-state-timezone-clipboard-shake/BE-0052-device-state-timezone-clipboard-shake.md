@@ -95,6 +95,15 @@ of `background`'s `simctl ui home`, adding no settle sleep. Both follow the BE-0
 end (action model → `Step` field → `DeviceControl` handler → `Env` command → `_Control`), fail
 cleanly on the fake driver and in parallel runs, and emit a labeled `// TODO` from codegen.
 
+A follow-up slice ships the **clipboard read-back** the Motivation calls for: a `clipboard`
+assertion (`expect: - clipboard: { equals | matches }`) that reads the pasteboard with `simctl
+pbpaste` (`Env.get_clipboard` over the injectable `RunFn`) and compares it, so a "copy" action can
+be verified — the read half of `setClipboard`'s seed. It is a pure assertion (`_eval_clipboard`,
+gate-tested over fabricated values) whose pasteboard read is supplied by the run loop from the
+per-device `DeviceControl`; like the device-state steps it is unavailable on the fake driver / in
+parallel runs and fails cleanly there (mirroring how the `visual` assertion degrades without a
+context), and has no XCUITest equivalent so codegen emits a labeled `// TODO`.
+
 **`setTimezone` and `shake` are deferred** because neither has a reliable `simctl` actuation: there
 is no `simctl` subcommand that changes the device's timezone (`status_bar override --time` only sets
 the *displayed* clock string, and `spawn launchctl setenv TZ` affects spawned processes, not the

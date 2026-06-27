@@ -25,15 +25,25 @@ _EXPECT_COMMENT = "// expect"
 
 
 class CodeGenerator(Protocol):
-    """The target-specific parts of a generated test file. The shared walk supplies the structure
-    (scenario loop, env merge, body indentation, the expect divider); a generator supplies only the
-    syntax of each line for its target language."""
+    """The target-specific parts of a generated test file.
+
+    The shared walk supplies the structure (scenario loop, env merge, body indentation, the
+    expect divider); a generator supplies only the syntax of each line for its target language.
+    """
 
     def file_preamble(self) -> list[str]:
         """The lines before the first scenario (header comment, imports, class/describe open)."""
 
     def scenario_open(self, name: str) -> str:
         """The line opening one scenario's test function/case (carries its own indent)."""
+
+    def setup_lines(self, scenario: Scenario) -> list[str]:
+        """Per-scenario setup emitted before the launch (un-indented); empty when none is needed.
+
+        The hook a target uses to install observers that must be in place before navigation — e.g.
+        the Playwright network-exchange recorder, so a request assertion can read traffic that
+        happened during the steps, not only future traffic.
+        """
 
     def launch_env_line(self, key: str, value: str) -> str:
         """One launch-environment assignment (un-indented; the walk adds the body indent)."""
@@ -58,7 +68,8 @@ def _scenario_lines(
     scenario: Scenario, app_launch_env: dict[str, str], gen: CodeGenerator
 ) -> list[str]:
     env = {**app_launch_env, **scenario.preconditions.launch_env}
-    body: list[str] = [gen.launch_env_line(k, v) for k, v in env.items()]
+    body: list[str] = list(gen.setup_lines(scenario))
+    body.extend(gen.launch_env_line(k, v) for k, v in env.items())
     body.append(gen.launch_line())
     body.append("")
     for step in scenario.steps:

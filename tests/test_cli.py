@@ -145,6 +145,36 @@ def test_record_no_scenarios_dir(tmp_path: Path) -> None:
     assert "no scenarios dir" in r.output
 
 
+def test_doctor_web_target_requires_base_url() -> None:
+    # Forcing the web backend on a target with no baseUrl (e.g. an iOS target) exits cleanly (2)
+    # with a fixable message, rather than constructing a browser with nowhere to navigate.
+    import typer
+
+    from bajutsu.cli.commands.doctor import _current_screen
+    from bajutsu.config import Effective
+    from bajutsu.scenario import Redact
+
+    eff = Effective(
+        target="web",
+        bundle_id="com.example.demo",  # iOS-shaped target: no baseUrl
+        deeplink_scheme=None,
+        backend=["playwright"],
+        device="",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+    with pytest.raises(typer.Exit) as exc:
+        _current_screen("playwright", "booted", eff)
+    assert exc.value.exit_code == 2
+
+
 def test_serve_refuses_non_loopback_without_token() -> None:
     # Binding a non-loopback host with no token would expose an unauthenticated server (BE-0051).
     r = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
@@ -159,6 +189,27 @@ def test_serve_emit_launchagent_prints_plist_and_exits() -> None:
     assert "<plist" in r.output
     assert "com.bajutsu.serve" in r.output
     assert "bajutsu" in r.output and "serve" in r.output
+
+
+def test_serve_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # `serve --config github:…` materializes the checkout at startup and serves from its root, so
+    # the config's relative paths resolve against the fetched tree (BE-0063).
+    import bajutsu.config_source as cs
+    import bajutsu.serve as srv
+
+    checkout = tmp_path / "co"
+    checkout.mkdir()
+    cfg = checkout / "bajutsu.config.yaml"
+    cfg.write_text("targets: { demo: { bundleId: com.example.demo } }\n", encoding="utf-8")
+    monkeypatch.setattr(
+        cs, "materialize", lambda spec, **kw: cs.Materialized(cfg, checkout, "sha1")
+    )
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
+    r = runner.invoke(app, ["serve", "--config", "github:acme/repo@main"])
+    assert r.exit_code == 0
+    assert captured["config"] == cfg  # bound to the checkout's config
+    assert captured["cwd"] == checkout  # served from the checkout root
 
 
 def test_serve_loopback_detection() -> None:

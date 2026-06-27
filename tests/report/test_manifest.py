@@ -50,6 +50,65 @@ def test_manifest_omits_idb_versions_when_not_probed() -> None:
     assert "idb" not in manifest_dict("run1", [_passing()])
 
 
+# --- run provenance & version stamping (BE-0049, the longitudinal-flakiness prerequisite) ---
+
+
+def test_run_provenance_hashes_the_scenario_deterministically() -> None:
+    from bajutsu.report.manifest import run_provenance
+
+    yaml = "- name: s\n  steps:\n    - tap: { id: a }\n"
+    p1 = run_provenance(yaml, git_revision=None)
+    p2 = run_provenance(yaml, git_revision=None)
+    assert p1["scenarioHash"] == p2["scenarioHash"]  # same content → same fingerprint
+    assert p1["scenarioHash"].startswith("sha256:")
+    # a different scenario fingerprints differently
+    assert run_provenance(yaml + "\n", git_revision=None)["scenarioHash"] != p1["scenarioHash"]
+
+
+def test_run_provenance_records_the_tool_version() -> None:
+    from bajutsu import __version__
+    from bajutsu.report.manifest import run_provenance
+
+    assert run_provenance("x", git_revision=None)["toolVersion"] == __version__
+
+
+def test_run_provenance_includes_git_revision_only_when_known() -> None:
+    from bajutsu.report.manifest import run_provenance
+
+    assert run_provenance("x", git_revision="abc123")["gitRevision"] == "abc123"
+    # an unresolvable revision (not a git checkout) omits the key rather than recording null
+    assert "gitRevision" not in run_provenance("x", git_revision=None)
+
+
+def test_manifest_records_provenance_block() -> None:
+    from bajutsu.report.manifest import run_provenance
+
+    prov = run_provenance("- name: s\n  steps: []\n", git_revision="deadbeef")
+    m = manifest_dict("run1", [_passing()], provenance=prov)
+    assert m["provenance"] == prov
+    assert m["ok"] is True  # provenance is metadata; it never changes the verdict
+
+
+def test_manifest_omits_provenance_when_absent() -> None:
+    assert "provenance" not in manifest_dict("run1", [_passing()])
+
+
+def test_run_provenance_records_the_git_config_source() -> None:
+    # A run whose config came from a Git source records which commit it executed (BE-0063), so the
+    # manifest states the exact repo@sha behind a branch-based run.
+    from bajutsu.report.manifest import run_provenance
+
+    src = {"host": "github.com", "owner": "acme", "repo": "tests", "ref": "main", "sha": "deadbeef"}
+    prov = run_provenance("x", git_revision=None, config_source=src)
+    assert prov["configSource"] == src
+
+
+def test_run_provenance_omits_config_source_for_a_local_config() -> None:
+    from bajutsu.report.manifest import run_provenance
+
+    assert "configSource" not in run_provenance("x", git_revision=None)
+
+
 def test_manifest_omits_idb_block_when_both_versions_unknown() -> None:
     # A {companion: null, client: null} block carries no provenance — omit it, don't add noise.
     m = manifest_dict("run1", [_passing()], idb_versions=IdbVersions(companion=None, client=None))

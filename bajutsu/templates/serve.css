@@ -274,6 +274,14 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .fslist li.file .nm{color:var(--acc)}
 .fslist li.muted{color:var(--mut);cursor:default}.fslist li.muted:hover{background:none}
 .fshint{color:var(--mut);font-size:.78em;margin-top:.5rem}
+/* From-Git config source (BE-0063), above the local file browser */
+.gitsrc{margin-bottom:.6rem}
+.gitsrclbl{display:block;font-weight:600;font-size:.85em;margin-bottom:.35rem}
+.gitsrcrow{display:flex;gap:.5rem}
+.gitsrcrow input{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--fg);padding:.35rem .55rem;font:inherit;border-radius:8px}
+.gitsrchint{color:var(--mut);font-size:.78em;margin-top:.35rem}
+.gitsrcerr{color:var(--bad,#e5534b);font-size:.8em;margin-top:.35rem;word-break:break-word}
+.fsor{color:var(--mut);font-size:.78em;text-transform:uppercase;letter-spacing:.04em;margin:.5rem 0 .4rem}
 /* Settings modal (AI provider + Claude API key) */
 .setsection{padding-top:.85rem;margin-top:.85rem;border-top:1px solid var(--line)}
 .setsection:first-of-type{padding-top:0;margin-top:0;border-top:0}
@@ -293,3 +301,63 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .ssobox{border-top:1px solid var(--line);margin-top:.8rem;padding-top:.7rem}
 .ssoprompt{margin:.5rem 0;padding:.5rem;background:var(--bg2);border:1px solid var(--line);border-radius:6px;font-size:.88em;line-height:1.5}
 .ssoprompt code,.ssoprompt b{color:var(--fg)}
+/* Per-view segmented switcher (BE-0072): a row of tabs that, at the phone tier, brings one stacked
+   pane to full width. Hidden on desktop — the multi-pane grids show every pane at once there. */
+.viewswitch{display:none}
+.vstab{flex:1;background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.5rem .4rem;font:inherit;font-weight:600;font-size:.85em;cursor:pointer;border-radius:8px}
+.vstab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
+
+/* ===== Small-screen reflow (BE-0072) =====================================================
+   Desktop is the untouched base above; everything below is an additive override under a phone
+   breakpoint, so the wide layout never regresses. Below ~640px every view collapses to a single
+   column: panes stack vertically, the per-view switcher fronts them so one shows full width at a
+   time, the desktop drag affordances (column gutters, tile dividers/grips) are hidden, and tap
+   targets grow to a comfortable touch size. The screenshot lightbox restacks; the embedded report
+   keeps its own responsive rules (report.css), so we leave its internals alone. */
+@media (max-width:640px){
+  body{height:auto;min-height:100vh;overflow-x:hidden;overflow-y:auto}
+  /* Header wraps onto multiple lines instead of forcing a wide single row. */
+  header{flex-wrap:wrap;gap:.5rem;padding:.55rem .7rem}
+  header .brandcol{flex:1 1 100%}
+  .toptabs{flex-wrap:wrap}
+  .toptab,.cfgbtn{padding:.5rem .9rem;min-height:44px}
+  header .cfgname{max-width:100%;flex-basis:100%}
+  .themeswitch{margin-left:0}
+
+  /* Every view becomes one column; its content flows, the switcher selects which pane shows. */
+  main{display:block;overflow:visible;padding:.7rem;height:auto;min-height:0}
+  #view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]){display:block}
+  .viewswitch{display:flex;gap:.35rem;margin-bottom:.7rem}
+
+  /* Show only the pane the switcher selected (data-pane on <main>); the rest collapse. Every
+     pane carries data-pane; the Record panes live inside .rec-stack, so it's flattened with
+     `display:contents` to let its panes flow as if direct children of <main>. */
+  .rec-stack{display:contents}
+  main>[data-pane],.rec-stack>[data-pane]{display:none;height:70vh;min-height:0;max-height:none}
+  main[data-pane="form"]>[data-pane="form"]{display:flex;height:auto}
+  main[data-pane="log"]>[data-pane="log"],main[data-pane="log"] .rec-stack>[data-pane="log"],
+  main[data-pane="yaml"] .rec-stack>[data-pane="yaml"],
+  main[data-pane="report"]>[data-pane="report"],
+  main[data-pane="graph"]>[data-pane="graph"],
+  main[data-pane="plan"]>[data-pane="plan"],
+  main[data-pane="console"]>[data-pane="console"]{display:flex}
+  .left{height:auto}.left>.card{flex:1}
+
+  /* Drag affordances make no sense under a finger: hide the gutters, tile dividers, and grips. */
+  .gutter,.tile-divider,.tile-grip{display:none}
+
+  /* Comfortable touch targets for the surviving controls. */
+  button.run,button.stop,.tab,.vstab{min-height:44px}
+  .history li,.fslist li,.sims label{min-height:44px}
+  .scnlist,.sims{max-height:40vh}
+
+  /* Crawl graph keeps the full pane and gets a usable height once it's the active pane. */
+  .crawlgraph{min-height:60vh}
+
+  /* The screenshot lightbox restacks its side-by-side image + next-steps vertically (its fluid
+     sizing is preserved — only the axis flips). */
+  .shotbox{flex-direction:column;width:96vw;max-height:92vh;overflow:auto}
+  .shotmain img{max-width:88vw;max-height:50vh}
+  .shotnav{align-self:center}
+  .shotside{overflow:visible}
+}

@@ -170,3 +170,31 @@ def test_html_tree_falls_back_to_link_without_run_dir() -> None:
     )
     out = html_report("run1", [r])
     assert 'href="00-s1/step0/elements.json"' in out
+
+
+def test_view_data_first_artifact_wins_when_kind_appears_more_than_once() -> None:
+    # When two artifacts share the same kind (e.g. screenshot.before + screenshot.after both
+    # produce kind="screenshot"), the first one in the list is selected — matching the
+    # behaviour of the previous next(...) scan.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                started_at=0.0,
+                artifacts=[
+                    Artifact("00-s1/step0/before.png", "screenshot", "driver"),
+                    Artifact("00-s1/step0/after.png", "screenshot", "driver"),
+                ],
+            ),
+        ],
+        expect_results=[],
+        artifacts=[],
+    )
+    # The first screenshot artifact is used, not the second.
+    out = html_report("run1", [r])
+    assert 'src="00-s1/step0/before.png"' in out
+    assert 'src="00-s1/step0/after.png"' not in out

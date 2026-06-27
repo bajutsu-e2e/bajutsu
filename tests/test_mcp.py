@@ -61,6 +61,30 @@ def test_doctor_tool_returns_score(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 # --- run tool ---
 
 
+def test_parse_verdict_extracts_manifest_from_final_line() -> None:
+    from bajutsu.mcp.tools import _parse_verdict
+
+    # run's stdout may carry a leading note line (e.g. the alert-guard credential note);
+    # the verdict is always the last non-empty line: "PASS|FAIL  <manifest path>".
+    stdout = "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset\nPASS  runs/20260101-000000/manifest.json\n"
+    assert _parse_verdict(stdout) == "runs/20260101-000000/manifest.json"
+
+
+def test_parse_verdict_handles_fail_and_spaced_path() -> None:
+    from bajutsu.mcp.tools import _parse_verdict
+
+    # The verdict separates the token from the path by two spaces; a path could itself
+    # contain spaces, so only the leading PASS/FAIL token is stripped.
+    assert _parse_verdict("FAIL  runs/has space/manifest.json\n") == "runs/has space/manifest.json"
+
+
+def test_parse_verdict_empty_stdout_yields_empty_path() -> None:
+    from bajutsu.mcp.tools import _parse_verdict
+
+    assert _parse_verdict("") == ""
+    assert _parse_verdict("\n\n") == ""
+
+
 def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
@@ -72,7 +96,12 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     import subprocess as sp
 
     def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
-        return sp.CompletedProcess(args=[], returncode=0, stdout="done\n", stderr="")
+        return sp.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="PASS  runs/20260101-000000/manifest.json\n",
+            stderr="",
+        )
 
     monkeypatch.setattr("bajutsu.mcp.tools.subprocess.run", fake_run)
 
@@ -86,6 +115,7 @@ def test_run_tool_returns_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     result = _run(mcp.call_tool("bajutsu_run", {"target": "demo", "scenario": str(scenario)}))
     text = result.content[0].text
     assert "PASS" in text
+    assert "runs/20260101-000000/manifest.json" in text
 
 
 def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -97,7 +127,12 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     import subprocess as sp
 
     def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
-        return sp.CompletedProcess(args=[], returncode=1, stdout="", stderr="step 0 failed\n")
+        return sp.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="FAIL  runs/20260101-000000/manifest.json\n",
+            stderr="step 0 failed\n",
+        )
 
     monkeypatch.setattr("bajutsu.mcp.tools.subprocess.run", fake_run)
 
@@ -111,6 +146,40 @@ def test_run_tool_returns_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     result = _run(mcp.call_tool("bajutsu_run", {"target": "demo"}))
     text = result.content[0].text
     assert "FAIL" in text
+    assert "runs/20260101-000000/manifest.json" in text
+    assert "step 0 failed" in text
+
+
+def test_run_tool_no_manifest_keeps_stderr_off_the_verdict_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # When `run` crashes before emitting a verdict line, there is no manifest path. stderr must not
+    # land in the manifest slot ("FAIL  <stderr>") — the first line stays the verdict, stderr goes
+    # on its own line, so the `PASS|FAIL  <manifest>` first-line shape is never faked.
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text("defaults: {}\ntargets:\n  demo:\n    bundleId: com.demo\n", encoding="utf-8")
+    (tmp_path / "runs").mkdir()
+
+    import subprocess as sp
+
+    def fake_run(*args: object, **kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="Traceback (most recent call last): boom\n"
+        )
+
+    monkeypatch.setattr("bajutsu.mcp.tools.subprocess.run", fake_run)
+
+    from fastmcp import FastMCP
+
+    from bajutsu.mcp.tools import register_tools
+
+    mcp = FastMCP("test")
+    register_tools(mcp, config)
+
+    text = _run(mcp.call_tool("bajutsu_run", {"target": "demo"})).content[0].text
+    lines = text.splitlines()
+    assert lines[0] == "FAIL"  # verdict only — stderr is not in the manifest slot
+    assert any("boom" in line for line in lines[1:])  # stderr on its own line
 
 
 # --- resources ---
@@ -157,6 +226,18 @@ def test_safe_run_path_rejects_traversal(tmp_path: Path) -> None:
     runs_dir.mkdir()
     with pytest.raises(ValueError, match="invalid run_id"):
         _safe_run_path(runs_dir, "../secret", "manifest.json")
+
+
+def test_safe_run_path_confines_to_the_run_directory(tmp_path: Path) -> None:
+    # Symmetric with _safe_artifact_path: the resolved path must stay inside this run, so a
+    # `..` in the filename can't reach a sibling run's manifest.
+    from bajutsu.mcp.resources import _safe_run_path
+
+    runs_dir = tmp_path / "runs"
+    (runs_dir / "run1").mkdir(parents=True)
+    (runs_dir / "run2").mkdir(parents=True)
+    with pytest.raises(ValueError, match="invalid run_id"):
+        _safe_run_path(runs_dir, "run1", "../run2/manifest.json")
 
 
 def test_artifact_resource_reads_screenshot(tmp_path: Path) -> None:
@@ -230,6 +311,17 @@ def test_safe_artifact_path_rejects_cross_run(tmp_path: Path) -> None:
     (runs_dir / "run2" / "secret.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="invalid artifact path"):
         _safe_artifact_path(runs_dir, "run1", "../run2/secret.json")
+
+
+def test_safe_artifact_path_rejects_run_id_traversal(tmp_path: Path) -> None:
+    # A `..` in the run_id itself must not escape runs_dir — the run_id has to name a directory
+    # under runs_dir before the artifact path is even joined.
+    from bajutsu.mcp.resources import _safe_artifact_path
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    with pytest.raises(ValueError, match="invalid run_id"):
+        _safe_artifact_path(runs_dir, "../secret", "x.json")
 
 
 def test_artifact_resource_missing_file(tmp_path: Path) -> None:

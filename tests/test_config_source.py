@@ -1,0 +1,364 @@
+"""Acquiring a config from a Git source (bajutsu/config_source.py, BE-0063).
+
+Spec parsing is pure; materialization talks to a Git host, so its tests inject a fake transport
+(the one external dependency) — no network, no `git` binary, no Simulator.
+"""
+
+from __future__ import annotations
+
+import io
+import tarfile
+from pathlib import Path
+
+import pytest
+
+from bajutsu.config_source import (
+    GitConfigSpec,
+    Materialized,
+    materialize,
+    parse_config_spec,
+    source_provenance,
+)
+
+# --- parse_config_spec ---
+
+
+def test_parse_local_path_is_not_a_git_spec() -> None:
+    assert parse_config_spec("bajutsu.config.yaml") is None
+    assert parse_config_spec("./e2e/bajutsu.config.yaml") is None
+    assert parse_config_spec("/abs/path/config.yaml") is None
+
+
+def test_parse_github_shorthand_full() -> None:
+    spec = parse_config_spec("github:acme/mobile-tests@main:e2e/bajutsu.config.yaml")
+    assert spec == GitConfigSpec(
+        host="github.com",
+        owner="acme",
+        repo="mobile-tests",
+        ref="main",
+        path="e2e/bajutsu.config.yaml",
+    )
+
+
+def test_parse_github_shorthand_defaults_ref_and_path() -> None:
+    # No @ref and no :path — the default branch and the root DEFAULT_CONFIG.
+    spec = parse_config_spec("github:acme/mobile-tests")
+    assert spec is not None
+    assert (spec.owner, spec.repo) == ("acme", "mobile-tests")
+    assert spec.ref is None and spec.path is None
+
+
+def test_parse_github_shorthand_ref_without_path() -> None:
+    spec = parse_config_spec("github:acme/mobile-tests@v1.4.0")
+    assert spec is not None and spec.ref == "v1.4.0" and spec.path is None
+
+
+def test_parse_github_shorthand_path_without_ref() -> None:
+    spec = parse_config_spec("github:acme/mobile-tests:e2e/cfg.yaml")
+    assert spec is not None and spec.ref is None and spec.path == "e2e/cfg.yaml"
+
+
+def test_parse_general_git_url() -> None:
+    spec = parse_config_spec("git+https://git.example.com/acme/repo.git@dev#sub/cfg.yaml")
+    assert spec == GitConfigSpec(
+        host="git.example.com", owner="acme", repo="repo", ref="dev", path="sub/cfg.yaml"
+    )
+
+
+# --- materialize (fake transport) ---
+
+
+def _tarball(sha: str, files: dict[str, str]) -> bytes:
+    """A GitHub-style tar.gz: every entry under a single `<owner>-<repo>-<sha7>/` wrapper dir."""
+    buf = io.BytesIO()
+    root = f"acme-mobile-tests-{sha[:7]}"
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for rel, content in files.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(f"{root}/{rel}")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+class _FakeTransport:
+    """Stands in for the GitHub API + tarball endpoint; records call counts so a cache hit is observable."""
+
+    def __init__(self, sha: str, tarball: bytes) -> None:
+        self.sha = sha
+        self.tarball = tarball
+        self.commit_calls = 0
+        self.tarball_calls = 0
+
+    def commit_sha(self, spec: GitConfigSpec, ref: str) -> str:
+        self.commit_calls += 1
+        return self.sha
+
+    def tarball_bytes(self, spec: GitConfigSpec, sha: str) -> bytes:
+        self.tarball_calls += 1
+        return self.tarball
+
+
+def test_materialize_extracts_tree_and_locates_config(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    tb = _tarball(
+        sha, {"bajutsu.config.yaml": "defaults: {}\n", "scenarios/smoke.yaml": "- name: s\n"}
+    )
+    transport = _FakeTransport(sha, tb)
+    spec = parse_config_spec("github:acme/mobile-tests@main")
+    assert spec is not None
+
+    mat = materialize(spec, transport=transport, cache_root=tmp_path)
+    assert mat.sha == sha
+    assert mat.config_path.name == "bajutsu.config.yaml"
+    assert mat.config_path.read_text(encoding="utf-8") == "defaults: {}\n"
+    # the wrapper dir was stripped: the scenarios tree sits directly under the checkout root
+    assert (mat.root / "scenarios" / "smoke.yaml").exists()
+
+
+def test_materialize_is_cached_by_sha(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    tb = _tarball(sha, {"bajutsu.config.yaml": "defaults: {}\n"})
+    transport = _FakeTransport(sha, tb)
+    spec = parse_config_spec("github:acme/mobile-tests@main")
+    assert spec is not None
+
+    materialize(spec, transport=transport, cache_root=tmp_path)
+    materialize(spec, transport=transport, cache_root=tmp_path)
+    # the immutable-SHA cache means the second call re-resolves the ref but never re-downloads
+    assert transport.tarball_calls == 1
+
+
+def test_materialize_pinned_sha_skips_the_commits_api(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A full 40-hex SHA is already the immutable id, so no commits-API call is needed; a cache hit
+    # is then fully offline (the determinism anchor the design promises).
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "defaults: {}\n"}))
+    spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
+    assert spec is not None and spec.ref == sha
+
+    materialize(spec, transport=transport, cache_root=tmp_path)
+    assert transport.commit_calls == 0  # the SHA is used directly, not resolved
+    materialize(spec, transport=transport, cache_root=tmp_path)
+    assert transport.tarball_calls == 1 and transport.commit_calls == 0  # cache hit, fully offline
+
+
+def test_materialize_offline_uses_a_cached_pinned_sha_without_network(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # --config-offline: a pinned SHA already in the cache runs with no transport calls at all.
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
+    spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
+    assert spec is not None
+    materialize(spec, transport=transport, cache_root=tmp_path)  # warm the cache (online)
+    transport.tarball_calls = transport.commit_calls = 0
+    mat = materialize(spec, transport=transport, cache_root=tmp_path, offline=True)
+    assert mat.sha == sha and transport.tarball_calls == 0 and transport.commit_calls == 0
+
+
+def test_materialize_offline_cache_miss_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
+    spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
+    assert spec is not None
+    with pytest.raises(ValueError, match="offline"):
+        materialize(spec, transport=transport, cache_root=tmp_path, offline=True)
+
+
+def test_materialize_offline_branch_ref_fails(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A branch can't be resolved to a SHA without the network, so offline refuses it before any call.
+    transport = _FakeTransport("deadbeef", b"")
+    spec = parse_config_spec("github:acme/mobile-tests@main")
+    assert spec is not None
+    with pytest.raises(ValueError, match="offline"):
+        materialize(spec, transport=transport, cache_root=tmp_path, offline=True)
+    assert transport.commit_calls == 0
+
+
+def test_materialize_rejects_non_github_host(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # The git+https form parses for any host, but only GitHub is implemented — fail clearly rather
+    # than silently hitting github.com (default transport only).
+    spec = parse_config_spec("git+https://gitlab.example.com/acme/repo.git@main")
+    assert spec is not None and spec.host == "gitlab.example.com"
+    with pytest.raises(ValueError, match="only github"):
+        materialize(spec, cache_root=tmp_path)
+
+
+def test_materialize_refuses_a_path_escaping_the_cache(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A spec component or in-repo path that climbs out of the cache (`..`) is refused before any fetch.
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, _tarball(sha, {"bajutsu.config.yaml": "x\n"}))
+    spec = GitConfigSpec("github.com", "acme", "repo", sha, "../../../../etc/passwd")
+    with pytest.raises(ValueError, match="outside the cache"):
+        materialize(spec, transport=transport, cache_root=tmp_path)
+    assert transport.tarball_calls == 0  # refused before fetching
+
+
+def test_materialize_corrupt_tarball_raises_value_error(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # A truncated/corrupt body (a rate-limit page, a proxy interstitial) is a clean ValueError, not a
+    # bare tarfile.ReadError — so callers' fetch-error handling catches it instead of a traceback.
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    transport = _FakeTransport(sha, b"not a gzip tarball at all")
+    spec = parse_config_spec(f"github:acme/mobile-tests@{sha}")
+    assert spec is not None
+    with pytest.raises(ValueError, match="could not read the repository tarball"):
+        materialize(spec, transport=transport, cache_root=tmp_path)
+
+
+def test_source_provenance_records_repo_and_resolved_sha() -> None:
+    # A branch-based run records the exact commit it executed (BE-0063), so the manifest is
+    # reproducible after the fact.
+    spec = GitConfigSpec("github.com", "acme", "tests", "main", "e2e/cfg.yaml")
+    mat = Materialized(Path("/c/e2e/cfg.yaml"), Path("/c"), "deadbeef")
+    assert source_provenance(spec, mat) == {
+        "host": "github.com",
+        "owner": "acme",
+        "repo": "tests",
+        "ref": "main",
+        "sha": "deadbeef",
+    }
+    # no @ref ⇒ the default branch is labeled rather than left blank
+    assert source_provenance(GitConfigSpec("github.com", "a", "b", None, None), mat)["ref"] == (
+        "(default)"
+    )
+
+
+# --- _load_effective wiring: a Git-sourced config rebases its relative paths against the checkout ---
+
+
+def test_load_effective_rebases_paths_against_git_checkout(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.cli import _shared
+
+    # A materialized checkout: the config plus its relative scenarios/appPath, as they'd sit in a repo.
+    root = tmp_path / "co"
+    (root / "e2e" / "scenarios").mkdir(parents=True)
+    (root / "e2e" / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        "    scenarios: e2e/scenarios\n    appPath: build/Demo.app\n",
+        encoding="utf-8",
+    )
+
+    def fake_materialize(spec, *, offline=False):  # type: ignore[no-untyped-def]
+        return Materialized(root / "e2e" / "bajutsu.config.yaml", root, "deadbeef")
+
+    monkeypatch.setattr(_shared, "materialize", fake_materialize)
+
+    eff = _shared._load_effective("github:acme/mobile-tests@main:e2e/bajutsu.config.yaml", "demo")
+    # relative config entries are now absolute under the checkout root, not the caller's cwd
+    assert eff.scenarios == str(root / "e2e/scenarios")
+    assert eff.app_path == str(root / "build/Demo.app")
+
+
+def test_load_effective_git_wrong_path_exits_cleanly(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A materialized tree that doesn't hold the requested config path gets the same friendly exit-2
+    # as a missing local config — not a raw FileNotFoundError.
+    import typer
+
+    from bajutsu.cli import _shared
+
+    root = tmp_path / "co"
+    root.mkdir()  # the checkout exists, but bajutsu.config.yaml does not
+
+    monkeypatch.setattr(
+        _shared,
+        "materialize",
+        lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, "sha"),
+    )
+    with pytest.raises(typer.Exit) as exc:
+        _shared._load_effective("github:acme/mobile-tests@main", "demo")
+    assert exc.value.exit_code == 2
+
+
+def test_require_pinned_rejects_a_non_sha_ref(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # --require-pinned-config: a gate must run an immutable commit. A branch/tag/default ref is
+    # refused before any fetch; only a full commit SHA is accepted.
+    import typer
+
+    from bajutsu.cli import _shared
+
+    called = False
+
+    def must_not_materialize(spec, *, offline=False):  # type: ignore[no-untyped-def]
+        nonlocal called
+        called = True
+        raise AssertionError("materialize must not run when the ref is rejected")
+
+    monkeypatch.setattr(_shared, "materialize", must_not_materialize)
+    with pytest.raises(typer.Exit) as exc:
+        _shared._load_effective_with_source("github:acme/repo@main", "demo", require_pinned=True)
+    assert exc.value.exit_code == 2 and not called
+
+
+def test_require_pinned_allows_a_full_sha(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bajutsu.cli import _shared
+
+    sha = "9f3c1ab2c3d4e5f60718293a4b5c6d7e8f901234"
+    root = tmp_path / "co"
+    root.mkdir()
+    (root / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        _shared,
+        "materialize",
+        lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, sha),
+    )
+    _eff, source, checkout_root = _shared._load_effective_with_source(
+        f"github:acme/repo@{sha}", "demo", require_pinned=True
+    )
+    assert source is not None and source["sha"] == sha  # accepted; the pinned SHA is recorded
+    assert checkout_root == root  # the materialized checkout root is returned for the build step
+
+
+def test_load_effective_git_config_escaping_path_exits_cleanly(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A Git config whose scenarios path climbs out of the checkout is refused with a clean exit-2,
+    # not a traceback (confinement, BE-0051).
+    import typer
+
+    from bajutsu.cli import _shared
+
+    root = tmp_path / "co"
+    root.mkdir()
+    (root / "bajutsu.config.yaml").write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n    scenarios: ../../../etc\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        _shared,
+        "materialize",
+        lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, "sha"),
+    )
+    with pytest.raises(typer.Exit) as exc:
+        _shared._load_effective("github:acme/repo@main", "demo")
+    assert exc.value.exit_code == 2
+
+
+def test_run_builds_a_git_sourced_app_from_the_checkout_root(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A Git-sourced run builds the missing binary on demand, with the checkout root as the working
+    # directory — the config's `build` and relative `appPath` are rooted there (BE-0063).
+    from typer.testing import CliRunner
+
+    from bajutsu.cli import _shared, app
+
+    root = tmp_path / "co"
+    (root / "e2e").mkdir(parents=True)
+    (root / "bajutsu.config.yaml").write_text(
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    appPath: build/Demo.app\n"  # relative → rebased under the checkout root
+        "    build: mkdir -p build/Demo.app\n"  # rooted at the checkout, not the test's cwd
+        "    scenarios: e2e\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        _shared,
+        "materialize",
+        lambda spec, *, offline=False: Materialized(root / "bajutsu.config.yaml", root, "sha"),
+    )
+    # `--backend nope` makes the run exit cleanly after the build (the sandbox has no Simulator),
+    # so the test asserts only that the build ran — producing the binary under the checkout root.
+    r = CliRunner().invoke(
+        app, ["run", "--target", "demo", "--backend", "nope", "--config", "github:acme/repo@main"]
+    )
+    assert (root / "build" / "Demo.app").exists()  # built under the checkout, not the process cwd
+    assert r.exit_code == 2  # then the unavailable backend exits cleanly

@@ -188,6 +188,7 @@ details.pre[open]>summary::before{transform:rotate(90deg)}
 .tk.re{color:#7a3aa8;font-style:italic}
 .tk.kw{color:var(--mut)}
 .stepname{font-size:.74rem;color:var(--mut);font-style:italic}
+.stepfrom{font-size:.72rem;color:var(--mut);font-style:italic;margin-top:.1rem}
 .cap{font-size:.68rem;color:#2c5fb3;background:#eaf0fb;border:1px solid #cfe0f8;border-radius:4px;
  padding:.02rem .3rem}
 /* The Result view is a flex column bounded to the recording's height (max-height set in

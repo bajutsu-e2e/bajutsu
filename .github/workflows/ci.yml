@@ -1,5 +1,8 @@
 # Repo CI: lint + typecheck + test on Linux. The logic layer needs no Simulator, so this
-# is fast and cheap; on-device E2E (macOS runners) is a separate, heavier workflow.
+# is fast and cheap; it runs on every PR (the `check` job is the required gate). The heavier,
+# narrowly-relevant jobs live in their own path-filtered workflows so they run only when warranted:
+# on-device E2E (macOS) in e2e.yml, the real-browser web E2E in web-e2e.yml, and the dependency
+# advisory audit in dependency-audit.yml.
 name: CI
 
 on:
@@ -48,6 +51,12 @@ jobs:
       - name: Lint (ruff)
         run: make lint
 
+      - name: Lint docstrings (ruff D, migrated surface)
+        run: make lint-docstrings
+
+      - name: Lint roadmap (cross-links + author handle)
+        run: make lint-roadmap
+
       - name: Lint shell scripts (shellcheck)
         run: make lint-sh
 
@@ -58,6 +67,19 @@ jobs:
 
       - name: Lint workflows (actionlint)
         run: ./actionlint -color
+
+      # Persist mypy's incremental cache across runs so typecheck is a warm re-check (a few seconds)
+      # instead of a full cold scan (~18s here). mypy invalidates per-file by content, so a restored
+      # cache is always safe; the per-commit key with prefix restore-keys keeps it fresh (each run
+      # saves a new entry, restoring from the most recent matching one).
+      - name: Cache mypy
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8  # v6.0.0
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ runner.os }}-${{ hashFiles('uv.lock', 'pyproject.toml') }}-
+            mypy-${{ runner.os }}-
 
       - name: Typecheck (mypy)
         run: make typecheck
@@ -71,47 +93,3 @@ jobs:
       - name: Coverage summary
         if: always()
         run: uv run --no-sync python scripts/coverage_summary.py --floor 87 coverage.json
-
-  # Audit the locked dependency graph (runtime + all shipped extras) against the advisory DB.
-  # uv.lock is the source of truth: export the pinned versions and audit them directly with
-  # --no-deps (no resolution). Hashes are dropped because pip-audit's hash-verified resolve picks
-  # platform-specific binary wheels (e.g. psycopg-binary) whose exact hash isn't in uv's pinned
-  # set on the runner's Python. A known CVE fails the job; accept a reviewed advisory with
-  # `--ignore-vuln <GHSA-or-CVE>` (with a comment) on the pip-audit call. pip-audit is version-
-  # pinned (Dependabot doesn't track uvx pins) — bump it here manually.
-  audit:
-    name: dependency audit (pip-audit)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Audit dependencies (pip-audit)
-        run: |
-          uv export --frozen --all-extras --no-dev --no-emit-project --no-hashes --format requirements-txt -o pip-audit-requirements.txt
-          uvx pip-audit@2.10.1 --no-deps -r pip-audit-requirements.txt
-
-  # Real-browser E2E for the web (Playwright) backend (BE-0041). Unlike the iOS E2E it runs on
-  # Linux — a headless Chromium, no Mac and no Simulator — so it lives here rather than in e2e.yml.
-  # The unit gate above stays browser-free (the driver is covered via a fake page); this job
-  # installs the `web` extra + Chromium and drives the demo web app end to end.
-  web-e2e:
-    name: web e2e (playwright)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Install the web backend (Playwright + Chromium)
-        run: uv sync --extra web && uv run --no-sync playwright install --with-deps chromium
-
-      - name: Web smoke (demos/web)
-        run: make -C demos/web e2e

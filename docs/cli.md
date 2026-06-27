@@ -84,7 +84,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 ## `audit`
 
 A **static determinism score** for a scenario — the device-free cousin of `doctor`'s convention
-score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
+score (AI-independent; [selectors](selectors.md); [BE-0049](../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md)).
 It reads a scenario file (expanding components / data, like `trace --explain`) and reports, per
 scenario, how reproducible it is — without running it.
 
@@ -103,6 +103,25 @@ bajutsu audit <scenario.yaml> [--json]
   a successful audit **exits 0 even with findings** (only a missing / unreadable scenario file
   exits 2). A finding is something to harden, not a verdict — the opposite of retry-to-pass, which
   hides flakiness.
+
+Two further modes prove determinism by *observation* rather than static grading:
+
+```bash
+bajutsu audit <scenario.yaml> --repeat K --target <name>   # run K times, diff the outcomes
+bajutsu audit --history <runs-dir>                         # mine past runs for flakiness
+```
+
+- `--repeat K` runs the scenario `K` times under identical preconditions and reports anything whose
+  outcome varied (`deterministic` vs `flaky`) — a divergence is a finding to fix, never a retry that
+  turns red into green.
+- `--history <runs-dir>` is the **longitudinal view**: it groups each scenario's accumulated runs by
+  the run's scenario **fingerprint** (the `provenance.scenarioHash` each `manifest.json` carries) and
+  classifies each scenario (`flaky` / `deterministic` / `unproven`). A verdict that flipped while the
+  fingerprint stayed constant is *true* flakiness — not an edited scenario, since editing changes the
+  hash and starts a fresh group. Keying by scenario name as well as fingerprint pins *which* scenario
+  in a suite flaked. Runs with no fingerprint (pre-provenance) can't be grouped and are reported as
+  skipped. Like the other modes it is read-only and **exits 0 even when it finds flakiness** (only a
+  missing runs dir exits 2).
 
 ## `coverage`
 
@@ -123,11 +142,20 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json]
   declared). As text, or `--json` for tooling.
 - A referenced id is any `id` / `idMatches` a scenario addresses — across steps, nested control flow,
   `within` scopes, and assertions.
-- **`--runs <dir>`** adds an **endpoint coverage** dimension: it reads every `network.json` under the
-  runs dir (the union of observed exchanges) and measures how many **observed endpoints** (`METHOD path`)
-  the suite's network assertions (`request` / `event` / `requestSequence`) cover. It reports the
-  fraction asserted, the **unasserted** observed endpoints (traffic the suite never asserts on), and
-  matchers **declared but not observed** in any run. Omit `--runs` for the static id-namespace map only.
+- **`--runs <dir>`** folds in two **run-evidence** dimensions:
+  - **Endpoint coverage**: it reads every `network.json` under the runs dir (the union of observed
+    exchanges) and measures how many **observed endpoints** (`METHOD path`) the suite's network
+    assertions (`request` / `event` / `requestSequence`) cover. It reports the fraction asserted,
+    the **unasserted** observed endpoints (traffic the suite never asserts on), and matchers
+    **declared but not observed** in any run.
+  - **Observed-id coverage**: it reads every per-step `elements.json` under the runs dir and collects
+    the stable ids the runs actually **rendered** (each element's `identifier`; null and empty ids
+    are dropped),
+    grouping them by the declared namespaces — the run-evidence counterpart to the static id map. It
+    reports the per-namespace observed ids, the namespaces **observed in no run**, and observed ids
+    whose namespace was never declared (**off-namespace**).
+
+  Omit `--runs` for the static id-namespace map only.
 - **Advisory and read-only**: it never runs a scenario, never edits anything, and **never gates CI** —
   it **exits 0 even with gaps** (only a missing config / scenarios dir or an unreadable scenario exits
   2). A gap is a namespace to cover, not a verdict.
@@ -156,7 +184,12 @@ bajutsu export <run-id | run-dir> [-o out.zip] [--force]
 
 Inspects a finished run as a **text timeline**: per scenario, steps and observed network
 exchanges interleaved chronologically, followed by expectations, app-trace intervals, and an evidence
-summary. Read-only (reads the saved `manifest.json` / `network.json` / `appTrace.json`).
+summary. Read-only (reads the saved `manifest.json` / `network.json` / `appTrace.json`, and
+`scenario.yaml` for provenance).
+
+- Each step shows the natural-language phrase it was recorded from — its [`from:`](scenarios.md#from-provenance)
+  provenance (BE-0044) — inline as `← "<phrase>"`; a run of steps sharing one phrase is labeled once.
+  A hand-authored scenario or an older run without provenance simply shows none.
 
 ```bash
 bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
@@ -190,8 +223,9 @@ bajutsu report --all [--runs runs]     # re-render every run dir (with a manifes
   the executed `scenario.yaml`; the renderer reads only the run dir. An **older** run renders
   without error, with any newer-only section shown as "not captured" rather than invented.
 - It re-presents recorded outcomes — it never re-evaluates an assertion or alters a verdict — so it
-  sits inside the determinism contract. `serve` rendering each report on view from the same model
-  is a planned follow-on.
+  sits inside the determinism contract. `serve` uses the **same renderer on view**: it renders
+  `report.html` fresh from each run's stored model on every request (falling back to the baked file
+  if the model can't be loaded), so upgrading `serve` refreshes every report with no re-bake.
 - **Exits 2** if the run (or, with `--all`, the runs root) has no readable `manifest.json`.
 
 ## `triage`
@@ -249,6 +283,11 @@ bajutsu record --target <name> --goal "<natural-language goal>" [--out <file.yam
 
 - Internally `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios`.
 - Output: `recorded <N> steps -> <path>`. **Needs `ANTHROPIC_API_KEY`** (`ClaudeAgent`).
+- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)):
+  `record` reads the config from the fetched checkout, but the authored scenario goes **local** — with
+  no `--out` it auto-names under the **current directory** (not the checkout's `scenarios` dir, which
+  is the read-only SHA-keyed cache), and an `--out` inside the checkout is refused. Review the file
+  and commit it to the repository through normal git.
 - An `AI usage:` line with the tokens the authoring (and any alert-guard) AI consumed follows on
   stderr. The `claude-code` agent bills no API tokens here, so it shows nothing.
 
@@ -281,6 +320,10 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--out` | `runs/<timestamp>` | run dir the screen map is written into |
 | `--config` | `bajutsu.config.yaml` | config |
 
+- **A Git `--config` is read-only input** ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)):
+  `crawl` reads the config from the fetched checkout, but the screen map / screenshots go to the local
+  `--out` run dir (default `runs/<timestamp>`), never into the read-only SHA-keyed cache; an `--out`
+  inside the checkout is refused.
 - Traversal is by **deterministic replay**, not in-place backtracking: to revisit a known screen
   the crawl relaunches the app to a clean start and replays the shortest recorded path to it,
   then takes the next untried action — the same way `run` reaches any state.
@@ -456,6 +499,16 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `--config` is **optional**. Omit it and open a `config.yml` from the UI's file browser (an
   "Open config" button); the browser is confined to `--root` (default: the current directory).
   `--scenarios <dir>` is available as an override of the selected app's configured dir.
+- **From a Git repository ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)).**
+  `--config` also accepts a Git source (`github:owner/repo@ref:path`), and the "Open config" dialog
+  has a **From a Git repository** field for the same spec: serve materializes the repo subtree at the
+  ref into its cache, binds that config, and serves from the checkout root — so the config's relative
+  `scenarios` / `appPath` / `build` resolve against the fetched tree. This is the self-hosted payoff
+  ([BE-0016](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
+  point serve at the team's test repository instead of hand-syncing files, and switch branches in the
+  UI rather than redeploying. The file browser stays confined to `--root`; the checkout is a managed
+  content-addressed cache, and a Git-sourced run confines the config's path fields to the checkout
+  root ([BE-0063](../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source.md)).
 - `--baselines` sets the visual-regression baselines dir (default: a `baselines/` folder under
   the app's scenarios dir); runs launched from the UI use it, and the report's **Approve** button
   promotes the captured screenshot into it via `POST /api/approve`.

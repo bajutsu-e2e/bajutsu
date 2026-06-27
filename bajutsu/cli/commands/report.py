@@ -23,8 +23,11 @@ def report(
     ),
     runs: str = typer.Option("runs", help="runs root (used for a bare run id and for --all)"),
 ) -> None:
-    """Re-render a finished run's report.html + junit.xml from its stored data, with the current
-    template. Reads only the run dir — no device, no AI, and the verdict is never recomputed."""
+    """Re-render a finished run's report.html + junit.xml from its stored data.
+
+    Uses the current template and reads only the run dir — no device, no AI, and the verdict is
+    never recomputed.
+    """
     if all_runs == bool(run):  # exactly one of <run> / --all
         typer.echo("give a run (id or path) or --all, not both")
         raise typer.Exit(2)
@@ -55,4 +58,5 @@ def report(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(report)

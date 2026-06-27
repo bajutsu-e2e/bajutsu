@@ -27,7 +27,8 @@ from bajutsu.anthropic_client import (
     PROVIDERS,
     provider,
 )
-from bajutsu.config import load_config, targets_for_org
+from bajutsu.config import load_config, resolve, targets_for_org
+from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs
 
@@ -58,6 +59,7 @@ __all__ = [
     "role_allows",
     "role_for",
 ]
+from bajutsu.serve.artifacts import Artifact, ArtifactStore
 from bajutsu.serve.helpers import (
     _int,
     crawl_command,
@@ -76,6 +78,25 @@ from bajutsu.serve.helpers import (
 )
 from bajutsu.serve.jobs import Job, ServeState
 from bajutsu.serve.sso import AWS_PROFILE_ENV, SsoError
+
+_REPORT_SUFFIX = "/report.html"
+
+
+def run_file(store: ArtifactStore, rel: str) -> Artifact | None:
+    """Serve a run-relative artifact, rendering `report.html` **on view** (BE-0068).
+
+    For `<run_id>/report.html` the report is rendered fresh from the stored model with the current
+    template (`store.render_report`), falling back to the baked file when the model can't be loaded;
+    any other artifact (screenshots, videos, manifest.json, …) is served byte-for-byte.
+    """
+    if rel.endswith(_REPORT_SUFFIX):
+        # `render_report` validates + confines the run id itself (returning None for a non-run or a
+        # nested path), so containment stays in one place and we fall back to the baked file via get.
+        rendered = store.render_report(rel[: -len(_REPORT_SUFFIX)])
+        if rendered is not None:
+            return rendered
+    return store.get(rel)
+
 
 # The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
 _API_KEY_VAR = "ANTHROPIC_API_KEY"
@@ -319,6 +340,51 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         return {"error": f"invalid config: {e}"}, 400
     state.config = target
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
+
+
+def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
+    """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
+
+    *spec_str* is a `github:owner/repo@ref:path` (or `git+https://…`) string. We materialize the
+    repo subtree at the ref into the content-addressed cache, validate the config loads, then point
+    `state.config` at the checkout's config **and** `state.cwd` at the checkout root — so the config's
+    relative `scenarios` / `appPath` / `build` resolve against the fetched tree, not serve's launch
+    directory. This does not widen the file browser, which stays confined to `--root`; the checkout is
+    a Bajutsu-managed cache (`materialize` refuses tar path-traversal on extraction), and each target's
+    path fields are **confined to the checkout root** at bind (`Effective.rebased`) so a fetched config
+    can't point serve's scenario/build logic at host paths outside the tree (BE-0063)."""
+    if not spec_str:
+        return {"error": "a Git config spec is required"}, 400
+    spec = parse_config_spec(spec_str)
+    if spec is None:
+        return {
+            "error": f"not a Git config spec: {spec_str!r} (use github:owner/repo@ref:path)"
+        }, 400
+    try:
+        mat = materialize(spec)
+    except (OSError, ValueError) as e:
+        return {"error": f"could not fetch the Git config: {e}"}, 400
+    if not mat.config_path.is_file():
+        return {
+            "error": f"config not found in the repository at {spec.path or 'bajutsu.config.yaml'}"
+        }, 404
+    try:
+        cfg = load_config(mat.config_path.read_text(encoding="utf-8"))
+        # Confine every target's path fields to the checkout: a fetched config that points
+        # `scenarios`/`appPath`/… at an absolute or `../` path outside the tree is rejected here, so
+        # serve's (unconfined) scenario/build resolution only ever sees in-checkout paths (BE-0051).
+        for name in cfg.targets:
+            resolve(cfg, name).rebased(mat.root)
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        return {"error": f"invalid config: {e}"}, 400
+    state.config = mat.config_path
+    state.cwd = mat.root  # the checkout root: the config's relative paths resolve from here
+    return {
+        "ok": True,
+        "config": str(mat.config_path),
+        "targets": list_targets(mat.config_path),
+        "source": source_provenance(spec, mat),
+    }, 200
 
 
 def set_api_key(state: ServeState, value: str) -> tuple[Any, int]:

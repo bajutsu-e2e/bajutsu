@@ -44,6 +44,7 @@ summary header and each scenario card) and in the `bajutsu serve` UI.
 |---|---|---|---|
 | `name` | str | required | Scenario name (used for the report / JUnit testcase / codegen method name) |
 | `description` | str | none | Optional human description; shown on the scenario's report card and in the serve UI |
+| `from` | str | none | **Provenance** — the natural-language goal `record` authored this scenario from ([provenance](#from-provenance)). Authoring metadata only; `run` ignores it |
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
@@ -162,6 +163,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
 | `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
+| `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
@@ -175,6 +177,7 @@ Modifiers:
 
 - `capture: [<token>...]` — evidence for this step only ([evidence](evidence.md#b-inline-evidence)).
 - `name: <str>` — the step id (the evidence output directory name · report label). Defaults to `step<i>`.
+- `from: <str>` — **provenance** ([below](#from-provenance)): the phrase this step was recorded from. Authoring metadata; `run` ignores it.
 
 ### `tap`
 
@@ -269,6 +272,19 @@ its `payload` as the APNs JSON to the app under test.
 `status` mismatch fails the step, and `saveBody` stores the response body text as `${vars.<name>}` for
 later steps. Touching no device, it is the one device-independent action here.
 
+### `totp` (two-factor one-time password)
+
+```yaml
+- totp: { secret: "${secrets.TOTP_SEED}", into: { var: code } }   # vars.code ← current 6-digit OTP
+- type: { text: "${vars.code}", into: { id: auth.code } }
+```
+
+`totp` computes an [RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238) time-based one-time
+password locally — from the shared `secret` (base32; keep it in `${secrets.*}`, not in the YAML) and
+the current time — and stores the current code in `${vars.<var>}` for a later `type` / `assert`.
+This automates a 2FA sign-in without a scripting escape hatch or an LLM: the value is a deterministic
+function of the secret and the clock ([BE-0046](../roadmaps/in-progress/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+
 ### Device & system control (iOS)
 
 ```yaml
@@ -307,6 +323,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 | `requestSequence` | matchers were observed in this order (needs `--network`) | `requestSequence: [ { urlMatches: "/auth/refresh" }, { urlMatches: "/api/account" } ]` |
 | `responseSchema` | a captured response body conforms to a JSON Schema (needs `--network`) | `responseSchema: { request: { urlMatches: "/api/items" }, schema: items.json }` |
 | `visual` | the screen matches a baseline image (visual regression) | `visual: { baseline: home.png, threshold: 0.02 }` |
+| `clipboard` | the device pasteboard matches (read back via `simctl pbpaste`) | `clipboard: { equals: "COUPON123" }` / `clipboard: { matches: "\\d{6}" }` |
 
 - `exists` writes its selector **inline** (`{ id: ... }` directly). `negate` is optional.
 - `value` / `label` take `sel:` + **exactly one** of `equals` / `contains` / `matches`.
@@ -317,6 +334,7 @@ are in [selectors](selectors.md#assertion-evaluation).
 - `requestSequence` checks a list of request matchers were **observed in order** ([details below](#requestsequence-ordered-requests)); needs the `--network` run flag.
 - `responseSchema` validates a captured **response body against a JSON Schema** ([details below](#responseschema-json-schema-of-a-response)); needs the `--network` run flag.
 - `visual` pixel-compares a screenshot against a baseline image ([details below](#visual-visual-regression)).
+- `clipboard` reads the device pasteboard (`simctl pbpaste`) and checks **exactly one** of `equals` / `matches` (regex) — the read-back half of `setClipboard`, for verifying a "copy" action. It needs the per-device control channel, so it is unavailable on the fake driver / in parallel runs and fails cleanly there ([BE-0052](../roadmaps/in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 > **Locale caveat**: string comparisons on `label`/`value` and assertions that look at visible
 > text break under translation. Write these against config's fixed locale, and write the selector
@@ -608,6 +626,41 @@ acquisition timing per kind, and which are captured, are in
 PyYAML (YAML 1.1) resolves `on`/`off`/`yes`/`no` to booleans. To prevent the `capturePolicy`
 trigger key `on:` from becoming `True`, Bajutsu's YAML loader (`_yaml.py`) treats **only
 `true`/`false` as booleans** and keeps `on`/`off`/`yes`/`no` as strings.
+
+## `from` (provenance)
+
+`from:` records **which natural-language phrase a construct was recorded from** (BE-0044). It is an
+optional string attached at four levels — the scenario (the original goal), each step, each `expect`
+assertion, and each `capturePolicy` rule — so a reviewer can see *why* each part exists and judge
+whether `record` normalized the intent faithfully.
+
+```yaml
+- name: open settings and reindex
+  from: "Open settings, reindex, and confirm the normalization setting is gone"   # the original goal
+  steps:
+    - tap: { id: settings.open }
+      from: "Open settings"
+  expect:
+    - exists: { label: "Normalization setting changed", negate: true }
+      from: "The normalization setting is gone"
+  capturePolicy:
+    - on: { action: tap, idMatches: "*.submit" }
+      capture: [screenshot.after, network]
+      from: "Capture a screenshot and network log on every submit"
+```
+
+- **`record` (Tier 1, AI) is the only writer.** It fills `from:` while normalizing the goal into the
+  structured scenario; a hand-authored scenario simply omits it (and a dumped scenario stays clean —
+  `from:` is pruned when unset).
+- **`run` (Tier 2) ignores it entirely** — provenance is authoring metadata, never read by the
+  orchestrator, so it adds no AI to the gate and cannot affect pass/fail.
+- **Grouping is emergent:** when one utterance produces several steps, they carry the **same** `from:`
+  string; there is no span syntax. `lint` reports an advisory provenance-coverage figure (how many
+  steps carry `from:`); it never fails a run.
+- **Shown in `trace` and the report.** [`bajutsu trace`](cli.md#trace) prints each step's phrase
+  inline (`← "<phrase>"`) and `report.html` shows it under the step, collapsing a run of the same
+  phrase into one label — turning the timeline into a natural-language ↔ action map.
+- The phrase is kept **verbatim** in whatever language the author wrote (not translated).
 
 ## Round-trip (load ⇄ dump)
 

@@ -85,7 +85,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `config.py` | Team defaults × per-target resolution (`Effective`) | [configuration](configuration.md) |
 | `backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
 | `env.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
-| `preflight.py` | Runnability gate (required CLIs + a booted Simulator) | [configuration](configuration.md) |
+| `preflight.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser) | [configuration](configuration.md) |
 | `runner/` | config + scenarios → report; device pool + launch sequence (package: `pipeline` / `pool` / `launch`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
 | `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
 | `agent.py` · `agents.py` | Authoring Agent abstraction (`Observation`/`Proposal`/`Agent`) + backend selection (`--agent api` / `claude-code`) | [recording](recording.md) |
@@ -185,8 +185,9 @@ injected runners (`RunFn` · `Spawn` · `Clock`). Real-device E2E against the sa
   on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
 - Reporting (`manifest.json` / `junit.xml` / `report.html`)
 - Config resolution (defaults × targets, redact merge) and actuator selection
-- The `simctl` command layer · the idb output parser · the `doctor` score + runnability gate
-  (`preflight.py`: required CLIs + a booted Simulator)
+- The `simctl` command layer · the idb output parser · the `doctor` score + per-backend runnability
+  gate (`preflight.py`: iOS needs the required CLIs + a booted Simulator; web needs Playwright + its
+  Chromium browser)
 - The `trace` command (`trace.py`): a text timeline over a saved run (steps + network + appTrace)
 - M4 self-healing triage (`triage.py` + `claude_triage.py`): assemble a failed run's context +
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure

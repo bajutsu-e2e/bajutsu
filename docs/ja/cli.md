@@ -76,7 +76,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 
 ## `audit`
 
-シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)・[BE-0049](../../roadmaps/in-progress/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
+シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)・[BE-0049](../../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
 
 ```bash
 bajutsu audit <scenario.yaml> [--json]
@@ -85,6 +85,16 @@ bajutsu audit <scenario.yaml> [--json]
 - 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）を指摘します。
 - シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。成功した監査は **finding があっても終了 0**（シナリオファイルが無い/読めないときだけ終了 2）です。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
+
+静的な採点に加えて、**観測**によって決定性を示すモードが2つあります。
+
+```bash
+bajutsu audit <scenario.yaml> --repeat K --target <name>   # K 回実行して結果を差分する
+bajutsu audit --history <runs-dir>                         # 過去の run からフレーキネスを掘り起こす
+```
+
+- `--repeat K` は同一の前提条件でシナリオを `K` 回実行し、結果が変動したものを報告します（`deterministic` か `flaky` か）。変動は直すべき finding であって、赤を緑に変える retry ではありません。
+- `--history <runs-dir>` は**経時ビュー**です。各シナリオの蓄積した run を、その run のシナリオ**フィンガープリント**（各 `manifest.json` が持つ `provenance.scenarioHash`）でグルーピングし、シナリオごとに分類します（`flaky` / `deterministic` / `unproven`）。フィンガープリントが一定のまま verdict がブレていれば、それは*真の*フレーキネスです。シナリオを編集するとハッシュが変わって新しいグループになるため、編集とは区別されます。フィンガープリントに加えてシナリオ名でもキーを引くので、スイートの*どの*シナリオがブレたのかまで特定できます。フィンガープリントを持たない run（provenance 導入前）はグルーピングできず、skip として報告します。他のモードと同様 read-only で、**フレーキネスを検出しても終了 0**（runs ディレクトリが無いときだけ終了 2）です。
 
 ## `coverage`
 
@@ -96,7 +106,11 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--json]
 
 - **カバレッジの割合**（スイートが参照する宣言済み namespace 数 / 宣言済み namespace 数）、各 namespace に触れる **namespace ごとの id**、**gap 一覧**（どのシナリオも参照しない宣言済み namespace。すなわち未テストの範囲）、**off-namespace な id**（参照されているが宣言されていない namespace の id）を報告します。テキスト、または `--json` で機械可読に出せます。
 - 参照している id とは、シナリオが指定する `id` / `idMatches` のすべてです。ステップ、入れ子の制御フロー、`within` スコープ、アサーションを横断して集めます。
-- **`--runs <dir>`** を渡すと **エンドポイントカバレッジ**の次元が加わります。runs ディレクトリ配下のすべての `network.json`（観測した通信の和集合）を読み、**観測したエンドポイント**（`METHOD path`）のうちスイートのネットワークアサーション（`request` / `event` / `requestSequence`）がカバーしている割合を測ります。アサート済みの割合、**未アサートの観測エンドポイント**（スイートが一度もアサートしないトラフィック）、どの run でも**観測されなかった宣言マッチャ**を報告します。`--runs` を省くと従来どおり静的な id-namespace マップのみです。
+- **`--runs <dir>`** を渡すと、run の証跡に基づく次元が2つ加わります。
+  - **エンドポイントカバレッジ**: runs ディレクトリ配下のすべての `network.json`（観測した通信の和集合）を読み、**観測したエンドポイント**（`METHOD path`）のうちスイートのネットワークアサーション（`request` / `event` / `requestSequence`）がカバーしている割合を測ります。アサート済みの割合、**未アサートの観測エンドポイント**（スイートが一度もアサートしないトラフィック）、どの run でも**観測されなかった宣言マッチャ**を報告します。
+  - **観測 id カバレッジ**: runs ディレクトリ配下のステップごとの `elements.json` をすべて読み、run が実際に**描画した**安定 id（各要素の `identifier`。null や空文字の id は除く）を集め、宣言済みの namespace ごとにまとめます。静的な id マップに対する、run の証跡側の対応物です。namespace ごとの観測 id、**どの run でも描画されなかった** namespace、宣言されていない namespace に属する観測 id（**off-namespace**）を報告します。
+
+  `--runs` を省くと従来どおり静的な id-namespace マップのみです。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。**gap があっても終了 0**（config / scenarios ディレクトリが無い、またはシナリオが読めないときだけ終了 2）です。gap は埋めるべき namespace であって判定ではありません。
 
 ## `export`
@@ -115,7 +129,11 @@ bajutsu export <run-id | run-dir> [-o out.zip] [--force]
 
 完了した run を**テキストタイムライン**で検査します。シナリオごとに、ステップと観測した通信を
 時系列で交互に並べ、続けて expectations、app-trace 区間、証跡サマリを出力します。読み取り専用
-（保存済みの `manifest.json` / `network.json` / `appTrace.json` を読む）。
+（保存済みの `manifest.json` / `network.json` / `appTrace.json`、来歴のための `scenario.yaml` を読む）。
+
+- 各ステップには、それを記録した元の自然言語フレーズ — [`from:`](scenarios.md#from来歴) 来歴（BE-0044）
+  — を `← "<フレーズ>"` の形でインライン表示します。1 つのフレーズを共有する連続ステップはまとめて 1 回だけ
+  ラベル表示します。手書きのシナリオや来歴のない古い run では、単に何も表示されません。
 
 ```bash
 bajutsu trace [<run-dir>] [--scenario <substr>] [--runs runs]
@@ -142,7 +160,7 @@ bajutsu report --all [--runs runs]     # runs/ 配下で manifest.json を持つ
 ```
 
 - レンダリングモデルは `manifest.json`（バージョン付き・無損失の render 入力。`schemaVersion`）と、実行した `scenario.yaml` です。レンダラは run dir だけを読みます。**古い** run もエラーにならず描画でき、新しいバージョンにしかないセクションは値を捏造せず「not captured」と表示します。
-- 記録済みの outcome を再提示するだけで、assertion を再評価したり verdict を変えたりしません。決定性の契約の内側に収まります。`serve` が同じモデルから表示のたびに描画する形は後続の予定です。
+- 記録済みの outcome を再提示するだけで、assertion を再評価したり verdict を変えたりしません。決定性の契約の内側に収まります。`serve` も**同じレンダラを表示時に使い**、リクエストごとに各 run の保存済みモデルから `report.html` を都度描画します（モデルを読めない場合は baked ファイルにフォールバック）。これにより `serve` を上げれば再 bake 不要で全レポートが最新化されます。
 - run（`--all` の場合は runs ルート）に読める `manifest.json` が無ければ**終了 2**。
 
 ## `triage`
@@ -196,6 +214,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 
 - 内部で `launch_driver` → `record_loop(driver, goal, ClaudeAgent(), ...)` → `dump_scenarios` で書き出します。
 - 出力: `recorded <N> steps -> <path>`。**要 `ANTHROPIC_API_KEY`**（`ClaudeAgent`）。
+- **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`record` は config を取得したチェックアウトから読みますが、生成したシナリオは**ローカル**へ書きます。`--out` 省略時は（読み取り専用の SHA キーのキャッシュであるチェックアウト内の `scenarios` ディレクトリではなく）**カレントディレクトリ**に自動命名し、チェックアウト内を指す `--out` は拒否します。そのファイルをレビューし、通常の git でリポジトリへコミットしてください。
 - 続けて、オーサリング（およびアラートガード）の AI が消費したトークン量を示す `AI usage:` 行を
   stderr に出力します。`claude-code` エージェントはここで API トークンを消費しないため、何も表示
   されません。
@@ -228,6 +247,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 | `--out` | `runs/<timestamp>` | 画面マップを書き出す run ディレクトリ |
 | `--config` | `bajutsu.config.yaml` | config |
 
+- **Git の `--config` は読み取り専用入力です**（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。`crawl` は config を取得したチェックアウトから読みますが、画面マップ／スクリーンショットはローカルの `--out` run ディレクトリ（既定 `runs/<timestamp>`）に書き、読み取り専用の SHA キーのキャッシュには書きません。チェックアウト内を指す `--out` は拒否します。
 - 走査は**決定的リプレイ**で行い、その場での後戻りはしません。既知の画面を再訪するには、アプリを
   クリーンな状態に再起動し、そこへの最短経路を再生してから次の未試行アクションを取ります。これは
   `run` が任意の状態へ到達するのと同じやり方です。
@@ -386,6 +406,14 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - `--config` は**任意**です。省略すると UI のファイルブラウザ（「Open config」ボタン）から `config.yml` を開けます。
   ブラウザの走査は `--root`（既定: カレントディレクトリ）配下に限定されます。`--scenarios <dir>` は選択アプリの設定済み
   ディレクトリの上書きとして使えます。
+- **Git リポジトリから（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。**
+  `--config` は Git ソース（`github:owner/repo@ref:path`）も受け付け、「Open config」ダイアログにも同じ spec を入れる
+  **From a Git repository** 欄があります。serve はその ref のリポジトリ部分木をキャッシュへ実体化し、その config を bind し、
+  チェックアウトのルートから serve します。これにより config の相対パス（`scenarios` / `appPath` / `build`）は取得したツリーを
+  基準に解決されます。これはセルフホストの狙い（[BE-0016](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)
+  Tier A）そのもので、ファイルを手で同期する代わりにチームのテストリポジトリを serve に向け、ブランチの切り替えを再デプロイではなく
+  UI 上で行えます。ファイルブラウザは `--root` 配下に限定されたままです。チェックアウトは管理された content-addressed キャッシュで、
+  Git ソースの run は config のパス項目をチェックアウトのルートに閉じ込めます（[BE-0063](../../roadmaps/in-progress/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。
 - `--baselines` でビジュアルリグレッションのベースラインディレクトリを指定します（既定: アプリのシナリオ
   ディレクトリ配下の `baselines/`）。UI から起動した実行はこれを使い、レポートの **Approve** ボタンが
   `POST /api/approve` 経由で撮影スクリーンショットをここへ昇格させます。

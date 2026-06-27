@@ -30,8 +30,10 @@ def _bootstrap() -> None:
 
 
 def _register_commands() -> None:
-    """Import every `commands/<name>.py` (sorted for stable --help order) and let each
-    register its command(s) onto `app`."""
+    """Import every `commands/<name>.py` and let each register its command(s) onto `app`.
+
+    Sorted for a stable --help order.
+    """
     for name in sorted(mod.name for mod in pkgutil.iter_modules(commands.__path__)):
         module = importlib.import_module(f"{commands.__name__}.{name}")
         module.register(app)

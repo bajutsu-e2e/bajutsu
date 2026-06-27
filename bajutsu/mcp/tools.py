@@ -25,20 +25,46 @@ def _load_effective(config_path: Path, target: str) -> Effective:
         raise ValueError(e.args[0] if e.args else str(e)) from None
 
 
+def _parse_verdict(stdout: str) -> str:
+    """Extract the manifest path from `run`'s final stdout line.
+
+    `run` ends its stdout with a single deterministic verdict line — `"PASS  <manifest>"` or
+    `"FAIL  <manifest>"`, the token and path separated by two spaces — while progress, usage, and
+    warnings go to stderr (any pre-run note also lands on stdout, so the verdict is the *last*
+    non-empty line). Stripping only the leading PASS/FAIL token keeps a path that contains spaces
+    intact. Returns the manifest path, or "" when stdout has no verdict line.
+    """
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    verdict = lines[-1].strip()
+    for token in ("PASS  ", "FAIL  "):
+        if verdict.startswith(token):
+            return verdict[len(token) :].strip()
+    return ""
+
+
 def make_driver(actuator: str, udid: str) -> Driver:
+    """Instantiate a driver for the given actuator and device — thin delegation to the backends registry."""
     from bajutsu.backends import make_driver as _make
 
     return _make(actuator, udid)
 
 
 def register_tools(mcp: FastMCP, config_path: Path) -> None:
+    """Register ``bajutsu_doctor`` and ``bajutsu_run`` as MCP tools on *mcp*.
+
+    Both tools close over ``config_path`` so callers need only pass ``target``
+    (and optional tuning parameters) at invocation time.
+    """
 
     @mcp.tool()
     def bajutsu_doctor(target: str, udid: str = "booted") -> str:
         """Score the current screen's accessibility convention readiness.
 
         Returns the grade (Ready / Partial / Blocked) and a breakdown of
-        id coverage, namespace conformance, and duplicates."""
+        id coverage, namespace conformance, and duplicates.
+        """
         eff = _load_effective(config_path, target)
         backends = eff.backend
         actuator = select_actuator(backends)
@@ -61,7 +87,8 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
         Returns a summary with the manifest path. The scenario parameter is
         a path to a *.yaml file; if omitted, all scenarios in the target's
-        configured directory are run."""
+        configured directory are run.
+        """
         cmd = [
             sys.executable,
             "-m",
@@ -87,18 +114,15 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
-        manifest_lines = [
-            line.strip()
-            for line in result.stdout.splitlines()
-            if "manifest" in line.lower() and ".json" in line
-        ]
-        manifest_path = manifest_lines[0] if manifest_lines else ""
+        # `run` prints a deterministic final stdout line (PASS/FAIL + manifest path); parse that
+        # rather than substring-matching its prose, so the MCP layer isn't coupled to the wording.
+        manifest_path = _parse_verdict(result.stdout)
 
-        ok = result.returncode == 0
-        parts = ["PASS" if ok else "FAIL"]
-        if manifest_path:
-            parts.append(manifest_path)
-        if not ok and result.stderr:
-            parts.append(result.stderr.strip())
-
-        return "  ".join(parts[:2]) + ("\n" + parts[2] if len(parts) > 2 else "")
+        # First line is the verdict, with the manifest path when one was parsed — never stderr, so
+        # the `PASS|FAIL  <manifest>` shape can't be faked when the manifest is unavailable (e.g.
+        # `run` crashed before its verdict line). stderr, if any, follows on its own line.
+        verdict = "PASS" if result.returncode == 0 else "FAIL"
+        out = f"{verdict}  {manifest_path}" if manifest_path else verdict
+        if result.returncode != 0 and result.stderr.strip():
+            out += "\n" + result.stderr.strip()
+        return out

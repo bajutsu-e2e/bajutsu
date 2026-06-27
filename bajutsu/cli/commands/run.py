@@ -15,10 +15,11 @@ from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
 from bajutsu.backends import ensure_web_runtime, select_actuator
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective_with_source
 from bajutsu.config import Effective
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.runner import device_pool, run_and_report
+from bajutsu.runner.build import BuildError, build_if_missing
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import (
     DismissAlerts,
@@ -36,13 +37,7 @@ from bajutsu.scenario import (
 
 
 def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
-    """Resolve the baseline images directory for visual assertions.
-
-    Resolution order (highest to lowest priority):
-    1. --baselines flag: explicit path on the command line
-    2. config baselines: targets.<name>.baselines in the config file
-    3. scenario-local default: baselines/ beside the scenario file
-    """
+    """Resolve the baseline images dir: --baselines flag > config baselines > baselines/ beside the scenario."""
     # flag > config > scenario-local default
     if flag:
         return Path(flag)
@@ -53,10 +48,7 @@ def _resolve_baselines_dir(flag: str, eff: Effective, scenario_file: Path) -> Pa
 
 
 def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
-    """Resolve the JSON Schema directory for `responseSchema` assertions.
-
-    Resolution order: --schemas flag > config `targets.<name>.schemas` > schemas/ beside the scenario.
-    """
+    """Resolve the JSON Schema dir: --schemas flag > config schemas > schemas/ beside the scenario."""
     if flag:
         return Path(flag)
     elif eff.schemas:
@@ -66,9 +58,12 @@ def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path
 
 
 def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[list[Path], bool]:
-    """The scenario files `run` should load: `[--scenario]` when given (an explicit override),
-    else every `*.yaml` in the target's configured `scenarios` dir. Returns `(files, single)` where
-    `single` flags the one-file override (so the report can carry that file's name/description)."""
+    """The scenario files `run` should load.
+
+    `[--scenario]` when given (an explicit override), else every `*.yaml` in the target's configured
+    `scenarios` dir. Returns `(files, single)` where `single` flags the one-file override (so the
+    report can carry that file's name/description).
+    """
     if scenario:
         path = Path(scenario)
         if not path.exists():
@@ -93,9 +88,11 @@ def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[li
 
 
 def _expand_file(path: Path, eff: Effective) -> tuple[list[Scenario], str | None]:
-    """Load one scenario file and expand its setup/component/data refs (each resolved relative
-    to THIS file's directory, so a multi-file dir run keeps every file's refs local). Returns
-    the expanded scenarios plus the file-level description."""
+    """Load one scenario file and expand its setup/component/data refs.
+
+    Each ref is resolved relative to THIS file's directory, so a multi-file dir run keeps every
+    file's refs local. Returns the expanded scenarios plus the file-level description.
+    """
     scenario_file = load_scenario_file(path.read_text(encoding="utf-8"))
     scenarios = scenario_file.scenarios
     # Refs (setup/use/data) resolve relative to this scenario file's own directory.
@@ -203,11 +200,35 @@ def run(
         "for CI upload or sharing; runs after the verdict, so it can't affect pass/fail",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
+    config_offline: bool = typer.Option(
+        False,
+        "--config-offline",
+        help="for a Git --config: use the cache, never touch the network (needs a pinned @<sha>)",
+    ),
+    require_pinned_config: bool = typer.Option(
+        False,
+        "--require-pinned-config",
+        help="for a Git --config: fail unless it pins a commit SHA (a branch/tag can move — for a gate)",
+    ),
 ) -> None:
-    """Run a scenario deterministically. Pass/fail is machine-only; the sole AI is the
-    alert guard (on by default per scenario), which only fires to clear an OS prompt that
-    blocked a step — see each scenario's `dismissAlerts`."""
-    eff = _load_effective(config, target_name)
+    """Run a scenario deterministically.
+
+    Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
+    only fires to clear an OS prompt that blocked a step — see each scenario's `dismissAlerts`.
+    """
+    eff, config_source, checkout_root = _load_effective_with_source(
+        config, target_name, offline=config_offline, require_pinned=require_pinned_config
+    )
+    # A Git-sourced config is fetched into a content-addressed checkout that holds no built binary,
+    # with no chance to build it by hand first — so build it on demand from the checkout root (where
+    # the config's `build` command is rooted). Local configs keep today's behavior: launch errors if
+    # the binary is missing (BE-0063).
+    if checkout_root is not None:
+        try:
+            build_if_missing(eff.build, eff.app_path, cwd=checkout_root)
+        except BuildError as e:
+            typer.echo(str(e))
+            raise typer.Exit(2) from None
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
@@ -358,6 +379,8 @@ def run(
             progress=progress_fn,
             baselines_dir=baselines_dir,
             schemas_dir=schemas_dir,
+            actuator=actuator,
+            config_source=config_source,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))
@@ -389,4 +412,5 @@ def run(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(run)

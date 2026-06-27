@@ -36,7 +36,7 @@ class Driver(Protocol):
 
 ### 能力（`Capability`）
 
-`capabilities()` が返すトークン集合で、actuator 選択と証跡のフォールバック解決に使います。
+`capabilities()` が返すトークン集合で、actuator 選択・証跡のフォールバック解決・**プリフライト能力検査**（後述）に使います。
 
 | 能力 | 意味 | idb | playwright | fake |
 |---|---|:--:|:--:|:--:|
@@ -49,6 +49,12 @@ class Driver(Protocol):
 | `multiTouch` | 2 本指ジェスチャ（pinch / rotate） | — | — | ✅ |
 
 > idb は **frame 中心の座標**で操作します。semantic tap を持たないため、run ループは `query()` で要素を一意に確定しその中心をタップします。`pinch` / `rotate` は `UnsupportedAction`（単一タッチ）を返し、これらは codegen → XCUITest 経由で扱います。`fake` ドライバはテストでそれらのコードパスを動かすためだけに、より広い能力集合（semanticTap / conditionWait / multiTouch）を公開します。`playwright`（web）ドライバは `semanticTap` / `conditionWait`（Playwright がネイティブに持つ）に加えて `network` も公開します。アプリ側の協力なしに通信を観測し、その場でスタブもできる**初めてのネイティブネットワーク対応バックエンド**です（BE-0054）。`multiTouch` は引き続き先送りです（[BE-0054](../../roadmaps/in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md) で追跡）。
+
+### プリフライト能力検査（BE-0082）
+
+バックエンドの能力集合は静的なので、選んだ actuator が持たない能力をシナリオが必要とするかどうかは、デバイス作業の前に分かります。run の開始時——actuator を選んだ後、最初のデバイスを lease する前——に、runner は各シナリオを actuator の能力と照合し（`bajutsu/capability_preflight.py`）、未対応のシナリオを即座に失敗させます。集約した 1 つの理由（`UnsupportedAction` 相当）を付けて、デバイスを起動して途中で失敗するのを避けます（prime directive #2：速く明確に失敗する）。検査は (シナリオ, 能力集合) の純粋関数で、デバイスも時計も使いません。シナリオ単位なので、未対応のシナリオだけが失敗し、残りは実行されます。
+
+検査は、能力集合で明確に判定できる**真の hard requirement** だけを門にします。`pinch` / `rotate` は `multiTouch`、`visual` アサーションは `screenshot`、すべての run は `query` と `elements` を必要とします。一方、`conditionWait` は門にしません（run ループはすべての待機を polling で実装するので、どのバックエンドもこのトークンを必要としません）。`network` も門にしません（idb は `network` を公開しませんが、アプリ側の collector で通信を捕捉するため、`request` / `event` / `requestSequence` / `responseSchema` アサーションや `until: { request }` 待機は idb でも動きます）。`gestures.py` の `_require_multi_touch` は、ジェスチャ実行時の多層防御の検査として残します。
 
 ## idb
 

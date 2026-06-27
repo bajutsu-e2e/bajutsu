@@ -156,6 +156,7 @@ def _build_state(
     max_concurrent: int,
     token: str | None,
     backend: str = "local",
+    cwd: Path | None = None,
 ) -> ServeState:
     """Assemble the `ServeState` for *backend* — the one place the serve seams are wired.
 
@@ -201,6 +202,7 @@ def _build_state(
         baselines_dir=resolved_baselines,
         max_concurrent=max_concurrent,
         token=token,
+        cwd=cwd or Path.cwd(),
     )
 
 
@@ -360,6 +362,7 @@ def serve(
     *,
     asgi: bool = False,
     backend: str = "local",
+    cwd: Path | None = None,
 ) -> None:
     state = _build_state(
         runs_dir=runs_dir,
@@ -370,6 +373,7 @@ def serve(
         max_concurrent=max_concurrent,
         token=token,
         backend=backend,
+        cwd=cwd,
     )
     hint = str(config) if config else "open a config.yml in the UI"
     if asgi:

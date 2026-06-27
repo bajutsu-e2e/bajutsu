@@ -88,6 +88,81 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_open_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The "from Git" picker: a github: spec materializes a checkout, binds its config, and repoints
+    # state.cwd to the checkout root so build/scenarios resolve there (BE-0063).
+    import bajutsu.serve.operations as ops
+    from bajutsu.config_source import Materialized
+
+    _, _, runs = project(tmp_path)
+    checkout = tmp_path / "gitsrc"
+    # A scenarios dir relative to the checkout root (the common case) — it must resolve against the
+    # checkout, not serve's launch dir, for the UI listing to find these files.
+    (checkout / "e2e").mkdir(parents=True)
+    (checkout / "e2e" / "smoke.yaml").write_text(
+        "- name: s\n  steps:\n    - tap: { id: x }\n", encoding="utf-8"
+    )
+    git_cfg = checkout / "bajutsu.config.yaml"
+    git_cfg.write_text(
+        "defaults: { backend: [idb] }\n"
+        "targets:\n  fromgit: { bundleId: com.example.fromgit, scenarios: e2e }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "deadbeefcafe")
+    )
+    state = srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/config", {"git": "github:acme/repo@main"})
+        assert status == 200 and resp["ok"] is True
+        assert resp["targets"] == ["fromgit"]  # targets come from the fetched config
+        assert resp["source"]["sha"] == "deadbeefcafe"  # the resolved commit is surfaced
+        assert state.config == git_cfg  # config repointed to the checkout
+        assert state.cwd == checkout  # cwd repointed so the checkout's relative paths resolve
+        # The relative `scenarios: e2e` resolves against the checkout, so the listing finds smoke.yaml.
+        assert _get_json(port, "/api/scenarios?target=fromgit")[0]["names"] == ["s"]
+        assert _get_json(port, "/api/config")["hasConfig"] is True
+        # A value with no recognized scheme is not a Git spec → a clear 400, not a local-path read.
+        status, resp = _post(port, "/api/config", {"git": "/etc/passwd"})
+        assert status == 400
+        # An explicit but empty `git` routes to the Git binder (key presence, not truthiness), so it
+        # gets the "spec is required" 400 rather than silently falling back to the local file binder.
+        status, resp = _post(port, "/api/config", {"git": ""})
+        assert status == 400 and "spec is required" in resp["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_git_config_with_escaping_path_is_refused(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # A fetched config whose path field climbs out of the checkout is rejected at bind, so serve's
+    # (unconfined) scenario/build resolution never sees a host path outside the tree (BE-0063/BE-0051).
+    import bajutsu.serve.operations as ops
+    from bajutsu.config_source import Materialized
+
+    _, _, runs = project(tmp_path)
+    checkout = tmp_path / "gitsrc"
+    checkout.mkdir()
+    git_cfg = checkout / "bajutsu.config.yaml"
+    git_cfg.write_text(
+        "targets:\n  evil: { bundleId: com.example.evil, scenarios: ../../../etc }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ops, "materialize", lambda spec, **kw: Materialized(git_cfg, checkout, "sha")
+    )
+    state = srv.ServeState(runs_dir=runs, root=tmp_path, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        status, resp = _post(port, "/api/config", {"git": "github:acme/repo@main"})
+        assert status == 400 and "invalid config" in resp["error"]
+        assert state.config is None  # the escaping config was not bound
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_config_rejects_absolute_traversal_outside_root(tmp_path: Path) -> None:
     # An absolute path with `..` that resolves outside the browse root must be rejected, not read
     # (CodeQL py/path-injection): the containment check resolves the path first, so the literal

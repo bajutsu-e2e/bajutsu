@@ -28,7 +28,8 @@ def approve(
 
     By default only failing / missing-baseline visual checks are approved; `--all` also
     refreshes baselines whose comparison passed. Reads the run's manifest.json, so it needs
-    no Simulator — pair it with the WebUI's Approve button or use it headless in CI."""
+    no Simulator — pair it with the WebUI's Approve button or use it headless in CI.
+    """
     path = Path(run_dir) if run_dir else _trace.latest_run(Path(runs))
     if path is None or not (path / "manifest.json").is_file():
         typer.echo(f"no run found{f': {run_dir}' if run_dir else f' under {runs}/'}")
@@ -62,4 +63,5 @@ def approve(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(approve)

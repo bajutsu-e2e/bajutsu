@@ -1,0 +1,142 @@
+"""Tests for scripts/lint_roadmap.py — roadmap cross-link resolution + author handle check (BE-0069).
+
+Operates on a temporary roadmap tree (no mocks): real item directories and files under tmp_path,
+so the link resolution and the in-place ``--fix`` rewrite are exercised exactly as on the real tree.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+
+_MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "lint_roadmap.py"
+_spec = importlib.util.spec_from_file_location("lint_roadmap", _MODULE_PATH)
+assert _spec and _spec.loader
+lr = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = lr
+_spec.loader.exec_module(lr)
+
+_AUTHOR = "[@octocat](https://github.com/octocat)"
+
+
+def _write_item(
+    roadmap: Path, category: str, name: str, *, body: str = "", author: str = _AUTHOR
+) -> Path:
+    """Create a BE item directory (both language files) with a metadata block and optional body."""
+    item = roadmap / category / name
+    item.mkdir(parents=True)
+    for suffix, status in (("", "Proposal"), ("-ja", "提案")):
+        meta = (
+            f"# {name} — demo\n\n"
+            "<!-- BE-METADATA -->\n| Field | Value |\n|---|---|\n"
+            f"| Author | {author} |\n| Status | **{status}** |\n<!-- /BE-METADATA -->\n\n"
+        )
+        # The body (any cross-link under test) goes in the English file only, so a link counts once.
+        (item / f"{name}{suffix}.md").write_text(
+            meta + (body if suffix == "" else ""), encoding="utf-8"
+        )
+    return item
+
+
+def test_resolving_links_pass(tmp_path: Path) -> None:
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    # A correct cross-folder link from an implemented item to a proposal.
+    link = "see [BE-9002](../../proposals/BE-9002-target/BE-9002-target.md)\n"
+    _write_item(roadmap, "implemented", "BE-9001-source", body=link)
+    assert lr.broken_links(roadmap) == []
+    assert lr.author_problems(roadmap) == []
+
+
+def test_broken_link_detected_with_suggestion(tmp_path: Path) -> None:
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    # Stale sibling-relative link (the target moved to proposals/ but the link still says ../).
+    link = "see [BE-9002](../BE-9002-target/BE-9002-target.md)\n"
+    _write_item(roadmap, "implemented", "BE-9001-source", body=link)
+
+    broken = lr.broken_links(roadmap)
+    assert len(broken) == 1
+    assert broken[0].suggestion == "../../proposals/BE-9002-target/BE-9002-target.md"
+
+
+def test_fix_rewrites_broken_link(tmp_path: Path) -> None:
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    link = "see [BE-9002](../BE-9002-target/BE-9002-target.md)\n"
+    source = _write_item(roadmap, "implemented", "BE-9001-source", body=link)
+
+    assert lr.fix_links(roadmap) == 1
+    assert lr.broken_links(roadmap) == []
+    text = (source / "BE-9001-source.md").read_text(encoding="utf-8")
+    assert "../../proposals/BE-9002-target/BE-9002-target.md" in text
+
+
+def test_fix_preserves_anchor_fragment(tmp_path: Path) -> None:
+    # A link with a #fragment must be matched and rewritten verbatim (the path resolves the same).
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    link = "see [BE-9002](../BE-9002-target/BE-9002-target.md#motivation)\n"
+    source = _write_item(roadmap, "implemented", "BE-9001-source", body=link)
+
+    assert lr.fix_links(roadmap) == 1
+    text = (source / "BE-9001-source.md").read_text(encoding="utf-8")
+    assert "../../proposals/BE-9002-target/BE-9002-target.md#motivation" in text
+    assert lr.broken_links(roadmap) == []
+
+
+def test_fix_count_matches_occurrences_not_matches(tmp_path: Path) -> None:
+    # The same broken link twice in one file counts as two rewrites, not one — and not four
+    # (str.replace fixes both at once; the count must reflect actual occurrences).
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    link = "../BE-9002-target/BE-9002-target.md"
+    body = f"first [a]({link}) and second [b]({link})\n"
+    _write_item(roadmap, "implemented", "BE-9001-source", body=body)
+
+    assert lr.fix_links(roadmap) == 2
+    assert lr.broken_links(roadmap) == []
+
+
+def test_stale_slug_resolved_by_id(tmp_path: Path) -> None:
+    # The item was renamed (slug changed) but the link still carries the old slug; the BE id
+    # alone must still resolve it, rewriting to the current slug + folder.
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-new-slug")
+    link = "see [BE-9002](../BE-9002-old-slug/BE-9002-old-slug.md)\n"
+    _write_item(roadmap, "implemented", "BE-9001-source", body=link)
+
+    broken = lr.broken_links(roadmap)
+    assert len(broken) == 1
+    assert broken[0].suggestion == "../../proposals/BE-9002-new-slug/BE-9002-new-slug.md"
+    assert lr.fix_links(roadmap) == 1
+    assert lr.broken_links(roadmap) == []
+
+
+def test_dangling_reference_is_reported_not_fixed(tmp_path: Path) -> None:
+    roadmap = tmp_path / "roadmaps"
+    link = "see [BE-9999](../BE-9999-ghost/BE-9999-ghost.md)\n"  # no such item anywhere
+    _write_item(roadmap, "implemented", "BE-9001-source", body=link)
+
+    broken = lr.broken_links(roadmap)
+    assert len(broken) == 1 and broken[0].suggestion is None
+    assert lr.fix_links(roadmap) == 0  # nothing to point it at — left untouched
+
+
+def test_author_not_handle_link_is_flagged(tmp_path: Path) -> None:
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9001-plain", author="Jane Doe")
+    problems = lr.author_problems(roadmap)
+    assert any("Author is not a handle link" in p for p in problems)
+    # The same item with a proper handle link is clean.
+    _write_item(roadmap, "proposals", "BE-9002-ok")
+    assert all("BE-9002-ok" not in p for p in lr.author_problems(roadmap))
+
+
+def test_bilingual_header_link_is_not_flagged(tmp_path: Path) -> None:
+    # The same-directory bilingual header link (no directory component) is not an item cross-link.
+    roadmap = tmp_path / "roadmaps"
+    header = "**English** · [日本語](BE-9001-source-ja.md)\n"
+    _write_item(roadmap, "proposals", "BE-9001-source", body=header)
+    assert lr.broken_links(roadmap) == []

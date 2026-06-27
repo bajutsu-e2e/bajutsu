@@ -12,7 +12,12 @@ from bajutsu import env as _env
 from bajutsu import usage as _usage
 from bajutsu.agents import make_agent, resolve_kind
 from bajutsu.backends import ensure_web_runtime, select_actuator
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.cli._shared import (
+    DEFAULT_CONFIG,
+    _backends,
+    _load_effective_with_source,
+    _refuse_out_in_checkout,
+)
 from bajutsu.config import Effective
 from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
@@ -20,21 +25,47 @@ from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions, dump_scenarios
 
 
-def _record_out_path(eff: Effective, out: str, name: str, goal: str, target_name: str) -> Path:
-    """Where `record` writes the authored scenario: `--out` when given, else an auto-named,
-    never-overwriting `*.yaml` under the target's configured `scenarios` dir (same naming as the
-    web UI's Record tab)."""
-    if out:
-        return Path(out)
-    if eff.scenarios is None:
-        typer.echo(
-            f"target '{target_name}' has no scenarios dir "
-            f"(set targets.{target_name}.scenarios, or pass --out)"
-        )
-        raise typer.Exit(2)
+def _record_out_path(
+    eff: Effective,
+    out: str,
+    name: str,
+    goal: str,
+    target_name: str,
+    *,
+    checkout_root: Path | None,
+) -> Path:
+    """Where `record` writes the authored scenario.
+
+    `--out` when given, else an auto-named, never-overwriting `*.yaml` under the target's configured
+    `scenarios` dir (same naming as the web UI's Record tab).
+
+    A Git source is **read-only** (BE-0063): an explicit `--out` may not land inside the checkout, and
+    with no `--out` the file auto-names under the **current directory** (the configured `scenarios`
+    dir is inside the SHA-keyed cache), so an authored scenario is always a reviewable local file.
+    """
     from bajutsu.serve import scenario_out_path, unique_scenario_path
 
-    return unique_scenario_path(scenario_out_path(Path(eff.scenarios), name or goal))
+    if out:
+        target = Path(out)
+    else:
+        # The auto-name base: the current directory for a Git source (its configured `scenarios` dir
+        # is inside the read-only cache), else the local config's configured dir.
+        base = (
+            Path()
+            if checkout_root is not None
+            else (Path(eff.scenarios) if eff.scenarios else None)
+        )
+        if base is None:
+            typer.echo(
+                f"target '{target_name}' has no scenarios dir "
+                f"(set targets.{target_name}.scenarios, or pass --out)"
+            )
+            raise typer.Exit(2)
+        target = unique_scenario_path(scenario_out_path(base, name or goal))
+    # Guard whatever we resolved — including the auto-named cwd path, in case `record` runs from
+    # inside the checkout itself — so a generated scenario never lands in the read-only cache.
+    _refuse_out_in_checkout(target, checkout_root)
+    return target
 
 
 def record(
@@ -73,13 +104,16 @@ def record(
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
-    """Explore the app with AI toward a goal and write the recorded scenario. With `--out` it
-    writes there; otherwise it auto-names a file under the target's configured `scenarios` dir."""
-    eff = _load_effective(config, target_name)
+    """Explore the app with AI toward a goal and write the recorded scenario.
+
+    With `--out` it writes there; otherwise it auto-names a file under the target's configured
+    `scenarios` dir — or, for a read-only Git `--config`, under the current directory (BE-0063).
+    """
+    eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
-    out_path = _record_out_path(eff, out, name, goal, target_name)
+    out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
     before = _usage.snapshot()
     kind = resolve_kind(agent)
     try:
@@ -148,4 +182,5 @@ def record(
 
 
 def register(app: typer.Typer) -> None:
+    """Register this command on the Typer app."""
     app.command()(record)
