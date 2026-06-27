@@ -368,8 +368,10 @@ class PlaywrightDriver:
             def stop(self, sig: int) -> None:
                 remove = getattr(page, "remove_listener", None)
                 if remove is not None:
+                    # Suppress per call so a failure detaching one listener still detaches the other.
                     with contextlib.suppress(Exception):
                         remove("console", on_console)
+                    with contextlib.suppress(Exception):
                         remove("pageerror", on_pageerror)
                 sink.close()
 

@@ -20,8 +20,14 @@ from bajutsu.drivers import base
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
 
-# scenario-dir file names for interval kinds
-_INTERVAL_FILE = {"video": "scenario.mp4", "deviceLog": "device.log"}
+# scenario-dir file names for interval kinds — one source of truth for both the simctl (iOS)
+# and the Playwright (web) providers, so the two never drift.
+_INTERVAL_FILE = {"video": "scenario.mp4", "deviceLog": "device.log", "appTrace": "appTrace.raw"}
+
+
+def _interval_filename(kind: str) -> str:
+    """The artifact filename for an interval `kind`."""
+    return _INTERVAL_FILE.get(kind, kind)
 
 
 @dataclass
@@ -158,11 +164,6 @@ class NullSink:
         return []
 
 
-def _interval_filename(kind: str) -> str:
-    """The artifact filename for an interval `kind` (shared by the simctl and web providers)."""
-    return {"video": "scenario.mp4", "deviceLog": "device.log"}.get(kind, kind)
-
-
 class FileSink:
     """Write artifacts to disk under the run dir.
 
@@ -232,18 +233,22 @@ class FileSink:
         for token in kinds:
             kind = token.partition(".")[0]
             if kind == "video":
-                started.append(intervals.start_video(self.udid, scenario_dir / "scenario.mp4"))
+                started.append(
+                    intervals.start_video(self.udid, scenario_dir / _interval_filename("video"))
+                )
             elif kind == "deviceLog":
                 started.append(
                     intervals.start_device_log(
-                        self.udid, scenario_dir / "device.log", self.log_predicate
+                        self.udid,
+                        scenario_dir / _interval_filename("deviceLog"),
+                        self.log_predicate,
                     )
                 )
             elif kind == "appTrace" and self.log_subsystem:
                 started.append(
                     intervals.start_app_trace(
                         self.udid,
-                        scenario_dir / "appTrace.raw",
+                        scenario_dir / _interval_filename("appTrace"),
                         scenario_dir / "appTrace.json",
                         self.log_subsystem,
                     )
