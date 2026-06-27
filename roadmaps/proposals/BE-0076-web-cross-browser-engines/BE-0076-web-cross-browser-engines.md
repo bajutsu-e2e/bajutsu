@@ -91,7 +91,7 @@ are; the QUERY_JS snapshot is standard DOM and runs identically on all three eng
 
 **The fan-out.** A `--browsers <list>` option on `run` (e.g. `--browsers chromium,firefox,webkit`)
 runs each selected scenario once per listed engine. This reuses the parallel-lane machinery from
-[BE-0054](../../in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md): a `BrowserContext`
+[BE-0054](../../implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md): a `BrowserContext`
 is a near-free "device", so each (scenario, engine) pair is an independent lane in the device pool's
 web branch. `--browsers chromium` is exactly `--browser chromium`; the two options are the
 single-engine and multi-engine spellings of one axis.
@@ -131,7 +131,7 @@ passing.
 ### Relationship to existing items
 
 * **Builds on [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)** (the
-  web backend) and **reuses [BE-0054](../../in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
+  web backend) and **reuses [BE-0054](../../implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
   parallel lanes** for the fan-out. It is *distinct* from BE-0054, whose scope is explicitly the
   rich-end capabilities (native network, video/console evidence, emulated multi-touch, parallel
   runs) on a single engine — it does not address engine selection or a cross-engine matrix. This
@@ -176,7 +176,7 @@ passing.
   (per-engine condition-waited runs), app-agnostic (engine is an execution axis, not scenario content).
 * [BE-0041 — Web (Playwright) backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
   — the backend this extends, and its "cross-browser" seam promise.
-* [BE-0054 — Web backend completion](../../in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)
+* [BE-0054 — Web backend completion](../../implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)
   — the parallel-lane pool this fan-out reuses; distinct (single-engine rich capabilities) in scope.
 * [BE-0021 — AI triage](../../implemented/BE-0021-ai-triage/BE-0021-ai-triage.md) — advisory
   investigation of an engine-specific failure.
