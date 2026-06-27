@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-docs-roadmap-link-integrity-ja.md)
+**English** · [日本語](BE-0096-docs-roadmap-link-integrity-ja.md)
 
-# BE-XXXX — Keep docs links to roadmap items from rotting on promotion
+# BE-0096 — Keep docs links to roadmap items from rotting on promotion
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-docs-roadmap-link-integrity.md) |
+| Proposal | [BE-0096](BE-0096-docs-roadmap-link-integrity.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

@@ -1,11 +1,11 @@
-[English](BE-XXXX-docs-roadmap-link-integrity.md) · **日本語**
+[English](BE-0096-docs-roadmap-link-integrity.md) · **日本語**
 
-# BE-XXXX — 項目昇格で docs のロードマップリンクが腐るのを防ぐ
+# BE-0096 — 項目昇格で docs のロードマップリンクが腐るのを防ぐ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-docs-roadmap-link-integrity-ja.md) |
+| 提案 | [BE-0096](BE-0096-docs-roadmap-link-integrity-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トピック | Development infrastructure (contributor workflow) |

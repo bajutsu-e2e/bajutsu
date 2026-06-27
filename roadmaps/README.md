@@ -438,6 +438,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 |---|---|---|
 | [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Proposal |
 | [BE-0093](proposals/BE-0093-public-docs-site/BE-0093-public-docs-site.md) | Public project website & documentation portal (GitHub Pages) | Proposal |
+| [BE-0096](proposals/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md) | Keep docs links to roadmap items from rotting on promotion | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
