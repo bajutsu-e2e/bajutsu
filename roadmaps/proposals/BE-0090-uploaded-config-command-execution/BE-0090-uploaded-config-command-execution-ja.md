@@ -1,11 +1,11 @@
-[English](BE-XXXX-uploaded-config-command-execution.md) · **日本語**
+[English](BE-0090-uploaded-config-command-execution.md) · **日本語**
 
-# BE-XXXX — アップロードされたバンドル config からのコマンド実行を統制する
+# BE-0090 — アップロードされたバンドル config からのコマンド実行を統制する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-uploaded-config-command-execution-ja.md) |
+| 提案 | [BE-0090](BE-0090-uploaded-config-command-execution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |

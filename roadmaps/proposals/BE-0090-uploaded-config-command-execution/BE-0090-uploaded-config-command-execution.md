@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-uploaded-config-command-execution-ja.md)
+**English** · [日本語](BE-0090-uploaded-config-command-execution-ja.md)
 
-# BE-XXXX — Govern command execution from uploaded bundle configs
+# BE-0090 — Govern command execution from uploaded bundle configs
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-uploaded-config-command-execution.md) |
+| Proposal | [BE-0090](BE-0090-uploaded-config-command-execution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
