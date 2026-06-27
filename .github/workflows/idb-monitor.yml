@@ -63,6 +63,9 @@ jobs:
       # states them even if the run then fails. `idb_companion` is brewed here (idempotent; the
       # bajutsu-e2e action installs it too) so the version is available regardless of run outcome.
       - name: Record idb versions
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
           brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion
           companion=$(idb_companion --version 2>&1 | head -1 || echo "unknown")
