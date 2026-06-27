@@ -8,6 +8,7 @@
 | Proposal | [BE-0093](BE-0093-public-docs-site.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#326](https://github.com/bajutsu-e2e/bajutsu/pull/326) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
