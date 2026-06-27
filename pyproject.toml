@@ -41,11 +41,19 @@ oauth = ["authlib>=1.3"]
 # JSON Schema validation for the `responseSchema` assertion (BE-0048). Imported lazily, only when a
 # responseSchema assertion is evaluated — never on the default path.
 schema = ["jsonschema>=4.0"]
-# The generated API reference (BE-0065): MkDocs + mkdocstrings render the public surface from its
-# docstrings + typed signatures. `make docs` only — a separate, heavier path kept out of the
-# deterministic `make check` gate, like on-device E2E. mkdocstrings reads signatures statically
-# (via griffe), so it never imports the lazy/optional backends.
-docs = ["mkdocs-material>=9.5", "mkdocstrings[python]>=0.26"]
+# The public website + docs portal and the generated API reference (BE-0093, BE-0065): MkDocs +
+# mkdocs-material render the landing page and the bilingual `docs/` tree; mkdocstrings renders the
+# Python surface from its docstrings + typed signatures; mkdocs-static-i18n drives the EN/JA switch.
+# `make docs` only — a separate, heavier path kept out of the deterministic `make check` gate, like
+# on-device E2E. mkdocstrings reads signatures statically (via griffe), so it never imports the
+# lazy/optional backends. The `imaging` extra (Cairo/Pillow) backs Material's social cards, which are
+# generated in CI only (`enabled: !ENV [CI, false]` in mkdocs.yml), so a bare `make docs` needs no
+# native libraries.
+docs = [
+    "mkdocs-material[imaging]>=9.5",
+    "mkdocstrings[python]>=0.26",
+    "mkdocs-static-i18n>=1.2",
+]
 
 [dependency-groups]
 dev = [

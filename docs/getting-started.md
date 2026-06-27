@@ -218,5 +218,5 @@ entry points use the same scenario format:
   The structural mapping: [codegen](codegen.md). Run it end-to-end with `make -C demos/features ui-test`.
 
 From here, the reference pages cover each piece in depth. Start with [concepts](concepts.md) for the
-rationale, then follow the suggested reading order in the [docs index](README.md). To onboard your own
+rationale, then follow the suggested reading order in the [docs overview](overview.md). To onboard your own
 app (not the sample), see [configuration](configuration.md#onboarding-a-new-target).
