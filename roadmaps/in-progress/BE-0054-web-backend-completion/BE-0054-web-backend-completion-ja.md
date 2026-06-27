@@ -8,7 +8,7 @@
 | 提案 | [BE-0054](BE-0054-web-backend-completion-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| 実装 PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187)（native network スライス） |
+| 実装 PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187)（native network スライス）、[#297](https://github.com/bajutsu-e2e/bajutsu/pull/297)（並列レーン） |
 | トピック | プラットフォーム拡張（着手済みスライス） |
 <!-- /BE-METADATA -->
 
@@ -52,7 +52,7 @@ Playwright が `capabilities()` のリッチ端 —— `semanticTap`、ネイテ
 | video evidence | — | `BrowserContext` の `record_video_dir` → `video` capture 種別 |
 | console / page-error ログ | — | `page.on("console")` / `on("pageerror")` → `deviceLog` 相当の種別 |
 | `multiTouch`（ピンチ / 回転） | `UnsupportedAction` | タッチ点の合成 → `MULTI_TOUCH` を広告 |
-| 並列レーン | 単一レーン（`workers = 1`） | pool の Web 分岐で N 個の `BrowserContext` レーン |
+| 並列レーン | 単一レーン（`workers = 1`） | pool の Web 分岐で N 個の `BrowserContext` レーン — **出荷済み（#297）**: `--workers N` が N 本の Web レーン |
 
 いずれも既存のシームに対応します。capture provider は `FileSink` の interval 処理（現在は simctl の
 `udid` で gate されている）を拡張し、network capability は iOS で BajutsuKit が供給するのと同じ
