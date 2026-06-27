@@ -40,7 +40,13 @@ jobs:
         with:
           enable-cache: true
 
+      # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes) and the
+      # post-install cleanup; rely on the runner image's pre-installed Homebrew state for xcodegen
+      # (matches the e2e.yml jobs).
       - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install xcodegen
 
       - name: Build the sample app
