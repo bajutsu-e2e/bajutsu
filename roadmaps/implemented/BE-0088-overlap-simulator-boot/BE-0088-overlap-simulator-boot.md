@@ -8,6 +8,7 @@
 | Proposal | [BE-0088](BE-0088-overlap-simulator-boot.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
+| Implementing PR | [#303](https://github.com/bajutsu-e2e/bajutsu/pull/303) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 

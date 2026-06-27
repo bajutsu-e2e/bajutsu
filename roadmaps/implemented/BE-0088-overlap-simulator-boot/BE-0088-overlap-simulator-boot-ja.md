@@ -8,6 +8,7 @@
 | 提案 | [BE-0088](BE-0088-overlap-simulator-boot-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
+| 実装 PR | [#303](https://github.com/bajutsu-e2e/bajutsu/pull/303) |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
