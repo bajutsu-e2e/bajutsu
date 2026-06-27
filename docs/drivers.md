@@ -50,16 +50,16 @@ resolution, and the **preflight capability check** (below).
 | `semanticTap` | tap directly by id/label (no coordinates) | — | ✅ | ✅ |
 | `conditionWait` | native condition waiting | — | ✅ | ✅ |
 | `network` | native network monitoring | — | ✅ | — |
-| `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ |
+| `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ | ✅ |
 
 > idb actuates by **frame-center coordinates** — it exposes no semantic tap, so the run loop resolves
 > a unique element via `query()` and taps its center. `pinch` / `rotate` raise `UnsupportedAction`
 > (single-touch); those go through codegen → XCUITest. The `fake` driver advertises a richer
 > capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
 > tests. The `playwright` (web) driver advertises `semanticTap` / `conditionWait` (Playwright has
-> both natively) and `network` — the **first backend with native network**, observing and stubbing
-> traffic in-process with no app-side cooperation (BE-0054). `multiTouch` is still deferred
-> (tracked in [BE-0054](../roadmaps/in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)).
+> both natively), `network` — the **first backend with native network**, observing and stubbing
+> traffic in-process with no app-side cooperation — and `multiTouch`, synthesizing pinch / rotate via
+> the Chromium DevTools protocol's `Input.dispatchTouchEvent` (BE-0054).
 
 ### Preflight capability check (BE-0082)
 
@@ -138,8 +138,11 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (same as idb).
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
   (`page.goto(baseUrl)`) is the `launch`, and `close()` tears the browser down. There is no simctl
-  device, so the run uses a dummy lease and no device control (`pinch`/`rotate` raise
-  `UnsupportedAction` in v1).
+  device, so the run uses a dummy lease and no device control.
+- **Multi-touch** (BE-0054): `pinch` / `rotate` are synthesized as two-finger drags via the Chromium
+  DevTools protocol (`Input.dispatchTouchEvent`) — `mouse` is single-pointer, so gestures go through
+  CDP, the same path a real touch takes (so the page's touch listeners fire). The element center
+  anchors the two fingers; `scale` spreads/closes their gap and `radians` rotates them about it.
 - **Native network** (BE-0054): Playwright sees every request the page makes, so `--network` works
   on web with no app-side cooperation. `network_collector()` hooks the page's `requestfinished`
   event into the *same* `NetworkExchange` the iOS collector produces (so `request` assertions and

@@ -8,7 +8,7 @@
 | Proposal | [BE-0054](BE-0054-web-backend-completion.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187) (native network slice), [#297](https://github.com/bajutsu-e2e/bajutsu/pull/297) (parallel lanes), [#298](https://github.com/bajutsu-e2e/bajutsu/pull/298) (console / page-error evidence), [#299](https://github.com/bajutsu-e2e/bajutsu/pull/299) (video evidence) |
+| Implementing PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187) (native network slice), [#297](https://github.com/bajutsu-e2e/bajutsu/pull/297) (parallel lanes), [#298](https://github.com/bajutsu-e2e/bajutsu/pull/298) (console / page-error evidence), [#299](https://github.com/bajutsu-e2e/bajutsu/pull/299) (video evidence), [#300](https://github.com/bajutsu-e2e/bajutsu/pull/300) (emulated multiTouch) |
 | Topic | Platform expansion (landed slices) |
 <!-- /BE-METADATA -->
 
@@ -51,7 +51,7 @@ into "Web exercises the whole capability gradient":
 | `network` (observe + stub) | — | `page.route()` interception → the `request` assertion + HTTP mocks |
 | video evidence | — | `BrowserContext` `record_video_dir` → the `video` capture kind — **shipped (#299)** |
 | console / page-error log | — | `page.on("console")` / `on("pageerror")` → a `deviceLog`-equivalent kind — **shipped (#298)** |
-| `multiTouch` (pinch / rotate) | `UnsupportedAction` | synthesized touch points → advertise `MULTI_TOUCH` |
+| `multiTouch` (pinch / rotate) | `UnsupportedAction` | synthesized touch points → advertise `MULTI_TOUCH` — **shipped (#300)** |
 | parallel lanes | single-lane (`workers = 1`) | N `BrowserContext` lanes in the pool's web branch — **shipped (#297)**: `--workers N` is N web lanes |
 
 Each maps onto an existing seam: the capture providers extend `FileSink`'s interval handling
