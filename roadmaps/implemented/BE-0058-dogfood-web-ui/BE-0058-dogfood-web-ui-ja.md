@@ -16,7 +16,7 @@
 ## はじめに
 
 ローカルの `serve` Web UI（[BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)）自体が
-Web アプリなので、Web（Playwright）backend（[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で
+Web アプリなので、Web（Playwright）backend（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）で
 駆動できます。本項目は、Bajutsu に自分自身の Web UI をテストさせます。配信中のシングルページアプリを、
 ほかのシナリオと同じ `run` 経路、同じ決定性コアで駆動する、決定的な Tier 2 のリグレッション網です。iOS の
 ショーケース（[BE-0045](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md)）に
@@ -132,7 +132,7 @@ driver の意味的な `selectOption` capability が要り、これは
 
 ## 参考
 
-- [BE-0041 Web（Playwright）backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)：enabler
+- [BE-0041 Web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)：enabler
 - [BE-0045 Dogfood ショーケースアプリ群](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md)：対応する iOS 側
 - [BE-0011 ローカル Web UI（`bajutsu serve`）](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)：テスト対象
 - [BE-0054 Web backend の完成](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)：`<select>` 操作の置き場所

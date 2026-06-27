@@ -63,7 +63,7 @@ apps:
 
 `platform` selects which **environment manager** and **backend registry** are in play; the rest of the schema (namespaces, redact, setup, capture) stays shared.
 
-**What is done vs. what remains.** Landed: the platform registry, platform-token expansion, implemented-and-available selection, and the clear planned-but-absent errors (`idb` / `fake` are the only implemented actuators today). What remains for a real second platform is the **rest of the triple** — a per-platform **environment manager** (a `simctl` peer) and the **actuator driver** (`adb` for [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), `playwright` for [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) — plus the explicit `platform` config field described above.
+**What is done vs. what remains.** Landed: the platform registry, platform-token expansion, implemented-and-available selection, and the clear planned-but-absent errors (`idb` / `fake` are the only implemented actuators today). What remains for a real second platform is the **rest of the triple** — a per-platform **environment manager** (a `simctl` peer) and the **actuator driver** (`adb` for [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), `playwright` for [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) — plus the explicit `platform` config field described above.
 
 ## Alternatives considered
 
@@ -72,4 +72,4 @@ apps:
 
 ## References
 
-[`bajutsu/backends.py`](../../../bajutsu/backends.py), [drivers.md](../../../docs/drivers.md#backend-selection-and-the-actuator), [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)
+[`bajutsu/backends.py`](../../../bajutsu/backends.py), [drivers.md](../../../docs/drivers.md#backend-selection-and-the-actuator), [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)

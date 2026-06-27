@@ -14,7 +14,7 @@
 
 ## はじめに
 
-Web（Playwright）backend の最初のスライス（[BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、
+Web（Playwright）backend の最初のスライス（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、
 意図的に絞った capability セット `{query, elements, screenshot, semanticTap, conditionWait}` で
 決定論的な `run` パスを出荷し、Linux 上で小さなデモ Web アプリを駆動できるようにしました。本項目は、
 BE-0041 が「Web を最初に選ぶ理由」とした capability モデルの**リッチ端**まで backend を引き上げます。
@@ -79,7 +79,7 @@ backend に適用される既存の record 体験の提案
 
 ## 参考
 
-[BE-0041 — Web（Playwright）backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、
+[BE-0041 — Web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、
 [BE-0009 — クロスプラットフォーム抽象](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、
 [multi-platform.md](../../../docs/multi-platform.md)、`bajutsu/drivers/playwright.py`、
 `bajutsu/runner/pool.py`、`bajutsu/evidence.py`

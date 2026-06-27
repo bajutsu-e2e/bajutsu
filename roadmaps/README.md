@@ -103,6 +103,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 <!-- GENERATED:implemented-platform-landed -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0041](implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | Implemented |
 | [BE-0042](implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) | Platform-aware backend registry & selection | Implemented |
 | [BE-0054](implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) | Web backend completion (rich capabilities & parallel runs) | Implemented |
 | [BE-0057](implemented/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets.md) | Rename the config `apps` key to `targets` | Implemented |
