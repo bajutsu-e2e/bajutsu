@@ -672,3 +672,38 @@ def test_cli_writes_html_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
     body = out.read_text(encoding="utf-8")
     assert body.lstrip().startswith("<!DOCTYPE html>")
     assert "home.start" in body and "auth" in body  # a covered id and the gap
+
+
+def _html_only_config(tmp_path):  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    return config
+
+
+def test_cli_html_creates_missing_parent_dirs(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    config = _html_only_config(tmp_path)
+    out = tmp_path / "nested" / "dir" / "coverage.html"  # parents do not exist yet
+    result = runner.invoke(
+        app, ["coverage", "--target", "demo", "--config", str(config), "--html", str(out)]
+    )
+    assert result.exit_code == 0
+    assert out.is_file()  # the parent dirs were created for the user-requested output
+
+
+def test_cli_html_unwritable_path_exits_2_cleanly(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    config = _html_only_config(tmp_path)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a dir", encoding="utf-8")  # a file where a parent dir would need to be
+    out = blocker / "coverage.html"  # writing here can't succeed (parent is a file)
+    result = runner.invoke(
+        app, ["coverage", "--target", "demo", "--config", str(config), "--html", str(out)]
+    )
+    assert result.exit_code == 2  # clean failure, not an uncaught traceback
+    assert "Traceback" not in result.stdout

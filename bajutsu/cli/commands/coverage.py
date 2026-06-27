@@ -121,11 +121,19 @@ def coverage(
             typer.echo(f"--runs not found, skipping run-evidence coverage: {runs}", err=True)
     if html:
         # Write the report first; the stdout below (text or JSON) stays the same with or without it,
-        # so a confirmation goes to stderr rather than polluting a piped `--json` payload.
+        # so a confirmation goes to stderr rather than polluting a piped `--json` payload. Create the
+        # parents of a nested path, and fail cleanly (exit 2, like the errors above) on an unwritable
+        # location rather than crashing with a traceback.
         html_path = Path(html)
-        html_path.write_text(
-            _coverage.render_html(report, endpoints, observed_ids, target_name), encoding="utf-8"
-        )
+        try:
+            html_path.parent.mkdir(parents=True, exist_ok=True)
+            html_path.write_text(
+                _coverage.render_html(report, endpoints, observed_ids, target_name),
+                encoding="utf-8",
+            )
+        except OSError as e:
+            typer.echo(f"failed to write HTML report to {html_path}: {e}", err=True)
+            raise typer.Exit(2) from None
         typer.echo(f"wrote HTML coverage report: {html_path}", err=True)
     if as_json:
         out: dict[str, object] = dataclasses.asdict(report)
