@@ -340,6 +340,7 @@ The deterministic core runs end-to-end on the FakeDriver, and the idb backend's 
 | ID | Item | Status |
 |---|---|---|
 | [BE-0006](proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Proposal |
+| [BE-0087](proposals/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Proposal |
 <!-- /GENERATED:proposals-on-device -->
 
 ### Platform expansion (Android / Web / Flutter)

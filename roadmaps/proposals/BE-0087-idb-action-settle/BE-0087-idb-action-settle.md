@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-idb-action-settle-ja.md)
+**English** · [日本語](BE-0087-idb-action-settle-ja.md)
 
-# BE-XXXX — idb action timing robustness (settle before actuation)
+# BE-0087 — idb action timing robustness (settle before actuation)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-idb-action-settle.md) |
+| Proposal | [BE-0087](BE-0087-idb-action-settle.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | On-device validation (M1 close-out) |

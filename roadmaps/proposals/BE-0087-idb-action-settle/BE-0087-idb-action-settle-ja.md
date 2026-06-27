@@ -1,11 +1,11 @@
-[English](BE-XXXX-idb-action-settle.md) · **日本語**
+[English](BE-0087-idb-action-settle.md) · **日本語**
 
-# BE-XXXX — idb アクションのタイミング堅牢化（操作前の settle）
+# BE-0087 — idb アクションのタイミング堅牢化（操作前の settle）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-idb-action-settle-ja.md) |
+| 提案 | [BE-0087](BE-0087-idb-action-settle-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トピック | 実機検証（M1 クローズアウト） |
