@@ -27,6 +27,9 @@ jobs:
   monitor:
     name: idb compatibility (smoke + version)
     runs-on: macos-latest
+    # Cap the metered macOS job (10x billing): a hung Simulator/idb would otherwise run to the
+    # 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
