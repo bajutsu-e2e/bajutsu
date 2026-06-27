@@ -19,24 +19,35 @@ from bajutsu.scenario.models import Scenario, Selector, Step, TypeText
 from bajutsu.scenario.serialize import dump_scenario_file
 
 
-def _selector(action: Action) -> Selector:
-    """The element selector for an id- or label-addressed action (id preferred; label + index else)."""
+def _selector(action: Action) -> Selector | None:
+    """The element selector for an id- or label-addressed action, or None when it has neither.
+
+    Id preferred; otherwise label (+ index). An action carrying no addressing condition can't be
+    targeted, so it has no faithful selector — the caller treats that as an unsupported repro.
+    """
     if action.target:
         return Selector(id=action.target)
-    return Selector(label=action.label, index=action.index)
+    if action.label is not None:
+        return Selector(label=action.label, index=action.index)
+    return None
 
 
 def _steps(action: Action) -> list[Step] | None:
     """Faithful step(s) for one action, or None when it has no replayable scenario form.
 
     A `fill` expands to one `type` step per field (mirroring how the crawl performs it); a
-    `tap_point` is a coordinate the scenario schema can't address, so it returns None.
+    `tap_point` is a coordinate the scenario schema can't address, and an action with no selector
+    can't be targeted — both return None.
     """
     if action.kind == "tap":
-        return [Step(tap=_selector(action))]
+        sel = _selector(action)
+        return [Step(tap=sel)] if sel is not None else None
     if action.kind == "type":
-        return [Step(type=TypeText(text=action.value or "", into=_selector(action)))]
+        sel = _selector(action)
+        return [Step(type=TypeText(text=action.value or "", into=sel))] if sel is not None else None
     if action.kind == "fill":
+        if not action.fields or any(not fid for fid, _ in action.fields):
+            return None
         return [Step(type=TypeText(text=val, into=Selector(id=fid))) for fid, val in action.fields]
     return None
 

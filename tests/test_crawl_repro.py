@@ -68,6 +68,18 @@ def test_empty_path_yields_no_scenario() -> None:
     assert crash_scenario(Crash((), ()), name="crash-1") is None
 
 
+def test_selectorless_action_is_unsupported() -> None:
+    # An action with no target/label can't be addressed, so it has no faithful scenario form —
+    # it returns None rather than building an invalid (empty) selector that would raise.
+    crash = _crash(Action(kind="tap"))
+    assert crash_scenario(crash, name="crash-1") is None
+
+
+def test_write_repros_skips_selectorless_crash_without_raising(tmp_path: Path) -> None:
+    sm = ScreenMap(crashes=[_crash(Action(kind="tap"))])
+    assert write_repros(tmp_path, sm) == []
+
+
 def test_emitted_yaml_round_trips_through_load() -> None:
     crash = _crash(
         Action(kind="tap", target="login"),
