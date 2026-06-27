@@ -55,12 +55,31 @@ def test_per_category_progress_is_implemented_share() -> None:
         assert f">{implemented}/{len(items)} implemented<" in _PAGE
 
 
-def test_status_filter_controls_present() -> None:
-    """Each present bucket gets a filter chip, and each card a matching data-status to toggle."""
-    assert 'data-filter="all"' in _PAGE
+def test_status_filter_toggles_present() -> None:
+    """Each bucket is an independent on/off toggle (pressed by default); each card carries its status.
+
+    There is no aggregate "all" chip — every status is its own switch.
+    """
+    assert 'data-filter="all"' not in _PAGE
+    for name, _key in brd.bri.BUCKETS:
+        assert f'data-filter="{name}" aria-pressed="true"' in _PAGE
     for item in _ITEMS:
-        assert f'data-filter="{item.bucket}"' in _PAGE
         assert f'data-status="{item.bucket}"' in _PAGE
+
+
+def test_fully_implemented_categories_are_separated() -> None:
+    """A category whose items are all Implemented lands in the Completed group, others in In progress."""
+    by_topic: dict[str, list[object]] = {}
+    for item in _ITEMS:
+        by_topic.setdefault(item.topic, []).append(item)
+    completed = {t for t, its in by_topic.items() if all(i.bucket == "Implemented" for i in its)}  # type: ignore[attr-defined]
+    ongoing = set(by_topic) - completed
+    # Both group headings appear only when their group has members.
+    assert ('data-group="completed"' in _PAGE) == bool(completed)
+    assert ('data-group="ongoing"' in _PAGE) == bool(ongoing)
+    # The Completed group's section count matches the number of all-Implemented categories.
+    completed_block = _PAGE.split('data-group="completed"', 1)[-1] if completed else ""
+    assert completed_block.count('class="be-cat"') == len(completed)
 
 
 def test_categories_are_collapsible() -> None:

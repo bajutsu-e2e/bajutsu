@@ -63,9 +63,10 @@ gitignored, exactly like the generated API reference `site/`. This is the load-b
 **Rendering.** Cards are grouped category-major (by Topic, in the index's topic order). Each card
 carries its own status as a colour and a badge (Implemented / In progress / Proposal / Deferred) and
 an `Origin` note where the metadata carries one, and links to the item's English file on GitHub. Each
-category heading shows a progress figure and a stacked bar of its status composition (see below). The
-page is added to the MkDocs `nav`, so it sits in the existing Pages site rather than standing up new
-hosting.
+category heading shows a progress figure and a stacked bar of its status composition (see below). A
+category whose items are *all* Implemented is moved to a separate **Completed** group below the rest,
+so the main view is the work still in flight. The page is added to the MkDocs `nav`, so it sits in
+the existing Pages site rather than standing up new hosting.
 
 **Per-category progress.** Each category shows the share of its items that are Implemented — the
 count of `Implemented` items over the category's total — as a percentage, beside a stacked bar whose
@@ -77,12 +78,13 @@ next to the percentage so the number is transparent.
 **Interactivity (progressive enhancement).** A single tiny inline script — the only JavaScript on the
 page — adds the interaction. On load it collapses every category to a compact overview (just the
 heading and its progress bar), so the landing view is the shape of the whole roadmap at a glance.
-From there: clicking a heading expands that category's cards; the summary counts double as filter
-buttons, where a status chip shows only cards of that status (expanding the categories that have a
-match, hiding those left empty) and an "All" chip returns to the collapsed overview. The collapsed
-state is applied *by the script*, never baked into the markup — so with scripting off every category
-stays open, every card is visible, and the page is fully readable without it. Nothing fetches or
-computes; it only shows and hides already-rendered markup.
+From there: clicking a heading expands that category's cards; the summary counts double as **status
+toggles**, each an independent on/off switch (all on by default). Turning one off removes that
+status's cards everywhere and hides any category or group left empty; turning every status back on
+returns to the collapsed overview. The collapsed state is applied *by the script*, never baked into
+the markup — so with scripting off every status is on, every category stays open, every card is
+visible, and the page is fully readable without it. Nothing fetches or computes; it only shows and
+hides already-rendered markup.
 
 **Honesty of the data.** Only facts the metadata carries are shown — status, Topic, Origin, title,
 and counts — plus the per-category progress derived from them. The line not crossed is a *per-item*

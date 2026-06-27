@@ -7,7 +7,8 @@ metadata as a single self-contained HTML dashboard, ``docs/api/roadmap.md``, tha
 MkDocs site publishes to GitHub Pages: cards grouped by category (Topic), each card carrying its own
 status (Implemented / In progress / Proposal / Deferred) and linking to its item on GitHub. Each
 category shows a progress figure — the share of its items that are Implemented — and a stacked bar
-of its full status composition.
+of its full status composition, and fully-implemented categories are grouped separately under
+Completed.
 
 Like the generated API reference (``site/``), the page is a **build artifact, never committed**: it
 is regenerated from the live tree on every docs build, so it can never drift from the roadmap and is
@@ -112,23 +113,23 @@ def render_html(items: list[Any]) -> str:
         by_bucket[item.bucket].append(item)
         by_topic[item.topic].append(item)
 
-    # The summary doubles as a status filter: each chip is a button a small script (below) wires to
-    # show only cards of that status. Without JavaScript the buttons are inert and every card stays
-    # visible, so the page is still fully readable — filtering is progressive enhancement.
-    all_chip = (
-        '<button type="button" class="be-stat be-filter is-active" data-filter="all">'
-        f"<b>{len(items)}</b> All</button>"
-    )
-    bucket_chips = "".join(
-        f'<button type="button" class="be-stat be-filter" data-filter="{html.escape(name)}" '
-        f'style="border-color:{BUCKET_COLOR[name]}">'
+    # Each status is an independent on/off toggle (all on = everything shown). A chip carries a tick
+    # box and its count; a small script (below) flips its status. Without JavaScript the chips are
+    # inert and every card stays visible, so the page is still fully readable — progressive enhancement.
+    chips = "".join(
+        f'<button type="button" class="be-stat be-filter is-active" '
+        f'data-filter="{html.escape(name)}" aria-pressed="true" style="border-color:{BUCKET_COLOR[name]}">'
+        '<span class="be-tick" aria-hidden="true"></span>'
         f'<b style="color:{BUCKET_COLOR[name]}">{len(by_bucket[name])}</b> {html.escape(name)}'
         "</button>"
         for name, _key in bri.BUCKETS
     )
-    summary_cells = all_chip + bucket_chips
+    summary = f'<div class="be-summary" role="group" aria-label="Toggle statuses">{chips}</div>'
 
-    sections: list[str] = []
+    # Split categories into those with work left and those fully implemented; the 100% ones move to a
+    # separate "Completed" group so the main view is the work still in flight.
+    ongoing: list[str] = []
+    completed: list[str] = []
     for topic, _key, _origin in bri.TOPICS:
         cat_items = by_topic[topic]
         if not cat_items:
@@ -138,7 +139,7 @@ def render_html(items: list[Any]) -> str:
         implemented = counts["Implemented"]
         pct = round(100 * implemented / total)
         cards = "".join(_card(it) for it in sorted(cat_items, key=lambda it: it.id))
-        sections.append(
+        section = (
             '<section class="be-cat">'
             '<div class="be-cat-head" role="button" tabindex="0" aria-expanded="true">'
             '<div class="be-cat-title">'
@@ -154,13 +155,23 @@ def render_html(items: list[Any]) -> str:
             f'<div class="be-cards">{cards}</div>'
             "</section>"
         )
+        (completed if pct == 100 else ongoing).append(section)
 
-    return (
-        '<div class="be-dash">'
-        f'<div class="be-summary" role="group" aria-label="Filter by status">{summary_cells}</div>'
-        f"{''.join(sections)}"
-        "</div>"
-    )
+    groups = ""
+    if ongoing:
+        groups += (
+            '<div class="be-group" data-group="ongoing">'
+            '<h2 class="be-group-head">In progress</h2>'
+            f"{''.join(ongoing)}</div>"
+        )
+    if completed:
+        groups += (
+            '<div class="be-group" data-group="completed">'
+            f'<h2 class="be-group-head">Completed <span class="be-count">{len(completed)}</span></h2>'
+            f"{''.join(completed)}</div>"
+        )
+
+    return f'<div class="be-dash">{summary}{groups}</div>'
 
 
 _STYLE = """
@@ -169,9 +180,13 @@ _STYLE = """
 .be-summary{display:flex;flex-wrap:wrap;gap:.6rem;margin:.5rem 0 1.5rem}
 .be-stat{border:1px solid;border-radius:8px;padding:.25rem .7rem;font-size:13px}
 .be-stat b{font-weight:600}
-.be-filter{cursor:pointer;background:none;font:inherit;color:inherit}
-.be-filter.is-active{background:rgba(128,128,128,.14);font-weight:600}
-.be-cat.is-hidden,.be-card.is-hidden{display:none}
+.be-filter{display:inline-flex;align-items:center;gap:.4rem;cursor:pointer;background:none;font:inherit;color:inherit;opacity:.45}
+.be-filter.is-active{opacity:1;background:rgba(128,128,128,.12)}
+.be-tick{width:12px;height:12px;border:1.5px solid currentColor;border-radius:3px;opacity:.55}
+.be-filter.is-active .be-tick{background:currentColor;opacity:.85}
+.be-group.is-hidden,.be-cat.is-hidden,.be-card.is-hidden{display:none}
+.be-group-head{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+  color:#888;border-bottom:1px solid rgba(128,128,128,.2);padding-bottom:.3rem;margin:1.6rem 0 .6rem}
 .be-cat{margin:1.6rem 0}
 .be-cat-head{margin:0 0 .8rem;cursor:pointer}
 .be-cat-title{display:flex;align-items:center;gap:.5rem}
@@ -197,38 +212,48 @@ _STYLE = """
 </style>
 """
 
-# Progressive enhancement. On load the script collapses every category to a compact overview (just
-# the heading and its progress bar); the collapsed state is applied by JS, never baked into the
-# markup, so with scripting off every category stays open and the page is fully readable. Status
-# filter: a chip hides cards of other statuses, hides any emptied category, and expands the ones with
-# matches so the results show; "All" returns to the collapsed overview. Each heading also toggles its
-# own category. Nothing fetches or computes — it only shows and hides already-rendered markup.
+# Progressive enhancement. Each status is an independent on/off toggle, all on by default; a card
+# shows only while its status is on, and a category (or group) left with no visible card is hidden.
+# On load — and whenever every status is back on — categories collapse to a compact overview (just the
+# heading and its progress bar); turning a status off expands the categories that still have a match.
+# The collapsed state is applied by JS, never baked into the markup, so with scripting off every
+# status is on, every category open, and the page fully readable. Each heading also toggles its own
+# category. Nothing fetches or computes — it only shows and hides already-rendered markup.
 _SCRIPT = """
 <script>
 (function(){
+  var ALL=['Implemented','In progress','Proposals','Deferred'];
   var filters=document.querySelectorAll('.be-filter');
   var cards=document.querySelectorAll('.be-card');
   var cats=document.querySelectorAll('.be-cat');
+  var groups=document.querySelectorAll('.be-group');
+  var on={}; ALL.forEach(function(s){ on[s]=true; });
   function setCollapsed(cat, collapsed){
     cat.classList.toggle('is-collapsed', collapsed);
     var head=cat.querySelector('.be-cat-head');
     if(head) head.setAttribute('aria-expanded', String(!collapsed));
   }
-  function apply(value){
+  function apply(){
+    var allOn=ALL.every(function(s){ return on[s]; });
     cards.forEach(function(c){
-      c.classList.toggle('is-hidden', value!=='all' && c.getAttribute('data-status')!==value);
+      c.classList.toggle('is-hidden', !on[c.getAttribute('data-status')]);
     });
     cats.forEach(function(cat){
       var hasMatch=!!cat.querySelector('.be-card:not(.is-hidden)');
       cat.classList.toggle('is-hidden', !hasMatch);
-      setCollapsed(cat, value==='all' ? true : !hasMatch);
+      setCollapsed(cat, allOn ? true : !hasMatch);
+    });
+    groups.forEach(function(g){
+      g.classList.toggle('is-hidden', !g.querySelector('.be-cat:not(.is-hidden)'));
     });
     filters.forEach(function(f){
-      f.classList.toggle('is-active', f.getAttribute('data-filter')===value);
+      var s=f.getAttribute('data-filter');
+      f.classList.toggle('is-active', on[s]);
+      f.setAttribute('aria-pressed', String(on[s]));
     });
   }
   filters.forEach(function(f){
-    f.addEventListener('click', function(){ apply(f.getAttribute('data-filter')); });
+    f.addEventListener('click', function(){ var s=f.getAttribute('data-filter'); on[s]=!on[s]; apply(); });
   });
   cats.forEach(function(cat){
     var head=cat.querySelector('.be-cat-head');
@@ -237,8 +262,8 @@ _SCRIPT = """
     head.addEventListener('keydown', function(e){
       if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); }
     });
-    setCollapsed(cat, true);
   });
+  apply();
 })();
 </script>
 """
@@ -247,9 +272,10 @@ _INTRO = (
     "# Roadmap status\n\n"
     "Live view of every roadmap (BE) item, grouped by category — each category showing the share of "
     "its items already implemented, and each card its own status. Regenerated from item metadata on "
-    "every docs build, so it always reflects the committed roadmap. Categories start collapsed to a "
-    "progress overview — click a heading to expand it, or use the chips to filter by status. Each "
-    "card links to its full proposal on GitHub. The full index with both languages "
+    "every docs build, so it always reflects the committed roadmap. Fully-implemented categories are "
+    "grouped separately under Completed. Categories start collapsed to a progress overview — click a "
+    "heading to expand it, or toggle the status chips on and off to filter. Each card links to its "
+    "full proposal on GitHub. The full index with both languages "
     "lives in [`roadmaps/README.md`](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/README.md).\n\n"
 )
 
