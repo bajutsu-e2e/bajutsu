@@ -434,6 +434,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 |---|---|---|
 | [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Proposal |
 | [BE-0092](proposals/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Proposal |
+| [BE-0093](proposals/BE-0093-public-docs-site/BE-0093-public-docs-site.md) | Public project website & documentation portal (GitHub Pages) | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Dogfood fixtures (demo apps)

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-public-docs-site-ja.md)
+**English** · [日本語](BE-0093-public-docs-site-ja.md)
 
-# BE-XXXX — Public project website & documentation portal (GitHub Pages)
+# BE-0093 — Public project website & documentation portal (GitHub Pages)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-public-docs-site.md) |
+| Proposal | [BE-0093](BE-0093-public-docs-site.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |
