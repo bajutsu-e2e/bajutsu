@@ -57,3 +57,6 @@ DerivedData/
 worktree
 # Generated API reference output (BE-0065; `make docs`) — built, never committed.
 site/
+
+# serve upload temp dirs (BE-0073) — never commit extracted bundles
+uploads/
