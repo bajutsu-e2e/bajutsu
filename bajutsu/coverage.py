@@ -272,7 +272,57 @@ def render_observed_ids(oc: ObservedIdCoverage) -> str:
     return "\n".join(lines)
 
 
-# --- HTML report: the three dimensions visualized on one self-contained page (BE-0050) ---
+# --- screens-visited: screens a crawl discovered vs the screens a run set actually reached ---
+
+
+@dataclass(frozen=True)
+class ScreenRef:
+    """A discovered screen: its crawl fingerprint and a human label (its first id, or short hash)."""
+
+    fingerprint: str
+    label: str
+
+
+@dataclass(frozen=True)
+class ScreenCoverage:
+    """How much of a crawl's discovered screen surface a run set actually reached."""
+
+    visited: list[ScreenRef]  # discovered screens a run rendered, in fingerprint order
+    unvisited: list[ScreenRef]  # discovered screens no run reached — the gap
+    total: int  # discovered screens
+    covered: int  # discovered screens visited
+    coverage: float  # covered / total (1.0 when nothing was discovered)
+
+
+def screen_coverage(discovered: list[ScreenRef], visited: frozenset[str]) -> ScreenCoverage:
+    """Measure how many crawl-discovered screens a run set reached. Pure.
+
+    `discovered` is the crawl's screen-map nodes (de-duped here by fingerprint); `visited` is the
+    set of screen fingerprints the runs rendered, computed by the same `crawl.fingerprint` so the
+    two are comparable. A run fingerprint the crawl never found cannot inflate coverage — only the
+    discovered set is the denominator.
+    """
+    by_fp = {s.fingerprint: s for s in reversed(discovered)}  # de-dupe, keep first listed
+    refs = sorted(by_fp.values(), key=lambda s: s.fingerprint)
+    seen = [s for s in refs if s.fingerprint in visited]
+    return ScreenCoverage(
+        visited=seen,
+        unvisited=[s for s in refs if s.fingerprint not in visited],
+        total=len(refs),
+        covered=len(seen),
+        coverage=len(seen) / len(refs) if refs else 1.0,
+    )
+
+
+def render_screens(sc: ScreenCoverage) -> str:
+    """Human-readable summary that points at the discovered screens no run reached."""
+    lines = [f"screens visited: {sc.coverage:.2f} ({sc.covered}/{sc.total})"]
+    if sc.unvisited:
+        lines.append(f"  unvisited (discovered, no run reached): {[s.label for s in sc.unvisited]}")
+    return "\n".join(lines)
+
+
+# --- HTML report: the dimensions visualized on one self-contained page (BE-0050) ---
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -287,16 +337,18 @@ def render_html(
     c: Coverage,
     endpoints: EndpointCoverage | None = None,
     observed: ObservedIdCoverage | None = None,
+    screens: ScreenCoverage | None = None,
     target: str = "",
 ) -> str:
     """A self-contained HTML coverage report (inline CSS, no JS, no external asset).
 
     The visual counterpart to the `render*` text summaries: the static id-namespace dimension
-    always renders; the endpoint and observed-id dimensions render only when run evidence supplies
-    them. Read-only and AI-free, like every other coverage output.
+    always renders; the endpoint, observed-id, and screens-visited dimensions render only when run
+    evidence (and, for screens, a crawl map) supplies them. Read-only and AI-free, like every other
+    coverage output.
     """
     return (
         _env()
         .get_template("coverage.html.j2")
-        .render(static=c, endpoints=endpoints, observed=observed, target=target)
+        .render(static=c, endpoints=endpoints, observed=observed, screens=screens, target=target)
     )

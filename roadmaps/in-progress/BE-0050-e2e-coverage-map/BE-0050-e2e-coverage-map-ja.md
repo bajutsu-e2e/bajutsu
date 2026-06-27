@@ -90,8 +90,19 @@ gap があっても終了 0 です。
 （静的な id 名前空間マップは常に、エンドポイントと観測 id のマップは `--runs` が供給したときに）、
 read-only かつ AI 非依存のままです。このフラグはファイルを書き出すだけで、判定もテキスト／JSON 出力も変えません。
 
-引き続き見送り: **訪問済み画面**の次元（クロールが発見する分母、[BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)
-が必要）。
+第五のスライスは、*動機*が掲げる **訪問済み画面**の次元を提供します。最後の 1 つで、自律クロール
+（[BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）が
+クロール発見の分母を供給できるようになったことで実現しました。`bajutsu coverage --crawl <screenmap> --runs <dir>` は、
+クロールが発見した画面のうち run セットが到達した割合を測ります。分母は `screenmap.json` のノード、分子は
+ステップごとの `elements.json` を*同じ* `crawl.fingerprint` で指紋化したものです。これにより訪問した画面が
+発見した画面と突き合わせられます。`coverage.screen_coverage` は到達した割合と、**訪問されなかった**画面
+（発見済みだがどの run も触れていない）を報告し、他の次元と同様にテキスト／JSON／HTML 出力へ渡します。
+クロールが一度も見つけていない run の指紋は数値を水増しできません。分母は発見した集合だけです。引き続き
+read-only かつ AI 非依存で、gap があっても終了 0 です。`crawl.fingerprint` を再利用することで、訪問と発見の
+同一性を二つ目のアルゴリズムなしに比較できます。
+
+静的・エンドポイント・観測 id・訪問済み画面のすべての次元が出荷され、提案が掲げた次元はすべて実装済みに
+なりました。
 
 ## 検討した代替案
 

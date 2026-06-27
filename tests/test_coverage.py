@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.coverage import (
+    ScreenRef,
     coverage,
     endpoint_coverage,
     observed_id_coverage,
@@ -21,7 +22,10 @@ from bajutsu.coverage import (
     render,
     render_html,
     render_observed_ids,
+    render_screens,
+    screen_coverage,
 )
+from bajutsu.crawl import fingerprint as screen_fingerprint
 from bajutsu.network import NetworkExchange
 from bajutsu.scenario import load_scenarios
 
@@ -707,3 +711,191 @@ def test_cli_html_unwritable_path_exits_2_cleanly(tmp_path) -> None:  # type: ig
     )
     assert result.exit_code == 2  # clean failure, not an uncaught traceback
     assert "Traceback" not in result.stdout
+
+
+# --- BE-0050: screens-visited coverage (crawl-discovered screens vs the screens runs reached) ---
+
+
+def _ref(fp: str, label: str) -> ScreenRef:
+    return ScreenRef(fingerprint=fp, label=label)
+
+
+def test_screen_coverage_splits_visited_and_unvisited() -> None:
+    discovered = [_ref("aaa", "home"), _ref("bbb", "detail"), _ref("ccc", "settings")]
+    sc = screen_coverage(discovered, frozenset({"aaa", "ccc"}))
+    assert sc.total == 3 and sc.covered == 2
+    assert sc.coverage == 2 / 3
+    assert [s.fingerprint for s in sc.visited] == ["aaa", "ccc"]
+    assert [s.label for s in sc.unvisited] == ["detail"]  # discovered, no run reached it
+
+
+def test_screen_coverage_dedupes_discovered_by_fingerprint() -> None:
+    # the same fingerprint listed twice counts once, keeping the first-listed label
+    sc = screen_coverage([_ref("aaa", "home"), _ref("aaa", "home-alt")], frozenset())
+    assert sc.total == 1
+    assert sc.unvisited[0].label == "home"  # first-listed label wins
+
+
+def test_screen_coverage_nothing_discovered_is_full() -> None:
+    sc = screen_coverage([], frozenset({"aaa"}))
+    assert sc.total == 0 and sc.coverage == 1.0
+    assert sc.unvisited == []
+
+
+def test_screen_coverage_visited_ignores_screens_off_the_map() -> None:
+    # a run fingerprint the crawl never discovered does not inflate coverage
+    sc = screen_coverage([_ref("aaa", "home")], frozenset({"aaa", "zzz"}))
+    assert sc.covered == 1 and sc.total == 1
+
+
+def test_render_screens_reports_coverage_and_unvisited() -> None:
+    sc = screen_coverage([_ref("aaa", "home"), _ref("bbb", "detail")], frozenset({"aaa"}))
+    text = render_screens(sc)
+    assert "screens visited: 0.50 (1/2)" in text
+    assert "detail" in text  # the unvisited screen's label
+
+
+def test_render_html_includes_screens_section_when_given() -> None:
+    cov = _cov("- name: x\n  steps:\n    - tap: { id: home.start }\n", ["home"])
+    sc = screen_coverage([_ref("aaa", "home"), _ref("bbb", "detail")], frozenset({"aaa"}))
+    html = render_html(cov, screens=sc)
+    assert "Screens visited" in html
+    assert "1/2" in html
+    assert "detail" in html  # the unvisited screen
+    # absent without a screens dimension
+    assert "Screens visited" not in render_html(cov)
+
+
+def _screenmap(path, nodes) -> None:  # type: ignore[no-untyped-def]
+    path.write_text(
+        json.dumps({"nodes": nodes, "edges": [], "crashes": [], "alerts": []}), encoding="utf-8"
+    )
+
+
+def test_cli_screen_coverage_with_crawl_and_runs(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    # a run that rendered a screen with two ids — fingerprint it the same way the crawl does
+    els = [
+        {"identifier": "home.a", "label": None, "traits": [], "value": None, "frame": [0, 0, 1, 1]},
+        {"identifier": "home.b", "label": None, "traits": [], "value": None, "frame": [0, 0, 1, 1]},
+    ]
+    visited_fp = screen_fingerprint(els).value
+    step = tmp_path / "runs" / "20260101-000000" / "00-x"
+    step.mkdir(parents=True)
+    (step / "elements.json").write_text(json.dumps(els), encoding="utf-8")
+    # a crawl that discovered the visited screen plus one the run never reached
+    screenmap = tmp_path / "screenmap.json"
+    _screenmap(
+        screenmap,
+        [
+            {"fingerprint": visited_fp, "kind": "id", "ids": ["home.a", "home.b"]},
+            {"fingerprint": "neverreached", "kind": "id", "ids": ["secret.panel"]},
+        ],
+    )
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--crawl",
+            str(screenmap),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    screens = json.loads(result.stdout)["screens"]
+    assert screens["covered"] == 1 and screens["total"] == 2
+    assert screens["unvisited"][0]["label"] == "secret.panel"  # the discovered, unreached screen
+
+
+def test_cli_accepts_a_crawl_run_dir_for_screenmap(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    crawl_dir = tmp_path / "runs" / "20260101-000000"
+    (crawl_dir / "00-x").mkdir(parents=True)
+    _screenmap(
+        crawl_dir / "screenmap.json", [{"fingerprint": "aaa", "kind": "id", "ids": ["home"]}]
+    )
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--crawl",
+            str(crawl_dir),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["screens"]["total"] == 1  # screenmap.json found inside the dir
+
+
+def test_cli_crawl_without_runs_warns_and_skips(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    _screenmap(tmp_path / "screenmap.json", [{"fingerprint": "aaa", "kind": "id", "ids": ["home"]}])
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--crawl",
+            str(tmp_path / "screenmap.json"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    assert (
+        json.loads(result.stdout).get("screens") is None
+    )  # needs run evidence to know what was visited
+    assert "needs --runs" in result.stderr
+
+
+def test_cli_without_crawl_omits_screen_section(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["coverage", "--target", "demo", "--config", str(config), "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout).get("screens") is None

@@ -106,5 +106,19 @@ code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size
 {%- endif %}
 </section>
 {%- endif %}
+
+{%- if screens is not none %}
+<section>
+<h2>Screens visited (crawl-discovered vs reached)</h2>
+<p class="score">{{ (screens.coverage * 100) | round(1) }}% — {{ screens.covered }}/{{ screens.total }} discovered screens reached by a run</p>
+{{ bar(screens.coverage) }}
+{%- if screens.unvisited %}
+<p class="gap"><strong>Unvisited</strong> (the crawl discovered them, no run reached them): {% for s in screens.unvisited %}<span class="tag"><code>{{ s.label }}</code></span>{% endfor %}</p>
+{%- endif %}
+{%- if not screens.total %}
+<p class="empty">The crawl discovered no screens.</p>
+{%- endif %}
+</section>
+{%- endif %}
 </body>
 </html>
