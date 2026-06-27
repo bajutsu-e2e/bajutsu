@@ -32,8 +32,14 @@ inputs:
 runs:
   using: composite
   steps:
+    # Skip Homebrew's auto-update (re-fetching every tap on each run costs minutes) and the
+    # post-install cleanup; the `brew list` guard already short-circuits when idb-companion is
+    # present, so these only speed the actual install.
     - name: Install idb_companion
       shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_INSTALL_CLEANUP: "1"
       run: brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion
 
     - name: Sync dependencies (idb backend)
