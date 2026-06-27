@@ -8,7 +8,7 @@
 | Proposal | [BE-XXXX](BE-XXXX-idb-action-settle.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Topic | On-device reliability (flake reduction) |
+| Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
 ## Introduction

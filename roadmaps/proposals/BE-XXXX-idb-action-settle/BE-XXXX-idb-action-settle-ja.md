@@ -8,7 +8,7 @@
 | 提案 | [BE-XXXX](BE-XXXX-idb-action-settle-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
-| トピック | 実機の信頼性（flaky 低減） |
+| トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
 ## はじめに
