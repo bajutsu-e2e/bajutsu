@@ -159,7 +159,7 @@ retention / cleanup of old runs.
   add I/O and disk to every CI run. Keep it opt-in (`--zip`) or on demand (`export` / the serve
   button).
 * **A dedicated "run report export / sharing" roadmap topic.** Deferred, following the
-  [BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) precedent of
+  [BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging.md) precedent of
   not splitting a topic for a single item: this is filed under *Authoring experience* for now. If
   siblings appear (cloud upload, share-links, alternative export formats), a dedicated topic can be
   carved out then.

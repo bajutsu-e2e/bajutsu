@@ -40,4 +40,4 @@
 ## 参考
 
 `bajutsu/interp.py`・`bajutsu/redaction.py`、[evidence.md](../../../docs/ja/evidence.md)、
-[BE-0055](../../proposals/BE-0055-operational-logging/BE-0055-operational-logging-ja.md) — この機密マスクの仕組みをホスト型 serve の運用ログで再利用します。
+[BE-0055](../BE-0055-operational-logging/BE-0055-operational-logging-ja.md) — この機密マスクの仕組みをホスト型 serve の運用ログで再利用します。

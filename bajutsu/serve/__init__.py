@@ -19,6 +19,7 @@ Split into three submodules:
 
 from __future__ import annotations
 
+import os
 import shutil
 from functools import partial
 from pathlib import Path
@@ -333,6 +334,28 @@ def _build_server_state(
     return state
 
 
+def _configure_oplog(state: ServeState) -> None:
+    """Install the operational-logging channel for a serve process (BE-0055).
+
+    Serve defaults to structured JSON; the process-lifetime redactor is seeded with the secrets
+    that exist at startup (operator token, OAuth client secret, API key) so they can never reach a
+    log line. Per-run ``${secrets.X}`` values are masked separately, run-scoped, on the worker.
+    """
+    from bajutsu.serve import oplog
+
+    static = (
+        state.token,
+        os.environ.get("ANTHROPIC_API_KEY"),
+        os.environ.get("BAJUTSU_SERVE_TOKEN"),
+        os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET"),
+    )
+    oplog.configure(
+        fmt=os.environ.get("BAJUTSU_LOG_FORMAT") or "json",
+        level=os.environ.get("BAJUTSU_LOG_LEVEL") or "INFO",
+        secrets=tuple(v for v in static if v),
+    )
+
+
 def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:
     """A uvicorn ``Server`` running the FastAPI control-plane app over *state*. uvicorn and the app
     (FastAPI) are imported lazily — only when the ASGI transport is selected — so the default path
@@ -383,6 +406,7 @@ def serve(
     # ephemeral, and nothing is bound at startup, so this just stops them accumulating across
     # restarts (BE-0073; a bound bundle is removed when another config is bound while running).
     shutil.rmtree(state.uploads_dir, ignore_errors=True)
+    _configure_oplog(state)
     hint = str(config) if config else "open a config.yml in the UI"
     if asgi:
         # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0055](BE-0055-operational-logging.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 

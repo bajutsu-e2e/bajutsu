@@ -185,6 +185,40 @@ def test_execute_job_spec_streams_logs_to_the_injected_bus(tmp_path: Path) -> No
     assert any("20260610-1" in line for line in replay)
 
 
+def test_worker_operational_log_correlates_the_job_and_run(tmp_path: Path) -> None:
+    # The worker's own operational trace (BE-0055) tags every record with the job's ids, and emits
+    # the start/finish events — distinct from the run *output* it streams to the LogBus.
+    import io
+
+    from bajutsu.serve import oplog
+
+    project(tmp_path)
+    buf = io.StringIO()
+    oplog.configure(fmt="json", level="INFO", stream=buf)
+    try:
+        spec = {
+            "job_id": "42",
+            "cmd": ["bajutsu", "run"],
+            "udids": [],
+            "app_path": None,
+            "build": None,
+        }
+        execute_job_spec(
+            spec,
+            popen=fake_popen(["step 0 ok\n", "PASS  runs/20260610-1/manifest.json\n"]),
+            cwd=tmp_path,
+            bus=srv.InMemoryLogBus(),
+        )
+    finally:
+        oplog.reset()
+    records = [json.loads(ln) for ln in buf.getvalue().splitlines() if ln.strip()]
+    events = {r.get("event"): r for r in records if r.get("event")}
+    assert "worker.job.started" in events
+    assert events["worker.job.started"]["job_id"] == "42"
+    assert events["worker.job.finished"]["job_id"] == "42"
+    assert events["worker.job.finished"]["run_id"] == "20260610-1"
+
+
 def test_redis_url_prefers_bajutsu_then_redis_then_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
