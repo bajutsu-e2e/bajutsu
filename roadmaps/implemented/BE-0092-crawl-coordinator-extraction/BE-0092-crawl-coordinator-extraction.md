@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0092](BE-0092-crawl-coordinator-extraction.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
