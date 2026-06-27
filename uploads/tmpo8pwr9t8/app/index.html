@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bajutsu Web Demo</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 28rem; }
+      section[hidden] { display: none; }
+      button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
+      input { display: block; margin: 0.5rem 0; padding: 0.4rem; font-size: 1rem; width: 100%; }
+      output, .count { font-size: 2rem; font-weight: 600; }
+      h1 { font-size: 1.4rem; }
+    </style>
+  </head>
+  <body>
+    <!--
+      A deliberately tiny web app mirroring the iOS sample's smoke flow
+      (onboarding → login → counter), used to prove the Playwright web backend
+      drives a real browser deterministically. Stable, non-localized `data-testid`
+      attributes are the web equivalent of iOS accessibilityIdentifier, and are what
+      a scenario's `{ id: ... }` selector resolves to.
+    -->
+    <section data-testid="onboarding.screen" id="onboarding">
+      <h1 data-testid="onboarding.title">Welcome to Bajutsu</h1>
+      <button data-testid="onboarding.start">Get started</button>
+    </section>
+
+    <section data-testid="auth.screen" id="auth" hidden>
+      <h1 data-testid="auth.title">Sign in</h1>
+      <input data-testid="auth.email" type="email" placeholder="Email" aria-label="Email" />
+      <input data-testid="auth.password" type="password" placeholder="Password" aria-label="Password" />
+      <button data-testid="auth.submit">Sign in</button>
+    </section>
+
+    <section data-testid="home.screen" id="home" hidden>
+      <h1 data-testid="home.title">Home</h1>
+      <input data-testid="counter.value" readonly value="0" aria-label="Counter value" />
+      <button data-testid="counter.increment">Increment</button>
+      <div
+        data-testid="gesture.box"
+        style="width: 200px; height: 200px; background: #eee; touch-action: none"
+      >
+        Pinch / rotate me
+      </div>
+      <output data-testid="gesture.status">idle</output>
+    </section>
+
+    <script>
+      const show = (id) => {
+        for (const s of document.querySelectorAll("section")) s.hidden = s.id !== id;
+      };
+      document.querySelector('[data-testid="onboarding.start"]').addEventListener("click", () =>
+        show("auth")
+      );
+      document.querySelector('[data-testid="auth.submit"]').addEventListener("click", () =>
+        show("home")
+      );
+      const counter = document.querySelector('[data-testid="counter.value"]');
+      let n = 0;
+      document.querySelector('[data-testid="counter.increment"]').addEventListener("click", () => {
+        n += 1;
+        counter.value = String(n);
+      });
+
+      // A two-finger gesture target: classify the live touches as a pinch (distance change) or a
+      // rotate (angle change) so a scenario can assert the multiTouch path drove the page.
+      const gbox = document.querySelector('[data-testid="gesture.box"]');
+      const gstatus = document.querySelector('[data-testid="gesture.status"]');
+      let startDist = null;
+      let startAngle = null;
+      const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      const angle = (t) => Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX);
+      gbox.addEventListener("touchstart", (e) => {
+        if (e.touches.length === 2) {
+          startDist = dist(e.touches);
+          startAngle = angle(e.touches);
+        }
+      });
+      gbox.addEventListener("touchmove", (e) => {
+        if (e.touches.length === 2 && startDist !== null) {
+          const ratio = dist(e.touches) / startDist;
+          const deg = ((angle(e.touches) - startAngle) * 180) / Math.PI;
+          if (Math.abs(deg) > 15) gstatus.textContent = "rotated";
+          else if (ratio > 1.1) gstatus.textContent = "pinched-out";
+          else if (ratio < 0.9) gstatus.textContent = "pinched-in";
+          e.preventDefault();
+        }
+      });
+    </script>
+  </body>
+</html>

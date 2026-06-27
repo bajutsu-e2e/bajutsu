@@ -1,0 +1,16 @@
+# Self-contained web (Playwright) upload bundle for the demo app (BE-0073 demo).
+# The static app under test ships inside the zip; launchServer (BE-0059) serves it at run time and
+# tears it down after, so the bundle is fully self-contained — no external server needed.
+# appPath has no meaning for the web backend; baseUrl + launchServer identify the app instead.
+defaults:
+  backend: [web]
+targets:
+  web:
+    backend: [web]
+    baseUrl: "http://127.0.0.1:8791/index.html"
+    scenarios: scenarios
+    launchServer:
+      cmd: python3 -m http.server 8791
+      cwd: app
+      readyUrl: "http://127.0.0.1:8791/index.html"
+      readyTimeout: 30
