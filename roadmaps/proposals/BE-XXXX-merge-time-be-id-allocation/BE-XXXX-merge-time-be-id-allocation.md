@@ -142,6 +142,38 @@ hands-free (`gh pr merge --auto`); enabling auto-merge pushes no commit, so it c
 review. Auto-merge can equally be turned on by the author or by a merge queue — the allocator does
 not depend on which.
 
+### Setting up the GitHub App
+
+The bypass identity is a dedicated GitHub App, created once by a maintainer with admin rights:
+
+1. **Create the App** (org- or repo-owned). It needs no webhook and no callback URL — it is used
+   only to mint an installation token in CI. Repository permissions are **Contents: Read and write**
+   (to push the renumber commit) and **Pull requests: Read and write** (to comment the allocated id),
+   and nothing else.
+2. **Install it on this repo only**, so its reach is a single repository.
+3. **Add the App to `main`'s ruleset bypass list** — it is the only entry — so its installation token
+   can push the renumber commit (or merge the renumber PR) past branch protection.
+4. **Generate a private key** and store it with the App id as Actions secrets, scoped via an
+   Environment to the `main` ref so no PR-triggered job can read them.
+
+The workflow mints a short-lived installation token from those secrets and uses it for checkout,
+push, and `gh`:
+
+```yaml
+    - uses: actions/create-github-app-token@<sha>   # pin to a full commit SHA
+      id: app-token
+      with:
+        app-id: ${{ secrets.ROADMAP_BOT_APP_ID }}
+        private-key: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
+    - uses: actions/checkout@<sha>
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+```
+
+The token expires in about an hour and is unattached to any person; commits the App makes through
+the API are verified/signed and attributed to it, so every bypass push is auditable (see *Securing
+the bypass identity*).
+
 ### Feasibility
 
 Each load-bearing assumption, made concrete:
@@ -198,10 +230,10 @@ structurally small rather than trusting the secret alone:
   re-runs the allocator in check mode (or diffs the pushed commit) and fails if the bypass commit
   touches anything outside `roadmaps/**` or deviates from the expected rename, capping the blast radius
   of any misuse to that shape.
-- **A scoped GitHub App, not a PAT.** Use a dedicated App whose installation token is short-lived
-  (≈1 h), unattached to a person, and limited to `contents: write` + `pull-requests: write` on this
-  repo; put **only that App** on `main`'s ruleset bypass list. Its private key lives in an Actions
-  secret scoped (via an Environment) to the `main` ref.
+- **A scoped GitHub App, not a PAT.** The bypass identity is a dedicated App (set up under *Setting
+  up the GitHub App*), not a personal PAT: its installation token is short-lived (≈1 h), unattached
+  to a person, and limited to `contents: write` + `pull-requests: write` on this one repo, so the
+  bypass grant carries the least privilege that does the job.
 - **Supply-chain discipline in the privileged job.** Pin every third-party action to a full commit
   SHA (the repo's existing rule) and run no dependency install — the allocate scripts are stdlib-only
   Python — so no third-party code executes alongside the token.
@@ -276,6 +308,9 @@ and [BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.m
   [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py),
   [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py) — the three tools
   that all skip a `BE-XXXX` directory, which is what keeps `main` green during the transient window.
+- [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token) — mints the
+  short-lived installation token for the bypass App in the workflow; pinned to a full commit SHA like
+  every other third-party action.
 - [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py),
   [`tests/test_roadmap_index.py`](../../../tests/test_roadmap_index.py) — the gate tests that key on
   `^BE-(\d{4})-` and so ignore the placeholder.

@@ -136,6 +136,36 @@ done
 （`gh pr merge --auto`）。auto-merge の有効化はコミットを push しないので、レビューを失効させることは
 ない。auto-merge は作成者や merge queue から有効化してもよく、採番処理はそのどれに依存するものでもない。
 
+### GitHub App を用意する
+
+bypass する ID は専用の GitHub App とし、admin 権限を持つメンテナーが一度だけ作成する。
+
+1. **App を作る**（org 所有でも repo 所有でもよい）。webhook もコールバック URL も不要で、CI で
+   インストールトークンを発行するためだけに使う。リポジトリ権限は **Contents: Read and write**（採番
+   コミットを push する）と **Pull requests: Read and write**（割り当てた ID をコメントする）だけにし、
+   ほかは付与しない。
+2. **このリポジトリにだけインストールする**。権限の及ぶ範囲を 1 リポジトリに閉じる。
+3. **`main` の ruleset の bypass リストに、この App だけを載せる**。インストールトークンが採番コミットの
+   push（あるいは採番 PR のマージ）をブランチ保護越しに通せるようにする。
+4. **秘密鍵を生成し**、App ID とともに Actions secret に保存する。Environment 経由で `main` ref に限定し、
+   PR を契機とするジョブからは読めないようにする。
+
+ワークフローはこれらの secret から短命なインストールトークンを発行し、checkout、push、`gh` に使う。
+
+```yaml
+    - uses: actions/create-github-app-token@<sha>   # full コミット SHA で pin する
+      id: app-token
+      with:
+        app-id: ${{ secrets.ROADMAP_BOT_APP_ID }}
+        private-key: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
+    - uses: actions/checkout@<sha>
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+```
+
+トークンは約 1 時間で失効し、人には紐づかない。App が API 経由で作るコミットは verified／署名付きで App に
+帰属するので、すべての bypass push が監査可能になる（「bypass する ID を守る」を参照）。
+
 ### 実現可能性
 
 設計を支える前提を、具体的に示す。
@@ -190,10 +220,10 @@ done
   索引の再生成で、`roadmaps/**` の中だけだ。ガードが採番処理を check モードで再実行する（あるいは push
   されたコミットを diff する）。bypass コミットが `roadmaps/**` の外を触る、または期待される rename から
   逸脱したら赤にし、万一の悪用の被害範囲をこの形に上限づける。
-- **PAT ではなく、権限を絞った GitHub App。** インストールトークンが短命（約 1 時間）で、人に紐づかず、この
-  リポジトリで `contents: write` ＋ `pull-requests: write` だけに限られた専用 App を使う。`main` の ruleset の
-  bypass リストには **その App だけ** を載せる。秘密鍵は Actions secret として、Environment 経由で `main` ref に
-  限定する。
+- **PAT ではなく、権限を絞った GitHub App。** bypass する ID は個人の PAT ではなく専用の App とする（用意の
+  手順は「GitHub App を用意する」を参照）。インストールトークンは短命（約 1 時間）で人に紐づかず、この
+  リポジトリで `contents: write` ＋ `pull-requests: write` だけに限られるので、bypass の付与は必要最小限の
+  権限にとどまる。
 - **特権ジョブでのサプライチェーン規律。** third-party action はすべて full コミット SHA で pin し（リポジトリ
   既存のルール）、依存インストールを走らせない（採番スクリプトは stdlib のみの Python である）ことで、トークン
   と並走する外部コードをなくす。
@@ -261,6 +291,9 @@ BE-0061、
   [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py)、
   [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py)：いずれも `BE-XXXX`
   ディレクトリを読み飛ばす 3 つのツール。これが一時的な窓の間 `main` を緑に保つ。
+- [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token)：ワークフロー
+  内で bypass する App の短命なインストールトークンを発行する action。ほかの third-party action と同様に
+  full コミット SHA で pin する。
 - [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)、
   [`tests/test_roadmap_index.py`](../../../tests/test_roadmap_index.py)：`^BE-(\d{4})-` で判定し、
   プレースホルダを無視するゲートテスト。
