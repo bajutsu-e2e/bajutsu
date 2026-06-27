@@ -85,7 +85,7 @@ def _visited_screens(runs_dir: Path) -> frozenset[str]:
             continue
         elements = [e for e in data if isinstance(e, dict)]
         if elements:
-            seen.add(_crawl.fingerprint(cast("list[base.Element]", elements)).value)
+            seen.add(_crawl.fingerprint(cast(list[base.Element], elements)).value)
     return frozenset(seen)
 
 
