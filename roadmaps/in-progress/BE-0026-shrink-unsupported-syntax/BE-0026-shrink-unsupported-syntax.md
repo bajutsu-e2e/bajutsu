@@ -8,7 +8,7 @@
 | Proposal | [BE-0026](BE-0026-shrink-unsupported-syntax.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#210](https://github.com/bajutsu-e2e/bajutsu/pull/210), [#280](https://github.com/bajutsu-e2e/bajutsu/pull/280) |
+| Implementing PR | [#210](https://github.com/bajutsu-e2e/bajutsu/pull/210), [#280](https://github.com/bajutsu-e2e/bajutsu/pull/280), [#316](https://github.com/bajutsu-e2e/bajutsu/pull/316) |
 | Topic | codegen coverage |
 <!-- /BE-METADATA -->
 
