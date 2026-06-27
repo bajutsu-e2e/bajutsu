@@ -62,10 +62,12 @@ The **compound-selector** slice shipped (`bajutsu/codegen.py`): a single `id` / 
 keeps its readable helper, while `value`, `traits`, `index` (alone or combined) now compose one
 `NSPredicate` query instead of dropping to `el("UNSUPPORTED_SELECTOR")`. Traits map faithfully over
 the small vocabulary (`button` / `link` → `elementType`, `notEnabled` → `enabled == NO`, `selected`
-→ `selected == YES`); a metacharacter-free `labelMatches` is a substring (`label CONTAINS`); a
-non-negative `index` becomes `element(boundBy:)`. The **device-control** steps (`setLocation` /
-`push`) now emit a labeled `// TODO` naming the `simctl` command, rather than a bare "unsupported
-step."
+→ `selected == YES`); a metacharacter-free `labelMatches` is a substring (`label CONTAINS`). An
+`index` becomes `element(boundBy:)`: a non-negative index is the literal, and a **negative index**
+(which counts from the end, like `candidates[i]` in `drivers/base.py`) maps faithfully to
+`element(boundBy: query.count - k)` — offsetting from the query's live `count`, since `boundBy:`
+takes no negative literal. The **device-control** steps (`setLocation` / `push`) now emit a labeled
+`// TODO` naming the `simctl` command, rather than a bare "unsupported step."
 
 The **network assertions / wait** are now labeled too: the `request` / `requestSequence` /
 `responseSchema` assertions and the `until: { request }` wait emit a `// TODO` naming the matched
@@ -77,7 +79,7 @@ ones in the device-control style.
 Kept an honest `el("UNSUPPORTED_SELECTOR")` where no *faithful* structural form exists — the
 governing rule (a construct leaves the fallback set only when a deterministic, AI-free mapping
 exists): a `labelMatches` regex (it is `re.search`, unlike NSPredicate's full-match `MATCHES`),
-`within` (geometric frame containment, not a tree query), a negative `index`, and an unknown trait.
+`within` (geometric frame containment, not a tree query), and an unknown trait.
 
 ## Alternatives considered
 
