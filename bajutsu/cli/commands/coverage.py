@@ -89,14 +89,23 @@ def _visited_screens(runs_dir: Path) -> frozenset[str]:
     return frozenset(seen)
 
 
-def _discovered_screens(screenmap_path: Path) -> list[_coverage.ScreenRef]:
+def _discovered_screens(screenmap_path: Path) -> list[_coverage.ScreenRef] | None:
     """The screens a crawl discovered, from its `screenmap.json` nodes.
 
     Each node's label is its first stable id, or the short fingerprint when the screen carries none.
+    Returns None when the file can't be read as JSON (so the caller skips the dimension with a
+    warning, like the other evidence readers); a node that isn't a dict or carries no `fingerprint`
+    is skipped, and an unexpected top-level shape yields no nodes — read-only, never fatal.
     """
-    data = json.loads(screenmap_path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(screenmap_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    nodes = data.get("nodes") if isinstance(data, dict) else None
     refs: list[_coverage.ScreenRef] = []
-    for n in data.get("nodes") or []:
+    for n in nodes or []:
+        if not isinstance(n, dict) or not n.get("fingerprint"):
+            continue
         fp = str(n["fingerprint"])
         ids = n.get("ids") or []
         refs.append(_coverage.ScreenRef(fingerprint=fp, label=ids[0] if ids else fp[:7]))
@@ -174,9 +183,13 @@ def coverage(
                 "--crawl needs --runs to know which screens were visited; skipping", err=True
             )
         else:
-            screens = _coverage.screen_coverage(
-                _discovered_screens(screenmap), _visited_screens(runs_path)
-            )
+            discovered = _discovered_screens(screenmap)
+            if discovered is None:  # unreadable/invalid map — skip the dimension, don't crash
+                typer.echo(
+                    f"--crawl screenmap unreadable, skipping screens coverage: {crawl}", err=True
+                )
+            else:
+                screens = _coverage.screen_coverage(discovered, _visited_screens(runs_path))
     if html:
         # Write the report first; the stdout below (text or JSON) stays the same with or without it,
         # so a confirmation goes to stderr rather than polluting a piped `--json` payload. Create the
@@ -186,7 +199,13 @@ def coverage(
         try:
             html_path.parent.mkdir(parents=True, exist_ok=True)
             html_path.write_text(
-                _coverage.render_html(report, endpoints, observed_ids, screens, target_name),
+                _coverage.render_html(
+                    report,
+                    endpoints=endpoints,
+                    observed=observed_ids,
+                    screens=screens,
+                    target=target_name,
+                ),
                 encoding="utf-8",
             )
         except OSError as e:

@@ -886,6 +886,73 @@ def test_cli_crawl_without_runs_warns_and_skips(tmp_path) -> None:  # type: igno
     assert "needs --runs" in result.stderr
 
 
+def test_cli_malformed_screenmap_warns_and_skips(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    (tmp_path / "runs" / "20260101-000000" / "00-x").mkdir(parents=True)
+    bad = tmp_path / "screenmap.json"
+    bad.write_text("{not json", encoding="utf-8")  # invalid JSON — must not crash the command
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--crawl",
+            str(bad),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0  # read-only: a malformed crawl map is skipped, not fatal
+    assert json.loads(result.stdout).get("screens") is None
+    assert "screenmap" in result.stderr  # warned, not silent
+
+
+def test_cli_screenmap_unexpected_shape_skips_bad_nodes(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    (tmp_path / "runs" / "20260101-000000" / "00-x").mkdir(parents=True)
+    # a list (not the expected dict) and, separately, a node missing "fingerprint" must not crash
+    (tmp_path / "list.json").write_text("[1, 2, 3]", encoding="utf-8")
+    (tmp_path / "badnode.json").write_text(
+        json.dumps({"nodes": [{"ids": ["home"]}, {"fingerprint": "aaa", "ids": ["home"]}]}), "utf-8"
+    )
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    base_args = [
+        "coverage",
+        "--target",
+        "demo",
+        "--config",
+        str(config),
+        "--runs",
+        str(tmp_path / "runs"),
+        "--json",
+    ]
+    r1 = runner.invoke(app, [*base_args, "--crawl", str(tmp_path / "list.json")])
+    assert (
+        r1.exit_code == 0 and json.loads(r1.stdout)["screens"]["total"] == 0
+    )  # no nodes, not a crash
+    r2 = runner.invoke(app, [*base_args, "--crawl", str(tmp_path / "badnode.json")])
+    assert r2.exit_code == 0 and json.loads(r2.stdout)["screens"]["total"] == 1  # bad node skipped
+
+
 def test_cli_without_crawl_omits_screen_section(tmp_path) -> None:  # type: ignore[no-untyped-def]
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
