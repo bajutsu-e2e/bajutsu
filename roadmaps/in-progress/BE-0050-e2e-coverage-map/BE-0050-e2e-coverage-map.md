@@ -82,6 +82,14 @@ observed ids. It complements the static "referenced" figure (which ids the scena
 the run-evidence "observed" figure (which ids the runs *showed*), exposing namespaces a run set
 never actually exercised. Still read-only, AI-free, and exits 0 even with gaps.
 
+The fourth slice ships the **HTML report** the proposal's *Output* names, alongside the existing
+text / JSON output: `bajutsu coverage --html <path>` writes a self-contained page (inline CSS, no
+JavaScript, no external asset — it opens straight from disk) via `coverage.render_html` and the
+`coverage.html.j2` template, with a coverage bar per dimension and the gap / off-namespace lists
+called out. It visualizes whichever dimensions are present — the static id-namespace map always, the
+endpoint and observed-id maps when `--runs` supplies them — and stays read-only and AI-free: the
+flag only writes a file, it never changes the verdict or the text/JSON output.
+
 Still deferred: the **screens-visited** dimension (needs a crawl-discovered denominator,
 [BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md)).
 
