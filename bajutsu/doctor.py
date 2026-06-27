@@ -38,6 +38,8 @@ class Score:
     namespace_conformance: float
     duplicate_ids: int
     grade: str  # "Ready" | "Partial" | "Blocked"
+    # Nothing actionable on the screen (likely blank / not loaded / wrong screen).
+    no_actionable: bool
     missing_id: list[base.Element]  # actionable elements without an id
     off_namespace: list[str]  # ids whose first segment is not a declared namespace
     duplicates: list[str]  # ids that appear 2+ times on the screen
@@ -80,7 +82,10 @@ def score(elements: list[base.Element], id_namespaces: list[str]) -> Score:
             duplicates.append(i)
         seen.add(i)
 
-    if duplicates or id_coverage < FAIL_COVERAGE:
+    # No actionable elements means nothing is addressable, so the screen can't be "Ready" — the
+    # 1.0 coverage default would otherwise grade a blank / not-yet-loaded / wrong screen as Ready.
+    no_actionable = not actionable
+    if no_actionable or duplicates or id_coverage < FAIL_COVERAGE:
         grade = "Blocked"
     elif id_coverage >= OK_COVERAGE and namespace_conformance >= 1.0:
         grade = "Ready"
@@ -94,6 +99,7 @@ def score(elements: list[base.Element], id_namespaces: list[str]) -> Score:
         namespace_conformance=namespace_conformance,
         duplicate_ids=len(duplicates),
         grade=grade,
+        no_actionable=no_actionable,
         missing_id=[e for e in actionable if not e["identifier"]],
         off_namespace=off_namespace,
         duplicates=duplicates,
@@ -108,6 +114,10 @@ def render(s: Score) -> str:
         f"namespaceConformance: {s.namespace_conformance:.2f}",
         f"duplicateIds: {s.duplicate_ids}",
     ]
+    if s.no_actionable:
+        lines.append(
+            "  no actionable elements found — is the app on the expected screen and fully loaded?"
+        )
     lines.extend(
         f"  missing id: label={e['label']!r} traits={e['traits']} frame={e['frame']}"
         for e in s.missing_id

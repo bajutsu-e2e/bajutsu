@@ -179,7 +179,7 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 ### グレード判定
 
-- **Blocked**: id 重複あり、**または** `idCoverage` < 0.7。
+- **Blocked**: 画面に actionable な要素が 1 つも無い（多くは空画面、まだ読み込まれていない、または想定外の画面で、`render` がその旨を示します）、id 重複あり、**または** `idCoverage` < 0.7。
 - **Ready**: `idCoverage` ≥ 0.9 **かつ** `namespaceConformance` == 1.0。
 - **Partial**: それ以外（実行はできるが、座標フォールバックやフレーキーの予告）。
 
