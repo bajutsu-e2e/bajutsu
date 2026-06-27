@@ -47,10 +47,16 @@ def _real_run(argv: list[str]) -> subprocess.Popen[bytes]:
 
 
 def _real_exec(argv: list[str]) -> None:
+    cmd = " ".join(argv)
     try:
         subprocess.run(argv, check=True, capture_output=True)
-    except (OSError, subprocess.CalledProcessError) as e:
-        raise SandboxError(f"docker command failed: {' '.join(argv)}") from e
+    except subprocess.CalledProcessError as e:
+        # Surface docker's own diagnostic (missing image, build syntax error, …); without it a failure
+        # is just "docker command failed" with no clue why.
+        detail = (e.stderr or e.stdout or b"").decode(errors="replace").strip()
+        raise SandboxError(f"docker command failed: {cmd}{f' — {detail}' if detail else ''}") from e
+    except OSError as e:  # docker not installed / not on PATH
+        raise SandboxError(f"docker command failed: {cmd} — {e}") from e
 
 
 def _container_name() -> str:
@@ -130,6 +136,13 @@ def resolve_image(
     if ls.docker_image is not None:
         return ls.docker_image, {"source": "dockerImage", "image": ls.docker_image}
     assert ls.dockerfile is not None  # the exactly-one check above guarantees this
+    # The dockerfile comes from the (untrusted) uploaded config; confine it to the bundle so it can't
+    # read a Dockerfile elsewhere on the host (`/etc/...`, `../secrets`).
+    df = Path(ls.dockerfile)
+    if df.is_absolute() or ".." in df.parts:
+        raise SandboxError(
+            f"dockerfile must be a bundle-relative path without '..': {ls.dockerfile!r}"
+        )
     exec_fn(build_image_argv(ls.dockerfile, bundle_cwd, tag))
     return tag, {"source": "dockerfile", "image": tag}
 
@@ -137,6 +150,7 @@ def resolve_image(
 def start_sandboxed_server(
     eff: Effective,
     *,
+    bundle_root: Path | str | None = None,
     run_fn: RunFn = _real_run,
     exec_fn: ExecFn = _real_exec,
     log: Callable[[str], None] | None = None,
@@ -148,6 +162,12 @@ def start_sandboxed_server(
     the readiness probe. Tears the container down and fails loud if it exits early or never serves.
     The caller guarantees `eff.launch_server` is set (the sandbox path is only reached for a target
     that declares one).
+
+    `bundle_root` is the **trusted** host directory bind-mounted read-only into the container and used
+    as the `docker build` context — the run's confined working directory (the extracted bundle), which
+    `serve` controls. It defaults to the process cwd. It is deliberately *not* taken from the
+    (untrusted) config `launchServer.cwd`, so a hostile config cannot bind or build from an arbitrary
+    host path.
 
     Returns:
         A teardown callable (a no-op when an externally-started server is reused), and a provenance
@@ -181,7 +201,9 @@ def start_sandboxed_server(
         )
 
     container = _container_name()
-    bundle_cwd = ls.cwd or "."
+    # The trusted, caller-supplied bundle root (never the untrusted config `cwd`), absolute so Docker
+    # gets an unambiguous bind source / build context.
+    bundle_cwd = str(Path(bundle_root or Path.cwd()).resolve())
     image, meta = resolve_image(
         ls, exec_fn=exec_fn, bundle_cwd=bundle_cwd, tag=f"bajutsu-sandbox:{container}"
     )

@@ -151,6 +151,24 @@ def test_resolve_image_build_failure_fails_loud() -> None:
         sandbox.resolve_image(ls, exec_fn=rec.exec_fn, bundle_cwd="/b", tag="t")
 
 
+def test_resolve_image_rejects_dockerfile_escaping_the_bundle() -> None:
+    # The dockerfile is untrusted config; a traversal or absolute path must fail loud, never build
+    # from outside the bundle (host file disclosure).
+    for bad in ("../Dockerfile", "sub/../../etc/Dockerfile", "/etc/Dockerfile"):
+        ls = _ls(_eff(f"cmd: 'serve', port: 8080, dockerfile: '{bad}'"))
+        rec = _Recorder()
+        with pytest.raises(sandbox.SandboxError, match="bundle-relative"):
+            sandbox.resolve_image(ls, exec_fn=rec.exec_fn, bundle_cwd="/b", tag="t")
+        assert rec.exec_calls == []  # never reaches docker build
+
+
+def test_real_exec_surfaces_docker_stderr() -> None:
+    # A failed docker command carries its own diagnostic into the SandboxError (here a stand-in shell
+    # command, since the gate has no Docker daemon).
+    with pytest.raises(sandbox.SandboxError, match="boom"):
+        sandbox._real_exec(["sh", "-c", "echo boom >&2; exit 1"])
+
+
 # --- start_sandboxed_server: the full decision + lifecycle ---
 
 
@@ -184,6 +202,25 @@ def test_docker_image_runs_hardened_container(monkeypatch: pytest.MonkeyPatch) -
     assert decision["decision"] == "sandboxed" and decision["source"] == "dockerImage"
     stop()
     assert rec.exec_calls[-1][:3] == ["docker", "rm", "-f"]  # torn down
+
+
+def test_sandbox_binds_the_trusted_bundle_root_not_config_cwd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    # The host bind source is the caller-supplied trusted root (resolved absolute), never the
+    # untrusted config `cwd` — so a hostile `cwd: /` cannot expose the host to the container.
+    probes = iter([False, True])
+    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
+    monkeypatch.setattr(sandbox.time, "sleep", lambda s: None)
+    rec = _Recorder(_FakeProc(code=None))
+    sandbox.start_sandboxed_server(
+        _eff("cmd: 'serve', port: 8080, dockerImage: 'img', cwd: '/'"),
+        bundle_root=tmp_path,
+        run_fn=rec.run_fn,
+        exec_fn=rec.exec_fn,
+    )
+    mount = rec.run_calls[0][rec.run_calls[0].index("-v") + 1]
+    assert mount == f"{tmp_path.resolve()}:/bundle:ro"  # trusted root, not the config's `/`
 
 
 def test_dockerfile_builds_then_runs(monkeypatch: pytest.MonkeyPatch) -> None:
