@@ -904,17 +904,45 @@ function initTiling(){
     if(typeof node==='string'){const el=V.panel[node];el.classList.add('tile-leaf');el.style.height='auto';el.style.minWidth='0';el.style.minHeight='0';return el;}
     const sp=document.createElement('div');sp.className='tile-split tile-'+node.d;
     node.k.forEach((kid,i)=>{
-      if(i>0){const dv=document.createElement('div');dv.className='tile-divider';dv.addEventListener('mousedown',e=>startResize(V,e,dv,node,i));sp.appendChild(dv);}
+      if(i>0){
+        const dv=document.createElement('div');dv.className='tile-divider';
+        // A stable data-testid so a scenario can grab one specific divider (dogfood drag-resize):
+        // name it by the two leaves it separates when both are panels, else a per-view running index.
+        const a=node.k[i-1],b=node.k[i];
+        dv.dataset.testid=V.id+'.divider.'+((typeof a==='string'&&typeof b==='string')?a+'-'+b:'n'+(V.dvc++));
+        dv.addEventListener('mousedown',e=>startResize(V,e,dv,node,i));sp.appendChild(dv);
+      }
       const el=render(V,kid);el.style.flex=(node.s[i]??1)+' 1 0';sp.appendChild(el);
     });
     return sp;
   }
-  const rebuild=V=>{const r=render(V,V.tree);r.classList.add('tile-root');V.view.replaceChildren(r);};
+  // Each leaf's weight share (integer %) within its parent split, mirrored into a visually-hidden
+  // readout on the panel so a scenario can assert the layout numerically (the web backend reads no
+  // geometry, only the accessibility tree). It reflects node.s — the very weights a resize mutates —
+  // so a divider drag that wrongly disturbs a non-adjacent panel shows up as a changed readout.
+  function shareInto(node,out){
+    if(typeof node==='string')return;
+    const sum=node.s.reduce((a,b)=>a+(+b||0),0)||1;
+    node.k.forEach((kid,i)=>{if(typeof kid==='string')out[kid]=Math.round(100*(+node.s[i]||0)/sum);else shareInto(kid,out);});
+  }
+  function reflectSizes(V){
+    const out={};shareInto(V.tree,out);
+    for(const k in V.panel){
+      let r=V.panel[k].querySelector(':scope>.tile-size');
+      if(!r){r=document.createElement('span');r.className='tile-size sr-only';r.dataset.testid=V.id+'.size.'+k;V.panel[k].appendChild(r);}
+      r.textContent=k in out?String(out[k]):'';
+    }
+  }
+  const rebuild=V=>{V.dvc=0;const r=render(V,V.tree);r.classList.add('tile-root');V.view.replaceChildren(r);reflectSizes(V);};
   function startResize(V,e,dv,node,i){
     e.preventDefault();const row=node.d==='row',a=dv.previousElementSibling,b=dv.nextElementSibling;
     const ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect(),tot=row?ra.width+rb.width:ra.height+rb.height,start=row?e.clientX:e.clientY,s0=row?ra.width:ra.height;
+    // s holds flex weights, not pixels: redistribute only this pair's combined weight so the other
+    // siblings keep their proportions. Mapping pixels→weight by the pair's px↔weight ratio keeps the
+    // pair's total weight invariant across moves.
+    const w=(node.s[i-1]??1)+(node.s[i]??1);
     dv.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor=row?'col-resize':'row-resize';
-    const mv=ev=>{const n0=Math.max(80,Math.min(tot-80,s0+(row?ev.clientX:ev.clientY)-start));node.s[i-1]=n0;node.s[i]=tot-n0;a.style.flex=n0+' 1 0';b.style.flex=(tot-n0)+' 1 0';};
+    const mv=ev=>{const n0=Math.max(80,Math.min(tot-80,s0+(row?ev.clientX:ev.clientY)-start)),wa=w*n0/tot,wb=w-wa;node.s[i-1]=wa;node.s[i]=wb;a.style.flex=wa+' 1 0';b.style.flex=wb+' 1 0';reflectSizes(V);};
     const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);dv.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';save();};
     window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);
   }
@@ -951,7 +979,7 @@ function initTiling(){
     const view=document.getElementById(spec.id);if(!view)return;
     const panel={};for(const k in spec.sel){const el=view.querySelector(spec.sel[k]);if(el)panel[k]=el;}
     const keys=Object.keys(panel);if(!keys.length)return;
-    const V={spec,view,panel,keys,tree:(saved[spec.id]&&valid(saved[spec.id],keys))?saved[spec.id]:spec.def};
+    const V={spec,view,panel,keys,id:spec.id.replace('view-',''),dvc:0,tree:(saved[spec.id]&&valid(saved[spec.id],keys))?saved[spec.id]:spec.def};
     keys.forEach(k=>{
       const g=document.createElement('div');g.className='tile-grip';g.title='drag to move / swap';g.textContent='⠿';
       g.addEventListener('mousedown',e=>{e.preventDefault();pdrag={V,key:k};panel[k].classList.add('tile-dragging');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing';});

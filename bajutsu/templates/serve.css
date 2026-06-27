@@ -56,6 +56,9 @@ main[hidden]{display:none}
 .tile-grip{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:20;width:2.4rem;height:.95rem;display:flex;align-items:center;justify-content:center;color:var(--mut);background:var(--bg2);border:1px solid var(--line);border-top:none;border-radius:0 0 7px 7px;cursor:grab;opacity:.45;font-size:.7em;line-height:1;user-select:none}
 .tile-grip:hover{opacity:1;color:var(--acc);border-color:var(--acc)}
 .tile-leaf.tile-dragging{opacity:.5}
+/* Off-screen but in the layout/accessibility tree: a machine-readable readout (e.g. a tiled
+   panel's size %) that a scenario can assert without being visible to a user. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .tile-dropind{position:fixed;z-index:40;background:color-mix(in srgb,var(--acc) 22%,transparent);border:2px solid var(--acc);border-radius:6px;pointer-events:none}
 body.reordering-active iframe{pointer-events:none}
 .crawl-graph-panel,.crawl-plan-panel,.crawl-console-panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}

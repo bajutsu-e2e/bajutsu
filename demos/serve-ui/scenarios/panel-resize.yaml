@@ -1,0 +1,38 @@
+# Panel resize — dragging one divider must only redistribute the two panels it sits between,
+# never disturb a third. Regression guard for the bug where the tiling resize wrote pixel values
+# into the flex-weight array: dragging the controls↔log divider collapsed the (non-adjacent) report
+# panel, because the other siblings kept their small weights while the dragged pair jumped to
+# pixel-scale ones.
+#
+# The Replay view tiles into three columns with default weights [1, 1, 2] → controls 25%, log 25%,
+# report 50%. The web backend reads no geometry, so each panel mirrors its weight share (integer %)
+# into a visually-hidden `*.size.*` readout (serve.js initTiling). We drag the FIRST divider
+# (controls↔log) 100px right and assert report is STILL 50% — under the bug it dropped to ~0.
+description: >-
+  Panel resize is local — dragging the Replay controls↔log divider redistributes only that pair
+  (controls grows, log shrinks) and leaves the non-adjacent report panel at its 50% share.
+scenarios:
+  - name: resizing one divider does not break a non-adjacent panel
+    description: >-
+      Open Replay, drag the controls↔log divider right, and assert the report panel keeps its
+      50% width share while the dragged pair redistributes between themselves.
+    steps:
+      - tap: { id: nav.replay }
+      # The tiling layout renders the dividers and size readouts on view show; wait for the
+      # divider we're about to drag before grabbing it.
+      - wait: { for: { id: replay.divider.controls-log }, timeout: 5 }
+      # Baseline: the default [1,1,2] weights → 25 / 25 / 50.
+      - assert:
+          - label: { sel: { id: replay.size.controls }, equals: "25" }
+          - label: { sel: { id: replay.size.log }, equals: "25" }
+          - label: { sel: { id: replay.size.report }, equals: "50" }
+      # Drag the controls↔log divider 100px right: controls should grow and log shrink, their
+      # combined share unchanged.
+      - swipe: { on: { id: replay.divider.controls-log }, direction: right }
+    expect:
+      # The invariant the bug violated: the non-adjacent report panel is untouched at 50%.
+      - label: { sel: { id: replay.size.report }, equals: "50" }
+      # The dragged pair did redistribute (also proves the drag wasn't a no-op): controls grew past
+      # its 25% start, log shrank below it. Ranges, not exact values, so the check is viewport-tolerant.
+      - label: { sel: { id: replay.size.controls }, matches: "^(2[6-9]|[345][0-9])$" }
+      - label: { sel: { id: replay.size.log }, matches: "^([0-9]|1[0-9]|2[0-4])$" }
