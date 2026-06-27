@@ -146,6 +146,10 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   `network.json` evidence are unchanged), and a scenario's `mocks` are fulfilled in-process via
   `page.route` — a matching request gets the canned response and is recorded with `mocked: true`.
   Mock matching reuses the deterministic `request` matcher, and no model is consulted.
+- **Console / page-error evidence** (BE-0054): the `deviceLog` capture kind streams the browser
+  console and uncaught page errors to `<scenario>/device.log` — the web analogue of the iOS os_log
+  `deviceLog`, but Playwright-native (no simctl). The device pool injects the driver's `web_interval`
+  into the `FileSink`, so the same backend-agnostic `capture` policy carries it.
 
 > `playwright` is imported **lazily** (only when a browser is actually started), so it never loads on
 > the default CLI path (locked by `tests/serve/test_import_guard.py`). Install with

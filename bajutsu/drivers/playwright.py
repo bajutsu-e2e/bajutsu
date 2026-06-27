@@ -20,9 +20,10 @@ import contextlib
 import functools
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
-from bajutsu import env
+from bajutsu import env, intervals
 from bajutsu.drivers import base
 
 if TYPE_CHECKING:
@@ -330,6 +331,53 @@ class PlaywrightDriver:
         """Messages of JS dialogs auto-handled since the last read (consuming)."""
         dialogs, self._dialogs = self._dialogs, []
         return dialogs
+
+    # --- interval evidence (web equivalents of the simctl video / deviceLog providers) ---
+
+    def web_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+        """A whole-scenario interval recording for the web backend, or None if unsupported.
+
+        The device pool hands this to the `FileSink` so the same `capture` policy that drives the
+        simctl providers on iOS drives Playwright-native ones on web. `deviceLog` streams the
+        browser console + uncaught page errors (the os_log analogue); other kinds are not yet
+        provided here (BE-0054).
+        """
+        if kind == "deviceLog":
+            return self._console_interval(path)
+        return None
+
+    def _console_interval(self, path: Path) -> intervals.Interval:
+        """Stream the live page's console messages and uncaught errors to `path` until stopped."""
+        sink = path.open("w", encoding="utf-8")
+        page = self._page
+
+        def on_console(msg: Any) -> None:
+            with contextlib.suppress(Exception):
+                sink.write(f"[{msg.type}] {msg.text}\n")
+
+        def on_pageerror(error: Any) -> None:
+            with contextlib.suppress(Exception):
+                sink.write(f"[pageerror] {error}\n")
+
+        on = getattr(page, "on", None)
+        if on is not None:
+            on("console", on_console)
+            on("pageerror", on_pageerror)
+
+        class _ConsoleCapture:
+            def stop(self, sig: int) -> None:
+                remove = getattr(page, "remove_listener", None)
+                if remove is not None:
+                    # Suppress per call so a failure detaching one listener still detaches the other.
+                    with contextlib.suppress(Exception):
+                        remove("console", on_console)
+                    with contextlib.suppress(Exception):
+                        remove("pageerror", on_pageerror)
+                sink.close()
+
+        return intervals.Interval(
+            kind="deviceLog", path=path, provider=self.name, _proc=_ConsoleCapture()
+        )
 
     # --- lifecycle (web equivalents of env.Env launch/erase/terminate) ---
 
