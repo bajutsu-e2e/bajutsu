@@ -418,6 +418,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0024](proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) | doctor / オンボーディング | 提案 |
 <!-- /GENERATED:proposals-doctor -->
 
+### 開発基盤（コントリビュータ体験）
+
+<!-- GENERATED:proposals-dev-infra -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) | マージ後に main で BE ID を採番する | 提案 |
+<!-- /GENERATED:proposals-dev-infra -->
+
 ### Dogfood フィクスチャ（デモアプリ）
 
 <!-- GENERATED:proposals-dogfood -->
