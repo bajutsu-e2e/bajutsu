@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0010](BE-0010-update-scope-statement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 

@@ -107,6 +107,7 @@
 <!-- GENERATED:implemented-platform -->
 | ID | 項目 | 状態 |
 |---|---|---|
+| [BE-0010](implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md) | スコープ文の更新 | 実装済み |
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) | run の前に capability をプリフライト検査する | 実装済み |
 <!-- /GENERATED:implemented-platform -->
 
@@ -356,7 +357,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0007](proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 提案 |
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
 | [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 提案 |
-| [BE-0010](proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md) | スコープ文の更新 | 提案 |
 | [BE-0076](proposals/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) | ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend） | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
