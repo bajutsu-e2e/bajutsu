@@ -48,8 +48,11 @@ jobs:
 
       # `--strict` fails the build on a broken reference (a bad autodoc path, a dead link), so a
       # merge that breaks the site is caught here rather than published silently.
+      # --no-dev: mkdocstrings reads signatures statically (via griffe), so the build needs only the
+      # `docs` extra — never the dev group (mypy / pytest / ruff + the gate-only extras), which the
+      # auto-sync would otherwise pull in for nothing.
       - name: Build the site
-        run: uv run --extra docs mkdocs build --strict
+        run: uv run --no-dev --extra docs mkdocs build --strict
 
       # Only the manual (publish) run consumes the artifact — `deploy` is workflow_dispatch-only. On a
       # push the build above still validates the site (`--strict`); skip the upload so a push doesn't

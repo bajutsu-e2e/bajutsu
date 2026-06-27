@@ -42,9 +42,12 @@ runs:
         HOMEBREW_NO_INSTALL_CLEANUP: "1"
       run: brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion
 
+    # --no-dev: the run path needs only the idb backend, never the dev group (mypy / pytest /
+    # ruff and the gate-only extras bedrock/server/worker/db/oauth/mcp). Those belong to the
+    # Linux `check` gate; pulling them here installed ~80 extra packages for nothing.
     - name: Sync dependencies (idb backend)
       shell: bash
-      run: uv sync --extra idb
+      run: uv sync --extra idb --no-dev
 
     - name: Preflight (bajutsu doctor — non-blocking)
       shell: bash
