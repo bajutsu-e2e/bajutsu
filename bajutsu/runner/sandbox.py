@@ -228,7 +228,7 @@ def start_sandboxed_server(
             teardown()
             raise SandboxError(
                 f"sandbox container exited (code {proc.returncode}) before {ready_url} was ready "
-                f"— cmd: {ls.cmd}"
+                f"— cmd: {ls.cmd!r}"
             )
         if _probe(ready_url):
             say(f"launchServer(sandbox): {ready_url} ready")
@@ -236,5 +236,5 @@ def start_sandboxed_server(
         time.sleep(_POLL_INTERVAL)
     teardown()
     raise SandboxError(
-        f"sandbox launchServer: {ready_url} not ready after {ls.ready_timeout}s — cmd: {ls.cmd}"
+        f"sandbox launchServer: {ready_url} not ready after {ls.ready_timeout}s — cmd: {ls.cmd!r}"
     )

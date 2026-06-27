@@ -138,6 +138,11 @@ class ServeState:
     # file browser / Git / startup. Holds the extraction sandbox (removed when another config is
     # bound) and the run provenance. Only one bundle is bound at a time.
     upload: Upload | None = None
+    # Policy for an uploaded bundle's launchServer command (and the latent mockServer.cmd, once it is
+    # wired) (BE-0090): deny | reuse | sandbox. Default `sandbox` runs it in a throwaway container,
+    # never on the serve host; it applies only to upload-sourced configs (a local/Git config is
+    # operator-trusted and ungoverned). serve() sets it from --upload-exec / BAJUTSU_UPLOAD_EXEC.
+    upload_exec: str = "sandbox"
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
@@ -473,7 +478,12 @@ def _record_provenance(state: ServeState, job: Job) -> None:
     manifest = (state.base_cwd / state.runs_dir / job.run_id / "manifest.json").resolve()
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
-        data["provenance"] = job.provenance
+        # Merge, don't overwrite: the run subprocess already wrote a `provenance` block (scenario
+        # fingerprint, and BE-0090's `uploadExec` decision). serve adds the upload identity it alone
+        # knows; clobbering would drop both of the subprocess's records.
+        existing = data.get("provenance")
+        existing = existing if isinstance(existing, dict) else {}
+        data["provenance"] = {**existing, **job.provenance}
         # Write atomically (temp + replace): the report viewer / list_runs may read the manifest
         # concurrently, and a plain write_text truncates first — a reader could catch it empty.
         tmp = manifest.with_suffix(".json.tmp")

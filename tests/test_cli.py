@@ -212,6 +212,27 @@ def test_serve_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> No
     assert captured["cwd"] == checkout  # served from the checkout root
 
 
+def test_serve_rejects_invalid_upload_exec() -> None:
+    # An unknown --upload-exec mode fails loud at the boundary (BE-0090), never silently defaults.
+    r = runner.invoke(app, ["serve", "--upload-exec", "bogus", "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 2
+    assert "upload-exec" in r.output
+
+
+def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The flag wins; absent a flag the BAJUTSU_UPLOAD_EXEC env var is honoured (hosted backend).
+    import bajutsu.serve as srv
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
+    monkeypatch.setenv("BAJUTSU_UPLOAD_EXEC", "deny")
+    r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 0 and captured["upload_exec"] == "deny"  # env honoured when no flag
+    captured.clear()
+    r = runner.invoke(app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 0 and captured["upload_exec"] == "reuse"  # flag wins over env
+
+
 def test_serve_loopback_detection() -> None:
     from bajutsu.cli.commands.serve import _is_loopback
 
@@ -394,7 +415,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
     monkeypatch.setattr("bajutsu.cli.commands.crawl.ensure_web_runtime", lambda *a, **k: None)
     monkeypatch.setattr("bajutsu.cli.commands.crawl.select_actuator", lambda *a, **k: "playwright")
     monkeypatch.setattr(
-        "bajutsu.cli.commands.crawl.start_launch_server", lambda *a, **k: lambda: None
+        "bajutsu.cli.commands.crawl.start_launch_server", lambda *a, **k: ((lambda: None), None)
     )
 
     launched = {"n": 0}

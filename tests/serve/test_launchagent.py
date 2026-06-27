@@ -27,6 +27,23 @@ def test_plist_runs_serve_with_host_port_config() -> None:
     assert args[args.index("--config") + 1] == "bajutsu.config.yaml"
 
 
+def test_plist_carries_non_default_upload_exec() -> None:
+    # A non-default upload-exec policy must reach the installed daemon (BE-0090); the default
+    # `sandbox` is omitted so the common case keeps the plist clean.
+    deny = plistlib.loads(
+        srv.launchagent_plist(
+            host="127.0.0.1", port=8765, config=None, token=None, upload_exec="deny"
+        ).encode("utf-8")
+    )["ProgramArguments"]
+    assert deny[deny.index("--upload-exec") + 1] == "deny"
+    default = plistlib.loads(
+        srv.launchagent_plist(
+            host="127.0.0.1", port=8765, config=None, token=None, upload_exec="sandbox"
+        ).encode("utf-8")
+    )["ProgramArguments"]
+    assert "--upload-exec" not in default  # default omitted
+
+
 def test_plist_keepalive_and_logs() -> None:
     pl = _plist(host="127.0.0.1", port=8765, config=None, token=None)
     assert pl["RunAtLoad"] is True

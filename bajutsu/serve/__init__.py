@@ -157,6 +157,7 @@ def _build_state(
     baselines_dir: Path | None,
     max_concurrent: int,
     token: str | None,
+    upload_exec: str = "sandbox",
     backend: str = "local",
     cwd: Path | None = None,
 ) -> ServeState:
@@ -186,6 +187,7 @@ def _build_state(
                 baselines_dir=resolved_baselines,
                 max_concurrent=max_concurrent,
                 token=token,
+                upload_exec=upload_exec,
             )
         except ImportError as e:
             # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is
@@ -207,6 +209,7 @@ def _build_state(
         uploads_dir=runs_dir.parent / "uploads",
         max_concurrent=max_concurrent,
         token=token,
+        upload_exec=upload_exec,
         cwd=cwd or Path.cwd(),
     )
 
@@ -220,6 +223,7 @@ def _build_server_state(
     baselines_dir: Path,
     max_concurrent: int,
     token: str | None,
+    upload_exec: str = "sandbox",
 ) -> ServeState:
     """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015).
 
@@ -288,6 +292,7 @@ def _build_server_state(
             os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER")
         ),
         token=token,
+        upload_exec=upload_exec,
         executor=QueueExecutor(queue),
         logbus=RedisLogBus(redis),
         # Sessions in Redis (the same client) so they survive a restart and span replicas, with a
@@ -387,6 +392,7 @@ def serve(
     max_concurrent: int = 4,
     token: str | None = None,
     *,
+    upload_exec: str = "sandbox",
     asgi: bool = False,
     backend: str = "local",
     cwd: Path | None = None,
@@ -399,6 +405,7 @@ def serve(
         baselines_dir=baselines_dir,
         max_concurrent=max_concurrent,
         token=token,
+        upload_exec=upload_exec,
         backend=backend,
         cwd=cwd,
     )

@@ -30,6 +30,29 @@ def test_run_job_captures_output_and_run_id(tmp_path: Path) -> None:
     assert "step 0 ok" in v["lines"]
 
 
+def test_record_provenance_merges_not_clobbers(tmp_path: Path) -> None:
+    # BE-0090: the run subprocess already wrote a provenance block (scenario fingerprint + the
+    # uploadExec decision); serve must merge its upload identity in, not overwrite both away.
+    import json
+
+    from bajutsu.serve.jobs import _record_provenance
+
+    runs = tmp_path / "runs"
+    run_dir = runs / "20260610-1"
+    run_dir.mkdir(parents=True)
+    subprocess_block = {"scenarioHash": "sha256:abc", "uploadExec": {"decision": "sandboxed"}}
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"runId": "20260610-1", "provenance": subprocess_block}), encoding="utf-8"
+    )
+    state = srv.ServeState(config=None, runs_dir=runs, cwd=tmp_path)
+    job = srv.Job(cmd=["x"], run_id="20260610-1", provenance={"source": "upload", "sha256": "z"})
+    _record_provenance(state, job)
+    prov = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))["provenance"]
+    assert prov["scenarioHash"] == "sha256:abc"  # subprocess block survives
+    assert prov["uploadExec"] == {"decision": "sandboxed"}  # the decision survives
+    assert prov["source"] == "upload" and prov["sha256"] == "z"  # serve's identity merged in
+
+
 def test_run_job_marks_failure(tmp_path: Path) -> None:
     scn_dir, cfg, runs = project(tmp_path)
     state = srv.ServeState(
