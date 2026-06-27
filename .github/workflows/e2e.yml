@@ -90,12 +90,18 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install xcodegen
 
-      - name: Build the sample app
-        run: make -C demos/features sample-build
-
+      # Start the boot first so it runs concurrently with the app build below — the first
+      # boot of a fresh Simulator costs ~80s and does not depend on the build. We only
+      # block on "booted" (the wait step) right before installing the app.
       - name: Boot a Simulator
         id: sim
         uses: ./.github/actions/boot-simulator
+
+      - name: Build the sample app
+        run: make -C demos/features sample-build
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}"
 
       - name: Install the app
         run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
@@ -156,6 +162,9 @@ jobs:
           restore-keys: |
             xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
 
+      # Start the boot before the codegen build so the ~80s first boot overlaps with it.
+      # No explicit wait is needed: `xcodebuild test` blocks on the destination becoming
+      # ready when it reaches the test phase, by which point the boot has finished.
       - name: Boot a Simulator
         id: sim
         uses: ./.github/actions/boot-simulator

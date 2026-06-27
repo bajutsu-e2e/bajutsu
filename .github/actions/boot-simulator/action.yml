@@ -1,22 +1,33 @@
 name: Boot a Simulator
 description: >-
-  Boot an iPhone Simulator and return its UDID. Prefers a pre-installed available device
-  (guaranteed compatible with the runner's Xcode); falls back to creating one with simctl's
-  default runtime. Shared by the on-device jobs so the boot logic lives in one place.
+  Select an iPhone Simulator and start its boot asynchronously, returning the UDID
+  immediately. `simctl boot` only asks CoreSimulator (a launchd service) to boot the
+  device — the boot then proceeds independently of this step, so callers can run the
+  build concurrently and wait for "booted" only right before they install/run.
+  Prefers an already-booted device, then a pre-installed available one (guaranteed
+  compatible with the runner's Xcode); falls back to creating one with the default
+  runtime. Shared by the on-device jobs so the selection logic lives in one place.
 
 outputs:
   udid:
-    description: The booted simulator's UDID.
+    description: The selected simulator's UDID (boot started, not necessarily finished).
     value: ${{ steps.boot.outputs.udid }}
 
 runs:
   using: composite
   steps:
-    - name: Boot
+    - name: Start boot
       id: boot
       shell: bash
       run: |
         set -euo pipefail
+        # Reuse a device that is already booted (zero boot cost) before booting a fresh one.
+        udid=$(xcrun simctl list devices booted -j | jq -r '[.devices | to_entries[] | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
+        if [ -n "$udid" ]; then
+          echo "Reusing already-booted simulator $udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         # Pairing the newest device type with the newest runtime ourselves can hit
         # "Incompatible device"; a pre-installed available iPhone avoids that.
         udid=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key|test("iOS")) | .value[] | select(.name|startswith("iPhone")) | .udid] | first // empty')
@@ -24,7 +35,7 @@ runs:
           devtype=$(xcrun simctl list devicetypes -j | jq -r '[.devicetypes[] | select(.productFamily=="iPhone") | .identifier] | last')
           udid=$(xcrun simctl create ci-iphone "$devtype")
         fi
-        echo "Using simulator $udid"
+        echo "Starting boot of simulator $udid"
+        # Async: returns once boot is initiated; CoreSimulator finishes it in the background.
         xcrun simctl boot "$udid" || true
-        xcrun simctl bootstatus "$udid" -b
         echo "udid=$udid" >> "$GITHUB_OUTPUT"
