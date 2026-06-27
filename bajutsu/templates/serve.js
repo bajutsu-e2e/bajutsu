@@ -26,7 +26,6 @@ async function _bjLogin(){
 const $=s=>document.querySelector(s);
 let poll=null,recPoll=null,selectedRun=null,recPath=null,scnFiles=[],targets=[],sims=[];
 let recJobId=null,runJobId=null;
-let upPoll=null,upJobId=null,upUploadId=null,upTargets=[];
 // Toggle a run/stop button pair between idle and running (amber + spinner via the .running class).
 function setBusy(btn,stop,on,busyLabel){
   btn.classList.toggle('running',on);btn.disabled=on;btn.textContent=on?busyLabel:btn.dataset.idle;
@@ -95,7 +94,7 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-upload').hidden=name!=='upload';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';
   if(name==='replay')loadHistory();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
@@ -389,68 +388,37 @@ function showTab(name){
 }
 document.querySelectorAll('#view-replay .tab').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
 
-// ---- Upload: run a bundled config + scenarios + app binary from a .zip (BE-0073) ----
-// The bundle is sent as a raw body (not multipart): the SPA controls the request, so a streamed
-// body needs no parser. The server extracts it into a sandbox, lists its targets, and the run runs
-// from that dir (then deletes it). Provenance — the file name + sha256 — is shown and recorded.
+// ---- Upload a bundle as the active config (BE-0073) ----
+// A self-contained .zip (config + scenarios + the built app binary its appPath names) is POSTed as a
+// raw body (not multipart: the SPA controls the request, so a streamed body needs no parser). The
+// server extracts it into a sandbox and binds it as the active config — exactly like the file-browser
+// and Git sources — so the Replay / Record / Crawl tabs run from it. Provenance (file name + sha256)
+// shows briefly before the modal closes.
 function fmtSize(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(0)+' KB';return (n/1048576).toFixed(1)+' MB';}
-async function uploadBundle(file){
+async function chooseUploadConfig(file){
   if(!file)return;
-  $('#up-go').disabled=true;upUploadId=null;upTargets=[];$('#up-target').innerHTML='';$('#up-scn').innerHTML='';
-  const meta=$('#up-meta');meta.hidden=false;meta.textContent='Uploading '+file.name+' ('+fmtSize(file.size)+')…';
-  setStatus($('#up-status'),'','run');
+  const meta=$('#up-meta'),err=$('#up-error');err.hidden=true;
+  meta.hidden=false;meta.textContent='Uploading '+file.name+' ('+fmtSize(file.size)+')…';
   let d;
   try{
     const r=await fetch('/api/upload?name='+encodeURIComponent(file.name),
       {method:'POST',headers:{'Content-Type':'application/zip'},body:file});
     d=await r.json();
-  }catch(e){meta.textContent='upload failed';setStatus($('#up-status'),'upload failed','ng');return;}
-  if(d.error){meta.textContent=d.error;setStatus($('#up-status'),d.error,'ng');return;}
-  upUploadId=d.uploadId;upTargets=d.targets||[];
-  meta.innerHTML='<b>'+esc(d.filename)+'</b> · '+fmtSize(d.size)+' · sha256 <code>'+esc((d.sha256||'').slice(0,12))+'…</code>';
-  $('#up-target').innerHTML=upTargets.map(t=>`<option value="${esc(t.name)}" data-backend="${esc(t.backend||'')}">${esc(t.name)}</option>`).join('');
-  upFillScenarios();
-  syncPlatform('#panel-upload','#up-target');
-  setStatus($('#up-status'),'ready — pick a target and scenario','ok');
+  }catch(e){meta.hidden=true;err.textContent='upload failed';err.hidden=false;return;}
+  if(d.error){meta.hidden=true;err.textContent=d.error;err.hidden=false;return;}
+  const s=d.source||{};
+  meta.innerHTML='Bound <b>'+esc(s.filename||file.name)+'</b> · '+fmtSize(s.size||file.size)+' · sha256 <code>'+esc((s.sha256||'').slice(0,12))+'…</code>';
+  $('#cfgname').textContent=d.config;closeFs();await loadShared();
 }
-function upFillScenarios(){
-  const t=upTargets.find(t=>t.name===$('#up-target').value),scns=(t&&t.scenarios)||[];
-  $('#up-scn').innerHTML=scns.map(s=>`<option value="${esc(s.path)}">${esc(s.file)}</option>`).join('');
-  $('#up-go').disabled=!(upUploadId&&scns.length);
-}
-$('#up-target').addEventListener('change',()=>{upFillScenarios();syncPlatform('#panel-upload','#up-target');});
 $('#up-pick').addEventListener('click',()=>$('#up-file').click());
-$('#up-file').addEventListener('change',e=>{if(e.target.files[0])uploadBundle(e.target.files[0]);});
+$('#up-file').addEventListener('change',e=>{if(e.target.files[0])chooseUploadConfig(e.target.files[0]);});
 (function(){
   const drop=$('#up-drop');if(!drop)return;
   const stop=e=>{e.preventDefault();e.stopPropagation();};
   ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.add('dragover');}));
   ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.remove('dragover');}));
-  drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)uploadBundle(f);});
+  drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)chooseUploadConfig(f);});
 })();
-$('#up-go').addEventListener('click',async()=>{
-  if(!upUploadId){setStatus($('#up-status'),'upload a bundle first','ng');return;}
-  if(upPoll)upPoll.close();
-  setBusy($('#up-go'),$('#up-stop'),true,'Running…');$('#up-out').textContent='';
-  setStatus($('#up-status'),'','run');
-  const r=await fetch('/api/upload/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    uploadId:upUploadId,target:$('#up-target').value,scenario:$('#up-scn').value,
-    headed:$('#up-headed').checked||undefined,
-    erase:$('#up-erase').checked||undefined,dismissAlerts:$('#up-nodismiss').checked?false:undefined})});
-  const {jobId,error}=await r.json();
-  if(error){setStatus($('#up-status'),error,'ng');setBusy($('#up-go'),$('#up-stop'),false);return;}
-  upJobId=jobId;
-  // The bundle is consumed by this run, so it can't be re-run; require a fresh upload next time.
-  upUploadId=null;$('#up-go').disabled=true;
-  upPoll=streamJob(jobId,line=>appendLine($('#up-out'),line),upDone);
-});
-$('#up-stop').addEventListener('click',()=>cancelJob(upJobId,$('#up-stop')));
-function upDone(j){
-  upPoll=null;upJobId=null;setBusy($('#up-go'),$('#up-stop'),false);
-  if(j.cancelled){setStatus($('#up-status'),'cancelled','ng');return}
-  setStatus($('#up-status'),j.ok?'PASS':'FAIL', j.ok?'ok':'ng');
-  if(j.runId)setReport(j.runId,'#up-report');
-}
 
 // ---- Crawl: explore the app and watch the screen map grow live ----
 let crawlPoll=null,crawlJobId=null,crawlRunId=null;
@@ -912,7 +880,6 @@ function wirePlatform(panelSel,appSel){
 wirePlatform('#panel-run','#target');
 wirePlatform('#panel-record','#rec-target');
 wirePlatform('#panel-crawl','#crawl-target');
-wirePlatform('#panel-upload','#up-target');
 
 // Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
 // column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.
@@ -956,7 +923,6 @@ function initTiling(){
     {id:'view-replay',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
     {id:'view-record',def:{d:'row',k:['controls',{d:'col',k:['log','yaml'],s:[1,1]}],s:[1,2]},sel:{controls:'.left',log:'.rec-stack .logpanel',yaml:'.rec-stack .yamlpanel'}},
     {id:'view-crawl',def:{d:'row',k:['controls','graph',{d:'col',k:['plan','console'],s:[1,1]}],s:[1,2,1]},sel:{controls:'.left',graph:'.crawl-graph-panel',plan:'.crawl-plan-panel',console:'.crawl-console-panel'}},
-    {id:'view-upload',def:{d:'row',k:['controls','log','report'],s:[1,1,2]},sel:{controls:'.left',log:'.logpanel',report:'.report'}},
   ];
   const leaves=n=>typeof n==='string'?[n]:n.k.flatMap(leaves);
   const valid=(t,keys)=>{try{const l=leaves(t);return l.length===keys.length&&new Set(l).size===l.length&&l.every(k=>keys.includes(k));}catch(e){return false;}};

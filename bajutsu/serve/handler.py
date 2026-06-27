@@ -237,8 +237,6 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.set_provider(state, body))
                 case "/api/run":
                     self._json(*ops.start_run(state, body, actor=self._actor()))
-                case "/api/upload/run":
-                    self._json(*ops.start_upload_run(state, body, actor=self._actor()))
                 case "/api/record":
                     self._json(*ops.start_record(state, body, actor=self._actor()))
                 case "/api/crawl":
@@ -253,10 +251,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json({"error": "not found"}, 404)
 
         def _handle_upload(self) -> None:
-            """Stream a raw-body zip upload to a temp file (bounded), then hand it to the bundle
-            operation (BE-0073). Raw body (`Content-Type: application/zip`, filename via `?name=`),
-            not multipart: the SPA controls the request, and a streamed body needs no parser — the
-            first POST here that doesn't read a JSON body. The size cap is enforced both up front
+            """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
+            (BE-0073). Raw body (`Content-Type: application/zip`, filename via `?name=`), not
+            multipart: the SPA controls the request, and a streamed body needs no parser — the first
+            POST here that doesn't read a JSON body. The size cap is enforced both up front
             (Content-Length) and while reading, so a lying length can't overrun it."""
             # These early returns don't read the (possibly huge) body, so the connection still holds
             # the unread upload bytes. Close it rather than draining gigabytes or leaving them to
@@ -292,7 +290,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self.close_connection = True
                     self._json({"error": "upload incomplete (body ended early)"}, 400)
                     return
-                self._json(*ops.upload_bundle(state, tmp_path, filename, actor=self._actor()))
+                self._json(*ops.bind_upload_config(state, tmp_path, filename, actor=self._actor()))
             except OSError:
                 self.close_connection = True
                 self._json({"error": "upload interrupted"}, 400)

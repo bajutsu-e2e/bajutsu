@@ -26,7 +26,7 @@ main[hidden]{display:none}
 /* Record view: form on the left, the log + generated-YAML panels stacked vertically beside it. */
 /* Record & Replay are tiled (see initTiling); the tile-root fills the block-level <main>.
    The :not([hidden]) keeps these id-level rules from overriding main[hidden]{display:none}. */
-#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]),#view-upload:not([hidden]){display:block}
+#view-record:not([hidden]),#view-replay:not([hidden]),#view-crawl:not([hidden]){display:block}
 .rec-stack{display:grid;grid-template-rows:var(--rec-top,1fr) var(--gw) 1fr;gap:0;height:100%;min-height:0}
 .rec-stack>.logpanel,.rec-stack>.yamlpanel{min-height:0;height:auto}
 /* Crawl view: config on the left, the live screen-map graph (+ progress log) filling the rest. */

@@ -14,7 +14,6 @@
       <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>
       <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
       <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
-      <button class="toptab" data-view="upload" data-testid="nav.upload">Upload</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
@@ -196,43 +195,6 @@
   </div>
 </main>
 
-<!-- ===== Upload: run a bundled config + scenarios + app binary from a single .zip ===== -->
-<main id="view-upload" data-testid="view.upload" hidden>
-  <div class="left">
-    <div class="card">
-      <div class="panel" id="panel-upload">
-        <label>Bundle (.zip)</label>
-        <div class="drop" id="up-drop" data-testid="upload.drop">
-          <input type="file" id="up-file" data-testid="upload.file" accept=".zip,application/zip" hidden>
-          <button class="cfgbtn" id="up-pick" type="button" data-testid="upload.pick">Choose a .zip…</button>
-          <div class="dropmsg">or drop a bundle here</div>
-        </div>
-        <div class="subhint">A <code>.zip</code> of a <code>bajutsu.config.yaml</code>, its scenarios, and the built app binary the config's <code>appPath</code> names &mdash; the same tree a local run uses, just delivered as one file. It extracts into a sandbox on the server, runs, and is deleted afterward (nothing lingers). The bundle carries <b>no secrets</b>: <code>${secrets.*}</code> resolve from the server's environment as usual.</div>
-        <div class="upmeta" id="up-meta" data-testid="upload.meta" hidden></div>
-        <label>Target</label><select id="up-target" data-testid="upload.target"></select>
-        <label>Scenario</label><select id="up-scn" data-testid="upload.scenario"></select>
-        <div class="checks iosonly">
-          <label><input type="checkbox" id="up-erase"> erase device first
-            <span class="hint">Wipe the simulator before the run; off by default (the app is installed fresh either way). Check to also clear all apps / data / settings.</span></label>
-          <label><input type="checkbox" id="up-nodismiss"> disable alert-dismiss
-            <span class="hint">The alert guard (Claude vision) dismisses unexpected system prompts during the run; on by default (needs ANTHROPIC_API_KEY). Check to force it off.</span></label>
-        </div>
-        <div class="checks webonly">
-          <label><input type="checkbox" id="up-headed" data-testid="upload.headed"> show browser (headed)
-            <span class="hint">Run in a visible Chromium window in slow-motion instead of the default headless browser. The window opens on the machine running <code>serve</code>.</span></label>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="card logpanel">
-    <button class="run" id="up-go" data-testid="upload.run" data-idle="Run bundle" disabled>Run bundle</button>
-    <button class="stop" id="up-stop" hidden>Stop</button>
-    <div class="status" id="up-status"></div>
-    <pre class="out" id="up-out" data-empty="Upload a bundle, pick a target and scenario, then press Run."></pre>
-  </div>
-  <div class="report" id="up-report" data-testid="upload.report"><div class="empty">Run a bundle to see its report here.</div></div>
-</main>
-
 <!-- ===== Open config: a local file browser (confined to --root) + a "from Git" source ===== -->
 <div class="modal" id="fsmodal" data-testid="config.modal" hidden>
   <div class="fsbox">
@@ -246,6 +208,18 @@
       </div>
       <div class="gitsrchint">A branch, tag, or commit SHA (default: the repo's default branch). The whole subtree is fetched, so the config's scenarios and build come along.</div>
       <div class="gitsrcerr" id="gitsrcerr" data-testid="config.git-error" hidden></div>
+    </div>
+    <!-- Upload a bundle (BE-0073): a self-contained .zip becomes the active config the tabs run from. -->
+    <div class="gitsrc">
+      <label class="gitsrclbl">Upload a bundle (.zip)</label>
+      <div class="drop" id="up-drop" data-testid="upload.drop">
+        <input type="file" id="up-file" data-testid="upload.file" accept=".zip,application/zip" hidden>
+        <button class="cfgbtn" id="up-pick" type="button" data-testid="upload.pick">Choose a .zip…</button>
+        <div class="dropmsg">or drop a bundle here</div>
+      </div>
+      <div class="gitsrchint">A <code>.zip</code> of a <code>bajutsu.config.yaml</code>, its scenarios, and the built app binary the config's <code>appPath</code> names &mdash; the same tree a local checkout has, delivered as one file. It extracts into a sandbox on the server and becomes the active config the Replay / Record / Crawl tabs run from. The bundle carries <b>no secrets</b>: <code>${secrets.*}</code> resolve from the server's environment.</div>
+      <div class="upmeta" id="up-meta" data-testid="upload.meta" hidden></div>
+      <div class="gitsrcerr" id="up-error" data-testid="upload.error" hidden></div>
     </div>
     <div class="fsor">or browse the server</div>
     <div class="fspath" id="fspath" data-testid="config.path"></div>

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-import time
 from pathlib import Path
 from typing import Any
 
@@ -333,44 +332,48 @@ def test_try_new_job_per_user_unlimited_by_default(tmp_path: Path) -> None:
     assert state.try_register(srv.Job(cmd=[], actor="alice")) is not None
 
 
-def _upload(uploads_dir: Path, name: str, *, created: float) -> Upload:
-    """A registered-style Upload backed by a real extraction dir under *uploads_dir* (BE-0073)."""
+def _bundle(uploads_dir: Path, name: str) -> Upload:
+    """An Upload backed by a real extraction dir under *uploads_dir* (BE-0073)."""
     d = uploads_dir / name
     d.mkdir(parents=True)
     cfg = d / "bajutsu.config.yaml"
     cfg.write_text("targets: {}\n", encoding="utf-8")
-    return Upload(
-        id=name,
-        dir=d,
-        config=cfg,
-        filename=f"{name}.zip",
-        sha256="x",
-        size=1,
-        created=created,
-        org="default",
-    )
+    return Upload(dir=d, config=cfg, filename=f"{name}.zip", sha256="x", size=1, org="default")
 
 
-def test_register_upload_sweeps_expired_orphans(tmp_path: Path) -> None:
-    # An upload left pending past the TTL (a tab closed without running) is swept — dropped from the
-    # registry and its extracted tree removed — when the next upload registers (BE-0073).
+def test_bind_upload_points_config_and_cwd_at_the_bundle(tmp_path: Path) -> None:
+    # Binding a bundle makes it the active config: `config`/`cwd` point into the extracted tree, so
+    # the normal run/record/crawl flow resolves the bundle's relative paths (BE-0073).
     uploads = tmp_path / "uploads"
     uploads.mkdir()
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
-    stale = _upload(uploads, "stale", created=time.monotonic() - 1_000_000)
-    assert state.register_upload(stale) is stale
-    fresh = _upload(uploads, "fresh", created=time.monotonic())
-    assert state.register_upload(fresh) is fresh
-    assert "stale" not in state.uploads and not stale.dir.exists()  # swept + tree removed
-    assert "fresh" in state.uploads
+    up = _bundle(uploads, "u1")
+    state.bind_upload(up)
+    assert state.upload is up
+    assert state.config == up.config and state.cwd == up.root
 
 
-def test_take_upload_is_org_scoped_and_consumes(tmp_path: Path) -> None:
+def test_bind_upload_replaces_the_previous_bundle(tmp_path: Path) -> None:
+    # Only one bundle is bound at a time: binding a second drops the first's extracted tree.
     uploads = tmp_path / "uploads"
     uploads.mkdir()
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
-    up = _upload(uploads, "u1", created=time.monotonic())
-    state.register_upload(up)
-    assert state.take_upload("u1", "other-org") is None  # another org can't take it
-    assert state.take_upload("u1", "default") is up  # the owner takes it…
-    assert state.take_upload("u1", "default") is None  # …and it's consumed (gone)
+    first = _bundle(uploads, "first")
+    state.bind_upload(first)
+    second = _bundle(uploads, "second")
+    state.bind_upload(second)
+    assert state.upload is second and not first.dir.exists()  # the first sandbox is removed
+    assert second.dir.exists()
+
+
+def test_release_upload_removes_sandbox_and_resets_cwd(tmp_path: Path) -> None:
+    # Switching away from a bundle (any other config source) drops its sandbox and restores cwd to
+    # serve's launch dir, so the file-browser/Git sources don't inherit a stale bundle cwd.
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
+    up = _bundle(uploads, "u1")
+    state.bind_upload(up)
+    state.release_upload()
+    assert state.upload is None and not up.dir.exists()
+    assert state.cwd == state.base_cwd == tmp_path

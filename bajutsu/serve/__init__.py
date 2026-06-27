@@ -19,6 +19,7 @@ Split into three submodules:
 
 from __future__ import annotations
 
+import shutil
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -378,6 +379,10 @@ def serve(
         backend=backend,
         cwd=cwd,
     )
+    # Clear upload sandboxes orphaned by a prior serve process — the dir is serve-owned and
+    # ephemeral, and nothing is bound at startup, so this just stops them accumulating across
+    # restarts (BE-0073; a bound bundle is removed when another config is bound while running).
+    shutil.rmtree(state.uploads_dir, ignore_errors=True)
     hint = str(config) if config else "open a config.yml in the UI"
     if asgi:
         # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now

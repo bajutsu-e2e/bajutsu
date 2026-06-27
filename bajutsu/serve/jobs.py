@@ -13,7 +13,6 @@ import shutil
 import subprocess
 import sys
 import threading
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,12 +41,6 @@ _RUN_ID_RE = re.compile(r"runs/([0-9A-Za-z._-]+)/manifest\.json")
 # The org an unassigned user/app falls into. Re-exported from config (the org model's home) so job
 # persistence and the operations layer share one source of truth.
 _DEFAULT_ORG = DEFAULT_ORG
-
-# Pending uploaded bundles (BE-0073) are ephemeral: a bundle uploaded but never run is swept after
-# this many seconds, and at most this many may sit pending at once (so a stream of uploads can't
-# fill the disk). A run consumes its bundle immediately; the job then deletes the extracted tree.
-_UPLOAD_TTL = 3600.0
-_MAX_UPLOADS = 16
 
 Popen = Callable[..., Any]
 
@@ -84,14 +77,11 @@ class Job:
     # For a server-backend `run`: download the visual baselines into the workspace before running
     # (the cmd points `--baselines` at a workspace dir). False for local (the real dir is used).
     materialize_baselines: bool = False
-    # Working directory for the spawned run/build (default: state.cwd). An uploaded bundle (BE-0073)
-    # runs from its extracted dir so the config's relative paths resolve against it.
+    # Working directory override for the spawned run/build (default: state.cwd, which already points
+    # at a Git checkout or an uploaded bundle when one is bound). None uses state.cwd.
     cwd: Path | None = None
-    # A directory to delete once the job finishes (the extracted bundle tree). None = nothing to
-    # clean. Ephemeral by design: no uploaded code lingers after the run (BE-0073).
-    cleanup_dir: Path | None = None
-    # Provenance to record into the produced run's manifest.json after it finishes (the uploaded
-    # filename + zip sha256). None for a normal run. Set for an uploaded bundle (BE-0073).
+    # Provenance to record into the produced run's manifest.json after it finishes (the bound bundle's
+    # filename + zip sha256 + size). None for a normal run. Set for a run off an uploaded bundle (BE-0073).
     provenance: dict[str, str] | None = None
 
     def view(self, *, include_lines: bool = True) -> dict[str, Any]:
@@ -141,6 +131,13 @@ class ServeState:
     # files. serve() defaults it to a sibling of runs_dir.
     uploads_dir: Path = field(default_factory=lambda: Path("uploads"))
     cwd: Path = field(default_factory=Path.cwd)
+    # serve's launch directory, captured at construction (see __post_init__) before a config bind can
+    # repoint `cwd`. Runs off a Git/upload bind still land their tree here (BE-0063/BE-0073).
+    base_cwd: Path = field(init=False)
+    # The currently bound uploaded bundle (BE-0073), or None when the active config came from the
+    # file browser / Git / startup. Holds the extraction sandbox (removed when another config is
+    # bound) and the run provenance. Only one bundle is bound at a time.
+    upload: Upload | None = None
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
@@ -163,9 +160,6 @@ class ServeState:
     repository: Repository | None = None
     simctl: env.RunFn = env._real_run  # runs `xcrun simctl …` (booting devices, listing them)
     jobs: dict[str, Job] = field(default_factory=dict)
-    # Pending uploaded bundles by id (BE-0073), awaiting a run that consumes them. Guarded by
-    # `_lock` like `jobs`; orphans (uploaded, never run) are swept by age on each new upload.
-    uploads: dict[str, Upload] = field(default_factory=dict)
     # Cap on concurrently-running run/record jobs so one caller can't monopolize the scarce device
     # (BE-0051). <= 0 means unlimited; serve() sets it from --max-concurrent-runs (default 4).
     max_concurrent: int = 4
@@ -199,6 +193,10 @@ class ServeState:
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
+        # serve's own launch directory, captured before any config bind repoints `cwd` at a Git
+        # checkout / uploaded bundle. A run off such a bind writes its tree into `base_cwd/runs_dir`
+        # (serve's store), not under the transient checkout/bundle (BE-0063/BE-0073).
+        self.base_cwd = self.cwd
         # `artifacts`/`scenarios` are init=False so existing ServeState(...) calls don't change;
         # default them to the local stores here (a server backend overwrites them afterwards).
         self.artifacts = LocalArtifactStore(self.runs_dir)
@@ -272,38 +270,22 @@ class ServeState:
                     return None
             return self._register(job)
 
-    def register_upload(self, upload: Upload) -> Upload | None:
-        """Store a freshly-extracted *upload* in the pending registry (BE-0073), sweeping expired
-        orphans first and enforcing the pending cap. Returns None (rejecting it) at the cap, so a
-        stream of uploads can't fill the disk; the caller removes the extracted dir on a None."""
-        for stale in self._sweep_uploads():
-            shutil.rmtree(stale.dir, ignore_errors=True)
-        with self._lock:
-            if len(self.uploads) >= _MAX_UPLOADS:
-                return None
-            self.uploads[upload.id] = upload
-            return upload
+    def bind_upload(self, upload: Upload) -> None:
+        """Make *upload* the active config (BE-0073): release any previously bound bundle's sandbox,
+        then point `config`/`cwd` at this one so runs/record/crawl resolve from the extracted tree."""
+        self.release_upload()
+        self.upload = upload
+        self.config = upload.config
+        self.cwd = upload.root
 
-    def _sweep_uploads(self) -> list[Upload]:
-        """Drop pending uploads older than the TTL, returning them so the caller rmtrees their dirs
-        outside the lock — an upload left pending (a tab closed without running) is an orphan."""
-        now = time.monotonic()
-        with self._lock:
-            expired = [u for u in self.uploads.values() if now - u.created > _UPLOAD_TTL]
-            for u in expired:
-                del self.uploads[u.id]
-        return expired
-
-    def take_upload(self, upload_id: str, org: str) -> Upload | None:
-        """Consume the pending upload *upload_id* for a run, removing it from the registry (the run's
-        job then owns the extracted dir and deletes it). Returns None if there's no such upload or it
-        belongs to another org (BE-0015 multi-tenancy; single-tenant never mismatches)."""
-        with self._lock:
-            upload = self.uploads.get(upload_id)
-            if upload is None or upload.org != org:
-                return None
-            del self.uploads[upload_id]
-            return upload
+    def release_upload(self) -> None:
+        """Drop the currently bound bundle's sandbox, if any, and reset `cwd` to serve's launch
+        directory. Called whenever a new config is bound (from any source), so only one bundle is
+        ever materialized and the file-browser/Git sources don't inherit a stale bundle cwd."""
+        if self.upload is not None:
+            shutil.rmtree(self.upload.dir, ignore_errors=True)
+            self.upload = None
+        self.cwd = self.base_cwd
 
 
 def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
@@ -468,7 +450,6 @@ def run_job(state: ServeState, job: Job) -> None:
     finally:
         _record_provenance(state, job)
         _persist_run(state, job)
-        _cleanup_upload(job)
         if job.bus is not None:  # run_job returning means the job finished — end the live stream
             # Record the terminal status on the bus so a control-plane replica reading a
             # worker-run job sees the real exit/run id (its own Job stays "running") (BE-0015 W2).
@@ -486,10 +467,10 @@ def _record_provenance(state: ServeState, job: Job) -> None:
     finalization (this runs in run_job's `finally`)."""
     if job.provenance is None or job.run_id is None or not valid_run_id(job.run_id):
         return
-    # The run wrote into the --runs-dir we passed (serve's runs_dir, resolved against state.cwd); the
-    # run id is a single safe segment (checked above), so this can't escape that tree. Resolve to
-    # match the absolute --runs-dir the subprocess was given, regardless of runs_dir being relative.
-    manifest = (state.cwd / state.runs_dir / job.run_id / "manifest.json").resolve()
+    # The run wrote into the --runs-dir we passed (serve's store under base_cwd, since the run's cwd
+    # is the bundle root); the run id is a single safe segment (checked above), so this can't escape
+    # that tree. Resolve to match the absolute --runs-dir the subprocess was given.
+    manifest = (state.base_cwd / state.runs_dir / job.run_id / "manifest.json").resolve()
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
         data["provenance"] = job.provenance
@@ -500,14 +481,6 @@ def _record_provenance(state: ServeState, job: Job) -> None:
         tmp.replace(manifest)
     except (OSError, ValueError):
         logger.warning("failed to record bundle provenance into %s", manifest, exc_info=True)
-
-
-def _cleanup_upload(job: Job) -> None:
-    """Delete the extracted bundle tree once the job finishes (BE-0073): ephemeral by design, so no
-    uploaded code lingers. A no-op for a normal run (`cleanup_dir` unset); errors are swallowed —
-    cleanup must never strand job finalization."""
-    if job.cleanup_dir is not None:
-        shutil.rmtree(job.cleanup_dir, ignore_errors=True)
 
 
 def _persist_run(state: ServeState, job: Job) -> None:

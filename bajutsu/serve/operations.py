@@ -13,13 +13,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import secrets
 import shutil
 import tempfile
-import time
 from collections.abc import Generator, Iterator
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -81,7 +79,6 @@ from bajutsu.serve.helpers import (
     valid_udid,
 )
 from bajutsu.serve.jobs import Job, ServeState
-from bajutsu.serve.scenarios import LocalScenarioScope
 from bajutsu.serve.uploads import BundleError, Upload, extract_bundle, find_bundle_config
 
 _REPORT_SUFFIX = "/report.html"
@@ -343,6 +340,7 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
         load_config(target.read_text(encoding="utf-8"))
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
+    state.release_upload()  # a fresh config replaces any bound bundle and resets cwd to serve's launch dir
     state.config = target
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
@@ -382,6 +380,7 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
             resolve(cfg, name).rebased(mat.root)
     except (OSError, ValueError, yaml.YAMLError) as e:
         return {"error": f"invalid config: {e}"}, 400
+    state.release_upload()  # switching to a Git config drops any bound bundle's sandbox
     state.config = mat.config_path
     state.cwd = mat.root  # the checkout root: the config's relative paths resolve from here
     return {
@@ -501,6 +500,16 @@ def start_run(
     config_arg = "bajutsu.config.yaml" if on_worker else str(cfg)
     if on_worker:
         materials[config_arg] = cfg.read_text(encoding="utf-8")
+    # A config bound from a different cwd — a Git checkout (BE-0063) or an uploaded bundle (BE-0073) —
+    # runs from that tree, so a run would otherwise write its output under the transient checkout/
+    # bundle. Point --runs-dir at serve's own store (an absolute path under base_cwd) so the run lands
+    # in history and survives the bundle being replaced. Local path only — a server-backend run
+    # materializes into a worker workspace instead (on_worker).
+    runs_dir = (
+        str((state.base_cwd / state.runs_dir).resolve())
+        if not on_worker and state.cwd != state.base_cwd
+        else ""
+    )
     # On the worker, baselines are downloaded into a workspace-relative dir before the run (the
     # control plane's baselines live in object storage); locally the real dir is used directly.
     cmd = run_command(
@@ -512,10 +521,20 @@ def start_run(
         erase=_bool_flag(body, "erase"),
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
         config=config_arg,
-        baselines="baselines" if on_worker else str(state.baselines_dir),
+        # An uploaded bundle is self-contained: omit --baselines so its config's `baselines` drives
+        # (resolved against the bundle cwd), like the rest of its relative paths (BE-0073).
+        baselines=""
+        if state.upload is not None
+        else ("baselines" if on_worker else str(state.baselines_dir)),
         headed=_bool_flag(body, "headed"),
+        runs_dir=runs_dir,
     )
     app_path, build = target_build_info(cfg, target)
+    if state.upload is not None:
+        # An uploaded bundle ships a prebuilt binary; never run its (untrusted) `build` command on the
+        # host — DESIGN §1 "Bajutsu does not build the app" (BE-0073). appPath was confined to the
+        # bundle at bind. The bundle's provenance is stamped into the run's manifest after it finishes.
+        build = None
     job, capped = _register_and_dispatch(
         state,
         Job(
@@ -525,6 +544,7 @@ def start_run(
             build=build,
             materials=materials,
             materialize_baselines=on_worker,
+            provenance=state.upload.provenance if state.upload is not None else None,
             actor=actor,
             org=org,
         ),
@@ -538,7 +558,7 @@ def start_run(
     return {"jobId": job.id}, 200
 
 
-# --- Upload & run a bundle (BE-0073): a config + scenarios + app binary as one zip ---
+# --- Upload a bundle as the active config (BE-0073): config + scenarios + app binary as one zip ---
 
 
 def _sha256_file(path: Path) -> str:
@@ -557,62 +577,22 @@ def _safe_filename(name: str) -> str:
     return (base or "bundle.zip")[:200]
 
 
-def _confined_bundle_path(root: Path, rel: str) -> bool:
-    """Whether a bundled config path field (appPath / scenarios / baselines) is a **relative** path
-    that resolves **strictly inside** the bundle *root*. An uploaded config is untrusted, so its
-    path fields must not reach host files outside the bundle (the run resolves them against root)."""
-    pure = PurePosixPath(rel.replace("\\", "/"))
-    if pure.is_absolute() or ".." in pure.parts:
-        return False
-    target = (root / rel).resolve()
-    base = root.resolve()
-    return target == base or base in target.parents
-
-
-def _validate_bundle_targets(config: Any, root: Path) -> str | None:
-    """Reject a bundle whose config points outside itself: every target's appPath / scenarios /
-    baselines must be a relative path inside the bundle *root*, so an uploaded config can't read or
-    run host files via an absolute or ``..`` path (BE-0073). Returns an error, or None when clean."""
-    for name in config.targets:
-        try:
-            eff = resolve(config, name)
-        except (KeyError, ValueError):
-            continue
-        for field in (eff.app_path, eff.scenarios, eff.baselines):
-            if field and not _confined_bundle_path(root, field):
-                return f"target {name!r} has a path outside the bundle: {field!r}"
-    return None
-
-
-def _bundle_targets(config: Any, root: Path) -> list[dict[str, Any]]:
-    """The bundle's targets for the upload picker: each target's primary backend and the scenarios
-    in its configured dir (resolved against the bundle *root*). Scenario entries carry only the file
-    name, not the sandbox path — the run step resolves the basename back through the confined scope."""
-    targets: list[dict[str, Any]] = []
-    for name in sorted(config.targets):
-        try:
-            eff = resolve(config, name)
-        except (KeyError, ValueError):
-            continue
-        scenarios: list[dict[str, Any]] = []
-        if eff.scenarios and (root / eff.scenarios).is_dir():
-            scenarios = [
-                {**s, "path": s["file"]} for s in LocalScenarioScope(root / eff.scenarios).list()
-            ]
-        targets.append(
-            {"name": name, "backend": _primary_backend(config, name), "scenarios": scenarios}
-        )
-    return targets
-
-
-def upload_bundle(
+def bind_upload_config(
     state: ServeState, zip_path: Path, filename: str, *, actor: str | None = None
 ) -> tuple[Any, int]:
-    """Receive an uploaded bundle (BE-0073): hash it, extract it into a fresh serve-owned sandbox,
-    parse the contained config, and register it as a pending upload the run step consumes. Returns
-    `{uploadId, filename, sha256, size, targets:[...]}`. On any validation failure the extracted dir
-    is removed and a 4xx is returned — an unvalidated tree is never left around or run (fail loud)."""
-    org = state.org_of(actor)
+    """Bind an uploaded zip bundle as the active config (BE-0073) — a third source in the "Open
+    config" UI, alongside the file browser and the Git picker.
+
+    The zip is a self-contained checkout — a ``bajutsu.config.yaml``, its scenario tree, and the
+    built ``appPath`` binary it names — delivered over the wire. We hash it, extract it into a
+    serve-owned sandbox, then bind it exactly like the Git source binds a checkout (`bind_git_config`):
+    `state.config` points at the bundle's config and `state.cwd` at the bundle root, so the config's
+    relative `appPath`/`scenarios`/`baselines` resolve against the extracted tree and the Replay /
+    Record / Crawl tabs all run from it. Every target's path fields are confined to the bundle at bind
+    (`Effective.rebased`), so an uploaded config can't point serve's scenario/build logic at host
+    paths outside the tree (BE-0051). Only one bundle is bound at a time — binding any other config
+    removes this sandbox (`state.bind_upload`). Returns `{config, targets, source}` like the other
+    sources; on any validation failure the freshly-extracted dir is removed and a 4xx is returned."""
     size = zip_path.stat().st_size
     sha256 = _sha256_file(zip_path)
     state.uploads_dir.mkdir(parents=True, exist_ok=True)
@@ -627,138 +607,33 @@ def upload_bundle(
         shutil.rmtree(dest, ignore_errors=True)
         return {"error": "bundle has no bajutsu.config.yaml"}, 400
     try:
-        config = load_config(config_path.read_text(encoding="utf-8"))
+        cfg = load_config(config_path.read_text(encoding="utf-8"))
+        # Confine every target's path fields to the bundle, the same guard the Git source applies to a
+        # fetched checkout (BE-0051): a config pointing appPath/scenarios/baselines at an absolute or
+        # `..` path outside the tree is rejected here, so serve's resolution only sees in-bundle paths.
+        for name in cfg.targets:
+            resolve(cfg, name).rebased(config_path.parent)
     except (OSError, ValueError, yaml.YAMLError) as e:
         shutil.rmtree(dest, ignore_errors=True)
-        return {"error": f"invalid config in bundle: {e}"}, 400
-    bad_path = _validate_bundle_targets(config, config_path.parent)
-    if bad_path is not None:
-        shutil.rmtree(dest, ignore_errors=True)
-        return {"error": f"invalid bundle: {bad_path}"}, 400
+        return {"error": f"invalid bundle: {e}"}, 400
+    org = state.org_of(actor)
     upload = Upload(
-        id=secrets.token_hex(16),
         dir=dest,
         config=config_path,
         filename=_safe_filename(filename),
         sha256=sha256,
         size=size,
-        created=time.monotonic(),
-        actor=actor,
         org=org,
+        actor=actor,
     )
-    if state.register_upload(upload) is None:
-        shutil.rmtree(dest, ignore_errors=True)
-        return {"error": "too many pending uploads; run or wait for one to expire"}, 429
+    state.bind_upload(upload)
     _record_audit(state, actor, org, "upload", upload.filename, {"sha256": sha256})
     return {
-        "uploadId": upload.id,
-        "filename": upload.filename,
-        "sha256": sha256,
-        "size": size,
-        "targets": _bundle_targets(config, upload.root),
+        "ok": True,
+        "config": str(config_path),
+        "targets": list_targets(config_path),
+        "source": {"kind": "upload", "filename": upload.filename, "sha256": sha256, "size": size},
     }, 200
-
-
-def start_upload_run(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
-) -> tuple[Any, int]:
-    """Run a previously-uploaded bundle (BE-0073). One upload → one run: the bundle is consumed, the
-    run executes from the bundle's extracted dir (so the config's relative paths resolve against it)
-    but writes its run into serve's runs store via `--runs-dir`, and the run's job deletes the
-    extracted tree afterward. Reuses the same job machinery and scenario confinement as a normal run
-    — only the source differs. Any non-dispatch outcome removes the extracted tree at once."""
-    upload_id = str(body.get("uploadId", "") or "")
-    if not upload_id:
-        return {"error": "uploadId is required"}, 400
-    if not body.get("target") or not body.get("scenario"):
-        return {"error": "target and scenario are required"}, 400
-    org = state.org_of(actor)
-    upload = state.take_upload(upload_id, org)
-    if upload is None:
-        return {"error": "no such upload (it may have expired or already run)"}, 404
-    try:
-        payload, status = _launch_upload_run(state, body, upload, org=org, actor=actor)
-    except Exception:
-        shutil.rmtree(upload.dir, ignore_errors=True)  # never leave the extracted tree on an error
-        raise
-    if status != 200:  # nothing was dispatched, so no job will clean it up — do it now
-        shutil.rmtree(upload.dir, ignore_errors=True)
-    return payload, status
-
-
-def _launch_upload_run(
-    state: ServeState, body: dict[str, Any], upload: Upload, *, org: str, actor: str | None
-) -> tuple[Any, int]:
-    """Build and dispatch the run job for *upload*. Split out so its caller can guarantee cleanup of
-    the extracted tree on every non-dispatch path (a bad target/scenario, an invalid device arg, the
-    concurrency cap, or an exception)."""
-    target = str(body["target"])
-    config = load_config(upload.config.read_text(encoding="utf-8"))  # validated at upload time
-    if target not in config.targets:
-        return {"error": f"unknown target: {target}"}, 400
-    eff = resolve(config, target)
-    if not eff.scenarios:
-        return {"error": f"target '{target}' has no scenarios dir in the bundle"}, 400
-    # Resolve the client's scenario value through the same confined scope a normal run uses — the
-    # basename is matched against the bundle's scenarios dir listing, never run as a raw path (BE-0051).
-    runnable = LocalScenarioScope(upload.root / eff.scenarios).runnable(str(body["scenario"]))
-    if runnable is None:
-        return {
-            "error": "scenario must be an existing .yaml inside the bundle's scenarios dir"
-        }, 400
-    backend, udid, err = _device_args(body)
-    if err:
-        return err
-    # The bundle runs from its own dir (so its relative appPath/scenarios/baselines resolve there),
-    # but the run lands in serve's runs store — an absolute --runs-dir, since the cwd differs.
-    cmd = run_command(
-        runnable.arg,
-        target,
-        backend=backend,
-        udid=udid,
-        workers=_int(body.get("workers"), 1),
-        erase=_bool_flag(body, "erase"),
-        dismiss_alerts=_bool_flag(body, "dismissAlerts"),
-        config=str(upload.config),
-        baselines="",  # let the bundle config drive baselines (resolved against the bundle dir)
-        headed=_bool_flag(body, "headed"),
-        runs_dir=str((state.cwd / state.runs_dir).resolve()),
-    )
-    # Take only the binary path from the bundle config; the bundle ships a prebuilt binary, so its
-    # `build` command is never run (an uploaded config must not execute an arbitrary build on the
-    # host — DESIGN §1 "Bajutsu does not build the app"). `build=None` keeps `_build_app` a no-op.
-    app_path, _build = target_build_info(upload.config, target)
-    job, capped = _register_and_dispatch(
-        state,
-        Job(
-            cmd=cmd,
-            udids=_boot_targets(udid),
-            app_path=app_path,
-            build=None,
-            cwd=upload.root,
-            cleanup_dir=upload.dir,
-            provenance={
-                "source": "upload",
-                "filename": upload.filename,
-                "sha256": upload.sha256,
-                "size": str(upload.size),
-            },
-            actor=actor,
-            org=org,
-        ),
-    )
-    if capped is not None:
-        return capped
-    assert job is not None
-    _record_audit(
-        state,
-        actor,
-        org,
-        "upload-run",
-        f"{target}/{body['scenario']}",
-        {"sha256": upload.sha256, "backend": backend or None},
-    )
-    return {"jobId": job.id}, 200
 
 
 def start_record(

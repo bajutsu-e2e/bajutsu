@@ -45,28 +45,38 @@ class BundleError(ValueError):
 
 @dataclass
 class Upload:
-    """A materialized bundle awaiting its run. ``dir`` is the extraction sandbox (deleted after the
-    run); ``config`` is the located bundle config, whose parent is the bundle root the run uses as
-    its working directory. ``filename``/``sha256``/``size`` are the upload's provenance, recorded
-    into the run's manifest so "what did this run execute?" stays answerable (DESIGN §2)."""
+    """A bundle extracted and bound as the active config (BE-0073). ``dir`` is the extraction
+    sandbox (removed when another config is bound, from any source); ``config`` is the located
+    bundle config, whose parent is the bundle root every run/record/crawl off it uses as its working
+    directory. ``filename``/``sha256``/``size`` are the upload's provenance, recorded into each run's
+    manifest so "what did this run execute?" stays answerable (DESIGN §2)."""
 
-    id: str
-    dir: Path  # the extraction sandbox to remove after the run
-    config: Path  # the bundle's bajutsu.config.yaml (its parent is the run's cwd)
+    dir: Path  # the extraction sandbox to remove when another config is bound
+    config: Path  # the bundle's bajutsu.config.yaml (its parent is the runs' cwd)
     filename: str
     sha256: str
     size: int
-    created: float  # time.monotonic() at registration, for the age-based sweep of orphans
-    # The org that owns this upload (BE-0015 multi-tenancy). Required (not defaulted) so every upload
-    # is owned — `take_upload` refuses a mismatching org. The single `default` org for local serve.
+    # The org that bound this bundle (BE-0015 multi-tenancy). The single `default` org for local serve.
     org: str
     actor: str | None = None
 
     @property
     def root(self) -> Path:
-        """The bundle root — the config's directory, used as the run's working directory so the
+        """The bundle root — the config's directory, used as the runs' working directory so the
         config's relative entries (appPath / scenarios / baselines / build) resolve against it."""
         return self.config.parent
+
+    @property
+    def provenance(self) -> dict[str, str]:
+        """The ``provenance`` block recorded into a run's manifest for a run off this bundle: the
+        uploaded file name + zip sha256 + size, so the run's source is answerable after the sandbox
+        is gone (DESIGN §2). Sizes are stringified to keep the block all-strings, like the audit log."""
+        return {
+            "source": "upload",
+            "filename": self.filename,
+            "sha256": self.sha256,
+            "size": str(self.size),
+        }
 
 
 def _is_symlink(info: zipfile.ZipInfo) -> bool:
