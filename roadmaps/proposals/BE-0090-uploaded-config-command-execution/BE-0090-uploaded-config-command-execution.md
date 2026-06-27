@@ -13,7 +13,7 @@
 
 ## Introduction
 
-[BE-0073](../../proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) lets a
+[BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) lets a
 browser user upload a `.zip` bundle that `serve` extracts and binds as the **active config** the
 Replay / Record / Crawl tabs run from. An uploaded config is untrusted input, and BE-0073 already
 refuses one part of it: a target's `build` command is **never** executed on the host (the bundle
@@ -163,7 +163,7 @@ extend.
 
 ## References
 
-- [BE-0073 — Upload a config + scenarios + app-binary bundle and bind it as the active config](../../proposals/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)
+- [BE-0073 — Upload a config + scenarios + app-binary bundle and bind it as the active config](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)
   — the upload path; where `build` is denied for uploads and `launchServer` is not.
 - [BE-0059 — Bring up the target server for a run (`launchServer`)](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)
   — the run-time server bring-up that carries `cmd` and the `readyUrl` reuse this builds on; `sandbox`
