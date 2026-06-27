@@ -85,19 +85,33 @@ def test_give_back_reinserts_the_action_at_the_front() -> None:
     assert coord.pending["a"][0].target == "x"  # a healthy worker retries it next
 
 
+def _reserve(coord: _Coordinator, src: str) -> Action:
+    # Pop a reservation the way a worker does (select_next_work bumps `active`), so record_edge runs
+    # against the same paired-with-a-reservation state it sees in the real crawl flow.
+    coord.path_to.setdefault(src, [])
+    coord.pending[src] = [Action(kind="tap", target="x")]
+    work = coord.select_next_work(src)
+    assert work is not None
+    return work.action
+
+
 def test_record_edge_reserves_a_new_destination_for_discovery() -> None:
     coord = _coord()
-    path = [Action(kind="tap", target="x")]
-    is_new = coord.record_edge(
-        "a", Action(kind="tap", target="x"), Fingerprint("b", "id"), [], path
-    )
+    action = _reserve(coord, "a")  # active -> 1, as a worker would before acting
+    path = [action]
+    is_new = coord.record_edge("a", action, Fingerprint("b", "id"), [], path)
     assert is_new is True
     assert coord.path_to["b"] == path  # the replayable path to the new screen is recorded
     assert [e.dst for e in coord.screen_map.edges] == ["b"]
+    assert coord._active == 1  # the reservation is held for finish_discovery
+    coord.finish_discovery(_node("b"), [])
+    assert coord._active == 0  # discovery releases it
 
 
 def test_record_edge_to_a_known_screen_is_not_new() -> None:
     coord = _coord()
     coord.publish(_node("b"), [])
-    is_new = coord.record_edge("a", Action(kind="tap", target="x"), Fingerprint("b", "id"), [], [])
+    action = _reserve(coord, "a")  # active -> 1, paired with the edge that releases it
+    is_new = coord.record_edge("a", action, Fingerprint("b", "id"), [], [])
     assert is_new is False
+    assert coord._active == 0  # a known screen: the step is done, the reservation released
