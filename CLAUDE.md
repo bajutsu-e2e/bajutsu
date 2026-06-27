@@ -105,6 +105,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   describe meaning. English, like all code. The generated reference is `make docs` (out of the gate).
   Migrate to the structured form module by module in small PRs — don't rewrite a module's docstrings
   as a side effect. Full rule: [`docs/ai-development.md`](docs/ai-development.md).
+- **Always follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/) skill
+  whenever you generate Japanese — without exception.** This is not limited to `docs/ja/` and
+  roadmap `*-ja.md`: it covers *any* Japanese you produce, including freshly written prose,
+  translations from English, and revisions/rewrites of existing Japanese. The skill is the
+  authoritative style for Japanese prose in this project; invoke it before writing or editing the
+  Japanese, not after.
 - Docs are **bilingual**: English in `docs/`, Japanese mirror in `docs/ja/`. Update both when
   you change a documented behavior.
 - **Documentation style (both languages, every doc and every update).** Write natural prose —
