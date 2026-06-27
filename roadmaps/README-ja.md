@@ -370,6 +370,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0012](proposals/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) | 操作キャプチャ record | 提案 |
 | [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md) | シナリオ GUI エディタ | 提案 |
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) | 既存 AI record との棲み分け | 提案 |
+| [BE-0095](proposals/BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph-ja.md) | クロールグラフのインタラクティブ操作（ノードのドラッグと再整列） | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Web UI のホスティング（クラウド / セルフホスト）

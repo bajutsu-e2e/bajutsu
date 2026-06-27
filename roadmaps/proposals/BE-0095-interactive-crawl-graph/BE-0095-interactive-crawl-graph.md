@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-interactive-crawl-graph-ja.md)
+**English** · [日本語](BE-0095-interactive-crawl-graph-ja.md)
 
-# BE-XXXX — Interactive crawl graph (draggable nodes + realign)
+# BE-0095 — Interactive crawl graph (draggable nodes + realign)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-interactive-crawl-graph.md) |
+| Proposal | [BE-0095](BE-0095-interactive-crawl-graph.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Authoring experience (record / GUI editor) |
