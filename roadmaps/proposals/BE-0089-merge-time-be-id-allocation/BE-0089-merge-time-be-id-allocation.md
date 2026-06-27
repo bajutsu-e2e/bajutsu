@@ -92,8 +92,8 @@ runs — against `main`, after a merge — plus the workflow plumbing around it.
 
 ### Flow
 
-1. The `ideation` skill authors the item as `BE-XXXX-<slug>` (unchanged). The PR opens with a
-   `[BE-XXXX]` title.
+1. The `ideation` skill authors the item as `BE-XXXX-<slug>` (unchanged). The PR opens with a plain
+   scoped title (e.g. `docs(roadmap): …`) and **no** `[BE-NNNN]` prefix.
 2. The reviewer reviews and approves the `BE-XXXX` content. **No allocation happens on the branch.**
 3. Auto-merge (or the merge queue) merges the branch **as-is**, `BE-XXXX` intact. No commit is pushed
    to the branch after approval, so no approval is dismissed.
@@ -101,10 +101,12 @@ runs — against `main`, after a merge — plus the workflow plumbing around it.
    against `main`, commits the rename + regenerated index directly to `main`, and posts a comment on
    the merged PR announcing the allocated `BE-NNNN` (with a link to the item).
 
-The PR title is **not** rewritten — it keeps its `[BE-XXXX]` prefix from authoring through merge.
-The real number is never known on the branch (it is allocated only after the merge), so rewriting the
-title would mean editing it post-merge for no functional gain; a bot comment is the natural, durable
-place to record the allocated id and link it to the merged PR.
+The PR title is **not** rewritten, and a BE-creation PR carries **no** `[BE-NNNN]` prefix at all. The
+real number is never known on the branch (it is allocated only after the merge), so a placeholder
+`[BE-XXXX]` prefix would carry no information and rewriting it post-merge would be churn for no
+functional gain; a bot comment is the natural, durable place to record the allocated id and link it to
+the merged PR. (The current `[BE-NNNN]`-prefix rule applies to PRs that *implement* an
+already-numbered item, where the id is known up front — see *References*.)
 
 ### The allocate-on-main workflow
 
@@ -316,6 +318,7 @@ and [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-s
 - [`CLAUDE.md`](../../../CLAUDE.md) ·
   [`roadmaps/README.md`](../../README.md) ·
   [`docs/ai-development.md`](../../../docs/ai-development.md) — the authoring rules updated to say the
-  number is allocated on `main` after the merge, not at PR-open.
+  number is allocated on `main` after the merge, not at PR-open, and that a BE-creation PR's title
+  carries no `[BE-NNNN]` prefix (the prefix rule stays for PRs implementing an already-numbered item).
 - GitHub docs — *Automatically merging a pull request* (auto-merge) and *Managing a merge queue* — the
   native mechanisms that merge the `BE-XXXX` branch as-is.
