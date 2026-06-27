@@ -249,8 +249,20 @@ class IdbDriver:
     def type_text(self, text: str) -> None:
         self._run(text_cmd(self.udid, text))
 
-    def wait_for(self, sel: base.Selector, timeout: float) -> bool:
-        return len(base.find_all(self.query(), sel)) >= 1
+    def wait_for(self, sel: base.Selector, timeout: float, poll: float = 0.2) -> bool:
+        """Poll until at least one element matches `sel`, or `timeout` elapses.
+
+        Returns whether the selector was found. Polls rather than checking once so the
+        caller's timeout is honoured on a real device, where the element may render
+        slightly after the call (mirroring the orchestrator's condition-wait discipline).
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            if len(base.find_all(self.query(), sel)) >= 1:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(poll)
 
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path))

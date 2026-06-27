@@ -116,3 +116,21 @@ def test_query_returns_after_bounded_retries_when_empty_persists() -> None:
     calls[0] = 0
     assert len(driver.query()) == 1  # gives up and returns the empty tree
     assert calls[0] == 1 + IdbDriver._EMPTY_RETRIES  # initial + bounded retries
+
+
+def test_wait_for_returns_true_when_already_present() -> None:
+    driver = IdbDriver("U", run=lambda a: FIXTURE)
+    assert driver.wait_for({"id": "settings.open"}, timeout=1, poll=0) is True
+
+
+def test_wait_for_polls_until_the_element_appears() -> None:
+    # Absent on the first reads, then it shows up: wait_for must keep polling, not check once.
+    run, calls = _scripted([EMPTY, EMPTY, FIXTURE])
+    driver = IdbDriver("U", run=run)
+    assert driver.wait_for({"id": "settings.open"}, timeout=5, poll=0) is True
+    assert calls[0] >= 3  # polled past the empty trees until the element appeared
+
+
+def test_wait_for_times_out_when_absent() -> None:
+    driver = IdbDriver("U", run=lambda a: "[]")
+    assert driver.wait_for({"id": "nope"}, timeout=0, poll=0) is False
