@@ -298,7 +298,11 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
     fakes: list[_FakeWeb] = []
 
     def fake_make_driver(
-        actuator: str, udid: str, base_url: str | None = None, headless: bool = True
+        actuator: str,
+        udid: str,
+        base_url: str | None = None,
+        headless: bool = True,
+        record_video_dir: object = None,
     ) -> base.Driver:
         assert actuator == "playwright"
         assert base_url == "http://x/index.html"  # threaded from eff.base_url
@@ -337,7 +341,11 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
     fakes: list[_FakeWeb] = []
 
     def fake_make_driver(
-        actuator: str, udid: str, base_url: str | None = None, headless: bool = True
+        actuator: str,
+        udid: str,
+        base_url: str | None = None,
+        headless: bool = True,
+        record_video_dir: object = None,
     ) -> base.Driver:
         d = _FakeWeb([_el("home", "H"), _el("ok", "OK")])
         fakes.append(d)

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import shutil
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -257,12 +258,16 @@ class PlaywrightDriver:
         headless: bool = True,
         page: _Page | None = None,
         starter: Starter = _start_chromium,
+        record_video_dir: Path | None = None,
     ) -> None:
         self._base_url = base_url
         # Kept so a wedged browser can be relaunched in place (BE-0077): the same starter + headless
         # mode build the replacement process.
         self._headless = headless
         self._starter = starter
+        # When set, contexts are created with Playwright's record_video_dir so the whole scenario is
+        # filmed (BE-0054); the `video` interval finalizes and collects it. None = no recording.
+        self._record_video_dir = record_video_dir
         self._pw: Any = None
         self._browser: Any = None
         self._context: Any = None  # current BrowserContext (web); closed + replaced on each reset
@@ -277,7 +282,19 @@ class PlaywrightDriver:
         self._page: _Page
         if page is None:  # not a test injection: start a real browser process
             self._pw, self._browser, self._context, page = starter(headless)
+            # The starter's context has no recording; if a video dir is configured, swap it for a
+            # recording context so the very first scenario is filmed too.
+            if self._record_video_dir is not None and self._browser is not None:
+                with contextlib.suppress(*_playwright_error_types()):
+                    self._context.close()
+                self._context = self._new_context()
+                page = self._context.new_page()
         self._bind(page)
+
+    def _new_context(self) -> Any:
+        """Open a BrowserContext, recording video into `record_video_dir` when one is configured."""
+        kwargs = {"record_video_dir": str(self._record_video_dir)} if self._record_video_dir else {}
+        return self._browser.new_context(**kwargs)
 
     def _bind(self, page: _Page) -> None:
         """Adopt a freshly created page (a new context, or a relaunched browser) as the live page.
@@ -339,12 +356,45 @@ class PlaywrightDriver:
 
         The device pool hands this to the `FileSink` so the same `capture` policy that drives the
         simctl providers on iOS drives Playwright-native ones on web. `deviceLog` streams the
-        browser console + uncaught page errors (the os_log analogue); other kinds are not yet
-        provided here (BE-0054).
+        browser console + uncaught page errors (the os_log analogue); `video` finalizes and
+        collects the BrowserContext recording (only when a record dir was configured for this lane).
         """
         if kind == "deviceLog":
             return self._console_interval(path)
+        if kind == "video":
+            return self._video_interval(path)
         return None
+
+    def _video_interval(self, path: Path) -> intervals.Interval | None:
+        """Finalize the context's video recording into `path` on stop, if recording is enabled."""
+        if self._record_video_dir is None:
+            return None  # this lane was not asked to record (video not in the capture policy)
+        driver = self
+
+        class _VideoCapture:
+            def stop(self, sig: int) -> None:
+                driver._finalize_video(path)
+
+        return intervals.Interval(
+            kind="video", path=path, provider=self.name, _proc=_VideoCapture()
+        )
+
+    def _finalize_video(self, target: Path) -> None:
+        """Close the context (Playwright writes the file on close), then move the video to `target`.
+
+        Called when the scenario's steps are done, so closing the context early is safe; the later
+        `close()` tears down the browser regardless.
+        """
+        video = getattr(self._page, "video", None)
+        if self._context is not None:
+            with contextlib.suppress(*_playwright_error_types()):
+                self._context.close()
+            self._context = None  # finalized; the lease's close() just stops the browser
+        if video is None:
+            return
+        with contextlib.suppress(Exception):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(video.path(), str(target))
 
     def _console_interval(self, path: Path) -> intervals.Interval:
         """Stream the live page's console messages and uncaught errors to `path` until stopped."""
@@ -401,7 +451,7 @@ class PlaywrightDriver:
             if self._context is not None:
                 with contextlib.suppress(*_playwright_error_types()):
                     self._context.close()
-            self._context = self._browser.new_context()
+            self._context = self._new_context()
             self._bind(self._context.new_page())
         self.navigate()
 

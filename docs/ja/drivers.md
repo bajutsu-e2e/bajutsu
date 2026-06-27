@@ -84,7 +84,7 @@ Playwright（Python）によるヘッドレス Chromium です。Mac も Simulat
 - `type_text` は `page.keyboard` で入力します（オーケストレータが先に `into` をタップしてフィールドにフォーカスします）。`screenshot` は `page.screenshot`、`wait_for` は `find_all` による単発（idb と同じ）です。
 - ライフサイクルは driver が所有します。新しい `BrowserContext` が `erase` 相当、`navigate()`（`page.goto(baseUrl)`）が `launch`、`close()` でブラウザを破棄します。simctl のデバイスは無いので、run はダミーのリースを使い、device control は持ちません（v1 では `pinch`/`rotate` が `UnsupportedAction`）。
 - **ネイティブネットワーク**（BE-0054）: Playwright はページが出すすべてのリクエストを見られるので、`--network` はアプリ側の協力なしに web でも動きます。`network_collector()` がページの `requestfinished` イベントを iOS と同じ `NetworkExchange` に変換するため、`request` アサーションも `network.json` 証跡もそのまま使えます。シナリオの `mocks` は `page.route` でその場で fulfill します。一致したリクエストには既定のレスポンスを返し、`mocked: true` を立てて記録します。一致判定は決定論的な `request` マッチャを再利用し、モデルは一切使いません。
-- **コンソール / ページエラー証跡**（BE-0054）: `deviceLog` キャプチャ種別は、ブラウザのコンソールと未捕捉のページエラーを `<scenario>/device.log` にストリームします。iOS の os_log `deviceLog` に相当しますが、simctl ではなく Playwright ネイティブです。デバイスプールがドライバの `web_interval` を `FileSink` に注入するので、バックエンド非依存の同じ `capture` ポリシーがそのまま運びます。
+- **コンソール / ページエラー・動画 証跡**（BE-0054）: `deviceLog` キャプチャ種別はブラウザのコンソールと未捕捉のページエラーを `<scenario>/device.log` にストリームし、`video` はシナリオ全体を録画します。どちらも simctl ではなく Playwright ネイティブで、iOS の os_log / simctl 動画に相当します。録画はシナリオの `capture` に `video` がある時だけ有効化し（`BrowserContext` を `record_video_dir` 付きで生成）、`video` インターバルが context クローズ時に `<scenario>/scenario.mp4`（中身は webm）へ確定させます。プールがドライバの `web_interval` を `FileSink` に注入するので、バックエンド非依存の同じ `capture` ポリシーが両方を運びます。
 
 > `playwright` は**遅延 import** されます（実際にブラウザを起動するときだけ読み込む）。そのため既定の CLI パスには決して載りません（`tests/serve/test_import_guard.py` で固定）。インストールは `uv sync --extra web` ＋ `uv run playwright install chromium`。`demos/web` のデモ（`make -C demos/web e2e`）が小さな静的 web アプリを端から端まで駆動します。
 
