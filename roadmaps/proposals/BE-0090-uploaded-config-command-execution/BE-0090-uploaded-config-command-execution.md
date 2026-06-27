@@ -101,20 +101,24 @@ prime directives.
 - **The `sandbox` mode — virtualizing the server command.** When `sandbox` is in effect and a run
   needs `launchServer.cmd` (or, once wired, `mockServer.cmd`), bajutsu runs the command in a fresh
   container rather than via `subprocess.Popen` on the host:
-  - **The runtime (an `image` or a `Dockerfile`) and the port come from config, not code.** A
-    sandboxed `launchServer` declares **how the container is built** in one of two ways: an `image`
-    (a prebuilt base, e.g. `node:20-slim`, carrying the runtime the `cmd` needs), or a `dockerfile`
-    (a path inside the bundle that bajutsu builds with `docker build` into a throwaway image, then
-    runs). Exactly one is required. Shipping a `Dockerfile` lets a web bundle be fully self-contained
-    — it describes its own runtime instead of depending on a base image existing in a registry — at
-    the cost of a build step; naming an `image` is the lighter path when a stock base suffices. The
-    config also names a `port` (the in-container port the server listens on, which bajutsu publishes
-    to a loopback host port). The bundle's static files are bind-mounted **read-only** at `cwd`;
-    `cmd`, `env`, `readyTimeout` carry over unchanged. With neither `image` nor `dockerfile`,
-    `sandbox` fails loud (the bundle must declare what it runs in) — it never falls back to bare-host
-    execution. The `docker build` itself runs through the Docker daemon's builder, never as a shell
-    command on the bare host; build-time isolation (egress and resource caps *during* the build)
-    folds into the BE-0015 / BE-0016 hardening below, just like the run-time container.
+  - **The runtime (a `dockerImage` or a `Dockerfile`) and the port come from config, not code.** A
+    sandboxed `launchServer` declares **how the container is built** in one of two ways: a
+    `dockerImage` (a prebuilt base, e.g. `node:20-slim`, carrying the runtime the `cmd` needs), or a
+    `dockerfile` (a path inside the bundle that bajutsu builds with `docker build` into a throwaway
+    image, then runs). The field is named `dockerImage`, not a bare `image`, so the config makes
+    plain that it names a **Docker image reference** (`[registry/]repo[:tag|@digest]`, e.g.
+    `node:20-slim` or `ghcr.io/acme/web-runtime:1.4.2`) — not an app screenshot, asset, or some other
+    "image". Exactly one of the two is required. Shipping a `Dockerfile` lets a web bundle be fully
+    self-contained — it describes its own runtime instead of depending on a base image existing in a
+    registry — at the cost of a build step; naming a `dockerImage` is the lighter path when a stock
+    base suffices. The config also names a `port` (the in-container port the server listens on, which
+    bajutsu publishes to a loopback host port). The bundle's static files are bind-mounted
+    **read-only** at `cwd`; `cmd`, `env`, `readyTimeout` carry over unchanged. With neither
+    `dockerImage` nor `dockerfile`, `sandbox` fails loud (the bundle must declare what it runs in) —
+    it never falls back to bare-host execution. The `docker build` itself runs through the Docker
+    daemon's builder, never as a shell command on the bare host; build-time isolation (egress and
+    resource caps *during* the build) folds into the BE-0015 / BE-0016 hardening below, just like the
+    run-time container.
   - **Hardened, disposable container.** `--rm`, no host bind mounts except the read-only bundle, a
     dropped capability set (`--cap-drop=ALL`), `--security-opt=no-new-privileges`, a read-only root
     filesystem with a tmpfs scratch, non-root user, CPU/memory/pids limits, and only the one published
@@ -128,16 +132,17 @@ prime directives.
     BE-0015 / BE-0016 territory — `sandbox` is the deterministic, here-and-now hardening those build on,
     and the published port stays loopback-confined so the sandbox never widens the host's exposure.
 - **Fail loud, never silently skip.** Under any mode, if a run needs a command the mode forbids or
-  cannot satisfy — `deny`/`reuse` with no server answering `readyUrl`, `sandbox` with neither `image`
-  nor `dockerfile`, or a `docker build` that fails — the run fails with a clear error naming the
+  cannot satisfy — `deny`/`reuse` with no server answering `readyUrl`, `sandbox` with neither
+  `dockerImage` nor `dockerfile`, or a `docker build` that fails — the run fails with a clear error
+  naming the
   offending field and the reason
   ([DESIGN §2](../../../DESIGN.md): fail loud, no silent fallback). A blocked or sandbox-misconfigured
   `launchServer` must not read as a flaky run, and `sandbox` must never quietly fall back to running
   the command on the bare host. `build` keeps its existing always-denied treatment for uploads, folded
   into this policy as the precedent rather than a separate special case.
 - **Provenance.** Record the policy decision (denied / reused / sandboxed, which field, and — when
-  sandboxed — whether the container came from a named `image` or a built `dockerfile`, with the image
-  reference or the built image's digest) into the run's `manifest.json` alongside BE-0073's upload
+  sandboxed — whether the container came from a named `dockerImage` or a built `dockerfile`, with the
+  image reference or the built image's digest) into the run's `manifest.json` alongside BE-0073's upload
   provenance, so
   "what did this run execute, where, and what was suppressed?" stays answerable.
 
@@ -170,7 +175,7 @@ extend.
   correct for Tier-A but implicit and inconsistent (`build` denied, the rest allowed), which is a
   latent foot-gun and a hard blocker for BE-0015 / BE-0016. Defining the seam now, while the upload
   path is fresh, is cheaper than retrofitting it under a hosting deadline.
-- **Accept only a prebuilt `image`, not a `Dockerfile`.** Rejected: requiring a stock or
+- **Accept only a prebuilt `dockerImage`, not a `Dockerfile`.** Rejected: requiring a stock or
   pre-published base image ties a web bundle to a registry artifact it may not control or be able to
   pin, and forces the bundle's runtime to be expressed out-of-band. Letting the bundle ship a
   `Dockerfile` keeps it self-contained at the cost of a build step, and the build runs through the
@@ -203,7 +208,8 @@ extend.
 - [DESIGN §1](../../../DESIGN.md) (Bajutsu receives a prebuilt app, does not build it),
   [DESIGN §2](../../../DESIGN.md) (determinism; fail loud, never a silent fallback).
 - `bajutsu/config.py` (`LaunchServer.cmd`, `MockServer.cmd`, `AppConfig.build`; the new
-  `LaunchServer.image` / `dockerfile` / `port`), `bajutsu/runner/launch_server.py`
+  `LaunchServer.docker_image` (alias `dockerImage`) / `dockerfile` / `port`),
+  `bajutsu/runner/launch_server.py`
   (`start_launch_server`'s host `Popen` the `sandbox` mode replaces with a built-or-pulled container), `bajutsu/serve/operations.py` (`start_run`
   forcing `build=None` for an uploaded bundle; `state.upload`), `bajutsu/serve/jobs.py` (`_build_app`;
   the run job machinery) — the surfaces a fix touches.
