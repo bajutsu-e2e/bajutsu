@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-crawl-coordinator-extraction-ja.md)
+**English** · [日本語](BE-0092-crawl-coordinator-extraction-ja.md)
 
-# BE-XXXX — Extract the crawl coordinator into a class
+# BE-0092 — Extract the crawl coordinator into a class
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-crawl-coordinator-extraction.md) |
+| Proposal | [BE-0092](BE-0092-crawl-coordinator-extraction.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

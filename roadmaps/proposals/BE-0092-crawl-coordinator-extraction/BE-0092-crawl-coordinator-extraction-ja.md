@@ -1,11 +1,11 @@
-[English](BE-XXXX-crawl-coordinator-extraction.md) · **日本語**
+[English](BE-0092-crawl-coordinator-extraction.md) · **日本語**
 
-# BE-XXXX — クロール調整役をクラスに切り出す
+# BE-0092 — クロール調整役をクラスに切り出す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-crawl-coordinator-extraction-ja.md) |
+| 提案 | [BE-0092](BE-0092-crawl-coordinator-extraction-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トピック | Development infrastructure (contributor workflow) |

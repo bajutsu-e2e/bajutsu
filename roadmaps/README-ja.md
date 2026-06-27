@@ -424,6 +424,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) | マージ後に main で BE ID を採番する | 提案 |
+| [BE-0092](proposals/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) | クロール調整役をクラスに切り出す | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）
