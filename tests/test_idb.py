@@ -157,6 +157,29 @@ def test_settle_is_bounded_when_the_screen_never_settles() -> None:
     assert calls[0] == 1 + 3  # initial read + bounded polls, then gives up
 
 
+def test_settle_does_not_stack_the_empty_retry_backoff() -> None:
+    # Prime _max_seen with a rich tree, then settle over a degenerate (transient-empty)
+    # screen. Settle must read the raw describe-all once per poll — not run query()'s
+    # empty-retry on every poll, which would stack ~1s of backoff onto each settle poll.
+    seq = [FIXTURE, EMPTY, EMPTY]
+    i = [0]
+    calls = [0]
+
+    def run(args: list[str]) -> str:
+        if "describe-all" in args:
+            calls[0] += 1
+            r = seq[i[0]] if i[0] < len(seq) else seq[-1]
+            i[0] += 1
+            return r
+        return ""
+
+    driver = IdbDriver("U", run=run)
+    driver.query()  # baseline: _max_seen becomes 3 (consumes FIXTURE)
+    calls[0] = 0
+    driver._settle(poll=0)  # reads EMPTY, EMPTY -> settled after two raw describes
+    assert calls[0] == 2  # one describe per poll, no per-poll empty-retry fan-out
+
+
 def test_tap_settles_before_resolving() -> None:
     # The screen is mid-animation (MOVED) then settles (FIXTURE). The tap must land on the
     # settled center (50,20), not the in-flight one (50,30).

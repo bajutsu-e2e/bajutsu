@@ -207,18 +207,26 @@ class IdbDriver:
     def _settle(self, max_polls: int | None = None, poll: float | None = None) -> None:
         """Wait until the screen stops changing before acting on it.
 
-        Polls query() until two consecutive reads return the same tree (the screen has
-        stopped animating), or the bounded poll count is exhausted. Best-effort: a screen
-        that never stabilizes proceeds with the current screen rather than hanging — a
-        settle is a stabilization hint, not an assertion, so it never fails a run.
+        Polls the raw describe-all until two consecutive reads return the same tree (the
+        screen has stopped animating), or the bounded poll count is exhausted. Best-effort:
+        a screen that never stabilizes proceeds with the current screen rather than hanging
+        — a settle is a stabilization hint, not an assertion, so it never fails a run.
+
+        Reads `_describe()` directly rather than `query()` so the settle's own bound
+        (`_SETTLE_MAX_POLLS` * `_SETTLE_POLL_S`) is the only delay: `query()`'s transient-empty
+        backoff would otherwise stack onto every poll. The empty-tree retry still applies later,
+        at selector resolution (`_resolve` -> `query`). `_max_seen` is updated here too so that
+        gate stays primed by what settle observes.
         """
         max_polls = self._SETTLE_MAX_POLLS if max_polls is None else max_polls
         poll = self._SETTLE_POLL_S if poll is None else poll
-        prev = self.query()
+        prev = self._describe()
+        self._max_seen = max(self._max_seen, len(prev))
         for _ in range(max_polls):
             if poll > 0:
                 time.sleep(poll)
-            cur = self.query()
+            cur = self._describe()
+            self._max_seen = max(self._max_seen, len(cur))
             if cur == prev:
                 return
             prev = cur
