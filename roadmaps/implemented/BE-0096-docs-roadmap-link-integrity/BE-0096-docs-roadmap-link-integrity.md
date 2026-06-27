@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0096](BE-0096-docs-roadmap-link-integrity.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
