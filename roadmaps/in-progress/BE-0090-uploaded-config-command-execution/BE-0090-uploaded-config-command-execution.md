@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0090](BE-0090-uploaded-config-command-execution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
