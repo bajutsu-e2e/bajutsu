@@ -24,19 +24,6 @@ NDJSON = (
     '{"AXUniqueId":"b","AXLabel":"B","type":"Cell","frame":{"x":0,"y":0,"width":1,"height":1}}\n'
 )
 
-# The same screen as FIXTURE but shifted down by 10pt — a mid-animation snapshot where the
-# elements exist yet their frames have not settled (settings.open center is (50,30) here
-# vs (50,20) once settled).
-MOVED = """
-[
-  {"AXUniqueId":"settings.open","AXLabel":"設定","type":"Button","enabled":true,
-   "frame":{"x":0,"y":10,"width":100,"height":40}},
-  {"AXUniqueId":"submit","AXLabel":"送信","type":"Button","enabled":false,
-   "frame":{"x":0,"y":60,"width":100,"height":40}},
-  {"AXLabel":"static","type":"StaticText","frame":{"x":0,"y":110,"width":100,"height":20}}
-]
-"""
-
 
 def test_parse_describe_all() -> None:
     els = parse_describe_all(FIXTURE)
@@ -131,71 +118,19 @@ def test_query_returns_after_bounded_retries_when_empty_persists() -> None:
     assert calls[0] == 1 + IdbDriver._EMPTY_RETRIES  # initial + bounded retries
 
 
-def test_settle_returns_once_the_tree_stops_changing() -> None:
-    # Moving, then settled to the same tree twice in a row: settle returns as soon as two
-    # consecutive reads match.
-    run, calls = _scripted([MOVED, FIXTURE, FIXTURE])
+def test_wait_for_returns_true_when_already_present() -> None:
+    driver = IdbDriver("U", run=lambda a: FIXTURE)
+    assert driver.wait_for({"id": "settings.open"}, timeout=1, poll=0) is True
+
+
+def test_wait_for_polls_until_the_element_appears() -> None:
+    # Absent on the first reads, then it shows up: wait_for must keep polling, not check once.
+    run, calls = _scripted([EMPTY, EMPTY, FIXTURE])
     driver = IdbDriver("U", run=run)
-    driver._settle(poll=0)
-    # prev=MOVED(1); cur=FIXTURE(2) differs; cur=FIXTURE(3) matches -> settled
-    assert calls[0] == 3
+    assert driver.wait_for({"id": "settings.open"}, timeout=5, poll=0) is True
+    assert calls[0] >= 3  # polled past the empty trees until the element appeared
 
 
-def test_settle_is_bounded_when_the_screen_never_settles() -> None:
-    # A screen that keeps changing (a spinner) must not hang settle: it gives up after the
-    # bounded number of polls and proceeds.
-    calls = [0]
-
-    def run(args: list[str]) -> str:
-        if "describe-all" in args:
-            calls[0] += 1
-            return FIXTURE if calls[0] % 2 else MOVED  # always alternate, never settles
-        return ""
-
-    driver = IdbDriver("U", run=run)
-    driver._settle(max_polls=3, poll=0)
-    assert calls[0] == 1 + 3  # initial read + bounded polls, then gives up
-
-
-def test_settle_does_not_stack_the_empty_retry_backoff() -> None:
-    # Prime _max_seen with a rich tree, then settle over a degenerate (transient-empty)
-    # screen. Settle must read the raw describe-all once per poll — not run query()'s
-    # empty-retry on every poll, which would stack ~1s of backoff onto each settle poll.
-    seq = [FIXTURE, EMPTY, EMPTY]
-    i = [0]
-    calls = [0]
-
-    def run(args: list[str]) -> str:
-        if "describe-all" in args:
-            calls[0] += 1
-            r = seq[i[0]] if i[0] < len(seq) else seq[-1]
-            i[0] += 1
-            return r
-        return ""
-
-    driver = IdbDriver("U", run=run)
-    driver.query()  # baseline: _max_seen becomes 3 (consumes FIXTURE)
-    calls[0] = 0
-    driver._settle(poll=0)  # reads EMPTY, EMPTY -> settled after two raw describes
-    assert calls[0] == 2  # one describe per poll, no per-poll empty-retry fan-out
-
-
-def test_tap_settles_before_resolving() -> None:
-    # The screen is mid-animation (MOVED) then settles (FIXTURE). The tap must land on the
-    # settled center (50,20), not the in-flight one (50,30).
-    seq = [MOVED, FIXTURE, FIXTURE]
-    i = [0]
-    taps: list[list[str]] = []
-
-    def run(args: list[str]) -> str:
-        if "describe-all" in args:
-            r = seq[i[0]] if i[0] < len(seq) else seq[-1]
-            i[0] += 1
-            return r
-        taps.append(args)
-        return ""
-
-    driver = IdbDriver("U", run=run)
-    driver._SETTLE_POLL_S = 0  # no real sleeping in the test
-    driver.tap({"id": "settings.open"})
-    assert taps == [tap_cmd("U", 50, 20)]
+def test_wait_for_times_out_when_absent() -> None:
+    driver = IdbDriver("U", run=lambda a: "[]")
+    assert driver.wait_for({"id": "nope"}, timeout=0, poll=0) is False

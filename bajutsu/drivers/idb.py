@@ -163,13 +163,6 @@ class IdbDriver:
     _EMPTY_RETRIES = 5  # extra describe-all attempts on a degenerate tree
     _EMPTY_BACKOFF_S = 0.2  # delay between those attempts (<= ~1s added, bounded)
 
-    # Before an actuation, wait for the screen to stop animating. A coordinate tap resolves
-    # the target's frame center, so acting mid-transition can land on an element that has
-    # since moved. Settle polls until two consecutive trees match, bounded so a screen that
-    # never stabilizes (a live spinner) proceeds rather than hanging.
-    _SETTLE_MAX_POLLS = 20  # cap on stabilization polls (~2s at _SETTLE_POLL_S)
-    _SETTLE_POLL_S = 0.1  # delay between those polls
-
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
         self.udid = udid
         self._run = run
@@ -204,33 +197,6 @@ class IdbDriver:
         """
         return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
 
-    def _settle(self, max_polls: int | None = None, poll: float | None = None) -> None:
-        """Wait until the screen stops changing before acting on it.
-
-        Polls the raw describe-all until two consecutive reads return the same tree (the
-        screen has stopped animating), or the bounded poll count is exhausted. Best-effort:
-        a screen that never stabilizes proceeds with the current screen rather than hanging
-        — a settle is a stabilization hint, not an assertion, so it never fails a run.
-
-        Reads `_describe()` directly rather than `query()` so the settle's own bound
-        (`_SETTLE_MAX_POLLS` * `_SETTLE_POLL_S`) is the only delay: `query()`'s transient-empty
-        backoff would otherwise stack onto every poll. The empty-tree retry still applies later,
-        at selector resolution (`_resolve` -> `query`). `_max_seen` is updated here too so that
-        gate stays primed by what settle observes.
-        """
-        max_polls = self._SETTLE_MAX_POLLS if max_polls is None else max_polls
-        poll = self._SETTLE_POLL_S if poll is None else poll
-        prev = self._describe()
-        self._max_seen = max(self._max_seen, len(prev))
-        for _ in range(max_polls):
-            if poll > 0:
-                time.sleep(poll)
-            cur = self._describe()
-            self._max_seen = max(self._max_seen, len(cur))
-            if cur == prev:
-                return
-            prev = cur
-
     def _resolve(self, sel: base.Selector, timeout: float = 3.0, poll: float = 0.2) -> base.Element:
         # Real-device trees can be transiently empty during transitions; retry
         # not-found while keeping ambiguity fail-fast.
@@ -249,7 +215,6 @@ class IdbDriver:
         return (x + w / 2, y + h / 2)
 
     def tap(self, sel: base.Selector) -> None:
-        self._settle()
         x, y = self._center(sel)
         self._run(tap_cmd(self.udid, x, y))
 
@@ -258,7 +223,6 @@ class IdbDriver:
 
     def double_tap(self, sel: base.Selector) -> None:
         # idb has no double-tap; two quick taps at the same point register as one.
-        self._settle()
         x, y = self._center(sel)
         self._run(tap_cmd(self.udid, x, y))
         self._run(tap_cmd(self.udid, x, y))
@@ -274,7 +238,6 @@ class IdbDriver:
         )
 
     def long_press(self, sel: base.Selector, duration: float) -> None:
-        self._settle()
         x, y = self._center(sel)
         self._run(
             ["idb", "ui", "tap", "--udid", self.udid, _num(x), _num(y), "--duration", str(duration)]
@@ -284,13 +247,22 @@ class IdbDriver:
         self._run(swipe_cmd(self.udid, frm[0], frm[1], to[0], to[1]))
 
     def type_text(self, text: str) -> None:
-        # Settle first so typing lands in a stable, focused field rather than racing a
-        # still-animating screen (which can drop characters or target the wrong field).
-        self._settle()
         self._run(text_cmd(self.udid, text))
 
-    def wait_for(self, sel: base.Selector, timeout: float) -> bool:
-        return len(base.find_all(self.query(), sel)) >= 1
+    def wait_for(self, sel: base.Selector, timeout: float, poll: float = 0.2) -> bool:
+        """Poll until at least one element matches `sel`, or `timeout` elapses.
+
+        Returns whether the selector was found. Polls rather than checking once so the
+        caller's timeout is honoured on a real device, where the element may render
+        slightly after the call (mirroring the orchestrator's condition-wait discipline).
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            if len(base.find_all(self.query(), sel)) >= 1:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(poll)
 
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path))
