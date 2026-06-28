@@ -8,7 +8,7 @@
 | 提案 | [BE-0021](BE-0021-ai-triage-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済み・単一 PR なし） |
+| 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済みで、単一 PR なし） |
 | トピック | 自己修復トリアージ（M4） |
 <!-- /BE-METADATA -->
 
@@ -38,4 +38,4 @@
 
 ## 参考
 
-[DESIGN §3.1 / §12](../../../DESIGN.md)、`bajutsu/triage.py`・`bajutsu/claude_triage.py`
+[DESIGN §3.1 / §12](../../../DESIGN.md)、`bajutsu/triage.py`、`bajutsu/claude_triage.py`

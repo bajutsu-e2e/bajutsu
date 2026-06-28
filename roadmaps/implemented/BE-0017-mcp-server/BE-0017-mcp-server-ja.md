@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#44](https://github.com/bajutsu-e2e/bajutsu/pull/44) |
-| トピック | 統合・自動化（MCP 化） |
+| トピック | 統合と自動化（MCP 化） |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -25,13 +25,13 @@ Bajutsu は AI エージェントを Tier 1 の主要な利用者として扱い
 MCP サーバは `bajutsu/mcp/` に実装（optional dependency `fastmcp>=2.0.0`）。
 
 **ツール:**
-- `bajutsu_doctor(app, udid)` — 現在の画面のアクセシビリティ規約スコアを返す（in-process）
-- `bajutsu_run(app, scenario, ...)` — シナリオを決定的に実行（subprocess）
+- `bajutsu_doctor(app, udid)`：現在の画面のアクセシビリティ規約スコアを返す（in-process）
+- `bajutsu_run(app, scenario, ...)`：シナリオを決定的に実行（subprocess）
 
 **リソース:**
-- `bajutsu://runs/{run_id}/manifest.json` — 実行結果の構造化 JSON
-- `bajutsu://runs/{run_id}/report.html` — 自己完結 HTML レポート
-- `bajutsu://runs/latest/manifest.json` — 最新の実行結果
+- `bajutsu://runs/{run_id}/manifest.json`：実行結果の構造化 JSON
+- `bajutsu://runs/{run_id}/report.html`：自己完結 HTML レポート
+- `bajutsu://runs/latest/manifest.json`：最新の実行結果
 
 **エントリポイント:** `bajutsu mcp [--config ...] [--runs ...] [--transport stdio|sse]`
 

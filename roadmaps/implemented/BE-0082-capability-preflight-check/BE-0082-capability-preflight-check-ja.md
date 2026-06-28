@@ -30,9 +30,9 @@ capability を洗い出し、`driver.capabilities()` と突き合わせ、未対
   `_require_multi_touch` だけで、それはジェスチャが実行されたときに発火します。5 つの画面をタップして進み、そこでようやく未対応のピンチをするシナリオは、失敗する前に 5 画面分のデバイス作業を払います。時間の無駄であり、失敗レポートも「このシナリオはこの
   backend では走らせられない」ではなく、run の途中で起きたエラーのように見えます。
 - **不一致は、デバイスに触れる前に分かる。** シナリオのステップとアサーションは最初からすべて分かっているし、backend の capability 集合も分かっています。検査にデバイスの状態は要らないので、純粋なプリフライトとして実行できます。まさに、run の最中ではなく前に失敗すべき類のものです。
-- **これは backend ごとの問題で、backend の組み合わせは増えていく。** iOS（idb）、Web（Playwright）があり、Android も計画されています（[BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)）。backend
+- **これは backend ごとの問題で、backend の組み合わせは増えていく。** iOS（idb）、Web（Playwright）があり、Android も計画されています（[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)）。backend
   間の capability の差は、一度きりの話ではなく、構造的で繰り返し現れる事実です。ある backend
-  に向けて書いたシナリオを別の backend で走らせるとき——まさにそこで、「この backend
+  に向けて書いたシナリオを別の backend で走らせるとき、まさにそこで、「この backend
   では未対応」という明確なメッセージが効いてきます。（BE-0009 のプラットフォームごとの表は、すでに
   `capabilities()` を backend の契約の中心に据えています。）
 - **いまの capability の扱いはモデル化が足りない。** 実際に検査されているのは `multiTouch`
@@ -58,7 +58,7 @@ capability を洗い出し、`driver.capabilities()` と突き合わせ、未対
 
 ### プリフライト
 
-run の開始時、driver が選ばれたあと、最初の action の前に、runner は解決済みのシナリオ（展開された共有・パラメータ化ステップやデータ駆動の行も含む。検査が実際に実行されるものをそのまま見るように）を走査し、必要な
+run の開始時、driver が選ばれたあと、最初の action の前に、runner は解決済みのシナリオ（展開された共有ステップやパラメータ化ステップ、データ駆動の行も含む。検査が実際に実行されるものをそのまま見るように）を走査し、必要な
 capability の集合を集め、`driver.capabilities()` との差を取ります。差が空でなければ、run
 はただちに失敗します。1 つの集約されたエラーで、**すべての**未対応の構文と、それを照合した backend
 を挙げます。action ごとに 1 つのエラーを出すのでもなく、中途半端にデバイス作業をしたあとでもありません。失敗がレポート上で一貫して分類されるよう、既存の
@@ -89,9 +89,9 @@ capability の集合を集め、`driver.capabilities()` との差を取ります
 
 ## 参考
 
-- `bajutsu/drivers/base.py`（`Capability`、`Driver.capabilities()`）——本項目が強制する
-  capability の契約。`bajutsu/orchestrator/actions/handlers/gestures.py`（`_require_multi_touch`）——本項目が一般化する、既存のより狭い run 時の検査。
-- [BE-0009 — Cross-platform abstractions](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)——`capabilities()`
+- `bajutsu/drivers/base.py`（`Capability`、`Driver.capabilities()`）：本項目が強制する
+  capability の契約。`bajutsu/orchestrator/actions/handlers/gestures.py`（`_require_multi_touch`）は、本項目が一般化する、既存のより狭い run 時の検査です。
+- [BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)——`capabilities()`
   を backend の契約とするプラットフォームごとの backend の組み合わせ。本項目は、それを runner
   が前もって強制するようにします。
 - [CLAUDE.md](../../../CLAUDE.md)——prime directive #2（決定論優先：推測したり中途半端に進めたりせず、速く失敗する）。

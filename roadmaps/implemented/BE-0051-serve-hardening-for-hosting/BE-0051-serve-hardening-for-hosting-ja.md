@@ -8,13 +8,13 @@
 | 提案 | [BE-0051](BE-0051-serve-hardening-for-hosting-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
-| 実装 PR | [#92](https://github.com/bajutsu-e2e/bajutsu/pull/92)（スライス 1）、[#94](https://github.com/bajutsu-e2e/bajutsu/pull/94)（スライス 2）、[#95](https://github.com/bajutsu-e2e/bajutsu/pull/95)（スライス 3）、[#96](https://github.com/bajutsu-e2e/bajutsu/pull/96)（スライス 4）、[#97](https://github.com/bajutsu-e2e/bajutsu/pull/97)（スライス 5）、[#114](https://github.com/bajutsu-e2e/bajutsu/pull/114)（スライス 3・5 の `/api/crawl` 対応） |
+| 実装 PR | [#92](https://github.com/bajutsu-e2e/bajutsu/pull/92)（スライス 1）、[#94](https://github.com/bajutsu-e2e/bajutsu/pull/94)（スライス 2）、[#95](https://github.com/bajutsu-e2e/bajutsu/pull/95)（スライス 3）、[#96](https://github.com/bajutsu-e2e/bajutsu/pull/96)（スライス 4）、[#97](https://github.com/bajutsu-e2e/bajutsu/pull/97)（スライス 5）、[#114](https://github.com/bajutsu-e2e/bajutsu/pull/114)（スライス 3、5 の `/api/crawl` 対応） |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-stdlib の `bajutsu serve`（`bajutsu/serve/`）が今安全なのは、**localhost 限定・単一ユーザー**だからです。
+stdlib の `bajutsu serve`（`bajutsu/serve/`）が今安全なのは、**localhost 限定、単一ユーザー**だからです。
 認証は無く、`/api/run` は（下記スライス 1（#92）が封じ込めるまで）クライアント指定の scenario パスを
 受け付けていました。ホスティングの 2 提案、すなわち
 公開/クラウドの [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) と
@@ -23,8 +23,8 @@ stdlib の `bajutsu serve`（`bajutsu/serve/`）が今安全なのは、**localh
 **既存の** stdlib サーバ上の単一のハードニングのトラックとしてまとめます。決定的コアは一切変えず、各スライスは
 Simulator 無しで Linux ゲートでテストできます。
 
-これは BE-0015/BE-0016 の**前提レイヤ**です。あれらは完全なホスティング構成（FastAPI コントロールプレーン・
-macOS ワーカープール・OAuth・オブジェクトストレージ）を記述しますが、本項目はそれらが存在する前に、
+これは BE-0015/BE-0016 の**前提レイヤ**です。あれらは完全なホスティング構成（FastAPI コントロールプレーン、
+macOS ワーカープール、OAuth、オブジェクトストレージ）を記述しますが、本項目はそれらが存在する前に、
 **いま出荷しているサーバを公開しても安全にする**ことだけを扱います。
 
 ## 動機
@@ -49,11 +49,11 @@ HTTP ハーネスで Simulator 無しにテストできます。
 
 1. **`/api/run` の入力検証**（#92 で実装）。要求された scenario を選択中アプリの scenarios dir の
    ファイル名と突き合わせ（実行に使うパスは dir 列挙由来で、クライアント文字列は使わない）、既知トークンでない
-   `backend` / `udid` を拒否します。任意パス実行の面を排除します。他のエンドポイント（`/api/config`・`/api/scenario`・
-   `/api/approve`・`/runs/...` 配信）は既にパスを封じ込め済みです。
+   `backend` / `udid` を拒否します。任意パス実行の面を排除します。他のエンドポイント（`/api/config`、`/api/scenario`、
+   `/api/approve`、`/runs/...` 配信）は既にパスを封じ込め済みです。
 2. **トークン認証 + 非 loopback ガード**（#94 で実装）。任意の共有トークン（`--token` / `BAJUTSU_SERVE_TOKEN`）を
    定数時間比較します。API クライアントは `Bearer` ヘッダで提示し、ブラウザは **POST のログインエンドポイント経由で
-   HttpOnly・SameSite=Strict Cookie を確立**します（トークンは URL に載せません。クエリ文字列は履歴・ログ・`Referer`
+   HttpOnly かつ SameSite=Strict の Cookie を確立**します（トークンは URL に載せません。クエリ文字列は履歴、ログ、`Referer`
    から漏えいするため）。**非 loopback host をトークン無しで bind するのは起動時に拒否**するので、無認証で誤って
    公開されることがありません。
 3. **同じ入力検証を他の run 起動エンドポイントにも適用**（#95 で実装、`/api/crawl` は #114）。`/api/record`
@@ -65,8 +65,8 @@ HTTP ハーネスで Simulator 無しにテストできます。
 5. **トークン/org 単位の run dispatch レート制限**（#97 で実装、`/api/crawl` は #114）。1 呼び出し元が
    （希少な）デバイスを独占できないよう同時/実行中 run を上限化します。BE-0015 の per-org クォータの軽量な前段です。
 
-スライス 1–2 が、単一 Mac・tailnet 到達（BE-0016 Tier A）を安全にする最小集合です。3–5 は面を仕上げます。
-マルチテナント（per-org キー・RBAC・オブジェクトストレージ・ワーカープール）は BE-0015/BE-0016 に残し、本項目は
+スライス 1–2 が、単一 Mac と tailnet 到達（BE-0016 Tier A）を安全にする最小集合です。3–5 は面を仕上げます。
+マルチテナント（per-org キー、RBAC、オブジェクトストレージ、ワーカープール）は BE-0015/BE-0016 に残し、本項目は
 あえて「出荷するサーバを、トークン付きでプライベートネットワークの背後に置いても安全」までで止めます。
 
 ## 検討した代替案
@@ -75,7 +75,7 @@ HTTP ハーネスで Simulator 無しにテストできます。
   サーバを、大規模で未構築の FastAPI/OAuth/ワーカープールの取り組みに結合してしまうためです。修正は小さく現行サーバ単独で
   有用（BE-0016 Tier A を今日安全にする）なので、独立した漸進トラックに属します。
 - **stdlib サーバ上の OAuth / per-org RBAC。** 本レイヤでは却下しました。完全な identity はホスティングのコントロール
-  プレーン（BE-0015）に属します。単一 Mac・プライベートネットワーク構成には共有トークン 1 つが適切な重さで、新規
+  プレーン（BE-0015）に属します。単一 Mac のプライベートネットワーク構成には共有トークン 1 つが適切な重さで、新規
   依存無しで実装できます。
 - **`0.0.0.0` に bind し、認証はネットワーク ACL / リバースプロキシに任せる。** 既定としては却下しました。設定ミス 1 つで
   公開されうる無認証サーバは危険だからです。トークン無しの非 loopback bind を拒否すれば、安全側が既定になります。リバースプロキシ

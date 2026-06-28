@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | 実装 PR | [#68](https://github.com/bajutsu-e2e/bajutsu/pull/68) |
-| トピック | 統合・自動化（MCP 化） |
+| トピック | 統合と自動化（MCP 化） |
 <!-- /BE-METADATA -->
 
 ## はじめに

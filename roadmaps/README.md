@@ -35,13 +35,15 @@ When you add a roadmap item:
    ```bash
    ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1
    ```
-   Never reuse, skip, or guess a number. **Or leave it undetermined:** name the item
-   `BE-XXXX-<slug>` (the literal placeholder) and let CI assign the number — the
-   [`roadmap-id`](../.github/workflows/roadmap-id.yml) workflow runs
-   [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) on every PR
-   touching `roadmaps/**`, allocates the next free IDs, and pushes the rename back to
-   the branch. This is what the `ideation` skill does, and it avoids two
-   in-flight branches racing for the same number.
+   Never reuse, skip, or guess a number. **The norm, though, is to leave it undetermined:** name the
+   item `BE-XXXX-<slug>` (the literal placeholder) and let CI assign the number. The item keeps
+   `BE-XXXX` through review and the merge, and the [`roadmap-id`](../.github/workflows/roadmap-id.yml)
+   workflow runs [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) **on `main`
+   after the PR merges**, allocating the next free IDs in merge order and committing the rename to
+   `main` (BE-0089). This is what the `ideation` skill does; it keeps the `BE-NNNN` sequence
+   contiguous (a rejected PR never spends a number) and avoids two in-flight branches racing for one.
+   A BE-creation PR therefore carries **no `[BE-NNNN]` title prefix** — the real number is not known
+   until after the merge.
 2. **Create the item directory and both language files** — under `roadmaps/proposals/` for a
    proposal, or under `roadmaps/implemented/` with `Status: Implemented` when the same PR also ships
    the implementation (a new item is a proposal first *unless* its code lands with it) —
@@ -115,7 +117,9 @@ The first slices of the multi-platform direction that have shipped: a **platform
 <!-- GENERATED:implemented-platform -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0009](implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Implemented |
 | [BE-0010](implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Implemented |
+| [BE-0076](implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md) | Selectable browser engines & cross-browser compatibility matrix (web backend) | Implemented |
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
@@ -171,6 +175,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 <!-- GENERATED:implemented-competitive-maestro -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
+| [BE-0047](implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Implemented | Maestro |
 | [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented | Maestro |
 | [BE-0049](implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Implemented | Maestro |
 | [BE-0050](implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Implemented | Maestro |
@@ -199,8 +204,11 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0069](implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | Implemented |
 | [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) | Standardize the BE item template (EN / JA) | Implemented |
 | [BE-0078](implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) | Status-driven roadmap folders (proposals / deferred / in-progress / implemented) | Implemented |
+| [BE-0089](implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Implemented |
 | [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Implemented |
+| [BE-0093](implemented/BE-0093-public-docs-site/BE-0093-public-docs-site.md) | Public project website & documentation portal (GitHub Pages) | Implemented |
 | [BE-0094](implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) | Generated roadmap status dashboard on GitHub Pages | Implemented |
+| [BE-0096](implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md) | Keep docs links to roadmap items from rotting on promotion | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
@@ -242,6 +250,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | ID | Item | Status |
 |---|---|---|
 | [BE-0051](implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
+| [BE-0055](implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
 ### Configuration sourcing
@@ -310,6 +319,14 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0041](in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | In progress |
 <!-- /GENERATED:in-progress-platform-landed -->
 
+### Platform expansion (Android / Web / Flutter)
+
+<!-- GENERATED:in-progress-platform -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0009](in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | In progress |
+<!-- /GENERATED:in-progress-platform -->
+
 ### Candidates from competitive research (MagicPod / Autify)
 
 <!-- GENERATED:in-progress-competitive -->
@@ -326,6 +343,33 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 |---|---|---|---|
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
+
+### Backend expansion (iOS actuators)
+
+<!-- GENERATED:in-progress-backend -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0019](in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | In progress |
+| [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | In progress |
+<!-- /GENERATED:in-progress-backend -->
+
+### Dogfood fixtures (demo apps)
+
+Consolidating the demo and dogfood apps onto the showcase suite: bringing it to parity with the legacy `sample` / `demo` / `sample2` fixtures (codegen → XCUITest, visual regression, gesture targets, the evidence tour), re-pointing the demos and on-device CI at it, and retiring the three legacy apps — so the showcase becomes the single iOS fixture.
+
+<!-- GENERATED:in-progress-dogfood -->
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0079](in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | In progress | Dogfooding |
+<!-- /GENERATED:in-progress-dogfood -->
+
+### Hosting the web UI (cloud / self-hosted)
+
+<!-- GENERATED:in-progress-hosting -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0090](in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | In progress |
+<!-- /GENERATED:in-progress-hosting -->
 
 ### codegen coverage
 
@@ -366,8 +410,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0007](proposals/BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | Proposal |
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Proposal |
-| [BE-0076](proposals/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md) | Selectable browser engines & cross-browser compatibility matrix (web backend) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)
@@ -400,9 +442,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
 | [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
-| [BE-0055](proposals/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Proposal |
 | [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Proposal |
-| [BE-0090](proposals/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing
@@ -430,7 +470,6 @@ Turning a passing scenario into a native test in a destination framework's idiom
 | ID | Item | Status |
 |---|---|---|
 | [BE-0019](proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | Proposal |
-| [BE-0020](proposals/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Proposal |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding
@@ -446,18 +485,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 <!-- GENERATED:proposals-dev-infra -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Proposal |
-| [BE-0093](proposals/BE-0093-public-docs-site/BE-0093-public-docs-site.md) | Public project website & documentation portal (GitHub Pages) | Proposal |
-| [BE-0096](proposals/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md) | Keep docs links to roadmap items from rotting on promotion | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
-
-### Dogfood fixtures (demo apps)
-
-<!-- GENERATED:proposals-dogfood -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0079](proposals/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Proposal | Dogfooding |
-<!-- /GENERATED:proposals-dogfood -->
 
 ### Candidates from competitive research (MagicPod / Autify)
 
@@ -474,7 +502,7 @@ Maestro (mobile.dev) is an open-source, cross-platform UI E2E tool whose directi
 <!-- GENERATED:proposals-competitive-maestro -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Proposal | Maestro |
+| [BE-0097](proposals/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md) | AI data sovereignty for the crawl guide and serve-spawned AI paths | Proposal |  |
 <!-- /GENERATED:proposals-competitive-maestro -->
 
 ## Deferred

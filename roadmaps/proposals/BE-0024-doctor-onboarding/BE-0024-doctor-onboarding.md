@@ -63,6 +63,22 @@ visible in one place.
   chromium` remedies, no Xcode/Simulator), and `doctor` navigates a fresh browser to the target's
   `baseUrl` and scores that page. The convention score itself was already backend-agnostic (it
   reads each element's id and traits), so the web backend's `data-testid` ids score unchanged.
+- **A screen with no actionable elements is graded `Blocked`, not `Ready`** ([#337](https://github.com/bajutsu-e2e/bajutsu/pull/337)).
+  `doctor.score` derived id coverage as `1.0` when there were no actionable elements, so a blank,
+  not-yet-loaded, or wrong screen graded `Ready` — a confusing false-positive that told a first-run
+  user their setup was sound when `doctor` had in fact found nothing to test. The score now treats
+  "no actionable elements" as `Blocked` and `render` names the likely cause ("is the app on the
+  expected screen and fully loaded?"), so the signal points at the real problem. The check stays
+  deterministic and LLM-free.
+- **`doctor` checks the target's backend config before probing tools or a device** ([#361](https://github.com/bajutsu-e2e/bajutsu/pull/361)).
+  `doctor` resolved the target and went straight to probing tools / a device, so a target carrying
+  the wrong field for its selected backend (an iOS target with only a `baseUrl`, a web target with
+  only a `bundleId`) surfaced as a confusing downstream launch/navigate failure, and an iOS target
+  missing `bundleId` was never checked up front. Config parsing rejects a target with *neither*
+  field, but not the wrong one for the backend it runs on. A new `preflight.config_checks` verifies
+  the selected backend's required field is present (web → `baseUrl`, iOS → `bundleId`) with a remedy
+  naming the target, and `doctor` runs it first — failing fast with a fixable checklist instead of a
+  doomed probe. The check stays deterministic and LLM-free.
 
 ## Alternatives considered
 

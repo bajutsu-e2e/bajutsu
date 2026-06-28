@@ -137,7 +137,7 @@ credentials themselves are resolved by botocore's SSO provider via `AWS_PROFILE`
 triggers the device flow and populates the token cache. This dovetails with BE-0047's fail-closed
 rule: if the configured provider's credentials don't resolve, the job fails with a clear error — no
 silent fallback to another provider
-([BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
+([BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
 
 ### Dependency
 
@@ -185,5 +185,5 @@ unexpired — the same spirit as BE-0053's optional provider-credential check. *
 [BE-0053 — Amazon Bedrock as a pluggable AI provider](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md),
 [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md),
 [BE-0016 — Self-hosting of the web UI](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md),
-[BE-0047 — AI data sovereignty](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
+[BE-0047 — AI data sovereignty](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
 AWS docs — IAM Identity Center device authorization flow; botocore SSO credential provider.

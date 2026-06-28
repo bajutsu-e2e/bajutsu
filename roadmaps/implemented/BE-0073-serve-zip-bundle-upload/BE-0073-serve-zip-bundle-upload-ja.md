@@ -14,19 +14,19 @@
 
 ## はじめに
 
-`bajutsu.config.yaml`・そのシナリオ木・**ビルド済みアプリバイナリ**（`.app` / `.app.zip` / `.ipa`）を 1 つの `.zip` にまとめ、**`bajutsu serve` の Web UI からアップロードして実行する**ための機能です。serve ホストのファイルシステムに触れないブラウザだけで完結します。serve は zip を隔離された一時ディレクトリへ展開し、ローカルのファイルブラウザで選んだ config と同じ流儀でそれをバインドし、バイナリを run の Simulator にインストールし、展開したツリーに対して既存の決定的な `run` 経路を走らせます。これは config + シナリオ + バイナリの束を**取得する経路を増やすだけ**であり、スキーマ・ランナー・ドライバ・決定的ゲートはいずれも変更せず、LLM をどこにも追加しません。
+`bajutsu.config.yaml`、そのシナリオ木、**ビルド済みアプリバイナリ**（`.app` / `.app.zip` / `.ipa`）を 1 つの `.zip` にまとめ、**`bajutsu serve` の Web UI からアップロードして実行する**ための機能です。serve ホストのファイルシステムに触れないブラウザだけで完結します。serve は zip を隔離された一時ディレクトリへ展開し、ローカルのファイルブラウザで選んだ config と同じ流儀でそれをバインドし、バイナリを run の Simulator にインストールし、展開したツリーに対して既存の決定的な `run` 経路を走らせます。これは config + シナリオ + バイナリの束を**取得する経路を増やすだけ**であり、スキーマ、ランナー、ドライバ、決定的ゲートはいずれも変更せず、LLM をどこにも追加しません。
 
 この提案は、既存の 2 項目とちょうど対になります。完了した run を zip に**エクスポート**する [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) の**インポート**側の鏡像であり、config とシナリオ木を Git リポジトリから**プル**する [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) の**プッシュ**側の兄弟です。後者の 2 つは「ホスト型 serve は実行する config とシナリオをどこから得るのか」という同じ問いに、片方は Git で、片方はアップロードで答えます。本提案は [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)（token 認証 + パス封じ込め）として既に出荷済みの serve hardening の上に乗ります。これなしに任意のバイナリをアップロードして実行する機能を公開するのは安全ではありません。
 
 ## 動機
 
-チームの config とシナリオはリポジトリに置かれており、`bajutsu run` は*ローカルの*ツリーと*ビルド済みの*アプリ成果物を消費します（[DESIGN §1](../../../DESIGN.md)：「Bajutsu はアプリをビルドしない。既存の `xcodebuild` 成果物を受け取る」）。ローカルの Mac ならこれで十分ですが、**ホスト型・リモートの serve** では、手作業での配置でも Git source でも埋めきれない隙間が残ります。
+チームの config とシナリオはリポジトリに置かれており、`bajutsu run` は*ローカルの*ツリーと*ビルド済みの*アプリ成果物を消費します（[DESIGN §1](../../../DESIGN.md)：「Bajutsu はアプリをビルドしない。既存の `xcodebuild` 成果物を受け取る」）。ローカルの Mac ならこれで十分ですが、**ホスト型でリモートの serve** では、手作業での配置でも Git source でも埋めきれない隙間が残ります。
 
-1. **ホスト型 serve のブラウザ利用者はホストのファイルシステムに触れない。** serve がリモートのワーカーや共有 Mac で動くとき（[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、config・シナリオ・`runs/` はすべて*その*マシンにあります。現在の UI の config 選択は **`--root` に封じ込められたファイルブラウザ**（`bajutsu/serve/operations.py` の `_confined_config_path`）なので、運用者が事前にホストへ手で置いたものからしか選べません。ブラウザ利用者は自分のスイートを持ち込めないのです。これは [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) のモチベーション 3（run を*取り出す*ためのファイルシステムアクセスが無い）のちょうど鏡像で、ここで欠けている方向は**スイートを*入れる***ことです。
+1. **ホスト型 serve のブラウザ利用者はホストのファイルシステムに触れない。** serve がリモートのワーカーや共有 Mac で動くとき（[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、config、シナリオ、`runs/` はすべて*その*マシンにあります。現在の UI の config 選択は **`--root` に封じ込められたファイルブラウザ**（`bajutsu/serve/operations.py` の `_confined_config_path`）なので、運用者が事前にホストへ手で置いたものからしか選べません。ブラウザ利用者は自分のスイートを持ち込めないのです。これは [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) のモチベーション 3（run を*取り出す*ためのファイルシステムアクセスが無い）のちょうど鏡像で、ここで欠けている方向は**スイートを*入れる***ことです。
 
-2. **Git source はビルド済みバイナリを運べない。** [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) は ref で指定したリポジトリの部分木を materialize します。これは*テキスト*（config + YAML シナリオ）には理想的ですが、**コンパイル済みアプリ**には向きません。チームは `.app` / `.ipa` 成果物を Git にコミットしませんし、BE-0063 自身も config の `build:` コマンドでホスト上でバイナリを（再）生成する設計に寄っています。これにはそのホストに完全なツールチェーンが要ります。zip は、**ビルド済み**成果物を config・シナリオと一緒に束ねられる唯一の転送手段であり、これはまさに [DESIGN §1](../../../DESIGN.md) が「Bajutsu が消費する」と述べているものです。2 つの取得経路は補完的です。バージョン管理されたテキストには Git、ビルド済みバイナリにはアップロードです。
+2. **Git source はビルド済みバイナリを運べない。** [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) は ref で指定したリポジトリの部分木を materialize します。これは*テキスト*（config + YAML シナリオ）には理想的ですが、**コンパイル済みアプリ**には向きません。チームは `.app` / `.ipa` 成果物を Git にコミットしませんし、BE-0063 自身も config の `build:` コマンドでホスト上でバイナリを（再）生成する設計に寄っています。これにはそのホストに完全なツールチェーンが要ります。zip は、**ビルド済み**成果物を config やシナリオと一緒に束ねられる唯一の転送手段であり、これはまさに [DESIGN §1](../../../DESIGN.md) が「Bajutsu が消費する」と述べているものです。2 つの取得経路は補完的です。バージョン管理されたテキストには Git、ビルド済みバイナリにはアップロードです。
 
-3. **今日はホストへ手で配置するしか道がない。** セルフホストの Tier A ガイド（[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）では、運用者がチームの config・シナリオ・バイナリを Mac へコピーし、手で同期し続けます。アップロードは「運用者に build を scp してもらい `--root` を編集する」を「ページに zip をドラッグして実行を押す」に変えます。
+3. **今日はホストへ手で配置するしか道がない。** セルフホストの Tier A ガイド（[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）では、運用者がチームの config、シナリオ、バイナリを Mac へコピーし、手で同期し続けます。アップロードは「運用者に build を scp してもらい `--root` を編集する」を「ページに zip をドラッグして実行を押す」に変えます。
 
 アーカイブの*インポート*はコードベースにまだ存在しません。[BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) が**エクスポート**側（stdlib の `zipfile`、1 つの archiver）を提案しており、本提案は同じ stdlib の土台の上に**インポート**側を提案します。両者が揃うと、run の束は双方向に持ち運べる単位になります。
 
@@ -51,7 +51,7 @@ my-suite.zip
 
 ### 取得のシーム（BE-0063 の兄弟）
 
-解決は BE-0063 が確立するのと同じシームの裏に置きます。すなわち**ツリーを封じ込めディレクトリに materialize し、展開ルートをパス基準として config を読み込む** config source です。BE-0063 が `GitHubSource`（tarball → 内容アドレス指定キャッシュ）を足すのに対し、本提案は **`UploadBundleSource`** を足します。アップロードされた zip を受け取り、serve の管理下にある隔離された一時ディレクトリへ展開し、同じ `(config, root)` の組を返します。下流のすべて — `resolve()`・ランナー・ドライバ・アサーション評価器・レポート — はローカルや Git の run と同一です。（BE-0063 が先に入れば、その `ConfigSource` Protocol をそのまま再利用します。本提案が先に入れば、同じシームを導入します。両者はそれを共有する設計です。）
+解決は BE-0063 が確立するのと同じシームの裏に置きます。すなわち**ツリーを封じ込めディレクトリに materialize し、展開ルートをパス基準として config を読み込む** config source です。BE-0063 が `GitHubSource`（tarball → 内容アドレス指定キャッシュ）を足すのに対し、本提案は **`UploadBundleSource`** を足します。アップロードされた zip を受け取り、serve の管理下にある隔離された一時ディレクトリへ展開し、同じ `(config, root)` の組を返します。下流のすべて（`resolve()`、ランナー、ドライバ、アサーション評価器、レポート）はローカルや Git の run と同一です。（BE-0063 が先に入れば、その `ConfigSource` Protocol をそのまま再利用します。本提案が先に入れば、同じシームを導入します。両者はそれを共有する設計です。）
 
 ### serve の表面
 
@@ -59,26 +59,26 @@ my-suite.zip
 - **封じ込め。** 展開ディレクトリは serve 専用のサンドボックス（`runs/` の兄弟であり、ブラウズ用 `--root` ではない）なので、アップロードされたツリーが運用者のファイルを上書きすることはありません。各ターゲットのパス項目はバインド時にバンドル内へ封じ込めます（`Effective.rebased`。Git ソースと同じガード）。run の成果物の読み戻しは既存の `ArtifactStore` 境界（`bajutsu/serve/artifacts.py`）のままです。
 - **UI。** **Open config** ダイアログに、ファイルブラウザと Git ピッカーに並ぶ 3 つめのソース **Upload a bundle** が加わります。`.zip` をドロップするとそれがアクティブな config になり、**Replay / Record / Crawl** タブはそこから動きます。通常の run と同じジョブ機構（`bajutsu/serve/jobs.py`）を使い、違うのは*ソース*だけです。バインドされたバンドル（cwd は展開ツリー）からの run は `--runs-dir` 経由で serve 自身の runs ストアへ書き出すので **History** に残り、[BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) のダウンロードが往復を閉じます（スイートをアップロード → 実行 → 結果をダウンロード）。アップロードされた config の `build` コマンドはホスト上で実行しません。バンドルはビルド済みバイナリを同梱します（[DESIGN §1](../../../DESIGN.md)）。
 
-### セキュリティ — 設計の核心（BE-0051 の上に）
+### 設計の核心としてのセキュリティ（BE-0051 の上に）
 
 バイナリをアップロードしてホスト上で実行することは、構造上「利用者が供給したコードを実行する」ことそのものです。したがって本項目は [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) の hardening の**上に**乗ってはじめて安全であり、アップロード固有の防御を足します。ここで対象にするのは**単一 Mac の Tier A serve で今日安全に動く範囲**です。より深いマルチテナント隔離は BE-0015 / BE-0016 に委ねます（後述）。
 
 - **認証は必須。** エンドポイントはほかの serve リクエストと同様に BE-0051 の token 認証の裏に置きます。未認証の serve はアップロードを一切公開してはなりません。serve は token なしの非ループバックバインドを既に拒否するので、アップロードも「token なし ⇒ ループバックのみ」を引き継ぎます。
-- **zip-slip / パストラバーサル。** 各エントリは書き込み前に**展開ルートの厳密な配下**へ解決されることを検証します。絶対パス・`..` セグメント・symlink エントリは拒否します。これは serve が config パス（`_confined_config_path`）や baseline で既に強制している「ルートへ封じ込める」不変条件を、アーカイブ展開へ適用したものです。
+- **zip-slip / パストラバーサル。** 各エントリは書き込み前に**展開ルートの厳密な配下**へ解決されることを検証します。絶対パス、`..` セグメント、symlink エントリは拒否します。これは serve が config パス（`_confined_config_path`）や baseline で既に強制している「ルートへ封じ込める」不変条件を、アーカイブ展開へ適用したものです。
 - **リソース上限（zip-bomb 対策）。** アップロードサイズの上限、エントリ数の上限、展開後の総サイズの上限、エントリごとの圧縮率の上限を設けます。ディスクを埋めきってからではなく、上限を超えた瞬間に展開を中止します。
 - **既定でエフェメラル。** 各アップロードは serve 専用の自分のディレクトリへ展開し、**同時にバインドできるバンドルは一つだけ**です。別の config を（どのソースからでも）開くと直前のバンドルのサンドボックスは削除されるので、アップロードされたコードがセッションを越えて残ったりディスクに溜まったりしません。iOS では run はクリーン化／`--erase` した Simulator を使う（[DESIGN §2](../../../DESIGN.md)）ので、アップロードされたアプリは今日の run ごとの実行アイソレーションをそのまま得ます。
 - **来歴。** アップロードされたファイル名と **zip の sha256** を run の `manifest.json` に記録します。これは BE-0063 が解決済みコミット SHA を記録するのと同じで、「この run は何を実行したのか」を後から必ず答えられるようにし、[DESIGN §2](../../../DESIGN.md) の「未知のリビジョンを黙って実行しない」を保ちます。
 - **秘匿情報。** 束は config とシナリオを運びますが、**秘匿値は運びません**。`${secrets.*}` は今日どおり serve ホストの環境から解決します（[BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）。したがってアップロードされたスイートがホストの秘匿情報を持ち込んだり持ち出したりすることはできず、run の成果物マスキングもそのまま適用されます。
 
-### 決定性・ゲート・app 非依存
+### 決定性、ゲート、app 非依存
 
-- **LLM なし、合否に影響なし。** これは決定的な `run` の前段の取得 + 展開であり、合否は依然として機械アサーションだけで決まります。prime directive 1・2（[CLAUDE.md](../../../CLAUDE.md)）は構造上保たれます。
-- **Linux でテスト可能。** 展開・zip-slip 拒否・リソース上限・パス基準の解決は純粋なパッケージング／配線であり、fixture の zip に対して既存の Linux ゲートでユニットテストできます。Simulator は不要です。実際のアプリの*インストール + 実行*だけが Mac を必要とし、これはあらゆる iOS run と同じです。
-- **app 非依存。** アプリ固有の差分は束の config（`apps.<name>`）に残ります。ツール・ドライバ・ランナーは束ごとに分岐しません。
+- **LLM なし、合否に影響なし。** これは決定的な `run` の前段の取得 + 展開であり、合否は依然として機械アサーションだけで決まります。prime directive 1 と 2（[CLAUDE.md](../../../CLAUDE.md)）は構造上保たれます。
+- **Linux でテスト可能。** 展開、zip-slip 拒否、リソース上限、パス基準の解決は純粋なパッケージング／配線であり、fixture の zip に対して既存の Linux ゲートでユニットテストできます。Simulator は不要です。実際のアプリの*インストール + 実行*だけが Mac を必要とし、これはあらゆる iOS run と同じです。
+- **app 非依存。** アプリ固有の差分は束の config（`apps.<name>`）に残ります。ツール、ドライバ、ランナーは束ごとに分岐しません。
 
 ### backend のスコープ（まず iOS、web は言及にとどめる）
 
-主対象は **iOS** です。config の `appPath` が名指す `.app` ディレクトリ・zip 化した `.app`・`.ipa`（それ自体が zip）を Simulator へインストールします。束の*レイアウト*は backend 非依存（「config ツリー」にすぎない）なので、機構が iOS を決め打ちすることはありません。**web（Playwright）** backend には「アプリバイナリ」がなく、その対応物は**静的サイト**を束ね、config の `baseUrl` をそれに向けて [BE-0059](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)（`launchServer`）で配信することです。この web 版は**最初のスライスではスコープ外**とし、レイアウトを一般のまま保つためにここで言及しておきます。iOS 経路が入ったあとの後続にできます。
+主対象は **iOS** です。config の `appPath` が名指す `.app` ディレクトリ、zip 化した `.app`、`.ipa`（それ自体が zip）を Simulator へインストールします。束の*レイアウト*は backend 非依存（「config ツリー」にすぎない）なので、機構が iOS を決め打ちすることはありません。**web（Playwright）** backend には「アプリバイナリ」がなく、その対応物は**静的サイト**を束ね、config の `baseUrl` をそれに向けて [BE-0059](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)（`launchServer`）で配信することです。この web 版は**最初のスライスではスコープ外**とし、レイアウトを一般のまま保つためにここで言及しておきます。iOS 経路が入ったあとの後続にできます。
 
 ### スコープ外
 
@@ -97,7 +97,7 @@ my-suite.zip
 
 ## 参考
 
-- [CLAUDE.md](../../../CLAUDE.md)、[DESIGN §1](../../../DESIGN.md)（Bajutsu はビルド済みアプリを受け取り、ビルドはしない）、[DESIGN §2](../../../DESIGN.md)（AI は判定者にならない・決定性優先・テストごとにクリーン環境）。
+- [CLAUDE.md](../../../CLAUDE.md)、[DESIGN §1](../../../DESIGN.md)（Bajutsu はビルド済みアプリを受け取り、ビルドはしない）、[DESIGN §2](../../../DESIGN.md)（AI は判定者にならない、決定性優先、テストごとにクリーン環境）。
 - [BE-0060 — run レポートを zip でダウンロード／エクスポート](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) — **エクスポート**側の鏡像。共有する stdlib `zipfile` の土台であり、往復の相手。
 - [BE-0063 — config（とそのシナリオ木）を Git リポジトリ + ref から読む](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) — **プル**側の兄弟。本提案が再利用する `ConfigSource` シームと「ツリーを materialize し展開ルートを基準に config を解決する」機構。
 - [BE-0051 — ホスティングのための serve hardening](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) — 本提案が乗る token 認証 + パス封じ込め。`_confined_config_path` の不変条件を展開へ拡張。

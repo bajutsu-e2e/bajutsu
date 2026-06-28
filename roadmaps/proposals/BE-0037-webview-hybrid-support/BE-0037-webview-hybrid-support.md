@@ -63,6 +63,112 @@ explicit *web context* for the WebView's DOM, rather than silently blending the 
 Config: which apps use WebViews, and any stable WebView host ids, live in `apps.<name>`; the
 tool, drivers, and runner stay app-agnostic.
 
+### Context boundary grammar
+
+A step enters the web context by naming the native WebView host element it scopes to:
+
+```yaml
+- web:
+    within: { id: checkout.webview }   # the native WKWebView element in the a11y tree
+    steps:
+      - tap: { id: place-order }       # id resolves against the normalized DOM (the element's data-testid)
+      - assert: { exists: { id: order-confirmation } }
+```
+
+The `within` here is the existing selector form (`bajutsu/scenario/models/selector.py`,
+`Selector.within`) reused at a new altitude: it resolves *natively* to the one `WKWebView`
+element, exactly as `resolve_unique` does today. That native resolution is also how the
+boundary is **detected** — the host is found by its native `id` in the a11y-tree `query()`, so
+entering the web context is an ordinary unique native match (an ambiguous or missing host fails
+the step before any DOM is touched, the same determinism rule). Inside the block, the selector
+grammar is unchanged in shape (`id` / `idMatches` / `label` / `traits` / `value` / `index`) but
+its `id` now resolves against the normalized DOM's `Element.identifier` — the element's
+`data-testid`, the web backend's convention (`parse_dom` / `QUERY_JS`) — rather than an
+`accessibilityIdentifier`. It is the same stable identifier, not a general CSS selector: the
+runner never parses CSS, it matches the normalized `Element` tree exactly as on iOS.
+
+**Single active WebView per step (first slice).** A `web` block scopes to exactly one host, so
+exactly one WebView's DOM is in view while its steps run; the boundary opens at the block and
+closes at its end. **Nested WebViews (a WebView whose DOM hosts another WebView) are out of the
+first slice**: the host selector must resolve to a single native WebView, and a DOM that itself
+embeds further web contexts is left for a later iteration. This keeps "which tree does this
+selector query" answerable by inspection — never inferred.
+
+### The loopback JS bridge
+
+Driving the DOM needs a capability idb does not have: querying and acting on DOM nodes via
+`WKWebView.evaluateJavaScript`. The bridge mirrors the network collector's loopback pattern
+(`bajutsu/network.py`): bajutsu binds a small receiver on `127.0.0.1:<port>` and injects the
+address into the app via launch env (alongside `BAJUTSU_COLLECTOR`), so the in-app **BajutsuKit**
+side and the Python side share the Mac's loopback interface. To service a DOM query, bajutsu
+asks BajutsuKit (over the loopback channel) to run the page-walk JavaScript in the scoped
+`WKWebView` via `evaluateJavaScript`; BajutsuKit POSTs the resulting node list back as JSON,
+which the Python receiver hands to the normalizer. Acting (a tap) follows the same round trip:
+bajutsu resolves the unique node from the snapshot, then asks BajutsuKit to dispatch the click
+inside the WebView.
+
+This is **independent of BE-0019**: BajutsuKit runs in-process alongside the app under idb today,
+so the bridge works with idb as the actuator. That matters for headless CI, where standing up a
+full XCUITest host is awkward. An XCUITest path that reaches WebView content natively is an
+optional later complement the stability ladder picks up with the scenario and config unchanged,
+not a prerequisite.
+
+### DOM → Element normalization
+
+The bridge's JSON is normalized by the **same logic the web (Playwright) backend already uses**
+(`bajutsu/drivers/playwright.py`, `parse_dom` / `_to_element`): `data-testid` (developer-set,
+non-localized) → `Element.identifier` (the `id` selector targets); ARIA `role` (or the tag) →
+normalized `traits` via the role map; accessible name / `aria-label` / text → `label`;
+`disabled` / `aria-disabled` and `aria-selected` / `aria-checked` → the `notEnabled` / `selected`
+traits. The page-walk JavaScript collects the same fields Playwright's `QUERY_JS` does (visible,
+interactive / a11y-relevant nodes with their bounding rects), so the normalized output is the
+same `Element` shape the rest of the core consumes. Because the WebView's DOM thus becomes an
+ordinary `list[Element]` snapshot, `resolve_unique` / `find_all`, the "ambiguous fails" rule,
+assertions, and condition waits are **all unchanged** over it — the determinism core never learns
+it is looking at a DOM rather than an a11y tree.
+
+### First slice
+
+The smallest valuable, gate-testable increment:
+
+1. Scope one `web` block to a single native WebView host (resolved by its native `id`).
+2. Query that WebView's DOM through the bridge and normalize it to `list[Element]`.
+3. Resolve an `id` / CSS selector inside it with the existing `resolve_unique`.
+4. Tap the resolved node inside the WebView.
+
+The pure normalization (the bridge's JSON payload → `list[Element]`) is **unit-testable on a
+fake DOM payload**, with no Simulator and no JavaScript engine — exactly as `parse_dom` is tested
+today — so the valuable core lands inside the deterministic gate. The bridge transport is
+exercised against a fake BajutsuKit endpoint (a loopback receiver returning a canned payload),
+keeping the on-device round trip out of the gate. Out of the first slice: nested WebViews, typing
+into DOM fields, DOM-native condition waits beyond existence, and the a11y-bridge read path.
+
+### Seams
+
+The concrete touch-points the change adds, each small and named:
+
+- **Driver query dispatch** (`bajutsu/drivers/base.py` `Driver.query` / the idb backend): when a
+  step is inside a `web` block, the snapshot comes from the bridge's normalized DOM instead of the
+  native a11y `query()`. The `Driver` Protocol shape is unchanged; the web context selects the
+  source of the `list[Element]`.
+- **Context scope in the selector resolver** (`bajutsu/scenario/models/actions.py` /
+  `selector.py`): the `web: { within, steps }` step form, whose `within` resolves the native host
+  and whose inner steps resolve against the DOM snapshot through the same `resolve_unique`.
+- **BajutsuKit's JS-eval channel** (the Swift package, plus the Python loopback receiver modeled
+  on `network.py`): the `evaluateJavaScript` round trip that runs the page walk and dispatches the
+  click in the WKWebView.
+
+### Prime-directive compliance
+
+- **Deterministic.** An ambiguous or missing host, or an ambiguous / empty DOM match, fails the
+  step (`resolve_unique` is reused verbatim). Waits stay condition waits with a mandatory timeout;
+  no fixed sleeps are introduced.
+- **No LLM.** The bridge, the normalizer, and resolution are pure machine logic — the run / CI
+  gate stays AI-free, and nothing here adds an LLM to the verdict.
+- **App-agnostic.** Per-app facts (which apps use WebViews, stable host ids) live in
+  `apps.<name>`; the tool, drivers, normalizer, and runner are unchanged across apps and across
+  the idb / later XCUITest actuators.
+
 ## Alternatives considered
 
 - **Drive the WebView purely by screen coordinates.** Tapping pixel positions inside the

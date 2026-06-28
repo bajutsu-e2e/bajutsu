@@ -132,7 +132,7 @@ API キーのブロックが `anthropic` のときだけ表示されるのと同
 `AWS_PROFILE` 経由で botocore の SSO プロバイダが解決し、Bajutsu はデバイスフローを起動してトークンキャッシュ
 を満たすだけです。これは BE-0047 のフェイルクローズの方針と噛み合います。設定したプロバイダの認証情報が解決
 しなければ、ジョブは明確なエラーで失敗し、別プロバイダへ暗黙にフォールバックはしません
-（[BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。
+（[BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。
 
 ### 依存
 
@@ -178,5 +178,5 @@ BE-0053 が挙げたプロバイダ認証情報チェックと同じ趣旨です
 [BE-0053 — 差し替え可能な AI プロバイダとしての Amazon Bedrock](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)、
 [BE-0051 — ホスティングのための serve ハードニング](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)、
 [BE-0016 — Web UI のセルフホスティング](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)、
-[BE-0047 — AI データ主権](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)、
+[BE-0047 — AI データ主権](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)、
 AWS ドキュメント — IAM Identity Center のデバイス認可フロー、botocore の SSO 認証情報プロバイダ。
