@@ -69,7 +69,7 @@ prime directive の保持：
   をまたいで不変です。
 - **codegen。** これらにはアプリレベルの XCUITest 等価物がないため（`simctl` レベルです）、codegen
   はコマンドを明記したラベル付き `// TODO` を出力します。これは
-  [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) と
+  [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) と
   整合します。
 
 ## 検討した代替案

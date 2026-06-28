@@ -15,7 +15,7 @@
 ## Introduction
 
 Reduce the range of constructs the **Playwright (web) codegen emitter** drops to a bare `// TODO` —
-the web counterpart of [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md),
+the web counterpart of [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md),
 which does this for the XCUITest emitter.
 
 ## Motivation
@@ -131,7 +131,7 @@ testing — without the guard a pattern like `.*` would match a body-less reques
 
 - [`bajutsu/codegen_playwright.py`](../../../bajutsu/codegen_playwright.py) — the web emitter and its
   current `// TODO` sites; `bajutsu/assertions.py` `request_label` (the shared matcher description).
-- [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
+- [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)
   (the XCUITest counterpart and the governing rule),
   [BE-0062](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) (the Playwright
   target), [BE-0083](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md)

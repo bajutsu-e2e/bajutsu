@@ -14,7 +14,7 @@
 
 ## はじめに
 
-**Playwright（web）codegen エミッタ**が素の `// TODO` に落とす構文の範囲を減らします。XCUITest エミッタについて同じことを行う [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) の web 版です。
+**Playwright（web）codegen エミッタ**が素の `// TODO` に落とす構文の範囲を減らします。XCUITest エミッタについて同じことを行う [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) の web 版です。
 
 ## 動機
 
@@ -64,5 +64,5 @@ XCUITest エミッタのフォールバック処理は磨かれました（BE-00
 ## 参考
 
 - [`bajutsu/codegen_playwright.py`](../../../bajutsu/codegen_playwright.py) — web エミッタと現在の `// TODO` 箇所。`bajutsu/assertions.py` の `request_label`（共有のマッチャ記述）。
-- [BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)（XCUITest 版と統制ルール）、[BE-0062](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen-ja.md)（Playwright ターゲット）、[BE-0083](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)（共有エミッタウォーク）。
+- [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)（XCUITest 版と統制ルール）、[BE-0062](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen-ja.md)（Playwright ターゲット）、[BE-0083](../../implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification-ja.md)（共有エミッタウォーク）。
 - [docs/codegen.md](../../../docs/ja/codegen.md)。
