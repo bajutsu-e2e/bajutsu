@@ -53,7 +53,7 @@ def main() -> int:
         for p in bad:
             print(f"  {p}", file=sys.stderr)
         return 1
-    print("check-renumber-diff: staged changes are confined to roadmaps/.")
+    print("check-renumber-diff: the renumber commit's changes are confined to roadmaps/.")
     return 0
 
 

@@ -37,12 +37,16 @@ jobs:
         id: gate
         env:
           APP_ID: ${{ secrets.ROADMAP_BOT_APP_ID }}
+          APP_KEY: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
         run: |
-          if [ -n "$APP_ID" ]; then
+          # Enable only when BOTH the App id and its private key are present: minting the App token
+          # needs both, so a half-configured App (id set, key missing) must stay dormant rather than
+          # run and fail — keeping main green while the App is being provisioned (BE-0089).
+          if [ -n "$APP_ID" ] && [ -n "$APP_KEY" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::ROADMAP_BOT_APP_ID is not set — merge-time BE-ID allocation is dormant (BE-0089). No-op."
+            echo "::notice::ROADMAP_BOT_APP_ID / ROADMAP_BOT_PRIVATE_KEY are not both set — merge-time BE-ID allocation is dormant (BE-0089). No-op."
           fi
 
       - name: Mint a short-lived installation token for the bypass App
