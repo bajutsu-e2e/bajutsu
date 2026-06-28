@@ -237,7 +237,8 @@ searchField / textView / switch / slider / tab / cell).
 
 ### Grading
 
-- **Blocked**: any duplicate id **or** `idCoverage` < 0.7.
+- **Blocked**: no actionable elements on the screen (most likely blank, not yet loaded, or the
+  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < 0.7.
 - **Ready**: `idCoverage` ≥ 0.9 **and** `namespaceConformance` == 1.0.
 - **Partial**: otherwise (runnable, but a forecast of coordinate fallback / flakiness).
 

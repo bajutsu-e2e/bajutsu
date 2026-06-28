@@ -59,10 +59,28 @@ def test_partial_off_namespace() -> None:
     assert s.grade == "Partial"
 
 
-def test_no_actionable_is_ready() -> None:
+def test_no_actionable_is_blocked() -> None:
+    # A screen with nothing actionable can't be "Ready": it's most likely blank, not yet loaded,
+    # or the wrong screen — a false-positive doctor must surface, not paper over (BE-0024).
     s = score([_el(None, ["staticText"])], ["settings"])
-    assert s.grade == "Ready"
-    assert s.id_coverage == 1.0
+    assert s.grade == "Blocked"
+    assert s.no_actionable is True
+
+
+def test_empty_screen_is_blocked() -> None:
+    s = score([], ["settings"])
+    assert s.grade == "Blocked"
+    assert s.no_actionable is True
+
+
+def test_no_actionable_render_points_at_the_likely_cause() -> None:
+    s = score([], ["settings"])
+    assert "no actionable elements" in render(s)
+
+
+def test_a_screen_with_actionable_elements_is_not_flagged_no_actionable() -> None:
+    s = score([_el("settings.open", ["button"])], ["settings"])
+    assert s.no_actionable is False
 
 
 def test_render_mentions_grade() -> None:
