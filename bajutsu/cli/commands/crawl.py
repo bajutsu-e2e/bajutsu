@@ -220,6 +220,11 @@ def crawl(
     # single-branch walk, so it runs on one lane.
     environment = environment_for(actuator, "")
     udids = environment.plan_lanes(udid, workers)
+    if not udids:
+        # An empty `--udid` (e.g. `--udid ""` / `--udid ,`) resolves to no device — fail loudly with
+        # a fixable message rather than crashing later on the first lane.
+        typer.echo("no devices to crawl: --udid resolved to an empty pool")
+        raise typer.Exit(2)
     if base_map is not None:
         udids = udids[:1]
     workers = len(udids)

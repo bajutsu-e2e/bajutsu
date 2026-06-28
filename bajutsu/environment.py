@@ -160,7 +160,7 @@ class _DeviceEnvironment:
         return True
 
     def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
-        udids = [env.resolve_udid(u.strip()) for u in udid_arg.split(",") if u.strip()]
+        udids = [env.resolve_udid(u.strip(), self._run) for u in udid_arg.split(",") if u.strip()]
         return udids[: max(1, min(workers, len(udids)))]
 
     def crawl_reset(self, eff: Effective) -> Reset:
