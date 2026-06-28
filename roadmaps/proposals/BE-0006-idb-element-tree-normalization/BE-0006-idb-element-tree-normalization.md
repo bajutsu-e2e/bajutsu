@@ -53,10 +53,13 @@ walking the UI:
   `EditButton` (`lists.edit`). This is where "a container that swallows its child" and
   "`.searchable` reports the wrong identifier" would actually show up.
 
-These ids come from the app's own namespace (`idNamespaces` in
-[`demos/features/demo.config.yaml`](../../../demos/features/demo.config.yaml)); the catalogue
-exercises how idb *normalizes* a `Toggle` or a `List` into `Element`s, not any one app's choice
-of names. If a future control type is worth pinning and no existing screen hosts it, it is
+These ids come from the app's own namespace — the `ctrl` / `lists` prefixes the existing
+`ControlsView` / `ListsNavView` scenarios already use. Today
+[`demos/features/demo.config.yaml`](../../../demos/features/demo.config.yaml)'s `idNamespaces`
+lists `home` / `list` / `comp` / … but **not** `ctrl` / `lists`, so wiring the catalogue is also
+adding those two prefixes there (a one-line config change, stated here so the proposal stays
+grounded in the repo's current state). The catalogue exercises how idb *normalizes* a `Toggle` or
+a `List` into `Element`s, not any one app's choice of names. If a future control type is worth pinning and no existing screen hosts it, it is
 added to the catalogue with a stable `accessibilityIdentifier` — the surface grows, the
 mechanism does not change. Keeping the catalogue inside the existing sample app (rather than a
 second fixture app) also means the build, boot, and install the e2e jobs already perform cover
@@ -66,7 +69,10 @@ it for free.
 
 Each control's expectation is one `base.Element` (`bajutsu/drivers/base.py`) — exactly the
 shape `query()` produces, so the comparison is value-for-value with no adapter in between. The
-golden records the fields the `Selector` semantics in `base.matches` actually read:
+golden records the per-element fields that drive selection and actuation — the four
+`base.matches` consults (`identifier` / `label` / `traits` / `value`), plus `frame`, which
+`matches` does *not* read but `find_all`'s `within` (geometric containment) and idb's
+coordinate taps do, so its normalized shape is worth pinning too:
 
 - `identifier` — the `id` / `idMatches` selector key; the most load-bearing field, asserted
   exactly. A drift here is precisely the "unfindable element later" failure mode.
@@ -78,7 +84,8 @@ golden records the fields the `Selector` semantics in `base.matches` actually re
   carry `base.Trait.SELECTED`.
 - `value` — the `value` selector key; the mirrored `ctrl.<name>.value` labels make this a fixed,
   deterministic string at the screen's initial state.
-- `frame` — asserted *tolerantly*, see "Where it runs and the validation plan" below.
+- `frame` — not consulted by `base.matches`, but `find_all`'s `within` scoping and coordinate
+  actuation rely on it; asserted *tolerantly*, see "Where it runs and the validation plan" below.
 
 The golden files live beside the catalogue's scenario, under
 `demos/features/app/scenarios/` (a `goldens/` subfolder keyed by control or by screen, e.g.
@@ -86,8 +93,10 @@ The golden files live beside the catalogue's scenario, under
 `parse_describe_all` emits, so a refreshed golden is literally a recorded `query()` snapshot
 with the frame tolerances applied. The assertion is a single deterministic flow: drive to the
 screen via `launchEnv`, wait for the screen to settle (below), call `IdbDriver.query()`, and
-compare the normalized tree to the golden field by field per control id. The comparison is plain
-data equality — no LLM anywhere in the path, so it fits the run/CI verdict's determinism rule.
+compare the normalized tree to the golden field by field per control id. The comparison is
+deterministic but **per-field, not whole-dict equality**: exact for `identifier` / `label` /
+`value`, set-equality for `traits` (order-independent), and a tolerant geometric check for
+`frame` (below). No LLM anywhere in the path, so it fits the run/CI verdict's determinism rule.
 
 ### Settled versus transient
 
