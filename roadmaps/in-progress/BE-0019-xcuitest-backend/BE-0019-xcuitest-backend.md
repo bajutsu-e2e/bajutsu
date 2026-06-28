@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0019](BE-0019-xcuitest-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | Backend expansion (iOS actuators) |
 <!-- /BE-METADATA -->
 

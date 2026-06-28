@@ -196,6 +196,6 @@ than in the emitter.
 [codegen.md](../../../docs/codegen.md), [`bajutsu/codegen.py`](../../../bajutsu/codegen.py),
 [`bajutsu/drivers/playwright.py`](../../../bajutsu/drivers/playwright.py),
 [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
-[BE-0019 — XCUITest backend](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md),
+[BE-0019 — XCUITest backend](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md),
 [BE-0025 — Coordinate swipe generation](../BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md),
 [BE-0026 — Shrink unsupported syntax](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md)

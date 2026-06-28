@@ -348,6 +348,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 <!-- GENERATED:in-progress-backend -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0019](in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | In progress |
 | [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | In progress |
 <!-- /GENERATED:in-progress-backend -->
 

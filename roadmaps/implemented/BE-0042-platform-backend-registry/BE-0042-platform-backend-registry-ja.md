@@ -18,7 +18,7 @@
 
 ## 動機
 
-マルチプラットフォーム化とは、既存の `Driver` シームの背後に、プラットフォームごとの三点セット（actuator、environment manager、安定 id の規約）を追加することです。決定的な背骨はそのまま保ちます（[BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)）。その前段として、backend の *選択* が「iOS = idb」という前提をやめる必要がありました。すなわち (1) プラットフォームを第一級のトークンとして扱う、(2) プラットフォームを候補 actuator の順序付きリストへ対応づける（こうすれば、XCUITest のような豊富な iOS actuator を config を変えずに後から `idb` より優先できます。[BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) を参照）、(3) 認識はしているがまだ未実装のプラットフォームには、汎用の失敗ではなく *明確な*「未実装」を返す、の 3 点です。このスライスを先に入れることで、後続のプラットフォーム作業が追加的なものに収まります。
+マルチプラットフォーム化とは、既存の `Driver` シームの背後に、プラットフォームごとの三点セット（actuator、environment manager、安定 id の規約）を追加することです。決定的な背骨はそのまま保ちます（[BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)）。その前段として、backend の *選択* が「iOS = idb」という前提をやめる必要がありました。すなわち (1) プラットフォームを第一級のトークンとして扱う、(2) プラットフォームを候補 actuator の順序付きリストへ対応づける（こうすれば、XCUITest のような豊富な iOS actuator を config を変えずに後から `idb` より優先できます。[BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) を参照）、(3) 認識はしているがまだ未実装のプラットフォームには、汎用の失敗ではなく *明確な*「未実装」を返す、の 3 点です。このスライスを先に入れることで、後続のプラットフォーム作業が追加的なものに収まります。
 
 ## 詳細設計
 
@@ -72,4 +72,4 @@ apps:
 
 ## 参考
 
-[`bajutsu/backends.py`](../../../bajutsu/backends.py)、[drivers.md](../../../docs/ja/drivers.md#バックエンド選択と-actuator)、[BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)
+[`bajutsu/backends.py`](../../../bajutsu/backends.py)、[drivers.md](../../../docs/ja/drivers.md#バックエンド選択と-actuator)、[BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)

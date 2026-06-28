@@ -37,8 +37,9 @@ def test_evidence_backends_keeps_only_same_platform_available_siblings() -> None
 
 
 def test_evidence_backends_is_empty_without_a_second_same_platform_actuator() -> None:
-    # The realistic default today: one actuator per platform, so the fallback resolves to nothing.
-    assert evidence_backends(["ios", "web"], "idb", available=lambda b: True) == []
+    # The realistic default today: ios lists xcuitest first (BE-0019) but it has no driver, so under
+    # real availability it is never a usable sibling and the fallback resolves to nothing.
+    assert evidence_backends(["ios", "web"], "idb", available=default_available) == []
 
 
 def test_resolve_picks_the_first_same_platform_provider_for_the_gap() -> None:
@@ -106,13 +107,35 @@ def test_idb_exposes_no_evidence_provider_surface() -> None:
         (["idb"], "idb"),
         # unknown backends are never selected, even when reported "available"
         (["bogus", "idb"], "idb"),
-        # a platform token expands to its actuators (ios -> idb)
-        (["ios"], "idb"),
+        # a platform token expands to its actuators, most-stable-first (ios -> xcuitest, idb);
+        # with everything reported "available", the preferred actuator wins (BE-0019).
+        (["ios"], "xcuitest"),
         (["fake"], "fake"),
     ],
 )
 def test_select_actuator_picks_first_known_available(order: list[str], expected: str) -> None:
     assert select_actuator(order, available=lambda b: True) == expected
+
+
+def test_ios_prefers_xcuitest_but_falls_back_to_idb() -> None:
+    # BE-0019 Slice 1: ios resolves xcuitest-first, but the driver does not exist yet, so xcuitest is
+    # never available and a real `--backend ios` run still selects idb — no scenario/config change.
+    # When a future slice lands the driver, the same ordering picks xcuitest with nothing else moving.
+    assert resolve_actuators(["ios"]) == ["xcuitest", "idb"]
+    assert select_actuator(["ios"], available=lambda a: a == "idb") == "idb"
+    assert select_actuator(["ios"], available=lambda a: True) == "xcuitest"
+
+
+def test_xcuitest_is_known_but_not_implemented_yet() -> None:
+    # The ordering flip makes xcuitest a *known* actuator (derived from PLATFORMS) without a driver:
+    # it stays out of IMPLEMENTED, so it is never available and its capabilities cannot be read yet.
+    from bajutsu.backends import IMPLEMENTED, KNOWN_ACTUATORS, capabilities_for, default_available
+
+    assert "xcuitest" in KNOWN_ACTUATORS
+    assert "xcuitest" not in IMPLEMENTED
+    assert default_available("xcuitest") is False
+    with pytest.raises(NotImplementedError, match="not implemented yet"):
+        capabilities_for("xcuitest")
 
 
 def test_select_actuator_falls_through_unavailable_platform() -> None:
@@ -124,6 +147,7 @@ def test_select_actuator_falls_through_unavailable_platform() -> None:
 def test_resolve_actuators_expands_platforms() -> None:
     # Platform tokens expand to their actuators; bare actuators and unknowns pass through.
     assert resolve_actuators(["ios", "android", "web", "fake"]) == [
+        "xcuitest",
         "idb",
         "adb",
         "playwright",
