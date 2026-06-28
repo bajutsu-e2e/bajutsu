@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
@@ -257,68 +258,48 @@ def test_body_only_event_contributes_no_endpoint_matcher() -> None:
     assert ec.unasserted == ["GET /a"]  # the event declares no endpoint
 
 
-def test_cli_skips_malformed_network_json(tmp_path) -> None:  # type: ignore[no-untyped-def]
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        ("network.json", '[{"method":"GET","path":"/a","status":"oops"}]'),  # bad-typed entry
+        ("network.json", "null"),  # a scalar, not a list
+        ("elements.json", "{not json"),  # invalid JSON (JSONDecodeError is a ValueError)
+    ],
+)
+def test_cli_skips_a_malformed_run_file_and_still_reports(tmp_path, filename, content) -> None:  # type: ignore[no-untyped-def]
+    # A malformed run-evidence file must be skipped without crashing — and the rest of the report
+    # must still compute (the static namespace coverage), so this proves a graceful skip, not just
+    # a non-crashing exit.
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(
-        "- name: x\n  steps:\n    - assert: [ { request: { path: /a } } ]\n", encoding="utf-8"
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8"
     )
-    net = tmp_path / "runs" / "20260101-000000" / "00-x"
-    net.mkdir(parents=True)
-    # a bad-typed entry (status as a string) must be skipped, not crash the command
-    (net / "network.json").write_text('[{"method":"GET","path":"/a","status":"oops"}]', "utf-8")
-    config = tmp_path / "bajutsu.config.yaml"
-    config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
-        encoding="utf-8",
-    )
-    result = runner.invoke(
-        app,
-        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
-    )
-    assert result.exit_code == 0  # skipped the bad file, did not crash
-
-
-def test_cli_skips_scalar_network_json(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    scn_dir = tmp_path / "scenarios"
-    scn_dir.mkdir()
-    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: a }\n", "utf-8")
-    net = tmp_path / "runs" / "20260101-000000" / "00-x"
-    net.mkdir(parents=True)
-    (net / "network.json").write_text("null", encoding="utf-8")  # a scalar, not a list
-    config = tmp_path / "bajutsu.config.yaml"
-    config.write_text(
-        "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
-        encoding="utf-8",
-    )
-    result = runner.invoke(
-        app,
-        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
-    )
-    assert result.exit_code == 0  # a scalar file is skipped, not iterated/crashed
-
-
-def test_cli_skips_invalid_json_elements(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    scn_dir = tmp_path / "scenarios"
-    scn_dir.mkdir()
-    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
     step = tmp_path / "runs" / "20260101-000000" / "00-x"
     step.mkdir(parents=True)
-    # invalid JSON (json.JSONDecodeError is a ValueError) must be skipped, not crash the command
-    (step / "elements.json").write_text("{not json", encoding="utf-8")
+    (step / filename).write_text(content, encoding="utf-8")
     config = tmp_path / "bajutsu.config.yaml"
     config.write_text(
         "targets:\n  demo:\n    bundleId: com.example.demo\n"
-        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
         encoding="utf-8",
     )
     result = runner.invoke(
         app,
-        ["coverage", "--target", "demo", "--config", str(config), "--runs", str(tmp_path / "runs")],
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--json",
+        ],
     )
-    assert result.exit_code == 0  # skipped the bad file, did not crash
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)  # a valid report was produced despite the bad file
+    assert data["total"] == 2 and data["covered"] == 1 and data["gaps"] == ["auth"]
 
 
 def test_cli_runs_path_missing_warns_and_proceeds(tmp_path) -> None:  # type: ignore[no-untyped-def]
