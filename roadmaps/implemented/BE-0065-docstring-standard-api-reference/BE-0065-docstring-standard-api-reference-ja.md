@@ -140,7 +140,7 @@ class Selector(TypedDict, total=False):
 
 - **Markdown ネイティブ**なので、API ページは既存の日英 `docs/` と同じサイトに同居できます。
 - `mkdocstrings` はシグネチャを **`griffe` で読みますが、`griffe` は静的に解析**し、モジュールを import
-  しません。コアが土台にしている遅延・任意の import（`playwright`、`fb-idb`、`fastapi`、`redis`、
+  しません。コアが土台にしている遅延かつ任意の import（`playwright`、`fb-idb`、`fastapi`、`redis`、
   `boto3`）を、`Sphinx autodoc` ならモックする必要があるところ、回避できます。
 - 型付きのシグネチャは注釈から自動で出るので、docstring が型を書き直すことはありません。
 
@@ -188,7 +188,7 @@ class Selector(TypedDict, total=False):
   もたらすために、移行のコストを引き受けます。
 - **`Sphinx + autodoc + napoleon`。** 同じ Google 形式の docstring を解釈しますが、reStructuredText
   ネイティブで（Markdown には `myst-parser` が要ります）、`autodoc` はモジュールを import するため、
-  任意・遅延のすべての依存に `autodoc_mock_imports` を強います。`mkdocstrings` + `griffe` は Markdown
+  任意かつ遅延のすべての依存に `autodoc_mock_imports` を強います。`mkdocstrings` + `griffe` は Markdown
   ネイティブで静的です。代替として残します。
 - **内部ヘルパーまで含め、ツリー全体を移行する。** 却下します。1,000 を超える docstring は churn と衝突面
   が大きく、小さな private ヘルパーへの `Args:` は、このリポジトリが避ける *what* のナレーションです。

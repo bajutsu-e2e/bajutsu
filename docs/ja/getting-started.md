@@ -172,7 +172,7 @@ PASS  runs/20260610-120000/manifest.json
 
 ```
 runs/20260610-120000/
-├── manifest.json     # step -> 結果の対応 —— 唯一の正
+├── manifest.json     # step -> 結果の対応（唯一の正）
 ├── junit.xml         # CI 連携（1 シナリオ = 1 testcase）
 └── report.html       # 自己完結 HTML（ブラウザで開く）
 ```
