@@ -28,7 +28,7 @@ The editor lives in the existing `serve` web UI as an enrichment of the scenario
 The point → element → selector resolver is **the same component [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md) introduces** — its pure `bajutsu/capture.py` core (`hit_test(elements, point)` over `_contains` frame containment, and `resolve_capture(elements, point, namespaces) -> selector + doctor rung + ambiguity`) plus a shared `serve.js` screenshot-overlay picker. The editor and capture call the *same* resolver; only **where the element tree and screenshot come from** differs:
 
 - **Capture (BE-0012):** a live `driver.query()` + `driver.screenshot()` taken at mark time — interactive, needs a booted-device session.
-- **Editor (this item):** the artifacts the run already captured — per step, `runs/<id>/<step>/elements.json` (`evidence.write_elements`) and `after.png` (the `screenshot` capture kind). **Offline, no live device, deterministic.**
+- **Editor (this item):** the artifacts the run already captured — per step, `runs/<runId>/<stepId>/elements.json` (`evidence.write_elements`) and `after.png` (the `screenshot` capture kind), where `stepId` is `<scenarioId>/<step name or stepN>` (e.g. `00-s/step0`, the key `orchestrator/loop.py` forms and `manifest.json` records). **Offline, no live device, deterministic.**
 
 So whichever of BE-0012 / BE-0013 lands first introduces the resolver and the other reuses it — never two copies. (The `el → Selector` stability ladder is already implemented three times in `crawl` / `crawl_repro` / capture, so BE-0012 already plans to factor it into one helper; the picker builds on that.)
 
@@ -38,11 +38,11 @@ Clicking a point on a step's screenshot maps displayed-pixel → normalized `[0,
 
 The structured pane is a **view over the YAML**, not a separate model: the editor parses the scenario with the existing load path into steps + `expect` assertions and renders them field by field; the picker writes a resolved selector into the field the author is editing. There is no hidden editor state — the YAML is the single source of truth, so the structured view and a hand-edit can never disagree.
 
-Each step is paired with the screen it acts on by walking the run's per-step artifacts in order (step *i* → `runs/<id>/<i>-*/`). The author edits a scenario **in the context of a selected run** — the report they are already looking at; when a scenario has no run yet, the editor degrades to raw-field editing (no screenshot to pick against) rather than blocking.
+Each step is paired with the screen it acts on through its `stepId` — `<scenarioId>/<step name or stepN>`, the key the run records in `manifest.json` and writes its evidence directory under — rather than guessing a positional path. The author edits a scenario **in the context of a selected run** — the report they are already looking at; when a scenario has no run yet, the editor degrades to raw-field editing (no screenshot to pick against) rather than blocking.
 
 ### Save path and seams
 
-Saving goes through the existing author-owned write path, `serve/scenarios.py:ScenarioScope.save()`, and **validates with `load_scenario_file` before writing**, so the editor can never persist a scenario the runner would reject. Concretely: routes in `serve/handler.py` (with the FastAPI `server/app.py` mirror) — load a scenario + its run's per-step artifacts for editing, resolve a picked point to a selector, and save; orchestration in `serve/operations.py`; the two-pane UI + picker overlay in `serve/templates/serve.js`, reusing the crawl report's screenshot-overlay precedent. Unlike capture, the editor holds **no live driver across requests** — it reads captured artifacts statelessly, keeping BE-0011's stateless shell-out model.
+Saving goes through the existing author-owned write path, `serve/scenarios.py:ScenarioScope.save()`, and **validates with `load_scenario_file` before writing**, so the editor can never persist a scenario the runner would reject. Concretely: routes in `serve/handler.py` (with the FastAPI `server/app.py` mirror) — load a scenario + its run's per-step artifacts for editing, resolve a picked point to a selector, and save; orchestration in `serve/operations.py`; the two-pane UI + picker overlay in `bajutsu/templates/serve.js`, reusing the crawl report's screenshot-overlay precedent. Unlike capture, the editor holds **no live driver across requests** — it reads captured artifacts statelessly, keeping BE-0011's stateless shell-out model.
 
 ### Determinism, app-agnosticism, and the gate
 
