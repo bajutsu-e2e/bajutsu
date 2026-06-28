@@ -99,6 +99,37 @@ def test_make_driver_playwright_requires_base_url() -> None:
         make_driver("playwright", "web")
 
 
+def test_make_driver_forwards_browser_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    # make_driver passes `browser=` straight to PlaywrightDriver, so the web environment's
+    # eff.browser reaches the launch (BE-0076). Recorded via a stand-in driver — no real browser.
+    import bajutsu.drivers.playwright as pw_mod
+
+    captured: dict[str, object] = {}
+
+    class _Recorder:
+        def __init__(self, base_url: str, **kwargs: object) -> None:
+            captured["base_url"] = base_url
+            captured.update(kwargs)
+
+    monkeypatch.setattr(pw_mod, "PlaywrightDriver", _Recorder)
+    make_driver("playwright", "", base_url="http://app.test/", browser="webkit")
+    assert captured["browser"] == "webkit"
+
+
+def test_make_driver_browser_defaults_to_chromium(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bajutsu.drivers.playwright as pw_mod
+
+    captured: dict[str, object] = {}
+
+    class _Recorder:
+        def __init__(self, base_url: str, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(pw_mod, "PlaywrightDriver", _Recorder)
+    make_driver("playwright", "", base_url="http://app.test/")
+    assert captured["browser"] == "chromium"
+
+
 def test_make_driver_planned_backend() -> None:
     # A recognized-but-unimplemented actuator raises NotImplementedError (distinct from an
     # outright-unknown token), so the message can point at the multi-platform design.
@@ -119,23 +150,38 @@ def test_ensure_web_runtime_noop_when_not_web(monkeypatch: pytest.MonkeyPatch) -
     assert calls == []
 
 
-def test_ensure_web_runtime_noop_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Web requested but Playwright already present: no install attempt.
+def test_ensure_web_runtime_installs_engine_when_package_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Web requested + Playwright present, but the engine binary may not be: install it (idempotent).
+    # The package step is skipped (it's already importable); only `playwright install <engine>` runs.
     calls: list[list[str]] = []
     monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: True)
-    monkeypatch.setattr("subprocess.run", lambda *a, **k: calls.append(a[0]))
-    ensure_web_runtime(["web"])
-    assert calls == []
+    monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
+    ensure_web_runtime(["web"], "firefox")
+    assert len(calls) == 1
+    assert calls[0][1:] == ["-m", "playwright", "install", "firefox"]
 
 
 def test_ensure_web_runtime_installs_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Web requested + Playwright absent: install the package additively (uv pip), then Chromium.
+    # Web requested + Playwright absent: install the package additively (uv pip), then the engine.
     calls: list[list[str]] = []
     monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
     monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
-    ensure_web_runtime(["web"])
+    ensure_web_runtime(["web"])  # default engine
     assert calls[0][:3] == ["uv", "pip", "install"] and "playwright" in calls[0]
     assert calls[1][1:] == ["-m", "playwright", "install", "chromium"]
+
+
+def test_ensure_web_runtime_installs_requested_engine_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The requested engine (not chromium) is the one fetched after the package is added.
+    calls: list[list[str]] = []
+    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
+    ensure_web_runtime(["web"], "webkit")
+    assert calls[1][1:] == ["-m", "playwright", "install", "webkit"]
 
 
 def test_ensure_web_runtime_reports_install_failure(monkeypatch: pytest.MonkeyPatch) -> None:

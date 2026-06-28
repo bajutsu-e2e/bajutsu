@@ -101,37 +101,42 @@ def select_actuator(
     raise RuntimeError(f"no available actuator among {actuators} (requested {backends})")
 
 
-def ensure_web_runtime(backends: list[str]) -> None:
-    """Provision the web backend on demand.
+def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
+    """Provision the web backend (and the requested engine) on demand.
 
     When a `web`/`playwright` backend is requested but the Playwright package is absent
     (e.g. the venv currently carries the idb extra, as after `make serve`), install it
-    *additively* — `uv pip install` so it doesn't evict idb — plus the Chromium browser,
-    then let the run proceed. Idempotent and a no-op unless web is requested and missing;
-    mirrors how `make serve` provisions idb on demand. The deterministic run/CI gate
-    drives the fake backend and never reaches this.
+    *additively* — `uv pip install` so it doesn't evict idb. Then, whether or not the package was
+    just added, install the engine this run needs (`playwright install <browser>`). `playwright
+    install` is idempotent — a present browser is a fast no-op and a missing one is fetched — so a
+    `firefox` / `webkit` run pulls its binary on first use without disturbing Chromium (BE-0076).
+
+    A no-op unless web is requested; mirrors how `make serve` provisions idb on demand. The
+    deterministic run/CI gate drives the fake backend and never reaches this.
     """
-    if "playwright" not in resolve_actuators(backends) or _playwright_available():
+    if "playwright" not in resolve_actuators(backends):
         return
     import importlib
     import subprocess
     import sys
 
-    sys.stderr.write(
-        "bajutsu: web backend requested but Playwright is not installed — installing it now "
-        "(uv pip install playwright + chromium). This runs once per environment.\n"
-    )
-    sys.stderr.flush()
+    pkg_missing = not _playwright_available()
     try:
-        subprocess.run(["uv", "pip", "install", "playwright"], check=True)
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        if pkg_missing:
+            sys.stderr.write(
+                "bajutsu: web backend requested but Playwright is not installed — installing it "
+                "now (uv pip install playwright). This runs once per environment.\n"
+            )
+            sys.stderr.flush()
+            subprocess.run(["uv", "pip", "install", "playwright"], check=True)
+            importlib.invalidate_caches()  # so find_spec() in select_actuator sees the new package
+        subprocess.run([sys.executable, "-m", "playwright", "install", browser], check=True)
     except (OSError, subprocess.CalledProcessError) as e:
         raise RuntimeError(
             "failed to auto-install the web backend (Playwright). Install it manually with "
-            "`uv pip install playwright && uv run playwright install chromium`, or `uv sync "
+            f"`uv pip install playwright && uv run playwright install {browser}`, or `uv sync "
             "--extra web`."
         ) from e
-    importlib.invalidate_caches()  # so the find_spec() in select_actuator sees the freshly-added package
 
 
 def capabilities_for(actuator: str) -> frozenset[str]:
@@ -164,6 +169,7 @@ def make_driver(
     *,
     base_url: str | None = None,
     headless: bool = True,
+    browser: str = "chromium",
     record_video_dir: Path | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments."""
@@ -177,7 +183,9 @@ def make_driver(
 
         if not base_url:
             raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")
-        return PlaywrightDriver(base_url, headless=headless, record_video_dir=record_video_dir)
+        return PlaywrightDriver(
+            base_url, headless=headless, browser=browser, record_video_dir=record_video_dir
+        )
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"

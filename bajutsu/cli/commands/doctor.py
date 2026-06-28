@@ -30,7 +30,9 @@ def doctor(
         raise typer.Exit(2) from None
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device.
-    env_checks = preflight.runnability(actuator, booted_count=lambda: len(_env.booted_udids()))
+    env_checks = preflight.runnability(
+        actuator, booted_count=lambda: len(_env.booted_udids()), web_engine=eff.browser
+    )
     # When a pin is declared (defaults.idbVersion), report the installed idb_companion against it
     # so a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
     # Only probe when a pin exists *and* idb_companion is actually present — runnability already
@@ -67,7 +69,7 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
         # Lazy import keeps Playwright (a heavy optional dep) off the default path.
         from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
 
-        driver = PlaywrightDriver(eff.base_url, headless=eff.headless)
+        driver = PlaywrightDriver(eff.base_url, headless=eff.headless, browser=eff.browser)
         try:
             driver.navigate()
             return driver.query()

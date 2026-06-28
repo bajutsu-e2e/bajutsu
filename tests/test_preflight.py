@@ -40,32 +40,54 @@ def test_fake_backend_needs_nothing() -> None:
 
 
 def test_web_all_present_passes() -> None:
-    checks = preflight.runnability("playwright", web_pkg=lambda: True, web_browser=lambda: True)
+    checks = preflight.runnability("playwright", web_pkg=lambda: True, web_browser=lambda _e: True)
     assert [c.name for c in checks] == ["playwright", "chromium browser"]
     assert preflight.passed(checks)
+
+
+def test_web_reports_the_selected_engine() -> None:
+    # doctor reports which engine was selected (BE-0076): the check names and probes the engine,
+    # so "you asked for webkit but only chromium is installed" surfaces here.
+    seen: list[str] = []
+
+    def probe(engine: str) -> bool:
+        seen.append(engine)
+        return True
+
+    checks = preflight.runnability(
+        "playwright", web_engine="webkit", web_pkg=lambda: True, web_browser=probe
+    )
+    assert [c.name for c in checks] == ["playwright", "webkit browser"]
+    assert seen == ["webkit"]  # the selected engine was the one probed
 
 
 def test_web_does_not_require_xcode_or_simulator() -> None:
     # The web backend needs no Xcode and no Simulator — only the iOS path checks those.
     names = [
         c.name
-        for c in preflight.runnability("playwright", web_pkg=lambda: True, web_browser=lambda: True)
+        for c in preflight.runnability(
+            "playwright", web_pkg=lambda: True, web_browser=lambda _e: True
+        )
     ]
     assert "xcrun" not in names and "Simulator booted" not in names
 
 
 def test_web_missing_package_fails_with_hint() -> None:
-    checks = preflight.runnability("playwright", web_pkg=lambda: False, web_browser=lambda: False)
+    checks = preflight.runnability(
+        "playwright", web_pkg=lambda: False, web_browser=lambda _e: False
+    )
     assert not preflight.passed(checks)
     pkg = next(c for c in checks if c.name == "playwright")
     assert not pkg.ok and "--extra web" in pkg.detail
 
 
 def test_web_missing_browser_fails_with_hint() -> None:
-    checks = preflight.runnability("playwright", web_pkg=lambda: True, web_browser=lambda: False)
+    checks = preflight.runnability(
+        "playwright", web_engine="firefox", web_pkg=lambda: True, web_browser=lambda _e: False
+    )
     assert not preflight.passed(checks)
-    browser = next(c for c in checks if c.name == "chromium browser")
-    assert not browser.ok and "playwright install" in browser.detail
+    browser = next(c for c in checks if c.name == "firefox browser")
+    assert not browser.ok and "playwright install firefox" in browser.detail
 
 
 def test_idb_version_check_skipped_when_no_pin() -> None:

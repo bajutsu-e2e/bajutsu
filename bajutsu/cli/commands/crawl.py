@@ -159,7 +159,8 @@ def crawl(
     crawl_guide = make_guide(report=say, agent=agent)
     backends = _backends(backend, eff.backend)
     try:
-        ensure_web_runtime(backends)  # auto-install Playwright if a web crawl needs it
+        # Auto-install Playwright (and the selected engine's browser) if a web crawl needs it.
+        ensure_web_runtime(backends, eff.browser)
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))

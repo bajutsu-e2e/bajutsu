@@ -48,8 +48,8 @@ def _playwright_installed() -> bool:  # pragma: no cover - trivial env probe
     return importlib.util.find_spec("playwright") is not None
 
 
-def _chromium_installed() -> bool:  # pragma: no cover - needs the playwright runtime
-    """Whether Playwright's Chromium is actually installed (the `playwright install` step).
+def _browser_installed(engine: str) -> bool:  # pragma: no cover - needs the playwright runtime
+    """Whether the named Playwright engine is actually installed (the `playwright install` step).
     Reads the computed executable path without launching a browser; missing package → not installed.
     """
     try:
@@ -57,7 +57,12 @@ def _chromium_installed() -> bool:  # pragma: no cover - needs the playwright ru
     except ImportError:
         return False
     with sync_playwright() as p:
-        return os.path.exists(p.chromium.executable_path)
+        return os.path.exists(getattr(p, engine).executable_path)
+
+
+# Probe for a specific engine's binary, defaulting to Chromium (BE-0076). Injectable so the web
+# checks stay testable without a real Playwright install.
+BrowserProbe = Callable[[str], bool]
 
 
 def runnability(
@@ -65,18 +70,19 @@ def runnability(
     which: Which = shutil.which,
     booted_count: Callable[[], int] | None = None,
     *,
+    web_engine: str = "chromium",
     web_pkg: Probe = _playwright_installed,
-    web_browser: Probe = _chromium_installed,
+    web_browser: BrowserProbe = _browser_installed,
 ) -> list[Check]:
     """The runnability checks for `backend`, chosen by its platform family. The web
-    (`playwright`) backend needs the Playwright package and its Chromium browser; the iOS
-    (`idb`) backend needs Xcode's `xcrun`, the backend's CLIs, and (when `booted_count` is
-    given) a booted Simulator. `fake` needs nothing. The web probes are injectable so the
-    checks stay testable without a real Playwright install."""
+    (`playwright`) backend needs the Playwright package and the selected engine's browser
+    (`web_engine`, BE-0076); the iOS (`idb`) backend needs Xcode's `xcrun`, the backend's CLIs, and
+    (when `booted_count` is given) a booted Simulator. `fake` needs nothing. The web probes are
+    injectable so the checks stay testable without a real Playwright install."""
     if backend == "fake":
         return []
     if backend == "playwright":
-        return _web_runnability(web_pkg, web_browser)
+        return _web_runnability(web_engine, web_pkg, web_browser)
     return _ios_runnability(backend, which, booted_count)
 
 
@@ -98,9 +104,9 @@ def _ios_runnability(
     return checks
 
 
-def _web_runnability(web_pkg: Probe, web_browser: Probe) -> list[Check]:
+def _web_runnability(engine: str, web_pkg: Probe, web_browser: BrowserProbe) -> list[Check]:
     pkg_ok = web_pkg()
-    browser_ok = web_browser()
+    browser_ok = web_browser(engine)
     return [
         Check(
             "playwright",
@@ -108,9 +114,9 @@ def _web_runnability(web_pkg: Probe, web_browser: Probe) -> list[Check]:
             "installed" if pkg_ok else "the Playwright package — `uv sync --extra web`",
         ),
         Check(
-            "chromium browser",
+            f"{engine} browser",
             browser_ok,
-            "installed" if browser_ok else "`uv run playwright install chromium`",
+            "installed" if browser_ok else f"`uv run playwright install {engine}`",
         ),
     ]
 

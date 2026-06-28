@@ -122,6 +122,7 @@ class WebEnvironment:
             "",
             base_url=eff.base_url,
             headless=eff.headless,
+            browser=eff.browser,
             record_video_dir=record_video_dir,
         )
         driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle, confined to this env

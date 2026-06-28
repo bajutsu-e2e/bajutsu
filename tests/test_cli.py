@@ -12,7 +12,9 @@ import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
+from bajutsu.cli._shared import _resolve_browser
 from bajutsu.cli.commands.crawl import _ai_credential_gap
+from bajutsu.config import Effective, load_config, resolve
 
 runner = CliRunner()
 
@@ -143,6 +145,38 @@ def test_record_no_scenarios_dir(tmp_path: Path) -> None:
     r = runner.invoke(app, ["record", "--target", "bare", "--goal", "x", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios dir" in r.output
+
+
+def _web_eff(browser: str) -> Effective:
+    cfg = load_config(f"targets: {{ web: {{ baseUrl: 'http://x/', browser: {browser} }} }}")
+    return resolve(cfg, "web")
+
+
+def test_resolve_browser_flag_overrides_config() -> None:
+    # Precedence (BE-0076): an explicit --browser flag wins over the target's config.
+    eff = _web_eff("firefox")  # config says firefox
+    assert _resolve_browser(eff, "webkit").browser == "webkit"  # flag wins
+
+
+def test_resolve_browser_empty_flag_keeps_config() -> None:
+    # No flag: the resolved config value (here firefox) stands.
+    assert _resolve_browser(_web_eff("firefox"), "").browser == "firefox"
+
+
+def test_resolve_browser_default_is_chromium() -> None:
+    # No flag and no config: chromium, today's behaviour.
+    eff = resolve(load_config("targets: { web: { baseUrl: 'http://x/' } }"), "web")
+    assert _resolve_browser(eff, "").browser == "chromium"
+
+
+@pytest.mark.parametrize("command", ["run", "record"])
+def test_unknown_browser_engine_exits_cleanly(tmp_path: Path, command: str) -> None:
+    # An unknown --browser engine exits 2 before reaching Playwright (BE-0076), with a usable hint.
+    cfg, scn = _write(tmp_path)
+    argv = _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo")
+    r = runner.invoke(app, [*argv, "--browser", "safari"])
+    assert r.exit_code == 2
+    assert "unknown --browser" in r.output
 
 
 def test_doctor_web_target_requires_base_url() -> None:
