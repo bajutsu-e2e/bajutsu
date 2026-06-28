@@ -200,6 +200,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0069](implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md) | Executable contributor guardrails (procedures as commands) | Implemented |
 | [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) | Standardize the BE item template (EN / JA) | Implemented |
 | [BE-0078](implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) | Status-driven roadmap folders (proposals / deferred / in-progress / implemented) | Implemented |
+| [BE-0089](implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Implemented |
 | [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Implemented |
 | [BE-0093](implemented/BE-0093-public-docs-site/BE-0093-public-docs-site.md) | Public project website & documentation portal (GitHub Pages) | Implemented |
 | [BE-0094](implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) | Generated roadmap status dashboard on GitHub Pages | Implemented |
@@ -460,7 +461,6 @@ Turning a passing scenario into a native test in a destination framework's idiom
 <!-- GENERATED:proposals-dev-infra -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) | Merge-time BE-ID allocation on main | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Dogfood fixtures (demo apps)

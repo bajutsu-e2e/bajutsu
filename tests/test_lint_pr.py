@@ -21,8 +21,6 @@ _spec.loader.exec_module(lp)
 
 bad_commit_subjects = lp.bad_commit_subjects
 behavior_without_test = lp.behavior_without_test
-title_prefix_problem = lp.title_prefix_problem
-touches_roadmap = lp.touches_roadmap
 be_id_from_ref = lp.be_id_from_ref
 pr_title_problems = lp.pr_title_problems
 
@@ -76,15 +74,6 @@ def test_bad_commit_subjects_returns_only_the_bad_ones_in_order() -> None:
     assert bad_commit_subjects(subjects) == ["broken subject", "WIP"]
 
 
-def test_touches_roadmap_true_when_a_roadmap_path_changed() -> None:
-    paths = ["bajutsu/runner.py", "roadmaps/proposals/BE-0099-x/BE-0099-x.md"]
-    assert touches_roadmap(paths) is True
-
-
-def test_touches_roadmap_false_without_roadmap_paths() -> None:
-    assert touches_roadmap(["bajutsu/runner.py", "tests/test_runner.py"]) is False
-
-
 def test_behavior_without_test_true_when_core_python_changed_but_no_tests() -> None:
     paths = ["bajutsu/runner.py", "bajutsu/drivers/base.py"]
     assert behavior_without_test(paths) is True
@@ -107,27 +96,6 @@ def test_behavior_without_test_ignores_test_files_under_bajutsu() -> None:
 
 def test_behavior_without_test_false_for_non_python_core_change() -> None:
     assert behavior_without_test(["bajutsu/py.typed"]) is False
-
-
-def test_title_prefix_problem_none_when_not_a_roadmap_change() -> None:
-    assert title_prefix_problem("feat(run): add wait", touches_roadmap_=False) is None
-
-
-def test_title_prefix_problem_none_for_well_prefixed_roadmap_title() -> None:
-    assert title_prefix_problem("[BE-0069] feat(dev): lint-pr", touches_roadmap_=True) is None
-
-
-def test_title_prefix_problem_accepts_be_placeholder_prefix() -> None:
-    assert title_prefix_problem("[BE-XXXX] docs: scaffold", touches_roadmap_=True) is None
-
-
-def test_title_prefix_problem_flags_roadmap_title_missing_prefix() -> None:
-    assert title_prefix_problem("feat(dev): lint-pr", touches_roadmap_=True) is not None
-
-
-def test_title_prefix_problem_none_when_title_missing() -> None:
-    # No PR title available locally — nothing to validate (the reminder path handles that).
-    assert title_prefix_problem(None, touches_roadmap_=True) is None
 
 
 # --- branch-name BE id detection (the trigger for the strict CI title check) ---
@@ -166,6 +134,12 @@ def test_pr_title_problems_accepts_well_formed_roadmap_title_matching_branch() -
 
 def test_pr_title_problems_accepts_plain_scoped_title_when_branch_has_no_id() -> None:
     assert pr_title_problems("fix(record): handle empty selector", None) == []
+
+
+def test_pr_title_problems_accepts_be_creation_pr_without_a_prefix() -> None:
+    # A BE-creation PR adds a BE-XXXX placeholder and carries no [BE-NNNN] prefix — its id is
+    # allocated on main after the merge (BE-0089). With no branch id, a plain scoped title is fine.
+    assert pr_title_problems("docs(roadmap): propose merge-time id allocation", None) == []
 
 
 def test_pr_title_problems_flags_missing_id_prefix_when_branch_encodes_one() -> None:

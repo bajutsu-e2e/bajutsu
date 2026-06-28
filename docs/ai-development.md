@@ -159,8 +159,8 @@ would write as the lead commit:
   glance. A roadmap proposal reads `docs(roadmap): propose <the idea>`.
 - **`[BE-NNNN]` prefix** — only when the PR is tied to a roadmap item, in brackets before the scoped
   subject (e.g. `[BE-0017] feat(mcp): add MCP server`). A PR with no roadmap item keeps the plain
-  scoped subject. When the PR *introduces* a new roadmap item, draft with the literal `[BE-XXXX]`
-  placeholder — the `roadmap-id` workflow rewrites it to the allocated number (see
+  scoped subject. A PR that *introduces* a new roadmap item also keeps the plain scoped subject — it
+  carries **no** `[BE-NNNN]` prefix, because the id is allocated on `main` after the merge (see
   [Roadmap items](#roadmap-items-be-ids-strict)).
 - **CI enforces the title.** The `pr-title` workflow (`.github/workflows/pr-title.yml`) runs
   `scripts/lint_pr.py --title-only` on every PR — and re-runs when the title is edited. It fails the
@@ -203,7 +203,8 @@ The sections that recur, and what each carries:
   Simulator-only path) so the reviewer knows what was and wasn't proven — accuracy here is the point,
   don't claim a path was tested when it wasn't.
 - For a roadmap proposal: **`## Files`** (the bilingual pair) and **`## BE ID allocation`** (the
-  `BE-XXXX` placeholder note — the workflow numbers it; don't hand-edit the number).
+  `BE-XXXX` placeholder note — the workflow numbers it on `main` after the merge; don't hand-edit the
+  number).
 - **`## Notes`** — caveats, a related or competing open PR, an expected merge conflict and how to
   resolve it.
 
@@ -315,24 +316,50 @@ When you add a roadmap item:
    it is completed, not when it is removed from a table. A BE ID, once assigned, refers to that
    item forever.
 
-Allocating by hand races, so you do not have to: the `roadmap-id` workflow assigns IDs at PR time,
-and two defenses ([BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md))
-keep them unique across `main` *and* every open PR. **Allocation reserves atomically.** Each ID it
-hands out is claimed as a `refs/be-claims/<NNNN>` git ref through GitHub's create-ref API — a
-compare-and-set that fails if the ref already exists — so two branches allocating in the same window
-cannot both take a number; the loser re-picks. A claim is released when the PR closes (its IDs are by
-then on `main`, or abandoned), with a daily sweep reaping any leak. **Repair is the backstop** for
-whatever still slips through — a hand-typed concrete ID, or a branch predating the machinery: the
-`roadmap-id-repair` workflow, on a push to `main` and on a daily schedule, re-attempts allocation on
-every open roadmap PR. For an item a PR introduces (a slug not yet on `main`) whose number is already
-taken, it allocates the next free ID — moving the directory and rewriting the files, cross-references,
-and PR title — and pushes the fixup onto the branch (`make roadmap-id-repair` runs the same step
-locally). Authority — who keeps a contested number — is `main` first (a merged item always wins),
-else the **lowest open-PR number** holding it; only the loser moves. An item the branch merely
-inherited from an older `main` (its slug already there) is left for a rebase, never renumbered.
-Drafting with the `BE-XXXX` placeholder is still the norm — it keeps you from guessing a number at
-all. (Fork PRs can be neither pushed to nor have claim refs created, so both workflows act only on
-same-repo PRs.)
+The number is allocated **on `main`, after the PR merges** — not at PR-open
+([BE-0089](../roadmaps/implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
+Drafting with the `BE-XXXX` placeholder is the norm: an item keeps `BE-XXXX` through authoring,
+review, and the merge itself, and a **BE-creation PR carries no `[BE-NNNN]` prefix at all** — its
+title stays a plain scoped subject, since the real number is not known until after the merge. The
+merge is a push to `main`, which triggers the `roadmap-id` workflow; it runs the allocator against
+`main`, renames each placeholder to the next free `BE-NNNN`, commits the rename and regenerated index
+directly to `main`, and comments the allocated id on the merged PR. Because allocation runs in merge
+order on `main`, the `BE-NNNN` sequence is **contiguous by construction** — a rejected PR never
+merges, so it never spends a number.
+
+Landing that commit on protected `main` needs a bypass identity: a dedicated GitHub App on `main`'s
+ruleset bypass list, granted `contents: write` and `pull-requests: write` on this repository only,
+whose id and private key are stored as the `ROADMAP_BOT_APP_ID` / `ROADMAP_BOT_PRIVATE_KEY` Actions
+secrets. A maintainer sets this up once — see *Setting up the merge-time allocation App* below. Until
+those secrets exist the workflow is a green no-op, so `main` stays green while the App is being
+provisioned. The job only ever runs reviewed code post-merge (it checks out `main`), pins every
+action to a full commit SHA, and runs `scripts/check_renumber_diff.py`, which fails the job if the
+bypass commit touches anything outside `roadmaps/` — capping the token's blast radius to that tree.
+
+You may still allocate a number by hand (the highest existing `BE-NNNN` + 1) when you want it fixed
+up front; that path is unchanged. BE-0061's hardening
+([BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md):
+atomic `refs/be-claims/*` claims, the `roadmap-id-repair` and `roadmap-claims-gc` workflows) stays in
+place as defense in depth. Under merge-time allocation it is largely redundant — at most one allocate
+run touches `main` at a time, reading the latest `main` — and retiring it is a possible follow-up.
+
+#### Setting up the merge-time allocation App
+
+A maintainer with admin rights does this once, so the `roadmap-id` workflow can push the renumber
+commit past `main`'s branch protection:
+
+1. **Create a GitHub App** (org- or repo-owned) with no webhook and no callback URL. Grant it exactly
+   **Repository permissions → Contents: Read and write** (to push the renumber) and **Pull requests:
+   Read and write** (to comment the allocated id), and nothing else.
+2. **Install it on this repository only**, so its reach is a single repo.
+3. **Add the App to `main`'s ruleset bypass list** — it should be the only entry — so its
+   installation token can push the renumber commit past branch protection.
+4. **Generate a private key** and store it, with the App id, as the `ROADMAP_BOT_PRIVATE_KEY` and
+   `ROADMAP_BOT_APP_ID` Actions secrets (scope them via an Environment tied to the `main` ref so no
+   PR-triggered job can read them).
+
+The workflow mints a short-lived (≈1 h) installation token from those secrets for checkout, push, and
+`gh`; commits the App makes are signed and attributed to it, so every bypass push is auditable.
 
 Each file follows the **Swift-Evolution proposal format** — a metadata block (`* Proposal`,
 `* Author`, `* Status`, `* Topic`, optional `* Origin`) followed by `## Introduction` /

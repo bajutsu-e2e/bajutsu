@@ -46,9 +46,10 @@ _SUBJECT_RE = re.compile(
     r"^(?:feat|fix|chore|ci|refactor|test|perf)\([a-z0-9,_-]+\): \S.*$|^docs(?:\([a-z0-9,_-]+\))?: \S.*$"
 )
 
-# A PR title carrying the roadmap prefix: ``[BE-NNNN]`` (a real id) or the ``[BE-XXXX]`` placeholder
-# CI replaces. Anchored at the start so the prefix must lead the title.
-_TITLE_PREFIX_RE = re.compile(r"^\[BE-(?:\d{4}|XXXX)\] ")
+# A PR title carrying the roadmap prefix: ``[BE-NNNN]`` (a real id). Anchored at the start so the
+# prefix must lead the title. Only a PR that *implements* an already-numbered item carries one; a
+# BE-creation PR carries no prefix, since its id is allocated on ``main`` after the merge (BE-0089).
+_TITLE_PREFIX_RE = re.compile(r"^\[BE-\d{4}\] ")
 
 # A BE id embedded in a branch name (the convention ``claude/be-0050-<slug>``). Case-insensitive,
 # and the number is exactly four digits — the zero-padded roadmap id, not an arbitrary number. The
@@ -92,11 +93,6 @@ def bad_commit_subjects(subjects: list[str]) -> list[str]:
     return [s for s in subjects if not _SUBJECT_RE.match(s)]
 
 
-def touches_roadmap(paths: list[str]) -> bool:
-    """Whether the changed paths include any file under ``roadmaps/``."""
-    return any(p.startswith("roadmaps/") for p in paths)
-
-
 def behavior_without_test(paths: list[str]) -> bool:
     """Whether the diff changes core Python under ``bajutsu/`` with no ``tests/`` delta.
 
@@ -117,20 +113,6 @@ def behavior_without_test(paths: list[str]) -> bool:
     return changed_core and not changed_tests
 
 
-def title_prefix_problem(title: str | None, *, touches_roadmap_: bool) -> str | None:
-    """A message when a roadmap PR's title lacks the ``[BE-NNNN]`` prefix, else None.
-
-    Returns None when the change does not touch ``roadmaps/`` (no prefix required) or when no title
-    is available (``title is None`` — locally the title isn't known, so there is nothing to
-    validate; the reminder path covers that case instead).
-    """
-    if not touches_roadmap_ or title is None:
-        return None
-    if _TITLE_PREFIX_RE.match(title):
-        return None
-    return f"PR title must start with a [BE-NNNN] (or [BE-XXXX]) prefix for a roadmap change: {title!r}"
-
-
 def be_id_from_ref(ref: str) -> str | None:
     """The canonical ``BE-NNNN`` a branch name encodes (``claude/be-0050-…`` → ``BE-0050``), or None.
 
@@ -147,9 +129,8 @@ def pr_title_problems(title: str, branch_be_id: str | None) -> list[str]:
 
     Two mechanical checks the CI title gate enforces:
 
-    - **Form** — stripped of an optional leading ``[BE-NNNN]`` / ``[BE-XXXX]`` prefix, the title must
-      be a conventional scoped subject (``feat(scope): …`` / ``docs: …``), same shape as a commit
-      subject.
+    - **Form** — stripped of an optional leading ``[BE-NNNN]`` prefix, the title must be a
+      conventional scoped subject (``feat(scope): …`` / ``docs: …``), same shape as a commit subject.
     - **Roadmap id** — when ``branch_be_id`` is set (the branch encodes a roadmap id), the title must
       lead with exactly that ``[BE-NNNN]`` prefix, catching both a missing prefix and one copied from
       another item.
@@ -237,7 +218,6 @@ def main() -> int:
     subjects = _git_lines(["log", "--format=%s", "origin/main..HEAD"])
     paths = _git_lines(["diff", "--name-only", "origin/main...HEAD"])
 
-    on_roadmap = touches_roadmap(paths)
     pr_title = os.environ.get("PR_TITLE")  # set in CI; absent locally
     # The branch — not the diff — is the authoritative roadmap-id signal (HEAD_REF in CI, else the
     # checked-out branch).
@@ -262,17 +242,9 @@ def main() -> int:
             f"branch encodes {branch_be_id} — the PR title must start with '[{branch_be_id}] '."
         )
 
-    # A roadmap diff on a branch that doesn't name the id still needs *some* [BE-NNNN] prefix
-    # (e.g. a proposal-only PR); the branch-id check above can't cover it.
-    if on_roadmap and branch_be_id is None:
-        problem = title_prefix_problem(pr_title, touches_roadmap_=on_roadmap)
-        if problem is not None:
-            violations.append(problem)  # only reachable when PR_TITLE is set (CI)
-        elif pr_title is None:
-            reminders.append(
-                "this change touches roadmaps/ — the PR title must carry a [BE-NNNN] "
-                "(or [BE-XXXX]) prefix."
-            )
+    # A BE-creation PR (one that adds a BE-XXXX placeholder) carries no [BE-NNNN] prefix at all: its
+    # id is allocated on `main` after the merge (BE-0089), so there is nothing to require here. Only
+    # a PR whose branch encodes an already-numbered item (handled above) must carry the prefix.
 
     if behavior_without_test(paths):
         reminders.append(
