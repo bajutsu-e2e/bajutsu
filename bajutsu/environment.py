@@ -58,22 +58,18 @@ class Environment(Protocol):
 
     def device_catalog(self) -> dict[str, dict[str, str]]:
         """Static device metadata (model / OS) keyed by udid; `{}` for platforms with no device."""
-        ...
 
     def observes_network_via_driver(self) -> bool:
         """Whether network is observed by hooking the live driver (web) rather than an external
         receiver the app reports to (the device backends)."""
-        ...
 
     def records_video_up_front(self) -> bool:
         """Whether video capture must be wired before launch (web's context records at creation)
         rather than on demand (simctl)."""
-        ...
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
         """The page-hooked collector for a driver-observed platform, with this scenario's mocks
         wired in. Only called when `observes_network_via_driver()`."""
-        ...
 
     def relauncher(
         self,
@@ -84,19 +80,17 @@ class Environment(Protocol):
         extra_env: Mapping[str, str] | None = None,
     ) -> RelaunchFn:
         """The scenario's `relaunch` function (app restart on a device; re-navigate on web)."""
-        ...
 
     def controller(self, eff: Effective) -> DeviceControl | None:
         """Device control for the leased device, or `None` on a platform without one (web)."""
-        ...
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         """Per-release app teardown: terminate the app (device) or close the browser (web)."""
-        ...
 
 
 class _DeviceEnvironment:
-    """The device-style lifecycle shared by the simctl backends (iOS and the fake test backend).
+    """The device-style lifecycle: the iOS Simulator (`simctl`) backend and the fake test backend,
+    which mimics the same shape without a real device.
 
     Only `start` differs between them — the fake runs no device sequence — so every lease-shaping
     method (catalog, relaunch, control, teardown, the external-receiver network strategy) lives here.

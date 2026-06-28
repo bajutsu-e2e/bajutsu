@@ -99,8 +99,9 @@ def device_pool(
         free.put(udid)
     # One collector per device (its own ephemeral port), started up front and reused across leases
     # (cleared per scenario by the run loop). If a start fails mid-setup, stop the ones already
-    # started so we don't leak listening sockets. A driver-observed platform (web) has no up-front
-    # receiver — its collector hooks the page built per lease — so only that path pre-starts them.
+    # started so we don't leak listening sockets. Only the external-receiver path (the device
+    # backends) pre-starts these; a driver-observed platform (web) has no up-front receiver and hooks
+    # its collector to the page built per lease instead.
     collectors: dict[str, NetworkCollector] = {}
     if network and not pool_env.observes_network_via_driver():
         started: list[NetworkCollector] = []
@@ -169,7 +170,10 @@ def device_pool(
             # per-scenario collector clear. It is stopped on release.
             if lease_env.observes_network_via_driver() and network:
                 collector = release_collector = lease_env.hook_collector(driver, scenario)
-                collector_provider = "playwright"  # native observation, not the app-side receiver
+                # Native observation by the selected actuator, not the app-side receiver. Naming the
+                # actuator keeps provenance accurate if another driver-observed actuator is added;
+                # today this is "playwright".
+                collector_provider = actuator
             relaunch: RelaunchFn = lease_env.relauncher(eff, scenario, driver, extra_env=extra_env)
             control: DeviceControl | None = lease_env.controller(eff)
 
