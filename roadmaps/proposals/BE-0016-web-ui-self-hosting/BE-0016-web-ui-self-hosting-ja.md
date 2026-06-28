@@ -24,21 +24,24 @@
   ログイン、Tailscale）を加えるだけで*今日*動くものです。追加する小さなコードは、LaunchAgent plist を
   出力する `serve --emit-launchagent` だけです。手順書は
   [docs/ja/self-hosting.md](../../../docs/ja/self-hosting.md) にあります。
-- **段階 B（将来）。**
-  [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) の将来の
-  マルチテナント版を、各マネージドサービスをセルフホスト OSS（オープンソースソフトウェア）に
-  置き換えて完全自前化したものです。BE-0015 で提案された（未実装の）コントロールプレーンに依存します。
+- **段階 B（サーバ backend と Mac ワーカープール）。**
+  [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) のサーバ
+  backend を、各マネージドサービスをセルフホスト OSS（オープンソースソフトウェア）に置き換えて自前化した
+  ものです。その単一ノード版は、**複数 org の隔離を含めて**すでに出荷済みで今日動かせます
+  （[`deploy/self-host/`](../../../deploy/self-host/)）。残るのは、そのノードを障害に強く org 間で公平な
+  *プール*へ育てることです。フルマネージドな公開クラウドは BE-0015 の領分のままです。
 
-項目全体としては提案ですが、その中で段階 A は今日すぐ使えるベースラインです。
+項目全体としては提案ですが、その中で段階 A と単一ノードの段階 B は今日動かせるベースラインで、残る
+プール化が後続の設計です。
 
 ## 動機
 
 テスト基盤をマネージドクラウドに置けない、あるいは置きたくないチームがあります（コスト、データの所在、
 ポリシーなどの理由から）。そうしたチームは自前のハードウェアで Web UI を動かしたいと考えます。bajutsu の
 セルフホストは通常の Web サービスのセルフホストとは**異なります**。ランナーが **iOS Simulator** を
-駆動するため、プロセスを動かせる場所と方法が制約されるからです。本提案は、すぐ使える経路（段階 A）と
-完全セルフホストのマルチテナント目標（段階 B）の両方を記録し、運用設計を失わずチームが段階的に
-採用できるようにします。
+駆動するため、プロセスを動かせる場所と方法が制約されるからです。本提案は、すぐ使える経路（段階 A）、
+今日動かせる単一ノードのマルチテナント backend（段階 B の現状）、そしてそれをプールへ育てる設計を記録し、
+運用設計を失わずチームが段階的に採用できるようにします。
 
 ## 詳細設計
 
@@ -104,114 +107,126 @@ tailscale serve --bg 8765    # → https://<machine>.<tailnet>.ts.net （tailnet
 
 この段階は**今日**チームで使えます。
 
-### 段階 B：完全セルフホストのマルチテナント版（BE-0015 のコントロールプレーンに依存）
+### 段階 B：Mac ワーカープールを備えたセルフホスト コントロールプレーン
 
-> **いま使える（シングルテナント）:** BE-0015 のサーバ backend がシングルテナント向けに出荷済みです
-> （Postgres、Redis、S3 互換ストレージ、GitHub OAuth、RBAC、per-user クォータ）。そのため**1 チーム**向けの
-> セルフホスト コントロールプレーンは今日動かせます。docker-compose 一式と手順は
-> [`deploy/self-host/`](../../../deploy/self-host/) と
-> [docs/ja/self-hosting.md](../../../docs/ja/self-hosting.md) にあります。これは段階 A と下記の完全マルチテナント
-> 目標の橋渡しです。本節の**マルチテナント**部分（複数 org、org スコープの強制、`org_id` のテナント prefix）は
-> 引き続き BE-0015 のマルチテナント コントロールプレーン待ちです。
+段階 B は BE-0015 のサーバ backend を動かします。Linux ノード上の FastAPI コントロールプレーンに、
+Tailscale tailnet 越しにジョブを lease する Mac ワーカーのプールが連なる構成です。この多くは
+**すでに出荷済み**なので、本節は 2 部構成にします。**いま動くもの**（動かせるスタックと、すでに org
+境界をまたいで効くマルチテナント隔離）と、**残る作業**（その単一ノードを、org 間で公平なまま障害に強い
+プールへ育てる作業：org をまたぐ公平性、能力別ルーティング、高可用性、可観測性）です。真に将来なのは
+**フルマネージドな公開クラウド**（ホスト型 Mac プールと infrastructure-as-code）であり、これは本項目では
+なく [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) の領分です。
 
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) のアーキテクチャを
-取り、各マネージドサービスをセルフホスト OSS に置き換えます。トポロジは **Linux 1 ノード（Docker
-Compose）＋ Mac ワーカープール**で、すべてを **Tailscale tailnet** で接続します。公開面は Caddy の
-`:443` だけです。
+#### いま動くもの
 
-| cloud-hosting の選定 | セルフホスト置換 |
-|---|---|
-| Fly.io / Render（コントロールプレーン） | 自前の **Linux ノード** + **Docker Compose** |
-| Fly Postgres | **postgres** コンテナ |
-| Upstash Redis | **redis** コンテナ |
-| Cloudflare R2（成果物） | **MinIO**（S3 互換、自前） |
-| GitHub OAuth（Authlib） | **Authelia** または **Keycloak**（自前 IdP: Identity Provider、認証基盤）、または oauth2-proxy |
-| Caddy / TLS | **Caddy**（Let's Encrypt or 内部 CA） |
-| MacStadium Orka（Mac プール） | 自前の **Mac mini プール（1…N 台）** + worker agent を `LaunchAgent` 常駐 |
-| Doppler（secrets） | **SOPS + age** or Vault（or 権限を絞った `.env`） |
-| Sentry / Grafana（可観測性） | **GlitchTip** + 自前 **Prometheus/Grafana** |
+単一ノードのサーバ backend は今日動かせます。docker-compose 一式、手順、複数 org の設定は
+[`deploy/self-host/`](../../../deploy/self-host/) と
+[docs/ja/self-hosting.md](../../../docs/ja/self-hosting.md) にあります。出荷済みの内容は次のとおりです。
+
+- **コントロールプレーンのスタック**：`docker-compose.yml` が `postgres`、`redis`、`minio`（S3 互換
+  ストレージ）、一度きりの `migrate`（Alembic を head まで適用）、`bajutsu` アプリ
+  （`serve --asgi --backend=server`）、公開ホスト名用の任意 `caddy` プロファイルを配線し、ステートフルな
+  サービスにはそれぞれ named volume を割り当てます。Mac ワーカーはコンテナ化しません。段階 A と同じく
+  Aqua のグラフィカルユーザインタフェース（GUI）セッションが必要で、`bajutsu worker` を動かします。
+- **認証とロール**：アプリ自身に組み込んだ GitHub OAuth（open authorization、別建ての認証基盤ではあり
+  ません）で、許可リストと 3 ロール（admin / editor / viewer、ロールベースアクセス制御、RBAC）を持ちます。
+- **複数 org の隔離**：マウントした設定に `orgs:` ブロックを宣言すると、同じ backend がマルチテナントに
+  なります。各ユーザは GitHub ログインまたは GitHub org の所属で自分の org にスコープされ（ログインは
+  `read:org` スコープを要求します）、自分の org のターゲットだけが見え、org をまたぐ run やシナリオや
+  成果物の読み取りは not-found か 403 を返します。各 org の成果物、シナリオ、ベースラインは org ごとの
+  オブジェクトストア prefix（`org_prefix`）の下に置かれます。`orgs:` ブロックがなければ backend は
+  シングルテナント（既定の単一 org）のままです。
+- **ジョブ分配**：コントロールプレーンはサーバ側の `QueueExecutor` を介して Redis（RQ：Redis Queue）へ
+  ジョブを enqueue します。`bajutsu worker` がそれを lease して実行し、Redis のログバス越しにログを返し、
+  `runs/<id>/` ツリーを MinIO へアップロードします。各 run は**使い捨ての Simulator**（`--erase`）で動く
+  ので、同じ Mac 上でも run の間で状態や keychain やスクリーンショットが残りません。
+- **クォータ**：**グローバル**な同時実行上限（`--max-concurrent-runs`、既定 4）と**ユーザ単位**の上限
+  （`max_concurrent_per_user`）が、1 人の呼び出し元が希少なデバイスを独占するのを防ぎます。`try_register`
+  （`bajutsu/serve/jobs.py`）でロックの下で原子的に強制します。
+
+次の対応表は、残るマネージドサービスの選択肢の一覧です。**いま出荷済み**の列は、`deploy/self-host/` が
+すでに使っているものと、水平スケール時の候補にとどまるものを区別します。
+
+| cloud-hosting の選定 | セルフホスト置換 | いま出荷済み |
+|---|---|---|
+| Fly.io / Render（コントロールプレーン） | 自前の **Linux ノード** + **Docker Compose** | ✅ |
+| Fly Postgres | **postgres** コンテナ | ✅ |
+| Upstash Redis | **redis** コンテナ | ✅ |
+| Cloudflare R2（成果物） | **MinIO**（S3 互換、自前） | ✅ |
+| GitHub OAuth（Authlib） | アプリ内蔵の GitHub OAuth、または自前の認証基盤（Authelia / Keycloak / oauth2-proxy） | ✅（アプリ内蔵の GitHub OAuth） |
+| Caddy / TLS | **Caddy**（Let's Encrypt または内部 CA） | ✅（任意の `caddy` プロファイル） |
+| MacStadium Orka（Mac プール） | 自前の **Mac mini プール（1…N 台）** + worker を `LaunchAgent` 常駐 | ✅（単一ワーカー。プール化は下記） |
+| Doppler（secrets） | **SOPS + age** または Vault（または権限を絞った `.env`） | `.env` |
+| Sentry / Grafana（可観測性） | **GlitchTip** + 自前 **Prometheus/Grafana** | ⏳（下記） |
 
 ```
-            チーム端末
-               │  HTTPS :443
-               ▼
-   ┌──────────────────────────────────────────────┐        ┌─────────────────────────┐
-   │  Linux ノード — docker compose                │ Redis  │  Mac ワーカー × N        │
-   │  caddy · authelia · app · postgres · redis    │ ─────▶ │  worker agent           │
-   │  minio · prometheus · grafana                 │ ◀───── │  bajutsu run --erase    │
-   └──────────────────────────────────────────────┘  job   │  Simulator (GUI session)│
-                  └──────────────── Tailscale tailnet ──────┴─────────────────────────┘
+        チーム端末
+           │  HTTPS（Tailscale tailnet、または Caddy のホスト名）
+           ▼
+   ┌───────────────────────────────────────┐  job   ┌──────────────────────────┐
+   │  Linux ノード — docker compose        │ Redis  │  Mac ワーカー × N        │
+   │  bajutsu serve --asgi --backend=server│ ─────▶ │  bajutsu worker          │
+   │  postgres · redis · minio (· caddy)   │ ◀───── │  bajutsu run --erase     │
+   └───────────────────────────────────────┘ result │  Simulator (GUI session) │
+                       └──────────── Tailscale tailnet ──────┴─────────────────┘
 ```
-
-Linux ノードの `docker-compose.yml` は `caddy`（TLS + リバースプロキシ）、`authelia`（認証）、
-`app`（コントロールプレーン。**未実装**、
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) 参照）、`postgres`、
-`redis`、`minio`、`prometheus`/`grafana` を配線し、ステートフルなものには named volume を割り当てます。
-各 Mac ワーカーは **段階 A と同じ LaunchAgent パターン**（GUI セッション、自動ログイン、caffeinate）
-で動かしますが、実行するのは **worker agent** です。agent は tailnet 越しに Linux ノードの Redis からジョブを
-lease し、クリーンな Simulator で `bajutsu run --erase` を実行し、ログを返し、`runs/<id>/` ツリーを
-MinIO へアップロードします。
 
 **サイジング。** 動画証跡が重いので MinIO 用に数百 GB を見込んでください。Linux ノードは控えめでよく
-（2 vCPU / 4 GB。OrbStack で Mac に同居も可能）、**Mac が占有量を支配**します。
+（2 vCPU / 4 GB。OrbStack で Mac に同居も可能です）、占有量は **Mac が支配**します。
 
-#### 負荷分散：2 つの別問題
+#### 残る作業：1 ノードからプールへ
 
-コントロールプレーン（HTTP、安価、水平スケール）と **Mac プール**（希少、低並列、処理が遅い）では、
-最適な手法が**正反対**になります。これを 1 つの「ロードバランサ」として扱わないでください。
+ここまでの内容は **1 つの** Linux ノードと **1〜数台の** Mac ワーカーで動きます。これを、org 間で
+公平なまま障害に強いプールへ変えるのが残る作業です。下記の各項目は、**出荷済みの土台**、それを仕上げる
+**具体設計**、**検証方法**を示します。多くはデプロイと運用の関心事で、Linux だけで動く `make check`
+ゲート（Docker も Mac もなし）では実行できません。そこで、どの部分が machine-checkable な契約を持ち、
+どの部分がデプロイ上の手動検証かを明示します。
 
-**コントロールプレーンの負荷分散（容易、標準的）。** ステートレスな FastAPI を **N レプリカ**並べ、
-前段の **Caddy/HAProxy** で分散します。
+**1. org をまたぐ公平性とクォータ（唯一ゲート検証可能な契約を持つ部分）。** 現在の上限はグローバルと
+ユーザ単位で、**org 単位の上限も org 間の公平スケジューリングもありません**。そのため競合下では、1 つの
+org が依然として希少な Mac プールを占有しえます。設計は新しい仕組みを足すのではなく、既存の seam を
+拡張します。
 
-- long-lived な SSE（Server-Sent Events）接続が多いので、ヘルスチェックを付けたうえで round-robin より **least-conn** を使います。
-- **sticky セッションは使いません**。署名 Cookie/JWT（JSON Web Token）を使うか、セッションを Redis に外出しして、どの
-  レプリカでも任意リクエストを処理できるようにします。
-- **SSE はシャード不要**です。ライブログの実体は Redis pub/sub なので、*どの*レプリカでも*任意*の run の
-  ログを配信できます。LB（ロードバランサ）は SSE を**バッファリングしない**設定（flush / no-buffer）にしてください。async uvicorn は
-  少ない worker で多数の SSE を処理しますが、想定同時視聴数に合わせて並列度を確保してください。
+- **org 単位の上限**：`max_concurrent_per_org` を追加し、現在 `max_concurrent_per_user` が `job.actor` で
+  数えているのと同じく `job.org` で数えます。`try_register`（`bajutsu/serve/jobs.py`）でロックの下、同じ
+  原子的な「数えてから挿入」で行います。org の上限を超えたジョブは拒否ではなく**保留**します。
+- **重み付き公平ディスパッチ**：現在の「グローバル上限に達したら 429 で拒否する」末尾
+  （`_register_and_dispatch`、`bajutsu/serve/operations.py`）を、**org 別 pending キュー**と、pending を
+  持つ org をラウンドロビンしつつ各 org が上限内のときだけ次のジョブを通すディスパッチャに置き換えます。
+  優先度ティアは同じラウンドロビンに重みとして乗ります。純 first-in, first-out（FIFO）が 1 つの org に
+  プールを独占させる原因で、org 別キューがそれを正します。
+- **machine-checkable な不変条件**（Linux ゲート、fake のキューとインプロセスの state で。Mac は不要）：
+  (a) キューを溢れさせる org も `max_concurrent_per_org` を超えない、(b) 2 つの org が同時に溢れさせた
+  とき、通るジョブは一方を先に流し切るのでなく org 間で公平に交互になる、(c) org 内でユーザ単位の上限も
+  なお成立する。これらは既存の上限テストと同じく `ServeState` に対して単体テストできます。
+- **衝突の注意。** これは `bajutsu/serve/jobs.py` と `operations.py` に入ります。オープン PR #166
+  （BE-0056）が編集中の面なので、#166 のマージ**後**に入れるか、#166 と調整して進めます。
 
-**ワーカーの「負荷分散」＝ジョブスケジューリング（本丸）。** Mac は同時 Simulator 数 **K** が小さく
-（RAM 制約で 1〜3）、1 run は数分かかります。鉄則は **push ではなく pull** です。
+**2. 能力別ルーティングキュー。** 現在ジョブキューは 1 つです。混在プール（iOS runtime の違い、iPad と
+iPhone）には**能力別キュー**（`q:ios18`、`q:ipad`）が要ります。コントロールプレーンはターゲットの
+デバイスに合うキューへ enqueue し、各ワーカーは自分が処理できるキューだけを subscribe します。多デバイス
+プールでの手動検証です。（決定論的な `run` は変えません。ルーティングは「どの空きワーカーが拾うか」
+だけの話です。）
 
-- **プル型キュー。** ワーカーは *Simulator スロットが空いたときだけ* Redis からジョブを lease します。
-  これだけで**自動負荷分散 + バックプレッシャ**が成立し、中央スケジューラが各 Mac の負荷を追跡する必要が
-  なくなります。
-- **スロット = 並列度。** 各ワーカーの concurrency を物理 Simulator スロット数に固定します（RQ/Celery の
-  worker concurrency）。総スループット = 全 Mac のスロット合計。
-- **能力別ルーティング。** デバイス / iOS runtime 別にキューを分けます（`q:ios18`、`q:ipad`）。その
-  runtime を持つ Mac だけが該当キューを subscribe します。
-- **lease + heartbeat → 再投入。** Mac が run 途中で落ちたらジョブを re-queue します（Celery の ack-late /
-  RQ の死活監視）。Mac プールは希少なのでジョブを取りこぼさないようにします。
+**3. ワーカー死活監視とジョブ再投入。** run の途中で落ちた Mac がジョブを黙って取りこぼしてはいけません。
+RQ の死活監視や ack-late を使い、heartbeat が途絶えた lease はジョブを消すのでなく**再 enqueue** します。
+Mac プールは希少なので、取りこぼしは再試行より悪いからです。テストデプロイでワーカーを run 途中に落とし、
+ジョブが再実行されることを確認する手動検証です。
 
-#### マルチテナント
+**4. コントロールプレーンの水平スケール。** コントロールプレーンは安価な HTTP で水平スケールしますが、
+現在の compose はアプリコンテナを **1 つ**だけ動かします。ロードバランサ（Caddy または HAProxy）の後ろで
+**N レプリカ**を動かすには：round-robin より **least-conn**（server-sent events、SSE、の接続は長命です）、
+**sticky セッションなし**（認証は署名 Cookie で、セッションは Redis にあるため、どのレプリカでも任意の
+リクエストを処理できます）、そしてロードバランサは SSE を**バッファリングしない**こと（ライブログは
+Redis pub/sub 由来で、どのレプリカでも任意の run を配信できるため）。アプリを 2 レプリカ立ち上げ、一方で
+ログイン、他方でライブログ配信を確認する手動検証です。
 
-4 つの軸があります。
-
-- **データ隔離。** 共有 Postgres + 全テーブルに `org_id`、アプリ層で**全クエリを org スコープ**にし、
-  防御多層化に **Postgres RLS（行レベルセキュリティ）** ポリシーを併用します。MinIO は**テナント prefix**
-  （`artifacts/<org_id>/runs/…`）で管理し、配信は org スコープの**署名付き URL** のみ経由とします。自前運用では
-  スキーマ/DB 分離より **共有スキーマ + `org_id` + RLS** が実用的です。
-- **実行隔離**（シナリオは実質「デバイスを操る非信頼コード」）。**run ごとに使い捨て Simulator**
-  （`--erase` / 都度 create+delete）を使い、同じ Mac でもテナント間で状態、keychain、スクショ、
-  ネットワークが残らないようにします。org の `ANTHROPIC_API_KEY` やアプリ認証は**ジョブのプロセス env にだけ
-  注入**し、永続させず、終了後に消します。高隔離テナントには **Mac 丸ごと専有**（または macOS VM）とし、
-  同一 Mac で 2 テナントの Simulator を同時走行させません（利用率と隔離のトレードオフです）。**ジョブ単位の egress
-  制御**も追加します。
-- **公平性、ノイジーネイバー対策。** enqueue 時に**テナント別 同時実行クォータ**を強制します（org の
-  in-flight 数を数え、超過分は org 別 pending キューで保留）。1 テナントが希少な Mac を独占できないようにするためです。
-  純 FIFO（先入れ先出し）を**重み付き公平スケジューリング**に置換します。テナント別キュー + ディスパッチャが
-  pending を持つ org をラウンドロビン（クォータ尊重）してワーカー向けキューへ供給します。優先度ティアも
-  同じ仕組みで実現します。
-- **認可境界。** 全リクエストが org（OAuth/Authelia の claim）を持ちます。全エンドポイントで org スコープ
-  を強制し、org 内 RBAC（ロールベースアクセス制御）を適用し、ワーカーには**そのジョブの org コンテキストとスコープ済みシークレットだけ**
-  渡します。
-
-#### 水平スケール後のセルフホスト SPOF（単一障害点）
-
-水平スケールすると、**Redis と Postgres が単一障害点（SPOF: Single Point of Failure）**になります（Redis はキュー、pub/sub、クォータ
-状態を保持します）。**Redis は Sentinel で HA（高可用性）化**し、**Postgres** は primary+replica（Patroni）か最低でも
-堅実なバックアップを取ります（単一ノードでも可ですが **SPOF と明記**してください）。**LB 自身**も keepalived/VRRP（Virtual Router
-Redundancy Protocol）または DNS で冗長化します。
+**5. 高可用性：単一障害点（SPOF：Single Point of Failure）。** 単一ノードでは **Redis と Postgres** が
+SPOF になります（Redis はキュー、pub/sub、そして項目 1 が入ればクォータ状態も保持します）。堅くした
+トポロジは：**Redis を Sentinel で**、**Postgres を primary + replica**（Patroni）か最低でも検証済みの
+バックアップで、ロードバランサも keepalived や Virtual Router Redundancy Protocol（VRRP）または DNS で
+冗長化します。単一ノードは、SPOF だと明示するなら自前運用では許容できます。デプロイ上の手動検証で、
+ゲートの守備範囲外です。
 
 ```
 [DNS] → [HAProxy ×2 (VRRP)] → [FastAPI ×N] ─┬─ Postgres (primary+replica)
@@ -221,17 +236,45 @@ Redundancy Protocol）または DNS で冗長化します。
                               Mac mini プール ×M（各 K スロット・run毎 erase・専有/隔離）
 ```
 
-まとめると: **前段 LB は安価なコントロールプレーンだけ**を分散し、**実体の分散はプル型キュー + スロット**が担い、
-**マルチテナント = `org_id`/RLS（データ）＋ 使い捨て Simulator（実行）＋ テナント別クォータと公平
-スケジューリング（資源）** で実現します。Mac プールは弾力的に増えないため、**公平性と隔離が設計の
-中心**になります。
+**6. 可観測性。** serve backend はすでに、シークレットを伏せた**構造化 JSON ログを stdout へ**出力します
+（[BE-0055](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging-ja.md)）。それを
+ログ基盤へ送るのはデプロイの仕事です。欠けているのは**メトリクス**で、`/metrics` エンドポイント
+（キュー長、org ごとの in-flight ジョブ数、run 所要時間、ワーカー死活）と、それを収集して可視化する
+`prometheus` / `grafana` コンテナを compose に加えます。`/metrics` エンドポイントだけが Python の面を
+持ち（ゲート検証可能な契約を持ち）、コンテナは手動検証です。`/metrics` ルートは `bajutsu/serve/` に
+触れるので、項目 1 と同じ #166 の調整注意が付きます。
+
+#### マルチテナント：4 つの軸の再整理
+
+マルチテナント設計は 4 つの軸に乗ります。3 つは出荷済みで、1 つ（公平性）が上記の項目 1 です。
+
+- **データ隔離：出荷済み。** 各 org の成果物、シナリオ、ベースラインは org ごとのオブジェクトストア
+  prefix の下にあり、全クエリが org スコープなので org をまたぐ読み取りは not-found / 403 を返します。
+  防御多層化としての Postgres 行レベルセキュリティ（RLS）は、すでに境界を強制しているアプリ層スコープの
+  上に重ねる将来のハードニングです。
+- **実行隔離：出荷済み（既知のギャップあり）。** 各 run は使い捨ての Simulator（`--erase`）で動くので、
+  共有 Mac 上で run の間に何も残りません。残るギャップ：シークレットは今日**サーバ単一**の API キーで、
+  org ごとに注入されるシークレットではありません。また**ジョブ単位の egress 制御**や、高隔離テナントへの
+  **Mac 丸ごと専有**は、まだ自動化されていない運用者の選択です。
+- **公平性、ノイジーネイバー対策：一部出荷済み。** ユーザ単位の上限はあります。希少なプールに対する
+  **org 単位**のクォータと重み付き公平スケジューリングが項目 1 です。
+- **認可境界：出荷済み。** 全リクエストが org（OAuth の claim）を持ち、各エンドポイントで org スコープを
+  強制し、org 内で RBAC を適用し、ワーカーにはそのジョブの org コンテキストだけを渡します。
+
+まとめると、**前段のロードバランサは安価なコントロールプレーンだけ**を分散し、**実体の分散はプル型
+キューとワーカーのスロット**が担い、**マルチテナント = org スコープのデータ + 使い捨て Simulator
+（実行）+ テナント別クォータと公平スケジューリング（資源）**で実現します。データ、実行、認可の軸は
+すでに org 境界をまたいでおり、Mac プールは弾力的に増えないため、**残る作業の中心は公平性と可用性**です。
 
 ### 推奨
 
-まず **段階 A**（Tailscale + LaunchAgent）から始めてください。実在する既存システムを、ほぼコードなしでチームへ
-安全に提供できます。**段階 B** へは、マルチユーザの隔離と履歴が本当に必要になってから、つまり
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) のコントロールプレーンが
-実在するようになってから移行します。
+まず **段階 A**（Tailscale + LaunchAgent）から始めてください。実在する既存システムを、ほぼコードなしで
+単一 Mac 上にチームへ安全に提供できます。マルチユーザの履歴と隔離が必要になったら **段階 B** へ移ります。
+**複数 org の隔離**を含む単一ノードのコントロールプレーンは今日動かせます
+（[`deploy/self-host/`](../../../deploy/self-host/)）。**残るプール化の作業**（org をまたぐ公平性、能力別
+ルーティング、高可用性、可観測性）は、プールと競合が現実になってから着手すれば十分です。そして
+**フルマネージドな公開クラウド**の提供は本項目ではなく
+[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) の領分のままです。
 
 ## 検討した代替案
 
@@ -246,15 +289,23 @@ Redundancy Protocol）または DNS で冗長化します。
 - **スキーマ別 / DB 別テナントと、共有スキーマ + `org_id` + RLS**。自前運用では前者を却下しました。テナント別の
   スキーマ/DB はマイグレーションと接続管理のオーバーヘッドを増やします。共有スキーマ + `org_id` + Postgres RLS の
   方が運用負荷をはるかに抑えつつ隔離を実現できます。
-- **純 FIFO スケジューリングと重み付き公平スケジューリング**。前者を却下しました。純 FIFO では 1 テナントが希少な Mac
-  プールを独占できてしまいます。テナント別キューとクォータを尊重するラウンドロビンのディスパッチャにより、
-  競合下でもプールを公平に保てます。
+- **ユーザ単位のクォータだけと、org 単位クォータの追加**。ユーザ単位の上限はすでに出荷済みで、
+  シングルテナントのデプロイならこれで十分です。しかし、多数のユーザが各自ユーザ単位の上限内に
+  とどまる *org* 全体は縛れないので、マルチ org プールでは同じ仕組みの上に org 単位の上限を重ねる必要が
+  あります（残る作業、項目 1）。一方を他方で置き換えるのでなく、両方の上限を保つのは意図的です。
+- **純 FIFO スケジューリングと重み付き公平スケジューリング**。org をまたぐ場面では前者を却下しました。
+  純 first-in, first-out（FIFO）では 1 つの org が希少な Mac プールを独占できてしまいます。org 別
+  pending キューと、クォータを尊重するラウンドロビンのディスパッチャにより、競合下でもプールを公平に
+  保てます。
 
 ## 参考
 
-`bajutsu/serve/`、[docs/ja/self-hosting.md](../../../docs/ja/self-hosting.md)（段階 A の手順書）、
+`bajutsu/serve/`、[docs/ja/self-hosting.md](../../../docs/ja/self-hosting.md)（段階 A と段階 B の手順書）、
+[`deploy/self-host/`](../../../deploy/self-host/)（動かせる単一ノードの compose 一式）、
 [cli.md](../../../docs/ja/cli.md#serve)、[ci.md](../../../docs/ja/ci.md)、
 [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
 （公開を安全にするハードニング）、
+[BE-0055](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging-ja.md)（可観測性の作業が
+土台にする構造化 serve ログ）、
 [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)（cloud-hosting の対）、
 [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)
