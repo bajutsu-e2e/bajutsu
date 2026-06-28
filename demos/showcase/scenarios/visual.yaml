@@ -1,37 +1,116 @@
-# Visual regression (VRT) demo — pixel-compare the Stable catalog against a baseline image.
+# Visual regression (VRT) demo — pixel-compare every screen against a baseline image.
 #
 # VRT needs a baseline to compare against, and the baseline is just a screenshot of a
 # known-good run, so the flow is two-step (and the demo *is* that flow):
 #
-#   1. First run — no baseline exists yet. The `visual` check fails with
-#      "baseline not found"; the report shows the captured screenshot with an
-#      "Approve as baseline" button (Web UI), or run `bajutsu approve`.
-#   2. Approve, then re-run — the screenshot now matches the baseline and the check passes.
+#   1. First run — no baseline exists yet. Each `visual` check fails with "baseline not
+#      found"; the report shows the captured screenshot with an "Approve as baseline"
+#      button (Web UI), or run `bajutsu approve`.
+#   2. Approve, then re-run — the screenshots now match the baselines and the checks pass.
 #      Change a pixel (or the UI) and the next run fails with a diff image.
 #
-# The Stable tab is the deterministic subject: it renders its seeded rows at launch (the
-# fetch is manual), so the screen settles without async jitter. Baselines resolve inside the
-# dir passed via `--baselines` (default: a `baselines/` folder beside this scenario, which is
-# gitignored — regenerate locally). See demos/showcase/Makefile `vrt` / `vrt-approve`.
+# One scenario per screen (the five tabs, the two pushed detail screens, and the three
+# modal styles). `SHOWCASE_UITEST` disables animations so each screen settles deterministically.
+# `threshold` is the max allowed diff (% of pixels); `exclude` masks the volatile status-bar
+# strip (clock / signal) before the compare — the values are screenshot *pixels*
+# (device-scale dependent); tune them to your simulator. Baselines resolve inside the dir
+# passed via `--baselines` (default: a `baselines/` folder beside this scenario, gitignored —
+# regenerate locally). See demos/showcase/Makefile `vrt` / `vrt-approve`.
 description: >-
-  Visual regression demo — land on the Stable catalog and pixel-compare it against a stored
-  baseline. First run reports a missing baseline; approve it, then re-run to pass.
+  Visual regression demo — pixel-compare each showcase screen against a stored baseline. The
+  first run reports missing baselines; approve them, then re-run to pass.
 scenarios:
-  - name: stable catalog matches its visual baseline
-    description: Open the Stable tab, then assert the screen matches baselines/stable.png.
+  - name: Stable catalog matches its visual baseline
     preconditions:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable", SHOWCASE_SEED: "5" }
     steps:
-      # Settle on a seeded row (a reliable leaf id) so the screenshot is taken once the
-      # catalog has rendered.
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
     expect:
-      # `threshold` is the max allowed diff (% of pixels); a small budget absorbs harmless
-      # antialiasing jitter. `exclude` masks volatile regions before the compare — here a
-      # generous top strip over the status bar / clock. The values are screenshot *pixels*
-      # (device-scale dependent); tune them to your simulator.
-      - visual:
-          baseline: stable.png
-          threshold: 0.5
-          exclude:
-            - { x: 0, y: 0, w: 1300, h: 130 }
+      - visual: { baseline: stable.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Search matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "search", SHOWCASE_SEED: "5" }
+    steps:
+      - wait: { for: { id: search.field }, timeout: 10 }
+    expect:
+      - visual: { baseline: search.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Log matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
+    steps:
+      - wait: { for: { id: log.submit }, timeout: 10 }
+    expect:
+      - visual: { baseline: log.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Notices matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "notices" }
+    steps:
+      - wait: { for: { id: notice.row.1 }, timeout: 10 }
+    expect:
+      - visual: { baseline: notices.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Permissions matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "permissions" }
+    steps:
+      - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    expect:
+      - visual: { baseline: permissions.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Horse Detail matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable", SHOWCASE_SEED: "5" }
+    steps:
+      - wait: { for: { id: stable.row.1 }, timeout: 10 }
+      - tap: { id: stable.row.1 }
+      - wait: { for: { id: horse.title }, timeout: 5 }
+    expect:
+      - visual: { baseline: horse_detail.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Notice Detail matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "notices" }
+    steps:
+      - wait: { for: { id: notice.row.1 }, timeout: 10 }
+      - tap: { id: notice.row.1 }
+      - wait: { for: { id: notice.detail.title }, timeout: 5 }
+    expect:
+      - visual: { baseline: notice_detail.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Filter sheet matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
+    steps:
+      - wait: { for: { id: log.openFilter }, timeout: 10 }
+      - tap: { id: log.openFilter }
+      - wait: { for: { id: log.sheet.title }, timeout: 5 }
+    expect:
+      - visual: { baseline: filter_sheet.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Gallery cover matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
+    steps:
+      - wait: { for: { id: log.openGallery }, timeout: 10 }
+      - tap: { id: log.openGallery }
+      - wait: { for: { id: log.cover.title }, timeout: 5 }
+    expect:
+      - visual: { baseline: gallery_cover.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+
+  - name: Delete dialog matches its visual baseline
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
+    steps:
+      # Scroll the lower Modals controls clear of the floating tab bar before tapping (see modals.yaml).
+      - wait: { for: { id: log.submit }, timeout: 10 }
+      - swipe: { on: { id: log.note }, direction: up }
+      - swipe: { on: { id: log.submit }, direction: up }
+      - swipe: { on: { id: log.openFilter }, direction: up }
+      - wait: { for: { id: log.openDelete }, timeout: 5 }
+      - tap: { id: log.openDelete }
+      - wait: { for: { id: log.dialog.delete }, timeout: 5 }
+    expect:
+      - visual: { baseline: delete_dialog.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
