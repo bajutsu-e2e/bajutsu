@@ -18,6 +18,10 @@ from bajutsu import _yaml, idb_version
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact
 
+# Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
+# preserving today's single-engine behaviour; all three run headless on Linux.
+WEB_ENGINES = ("chromium", "firefox", "webkit")
+
 
 class _Model(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
@@ -131,6 +135,9 @@ class TargetConfig(_Model):
     # Web backend only: run with a visible (headed) browser instead of headless. iOS ignores it.
     # The `bajutsu run --headed/--no-headed` flag (and the Web UI's "Show browser" toggle) override.
     headless: bool = True
+    # Web backend only: which Playwright engine to drive — chromium (default) / firefox / webkit.
+    # iOS ignores it. The `bajutsu run/record --browser <engine>` flag overrides per run (BE-0076).
+    browser: str = "chromium"
     # How to bring up baseUrl's host for a run (start → readiness probe → teardown). See LaunchServer.
     launch_server: LaunchServer | None = Field(default=None, alias="launchServer")
     deeplink_scheme: str | None = Field(default=None, alias="deeplinkScheme")
@@ -171,6 +178,15 @@ class TargetConfig(_Model):
     @classmethod
     def _norm(cls, v: Any) -> Any:
         return _as_list(v) if v is not None else v
+
+    @field_validator("browser")
+    @classmethod
+    def _valid_browser(cls, v: str) -> str:
+        # Reject a typo'd engine at load time (the loud, right place) rather than letting it surface
+        # as an AttributeError when the driver does `getattr(pw, engine)` mid-run (BE-0076).
+        if v not in WEB_ENGINES:
+            raise ValueError(f"invalid browser {v!r}: use one of {', '.join(WEB_ENGINES)}")
+        return v
 
     @model_validator(mode="after")
     def _need_target(self) -> TargetConfig:
@@ -286,6 +302,9 @@ class Effective:
     base_url: str | None = None
     # Web (Playwright): run headless (default) or headed (visible browser). iOS ignores it.
     headless: bool = True
+    # Web (Playwright): the rendering engine to drive — chromium (default) / firefox / webkit.
+    # iOS ignores it (BE-0076).
+    browser: str = "chromium"
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
     launch_server: LaunchServer | None = None
     # Selector the launch waits for before a run starts (BE: smoke flake). None = the default
@@ -349,6 +368,7 @@ def resolve(config: Config, target: str) -> Effective:
         bundle_id=a.bundle_id,
         base_url=a.base_url,
         headless=a.headless,
+        browser=a.browser,
         launch_server=a.launch_server,
         ready_when=a.ready_when,
         deeplink_scheme=a.deeplink_scheme,

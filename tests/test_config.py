@@ -139,6 +139,26 @@ def test_web_app_headless_override() -> None:
     assert resolve(cfg, "web").headless is False
 
 
+def test_web_app_browser_defaults_to_chromium() -> None:
+    # The browser engine defaults to chromium, preserving today's single-engine behaviour (BE-0076).
+    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/' } }")
+    assert resolve(cfg, "web").browser == "chromium"
+
+
+def test_web_app_browser_config_resolves() -> None:
+    # A target can pin its engine via `browser`; it resolves straight onto Effective (a per-target
+    # knob, like headless).
+    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/', browser: firefox } }")
+    assert resolve(cfg, "web").browser == "firefox"
+
+
+def test_web_app_unknown_browser_rejected_at_load() -> None:
+    # A typo'd engine fails loudly at config load (the field_validator), not as a mid-run
+    # AttributeError when the driver does getattr(pw, engine).
+    with pytest.raises(ValidationError, match="invalid browser"):
+        load_config("targets: { web: { baseUrl: 'http://x/', browser: safari } }")
+
+
 def test_web_app_launch_server_parsed() -> None:
     # `launchServer` declares how to bring up baseUrl's host for a run; readyUrl defaults to None
     # (run falls back to baseUrl), readyTimeout to 30s.

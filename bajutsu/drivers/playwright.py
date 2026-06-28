@@ -172,24 +172,29 @@ class _Started(NamedTuple):
 Starter = Callable[[bool], _Started]
 
 
-def _start_chromium(headless: bool) -> _Started:  # pragma: no cover - needs a browser
-    """Start Playwright + a fresh Chromium context.
+def _start_browser(engine: str) -> Starter:  # pragma: no cover - needs a browser
+    """A `Starter` that launches the named Playwright engine (chromium / firefox / webkit, BE-0076).
 
-    A fresh context is the `erase` equivalent (no cookies / storage carried over). Lazily imports
-    playwright so the default path stays free.
+    Each engine is reached the same way — `getattr(pw, engine)` — so firefox / webkit launch through
+    the identical path that was hard-wired to Chromium. A fresh context is the `erase` equivalent (no
+    cookies / storage carried over). Playwright is imported lazily so the default path stays free.
     """
-    from playwright.sync_api import sync_playwright
 
-    pw = sync_playwright().start()
-    # A headed run adds a small slow-motion so a human can actually follow each action; headless
-    # (the default / CI) stays at full speed.
-    browser = pw.chromium.launch(headless=headless, slow_mo=0 if headless else 250)
-    context = browser.new_context()
-    page = context.new_page()
-    # cast bridges playwright's real Page to our structural _Page: mypy only sees the real type
-    # when the web extra is installed, and a bare `# type: ignore` would be flagged unused when
-    # it isn't (so it can't satisfy both environments — the cast does).
-    return _Started(pw, browser, context, cast(_Page, page))
+    def start(headless: bool) -> _Started:
+        from playwright.sync_api import sync_playwright
+
+        pw = sync_playwright().start()
+        # A headed run adds a small slow-motion so a human can actually follow each action; headless
+        # (the default / CI) stays at full speed.
+        browser = getattr(pw, engine).launch(headless=headless, slow_mo=0 if headless else 250)
+        context = browser.new_context()
+        page = context.new_page()
+        # cast bridges playwright's real Page to our structural _Page: mypy only sees the real type
+        # when the web extra is installed, and a bare `# type: ignore` would be flagged unused when
+        # it isn't (so it can't satisfy both environments — the cast does).
+        return _Started(pw, browser, context, cast(_Page, page))
+
+    return start
 
 
 # Playwright's error types, imported lazily and cached so the heavy dep stays off the default path
@@ -264,15 +269,17 @@ class PlaywrightDriver:
         base_url: str,
         *,
         headless: bool = True,
+        browser: str = "chromium",
         page: _Page | None = None,
-        starter: Starter = _start_chromium,
+        starter: Starter | None = None,
         record_video_dir: Path | None = None,
     ) -> None:
         self._base_url = base_url
         # Kept so a wedged browser can be relaunched in place (BE-0077): the same starter + headless
-        # mode build the replacement process.
+        # mode build the replacement process. An explicit `starter` (the test seam) wins; otherwise
+        # build one for the requested engine so relaunch() rebuilds the *same* engine (BE-0076).
         self._headless = headless
-        self._starter = starter
+        self._starter = starter if starter is not None else _start_browser(browser)
         # When set, contexts are created with Playwright's record_video_dir so the whole scenario is
         # filmed (BE-0054); the `video` interval finalizes and collects it. None = no recording.
         self._record_video_dir = record_video_dir
@@ -290,7 +297,7 @@ class PlaywrightDriver:
         self._dialogs: list[str]
         self._page: _Page
         if page is None:  # not a test injection: start a real browser process
-            self._pw, self._browser, self._context, page = starter(headless)
+            self._pw, self._browser, self._context, page = self._starter(headless)
             # The starter's context has no recording; if a video dir is configured, swap it for a
             # recording context so the very first scenario is filmed too.
             if self._record_video_dir is not None and self._browser is not None:

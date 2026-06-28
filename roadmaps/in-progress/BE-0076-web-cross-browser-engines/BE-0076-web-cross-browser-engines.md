@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0076](BE-0076-web-cross-browser-engines.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
+| Implementing PR | [#355](https://github.com/bajutsu-e2e/bajutsu/pull/355) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -128,6 +129,14 @@ and prints a fixable checklist. For the web actuator it should report **which en
 registry path), so "you asked for `webkit` but only `chromium` is installed" surfaces here with a
 one-line fix rather than as a confusing downstream launch failure — the same role the idb-version
 check plays for iOS.
+
+**Implementation status.** Phase 1 (engine selection) has shipped — the `browser` config field and
+its load-time validation, the `--browser` flag on `run` / `record` with flag > config > default
+precedence, the engine threaded through `PlaywrightDriver` / `make_driver` / the web environment /
+`doctor`, and the on-demand `playwright install <engine>` in `ensure_web_runtime`, all covered by the
+fast `make check` gate with a fake starter (no real browser). On-device firefox / webkit launch is
+left to the web-e2e path. **Phase 2 (the `--browsers` matrix) is not yet built** and remains the
+follow-up below.
 
 ### Phase 2 — cross-browser matrix
 

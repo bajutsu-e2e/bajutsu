@@ -17,8 +17,9 @@ from bajutsu.cli._shared import (
     _backends,
     _load_effective_with_source,
     _refuse_out_in_checkout,
+    _resolve_browser,
 )
-from bajutsu.config import Effective
+from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.record import record as record_loop
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
@@ -102,6 +103,12 @@ def record(
         help="web backend: author against a visible (headed, slow-motion) browser instead of "
         "headless; default leaves the target's `headless` config",
     ),
+    browser: str = typer.Option(
+        "",
+        "--browser",
+        help=f"web backend: rendering engine to author against — {' / '.join(WEB_ENGINES)}; "
+        "default leaves the target's `browser` config (chromium)",
+    ),
     upload_exec: str = typer.Option(
         "",
         "--upload-exec",
@@ -120,6 +127,8 @@ def record(
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
+    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
+    eff = _resolve_browser(eff, browser)
     out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
     before = _usage.snapshot()
     kind = resolve_kind(agent)
@@ -130,7 +139,8 @@ def record(
         raise typer.Exit(2) from None
     backends = _backends(backend, eff.backend)
     try:
-        ensure_web_runtime(backends)  # auto-install Playwright if a web record needs it
+        # Auto-install Playwright (and the selected engine's browser) if a web record needs it.
+        ensure_web_runtime(backends, eff.browser)
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))

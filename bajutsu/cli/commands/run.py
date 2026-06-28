@@ -16,8 +16,13 @@ from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
 from bajutsu.backends import ensure_web_runtime, select_actuator
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective_with_source
-from bajutsu.config import Effective
+from bajutsu.cli._shared import (
+    DEFAULT_CONFIG,
+    _backends,
+    _load_effective_with_source,
+    _resolve_browser,
+)
+from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.report.archive import archive_run_dir
 from bajutsu.runner import device_pool, run_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
@@ -213,6 +218,12 @@ def run(
         help="web backend: show the browser (headed, slow-motion) instead of headless; "
         "default leaves the target's `headless` config (headless)",
     ),
+    browser: str = typer.Option(
+        "",
+        "--browser",
+        help=f"web backend: rendering engine to drive — {' / '.join(WEB_ENGINES)}; "
+        "default leaves the target's `browser` config (chromium)",
+    ),
     zip_run: bool = typer.Option(
         False,
         "--zip",
@@ -266,6 +277,8 @@ def run(
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
+    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
+    eff = _resolve_browser(eff, browser)
     before = _usage.snapshot()
     # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
     # is interpolated at action time, while their literal values are masked in evidence and
@@ -303,7 +316,8 @@ def run(
     # `run` path mirrors `doctor`: backend check first, then resolve the udid).
     backends = _backends(backend, eff.backend)
     try:
-        ensure_web_runtime(backends)  # auto-install Playwright if a web run needs it
+        # Auto-install Playwright (and the selected engine's browser) if a web run needs it.
+        ensure_web_runtime(backends, eff.browser)
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))

@@ -302,11 +302,13 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         udid: str,
         base_url: str | None = None,
         headless: bool = True,
+        browser: str = "chromium",
         record_video_dir: object = None,
     ) -> base.Driver:
         assert actuator == "playwright"
         assert base_url == "http://x/index.html"  # threaded from eff.base_url
         assert headless is True  # threaded from eff.headless (default headless)
+        assert browser == "chromium"  # threaded from eff.browser (default engine, BE-0076)
         d = _FakeWeb([_el("home.title", "H"), _el("ok", "OK")])
         fakes.append(d)
         return d
@@ -345,6 +347,7 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
         udid: str,
         base_url: str | None = None,
         headless: bool = True,
+        browser: str = "chromium",
         record_video_dir: object = None,
     ) -> base.Driver:
         d = _FakeWeb([_el("home", "H"), _el("ok", "OK")])

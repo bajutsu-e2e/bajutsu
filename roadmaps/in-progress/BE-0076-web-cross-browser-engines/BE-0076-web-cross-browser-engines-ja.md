@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0076](BE-0076-web-cross-browser-engines-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
+| 実装 PR | [#355](https://github.com/bajutsu-e2e/bajutsu/pull/355) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
@@ -113,6 +114,12 @@ AI の役割は従来どおり助言的なものに留まります。`triage`（
 web アクチュエータについては**どのエンジンが導入済みか**を報告すべきです（エンジンごとの存在確認。たとえば `playwright install --dry-run`
 の出力やブラウザレジストリのパスを調べる）。そうすれば「`webkit` を要求したが `chromium` しか入っていない」が一行の直し方とともにここで
 表面化し、下流の分かりにくい起動失敗にはなりません。iOS で idb バージョンチェックが担うのと同じ役割です。
+
+**実装状況。** 第 1 段階（エンジンの選択）は出荷済みです。`browser` の config フィールドとその読み込み時の検証、
+`run` / `record` の `--browser` フラグ（フラグ > config > 既定の優先順位）、`PlaywrightDriver` / `make_driver` /
+web environment / `doctor` を貫くエンジンの引き回し、そして `ensure_web_runtime` での実行時 `playwright install <engine>` を、
+いずれも fake starter を使った高速な `make check` ゲート（実ブラウザなし）で確認しています。実機での firefox / webkit の起動は
+web-e2e の経路に委ねます。**第 2 段階（`--browsers` マトリクス）はまだ未実装で**、以下の後続作業として残しています。
 
 ### 第2段階（クロスブラウザマトリクス）
 

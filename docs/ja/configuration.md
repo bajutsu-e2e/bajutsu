@@ -37,6 +37,7 @@ targets:
     baseUrl:   "http://127.0.0.1:8787/index.html"   # web では必須（bundleId の代わり）
     backend:   [web]
     headless:  true                                 # web のみ: false でブラウザを画面に表示（--headed が実行ごとに上書き）
+    browser:   chromium                             # web のみ: 描画エンジン。chromium / firefox / webkit（--browser が実行ごとに上書き）
     scenarios: demos/web/scenarios
 ```
 
@@ -51,6 +52,7 @@ targets:
 | `bundle_id` | app | iOS のターゲット。`base_url` が無いとき必須 |
 | `base_url` | app | web のターゲット URL（Playwright backend）。web では `bundle_id` の代わりに必須 |
 | `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
+| `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きします（フラグ > config > 既定）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/in-progress/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
 | `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |

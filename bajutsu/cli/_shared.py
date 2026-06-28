@@ -6,11 +6,12 @@ genuinely cross-command pieces belong here, so adding a command rarely edits thi
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import typer
 
-from bajutsu.config import Effective, load_config, resolve
+from bajutsu.config import WEB_ENGINES, Effective, load_config, resolve
 from bajutsu.config_source import is_full_sha, materialize, parse_config_spec, source_provenance
 from bajutsu.scenario import (
     Scenario,
@@ -141,3 +142,21 @@ def _refuse_out_in_checkout(out_path: Path, checkout_root: Path | None) -> None:
 def _backends(backend: str, fallback: list[str]) -> list[str]:
     """Parse a comma-separated backend string into a list, or return *fallback* when the string is empty."""
     return [b.strip() for b in backend.split(",") if b.strip()] if backend else fallback
+
+
+def _resolve_browser(eff: Effective, browser: str) -> Effective:
+    """Apply a `--browser` flag over the target's `browser` config (web backend, BE-0076).
+
+    Precedence mirrors `--headed`: an explicit flag wins, else the target's config (already on
+    `eff`), else the chromium default. An unknown engine is a clean exit 2 — before it reaches
+    Playwright's `getattr(pw, engine)`.
+
+    Raises:
+        typer.Exit: *browser* is set but not one of the known engines (exit code 2).
+    """
+    if not browser:
+        return eff
+    if browser not in WEB_ENGINES:
+        typer.echo(f"unknown --browser {browser!r}: use one of {', '.join(WEB_ENGINES)}")
+        raise typer.Exit(2)
+    return replace(eff, browser=browser)

@@ -159,7 +159,7 @@ def _repeat_audit(
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
     try:
-        ensure_web_runtime(backends)
+        ensure_web_runtime(backends, eff.browser)
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
