@@ -21,11 +21,32 @@ A scenario is just YAML, and that is the point — humans own it after the AI wr
 
 ## Detailed design
 
-The editor lives in the existing `serve` web UI as an enrichment of the scenario view, not a new surface. It has two coupled panes: a structured view of the scenario (steps and the assertion DSL, editable field by field) and the screenshot of the screen the step acts on, captured from the run that produced the report. YAML stays the canonical form — the editor reads and writes the same `*.yaml` through the existing scenario load/save path, so a round-trip through the editor and a hand-edit in `$EDITOR` are interchangeable and reviewable in a PR.
+The editor lives in the existing `serve` web UI as an enrichment of the scenario view, not a new surface. It has two coupled panes: a structured view of the scenario (steps and the assertion DSL, editable field by field) and the screenshot of the screen each step acts on. YAML stays the canonical form — the editor reads and writes the same `*.yaml` through the existing scenario load/save path, so a round-trip through the editor and a hand-edit in `$EDITOR` are interchangeable and reviewable in a PR.
 
-The element picker is the core. Clicking a point on the screenshot maps it, against that screen's captured element tree, to the element whose frame contains it, and the editor offers the most-stable selector for it: `id` first, falling back down the stability ladder (`label` / `traits`) only when no identifier is present, exactly as `resolve_unique` would. If the point resolves to more than one element, the picker shows the ambiguity and asks the author to narrow it (`within` / `index`) rather than silently picking one — the same "ambiguous fails" rule the runner enforces, surfaced at authoring time. The chosen selector is shown with its `doctor` score so the author sees immediately whether they picked a stable rung or a fragile one (a coordinate fallback is flagged).
+### The element picker is one shared component
 
-The editor stays app-agnostic and Tier 1: it operates over config (`apps.<name>` for the app, its scenarios dir, identifier namespaces feeding the `doctor` score) and the artifacts a run already produces. It introduces no LLM call — selection is structural (point-in-frame plus the `doctor` heuristic), so nothing here touches the deterministic `run` / CI gate. Saving validates the YAML through the existing `load_scenario_file` before writing, so the editor can never persist a scenario the runner would reject.
+The point → element → selector resolver is **the same component [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md) introduces** — its pure `bajutsu/capture.py` core (`hit_test(elements, point)` over `_contains` frame containment, and `resolve_capture(elements, point, namespaces) -> selector + doctor rung + ambiguity`) plus a shared `serve.js` screenshot-overlay picker. The editor and capture call the *same* resolver; only **where the element tree and screenshot come from** differs:
+
+- **Capture (BE-0012):** a live `driver.query()` + `driver.screenshot()` taken at mark time — interactive, needs a booted-device session.
+- **Editor (this item):** the artifacts the run already captured — per step, `runs/<runId>/<stepId>/elements.json` (`evidence.write_elements`) and `after.png` (the `screenshot` capture kind), where `stepId` is `<scenarioId>/<step name or stepN>` (e.g. `00-s/step0`, the key `orchestrator/loop.py` forms and `manifest.json` records). **Offline, no live device, deterministic.**
+
+So whichever of BE-0012 / BE-0013 lands first introduces the resolver and the other reuses it — never two copies. (The `el → Selector` stability ladder is already implemented three times in `crawl` / `crawl_repro` / capture, so BE-0012 already plans to factor it into one helper; the picker builds on that.)
+
+Clicking a point on a step's screenshot maps displayed-pixel → normalized `[0,1]` → points (the same scaling `crawl.Action.perform`'s `tap_point` uses), POSTs it, and the server runs `resolve_capture` against that step's `elements.json`. It offers the most-stable selector — `id` first, down the ladder (`label` / `traits`) only when no identifier is present, exactly as `resolve_unique` would — shown with its `doctor` score so the author sees a stable rung vs. a fragile one (a coordinate fallback is flagged). If the point resolves to more than one element, the picker **surfaces the ambiguity** and asks the author to narrow it (`within` / `index`) rather than silently picking one — the runner's "ambiguous fails" rule, surfaced at authoring time.
+
+### Structured editing over canonical YAML
+
+The structured pane is a **view over the YAML**, not a separate model: the editor parses the scenario with the existing load path into steps + `expect` assertions and renders them field by field; the picker writes a resolved selector into the field the author is editing. There is no hidden editor state — the YAML is the single source of truth, so the structured view and a hand-edit can never disagree.
+
+Each step is paired with the screen it acts on through its `stepId` — `<scenarioId>/<step name or stepN>`, the key the run records in `manifest.json` and writes its evidence directory under — rather than guessing a positional path. The author edits a scenario **in the context of a selected run** — the report they are already looking at; when a scenario has no run yet, the editor degrades to raw-field editing (no screenshot to pick against) rather than blocking.
+
+### Save path and seams
+
+Saving goes through the existing author-owned write path, `serve/scenarios.py:ScenarioScope.save()`, and **validates with `load_scenario_file` before writing**, so the editor can never persist a scenario the runner would reject. Concretely: routes in `serve/handler.py` (with the FastAPI `server/app.py` mirror) — load a scenario + its run's per-step artifacts for editing, resolve a picked point to a selector, and save; orchestration in `serve/operations.py`; the two-pane UI + picker overlay in `bajutsu/templates/serve.js`, reusing the crawl report's screenshot-overlay precedent. Unlike capture, the editor holds **no live driver across requests** — it reads captured artifacts statelessly, keeping BE-0011's stateless shell-out model.
+
+### Determinism, app-agnosticism, and the gate
+
+The editor stays Tier 1 and app-agnostic: it reads `targets.<name>` (the app, its scenarios dir, the identifier namespaces feeding the `doctor` score) and the artifacts a run already produces. Selection is structural (point-in-frame plus the `doctor` heuristic) — **no LLM, no `ANTHROPIC_API_KEY`** — so nothing here touches the deterministic `run` / CI gate; it only lowers the cost of the human-owned edit loop.
 
 ## Alternatives considered
 
@@ -35,4 +56,6 @@ The editor stays app-agnostic and Tier 1: it operates over config (`apps.<name>`
 
 ## References
 
-[scenarios.md](../../../docs/scenarios.md), [selectors.md](../../../docs/selectors.md)
+[scenarios.md](../../../docs/scenarios.md), [selectors.md](../../../docs/selectors.md); `bajutsu/drivers/base.py` (`_contains`, `resolve_unique`, `Selector` / `Element`), `bajutsu/doctor.py` (`score`, `ACTIONABLE_TRAITS`), `bajutsu/evidence.py` (`write_elements` → per-step `elements.json`, the `screenshot` kind → `after.png`), `bajutsu/serve/scenarios.py` (`ScenarioScope.save`), `bajutsu/scenario/load.py` (`load_scenario_file`), `bajutsu/serve/` (`handler.py` routing, `operations.py`), `bajutsu/templates/serve.js` + the crawl report's screenshot-overlay precedent.
+
+**Dependencies / related items:** [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) (the `serve` host, `ScenarioScope`, screenshot plumbing this extends), [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md) (**shares the point → element picker + doctor score — one resolver, two sources**: the editor reads captured artifacts, capture reads a live driver), [BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md) (the role demarcation across the authoring surfaces).
