@@ -35,13 +35,15 @@ When you add a roadmap item:
    ```bash
    ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1
    ```
-   Never reuse, skip, or guess a number. **Or leave it undetermined:** name the item
-   `BE-XXXX-<slug>` (the literal placeholder) and let CI assign the number — the
-   [`roadmap-id`](../.github/workflows/roadmap-id.yml) workflow runs
-   [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) on every PR
-   touching `roadmaps/**`, allocates the next free IDs, and pushes the rename back to
-   the branch. This is what the `ideation` skill does, and it avoids two
-   in-flight branches racing for the same number.
+   Never reuse, skip, or guess a number. **The norm, though, is to leave it undetermined:** name the
+   item `BE-XXXX-<slug>` (the literal placeholder) and let CI assign the number. The item keeps
+   `BE-XXXX` through review and the merge, and the [`roadmap-id`](../.github/workflows/roadmap-id.yml)
+   workflow runs [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) **on `main`
+   after the PR merges**, allocating the next free IDs in merge order and committing the rename to
+   `main` (BE-0089). This is what the `ideation` skill does; it keeps the `BE-NNNN` sequence
+   contiguous (a rejected PR never spends a number) and avoids two in-flight branches racing for one.
+   A BE-creation PR therefore carries **no `[BE-NNNN]` title prefix** — the real number is not known
+   until after the merge.
 2. **Create the item directory and both language files** — under `roadmaps/proposals/` for a
    proposal, or under `roadmaps/implemented/` with `Status: Implemented` when the same PR also ships
    the implementation (a new item is a proposal first *unless* its code lands with it) —
