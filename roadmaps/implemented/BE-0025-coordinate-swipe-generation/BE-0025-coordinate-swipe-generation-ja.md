@@ -39,7 +39,7 @@ private func coord(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
 - **可搬性。** 座標は `withNormalizedOffset` でアプリウィンドウの左上を基準にします。これは bajutsu がすでに用いている原点の取り方と同じなので、生成テストは `run` と同じ意味で数値を読みます。座標形式は引き続き、ドキュメント上の最終手段です（[scenarios](../../../docs/ja/scenarios.md#swipe)）。セレクタ形式が優先されるのは、まさにレイアウト変更に耐えるからです。
 - **アプリ非依存。** 既存の `el` / `byLabel` / `matchingId` ヘルパと同様、アプリごとの設定は導入せず、出力されるヘルパはアプリをまたいで同一です。
 
-`// TODO` フォールバック自体は残ります。本当に未対応の構文は引き続きここで捕捉します（[BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) を参照）。本提案はその集合から座標 swipe を取り除くだけです。
+`// TODO` フォールバック自体は残ります。本当に未対応の構文は引き続きここで捕捉します（[BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) を参照）。本提案はその集合から座標 swipe を取り除くだけです。
 
 ## 検討した代替案
 

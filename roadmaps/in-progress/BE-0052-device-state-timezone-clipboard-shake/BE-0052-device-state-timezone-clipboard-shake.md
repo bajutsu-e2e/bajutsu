@@ -84,7 +84,7 @@ Prime directives preserved:
   string), it lives in the scenario or, when shared across scenarios, in `apps.<name>` config.
 - **Codegen.** These have no app-level XCUITest equivalent (they are `simctl`-level), so codegen
   emits a labeled `// TODO` naming the command, consistent with
-  [BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md).
+  [BE-0026](../../implemented/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md).
 
 ### Implementation status
 

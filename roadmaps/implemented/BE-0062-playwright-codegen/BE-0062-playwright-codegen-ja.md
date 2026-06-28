@@ -131,4 +131,4 @@ test.describe('Components', () => {
 [BE-0041 — Web（Playwright）バックエンド](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md),
 [BE-0019 — XCUITest backend](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md),
 [BE-0025 — 座標 swipe の生成](../BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation-ja.md),
-[BE-0026 — 未対応構文の縮小](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)
+[BE-0026 — 未対応構文の縮小](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md)
