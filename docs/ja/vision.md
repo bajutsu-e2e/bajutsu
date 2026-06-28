@@ -66,7 +66,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
   分離、`subprocess.Popen` からジョブキューへのリファクタ、そして公開時に必須となるセキュリティ堅牢化です。
 - **[BE-0016（セルフホスティング）](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)**：自前の Mac を扱います。今日すぐ使える単一 Mac 構成と、完全にセルフホストする
   マルチテナント構成です。
-- **MCP（Model Context Protocol）統合**（[roadmap → 統合・自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）：`run`/`doctor`/`record`/`codegen` を MCP ツールとして、
+- **MCP（Model Context Protocol）統合**（[roadmap → 統合と自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）：`run`/`doctor`/`record`/`codegen` を MCP ツールとして、
   証跡を MCP リソースとして公開し、エージェントが直接 Bajutsu を駆動できるようにします。これは Tier-1 の境界の内側に収まります。
   エージェントは著者と調査役であり、ゲートは決定的なままです。
 
@@ -111,7 +111,7 @@ Bajutsu は 3 つの独立した軸に沿って広がります。これらは合
 1. **Playwright による Web**（[multi-platform](multi-platform.md) 段階 1）。コアが
    プラットフォーム中立であることを、**既存の Linux ゲートの内側**（[ci](ci.md)）で、Mac もエミュレータも使わずに
    示せます。同時に、能力モデルの豊かな側（ネイティブの network、video、意味的操作）を行使します。
-2. **MCP サーバ**（[roadmap → 統合・自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）。表面積が小さく、Tier-1 のオーサリングループへの
+2. **MCP サーバ**（[roadmap → 統合と自動化](../../roadmaps/README-ja.md#統合と自動化mcp-化)）。表面積が小さく、Tier-1 のオーサリングループへの
    レバレッジが大きく、しかもゲートに触れません。
 3. **ビジュアル回帰アサーション**（[roadmap: BE-0029](../../roadmaps/implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)）。競合が
    AI でゲートしている決定的な能力であり、directive を緊張させるどころか、むしろ強める差別化要素です。

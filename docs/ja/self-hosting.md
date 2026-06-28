@@ -182,7 +182,7 @@ GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/ca
 `BAJUTSU_OAUTH_GITHUB_CLIENT_ID`／`_SECRET`／`_REDIRECT_URI` と、許可リスト `BAJUTSU_OAUTH_ALLOWED_USERS`
 （任意で `BAJUTSU_OAUTH_ADMINS`／`BAJUTSU_OAUTH_VIEWERS`）を設定します。許可リストのユーザは既定で **editor**
 （run 可）、admin はサーバ設定（config、API キー、provider）も変更でき、viewer は閲覧のみです。トークンは
-オペレータ・CI 用の認証（full access）のまま、OAuth がチームのユーザごとのログインです。
+オペレータと CI 向けの認証（full access）のまま、OAuth がチームのユーザごとのログインです。
 
 ログインは常に `read:org` scope を要求し、ユーザを GitHub org メンバーシップから org に対応づけられるようにします
 （config の `githubOrgs`）。そのため同意画面には常に organization へのアクセスが表示されます。シングルテナント構成

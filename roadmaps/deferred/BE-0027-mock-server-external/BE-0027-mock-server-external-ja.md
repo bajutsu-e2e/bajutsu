@@ -8,7 +8,7 @@
 | 提案 | [BE-0027](BE-0027-mock-server-external-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案（保留）** |
-| トピック | その他・保留 |
+| トピック | その他、保留 |
 <!-- /BE-METADATA -->
 
 ## はじめに

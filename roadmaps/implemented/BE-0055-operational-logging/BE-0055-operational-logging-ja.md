@@ -14,9 +14,9 @@
 
 ## はじめに
 
-永続化・identity・マルチテナントの実装が着地し
+永続化、identity、マルチテナントの実装が着地し
 （[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）、ホスト型の
-`bajutsu serve` は**複数プロセス・マルチテナント**のサービスになりました。制御プレーンとリモートの macOS
+`bajutsu serve` は**複数プロセスのマルチテナント**サービスになりました。制御プレーンとリモートの macOS
 worker から成り、org でスコープされます。ところが、ツール自身の**運用ログはほぼ存在しません**。コードベース
 全体で `getLogger` の呼び出しは 1 箇所だけで、stdlib のリクエストハンドラはリクエストごとのログを意図的に
 抑止しています。本提案は、ホスト型 serve のための**運用ログの契約**を設計します。**構造化**（JSON）し、id で
@@ -26,13 +26,13 @@ worker から成り、org でスコープされます。ところが、ツール
 
 - **証跡**：**テスト対象**の軌跡（`deviceLog`、`appTrace`、network、actionLog）。evidence サブシステムが取得し
   機密をスクラブします（[evidence.md](../../../docs/ja/evidence.md)）。本提案の対象ではありません。
-- **run 出力**：`--progress` の scenario/step ストリーム。serve の LogBus 経由でライブ配信・保存します
+- **run 出力**：`--progress` の scenario/step ストリーム。serve の LogBus 経由でライブ配信し、保存します
   （BE-0015）。本提案の対象ではありません。
 - **監査ログ**：誰が何をしたかを `audit_log` テーブルに記録します（BE-0015）。隣接しますが別物です（その閲覧
   手段は別の関心事）。
 
 設計は prime directive（[CLAUDE.md](../../../CLAUDE.md)、[DESIGN.md](../../../DESIGN.md)）に従います。決定的な
-`run` / CI ゲートは軽量（stdlib のみ・静か・人間可読）に保ち、**機密はログ行に絶対に出さない**ことが前提です。
+`run` / CI ゲートは軽量（stdlib のみ、静か、人間可読）に保ち、**機密はログ行に絶対に出さない**ことが前提です。
 
 ## 動機
 
@@ -51,7 +51,7 @@ worker から成り、org でスコープされます。ところが、ツール
 
 ### 2 層の切り分け（ゲートを太らせない）
 
-決定的な `run`（Tier 2 / CI ゲート）は現状の挙動を保ちます。人間可読・静か・**stdlib ロギングのみ**で、新しい
+決定的な `run`（Tier 2 / CI ゲート）は現状の挙動を保ちます。人間可読、静か、**stdlib ロギングのみ**で、新しい
 依存は足しません。構造化された運用ログは **serve モード**の関心事です。差分をコードではなく config に置くため、
 環境変数で選択します。
 
@@ -69,8 +69,8 @@ worker から成り、org でスコープされます。ところが、ツール
 `contextvars` の利用もありません。つまりここは更地への配線で、1 か所に据えます。
 
 - **新規 `bajutsu/serve/oplog.py`**（stdlib の `logging` を隠さない名前）が契約一式を持ちます。`configure(format, level)`
-  がルートのフォーマッタと redact／相関フィルタを据え、`contextvars`・event 名のレジストリ・JSON フォーマッタも
-  ここに置きます。`serve` が起動時に呼び、CLI／`run` 経路は import しません（ゲートを stdlib のみ・静かに保ちます）。
+  がルートのフォーマッタと redact／相関フィルタを据え、`contextvars`、event 名のレジストリ、JSON フォーマッタも
+  ここに置きます。`serve` が起動時に呼び、CLI／`run` 経路は import しません（ゲートを stdlib のみで静かに保ちます）。
 - **HTTP surface は 2 つ、フィルタは 1 枚。** フィルタは**ルートロガー**に座るので、hosted の FastAPI アプリ
   （[`serve/server/app.py`](../../../bajutsu/serve/server/app.py)。リクエスト境界に `@app.middleware("http")` がすでに
   あり、`request_id` を採番して contextvar に bind する自然な場所）と、ローカルの stdlib サーバ
@@ -84,7 +84,7 @@ worker から成り、org でスコープされます。ところが、ツール
 - **redaction の再利用。** フィルタは既存の `Redactor`（[`redaction.py`](../../../bajutsu/redaction.py) の `redact_text`）
   を値マスクに使い、新しいキーベースのマスクを足します。
 
-### 契約 — 機械チェック可能な不変条件
+### 契約（機械チェック可能な不変条件）
 
 運用ログは**非決定的**（タイムスタンプや順序）なので、証跡（[DESIGN §2](../../../DESIGN.md)）と違って
 バイト一致は求めません。代わりに**スキーマと不変条件の束**を定め、それぞれをゲートのテストで検証します。
@@ -135,9 +135,9 @@ worker から成り、org でスコープされます。ところが、ツール
 
 値マスクの対象は、機密が 2 つのスコープに在るため、**2 つのソース**を持ちます。
 
-- **静的（プロセス存続中）・制御プレーン側** — `BAJUTSU_SERVE_TOKEN`、OAuth の client secret／session id、
+- **静的（プロセス存続中）、制御プレーン側**：`BAJUTSU_SERVE_TOKEN`、OAuth の client secret／session id、
   `ANTHROPIC_API_KEY`。`oplog.configure` で一度読み、プロセス全体でマスクします。
-- **run スコープ・worker 側** — run が `${secrets.X}` から解決した値です。これらはプロセス全体では共有されないので、
+- **run スコープ、worker 側**：run が `${secrets.X}` から解決した値です。これらはプロセス全体では共有されないので、
   worker は run 開始時に、その run の解決済み機密値を入れた **run スコープの `Redactor`** を `contextvar` に bind し、
   ルートのフィルタはその run の間だけそれを参照します。スコープは run 終了で外れます。これで、env 由来だけのマスクが
   残す「run が解決した機密」の穴を、プロセス全体に晒すことなく塞ぎます。
@@ -162,12 +162,12 @@ worker から成り、org でスコープされます。ところが、ツール
   FastAPI の async／threadpool の両方で動き、すべてのシグネチャに id を通さずに済みます。
 - **構造化ロギングのライブラリ**（`structlog` など）：今は却下。stdlib のみでゲートを軽く保ちます。手書きの
   JSON フォーマッタで足りなくなれば再検討します。
-- **「可観測性・運用」という専用トピックの新設**：見送り。本項目は当面「Web UI のホスティング」の下に置きます。
+- **「可観測性、運用」という専用トピックの新設**：見送り。本項目は当面「Web UI のホスティング」の下に置きます。
   監査ログ閲覧やメトリクスの項目が続くなら、その時に専用トピックを切り出せます。
 
 ## 参考
 
-- [DESIGN.md](../../../DESIGN.md) §2 — 決定性優先・機密マスク。
+- [DESIGN.md](../../../DESIGN.md) §2 — 決定性優先、機密マスク。
 - [BE-0015 — Web UI の公開ホスティング](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — ホスト型トポロジと、本項目が実体化する「構造化 JSON ログ」の可観測性行。
 - [BE-0032 — Secret 変数](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md) — 本項目と共有する機密マスクの仕組み。
 - [BE-0047 — AI データ主権](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) — 本項目が運用ログへ広げる「redact された経路」の思想。

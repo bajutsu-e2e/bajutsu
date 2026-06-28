@@ -31,14 +31,14 @@
 
 | 層 | プラットフォーム追加時の扱い |
 |---|---|
-| シナリオ DSL・文法 | **不変。** ステップ・待機・アサーション・証跡トークンはプラットフォーム中立 |
+| シナリオ DSL と文法 | **不変。** ステップ、待機、アサーション、証跡トークンはプラットフォーム中立 |
 | セレクタモデルと解決（`drivers/base.py` `resolve_unique`） | **不変。** 0/1/2+ 件のセマンティクスと「曖昧なら即失敗」はバックエンド非依存 |
 | 機械アサーション（`assertions.py`） | **不変。** `exists`/`value`/`label`/`count`/`enabled`/… は正規化済み `Element` ツリーを評価 |
 | オーケストレータループ（`orchestrator.py`） | **不変。** observe → act → verify。条件待機は `query()` をポーリング |
-| 証跡サブシステム（`evidence.py`・capturePolicy・`manifest.json`） | **ほぼ不変。** capture *トークン*は据え置き、*provider* がプラットフォーム別の取得元を追加 |
+| 証跡サブシステム（`evidence.py`、capturePolicy、`manifest.json`） | **ほぼ不変。** capture *トークン*は据え置き、*provider* がプラットフォーム別の取得元を追加 |
 | レポーター（`report.py`） | **不変。** manifest / JUnit / HTML はプラットフォーム中立 |
-| 設定の階層（`config.py`・`defaults × apps`） | **拡張。** `platform` フィールド + プラットフォーム別ターゲットフィールド（後述） |
-| **Driver バックエンド**（`drivers/*.py`・`capabilities()`） | **プラットフォームごとに新規**（actuator） |
+| 設定の階層（`config.py`、`defaults × apps`） | **拡張。** `platform` フィールド + プラットフォーム別ターゲットフィールド（後述） |
+| **Driver バックエンド**（`drivers/*.py`、`capabilities()`） | **プラットフォームごとに新規**（actuator） |
 | **環境/ライフサイクルマネージャ**（`env.py` の同位） | **プラットフォームごとに新規**（boot / clean / launch / deeplink） |
 | **doctor 規約チェック**（`doctor.py`） | **プラットフォームごとに新規**（§7 相当の充足度スコア） |
 | **codegen エミッタ**（`codegen.py`） | **プラットフォームごとに新規**（変換先のネイティブテスト） |
@@ -104,7 +104,7 @@ apps:
 | 原則 | iOS | Android | Web |
 |---|---|---|---|
 | 曖昧なセレクタは即失敗 | `resolve_unique`（共有） | `resolve_unique`（共有） | `resolve_unique`（共有） |
-| 条件待機のみ・固定 sleep なし | `query()` をポーリング | `uiautomator dump` をポーリング | Playwright 自動待機 + ポーリング |
+| 条件待機のみ、固定 sleep なし | `query()` をポーリング | `uiautomator dump` をポーリング | Playwright 自動待機 + ポーリング |
 | テストごとにクリーン環境 | `simctl erase` | `pm clear` | 新規 `new_context()` |
 | 合否は機械チェックのみ | 正規化 `Element` | 正規化 `Element` | 正規化 `Element` |
 
