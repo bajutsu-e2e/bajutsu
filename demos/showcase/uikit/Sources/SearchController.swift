@@ -1,15 +1,16 @@
 import UIKit
 
-/// Tab: Search (SPEC §5.2). A search field filters the same catalog by name,
-/// case-insensitive; a count text mirrors the number of matches; an empty state shows
-/// when nothing matches.
-final class SearchController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate {
+/// Tab: Search (SPEC §5.2). A search field filters the same catalog by name, case-insensitive;
+/// a count text mirrors the number of matches; an empty state shows when nothing matches. Laid
+/// out to mirror the SwiftUI twin: a plain rounded text field + Clear, a centered match count,
+/// and a grouped list.
+final class SearchController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     private let model: AppModel
     private var results: [Horse]
 
-    private let searchBar = UISearchBar()
+    private let searchField = UITextField()
     private let countLabel = UILabel()
-    private let tableView = UITableView(frame: .zero, style: .plain)
+    private let tableView = UITableView(frame: .zero, style: .insetGrouped)
     private let emptyLabel = UILabel()
 
     init(model: AppModel) {
@@ -23,17 +24,20 @@ final class SearchController: UIViewController, UITableViewDataSource, UITableVi
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .systemGroupedBackground
         title = "Search"
-        navigationItem.titleView = makeTitleView("Search").accessibilityID("search.title")
 
-        searchBar.placeholder = "Filter horses"
-        searchBar.delegate = self
-        searchBar.showsCancelButton = false
-        searchBar.autocapitalizationType = .none
-        searchBar.searchTextField.accessibilityID("search.field")
-        // The bar's built-in clear button doubles as the spec's clear control.
-        searchBar.searchTextField.clearButtonMode = .whileEditing
+        searchField.placeholder = "Search horses"
+        searchField.borderStyle = .roundedRect
+        searchField.autocapitalizationType = .none
+        // ASCII keyboard + no autocorrect so typed Latin text is not mangled by an active IME
+        // (a Japanese keyboard turns "Horse 3" into romaji→kana).
+        searchField.autocorrectionType = .no
+        searchField.keyboardType = .asciiCapable
+        searchField.clearButtonMode = .whileEditing
+        searchField.accessibilityID("search.field")
+        searchField.addAction(
+            UIAction { [weak self] _ in self?.applyFilter(self?.searchField.text ?? "") }, for: .editingChanged)
 
         let clear = UIButton(type: .system, primaryAction: UIAction(title: "Clear") { [weak self] _ in
             self?.clearQuery()
@@ -42,42 +46,48 @@ final class SearchController: UIViewController, UITableViewDataSource, UITableVi
 
         countLabel.font = .preferredFont(forTextStyle: .footnote)
         countLabel.textColor = .secondaryLabel
+        countLabel.textAlignment = .center
         countLabel.accessibilityID("search.count")
 
         emptyLabel.text = "No matches"
         emptyLabel.textColor = .secondaryLabel
         emptyLabel.textAlignment = .center
         emptyLabel.accessibilityID("search.results-empty")
+        emptyLabel.isHidden = true
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
 
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.backgroundColor = .clear
         tableView.translatesAutoresizingMaskIntoConstraints = false
 
-        searchBar.translatesAutoresizingMaskIntoConstraints = false
-        clear.translatesAutoresizingMaskIntoConstraints = false
+        let searchRow = UIStackView(arrangedSubviews: [searchField, clear])
+        searchRow.spacing = 8
+        searchRow.alignment = .center
+        searchRow.translatesAutoresizingMaskIntoConstraints = false
         countLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        view.addSubview(searchBar)
-        view.addSubview(clear)
+        view.addSubview(searchRow)
         view.addSubview(countLabel)
         view.addSubview(tableView)
+        view.addSubview(emptyLabel)
 
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            searchBar.topAnchor.constraint(equalTo: guide.topAnchor),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            searchBar.trailingAnchor.constraint(equalTo: clear.leadingAnchor, constant: -8),
+            searchRow.topAnchor.constraint(equalTo: guide.topAnchor, constant: 8),
+            searchRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            searchRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
 
-            clear.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
-            clear.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-
-            countLabel.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 4),
-            countLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            countLabel.topAnchor.constraint(equalTo: searchRow.bottomAnchor, constant: 8),
+            countLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
 
             tableView.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 4),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            emptyLabel.centerXAnchor.constraint(equalTo: tableView.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: tableView.centerYAnchor),
         ])
 
         applyFilter("")
@@ -87,22 +97,16 @@ final class SearchController: UIViewController, UITableViewDataSource, UITableVi
         results = query.isEmpty
             ? model.horses
             : model.horses.filter { $0.name.localizedCaseInsensitiveContains(query) }
-        countLabel.text = "\(results.count) matches"
+        countLabel.text = "Matches: \(results.count)"
         countLabel.accessibilityStateValue(String(results.count))
-        tableView.backgroundView = (results.isEmpty && !query.isEmpty) ? emptyLabel : nil
+        emptyLabel.isHidden = !(results.isEmpty && !query.isEmpty)
         tableView.reloadData()
     }
 
     private func clearQuery() {
-        searchBar.text = ""
-        searchBar.resignFirstResponder()
+        searchField.text = ""
+        searchField.resignFirstResponder()
         applyFilter("")
-    }
-
-    // MARK: - UISearchBarDelegate
-
-    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        applyFilter(searchText)
     }
 
     // MARK: - Table

@@ -10,7 +10,8 @@
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: permissions }
   steps:
-    - wait: { for: { id: perm.title }, timeout: 10 }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+      capture: [video]
     - assert:
         - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }
     - tap: { id: perm.requestNotif }

@@ -18,7 +18,6 @@ final class NoticesController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Notices"
-        navigationItem.titleView = makeTitleView("Notices").accessibilityID("notice.title")
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -43,7 +42,7 @@ final class NoticesController: UITableViewController {
 }
 
 /// Notice Detail (SPEC §5.5) — pushed from the Notices list or via …://notice/<id>.
-/// Shows the notice's title and body; nav.back pops the stack.
+/// Shows the notice's title and body; the system back button pops the stack.
 final class NoticeDetailController: UIViewController {
     private let notice: Notice
 
@@ -57,12 +56,9 @@ final class NoticeDetailController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
         title = notice.title
-        installBackButton()
-        // The nav title is unlabeled; the screen's identifying id lives on the content
-        // title below, matching the SwiftUI twin (so the a11y trees stay identical).
-        navigationItem.titleView = makeTitleView(notice.title)
+        navigationItem.largeTitleDisplayMode = .never  // inline title, like the SwiftUI detail
+        // The standard system back button pops back; idb drives it by its built-in id `BackButton`.
 
         let titleLabel = UILabel()
         titleLabel.text = notice.title
@@ -76,16 +72,7 @@ final class NoticeDetailController: UIViewController {
         bodyLabel.numberOfLines = 0
         bodyLabel.accessibilityID("notice.detail.body")
 
-        let stack = UIStackView(arrangedSubviews: [titleLabel, bodyLabel])
-        stack.axis = .vertical
-        stack.spacing = 16
-        stack.alignment = .leading
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-        ])
+        // A grouped form mirroring the SwiftUI Notice Detail.
+        installGroupedForm([makeSectionCard([titleLabel, bodyLabel])])
     }
 }
