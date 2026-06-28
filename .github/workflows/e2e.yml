@@ -117,9 +117,13 @@ jobs:
           brew_pid=$!
           uv sync --extra idb --no-dev &
           sync_pid=$!
+          # If the build fails, `set -e` exits the step before the waits; the trap stops the
+          # background fetches so they don't keep burning metered minutes or trail confusing logs.
+          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
           make -C demos/features sample-build
           wait "$brew_pid"
           wait "$sync_pid"
+          trap - EXIT  # success: the fetches finished, so don't kill on the normal exit
 
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
