@@ -27,6 +27,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable", SHOWCASE_SEED: "5" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
+        capture: [video]
     expect:
       - visual: { baseline: stable.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
@@ -35,6 +36,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "search", SHOWCASE_SEED: "5" }
     steps:
       - wait: { for: { id: search.field }, timeout: 10 }
+        capture: [video]
     expect:
       - visual: { baseline: search.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
@@ -43,6 +45,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
     steps:
       - wait: { for: { id: log.submit }, timeout: 10 }
+        capture: [video]
     expect:
       - visual: { baseline: log.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
@@ -51,6 +54,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "notices" }
     steps:
       - wait: { for: { id: notice.row.1 }, timeout: 10 }
+        capture: [video]
     expect:
       - visual: { baseline: notices.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
@@ -59,6 +63,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "permissions" }
     steps:
       - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+        capture: [video]
     expect:
       - visual: { baseline: permissions.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
@@ -67,6 +72,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable", SHOWCASE_SEED: "5" }
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
+        capture: [video]
       - tap: { id: stable.row.1 }
       - wait: { for: { id: horse.title }, timeout: 5 }
     expect:
@@ -77,6 +83,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "notices" }
     steps:
       - wait: { for: { id: notice.row.1 }, timeout: 10 }
+        capture: [video]
       - tap: { id: notice.row.1 }
       - wait: { for: { id: notice.detail.title }, timeout: 5 }
     expect:
@@ -87,6 +94,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
     steps:
       - wait: { for: { id: log.openFilter }, timeout: 10 }
+        capture: [video]
       - tap: { id: log.openFilter }
       - wait: { for: { id: log.sheet.title }, timeout: 5 }
     expect:
@@ -97,6 +105,7 @@ scenarios:
       launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
     steps:
       - wait: { for: { id: log.openGallery }, timeout: 10 }
+        capture: [video]
       - tap: { id: log.openGallery }
       - wait: { for: { id: log.cover.title }, timeout: 5 }
     expect:
@@ -108,6 +117,7 @@ scenarios:
     steps:
       # Scroll the lower Modals controls clear of the floating tab bar before tapping (see modals.yaml).
       - wait: { for: { id: log.submit }, timeout: 10 }
+        capture: [video]
       - swipe: { on: { id: log.note }, direction: up }
       - swipe: { on: { id: log.submit }, direction: up }
       - swipe: { on: { id: log.openFilter }, direction: up }

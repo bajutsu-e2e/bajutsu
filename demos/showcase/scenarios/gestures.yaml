@@ -12,6 +12,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
   steps:
     - wait: { for: { id: log.submit }, timeout: 10 }
+      capture: [video]
     - swipe: { on: { id: log.submit }, direction: up }
     - swipe: { on: { id: log.dialog.value }, direction: up }
     - wait: { for: { id: log.longpress }, timeout: 5 }

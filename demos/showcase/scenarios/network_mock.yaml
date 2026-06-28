@@ -13,6 +13,7 @@
       respond: { status: 201, body: "{\"ok\":true}" }
   steps:
     - wait: { for: { id: log.submit }, timeout: 10 }
+      capture: [video]
     - tap: { id: log.submit }
     - wait: { until: { request: { method: POST, path: /post, status: 201 } }, timeout: 6 }
     - wait: { for: { id: log.toast }, timeout: 4 }

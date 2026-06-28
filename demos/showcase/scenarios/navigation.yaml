@@ -9,6 +9,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
   steps:
     - wait: { for: { id: stable.row.3 }, timeout: 10 }
+      capture: [video]
     - tap: { id: stable.row.3 }
     - wait: { for: { id: horse.title }, timeout: 5 }
     - assert:

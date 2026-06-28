@@ -15,6 +15,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
   steps:
     - tap: { id: log.openFilter }
+      capture: [video]
     - wait: { for: { id: log.sheet.title }, timeout: 5 }
     - tap: { id: log.sheet.apply }
     - wait: { until: { gone: { id: log.sheet.title } }, timeout: 5 }
@@ -26,6 +27,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
   steps:
     - tap: { id: log.openGallery }
+      capture: [video]
     - wait: { for: { id: log.cover.title }, timeout: 5 }
     - tap: { id: log.cover.close }
     - wait: { until: { gone: { id: log.cover.title } }, timeout: 5 }
@@ -38,6 +40,7 @@
   steps:
     - assert:
         - value: { sel: { id: search.count }, equals: "5" }
+      capture: [video]
     - type: { text: "Horse 5", into: { id: search.field } }
     - wait: { for: { id: search.row.5 }, timeout: 5 }
   expect:
