@@ -387,3 +387,61 @@ def test_device_pool_web_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> N
             lease(eff_no_url, _scn("a"))
     finally:
         shutdown()
+
+
+def test_device_pool_uses_a_resolved_network_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    # When a same-platform read-only provider is resolved (BE-0020), its collector supplies network
+    # instead of the actuator's app-side one, and the lease's provenance names it as a fallback.
+    monkeypatch.setattr(
+        "bajutsu.environment.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    ex = NetworkExchange(method="GET", path="/items", status=200)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+        make_driver=lambda actuator, udid: FakeDriver(exchanges=[ex]),
+        evidence_providers=lambda backends, actuator, available: ({"network": "fake"}, {}),
+    )
+    lz = None
+    try:
+        lz = lease(_eff(), _scn("a"))
+        assert lz.collector_provider == "fake (fallback)"
+        assert lz.collector is not None and lz.collector.snapshot() == [ex]
+    finally:
+        if lz is not None:
+            lz.release()
+        shutdown()
+
+
+def test_device_pool_network_lease_defaults_to_collector_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # With no fallback resolved (today's iOS), the app-side collector supplies network and the
+    # provenance stays "collector".
+    monkeypatch.setattr(
+        "bajutsu.environment.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["idb"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    lz = None
+    try:
+        lz = lease(_eff(), _scn("a"))
+        assert lz.collector_provider == "collector"
+    finally:
+        if lz is not None:
+            lz.release()
+        shutdown()

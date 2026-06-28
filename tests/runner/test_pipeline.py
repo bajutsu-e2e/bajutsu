@@ -310,3 +310,65 @@ def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> N
     run_dir = tmp_path / "runs" / "run1"
     for name in ("manifest.json", "junit.xml", "scenario.yaml"):
         assert secret not in (run_dir / name).read_text(encoding="utf-8")
+
+
+def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
+    from bajutsu.network import NetworkExchange
+    from bajutsu.redaction import Redactor
+    from bajutsu.runner.pipeline import _write_network
+
+    ex = NetworkExchange(method="GET", path="/a", status=200)
+    art = _write_network(
+        [(ex, 1.0)], 0.0, tmp_path, "00-s", Redactor(None), provider="fake (fallback)"
+    )
+    assert art is not None and art.provider == "fake (fallback)"
+
+
+class _ConstantCollector:
+    """A Collector that always reports the same exchanges (clear is a no-op) — test scaffolding so
+    provenance/threading can be checked without live traffic during a fake run (BE-0020)."""
+
+    def __init__(self, exchanges: list[base.Element]) -> None:  # type: ignore[name-defined]
+        self._ex = list(exchanges)
+
+    def snapshot(self):  # type: ignore[no-untyped-def]
+        return list(self._ex)
+
+    def snapshot_timed(self):  # type: ignore[no-untyped-def]
+        return [(e, 0.0) for e in self._ex]
+
+    def clear(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+
+def test_run_all_threads_collector_provider_and_discloses_skips(tmp_path: Path) -> None:
+    from bajutsu.evidence import FileSink
+    from bajutsu.network import NetworkExchange
+    from bajutsu.orchestrator import SkippedCapture
+
+    ex = NetworkExchange(method="GET", path="/items", status=200)
+    scn = Scenario.model_validate(
+        {"name": "net", "steps": [{"assert": [{"request": {"method": "GET", "path": "/items"}}]}]}
+    )
+
+    def lease(eff: Effective, s: Scenario) -> Lease:
+        return Lease(
+            driver=FakeDriver([_el("ok", "OK")]),
+            sink=FileSink(tmp_path),
+            relaunch=None,
+            control=None,
+            collector=_ConstantCollector([ex]),
+            release=lambda: None,
+            collector_provider="fake (fallback)",
+            skipped_captures=[SkippedCapture("video", "no provider")],
+        )
+
+    r = run_all(_eff(), [scn], lease, run_dir=tmp_path)[0]
+    assert r.ok
+    assert [s.kind for s in r.skipped_captures] == ["video"]
+    net = [a for a in r.artifacts if a.kind == "network"]
+    assert net and net[0].provider == "fake (fallback)"
+    assert (tmp_path / net[0].name).exists()

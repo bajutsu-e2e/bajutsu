@@ -436,7 +436,6 @@ Turning a passing scenario into a native test in a destination framework's idiom
 | ID | Item | Status |
 |---|---|---|
 | [BE-0019](proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | Proposal |
-| [BE-0020](proposals/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Proposal |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding

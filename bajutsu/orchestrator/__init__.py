@@ -25,6 +25,7 @@ from bajutsu.orchestrator.types import (
     RealClock,
     RelaunchFn,
     RunResult,
+    SkippedCapture,
     StepOutcome,
     scenario_slug,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "RealClock",
     "RelaunchFn",
     "RunResult",
+    "SkippedCapture",
     "StepOutcome",
     "_action_of",
     "_do_action",

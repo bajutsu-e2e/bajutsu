@@ -37,6 +37,7 @@ def _write_network(
     run_dir: Path,
     sid: str,
     redactor: Redactor,
+    provider: str = "collector",
 ) -> Artifact | None:
     """Write a scenario's observed exchanges to <sid>/network.json (redacted).
 
@@ -57,7 +58,7 @@ def _write_network(
     out = run_dir / sid / "network.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
-    return Artifact(f"{sid}/network.json", "network", "collector")
+    return Artifact(f"{sid}/network.json", "network", provider)
 
 
 def run_all(
@@ -174,9 +175,15 @@ def run_all(
             result.device = lz.udid  # attribute the scenario to the device that ran it
             result.device_name = lz.device_name  # for the report's Environment tab
             result.device_runtime = lz.device_runtime
+            result.skipped_captures = list(lz.skipped_captures)  # disclose evidence gaps (BE-0020)
             if lz.collector is not None and run_dir is not None:
                 art = _write_network(
-                    lz.collector.snapshot_timed(), scenario_start, run_dir, sid, redactor
+                    lz.collector.snapshot_timed(),
+                    scenario_start,
+                    run_dir,
+                    sid,
+                    redactor,
+                    provider=lz.collector_provider,
                 )
                 if art is not None:
                     result.artifacts.append(art)

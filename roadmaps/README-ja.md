@@ -428,7 +428,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0019](proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) | XCUITest backend | 提案 |
-| [BE-0020](proposals/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 提案 |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / オンボーディング
