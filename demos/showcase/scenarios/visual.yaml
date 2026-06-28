@@ -1,0 +1,37 @@
+# Visual regression (VRT) demo — pixel-compare the Stable catalog against a baseline image.
+#
+# VRT needs a baseline to compare against, and the baseline is just a screenshot of a
+# known-good run, so the flow is two-step (and the demo *is* that flow):
+#
+#   1. First run — no baseline exists yet. The `visual` check fails with
+#      "baseline not found"; the report shows the captured screenshot with an
+#      "Approve as baseline" button (Web UI), or run `bajutsu approve`.
+#   2. Approve, then re-run — the screenshot now matches the baseline and the check passes.
+#      Change a pixel (or the UI) and the next run fails with a diff image.
+#
+# The Stable tab is the deterministic subject: it renders its seeded rows at launch (the
+# fetch is manual), so the screen settles without async jitter. Baselines resolve inside the
+# dir passed via `--baselines` (default: a `baselines/` folder beside this scenario, which is
+# gitignored — regenerate locally). See demos/showcase/Makefile `vrt` / `vrt-approve`.
+description: >-
+  Visual regression demo — land on the Stable catalog and pixel-compare it against a stored
+  baseline. First run reports a missing baseline; approve it, then re-run to pass.
+scenarios:
+  - name: stable catalog matches its visual baseline
+    description: Open the Stable tab, then assert the screen matches baselines/stable.png.
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "stable", SHOWCASE_SEED: "5" }
+    steps:
+      # Settle on a seeded row (a reliable leaf id) so the screenshot is taken once the
+      # catalog has rendered.
+      - wait: { for: { id: stable.row.1 }, timeout: 10 }
+    expect:
+      # `threshold` is the max allowed diff (% of pixels); a small budget absorbs harmless
+      # antialiasing jitter. `exclude` masks volatile regions before the compare — here a
+      # generous top strip over the status bar / clock. The values are screenshot *pixels*
+      # (device-scale dependent); tune them to your simulator.
+      - visual:
+          baseline: stable.png
+          threshold: 0.5
+          exclude:
+            - { x: 0, y: 0, w: 1300, h: 130 }

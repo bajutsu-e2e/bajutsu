@@ -1,0 +1,45 @@
+# Codegen source (SPEC §5.4): a representative slice that `bajutsu codegen` transpiles into
+# a native XCUITest (demos/showcase/swiftui/UITests/ComponentsUITests.swift, run by
+# `make -C demos/showcase ui-test`). Every step maps structurally to XCUITest — tap / type /
+# wait / assert exists / assert value — so the generated test needs no bajutsu runtime, idb,
+# or AI at test time.
+#
+# The flows deliberately stay on plain buttons, a text field, and value assertions — the
+# surfaces XCUITest drives unambiguously. Two showcase controls that idb handles fine are
+# *not* in the codegen slice because XCUITest addresses them differently: a SwiftUI Toggle's
+# row-center tap doesn't flip under a coordinate tap, and a confirmationDialog renders its
+# buttons as duplicate tree elements (XCUITest's single-match lookup then fails). Both are
+# exercised by the idb scenarios (modals.yaml) instead.
+- name: filter sheet opens then closes
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
+  steps:
+    - tap: { id: log.openFilter }
+    - wait: { for: { id: log.sheet.title }, timeout: 5 }
+    - tap: { id: log.sheet.apply }
+    - wait: { until: { gone: { id: log.sheet.title } }, timeout: 5 }
+  expect:
+    - exists: { id: log.sheet.title, negate: true }
+
+- name: gallery cover opens then closes
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "log" }
+  steps:
+    - tap: { id: log.openGallery }
+    - wait: { for: { id: log.cover.title }, timeout: 5 }
+    - tap: { id: log.cover.close }
+    - wait: { until: { gone: { id: log.cover.title } }, timeout: 5 }
+  expect:
+    - exists: { id: log.cover.title, negate: true }
+
+- name: search filters the catalog
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: "search" }
+  steps:
+    - assert:
+        - value: { sel: { id: search.count }, equals: "5" }
+    - type: { text: "Horse 5", into: { id: search.field } }
+    - wait: { for: { id: search.row.5 }, timeout: 5 }
+  expect:
+    - value: { sel: { id: search.count }, equals: "1" }
+    - exists: { id: search.row.5 }
