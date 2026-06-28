@@ -39,6 +39,8 @@ Android は **idb の構造的双子**です。subprocess 駆動、座標 actuat
 | **証跡 provider** | screenshot = `adb exec-out screencap`、video = `adb shell screenrecord`、`deviceLog` = `adb logcat`（tag/pid で絞る）、`network` = ネイティブ監視なし → iOS と同じモック方式 |
 | **codegen 変換先** | Espresso または UI Automator（Kotlin/Java） |
 
+**環境**の行は、[BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) のクロスプラットフォーム `Environment` プロトコルを実装する `AndroidEnvironment` として着地します。その `start` は adb 列（クリーン状態のための `pm clear` → 起動の `am start` → deeplink の `am start -a android.intent.action.VIEW -d <url>`）を実行し、`adb` driver を返します。アクチュエータと環境は、iOS が idb と simctl で埋める 2 つの継ぎ目の Android 版にあたります。したがって Android は runner に新しい形を持ち込まず、BE-0009 が抽出する継ぎ目に差し込まれます。
+
 ### idb の構造的双子
 
 Android は **idb の構造的双子**です。subprocess 駆動、座標 actuation、画面遷移中の一過性に空なツリー。

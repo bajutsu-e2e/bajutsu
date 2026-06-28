@@ -68,7 +68,7 @@ def test_device_pool_per_device_resources(monkeypatch: pytest.MonkeyPatch) -> No
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.runner.launch.make_driver",
+        "bajutsu.environment.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
 
@@ -132,7 +132,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
         return catalog if args == env.list_devices_cmd() else ""
 
     monkeypatch.setattr(
-        "bajutsu.runner.launch.make_driver",
+        "bajutsu.environment.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -153,7 +153,7 @@ def test_device_pool_labels_leased_simulator(monkeypatch: pytest.MonkeyPatch) ->
 def test_device_pool_single_device_keeps_full_features(monkeypatch: pytest.MonkeyPatch) -> None:
     """A pool of one is the single-device path: collector + interval sink + control, all on."""
     monkeypatch.setattr(
-        "bajutsu.runner.launch.make_driver",
+        "bajutsu.environment.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -186,7 +186,7 @@ def test_device_pool_no_network_has_no_collector(monkeypatch: pytest.MonkeyPatch
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.runner.launch.make_driver",
+        "bajutsu.environment.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
     lease, shutdown = device_pool(
@@ -232,7 +232,7 @@ def test_device_pool_stops_started_collectors_when_one_fails(
             self.stopped = True
 
     monkeypatch.setattr("bajutsu.runner.pool.NetworkCollector", FlakyCollector)
-    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: FakeDriver([]))
+    monkeypatch.setattr("bajutsu.environment.make_driver", lambda actuator, udid: FakeDriver([]))
 
     with pytest.raises(OSError, match="port in use"):
         device_pool(
@@ -311,7 +311,7 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         fakes.append(d)
         return d
 
-    monkeypatch.setattr("bajutsu.runner.launch.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.environment.make_driver", fake_make_driver)
     lease, shutdown = device_pool(
         ["web"], ["web"], _eff_web(), Path("runs"), network=False, available=lambda b: True
     )
@@ -351,7 +351,7 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
         fakes.append(d)
         return d
 
-    monkeypatch.setattr("bajutsu.runner.launch.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.environment.make_driver", fake_make_driver)
     lease, shutdown = device_pool(
         ["web"], ["web"], _eff_web(), Path("runs"), network=True, available=lambda b: True
     )
@@ -372,7 +372,7 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
 def test_device_pool_web_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     # A web app with no baseUrl fails cleanly at launch (env.DeviceError), not deep in Playwright.
     monkeypatch.setattr(
-        "bajutsu.runner.launch.make_driver",
+        "bajutsu.environment.make_driver",
         lambda actuator, udid, base_url=None: FakeDriver([]),
     )
     eff_no_url = dataclasses.replace(_eff(), base_url=None, backend=["web"])

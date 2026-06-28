@@ -8,9 +8,9 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from bajutsu import env
-from bajutsu.backends import make_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
+from bajutsu.environment import environment_for
 from bajutsu.scenario import Preconditions
 
 # A readyWhen selector is a usable readiness signal only if it carries a per-element condition;
@@ -55,50 +55,10 @@ def launch_driver(
         env.DeviceError: A simctl step failed, or a web target declares no `baseUrl`.
     """
     pre = preconditions or Preconditions()
-    # Web has no device to erase/boot/install: a fresh browser context (made in the driver) is
-    # the clean state, and `navigate()` is the launch. Branch out before any simctl call.
-    if actuator == "playwright":
-        if not eff.base_url:
-            raise env.DeviceError("web backend requires baseUrl (set apps.<app>.baseUrl)")
-        driver = make_driver(
-            actuator,
-            udid,
-            base_url=eff.base_url,
-            headless=eff.headless,
-            record_video_dir=record_video_dir,
-        )
-        driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
-        _await_ready(driver, ready_sel=eff.ready_when)
-        return driver
-    e = env.Env(udid, run=env_run)
-    try:
-        if pre.erase:
-            e.shutdown()  # erase only works on a shut-down device
-            e.erase()
-        e.boot()
-        # When the app config gives a built .app, reinstall it before each run so every
-        # scenario starts from a known-good binary. `reinstall=clean` (default) uninstalls
-        # first (fresh app + data); `overwrite` installs over the existing app (keeps its
-        # data). After an `erase` the app is already gone, so the uninstall is skipped.
-        if eff.app_path:
-            if not Path(eff.app_path).exists():
-                raise env.DeviceError(f"appPath not found: {eff.app_path} (build the app first)")
-            if pre.reinstall == "clean" and not pre.erase:
-                e.uninstall(eff.bundle_id)
-            e.install(eff.app_path)
-        e.terminate(eff.bundle_id)  # clean start so readiness reflects the new launch
-        launch_env: Mapping[str, str] = {**eff.launch_env, **pre.launch_env, **(extra_env or {})}
-        locale = pre.locale or eff.locale  # scenario locale overrides the app/config default
-        e.launch(
-            eff.bundle_id,
-            [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)],
-            launch_env,
-        )
-        if pre.deeplink is not None:
-            e.openurl(pre.deeplink)
-    except subprocess.CalledProcessError as exc:
-        raise env.device_error(exc) from exc
-    driver = make_driver(actuator, udid)
+    # The per-platform startup (iOS simctl sequence, web browser context, …) lives behind the
+    # `Environment` seam, so this path no longer branches on the actuator name (BE-0009 Phase 0).
+    environment = environment_for(actuator, udid, env_run)
+    driver = environment.start(eff, pre, extra_env=extra_env, record_video_dir=record_video_dir)
     _await_ready(driver, ready_sel=eff.ready_when)
     return driver
 

@@ -28,7 +28,7 @@ def test_launch_driver_shuts_down_before_erase(monkeypatch: pytest.MonkeyPatch) 
         return ""
 
     ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
-    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: ready)
+    monkeypatch.setattr("bajutsu.environment.make_driver", lambda actuator, udid: ready)
 
     launch_driver("UDID-1", _eff(), "idb", Preconditions(erase=True), env_run=fake_run)
 
@@ -46,7 +46,7 @@ def test_launch_driver_injects_extra_env(monkeypatch: pytest.MonkeyPatch) -> Non
         return ""
 
     ready = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])
-    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: ready)
+    monkeypatch.setattr("bajutsu.environment.make_driver", lambda actuator, udid: ready)
 
     launch_driver(
         "UDID-1",
@@ -74,7 +74,7 @@ def _launch_recording(
 ) -> list[list[str]]:
     calls: list[list[str]] = []
     monkeypatch.setattr(
-        "bajutsu.runner.launch.make_driver",
+        "bajutsu.environment.make_driver",
         lambda actuator, udid: FakeDriver([_el("home.title", "H"), _el("ok", "OK")]),
     )
     launch_driver(
@@ -123,7 +123,7 @@ def test_launch_driver_erase_skips_uninstall(
 def test_launch_driver_errors_on_missing_app_path(monkeypatch: pytest.MonkeyPatch) -> None:
     """A configured appPath that doesn't exist fails with a clear, actionable DeviceError."""
     eff = replace(_eff(), app_path="/nope/X.app")
-    monkeypatch.setattr("bajutsu.runner.launch.make_driver", lambda actuator, udid: FakeDriver([]))
+    monkeypatch.setattr("bajutsu.environment.make_driver", lambda actuator, udid: FakeDriver([]))
     with pytest.raises(env.DeviceError) as excinfo:
         launch_driver("UDID-1", eff, "idb", Preconditions(erase=False), env_run=_recording_run([]))
     assert "appPath not found" in str(excinfo.value)

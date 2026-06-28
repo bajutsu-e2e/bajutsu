@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0009](BE-0009-cross-platform-abstractions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
+| Implementing PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -125,6 +126,26 @@ Concretely, Phase 0 is three pieces of work:
 - **Audit `runner.py` / `orchestrator.py` for leaked iOS-isms.** The "unchanged" column above is a claim that has to be verified — the first abstraction pass is what forces any latent iOS-specific assumption into the open.
 
 The per-platform backends that build on this (Web first, then Android) are tracked separately: Web in [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), Android in [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md).
+
+### The `Environment` seam (implementation)
+
+The audit confirms the "unchanged core" claim: no iOS assumption leaked into `resolve_unique`, `assertions`, the orchestrator loop, or the reporter. The only platform leakage is **control flow that branches on the actuator name**, concentrated in three places — `runner/launch.py` (the per-run bring-up fork, `if actuator == "playwright"`), `runner/pool.py` (the parallel-lane `is_web` split plus `cast(PlaywrightDriver, …)` for the web-only network/relaunch), and `cli/commands/crawl.py` (the reset/recovery split). The web v1 shortcut ([BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) kept its lifecycle inside the driver and reached it through those branches.
+
+The fix is a single Protocol the runner calls instead of branching:
+
+```python
+class Environment(Protocol):
+    def start(self, eff, pre, *, extra_env=None, record_video_dir=None) -> Driver: ...
+```
+
+`start` owns a platform's whole per-run startup and returns a ready-to-poll driver — so the caller never knows whether that meant a `simctl` device sequence or a fresh browser context. `IosEnvironment` runs the simctl sequence (erase → boot → install → launch → deeplink) then builds the idb driver; `WebEnvironment` builds the Playwright driver and `navigate()`s (the web-only call now confined to that class, off the runner); `FakeEnvironment` is a no-op. `environment_for(actuator, udid, env_run)` is the factory. A future `AndroidEnvironment` ([BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md)) implements the same Protocol over `adb` (`pm clear` → AVD → `am start` → deeplink intent).
+
+Phase 0 lands incrementally so each PR stays small and the gate stays green:
+
+- **Slice 1 (shipped):** the `Environment` Protocol + `IosEnvironment` / `WebEnvironment` / `FakeEnvironment` + `environment_for`, and `launch_driver` delegates to it — removing the `actuator == "playwright"` fork in `launch.py`.
+- **Slice 2:** fold `runner/pool.py`'s `is_web` lease split and the `cast(PlaywrightDriver, …)` network/relaunch behind the Protocol (the per-scenario relaunch and per-release teardown become Environment methods).
+- **Slice 3:** fold `cli/commands/crawl.py`'s reset/recovery split.
+- **Slice 4:** the explicit `platform` config discriminator. Today the actuator token already implies the platform (`backends.PLATFORMS`); this slice adds `platform` to `defaults` / `apps.<name>` / `Effective` and validates that the platform's identifier (`bundleId` / `baseUrl` / `package`) is present.
 
 ## Alternatives considered
 
