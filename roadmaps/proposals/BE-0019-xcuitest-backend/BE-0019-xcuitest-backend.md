@@ -53,13 +53,33 @@ idb is a subprocess CLI; XCUITest actuates from a test process resident on the S
 
 | Driver call | request | response |
 |---|---|---|
-| `query()` | `GET /elements` | the normalized `Element[]` JSON (same `identifier`/`label`/`value`/`traits`/`frame` shape idb produces, so `find_all` / `resolve_unique` are unchanged) |
-| `tap(sel)` | `POST /tap {elementId}` | ok / not-found — Python resolves the unique element from `query()` first (selection stays the determinism core), then names it; XCUITest taps **by identifier**, not coordinates |
-| `pinch` / `rotate` | `POST /gesture {elementId, kind, scale\|radians}` | ok — the two-finger gestures idb raises `UnsupportedAction` for |
+| `query()` | `GET /elements` | the normalized `Element[]` JSON — the same `identifier`/`label`/`value`/`traits`/`frame` shape idb produces (so `find_all` / `resolve_unique` are unchanged), **plus an opaque per-snapshot `handle` on each element** that the runner mints and Python round-trips into `tap` / `gesture` (see *Element addressing*). The handle is not a selector field, so matching is unaffected |
+| `tap(sel)` | `POST /tap {handle}` | ok / not-found — Python resolves the unique element from `query()` first (selection stays the determinism core), then sends that element's **snapshot handle**; XCUITest taps that exact element, not coordinates (see *Element addressing*) |
+| `pinch` / `rotate` | `POST /gesture {handle, kind, scale\|radians}` | ok — the two-finger gestures idb raises `UnsupportedAction` for |
 | `wait_for(sel)` | served by Python polling `GET /elements` (the orchestrator's condition wait), or the runner's native expectation behind the same bounded, sleep-free contract | ok/timeout |
 | `screenshot(path)` | `GET /screenshot` | PNG bytes |
 
 Errors map to the existing `Driver` exceptions (`ElementNotFound` / `AmbiguousSelector` stay Python-side because resolution stays Python-side). Keeping the minimal server in `BajutsuKit` (rather than a large external automation dependency) keeps the channel under the project's control — see *Alternatives considered*.
+
+### Element addressing across the channel
+
+Resolution stays Python-side, so the channel must let Python act on **exactly** the element it resolved — never a re-resolution on the runner that could pick a different match. The runner therefore mints a **stable per-snapshot handle** for each `Element` it returns from `GET /elements` and holds the mapping for the life of that snapshot; `POST /tap` / `POST /gesture` carry that handle, not a re-queried predicate. Python resolves the unique element from the snapshot, then sends its handle; the runner maps the handle back to the `XCUIElement` it already located and acts on it. The accessibility `identifier` alone is **insufficient** as the handle — it need not be unique, so re-resolving by it on the runner would reintroduce the very ambiguity selection just removed. If the screen has changed and the handle is stale, the runner returns `stale` and the driver raises the same error a vanished element raises today: a loud failure, never a silent re-tap of whatever now matches.
+
+### Runner lifecycle: readiness, teardown, and crashes
+
+The resident runner is a process with a startup and a failure mode, so its lifecycle is explicit:
+
+- **Readiness.** The driver sends no actuation request until the runner's loopback server is accepting connections — it waits on a bounded, sleep-free readiness probe (`GET /health`), the same condition-wait discipline used elsewhere (no fixed sleep). A timeout fails the run with a clear "runner did not come up" rather than hanging.
+- **Teardown.** Releasing the lease stops the runner (and its loopback server) and terminates the app, mirroring how the device pool already stops a per-device collector on release; nothing is left listening.
+- **Crash.** If the runner exits or stops answering mid-run, the next request fails and the driver raises a `Driver` error — the run fails loudly. A crashed runner is never silently read as "element not found"; an infrastructure failure stays distinct from a test outcome.
+
+### Parallel runs and the device pool (BE-0020)
+
+The device pool (`runner/pool.py`) leases N Simulators for parallel scenarios, each with its own per-device resources. XCUITest fits that model unchanged: each leased device gets **its own resident runner on its own ephemeral loopback port**, exactly as the pool already starts one network collector per device on its own port. The port is allocated per lease and handed to that device's runner via its launch arguments, so two parallel runs never share a runner or a port, and lease release stops that device's runner alongside its collector. No global runner and no shared port means parallel XCUITest runs stay as isolated as parallel idb runs.
+
+### Network evidence under XCUITest (interaction with BE-0020)
+
+XCUITest's capability set does **not** include `NETWORK`: it is a richer *actuator*, not a network-native observer. Network evidence on iOS is supplied by the app-side collector (`BajutsuNet` POSTing to the loopback receiver named by `BAJUTSU_COLLECTOR`), which is **actuator-independent** — it rides on the app's launch environment, not on how the app is driven. So under XCUITest the runner must inject `BAJUTSU_COLLECTOR` into `XCUIApplication.launchEnvironment` exactly as idb injects it into its launch env, and network capture then works identically. Because the app-side collector still supplies network evidence, choosing XCUITest does **not** trigger BE-0020's read-only *sibling* fallback — that fallback engages only for an evidence kind no eligible same-platform backend can supply, which network is not. This makes the BE-0020 boundary concrete: evidence gaps are filled by a same-platform read-only provider, while *actuation* stays with the single selected backend.
 
 ### Capabilities, doctor, and disclosure
 
@@ -69,8 +89,8 @@ Errors map to the existing `Driver` exceptions (`ElementNotFound` / `AmbiguousSe
 
 Split by what the fast gate can prove without a Simulator vs. what needs one:
 
-- **Fast gate (no device).** Registry: `--backend ios` prefers `xcuitest` when available and falls back to `idb` when not (drive `select_actuator` with an injected availability function); `capabilities_for("xcuitest")` returns the richer set. Driver: build the actuation requests and parse responses against an **injected fake HTTP transport** (mirroring how idb tests inject a fake `run`), asserting `tap` resolves a unique element then addresses it by identifier, `pinch`/`rotate` emit the gesture request, and an ambiguous selector still fails before any request. No test puts the runner — or any LLM — on the `run`/CI gate.
-- **On-device (e2e path).** The real `BajutsuKit` runner against a booted Simulator on the heavier `e2e.yml` path: a scenario that taps by identifier and runs a pinch/rotate that idb cannot, plus a fallback run on a host where XCUITest is unavailable, confirming graceful degradation to idb.
+- **Fast gate (no device).** Registry: `--backend ios` prefers `xcuitest` when available and falls back to `idb` when not (drive `select_actuator` with an injected availability function); `capabilities_for("xcuitest")` returns the richer set. Driver: build the actuation requests and parse responses against an **injected fake HTTP transport** (mirroring how idb tests inject a fake `run`), asserting `tap` resolves a unique element then addresses it by the snapshot handle that element carried, `pinch`/`rotate` emit the gesture request, a `stale` response raises the vanished-element error, and an ambiguous selector still fails before any request. The lifecycle is testable here too: the readiness probe waits then times out cleanly against a fake transport, and a pool of two leases hands each driver a distinct port. No test puts the runner — or any LLM — on the `run`/CI gate.
+- **On-device (e2e path).** The real `BajutsuKit` runner against a booted Simulator on the heavier `e2e.yml` path: a scenario that resolves an element Python-side and actuates it via its snapshot handle, runs a pinch/rotate that idb cannot, plus a fallback run on a host where XCUITest is unavailable, confirming graceful degradation to idb.
 
 ## Alternatives considered
 

@@ -53,13 +53,33 @@ idb はサブプロセス CLI ですが、XCUITest は Simulator に常駐する
 
 | Driver 呼び出し | 要求 | 応答 |
 |---|---|---|
-| `query()` | `GET /elements` | 正規化済み `Element[]` の JSON（idb が返すのと同じ `identifier`／`label`／`value`／`traits`／`frame` の形なので `find_all` ／ `resolve_unique` は不変） |
-| `tap(sel)` | `POST /tap {elementId}` | ok ／ not-found。Python が先に `query()` から一意の要素を解決し（選択は決定性の核のまま）名前で指定。XCUITest は座標ではなく**識別子で**タップ |
-| `pinch` ／ `rotate` | `POST /gesture {elementId, kind, scale\|radians}` | ok。idb が `UnsupportedAction` を投げる二本指ジェスチャ |
+| `query()` | `GET /elements` | 正規化済み `Element[]` の JSON。idb が返すのと同じ `identifier`／`label`／`value`／`traits`／`frame` の形（なので `find_all` ／ `resolve_unique` は不変）に**加え、各要素に runner が発行する不透明なスナップショット単位の `handle`** が載り、Python はそれを `tap` ／ `gesture` に往復させます（「チャネルをまたぐ要素の指定」を参照）。`handle` は selector のフィールドではないので、照合には影響しません |
+| `tap(sel)` | `POST /tap {handle}` | ok ／ not-found。Python が先に `query()` から一意の要素を解決し（選択は決定性の核のまま）、その要素の**スナップショットハンドル**を送ります。XCUITest は座標ではなくその要素そのものをタップします（「要素のアドレッシング」を参照） |
+| `pinch` ／ `rotate` | `POST /gesture {handle, kind, scale\|radians}` | ok。idb が `UnsupportedAction` を投げる二本指ジェスチャ |
 | `wait_for(sel)` | Python が `GET /elements` をポーリング（オーケストレータの条件待ち）、または同じ上限付き・sleep なしの契約の下で runner のネイティブ expectation | ok ／ timeout |
 | `screenshot(path)` | `GET /screenshot` | PNG バイト列 |
 
 エラーは既存の `Driver` 例外に対応します（解決は Python 側に残るので `ElementNotFound` ／ `AmbiguousSelector` も Python 側）。最小のサーバを大きな外部自動化依存ではなく `BajutsuKit` に置くことで、チャネルをプロジェクトの管理下に保ちます（「検討した代替案」を参照）。
+
+### チャネルを越えた要素のアドレッシング
+
+解決は Python 側に残るので、チャネルは Python が解決した要素「そのもの」を操作できなければなりません。runner 側で再解決して別の一致を選ぶことは許されません。そこで runner は `GET /elements` で返す各 `Element` に**スナップショット単位の安定したハンドル**を発行し、そのスナップショットが生きているあいだ対応関係を保持します。`POST /tap` ／ `POST /gesture` は、再問い合わせの述語ではなくこのハンドルを運びます。Python はスナップショットから一意の要素を解決し、そのハンドルを送ります。runner はハンドルを、すでに特定済みの `XCUIElement` に対応づけて操作します。アクセシビリティの `identifier` だけではハンドルとして**不十分**です。一意とは限らないので、runner 側でそれを使って再解決すると、選択がいま取り除いたばかりの曖昧さを再導入してしまいます。画面が変わってハンドルが無効になっている場合、runner は `stale` を返し、ドライバは要素が消えたときと同じエラーを上げます。黙って今の一致を叩き直すのではなく、声を上げて失敗します。
+
+### runner のライフサイクル：準備完了、後始末、クラッシュ
+
+常駐 runner は起動と失敗のモードを持つプロセスなので、そのライフサイクルを明示します。
+
+- **準備完了。** ドライバは、runner のループバックサーバが接続を受け付けるまで操作要求を送りません。上限付きで sleep のない準備完了プローブ（`GET /health`）を待ちます。これは他所と同じ条件待ちの作法です（固定 sleep なし）。タイムアウトはハングせず、「runner が起動しなかった」と明確に失敗します。
+- **後始末。** リースを解放すると runner（とそのループバックサーバ）を止め、アプリを終了します。デバイスプールがリース解放時にデバイスごとの collector を止めるのと同じ形で、待ち受けたままのものを残しません。
+- **クラッシュ。** run の途中で runner が終了するか応答しなくなったら、次の要求が失敗し、ドライバは `Driver` エラーを上げます。run は声を上げて失敗します。クラッシュした runner を黙って「要素が見つからない」と読むことはありません。インフラの失敗はテストの結果とは別物のままです。
+
+### 並列 run とデバイスプール（BE-0020）
+
+デバイスプール（`runner/pool.py`）は並列シナリオのために N 台の Simulator をリースし、各台にデバイスごとのリソースを与えます。XCUITest はこのモデルにそのまま収まります。リースされた各デバイスは**自分専用のループバックポート上に自分専用の常駐 runner**を持ちます。プールがデバイスごとに network collector を自分のポートで起こすのと同じです。ポートはリースごとに割り当て、そのデバイスの runner へ起動引数で渡すので、2 つの並列 run が runner やポートを共有することはなく、リース解放はそのデバイスの runner を collector とともに止めます。グローバルな runner も共有ポートも無いので、並列 XCUITest run は並列 idb run と同じだけ隔離されます。
+
+### XCUITest 下のネットワーク証跡（BE-0020 との相互作用）
+
+XCUITest の capability 集合は `NETWORK` を**含みません**。より豊かな *actuator* であって、ネットワークをネイティブに観測するものではありません。iOS のネットワーク証跡は、アプリ側の collector（`BajutsuNet` が `BAJUTSU_COLLECTOR` で指されたループバック受信側へ POST する）が供給します。これは **actuator 非依存**で、アプリの起動環境に乗るものであり、アプリをどう駆動するかには依りません。したがって XCUITest 下では、runner が `BAJUTSU_COLLECTOR` を `XCUIApplication.launchEnvironment` へ、idb が自分の起動 env に注入するのとまったく同じく注入する必要があり、そうすればネットワーク捕捉は同一に働きます。アプリ側 collector が引き続きネットワーク証跡を供給するので、XCUITest を選んでも BE-0020 の read-only な**兄弟**フォールバックは発動**しません**。そのフォールバックは、同一プラットフォームのどの適格 backend も供給できない証跡種別にだけ働くものであり、ネットワークはそれに当たりません。これは BE-0020 の境界を具体化します。証跡の穴は同一プラットフォームの read-only プロバイダが埋め、*操作*は選ばれた単一 backend にとどまります。
 
 ### capability・doctor・開示
 
@@ -69,8 +89,8 @@ idb はサブプロセス CLI ですが、XCUITest は Simulator に常駐する
 
 Simulator 無しの高速ゲートで証明できる部分と、端末を要する部分に分けます。
 
-- **高速ゲート（端末なし）。** registry：`--backend ios` が利用可能なら `xcuitest` を優先し、不可なら `idb` へフォールバックすること（`select_actuator` に可否判定関数を注入して駆動）。`capabilities_for("xcuitest")` が豊かな集合を返すこと。ドライバ：操作要求の組み立てと応答の解釈を、**注入した fake な HTTP トランスポート**に対して検証します（idb のテストが fake な `run` を注入するのと同じ要領）。`tap` が一意の要素を解決してから識別子で指すこと、`pinch` ／ `rotate` がジェスチャ要求を出すこと、曖昧な selector はどの要求よりも前に失敗することを確認します。runner も LLM も `run` ／ CI ゲートには載せません。
-- **実機（e2e 経路）。** 起動した Simulator に対する実際の `BajutsuKit` runner を、より重い `e2e.yml` 経路で。識別子でタップし、idb にはできない pinch ／ rotate を行うシナリオに加え、XCUITest が使えないホストでのフォールバック run で idb へのなだらかな劣化を確認します。
+- **高速ゲート（端末なし）。** registry：`--backend ios` が利用可能なら `xcuitest` を優先し、不可なら `idb` へフォールバックすること（`select_actuator` に可否判定関数を注入して駆動）。`capabilities_for("xcuitest")` が豊かな集合を返すこと。ドライバ：操作要求の組み立てと応答の解釈を、**注入した fake な HTTP トランスポート**に対して検証します（idb のテストが fake な `run` を注入するのと同じ要領）。`tap` が一意の要素を解決してから、その要素が持つスナップショットハンドルで指すこと、`pinch` ／ `rotate` がジェスチャ要求を出すこと、`stale` 応答が要素消失のエラーを上げること、曖昧な selector はどの要求よりも前に失敗することを確認します。ライフサイクルもここで検証できます。準備完了プローブが fake トランスポートに対して待ってからきれいにタイムアウトすること、2 リースのプールが各ドライバに別々のポートを渡すことです。runner も LLM も `run` ／ CI ゲートには載せません。
+- **実機（e2e 経路）。** 起動した Simulator に対する実際の `BajutsuKit` runner を、より重い `e2e.yml` 経路で。Python 側で要素を解決してそのスナップショットハンドルで操作し、idb にはできない pinch ／ rotate を行うシナリオに加え、XCUITest が使えないホストでのフォールバック run で idb へのなだらかな劣化を確認します。
 
 ## 検討した代替案
 
