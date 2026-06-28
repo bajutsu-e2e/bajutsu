@@ -8,7 +8,7 @@
 | Proposal | [BE-0009](BE-0009-cross-platform-abstractions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346) |
+| Implementing PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346), [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
