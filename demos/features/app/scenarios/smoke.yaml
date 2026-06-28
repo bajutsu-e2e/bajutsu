@@ -8,6 +8,10 @@ scenarios:
     preconditions:
       launchEnv: { SAMPLE_UITEST: "1" }
     steps:
+      # The onboarding screen is a modal presented over the always-present Home; on a loaded CI
+      # runner it can take a moment to appear. Wait for it before the first tap so the action never
+      # races the modal animation (a condition wait, never a fixed sleep).
+      - wait: { for: { id: onboarding.start }, timeout: 20 }
       - tap: { id: onboarding.start }
       - type: { text: "a@b.com", into: { id: auth.email } }
       - type: { text: "pw", into: { id: auth.password } }

@@ -138,7 +138,7 @@ def device_pool(
             collector = web_collector
             # No simctl device control / app terminate; the driver owns the browser, so a
             # release tears it down (a re-lease then builds a fresh context = clean state).
-            relaunch = _web_relauncher(driver)
+            relaunch = _web_relauncher(driver, ready_sel=eff.ready_when)
             control = None
 
             def release() -> None:
@@ -222,12 +222,12 @@ def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run
     return _Control()
 
 
-def _web_relauncher(driver: base.Driver) -> RelaunchFn:
+def _web_relauncher(driver: base.Driver, ready_sel: base.Selector | None = None) -> RelaunchFn:
     """Web `relaunch`: re-navigate to the base URL and wait until ready (no device restart)."""
 
     def relaunch(opts: Relaunch) -> None:
         driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
-        _await_ready(driver)
+        _await_ready(driver, ready_sel=ready_sel)
 
     return relaunch
 
@@ -271,7 +271,7 @@ def device_relauncher(
                 *env.locale_args(locale),
             ]
             e.launch(eff.bundle_id, launch_args, launch_env)
-            _await_ready(driver)
+            _await_ready(driver, ready_sel=eff.ready_when)
 
         return relaunch
 

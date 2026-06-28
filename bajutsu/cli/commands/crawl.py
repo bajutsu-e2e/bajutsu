@@ -261,14 +261,14 @@ def crawl(
         def reset(d: base.Driver) -> None:
             if actuator == "playwright":
                 d.reset_context()  # type: ignore[attr-defined]  # web-only lifecycle (fresh context)
-                _await_ready(d)
+                _await_ready(d, ready_sel=eff.ready_when)
                 return
             e = _env.Env(u)
             e.terminate(eff.bundle_id)
             e.launch(
                 eff.bundle_id, [*eff.launch_args, *_env.locale_args(eff.locale)], eff.launch_env
             )
-            _await_ready(d)
+            _await_ready(d, ready_sel=eff.ready_when)
 
         return reset
 

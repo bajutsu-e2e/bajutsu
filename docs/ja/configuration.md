@@ -56,6 +56,7 @@ targets:
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | `locale` は launch 時に適用される（`simctl` の launch 引数） |
 | `launch_env` / `launch_args` | app | preconditions が run 時にマージ追記 |
+| `ready_when` | app | 任意の `readyWhen: { id: … }`。run を始める前に launch が出現を待つセレクタで、既定の「アプリが 2 要素以上を描画した」判定の代わりになります。最初の操作画面が常時表示のクロームの上に出るモーダルであるアプリ向けです（要素数の判定はモーダル提示前に返ってしまうことがあります）。固定 sleep ではなく条件待ちです。指定するのは、その target の**すべて**のシナリオが同じ画面から始まるときに限ります。シナリオごとに最初の画面が異なる場合は、各シナリオの先頭に `wait` ステップを置いてください |
 | `id_namespaces` | app | doctor が参照 |
 | `reserved_namespaces` | defaults | 情報用（doctor は app の `idNamespaces` のみで採点） |
 | `mock_server` | app | ⚠️ スキーマのみ · 未配線 |
