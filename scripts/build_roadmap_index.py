@@ -359,11 +359,26 @@ def render_index(items: list[Item], lang_code: str) -> dict[str, str]:
     }
 
 
+def _marker_keys(text: str) -> set[str]:
+    """Return the set of section keys that have ``<!-- GENERATED:<key> -->`` markers in *text*.
+
+    Only matches keys made of word-chars and hyphens (the format ``<bucket>-<topic>``), so
+    wildcard references like ``GENERATED:*`` in prose are ignored.
+    """
+    return set(re.findall(r"<!-- GENERATED:([\w-]+) -->", text))
+
+
 def build_index_text(items: list[Item], current: str, lang_code: str) -> str:
-    """Apply every section's regenerated body to one index page's current text."""
+    """Apply every section's regenerated body to one index page's current text.
+
+    Sections that still have items get a regenerated table; sections whose markers exist in the
+    page but no longer have any items get their body cleared (an empty region between markers).
+    """
     bodies = render_index(items, lang_code)  # keyed in section order
     for key, body in bodies.items():
         current = replace_region(current, key, body)
+    for stale_key in _marker_keys(current) - bodies.keys():
+        current = replace_region(current, stale_key, "")
     return current
 
 
