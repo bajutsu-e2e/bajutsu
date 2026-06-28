@@ -4,7 +4,8 @@
 .PHONY: build-all \
 	swiftui-gen swiftui-build swiftui-noax-build \
 	uikit-gen uikit-build uikit-noax-build \
-	run-swiftui run-uikit doctor record ui-test vrt vrt-approve clean
+	run-swiftui run-uikit doctor record ui-test \
+	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve clean
 
 ROOT   := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 HERE   := $(ROOT)/demos/showcase
@@ -67,19 +68,31 @@ ui-test:
 	cd $(SWIFTUI) && xcodebuild test -project BajutsuShowcaseSwiftUI.xcodeproj -scheme UITests \
 		-destination 'platform=iOS Simulator,id=$(SIM)' -derivedDataPath build/dd
 
-# Visual regression demo. Baselines live beside the scenario (gitignored, regenerate locally),
-# and run against the SwiftUI a11y app. The first `vrt` reports a missing baseline (exit 1) —
-# that's expected; approve it (`make -C demos/showcase vrt-approve`, or the Web UI's Approve
-# button), then re-run `vrt` to pixel-match and pass. `-` lets the first failure not abort make.
-BASELINES = $(HERE)/scenarios/baselines
+# Visual regression demo — every screen, for BOTH a11y toolkits. The two render the same
+# screens but not pixel-identically, so each keeps its own baseline dir (gitignored, regenerate
+# locally). The first `vrt` reports missing baselines (exit 1) — that's expected; approve them
+# (`make -C demos/showcase vrt-approve`, or the Web UI's Approve button), then re-run `vrt` to
+# pixel-match and pass. `-` lets the first failure not abort make.
+BASELINES_SWIFTUI = $(HERE)/scenarios/baselines/swiftui
+BASELINES_UIKIT   = $(HERE)/scenarios/baselines/uikit
 
-vrt: swiftui-build
+# Both toolkits (run / approve). Use the per-toolkit targets to drive just one.
+# Each `-approve` re-runs its own toolkit first, so `approve` (which promotes the *latest*
+# run) always sees a run from the matching toolkit — never the other's screenshots.
+vrt: vrt-swiftui vrt-uikit
+vrt-approve: vrt-swiftui-approve vrt-uikit-approve
+
+vrt-swiftui: swiftui-build
 	-cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/visual.yaml --target showcase-swiftui \
-		--udid $(SIM) --backend idb --config $(CONFIG) --no-erase --baselines $(BASELINES)
+		--udid $(SIM) --backend idb --config $(CONFIG) --no-erase --baselines $(BASELINES_SWIFTUI)
+vrt-swiftui-approve: vrt-swiftui
+	cd $(ROOT) && uv run bajutsu approve --baselines $(BASELINES_SWIFTUI)
 
-# Promote the latest run's captured screenshot(s) to baselines, then re-run to confirm pass.
-vrt-approve:
-	cd $(ROOT) && uv run bajutsu approve --baselines $(BASELINES)
+vrt-uikit: uikit-build
+	-cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/visual.yaml --target showcase-uikit \
+		--udid $(SIM) --backend idb --config $(CONFIG) --no-erase --baselines $(BASELINES_UIKIT)
+vrt-uikit-approve: vrt-uikit
+	cd $(ROOT) && uv run bajutsu approve --baselines $(BASELINES_UIKIT)
 
 clean:
 	rm -rf $(SWIFTUI)/build $(UIKIT)/build \

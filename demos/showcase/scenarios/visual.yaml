@@ -11,9 +11,11 @@
 #
 # One scenario per screen (the five tabs, the two pushed detail screens, and the three
 # modal styles). `SHOWCASE_UITEST` disables animations so each screen settles deterministically.
-# `threshold` is the max allowed diff (% of pixels); `exclude` masks the volatile status-bar
-# strip (clock / signal) before the compare — the values are screenshot *pixels*
-# (device-scale dependent); tune them to your simulator. Baselines resolve inside the dir
+# `threshold` is the max allowed diff (% of pixels); `exclude` masks two volatile chrome strips
+# before the compare — the top status bar (clock / signal) and the bottom floating tab bar, whose
+# iOS 26 translucent "Liquid Glass" material samples the content behind it and so renders a few
+# grey-levels off run-to-run. The values are screenshot *pixels* (device-scale dependent); tune
+# them to your simulator. Baselines resolve inside the dir
 # passed via `--baselines` (default: a `baselines/` folder beside this scenario, gitignored —
 # regenerate locally). See demos/showcase/Makefile `vrt` / `vrt-approve`.
 description: >-
@@ -26,7 +28,7 @@ scenarios:
     steps:
       - wait: { for: { id: stable.row.1 }, timeout: 10 }
     expect:
-      - visual: { baseline: stable.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: stable.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Search matches its visual baseline
     preconditions:
@@ -34,7 +36,7 @@ scenarios:
     steps:
       - wait: { for: { id: search.field }, timeout: 10 }
     expect:
-      - visual: { baseline: search.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: search.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Log matches its visual baseline
     preconditions:
@@ -42,7 +44,7 @@ scenarios:
     steps:
       - wait: { for: { id: log.submit }, timeout: 10 }
     expect:
-      - visual: { baseline: log.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: log.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Notices matches its visual baseline
     preconditions:
@@ -50,7 +52,7 @@ scenarios:
     steps:
       - wait: { for: { id: notice.row.1 }, timeout: 10 }
     expect:
-      - visual: { baseline: notices.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: notices.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Permissions matches its visual baseline
     preconditions:
@@ -58,7 +60,7 @@ scenarios:
     steps:
       - wait: { for: { id: perm.requestNotif }, timeout: 10 }
     expect:
-      - visual: { baseline: permissions.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: permissions.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Horse Detail matches its visual baseline
     preconditions:
@@ -68,7 +70,7 @@ scenarios:
       - tap: { id: stable.row.1 }
       - wait: { for: { id: horse.title }, timeout: 5 }
     expect:
-      - visual: { baseline: horse_detail.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: horse_detail.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Notice Detail matches its visual baseline
     preconditions:
@@ -78,7 +80,7 @@ scenarios:
       - tap: { id: notice.row.1 }
       - wait: { for: { id: notice.detail.title }, timeout: 5 }
     expect:
-      - visual: { baseline: notice_detail.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: notice_detail.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Filter sheet matches its visual baseline
     preconditions:
@@ -88,7 +90,7 @@ scenarios:
       - tap: { id: log.openFilter }
       - wait: { for: { id: log.sheet.title }, timeout: 5 }
     expect:
-      - visual: { baseline: filter_sheet.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: filter_sheet.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Gallery cover matches its visual baseline
     preconditions:
@@ -98,7 +100,7 @@ scenarios:
       - tap: { id: log.openGallery }
       - wait: { for: { id: log.cover.title }, timeout: 5 }
     expect:
-      - visual: { baseline: gallery_cover.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: gallery_cover.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
 
   - name: Delete dialog matches its visual baseline
     preconditions:
@@ -113,4 +115,4 @@ scenarios:
       - tap: { id: log.openDelete }
       - wait: { for: { id: log.dialog.delete }, timeout: 5 }
     expect:
-      - visual: { baseline: delete_dialog.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }] }
+      - visual: { baseline: delete_dialog.png, threshold: 4.0, exclude: [{ x: 0, y: 0, w: 1300, h: 130 }, { x: 0, y: 2250, w: 1300, h: 290 }] }
