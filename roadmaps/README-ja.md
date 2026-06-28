@@ -332,6 +332,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装中 | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
+### バックエンド拡張（iOS actuator）
+
+<!-- GENERATED:in-progress-backend -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 実装中 |
+<!-- /GENERATED:in-progress-backend -->
+
 ### Web UI のホスティング（クラウド / セルフホスト）
 
 <!-- GENERATED:in-progress-hosting -->
@@ -429,7 +437,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0019](proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) | XCUITest backend | 提案 |
-| [BE-0020](proposals/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 提案 |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / オンボーディング

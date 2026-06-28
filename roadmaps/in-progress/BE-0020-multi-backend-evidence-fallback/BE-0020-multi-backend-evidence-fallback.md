@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0020](BE-0020-multi-backend-evidence-fallback.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
+| Implementing PR | [#357](https://github.com/bajutsu-e2e/bajutsu/pull/357) |
 | Topic | Backend expansion (iOS actuators) |
 <!-- /BE-METADATA -->
 
@@ -33,7 +34,7 @@ The mechanism follows DESIGN §9 directly: actuation stays with one backend; evi
 
 Keep `select_actuator` unchanged. Add a resolver `evidence_backends(backends, actuator, available)` that returns the *remaining* available backends in list order, **filtered to those on the actuator's own platform** — the read-only evidence providers. **Eligibility = same system under test** (decision 1 below): a provider is eligible only if it resolves to an actuator on the actuator's platform, found by reverse-lookup in `backends.PLATFORMS` (the platform→actuators registry that BE-0042 added and [BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) builds on). Only a same-platform backend observes the same running app, so a cross-platform list like `[ios, web]` yields no web provider for an idb actuator. **Capability-gap detection**: map each evidence *kind* to the capability that supplies it natively (today `network → Capability.NETWORK`); the gap set is the kinds whose capability the actuator's static `capabilities_for(actuator)` lacks. **Dispatch**: for each gap kind, pick the first eligible evidence backend whose `capabilities_for` advertises it — one provider per capability, in list order. (`screenshot` / `elements` always come from the actuator; `video` / `deviceLog` / `appTrace` are backend-independent `simctl` captures, orthogonal to the list.) If no backend supplies a gap kind, it is **skipped with a recorded reason** — graceful degradation, never a run failure.
 
-Because each platform has only one implemented actuator today (`ios → idb`, `web → playwright`), the same-platform filter resolves to *no* provider in production until a platform gains a second actuator (iOS + XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — a safe no-op that changes nothing for current runs. The first slice is therefore exercised with a same-platform network-capable fake (below).
+Because each platform has only one implemented actuator today (`ios → idb`, `web → playwright`), the same-platform filter resolves to *no* provider in production until a platform gains a second actuator (iOS + XCUITest, [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — a safe no-op that changes nothing for current runs. The first slice is therefore exercised with a same-platform network-capable fake (below).
 
 ### Read-only enforced structurally, not by convention
 
@@ -83,4 +84,4 @@ The four open questions are resolved as follows; each is folded into the design 
 
 [drivers.md](../../../docs/drivers.md) (the "not yet wired up" note), [evidence.md](../../../docs/evidence.md), [DESIGN §9](../../../DESIGN.md); `bajutsu/backends.py` (`select_actuator`, `resolve_actuators`, `capabilities_for`), `bajutsu/drivers/base.py` (`Capability`, `Driver`, `resolve_unique`), `bajutsu/capability_preflight.py` (the idb-`network` note), `bajutsu/evidence.py` (`Artifact`, `FileSink`), `bajutsu/network.py` (`Collector`, `NetworkCollector`), `bajutsu/runner/pool.py` (`device_pool` — the seam), `bajutsu/runner/pipeline.py` (`_write_network`, `run_all`), `bajutsu/report/manifest.py` (`SCHEMA_VERSION`), `bajutsu/drivers/playwright.py` (native `network`, `network_collector`), `bajutsu/drivers/fake.py` (`CAPABILITIES`).
 
-**Dependencies / related items:** [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (a second iOS actuator sharply increases the value — one iOS actuator covers the other's gaps — but this can land first with fakes), [BE-0082](../../implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) (gives `capabilities_for` and the pure-preflight pattern reused here). The web (Playwright) backend already has native `network` and is the reference read-only `Collector`.
+**Dependencies / related items:** [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (a second iOS actuator sharply increases the value — one iOS actuator covers the other's gaps — but this can land first with fakes), [BE-0082](../../implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) (gives `capabilities_for` and the pure-preflight pattern reused here). The web (Playwright) backend already has native `network` and is the reference read-only `Collector`.

@@ -7,11 +7,97 @@ import pytest
 from bajutsu.backends import (
     default_available,
     ensure_web_runtime,
+    evidence_backends,
     make_driver,
     resolve_actuators,
+    resolve_evidence_providers,
     select_actuator,
 )
 from bajutsu.drivers import base
+
+# A two-actuator iOS platform (idb + a hypothetical second iOS actuator), so the same-platform
+# fallback can be exercised before XCUITest (BE-0019) actually lands. Injected, not the module global.
+_PLATFORMS = {"ios": ("idb", "xcuitest"), "web": ("playwright",), "fake": ("fake",)}
+
+
+def _caps(actuator: str) -> frozenset[str]:
+    # idb/fake have no native network; xcuitest/playwright do.
+    network = frozenset({base.Capability.NETWORK})
+    return network if actuator in ("xcuitest", "playwright") else frozenset()
+
+
+# --- BE-0020: read-only evidence fallback resolution (pure layer) ---
+
+
+def test_evidence_backends_keeps_only_same_platform_available_siblings() -> None:
+    # web is a different platform than the idb actuator, so it is never an evidence provider; the
+    # same-platform sibling (xcuitest) is, and the actuator itself is excluded.
+    got = evidence_backends(["ios", "web"], "idb", available=lambda b: True, platforms=_PLATFORMS)
+    assert got == ["xcuitest"]
+
+
+def test_evidence_backends_is_empty_without_a_second_same_platform_actuator() -> None:
+    # The realistic default today: one actuator per platform, so the fallback resolves to nothing.
+    assert evidence_backends(["ios", "web"], "idb", available=lambda b: True) == []
+
+
+def test_resolve_picks_the_first_same_platform_provider_for_the_gap() -> None:
+    chosen, skipped = resolve_evidence_providers(
+        ["ios", "web"], "idb", available=lambda b: True, caps=_caps, platforms=_PLATFORMS
+    )
+    assert chosen == {"network": "xcuitest"}  # web (cross-platform) is ineligible
+    assert skipped == {}
+
+
+def test_resolve_skips_the_gap_when_no_same_platform_provider() -> None:
+    # Only a cross-platform backend has network -> recorded as skipped, never a cross-platform pick.
+    plats = {"ios": ("idb",), "web": ("playwright",), "fake": ("fake",)}
+    chosen, skipped = resolve_evidence_providers(
+        ["ios", "web"], "idb", available=lambda b: True, caps=_caps, platforms=plats
+    )
+    assert chosen == {}
+    assert "network" in skipped
+
+
+def test_resolve_no_gap_when_the_actuator_has_the_capability_natively() -> None:
+    chosen, skipped = resolve_evidence_providers(
+        ["web"], "playwright", available=lambda b: True, caps=_caps, platforms=_PLATFORMS
+    )
+    assert chosen == {} and skipped == {}
+
+
+def test_resolve_skips_an_unavailable_provider() -> None:
+    chosen, skipped = resolve_evidence_providers(
+        ["ios"], "idb", available=lambda b: b != "xcuitest", caps=_caps, platforms=_PLATFORMS
+    )
+    assert chosen == {} and "network" in skipped
+
+
+def test_network_seeded_fake_is_a_readonly_evidence_provider() -> None:
+    from bajutsu.drivers.base import EvidenceProvider
+    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.network import Collector, NetworkExchange
+
+    ex = NetworkExchange(method="GET", path="/items", status=200)
+    fake = FakeDriver(exchanges=[ex])
+    assert isinstance(fake, EvidenceProvider)
+    assert base.Capability.NETWORK in fake.capabilities()
+    collector = fake.network_collector()
+    assert isinstance(collector, Collector)
+    assert collector.snapshot() == [ex]
+
+
+def test_plain_fake_advertises_no_network() -> None:
+    from bajutsu.drivers.fake import FakeDriver
+
+    assert base.Capability.NETWORK not in FakeDriver().capabilities()
+
+
+def test_idb_exposes_no_evidence_provider_surface() -> None:
+    # idb has no native network, so it must not expose network_collector (read-only fallback surface).
+    from bajutsu.drivers.idb import IdbDriver
+
+    assert not hasattr(IdbDriver, "network_collector")
 
 
 @pytest.mark.parametrize(

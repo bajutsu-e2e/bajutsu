@@ -191,3 +191,68 @@ def make_driver(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
         )
     raise ValueError(f"unknown backend: {actuator!r}")
+
+
+# Evidence *kind* -> the capability that supplies it natively (BE-0020). Today only network; a
+# kind whose capability the actuator lacks is filled read-only by a same-platform provider below.
+KIND_CAPABILITY: dict[str, str] = {"network": base.Capability.NETWORK}
+
+
+def _platform_of(actuator: str, platforms: dict[str, tuple[str, ...]]) -> str | None:
+    """The platform whose actuator set contains *actuator* (reverse lookup)."""
+    return next((p for p, acts in platforms.items() if actuator in acts), None)
+
+
+def evidence_backends(
+    backends: list[str],
+    actuator: str,
+    available: Callable[[str], bool] = default_available,
+    platforms: dict[str, tuple[str, ...]] = PLATFORMS,
+) -> list[str]:
+    """The read-only evidence providers for *actuator* (BE-0020).
+
+    Returns the remaining available actuators on the actuator's own platform, in `backends` order
+    (deduped, the actuator excluded). Eligibility is *same system under test*: only a same-platform
+    backend observes the
+    same running app, so a cross-platform token (e.g. `web` for an `idb` run) is never a provider.
+    `platforms` is injectable so the resolver is unit-testable before a platform has two actuators.
+    """
+    platform = _platform_of(actuator, platforms)
+    if platform is None:
+        return []
+    siblings = set(platforms.get(platform, ()))
+    out: list[str] = []
+    for token in backends:
+        for a in platforms.get(token, (token,)):
+            if a != actuator and a in siblings and available(a) and a not in out:
+                out.append(a)
+    return out
+
+
+def resolve_evidence_providers(
+    backends: list[str],
+    actuator: str,
+    available: Callable[[str], bool] = default_available,
+    caps: Callable[[str], frozenset[str]] = capabilities_for,
+    platforms: dict[str, tuple[str, ...]] = PLATFORMS,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Resolve one read-only provider per evidence gap (BE-0020).
+
+    For each kind the actuator lacks natively (its `caps` miss the kind's capability), pick the
+    first eligible same-platform provider that advertises it. Returns ``(providers, skipped)``:
+    ``providers`` maps a gap kind to its provider actuator; ``skipped`` maps a gap kind with no
+    provider to a recorded reason (graceful degradation, never a run failure).
+    """
+    actuator_caps = caps(actuator)
+    providers = evidence_backends(backends, actuator, available, platforms)
+    chosen: dict[str, str] = {}
+    skipped: dict[str, str] = {}
+    for kind, capability in KIND_CAPABILITY.items():
+        if capability in actuator_caps:
+            continue  # the actuator supplies it natively — no fallback needed
+        provider = next((b for b in providers if capability in caps(b)), None)
+        if provider is not None:
+            chosen[kind] = provider
+        else:
+            skipped[kind] = f"no same-platform backend provides {kind} ({capability})"
+    return chosen, skipped

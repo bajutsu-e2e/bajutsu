@@ -14,7 +14,7 @@ import pytest
 
 from bajutsu.assertions import AssertionResult, VisualEvidence
 from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
+from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report.load import load_run, results_from_manifest
 from bajutsu.report.manifest import manifest_dict
 
@@ -53,6 +53,7 @@ def _result() -> RunResult:
         device_runtime="iOS 26",
         duration_s=2.5,
         expect_alerts=[AlertEvent("Dismiss")],
+        skipped_captures=[SkippedCapture("video", "no eligible backend")],
     )
 
 

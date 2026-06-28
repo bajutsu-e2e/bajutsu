@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import cast
 
 from bajutsu import env
-from bajutsu.backends import default_available, select_actuator
+from bajutsu.backends import default_available, resolve_evidence_providers, select_actuator
+from bajutsu.backends import make_driver as _make_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
@@ -36,6 +37,10 @@ def device_pool(
     secret_values: list[str] | None = None,
     available: Callable[[str], bool] = default_available,
     env_run: env.RunFn = env._real_run,
+    make_driver: Callable[..., base.Driver] = _make_driver,
+    evidence_providers: Callable[
+        [list[str], str, Callable[[str], bool]], tuple[dict[str, str], dict[str, str]]
+    ] = resolve_evidence_providers,
 ) -> tuple[LeaseFn, Callable[[], None]]:
     """A pool of N≥1 devices for (parallel) runs.
 
@@ -59,6 +64,10 @@ def device_pool(
         secret_values: Raw secret values to redact from evidence.
         available: Actuator-availability probe, injectable for tests.
         env_run: The subprocess runner for simctl, injectable for tests.
+        make_driver: Builds a backend's driver; injectable so a test can supply a read-only
+            evidence provider's driver (BE-0020).
+        evidence_providers: Resolves the read-only evidence provider per gap kind (BE-0020),
+            injectable for tests; defaults to the same-platform resolver.
 
     Returns:
         A `(lease, shutdown)` pair: `lease` leases a device for one scenario; `shutdown` stops every
@@ -66,6 +75,12 @@ def device_pool(
     """
     actuator = select_actuator(backends, available)
     is_web = actuator == "playwright"
+    # A same-platform, read-only provider for an evidence kind the actuator can't supply (BE-0020).
+    # Today `network` is covered by web (native) and idb (its app-side `BAJUTSU_COLLECTOR`), so this
+    # resolves to nothing in production; it activates when a platform gains a second, network-native
+    # actuator (e.g. iOS + XCUITest, BE-0019), at which point its collector supplies the fallback.
+    providers, _skipped = evidence_providers(backends, actuator, available)
+    network_provider = providers.get("network") if network else None
     # Resolve the device model / OS once up front (static per device) so each result can name
     # the simulator it ran on in the report; best-effort, so a missing catalog just omits it.
     # Web has no simctl catalog.
@@ -94,78 +109,104 @@ def device_pool(
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
-        # Web films the whole scenario only when its capture policy asks for video: Playwright
-        # records at context-creation time, so the recording dir must be set before the driver is
-        # built. iOS records on demand via simctl, so it needs no up-front dir.
-        record_video_dir: Path | None = None
-        if is_web and "video" in requested_intervals(scenario):
-            record_video_dir = run_dir / "_video_tmp"
-            record_video_dir.mkdir(parents=True, exist_ok=True)
-        # iOS points the app at its pre-started HTTP collector via launch env; web has no such
-        # env (Playwright observes natively), so its collector is built from the live page below.
-        collector: Collector | None = collectors.get(udid)
-        extra_env = (
-            {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
-            if isinstance(collector, NetworkCollector)
-            else None
-        )
-        driver = launch_driver(
-            udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
-        )
-        sink = FileSink(
-            run_dir,
-            udid=udid,
-            log_predicate=log_predicate,
-            log_subsystem=log_subsystem,
-            redact=eff.redact,
-            secrets=secret_values,
-            # On a web lane, interval evidence is Playwright-native (console / page errors), not
-            # simctl; idb has no such method, so this is None there and the simctl path is used.
-            web_interval=getattr(driver, "web_interval", None),
-        )
-        relaunch: RelaunchFn
-        control: DeviceControl | None
-        if is_web:
-            from bajutsu.drivers.playwright import PlaywrightDriver
-
-            # The web collector hooks the live page (and fulfills this scenario's mocks); a fresh
-            # context per lease scopes its traffic, mirroring iOS's per-scenario collector clear.
-            web_collector = (
-                cast(PlaywrightDriver, driver).network_collector(scenario.mocks)
-                if network
+        # The fallback provider's collector and the leased udid must be released if setup raises
+        # below (before a Lease — whose release() would do this — is handed out), so a single
+        # launch failure neither leaks a listening socket nor starves later leases.
+        fallback_collector: Collector | None = None
+        try:
+            # Web films the whole scenario only when its capture policy asks for video: Playwright
+            # records at context-creation time, so the recording dir must be set before the driver
+            # is built. iOS records on demand via simctl, so it needs no up-front dir.
+            record_video_dir: Path | None = None
+            if is_web and "video" in requested_intervals(scenario):
+                record_video_dir = run_dir / "_video_tmp"
+                record_video_dir.mkdir(parents=True, exist_ok=True)
+            # iOS points the app at its pre-started HTTP collector via launch env; web has no such
+            # env (Playwright observes natively), so its collector is built from the live page below.
+            # A read-only fallback provider (BE-0020), when resolved, supplies the collector instead —
+            # its own driver observes the same app, so the actuator's app-collector env is not used.
+            collector: Collector | None
+            collector_provider = "collector"
+            if not is_web and network_provider is not None:
+                fallback_collector = make_driver(network_provider, udid).network_collector()  # type: ignore[attr-defined]
+                collector = fallback_collector
+                collector_provider = f"{network_provider} (fallback)"
+            else:
+                collector = collectors.get(udid)
+            extra_env = (
+                {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
+                if isinstance(collector, NetworkCollector)
                 else None
             )
-            collector = web_collector
-            # No simctl device control / app terminate; the driver owns the browser, so a
-            # release tears it down (a re-lease then builds a fresh context = clean state).
-            relaunch = _web_relauncher(driver, ready_sel=eff.ready_when)
-            control = None
+            driver = launch_driver(
+                udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
+            )
+            sink = FileSink(
+                run_dir,
+                udid=udid,
+                log_predicate=log_predicate,
+                log_subsystem=log_subsystem,
+                redact=eff.redact,
+                secrets=secret_values,
+                # On a web lane, interval evidence is Playwright-native (console / page errors), not
+                # simctl; idb has no such method, so this is None there and the simctl path is used.
+                web_interval=getattr(driver, "web_interval", None),
+            )
+            relaunch: RelaunchFn
+            control: DeviceControl | None
+            if is_web:
+                from bajutsu.drivers.playwright import PlaywrightDriver
 
-            def release() -> None:
+                # The web collector hooks the live page (and fulfills this scenario's mocks); a fresh
+                # context per lease scopes its traffic, mirroring iOS's per-scenario collector clear.
+                web_collector = (
+                    cast(PlaywrightDriver, driver).network_collector(scenario.mocks)
+                    if network
+                    else None
+                )
+                collector = web_collector
                 if web_collector is not None:
-                    web_collector.stop()
-                driver.close()  # type: ignore[attr-defined]  # web-only lifecycle
-                free.put(udid)
-        else:
-            relaunch = device_relauncher(udid, env_run, extra_env)(eff, scenario, driver)
-            control = device_control(udid, eff.bundle_id, env_run)
+                    collector_provider = (
+                        "playwright"  # native observation (was mislabelled "collector")
+                    )
+                # No simctl device control / app terminate; the driver owns the browser, so a
+                # release tears it down (a re-lease then builds a fresh context = clean state).
+                relaunch = _web_relauncher(driver, ready_sel=eff.ready_when)
+                control = None
 
-            def release() -> None:
-                env.Env(udid, run=env_run).terminate(eff.bundle_id)
-                free.put(udid)
+                def release() -> None:
+                    if web_collector is not None:
+                        web_collector.stop()
+                    driver.close()  # type: ignore[attr-defined]  # web-only lifecycle
+                    free.put(udid)
+            else:
+                relaunch = device_relauncher(udid, env_run, extra_env)(eff, scenario, driver)
+                control = device_control(udid, eff.bundle_id, env_run)
 
-        meta = catalog.get(udid, {})
-        return Lease(
-            driver=driver,
-            sink=sink,
-            relaunch=relaunch,
-            control=control,
-            collector=collector,
-            release=release,
-            udid=udid,
-            device_name=meta.get("name", ""),
-            device_runtime=meta.get("runtime", ""),
-        )
+                def release() -> None:
+                    if fallback_collector is not None:
+                        fallback_collector.stop()  # the read-only provider's collector (BE-0020)
+                    env.Env(udid, run=env_run).terminate(eff.bundle_id)
+                    free.put(udid)
+
+            meta = catalog.get(udid, {})
+            return Lease(
+                driver=driver,
+                sink=sink,
+                relaunch=relaunch,
+                control=control,
+                collector=collector,
+                release=release,
+                udid=udid,
+                device_name=meta.get("name", ""),
+                device_runtime=meta.get("runtime", ""),
+                collector_provider=collector_provider,
+            )
+        except BaseException:
+            if fallback_collector is not None:
+                fallback_collector.stop()
+            free.put(udid)
+            raise
 
     def shutdown() -> None:
         for collector in collectors.values():

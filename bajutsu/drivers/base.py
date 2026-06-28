@@ -13,7 +13,10 @@ from __future__ import annotations
 import fnmatch
 import functools
 import re
-from typing import Protocol, TypedDict, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypedDict, cast, runtime_checkable
+
+if TYPE_CHECKING:
+    from bajutsu.network import Collector
 
 
 @functools.lru_cache(maxsize=128)
@@ -110,6 +113,23 @@ class Driver(Protocol):
     def wait_for(self, sel: Selector, timeout: float) -> bool: ...
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...
+
+
+@runtime_checkable
+class EvidenceProvider(Protocol):
+    """A read-only evidence source from a non-actuator backend (BE-0020).
+
+    A multi-backend run keeps actuation on the one actuator and may consult another same-platform
+    backend *read-only* to fill an evidence gap the actuator lacks (e.g. idb has no native network,
+    so a second iOS actuator supplies it). The narrow surface — `capabilities` plus observation
+    methods only, never `tap` / `type` / `swipe` / `wait` / `query` — makes "the fallback never
+    actuates" a type-level fact rather than a convention.
+    """
+
+    name: str
+
+    def capabilities(self) -> set[str]: ...
+    def network_collector(self, mocks: list[object] | None = None) -> Collector: ...
 
 
 # --- Selector resolution (the determinism core) ---

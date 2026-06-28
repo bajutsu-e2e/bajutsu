@@ -6,13 +6,13 @@ No run logic here, so launch / pool / pipeline can all import it without a cycle
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import EvidenceSink
 from bajutsu.network import Collector, NetworkExchange
-from bajutsu.orchestrator import BlockedHandler, DeviceControl, RelaunchFn
+from bajutsu.orchestrator import BlockedHandler, DeviceControl, RelaunchFn, SkippedCapture
 from bajutsu.scenario import Scenario
 
 # Builds the in-scenario relaunch function for a scenario (given its live driver).
@@ -21,7 +21,7 @@ RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
 # Selects the alert-guard handler for one scenario (None = no guard for it). The CLI sets this
 # so each scenario's `dismissAlerts` (default on, optional instruction) decides whether — and
 # how — the vision guard runs; the orchestrator stays oblivious to the per-scenario choice.
-OnBlockedFor = Callable[[Scenario], "BlockedHandler | None"]
+OnBlockedFor = Callable[[Scenario], BlockedHandler | None]
 
 
 @dataclass
@@ -47,6 +47,11 @@ class Lease:
     # Environment tab (empty when the simulator catalog couldn't be read).
     device_name: str = ""
     device_runtime: str = ""
+    # Provenance for the network artifact: "collector" (the actuator's own app-side receiver) or
+    # "<backend> (fallback)" when a same-platform read-only provider supplied it (BE-0020).
+    collector_provider: str = "collector"
+    # Evidence kinds no eligible backend could supply, disclosed per scenario (BE-0020).
+    skipped_captures: list[SkippedCapture] = field(default_factory=list)
 
 
 # Leases a free device for one scenario (blocking until one frees up): launches the app
