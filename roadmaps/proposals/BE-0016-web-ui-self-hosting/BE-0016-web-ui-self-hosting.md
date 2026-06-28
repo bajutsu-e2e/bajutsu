@@ -186,27 +186,25 @@ are deployment and operations concerns that the Linux-only `make check` gate can
 Docker, no Mac), so the table is explicit about which piece has a machine-checkable contract and which
 is verified by hand on a deployment.
 
-**1. Cross-org fairness and quota (the one piece with a gate-checkable contract).** Today's caps are
-global and per-user; there is **no per-org cap and no fair scheduling across orgs**, so under
-contention one org can still crowd the scarce Mac pool. The design extends the existing seam rather
-than adding a new one:
+**1. Cross-org fairness and quota (the one piece with a gate-checkable contract).** Before this, the
+caps were global and per-user, with no per-org bound, so one org could crowd the scarce Mac pool even
+when its users each stayed under their per-user cap. The design extends the existing seam rather than
+adding a new one, and lands in two slices:
 
-- **Per-org cap** — add `max_concurrent_per_org`, counted on `job.org` exactly as
-  `max_concurrent_per_user` is counted on `job.actor` today, in the same atomic count-and-insert under
-  the lock in `try_register` (`bajutsu/serve/jobs.py`). A job over its org's cap is **held**, not
-  rejected.
-- **Weighted-fair dispatch** — replace the current "reject with 429 when the global cap is hit" tail
-  (`_register_and_dispatch`, `bajutsu/serve/operations.py`) with **per-org pending queues** and a
-  dispatcher that round-robins across orgs that have pending work, admitting the next job only while
-  that org is under its cap. Priority tiers ride the same round-robin as weights. Pure first-in,
-  first-out (FIFO) is what lets one org monopolize the pool; per-org queues fix it.
-- **Machine-checkable invariants** (Linux gate, with a fake queue and the in-process state — no Mac):
-  (a) an org flooding the queue never exceeds its `max_concurrent_per_org`; (b) under two orgs both
-  flooding, admitted jobs alternate fairly across orgs rather than draining one org first; (c) the
-  per-user cap still holds within an org. These are unit-testable against `ServeState` the way the
-  existing cap tests are.
-- **Conflict note.** This lands in `bajutsu/serve/jobs.py` and `operations.py`, the surface open PR
-  #166 (BE-0056) is editing — so it should land **after** #166 merges, or be coordinated with it.
+- **Per-org cap — shipped.** `max_concurrent_per_org` is counted on `job.org` exactly as
+  `max_concurrent_per_user` is counted on `job.actor`, in the same atomic count-and-insert under the
+  lock in `try_register` (`bajutsu/serve/jobs.py`); a server backend sets it from
+  `BAJUTSU_MAX_CONCURRENT_PER_ORG` (`0` = unlimited, so single-tenant is unchanged). A job over its
+  org's cap is **rejected** (HTTP 429) today, mirroring the per-user cap. The unit tests pin the
+  invariants on `ServeState` (no Mac): an org never exceeds its cap, a different org is unaffected,
+  the default is unlimited, and the per-user and per-org caps compose.
+- **Weighted-fair dispatch — remaining.** Turn that rejection into **holding**: replace the
+  "reject with 429 when a cap is hit" tail (`_register_and_dispatch`, `bajutsu/serve/operations.py`)
+  with **per-org pending queues** and a dispatcher that round-robins across orgs with pending work,
+  admitting the next job only while that org is under its cap. Priority tiers ride the same
+  round-robin as weights. Pure first-in, first-out (FIFO) is what lets one org monopolize the pool;
+  per-org queues fix it. **Conflict note:** this lands in `bajutsu/serve/operations.py`, the surface
+  open PR #166 (BE-0056) is editing — so it should land **after** #166 merges, or be coordinated.
 
 **2. Capability-routed queues.** Today there is a single job queue. A mixed pool (different iOS
 runtimes, iPad vs iPhone) needs **per-capability queues** (`q:ios18`, `q:ipad`); the control plane
@@ -263,8 +261,9 @@ The multi-tenant design rests on four axes; three have shipped, one (fairness) i
   **single server-level** API key today, not **per-org** injected secrets; and **per-job egress
   controls** and **dedicating whole Macs** to high-isolation tenants are operator choices, not yet
   automated.
-- **Fairness / noisy-neighbor — partly shipped.** The per-user cap exists; **per-org** quota and
-  weighted-fair scheduling across the scarce pool are item 1.
+- **Fairness / noisy-neighbor — partly shipped.** The per-user cap and now the **per-org** cap exist
+  (both reject over-cap requests); weighted-fair scheduling across the scarce pool (holding rather
+  than rejecting) is the remaining half of item 1.
 - **Authorization boundary — shipped.** Every request carries its org (the OAuth claim); org scope is
   enforced on each endpoint, RBAC applies within the org, and a worker is handed only its job's org
   context.

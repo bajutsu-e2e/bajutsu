@@ -125,19 +125,18 @@ def _session_ttl_from_env(raw: str | None, default: int) -> int:
     return ttl
 
 
-def _max_per_user_from_env(raw: str | None) -> int:
-    """Parse ``BAJUTSU_MAX_CONCURRENT_PER_USER`` (unset/empty/0 = unlimited). A clear error beats a
-    bare ValueError for operator-facing config; negatives and non-integers are rejected (BE-0015 7c-3)."""
+def _max_concurrent_from_env(raw: str | None, *, var: str) -> int:
+    """Parse a non-negative concurrency cap from *var* (unset/empty/0 = unlimited). A clear error
+    beats a bare ValueError for operator-facing config; negatives and non-integers are rejected.
+    Shared by the per-user (BE-0015 7c-3) and per-org (BE-0016 Tier B fairness) caps."""
     if not raw:
         return 0
     try:
         n = int(raw)
     except ValueError:
-        raise ValueError(
-            f"BAJUTSU_MAX_CONCURRENT_PER_USER must be a whole number, got {raw!r}"
-        ) from None
+        raise ValueError(f"{var} must be a whole number, got {raw!r}") from None
     if n < 0:
-        raise ValueError(f"BAJUTSU_MAX_CONCURRENT_PER_USER must be >= 0, got {n}")
+        raise ValueError(f"{var} must be >= 0, got {n}")
     return n
 
 
@@ -288,8 +287,14 @@ def _build_server_state(
         baselines_dir=baselines_dir,
         max_concurrent=max_concurrent,
         # Per-user concurrency cap (0 = unlimited), so one OAuth user can't starve the pool (7c-3).
-        max_concurrent_per_user=_max_per_user_from_env(
-            os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER")
+        max_concurrent_per_user=_max_concurrent_from_env(
+            os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER"),
+            var="BAJUTSU_MAX_CONCURRENT_PER_USER",
+        ),
+        # Per-org cap (0 = unlimited), so one tenant can't monopolize the scarce pool (BE-0016).
+        max_concurrent_per_org=_max_concurrent_from_env(
+            os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_ORG"),
+            var="BAJUTSU_MAX_CONCURRENT_PER_ORG",
         ),
         token=token,
         upload_exec=upload_exec,

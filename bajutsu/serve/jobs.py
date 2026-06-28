@@ -172,6 +172,12 @@ class ServeState:
     # means unlimited (the default); a server backend sets it from BAJUTSU_MAX_CONCURRENT_PER_USER.
     # Applies only to jobs that carry an actor (an OAuth identity); token/anonymous jobs are exempt.
     max_concurrent_per_user: int = 0
+    # Per-org cap on concurrent jobs (BE-0016 Tier B pool fairness), so one tenant can't monopolize
+    # the scarce Mac pool even when its users each stay under the per-user cap. <= 0 = unlimited (the
+    # default), so a single-tenant deploy (every job in the default org) is unchanged; a server
+    # backend sets it from BAJUTSU_MAX_CONCURRENT_PER_ORG. Every job carries an org, so this needs no
+    # exemption — an operator opts in only when running multiple orgs.
+    max_concurrent_per_org: int = 0
     # Optional shared token (BE-0051). None = open (loopback-only legacy behavior); when set, every
     # request must authenticate. Login exchanges it for an opaque session id held by the `sessions`
     # seam below — the shared token itself never lives in the browser.
@@ -264,7 +270,8 @@ class ServeState:
     def try_register(self, job: Job) -> Job | None:
         """Register *job* only if under the concurrency caps, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
-        the global cap, or — for an identified ``job.actor`` — at the per-user cap (BE-0015 7c-3)."""
+        the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), or at the
+        per-org cap for ``job.org`` (BE-0016 Tier B pool fairness)."""
         with self._lock:
             running = [j for j in self.jobs.values() if j.status == "running"]
             if self.max_concurrent > 0 and len(running) >= self.max_concurrent:
@@ -272,6 +279,10 @@ class ServeState:
             if job.actor and self.max_concurrent_per_user > 0:
                 mine = sum(1 for j in running if j.actor == job.actor)
                 if mine >= self.max_concurrent_per_user:
+                    return None
+            if self.max_concurrent_per_org > 0:
+                same_org = sum(1 for j in running if j.org == job.org)
+                if same_org >= self.max_concurrent_per_org:
                     return None
             return self._register(job)
 

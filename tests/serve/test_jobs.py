@@ -355,6 +355,38 @@ def test_try_new_job_per_user_unlimited_by_default(tmp_path: Path) -> None:
     assert state.try_register(srv.Job(cmd=[], actor="alice")) is not None
 
 
+def test_try_new_job_caps_concurrency_per_org(tmp_path: Path) -> None:
+    # A per-org cap keeps one tenant from monopolizing the scarce Mac pool, even when its users each
+    # stay under the per-user cap (BE-0016 Tier B pool fairness).
+    state = srv.ServeState(runs_dir=tmp_path / "runs", max_concurrent_per_org=1)
+    assert state.try_register(srv.Job(cmd=[], org="acme")) is not None  # acme's first job
+    assert state.try_register(srv.Job(cmd=[], org="acme")) is None  # acme is at its org cap
+    assert (
+        state.try_register(srv.Job(cmd=[], org="globex")) is not None
+    )  # a different org is unaffected
+
+
+def test_try_new_job_per_org_unlimited_by_default(tmp_path: Path) -> None:
+    # Default 0 = unlimited, so a single-tenant deploy (every job in the default org) is unchanged.
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    assert state.try_register(srv.Job(cmd=[], org="acme")) is not None
+    assert state.try_register(srv.Job(cmd=[], org="acme")) is not None
+
+
+def test_try_new_job_per_user_and_per_org_caps_compose(tmp_path: Path) -> None:
+    # Both caps apply: a job is registered only when under its user's cap and its org's cap.
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", max_concurrent_per_user=1, max_concurrent_per_org=2
+    )
+    assert state.try_register(srv.Job(cmd=[], actor="alice", org="acme")) is not None
+    # bob is a second acme user (under the org cap of 2), his own first job (under the per-user cap).
+    assert state.try_register(srv.Job(cmd=[], actor="bob", org="acme")) is not None
+    # carol would be acme's third in-flight job — blocked by the org cap even though it's her first.
+    assert state.try_register(srv.Job(cmd=[], actor="carol", org="acme")) is None
+    # alice's second job is blocked by her per-user cap, regardless of org headroom.
+    assert state.try_register(srv.Job(cmd=[], actor="alice", org="globex")) is None
+
+
 def _bundle(uploads_dir: Path, name: str) -> Upload:
     """An Upload backed by a real extraction dir under *uploads_dir* (BE-0073)."""
     d = uploads_dir / name
