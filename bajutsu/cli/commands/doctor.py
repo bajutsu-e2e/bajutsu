@@ -28,6 +28,18 @@ def doctor(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    # Config gate first: a target missing the field its backend needs (iOS bundleId / web baseUrl)
+    # is a usage/config error — fixable without any tool or device — so it exits 2 (distinct from a
+    # genuine environment/tool failure, which exits 1) and is surfaced before any doomed probe
+    # (BE-0024). `_need_target` rejects a target with neither field at parse time; this catches the
+    # wrong field for the selected backend.
+    cfg_checks = preflight.config_checks(
+        actuator, target=target_name, bundle_id=eff.bundle_id, base_url=eff.base_url
+    )
+    if not preflight.passed(cfg_checks):
+        typer.echo("environment:")
+        typer.echo(preflight.render(cfg_checks))
+        raise typer.Exit(2)
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device.
     env_checks = preflight.runnability(
@@ -43,10 +55,11 @@ def doctor(
         version_check = preflight.idb_version_check(eff.idb_version, idb_version.probe())
         if version_check is not None:
             env_checks.append(version_check)
-    if env_checks:
+    checks = cfg_checks + env_checks
+    if checks:
         typer.echo("environment:")
-        typer.echo(preflight.render(env_checks))
-        if not preflight.passed(env_checks):
+        typer.echo(preflight.render(checks))
+        if not preflight.passed(checks):
             raise typer.Exit(1)
         typer.echo("")
     elements = _current_screen(actuator, udid, eff)
