@@ -48,6 +48,56 @@
 
 エディタは Tier 1 かつ app-agnostic を保ちます。読むのは `targets.<name>`（アプリ、そのシナリオディレクトリ、`doctor` スコアへ供給する identifier 名前空間）と、実行がすでに生成する成果物です。選択は構造的（点-in-frame と `doctor` ヒューリスティック）で、**LLM も `ANTHROPIC_API_KEY` も使いません**。決定的な `run` / CI ゲートには一切触れず、人が所有する編集ループのコストを下げるだけです。
 
+### 依存と順序
+
+ピッカーのリゾルバは BE-0012 の `capture.py` コア（`hit_test` ／ `resolve_capture`）と、共有の
+`el → Selector` 安定度ラダーです。BE-0012 はまだ proposal なので、**本項目はそのコアの存在を前提**とします。
+順序は二通りあり、どちらも単一のリゾルバに帰着します。
+
+- **BE-0012 が先**（自然）：BE-0012 が `capture.py` と統合したラダーを導入し、BE-0013 はそれをそのまま再利用して、
+  自前の（成果物由来の）要素ツリーとスクリーンショットを与えます。
+- **BE-0013 が先**：最初のスライスでラダー（現在 `crawl` ／ `crawl_repro` に重複）を `capture.py` の
+  `resolve_capture` へ括り出し、BE-0012 が後でそのライブ採取の経路を同じ関数の上に作ります。
+
+いずれの場合もリゾルバの二重実装は生じません。エディタ自身の面（二枚ペインのビュー、成果物由来のピッカー、
+検証付き保存ルート）はどちらの順序にも依存しないので、以下の設計はそのまま成り立ちます。
+
+### エディタ API
+
+3 本の author 所有の `serve` ルート（stdlib の `serve/handler.py` と FastAPI の `server/app.py` ミラー）で、
+いずれもステートレスです。リクエストをまたいでライブドライバを保持せず、BE-0011 の shell-out モデルを保ちます。
+
+- **編集用ロード** — 既存の `GET /api/scenario`（`operations.read_scenario`）を拡張し、選んだ run について
+  各ステップの採取済み成果物のハンドルも返します。`{ yaml, steps: [{ stepId, action, fields, elementsUrl,
+  screenshotUrl }] }` で、URL はバイト配信済みの `runs/<runId>/<stepId>/elements.json` と `after.png` を指します。
+  run は著者が見ているレポートそのものです。run が無ければハンドルは null で、ペインは raw フィールド編集に
+  退化します。
+- **ピックの解決** — `POST /api/scenario/resolve { target, runId, stepId, point: [x, y] }` →
+  `resolve_capture(elements_of(stepId), point, namespaces_of(target))` を実行し、
+  `{ selector, rung, doctorScore, ambiguous, candidates? }` を返します。`point` は正規化 `[0,1]`
+  （クライアントが表示ピクセル → 正規化に写像。`crawl.Action.perform` が既に使う倍率）で、サーバはその
+  ステップの `elements.json` を読み**構造的に解決します。端末も LLM も使いません**。曖昧なヒットは
+  `ambiguous: true` と候補を返し、著者が `within` ／ `index` で絞れるようにします。黙って 1 つ選ぶことは
+  しません。
+- **保存** — 既存の `POST /api/scenario`（`operations.save_scenario` → `ScenarioScope.save()`）で、書き込み前に
+  `load_scenario_file` で検証します。エディタは構造化ペインを YAML に直列化してこの不変の経路で保存するので、
+  エディタの保存と手編集は同じ書き込みであり、同じように弾かれます。
+
+### 検証
+
+高速ゲート（端末・ブラウザ・LLM 不要）：
+
+- *リゾルバの再利用。* 固定の `elements.json` フィクスチャに対し、ある点が期待どおりの id 優先 selector とその
+  `doctor` rung に解決し、重なった frame 上の点は候補付きで `ambiguous` を返すこと。BE-0012 のリゾルバの
+  テストと同じアサーションです（リゾルバは 1 つ、テスト面も 1 つ）。
+- *保存の検証。* 構造的に編集したが不正なシナリオの保存が、1 バイトも書く前に `load_scenario_file` で
+  弾かれること（部分書き込みなし）。
+- *ルートの形。* ロード ／ 解決 ／ 保存のハンドラがフィクスチャ run に対して上記の形を返し、run の無いシナリオは
+  エラーではなく null の成果物ハンドルへ退化すること。
+
+`serve.js` の二枚ペインのオーバーレイ描画は、高速ゲートではなく既存の serve UI の経路（crawl レポートの
+スクリーンショットオーバーレイと同様）で確認します。
+
 ## 検討した代替案
 
 * **生の YAML テキストエリアだけに留める。** これは BE-0011 の現状です。到達点としては不採用です。依然として著者がセレクタを手で知る必要があり、セレクタの安定度に対するフィードバックも得られません。ピッカーと `doctor` スコアこそが付加価値の全てです。
