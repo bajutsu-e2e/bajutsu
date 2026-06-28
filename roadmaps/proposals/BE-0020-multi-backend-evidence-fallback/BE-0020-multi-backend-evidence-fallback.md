@@ -31,7 +31,9 @@ The mechanism follows DESIGN §9 directly: actuation stays with one backend; evi
 
 ### Two roles, derived from one list
 
-Keep `select_actuator` unchanged. Add a resolver `evidence_backends(backends, available)` that returns the *remaining* available backends in list order — the read-only evidence providers. **Capability-gap detection**: map each evidence *kind* to the capability that supplies it natively (today `network → Capability.NETWORK`); the gap set is the kinds whose capability the actuator's static `capabilities_for(actuator)` lacks. **Dispatch**: for each gap kind, pick the first evidence backend whose `capabilities_for` advertises it — one provider per capability, in list order. (`screenshot` / `elements` always come from the actuator; `video` / `deviceLog` / `appTrace` are backend-independent `simctl` captures, orthogonal to the list.) If no backend supplies a gap kind, it is **skipped with a recorded reason** — graceful degradation, never a run failure.
+Keep `select_actuator` unchanged. Add a resolver `evidence_backends(backends, actuator, available)` that returns the *remaining* available backends in list order, **filtered to those on the actuator's own platform** — the read-only evidence providers. **Eligibility = same system under test** (decision 1 below): a provider is eligible only if it resolves to an actuator on the actuator's platform, found by reverse-lookup in `backends.PLATFORMS` (the platform→actuators registry that BE-0042 added and [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) builds on). Only a same-platform backend observes the same running app, so a cross-platform list like `[ios, web]` yields no web provider for an idb actuator. **Capability-gap detection**: map each evidence *kind* to the capability that supplies it natively (today `network → Capability.NETWORK`); the gap set is the kinds whose capability the actuator's static `capabilities_for(actuator)` lacks. **Dispatch**: for each gap kind, pick the first eligible evidence backend whose `capabilities_for` advertises it — one provider per capability, in list order. (`screenshot` / `elements` always come from the actuator; `video` / `deviceLog` / `appTrace` are backend-independent `simctl` captures, orthogonal to the list.) If no backend supplies a gap kind, it is **skipped with a recorded reason** — graceful degradation, never a run failure.
+
+Because each platform has only one implemented actuator today (`ios → idb`, `web → playwright`), the same-platform filter resolves to *no* provider in production until a platform gains a second actuator (iOS + XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — a safe no-op that changes nothing for current runs. The first slice is therefore exercised with a same-platform network-capable fake (below).
 
 ### Read-only enforced structurally, not by convention
 
@@ -43,7 +45,7 @@ Mirror the existing collector lifecycle in `pool.py` so parallelism, teardown, a
 
 ### Provenance (keep the manifest honest)
 
-`Artifact.provider` must name the backend that actually supplied each artifact: web native = `"playwright"`; idb app collector = `"collector"` (unchanged); a fallback = e.g. `"<backend> (fallback; idb has no native network)"`. Add a per-scenario `SkippedCapture(kind, reason)` list on `RunResult` so a gap is *disclosed* rather than silently empty — it rides `asdict` into `manifest.json` and surfaces in `report/panels.py` beside the existing degradation disclosures. Optionally add a top-level `evidenceBackends: [...]` to the manifest and bump `SCHEMA_VERSION` (currently 3; BE-0068 versioning degrades older runs gracefully).
+`Artifact.provider` must name the backend that actually supplied each artifact: web native = `"playwright"`; idb app collector = `"collector"` (unchanged); a fallback = `"<backend> (fallback)"`. For the first slice the field stays a **plain string** (decision 2): it is human-readable, and the gap reason rides the `SkippedCapture` list rather than the provider string. Add a per-scenario `SkippedCapture(kind, reason)` list on the scenario's result (decision 3) so a gap is *disclosed* rather than silently empty — it rides `asdict` into `manifest.json` and surfaces in `report/panels.py` beside the existing degradation disclosures. The structured provider form (`{provider, role, reason}`), a top-level `evidenceBackends: [...]`, and the matching `SCHEMA_VERSION` bump (currently 3; BE-0068 versioning degrades older runs gracefully) are **deferred to a follow-up slice** so the first slice changes no schema.
 
 ### First slice (most value, lowest risk, gate-testable)
 
@@ -55,12 +57,14 @@ Wire **`network`** as the single fallback kind, exercised entirely with fakes �
 
 **Non-goals:** any fallback *actuation* (capability gaps in actuation are the actuator ladder's job, BE-0019); opportunistic capture-from-all (rejected below); changing `video` / `deviceLog` / `appTrace` resolution (backend-independent `simctl`); any LLM (this is evidence plumbing, never judging); a new config surface (reuse the ordered `backend` list).
 
-### Open questions
+### Decisions
 
-1. **Provider eligibility = "observes the same system under test", not merely "advertises the capability".** A cross-platform list like `[ios, web]` cannot have the web backend observe an *iOS* app's traffic, so fallback realistically only makes sense *within a platform* (e.g. two iOS actuators) or for a truly target-independent source (a mock server). The resolver must constrain eligibility accordingly — this is the most important open question.
-2. **Provider string format** — free-form (`"<backend> (fallback; …)"`) vs. structured (`{provider, role, reason}`). Structured is more honest for tooling if the schema is bumped anyway.
-3. **Skip records** — per-scenario (precise; a scenario may request `network` only sometimes) vs. per-run.
-4. **Mock server as a provider.** §9 names the mock server as the `network` source; decide whether providers are strictly `backend`-list-derived or can include non-actuator sources like the mock server.
+The four open questions are resolved as follows; each is folded into the design above.
+
+1. **Provider eligibility = "observes the same system under test".** A provider is eligible only if it resolves to an actuator on the **actuator's own platform** (reverse-lookup in `backends.PLATFORMS`), so a cross-platform list never has one platform's backend observe another's app. This is the most important constraint and it shapes `evidence_backends`. A consequence is that the fallback is a no-op until a platform has a second actuator (BE-0019), which is why the first slice is proven with same-platform fakes.
+2. **Provider string format: a plain string for the first slice** (`"<backend> (fallback)"`). The structured `{provider, role, reason}` form is deferred to the follow-up that also adds `evidenceBackends` to the manifest and bumps `SCHEMA_VERSION` — keeping the first slice schema-stable.
+3. **Skip records are per-scenario.** A scenario may request `network` only sometimes, so `SkippedCapture(kind, reason)` lives on the scenario's result, not the run's.
+4. **Providers are strictly `backend`-list-derived in the first slice.** A target-independent source (the mock server §9 names) genuinely sidesteps the platform constraint in (1), but it is a different kind of source; wiring it as a `network` provider is a documented follow-up, not part of this slice.
 
 ### Implementation sketch (small PR-sized slices)
 

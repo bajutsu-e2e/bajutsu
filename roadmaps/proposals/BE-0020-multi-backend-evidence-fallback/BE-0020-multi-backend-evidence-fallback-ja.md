@@ -31,7 +31,9 @@
 
 ### 1 つのリストから 2 つの役割
 
-`select_actuator` は変えません。`evidence_backends(backends, available)` を足し、リスト順で*残りの*利用可能な backend、すなわち read-only な証跡 provider を返します。**能力 gap の検出**：各証跡の*種別*を、それをネイティブに供給する capability へ対応づけます（今は `network → Capability.NETWORK`）。gap 集合は、その capability を actuator の静的な `capabilities_for(actuator)` が欠く種別です。**ディスパッチ**：各 gap 種別について、`capabilities_for` がそれを表明する最初の証跡 backend を選びます。能力ごとに 1 つの provider を、リスト順で割り当てます（`screenshot` / `elements` は常に actuator から、`video` / `deviceLog` / `appTrace` は backend 非依存の `simctl` 取得で、リストとは直交します）。gap 種別を供給できる backend が無ければ、**理由を記録して skip** します。なだらかな劣化であって、run の失敗にはしません。
+`select_actuator` は変えません。`evidence_backends(backends, actuator, available)` を足し、リスト順で*残りの*利用可能な backend のうち、**actuator と同じプラットフォームに属するもの**、すなわち read-only な証跡 provider を返します。**適格性は「同じ被テスト対象を観測する」こと**（下の決定 1）：provider が適格なのは、actuator のプラットフォームに属する actuator へ解決する場合だけです。判定は `backends.PLATFORMS`（BE-0042 が追加し [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) が土台にする、プラットフォーム → actuator のレジストリ）の逆引きで行います。同じプラットフォームの backend だけが同じ稼働中アプリを観測できるので、`[ios, web]` のような跨プラットフォームのリストでは、idb actuator に対して web provider は得られません。**能力 gap の検出**：各証跡の*種別*を、それをネイティブに供給する capability へ対応づけます（今は `network → Capability.NETWORK`）。gap 集合は、その capability を actuator の静的な `capabilities_for(actuator)` が欠く種別です。**ディスパッチ**：各 gap 種別について、`capabilities_for` がそれを表明する最初の適格な証跡 backend を選びます。能力ごとに 1 つの provider を、リスト順で割り当てます（`screenshot` / `elements` は常に actuator から、`video` / `deviceLog` / `appTrace` は backend 非依存の `simctl` 取得で、リストとは直交します）。gap 種別を供給できる backend が無ければ、**理由を記録して skip** します。なだらかな劣化であって、run の失敗にはしません。
+
+現状は各プラットフォームに実装済みの actuator が 1 つだけなので（`ios → idb`、`web → playwright`）、同一プラットフォームのフィルタは、プラットフォームが 2 つ目の actuator を得るまで（iOS と XCUITest、[BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)）本番では provider を 1 つも解決しません。これは現在の run を何も変えない安全な no-op です。したがって最初のスライスは、同一プラットフォーム扱いの network 対応 fake で検証します（後述）。
 
 ### read-only は規約ではなく構造で強制する
 
@@ -43,7 +45,7 @@
 
 ### 来歴（manifest を正直に保つ）
 
-`Artifact.provider` は各アーティファクトを実際に供給した backend を名指しすべきです。web のネイティブは `"playwright"`、idb のアプリコレクタは `"collector"`（変更なし）、フォールバックは例えば `"<backend>（fallback。idb はネイティブ network なし）"` です。`RunResult` にシナリオごとの `SkippedCapture(kind, reason)` リストを足し、gap を黙って空にするのではなく*開示*します。これは `asdict` に乗って `manifest.json` に入り、`report/panels.py` で既存の劣化開示の隣に表示します。任意で manifest にトップレベルの `evidenceBackends: [...]` を足し、`SCHEMA_VERSION` を上げてもかまいません（現在 3。BE-0068 のバージョニングが古い run をなだらかに劣化させます）。
+`Artifact.provider` は各アーティファクトを実際に供給した backend を名指しすべきです。web のネイティブは `"playwright"`、idb のアプリコレクタは `"collector"`（変更なし）、フォールバックは `"<backend>（fallback）"` です。最初のスライスでは、このフィールドは**素の文字列**のままにします（決定 2）。人が読みやすく、gap の理由は provider 文字列ではなく `SkippedCapture` リストが持ちます。シナリオの結果にシナリオごとの `SkippedCapture(kind, reason)` リストを足し（決定 3）、gap を黙って空にするのではなく*開示*します。これは `asdict` に乗って `manifest.json` に入り、`report/panels.py` で既存の劣化開示の隣に表示します。構造化した provider 形式（`{provider, role, reason}`）、トップレベルの `evidenceBackends: [...]`、対応する `SCHEMA_VERSION` の引き上げ（現在 3。BE-0068 のバージョニングが古い run をなだらかに劣化させます）は、**後続のスライスへ先送り**し、最初のスライスはスキーマを変えません。
 
 ### 最初のスライス（価値最大・リスク最小・ゲート内で検証可）
 
@@ -55,12 +57,14 @@
 
 **非目標**：フォールバックによる*操作*（操作の能力差は actuator ラダー BE-0019 の仕事です）、機会的な取れる backend すべてからの取得（下記で不採用）、`video` / `deviceLog` / `appTrace` の解決の変更（backend 非依存の `simctl`）、いかなる LLM（これは証跡の配管であって判定ではありません）、新しい config 面（順序付きの `backend` リストを再利用します）。
 
-### 未解決の論点
+### 決定
 
-1. **provider の適格性は「同じ被テスト対象を観測する」であって、単に「その能力を表明する」ではありません。** `[ios, web]` のような跨プラットフォームのリストでは、web backend が *iOS* アプリの通信を観測できません。したがってフォールバックが現実に意味を持つのは、*同一プラットフォーム内*（例: 2 つの iOS actuator）か、本当に対象に依存しない供給源（モックサーバ）に限られます。リゾルバは適格性をそのように制約すべきで、これが最重要の論点です。
-2. **provider 文字列の形式** — 自由形式（`"<backend>（fallback。…）"`）か、構造化（`{provider, role, reason}`）か。どのみちスキーマを上げるなら、ツール連携には構造化の方が正直です。
-3. **skip 記録** — シナリオごと（精密。シナリオが `network` を要求するのは一部のときだけかもしれません）か、run ごとか。
-4. **provider としてのモックサーバ。** §9 はモックサーバを `network` の供給源に挙げています。provider を厳密に `backend` リスト由来に限るか、モックサーバのような非 actuator の供給源を含めうるかを決めます。
+4 つの未解決の論点は次のように決めます。いずれも上の設計に織り込み済みです。
+
+1. **provider の適格性は「同じ被テスト対象を観測する」こと。** provider が適格なのは、**actuator 自身のプラットフォーム**に属する actuator へ解決する場合だけです（`backends.PLATFORMS` の逆引き）。これにより、跨プラットフォームのリストで一方のプラットフォームの backend が他方のアプリを観測することは決して起きません。これが最重要の制約で、`evidence_backends` の形を決めます。帰結として、プラットフォームが 2 つ目の actuator を得る（BE-0019）まではフォールバックは no-op であり、だからこそ最初のスライスは同一プラットフォームの fake で検証します。
+2. **provider 文字列の形式は、最初のスライスでは素の文字列**（`"<backend>（fallback）"`）です。構造化の `{provider, role, reason}` は、`evidenceBackends` を manifest に足して `SCHEMA_VERSION` を引き上げる後続スライスへ先送りし、最初のスライスはスキーマを保ちます。
+3. **skip 記録はシナリオごと**です。シナリオが `network` を要求するのは一部のときだけかもしれないので、`SkippedCapture(kind, reason)` は run ではなくシナリオの結果に置きます。
+4. **最初のスライスでは provider を厳密に `backend` リスト由来に限ります。** §9 が挙げる対象非依存の供給源（モックサーバ）は (1) のプラットフォーム制約を本当に回避できますが、種類の異なる供給源です。これを `network` provider として配線するのは、このスライスではなく文書化した後続作業とします。
 
 ### 実装スケッチ（小さな PR 単位のスライス）
 
