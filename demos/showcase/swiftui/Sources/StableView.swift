@@ -40,7 +40,6 @@ struct StableView: View {
                     .accessibilityStateValue(status)
             }
         }
-        .accessibilityID("stable.title")
     }
 
     // GET SHOWCASE_API_URL + "/horses". Status mirrors to stable.status so a scenario can
@@ -69,6 +68,8 @@ struct HorseDetailView: View {
     private var horse: Horse? { model.horse(id: id) }
 
     var body: some View {
+        // The standard system back button (pushed by the NavigationStack) pops back; idb drives
+        // it by its built-in id `BackButton`. No custom back control.
         Form {
             Section {
                 Text(horse?.name ?? "Horse \(id)")
@@ -103,18 +104,6 @@ struct HorseDetailView: View {
         }
         .navigationTitle(horse?.name ?? "Horse \(id)")
         .navigationBarTitleDisplayMode(.inline)
-        // The system back button is given the reserved nav.back id explicitly (SPEC §5.1).
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    if !model.stablePath.isEmpty { model.stablePath.removeLast() }
-                } label: {
-                    Label("Back", systemImage: "chevron.backward")
-                }
-                .accessibilityID("nav.back")
-            }
-        }
-        .navigationBarBackButtonHidden()
     }
 
     // GET <base>/horses/<id>; status mirrors to horse.status.

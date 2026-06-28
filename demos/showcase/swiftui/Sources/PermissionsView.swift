@@ -37,7 +37,6 @@ struct PermissionsView: View {
             }
             .navigationTitle("Permissions")
         }
-        .accessibilityID("perm.title")
     }
 
     // Raises the SpringBoard notification prompt — idb cannot see it; the run's vision

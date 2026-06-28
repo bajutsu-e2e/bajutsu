@@ -86,14 +86,14 @@ screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions rea
 | # | Screen | Reached via | Kind | Namespace(s) | Spec |
 |---|---|---|---|---|---|
 | 1 | Stable (catalog list) | `stable` tab | tab · list | `stable` | §5.1 |
-| 2 | Horse Detail | Stable row / `…://horse/<id>` | push | `horse`, `nav` | §5.1 |
+| 2 | Horse Detail | Stable row / `…://horse/<id>` | push | `horse` | §5.1 |
 | 3 | Search | `search` tab | tab · filter list | `search` | §5.2 |
 | 4 | Log | `log` tab | tab · form + modals | `log` | §5.3 |
 | 5 | — Filter sheet | `log.openFilter` | sheet (detents) | `log` | §5.3 |
 | 6 | — Gallery cover | `log.openGallery` | full-screen cover | `log` | §5.3 |
 | 7 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
 | 8 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
-| 9 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice`, `nav` | §5.5 |
+| 9 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice` | §5.5 |
 | 10 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** | `perm` | §5.4 |
 
 Tabs, left to right: **Stable · Search · Log · Notices · Permissions**.
@@ -102,7 +102,14 @@ Tabs, left to right: **Stable · Search · Log · Notices · Permissions**.
 
 A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list with async load.
 
-- `stable.title` — nav title "Stable"
+> **Screen titles carry no id.** On iOS 26 a navigation-bar title is not exposed as an
+> addressable accessibility element (only its buttons are), so the tab screens have **no**
+> `<ns>.title` identifier — they use a plain `navigationTitle` / `titleView` for display only.
+> A scenario confirms it is on a screen via a screen-unique **content leaf** (e.g. `stable.row.1`
+> or `stable.status` for Stable, `search.field` for Search, `perm.requestNotif` for Permissions).
+> The detail screens keep `horse.title` / `notice.detail.title` — those are real content (the
+> entity's name shown in the body), not a nav-bar title.
+
 - `stable.refresh` — toolbar/button that re-fetches the catalog (GET `SHOWCASE_API_URL` + `/horses`); sets `stable.status` value to `loading` → `done`/`error`
 - `stable.status` — text; `accessibilityValue` = `idle`/`loading`/`done`/`error`
 - `stable.row.<horseId>` — one per catalog row, `<horseId>` data-derived (e.g. `stable.row.3`). Tapping pushes Horse Detail. Use `idMatches: "stable.row.*"` + `count` for set assertions.
@@ -114,11 +121,10 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list w
 - `horse.fetch` — button: GET detail (`/horses/<id>`); `horse.status` value `loading`→`done`/`error`
 - `horse.status` — value as above
 - `horse.favorite` — toggle; `selected` trait reflects state; mirrored to `horse.favorite.value` (`on`/`off`)
-- `nav.back` — back button (reserved `nav` namespace; the system back button gets this id explicitly)
+- **Back** — the standard system back button (pushed by the navigation stack). idb drives it by its OS-provided id `BackButton`; there is no app-defined back id.
 
 ### 5.2 Tab: Search — `search` namespace
 
-- `search.title` — nav title "Search"
 - `search.field` — search field; filters the same catalog by name, case-insensitive
 - `search.row.<horseId>` — filtered rows (same id scheme as Stable rows but `search.` namespace)
 - `search.count` — text, `accessibilityValue` = number of matches
@@ -129,18 +135,23 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list w
 
 A training-log composer exercising every input control and every modal style.
 
-- `log.title` — nav title "Log"
 - `log.note` — multiline text field
 - `log.count` — stepper for a numeric count; `log.count.value` mirrors the number
-- `log.intense` — toggle "Intense"; `log.intense.value` = `on`/`off`
+- `log.intense` — a button-backed toggle "Intense" (a plain Toggle/UISwitch does not flip under idb on iOS 26); `log.intense.value` = `on`/`off`
 - `log.submit` — button: POST to `SHOWCASE_HTTP_BASE` + `/post` with the note/count as JSON; on success shows `log.toast` (auto-dismiss ~1.2 s → exercises `wait until gone`) and appends a row
 - `log.status` — value `idle`/`loading`/`done`/`error`
 - `log.row.<n>` — submitted entries
 
+Dedicated gesture targets (a long-press and a double-tap, each mirroring its result so a
+scenario can assert the gesture landed; both start below the form's fold, so a run scrolls
+them into view first):
+- `log.longpress` — long-press target; `log.longpress.value` = `idle`/`pressed`
+- `log.doubletap` — double-tap target; `log.doubletap.value` mirrors the tap count (`0`, `1`, …)
+
 Modals reachable from Log (the four presentation styles):
 - `log.openFilter` → **sheet** with detents: `log.sheet.title`, `log.sheet.apply`, `log.sheet.close`
 - `log.openGallery` → **fullScreenCover**: `log.cover.title`, `log.cover.close`
-- `log.openDelete` → **confirmationDialog / action sheet**: choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
+- `log.openDelete` → **action sheet** (a custom overlay of plain buttons, not a confirmationDialog / UIAlertController, whose actions idb cannot drive on iOS 26): choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
 - `log.toast` — the transient toast described above
 
 ### 5.4 Tab: Permissions — `perm` namespace (**the OS-alert screen**)
@@ -149,7 +160,6 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). **The one scre
 intentionally raises OS-level alerts** (§7) — promoted to a top-level tab so the alert-guard
 flow is reached directly.
 
-- `perm.title` — nav title "Permissions"
 - `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; idb cannot see it — cleared by the run's vision alert guard, or tapped "Allow" via `dismissAlerts`).
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
 - `perm.notif.authorized` — element shown only once granted (gives the run a positive condition to wait for)
@@ -167,13 +177,12 @@ into view. So `notice.row.20` is the canonical **scroll-to-element** target — 
 A plain list → detail flow distinct from the data-loading Stable catalog; a clean target for
 navigation, scroll, and crawl scenarios.
 
-- `notice.title` — nav title "Notices"
 - `notice.row.<id>` — one per *visible* notice (`notice.row.1` … the off-screen tail appears only after scrolling), `<id>` data-derived. Tapping pushes Notice Detail. (Don't assert a fixed `count` over `notice.row.*` — only the on-screen rows are in the tree, which is device-dependent.)
 
 **Notice Detail** (pushed; also reachable via `…://notice/<id>`):
 - `notice.detail.title` — the notice's title (the screen's identifying element; the nav title carries no id)
 - `notice.detail.body` — the notice's body text
-- `nav.back` — back button (reserved `nav` namespace)
+- **Back** — the standard system back button; idb drives it by its OS-provided id `BackButton` (see §5.1).
 
 ## 6. Networking
 
@@ -257,11 +266,12 @@ skipped accessibility ships, and exactly what `record` must cope with and `docto
 
 ## 9. Identifier namespace summary (`idNamespaces`)
 
-For the `-a11y` apps' `targets.<name>.idNamespaces` ([DESIGN §7.3](../../DESIGN.md)). Reserved
-the shared namespace `nav` comes from `defaults.reservedNamespaces`.
+For the `-a11y` apps' `targets.<name>.idNamespaces` ([DESIGN §7.3](../../DESIGN.md)). There are no
+reserved (shared cross-screen) namespaces; the back control is the OS-provided system back button
+(id `BackButton`), outside the app's namespaces.
 
 ```
-nav, stable, horse, search, log, notice, perm, net
+stable, horse, search, log, notice, perm, net
 ```
 
 The `-noax` apps declare an **empty** `idNamespaces: []` — an honest declaration that the build

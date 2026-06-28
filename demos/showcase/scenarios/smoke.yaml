@@ -4,9 +4,8 @@
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
   steps:
-    - wait: { for: { id: stable.title }, timeout: 10 }
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
   expect:
-    - exists: { id: stable.title }
     - count: { sel: { idMatches: "stable.row.*" }, equals: 5 }
     - exists: { id: stable.row.1 }
     - exists: { id: stable.empty, negate: true }
@@ -15,7 +14,7 @@
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "0" }
   steps:
-    - wait: { for: { id: stable.title }, timeout: 10 }
+    - wait: { for: { id: stable.empty }, timeout: 10 }
   expect:
     - exists: { id: stable.empty }
     - count: { sel: { idMatches: "stable.row.*" }, equals: 0 }

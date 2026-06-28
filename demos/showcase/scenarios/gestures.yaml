@@ -1,0 +1,25 @@
+# Gestures (SPEC §5.3): the Log tab's dedicated long-press and double-tap targets, each
+# mirroring its result to an a11y value. Runs identically against showcase-swiftui and
+# showcase-uikit. Both gestures are driveable by idb; pinch / rotate are multi-touch
+# (XCUITest-only) and are not exercised here.
+#
+# The targets sit below the form's fold, and a SwiftUI List renders off-screen rows lazily
+# (they are absent from the accessibility tree until scrolled in), so the scenario scrolls
+# them into view first — each swipe is anchored on an element that stays visible as the form
+# scrolls up, and the condition wait stops once the target appears.
+- name: long-press and double-tap targets mirror their result
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.submit }, timeout: 10 }
+    - swipe: { on: { id: log.submit }, direction: up }
+    - swipe: { on: { id: log.dialog.value }, direction: up }
+    - wait: { for: { id: log.longpress }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: log.longpress.value }, equals: "idle" }
+        - value: { sel: { id: log.doubletap.value }, equals: "0" }
+    - longPress: { sel: { id: log.longpress }, duration: 0.7 }
+    - doubleTap: { id: log.doubletap }
+  expect:
+    - value: { sel: { id: log.longpress.value }, equals: "pressed" }
+    - value: { sel: { id: log.doubletap.value }, equals: "1" }

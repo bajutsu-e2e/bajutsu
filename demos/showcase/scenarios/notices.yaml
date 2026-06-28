@@ -21,10 +21,10 @@
     - wait: { for: { id: notice.detail.title }, timeout: 5 }
     - assert:
         - exists: { id: notice.detail.body }
-    - tap: { id: nav.back }
-    - wait: { for: { id: notice.title }, timeout: 5 }
+    - tap: { id: BackButton }
+    - wait: { for: { id: notice.row.1 }, timeout: 5 }
   expect:
-    - exists: { id: notice.title }
+    - exists: { id: notice.row.1 }
     - exists: { id: notice.detail.title, negate: true }
 
 # The headline: scroll an off-screen target into view, then tap it. Each swipe scrolls
