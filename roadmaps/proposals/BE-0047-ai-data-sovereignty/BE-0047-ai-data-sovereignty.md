@@ -94,8 +94,9 @@ the **textual** model inputs before they leave the process:
 - **record** — `claude_agent._render` / `_user_content`: the screen's element list (`label` / `value`
   / `traits`) is `redact_elements`-ed before it is rendered into the user message.
 - **triage** — `TriageContext.elements` and the failure text: redacted before the prompt is assembled.
-- **free text / logs** handed to any AI path: `redact_text`. (`--dismiss-alerts` sends only a
-  screenshot, so it has no textual input to redact.)
+- **free text / logs** handed to any AI path: `redact_text`. This includes `--dismiss-alerts`,
+  which sends a screenshot **plus** a small text block (the image dimensions and an optional,
+  possibly user-supplied `--alert-instruction`); the instruction is run through `redact_text` too.
 
 **The honest limit: screenshots are images, and `redaction.py` masks text and element trees, not
 pixels.** record / triage / dismiss-alerts each send a screenshot, which redaction cannot scrub. The
