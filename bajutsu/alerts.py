@@ -21,9 +21,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from bajutsu import usage
-from bajutsu.anthropic_client import make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
 from bajutsu.drivers import base
 from bajutsu.orchestrator import AlertEvent
+from bajutsu.redaction import Redactor
 
 LOCATOR_MODEL = "claude-opus-4-8"
 
@@ -165,13 +166,22 @@ def _decision_of(message: Any, width: int, height: int) -> AlertDecision:
 class ClaudeAlertLocator:
     """AlertLocator backed by Claude vision; `anthropic` is lazy-imported."""
 
-    def __init__(self, client: Any = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        client: Any = None,
+        model: str | None = None,
+        *,
+        ai: AiConfig | None = None,
+        redactor: Redactor | None = None,
+    ) -> None:
         self._client = client
-        self._model = resolve_model(LOCATOR_MODEL) if model is None else model
+        self._ai = ai
+        self._redactor = redactor
+        self._model = resolve_model(LOCATOR_MODEL, ai) if model is None else model
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            self._client = make_client()
+            self._client = make_client(ai=self._ai)
         return self._client
 
     def locate(self, screenshot_png: bytes, instruction: str | None) -> AlertDecision:
@@ -183,6 +193,10 @@ class ClaudeAlertLocator:
             "button center as pixel coordinates within that range."
         )
         if instruction:
+            # The instruction may be user-supplied (--alert-instruction); mask secrets before it
+            # reaches the model (BE-0047). The screenshot beside it cannot be pixel-masked.
+            if self._redactor is not None:
+                instruction = self._redactor.redact_text(instruction)
             text += f"\nInstruction for the prompt: {instruction}"
         message = client.messages.create(
             model=self._model,

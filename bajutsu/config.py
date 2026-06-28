@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bajutsu import _yaml, idb_version
+from bajutsu.anthropic_client import AiConfig
 from bajutsu.drivers import base
 from bajutsu.scenario import Redact
 
@@ -88,6 +89,29 @@ class Mailbox(_Model):
     fields: dict[str, str] = Field(default_factory=dict)
 
 
+class AiSettings(_Model):
+    """The `ai` block (BE-0047) — which provider/model/endpoint/key the AI paths use.
+
+    `defaults.ai` is overridable per `targets.<name>.ai`. Keys never live here: `keyEnv` is the NAME
+    of the env var holding the key, read at call time, so a secret never lands in the repo or an
+    uploaded bundle. Every field is optional; an unset field falls back to the environment in the
+    factory. `extra="forbid"` (from `_Model`) rejects a stray `apiKey:`-style field that would tempt
+    a literal key into config.
+    """
+
+    provider: str | None = None  # anthropic (default) | bedrock
+    model: str | None = None  # override the path's default model
+    base_url: str | None = Field(default=None, alias="baseUrl")  # self-hosted gateway / proxy
+    key_env: str | None = Field(default=None, alias="keyEnv")  # NAME of the env var (never the key)
+
+    @field_validator("provider")
+    @classmethod
+    def _known_provider(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("anthropic", "bedrock"):
+            raise ValueError(f"unknown ai.provider {v!r}: use 'anthropic' or 'bedrock'")
+        return v
+
+
 class Defaults(_Model):
     """Team-wide defaults under `defaults:`, overlaid by each target (see `resolve`)."""
 
@@ -99,6 +123,8 @@ class Defaults(_Model):
     )
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
+    # Team-wide AI provider/model/endpoint/key (BE-0047), overridable per target. None = env-only.
+    ai: AiSettings | None = None
     reserved_namespaces: list[str] = Field(default_factory=list, alias="reservedNamespaces")
     # Expected idb version range (e.g. ">=1.1.8" or ">=1.1.0,<2.0.0"). Environment-level, not
     # per-app: the pin is the same whichever target a scenario drives. `doctor` reports the
@@ -173,6 +199,8 @@ class TargetConfig(_Model):
     schemas: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
+    # Per-target AI provider/model/endpoint/key (BE-0047), overriding defaults.ai field by field.
+    ai: AiSettings | None = None
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -281,6 +309,8 @@ class Effective:
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
+    # Resolved AI provider/model/endpoint/key (BE-0047), passed to the AI factory. None = env-only.
+    ai: AiConfig | None = None
     # Generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046). None = no
     # mailbox configured, so an `email` step fails cleanly.
     mailbox: Mailbox | None = None
@@ -357,6 +387,20 @@ def _merge_redact(base: Redact, over: Redact) -> Redact:
     )
 
 
+def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | None:
+    """Merge defaults.ai with the target's ai, field by field (target wins). None when neither set."""
+    if base is None and over is None:
+        return None
+    b = base or AiSettings()
+    o = over or AiSettings()
+    return AiConfig(
+        provider=o.provider or b.provider,
+        model=o.model or b.model,
+        base_url=o.base_url or b.base_url,
+        key_env=o.key_env or b.key_env,
+    )
+
+
 def resolve(config: Config, target: str) -> Effective:
     """Resolve the effective config for one target (the target entry overrides defaults)."""
     if target not in config.targets:
@@ -385,6 +429,7 @@ def resolve(config: Config, target: str) -> Effective:
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),
         secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
+        ai=_merge_ai(d.ai, a.ai),
         app_path=a.app_path,
         build=a.build,
         scenarios=a.scenarios,

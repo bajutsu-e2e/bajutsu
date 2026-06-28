@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0047](BE-0047-ai-data-sovereignty.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
 | Topic | Candidates from competitive research (Maestro) |
 | Origin | Maestro |
 <!-- /BE-METADATA -->

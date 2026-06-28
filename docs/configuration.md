@@ -23,6 +23,7 @@ defaults:                       # shared across all targets
   capture: [screenshot.after, elements, actionLog]
   redact:  { headers: [Authorization, Cookie], fields: [token, password] }
   secrets: [LOGIN_PASSWORD]         # env var names usable as ${secrets.X} (values masked in evidence)
+  ai:      { provider: anthropic, keyEnv: ANTHROPIC_API_KEY }   # the AI paths' provider/model/endpoint/key (below)
   reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
 
 targets:
@@ -70,6 +71,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
+| `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
 
 The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
 defaults / app).
@@ -88,6 +90,43 @@ At run time `bajutsu run` resolves each declared name from the environment, inte
 into the action (`${secrets.X}`), and **masks the literal value everywhere it would appear in
 evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
 token, never the value.
+
+### AI provider (`ai:`, BE-0047)
+
+The AI paths — `record`, `triage --ai`, and the `--dismiss-alerts` guard — reach the model through
+one provider configured by an optional `ai` block, declared in `defaults` and/or `targets.<name>`
+and merged **field by field** (the target's value wins per field). The block resolves into
+`Effective.ai`, so the CLI and `serve` agree on one source of truth. This is the enforcement behind
+"your AI, your key, your data": every AI path runs under the key and endpoint you configure, and the
+deterministic `run` gate still calls no model at all
+([BE-0047](../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
+
+```yaml
+defaults:
+  ai:
+    provider: anthropic                      # anthropic (default) | bedrock
+    model:    claude-opus-4-8                 # optional: override the path's default model
+    baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
+    keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
+```
+
+- **Keys never live in config.** `keyEnv` names an environment variable; the value is read from the
+  environment at call time, so a secret never lands in the repo or an uploaded bundle. `baseUrl`
+  points the Anthropic SDK at a self-hosted gateway / proxy (`Anthropic(base_url=…,
+  api_key=os.environ[keyEnv])`), so your screenshots and element trees only ever reach the endpoint
+  you set, never a vendor default. Bedrock keeps the standard AWS credential chain (`AWS_REGION` +
+  env / shared profile / instance or task role) and needs a provider-prefixed `model`.
+- **Config first, environment fallback.** Any field you omit falls back to today's environment
+  variables — `BAJUTSU_AI_PROVIDER`, `ANTHROPIC_API_KEY`, `BAJUTSU_BEDROCK_MODEL` — so a config with
+  no `ai` block behaves exactly as before.
+- **Fail closed.** `record`, `triage --ai`, and an explicitly-requested `--dismiss-alerts` exit with
+  a clear, provider-specific error when the selected provider has no usable credential — they never
+  construct a client that quietly falls back to a hosted default.
+- **The textual inputs are redacted; screenshots cannot be.** The element trees, failure text, and
+  the (possibly user-supplied) alert instruction sent to the model are scrubbed by the same run-scoped
+  redaction as written evidence (the target's `redact` keys + resolved secret values). Screenshots
+  are images and `redaction` masks text, not pixels — so the second guarantee carries them: every
+  input, screenshots included, goes only to the provider/endpoint you configured.
 
 ### Mailbox (the `email` step)
 

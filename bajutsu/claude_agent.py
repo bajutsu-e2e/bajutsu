@@ -16,7 +16,8 @@ from typing import Any
 
 from bajutsu import usage
 from bajutsu.agent import Observation, Proposal
-from bajutsu.anthropic_client import make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
+from bajutsu.redaction import Redactor
 from bajutsu.scenario import Assertion, Step
 
 MODEL = "claude-opus-4-8"
@@ -187,7 +188,7 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
-def _render(observation: Observation) -> str:
+def _render(observation: Observation, redactor: Redactor | None = None) -> str:
     lines = [f"Goal: {observation.goal}"]
     if observation.plan:
         lines.append("")
@@ -197,8 +198,13 @@ def _render(observation: Observation) -> str:
         )
         lines += [f"  {i}. {step}" for i, step in enumerate(observation.plan, 1)]
     lines += ["", "Current screen elements:"]
+    # Mask secrets in the element tree before it reaches the model (BE-0047): a configured label /
+    # field value or a literal secret echoed into label/value is replaced with [REDACTED].
+    screen = (
+        redactor.redact_elements(observation.screen) if redactor is not None else observation.screen
+    )
     shown = 0
-    for element in observation.screen:
+    for element in screen:
         identifier, label, value, traits = (
             element["identifier"],
             element["label"],
@@ -308,15 +314,23 @@ class ClaudeAgent:
     """Agent implementation that asks Claude for the next action via tool use."""
 
     def __init__(
-        self, client: Any = None, model: str | None = None, max_tokens: int = 1024
+        self,
+        client: Any = None,
+        model: str | None = None,
+        max_tokens: int = 1024,
+        *,
+        ai: AiConfig | None = None,
+        redactor: Redactor | None = None,
     ) -> None:
         self._client = client
-        self._model = resolve_model(MODEL) if model is None else model
+        self._ai = ai
+        self._redactor = redactor
+        self._model = resolve_model(MODEL, ai) if model is None else model
         self._max_tokens = max_tokens
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            self._client = make_client()
+            self._client = make_client(ai=self._ai)
         return self._client
 
     def next_action(self, observation: Observation) -> Proposal:
@@ -333,7 +347,7 @@ class ClaudeAgent:
             ],
             tools=TOOLS,
             tool_choice={"type": "any"},  # force one tool call; no thinking with forced choice
-            messages=[{"role": "user", "content": _user_content(observation)}],
+            messages=[{"role": "user", "content": _user_content(observation, self._redactor)}],
         )
         usage.record(getattr(message, "usage", None))
         return _to_proposal(message)
@@ -355,8 +369,14 @@ class ClaudeAgent:
         return steps_from_plan(block.input.get("steps"))
 
 
-def _user_content(observation: Observation) -> list[dict[str, Any]]:
-    """The per-turn user message: the screenshot (if any) followed by the text."""
+def _user_content(
+    observation: Observation, redactor: Redactor | None = None
+) -> list[dict[str, Any]]:
+    """The per-turn user message: the screenshot (if any) followed by the redacted text.
+
+    The screenshot is sent as-is — images cannot be pixel-masked; the textual element tree is
+    redacted via `redactor` (BE-0047). Both reach only the user-configured provider/endpoint.
+    """
     content: list[dict[str, Any]] = []
     if observation.screenshot is not None:
         content.append(
@@ -369,5 +389,5 @@ def _user_content(observation: Observation) -> list[dict[str, Any]]:
                 },
             }
         )
-    content.append({"type": "text", "text": _render(observation)})
+    content.append({"type": "text", "text": _render(observation, redactor)})
     return content

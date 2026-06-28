@@ -128,6 +128,22 @@ def test_locator_absent_decision() -> None:
     assert decision.present is False
 
 
+def test_locator_redacts_instruction_before_send() -> None:
+    # BE-0047: the (possibly user-supplied) --alert-instruction is redacted before it reaches the
+    # model. The screenshot beside it is sent as-is — images cannot be pixel-masked.
+    from bajutsu.redaction import Redactor
+    from bajutsu.scenario import Redact
+
+    client = _resolve_alert({"present": False})
+    redactor = Redactor(Redact(), values=["sk-secret-token"])
+    ClaudeAlertLocator(client=client, redactor=redactor).locate(
+        _png(10, 10), "tap Save then enter sk-secret-token"
+    )
+    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    assert "sk-secret-token" not in text
+    assert "[REDACTED]" in text
+
+
 # --- orchestrator on_blocked retry ---
 
 _TAP_GO = "- name: t\n  steps:\n    - tap: { id: go }\n"

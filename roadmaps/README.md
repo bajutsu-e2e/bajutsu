@@ -171,6 +171,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 <!-- GENERATED:implemented-competitive-maestro -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
+| [BE-0047](implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Implemented | Maestro |
 | [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented | Maestro |
 | [BE-0049](implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Implemented | Maestro |
 | [BE-0050](implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Implemented | Maestro |

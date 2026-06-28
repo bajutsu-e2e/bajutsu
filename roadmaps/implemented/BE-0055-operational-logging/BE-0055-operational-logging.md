@@ -140,7 +140,7 @@ The operational channel runs through the existing `redaction.py` value-masking, 
 key-based masking above. This keeps a single source of truth for "what counts as a secret", shared with
 secret variables ([BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)) and
 the redacted-AI-path direction
-([BE-0047](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
+([BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
 
 The value-mask set has **two sources**, because secrets live at two scopes:
 
@@ -184,6 +184,6 @@ isn't in either set.
 - [DESIGN.md](../../../DESIGN.md) §2 — determinism-first; secret masking.
 - [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the hosted topology and the deferred "structured JSON logs" observability row this item realizes.
 - [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md) — the secret-masking machinery shared with this item.
-- [BE-0047 — AI data sovereignty](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) — the redacted-path philosophy this item extends to operational logs.
+- [BE-0047 — AI data sovereignty](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) — the redacted-path philosophy this item extends to operational logs.
 - [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) and [BE-0051 — Serve hardening](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) — the serve this logging instruments.
 - [evidence.md](../../../docs/evidence.md) — the evidence subsystem this is deliberately distinct from.

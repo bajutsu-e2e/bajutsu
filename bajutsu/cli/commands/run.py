@@ -15,9 +15,11 @@ from bajutsu import env as _env
 from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
+from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    _ai_redactor,
     _backends,
     _load_effective_with_source,
     _resolve_browser,
@@ -342,23 +344,31 @@ def run(
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
         from bajutsu.orchestrator import BlockedHandler
 
-        # The vision guard reaches Claude through the configured AI provider (BE-0053), so the
-        # credential it needs is provider-specific: ANTHROPIC_API_KEY for Anthropic, a
-        # provider-prefixed BAJUTSU_BEDROCK_MODEL for Bedrock (AWS credentials authenticate there).
-        guard_gap = credential_gap()
+        # The vision guard reaches Claude through the configured AI provider (BE-0053/BE-0047), so the
+        # credential it needs is provider-specific: the key named by ai.keyEnv (default
+        # ANTHROPIC_API_KEY) for Anthropic, a provider-prefixed model for Bedrock (AWS credentials
+        # authenticate there). The deterministic gate must still run with no key, so a missing
+        # credential here is a no-op (the guard is best-effort) — never a client that would fall back
+        # to a hosted default: when the credential is absent we don't construct the locator at all.
+        guard_gap = credential_gap(eff.ai)
         if guard_gap == "anthropic-key":
             typer.echo(
-                "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard will no-op"
+                f"note: dismiss-alerts is on but ${ac_key_env(eff.ai)} is unset — "
+                "the alert guard will no-op"
             )
         elif guard_gap == "bedrock-model":
             typer.echo(
-                "note: dismiss-alerts is on but BAJUTSU_BEDROCK_MODEL is unset — "
-                "the alert guard will no-op"
+                "note: dismiss-alerts is on but no Bedrock model id is set "
+                "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
             )
-        locator = ClaudeAlertLocator()
+        # Mask the (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
+        redactor = _ai_redactor(eff)
+        locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor) if guard_gap is None else None
         default_instruction = alert_instruction or None
 
         def _guard_for(s: Scenario) -> BlockedHandler | None:
+            if locator is None:
+                return None  # no usable AI credential: the guard no-ops, never a hosted fallback
             cfg = s.dismiss_alerts or DismissAlerts()
             if not cfg.enabled:
                 return None

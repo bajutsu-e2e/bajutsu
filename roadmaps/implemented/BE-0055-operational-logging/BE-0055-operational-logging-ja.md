@@ -131,7 +131,7 @@ worker から成り、org でスコープされます。ところが、ツール
 運用チャネルは既存の `redaction.py` の値マスクを通し、上記のキーベースのマスクを足します。「何を機密とみなすか」
 の単一の真実を保ち、secret 変数
 （[BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）や、AI 経路を redact する
-方向（[BE-0047](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）と共有します。
+方向（[BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）と共有します。
 
 値マスクの対象は、機密が 2 つのスコープに在るため、**2 つのソース**を持ちます。
 
@@ -170,6 +170,6 @@ worker から成り、org でスコープされます。ところが、ツール
 - [DESIGN.md](../../../DESIGN.md) §2 — 決定性優先、機密マスク。
 - [BE-0015 — Web UI の公開ホスティング](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) — ホスト型トポロジと、本項目が実体化する「構造化 JSON ログ」の可観測性行。
 - [BE-0032 — Secret 変数](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md) — 本項目と共有する機密マスクの仕組み。
-- [BE-0047 — AI データ主権](../../proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) — 本項目が運用ログへ広げる「redact された経路」の思想。
+- [BE-0047 — AI データ主権](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) — 本項目が運用ログへ広げる「redact された経路」の思想。
 - [BE-0011 — ローカル Web UI（`bajutsu serve`）](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)、[BE-0051 — serve のハードニング](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) — 本ログが計装する serve。
 - [evidence.md](../../../docs/ja/evidence.md) — 本項目が意図的に切り分ける証跡サブシステム。

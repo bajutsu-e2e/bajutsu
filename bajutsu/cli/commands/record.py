@@ -14,9 +14,11 @@ from bajutsu.agents import make_agent, resolve_kind
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    _ai_redactor,
     _backends,
     _load_effective_with_source,
     _refuse_out_in_checkout,
+    _require_ai_credential,
     _resolve_browser,
 )
 from bajutsu.config import WEB_ENGINES, Effective
@@ -132,8 +134,17 @@ def record(
     out_path = _record_out_path(eff, out, name, goal, target_name, checkout_root=checkout_root)
     before = _usage.snapshot()
     kind = resolve_kind(agent)
+    # Fail closed (BE-0047): the API authoring agent and the alert guard both reach the model via the
+    # SDK provider, so a missing credential is an actionable error here, not a quiet fallback. The
+    # claude-code agent reaches the model through the `claude` CLI, so it needs the SDK key only when
+    # the alert guard is on.
+    if kind == "api" or dismiss_alerts:
+        _require_ai_credential(eff)
+    # Mask the textual model inputs (element trees, the alert instruction) before they leave the
+    # process; the screenshot is sent as-is — images cannot be pixel-masked (BE-0047).
+    redactor = _ai_redactor(eff)
     try:
-        authoring_agent = make_agent(kind)
+        authoring_agent = make_agent(kind, ai=eff.ai, redactor=redactor)
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -149,7 +160,8 @@ def record(
     if dismiss_alerts:
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
 
-        alert_guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
+        locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor)
+        alert_guard = SystemAlertGuard(locator, alert_instruction or None).dismiss
     # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
     # shell out to simctl and crash off-macOS, so skip it for the web backend.
     if actuator != "playwright":

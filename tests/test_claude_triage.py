@@ -9,6 +9,8 @@ from conftest import FakeAnthropic, FakeBlock
 
 from bajutsu.claude_triage import ClaudeTriageAgent, _render
 from bajutsu.drivers import base
+from bajutsu.redaction import Redactor
+from bajutsu.scenario import Redact
 from bajutsu.triage import FailedStep, TriageContext
 
 
@@ -56,6 +58,30 @@ def test_diagnose_maps_to_triage() -> None:
     assert result.category == "selector"
     assert result.summary == "id renamed"
     assert result.suggestions == ["did you mean home.title?"]
+
+
+def test_secret_in_context_is_masked_before_send() -> None:
+    # BE-0047: the failure text, the element tree, and the scenario YAML are redacted before they
+    # reach the model — a literal secret in any of them must be [REDACTED] in the sent payload.
+    client = FakeAnthropic(_diagnose())
+    redactor = Redactor(Redact(), values=["sk-secret-token"])
+    ctx = _ctx(
+        failure="auth failed with token sk-secret-token",
+        elements=[
+            {
+                "identifier": "tok",
+                "label": "Authorization: sk-secret-token",
+                "traits": ["staticText"],
+                "value": "sk-secret-token",
+                "frame": (0.0, 0.0, 1.0, 1.0),
+            }
+        ],
+        scenario_yaml="- name: s\n  steps:\n    - type: { into: { id: f }, text: sk-secret-token }\n",
+    )
+    ClaudeTriageAgent(client=client, redactor=redactor).triage(ctx)
+    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    assert "sk-secret-token" not in text
+    assert "[REDACTED]" in text
 
 
 def test_unknown_category_is_clamped() -> None:
