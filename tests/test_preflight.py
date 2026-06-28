@@ -12,6 +12,30 @@ def _which(present: set[str]) -> Callable[[str], str | None]:
     return lambda exe: f"/usr/bin/{exe}" if exe in present else None
 
 
+def test_config_checks_idb_requires_bundle_id() -> None:
+    ok = preflight.config_checks("idb", target="demo", bundle_id="com.example.demo", base_url=None)
+    assert [c.name for c in ok] == ["target bundleId"] and preflight.passed(ok)
+
+    missing = preflight.config_checks("idb", target="demo", bundle_id="", base_url=None)
+    assert not preflight.passed(missing)
+    assert "set targets.demo.bundleId" in missing[0].detail
+
+
+def test_config_checks_web_requires_base_url() -> None:
+    ok = preflight.config_checks(
+        "playwright", target="site", bundle_id="", base_url="http://x/index.html"
+    )
+    assert [c.name for c in ok] == ["target baseUrl"] and preflight.passed(ok)
+
+    missing = preflight.config_checks("playwright", target="site", bundle_id="", base_url=None)
+    assert not preflight.passed(missing)
+    assert "set targets.site.baseUrl" in missing[0].detail
+
+
+def test_config_checks_fake_needs_nothing() -> None:
+    assert preflight.config_checks("fake", target="t", bundle_id="", base_url=None) == []
+
+
 def test_idb_all_present_passes() -> None:
     checks = preflight.runnability(
         "idb", which=_which({"xcrun", "idb", "idb_companion"}), booted_count=lambda: 1

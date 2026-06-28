@@ -28,21 +28,29 @@ def doctor(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
-    # with a fixable checklist instead of crashing later on a missing tool / no device.
-    env_checks = preflight.runnability(
-        actuator, booted_count=lambda: len(_env.booted_udids()), web_engine=eff.browser
+    # Config gate first: a target missing the field its backend needs (iOS bundleId / web baseUrl)
+    # is fixable without any tool or device, so surface it up front and don't spawn doomed probes
+    # (BE-0024). `_need_target` rejects a target with neither at parse time; this catches the wrong
+    # field for the selected backend.
+    env_checks = preflight.config_checks(
+        actuator, target=target_name, bundle_id=eff.bundle_id, base_url=eff.base_url
     )
-    # When a pin is declared (defaults.idbVersion), report the installed idb_companion against it
-    # so a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
-    # Only probe when a pin exists *and* idb_companion is actually present — runnability already
-    # reports a missing companion, so probing it would only spawn a doomed subprocess and print a
-    # redundant "installed unknown" line.
-    companion_ok = any(c.name == "idb_companion" and c.ok for c in env_checks)
-    if actuator == "idb" and eff.idb_version is not None and companion_ok:
-        version_check = preflight.idb_version_check(eff.idb_version, idb_version.probe())
-        if version_check is not None:
-            env_checks.append(version_check)
+    if preflight.passed(env_checks):
+        # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
+        # with a fixable checklist instead of crashing later on a missing tool / no device.
+        env_checks += preflight.runnability(
+            actuator, booted_count=lambda: len(_env.booted_udids()), web_engine=eff.browser
+        )
+        # When a pin is declared (defaults.idbVersion), report the installed idb_companion against it
+        # so a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
+        # Only probe when a pin exists *and* idb_companion is actually present — runnability already
+        # reports a missing companion, so probing it would only spawn a doomed subprocess and print a
+        # redundant "installed unknown" line.
+        companion_ok = any(c.name == "idb_companion" and c.ok for c in env_checks)
+        if actuator == "idb" and eff.idb_version is not None and companion_ok:
+            version_check = preflight.idb_version_check(eff.idb_version, idb_version.probe())
+            if version_check is not None:
+                env_checks.append(version_check)
     if env_checks:
         typer.echo("environment:")
         typer.echo(preflight.render(env_checks))

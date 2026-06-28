@@ -68,6 +68,35 @@ def _browser_installed(engine: str) -> bool:  # pragma: no cover - needs the pla
 BrowserProbe = Callable[[str], bool]
 
 
+def config_checks(
+    backend: str, *, target: str, bundle_id: str, base_url: str | None
+) -> list[Check]:
+    """Whether the resolved target carries the config the selected backend needs to launch.
+
+    The web (`playwright`) backend needs a `baseUrl` to navigate to; the iOS (`idb`) backend needs a
+    `bundleId` to launch. Config parsing already rejects a target with *neither* (`_need_target`),
+    but a target can still carry the *wrong* field for the backend it is run on — an iOS target with
+    only a `baseUrl`, a web target with only a `bundleId` — which would otherwise surface as a
+    confusing downstream launch/navigate failure. This catches it up front with a remedy naming the
+    target. `fake` needs neither.
+
+    Args:
+        backend: The selected actuator (`idb` / `playwright` / `fake`).
+        target: The resolved target's name, used in the remedy string.
+        bundle_id: The target's `bundleId` (empty when unset).
+        base_url: The target's `baseUrl` (None when unset).
+    """
+    if backend == "fake":
+        return []
+    if backend == "playwright":
+        return [
+            Check("target baseUrl", bool(base_url), base_url or f"set targets.{target}.baseUrl")
+        ]
+    return [
+        Check("target bundleId", bool(bundle_id), bundle_id or f"set targets.{target}.bundleId")
+    ]
+
+
 def runnability(
     backend: str,
     which: Which = shutil.which,
