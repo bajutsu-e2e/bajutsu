@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0009](BE-0009-cross-platform-abstractions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
+| 実装 PR | [#343](https://github.com/bajutsu-e2e/bajutsu/pull/343) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
@@ -125,6 +126,26 @@ apps:
 - **`runner.py` / `orchestrator.py` の漏れた iOS 固有部分を監査する。** 上表の「不変」列は検証すべき主張です。最初の抽象化パスこそが、潜在する iOS 固有の前提を表に出させます。
 
 これに乗るプラットフォーム別バックエンド（まず Web、次に Android）は別項目で扱います。Web は [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、Android は [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) です。
+
+### `Environment` 継ぎ目（実装）
+
+監査の結果、「変わらないコア」という主張は成り立っていました。`resolve_unique`、`assertions`、orchestrator ループ、reporter のいずれにも iOS 前提は漏れていません。プラットフォーム依存の漏れはアクチュエータ名で分岐する制御フローだけで、3 箇所に集中しています。`runner/launch.py`（run ごとの起動フォーク、`if actuator == "playwright"`）、`runner/pool.py`（並列レーンの `is_web` 分岐と、web 専用のネットワーク／再起動のための `cast(PlaywrightDriver, …)`）、`cli/commands/crawl.py`（リセットと復旧の分岐）です。Web v1 のショートカット（[BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）は、ライフサイクルを driver の中に抱え、これらの分岐を経由して到達していました。
+
+解は、runner が分岐の代わりに呼ぶ単一のプロトコルです。
+
+```python
+class Environment(Protocol):
+    def start(self, eff, pre, *, extra_env=None, record_video_dir=None) -> Driver: ...
+```
+
+`start` は、そのプラットフォームの run ごとの起動シーケンス全体を担い、ポーリング可能な driver を返します。呼び出し側は、それが simctl のデバイス列だったのか、ブラウザコンテキストの新規作成だったのかを知る必要がありません。`IosEnvironment` は simctl 列（erase → boot → install → launch → deeplink）を実行してから idb driver を構築し、`WebEnvironment` は Playwright driver を構築して `navigate()` します（web 専用の呼び出しは、runner ではなくこのクラスに閉じます）。`FakeEnvironment` は何もしません。`environment_for(actuator, udid, env_run)` がファクトリです。将来の `AndroidEnvironment`（[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)）は、同じプロトコルを `adb`（`pm clear` → AVD → `am start` → deeplink インテント）で実装します。
+
+Phase 0 は、各 PR を小さく保ち、ゲートを緑に保つため、段階的に着地させます。
+
+- **スライス 1（出荷済み）**：`Environment` プロトコル、`IosEnvironment` ／ `WebEnvironment` ／ `FakeEnvironment`、`environment_for`、そして `launch_driver` がそれに委譲します。`launch.py` の `actuator == "playwright"` フォークを除去します。
+- **スライス 2**：`runner/pool.py` の `is_web` リース分岐と `cast(PlaywrightDriver, …)` のネットワーク／再起動をプロトコルの背後に畳みます（シナリオごとの再起動とリース解放時の後始末を Environment のメソッドにします）。
+- **スライス 3**：`cli/commands/crawl.py` のリセットと復旧の分岐を畳みます。
+- **スライス 4**：明示的な `platform` config 判別子。現状はアクチュエータのトークンが platform を含意します（`backends.PLATFORMS`）。本スライスで `platform` を `defaults` ／ `apps.<name>` ／ `Effective` に追加し、その platform の識別子（`bundleId` ／ `baseUrl` ／ `package`）が存在することを検証します。
 
 ## 検討した代替案
 

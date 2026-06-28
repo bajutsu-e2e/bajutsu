@@ -42,6 +42,8 @@ or the reporter.
 | **Evidence providers** | screenshot = `adb exec-out screencap`; video = `adb shell screenrecord`; `deviceLog` = `adb logcat` (filtered by tag/pid); `network` = no native monitor → same mock story as iOS |
 | **codegen target** | Espresso or UI Automator (Kotlin/Java) |
 
+The **environment** row lands as an `AndroidEnvironment` implementing the cross-platform `Environment` Protocol from [BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md): its `start` runs the adb sequence (`pm clear` for a clean state → `am start` to launch → `am start -a android.intent.action.VIEW -d <url>` for a deeplink) and returns the `adb` driver. Actuator and environment are thus the Android instances of the same two seams iOS fills with idb + simctl, so Android adds no new shape to the runner — it plugs into the seam BE-0009 extracts.
+
 ### The architectural twin of idb
 
 Android is the **architectural twin of idb**: subprocess-driven, coordinate actuation, and a

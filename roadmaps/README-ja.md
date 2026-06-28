@@ -305,6 +305,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0041](in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) | Web (Playwright) backend | 実装中 |
 <!-- /GENERATED:in-progress-platform-landed -->
 
+### プラットフォーム拡張（Android / Web / Flutter）
+
+<!-- GENERATED:in-progress-platform -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0009](in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 実装中 |
+<!-- /GENERATED:in-progress-platform -->
+
 ### 競合調査（MagicPod / Autify）由来の候補
 
 <!-- GENERATED:in-progress-competitive -->
@@ -369,7 +377,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0007](proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 提案 |
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
-| [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 提案 |
 | [BE-0076](proposals/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) | ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend） | 提案 |
 <!-- /GENERATED:proposals-platform -->
 

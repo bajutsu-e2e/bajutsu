@@ -313,6 +313,14 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0041](in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | In progress |
 <!-- /GENERATED:in-progress-platform-landed -->
 
+### Platform expansion (Android / Web / Flutter)
+
+<!-- GENERATED:in-progress-platform -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0009](in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | In progress |
+<!-- /GENERATED:in-progress-platform -->
+
 ### Candidates from competitive research (MagicPod / Autify)
 
 <!-- GENERATED:in-progress-competitive -->
@@ -377,7 +385,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0007](proposals/BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | Proposal |
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
-| [BE-0009](proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Proposal |
 | [BE-0076](proposals/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md) | Selectable browser engines & cross-browser compatibility matrix (web backend) | Proposal |
 <!-- /GENERATED:proposals-platform -->
 

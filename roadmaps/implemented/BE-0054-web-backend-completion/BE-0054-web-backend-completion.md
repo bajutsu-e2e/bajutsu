@@ -81,6 +81,6 @@ which apply to any backend.
 ## References
 
 [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
-[BE-0009 — Cross-platform abstractions](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md),
+[BE-0009 — Cross-platform abstractions](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md),
 [drivers.md](../../../docs/drivers.md), [multi-platform.md](../../../docs/multi-platform.md),
 `bajutsu/drivers/playwright.py`, `bajutsu/runner/pool.py`, `bajutsu/evidence.py`
