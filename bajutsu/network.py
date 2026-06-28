@@ -135,6 +135,10 @@ class NetworkCollector:
             self._server.shutdown()
             self._server.server_close()
             self._server = None
+        if self._thread is not None:
+            self._thread.join()  # serve_forever has returned; join so no stale thread lingers
+            self._thread = None
+        self.port = 0
 
 
 def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
