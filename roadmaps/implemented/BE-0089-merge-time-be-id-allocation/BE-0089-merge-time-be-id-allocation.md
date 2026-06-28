@@ -8,6 +8,7 @@
 | Proposal | [BE-0089](BE-0089-merge-time-be-id-allocation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#359](https://github.com/bajutsu-e2e/bajutsu/pull/359) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
