@@ -5,12 +5,13 @@ The `roadmap-id` workflow allocates BE IDs on `main` after a merge, pushing the 
 that can bypass `main`'s branch protection. That token is a high-value credential, so this guard
 keeps its power structurally small: the legitimate commit is always the same narrow mechanical shape
 (a `BE-XXXX` → `BE-NNNN` rename plus the regenerated index, all under `roadmaps/`), and the guard
-fails the job if the staged commit touches anything outside `roadmaps/` — capping any misuse to that
-tree before the push happens.
+fails the job if the renumber commit touches anything outside `roadmaps/` — capping any misuse to
+that tree before the push happens.
 
-Run it after staging the renumber but before committing::
+Run it on the **committed** renumber, after `git commit` and before `git push`, so the property is
+tied to the artifact that actually lands on `main`, not to a transient index state::
 
-    git add -A && python3 scripts/check_renumber_diff.py
+    git add -A && git commit -m … && python3 scripts/check_renumber_diff.py && git push …
 """
 
 from __future__ import annotations
@@ -31,15 +32,18 @@ def disallowed_paths(paths: Iterable[str]) -> list[str]:
     return [p for p in paths if not p.startswith(_ROADMAPS)]
 
 
-def _staged_paths() -> list[str]:
+def _committed_paths() -> list[str]:
+    # The renumber is a single commit on top of `main`, so HEAD~1..HEAD is exactly its diff — the
+    # tree that will be pushed. Checking the commit (not the index) keeps the guard tied to the
+    # artifact even if a future step writes between staging and committing.
     out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only"], capture_output=True, text=True, check=True
+        ["git", "diff", "--name-only", "HEAD~1", "HEAD"], capture_output=True, text=True, check=True
     )
     return [line for line in out.stdout.splitlines() if line]
 
 
 def main() -> int:
-    bad = disallowed_paths(_staged_paths())
+    bad = disallowed_paths(_committed_paths())
     if bad:
         print(
             "check-renumber-diff: the renumber commit must touch only roadmaps/, but these are "

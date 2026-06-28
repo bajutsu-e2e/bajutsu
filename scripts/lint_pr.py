@@ -118,7 +118,10 @@ def be_id_from_ref(ref: str) -> str | None:
 
     The branch convention ``claude/be-NNNN-<slug>`` ties a PR to a roadmap item, so the branch — not
     the diff — is the authoritative signal that the PR title must carry that id. Matching is
-    case-insensitive; a non-roadmap topic branch yields None.
+    case-insensitive; a non-roadmap topic branch yields None. A *BE-creation* PR must use a topic
+    slug (no numeric id, e.g. ``claude/merge-time-id``) so it yields None and needs no prefix — its
+    id isn't known until after the merge (BE-0089); only a branch implementing an already-numbered
+    item encodes that id here.
     """
     m = _REF_BE_RE.search(ref)
     return f"BE-{m.group(1)}" if m else None

@@ -90,11 +90,13 @@ jobs:
           python3 scripts/build_roadmap_index.py
 
           git add -A
-          # Cap the bypass token's blast radius: the renumber must touch only roadmaps/ (BE-0089).
-          python3 scripts/check_renumber_diff.py
           git commit -m "docs(roadmap): allocate BE IDs for merged placeholder items"
+          # Cap the bypass token's blast radius: the committed renumber must touch only roadmaps/
+          # (BE-0089). Runs on the commit, so it guards exactly what gets pushed.
+          python3 scripts/check_renumber_diff.py
 
-          # main may have moved between checkout and push; rebase onto it and retry a few times.
+          # main may have moved between checkout and push; rebase onto it and retry a few times,
+          # logging which step failed so a stuck conflict isn't misreported as push contention.
           for attempt in 1 2 3 4 5; do
             if git push origin HEAD:main; then
               break
@@ -103,7 +105,15 @@ jobs:
               echo "::error::Could not push the renumber to main after several attempts."
               exit 1
             fi
-            git fetch origin main && git rebase origin/main || git rebase --abort
+            echo "::warning::push to main rejected (attempt ${attempt}); fetching and rebasing onto origin/main."
+            if ! git fetch origin main; then
+              echo "::warning::git fetch failed (attempt ${attempt}); retrying."
+              continue
+            fi
+            if ! git rebase origin/main; then
+              echo "::warning::rebase onto origin/main conflicted (attempt ${attempt}); aborting and retrying."
+              git rebase --abort
+            fi
           done
           echo "tokens=$tokens" >> "$GITHUB_OUTPUT"
 
