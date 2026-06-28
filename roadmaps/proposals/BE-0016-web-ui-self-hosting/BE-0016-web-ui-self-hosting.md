@@ -221,7 +221,7 @@ worker mid-run on a test deployment and confirming the job re-runs.
 
 **4. Control-plane scale-out.** The control plane is cheap HTTP and scales out, but the compose runs
 **one** app container today. To run **N replicas** behind a load balancer (Caddy or HAProxy):
-**least-conn** over round-robin (server-sent-event, SSE, connections are long-lived); **no sticky
+**least-conn** over round-robin (server-sent events (SSE) connections are long-lived); **no sticky
 sessions** (auth is a signed cookie and sessions live in Redis, so any replica serves any request);
 and the load balancer must **not buffer** SSE, since live logs come from Redis pub/sub and any replica
 can stream any run. Verified by hand: bring up two app replicas, confirm a login on one and a live log
