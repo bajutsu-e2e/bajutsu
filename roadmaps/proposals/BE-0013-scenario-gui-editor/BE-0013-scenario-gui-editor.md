@@ -48,6 +48,59 @@ Saving goes through the existing author-owned write path, `serve/scenarios.py:Sc
 
 The editor stays Tier 1 and app-agnostic: it reads `targets.<name>` (the app, its scenarios dir, the identifier namespaces feeding the `doctor` score) and the artifacts a run already produces. Selection is structural (point-in-frame plus the `doctor` heuristic) — **no LLM, no `ANTHROPIC_API_KEY`** — so nothing here touches the deterministic `run` / CI gate; it only lowers the cost of the human-owned edit loop.
 
+### Dependency and ordering
+
+The picker's resolver is BE-0012's `capture.py` core (`hit_test` / `resolve_capture`) plus the shared
+`el → Selector` stability ladder. BE-0012 is still a proposal, so **this item is gated on that core
+existing** — one of two orders, both yielding a single resolver:
+
+- **BE-0012 first** (natural): it introduces `capture.py` and the consolidated ladder; BE-0013 reuses
+  them unchanged, supplying its own (artifact-backed) element tree and screenshot.
+- **BE-0013 first**: its first slice factors the ladder — today duplicated in `crawl` /
+  `crawl_repro` — into `capture.py`'s `resolve_capture`, and BE-0012 later builds its live-capture
+  path on the same function.
+
+Either way there is never a second copy of the resolver. The editor's own surface (the two-pane view,
+the artifact-backed picker, the save-with-validate route) is independent of which order is chosen, so
+the design below stands regardless.
+
+### The editor API
+
+Three author-owned `serve` routes (stdlib `serve/handler.py` + the FastAPI `server/app.py` mirror),
+all stateless — no live driver is held across requests, keeping BE-0011's shell-out model:
+
+- **Load for editing** — extend the existing `GET /api/scenario` (`operations.read_scenario`) to also
+  return, for a chosen run, each step's captured-artifact handles:
+  `{ yaml, steps: [{ stepId, action, fields, elementsUrl, screenshotUrl }] }`, where the URLs point at
+  the already-byte-served `runs/<runId>/<stepId>/elements.json` and `after.png`. The run is the report
+  the author is viewing; with no run, the handles are null and the pane degrades to raw-field editing.
+- **Resolve a pick** — `POST /api/scenario/resolve { target, runId, stepId, point: [x, y] }` →
+  `resolve_capture(elements_of(stepId), point, namespaces_of(target))`, returning
+  `{ selector, rung, doctorScore, ambiguous, candidates? }`. `point` is normalized `[0,1]` (the client
+  maps displayed-pixel → normalized, the scaling `crawl.Action.perform` already uses); the server reads
+  that step's `elements.json` and resolves **structurally — no device, no LLM**. An ambiguous hit
+  returns `ambiguous: true` with the candidates for the author to narrow (`within` / `index`), never a
+  silent pick.
+- **Save** — the existing `POST /api/scenario` (`operations.save_scenario` → `ScenarioScope.save()`),
+  which already validates with `load_scenario_file` before writing. The editor serializes the
+  structured pane back to YAML and saves through this unchanged path, so an editor save and a hand-edit
+  are the same write and equally rejectable.
+
+### Validation
+
+Fast-gate (no device, no browser, no LLM):
+
+- *Resolver reuse.* Against a fixed `elements.json` fixture, a point resolves to the expected id-first
+  selector with its `doctor` rung, and a point over overlapping frames returns `ambiguous` with its
+  candidates — the same assertions BE-0012's resolver tests make (one resolver, one test surface).
+- *Save validates.* Saving a structurally-edited-but-invalid scenario is rejected by
+  `load_scenario_file` before any bytes are written (no partial file).
+- *Route shapes.* The load / resolve / save handlers return the shapes above for a fixture run, and a
+  scenario with no run degrades to null artifact handles rather than erroring.
+
+The two-pane overlay rendering in `serve.js` is exercised through the existing serve UI path (like the
+crawl report's screenshot overlay), not the fast gate.
+
 ## Alternatives considered
 
 * **Keep the raw YAML textarea only.** That is the BE-0011 baseline. Rejected as the end state: it still requires the author to know selectors by hand and gives no feedback on selector stability — the picker plus `doctor` score is the whole value add.
