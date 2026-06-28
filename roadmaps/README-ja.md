@@ -331,6 +331,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装中 | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
+### バックエンド拡張（iOS actuator）
+
+<!-- GENERATED:in-progress-backend -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 実装中 |
+<!-- /GENERATED:in-progress-backend -->
+
 ### Web UI のホスティング（クラウド / セルフホスト）
 
 <!-- GENERATED:in-progress-hosting -->

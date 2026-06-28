@@ -339,6 +339,14 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
+### Backend expansion (iOS actuators)
+
+<!-- GENERATED:in-progress-backend -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | In progress |
+<!-- /GENERATED:in-progress-backend -->
+
 ### Hosting the web UI (cloud / self-hosted)
 
 <!-- GENERATED:in-progress-hosting -->
