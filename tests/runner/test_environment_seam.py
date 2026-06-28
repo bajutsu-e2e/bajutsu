@@ -172,3 +172,119 @@ def test_device_teardown_terminates_the_app() -> None:
 
     IosEnvironment("idb", "UDID-1", env_run=fake_run).teardown(FakeDriver([]), _eff())
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
+
+
+# --- The crawl-facing seams the CLI used to branch on `actuator == "playwright"` for (Slice 3) --- #
+
+
+def test_crawl_health_seams_are_web_only() -> None:
+    # The crawl's web crash signal, dialog auto-clear, and wedged-browser recovery exist only on web;
+    # the device backends read the accessibility tree (engine default) and have no such seams. The CLI
+    # now asks the Environment for these instead of naming the actuator.
+    web = WebEnvironment("playwright")
+    assert web.crawl_aliveness() is not None
+    assert web.crawl_recover() is not None
+    assert web.crawl_dialog_clearer() is not None
+    for device in (IosEnvironment("idb", "U"), FakeEnvironment("fake", "U")):
+        assert device.crawl_aliveness() is None
+        assert device.crawl_recover() is None
+        assert device.crawl_dialog_clearer() is None
+
+
+def test_web_crawl_seams_drive_the_web_driver() -> None:
+    class _WebDriver:
+        name = "web"
+
+        def __init__(self) -> None:
+            self.relaunched = 0
+            self.errored = False
+
+        def pop_dialogs(self) -> list[str]:
+            return ["alert: hi"]
+
+        def relaunch(self) -> None:
+            self.relaunched += 1
+
+        def pop_page_errors(self) -> list[str]:
+            return ["boom"] if self.errored else []
+
+        def last_nav_status(self) -> int | None:
+            return 200
+
+    web = WebEnvironment("playwright")
+    driver = _WebDriver()
+
+    clear = web.crawl_dialog_clearer()
+    assert clear is not None
+    assert clear(driver) == ["alert: hi"]  # type: ignore[arg-type]  # delegates to pop_dialogs
+
+    recover = web.crawl_recover()
+    assert recover is not None
+    recover(driver)  # type: ignore[arg-type]
+    assert driver.relaunched == 1  # delegates to the driver's relaunch
+
+    alive = web.crawl_aliveness()
+    assert alive is not None
+    element: base.Element = {
+        "identifier": "root",
+        "label": None,
+        "traits": [],
+        "value": None,
+        "frame": (0.0, 0.0, 1.0, 1.0),
+    }
+    assert alive(driver, [element]) is True  # no page error, 2xx nav, a rendered element → alive
+    driver.errored = True
+    assert alive(driver, [element]) is False  # a JS error → not alive (delegates to web_is_alive)
+
+
+def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The web "reset to a clean start" is a fresh BrowserContext (the erase equivalent), then a
+    # readiness wait. (_await_ready is stubbed so the test doesn't poll a fake driver.)
+    monkeypatch.setattr("bajutsu.environment._await_ready", lambda *a, **k: None)
+
+    class _WebDriver:
+        name = "web"
+
+        def __init__(self) -> None:
+            self.reset = 0
+
+        def reset_context(self) -> None:
+            self.reset += 1
+
+    driver = _WebDriver()
+    WebEnvironment("playwright").crawl_reset(_eff())(driver)  # type: ignore[arg-type]
+    assert driver.reset == 1
+
+
+def test_device_crawl_reset_relaunches_the_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The device "reset" is a relaunch (terminate then launch), not a full erase — fast per visit.
+    monkeypatch.setattr("bajutsu.environment._await_ready", lambda *a, **k: None)
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        calls.append(args)
+        return ""
+
+    from bajutsu.drivers.fake import FakeDriver
+
+    IosEnvironment("idb", "U-1", env_run=fake_run).crawl_reset(_eff())(FakeDriver([]))
+    assert ["xcrun", "simctl", "terminate", "U-1", "com.example.demo"] in calls
+    assert any(a[:3] == ["xcrun", "simctl", "launch"] and "U-1" in a for a in calls)
+
+
+def test_plan_lanes_sizes_web_and_device_pools() -> None:
+    # Web has no devices, so the worker count alone sizes the browser-lane set; a device pool resolves
+    # the --udid list and caps the workers to it. The CLI no longer special-cases the web string.
+    web = WebEnvironment("playwright")
+    assert web.plan_lanes("booted", 3) == ["web", "web", "web"]
+    assert web.plan_lanes("booted", 0) == ["web"]  # at least one lane
+
+    device = IosEnvironment("idb", "")  # explicit udids resolve to themselves (no simctl call)
+    assert device.plan_lanes("U1,U2", 5) == ["U1", "U2"]  # capped to the pool
+    assert device.plan_lanes("U1,U2,U3", 2) == ["U1", "U2"]  # capped to the workers
+
+
+def test_only_device_platforms_have_devices() -> None:
+    assert WebEnvironment("playwright").has_devices() is False
+    assert IosEnvironment("idb", "U").has_devices() is True
+    assert FakeEnvironment("fake", "U").has_devices() is True
