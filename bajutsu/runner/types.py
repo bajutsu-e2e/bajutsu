@@ -21,7 +21,7 @@ RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]
 # Selects the alert-guard handler for one scenario (None = no guard for it). The CLI sets this
 # so each scenario's `dismissAlerts` (default on, optional instruction) decides whether — and
 # how — the vision guard runs; the orchestrator stays oblivious to the per-scenario choice.
-OnBlockedFor = Callable[[Scenario], "BlockedHandler | None"]
+OnBlockedFor = Callable[[Scenario], BlockedHandler | None]
 
 
 @dataclass
