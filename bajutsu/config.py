@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bajutsu import _yaml, idb_version
+from bajutsu.drivers import base
 from bajutsu.scenario import Redact
 
 
@@ -138,6 +139,11 @@ class TargetConfig(_Model):
     locale: str | None = None
     launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
     launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
+    # Selector the launch waits for before a run starts (e.g. `{ id: onboarding.start }`). For an app
+    # whose first interactive screen is a modal over always-present chrome, the default element-count
+    # readiness can return before the modal presents; `readyWhen` makes the gate wait for that screen
+    # (a condition wait, no fixed sleep). None keeps the element-count heuristic.
+    ready_when: base.Selector | None = Field(default=None, alias="readyWhen")
     id_namespaces: list[str] = Field(default_factory=list, alias="idNamespaces")
     mock_server: MockServer | None = Field(default=None, alias="mockServer")
     mailbox: Mailbox | None = None
@@ -282,6 +288,9 @@ class Effective:
     headless: bool = True
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
     launch_server: LaunchServer | None = None
+    # Selector the launch waits for before a run starts (BE: smoke flake). None = the default
+    # element-count readiness heuristic.
+    ready_when: base.Selector | None = None
     # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
     # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
     idb_version: str | None = None
@@ -341,6 +350,7 @@ def resolve(config: Config, target: str) -> Effective:
         base_url=a.base_url,
         headless=a.headless,
         launch_server=a.launch_server,
+        ready_when=a.ready_when,
         deeplink_scheme=a.deeplink_scheme,
         backend=a.backend or d.backend,
         device=a.device or d.device,
