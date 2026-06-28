@@ -110,6 +110,7 @@
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0010](implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md) | スコープ文の更新 | 実装済み |
+| [BE-0076](implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) | ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend） | 実装済み |
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) | run の前に capability をプリフライト検査する | 実装済み |
 <!-- /GENERATED:implemented-platform -->
 
@@ -315,7 +316,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0009](in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 実装中 |
-| [BE-0076](in-progress/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) | ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend） | 実装中 |
 <!-- /GENERATED:in-progress-platform -->
 
 ### 競合調査（MagicPod / Autify）由来の候補

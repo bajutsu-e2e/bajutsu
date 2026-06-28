@@ -56,7 +56,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `bundle_id` | app | iOS target; required unless `base_url` is set |
 | `base_url` | app | web target URL (Playwright backend); required for web instead of `bundle_id` |
 | `headless` | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
-| `browser` | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/in-progress/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `browser` | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
 | `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
@@ -176,6 +176,27 @@ single-tenant — the CLI and local `serve` ignore `orgs:` entirely.
 Every command in the CLI (command-line interface) selects one app with `--target <name>` and points at
 config with `--config` (default `bajutsu.config.yaml`). `--backend ios` (or a comma list of
 platforms/actuators) overrides the resolved order ([cli](cli.md)).
+
+### Cross-browser matrix (`--browsers`, BE-0076)
+
+`bajutsu run --browsers chromium,firefox,webkit` runs the selected scenarios once per engine and
+emits a single **engine × scenario pass/fail matrix** — the multi-engine spelling of the `--browser`
+axis (web backend only; `--browsers chromium` is exactly `--browser chromium`, and a single engine
+takes the ordinary single-engine path). The run is **green only if every requested engine passes
+every scenario** (all-must-pass); a scenario green on Chromium and Firefox but red on WebKit is a
+machine-detected rendering-engine incompatibility — the kind of "works in Chrome, broken in Safari"
+bug a single-engine test can never see. The verdict is purely the existing deterministic per-engine
+`run` outcomes aggregated; no AI enters it.
+
+Each engine is a full pass against its own browser pool, so its evidence lands under
+`runs/<id>/<engine>/<NN-scenario>/` (no collisions between engines). The run then assembles **one**
+`manifest.json`, `junit.xml`, and `report.html` at the run root: the manifest carries a `matrix`
+block aggregating the per-engine verdicts, the report renders the engine × scenario grid, and JUnit
+keys the engine into each case (`classname="bajutsu.<engine>"`) so CI sees `chromium.login` and
+`webkit.login` as distinct cases ([reporting](reporting.md#manifestjson)). An unknown engine in the
+list exits 2 before any browser launches, the same as `--browser`. All three engines run headless on
+Linux, so the matrix runs inside the ordinary gate with no Mac or device farm; the firefox/webkit
+binaries are installed on demand.
 
 ### Config from a Git repository (BE-0063)
 

@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0076](BE-0076-web-cross-browser-engines.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
-| Implementing PR | [#355](https://github.com/bajutsu-e2e/bajutsu/pull/355) |
+| Status | **Implemented** |
+| Implementing PR | [#355](https://github.com/bajutsu-e2e/bajutsu/pull/355), [#360](https://github.com/bajutsu-e2e/bajutsu/pull/360) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -135,8 +135,12 @@ its load-time validation, the `--browser` flag on `run` / `record` with flag > c
 precedence, the engine threaded through `PlaywrightDriver` / `make_driver` / the web environment /
 `doctor`, and the on-demand `playwright install <engine>` in `ensure_web_runtime`, all covered by the
 fast `make check` gate with a fake starter (no real browser). On-device firefox / webkit launch is
-left to the web-e2e path. **Phase 2 (the `--browsers` matrix) is not yet built** and remains the
-follow-up below.
+left to the web-e2e path. **Phase 2 (the `--browsers` matrix) has shipped** — the `--browsers` flag
+on `run`, the run-per-engine fan-out (`run_matrix_and_report`) writing evidence under
+`run_dir/<engine>/<sid>`, the engine-tagged `RunResult.engine`, the manifest `matrix` block and
+all-must-pass `ok`, the engine-keyed JUnit `classname="bajutsu.<engine>"`, and the `report.html`
+engine × scenario grid, all covered by the fast gate with fake leases. On-device cross-engine runs
+remain the web-e2e path.
 
 ### Phase 2 — cross-browser matrix
 

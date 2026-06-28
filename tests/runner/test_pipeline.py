@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from _runner import _eff, _el, _fake_driver, _lease
+from _runner import _eff, _el, _failing_lease, _fake_driver, _lease
 
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
 from bajutsu.network import NetworkExchange
+from bajutsu.orchestrator import RunResult
 from bajutsu.runner import (
     Lease,
     run_all,
     run_and_report,
+    run_matrix_and_report,
 )
 from bajutsu.scenario import Scenario
 
@@ -168,6 +170,106 @@ def test_run_and_report(tmp_path: Path) -> None:
     assert prov["scenarioHash"] == expected
     assert prov["toolVersion"] == __version__
     assert "configSource" not in prov  # a local config records no Git source
+
+
+# --- cross-browser matrix run (BE-0076 Phase 2): run-per-engine -> assemble -> report-once ---
+
+
+def test_run_matrix_and_report_writes_one_report_with_a_matrix(tmp_path: Path) -> None:
+    # Two engines, one scenario: each engine pass writes its evidence under run_dir/<engine>, and
+    # the run assembles ONE manifest whose matrix aggregates the per-engine verdicts.
+    scenarios = [Scenario.model_validate({"name": "login", "steps": [{"tap": {"id": "ok"}}]})]
+    seen: list[tuple[str, Path]] = []
+
+    def run_pass(engine: str, run_dir: Path) -> list[RunResult]:
+        seen.append((engine, run_dir))
+        # webkit fails the scenario; chromium passes it — a machine-detected incompatibility.
+        return run_all(
+            _eff(), scenarios, _lease if engine == "chromium" else _failing_lease, run_dir=run_dir
+        )
+
+    results, manifest = run_matrix_and_report(
+        _eff(), scenarios, ["chromium", "webkit"], run_pass, tmp_path / "runs", "run1"
+    )
+    # Each engine pass was handed its own run_dir/<engine> subtree, in order.
+    assert seen == [
+        ("chromium", tmp_path / "runs" / "run1" / "chromium"),
+        ("webkit", tmp_path / "runs" / "run1" / "webkit"),
+    ]
+    # Results are concatenated and tagged with their engine.
+    assert [(r.scenario, r.engine, r.ok) for r in results] == [
+        ("login", "chromium", True),
+        ("login", "webkit", False),
+    ]
+    # ONE report at run_dir (no per-engine manifest); its matrix block aggregates both verdicts.
+    assert manifest == tmp_path / "runs" / "run1" / "manifest.json"
+    assert not (tmp_path / "runs" / "run1" / "chromium" / "manifest.json").exists()
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["ok"] is False  # all-must-pass: webkit's failure fails the whole run
+    matrix = data["matrix"]
+    assert matrix["engines"] == ["chromium", "webkit"]
+    assert matrix["cells"]["login"]["chromium"]["ok"] is True
+    assert matrix["cells"]["login"]["webkit"]["ok"] is False
+    # The matrix cell points at the engine-prefixed evidence dir the pass wrote under.
+    assert matrix["cells"]["login"]["chromium"]["sid"] == "chromium/00-login"
+
+
+def test_reroot_evidence_prefixes_paths_with_engine() -> None:
+    # Each engine pass writes evidence under <engine>/<sid>/, but artifact/visual paths are recorded
+    # relative to that pass's run_dir. The matrix assembles one report at the top run_dir, so the
+    # paths must be re-rooted under the engine subtree or the report's links resolve wrong (BE-0076).
+    from bajutsu.assertions import AssertionResult, VisualEvidence
+    from bajutsu.evidence import Artifact
+    from bajutsu.orchestrator import StepOutcome
+    from bajutsu.runner.pipeline import _reroot_evidence
+
+    r = RunResult(
+        scenario="login",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                artifacts=[Artifact("00-login/after.png", "screenshot", "driver")],
+            )
+        ],
+        artifacts=[Artifact("00-login/video.webm", "video", "collector")],
+        expect_results=[
+            AssertionResult(
+                ok=True,
+                kind="visual",
+                detail="",
+                visual=VisualEvidence(
+                    baseline_name="home.png",
+                    actual="00-login/visual-actual.png",
+                    baseline="00-login/visual-baseline.png",
+                    diff="00-login/visual-diff.png",
+                ),
+            )
+        ],
+    )
+    _reroot_evidence(r, "webkit")
+    assert r.artifacts[0].name == "webkit/00-login/video.webm"
+    assert r.steps[0].artifacts[0].name == "webkit/00-login/after.png"
+    v = r.expect_results[0].visual
+    assert v is not None
+    assert v.actual == "webkit/00-login/visual-actual.png"
+    assert v.baseline == "webkit/00-login/visual-baseline.png"
+    assert v.diff == "webkit/00-login/visual-diff.png"
+
+
+def test_run_matrix_and_report_green_only_when_every_engine_passes(tmp_path: Path) -> None:
+    scenarios = [Scenario.model_validate({"name": "login", "steps": [{"tap": {"id": "ok"}}]})]
+
+    def run_pass(engine: str, run_dir: Path) -> list[RunResult]:
+        return run_all(_eff(), scenarios, _lease, run_dir=run_dir)
+
+    _, manifest = run_matrix_and_report(
+        _eff(), scenarios, ["chromium", "firefox", "webkit"], run_pass, tmp_path / "runs", "run1"
+    )
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["ok"] is True  # every engine passed every scenario
 
 
 def test_run_and_report_records_git_config_source(tmp_path: Path) -> None:

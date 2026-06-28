@@ -313,6 +313,16 @@ tr.visrow>td{background:#fafafb}
 .vapprove:hover{filter:brightness(1.08)}
 .vapprove:disabled{opacity:.55;cursor:default}
 .vapprove.done{background:var(--mut)}
+/* Cross-browser matrix (BE-0076): the engine × scenario grid. A row green on one engine and red
+   on another is the machine-detected incompatibility — pure CSS, no JS. */
+.matrix{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem;margin-bottom:1rem}
+.mxh{margin:0 0 .5rem;font-size:.82rem;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.mxtbl{border-collapse:collapse;width:auto}
+.mxtbl th,.mxtbl td{border:1px solid var(--line);padding:.28rem .7rem;text-align:center;font-size:.8rem}
+.mxtbl th{color:var(--mut);font-variant:small-caps}
+.mxs{text-align:left;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mxc{font-weight:700;font-variant-numeric:tabular-nums}
+.mx-ok{color:var(--ok)} .mx-ng{color:#fff;background:var(--ng)} .mx-na{color:var(--mut)}
 /* Dark mode — flip the palette variables, then the hardcoded light backgrounds and the
    token text colors that need lightening on a dark surface. */
 @media (prefers-color-scheme: dark){

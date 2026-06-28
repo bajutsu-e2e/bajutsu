@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import subprocess
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from bajutsu import capability_preflight, idb_version
-from bajutsu.assertions import SchemaContext, VisualContext
+from bajutsu.assertions import AssertionResult, SchemaContext, VisualContext, VisualEvidence
 from bajutsu.backends import capabilities_for
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
@@ -137,6 +138,7 @@ def run_all(
                 ok=False,
                 steps=[],
                 backend=actuator or "",
+                sid=sid,
                 failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
             )
         lz = lease(eff, s)
@@ -172,6 +174,7 @@ def run_all(
                 schema_context=sc,
                 mailbox=mailbox,
             )
+            result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it
             result.device_name = lz.device_name  # for the report's Environment tab
             result.device_runtime = lz.device_runtime
@@ -252,6 +255,120 @@ def run_and_report(
         schemas_dir=schemas_dir,
         actuator=actuator,
     )
+    manifest = _assemble_report(
+        scenarios,
+        results,
+        run_dir,
+        run_id,
+        description=description,
+        source_name=source_name,
+        secret_values=secret_values,
+        config_source=config_source,
+        exec_provenance=exec_provenance,
+    )
+    return results, manifest
+
+
+def run_matrix_and_report(
+    eff: Effective,
+    scenarios: list[Scenario],
+    engines: list[str],
+    run_pass: Callable[[str, Path], list[RunResult]],
+    runs_dir: Path,
+    run_id: str,
+    *,
+    source_name: str | None = None,
+    description: str | None = None,
+    secret_values: list[str] | None = None,
+    config_source: dict[str, str] | None = None,
+    exec_provenance: dict[str, str | None] | None = None,
+) -> tuple[list[RunResult], Path]:
+    """Run the scenarios once per engine, then assemble ONE report at `runs_dir/run_id` (BE-0076).
+
+    The cross-browser fan-out: a loop over `engines`, each a full pass. `run_pass(engine, run_dir)`
+    runs the selected scenarios for one engine against its own pool, writing that engine's evidence
+    under `run_dir` (the caller hands it `runs_dir/run_id/<engine>`, prefixing the existing `NN-slug`
+    layout so two engines never collide); its results are tagged with `engine` here. The passes'
+    tagged results are concatenated into one flat list and written as a single manifest / JUnit /
+    report — the manifest's `matrix` block aggregates the per-engine verdicts, and `ok` is
+    all-must-pass across every engine x scenario (pure aggregation, no LLM).
+
+    Returns:
+        The concatenated per-engine results and the path to the written `manifest.json`.
+    """
+    run_dir = runs_dir / run_id
+    results: list[RunResult] = []
+    for engine in engines:
+        passed = run_pass(engine, run_dir / engine)
+        for r in passed:
+            r.engine = engine  # tag each verdict with its rendering engine for the matrix
+            _reroot_evidence(r, engine)  # its evidence lives under <engine>/ in the one report
+        results.extend(passed)
+    manifest = _assemble_report(
+        scenarios,
+        results,
+        run_dir,
+        run_id,
+        description=description,
+        source_name=source_name,
+        secret_values=secret_values,
+        config_source=config_source,
+        exec_provenance=exec_provenance,
+    )
+    return results, manifest
+
+
+def _reroot_evidence(r: RunResult, engine: str) -> None:
+    """Prefix a matrix result's run-dir-relative evidence paths with `<engine>/` (BE-0076).
+
+    Each engine pass writes its evidence under `run_dir/<engine>/<sid>/`, but the artifact and
+    visual-image paths are recorded relative to that pass's own `run_dir` (`<sid>/…`). The matrix
+    assembles ONE report at the top `run_dir`, so every such path is re-rooted under the engine
+    subtree here — otherwise the report's video / network / log / diff links resolve to the wrong
+    directory. A no-op for paths already absent (None).
+    """
+
+    def artifact(a: Artifact) -> Artifact:
+        return replace(a, name=f"{engine}/{a.name}")
+
+    def visual(v: VisualEvidence | None) -> VisualEvidence | None:
+        if v is None:
+            return None
+        return replace(
+            v,
+            actual=f"{engine}/{v.actual}",
+            baseline=f"{engine}/{v.baseline}" if v.baseline else v.baseline,
+            diff=f"{engine}/{v.diff}" if v.diff else v.diff,
+        )
+
+    def assertion(a: AssertionResult) -> AssertionResult:
+        return replace(a, visual=visual(a.visual))
+
+    r.artifacts = [artifact(a) for a in r.artifacts]
+    r.expect_results = [assertion(a) for a in r.expect_results]
+    for step in r.steps:
+        step.artifacts = [artifact(a) for a in step.artifacts]
+        step.assertion_results = [assertion(a) for a in step.assertion_results]
+
+
+def _assemble_report(
+    scenarios: list[Scenario],
+    results: list[RunResult],
+    run_dir: Path,
+    run_id: str,
+    *,
+    source_name: str | None = None,
+    description: str | None = None,
+    secret_values: list[str] | None = None,
+    config_source: dict[str, str] | None = None,
+    exec_provenance: dict[str, str | None] | None = None,
+) -> Path:
+    """Write the run's report artifacts under `run_dir` from its (possibly engine-tagged) results.
+
+    The shared report-writing tail of `run_and_report` and `run_matrix_and_report`: the executed
+    `scenario.yaml`, the idb/provenance stamps, and `manifest.json` / `junit.xml` / `report.html`,
+    then the final secret-value scrub.
+    """
     # The merged Result tab renders each scenario as a structured view (definitions) with a toggle
     # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match.
     definitions, sources = scenario_render_inputs(scenarios)
@@ -289,7 +406,7 @@ def run_and_report(
     # (e.g. an assertion's expected/actual text in the manifest / HTML). The scenario
     # definitions already hold tokens, not values, so this only catches result text.
     _scrub_secret_values(run_dir, secret_values)
-    return results, manifest
+    return manifest
 
 
 def _git_revision() -> str | None:
