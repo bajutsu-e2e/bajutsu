@@ -24,21 +24,21 @@ BrowserContext による並列実行です。
 ## 動機
 
 BE-0041 は、Web が抽象のプラットフォーム非依存性を最も低コストで実証できる場所だと論じました。理由は
-Playwright が `capabilities()` のリッチ端 —— `semanticTap`、ネイティブ `conditionWait`、ネイティブ
-`network`、video、擬似 `multiTouch` —— に届くからです。v1 のスライスは、ゲートが緑のまま動く `run`
+Playwright が `capabilities()` のリッチ端（`semanticTap`、ネイティブ `conditionWait`、ネイティブ
+`network`、video、擬似 `multiTouch`）に届くからです。v1 のスライスは、ゲートが緑のまま動く `run`
 を素早く出荷するために、あえて lean なセットで止めました。そこで先送りした capability は、まさに Web を
 リッチ端の証明たらしめるものであり、この差を埋めることが「Web が動く」を「Web が capability の全勾配を
 行使する」へと変えます。
 
-1. **ネイティブ `network`** —— Playwright の route interception は、リクエストの観測とスタブを単一の
+1. **ネイティブ `network`**：Playwright の route interception は、リクエストの観測とスタブを単一の
    API で行います。Web はネイティブ network を持つ**最初の** backend になります（idb は BajutsuKit を介して
    アプリ層でモックします）。アプリ側の協力なしに `request` アサーションと HTTP モックが動きます。
-2. **video / console の evidence** —— `BrowserContext` の録画と `console` / `pageerror` の取得は、
+2. **video / console の evidence**：`BrowserContext` の録画と `console` / `pageerror` の取得は、
    simctl の video / `deviceLog` という interval provider の Web 版にあたります。`capture` ポリシーが
    Web でも同じ evidence 種別を運べるようになります。
-3. **擬似 `multiTouch`** —— Playwright はピンチ / 回転を合成できるので、`run` が現在 Web で拒否している
+3. **擬似 `multiTouch`**：Playwright はピンチ / 回転を合成できるので、`run` が現在 Web で拒否している
    （`UnsupportedAction`）ジェスチャ step が動くようになります。
-4. **並列実行** —— `BrowserContext` はほぼ無償の「デバイス」なので、N 個の context が N レーンになります。
+4. **並列実行**：`BrowserContext` はほぼ無償の「デバイス」なので、N 個の context が N レーンになります。
    v1 は単一レーン（ダミー udid 1 本、`workers = 1`）であり、本項目で device pool の Web 分岐を複数
    レーンへ一般化し、iOS の並列実行と揃えます。
 
@@ -49,15 +49,15 @@ Playwright が `capabilities()` のリッチ端 —— `semanticTap`、ネイテ
 | capability / 機能 | v1（BE-0041） | 本項目 |
 |---|---|---|
 | `network`（観測 + スタブ） | — | `page.route()` interception → `request` アサーション + HTTP モック |
-| video evidence | — | `BrowserContext` の `record_video_dir` → `video` capture 種別 — **出荷済み（#299）** |
-| console / page-error ログ | — | `page.on("console")` / `on("pageerror")` → `deviceLog` 相当の種別 — **出荷済み（#298）** |
-| `multiTouch`（ピンチ / 回転） | `UnsupportedAction` | タッチ点の合成 → `MULTI_TOUCH` を広告 — **出荷済み（#300）** |
-| 並列レーン | 単一レーン（`workers = 1`） | pool の Web 分岐で N 個の `BrowserContext` レーン — **出荷済み（#297）**: `--workers N` が N 本の Web レーン |
+| video evidence | — | `BrowserContext` の `record_video_dir` → `video` capture 種別、**出荷済み（#299）** |
+| console / page-error ログ | — | `page.on("console")` / `on("pageerror")` → `deviceLog` 相当の種別、**出荷済み（#298）** |
+| `multiTouch`（ピンチ / 回転） | `UnsupportedAction` | タッチ点の合成 → `MULTI_TOUCH` を広告、**出荷済み（#300）** |
+| 並列レーン | 単一レーン（`workers = 1`） | pool の Web 分岐で N 個の `BrowserContext` レーン、**出荷済み（#297）**: `--workers N` が N 本の Web レーン |
 
 いずれも既存のシームに対応します。capture provider は `FileSink` の interval 処理（現在は simctl の
 `udid` で gate されている）を拡張し、network capability は iOS で BajutsuKit が供給するのと同じ
 `request` アサーション経路に差し込み、並列レーンは `bajutsu/runner/pool.py` に追加した `is_web` 分岐を
-一般化します。決定論コア（セレクタ解決・オーケストレータ・シナリオ DSL）は v1 と同じく不変です。
+一般化します。決定論コア（セレクタ解決、オーケストレータ、シナリオ DSL）は v1 と同じく不変です。
 
 ### Web の record デモ
 
