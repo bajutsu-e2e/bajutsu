@@ -21,11 +21,32 @@
 
 ## 詳細設計
 
-エディタは新しい画面ではなく、既存の `serve` Web UI 内のシナリオビューの拡張として置きます。連動する 2 ペインを持ちます。シナリオの構造化ビュー（steps とアサーション DSL を、フィールド単位で編集可能に）と、そのステップが操作する画面のスクリーンショット（レポートを生成した実行から取得）です。YAML は正本のままです。エディタは既存のシナリオ load/save 経路で同じ `*.yaml` を読み書きするため、エディタ経由の往復と `$EDITOR` での手編集は互換で、PR でレビューできます。
+エディタは新しい画面ではなく、既存の `serve` Web UI 内のシナリオビューの拡張として置きます。連動する 2 ペインを持ちます。シナリオの構造化ビュー（steps とアサーション DSL を、フィールド単位で編集可能に）と、各ステップが操作する画面のスクリーンショットです。YAML は正本のままです。エディタは既存のシナリオ load/save 経路で同じ `*.yaml` を読み書きするため、エディタ経由の往復と `$EDITOR` での手編集は互換で、PR でレビューできます。
 
-要素ピッカーが核です。スクリーンショット上の点をクリックすると、その画面の取得済み要素ツリーに対し、その点を frame に含む要素へ対応づけ、エディタは最も安定したセレクタを提示します。`id` を第一とし、identifier が無い場合のみ安定度ラダーを下って（`label` / `traits`）フォールバックします。まさに `resolve_unique` と同じ振る舞いです。点が複数の要素に解決した場合、ピッカーは曖昧さを示し、黙って 1 つを選ぶのではなく著者に絞り込み（`within` / `index`）を求めます。これは、ランナーが強制する「曖昧なら失敗」と同じ規則を、著述時に表面化させるものです。選んだセレクタはその `doctor` スコアと共に表示され、安定したラング（rung）を選んだのか脆いものを選んだのかが即座に分かります（座標フォールバックは明示されます）。
+### 要素ピッカーは 1 つの共有部品
 
-エディタは app-agnostic かつ Tier 1 を保ちます。動作対象は config（アプリの `apps.<name>`、そのシナリオディレクトリ、`doctor` スコアへ供給する identifier 名前空間）と、実行がすでに生成する成果物です。LLM 呼び出しは導入しません。選択は構造的（点-in-frame と `doctor` ヒューリスティック）であり、決定的な `run` / CI ゲートには一切触れません。保存時は既存の `load_scenario_file` で YAML を検証してから書き込むため、ランナーが拒否するシナリオを永続化することはありません。
+点 → 要素 → セレクタの解決器は、**[BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) が導入するものと同じ**です。その純粋コア `bajutsu/capture.py`（`_contains` の frame 包含による `hit_test(elements, point)`、および `resolve_capture(elements, point, namespaces) -> セレクタ + doctor のラング + 曖昧性`）と、共有の `serve.js` スクリーンショット・オーバーレイのピッカーから成ります。エディタとキャプチャは*同じ*解決器を呼び、違うのは**要素ツリーとスクリーンショットの供給源**だけです。
+
+- **キャプチャ（BE-0012）**：mark 時のライブな `driver.query()` + `driver.screenshot()`。対話的で、booted なデバイスのセッションが要ります。
+- **エディタ（本項目）**：実行がすでに取得した成果物。ステップごとに `runs/<id>/<step>/elements.json`（`evidence.write_elements`）と `after.png`（`screenshot` の取得種別）です。**オフラインで、ライブなデバイスは不要、決定的**です。
+
+したがって BE-0012 / BE-0013 のどちらが先に着地しても、先のものが解決器を導入し、もう一方が再利用します。2 つのコピーにはなりません。（`el → Selector` の安定度ラダーは現在 `crawl` / `crawl_repro` / capture の 3 か所にあり、BE-0012 がすでに 1 つのヘルパへ括り出す計画です。ピッカーはその上に乗ります。）
+
+ステップのスクリーンショット上の点をクリックすると、表示ピクセル → 正規化 `[0,1]` → points（`crawl.Action.perform` の `tap_point` と同じスケーリング）に変換して POST し、サーバはそのステップの `elements.json` に `resolve_capture` をかけます。最も安定したセレクタを提示し、`id` を第一に、identifier が無い場合のみラダーを下って（`label` / `traits`）フォールバックします。まさに `resolve_unique` と同じです。選んだセレクタはその `doctor` スコアと共に表示され、安定したラングか脆いものかが分かります（座標フォールバックは明示されます）。点が複数の要素に解決した場合、ピッカーは**曖昧さを表面化**し、黙って 1 つを選ぶのではなく著者に絞り込み（`within` / `index`）を求めます。これは、ランナーが強制する「曖昧なら失敗」を著述時に表面化させるものです。
+
+### 正本 YAML 上の構造化編集
+
+構造化ペインは別モデルではなく、**YAML 上のビュー**です。エディタは既存の load 経路でシナリオを steps + `expect` アサーションに展開してフィールド単位で描画し、ピッカーは解決したセレクタを、著者が編集中のフィールドへ書き込みます。隠れたエディタ状態はありません。YAML が唯一の真実なので、構造化ビューと手編集が食い違うことはありません。
+
+各ステップは、実行のステップごとの成果物を順に辿って、それが操作する画面に対応づけます（ステップ *i* → `runs/<id>/<i>-*/`）。著者は**選択した実行の文脈で**シナリオを編集します。いま見ているレポートです。シナリオにまだ実行が無い場合は、ブロックするのではなく、生フィールド編集（対象にできるスクリーンショットなし）に劣化します。
+
+### 保存経路と継ぎ目
+
+保存は既存の著者所有の書き込み経路 `serve/scenarios.py:ScenarioScope.save()` を通り、**書き込み前に `load_scenario_file` で検証**します。そのため、ランナーが拒否するシナリオを永続化することはありません。具体的には、ルートを `serve/handler.py`（FastAPI の `server/app.py` ミラーも）に置き、シナリオとその実行のステップごとの成果物を編集用に読み、選んだ点をセレクタへ解決し、保存します。調整は `serve/operations.py`、2 ペインの UI とピッカーのオーバーレイは `serve/templates/serve.js`（crawl レポートのスクリーンショット・オーバーレイの先例を再利用）です。キャプチャと違い、エディタはリクエストをまたいでライブな driver を**保持しません**。取得済み成果物をステートレスに読むので、BE-0011 のステートレスなシェルアウト方式を保ちます。
+
+### 決定性・app-agnostic・ゲート
+
+エディタは Tier 1 かつ app-agnostic を保ちます。読むのは `targets.<name>`（アプリ、そのシナリオディレクトリ、`doctor` スコアへ供給する identifier 名前空間）と、実行がすでに生成する成果物です。選択は構造的（点-in-frame と `doctor` ヒューリスティック）で、**LLM も `ANTHROPIC_API_KEY` も使いません**。決定的な `run` / CI ゲートには一切触れず、人が所有する編集ループのコストを下げるだけです。
 
 ## 検討した代替案
 
@@ -35,4 +56,6 @@
 
 ## 参考
 
-[scenarios.md](../../../docs/ja/scenarios.md)、[selectors.md](../../../docs/ja/selectors.md)
+[scenarios.md](../../../docs/ja/scenarios.md)、[selectors.md](../../../docs/ja/selectors.md)。`bajutsu/drivers/base.py`（`_contains`、`resolve_unique`、`Selector` / `Element`）、`bajutsu/doctor.py`（`score`、`ACTIONABLE_TRAITS`）、`bajutsu/evidence.py`（`write_elements` → ステップごとの `elements.json`、`screenshot` 種別 → `after.png`）、`bajutsu/serve/scenarios.py`（`ScenarioScope.save`）、`bajutsu/scenario/load.py`（`load_scenario_file`）、`bajutsu/serve/`（`handler.py` のルーティング、`operations.py`）、`bajutsu/templates/serve.js` と crawl レポートのスクリーンショット・オーバーレイの先例。
+
+**依存・関連項目:** [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)（`serve` ホスト、`ScenarioScope`、本項目が拡張するスクリーンショットの仕組み）、[BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（**点 → 要素ピッカー + doctor スコアを共有。解決器は 1 つ、供給源が 2 つ**。エディタは取得済み成果物、キャプチャはライブな driver を読む）、[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（オーサリング面どうしの役割分担）。
