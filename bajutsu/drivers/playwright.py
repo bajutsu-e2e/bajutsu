@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import math
+import shutil
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
-from bajutsu import env
+from bajutsu import env, intervals
 from bajutsu.drivers import base
 
 if TYPE_CHECKING:
@@ -100,6 +103,13 @@ def _to_element(rec: dict[str, Any]) -> base.Element:
 def parse_dom(records: list[dict[str, Any]]) -> list[base.Element]:
     """Map the QUERY_JS records to normalized Elements (the browser-free, unit-tested core)."""
     return [_to_element(r) for r in records if isinstance(r, dict)]
+
+
+def _rotate_point(p: base.Point, center: base.Point, radians: float) -> base.Point:
+    """Rotate point `p` about `center` by `radians` (for two-finger rotate synthesis)."""
+    dx, dy = p[0] - center[0], p[1] - center[1]
+    cos, sin = math.cos(radians), math.sin(radians)
+    return (center[0] + dx * cos - dy * sin, center[1] + dx * sin + dy * cos)
 
 
 # The subset of Playwright's Page the driver uses — kept as a Protocol so tests can inject a
@@ -256,15 +266,20 @@ class PlaywrightDriver:
         headless: bool = True,
         page: _Page | None = None,
         starter: Starter = _start_chromium,
+        record_video_dir: Path | None = None,
     ) -> None:
         self._base_url = base_url
         # Kept so a wedged browser can be relaunched in place (BE-0077): the same starter + headless
         # mode build the replacement process.
         self._headless = headless
         self._starter = starter
+        # When set, contexts are created with Playwright's record_video_dir so the whole scenario is
+        # filmed (BE-0054); the `video` interval finalizes and collects it. None = no recording.
+        self._record_video_dir = record_video_dir
         self._pw: Any = None
         self._browser: Any = None
         self._context: Any = None  # current BrowserContext (web); closed + replaced on each reset
+        self._cdp: Any = None  # lazily-opened CDP session for multi-touch synthesis
         # Deterministic web health / dialog signals the crawl reads (BE-0066): an uncaught JS
         # exception, a 4xx/5xx main-frame navigation, and a JS dialog are all machine facts — no
         # model is consulted. A JS dialog blocks the page until handled, so it is auto-dismissed by
@@ -276,7 +291,19 @@ class PlaywrightDriver:
         self._page: _Page
         if page is None:  # not a test injection: start a real browser process
             self._pw, self._browser, self._context, page = starter(headless)
+            # The starter's context has no recording; if a video dir is configured, swap it for a
+            # recording context so the very first scenario is filmed too.
+            if self._record_video_dir is not None and self._browser is not None:
+                with contextlib.suppress(*_playwright_error_types()):
+                    self._context.close()
+                self._context = self._new_context()
+                page = self._context.new_page()
         self._bind(page)
+
+    def _new_context(self) -> Any:
+        """Open a BrowserContext, recording video into `record_video_dir` when one is configured."""
+        kwargs = {"record_video_dir": str(self._record_video_dir)} if self._record_video_dir else {}
+        return self._browser.new_context(**kwargs)
 
     def _bind(self, page: _Page) -> None:
         """Adopt a freshly created page (a new context, or a relaunched browser) as the live page.
@@ -288,6 +315,7 @@ class PlaywrightDriver:
         self._page_errors = []
         self._last_nav_status = None
         self._dialogs = []
+        self._cdp = None  # the old CDP session belonged to the previous context; re-open lazily
         self._register_health_handlers()
 
     def _register_health_handlers(self) -> None:
@@ -331,6 +359,88 @@ class PlaywrightDriver:
         dialogs, self._dialogs = self._dialogs, []
         return dialogs
 
+    # --- interval evidence (web equivalents of the simctl video / deviceLog providers) ---
+
+    def web_interval(self, kind: str, path: Path) -> intervals.Interval | None:
+        """A whole-scenario interval recording for the web backend, or None if unsupported.
+
+        The device pool hands this to the `FileSink` so the same `capture` policy that drives the
+        simctl providers on iOS drives Playwright-native ones on web. `deviceLog` streams the
+        browser console + uncaught page errors (the os_log analogue); `video` finalizes and
+        collects the BrowserContext recording (only when a record dir was configured for this lane).
+        """
+        if kind == "deviceLog":
+            return self._console_interval(path)
+        if kind == "video":
+            return self._video_interval(path)
+        return None
+
+    def _video_interval(self, path: Path) -> intervals.Interval | None:
+        """Finalize the context's video recording into `path` on stop, if recording is enabled."""
+        if self._record_video_dir is None:
+            return None  # this lane was not asked to record (video not in the capture policy)
+        driver = self
+
+        class _VideoCapture:
+            def stop(self, sig: int) -> None:
+                driver._finalize_video(path)
+
+        return intervals.Interval(
+            kind="video", path=path, provider=self.name, _proc=_VideoCapture()
+        )
+
+    def _finalize_video(self, target: Path) -> None:
+        """Close the context (Playwright writes the file on close), then move the video to `target`.
+
+        Called when the scenario's steps are done, so closing the context early is safe; the later
+        `close()` tears down the browser regardless.
+        """
+        video = getattr(self._page, "video", None)
+        if self._context is not None:
+            with contextlib.suppress(*_playwright_error_types()):
+                self._context.close()
+            self._context = None  # finalized; the lease's close() just stops the browser
+            self._cdp = None  # its CDP session went with the closed context
+        if video is None:
+            return
+        # Let a failed move surface (like the iOS interval providers): swallowing it would record a
+        # video artifact path that doesn't exist, turning a real problem into a silent one.
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(video.path(), str(target))
+
+    def _console_interval(self, path: Path) -> intervals.Interval:
+        """Stream the live page's console messages and uncaught errors to `path` until stopped."""
+        sink = path.open("w", encoding="utf-8")
+        page = self._page
+
+        def on_console(msg: Any) -> None:
+            with contextlib.suppress(Exception):
+                sink.write(f"[{msg.type}] {msg.text}\n")
+
+        def on_pageerror(error: Any) -> None:
+            with contextlib.suppress(Exception):
+                sink.write(f"[pageerror] {error}\n")
+
+        on = getattr(page, "on", None)
+        if on is not None:
+            on("console", on_console)
+            on("pageerror", on_pageerror)
+
+        class _ConsoleCapture:
+            def stop(self, sig: int) -> None:
+                remove = getattr(page, "remove_listener", None)
+                if remove is not None:
+                    # Suppress per call so a failure detaching one listener still detaches the other.
+                    with contextlib.suppress(Exception):
+                        remove("console", on_console)
+                    with contextlib.suppress(Exception):
+                        remove("pageerror", on_pageerror)
+                sink.close()
+
+        return intervals.Interval(
+            kind="deviceLog", path=path, provider=self.name, _proc=_ConsoleCapture()
+        )
+
     # --- lifecycle (web equivalents of env.Env launch/erase/terminate) ---
 
     @_wedge_guard
@@ -353,7 +463,7 @@ class PlaywrightDriver:
             if self._context is not None:
                 with contextlib.suppress(*_playwright_error_types()):
                     self._context.close()
-            self._context = self._browser.new_context()
+            self._context = self._new_context()
             self._bind(self._context.new_page())
         self.navigate()
 
@@ -431,11 +541,64 @@ class PlaywrightDriver:
         self._page.mouse.move(to[0], to[1])
         self._page.mouse.up()
 
+    @_wedge_guard
     def pinch(self, sel: base.Selector, scale: float) -> None:
-        raise base.UnsupportedAction("pinch は multiTouch が必要; web backend は v1 では未対応")
+        # Two fingers level on the element's center; `scale` spreads (>1) or closes (<1) their gap.
+        cx, cy, r = self._gesture_anchor(sel)
+        start = [(cx - r, cy), (cx + r, cy)]
+        end = [(cx - r * scale, cy), (cx + r * scale, cy)]
+        self._touch_drag(start, end)
 
+    @_wedge_guard
     def rotate(self, sel: base.Selector, radians: float) -> None:
-        raise base.UnsupportedAction("rotate は multiTouch が必要; web backend は v1 では未対応")
+        # Two fingers level on the center, rotated about it by `radians`.
+        cx, cy, r = self._gesture_anchor(sel)
+        start = [(cx - r, cy), (cx + r, cy)]
+        end = [_rotate_point(p, (cx, cy), radians) for p in start]
+        self._touch_drag(start, end)
+
+    def _gesture_anchor(self, sel: base.Selector) -> tuple[float, float, float]:
+        """The element's center and a finger half-distance for a two-finger gesture.
+
+        The half-distance is a quarter of the smaller side, so the two fingers (and a pinch-out up
+        to ~2x) stay within the element's bounds rather than landing on a neighbour.
+        """
+        x, y, w, h = base.resolve_unique(self.query(), sel)["frame"]
+        return x + w / 2, y + h / 2, min(w, h) / 4
+
+    def _touch_drag(self, start: list[base.Point], end: list[base.Point], steps: int = 5) -> None:
+        """Synthesize a two-finger drag from `start` to `end` via CDP touch events (Chromium).
+
+        Playwright's `mouse` is single-pointer, so multi-touch goes through the DevTools protocol's
+        `Input.dispatchTouchEvent` — the same path a real gesture takes, so the page's touch / gesture
+        listeners fire, unlike a synthetic DOM event.
+        """
+        self._dispatch_touch("touchStart", start)
+        for k in range(1, steps + 1):
+            t = k / steps
+            self._dispatch_touch(
+                "touchMove",
+                [
+                    (s[0] + (e[0] - s[0]) * t, s[1] + (e[1] - s[1]) * t)
+                    for s, e in zip(start, end, strict=True)
+                ],
+            )
+        self._dispatch_touch("touchEnd", [])
+
+    def _dispatch_touch(self, event_type: str, points: list[base.Point]) -> None:
+        self._cdp_session().send(
+            "Input.dispatchTouchEvent",
+            {
+                "type": event_type,
+                "touchPoints": [{"x": x, "y": y, "id": i} for i, (x, y) in enumerate(points)],
+            },
+        )
+
+    def _cdp_session(self) -> Any:
+        """The page's Chromium DevTools session, created once and reused for touch synthesis."""
+        if self._cdp is None:
+            self._cdp = cast(Any, self._page).context.new_cdp_session(self._page)
+        return self._cdp
 
     @_wedge_guard
     def type_text(self, text: str) -> None:
@@ -461,9 +624,9 @@ class PlaywrightDriver:
 
         return WebNetworkCollector(self._page, mocks)
 
-    # Playwright has a genuine semantic click, native auto-waiting, and native network observation +
-    # stubbing (BE-0054); multi-touch is still deferred. Class constant so the preflight (BE-0082)
-    # reads it via `backends.capabilities_for` without starting a browser.
+    # Playwright has a genuine semantic click, native auto-waiting, native network observation +
+    # stubbing, and (via CDP touch synthesis) two-finger gestures (BE-0054). Class constant so the
+    # preflight (BE-0082) reads it via `backends.capabilities_for` without starting a browser.
     CAPABILITIES = frozenset(
         {
             base.Capability.QUERY,
@@ -472,6 +635,7 @@ class PlaywrightDriver:
             base.Capability.SEMANTIC_TAP,
             base.Capability.CONDITION_WAIT,
             base.Capability.NETWORK,
+            base.Capability.MULTI_TOUCH,
         }
     )
 

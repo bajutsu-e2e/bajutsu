@@ -66,6 +66,7 @@ Which module owns each box, and how they depend on each other, is in [architectu
 | 17 | [vision](vision.md) | **Forward-looking** — the three axes of growth (reach / scale / authoring) and the constraints all of them respect |
 | 18 | [multi-platform](multi-platform.md) | **Forward-looking** — big-picture overview of extending to Android (emulator) and Web (browser) behind the existing driver abstraction; the concrete per-platform plans live in the [roadmap](../roadmaps/README.md#platform-expansion-android--web--flutter) |
 | 19 | [ai-development](ai-development.md) | Working agreement for AI agents + humans in parallel (the gate, branches, pre-push hook, worktrees) — the long form of [`CLAUDE.md`](../CLAUDE.md) |
+| 20 | [roadmap-workflow](roadmap-workflow.md) | The **ideation → implementation cycle**: the `ideation` skill authors a BE proposal, the `implement-be` skill ships it (placeholder IDs, the Proposal → Implemented lifecycle) |
 
 ## Quick start
 

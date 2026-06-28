@@ -18,7 +18,7 @@ Bajutsu groups everything app-specific under a single config key, `apps.<name>`,
 command selects one with `--app <name>` ([DESIGN §8](../../../DESIGN.md),
 [configuration.md](../../../docs/configuration.md)). That naming dates from the
 iOS-Simulator-only scope, where the thing under test was always an iOS app. The Web (Playwright)
-backend has since landed ([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
+backend has since landed ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
 and a web target is a URL, not an "app" — the schema already carries `baseUrl` beside `bundleId`
 for exactly that case. This item renames the grammar from `apps` to `targets` (and `--app` to
 `--target`) so the term names what it actually holds: the thing under test, on any platform.
@@ -33,7 +33,7 @@ for exactly that case. This item renames the grammar from `apps` to `targets` (a
   **target** to describe the concept while the key stays `apps`.
 - With Android planned ([BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md)) and the
   scope statement itself due to move to multi-platform
-  ([BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md)), calling a
+  ([BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement.md)), calling a
   website or an Android package an "app" only gets more strained.
 - App-agnosticism is a prime directive ([DESIGN §2](../../../DESIGN.md)): per-target differences
   live in config and the tool stays unchanged across them. `targets.<name>` states that contract
@@ -115,4 +115,4 @@ is small while the project is pre-1.0 and the config surface is a single key.
 - [DESIGN §8](../../../DESIGN.md) (CLI & config: per-app / multi-app), [DESIGN §2](../../../DESIGN.md) (app-agnostic prime directive)
 - [configuration.md](../../../docs/configuration.md), [cli.md](../../../docs/cli.md) — the config layering and the `--app` flag
 - `bajutsu/config.py` — `AppConfig`, `Config.apps`, `OrgConfig.apps`, `resolve` / `org_for_app` / `apps_for_org`
-- Related items: [BE-0010](../../proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (update the scope statement — the multi-platform doc move this rename rides with), [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) (cross-platform abstractions), [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend — the landed platform that makes "app" a misnomer), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform-aware backend registry)
+- Related items: [BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (update the scope statement — the multi-platform doc move this rename rides with), [BE-0009](../../proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) (cross-platform abstractions), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend — the landed platform that makes "app" a misnomer), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform-aware backend registry)

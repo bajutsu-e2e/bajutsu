@@ -8,7 +8,7 @@ description: >-
   (config → /api/targets → /api/scenarios → the selects).
 scenarios:
   - name: the bound config populates the app and scenario pickers
-    description: Switch to Replay and assert the default app is "web" and its scenario is the web smoke file.
+    description: Switch to Replay and assert the default app is "web" and its scenario is the first listed file.
     steps:
       - tap: { id: nav.replay }
       # The scenario picker is empty until /api/scenarios resolves; poll until the smoke file
@@ -16,4 +16,7 @@ scenarios:
       - wait: { for: { id: replay.scenario, labelMatches: "smoke" }, timeout: 10 }
     expect:
       - value: { sel: { id: replay.target }, contains: "web" }
-      - value: { sel: { id: replay.scenario }, contains: "smoke.yaml" }
+      # /api/scenarios lists the dir sorted by filename and the <select> auto-selects its first
+      # option, so the default is the alphabetically-first scenario — counter.yaml, ahead of
+      # gestures.yaml and smoke.yaml. Adding a scenario that sorts before it changes this default.
+      - value: { sel: { id: replay.scenario }, contains: "counter.yaml" }

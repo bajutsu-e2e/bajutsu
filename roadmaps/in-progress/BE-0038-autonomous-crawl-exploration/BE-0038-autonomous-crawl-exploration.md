@@ -8,6 +8,7 @@
 | Proposal | [BE-0038](BE-0038-autonomous-crawl-exploration.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
+| Implementing PR | [#80](https://github.com/bajutsu-e2e/bajutsu/pull/80), [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307), [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | Autify VAX |
 <!-- /BE-METADATA -->
@@ -102,6 +103,39 @@ Everything lands under `runs/<runId>/` alongside the existing `manifest.json` ([
 - **`record`** ([recording.md](../../../docs/recording.md)) — crawl is the breadth-first complement; discovered screens seed `record` goals. They share the loop, alert handling, and evidence plumbing.
 - **[BE-0012 action-capture record](../../proposals/BE-0012-action-capture-record/BE-0012-action-capture-record.md) / [BE-0014 record demarcation](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md)** — those cover *human-driven* capture and how it is demarcated from AI `record`; crawl is a third, fully autonomous, authoring front end and should be demarcated alongside them.
 - **[BE-0024 doctor / onboarding](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)** — crawl supplies the whole-app coverage input doctor's §7.2 measurement needs.
+
+### Implementation status
+
+The crawl **engine** (`bajutsu/crawl.py`) and CLI (`bajutsu crawl`) ship: breadth-first traversal by
+deterministic replay, the state graph (`ScreenMap` — nodes / edges / crashes / alerts / frontier
+plan / stop reason), crash and stuck-state detection, the optional `--guide ai` layer, and the
+parallel pool ([BE-0064](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) /
+[BE-0077](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl.md)). A crawl
+writes `screenmap.json` and per-screen `screens/<fingerprint>.png`, and the `serve` **Crawl** tab
+renders the map live.
+
+The latest slice ships the **rendered screen-map graph** the *Outputs* section names, for offline /
+CLI use: `bajutsu crawl` now also writes a self-contained `screenmap.html` (`bajutsu/crawl_report.py`,
+`crawl.html.j2`) beside the JSON. It lays the screens out in BFS depth columns — porting the web
+UI's proven layered layout — draws the transitions as a **static inline SVG** (amber + 🛡️ where a
+step tapped through an OS alert), links each screen to its screenshot, and lists the crash and
+dismissed-alert paths. Inline CSS, no JavaScript, no external asset, so it opens straight from the
+run dir. The rendering is a pure, deterministic, model-free function of the `ScreenMap`; it never
+touches the (deterministic) exploration or any verdict.
+
+A further slice ships **automatic crash-repro scenario emission** the *Outputs* section names:
+`bajutsu crawl` now writes one `crashes/crash-NNN.yaml` per faithfully reproducible crash
+(`bajutsu/crawl_repro.py`). Each crash already records its exact action path; `crash_scenario`
+turns that path back into a runnable `Scenario` (tap / type / fill map to their steps), emitted as
+YAML via `dump_scenario_file` and directly replayable by `run` — a discovered crash becomes a
+committed Tier 2 regression after human review. The conversion is a pure, deterministic, model-free
+function of the `ScreenMap`. A path that taps a normalized coordinate (`tap_point`) has no selector
+to address, so it emits no scenario rather than a lossy one (faithful or nothing). To carry the
+structured path, `Crash` now keeps the replayable `actions` alongside the human-readable `path`
+(serialized into `screenmap.json`, tolerant of older maps that lack it).
+
+Still ahead: AI-guided text-input supply for form-heavy flows, and candidate-scenario proposals per
+discovered flow.
 
 ## Alternatives considered
 

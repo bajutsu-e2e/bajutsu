@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import shutil
 from collections.abc import Callable
+from pathlib import Path
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
@@ -158,7 +159,12 @@ def capabilities_for(actuator: str) -> frozenset[str]:
 
 
 def make_driver(
-    actuator: str, udid: str, *, base_url: str | None = None, headless: bool = True
+    actuator: str,
+    udid: str,
+    *,
+    base_url: str | None = None,
+    headless: bool = True,
+    record_video_dir: Path | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments."""
     if actuator == "idb":
@@ -171,7 +177,7 @@ def make_driver(
 
         if not base_url:
             raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")
-        return PlaywrightDriver(base_url, headless=headless)
+        return PlaywrightDriver(base_url, headless=headless, record_video_dir=record_video_dir)
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"

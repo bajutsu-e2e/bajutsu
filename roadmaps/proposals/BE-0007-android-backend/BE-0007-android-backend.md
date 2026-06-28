@@ -84,7 +84,7 @@ evidence the abstraction holds.
 
 ### Phasing — Phase 2, after Web
 
-Android is **Phase 2**, taken up *after* the Web (Playwright) backend ([BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+Android is **Phase 2**, taken up *after* the Web (Playwright) backend ([BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 Web goes first because it is the only platform that needs no macOS and no device emulator, so it
 fits the existing Linux `make check` / CI gate from day one and proves the core is platform-neutral
 at the lowest cost. Android then confirms the *lean / coordinate* path on top of an
@@ -101,11 +101,11 @@ the **lean** end of `capabilities()`.
   envisaged alongside idb on iOS.
 - **Building Android before Web.** Rejected for phasing reasons: although Android is the closer
   architectural twin, Web needs no macOS and no emulator and so fits the current Linux gate at the
-  lowest cost. See [BE-0041](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md).
+  lowest cost. See [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md).
 
 ## References
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
 [drivers.md](../../../docs/drivers.md),
-[BE-0041 — Web (Playwright) backend](../../in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
+[BE-0041 — Web (Playwright) backend](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),
 [BE-0008 — Flutter support](../../proposals/BE-0008-flutter-support/BE-0008-flutter-support.md)

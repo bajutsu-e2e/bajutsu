@@ -32,11 +32,13 @@ final class AppModel: ObservableObject {
     @Published var selectedTab = 0  // 0=Home 1=Components 2=Controls 3=Text 4=Lists
 
     let animationsDisabled: Bool
+    let uiTest: Bool
     private let signposter = OSSignposter(subsystem: "com.bajutsu.sample", category: "actions")
     private let logger = Logger(subsystem: "com.bajutsu.sample", category: "actions")
 
     init(env: [String: String]) {
         animationsDisabled = env["SAMPLE_UITEST"] != nil
+        uiTest = env["SAMPLE_UITEST"] != nil
 
         let seed = max(0, Int(env["SAMPLE_SEED"] ?? "3") ?? 3)
         items = seed > 0 ? (1 ... seed).map { Item(id: $0, name: "Item \($0)") } : []

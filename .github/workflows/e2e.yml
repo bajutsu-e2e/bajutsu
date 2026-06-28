@@ -69,6 +69,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
+    # Cap the metered macOS job (10x billing): a hung Simulator/idb would otherwise run to the
+    # 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
@@ -90,32 +93,21 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install xcodegen
 
-      # Same cache-key discipline as the xcuitest job: DerivedData must not cross Xcode
-      # upgrades (a different Xcode's compiled modules cause stale-artifact failures), so
-      # capture the active build version for the key.
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
-
-      # Cache the app build's DerivedData so `sample-build` is incremental across runs.
-      # Keyed on a distinct `-smoke-` prefix from the xcuitest job: that job builds the
-      # app + UITests target into the same dd path, so a shared key would let the two jobs
-      # clobber each other's cache. The restore-keys fallback warms compiled modules when
-      # only sources change; a miss just rebuilds cold, so the cache only speeds the build.
-      - name: Cache DerivedData
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+      # Start the boot first so it runs concurrently with the app build below — the first
+      # boot of a fresh Simulator costs ~80s and does not depend on the build. `wait: 'false'`
+      # returns once the boot is initiated; we block on "booted" (the wait step) right before
+      # installing the app.
+      - name: Boot a Simulator
+        id: sim
+        uses: ./.github/actions/boot-simulator
         with:
-          path: demos/features/app/build/dd
-          key: xcode-dd-smoke-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/features/app/**/*.swift', 'demos/features/app/**/project.yml') }}
-          restore-keys: |
-            xcode-dd-smoke-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
+          wait: "false"
 
       - name: Build the sample app
         run: make -C demos/features sample-build
 
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
       - name: Install the app
         run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
@@ -137,6 +129,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
+    # Cap the metered macOS job (10x billing): a hung Simulator/xcodebuild would otherwise run to
+    # the 6h default. Typical end-to-end is ~10min, so 25 catches a real hang with comfortable headroom.
+    timeout-minutes: 25
+    # `make ui-test` runs `uv run bajutsu codegen`, whose auto-sync would otherwise pull the dev
+    # group (mypy / pytest / ruff + the gate-only extras). Codegen needs only the base package, so
+    # skip dev for every uv invocation in this job — the Linux `check` gate owns that tooling.
+    env:
+      UV_NO_DEV: "1"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
@@ -176,9 +176,15 @@ jobs:
           restore-keys: |
             xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
 
+      # Start the boot before the codegen build so the ~80s first boot overlaps with it.
+      # `wait: 'false'` returns once the boot is initiated; no explicit wait is needed because
+      # `xcodebuild test` blocks on the destination becoming ready when it reaches the test
+      # phase, by which point the boot has finished.
       - name: Boot a Simulator
         id: sim
         uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
 
       # `make -C demos/features ui-test` re-generates ComponentsUITests.swift from the
       # scenario, regenerates the project, then `xcodebuild test`s it. xcodebuild builds the

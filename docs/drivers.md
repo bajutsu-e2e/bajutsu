@@ -50,16 +50,16 @@ resolution, and the **preflight capability check** (below).
 | `semanticTap` | tap directly by id/label (no coordinates) | — | ✅ | ✅ |
 | `conditionWait` | native condition waiting | — | ✅ | ✅ |
 | `network` | native network monitoring | — | ✅ | — |
-| `multiTouch` | two-finger gestures (pinch / rotate) | — | — | ✅ |
+| `multiTouch` | two-finger gestures (pinch / rotate) | — | ✅ | ✅ |
 
 > idb actuates by **frame-center coordinates** — it exposes no semantic tap, so the run loop resolves
 > a unique element via `query()` and taps its center. `pinch` / `rotate` raise `UnsupportedAction`
 > (single-touch); those go through codegen → XCUITest. The `fake` driver advertises a richer
 > capability set (semanticTap / conditionWait / multiTouch) purely to exercise those code paths in
 > tests. The `playwright` (web) driver advertises `semanticTap` / `conditionWait` (Playwright has
-> both natively) and `network` — the **first backend with native network**, observing and stubbing
-> traffic in-process with no app-side cooperation (BE-0054). `multiTouch` is still deferred
-> (tracked in [BE-0054](../roadmaps/in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)).
+> both natively), `network` — the **first backend with native network**, observing and stubbing
+> traffic in-process with no app-side cooperation — and `multiTouch`, synthesizing pinch / rotate via
+> the Chromium DevTools protocol's `Input.dispatchTouchEvent` (BE-0054).
 
 ### Preflight capability check (BE-0082)
 
@@ -124,7 +124,7 @@ whatever happens to be installed:
 
 Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Simulator**, so it
 fits the same toolchain as `make check`. Implementation: `drivers/playwright.py` (roadmap
-[BE-0041](../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
+[BE-0041](../roadmaps/implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
 - `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
   pure parser (`parse_dom`) maps each to an `Element`. The id convention is the web equivalent of
@@ -138,14 +138,24 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (same as idb).
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
   (`page.goto(baseUrl)`) is the `launch`, and `close()` tears the browser down. There is no simctl
-  device, so the run uses a dummy lease and no device control (`pinch`/`rotate` raise
-  `UnsupportedAction` in v1).
+  device, so the run uses a dummy lease and no device control.
+- **Multi-touch** (BE-0054): `pinch` / `rotate` are synthesized as two-finger drags via the Chromium
+  DevTools protocol (`Input.dispatchTouchEvent`) — `mouse` is single-pointer, so gestures go through
+  CDP, the same path a real touch takes (so the page's touch listeners fire). The element center
+  anchors the two fingers; `scale` spreads/closes their gap and `radians` rotates them about it.
 - **Native network** (BE-0054): Playwright sees every request the page makes, so `--network` works
   on web with no app-side cooperation. `network_collector()` hooks the page's `requestfinished`
   event into the *same* `NetworkExchange` the iOS collector produces (so `request` assertions and
   `network.json` evidence are unchanged), and a scenario's `mocks` are fulfilled in-process via
   `page.route` — a matching request gets the canned response and is recorded with `mocked: true`.
   Mock matching reuses the deterministic `request` matcher, and no model is consulted.
+- **Console / page-error & video evidence** (BE-0054): the `deviceLog` capture kind streams the
+  browser console and uncaught page errors to `<scenario>/device.log`, and `video` records the whole
+  scenario — both Playwright-native (no simctl), the web analogues of the iOS os_log / simctl video.
+  The pool enables recording only when `video` is in the scenario's `capture` (the `BrowserContext`
+  is created with `record_video_dir`), and the `video` interval finalizes it into
+  `<scenario>/scenario.mp4` (webm content) on close. The pool injects the driver's `web_interval`
+  into the `FileSink`, so the same backend-agnostic `capture` policy carries both.
 
 > `playwright` is imported **lazily** (only when a browser is actually started), so it never loads on
 > the default CLI path (locked by `tests/serve/test_import_guard.py`). Install with

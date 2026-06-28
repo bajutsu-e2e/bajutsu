@@ -118,6 +118,22 @@ class _FakeKeyboard:
         self.typed.append(text)
 
 
+class _FakeCDP:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Any]] = []
+
+    def send(self, method: str, params: Any) -> None:
+        self.calls.append((method, params))
+
+
+class _FakeBrowserContext:
+    def __init__(self, cdp: _FakeCDP) -> None:
+        self._cdp = cdp
+
+    def new_cdp_session(self, page: Any) -> _FakeCDP:
+        return self._cdp
+
+
 class _FakePage:
     def __init__(self, records: list[dict[str, Any]]) -> None:
         self._records = records
@@ -126,6 +142,8 @@ class _FakePage:
         self.goto_url: str | None = None
         self.shot: str | None = None
         self._handlers: dict[str, list[Any]] = {}
+        self.cdp = _FakeCDP()
+        self.context = _FakeBrowserContext(self.cdp)
 
     def evaluate(self, expression: str) -> Any:
         return list(self._records)
@@ -141,9 +159,22 @@ class _FakePage:
     def on(self, event: str, handler: Any) -> None:
         self._handlers.setdefault(event, []).append(handler)
 
+    def remove_listener(self, event: str, handler: Any) -> None:
+        handlers = self._handlers.get(event, [])
+        if handler in handlers:
+            handlers.remove(handler)
+
     def fire(self, event: str, arg: Any) -> None:
         for handler in self._handlers.get(event, []):
             handler(arg)
+
+
+class _FakeConsole:
+    """A Playwright ConsoleMessage stand-in (has .type and .text)."""
+
+    def __init__(self, type: str, text: str) -> None:
+        self.type = type
+        self.text = text
 
 
 class _FakeDialog:
@@ -247,12 +278,42 @@ def test_wait_for() -> None:
     assert drv.wait_for({"id": "nope"}, 1.0) is False
 
 
-def test_pinch_and_rotate_unsupported() -> None:
-    drv, _ = _driver([_rec(identifier="x")])
-    with pytest.raises(base.UnsupportedAction):
-        drv.pinch({"id": "x"}, 2.0)
-    with pytest.raises(base.UnsupportedAction):
-        drv.rotate({"id": "x"}, 1.0)
+def _touch_points(params: Any) -> list[tuple[float, float]]:
+    return [(p["x"], p["y"]) for p in params["touchPoints"]]
+
+
+def test_pinch_dispatches_two_diverging_touch_points() -> None:
+    # An element centered at (50,50); a scale>1 pinch ends with the two fingers farther apart.
+    drv, page = _driver([_rec(identifier="img", frame=[0, 0, 100, 100])])
+    drv.pinch({"id": "img"}, 2.0)
+    events = [m for m, _ in page.cdp.calls]
+    assert events[0] == "Input.dispatchTouchEvent"
+    types = [p["type"] for _, p in page.cdp.calls]
+    assert types[0] == "touchStart" and types[-1] == "touchEnd"
+    start = _touch_points(page.cdp.calls[0][1])
+    last_move = _touch_points(page.cdp.calls[-2][1])  # final touchMove before touchEnd
+    assert len(start) == 2  # two fingers
+    start_span = abs(start[1][0] - start[0][0])
+    end_span = abs(last_move[1][0] - last_move[0][0])
+    assert end_span > start_span  # scale 2.0 spreads the fingers apart
+
+
+def test_pinch_in_converges_touch_points() -> None:
+    drv, page = _driver([_rec(identifier="img", frame=[0, 0, 100, 100])])
+    drv.pinch({"id": "img"}, 0.5)
+    start = _touch_points(page.cdp.calls[0][1])
+    last_move = _touch_points(page.cdp.calls[-2][1])
+    assert abs(last_move[1][0] - last_move[0][0]) < abs(start[1][0] - start[0][0])
+
+
+def test_rotate_moves_points_off_the_starting_axis() -> None:
+    # The fingers start on a horizontal axis; a rotation gives them a vertical component.
+    drv, page = _driver([_rec(identifier="img", frame=[0, 0, 100, 100])])
+    drv.rotate({"id": "img"}, 1.0)  # ~57°
+    start = _touch_points(page.cdp.calls[0][1])
+    last_move = _touch_points(page.cdp.calls[-2][1])
+    assert start[0][1] == start[1][1]  # started level (same y)
+    assert last_move[0][1] != last_move[1][1]  # rotated out of the horizontal
 
 
 def test_screenshot_and_navigate_and_close() -> None:
@@ -270,7 +331,9 @@ def test_capabilities() -> None:
     assert base.Capability.SEMANTIC_TAP in caps
     assert base.Capability.CONDITION_WAIT in caps
     assert base.Capability.NETWORK in caps  # native observe + stub (BE-0054)
-    assert base.Capability.MULTI_TOUCH not in caps  # still deferred
+    assert (
+        base.Capability.MULTI_TOUCH in caps
+    )  # two-finger gestures via CDP touch synthesis (BE-0054)
 
 
 def test_importing_module_does_not_load_playwright() -> None:
@@ -487,3 +550,126 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
     healthy = PlaywrightDriver("http://app.test/", page=_FakePage([]))
     with pytest.raises(base.ElementNotFound):
         healthy.tap({"id": "missing"})
+
+
+def test_web_interval_captures_console_and_pageerror(tmp_path: Any) -> None:
+    # The web `deviceLog` evidence kind streams the browser console + uncaught page errors.
+    drv, page = _driver([])
+    path = tmp_path / "device.log"
+    interval = drv.web_interval("deviceLog", path)
+    assert interval is not None
+    assert interval.kind == "deviceLog"
+    assert interval.provider == "playwright"
+
+    page.fire("console", _FakeConsole("log", "hello"))
+    page.fire("console", _FakeConsole("error", "oops"))
+    page.fire("pageerror", "boom")
+    interval.stop()
+
+    text = path.read_text(encoding="utf-8")
+    assert "[log] hello" in text
+    assert "[error] oops" in text
+    assert "[pageerror] boom" in text
+
+
+def test_web_interval_stop_detaches_handlers(tmp_path: Any) -> None:
+    # After stop(), further console events must not be written (the listener is removed).
+    drv, page = _driver([])
+    path = tmp_path / "device.log"
+    interval = drv.web_interval("deviceLog", path)
+    assert interval is not None
+    interval.stop()
+    page.fire("console", _FakeConsole("log", "after-stop"))
+    assert "after-stop" not in path.read_text(encoding="utf-8")
+
+
+def test_web_interval_unknown_kind_is_none(tmp_path: Any) -> None:
+    drv, _ = _driver([])
+    assert drv.web_interval("appTrace", tmp_path / "appTrace.raw") is None
+
+
+# --- video evidence (BE-0054) ---
+
+
+class _FakeVideo:
+    def __init__(self, src: Any) -> None:
+        self._src = src
+
+    def path(self) -> str:
+        return str(self._src)
+
+
+class _FakeVideoPage(_FakePage):
+    def __init__(self, records: list[dict[str, Any]], video: _FakeVideo) -> None:
+        super().__init__(records)
+        self.video = video
+
+
+class _VideoContext:
+    def __init__(self, page: Any, record_video_dir: Any = None) -> None:
+        self.record_video_dir = record_video_dir
+        self._page = page
+        self.closed = False
+
+    def new_page(self) -> Any:
+        return self._page
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _VideoBrowser:
+    def __init__(self, page: Any) -> None:
+        self._page = page
+        self.contexts: list[_VideoContext] = []
+
+    def new_context(self, **kwargs: Any) -> _VideoContext:
+        ctx = _VideoContext(self._page, kwargs.get("record_video_dir"))
+        self.contexts.append(ctx)
+        return ctx
+
+    def close(self) -> None:
+        return None
+
+
+class _VideoPw:
+    def stop(self) -> None:
+        return None
+
+
+def _video_driver(video_dir: Any, src: Any) -> tuple[PlaywrightDriver, _VideoBrowser]:
+    page = _FakeVideoPage([], _FakeVideo(src))
+    browser = _VideoBrowser(page)
+    pw = _FakePw()
+    starter = lambda _h: (pw, browser, _FakeContext(page), page)  # noqa: E731
+    drv = PlaywrightDriver("http://app.test/", record_video_dir=video_dir, starter=starter)
+    return drv, browser
+
+
+def test_web_driver_records_video_when_dir_set(tmp_path: Any) -> None:
+    src = tmp_path / "raw.webm"
+    src.write_bytes(b"vid")
+    _, browser = _video_driver(tmp_path / "vtmp", src)
+    # The live context was (re)created with record_video_dir so Playwright records it.
+    assert browser.contexts[-1].record_video_dir == str(tmp_path / "vtmp")
+
+
+def test_web_interval_video_finalizes_to_target(tmp_path: Any) -> None:
+    src = tmp_path / "raw.webm"
+    src.write_bytes(b"vid")
+    target = tmp_path / "out" / "scenario.mp4"
+    drv, browser = _video_driver(tmp_path / "vtmp", src)
+    interval = drv.web_interval("video", target)
+    assert interval is not None
+    assert interval.kind == "video"
+    assert interval.provider == "playwright"
+    interval.stop()
+    assert browser.contexts[-1].closed  # context closed to finalize the recording
+    assert target.read_bytes() == b"vid"  # the saved video moved to the artifact path
+    assert not src.exists()
+
+
+def test_web_interval_video_none_without_recording(tmp_path: Any) -> None:
+    # No record_video_dir on this lane (video not requested): no video interval.
+    drv, _ = _driver([])
+    assert drv.web_interval("video", tmp_path / "scenario.mp4") is None

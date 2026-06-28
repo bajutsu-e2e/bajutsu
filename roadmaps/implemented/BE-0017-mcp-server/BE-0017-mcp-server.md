@@ -8,6 +8,7 @@
 | Proposal | [BE-0017](BE-0017-mcp-server.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#44](https://github.com/bajutsu-e2e/bajutsu/pull/44) |
 | Topic | Integration & automation (MCP) |
 <!-- /BE-METADATA -->
 

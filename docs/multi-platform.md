@@ -1,13 +1,13 @@
 **English** · [日本語](ja/multi-platform.md)
 
-# Extending to Android and Web (multi-platform) — overview
+# Extending to Android (multi-platform) — overview
 
-> Forward-looking — mostly **planned, not implemented yet**. Today Bajutsu is centered on the **iOS
-> Simulator** ([DESIGN §1](../DESIGN.md), [README](../README.md)); the **Web (Playwright) backend has
-> landed a first slice** (a deterministic `run` against a browser, on the Linux gate — see
-> [drivers](drivers.md#playwright-web) and `demos/web`), while Android / Flutter remain planned. This
-> page is the **big-picture overview**
-> of how the existing abstractions extend to **Android** (emulator) and **Web** (browser): what stays
+> Forward-looking overview. Bajutsu is **multi-platform via a backend-agnostic driver**: the **iOS
+> Simulator** (idb) and a **Web (Playwright) backend** have both landed ([DESIGN §1](../DESIGN.md),
+> [README](../README.md)) — the web backend runs a deterministic `run` against a browser on the Linux
+> gate (see [drivers](drivers.md#playwright-web) and `demos/web`) — while **Android** (emulator) and
+> **Flutter** remain planned. This page is the **big-picture overview**
+> of how the existing abstractions extend to a new platform: what stays
 > unchanged, what each platform adds, and the order to build it in. The **concrete, per-platform design
 > and the implementation plan live in the roadmap** — each item is linked below. Read this for the
 > direction; follow the roadmap items for the specifics.
@@ -60,10 +60,10 @@ already landed, and the rest is sequenced to pay the generalization cost where i
 |---|---|---|
 | **Landed** | Platform-aware backend registry (`--backend` / `backend:` accept `ios`/`android`/`web`/`fake`) | Implemented — [BE-0042](../roadmaps/implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) |
 | **Shared abstractions** | Extract an `Environment` Protocol; audit for leaked iOS-isms; the selector / config / determinism design | Planned — [BE-0009](../roadmaps/proposals/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) |
-| **Phase 1 — Web** | Playwright; **runs on the existing Linux gate, no Mac / emulator**; exercises the rich end of the capability model. Recommended first | **v1 landed** (deterministic `run` + `demos/web`) — [BE-0041](../roadmaps/in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md); rich-end capabilities (network / video / multi-touch / parallel) tracked in [BE-0054](../roadmaps/in-progress/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) |
+| **Phase 1 — Web** | Playwright; **runs on the existing Linux gate, no Mac / emulator**; exercises the rich end of the capability model. Recommended first | Implemented (deterministic `run` + `demos/web`) — [BE-0041](../roadmaps/implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md); rich-end capabilities (network / video / multi-touch / parallel) tracked in [BE-0054](../roadmaps/implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) |
 | **Phase 2 — Android** | adb + UI Automator; the coordinate-driven twin of idb | Planned — [BE-0007](../roadmaps/proposals/BE-0007-android-backend/BE-0007-android-backend.md) |
 | **Phase 3 — Flutter / hybrids** | Cross-rendered UIs need a semantics bridge, not a new OS actuator | Planned — [BE-0008](../roadmaps/proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) |
-| **Cross-cutting** | Multi-platform is a strategic scope change (DESIGN / README / docs) | Planned — [BE-0010](../roadmaps/proposals/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) |
+| **Cross-cutting** | Multi-platform is a strategic scope change (DESIGN / README / docs) | Implemented — [BE-0010](../roadmaps/implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) |
 
 **Why Web before Android**, even though Android is the closer architectural twin of idb: Web is the
 only platform that needs no macOS and no device emulator, so it fits inside the current

@@ -10,6 +10,7 @@ the manifest shows where it came from.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -19,8 +20,14 @@ from bajutsu.drivers import base
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
 
-# scenario-dir file names for interval kinds
-_INTERVAL_FILE = {"video": "scenario.mp4", "deviceLog": "device.log"}
+# scenario-dir file names for interval kinds — one source of truth for both the simctl (iOS)
+# and the Playwright (web) providers, so the two never drift.
+_INTERVAL_FILE = {"video": "scenario.mp4", "deviceLog": "device.log", "appTrace": "appTrace.raw"}
+
+
+def _interval_filename(kind: str) -> str:
+    """The artifact filename for an interval `kind`."""
+    return _INTERVAL_FILE.get(kind, kind)
 
 
 @dataclass
@@ -175,12 +182,16 @@ class FileSink:
         log_subsystem: str | None = None,
         redact: Redact | None = None,
         secrets: list[str] | None = None,
+        web_interval: Callable[[str, Path], intervals.Interval | None] | None = None,
     ) -> None:
         self.run_dir = run_dir
         self.udid = udid
         self.log_predicate = log_predicate
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
         self.redactor = Redactor(redact, values=secrets)
+        # When set (a web lane), interval evidence comes from this Playwright-native provider
+        # instead of the simctl starters below — the device pool injects the driver's `web_interval`.
+        self.web_interval = web_interval
 
     def capture(
         self,
@@ -198,27 +209,46 @@ class FileSink:
     def start_scenario_intervals(
         self, scenario_id: str, kinds: list[str]
     ) -> list[intervals.Interval]:
-        """Start the whole-scenario recordings under <scenario_id>/ (needs a udid)."""
-        if self.udid is None or not kinds:
+        """Start the whole-scenario recordings under <scenario_id>/.
+
+        A web lane records via the injected `web_interval` provider (Playwright-native); otherwise
+        the simctl starters drive iOS, which need a `udid`.
+        """
+        if not kinds:
             return []
         scenario_dir = self.run_dir / scenario_id
+        if self.web_interval is not None:
+            scenario_dir.mkdir(parents=True, exist_ok=True)
+            web_started: list[intervals.Interval] = []
+            for token in kinds:
+                kind = token.partition(".")[0]
+                interval = self.web_interval(kind, scenario_dir / _interval_filename(kind))
+                if interval is not None:
+                    web_started.append(interval)
+            return web_started
+        if self.udid is None:
+            return []
         scenario_dir.mkdir(parents=True, exist_ok=True)
         started: list[intervals.Interval] = []
         for token in kinds:
             kind = token.partition(".")[0]
             if kind == "video":
-                started.append(intervals.start_video(self.udid, scenario_dir / "scenario.mp4"))
+                started.append(
+                    intervals.start_video(self.udid, scenario_dir / _interval_filename("video"))
+                )
             elif kind == "deviceLog":
                 started.append(
                     intervals.start_device_log(
-                        self.udid, scenario_dir / "device.log", self.log_predicate
+                        self.udid,
+                        scenario_dir / _interval_filename("deviceLog"),
+                        self.log_predicate,
                     )
                 )
             elif kind == "appTrace" and self.log_subsystem:
                 started.append(
                     intervals.start_app_trace(
                         self.udid,
-                        scenario_dir / "appTrace.raw",
+                        scenario_dir / _interval_filename("appTrace"),
                         scenario_dir / "appTrace.json",
                         self.log_subsystem,
                     )

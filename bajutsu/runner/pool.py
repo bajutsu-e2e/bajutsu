@@ -18,6 +18,7 @@ from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
 from bajutsu.network import Collector, NetworkCollector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.runner.launch import _await_ready, launch_driver
 from bajutsu.runner.types import Lease, LeaseFn, RelaunchFactory
 from bajutsu.scenario import Relaunch, Scenario
@@ -93,6 +94,13 @@ def device_pool(
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
+        # Web films the whole scenario only when its capture policy asks for video: Playwright
+        # records at context-creation time, so the recording dir must be set before the driver is
+        # built. iOS records on demand via simctl, so it needs no up-front dir.
+        record_video_dir: Path | None = None
+        if is_web and "video" in requested_intervals(scenario):
+            record_video_dir = run_dir / "_video_tmp"
+            record_video_dir.mkdir(parents=True, exist_ok=True)
         # iOS points the app at its pre-started HTTP collector via launch env; web has no such
         # env (Playwright observes natively), so its collector is built from the live page below.
         collector: Collector | None = collectors.get(udid)
@@ -101,7 +109,9 @@ def device_pool(
             if isinstance(collector, NetworkCollector)
             else None
         )
-        driver = launch_driver(udid, eff, actuator, scenario.preconditions, env_run, extra_env)
+        driver = launch_driver(
+            udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
+        )
         sink = FileSink(
             run_dir,
             udid=udid,
@@ -109,6 +119,9 @@ def device_pool(
             log_subsystem=log_subsystem,
             redact=eff.redact,
             secrets=secret_values,
+            # On a web lane, interval evidence is Playwright-native (console / page errors), not
+            # simctl; idb has no such method, so this is None there and the simctl path is used.
+            web_interval=getattr(driver, "web_interval", None),
         )
         relaunch: RelaunchFn
         control: DeviceControl | None

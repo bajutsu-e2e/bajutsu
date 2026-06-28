@@ -161,7 +161,8 @@ class IdbDriver:
     # over that transient without masking a genuinely sparse screen for long.
     _READY_MIN = 2  # a tree this size or larger is treated as settled
     _EMPTY_RETRIES = 5  # extra describe-all attempts on a degenerate tree
-    _EMPTY_BACKOFF_S = 0.2  # delay between those attempts (<= ~1s added, bounded)
+    _EMPTY_BACKOFF_S = 0.05  # base delay; doubles each attempt up to the cap
+    _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
         self.udid = udid
@@ -178,13 +179,23 @@ class IdbDriver:
         returned as-is, so a genuinely small screen is never masked.
         """
         els = self._describe()
-        for _ in range(self._EMPTY_RETRIES):
+        for i in range(self._EMPTY_RETRIES):
             if not self._is_transient_empty(els):
                 break
-            time.sleep(self._EMPTY_BACKOFF_S)
+            time.sleep(self._empty_backoff(i))
             els = self._describe()
         self._max_seen = max(self._max_seen, len(els))
         return els
+
+    def _empty_backoff(self, attempt: int) -> float:
+        """Exponential backoff for the transient-empty retry: base * 2**attempt, capped.
+
+        Recovers fast when the empty clears on the first retry and spaces out later, while
+        the cap keeps the total added wait within the previous fixed bound.
+        """
+        # 2.0** (not 2**) keeps the result a float: mypy types int**int as Any (it is float
+        # for a negative exponent), which would leak through min() as an Any return.
+        return min(self._EMPTY_BACKOFF_S * 2.0**attempt, self._EMPTY_BACKOFF_MAX_S)
 
     def _describe(self) -> list[base.Element]:
         return parse_describe_all(self._run(describe_all_cmd(self.udid)))
@@ -249,8 +260,20 @@ class IdbDriver:
     def type_text(self, text: str) -> None:
         self._run(text_cmd(self.udid, text))
 
-    def wait_for(self, sel: base.Selector, timeout: float) -> bool:
-        return len(base.find_all(self.query(), sel)) >= 1
+    def wait_for(self, sel: base.Selector, timeout: float, poll: float = 0.2) -> bool:
+        """Poll until at least one element matches `sel`, or `timeout` elapses.
+
+        Returns whether the selector was found. Polls rather than checking once so the
+        caller's timeout is honoured on a real device, where the element may render
+        slightly after the call (mirroring the orchestrator's condition-wait discipline).
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            if len(base.find_all(self.query(), sel)) >= 1:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(poll)
 
     def screenshot(self, path: str) -> None:
         self._run(screenshot_cmd(self.udid, path))

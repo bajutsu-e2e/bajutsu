@@ -117,11 +117,27 @@ def _record_audit(
 # --- RBAC (BE-0015 7c-2): role-based access control over the mutating endpoints ---
 
 _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
-_ADMIN_PATHS = frozenset(  # server-wide settings (incl. AWS SSO sign-in, which sets AWS_PROFILE)
-    {"/api/config", "/api/apikey", "/api/provider", "/api/sso/login", "/api/sso/logout"}
+# Server-wide settings — including binding the active config, from the file browser, Git, or an
+# uploaded bundle (BE-0073): each repoints which config the whole server serves. AWS SSO sign-in
+# (BE-0056) also sets AWS_PROFILE server-wide, so its login/logout are admin too.
+_ADMIN_PATHS = frozenset(
+    {
+        "/api/config",
+        "/api/upload",
+        "/api/apikey",
+        "/api/provider",
+        "/api/sso/login",
+        "/api/sso/logout",
+    }
 )
 _EDITOR_PATHS = frozenset(
-    {"/api/run", "/api/record", "/api/crawl", "/api/scenario", "/api/approve"}
+    {
+        "/api/run",
+        "/api/record",
+        "/api/crawl",
+        "/api/scenario",
+        "/api/approve",
+    }
 )
 
 

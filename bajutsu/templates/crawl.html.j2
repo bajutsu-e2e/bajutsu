@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+{#- Self-contained crawl screen map (BE-0038). crawl_report.py builds the layout; all markup lives
+    here. CSS is inlined (no external asset, no JS) so the page works opened from the run dir, where
+    `screens/<fingerprint>.png` resolves next to it. -#}
+{%- macro plural(n, word) -%}{{ n }} {{ word }}{% if n != 1 %}s{% endif %}{%- endmacro -%}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screen map{% if run_id %} — {{ run_id }}{% endif %}</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  margin: 0; padding: 1.5rem; color: #1d1d1f; background: #fff; }
+h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.05rem; margin: 1.75rem 0 .6rem; }
+.sub { color: #6e6e73; margin: 0 0 1rem; }
+.counts { font-weight: 600; margin: 0 0 1rem; }
+.graphwrap { position: relative; overflow: auto; border: 1px solid #e0e0e0; border-radius: 8px;
+  background: #fafafa; }
+.graphsvg { position: absolute; top: 0; left: 0; }
+.card { position: absolute; width: 176px; box-sizing: border-box; background: #fff;
+  border: 1px solid #d0d0d5; border-radius: 8px; padding: 6px; font-size: .8rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.card img { width: 100%; height: 110px; object-fit: cover; object-position: top;
+  border-radius: 4px; background: #ececf0; display: block; }
+.card .noshot { width: 100%; height: 110px; border-radius: 4px; background: #ececf0;
+  display: flex; align-items: center; justify-content: center; color: #b0b0b5; font-size: .75rem; }
+.card .fp { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600;
+  margin: 5px 0 2px; }
+.card .kind { color: #6e6e73; font-size: .72rem; }
+.card ul { margin: 4px 0 0; padding-left: 1.1em; }
+.card code { font-size: .72rem; }
+.edge { fill: none; stroke: #b0b0b5; stroke-width: 1.5; }
+.edge.alert { stroke: #e8a33d; }
+.edgemark { font-size: 13px; }
+table { border-collapse: collapse; width: 100%; margin-top: .25rem; }
+td, th { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid #ececec; }
+th { color: #6e6e73; font-weight: 600; font-size: .85rem; }
+code { background: #f2f2f7; border-radius: 4px; padding: .1rem .35rem; font-size: .85em; }
+.crash { color: #b00020; }
+.empty { color: #6e6e73; font-style: italic; }
+@media (prefers-color-scheme: dark) {
+  body { color: #f5f5f7; background: #1c1c1e; }
+  .sub, th, .card .kind { color: #98989d; }
+  .graphwrap { border-color: #3a3a3c; background: #161618; }
+  .card { background: #2c2c2e; border-color: #3a3a3c; }
+  .card img, .card .noshot { background: #3a3a3c; }
+  code { background: #2c2c2e; }
+  td, th { border-color: #2c2c2e; }
+  .crash { color: #ff6961; }
+}
+</style>
+</head>
+<body>
+<h1>Screen map{% if run_id %} — {{ run_id }}{% endif %}</h1>
+<p class="sub">A read-only map of the screens this crawl discovered and the transitions between them.</p>
+<p class="counts">{{ plural(screens, "screen") }} · {{ plural(transitions, "transition") }} ·
+{{ plural(crashes|length, "crash") }}{% if alerts %} · {{ alerts|length }} alert{% if alerts|length != 1 %}s{% endif %} dismissed{% endif %}{% if stop_reason %} · {{ stop_reason }}{% endif %}</p>
+
+{%- if lay.boxes %}
+<div class="graphwrap" style="width: {{ lay.width }}px; height: {{ lay.height }}px">
+<svg class="graphsvg" width="{{ lay.width }}" height="{{ lay.height }}" viewBox="0 0 {{ lay.width }} {{ lay.height }}">
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#b0b0b5"/></marker></defs>
+{%- for e in lay.edges %}
+<path class="edge{% if e.alert %} alert{% endif %}" d="{{ e.d }}" marker-end="url(#arrow)"/>
+{%- if e.alert %}<text class="edgemark" x="{{ e.mark_x }}" y="{{ e.mark_y }}">🛡️</text>{% endif %}
+{%- endfor %}
+</svg>
+{%- for b in lay.boxes %}
+<div class="card" style="left: {{ b.x }}px; top: {{ b.y }}px">
+{%- if b.has_shot %}<img src="screens/{{ b.fp }}.png" alt="{{ short(b.fp) }}">
+{%- else %}<div class="noshot">no screenshot</div>{% endif %}
+<div class="fp">{{ short(b.fp) }}</div>
+<div class="kind">{{ b.kind }}{% if b.actions %} · {{ b.actions|length }} action{% if b.actions|length != 1 %}s{% endif %}{% endif %}</div>
+{%- if b.ids %}<ul>{% for id in b.ids[:6] %}<li><code>{{ id }}</code></li>{% endfor %}{% if b.ids|length > 6 %}<li>… +{{ b.ids|length - 6 }}</li>{% endif %}</ul>{% endif %}
+</div>
+{%- endfor %}
+</div>
+{%- else %}
+<p class="empty">No screens were discovered.</p>
+{%- endif %}
+
+{%- if crashes %}
+<h2>Crashes</h2>
+<table><thead><tr><th>#</th><th>action path that collapsed the UI</th></tr></thead><tbody>
+{%- for c in crashes %}
+<tr class="crash"><td>{{ loop.index }}</td><td>{% for a in c.path %}<code>{{ a }}</code>{% if not loop.last %} → {% endif %}{% endfor %}</td></tr>
+{%- endfor %}
+</tbody></table>
+{%- endif %}
+
+{%- if alerts %}
+<h2>Alerts dismissed</h2>
+<table><thead><tr><th>#</th><th>triggered by</th><th>button(s) tapped</th></tr></thead><tbody>
+{%- for al in alerts %}
+<tr><td>{{ loop.index }}</td><td>{% for a in al.path %}<code>{{ a }}</code>{% if not loop.last %} → {% endif %}{% endfor %}</td><td>{% for b in al.buttons %}<code>{{ b }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+{%- endfor %}
+</tbody></table>
+{%- endif %}
+</body>
+</html>
