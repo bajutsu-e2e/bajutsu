@@ -26,7 +26,7 @@ from bajutsu.drivers.idb import IdbDriver
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
 # either a platform token (these keys) or a bare actuator name (the values below).
 PLATFORMS: dict[str, tuple[str, ...]] = {
-    "ios": ("idb",),  # later: ("xcuitest", "idb")
+    "ios": ("xcuitest", "idb"),  # XCUITest preferred, idb fallback (BE-0019)
     "android": ("adb",),
     "web": ("playwright",),
     "fake": ("fake",),

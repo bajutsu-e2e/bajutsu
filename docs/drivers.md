@@ -186,7 +186,7 @@ Implementation: `bajutsu/backends.py`.
 
 ```python
 PLATFORMS = {                              # a platform token expands to its actuators
-    "ios":     ("idb",),                   #   later: ("xcuitest", "idb")
+    "ios":     ("xcuitest", "idb"),        #   XCUITest preferred, idb fallback (BE-0019); xcuitest not built yet
     "android": ("adb",),                   #   planned
     "web":     ("playwright",),            #   implemented (BE-0041)
     "fake":    ("fake",),                  #   the in-memory test/demo driver
@@ -200,8 +200,9 @@ def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDrive
 ```
 
 - A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
-  **actuator** (e.g. `idb`). `--backend ios` (or `backend: [ios]`) resolves to `idb` today, and would
-  pick up a richer iOS actuator (XCUITest) when one lands — the scenario and config never change.
+  **actuator** (e.g. `idb`). `ios` now lists `xcuitest` ahead of `idb` (BE-0019), but XCUITest has no
+  driver yet, so `--backend ios` (or `backend: [ios]`) still resolves to `idb` today and picks up the
+  richer XCUITest actuator automatically once it lands — the scenario and config never change.
 - `backend` is an **ordered list** (most-stable-first; [concepts](concepts.md#5-the-stability-ladder)).
   Each token is expanded to its actuators, in order; the **actuator = the first implemented and
   available** one. If none is available, `RuntimeError` (the CLI exits with code 2).

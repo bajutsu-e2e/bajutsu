@@ -340,6 +340,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:in-progress-backend -->
 | ID | 項目 | 状態 |
 |---|---|---|
+| [BE-0019](in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) | XCUITest backend | 実装中 |
 | [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 実装中 |
 <!-- /GENERATED:in-progress-backend -->
 

@@ -26,7 +26,7 @@ The deterministic spine — scenario DSL (domain-specific language), selector re
 2. **The environment manager** (`env.py`) — `simctl` boot / erase / launch / openurl.
 3. **The stable-id convention** (`accessibilityIdentifier`, [DESIGN §7](../../../DESIGN.md)) — the app-side source that makes `Selector.id` resolution deterministic.
 
-Adding multi-platform support means **adding a new triple** (actuator + environment + id convention) per platform, while the deterministic core stays byte-for-byte the same. This is the same move the design already anticipates for a second iOS actuator (XCUITest, [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — generalized across OSes.
+Adding multi-platform support means **adding a new triple** (actuator + environment + id convention) per platform, while the deterministic core stays byte-for-byte the same. This is the same move the design already anticipates for a second iOS actuator (XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — generalized across OSes.
 
 #### What stays unchanged vs. what each platform adds
 
@@ -158,4 +158,4 @@ Phase 0 lands incrementally so each PR stays small and the gate stays green:
 - [DESIGN §5](../../../DESIGN.md) (backend-agnostic `Driver` interface), [DESIGN §7 / §7.3](../../../DESIGN.md) (stable-id convention)
 - `bajutsu/drivers/` (`base.py` `resolve_unique`, `idb.py`), `bajutsu/backends.py` (platform registry)
 - [architecture.md](../../../docs/architecture.md)
-- Related items: [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md) (Android backend), [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform backend registry), [BE-0010](../../implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (scope-statement update), [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (XCUITest backend)
+- Related items: [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md) (Android backend), [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform backend registry), [BE-0010](../../implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (scope-statement update), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (XCUITest backend)

@@ -18,7 +18,7 @@ The first slice of the multi-platform direction ([BE-0009](../../in-progress/BE-
 
 ## Motivation
 
-Going multi-platform means adding a per-platform triple — actuator + environment manager + stable-id convention — behind the existing `Driver` seam, while the deterministic spine stays unchanged ([BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)). Before any of that, backend *selection* had to stop assuming "iOS = idb": it needed to (1) name platforms as first-class tokens, (2) map a platform to an ordered list of candidate actuators (so a richer iOS actuator like XCUITest can later be preferred over `idb` without a config change — see [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)), and (3) report a *clear* "not implemented yet" for a recognized-but-unbuilt platform instead of a generic failure. Landing this slice first keeps later per-platform work additive.
+Going multi-platform means adding a per-platform triple — actuator + environment manager + stable-id convention — behind the existing `Driver` seam, while the deterministic spine stays unchanged ([BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)). Before any of that, backend *selection* had to stop assuming "iOS = idb": it needed to (1) name platforms as first-class tokens, (2) map a platform to an ordered list of candidate actuators (so a richer iOS actuator like XCUITest can later be preferred over `idb` without a config change — see [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)), and (3) report a *clear* "not implemented yet" for a recognized-but-unbuilt platform instead of a generic failure. Landing this slice first keeps later per-platform work additive.
 
 ## Detailed design
 
@@ -72,4 +72,4 @@ apps:
 
 ## References
 
-[`bajutsu/backends.py`](../../../bajutsu/backends.py), [drivers.md](../../../docs/drivers.md#backend-selection-and-the-actuator), [BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0019](../../proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)
+[`bajutsu/backends.py`](../../../bajutsu/backends.py), [drivers.md](../../../docs/drivers.md#backend-selection-and-the-actuator), [BE-0009](../../in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)
