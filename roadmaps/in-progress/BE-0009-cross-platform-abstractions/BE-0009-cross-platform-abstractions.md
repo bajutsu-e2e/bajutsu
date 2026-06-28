@@ -8,7 +8,7 @@
 | Proposal | [BE-0009](BE-0009-cross-platform-abstractions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346), [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364) |
+| Implementing PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346), [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364), [#369](https://github.com/bajutsu-e2e/bajutsu/pull/369) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -143,8 +143,8 @@ class Environment(Protocol):
 Phase 0 lands incrementally so each PR stays small and the gate stays green:
 
 - **Slice 1 (shipped):** the `Environment` Protocol + `IosEnvironment` / `WebEnvironment` / `FakeEnvironment` + `environment_for`, and `launch_driver` delegates to it — removing the `actuator == "playwright"` fork in `launch.py`.
-- **Slice 2:** fold `runner/pool.py`'s `is_web` lease split and the `cast(PlaywrightDriver, …)` network/relaunch behind the Protocol (the per-scenario relaunch and per-release teardown become Environment methods).
-- **Slice 3:** fold `cli/commands/crawl.py`'s reset/recovery split.
+- **Slice 2 (shipped, [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364)):** fold `runner/pool.py`'s `is_web` lease split and the `cast(PlaywrightDriver, …)` network/relaunch behind the Protocol (the per-scenario relaunch and per-release teardown become Environment methods).
+- **Slice 3 (shipped, [#369](https://github.com/bajutsu-e2e/bajutsu/pull/369)):** fold `cli/commands/crawl.py`'s actuator-name branches behind the Protocol — the lane sizing (`plan_lanes` / `has_devices`), the crawl `reset` (web fresh context vs iOS relaunch), and the web crash signal / dialog auto-clear / wedged-browser recovery (`crawl_aliveness` / `crawl_dialog_clearer` / `crawl_recover`). The iOS alert guard (an AI, flag-gated crawl feature) stays in the CLI, layered on the seam.
 - **Slice 4:** the explicit `platform` config discriminator. Today the actuator token already implies the platform (`backends.PLATFORMS`); this slice adds `platform` to `defaults` / `apps.<name>` / `Effective` and validates that the platform's identifier (`bundleId` / `baseUrl` / `package`) is present.
 
 ## Alternatives considered

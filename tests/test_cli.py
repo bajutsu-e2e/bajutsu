@@ -522,7 +522,7 @@ def test_crawl_bedrock_does_not_require_anthropic_key(
     _no_dotenv(monkeypatch)
     monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
     monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
-    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "booted")
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u, run=None: "booted")
 
     def _no_device(*_args: object, **_kwargs: object) -> object:
         raise _benv.DeviceError("device boundary reached (no Simulator in test)")
@@ -539,6 +539,36 @@ def test_crawl_bedrock_does_not_require_anthropic_key(
         "device boundary reached" in r.output
     )  # passed the credential gate, reached device launch
     assert "ANTHROPIC_API_KEY" not in r.output
+
+
+def test_crawl_empty_udid_pool_is_a_usage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An empty --udid resolves to no device, so the crawl fails loudly (exit 2) with a fixable message
+    # instead of crashing later on the first lane (BE-0009 Slice 3 review). Bedrock + model passes the
+    # credential gate, so the run reaches the lane-planning guard before any device work.
+    _no_dotenv(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
+    monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "crawl",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--udid",
+            "",
+            "--out",
+            str(tmp_path / "crawlrun"),
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "empty pool" in r.output
 
 
 def test_crawl_bedrock_needs_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

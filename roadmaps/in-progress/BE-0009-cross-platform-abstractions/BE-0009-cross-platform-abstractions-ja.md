@@ -8,7 +8,7 @@
 | 提案 | [BE-0009](BE-0009-cross-platform-abstractions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| 実装 PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346), [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364) |
+| 実装 PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346), [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364), [#369](https://github.com/bajutsu-e2e/bajutsu/pull/369) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
@@ -143,8 +143,8 @@ class Environment(Protocol):
 Phase 0 は、各 PR を小さく保ち、ゲートを緑に保つため、段階的に着地させます。
 
 - **スライス 1（出荷済み）**：`Environment` プロトコル、`IosEnvironment` ／ `WebEnvironment` ／ `FakeEnvironment`、`environment_for`、そして `launch_driver` がそれに委譲します。`launch.py` の `actuator == "playwright"` フォークを除去します。
-- **スライス 2**：`runner/pool.py` の `is_web` リース分岐と `cast(PlaywrightDriver, …)` のネットワーク／再起動をプロトコルの背後に畳みます（シナリオごとの再起動とリース解放時の後始末を Environment のメソッドにします）。
-- **スライス 3**：`cli/commands/crawl.py` のリセットと復旧の分岐を畳みます。
+- **スライス 2（出荷済み、[#364](https://github.com/bajutsu-e2e/bajutsu/pull/364)）**：`runner/pool.py` の `is_web` リース分岐と `cast(PlaywrightDriver, …)` のネットワーク／再起動をプロトコルの背後に畳みます（シナリオごとの再起動とリース解放時の後始末を Environment のメソッドにします）。
+- **スライス 3（出荷済み、[#369](https://github.com/bajutsu-e2e/bajutsu/pull/369)）**：`cli/commands/crawl.py` のアクチュエータ名分岐をプロトコルの背後に畳みます。レーンのサイジング（`plan_lanes` ／ `has_devices`）、crawl の `reset`（web は新規コンテキスト、iOS は再起動）、web のクラッシュ検知／ダイアログ自動処理／ハングしたブラウザの復旧（`crawl_aliveness` ／ `crawl_dialog_clearer` ／ `crawl_recover`）です。iOS のアラートガード（AI を使うフラグ依存の crawl 機能）は CLI 側に残し、seam の上に載せます。
 - **スライス 4**：明示的な `platform` config 判別子。現状はアクチュエータのトークンが platform を含意します（`backends.PLATFORMS`）。本スライスで `platform` を `defaults` ／ `apps.<name>` ／ `Effective` に追加し、その platform の識別子（`bundleId` ／ `baseUrl` ／ `package`）が存在することを検証します。
 
 ## 検討した代替案

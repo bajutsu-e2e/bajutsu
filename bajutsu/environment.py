@@ -21,6 +21,7 @@ from typing import Protocol, cast, runtime_checkable
 from bajutsu import env
 from bajutsu.backends import make_driver
 from bajutsu.config import Effective
+from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.network import Collector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
@@ -87,6 +88,32 @@ class Environment(Protocol):
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         """Per-release app teardown: terminate the app (device) or close the browser (web)."""
 
+    # --- The crawl's lane shape and recovery, which the CLI used to branch on the actuator for --- #
+
+    def has_devices(self) -> bool:
+        """Whether this platform drives real devices (web has none). Sizes the crawl's lane-prep
+        message and distinguishes the web browser-lane sizing from a device pool."""
+
+    def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
+        """The crawl's lane udids. A device pool resolves *udid_arg* and caps to *workers*; web has no
+        device, so *workers* alone sizes the browser-lane set (each lane one browser)."""
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        """A crawl `reset` to a clean start on this lane: relaunch the app (device) or open a fresh
+        browser context (web), then wait until the first screen renders."""
+
+    def crawl_aliveness(self) -> AliveCheck | None:
+        """The crawl's crash signal for a driver-observed platform (web reads pageerror / HTTP status
+        / blank DOM), or None for the device backends (the engine reads the accessibility tree)."""
+
+    def crawl_recover(self) -> Recover | None:
+        """Heal a wedged lane (relaunch a crashed/hung browser) on web, or None where the platform
+        has no in-lane recovery (the device backends)."""
+
+    def crawl_dialog_clearer(self) -> ClearBlocking | None:
+        """Report blocking dialogs auto-cleared this step (web JS dialogs the driver dismisses), or
+        None on platforms with no such auto-clear."""
+
 
 class _DeviceEnvironment:
     """The device-style lifecycle: the iOS Simulator (`simctl`) backend and the fake test backend,
@@ -128,6 +155,36 @@ class _DeviceEnvironment:
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         env.Env(self._udid, run=self._run).terminate(eff.bundle_id)
+
+    def has_devices(self) -> bool:
+        return True
+
+    def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
+        udids = [env.resolve_udid(u.strip(), self._run) for u in udid_arg.split(",") if u.strip()]
+        return udids[: max(1, min(workers, len(udids)))]
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        # Return to a clean start the way `run` reaches any state: relaunch (not a full erase) so each
+        # frontier revisit stays fast; the engine then replays the shortest path from the entry.
+        e = env.Env(self._udid, run=self._run)
+
+        def reset(driver: base.Driver) -> None:
+            e.terminate(eff.bundle_id)
+            e.launch(
+                eff.bundle_id, [*eff.launch_args, *env.locale_args(eff.locale)], eff.launch_env
+            )
+            _await_ready(driver, ready_sel=eff.ready_when)
+
+        return reset
+
+    def crawl_aliveness(self) -> AliveCheck | None:
+        return None  # the engine reads the accessibility tree for device crash detection
+
+    def crawl_recover(self) -> Recover | None:
+        return None  # no in-lane recovery: a wedged device surfaces as a DeviceError
+
+    def crawl_dialog_clearer(self) -> ClearBlocking | None:
+        return None  # OS prompts are handled by the optional alert guard, wired by the CLI
 
 
 class IosEnvironment(_DeviceEnvironment):
@@ -244,6 +301,53 @@ class WebEnvironment:
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         driver.close()  # type: ignore[attr-defined]  # web-only lifecycle, confined to this env
+
+    def has_devices(self) -> bool:
+        return False  # one browser per lane, no simctl device behind it
+
+    def plan_lanes(self, udid_arg: str, workers: int) -> list[str]:
+        # No device to resolve (resolving "booted" would shell out to simctl and crash off-macOS);
+        # the worker count alone sizes the browser lanes, each entry just one more browser.
+        return ["web"] * max(1, workers)
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        # A fresh BrowserContext is the clean start (the `erase` equivalent): no cookies / storage
+        # carried across visits, so a path recorded in one worker's browser replays in another.
+        def reset(driver: base.Driver) -> None:
+            driver.reset_context()  # type: ignore[attr-defined]  # web-only lifecycle (fresh context)
+            _await_ready(driver, ready_sel=eff.ready_when)
+
+        return reset
+
+    def crawl_aliveness(self) -> AliveCheck | None:
+        from bajutsu.drivers.playwright import PlaywrightDriver, web_is_alive
+
+        # Each web worker owns its browser, so the health signal reads the worker's own driver — not
+        # the primary — which is essential once `--workers` > 1 (BE-0077).
+        def is_alive(driver: base.Driver, elements: list[base.Element]) -> bool:
+            return web_is_alive(cast(PlaywrightDriver, driver), elements)
+
+        return is_alive
+
+    def crawl_recover(self) -> Recover | None:
+        from bajutsu.drivers.playwright import PlaywrightDriver
+
+        # A wedged browser (renderer crash, hung page, navigation timeout) surfaces as a DeviceError;
+        # relaunch this worker's own browser so its lane heals and keeps crawling (BE-0077).
+        def recover(driver: base.Driver) -> None:
+            cast(PlaywrightDriver, driver).relaunch()
+
+        return recover
+
+    def crawl_dialog_clearer(self) -> ClearBlocking | None:
+        from bajutsu.drivers.playwright import PlaywrightDriver
+
+        # JS dialogs are auto-dismissed by the driver the moment they appear (they would otherwise
+        # block the page); here we just report what was handled, for the screen map.
+        def clear(driver: base.Driver) -> list[str]:
+            return cast(PlaywrightDriver, driver).pop_dialogs()
+
+        return clear
 
 
 class FakeEnvironment(_DeviceEnvironment):
