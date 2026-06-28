@@ -26,11 +26,51 @@ idb に次ぐ 2 つ目の actuator です。安定度順ラダーの上位とし
 XCUITest は既存の `Driver` Protocol を満たす登録済み actuator になるので、シナリオ DSL、セレクタ解決、run ループ、証跡サブシステム、レポータのいずれも変わりません。
 
 - **レジストリでの配置。** `bajutsu/backends.py` で iOS プラットフォームを `("xcuitest", "idb")`（XCUITest が先、idb が後）に展開し、`xcuitest` を実行可否チェックとともに `IMPLEMENTED` に加えます。actuator は「順に並べた中で最初に実装済みかつ利用可能な backend」なので、`--backend ios` は、どのシナリオも config も変えずに、XCUITest が動くなら自動的にそれを優先し、動かなければ idb にフォールバックします。これはまさに、このレジストリが備える前方互換の挙動です。
-- **ランナーの駆動。** サブプロセスの CLI である idb と違い、XCUITest は Simulator 上に常駐するランナーの内側から操作するので、Python とそのランナーのあいだに通信路が必要です。ランナーは run のあいだ常駐し、小さなループバック HTTP エンドポイントを提供します。Python 側のドライバはそこへ `query` / `tap` / ジェスチャの要求を送ります。これは bajutsu が既に持つループバックの仕組みを流用します。`network.py` は `ThreadingHTTPServer` を `127.0.0.1` にバインドし、起動 env がそのアドレスをテスト対象アプリ（`BajutsuKit` の `BajutsuNet`）へ注入します。同じループバックを Python からランナーへの向きで使い、操作の要求を運びます。ランナー側の最小サーバは、大きな外部依存を取り込むのではなく `BajutsuKit` 内に実装し、通信路をプロジェクトの管理下に保ちます（「検討した代替案」を参照）。ランナーをどう**配布しビルドするか**、すなわち `apps.<name>` で指定する事前ビルド済みの `.xctestrun` にするか、`xcodebuild test` で都度ビルドするかは、実装時に決める論点として残します。どちらも per-app モデルに収まり、作業を始めるときに最初に確定させる選択です。
+- **ランナーの駆動。** サブプロセスの CLI である idb と違い、XCUITest は Simulator 上に常駐するランナーの内側から操作するので、Python とそのランナーのあいだに通信路が必要です。ランナーは run のあいだ常駐し、小さなループバック HTTP エンドポイントを提供します。Python 側のドライバはそこへ `query` / `tap` / ジェスチャの要求を送ります。これは bajutsu が既に持つループバックの仕組みを流用します。`network.py` は `ThreadingHTTPServer` を `127.0.0.1` にバインドし、起動 env がそのアドレスをテスト対象アプリ（`BajutsuKit` の `BajutsuNet`）へ注入します。同じループバックを Python からランナーへの向きで使い、操作の要求を運びます。ランナー側の最小サーバは、大きな外部依存を取り込むのではなく `BajutsuKit` 内に実装し、通信路をプロジェクトの管理下に保ちます（「検討した代替案」を参照）。ランナーをどう**配布しビルドするか**は、下の「runner の配信とビルド」で決着させます（設定で指定する事前ビルド済みの `.xctestrun` を主とし、オンデマンドの `xcodebuild` をフォールバックに）。チャネルのプロトコルは「Python ↔ runner のチャネル」で定めます。
 - **より豊かな capability、同じ契約。** XCUITest ドライバの `capabilities()` は、idb が提供するものに加えて `semanticTap`、ネイティブの `conditionWait`、`multiTouch` を返します。選択が決定性の核であることは変わらないので、`tap` は依然としてちょうど 1 要素に解決します。XCUITest はそれを frame 中心の座標ではなく識別子で操作するだけで、座標往復が消えます。idb では `UnsupportedAction` を上げる `pinch` / `rotate` が、直接実行できるようになります。
 - **決定性を保つ。** XCUITest がネイティブの条件待機を提供する場面でも、オーケストレータの待機は固定 sleep のない条件待機のままで、ambiguous なセレクタは依然として即時に失敗します。新しい capability は表現できることを広げるだけで、規則を緩めません。XCUITest が使われるのは `run` 時の決定的 actuator としてのみで、LLM は Tier-2 ゲートに入りません。（これは、完成したシナリオを XCUITest テストソースへ構造的にマップする `codegen` とは別物で、その経路は影響を受けません。）
-- **app-agnostic、必要な所は per-app。** ドライバ自体はアプリ非依存です。XCUITest で駆動されるためにアプリが用意すべきもの（例: テストホストや起動引数）は、既存の per-app 設定と並べて `apps.<name>` の下に置くので、ツールと runner はアプリをまたいで不変です。`doctor --app` は、idb の可否を報告するのと同じ仕方で XCUITest の可否を報告します。
+- **app-agnostic、必要な所は per-app。** ドライバ自体はアプリ非依存です。XCUITest で駆動されるためにアプリが用意すべきもの（例: テストホストや起動引数）は、既存の per-app 設定と並べて `targets.<name>` の下に置くので、ツールと runner はアプリをまたいで不変です。`doctor --target` は、idb の可否を報告するのと同じ仕方で XCUITest の可否を報告します。
 - **フォールバックは健在。** idb をラダーの 2 番目に残すことで、XCUITest が動かない環境（必要なホストのないヘッドレス CI）は、座標ベースの idb へなだらかに劣化します。run はどの actuator が選ばれたかを記録するので、manifest は豊かな経路とフォールバック経路のどちらを通ったかを示します。これは既存の劣化開示の規則と整合します。
+
+各部分の実装レベルの形を以下に示します。
+
+### registry への配置と、実装前のなだらかな扱い
+
+`bajutsu/backends.py` は *既知* の actuator と *実装済み* の actuator をすでに分けており、`select_actuator` は「計画済みだが未実装」のトークンを次に利用可能なものへ落とします。したがって順序の入れ替えはドライバが存在する前でも安全で、変更は一行です。`PLATFORMS["ios"] = ("xcuitest", "idb")` とすれば、`KNOWN_ACTUATORS` は import 時に `PLATFORMS` から派生するので `xcuitest` は自動的に「既知」になります。別途編集する一覧はありません。`IMPLEMENTED` には入れないので `--backend ios` は引き続き idb に解決され（xcuitest は「計画済み」）、ドライバが入った日に `IMPLEMENTED` への追加と可否判定（`_EXECUTABLE` 内の `xcodebuild` 探索）を足せば有効になります。明記すべき小さな関連変更が一つあります。`capabilities_for()` は現状、計画済みの actuator に対して `NotImplementedError` を投げます。したがって BE-0082 のプリフライトがドライバ完成**前**に xcuitest を判断するには、`XcuitestDriver.CAPABILITIES`（端末なしで読めるクラス定数）を返す分岐を足す必要があります。その分岐が無ければ、capability 集合はドライバと一緒に入ります。
+
+### runner の配信とビルド（未決事項の決着）
+
+実現可能な道は二つあります。**設定で指定するプレビルドのテスト runner を主とし、オンデマンドビルドをフォールバック**とすることを推奨します。既存の `appPath`（プレビルド）＋ `build`（オンデマンド）の切り分けに倣い、XCUITest が新しいオーサリングモデルを持ち込まないようにします。
+
+- **プレビルド（主）。** `targets.<name>.xcuitest.testRunner` が、ビルド済みの `*.xctestrun`（またはテストホストの `.app`）を、`appPath` が `.app` を指すのと同じ仕方で指します。run はそれを直接起動します。速く、Simulator 以外に完全な Xcode ツールチェーンが無いマシンでも唯一動く道です。
+- **オンデマンド（フォールバック）。** `targets.<name>.xcuitest.build` はシェルコマンド（例 `xcodebuild build-for-testing -scheme … -destination 'platform=iOS Simulator,…' -derivedDataPath …`）で、`.xctestrun` が無いときに `serve` ／ `run` が実行して生成します。`build` が無い `appPath` を生成するのと同じ仕組みです。どちらのノブも `targets.<name>` の下に置くのでツールはアプリ非依存のままです。DESIGN §1（bajutsu はビルド済み成果物を受け取り、自分ではビルドしない）は、プレビルドを優先し `build` を明示的・任意の便宜として扱うことで尊重します。
+
+XCUITest の **runner コード本体**は、アプリごとではなく `BajutsuKit` に同梱する小さく汎用的な XCTest ターゲットです（`BajutsuNet` と並べます）。起動時に渡された bundle id に対して `XCUIApplication` を駆動するので、一つの runner ですべての target をまかないます。
+
+### Python ↔ runner のチャネル
+
+idb はサブプロセス CLI ですが、XCUITest は Simulator に常駐するテストプロセスから操作するため、run のあいだ両者をつなぐチャネルが要ります。既存のループバック HTTP パターン（`bajutsu/network.py` が `127.0.0.1` に `ThreadingHTTPServer` をバインドし、アプリは `BAJUTSU_COLLECTOR` 経由で話す）を、今度は **Python → runner** 方向に再利用します。`BajutsuKit` の runner がテストメソッド内で小さな `127.0.0.1:<port>` サーバを起こして常駐し、Python の `XcuitestDriver` が操作要求を送ります。ポートは同じく起動引数で runner に渡し、ループバックに閉じます（ホストの露出を広げません）。契約は `Driver` Protocol に一対一で対応するので、ドライバより上は何も変わりません。
+
+| Driver 呼び出し | 要求 | 応答 |
+|---|---|---|
+| `query()` | `GET /elements` | 正規化済み `Element[]` の JSON（idb が返すのと同じ `identifier`／`label`／`value`／`traits`／`frame` の形なので `find_all` ／ `resolve_unique` は不変） |
+| `tap(sel)` | `POST /tap {elementId}` | ok ／ not-found。Python が先に `query()` から一意の要素を解決し（選択は決定性の核のまま）名前で指定。XCUITest は座標ではなく**識別子で**タップ |
+| `pinch` ／ `rotate` | `POST /gesture {elementId, kind, scale\|radians}` | ok。idb が `UnsupportedAction` を投げる二本指ジェスチャ |
+| `wait_for(sel)` | Python が `GET /elements` をポーリング（オーケストレータの条件待ち）、または同じ上限付き・sleep なしの契約の下で runner のネイティブ expectation | ok ／ timeout |
+| `screenshot(path)` | `GET /screenshot` | PNG バイト列 |
+
+エラーは既存の `Driver` 例外に対応します（解決は Python 側に残るので `ElementNotFound` ／ `AmbiguousSelector` も Python 側）。最小のサーバを大きな外部自動化依存ではなく `BajutsuKit` に置くことで、チャネルをプロジェクトの管理下に保ちます（「検討した代替案」を参照）。
+
+### capability・doctor・開示
+
+`XcuitestDriver.capabilities()`（および `capabilities_for("xcuitest")`）は `QUERY`・`ELEMENTS`・`SCREENSHOT` に加えて **`SEMANTIC_TAP`**・**`CONDITION_WAIT`**・**`MULTI_TOUCH`** を返します。idb を超えるこの三つが、識別子タップと pinch ／ rotate を解禁します。`doctor --target` は XCUITest の可否（ツールチェーンと、設定済み／ビルド可能な runner）を idb と並べて報告し、run の manifest は選ばれた actuator を記録するので、idb へのフォールバックは黙ってではなく開示されます。
+
+### 検証
+
+Simulator 無しの高速ゲートで証明できる部分と、端末を要する部分に分けます。
+
+- **高速ゲート（端末なし）。** registry：`--backend ios` が利用可能なら `xcuitest` を優先し、不可なら `idb` へフォールバックすること（`select_actuator` に可否判定関数を注入して駆動）。`capabilities_for("xcuitest")` が豊かな集合を返すこと。ドライバ：操作要求の組み立てと応答の解釈を、**注入した fake な HTTP トランスポート**に対して検証します（idb のテストが fake な `run` を注入するのと同じ要領）。`tap` が一意の要素を解決してから識別子で指すこと、`pinch` ／ `rotate` がジェスチャ要求を出すこと、曖昧な selector はどの要求よりも前に失敗することを確認します。runner も LLM も `run` ／ CI ゲートには載せません。
+- **実機（e2e 経路）。** 起動した Simulator に対する実際の `BajutsuKit` runner を、より重い `e2e.yml` 経路で。識別子でタップし、idb にはできない pinch ／ rotate を行うシナリオに加え、XCUITest が使えないホストでのフォールバック run で idb へのなだらかな劣化を確認します。
 
 ## 検討した代替案
 
