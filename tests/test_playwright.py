@@ -245,8 +245,13 @@ class _FakeSyncPw:
 
 def _patch_playwright(monkeypatch: pytest.MonkeyPatch, pw: _FakeSyncPw) -> None:
     """Make the driver's lazy `from playwright.sync_api import sync_playwright` return `pw`."""
-    monkeypatch.setitem(sys.modules, "playwright.sync_api", type(sys)("playwright.sync_api"))
-    sys.modules["playwright.sync_api"].sync_playwright = lambda: pw  # type: ignore[attr-defined]
+    # Python imports the parent package before the submodule, so the `playwright` package must be in
+    # sys.modules too — otherwise `from playwright.sync_api import …` raises ModuleNotFoundError in
+    # the fast gate, where the web extra (and the real playwright package) isn't installed.
+    monkeypatch.setitem(sys.modules, "playwright", type(sys)("playwright"))
+    sync_api = type(sys)("playwright.sync_api")
+    sync_api.sync_playwright = lambda: pw  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
 
 
 @pytest.mark.parametrize("engine", ["chromium", "firefox", "webkit"])

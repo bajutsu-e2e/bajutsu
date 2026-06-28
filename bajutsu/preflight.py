@@ -57,7 +57,10 @@ def _browser_installed(engine: str) -> bool:  # pragma: no cover - needs the pla
     except ImportError:
         return False
     with sync_playwright() as p:
-        return os.path.exists(getattr(p, engine).executable_path)
+        launcher = getattr(p, engine, None)
+        if launcher is None:  # an unknown engine is "not installed", not a doctor crash
+            return False
+        return os.path.exists(launcher.executable_path)
 
 
 # Probe for a specific engine's binary, defaulting to Chromium (BE-0076). Injectable so the web
