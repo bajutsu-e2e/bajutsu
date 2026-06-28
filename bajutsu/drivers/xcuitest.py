@@ -56,9 +56,11 @@ class _Reply:
 # runner; the default talks HTTP to the runner's loopback server.
 TransportFn = Callable[[str, str, Mapping[str, Any] | None], _Reply]
 
-# Statuses the runner returns for an actuation request.
+# Statuses the runner returns for an actuation request. `ok` succeeds; `stale` / `not-found` are test
+# outcomes (the element vanished / could not be actuated); any other status is a runner/infra error.
 _OK = "ok"
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
+_NOT_FOUND = "not-found"  # the runner could not act on the handle (no matching live element)
 
 
 def _to_element(item: Mapping[str, Any]) -> base.Element:
@@ -156,9 +158,12 @@ class XcuitestDriver:
         elements: list[base.Element] = []
         handles: dict[int, str] = {}
         for item in reply.elements or []:
+            handle = item.get("handle")
+            if not handle:  # a missing handle is a malformed response, not a coercible empty string
+                raise XcuitestChannelError(f"runner returned an element without a handle: {item!r}")
             el = _to_element(item)
             elements.append(el)
-            handles[id(el)] = str(item.get("handle", ""))
+            handles[id(el)] = str(handle)
         return elements, handles
 
     def _resolve_handle(self, sel: base.Selector) -> str:
@@ -175,8 +180,14 @@ class XcuitestDriver:
         if reply.status == _OK:
             return
         if reply.status == _STALE:
-            raise base.ElementNotFound(f"要素が消失（handle が stale）: {sel!r}")
-        raise base.ElementNotFound(f"操作対象が見つからない（{reply.status}）: {sel!r}")
+            raise base.ElementNotFound(f"element vanished (stale handle): {sel!r}")
+        if reply.status == _NOT_FOUND:
+            raise base.ElementNotFound(f"no actuatable element for: {sel!r}")
+        # Any other status (e.g. an "error" from a 500 / malformed response) is a runner failure, not
+        # a test outcome — fail loudly rather than masking it as element-not-found.
+        raise XcuitestChannelError(
+            f"runner error actuating {path} (status={reply.status}): {sel!r}"
+        )
 
     # --- Driver Protocol ---
 
@@ -233,7 +244,10 @@ class XcuitestDriver:
 
     def screenshot(self, path: str) -> None:
         reply = self._transport("GET", "/screenshot", None)
-        Path(path).write_bytes(reply.png or b"")
+        if reply.status != _OK or reply.png is None:
+            # Fail loudly rather than writing an empty / non-PNG artifact on a runner error.
+            raise XcuitestChannelError(f"screenshot failed (status={reply.status})")
+        Path(path).write_bytes(reply.png)
 
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
@@ -243,8 +257,9 @@ class XcuitestDriver:
     def await_ready(self, timeout: float = 10.0, poll: float = 0.1) -> None:
         """Block until the runner's loopback server answers `GET /health` with `ready`.
 
-        A bounded, sleep-free condition wait: it fails loudly (`XcuitestChannelError`) on timeout
-        rather than hanging, so "the runner never came up" is a clear run failure.
+        A bounded condition wait: it polls `/health` (no fixed sleep that ignores the condition) and
+        fails loudly (`XcuitestChannelError`) on timeout rather than hanging, so "the runner never
+        came up" is a clear run failure.
         """
         deadline = time.monotonic() + timeout
         while True:

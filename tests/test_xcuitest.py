@@ -228,3 +228,43 @@ def test_decode_screenshot_returns_raw_png_bytes() -> None:
 def test_decode_non_200_carries_the_servers_status() -> None:
     reply = _decode("/tap", 404, json.dumps({"status": "not-found"}).encode())
     assert reply.status == "not-found"
+
+
+def test_an_element_without_a_handle_is_a_loud_channel_error() -> None:
+    # A malformed /elements item (no handle) must fail loudly, not be coerced to "" and sent back.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        return _Reply(status="ok", elements=[{"identifier": "ok", "frame": [0, 0, 1, 1]}])
+
+    with pytest.raises(XcuitestChannelError, match="without a handle"):
+        _driver(transport).query()
+
+
+def test_a_runner_error_status_is_an_infra_failure_not_element_not_found() -> None:
+    # A non-outcome status (e.g. an "error" decoded from a 500 / malformed response) is a runner
+    # failure — it must surface as XcuitestChannelError, never be masked as element-not-found.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK"))
+        return _Reply(status="error")
+
+    with pytest.raises(XcuitestChannelError):
+        _driver(transport).tap({"id": "ok"})
+
+
+def test_a_runner_not_found_status_is_a_test_outcome() -> None:
+    # `not-found` from the runner is a test outcome (the element could not be actuated), so it maps
+    # to the shared ElementNotFound, distinct from an infrastructure error.
+    def transport(method: str, path: str, body: dict[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK"))
+        return _Reply(status="not-found")
+
+    with pytest.raises(base.ElementNotFound):
+        _driver(transport).tap({"id": "ok"})
+
+
+def test_screenshot_fails_loudly_on_a_runner_error(tmp_path: Any) -> None:
+    out = tmp_path / "never.png"
+    with pytest.raises(XcuitestChannelError):
+        _driver(lambda m, p, b: _Reply(status="error", png=None)).screenshot(str(out))
+    assert not out.exists()  # no bogus artifact written
