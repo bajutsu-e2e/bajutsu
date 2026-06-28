@@ -8,7 +8,7 @@
 | 提案 | [BE-0076](BE-0076-web-cross-browser-engines-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| 実装 PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
+| 実装 PR | [#355](https://github.com/bajutsu-e2e/bajutsu/pull/355) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 

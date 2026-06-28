@@ -8,7 +8,7 @@
 | Proposal | [BE-0076](BE-0076-web-cross-browser-engines.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
+| Implementing PR | [#355](https://github.com/bajutsu-e2e/bajutsu/pull/355) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
