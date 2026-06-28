@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0089](BE-0089-merge-time-be-id-allocation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | [#359](https://github.com/bajutsu-e2e/bajutsu/pull/359) |
 | トピック | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 

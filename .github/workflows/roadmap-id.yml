@@ -1,124 +1,140 @@
-# Allocate permanent BE IDs to roadmap items authored with the BE-XXXX placeholder.
-# The ideation skill leaves the ID undetermined so concurrent branches never race for a number; this
-# workflow assigns the next free IDs at PR time, claims each atomically as a refs/be-claims/* git ref
-# (GitHub's create-ref API is a compare-and-set, so two branches in the same window cannot both take
-# a number — the loser re-picks), pushes the rename back onto the branch, and rewrites the PR title's
-# BE-XXXX to the allocated ID.
+# Allocate permanent BE IDs on `main`, after a merge (BE-0089).
+#
+# A roadmap item keeps the `BE-XXXX` placeholder all the way through authoring, review, and the merge
+# itself: the branch is merged as-is. The merge is a push to `main`, which triggers this workflow; it
+# runs the existing allocator against `main`'s tree, renames each placeholder to the next free
+# `BE-NNNN`, and commits the result directly to `main`. Allocation therefore happens in merge order on
+# `main`, so the `BE-NNNN` sequence is contiguous by construction and a number is never burned by a
+# rejected proposal. (This replaces the earlier PR-open allocation; see BE-0061 for the collision
+# hardening this builds on.)
+#
+# Landing a commit on protected `main` needs a bypass identity: a dedicated GitHub App on `main`'s
+# ruleset bypass list, whose id/private-key are stored as the `ROADMAP_BOT_APP_ID` /
+# `ROADMAP_BOT_PRIVATE_KEY` secrets. Until those secrets exist the job is a green no-op (the gate step
+# below), so `main` is never red while the App is being set up.
 name: roadmap-id
 
 on:
-  pull_request:
+  push:
+    branches: [main]
     paths:
       - 'roadmaps/**'
 
 permissions:
-  contents: write
-  pull-requests: write   # to rewrite the PR title's BE-XXXX placeholder
+  contents: write       # commit the renumber to main
+  pull-requests: write  # comment the allocated id on the merged PR
 
 concurrency:
-  group: roadmap-id-${{ github.head_ref }}
-  cancel-in-progress: true
+  group: roadmap-id-main
+  cancel-in-progress: false   # serialize; never drop a queued allocation
 
 jobs:
   allocate:
     name: allocate BE IDs
     runs-on: ubuntu-latest
-    # A fork PR's branch can't be pushed back to, and its token can't create claim refs; only
-    # same-repo PRs are renumbered.
-    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-
-      - name: Allocate placeholder IDs, claim them atomically, and push
-        id: allocate
+      - name: Gate on the bypass App being configured
+        id: gate
         env:
-          GH_TOKEN: ${{ github.token }}
-          CURRENT_PR: ${{ github.event.pull_request.number }}
-          HEAD_REF: ${{ github.head_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          APP_ID: ${{ secrets.ROADMAP_BOT_APP_ID }}
+          APP_KEY: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Allocate, then claim each id atomically. A claim lost to a parallel PR (HTTP 422) means we
-          # raced for that number: release any we did win, reset, and retry — the winning claim is now
-          # visible to `be_claims.sh list`, so the next attempt steers off it. A few attempts settle
-          # any realistic contention; origin/main is the allocator's floor regardless.
-          tokens=""
-          for attempt in 1 2 3 4 5; do
-            reserved="$(bash scripts/open_pr_be_ids.sh "$CURRENT_PR") $(bash scripts/be_claims.sh list)"
-            echo "Attempt $attempt — reserved (open PRs + claims): ${reserved:-<none>}"
-
-            out="$(ROADMAP_RESERVED_IDS="$reserved" python3 scripts/allocate_roadmap_ids.py)"
-            echo "$out"
-            # The script prints "Allocated BE-NNNN for <slug>" per item; collect the ids.
-            tokens="$(printf '%s\n' "$out" \
-              | sed -n 's/^Allocated \(BE-[0-9]\{4\}\) for .*/\1/p' | paste -sd' ' -)"
-            if [ -z "$tokens" ]; then
-              echo "No BE-XXXX placeholders; nothing to allocate."
-              exit 0
-            fi
-
-            read -ra toks <<< "$tokens"
-            won=()
-            lost=0
-            for tok in "${toks[@]}"; do
-              if bash scripts/be_claims.sh claim "${tok#BE-}" "$HEAD_SHA"; then
-                won+=("${tok#BE-}")
-              else
-                lost=1
-              fi
-            done
-            if [ "$lost" -eq 0 ]; then
-              break
-            fi
-
-            for id in "${won[@]}"; do
-              bash scripts/be_claims.sh release "$id"
-            done
-            git reset --quiet --hard HEAD
-            git clean --quiet -fd roadmaps/
-            tokens=""
-          done
-
-          if [ -z "$tokens" ]; then
-            echo "::error::Could not claim an allocated id after several attempts; a parallel PR is racing — re-run this job."
-            exit 1
+          # Enable only when BOTH the App id and its private key are present: minting the App token
+          # needs both, so a half-configured App (id set, key missing) must stay dormant rather than
+          # run and fail — keeping main green while the App is being provisioned (BE-0089).
+          if [ -n "$APP_ID" ] && [ -n "$APP_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ROADMAP_BOT_APP_ID / ROADMAP_BOT_PRIVATE_KEY are not both set — merge-time BE-ID allocation is dormant (BE-0089). No-op."
           fi
 
-          # Allocation only renamed the BE-XXXX placeholder directories. The index tables are
-          # generated from each item's metadata, and the generator skips an item while it is still
-          # BE-XXXX, so a newly-numbered item's row appears only after allocation. Regenerate here so
-          # this commit lands a complete, gate-green index (tests/test_roadmap_index.py). Stdlib-only
-          # like the allocate script (no uv needed).
+      - name: Mint a short-lived installation token for the bypass App
+        if: steps.gate.outputs.enabled == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ secrets.ROADMAP_BOT_APP_ID }}
+          private-key: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
+
+      - name: Check out main with the App token
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Allocate placeholder IDs on main, guard the diff, and push
+        if: steps.gate.outputs.enabled == 'true'
+        id: allocate
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+
+          # Reused unchanged (BE-0089): the allocator finds every BE-XXXX placeholder, allocates
+          # max(used)+1 per item, git-mv's the dir/files, and rewrites the in-file token. On `main`
+          # the `used` set is just main's numbered items, so allocation is contiguous in merge order.
+          out="$(python3 scripts/allocate_roadmap_ids.py)"
+          echo "$out"
+          tokens="$(printf '%s\n' "$out" \
+            | sed -n 's/^Allocated \(BE-[0-9]\{4\}\) for .*/\1/p' | paste -sd' ' -)"
+          if [ -z "$tokens" ]; then
+            # The renumber commit re-triggers this workflow (an App-token push fires events), but it
+            # carries no placeholder, so this run is a no-op.
+            echo "No BE-XXXX placeholders on main; nothing to allocate."
+            exit 0
+          fi
+
+          # The index generator skips a BE-XXXX item, so a newly-numbered row appears only after the
+          # rename; regenerate here so the commit lands a complete, gate-green index.
           python3 scripts/build_roadmap_index.py
 
           git add -A
-          git commit -m "docs(roadmap): allocate BE IDs for placeholder items"
-          git push origin "HEAD:$HEAD_REF"
+          git commit -m "docs(roadmap): allocate BE IDs for merged placeholder items"
+          # Cap the bypass token's blast radius: the committed renumber must touch only roadmaps/
+          # (BE-0089). Runs on the commit, so it guards exactly what gets pushed.
+          python3 scripts/check_renumber_diff.py
+
+          # main may have moved between checkout and push; rebase onto it and retry a few times,
+          # logging which step failed so a stuck conflict isn't misreported as push contention.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::Could not push the renumber to main after several attempts."
+              exit 1
+            fi
+            echo "::warning::push to main rejected (attempt ${attempt}); fetching and rebasing onto origin/main."
+            if ! git fetch origin main; then
+              echo "::warning::git fetch failed (attempt ${attempt}); retrying."
+              continue
+            fi
+            if ! git rebase origin/main; then
+              echo "::warning::rebase onto origin/main conflicted (attempt ${attempt}); aborting and retrying."
+              git rebase --abort
+            fi
+          done
           echo "tokens=$tokens" >> "$GITHUB_OUTPUT"
 
-      - name: Rewrite the PR title's BE-XXXX to the allocated ID
-        if: steps.allocate.outputs.tokens != ''
+      - name: Comment the allocated id on the merged PR (best-effort)
+        if: steps.gate.outputs.enabled == 'true' && steps.allocate.outputs.tokens != ''
         env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          MERGE_SHA: ${{ github.sha }}
           TOKENS: ${{ steps.allocate.outputs.tokens }}
         run: |
-          if ! printf '%s' "$PR_TITLE" | grep -q 'BE-XXXX'; then
-            echo "PR title carries no BE-XXXX placeholder; leaving it unchanged."
+          # A push event carries no PR number, so resolve it from the merge commit. A miss is
+          # harmless: the allocation has already landed on main, and the comment is informational.
+          pr="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${MERGE_SHA}/pulls" -q '.[0].number' 2>/dev/null || true)"
+          if [ -z "$pr" ] || [ "$pr" = "null" ]; then
+            echo "No PR maps to ${MERGE_SHA}; skipping the announcement comment."
             exit 0
           fi
-          # A title holds a single [BE-XXXX] prefix; map it to the first allocated ID
-          # (allocation is sorted by slug, so this is deterministic).
-          first="${TOKENS%% *}"
-          if [ "$first" != "$TOKENS" ]; then
-            echo "::notice::Multiple IDs allocated ($TOKENS); rewriting the title's BE-XXXX to the first ($first)."
-          fi
-          new_title="${PR_TITLE//BE-XXXX/$first}"
-          echo "Updating PR #$PR_NUMBER title to: $new_title"
-          gh pr edit "$PR_NUMBER" --title "$new_title"
+          gh pr comment "$pr" \
+            --body "Allocated **${TOKENS}** on \`main\` (merge-time BE-ID allocation, BE-0089)." \
+            || echo "::warning::Could not comment on PR #$pr (non-fatal)."

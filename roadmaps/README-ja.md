@@ -32,13 +32,15 @@
    ```bash
    ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1
    ```
-   番号の再利用や飛ばし、当て推量は禁止です。**または未定のままにする方法もあります。** 項目を
-   `BE-XXXX-<slug>`（リテラルのプレースホルダ）と名付け、採番を CI に任せます。
-   [`roadmap-id`](../.github/workflows/roadmap-id.yml) ワークフローが `roadmaps/**`
-   に触れる PR ごとに [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py)
-   を実行し、空いている次の ID を採番してブランチへリネームを push し返します。
-   `ideation` skill はこの方式を使い、進行中の 2 つのブランチが同じ番号を
-   取り合うのを防ぎます。
+   番号の再利用や飛ばし、当て推量は禁止です。**ただし通常は未定のままにします。** 項目を
+   `BE-XXXX-<slug>`（リテラルのプレースホルダ）と名付け、採番を CI に任せます。項目はレビューと
+   マージを通じて `BE-XXXX` のまま保たれ、[`roadmap-id`](../.github/workflows/roadmap-id.yml)
+   ワークフローが、**PR のマージ後に `main` 上で**
+   [`scripts/allocate_roadmap_ids.py`](../scripts/allocate_roadmap_ids.py) を実行し、空いている
+   次の ID をマージ順に採番して、リネームを `main` へコミットします（BE-0089）。`ideation` skill は
+   この方式を使います。`BE-NNNN` の並びがマージ順で連続し（却下された PR は番号を消費しません）、
+   進行中の 2 つのブランチが同じ番号を取り合うことも防げます。したがって BE 作成 PR は
+   **`[BE-NNNN]` のタイトル接頭辞を持ちません**。本当の番号はマージ後まで分からないからです。
 2. **項目ディレクトリと両言語のファイルを作成**します。提案なら `roadmaps/proposals/` の下に、同じ PR で実装も出荷する場合は `状態: 実装済み` にして `roadmaps/implemented/` の下に置きます（新規項目は原則まず提案ですが、コードが一緒に入るなら最初から実装済みにします）。`roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>.md`（英語）と
    `roadmaps/proposals/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語・同一 ID と slug）です。**下の
    インデックス表は手で編集しません。** 各項目自身のメタデータから生成されます。`make roadmap-index`（または
@@ -192,6 +194,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0069](implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md) | コントリビュータ向けガードレールの実行可能化（手順をコマンドに） | 実装済み |
 | [BE-0074](implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) | BE 項目テンプレートの標準化（EN / JA） | 実装済み |
 | [BE-0078](implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md) | 状態ごとのロードマップフォルダ（提案 / 保留 / 実装中 / 実装済み） | 実装済み |
+| [BE-0089](implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) | マージ後に main で BE ID を採番する | 実装済み |
 | [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction-ja.md) | クロール調整役をクラスに切り出す | 実装済み |
 | [BE-0093](implemented/BE-0093-public-docs-site/BE-0093-public-docs-site-ja.md) | 公式サイトとドキュメントポータルの公開（GitHub Pages） | 実装済み |
 | [BE-0094](implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md) | GitHub Pages で公開するロードマップ状況ダッシュボード | 実装済み |
@@ -452,7 +455,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-dev-infra -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0089](proposals/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md) | マージ後に main で BE ID を採番する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）
