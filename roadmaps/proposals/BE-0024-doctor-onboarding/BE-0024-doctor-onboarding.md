@@ -70,6 +70,15 @@ visible in one place.
   "no actionable elements" as `Blocked` and `render` names the likely cause ("is the app on the
   expected screen and fully loaded?"), so the signal points at the real problem. The check stays
   deterministic and LLM-free.
+- **`doctor` checks the target's backend config before probing tools or a device** ([#361](https://github.com/bajutsu-e2e/bajutsu/pull/361)).
+  `doctor` resolved the target and went straight to probing tools / a device, so a target carrying
+  the wrong field for its selected backend (an iOS target with only a `baseUrl`, a web target with
+  only a `bundleId`) surfaced as a confusing downstream launch/navigate failure, and an iOS target
+  missing `bundleId` was never checked up front. Config parsing rejects a target with *neither*
+  field, but not the wrong one for the backend it runs on. A new `preflight.config_checks` verifies
+  the selected backend's required field is present (web → `baseUrl`, iOS → `bundleId`) with a remedy
+  naming the target, and `doctor` runs it first — failing fast with a fixable checklist instead of a
+  doomed probe. The check stays deterministic and LLM-free.
 
 ## Alternatives considered
 
