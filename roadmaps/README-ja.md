@@ -344,6 +344,16 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 実装中 |
 <!-- /GENERATED:in-progress-backend -->
 
+### Dogfood フィクスチャ（デモアプリ）
+
+デモ／dogfood 用アプリを showcase 群へ統合します。旧 `sample` / `demo` / `sample2` フィクスチャと同等まで showcase を引き上げ（codegen → XCUITest、ビジュアルリグレッション、ジェスチャ標的、証跡ツアー）、デモと実機 CI を showcase に張り替え、旧 3 アプリを退役させて、showcase を唯一の iOS フィクスチャにします。
+
+<!-- GENERATED:in-progress-dogfood -->
+| ID | 項目 | 状態 | 由来 |
+|---|---|---|---|
+| [BE-0079](in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md) | デモ／dogfood 用アプリを showcase 群へ統合する | 実装中 | Dogfooding |
+<!-- /GENERATED:in-progress-dogfood -->
+
 ### Web UI のホスティング（クラウド / セルフホスト）
 
 <!-- GENERATED:in-progress-hosting -->
@@ -457,14 +467,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 <!-- /GENERATED:proposals-dev-infra -->
-
-### Dogfood フィクスチャ（デモアプリ）
-
-<!-- GENERATED:proposals-dogfood -->
-| ID | 項目 | 状態 | 由来 |
-|---|---|---|---|
-| [BE-0079](proposals/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md) | デモ／dogfood 用アプリを showcase 群へ統合する | 提案 | Dogfooding |
-<!-- /GENERATED:proposals-dogfood -->
 
 ### 競合調査（MagicPod / Autify）由来の候補
 

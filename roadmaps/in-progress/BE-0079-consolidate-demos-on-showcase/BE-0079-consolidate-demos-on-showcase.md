@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0079](BE-0079-consolidate-demos-on-showcase.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | Dogfood fixtures (demo apps) |
 | Origin | Dogfooding |
 <!-- /BE-METADATA -->

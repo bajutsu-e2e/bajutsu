@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0079](BE-0079-consolidate-demos-on-showcase-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トピック | Dogfood フィクスチャ（デモアプリ） |
 | 由来 | Dogfooding |
 <!-- /BE-METADATA -->
