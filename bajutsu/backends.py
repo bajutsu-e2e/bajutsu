@@ -209,6 +209,14 @@ def _platform_of(actuator: str, platforms: dict[str, tuple[str, ...]]) -> str | 
     return next((p for p, acts in platforms.items() if actuator in acts), None)
 
 
+def platform_of(actuator: str) -> str | None:
+    """The platform an actuator belongs to (`idb` -> `ios`, `playwright` -> `web`), or None if unknown.
+
+    Lets config derive a target's platform from its backend (BE-0009 Slice 4).
+    """
+    return _platform_of(actuator, PLATFORMS)
+
+
 def evidence_backends(
     backends: list[str],
     actuator: str,

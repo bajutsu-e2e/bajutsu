@@ -319,3 +319,71 @@ def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
         )
         with pytest.raises(ValueError, match="escapes the checkout"):
             eff.rebased(Path("/co"))
+
+
+# --- Platform discriminator (BE-0009 Slice 4) --- #
+
+
+def test_platform_explicit_resolves_into_effective() -> None:
+    # An explicit `platform` on the target is authoritative and reaches Effective.
+    cfg = load_config(
+        "targets:\n  s:\n    platform: ios\n    bundleId: com.x\n    backend: [idb]\n"
+    )
+    assert resolve(cfg, "s").platform == "ios"
+
+
+def test_platform_defaults_apply_when_target_omits_it() -> None:
+    # A team-wide `defaults.platform` flows to a target that doesn't override it.
+    cfg = load_config(
+        "defaults:\n  platform: web\ntargets:\n  s:\n    baseUrl: https://app.test\n"
+        "    backend: [playwright]\n"
+    )
+    assert resolve(cfg, "s").platform == "web"
+
+
+def test_platform_derived_from_backend_when_unset() -> None:
+    # With no explicit platform anywhere, it's derived from the backend (today's implicit behavior),
+    # so existing configs are unchanged: playwright -> web, idb -> ios.
+    web = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
+    assert resolve(web, "s").platform == "web"
+    ios = load_config("targets:\n  s:\n    bundleId: com.x\n    backend: [idb]\n")
+    assert resolve(ios, "s").platform == "ios"
+
+
+def test_package_resolves_into_effective() -> None:
+    # The Android identifier (peer of bundleId / baseUrl) resolves onto Effective.
+    cfg = load_config(
+        "targets:\n  s:\n    platform: android\n    package: com.x.app\n    backend: [adb]\n"
+    )
+    eff = resolve(cfg, "s")
+    assert eff.platform == "android"
+    assert eff.package == "com.x.app"
+
+
+def test_unknown_platform_is_rejected_at_load() -> None:
+    with pytest.raises(ValidationError, match="platform"):
+        load_config("targets:\n  s:\n    platform: martian\n    bundleId: com.x\n")
+
+
+def test_ios_platform_requires_bundle_id() -> None:
+    # An iOS target carrying the wrong identifier (baseUrl, no bundleId) is rejected with a
+    # platform-aware message — distinct from the "no identifier at all" check.
+    with pytest.raises(ValidationError, match="bundleId"):
+        load_config("targets:\n  s:\n    platform: ios\n    baseUrl: https://app.test\n")
+
+
+def test_web_platform_requires_base_url() -> None:
+    with pytest.raises(ValidationError, match="baseUrl"):
+        load_config("targets:\n  s:\n    platform: web\n    bundleId: com.x\n")
+
+
+def test_android_platform_requires_package() -> None:
+    with pytest.raises(ValidationError, match="package"):
+        load_config("targets:\n  s:\n    platform: android\n    bundleId: com.x\n")
+
+
+def test_web_target_without_explicit_platform_still_loads() -> None:
+    # Backward compatibility: a web target declared the pre-Slice-4 way (baseUrl + playwright, no
+    # `platform`) loads fine — the platform is derived from the backend, baseUrl is its identifier.
+    cfg = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
+    assert resolve(cfg, "s").platform == "web"

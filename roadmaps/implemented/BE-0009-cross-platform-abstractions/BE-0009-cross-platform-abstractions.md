@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0009](BE-0009-cross-platform-abstractions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Implementing PR | [#346](https://github.com/bajutsu-e2e/bajutsu/pull/346), [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364), [#369](https://github.com/bajutsu-e2e/bajutsu/pull/369) |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
@@ -26,7 +26,7 @@ The deterministic spine — scenario DSL (domain-specific language), selector re
 2. **The environment manager** (`env.py`) — `simctl` boot / erase / launch / openurl.
 3. **The stable-id convention** (`accessibilityIdentifier`, [DESIGN §7](../../../DESIGN.md)) — the app-side source that makes `Selector.id` resolution deterministic.
 
-Adding multi-platform support means **adding a new triple** (actuator + environment + id convention) per platform, while the deterministic core stays byte-for-byte the same. This is the same move the design already anticipates for a second iOS actuator (XCUITest, [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — generalized across OSes.
+Adding multi-platform support means **adding a new triple** (actuator + environment + id convention) per platform, while the deterministic core stays byte-for-byte the same. This is the same move the design already anticipates for a second iOS actuator (XCUITest, [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)) — generalized across OSes.
 
 #### What stays unchanged vs. what each platform adds
 
@@ -145,7 +145,7 @@ Phase 0 lands incrementally so each PR stays small and the gate stays green:
 - **Slice 1 (shipped):** the `Environment` Protocol + `IosEnvironment` / `WebEnvironment` / `FakeEnvironment` + `environment_for`, and `launch_driver` delegates to it — removing the `actuator == "playwright"` fork in `launch.py`.
 - **Slice 2 (shipped, [#364](https://github.com/bajutsu-e2e/bajutsu/pull/364)):** fold `runner/pool.py`'s `is_web` lease split and the `cast(PlaywrightDriver, …)` network/relaunch behind the Protocol (the per-scenario relaunch and per-release teardown become Environment methods).
 - **Slice 3 (shipped, [#369](https://github.com/bajutsu-e2e/bajutsu/pull/369)):** fold `cli/commands/crawl.py`'s actuator-name branches behind the Protocol — the lane sizing (`plan_lanes` / `has_devices`), the crawl `reset` (web fresh context vs iOS relaunch), and the web crash signal / dialog auto-clear / wedged-browser recovery (`crawl_aliveness` / `crawl_dialog_clearer` / `crawl_recover`). The iOS alert guard (an AI, flag-gated crawl feature) stays in the CLI, layered on the seam.
-- **Slice 4:** the explicit `platform` config discriminator. Today the actuator token already implies the platform (`backends.PLATFORMS`); this slice adds `platform` to `defaults` / `apps.<name>` / `Effective` and validates that the platform's identifier (`bundleId` / `baseUrl` / `package`) is present.
+- **Slice 4 (shipped):** the explicit `platform` config discriminator. `platform` is added to `defaults` / `targets.<name>` / `Effective` (and `package`, the Android identifier); it is optional and, when unset, derived from the backend so existing configs are unchanged. A `Config` validator requires the platform's identifier — `bundleId` (ios) / `baseUrl` (web) / `package` (android) — and rejects an unknown token. This completes BE-0009 Phase 0; the per-platform backends that build on the seam are tracked separately ([BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
 ## Alternatives considered
 
@@ -158,4 +158,4 @@ Phase 0 lands incrementally so each PR stays small and the gate stays green:
 - [DESIGN §5](../../../DESIGN.md) (backend-agnostic `Driver` interface), [DESIGN §7 / §7.3](../../../DESIGN.md) (stable-id convention)
 - `bajutsu/drivers/` (`base.py` `resolve_unique`, `idb.py`), `bajutsu/backends.py` (platform registry)
 - [architecture.md](../../../docs/architecture.md)
-- Related items: [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md) (Android backend), [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform backend registry), [BE-0010](../../implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (scope-statement update), [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (XCUITest backend)
+- Related items: [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md) (Android backend), [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) (web Playwright backend), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry.md) (platform backend registry), [BE-0010](../../implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) (scope-statement update), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (XCUITest backend)

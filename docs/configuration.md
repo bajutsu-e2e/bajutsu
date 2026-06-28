@@ -17,6 +17,7 @@ one closer to the test wins).
 
 ```yaml
 defaults:                       # shared across all targets
+  platform: ios                 # team-wide default platform (ios/android/web); omit to derive it from each target's backend
   backend: [ios]                # ordered list of platforms (ios/android/web/fake) or actuators (idb); a single string is also OK
   device:  "iPhone 15"
   locale:  en_US
@@ -36,6 +37,7 @@ targets:
     # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 
   web:                          # a web target (Playwright backend) is identified by URL
+    platform:  web                                  # optional: usually derived from backend/baseUrl, but explicit is clearest
     baseUrl:   "http://127.0.0.1:8787/index.html"   # required for web (instead of bundleId)
     backend:   [web]
     headless:  true                                 # web only: false = a visible (headed) browser; --headed overrides per run
@@ -43,8 +45,11 @@ targets:
     scenarios: demos/web/scenarios
 ```
 
-A target entry needs **either** `bundleId` (iOS) **or** `baseUrl` (web) — a config with neither is
-rejected at load. See [drivers → Playwright](drivers.md#playwright-web) and `demos/web`.
+Each platform identifies its target by its own handle: **iOS** by `bundleId`, **web** by `baseUrl`,
+**Android** by `package`. A target's `platform` selects which handle is required; it is **optional** and
+defaults to the platform its `backend` implies (so a config written before this field is unchanged) —
+set it explicitly to be unambiguous. A target carrying the wrong handle for its platform (or none at
+all) is rejected at load. See [drivers → Playwright](drivers.md#playwright-web) and `demos/web`.
 
 ### Resolution (`resolve` → `Effective`)
 
@@ -53,8 +58,10 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 
 | `Effective` field | Source | Notes |
 |---|---|---|
-| `bundle_id` | app | iOS target; required unless `base_url` is set |
-| `base_url` | app | web target URL (Playwright backend); required for web instead of `bundle_id` |
+| `platform` | app < defaults < derived | the target's platform (`ios`/`android`/`web`): explicit `platform` wins, else the target's `backend` implies it, else the identifier present, else `ios`. Selects which identifier is required ([BE-0009](../roadmaps/implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
+| `bundle_id` | app | iOS target identifier; required when the platform is `ios` |
+| `base_url` | app | web target URL (Playwright backend); required when the platform is `web` |
+| `package` | app | Android target identifier; required when the platform is `android` |
 | `headless` | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
 | `browser` | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
 | `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
