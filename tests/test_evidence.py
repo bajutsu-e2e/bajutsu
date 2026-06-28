@@ -163,11 +163,29 @@ def test_finish_scenario_intervals_drops_an_artifact_it_cannot_redact(
     assert any("redact" in r.message.lower() for r in caplog.records)
 
 
-def test_finish_scenario_intervals_emits_when_no_redactor_is_active(tmp_path: Path) -> None:
-    # With no secrets configured the redactor is inactive, so an unreadable file is not a leak risk
-    # and is still emitted (the fail-closed guard is scoped to the active-redaction case).
+def test_finish_scenario_intervals_emits_unreadable_file_when_redactor_inactive(
+    tmp_path: Path,
+) -> None:
+    # With no secrets the redactor is inactive: _redact_file returns safe before any read, so even an
+    # unreadable file (a directory here) is emitted — the fail-closed guard is scoped to active
+    # redaction and must not drop evidence when there is nothing to scrub.
     sink = FileSink(tmp_path, udid="u")
-    f = tmp_path / "deviceLog.txt"
-    f.write_text("nothing secret", encoding="utf-8")
-    out = sink.finish_scenario_intervals("s", [_StubInterval(f)])
+    unreadable = tmp_path / "deviceLog.txt"
+    unreadable.mkdir()
+    out = sink.finish_scenario_intervals("s", [_StubInterval(unreadable)])
     assert [a.name for a in out] == ["deviceLog.txt"]
+
+
+def test_finish_scenario_intervals_drops_apptrace_when_only_the_raw_is_unredactable(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # appTrace ships with a raw stream beside it; if the raw can't be scrubbed the artifact must be
+    # dropped too, and the warning must name the raw file (not the main appTrace path).
+    sink = FileSink(tmp_path, udid="u", secrets=["topsecret"])
+    main = tmp_path / "appTrace.json"
+    main.write_text("clean", encoding="utf-8")
+    (tmp_path / "appTrace.raw").mkdir()  # unreadable raw stream
+    with caplog.at_level("WARNING"):
+        out = sink.finish_scenario_intervals("s", [_StubInterval(main, kind="appTrace")])
+    assert out == []
+    assert any("appTrace.raw" in r.getMessage() for r in caplog.records)

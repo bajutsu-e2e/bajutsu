@@ -269,16 +269,18 @@ class FileSink:
         out: list[Artifact] = []
         for interval in started:
             path = interval.stop()
-            safe = self._redact_file(path)
+            # appTrace also has a raw stream beside it; both must be scrubbed before the artifact ships.
+            to_scrub = [path]
             if interval.kind == "appTrace":
-                safe = self._redact_file(path.parent / "appTrace.raw") and safe  # scrub the raw too
-            if not safe:
-                # Redaction is a security control: if we couldn't read the file to scrub it, don't
-                # ship it (fail closed), and say so loudly rather than leak an unredacted artifact.
+                to_scrub.append(path.parent / "appTrace.raw")
+            unsafe = [p for p in to_scrub if not self._redact_file(p)]
+            if unsafe:
+                # Redaction is a security control: if we couldn't read a file to scrub it, don't ship
+                # the artifact (fail closed), and name the offending file loudly rather than leak it.
                 _logger.warning(
-                    "dropping %s evidence %s: could not read it to redact secrets (failing closed)",
+                    "dropping %s evidence: could not read %s to redact secrets (failing closed)",
                     interval.kind,
-                    path,
+                    ", ".join(str(p) for p in unsafe),
                 )
                 continue
             try:
