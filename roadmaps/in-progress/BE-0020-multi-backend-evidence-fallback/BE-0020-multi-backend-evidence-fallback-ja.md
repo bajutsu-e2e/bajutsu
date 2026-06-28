@@ -8,6 +8,7 @@
 | 提案 | [BE-0020](BE-0020-multi-backend-evidence-fallback-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
+| 実装 PR | [#357](https://github.com/bajutsu-e2e/bajutsu/pull/357) |
 | トピック | バックエンド拡張（iOS actuator） |
 <!-- /BE-METADATA -->
 
