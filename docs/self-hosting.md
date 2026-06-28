@@ -247,6 +247,13 @@ its own object-store prefix. With no `orgs:` block the backend stays single-tena
 and the shared token plus the GitHub allowlist are the access boundary. The fully managed public
 cloud offering (a hosted Mac worker pool + IaC) is still future work in BE-0015.
 
+**Keeping the Mac pool fair across orgs.** Set `BAJUTSU_MAX_CONCURRENT_PER_ORG` to cap how many runs
+one org may have in flight at once, so a busy org can't monopolize the scarce devices even when its
+users each stay under their own `BAJUTSU_MAX_CONCURRENT_PER_USER`. Both default to unlimited (`0`),
+and both sit under the global `--max-concurrent-runs`; an over-cap request is rejected (HTTP 429)
+rather than queued. (Fair *scheduling* across orgs — holding the rejected work in a per-org queue and
+dispatching it round-robin — is still future work; today the cap rejects.)
+
 ## Operational logging
 
 The hosted serve emits its own diagnostic trace — **structured JSON, written to stdout, with
