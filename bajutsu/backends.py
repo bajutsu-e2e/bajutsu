@@ -156,6 +156,12 @@ def capabilities_for(actuator: str) -> frozenset[str]:
         from bajutsu.drivers.playwright import PlaywrightDriver
 
         return PlaywrightDriver.CAPABILITIES
+    if actuator == "xcuitest":
+        # The richer iOS actuator's capabilities are readable before its runner is wired into
+        # selection (BE-0019): reading the class constant constructs no driver and starts no runner.
+        from bajutsu.drivers.xcuitest import XcuitestDriver
+
+        return XcuitestDriver.CAPABILITIES
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"

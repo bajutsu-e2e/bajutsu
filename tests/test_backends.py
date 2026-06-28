@@ -126,16 +126,15 @@ def test_ios_prefers_xcuitest_but_falls_back_to_idb() -> None:
     assert select_actuator(["ios"], available=lambda a: True) == "xcuitest"
 
 
-def test_xcuitest_is_known_but_not_implemented_yet() -> None:
-    # The ordering flip makes xcuitest a *known* actuator (derived from PLATFORMS) without a driver:
-    # it stays out of IMPLEMENTED, so it is never available and its capabilities cannot be read yet.
-    from bajutsu.backends import IMPLEMENTED, KNOWN_ACTUATORS, capabilities_for, default_available
+def test_xcuitest_is_known_but_not_yet_selectable() -> None:
+    # The ordering flip makes xcuitest a *known* actuator (derived from PLATFORMS), but its runner is
+    # not wired into selection yet: it stays out of IMPLEMENTED, so it is never available/selected.
+    # Its capabilities are nonetheless readable from the driver class (see the capabilities_for test).
+    from bajutsu.backends import IMPLEMENTED, KNOWN_ACTUATORS, default_available
 
     assert "xcuitest" in KNOWN_ACTUATORS
     assert "xcuitest" not in IMPLEMENTED
     assert default_available("xcuitest") is False
-    with pytest.raises(NotImplementedError, match="not implemented yet"):
-        capabilities_for("xcuitest")
 
 
 def test_select_actuator_falls_through_unavailable_platform() -> None:
@@ -307,3 +306,15 @@ def test_ensure_web_runtime_reports_install_failure(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr("subprocess.run", boom)
     with pytest.raises(RuntimeError, match="auto-install the web backend"):
         ensure_web_runtime(["web"])
+
+
+def test_capabilities_for_xcuitest_reads_the_driver_constant_without_a_device() -> None:
+    # BE-0019: the richer iOS actuator's capabilities are readable before its runner is wired into
+    # selection — reading the class constant constructs no driver and starts no runner.
+    from bajutsu.backends import capabilities_for
+    from bajutsu.drivers.xcuitest import XcuitestDriver
+
+    caps = capabilities_for("xcuitest")
+    assert caps == XcuitestDriver.CAPABILITIES
+    assert base.Capability.SEMANTIC_TAP in caps and base.Capability.MULTI_TOUCH in caps
+    assert base.Capability.NETWORK not in caps  # network rides on the app-side collector (BE-0020)
