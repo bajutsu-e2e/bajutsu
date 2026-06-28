@@ -53,7 +53,7 @@ idb is a subprocess CLI; XCUITest actuates from a test process resident on the S
 
 | Driver call | request | response |
 |---|---|---|
-| `query()` | `GET /elements` | the normalized `Element[]` JSON (same `identifier`/`label`/`value`/`traits`/`frame` shape idb produces, so `find_all` / `resolve_unique` are unchanged) |
+| `query()` | `GET /elements` | the normalized `Element[]` JSON — the same `identifier`/`label`/`value`/`traits`/`frame` shape idb produces (so `find_all` / `resolve_unique` are unchanged), **plus an opaque per-snapshot `handle` on each element** that the runner mints and Python round-trips into `tap` / `gesture` (see *Element addressing*). The handle is not a selector field, so matching is unaffected |
 | `tap(sel)` | `POST /tap {handle}` | ok / not-found — Python resolves the unique element from `query()` first (selection stays the determinism core), then sends that element's **snapshot handle**; XCUITest taps that exact element, not coordinates (see *Element addressing*) |
 | `pinch` / `rotate` | `POST /gesture {handle, kind, scale\|radians}` | ok — the two-finger gestures idb raises `UnsupportedAction` for |
 | `wait_for(sel)` | served by Python polling `GET /elements` (the orchestrator's condition wait), or the runner's native expectation behind the same bounded, sleep-free contract | ok/timeout |
@@ -90,7 +90,7 @@ XCUITest's capability set does **not** include `NETWORK`: it is a richer *actuat
 Split by what the fast gate can prove without a Simulator vs. what needs one:
 
 - **Fast gate (no device).** Registry: `--backend ios` prefers `xcuitest` when available and falls back to `idb` when not (drive `select_actuator` with an injected availability function); `capabilities_for("xcuitest")` returns the richer set. Driver: build the actuation requests and parse responses against an **injected fake HTTP transport** (mirroring how idb tests inject a fake `run`), asserting `tap` resolves a unique element then addresses it by the snapshot handle that element carried, `pinch`/`rotate` emit the gesture request, a `stale` response raises the vanished-element error, and an ambiguous selector still fails before any request. The lifecycle is testable here too: the readiness probe waits then times out cleanly against a fake transport, and a pool of two leases hands each driver a distinct port. No test puts the runner — or any LLM — on the `run`/CI gate.
-- **On-device (e2e path).** The real `BajutsuKit` runner against a booted Simulator on the heavier `e2e.yml` path: a scenario that taps by identifier and runs a pinch/rotate that idb cannot, plus a fallback run on a host where XCUITest is unavailable, confirming graceful degradation to idb.
+- **On-device (e2e path).** The real `BajutsuKit` runner against a booted Simulator on the heavier `e2e.yml` path: a scenario that resolves an element Python-side and actuates it via its snapshot handle, runs a pinch/rotate that idb cannot, plus a fallback run on a host where XCUITest is unavailable, confirming graceful degradation to idb.
 
 ## Alternatives considered
 
