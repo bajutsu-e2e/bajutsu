@@ -67,6 +67,8 @@ def test_secret_in_context_is_masked_before_send() -> None:
     redactor = Redactor(Redact(), values=["sk-secret-token"])
     ctx = _ctx(
         failure="auth failed with token sk-secret-token",
+        # `action` comes from the manifest and can embed typed text — it must be redacted too.
+        failed_step=FailedStep(0, "type into=auth.password text=sk-secret-token", "一致なし"),
         elements=[
             {
                 "identifier": "tok",

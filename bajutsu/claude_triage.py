@@ -107,9 +107,10 @@ TOOLS: list[dict[str, Any]] = [
 def _render(context: TriageContext, redactor: Redactor | None = None) -> str:
     """The user message: the failure context, laid out for the model to reason over.
 
-    Every textual field that could carry a secret — the failure message, the failed step's reason,
-    the failed expectations, the element tree, and the scenario YAML — is masked via `redactor`
-    before it reaches the model (BE-0047). The screenshot (sent in `_user_content`) cannot be.
+    Every textual field that could carry a secret — the failure message, the failed step's action
+    and reason, the failed expectations, the element tree, and the scenario YAML — is masked via
+    `redactor` before it reaches the model (BE-0047). The screenshot (sent in `_user_content`)
+    cannot be.
     """
     scrub = redactor.redact_text if redactor is not None else (lambda t: t)
     lines = [
@@ -118,7 +119,9 @@ def _render(context: TriageContext, redactor: Redactor | None = None) -> str:
     ]
     if context.failed_step is not None:
         fs = context.failed_step
-        lines.append(f"Failed step: [{fs.index}] {fs.action} — {scrub(fs.reason)}")
+        # `action` comes from the manifest and can embed typed text (e.g. a password), so scrub it
+        # too — not just `reason` (BE-0047).
+        lines.append(f"Failed step: [{fs.index}] {scrub(fs.action)} — {scrub(fs.reason)}")
     if context.target_id:
         lines.append(f"Target id of the failed step: {context.target_id}")
     if context.failed_expectations:
