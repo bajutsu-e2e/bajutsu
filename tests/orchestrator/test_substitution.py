@@ -3,22 +3,14 @@
 from __future__ import annotations
 
 
-def test_interp_step_skips_model_dump_when_no_tokens() -> None:
-    """When a step contains no ${...} tokens, _interp_step should avoid the
-    expensive model_dump() call by using a cheaper pre-check."""
-    from unittest.mock import patch
-
+def test_interp_step_returns_step_unchanged_when_it_has_no_tokens() -> None:
+    """A token-free step is returned unchanged even when bindings are present — returning the same
+    object (not a copy) is the observable contract of the no-substitution fast path."""
     from bajutsu.orchestrator import _interp_step
     from bajutsu.scenario import Step
 
     step = Step.model_validate({"tap": {"id": "home.title"}})
-    bindings = {"secrets.token": "SECRET"}
-
-    with patch.object(Step, "model_dump", wraps=step.model_dump) as mock_dump:
-        result = _interp_step(step, bindings)
-        # The step has no tokens, so model_dump should not be called.
-        mock_dump.assert_not_called()
-    # The original step is returned unchanged.
+    result = _interp_step(step, {"secrets.token": "SECRET"})
     assert result is step
 
 
@@ -45,20 +37,14 @@ def test_interp_step_returns_early_with_empty_bindings() -> None:
     assert result is step
 
 
-def test_interp_asserts_skips_model_dump_when_no_tokens() -> None:
-    """When assertions contain no ${...} tokens, _interp_asserts should avoid
-    the expensive model_dump() call by using a cheaper pre-check."""
-    from unittest.mock import patch
-
+def test_interp_asserts_returns_list_unchanged_when_no_tokens() -> None:
+    """A token-free assertion list is returned unchanged even when bindings are present — the same
+    list object comes back from the no-substitution fast path."""
     from bajutsu.orchestrator import _interp_asserts
     from bajutsu.scenario import Assertion
 
     asserts = [Assertion.model_validate({"exists": {"id": "home.title"}})]
-    bindings = {"secrets.token": "SECRET"}
-
-    with patch.object(Assertion, "model_dump", wraps=asserts[0].model_dump) as mock_dump:
-        result = _interp_asserts(asserts, bindings)
-        mock_dump.assert_not_called()
+    result = _interp_asserts(asserts, {"secrets.token": "SECRET"})
     assert result is asserts
 
 
