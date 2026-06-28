@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-crawl-ai-data-sovereignty-ja.md)
+**English** · [日本語](BE-0097-crawl-ai-data-sovereignty-ja.md)
 
-# BE-XXXX — AI data sovereignty for the crawl guide and serve-spawned AI paths
+# BE-0097 — AI data sovereignty for the crawl guide and serve-spawned AI paths
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-crawl-ai-data-sovereignty.md) |
+| Proposal | [BE-0097](BE-0097-crawl-ai-data-sovereignty.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | Candidates from competitive research (Maestro) |

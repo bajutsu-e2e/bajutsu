@@ -478,7 +478,7 @@ Maestro（mobile.dev）はオープンソースのクロスプラットフォー
 <!-- GENERATED:proposals-competitive-maestro -->
 | ID | 項目 | 状態 | 由来 |
 |---|---|---|---|
-| [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) | AI データ主権（プロバイダ非依存・秘匿化された AI 経路） | 提案 | Maestro |
+| [BE-0097](proposals/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md) | crawl ガイドと serve が起動する AI 経路の AI データ主権 | 提案 |  |
 <!-- /GENERATED:proposals-competitive-maestro -->
 
 ## 保留

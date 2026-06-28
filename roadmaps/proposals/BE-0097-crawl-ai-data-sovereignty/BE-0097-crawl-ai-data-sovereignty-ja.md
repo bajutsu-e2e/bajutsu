@@ -1,11 +1,11 @@
-[English](BE-XXXX-crawl-ai-data-sovereignty.md) · **日本語**
+[English](BE-0097-crawl-ai-data-sovereignty.md) · **日本語**
 
-# BE-XXXX — crawl ガイドと serve が起動する AI 経路の AI データ主権
+# BE-0097 — crawl ガイドと serve が起動する AI 経路の AI データ主権
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-crawl-ai-data-sovereignty-ja.md) |
+| 提案 | [BE-0097](BE-0097-crawl-ai-data-sovereignty-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トピック | 競合調査（Maestro）由来の候補 |
