@@ -71,7 +71,7 @@ A step enters the web context by naming the native WebView host element it scope
 - web:
     within: { id: checkout.webview }   # the native WKWebView element in the a11y tree
     steps:
-      - tap: { id: place-order }       # CSS / accessible-name selectors over the WebView's DOM
+      - tap: { id: place-order }       # id resolves against the normalized DOM (the element's data-testid)
       - assert: { exists: { id: order-confirmation } }
 ```
 
@@ -82,7 +82,10 @@ boundary is **detected** — the host is found by its native `id` in the a11y-tr
 entering the web context is an ordinary unique native match (an ambiguous or missing host fails
 the step before any DOM is touched, the same determinism rule). Inside the block, the selector
 grammar is unchanged in shape (`id` / `idMatches` / `label` / `traits` / `value` / `index`) but
-its `id` now means a CSS-addressable DOM identifier rather than an `accessibilityIdentifier`.
+its `id` now resolves against the normalized DOM's `Element.identifier` — the element's
+`data-testid`, the web backend's convention (`parse_dom` / `QUERY_JS`) — rather than an
+`accessibilityIdentifier`. It is the same stable identifier, not a general CSS selector: the
+runner never parses CSS, it matches the normalized `Element` tree exactly as on iOS.
 
 **Single active WebView per step (first slice).** A `web` block scopes to exactly one host, so
 exactly one WebView's DOM is in view while its steps run; the boundary opens at the block and
