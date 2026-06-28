@@ -65,8 +65,12 @@ ui-test:
 	cd $(ROOT) && uv run bajutsu codegen demos/showcase/scenarios/components.yaml --target showcase-swiftui \
 		--config $(CONFIG) -o demos/showcase/swiftui/UITests/ComponentsUITests.swift
 	cd $(SWIFTUI) && xcodegen generate
+	# -retry-tests-on-failure re-runs only a failed test (up to -test-iterations total, stopping
+	# on first pass) so a loaded CI Simulator's intermittent "Failed to terminate" between cases
+	# self-heals; a genuinely broken test still fails every attempt and trips the gate.
 	cd $(SWIFTUI) && xcodebuild test -project BajutsuShowcaseSwiftUI.xcodeproj -scheme UITests \
-		-destination 'platform=iOS Simulator,id=$(SIM)' -derivedDataPath build/dd
+		-destination 'platform=iOS Simulator,id=$(SIM)' -derivedDataPath build/dd \
+		-retry-tests-on-failure -test-iterations 3
 
 # Visual regression demo — every screen, for BOTH a11y toolkits. The two render the same
 # screens but not pixel-identically, so each keeps its own baseline dir (gitignored, regenerate
