@@ -160,8 +160,8 @@ def test_await_ready_uses_exponential_backoff(monkeypatch: pytest.MonkeyPatch) -
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.environment.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.environment.time.monotonic", lambda: clock)
 
     query_count = 0
 
@@ -194,7 +194,7 @@ def test_await_ready_returns_immediately_when_already_ready() -> None:
         def query(self) -> list[base.Element]:
             return [_el("a", "A"), _el("b", "B")]
 
-    import bajutsu.runner.launch as launch_mod
+    import bajutsu.environment as launch_mod
 
     orig_sleep = launch_mod.time.sleep
     launch_mod.time.sleep = lambda s: sleeps.append(s)
@@ -216,8 +216,8 @@ def test_await_ready_respects_timeout_on_sleep(monkeypatch: pytest.MonkeyPatch) 
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.environment.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.environment.time.monotonic", lambda: clock)
 
     class NeverReadyDriver:
         name = "never"
@@ -241,8 +241,8 @@ def test_await_ready_caps_poll_init_to_poll_max(monkeypatch: pytest.MonkeyPatch)
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.environment.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.environment.time.monotonic", lambda: clock)
 
     query_count = 0
 
@@ -285,8 +285,8 @@ def _install_bounded_clock(monkeypatch: pytest.MonkeyPatch) -> None:
         nonlocal clock
         clock += s
 
-    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.environment.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.environment.time.monotonic", lambda: clock)
 
 
 def test_await_ready_waits_for_ready_selector(monkeypatch: pytest.MonkeyPatch) -> None:
