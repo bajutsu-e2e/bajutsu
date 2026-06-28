@@ -197,7 +197,8 @@ adding a new one, and lands in two slices:
   `BAJUTSU_MAX_CONCURRENT_PER_ORG` (`0` = unlimited, so single-tenant is unchanged). A job over its
   org's cap is **rejected** (HTTP 429) today, mirroring the per-user cap. The unit tests pin the
   invariants on `ServeState` (no Mac): an org never exceeds its cap, a different org is unaffected,
-  the default is unlimited, and the per-user and per-org caps compose.
+  the default is unlimited, and the per-user and per-org caps compose. Landed in
+  [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367).
 - **Weighted-fair dispatch — remaining.** Turn that rejection into **holding**: replace the
   "reject with 429 when a cap is hit" tail (`_register_and_dispatch`, `bajutsu/serve/operations.py`)
   with **per-org pending queues** and a dispatcher that round-robins across orgs with pending work,
