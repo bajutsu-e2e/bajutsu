@@ -11,6 +11,7 @@ from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
+from bajutsu.network import NetworkExchange
 from bajutsu.runner import (
     Lease,
     run_all,
@@ -313,7 +314,6 @@ def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> N
 
 
 def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
-    from bajutsu.network import NetworkExchange
     from bajutsu.redaction import Redactor
     from bajutsu.runner.pipeline import _write_network
 
@@ -328,13 +328,13 @@ class _ConstantCollector:
     """A Collector that always reports the same exchanges (clear is a no-op) — test scaffolding so
     provenance/threading can be checked without live traffic during a fake run (BE-0020)."""
 
-    def __init__(self, exchanges: list[base.Element]) -> None:  # type: ignore[name-defined]
+    def __init__(self, exchanges: list[NetworkExchange]) -> None:
         self._ex = list(exchanges)
 
-    def snapshot(self):  # type: ignore[no-untyped-def]
+    def snapshot(self) -> list[NetworkExchange]:
         return list(self._ex)
 
-    def snapshot_timed(self):  # type: ignore[no-untyped-def]
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
         return [(e, 0.0) for e in self._ex]
 
     def clear(self) -> None:
@@ -346,7 +346,6 @@ class _ConstantCollector:
 
 def test_run_all_threads_collector_provider_and_discloses_skips(tmp_path: Path) -> None:
     from bajutsu.evidence import FileSink
-    from bajutsu.network import NetworkExchange
     from bajutsu.orchestrator import SkippedCapture
 
     ex = NetworkExchange(method="GET", path="/items", status=200)
