@@ -8,7 +8,7 @@ from xml.etree import ElementTree as ET
 
 from bajutsu import __version__
 from bajutsu.idb_version import IdbVersions
-from bajutsu.orchestrator import RunResult
+from bajutsu.orchestrator import RunResult, scenario_slug
 
 
 def _run_backend(results: list[RunResult]) -> str:
@@ -25,7 +25,33 @@ def _run_backend(results: list[RunResult]) -> str:
 # detected and its newer-only sections shown as "not captured" rather than failing (BE-0068).
 # v2 (BE-0005): optional top-level "idb" version provenance.
 # v3 (BE-0049): optional top-level "provenance" block (scenario hash + tool/git version).
-SCHEMA_VERSION = 3
+# v4 (BE-0076): optional top-level "matrix" block (engine x scenario aggregate of per-engine verdicts).
+SCHEMA_VERSION = 4
+
+
+def _matrix(results: list[RunResult]) -> dict[str, object] | None:
+    """Aggregate engine-tagged results into the engine x scenario pass/fail matrix (BE-0076).
+
+    Pure aggregation of the verdicts already in `results`: it derives the engine and scenario axes
+    (each in first-seen order) and a `cells[scenario][engine]` view of every per-engine verdict, so
+    a scenario green on one engine and red on another is the machine-detected incompatibility. None
+    for a single-engine / iOS run (no result carries an `engine`), so that path keeps the v1 shape.
+    """
+    if not any(r.engine for r in results):
+        return None
+    engines = list(dict.fromkeys(r.engine for r in results if r.engine))  # ordered-unique
+    scenarios = list(dict.fromkeys(r.scenario for r in results))
+    cells: dict[str, dict[str, dict[str, object]]] = {s: {} for s in scenarios}
+    for r in results:
+        # The runner stamps `sid` with the dir it actually wrote (`NN-slug`), so the cell links to
+        # the real `<engine>/<sid>` evidence; fall back to the slug only for a sid-less result.
+        sid = r.sid or scenario_slug(r.scenario)
+        cells[r.scenario][r.engine] = {
+            "ok": r.ok,
+            "sid": f"{r.engine}/{sid}",
+            "failure": r.failure,
+        }
+    return {"engines": engines, "scenarios": scenarios, "cells": cells}
 
 
 def run_provenance(
@@ -97,6 +123,11 @@ def manifest_dict(
         manifest["idb"] = {"companion": idb_versions.companion, "client": idb_versions.client}
     if provenance:
         manifest["provenance"] = provenance
+    # The engine x scenario matrix for a `--browsers` run (BE-0076), a pure aggregation of the
+    # per-engine verdicts already in `scenarios`. Omitted for a single-engine / iOS run, which keeps
+    # the v1 shape; `ok` above already aggregates every engine x scenario verdict (all-must-pass).
+    if (matrix := _matrix(results)) is not None:
+        manifest["matrix"] = matrix
     return manifest
 
 
@@ -112,11 +143,18 @@ def _details(r: RunResult) -> str:
 
 
 def junit_xml(results: list[RunResult]) -> str:
-    """One testcase per scenario; a failing scenario gets a <failure>."""
+    """One testcase per scenario; a failing scenario gets a <failure>.
+
+    On a `--browsers` cross-engine run each result carries its `engine`, so the case is keyed by it
+    (`classname="bajutsu.<engine>"`) — CI then sees `chromium.login` and `webkit.login` as distinct
+    cases and attributes a per-engine failure without reading the manifest (BE-0076). A single-engine
+    result has no `engine`, so its classname stays `bajutsu`.
+    """
     failures = sum(0 if r.ok else 1 for r in results)
     suite = ET.Element("testsuite", name="bajutsu", tests=str(len(results)), failures=str(failures))
     for r in results:
-        case = ET.SubElement(suite, "testcase", name=r.scenario, classname="bajutsu")
+        classname = f"bajutsu.{r.engine}" if r.engine else "bajutsu"
+        case = ET.SubElement(suite, "testcase", name=r.scenario, classname=classname)
         if not r.ok:
             failure = ET.SubElement(case, "failure", message=r.failure or "failed")
             failure.text = _details(r)

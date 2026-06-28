@@ -272,6 +272,34 @@ def test_unknown_browser_engine_exits_cleanly(tmp_path: Path, command: str) -> N
     assert "unknown --browser" in r.output
 
 
+def test_parse_browsers_dedupes_and_validates() -> None:
+    # --browsers parses a comma list, trims/drops blanks, and de-dupes while keeping order (BE-0076).
+    from bajutsu.cli.commands.run import _parse_browsers
+
+    assert _parse_browsers("chromium, firefox ,webkit") == ["chromium", "firefox", "webkit"]
+    assert _parse_browsers("chromium,chromium") == ["chromium"]  # de-duped
+    assert _parse_browsers("") == []  # absent → no matrix
+
+
+def test_parse_browsers_rejects_unknown_engine() -> None:
+    import typer
+
+    from bajutsu.cli.commands.run import _parse_browsers
+
+    with pytest.raises(typer.Exit) as exc:
+        _parse_browsers("chromium,safari")
+    assert exc.value.exit_code == 2
+
+
+def test_browsers_unknown_engine_exits_cleanly(tmp_path: Path) -> None:
+    # The matrix flag validates the same way --browser does: an unknown engine exits 2 up front.
+    cfg, scn = _write(tmp_path)
+    argv = _argv("run", cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo")
+    r = runner.invoke(app, [*argv, "--browsers", "chromium,safari"])
+    assert r.exit_code == 2
+    assert "safari" in r.output
+
+
 def test_doctor_web_target_requires_base_url() -> None:
     # Forcing the web backend on a target with no baseUrl (e.g. an iOS target) exits cleanly (2)
     # with a fixable message, rather than constructing a browser with nowhere to navigate.

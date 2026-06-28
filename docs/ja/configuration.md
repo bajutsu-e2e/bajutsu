@@ -53,7 +53,7 @@ targets:
 | `bundle_id` | app | iOS のターゲット。`base_url` が無いとき必須 |
 | `base_url` | app | web のターゲット URL（Playwright backend）。web では `bundle_id` の代わりに必須 |
 | `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
-| `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きします（フラグ > config > 既定）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/in-progress/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
+| `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
 | `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
@@ -132,6 +132,12 @@ OAuth ログイン時にユーザは自分の org に割り当てられます（
 ## CLI からの選択
 
 CLI（コマンドラインインターフェース）のすべてのコマンドは、`--target <name>` で 1 つのターゲットを選択し、`--config`（既定 `bajutsu.config.yaml`）で config を指定します。`--backend ios`（またはプラットフォーム/actuator のカンマ区切り）で解決順序を上書きできます（[cli](cli.md)）。
+
+### クロスブラウザマトリクス（`--browsers`、BE-0076）
+
+`bajutsu run --browsers chromium,firefox,webkit` は、選んだシナリオをエンジンごとに 1 回ずつ実行し、**エンジン × シナリオの合否マトリクス**を 1 つ出力します。これは `--browser` と同じエンジン軸を複数指定する書き方で（web backend のみ。`--browsers chromium` は `--browser chromium` と同じであり、エンジンが 1 つなら通常の単一エンジン経路を通ります）、**指定したすべてのエンジンがすべてのシナリオに合格したときだけ**緑になります（all-must-pass）。Chromium と Firefox では緑なのに WebKit では赤になるシナリオは、描画エンジンの非互換が機械的に検出された箇所です。「Chrome では動くが Safari では壊れる」という、単一エンジンのテストでは決して見えない不具合がこれにあたります。判定はエンジンごとの既存の決定的な `run` の結果を集約したものに過ぎず、AI は判定に入りません。
+
+各エンジンは専用のブラウザプールに対する独立した 1 パスなので、その証跡は `runs/<id>/<engine>/<NN-scenario>/` の下に置かれ、エンジン間で衝突しません。実行後は run のルートに `manifest.json`・`junit.xml`・`report.html` を **1 組だけ**まとめます。manifest はエンジンごとの判定を集約した `matrix` ブロックを持ち、report はエンジン × シナリオのグリッドを描画し、JUnit は各ケースにエンジンを織り込むので（`classname="bajutsu.<engine>"`）、CI からは `chromium.login` と `webkit.login` が別々のケースに見えます（[reporting](reporting.md#manifestjson)）。リストに未知のエンジンがあれば、`--browser` と同じく、どのブラウザも起動する前に終了コード 2 で終わります。3 つのエンジンはいずれも Linux 上でヘッドレス実行できるため、マトリクスは Mac もデバイスファームも要らず通常のゲート内で走ります。firefox／webkit のバイナリは実行時に取得します。
 
 ### Git リポジトリからの config（BE-0063）
 

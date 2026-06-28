@@ -66,7 +66,9 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    assert data["schemaVersion"] == 3  # bumped for the optional run-provenance block (BE-0049)
+    assert (
+        data["schemaVersion"] == 4
+    )  # bumped for the optional cross-browser matrix block (BE-0076)
     assert data["sourceName"] == "smoke.yaml"
 
 

@@ -7,8 +7,8 @@
 |---|---|
 | 提案 | [BE-0076](BE-0076-web-cross-browser-engines-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
-| 実装 PR | [#355](https://github.com/bajutsu-e2e/bajutsu/pull/355) |
+| 状態 | **実装済み** |
+| 実装 PR | [#355](https://github.com/bajutsu-e2e/bajutsu/pull/355), [#360](https://github.com/bajutsu-e2e/bajutsu/pull/360) |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
 <!-- /BE-METADATA -->
 
@@ -119,7 +119,11 @@ web アクチュエータについては**どのエンジンが導入済みか**
 `run` / `record` の `--browser` フラグ（フラグ > config > 既定の優先順位）、`PlaywrightDriver` / `make_driver` /
 web environment / `doctor` を貫くエンジンの引き回し、そして `ensure_web_runtime` での実行時 `playwright install <engine>` を、
 いずれも fake starter を使った高速な `make check` ゲート（実ブラウザなし）で確認しています。実機での firefox / webkit の起動は
-web-e2e の経路に委ねます。**第 2 段階（`--browsers` マトリクス）はまだ未実装で**、以下の後続作業として残しています。
+web-e2e の経路に委ねます。**第 2 段階（`--browsers` マトリクス）は出荷済みです。** `run` の `--browsers` フラグ、
+エンジンごとに 1 パスを回すファンアウト（`run_matrix_and_report`。証跡を `run_dir/<engine>/<sid>` の下に書く）、
+エンジンでタグ付けする `RunResult.engine`、manifest の `matrix` ブロックと all-must-pass の `ok`、エンジンを織り込んだ
+JUnit の `classname="bajutsu.<engine>"`、そして `report.html` のエンジン × シナリオのグリッドを、いずれも fake な lease を使った
+高速ゲートで確認しています。実機でのクロスエンジン実行は web-e2e の経路に残します。
 
 ### 第2段階（クロスブラウザマトリクス）
 
