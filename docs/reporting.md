@@ -74,7 +74,7 @@ verbatim.
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It lets accumulated runs be grouped by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like the `idb`
-  version block, it never enters `ok`. (`schemaVersion` is `3` once this block can appear.)
+  version block, it never enters `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
 - `idb` (top, optional): the `idb_companion` / client versions, when idb drove the run (BE-0005).
 - `matrix` (top, optional): the cross-browser engine × scenario grid, present only on a
   `bajutsu run --browsers` run ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
