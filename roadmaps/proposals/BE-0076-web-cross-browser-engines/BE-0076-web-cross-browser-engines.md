@@ -68,46 +68,151 @@ scenario, app-agnosticism (#3) holds: the same scenario YAML runs unchanged on e
 
 **The axis.** A new `--browser <engine>` option on `run` and `record`, where `<engine>` is one of
 `chromium` (default, preserving today's behaviour), `firefox`, or `webkit`. A matching config
-default lets a target pin its engine without a flag (e.g. an `apps.<name>.browser` key resolved by
-`config.py`, defaulting to `chromium`). The flag overrides the config; the config overrides the
-built-in default — the same precedence the existing web options follow.
+default lets a target pin its engine without a flag: a `targets.<name>.browser` key, resolved by
+`config.py` into `Effective`, defaulting to `chromium`. The precedence mirrors the existing
+`headless` / `--headed` knob exactly — flag > config > built-in default.
+
+`config.py` already carries a web-only field that is the precise template here: `TargetConfig.headless`
+(`bool = True`) resolves into `Effective.headless`, and `run` overrides it with
+`replace(eff, headless=not headed)` when `--headed/--no-headed` is given. The `browser` axis adds
+the same three pieces in lockstep:
+
+1. **Config field.** `TargetConfig.browser: str = "chromium"` (web-only, iOS ignores it), validated
+   against `{"chromium", "firefox", "webkit"}` with a `field_validator` so a typo fails at load time
+   — the same loud-at-load pattern `Defaults._valid_idb_version` uses, not a crash mid-run.
+2. **Resolution into `Effective`.** A `browser: str = "chromium"` field on the frozen `Effective`
+   dataclass, populated in `resolve()` straight from `a.browser` (a per-target knob, like `headless`,
+   not a `defaults`-merged one).
+3. **Flag override.** A `--browser <engine>` option on `run` / `record` that, when set, applies
+   `eff = replace(eff, browser=<engine>)` — the exact shape of today's `--headed` override, validated
+   to the same three-engine set so an unknown value exits 2 rather than reaching Playwright.
 
 **Threading it through the one seam.** Engine selection touches only the web backend's
-construction path; the deterministic core is untouched.
+construction path; the deterministic core (`base.resolve_unique` / `find_all`, the `query()`
+snapshot, the orchestrator) is untouched. Today the engine is fixed three layers down:
+`PlaywrightDriver.__init__` defaults `starter: Starter = _start_chromium`, where
+`Starter = Callable[[bool], _Started]` and `_start_chromium(headless)` calls `pw.chromium.launch(...)`.
+The change generalizes that one closure over the engine name.
 
 | Seam | Today | Change |
 |---|---|---|
-| `bajutsu/drivers/playwright.py` | `_start_chromium(headless)` → `pw.chromium.launch(...)` | `_start_browser(engine, headless)` selecting `pw.chromium` / `pw.firefox` / `pw.webkit`; `PlaywrightDriver` takes a `browser` argument |
-| `bajutsu/backends.py` `make_driver` | `PlaywrightDriver(base_url, headless=headless)` | also forward the resolved `browser` |
-| `bajutsu/backends.py` `ensure_web_runtime` | `playwright install chromium` | install the requested engine(s) on demand (`chromium` / `firefox` / `webkit`) |
-| `pyproject.toml` / CI | Chromium only | optionally install firefox + webkit for the cross-engine job |
+| `bajutsu/drivers/playwright.py` | `_start_chromium(headless)` → `pw.chromium.launch(headless=…, slow_mo=…)`; `PlaywrightDriver(…, starter=_start_chromium)` | a `_start_browser(engine)` factory returning a `Starter` that launches `getattr(pw, engine)` (`pw.chromium` / `pw.firefox` / `pw.webkit`); `PlaywrightDriver` takes a `browser: str = "chromium"` argument and builds its starter from it, so `relaunch()` (which re-invokes `self._starter`) rebuilds the *same* engine |
+| `bajutsu/backends.py` `make_driver` | `make_driver(actuator, udid, *, base_url, headless, record_video_dir)` → `PlaywrightDriver(base_url, headless=headless, …)` | add a `browser: str = "chromium"` keyword and forward it: `PlaywrightDriver(base_url, headless=headless, browser=browser, …)` |
+| `bajutsu/runner/launch.py` `launch_driver` | calls `make_driver(actuator, udid, base_url=eff.base_url, headless=eff.headless, …)` | also pass `browser=eff.browser` (the one call site that builds a web driver for a run; `doctor._current_screen` constructs `PlaywrightDriver` directly and gains the same `browser=eff.browser`) |
+| `bajutsu/backends.py` `ensure_web_runtime` | no-op when Playwright is already importable; only when web is requested *and* Playwright is missing does it `uv pip install playwright` + `playwright install chromium` | when it provisions a missing Playwright (and as a follow-on engine-install step regardless), install the requested engine(s) — `playwright install <engine>` for one, `playwright install firefox webkit` (plus chromium) for the matrix; see below |
+| `.github/workflows/web-e2e.yml` / docs | `playwright install --with-deps chromium` | a cross-engine job installs `firefox webkit` too; the Playwright-browser cache key (already `hashFiles('uv.lock')`) is unchanged |
 
-`record` drives whichever engine is selected (it is AI authoring against a driver — no extra work
-beyond passing the flag through). The selector mapping, the `query()` DOM walk, the
-resolve-through-the-core actuation, and `capabilities()` are engine-independent and stay as they
-are; the QUERY_JS snapshot is standard DOM and runs identically on all three engines.
+`record` drives whichever engine is selected: it is AI authoring against the same `Driver`
+interface, so passing `eff.browser` through `launch_driver` is the whole change — the recorded YAML
+stays engine-neutral. The selector mapping (`_ROLE_MAP`), the `query()` DOM walk over `QUERY_JS`,
+the resolve-through-the-core actuation, the health signals (`pageerror` / main-frame status /
+`dialog`), and `capabilities()` are all engine-independent and unchanged; `QUERY_JS` is standard
+DOM and `getBoundingClientRect` geometry that runs identically on all three engines.
+
+**On-demand install.** `ensure_web_runtime(backends)` today is a no-op unless a web backend is
+requested *and* the Playwright package is missing: it early-returns when web isn't requested or when
+`_playwright_available()` (an import probe) is already true, and only on the missing path does it
+`uv pip install playwright` then `playwright install chromium`. That package probe doesn't
+distinguish *which browser binaries* are present, so installing firefox/webkit needs a per-engine
+check rather than the single package probe. The design: after the package is
+ensured, run `playwright install <engines>` for the engines this run needs (the resolved
+`eff.browser`, or the `--browsers` list). `playwright install` is **idempotent** — the web-e2e
+workflow comment already relies on this ("a stale browser is simply re-downloaded") — so it is safe
+to call unconditionally for the requested engines; a missing binary is fetched and a present one is
+a fast no-op. This keeps the auto-provisioning contract (`make serve` adds idb, a web run adds
+Playwright) intact while widening it to the chosen engine.
+
+**`doctor` reporting.** `doctor` already gates runnability via `preflight.runnability(actuator, …)`
+and prints a fixable checklist. For the web actuator it should report **which engines are installed**
+(a per-engine presence check, e.g. probing `playwright install --dry-run` output or the browser
+registry path), so "you asked for `webkit` but only `chromium` is installed" surfaces here with a
+one-line fix rather than as a confusing downstream launch failure — the same role the idb-version
+check plays for iOS.
 
 ### Phase 2 — cross-browser matrix
 
 **The fan-out.** A `--browsers <list>` option on `run` (e.g. `--browsers chromium,firefox,webkit`)
-runs each selected scenario once per listed engine. This reuses the parallel-lane machinery from
-[BE-0054](../../implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md): a `BrowserContext`
-is a near-free "device", so each (scenario, engine) pair is an independent lane in the device pool's
-web branch. `--browsers chromium` is exactly `--browser chromium`; the two options are the
-single-engine and multi-engine spellings of one axis.
+runs each selected scenario once per listed engine. `--browsers chromium` is exactly
+`--browser chromium`; the two options are the single-engine and multi-engine spellings of one axis,
+so a single-engine run never pays for the matrix machinery.
 
-**The deliverable — an engine × scenario matrix.** The report (`manifest.json` + `report.html`)
-gains an engine dimension: every (scenario, engine) cell carries that run's deterministic verdict
-and its evidence (kept in per-engine subdirectories so artifacts never collide). The matrix view
-makes engine-specific breakage legible at a glance — a row green on Chromium and Firefox but red on
-WebKit is the machine-detected incompatibility this item exists to find. JUnit output keys results
-by engine (engine as a suite/classname axis) so CI sees per-engine cases.
+**How the fan-out maps onto the run pipeline — sequential per engine.** The run is structured as a
+**loop over engines, each engine a full `run_and_report`-shaped pass**, rather than mixing engines
+inside one device pool. The reason is concrete: `device_pool` selects exactly one actuator
+(`select_actuator(backends)`) and builds one kind of lane, and `_resolve_lanes` already turns
+`--workers N` into N near-free `web-{i}` `BrowserContext` lanes *for one engine*. Reusing
+[BE-0054](../../implemented/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)'s
+parallel lanes **within** an engine (so `--workers` still parallelizes scenarios) while iterating
+engines **around** that pool keeps each engine's pool homogeneous and avoids threading a per-lane
+engine through `device_pool` / `launch_driver` / the collector wiring. Each engine pass leases its
+own pool, runs the selected scenarios via the existing `run_all`, and produces a per-engine result
+list and evidence tree; the matrix is the assembly of those passes. (A future optimization could run
+engines concurrently — they are independent processes — but sequential-per-engine is the v1 because
+it reuses the existing single-engine path unchanged and keeps evidence directories trivially
+non-colliding.)
 
-**Verdict semantics.** A `--browsers` run is green only if **every** requested engine passes every
-selected scenario; any engine-specific failure fails the run. This keeps the cross-browser run a
-genuine deterministic gate rather than advisory reporting. (Whether an engine can be marked
-"advisory / non-blocking" — to track a known WebKit gap without failing CI — is a possible refinement,
-noted under Alternatives, not v1.)
+**Evidence layout — no collisions.** Today `run_all` writes each scenario's artifacts under
+`run_dir/<sid>` where `sid = f"{i:02d}-{scenario_slug(s.name)}"`. The matrix prefixes that with the
+engine: `run_dir/<engine>/<sid>` (e.g. `chromium/00-login`, `webkit/00-login`), so the same scenario
+on two engines never overwrites the other's `network.json`, screenshots, or video — each engine pass
+is handed its own `run_dir` subtree.
+
+**The deliverable — an engine × scenario matrix in the manifest.** `manifest.json` is the run's
+single source of truth (`manifest_dict` → `"scenarios": [asdict(r) for r in results]`,
+`"ok": all(r.ok …)`). The matrix extends this without breaking the v1 shape: each `RunResult`
+already carries a `backend` field, so the natural representation is **one flat list of results tagged
+by engine** plus an aggregate matrix view. Concretely:
+
+- Each per-engine `RunResult` records its engine. `RunResult.backend` is `"playwright"` for every
+  web result today, so rather than overload it, add an explicit `engine: str = ""` field (empty for
+  iOS / single-engine) populated per pass — keeping `backend` meaning the actuator and `engine`
+  meaning the rendering engine.
+- The manifest gains a top-level `"matrix"` block: `{ engines: ["chromium","firefox","webkit"],
+  scenarios: [<name>…], cells: { "<scenario>": { "<engine>": {ok, sid, failure} } } }` — a pure
+  aggregation of the per-engine verdicts already in `scenarios`. `report.html` renders this as the
+  engine × scenario grid where a row green on Chromium and Firefox but red on WebKit is the
+  machine-detected incompatibility this item exists to find.
+- JUnit (`junit_xml`) today emits one `<testcase classname="bajutsu">` per scenario. The matrix keys
+  the engine into the case: `classname="bajutsu.<engine>"` (or a per-engine `<testsuite>`), so CI
+  sees `chromium.login` and `webkit.login` as distinct cases and a per-engine failure is attributable
+  in the CI UI without reading the manifest.
+
+**Verdict semantics — machine-only, all-must-pass.** A `--browsers` run is green only if **every**
+requested engine passes every selected scenario (`manifest["ok"] = all(r.ok for r in every engine's
+results)`); any engine-specific failure fails the run. Each cell's `ok` is the existing deterministic
+`run` verdict — machine assertions only, condition-waited, no fixed sleep, **no LLM** — and the
+matrix is pure aggregation of those booleans, so prime directive #1 holds by construction: nothing in
+the gate consults a model. (Whether an engine can be marked "advisory / non-blocking" — to track a
+known WebKit gap without failing CI — is a possible refinement, noted under Alternatives, not v1.)
+
+### Validation plan
+
+The work splits cleanly across the two gates the project already runs (CLAUDE.md "the gate"):
+
+**Fast `make check` gate (no browser, Linux, the bulk of the coverage).** Everything except the
+actual browser launch is browser-free and unit-testable with fakes, matching the existing web tests
+that drive `parse_dom` and an injected `_Page` without Playwright:
+
+- *Engine resolution & precedence.* Assert `resolve()` yields `Effective.browser == "chromium"` by
+  default, honours `targets.<name>.browser`, and that the `--browser` override wins over config — the
+  three-tier precedence, tested the same way the `headless` / `--headed` precedence is.
+- *Validation.* An invalid `browser` value fails at config load (the `field_validator`) and an
+  invalid `--browser` flag exits 2 — both without touching a browser.
+- *Threading.* A fake `Starter` (the existing test seam — `PlaywrightDriver(starter=…)`) records the
+  engine it was asked for, proving `make_driver` / `launch_driver` forward `eff.browser` end to end.
+- *Matrix assembly.* Feed the manifest/JUnit builders synthetic per-engine `RunResult`s (a green
+  Chromium + a red WebKit for the same scenario) and assert the `"matrix"` block, the aggregate
+  `ok`, the per-engine evidence prefixes, and the engine-keyed JUnit cases — all from data, no
+  browser. This is where the "red on one engine, green on another is surfaced" contract is locked in
+  deterministically.
+
+**Web-e2e path (real browsers, Linux, heavier — not in `make check`).** `web-e2e.yml` already drives
+a real headless Chromium against `demos/web`. Extend it with a cross-engine job that installs
+`firefox webkit`, runs a representative `demos/web` scenario under each engine, and asserts the
+per-engine verdicts — plus one fixture that deliberately depends on an engine-divergent behaviour, to
+prove end to end that the matrix flags a genuine engine-specific failure (red on one, green on the
+others) rather than silently passing. This is gated by a path filter like today's web-e2e and is not
+a required check, so it adds the real cross-engine signal without slowing the fast gate.
 
 ### Determinism, app-agnosticism, and the gate
 
@@ -119,14 +224,6 @@ noted under Alternatives, not v1.)
   cross-engine path is exercised by the same `make check` / web-e2e CI job as the current Chromium
   path — no Mac, no emulator. The one real cost is CI download/cache of the Firefox and WebKit
   browser builds for the cross-engine job (Chromium-only runs are unaffected).
-
-### The test contract (machine-checkable)
-
-The `demos/web` scenarios already run deterministically on the web backend in CI. This item extends
-that net: run a representative scenario under each engine and assert the per-engine verdicts, and add
-a fixture that deliberately depends on an engine-divergent behaviour to prove the matrix actually
-flags an engine-specific failure (red on one engine, green on the others) rather than silently
-passing.
 
 ### Relationship to existing items
 
@@ -183,6 +280,12 @@ passing.
 * [BE-0029 — Visual-regression assertions](../../implemented/BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md),
   [BE-0062 — Playwright codegen](../../implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)
   — adjacent, out-of-scope follow-ups.
-* `bajutsu/drivers/playwright.py` (`_start_chromium`), `bajutsu/backends.py` (`make_driver`,
-  `ensure_web_runtime`), `bajutsu/runner/pool.py` (the web lane branch) — the seams this changes;
-  [drivers.md](../../../docs/drivers.md), [multi-platform.md](../../../docs/multi-platform.md).
+* The seams this changes: `bajutsu/drivers/playwright.py` (`_start_chromium`, the `Starter` type,
+  `PlaywrightDriver.__init__`), `bajutsu/backends.py` (`make_driver`, `ensure_web_runtime`,
+  `capabilities_for`), `bajutsu/runner/launch.py` (`launch_driver`), `bajutsu/runner/pool.py` (the web
+  lane branch + `_resolve_lanes`' `web-{i}` lanes), `bajutsu/config.py`
+  (`TargetConfig.headless` → `Effective.headless` → `resolve`, the template the `browser` field
+  follows), `bajutsu/cli/commands/run.py` / `record.py` (the `--headed` override the `--browser` flag
+  mirrors), `bajutsu/report/manifest.py` (`manifest_dict`, `junit_xml`), and
+  `.github/workflows/web-e2e.yml`; [drivers.md](../../../docs/drivers.md),
+  [multi-platform.md](../../../docs/multi-platform.md).
