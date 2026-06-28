@@ -16,6 +16,7 @@
 
 ```yaml
 defaults:                       # 全ターゲット共通の既定
+  platform: ios                 # チーム共通の既定プラットフォーム(ios/android/web)。省略すると各ターゲットの backend から導出
   backend: [ios]                # 順序付きリスト。プラットフォーム(ios/android/web/fake)か actuator(idb)。単一文字列も可
   device:  "iPhone 15"
   locale:  en_US
@@ -35,6 +36,7 @@ targets:
     # 任意: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 
   web:                          # web ターゲット（Playwright backend）は URL で指定する
+    platform:  web                                  # 任意: 通常は backend や baseUrl から導出されるが、明示すると最も明確
     baseUrl:   "http://127.0.0.1:8787/index.html"   # web では必須（bundleId の代わり）
     backend:   [web]
     headless:  true                                 # web のみ: false でブラウザを画面に表示（--headed が実行ごとに上書き）
@@ -42,7 +44,7 @@ targets:
     scenarios: demos/web/scenarios
 ```
 
-ターゲット項目には `bundleId`（iOS）か `baseUrl`（web）の**どちらか**が必要で、どちらも無い config は読み込み時に拒否されます。[drivers → Playwright](drivers.md#playwrightweb) と `demos/web` を参照してください。
+各プラットフォームはターゲットを自分のハンドルで指定します。**iOS** は `bundleId`、**web** は `baseUrl`、**Android** は `package` です。ターゲットの `platform` がどのハンドルを必須にするかを選びます。`platform` は**任意**で、未指定なら `backend` が含意するプラットフォームに既定化されます（この項目を追加する前の config はそのまま動きます）。曖昧さを避けたいときは明示してください。プラットフォームに対して誤ったハンドルを持つ（あるいは 1 つも持たない）ターゲットは読み込み時に拒否されます。[drivers → Playwright](drivers.md#playwrightweb) と `demos/web` を参照してください。
 
 ### 解決（`resolve` → `Effective`）
 
@@ -50,8 +52,10 @@ targets:
 
 | `Effective` フィールド | 由来 | 備考 |
 |---|---|---|
-| `bundle_id` | app | iOS のターゲット。`base_url` が無いとき必須 |
-| `base_url` | app | web のターゲット URL（Playwright backend）。web では `bundle_id` の代わりに必須 |
+| `platform` | app < defaults < 導出 | ターゲットのプラットフォーム（`ios`/`android`/`web`）。明示 `platform` が優先、なければターゲットの `backend` が含意、なければ存在する識別子、それも無ければ `ios`。どの識別子を必須にするかを選びます（[BE-0009](../../roadmaps/implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)） |
+| `bundle_id` | app | iOS のターゲット識別子。プラットフォームが `ios` のとき必須 |
+| `base_url` | app | web のターゲット URL（Playwright backend）。プラットフォームが `web` のとき必須 |
+| `package` | app | Android のターゲット識別子。プラットフォームが `android` のとき必須 |
 | `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
 | `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
 | `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |

@@ -117,6 +117,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 <!-- GENERATED:implemented-platform -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0009](implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | Implemented |
 | [BE-0010](implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Implemented |
 | [BE-0076](implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md) | Selectable browser engines & cross-browser compatibility matrix (web backend) | Implemented |
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |

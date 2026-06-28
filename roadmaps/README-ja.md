@@ -109,6 +109,7 @@
 <!-- GENERATED:implemented-platform -->
 | ID | 項目 | 状態 |
 |---|---|---|
+| [BE-0009](implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md) | 抽象のクロスプラットフォーム化 | 実装済み |
 | [BE-0010](implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md) | スコープ文の更新 | 実装済み |
 | [BE-0076](implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md) | ブラウザエンジンの選択とクロスブラウザ互換マトリクス（web backend） | 実装済み |
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) | run の前に capability をプリフライト検査する | 実装済み |

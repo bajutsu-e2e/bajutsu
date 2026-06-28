@@ -112,10 +112,27 @@ class AiSettings(_Model):
         return v
 
 
+def _check_platform(v: str | None) -> str | None:
+    """Reject an unknown `platform` token at load time, so a typo fails loudly here.
+
+    `None` means "derive the platform from the backend", so it passes through (BE-0009 Slice 4).
+    """
+    if v is None:
+        return v
+    from bajutsu.backends import PLATFORMS
+
+    if v not in PLATFORMS:
+        raise ValueError(f"invalid platform {v!r}: use one of {', '.join(PLATFORMS)}")
+    return v
+
+
 class Defaults(_Model):
     """Team-wide defaults under `defaults:`, overlaid by each target (see `resolve`)."""
 
     backend: list[str] = Field(default_factory=lambda: ["idb"])
+    # Team-wide default platform (ios / android / web), overridable per target. None derives each
+    # target's platform from its backend (BE-0009 Slice 4), so an existing config is unchanged.
+    platform: str | None = None
     device: str = "iPhone 15"
     locale: str = "en_US"
     capture: list[str] = Field(
@@ -136,6 +153,11 @@ class Defaults(_Model):
     def _norm(cls, v: Any) -> Any:
         return _as_list(v)
 
+    @field_validator("platform")
+    @classmethod
+    def _valid_platform(cls, v: str | None) -> str | None:
+        return _check_platform(v)
+
     @field_validator("idb_version")
     @classmethod
     def _valid_idb_version(cls, v: str | None) -> str | None:
@@ -151,13 +173,18 @@ class Defaults(_Model):
 class TargetConfig(_Model):
     """One app's config under `targets.<name>`, overriding `defaults` for that target."""
 
-    # iOS apps identify the target by bundleId; web apps by baseUrl instead. One of the two is
-    # required (the validator below) — defaulting bundleId to "" keeps every iOS `eff.bundle_id`
-    # call site a plain `str` while letting a web app omit it.
+    # The platform this target runs on (ios / android / web). None derives it from the backend
+    # (BE-0009 Slice 4), so a config written before this field is unchanged; an explicit value is
+    # authoritative and selects which identifier below is required.
+    platform: str | None = None
+    # Each platform identifies the target by its own handle: iOS by bundleId, web by baseUrl, Android
+    # by package. The required one is validated for the resolved platform (see Config below); defaulting
+    # the string ones to "" keeps every `eff.bundle_id` / `eff.package` call site a plain `str`.
     bundle_id: str = Field(default="", alias="bundleId")
     base_url: str | None = Field(
         default=None, alias="baseUrl"
     )  # web target (e.g. http://host/page)
+    package: str = Field(default="", alias="package")  # Android target (e.g. com.example.app)
     # Web backend only: run with a visible (headed) browser instead of headless. iOS ignores it.
     # The `bajutsu run --headed/--no-headed` flag (and the Web UI's "Show browser" toggle) override.
     headless: bool = True
@@ -207,6 +234,11 @@ class TargetConfig(_Model):
     def _norm(cls, v: Any) -> Any:
         return _as_list(v) if v is not None else v
 
+    @field_validator("platform")
+    @classmethod
+    def _valid_platform(cls, v: str | None) -> str | None:
+        return _check_platform(v)
+
     @field_validator("browser")
     @classmethod
     def _valid_browser(cls, v: str) -> str:
@@ -218,10 +250,11 @@ class TargetConfig(_Model):
 
     @model_validator(mode="after")
     def _need_target(self) -> TargetConfig:
-        # A malformed target entry (neither bundleId nor baseUrl) still fails fast, so dropping
-        # bundleId's required-ness for web doesn't silently accept a target-less iOS app.
-        if not self.bundle_id and not self.base_url:
-            raise ValueError("target needs bundleId (iOS) or baseUrl (web)")
+        # A malformed target entry (no identifier at all) still fails fast. The platform-aware check
+        # that the *right* identifier is present for the resolved platform lives on Config (it needs
+        # defaults to derive the platform).
+        if not self.bundle_id and not self.base_url and not self.package:
+            raise ValueError("target needs bundleId (iOS), baseUrl (web), or package (Android)")
         return self
 
 
@@ -244,6 +277,20 @@ class Config(_Model):
     defaults: Defaults = Field(default_factory=Defaults)
     targets: dict[str, TargetConfig] = Field(default_factory=dict)
     orgs: dict[str, OrgConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _targets_carry_their_platform_identifier(self) -> Config:
+        # Each target must carry the identifier its resolved platform needs (iOS bundleId / web
+        # baseUrl / Android package). Validated here, not on TargetConfig, because deriving the
+        # platform from the backend needs `defaults` (BE-0009 Slice 4). Backward compatible: a config
+        # with no `platform` derives it from the backend, so existing iOS/web targets already pass.
+        for name, t in self.targets.items():
+            backend = t.backend or self.defaults.backend
+            platform = _effective_platform(t, self.defaults, backend)
+            identifier = _PLATFORM_IDENTIFIER.get(platform)
+            if identifier is not None and not getattr(t, identifier[1]):
+                raise ValueError(f"target {name!r} (platform {platform}) needs {identifier[0]}")
+        return self
 
 
 # The single tenant every unassigned user and target falls into; keep in sync with serve's
@@ -328,6 +375,11 @@ class Effective:
     # JSON Schema directory for `responseSchema` assertions. None = fall back to
     # schemas/ beside the scenario file (or --schemas CLI flag).
     schemas: str | None = None
+    # The resolved platform (ios / android / web): explicit, else from defaults, else derived from
+    # the backend (BE-0009 Slice 4). The discriminator a platform-specific path keys off.
+    platform: str = "ios"
+    # Android target identifier (peer of bundle_id / base_url). "" for non-Android targets.
+    package: str = ""
     # Web (Playwright) target URL. None for iOS apps (which use bundle_id instead).
     base_url: str | None = None
     # Web (Playwright): run headless (default) or headed (visible browser). iOS ignores it.
@@ -401,14 +453,63 @@ def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | No
     )
 
 
+def _platform_for_backend(backend: list[str]) -> str | None:
+    """The platform a backend list implies, or None.
+
+    A token may be a platform alias (`web`) or a bare actuator (`playwright`), so it is expanded to
+    an actuator before the reverse lookup.
+    """
+    from bajutsu.backends import platform_of, resolve_actuators
+
+    actuators = resolve_actuators(backend)
+    return platform_of(actuators[0]) if actuators else None
+
+
+def _effective_platform(a: TargetConfig, d: Defaults, backend: list[str]) -> str:
+    """The target's platform (BE-0009 Slice 4), preserving the pre-`platform` behavior.
+
+    Precedence: an explicit `platform` (target then defaults) wins; else an explicit *target* backend
+    implies it; else the identifier the target carries (baseUrl -> web, package -> android, bundleId
+    -> ios), so a web target written as just `baseUrl` is web even though the default backend is idb;
+    else the (possibly defaulted) backend; else `ios`.
+    """
+    explicit = a.platform or d.platform
+    if explicit:
+        return explicit
+    if a.backend is not None:
+        from_backend = _platform_for_backend(a.backend)
+        if from_backend:
+            return from_backend
+    if a.base_url:
+        return "web"
+    if a.package:
+        return "android"
+    if a.bundle_id:
+        return "ios"
+    return _platform_for_backend(backend) or "ios"
+
+
+# The identifier each platform requires on its target, as (config field name, TargetConfig attr);
+# `fake` (and any platform absent here) needs none. Used by Config validation to reject a target
+# carrying the wrong handle for its platform.
+_PLATFORM_IDENTIFIER: dict[str, tuple[str, str]] = {
+    "ios": ("bundleId", "bundle_id"),
+    "web": ("baseUrl", "base_url"),
+    "android": ("package", "package"),
+}
+
+
 def resolve(config: Config, target: str) -> Effective:
     """Resolve the effective config for one target (the target entry overrides defaults)."""
     if target not in config.targets:
         raise KeyError(f"unknown target: {target!r} (define targets.{target} in config)")
     d = config.defaults
     a = config.targets[target]
+    backend = a.backend or d.backend
     return Effective(
         target=target,
+        platform=_effective_platform(a, d, backend),
+        package=a.package,
         bundle_id=a.bundle_id,
         base_url=a.base_url,
         headless=a.headless,
@@ -416,7 +517,7 @@ def resolve(config: Config, target: str) -> Effective:
         launch_server=a.launch_server,
         ready_when=a.ready_when,
         deeplink_scheme=a.deeplink_scheme,
-        backend=a.backend or d.backend,
+        backend=backend,
         device=a.device or d.device,
         locale=a.locale or d.locale,
         launch_env=dict(a.launch_env),
