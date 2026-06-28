@@ -36,7 +36,7 @@ XCUITest は既存の `Driver` Protocol を満たす登録済み actuator にな
 
 ### registry への配置と、実装前のなだらかな扱い
 
-`bajutsu/backends.py` は *既知* の actuator と *実装済み* の actuator をすでに分けており、`select_actuator` は「計画済みだが未実装」のトークンを次に利用可能なものへ落とします。したがって順序の入れ替えはドライバが存在する前でも安全です。`PLATFORMS["ios"] = ("xcuitest", "idb")` にして `xcuitest` を `KNOWN_ACTUATORS` に加え、`IMPLEMENTED` には**まだ**加えません。これで `--backend ios` は引き続き idb に解決され（xcuitest は「計画済み」）、ドライバが入った日に `IMPLEMENTED` への追加と可否判定（`_EXECUTABLE` ／ `xcodebuild` の探索）を足せば有効になります。`capabilities_for("xcuitest")` はドライバを構築せず capability 集合を返すので、BE-0082 のプリフライトは端末なしで豊かな actuator を判断できます。
+`bajutsu/backends.py` は *既知* の actuator と *実装済み* の actuator をすでに分けており、`select_actuator` は「計画済みだが未実装」のトークンを次に利用可能なものへ落とします。したがって順序の入れ替えはドライバが存在する前でも安全で、変更は一行です。`PLATFORMS["ios"] = ("xcuitest", "idb")` とすれば、`KNOWN_ACTUATORS` は import 時に `PLATFORMS` から派生するので `xcuitest` は自動的に「既知」になります。別途編集する一覧はありません。`IMPLEMENTED` には入れないので `--backend ios` は引き続き idb に解決され（xcuitest は「計画済み」）、ドライバが入った日に `IMPLEMENTED` への追加と可否判定（`_EXECUTABLE` 内の `xcodebuild` 探索）を足せば有効になります。明記すべき小さな関連変更が一つあります。`capabilities_for()` は現状、計画済みの actuator に対して `NotImplementedError` を投げます。したがって BE-0082 のプリフライトがドライバ完成**前**に xcuitest を判断するには、`XcuitestDriver.CAPABILITIES`（端末なしで読めるクラス定数）を返す分岐を足す必要があります。その分岐が無ければ、capability 集合はドライバと一緒に入ります。
 
 ### runner の配信とビルド（未決事項の決着）
 
