@@ -13,6 +13,11 @@ from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.scenario import Preconditions
 
+# A readyWhen selector is a usable readiness signal only if it carries a per-element condition;
+# positional-only fields (`index`, `within`) match every element via find_all, so they fall back to
+# the element-count heuristic rather than declaring the app ready on the first element.
+_READY_MATCH_KEYS = ("id", "idMatches", "label", "labelMatches", "traits", "value")
+
 
 def launch_driver(
     udid: str,
@@ -119,13 +124,17 @@ def _await_ready(
     """
     deadline = time.monotonic() + timeout
     poll = min(poll_init, poll_max)
+    # Use the selector only when it has a per-element condition; otherwise (None, empty, or
+    # positional-only like `index`) fall back to the count heuristic — an all-matching selector would
+    # return on a single element, weaker than "2+".
+    match_sel = ready_sel if ready_sel and any(k in ready_sel for k in _READY_MATCH_KEYS) else None
     while time.monotonic() < deadline:
         try:
             elements = driver.query()
-            # A non-empty readyWhen waits for that element; an empty/None selector keeps the default
-            # count heuristic (an empty selector would otherwise match everything — weaker than "2+").
             ready = (
-                len(base.find_all(elements, ready_sel)) >= 1 if ready_sel else len(elements) >= 2
+                len(base.find_all(elements, match_sel)) >= 1
+                if match_sel is not None
+                else len(elements) >= 2
             )
             if ready:
                 return

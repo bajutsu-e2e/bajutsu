@@ -276,11 +276,23 @@ class _ScriptedDriver:
         return tree
 
 
+def _install_bounded_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Advance a local clock from the fake sleep so the loop is bounded by _await_ready's timeout —
+    # a regression that never reaches readiness exits at the deadline (fails) instead of hanging.
+    clock = 0.0
+
+    def fake_sleep(s: float) -> None:
+        nonlocal clock
+        clock += s
+
+    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: clock)
+
+
 def test_await_ready_waits_for_ready_selector(monkeypatch: pytest.MonkeyPatch) -> None:
     # With a ready selector, the gate must wait for that element — not return on the chrome that is
-    # already present (the BE-0090/smoke flake: a modal over always-present chrome). BE smoke flake.
-    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", lambda s: None)
-    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: 0.0)
+    # already present (the smoke flake: an onboarding modal over always-present Home chrome).
+    _install_bounded_clock(monkeypatch)
     chrome = [_el("home.title", "H"), _el("tab", "T")]  # 2 elements -> the old gate would return
     target = _el("onboarding.start", "Start")
     driver = _ScriptedDriver([chrome, chrome, [*chrome, target]])  # modal appears on the 3rd read
@@ -292,8 +304,7 @@ def test_await_ready_without_selector_returns_on_element_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # No ready selector: the existing "any 2 elements" heuristic still applies (unchanged default).
-    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", lambda s: None)
-    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: 0.0)
+    _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("home.title", "H"), _el("tab", "T")]])
     _await_ready(driver)  # type: ignore[arg-type]
     assert driver.calls == 1
@@ -302,8 +313,18 @@ def test_await_ready_without_selector_returns_on_element_count(
 def test_await_ready_empty_selector_falls_back_to_count(monkeypatch: pytest.MonkeyPatch) -> None:
     # An empty `readyWhen: {}` must not weaken the gate to "any 1 element" (an empty selector matches
     # everything); it falls back to the 2+ count heuristic.
-    monkeypatch.setattr("bajutsu.runner.launch.time.sleep", lambda s: None)
-    monkeypatch.setattr("bajutsu.runner.launch.time.monotonic", lambda: 0.0)
+    _install_bounded_clock(monkeypatch)
     driver = _ScriptedDriver([[_el("only", "O")], [_el("only", "O"), _el("second", "S")]])
     _await_ready(driver, ready_sel={})  # type: ignore[arg-type]
     assert driver.calls >= 2  # did not return on the single-element tree
+
+
+def test_await_ready_positional_only_selector_falls_back_to_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A positional-only selector (`index`) matches every element via find_all, so it must not declare
+    # readiness on a single element — it falls back to the 2+ count heuristic.
+    _install_bounded_clock(monkeypatch)
+    driver = _ScriptedDriver([[_el("only", "O")], [_el("only", "O"), _el("second", "S")]])
+    _await_ready(driver, ready_sel={"index": 0})  # type: ignore[arg-type]
+    assert driver.calls >= 2  # ignored the index-only selector; waited for 2+ elements
