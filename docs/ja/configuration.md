@@ -22,6 +22,7 @@ defaults:                       # 全ターゲット共通の既定
   capture: [screenshot.after, elements, actionLog]
   redact:  { headers: [Authorization, Cookie], fields: [token, password] }
   secrets: [LOGIN_PASSWORD]         # ${secrets.X} に使える環境変数名（実値は証跡でマスク）
+  ai:      { provider: anthropic, keyEnv: ANTHROPIC_API_KEY }   # AI 経路のプロバイダ / モデル / エンドポイント / キー（下記）
   reservedNamespaces: [auth, nav]   # 共有フロー / コンポーネントの id 契約（情報用）
 
 targets:
@@ -67,6 +68,7 @@ targets:
 | `capture` | defaults | 既定証跡（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
+| `ai` | defaults < app（フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダai-be-0047)）。省略（`None`）なら環境だけで決まります |
 
 `backend` フィールドの検証で `_norm` が「単一文字列 → 1 要素リスト」に正規化します（defaults / app の両方に適用）。
 
@@ -77,6 +79,24 @@ config の `defaults.redact` と `targets.<name>.redact` は **union** されま
 ### シークレット（`secrets:`）
 
 `secrets:` は **環境変数名のリスト**で（`defaults` と `targets.<name>` の両方で宣言でき、`resolve` が和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
+
+### AI プロバイダ（`ai:`、BE-0047）
+
+AI 経路、すなわち `record`、`triage --ai`、`--dismiss-alerts` のガードは、任意の `ai` ブロックで設定した一つのプロバイダを通じてモデルへ到達します。このブロックは `defaults` と `targets.<name>` の両方で宣言でき、**フィールドごと**にマージされます（同じフィールドはターゲット側の値が勝ちます）。解決結果は `Effective.ai` に入るので、CLI と `serve` が一つの真実を共有します。これが「あなたの AI、あなたのキー、あなたのデータ」を支える強制です。どの AI 経路も、あなたが設定したキーとエンドポイントの下で動き、決定的な `run` ゲートはモデルをまったく呼びません（[BE-0047](../../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。
+
+```yaml
+defaults:
+  ai:
+    provider: anthropic                      # anthropic（既定） | bedrock
+    model:    claude-opus-4-8                 # 任意: その経路の既定モデルを上書き
+    baseUrl:  https://ai-gateway.internal/v1  # 任意: 自己ホストのゲートウェイ / 社内プロキシ（anthropic プロバイダ）
+    keyEnv:   ANTHROPIC_API_KEY               # キーを保持する環境変数の「名前」。キーの値そのものは置かない
+```
+
+- **キーは設定ファイルに置きません。** `keyEnv` は環境変数の名前を指すだけで、値は呼び出し時に環境から読みます。これにより秘密がリポジトリやアップロードされたバンドルに入りません。`baseUrl` は Anthropic SDK を自己ホストのゲートウェイやプロキシへ向けます（`Anthropic(base_url=…, api_key=os.environ[keyEnv])`）。スクリーンショットや要素ツリーは、ベンダーの既定先ではなく、あなたが設定したエンドポイントにだけ届きます。Bedrock は標準の AWS 資格情報チェーン（`AWS_REGION` と、環境変数 / 共有プロファイル / インスタンスまたはタスクロール）のままで、プロバイダ接頭辞付きの `model` を必要とします。
+- **設定が先、環境変数はフォールバック。** 省略したフィールドは現状の環境変数（`BAJUTSU_AI_PROVIDER`、`ANTHROPIC_API_KEY`、`BAJUTSU_BEDROCK_MODEL`）へフォールバックするので、`ai` ブロックの無い config はこれまでどおり動きます。
+- **フェイルクローズ。** `record`、`triage --ai`、明示的に要求した `--dismiss-alerts` は、選択したプロバイダに使える資格情報が無いとき、プロバイダ別の明確なエラーで終了します。ホストされた既定先へ黙ってフォールバックするクライアントは決して構築しません。
+- **テキスト系入力は秘匿化され、スクリーンショットはできません。** モデルへ送る要素ツリー、失敗のテキスト、（ユーザー指定もありうる）アラート指示は、証跡の書き出しと同じ run スコープの秘匿化（対象の `redact` キーと解決済みの秘密値）で隠します。スクリーンショットは画像であり、秘匿化はテキストを隠せても画素は隠せません。そこで二つ目の保証がスクリーンショットを受け持ちます。スクリーンショットを含むすべての入力は、あなたが設定したプロバイダ／エンドポイントにのみ送られます。
 
 ### mailbox（`email` ステップ）
 

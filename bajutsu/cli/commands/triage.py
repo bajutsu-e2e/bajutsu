@@ -13,7 +13,13 @@ import typer
 from bajutsu import trace as _trace
 from bajutsu import triage as _triage
 from bajutsu import usage as _usage
-from bajutsu.cli._shared import DEFAULT_CONFIG
+from bajutsu.cli._shared import (
+    DEFAULT_CONFIG,
+    _ai_redactor,
+    _load_effective,
+    _require_ai_credential,
+)
+from bajutsu.config import Effective
 
 
 def triage(
@@ -67,7 +73,12 @@ def triage(
     if ai:
         from bajutsu.claude_triage import ClaudeTriageAgent
 
-        agent = ClaudeTriageAgent()
+        # Resolve the target's `ai` config + redactor when a target is named, so triage uses the
+        # configured provider/endpoint and masks the element tree / failure text it sends (BE-0047).
+        # With no target it falls back to env-only provider config and a no-op redactor.
+        eff = _ai_effective(config, target_name)
+        _require_ai_credential(eff)
+        agent = ClaudeTriageAgent(ai=eff.ai, redactor=_ai_redactor(eff))
     else:
         agent = _triage.HeuristicTriageAgent()
     before = _usage.snapshot()
@@ -87,6 +98,35 @@ def triage(
             typer.echo("\n--rerun needs --target to run the patched scenario.")
         else:
             _verify_rerun(apply, target_name, backend, udid, config)
+
+
+def _ai_effective(config: str, target_name: str) -> Effective:
+    """The effective config for `--ai` triage: the named target's, or an env-only default (BE-0047).
+
+    Triage runs against a saved run dir and may have no `--target` / config — then provider config
+    comes from the environment alone and there is nothing to redact. When a target is named it
+    carries the target's `ai` block, `redact` keys, and secret names.
+    """
+    if target_name:
+        return _load_effective(config, target_name)
+    from bajutsu.scenario import Redact
+
+    return Effective(
+        target="",
+        bundle_id="",
+        deeplink_scheme=None,
+        backend=["idb"],
+        device="",
+        locale="",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
 
 
 def _apply_fix(result: _triage.Triage, target: str, write: bool) -> bool:

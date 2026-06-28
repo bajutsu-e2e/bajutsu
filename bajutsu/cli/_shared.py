@@ -6,13 +6,16 @@ genuinely cross-command pieces belong here, so adding a command rarely edits thi
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from pathlib import Path
 
 import typer
 
+from bajutsu import anthropic_client
 from bajutsu.config import WEB_ENGINES, Effective, load_config, resolve
 from bajutsu.config_source import is_full_sha, materialize, parse_config_spec, source_provenance
+from bajutsu.redaction import Redactor
 from bajutsu.scenario import (
     Scenario,
     expand_components,
@@ -23,6 +26,50 @@ from bajutsu.scenario import (
 )
 
 DEFAULT_CONFIG = "bajutsu.config.yaml"
+
+
+def _secret_values(eff: Effective) -> list[str]:
+    """The declared secrets resolved from the environment (the literal values to mask).
+
+    The shared "resolve `eff.secrets` against `os.environ`" rule, so evidence redaction and AI-input
+    redaction never drift in how they read secrets.
+    """
+    return [os.environ[n] for n in eff.secrets if n in os.environ]
+
+
+def _ai_redactor(eff: Effective) -> Redactor:
+    """The run-scoped redactor for AI inputs (BE-0047), built like evidence's.
+
+    Same construction as `FileSink`/`pipeline`: the target's `redact` keys plus the literal secret
+    values resolved from the environment, so a secret in an element / instruction the model would
+    see is masked exactly as it is in written evidence.
+    """
+    return Redactor(eff.redact, values=_secret_values(eff))
+
+
+def _credential_gap_message(gap: str, eff: Effective) -> str:
+    """A provider-specific, actionable message for a missing AI credential (BE-0047 fail-closed)."""
+    if gap == "bedrock-model":
+        return (
+            "no AI credential: the Bedrock provider needs a provider-prefixed model id "
+            "(set ai.model in config, or $BAJUTSU_BEDROCK_MODEL); AWS credentials authenticate it."
+        )
+    return (
+        f"no AI credential: set ${anthropic_client.key_env(eff.ai)} (the env var named by "
+        "ai.keyEnv). Bajutsu's AI paths never fall back to a hosted default (BE-0047)."
+    )
+
+
+def _require_ai_credential(eff: Effective) -> None:
+    """Fail closed when the resolved provider has no usable credential (BE-0047).
+
+    Raises a clean exit-2 so an AI entry point never constructs a client that would round-trip to a
+    hosted default. A no-op when a credential is present.
+    """
+    gap = anthropic_client.credential_gap(eff.ai)
+    if gap is not None:
+        typer.echo(_credential_gap_message(gap, eff))
+        raise typer.Exit(2)
 
 
 def load_expanded_scenarios(path: Path) -> list[Scenario]:

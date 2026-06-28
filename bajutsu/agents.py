@@ -8,8 +8,13 @@ identical apart from how the model is reached.
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from bajutsu.agent import Agent
+
+if TYPE_CHECKING:
+    from bajutsu.anthropic_client import AiConfig
+    from bajutsu.redaction import Redactor
 
 AGENT_KINDS = ("api", "claude-code")
 
@@ -23,12 +28,22 @@ def resolve_kind(agent: str = "") -> str:
     return agent or os.environ.get(AGENT_ENV) or "api"
 
 
-def make_agent(kind: str) -> Agent:
-    """Construct the authoring agent for `kind` ("api" or "claude-code")."""
+def make_agent(
+    kind: str,
+    *,
+    ai: AiConfig | None = None,
+    redactor: Redactor | None = None,
+) -> Agent:
+    """Construct the authoring agent for `kind` ("api" or "claude-code").
+
+    The API agent honors the resolved `ai` config (provider/model/endpoint/key) and redacts its
+    textual model inputs through `redactor` (BE-0047). The Claude Code agent reaches the model
+    through the `claude` CLI, so the SDK provider config does not apply to it.
+    """
     if kind == "api":
         from bajutsu.claude_agent import ClaudeAgent
 
-        return ClaudeAgent()
+        return ClaudeAgent(ai=ai, redactor=redactor)
     if kind == "claude-code":
         from bajutsu.claude_code_agent import ClaudeCodeAgent
 

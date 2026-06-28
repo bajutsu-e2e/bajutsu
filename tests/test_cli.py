@@ -74,6 +74,94 @@ def test_unknown_app_exits_cleanly(tmp_path: Path, command: str) -> None:
     assert "unknown target" in r.output
 
 
+# BE-0047 fail-closed: an AI entry point with no usable credential exits 2 with a clear, provider-
+# specific message and never constructs an SDK client that would fall back to a hosted default.
+
+
+def test_record_fails_closed_without_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)  # no .env key leak-in
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # If a client were ever constructed it would fail loudly here, proving it never is.
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite missing credential"),
+    )
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--target",
+            "demo",
+            "--goal",
+            "x",
+            "--no-dismiss-alerts",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "no AI credential" in r.output and "ANTHROPIC_API_KEY" in r.output
+
+
+def test_record_fails_closed_uses_configured_key_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The message names the env var from ai.keyEnv, not the default — the user's configured source.
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("MY_GATEWAY_KEY", raising=False)
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults:\n  ai: { keyEnv: MY_GATEWAY_KEY }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--target",
+            "demo",
+            "--goal",
+            "x",
+            "--no-dismiss-alerts",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "MY_GATEWAY_KEY" in r.output
+
+
+def test_triage_ai_fails_closed_without_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite missing credential"),
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "manifest.json").write_text(
+        '{"scenarios": [{"scenario": "s", "ok": false, "failure": "boom", "steps": []}]}',
+        encoding="utf-8",
+    )
+    r = runner.invoke(app, ["triage", str(run_dir), "--ai"])
+    assert r.exit_code == 2
+    assert "no AI credential" in r.output
+
+
 def test_legacy_app_flag_is_rejected(tmp_path: Path) -> None:
     # Hard cutover (BE-0057): there is no `--app` alias — the old flag exits 2 (unknown option).
     cfg, scn = _write(tmp_path)
@@ -82,9 +170,14 @@ def test_legacy_app_flag_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("command", ["run", "record", "doctor"])
-def test_no_backend_available_exits_cleanly(tmp_path: Path, command: str) -> None:
+def test_no_backend_available_exits_cleanly(
+    tmp_path: Path, command: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # An unknown backend is never available -> clean exit 2, independent of PATH. (crawl has its own
     # test below: it additionally checks the run dir isn't created by the gate.)
+    # record/dismiss-alerts now fail closed first (BE-0047), so give it a credential to reach the
+    # backend gate this test exercises.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     cfg, scn = _write(tmp_path)
     r = runner.invoke(
         app, _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo", backend="nope")

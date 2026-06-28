@@ -68,6 +68,53 @@ def test_redact_is_merged() -> None:
     assert eff.redact.fields == ["token", "password"]
 
 
+# BE-0047: the `ai` block resolves like any other setting (defaults overridden per target) into
+# an AiConfig the AI paths read; an absent block resolves to None (env-only, as before).
+
+
+def test_ai_block_resolves_from_defaults() -> None:
+    cfg = load_config(
+        "defaults:\n"
+        "  ai:\n"
+        "    provider: anthropic\n"
+        "    model: claude-opus-4-8\n"
+        "    baseUrl: https://gw.internal/v1\n"
+        "    keyEnv: MY_KEY\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    ai = resolve(cfg, "s").ai
+    assert ai is not None
+    assert ai.provider == "anthropic"
+    assert ai.model == "claude-opus-4-8"
+    assert ai.base_url == "https://gw.internal/v1"
+    assert ai.key_env == "MY_KEY"
+
+
+def test_ai_block_target_overrides_defaults() -> None:
+    cfg = load_config(
+        "defaults:\n  ai: { provider: anthropic, model: claude-opus-4-8, keyEnv: TEAM_KEY }\n"
+        "targets:\n  s:\n    bundleId: com.x\n    ai: { model: claude-sonnet-x, keyEnv: APP_KEY }\n"
+    )
+    ai = resolve(cfg, "s").ai
+    assert ai is not None
+    assert ai.provider == "anthropic"  # falls through from defaults
+    assert ai.model == "claude-sonnet-x"  # target override
+    assert ai.key_env == "APP_KEY"  # target override
+
+
+def test_ai_block_absent_resolves_to_none() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").ai is None
+
+
+def test_ai_block_keys_in_config_are_rejected() -> None:
+    # A literal key in config is a foot-gun the schema forbids: only keyEnv (a NAME) is allowed.
+    with pytest.raises(ValidationError):
+        load_config(
+            "defaults:\n  ai: { apiKey: sk-ant-secret }\ntargets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
 def test_backend_single_string_normalized() -> None:
     cfg = load_config("defaults: { backend: idb }\ntargets: { x: { bundleId: com.x } }")
     assert resolve(cfg, "x").backend == ["idb"]

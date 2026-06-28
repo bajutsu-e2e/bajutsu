@@ -100,3 +100,64 @@ def test_credential_gap_bedrock_needs_model(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.delenv(ac.BEDROCK_MODEL_ENV, raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     assert ac.credential_gap() == "bedrock-model"
+
+
+# BE-0047: the resolved `ai` config drives the factory, config-first with the env fallback intact.
+
+
+def test_provider_config_wins_over_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "anthropic")
+    assert ac.provider(ac.AiConfig(provider="bedrock")) == "bedrock"
+
+
+def test_provider_falls_back_to_env_when_config_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ac.PROVIDER_ENV, "bedrock")
+    assert ac.provider(ac.AiConfig()) == "bedrock"
+
+
+def test_resolve_model_config_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    assert ac.resolve_model("claude-opus-4-8", ac.AiConfig(model="claude-sonnet-x")) == (
+        "claude-sonnet-x"
+    )
+
+
+def test_make_client_uses_config_base_url_and_key_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("MY_GATEWAY_KEY", "sk-gw-test")
+    ai = ac.AiConfig(base_url="https://gw.internal/v1", key_env="MY_GATEWAY_KEY")
+    client = ac.make_client(ai=ai)
+    import anthropic
+
+    assert isinstance(client, anthropic.Anthropic)
+    assert str(client.base_url).rstrip("/") == "https://gw.internal/v1"
+    assert client.api_key == "sk-gw-test"
+
+
+def test_credential_gap_uses_config_key_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("MY_GATEWAY_KEY", raising=False)
+    ai = ac.AiConfig(key_env="MY_GATEWAY_KEY")
+    assert ac.credential_gap(ai) == "anthropic-key"  # the named var is unset
+    monkeypatch.setenv("MY_GATEWAY_KEY", "sk-gw-test")
+    assert ac.credential_gap(ai) is None
+
+
+def test_credential_gap_bedrock_model_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ac.BEDROCK_MODEL_ENV, raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    ai = ac.AiConfig(provider="bedrock", model="global.anthropic.claude-opus-4-6-v1")
+    assert ac.credential_gap(ai) is None
+
+
+def test_make_client_fails_closed_when_key_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The factory itself fails closed: with the key var unset it must raise, never hand the SDK
+    # api_key=None (which it would backfill from ANTHROPIC_API_KEY, defeating a custom keyEnv).
+    monkeypatch.delenv(ac.PROVIDER_ENV, raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("MY_GATEWAY_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-default")  # a default key that must NOT leak in
+    with pytest.raises(RuntimeError, match=r"MY_GATEWAY_KEY"):
+        ac.make_client(ai=ac.AiConfig(key_env="MY_GATEWAY_KEY"))
