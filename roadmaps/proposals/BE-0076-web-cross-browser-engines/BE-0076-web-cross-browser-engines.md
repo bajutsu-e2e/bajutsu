@@ -99,7 +99,7 @@ The change generalizes that one closure over the engine name.
 | `bajutsu/drivers/playwright.py` | `_start_chromium(headless)` → `pw.chromium.launch(headless=…, slow_mo=…)`; `PlaywrightDriver(…, starter=_start_chromium)` | a `_start_browser(engine)` factory returning a `Starter` that launches `getattr(pw, engine)` (`pw.chromium` / `pw.firefox` / `pw.webkit`); `PlaywrightDriver` takes a `browser: str = "chromium"` argument and builds its starter from it, so `relaunch()` (which re-invokes `self._starter`) rebuilds the *same* engine |
 | `bajutsu/backends.py` `make_driver` | `make_driver(actuator, udid, *, base_url, headless, record_video_dir)` → `PlaywrightDriver(base_url, headless=headless, …)` | add a `browser: str = "chromium"` keyword and forward it: `PlaywrightDriver(base_url, headless=headless, browser=browser, …)` |
 | `bajutsu/runner/launch.py` `launch_driver` | calls `make_driver(actuator, udid, base_url=eff.base_url, headless=eff.headless, …)` | also pass `browser=eff.browser` (the one call site that builds a web driver for a run; `doctor._current_screen` constructs `PlaywrightDriver` directly and gains the same `browser=eff.browser`) |
-| `bajutsu/backends.py` `ensure_web_runtime` | `playwright install chromium` | install the requested engine(s) on demand — `playwright install <engine>` for one, `playwright install firefox webkit` (plus chromium) for the matrix; see below |
+| `bajutsu/backends.py` `ensure_web_runtime` | no-op when Playwright is already importable; only when web is requested *and* Playwright is missing does it `uv pip install playwright` + `playwright install chromium` | when it provisions a missing Playwright (and as a follow-on engine-install step regardless), install the requested engine(s) — `playwright install <engine>` for one, `playwright install firefox webkit` (plus chromium) for the matrix; see below |
 | `.github/workflows/web-e2e.yml` / docs | `playwright install --with-deps chromium` | a cross-engine job installs `firefox webkit` too; the Playwright-browser cache key (already `hashFiles('uv.lock')`) is unchanged |
 
 `record` drives whichever engine is selected: it is AI authoring against the same `Driver`
@@ -109,10 +109,12 @@ the resolve-through-the-core actuation, the health signals (`pageerror` / main-f
 `dialog`), and `capabilities()` are all engine-independent and unchanged; `QUERY_JS` is standard
 DOM and `getBoundingClientRect` geometry that runs identically on all three engines.
 
-**On-demand install.** `ensure_web_runtime(backends)` today early-returns once
-`_playwright_available()` (an import probe) is true, then runs `playwright install chromium`. The
-package probe doesn't distinguish *which browser binaries* are present, so installing firefox/webkit
-needs a per-engine check rather than the single package probe. The design: after the package is
+**On-demand install.** `ensure_web_runtime(backends)` today is a no-op unless a web backend is
+requested *and* the Playwright package is missing: it early-returns when web isn't requested or when
+`_playwright_available()` (an import probe) is already true, and only on the missing path does it
+`uv pip install playwright` then `playwright install chromium`. That package probe doesn't
+distinguish *which browser binaries* are present, so installing firefox/webkit needs a per-engine
+check rather than the single package probe. The design: after the package is
 ensured, run `playwright install <engines>` for the engines this run needs (the resolved
 `eff.browser`, or the `--browsers` list). `playwright install` is **idempotent** — the web-e2e
 workflow comment already relies on this ("a stale browser is simply re-downloaded") — so it is safe

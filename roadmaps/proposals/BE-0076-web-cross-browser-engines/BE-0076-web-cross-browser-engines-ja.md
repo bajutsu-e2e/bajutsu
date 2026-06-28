@@ -89,7 +89,7 @@ AI の役割は従来どおり助言的なものに留まります。`triage`（
 | `bajutsu/drivers/playwright.py` | `_start_chromium(headless)` → `pw.chromium.launch(headless=…, slow_mo=…)`。`PlaywrightDriver(…, starter=_start_chromium)` | `getattr(pw, engine)`（`pw.chromium` / `pw.firefox` / `pw.webkit`）を起動する `Starter` を返す `_start_browser(engine)` ファクトリを設ける。`PlaywrightDriver` が `browser: str = "chromium"` 引数を取り、そこから starter を組み立てるので、`relaunch()`（`self._starter` を呼び直す）も同じエンジンを建て直す |
 | `bajutsu/backends.py` `make_driver` | `make_driver(actuator, udid, *, base_url, headless, record_video_dir)` → `PlaywrightDriver(base_url, headless=headless, …)` | `browser: str = "chromium"` キーワードを足して `PlaywrightDriver(base_url, headless=headless, browser=browser, …)` と渡す |
 | `bajutsu/runner/launch.py` `launch_driver` | `make_driver(actuator, udid, base_url=eff.base_url, headless=eff.headless, …)` を呼ぶ | `browser=eff.browser` も渡す（run 向けに web ドライバを建てる唯一の呼び出し箇所。`doctor._current_screen` は `PlaywrightDriver` を直に組み立てるので、同じく `browser=eff.browser` を加える） |
-| `bajutsu/backends.py` `ensure_web_runtime` | `playwright install chromium` | 要求されたエンジンを必要に応じて導入する。単一なら `playwright install <engine>`、マトリクスなら `playwright install firefox webkit`（と chromium）。詳細は後述 |
+| `bajutsu/backends.py` `ensure_web_runtime` | Playwright が import 可能なら no-op。web が要求され*かつ* Playwright が無いときだけ `uv pip install playwright` ＋ `playwright install chromium` を実行 | Playwright を導入するとき（および後続のエンジン導入ステップとして）、要求されたエンジンを導入する。単一なら `playwright install <engine>`、マトリクスなら `playwright install firefox webkit`（と chromium）。詳細は後述 |
 | `.github/workflows/web-e2e.yml` / docs | `playwright install --with-deps chromium` | クロスエンジンのジョブで `firefox webkit` も導入する。Playwright ブラウザのキャッシュキー（すでに `hashFiles('uv.lock')`）は変えない |
 
 `record` は選ばれたエンジンを駆動します。同じ `Driver` インターフェースに対する AI オーサリングなので、`eff.browser` を
@@ -98,9 +98,11 @@ AI の役割は従来どおり助言的なものに留まります。`triage`（
 `dialog`）、`capabilities()` はいずれもエンジン非依存で現状のままです。`QUERY_JS` は標準 DOM であり、`getBoundingClientRect`
 の座標計算も三つのエンジンで同一に動きます。
 
-**オンデマンドの導入。** 現状の `ensure_web_runtime(backends)` は `_playwright_available()`（import の有無を見るプローブ）が真に
-なれば早期 return し、その後 `playwright install chromium` を走らせます。パッケージのプローブは*どのブラウザバイナリが存在するか*を
-区別しないため、firefox / webkit の導入は単一のパッケージプローブではなくエンジンごとの確認を要します。設計はこうです。パッケージを
+**オンデマンドの導入。** 現状の `ensure_web_runtime(backends)` は、web backend が要求され*かつ* Playwright パッケージが無いとき
+以外は no-op です。web が要求されていないとき、または `_playwright_available()`（import の有無を見るプローブ）がすでに真のときは
+早期 return し、無いときに限って `uv pip install playwright` のあと `playwright install chromium` を実行します。このパッケージの
+プローブは*どのブラウザバイナリが存在するか*を区別しないため、firefox / webkit の導入は単一のパッケージプローブではなくエンジン
+ごとの確認を要します。設計はこうです。パッケージを
 確保したあと、この run が必要とするエンジン（解決した `eff.browser`、または `--browsers` のリスト）について `playwright install
 <engines>` を走らせます。`playwright install` は**冪等**であり（web-e2e ワークフローのコメントもすでに「古いブラウザは単に再取得される」と
 この性質に依拠しています）、要求したエンジンに対して無条件に呼んでも安全です。欠けているバイナリは取得され、存在するものは高速な no-op に
