@@ -489,7 +489,7 @@ Maestro (mobile.dev) is an open-source, cross-platform UI E2E tool whose directi
 <!-- GENERATED:proposals-competitive-maestro -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0047](proposals/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) | AI data sovereignty (provider-agnostic, redacted AI path) | Proposal | Maestro |
+| [BE-0097](proposals/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md) | AI data sovereignty for the crawl guide and serve-spawned AI paths | Proposal |  |
 <!-- /GENERATED:proposals-competitive-maestro -->
 
 ## Deferred
