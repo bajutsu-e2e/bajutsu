@@ -114,6 +114,32 @@ token auth on every request, `/api/run` and `/api/record` confined to the app's 
 validated `backend`/`udid`, a CSRF Origin check plus security headers, and a concurrency cap on run
 dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patched.
 
+## Uploaded-config command execution (BE-0090)
+
+An uploaded `.zip` bundle can carry a config whose `launchServer.cmd` (and, once wired,
+`mockServer.cmd`) names a shell command to bring up the app under test. That command is **untrusted
+input**, so `serve` never runs it on the bare host. The `--upload-exec` option (or the
+`BAJUTSU_UPLOAD_EXEC` environment variable, for the hosted backend) chooses what happens when an
+*uploaded* bundle's run needs that command — it applies only to upload-sourced configs; a local or
+Git-sourced config is operator-trusted and unaffected:
+
+- **`sandbox`** (the default) — run the command inside a throwaway **Docker** container, never on the
+  `serve` host. The bundle declares its runtime with **exactly one** of `dockerImage` (a published
+  base image, e.g. `node:20-slim`) or `dockerfile` (a bundle-relative path that `serve` builds with
+  `docker build`), plus a `port` (the in-container listen port). The container is hardened —
+  `--rm`, all capabilities dropped, no new privileges, a read-only root filesystem with a `tmpfs`
+  scratch, a non-root user, CPU/memory/pid caps, and only its one port published to a **loopback**
+  host port — and torn down after the run. Docker must be installed on the `serve` host.
+- **`reuse`** — never run the uploaded command; only probe an operator-provisioned server already
+  answering at `baseUrl`. If nothing answers, the run fails loud rather than starting anything.
+- **`deny`** — refuse the uploaded command outright; like `reuse`, an externally-answering server is
+  accepted, otherwise the run fails loud.
+
+No mode ever runs an uploaded command on the bare host, and none silently falls back to doing so — a
+blocked or misconfigured `launchServer` fails with a clear error, never a flaky-looking run. The
+decision (denied / reused / sandboxed, and the image when sandboxed) is recorded in the run's
+`manifest.json` provenance, so "what did this run execute, and what was suppressed?" stays answerable.
+
 ## Tier B — self-hosting the server backend
 
 Tier A is one process on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control

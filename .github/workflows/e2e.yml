@@ -103,8 +103,27 @@ jobs:
         with:
           wait: "false"
 
-      - name: Build the sample app
-        run: make -C demos/features sample-build
+      # Fetch the idb backend's deps concurrently with the app build: idb_companion (brew, ~20s) and
+      # the idb Python extra are both independent of the build, so backgrounding them hides their
+      # cost under the ~2.5min build instead of paying it serially before the run. The composite
+      # action's idempotent `brew list || install` / `uv sync` then no-op. `wait` surfaces a
+      # background failure, and a build failure exits first under `set -e` (run scenarios is skipped).
+      - name: Build the sample app (fetch idb deps concurrently)
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
+          brew_pid=$!
+          uv sync --extra idb --no-dev &
+          sync_pid=$!
+          # If the build fails, `set -e` exits the step before the waits; the trap stops the
+          # background fetches so they don't keep burning metered minutes or trail confusing logs.
+          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
+          make -C demos/features sample-build
+          wait "$brew_pid"
+          wait "$sync_pid"
+          trap - EXIT  # success: the fetches finished, so don't kill on the normal exit
 
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b

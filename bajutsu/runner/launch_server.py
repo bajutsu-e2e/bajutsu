@@ -46,42 +46,78 @@ def _probe(url: str, timeout: float = 2.0) -> bool:
         return False
 
 
+def _decision(decision: str) -> dict[str, str | None]:
+    """A launchServer policy-decision record (BE-0090), matching the sandbox path's shape."""
+    return {"decision": decision, "field": "launchServer", "source": None, "image": None}
+
+
 def start_launch_server(
-    eff: Effective, *, log: Callable[[str], None] | None = None
-) -> Callable[[], None]:
-    """Bring up `eff.launch_server` (the web target's host) if declared, returning a teardown call.
+    eff: Effective,
+    *,
+    upload_exec: str | None = None,
+    log: Callable[[str], None] | None = None,
+) -> tuple[Callable[[], None], dict[str, str | None] | None]:
+    """Bring up `eff.launch_server` (the web target's host) if declared, returning `(teardown, decision)`.
 
     Idempotent: a no-op stop is returned when no server is declared, or when `readyUrl` already
     answers (an externally-started server is reused and left running). Otherwise the command is
     started and probed until `readyUrl` responds within `readyTimeout`.
 
+    `upload_exec` governs an *uploaded* bundle's command (BE-0090): `None` is an ungoverned,
+    operator-trusted local/Git run (the bare-host path below); `sandbox` runs the command in a
+    container; `reuse` / `deny` never run the command and only accept an externally-answering
+    `readyUrl`. `serve` sets the flag only for an upload-sourced config, so a local run is unaffected.
+
     Args:
         eff: The resolved target config; `launch_server` and `base_url` decide what to start and
             probe.
+        upload_exec: The upload-execution policy (`deny` / `reuse` / `sandbox`), or None when the run
+            is not upload-governed.
         log: Receives one-line status messages. None uses the default logger.
 
     Returns:
-        A teardown callable that stops the server bajutsu started — a no-op when nothing was started
-        (none declared, or an existing one reused).
+        A teardown callable (a no-op when nothing was started / an existing server is reused), and a
+        policy-decision record — None for an ungoverned run, else `denied` / `reused` / `sandboxed`.
 
     Raises:
         RuntimeError: `launchServer` declares no `readyUrl` and the target has no `baseUrl`, or the
-            command exited / the server wasn't ready within `readyTimeout` (the caller exits 2 with
-            the message).
+            command exited / the server wasn't ready within `readyTimeout`. `SandboxError` (a
+            subclass) covers a forbidden or misconfigured upload-governed command. The caller exits 2
+            with the message.
     """
+    # Deferred import: sandbox imports this module's probe/log helpers, so importing it at module
+    # scope would be circular.
+    from bajutsu.runner.sandbox import SandboxError, start_sandboxed_server
+
     ls = eff.launch_server
     if ls is None:
-        return lambda: None
+        return (lambda: None), None
     say = log or _default_log
+    if upload_exec == "sandbox":
+        return start_sandboxed_server(eff, log=log)
     ready_url = ls.ready_url or eff.base_url
     if not ready_url:
         raise RuntimeError("launchServer needs readyUrl (or set the app's baseUrl to probe)")
 
+    if upload_exec in ("deny", "reuse"):
+        # Neither mode runs the uploaded command: only an externally-answering readyUrl is accepted,
+        # else the run fails loud (DESIGN §2 — no silent fallback to running the command).
+        if _probe(ready_url):
+            verdict = "denied" if upload_exec == "deny" else "reused"
+            say(f"launchServer({upload_exec}): {ready_url} answered externally — not running cmd")
+            return (lambda: None), _decision(verdict)
+        raise SandboxError(
+            f"launchServer({upload_exec}): nothing answering {ready_url} and the uploaded cmd is "
+            f"not run under '{upload_exec}' — cmd: {ls.cmd!r}"
+        )
+    if upload_exec is not None:
+        raise SandboxError(f"unknown --upload-exec mode: {upload_exec!r}")
+
     if _probe(ready_url):
         say(f"launchServer: {ready_url} already serving — reusing it (not started by bajutsu)")
-        return lambda: None
+        return (lambda: None), None
 
-    say(f"launchServer: starting target server — {ls.cmd}")
+    say(f"launchServer: starting target server — {ls.cmd!r}")
     proc = subprocess.Popen(
         shlex.split(ls.cmd),
         cwd=ls.cwd,
@@ -95,15 +131,15 @@ def start_launch_server(
         if proc.poll() is not None:
             raise RuntimeError(
                 f"launchServer: command exited (code {proc.returncode}) before {ready_url} "
-                f"was ready — cmd: {ls.cmd}"
+                f"was ready — cmd: {ls.cmd!r}"
             )
         if _probe(ready_url):
             say(f"launchServer: {ready_url} ready")
-            return lambda: _terminate(proc, say)
+            return (lambda: _terminate(proc, say)), None
         time.sleep(_POLL_INTERVAL)
     _terminate(proc, say)
     raise RuntimeError(
-        f"launchServer: {ready_url} not ready after {ls.ready_timeout}s — cmd: {ls.cmd}"
+        f"launchServer: {ready_url} not ready after {ls.ready_timeout}s — cmd: {ls.cmd!r}"
     )
 
 

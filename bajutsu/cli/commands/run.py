@@ -226,6 +226,13 @@ def run(
         "working directory but persist the run elsewhere — e.g. serve running an uploaded bundle "
         "from its extracted dir while keeping the run in serve's store (BE-0073)",
     ),
+    upload_exec: str = typer.Option(
+        "",
+        "--upload-exec",
+        hidden=True,
+        help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
+        "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
     config_offline: bool = typer.Option(
         False,
@@ -379,7 +386,7 @@ def run(
     # leases lazily (the web driver navigates at lease time, inside run_and_report), so the server
     # only needs to be up before the run, not before the pool.
     try:
-        stop_server = start_launch_server(eff)
+        stop_server, exec_decision = start_launch_server(eff, upload_exec=upload_exec or None)
     except RuntimeError as e:
         typer.echo(str(e))
         shutdown()
@@ -402,6 +409,7 @@ def run(
             schemas_dir=schemas_dir,
             actuator=actuator,
             config_source=config_source,
+            exec_provenance=exec_decision,
         )
     except _env.DeviceError as e:
         typer.echo(str(e))

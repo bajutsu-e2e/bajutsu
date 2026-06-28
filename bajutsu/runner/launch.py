@@ -13,6 +13,11 @@ from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.scenario import Preconditions
 
+# A readyWhen selector is a usable readiness signal only if it carries a per-element condition;
+# positional-only fields (`index`, `within`) match every element via find_all, so they fall back to
+# the element-count heuristic rather than declaring the app ready on the first element.
+_READY_MATCH_KEYS = ("id", "idMatches", "label", "labelMatches", "traits", "value")
+
 
 def launch_driver(
     udid: str,
@@ -63,7 +68,7 @@ def launch_driver(
             record_video_dir=record_video_dir,
         )
         driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
-        _await_ready(driver)
+        _await_ready(driver, ready_sel=eff.ready_when)
         return driver
     e = env.Env(udid, run=env_run)
     try:
@@ -94,7 +99,7 @@ def launch_driver(
     except subprocess.CalledProcessError as exc:
         raise env.device_error(exc) from exc
     driver = make_driver(actuator, udid)
-    _await_ready(driver)
+    _await_ready(driver, ready_sel=eff.ready_when)
     return driver
 
 
@@ -103,18 +108,35 @@ def _await_ready(
     timeout: float = 10.0,
     poll_init: float = 0.1,
     poll_max: float = 0.5,
+    *,
+    ready_sel: base.Selector | None = None,
 ) -> None:
-    """Poll until the launched app has rendered a UI (more than the app root element).
+    """Poll until the launched app has rendered its first screen.
 
-    Uses exponential backoff: the first poll is short (the app is often ready quickly)
-    and subsequent intervals double up to `poll_max`, reducing wasted subprocess calls
-    when the app takes longer to start.
+    With `ready_sel` (a target's `readyWhen`), waits for that element to appear — the readiness
+    signal for an app whose first interactive screen is a modal over always-present chrome, where the
+    plain element-count heuristic would return before the modal presents. Without it, falls back to
+    "more than the app root element" (any 2+ elements).
+
+    Uses exponential backoff: the first poll is short (the app is often ready quickly) and subsequent
+    intervals double up to `poll_max`, reducing wasted subprocess calls when the app takes longer to
+    start.
     """
     deadline = time.monotonic() + timeout
     poll = min(poll_init, poll_max)
+    # Use the selector only when it has a per-element condition; otherwise (None, empty, or
+    # positional-only like `index`) fall back to the count heuristic — an all-matching selector would
+    # return on a single element, weaker than "2+".
+    match_sel = ready_sel if ready_sel and any(k in ready_sel for k in _READY_MATCH_KEYS) else None
     while time.monotonic() < deadline:
         try:
-            if len(driver.query()) >= 2:
+            elements = driver.query()
+            ready = (
+                len(base.find_all(elements, match_sel)) >= 1
+                if match_sel is not None
+                else len(elements) >= 2
+            )
+            if ready:
                 return
         except (OSError, subprocess.CalledProcessError, ValueError):
             # The app is still coming up: a query before the UI exists can fail (no device

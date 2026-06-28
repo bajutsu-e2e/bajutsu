@@ -109,6 +109,15 @@ def test_scenarios_parsed() -> None:
     assert resolve(cfg, "x").scenarios == "scn/dir"
 
 
+def test_ready_when_selector_parsed() -> None:
+    cfg = load_config("targets: { x: { bundleId: com.x, readyWhen: { id: onboarding.start } } }")
+    assert resolve(cfg, "x").ready_when == {"id": "onboarding.start"}
+
+
+def test_ready_when_defaults_to_none() -> None:
+    assert resolve(load_config("targets: { x: { bundleId: com.x } }"), "x").ready_when is None
+
+
 def test_web_app_baseurl_no_bundleid() -> None:
     # A web app identifies its target by baseUrl and needs no bundleId; bundle_id defaults to "".
     cfg = load_config(

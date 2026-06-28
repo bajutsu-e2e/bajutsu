@@ -51,20 +51,30 @@ struct AuthView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("auth.email")
-            // A real SecureField: outside UI tests iOS offers to save the password on
-            // submit, and that system "Save Password?" alert lives in SpringBoard (invisible
-            // to the idb query) for the tool's AI alert guard to dismiss. Under SAMPLE_UITEST
-            // the deterministic CI gate has no alert guard (it would need an API key, which the
-            // gate must not depend on), so the prompt would intermittently block the run. Mark
-            // the field as a one-time code there: iOS then does not offer to save it, keeping
-            // the on-device smoke deterministic without weakening the real-SecureField demo.
-            SecureField("Password", text: $model.password)
-                .textFieldStyle(.roundedBorder)
-                .keyboardType(.asciiCapable)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .textContentType(model.uiTest ? .oneTimeCode : .password)
-                .accessibilityIdentifier("auth.password")
+            // A real SecureField outside UI tests; iOS offers to save the password on submit, and
+            // that "Save Password?" alert lives in SpringBoard (invisible to the idb query) for the
+            // tool's AI alert guard to dismiss. Under SAMPLE_UITEST the deterministic CI gate has no
+            // alert guard (it would need an API key, which the gate must not depend on), and the
+            // `.oneTimeCode` content-type hint does NOT reliably suppress the prompt — it still
+            // appeared intermittently and occluded the app's tree, stalling the run. So under UI
+            // tests use a plain TextField, which never triggers the save-password heuristic, keeping
+            // the on-device smoke deterministic; the real SecureField demo is preserved otherwise.
+            if model.uiTest {
+                TextField("Password", text: $model.password)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.asciiCapable)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("auth.password")
+            } else {
+                SecureField("Password", text: $model.password)
+                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.asciiCapable)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textContentType(.password)
+                    .accessibilityIdentifier("auth.password")
+            }
             if model.loginError {
                 Text("Invalid credentials")
                     .foregroundStyle(.red)

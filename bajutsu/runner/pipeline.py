@@ -212,6 +212,7 @@ def run_and_report(
     schemas_dir: Path | None = None,
     actuator: str | None = None,
     config_source: dict[str, str] | None = None,
+    exec_provenance: dict[str, str | None] | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -261,6 +262,11 @@ def run_and_report(
     provenance = run_provenance(
         scenario_yaml, git_revision=_git_revision(), config_source=config_source
     )
+    # Record what the upload-execution policy did with this run's launchServer command (BE-0090) —
+    # denied / reused / sandboxed, and (when sandboxed) the image — so "what did this run execute,
+    # and what was suppressed?" stays answerable. None for an ungoverned (local/Git) run.
+    if exec_provenance is not None:
+        provenance["uploadExec"] = exec_provenance
     manifest = write_report(
         run_dir,
         run_id,

@@ -180,6 +180,29 @@ def test_run_and_report_records_git_config_source(tmp_path: Path) -> None:
     assert data["provenance"]["configSource"] == src
 
 
+def test_run_and_report_records_upload_exec_decision(tmp_path: Path) -> None:
+    # BE-0090: an upload-governed run stamps the launchServer policy decision into the manifest.
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    decision = {
+        "decision": "sandboxed",
+        "field": "launchServer",
+        "source": "dockerImage",
+        "image": "img",
+    }
+    _, manifest = run_and_report(
+        _eff(), scenarios, _lease, tmp_path / "runs", "run1", exec_provenance=decision
+    )
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["provenance"]["uploadExec"] == decision
+
+
+def test_run_and_report_omits_upload_exec_for_ungoverned_run(tmp_path: Path) -> None:
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    _, manifest = run_and_report(_eff(), scenarios, _lease, tmp_path / "runs", "run1")
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert "uploadExec" not in data["provenance"]  # None decision → no key
+
+
 def test_git_revision_maps_failure_and_blank_to_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     # The subprocess is an external dependency, so it's the one place a stub is warranted. A
     # non-zero exit, a thrown error, and a 0-exit-but-blank stdout (a shimmed `git`) all mean

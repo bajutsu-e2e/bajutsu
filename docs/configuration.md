@@ -54,11 +54,12 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `bundle_id` | app | iOS target; required unless `base_url` is set |
 | `base_url` | app | web target URL (Playwright backend); required for web instead of `bundle_id` |
 | `headless` | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
-| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)) |
+| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args) |
 | `launch_env` / `launch_args` | app | merged/appended by preconditions at run time |
+| `ready_when` | app | optional `readyWhen: { id: … }` — a selector the launch waits for before the run starts, instead of the default "the app rendered any 2+ elements". Use it for an app whose first interactive screen is a modal over always-present chrome (the element-count heuristic can return before the modal presents). A condition wait, never a fixed sleep. Set it only when **every** scenario for the target starts on that same screen; when first screens vary per scenario, lead each scenario with a `wait` step instead |
 | `id_namespaces` | app | referenced by doctor |
 | `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |
 | `mock_server` | app | ⚠️ schema only · not wired |
@@ -237,7 +238,8 @@ searchField / textView / switch / slider / tab / cell).
 
 ### Grading
 
-- **Blocked**: any duplicate id **or** `idCoverage` < 0.7.
+- **Blocked**: no actionable elements on the screen (most likely blank, not yet loaded, or the
+  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < 0.7.
 - **Ready**: `idCoverage` ≥ 0.9 **and** `namespaceConformance` == 1.0.
 - **Partial**: otherwise (runnable, but a forecast of coordinate fallback / flakiness).
 

@@ -51,11 +51,12 @@ targets:
 | `bundle_id` | app | iOS のターゲット。`base_url` が無いとき必須 |
 | `base_url` | app | web のターゲット URL（Playwright backend）。web では `bundle_id` の代わりに必須 |
 | `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
-| `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止する。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待つ（固定 sleep ではなく条件待ち）。iOS の `build` の web 版（[BE-0059](../../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)） |
+| `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | `locale` は launch 時に適用される（`simctl` の launch 引数） |
 | `launch_env` / `launch_args` | app | preconditions が run 時にマージ追記 |
+| `ready_when` | app | 任意の `readyWhen: { id: … }`。run を始める前に launch が出現を待つセレクタで、既定の「アプリが 2 要素以上を描画した」判定の代わりになります。最初の操作画面が常時表示のクロームの上に出るモーダルであるアプリ向けです（要素数の判定はモーダル提示前に返ってしまうことがあります）。固定 sleep ではなく条件待ちです。指定するのは、その target の**すべて**のシナリオが同じ画面から始まるときに限ります。シナリオごとに最初の画面が異なる場合は、各シナリオの先頭に `wait` ステップを置いてください |
 | `id_namespaces` | app | doctor が参照 |
 | `reserved_namespaces` | defaults | 情報用（doctor は app の `idNamespaces` のみで採点） |
 | `mock_server` | app | ⚠️ スキーマのみ · 未配線 |
@@ -179,7 +180,7 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 ### グレード判定
 
-- **Blocked**: id 重複あり、**または** `idCoverage` < 0.7。
+- **Blocked**: 画面に actionable な要素が 1 つも無い（多くは空画面、まだ読み込まれていない、または想定外の画面で、`render` がその旨を示します）、id 重複あり、**または** `idCoverage` < 0.7。
 - **Ready**: `idCoverage` ≥ 0.9 **かつ** `namespaceConformance` == 1.0。
 - **Partial**: それ以外（実行はできるが、座標フォールバックやフレーキーの予告）。
 
