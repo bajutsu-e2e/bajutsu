@@ -138,6 +138,12 @@ def test_idb_version_check_fails_when_companion_unknown() -> None:
     assert "unknown" in check.detail
 
 
+def test_xcuitest_needs_xcrun_only() -> None:
+    checks = preflight.runnability("xcuitest", which=_which({"xcrun"}), booted_count=lambda: 1)
+    assert [c.name for c in checks] == ["xcrun", "Simulator booted"]
+    assert preflight.passed(checks)
+
+
 def test_render_marks_pass_and_fail() -> None:
     out = preflight.render(
         preflight.runnability("idb", which=_which({"xcrun"}), booted_count=lambda: 0)

@@ -18,6 +18,7 @@ from bajutsu.environment import (
     FakeEnvironment,
     IosEnvironment,
     WebEnvironment,
+    XcuitestEnvironment,
     environment_for,
 )
 from bajutsu.scenario import Preconditions
@@ -25,6 +26,7 @@ from bajutsu.scenario import Preconditions
 
 def test_environment_for_selects_by_actuator() -> None:
     assert isinstance(environment_for("idb", "UDID"), IosEnvironment)
+    assert isinstance(environment_for("xcuitest", "UDID"), XcuitestEnvironment)
     assert isinstance(environment_for("playwright", "UDID"), WebEnvironment)
     assert isinstance(environment_for("fake", "UDID"), FakeEnvironment)
 
@@ -288,3 +290,106 @@ def test_only_device_platforms_have_devices() -> None:
     assert WebEnvironment("playwright").has_devices() is False
     assert IosEnvironment("idb", "U").has_devices() is True
     assert FakeEnvironment("fake", "U").has_devices() is True
+
+
+# --- BE-0019: XcuitestEnvironment ---
+
+
+def test_xcuitest_environment_requires_test_runner_in_config() -> None:
+    xe = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda a, extra_env=None: "")
+    with pytest.raises(env.DeviceError, match="testRunner"):
+        xe.start(_eff(), Preconditions())
+
+
+def test_xcuitest_environment_start_launches_runner_and_creates_driver(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    from dataclasses import replace as dc_replace
+
+    from bajutsu.config import XcuitestConfig
+
+    simctl_calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        simctl_calls.append(args)
+        return ""
+
+    monkeypatch.setattr("bajutsu.environment._allocate_port", lambda: 54321)
+
+    popen_calls: list[dict[str, object]] = []
+
+    class FakePopen:
+        def __init__(self, cmd: list[str], **kwargs: object) -> None:
+            popen_calls.append({"cmd": cmd, "kwargs": kwargs})
+
+        def terminate(self) -> None:
+            pass
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("subprocess.Popen", FakePopen)
+
+    class FakeXcuitestDriver:
+        name = "xcuitest"
+        ready_called = False
+
+        def await_ready(self, **kw: object) -> None:
+            self.ready_called = True
+
+        def query(self) -> list[base.Element]:
+            return []
+
+        def capabilities(self) -> set[str]:
+            return set()
+
+    fake_driver = FakeXcuitestDriver()
+    make_driver_calls: list[dict[str, object]] = []
+
+    def mock_make_driver(*a: object, **k: object) -> FakeXcuitestDriver:
+        make_driver_calls.append({"args": a, "kwargs": k})
+        return fake_driver
+
+    monkeypatch.setattr("bajutsu.environment.make_driver", mock_make_driver)
+
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        eff = dc_replace(_eff(), xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
+        xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
+        driver = xe.start(eff, Preconditions())
+
+    assert driver is fake_driver
+    assert fake_driver.ready_called
+    assert len(popen_calls) == 1
+    assert popen_calls[0]["cmd"][0] == "xcodebuild"
+    assert "UDID-1" in str(popen_calls[0]["cmd"])
+    popen_env = popen_calls[0]["kwargs"].get("env", {})
+    assert isinstance(popen_env, dict) and popen_env.get("BAJUTSU_RUNNER_PORT") == "54321"
+    assert make_driver_calls[0]["kwargs"].get("runner_port") == 54321
+
+
+def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    terminated = []
+
+    class FakeProc:
+        def terminate(self) -> None:
+            terminated.append(True)
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str], extra_env: object = None) -> str:
+        calls.append(args)
+        return ""
+
+    xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
+    xe._runner_proc = FakeProc()  # type: ignore[assignment]
+
+    from bajutsu.drivers.fake import FakeDriver
+
+    xe.teardown(FakeDriver([]), _eff())
+    assert len(terminated) == 1
+    assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls

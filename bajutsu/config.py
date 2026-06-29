@@ -89,6 +89,13 @@ class Mailbox(_Model):
     fields: dict[str, str] = Field(default_factory=dict)
 
 
+class XcuitestConfig(_Model):
+    """Per-target XCUITest runner config (`targets.<name>.xcuitest`, BE-0019)."""
+
+    test_runner: str | None = Field(default=None, alias="testRunner")
+    build: str | None = None
+
+
 class AiSettings(_Model):
     """The `ai` block (BE-0047) — which provider/model/endpoint/key the AI paths use.
 
@@ -226,6 +233,8 @@ class TargetConfig(_Model):
     schemas: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
+    # XCUITest runner config (BE-0019): prebuilt test runner path and/or build command.
+    xcuitest: XcuitestConfig | None = None
     # Per-target AI provider/model/endpoint/key (BE-0047), overriding defaults.ai field by field.
     ai: AiSettings | None = None
 
@@ -392,6 +401,8 @@ class Effective:
     # Selector the launch waits for before a run starts (BE: smoke flake). None = the default
     # element-count readiness heuristic.
     ready_when: base.Selector | None = None
+    # XCUITest runner config (BE-0019): prebuilt test runner path and/or build command.
+    xcuitest: XcuitestConfig | None = None
     # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
     # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
     idb_version: str | None = None
@@ -533,6 +544,7 @@ def resolve(config: Config, target: str) -> Effective:
         ai=_merge_ai(d.ai, a.ai),
         app_path=a.app_path,
         build=a.build,
+        xcuitest=a.xcuitest,
         scenarios=a.scenarios,
         baselines=a.baselines,
         schemas=a.schemas,

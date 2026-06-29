@@ -39,7 +39,7 @@ KNOWN_ACTUATORS: tuple[str, ...] = tuple(
 
 # Actuators with a driver today. Requesting a planned-but-absent one (adb) gives a
 # "not implemented yet" error instead of a generic failure.
-IMPLEMENTED: frozenset[str] = frozenset({"idb", "fake", "playwright"})
+IMPLEMENTED: frozenset[str] = frozenset({"idb", "fake", "playwright", "xcuitest"})
 
 # Which executable backs each actuator (the coarse availability check). `fake` needs none;
 # `playwright` is a Python package (probed by import), not a PATH executable.
@@ -69,6 +69,8 @@ def default_available(actuator: str) -> bool:
         return True
     if actuator == "playwright":
         return _playwright_available()
+    if actuator == "xcuitest":
+        return shutil.which("xcodebuild") is not None
     exe = _EXECUTABLE.get(actuator)
     return exe is not None and shutil.which(exe) is not None
 
@@ -177,12 +179,17 @@ def make_driver(
     headless: bool = True,
     browser: str = "chromium",
     record_video_dir: Path | None = None,
+    runner_port: int = 0,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments."""
     if actuator == "idb":
         return IdbDriver(udid)
     if actuator == "fake":
         return FakeDriver([])
+    if actuator == "xcuitest":
+        from bajutsu.drivers.xcuitest import XcuitestDriver
+
+        return XcuitestDriver(host="127.0.0.1", port=runner_port)
     if actuator == "playwright":
         # Lazy: keep Playwright (a heavy optional dep) off the default import path.
         from bajutsu.drivers.playwright import PlaywrightDriver

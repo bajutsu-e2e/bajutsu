@@ -387,3 +387,26 @@ def test_web_target_without_explicit_platform_still_loads() -> None:
     # `platform`) loads fine — the platform is derived from the backend, baseUrl is its identifier.
     cfg = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
     assert resolve(cfg, "s").platform == "web"
+
+
+# --- BE-0019: xcuitest config fields ---
+
+
+def test_xcuitest_config_resolves() -> None:
+    cfg = load_config(
+        "targets:\n"
+        "  s:\n"
+        "    bundleId: com.x\n"
+        "    xcuitest:\n"
+        "      testRunner: build/Runner.xctestrun\n"
+        "      build: xcodebuild build-for-testing\n"
+    )
+    eff = resolve(cfg, "s")
+    assert eff.xcuitest is not None
+    assert eff.xcuitest.test_runner == "build/Runner.xctestrun"
+    assert eff.xcuitest.build == "xcodebuild build-for-testing"
+
+
+def test_xcuitest_config_defaults_to_none() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").xcuitest is None
