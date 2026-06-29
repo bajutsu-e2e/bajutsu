@@ -329,6 +329,57 @@ def test_doctor_web_target_requires_base_url() -> None:
     assert exc.value.exit_code == 2
 
 
+def test_doctor_xcuitest_falls_back_to_idb_for_screen_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from bajutsu.cli.commands.doctor import _current_screen
+    from bajutsu.config import Effective
+    from bajutsu.drivers import base
+    from bajutsu.scenario import Redact
+
+    eff = Effective(
+        target="app",
+        bundle_id="com.example.demo",
+        deeplink_scheme=None,
+        backend=["ios"],
+        device="booted",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+    made: list[tuple[str, str]] = []
+    el: base.Element = {
+        "identifier": "ok",
+        "label": "OK",
+        "traits": ["button"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+    }
+
+    class FakeDriver:
+        name = "idb"
+
+        def query(self) -> list[base.Element]:
+            return [el]
+
+    def fake_make_driver(actuator: str, udid: str, **kw: object) -> FakeDriver:
+        made.append((actuator, udid))
+        return FakeDriver()
+
+    monkeypatch.setattr("bajutsu.cli.commands.doctor.make_driver", fake_make_driver)
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "FAKE-UDID")
+
+    elements = _current_screen("xcuitest", "booted", eff)
+    assert elements == [el]
+    assert made == [("idb", "FAKE-UDID")]
+
+
 def test_serve_refuses_non_loopback_without_token() -> None:
     # Binding a non-loopback host with no token would expose an unauthenticated server (BE-0051).
     r = runner.invoke(app, ["serve", "--host", "0.0.0.0"])

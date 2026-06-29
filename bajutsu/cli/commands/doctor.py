@@ -40,11 +40,18 @@ def doctor(
         typer.echo("environment:")
         typer.echo(preflight.render(cfg_checks))
         raise typer.Exit(2)
+
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device.
-    env_checks = preflight.runnability(
-        actuator, booted_count=lambda: len(_env.booted_udids()), web_engine=eff.browser
-    )
+    # xcuitest falls back to idb for the screen query, so both tool sets must be present.
+    def booted_count() -> int:
+        return len(_env.booted_udids())
+
+    env_checks = preflight.runnability(actuator, booted_count=booted_count, web_engine=eff.browser)
+    if actuator == "xcuitest":
+        idb_checks = preflight.runnability("idb", booted_count=booted_count)
+        seen = {c.name for c in env_checks}
+        env_checks.extend(c for c in idb_checks if c.name not in seen)
     # When a pin is declared (defaults.idbVersion), report the installed idb_companion against it
     # so a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
     # Only probe when a pin exists *and* idb_companion is actually present — runnability already
@@ -91,7 +98,10 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
             # faulted browser does not mask the original navigate/query exception.
             with contextlib.suppress(*_playwright_error_types()):
                 driver.close()
-    return make_driver(actuator, _env.resolve_udid(udid)).query()
+    # xcuitest needs a running runner to query, but doctor only scores the current screen —
+    # idb can read the same accessibility tree without a runner (BE-0019).
+    query_actuator = "idb" if actuator == "xcuitest" else actuator
+    return make_driver(query_actuator, _env.resolve_udid(udid)).query()
 
 
 def register(app: typer.Typer) -> None:
