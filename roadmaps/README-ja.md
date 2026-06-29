@@ -133,6 +133,7 @@ AI 駆動の `record`（Tier 1）は実装済みです（[recording.md](../docs/
 | [BE-0011](implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md) | ローカル Web UI（`bajutsu serve`） | 実装済み |
 | [BE-0012](implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) | 操作キャプチャ record | 実装済み |
 | [BE-0013](implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md) | シナリオ GUI エディタ | 実装済み |
+| [BE-0014](implemented/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) | 既存 AI record との棲み分け | 実装済み |
 | [BE-0044](implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance-ja.md) | シナリオの来歴（`from:` — ステップ ↔ 自然言語の対応） | 実装済み |
 | [BE-0060](implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) | run の実行レポートの zip ダウンロードとエクスポート | 実装済み |
 | [BE-0068](implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md) | 再生成できるレポート（保存済み run データから描画する） | 実装済み |
@@ -416,7 +417,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-authoring -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) | 既存 AI record との棲み分け | 提案 |
 | [BE-0095](proposals/BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph-ja.md) | クロールグラフのインタラクティブ操作（ノードのドラッグと再整列） | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
