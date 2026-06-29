@@ -81,7 +81,8 @@ def _environment_panel(r: RunResult) -> dict[str, Any]:
         sim.append(("actuator", r.backend))
     if r.device:
         sim.append(("udid", r.device))
-    return {"kind": "env", "key": "env", "label": "Environment", "sim": sim}
+    skips = [{"kind": sc.kind, "reason": sc.reason} for sc in r.skipped_captures]
+    return {"kind": "env", "key": "env", "label": "Environment", "sim": sim, "skips": skips}
 
 
 def _network_item(d: dict[str, Any]) -> dict[str, Any]:

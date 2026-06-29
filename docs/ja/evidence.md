@@ -129,9 +129,19 @@ class EvidenceSink(Protocol):
 @dataclass
 class Artifact:
     name: str       # ファイル名（例 "after.png"）
-    kind: str       # "screenshot" / "elements" / "video" / "deviceLog"
-    provider: str   # "driver"（瞬時）/ "simctl"（区間）
+    kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network"
+    provider: str   # このアーティファクトを供給した provider（下表参照）
 ```
+
+| `provider` の値 | 意味 |
+|---|---|
+| `"driver"` | actuator が直接取得した証跡です（スクリーンショット、要素ツリー）。 |
+| `"simctl"` | `simctl` による区間証跡です（動画、デバイスログ、アプリトレース）。 |
+| `"collector"` | idb のアプリ側ネットワークコレクタ（`BAJUTSU_COLLECTOR`）です。 |
+| `"playwright"` | Playwright のネイティブなネットワーク観測です（web バックエンド）。 |
+| `"<backend> (fallback)"` | read-only な証跡フォールバックが供給したアーティファクトです（[BE-0020](../../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。 |
+
+証跡の種別をリスト内のどのバックエンドも供給できない場合は、シナリオごとに `SkippedCapture(kind, reason)` を記録し、manifest で開示します。gap を黙って空にすることはありません。
 
 ## マスキング（redact）
 

@@ -115,6 +115,14 @@
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) | run の前に capability をプリフライト検査する | 実装済み |
 <!-- /GENERATED:implemented-platform -->
 
+### バックエンド拡張（iOS actuator）
+
+<!-- GENERATED:implemented-backend -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0020](implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 実装済み |
+<!-- /GENERATED:implemented-backend -->
+
 ### オーサリング体験（record / GUI エディタ）
 
 AI 駆動の `record`（Tier 1）は実装済みです（[recording.md](../docs/ja/recording.md)）。これらの項目は記録 → 編集 → 再実行のサイクルを人が扱いやすくします。ローカル Web UI ランチャ `bajutsu serve` はその最初のステップです。
@@ -338,7 +346,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0019](in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) | XCUITest backend | 実装中 |
-| [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 実装中 |
 <!-- /GENERATED:in-progress-backend -->
 
 ### Dogfood フィクスチャ（デモアプリ）
