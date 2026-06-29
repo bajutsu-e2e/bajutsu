@@ -289,6 +289,8 @@ def read_scenario(
         return {"error": "not found"}, 404
     if not run_id:
         return {"yaml": text}, 200
+    if not valid_run_id(run_id):
+        return {"yaml": text, "steps": []}, 200
     return {"yaml": text, "steps": _step_artifacts(state, text, run_id, scenario_name)}, 200
 
 
@@ -312,16 +314,17 @@ def _step_artifacts(
     except (json.JSONDecodeError, OSError):
         return []
 
-    sid = _find_sid(manifest, scenario_name)
-    if sid is None:
-        return []
-
     matched = (
         next((s for s in scenarios if s.name == scenario_name), None) if scenario_name else None
     )
     if matched is None and scenarios:
         matched = scenarios[0]
     if matched is None:
+        return []
+
+    effective_name = scenario_name or (matched.name if matched else None)
+    sid = _find_sid(manifest, effective_name)
+    if sid is None:
         return []
 
     result: list[dict[str, Any]] = []
@@ -342,6 +345,14 @@ def _step_artifacts(
             }
         )
     return result
+
+
+def _valid_step_id(step_id: str) -> bool:
+    """Whether *step_id* is a safe relative path (no traversal, no absolute)."""
+    if not step_id or step_id.startswith("/"):
+        return False
+    parts = Path(step_id).parts
+    return ".." not in parts
 
 
 def _find_sid(manifest: dict[str, Any], scenario_name: str | None) -> str | None:
@@ -1130,8 +1141,8 @@ def resolve_scenario_pick(
         return {"error": "target is required"}, 400
     if not run_id or not valid_run_id(run_id):
         return {"error": "invalid or missing runId"}, 400
-    if not step_id:
-        return {"error": "stepId is required"}, 400
+    if not step_id or not _valid_step_id(step_id):
+        return {"error": "invalid or missing stepId"}, 400
     if not isinstance(raw_point, list) or len(raw_point) != 2:
         return {"error": "point must be [x, y] normalized"}, 400
     try:
@@ -1153,17 +1164,22 @@ def resolve_scenario_pick(
     if not elements_path.is_file():
         return {"error": "elements.json not found for this step"}, 404
 
-    raw = json.loads(elements_path.read_text(encoding="utf-8"))
-    elements: list[driver_base.Element] = [
-        {
-            "identifier": el.get("identifier"),
-            "label": el.get("label"),
-            "traits": list(el.get("traits", [])),
-            "value": el.get("value"),
-            "frame": tuple(el.get("frame", (0, 0, 0, 0))),
-        }
-        for el in raw
-    ]
+    try:
+        raw = json.loads(elements_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            return {"error": "elements.json is not a valid element list"}, 400
+        elements: list[driver_base.Element] = [
+            {
+                "identifier": el.get("identifier"),
+                "label": el.get("label"),
+                "traits": list(el.get("traits", [])),
+                "value": el.get("value"),
+                "frame": tuple(el.get("frame", (0, 0, 0, 0))),
+            }
+            for el in raw
+        ]
+    except (json.JSONDecodeError, OSError, AttributeError, TypeError):
+        return {"error": "elements.json is corrupt or unreadable"}, 400
 
     from bajutsu.capture import resolve_capture, screen_size_from_elements
 

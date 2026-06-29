@@ -215,6 +215,42 @@ def test_resolve_pick_invalid_point(tmp_path: Path) -> None:
     assert "point" in payload["error"]
 
 
+def test_resolve_pick_stepid_traversal_rejected(tmp_path: Path) -> None:
+    """stepId with '..' must be rejected to prevent path traversal."""
+    state, _runs = _state(tmp_path)
+    payload, status = ops.resolve_scenario_pick(
+        state,
+        {"target": "demo", "runId": "run1", "stepId": "../../etc/passwd", "point": [0.5, 0.5]},
+    )
+    assert status == 400
+    assert "step" in payload["error"].lower()
+
+
+def test_resolve_pick_stepid_absolute_rejected(tmp_path: Path) -> None:
+    state, _runs = _state(tmp_path)
+    payload, status = ops.resolve_scenario_pick(
+        state,
+        {"target": "demo", "runId": "run1", "stepId": "/etc/passwd", "point": [0.5, 0.5]},
+    )
+    assert status == 400
+    assert "step" in payload["error"].lower()
+
+
+def test_resolve_pick_corrupt_elements(tmp_path: Path) -> None:
+    """Corrupt elements.json should return a controlled error, not a 500."""
+    state, runs = _state(tmp_path)
+    step_dir = runs / "run1" / "00-s/step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text("not json", encoding="utf-8")
+
+    payload, status = ops.resolve_scenario_pick(
+        state,
+        {"target": "demo", "runId": "run1", "stepId": "00-s/step0", "point": [0.5, 0.5]},
+    )
+    assert status == 400
+    assert "elements" in payload["error"].lower()
+
+
 # ---------------------------------------------------------------------------
 # read_scenario with runId — step artifact handles (BE-0013)
 # ---------------------------------------------------------------------------
@@ -327,6 +363,41 @@ def test_read_scenario_without_run_returns_yaml_only(tmp_path: Path) -> None:
     assert status == 200
     assert "yaml" in payload
     assert "steps" not in payload
+
+
+def test_read_scenario_with_run_defaults_to_first_scenario(tmp_path: Path) -> None:
+    """When scenario_name is omitted, default to the first scenario in the YAML."""
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    _write_run_with_steps(
+        runs, "run1", "00-login", ["00-login/step0", "00-login/step1", "00-login/step2"]
+    )
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+    )
+    assert status == 200
+    assert len(payload["steps"]) == 3
+
+
+def test_read_scenario_with_traversal_run_id(tmp_path: Path) -> None:
+    """A run_id with '..' must not escape runs_dir."""
+    state, _runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="../escape",
+    )
+    assert status == 200
+    assert payload["steps"] == []
 
 
 def test_read_scenario_with_run_no_matching_scenario(tmp_path: Path) -> None:
