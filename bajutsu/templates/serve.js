@@ -94,8 +94,9 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-capture').hidden=name!=='capture';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-capture').hidden=name!=='capture';$('#view-editor').hidden=name!=='editor';
   if(name==='replay')loadHistory();
+  if(name==='editor')editorInit();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
 
@@ -238,11 +239,12 @@ async function loadShared(){
   // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
-  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#cap-target').innerHTML=opts;
+  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#cap-target').innerHTML=opts;$('#edt-target').innerHTML=opts;
   syncPlatform('#panel-run','#target');
   syncPlatform('#panel-record','#rec-target');
   syncPlatform('#panel-crawl','#crawl-target');
   syncPlatform('#panel-capture','#cap-target');
+  syncPlatform('#panel-editor','#edt-target');
   await loadScenarios();
 }
 // Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
@@ -883,6 +885,7 @@ wirePlatform('#panel-run','#target');
 wirePlatform('#panel-record','#rec-target');
 wirePlatform('#panel-crawl','#crawl-target');
 wirePlatform('#panel-capture','#cap-target');
+wirePlatform('#panel-editor','#edt-target');
 
 // Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
 // column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.
@@ -1132,6 +1135,139 @@ if(!NARROW_MQ.matches)initTiling();
       $('#cap-status').textContent='Saved to '+path;$('#cap-status').className='status ok';
     }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
   });
+})();
+
+// ===========================================================================
+// Editor tab (BE-0013) — offline two-pane scenario editor with screenshot picker
+// ===========================================================================
+(function(){
+  let edtSteps=[];   // [{stepId, screenshotUrl, elementsUrl}]
+  let edtIdx=-1;     // currently displayed step index
+  let edtInited=false;
+
+  // Populate scenario dropdown when editor target changes.
+  async function edtLoadScenarios(){
+    const target=$('#edt-target').value;
+    let files=[];
+    try{files=target?await (await fetch('/api/scenarios?target='+encodeURIComponent(target))).json():[];}catch(e){files=[];}
+    const opts=files.map(s=>
+      (s.scenarios||[]).map(sc=>`<option value="${esc(s.path)}|${esc(sc.name)}">${esc(s.file)} — ${esc(sc.name)}</option>`)
+    ).flat().join('');
+    $('#edt-scenario').innerHTML=opts||'<option value="">—</option>';
+    edtLoadRuns();
+  }
+
+  // Populate run dropdown.
+  async function edtLoadRuns(){
+    let runs=[];
+    try{runs=await (await fetch('/api/runs')).json();}catch(e){runs=[];}
+    const opts=runs.map(r=>{
+      const label=r.id+' '+(r.ok?'✓':'✗');
+      return `<option value="${esc(r.id)}">${esc(label)}</option>`;
+    }).join('');
+    $('#edt-run').innerHTML=opts||'<option value="">—</option>';
+  }
+
+  // Load scenario + run artifacts.
+  async function edtLoad(){
+    const combo=$('#edt-scenario').value;
+    if(!combo){$('#edt-status').textContent='Select a scenario.';return;}
+    const [path,scnName]=combo.split('|');
+    const target=$('#edt-target').value;
+    const runId=$('#edt-run').value;
+    if(!runId){$('#edt-status').textContent='Select a run.';return;}
+    $('#edt-status').textContent='Loading…';$('#edt-status').className='status run';
+    try{
+      const url='/api/scenario?target='+encodeURIComponent(target)+'&path='+encodeURIComponent(path)
+        +'&runId='+encodeURIComponent(runId)+'&scenario='+encodeURIComponent(scnName);
+      const r=await fetch(url);
+      const d=await r.json();
+      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
+      edtSteps=d.steps||[];
+      edtRenderStepList();
+      if(edtSteps.length>0){edtShowStep(0);}
+      else{$('#edt-placeholder').hidden=false;$('#edt-screenshot').hidden=true;$('#edt-feedback').hidden=true;}
+      $('#edt-status').textContent=edtSteps.length+' step'+(edtSteps.length===1?'':'s')+' loaded';
+      $('#edt-status').className='status ok';
+    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+  }
+
+  function edtRenderStepList(){
+    const ol=$('#edt-steplist');ol.innerHTML='';
+    edtSteps.forEach((s,i)=>{
+      const li=document.createElement('li');
+      li.textContent='step '+i+(s.screenshotUrl?' ✓':' –');
+      li.addEventListener('click',()=>edtShowStep(i));
+      ol.appendChild(li);
+    });
+    $('#edt-step-count').textContent=edtSteps.length+' step'+(edtSteps.length===1?'':'s');
+  }
+
+  function edtShowStep(idx){
+    if(idx<0||idx>=edtSteps.length)return;
+    edtIdx=idx;
+    const s=edtSteps[idx];
+    // Update step list highlight.
+    document.querySelectorAll('#edt-steplist li').forEach((li,i)=>li.classList.toggle('active',i===idx));
+    // Update nav.
+    $('#edt-prev').disabled=idx===0;
+    $('#edt-next').disabled=idx===edtSteps.length-1;
+    $('#edt-step-label').textContent='Step '+(idx+1)+' / '+edtSteps.length;
+    // Show screenshot.
+    if(s.screenshotUrl){
+      $('#edt-screenshot').src=s.screenshotUrl;
+      $('#edt-screenshot').hidden=false;$('#edt-placeholder').hidden=true;
+    }else{
+      $('#edt-screenshot').hidden=true;$('#edt-placeholder').hidden=false;
+      $('#edt-placeholder').textContent='No screenshot for this step.';
+    }
+    $('#edt-feedback').hidden=true;
+  }
+
+  // Screenshot click → resolve.
+  $('#edt-screenshot').addEventListener('click',async(e)=>{
+    if(edtIdx<0||edtIdx>=edtSteps.length)return;
+    const rect=e.target.getBoundingClientRect();
+    const nx=(e.clientX-rect.left)/rect.width;
+    const ny=(e.clientY-rect.top)/rect.height;
+    const target=$('#edt-target').value;
+    const runId=$('#edt-run').value;
+    const s=edtSteps[edtIdx];
+    $('#edt-status').textContent='Resolving…';$('#edt-status').className='status run';
+    try{
+      const r=await fetch('/api/scenario/resolve',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target:target,runId:runId,stepId:s.stepId,point:[nx,ny]})});
+      const d=await r.json();
+      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
+      if(d.refused){$('#edt-status').textContent=d.refused;$('#edt-status').className='status ng';$('#edt-feedback').hidden=true;return;}
+      if(d.ambiguous){
+        $('#edt-status').textContent='Ambiguous: '+d.candidates+' elements share this selector. Narrow with within/index.';
+        $('#edt-status').className='status ng';
+      }else{
+        $('#edt-status').textContent='Resolved';$('#edt-status').className='status ok';
+      }
+      const sel=d.selector;
+      const desc=sel.id?('#'+sel.id):(sel.label||'?');
+      $('#edt-feedback').hidden=false;
+      $('#edt-rung').textContent=d.rung;$('#edt-rung').className='cap-rung rung-'+d.rung;
+      $('#edt-sel').textContent=desc;
+    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+  });
+
+  // Nav buttons.
+  $('#edt-prev').addEventListener('click',()=>{if(edtIdx>0)edtShowStep(edtIdx-1);});
+  $('#edt-next').addEventListener('click',()=>{if(edtIdx<edtSteps.length-1)edtShowStep(edtIdx+1);});
+  // Load button.
+  $('#edt-load').addEventListener('click',edtLoad);
+  // Target change reloads scenarios.
+  $('#edt-target').addEventListener('change',edtLoadScenarios);
+
+  // Called by showView('editor') — lazy init.
+  window.editorInit=function(){
+    if(edtInited)return;
+    edtInited=true;
+    edtLoadScenarios();
+  };
 })();
 
 initTheme();

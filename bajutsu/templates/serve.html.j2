@@ -15,6 +15,7 @@
       <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
       <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
       <button class="toptab" data-view="capture" data-testid="nav.capture">Capture</button>
+      <button class="toptab" data-view="editor" data-testid="nav.editor">Editor</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
@@ -237,6 +238,51 @@
         <div class="cap-feedback" id="cap-feedback" hidden>
           <span class="cap-rung" id="cap-rung"></span>
           <span class="cap-sel" id="cap-sel"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ===== Editor (BE-0013): two-pane scenario editor with offline screenshot picker ===== -->
+<main id="view-editor" data-testid="view.editor" data-pane="form" hidden>
+  <div class="viewswitch" role="tablist" data-testid="editor.switch">
+    <button class="vstab active" data-pane="form">Form</button>
+    <button class="vstab" data-pane="screen">Screen</button>
+    <button class="vstab" data-pane="steps">Steps</button>
+  </div>
+
+  <div class="left" data-pane="form">
+    <div class="card">
+      <div class="panel" id="panel-editor">
+        <label>Target</label><select id="edt-target" data-testid="editor.target"></select>
+        <label>Scenario</label><select id="edt-scenario" data-testid="editor.scenario"></select>
+        <label>Run</label><select id="edt-run" data-testid="editor.run"></select>
+        <button class="run" id="edt-load" data-testid="editor.load" data-idle="Load">Load</button>
+      </div>
+    </div>
+    <div class="card edt-steps-card" data-pane="steps">
+      <div class="yamlhead"><span class="ttl">Steps</span><span class="muted" id="edt-step-count">0 steps</span></div>
+      <ol id="edt-steplist" class="edt-steplist"></ol>
+    </div>
+  </div>
+
+  <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
+
+  <div class="rec-stack">
+    <div class="card edt-screen-card" data-pane="screen">
+      <div class="edt-step-nav">
+        <button class="run edt-nav-btn" id="edt-prev" data-testid="editor.prev" disabled>&larr; Prev</button>
+        <span class="edt-step-label" id="edt-step-label">No step loaded</span>
+        <button class="run edt-nav-btn" id="edt-next" data-testid="editor.next" disabled>Next &rarr;</button>
+      </div>
+      <div class="status" id="edt-status"></div>
+      <div class="edt-screen-wrap" id="edt-screen-wrap">
+        <div class="edt-placeholder" id="edt-placeholder">Select a target, scenario, and run, then press Load.</div>
+        <img id="edt-screenshot" class="edt-screenshot" hidden alt="step screenshot">
+        <div class="edt-feedback" id="edt-feedback" hidden>
+          <span class="cap-rung" id="edt-rung"></span>
+          <span class="cap-sel" id="edt-sel"></span>
         </div>
       </div>
     </div>
