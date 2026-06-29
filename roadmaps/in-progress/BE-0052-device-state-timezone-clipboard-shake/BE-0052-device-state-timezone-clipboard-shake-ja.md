@@ -97,8 +97,8 @@ prime directive の保持：
 モデル → `Step` フィールド → `DeviceControl` ハンドラ → `Env` コマンド → `_Control`）、fake ドライバや
 並列実行ではクリーンに失敗し、codegen はラベル付きの `// TODO` を出力します。
 
-2 番目のスライス（PR [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257)）では、**クリップボードの
-読み戻しアサーション** を出荷しました。`expect: - clipboard: { equals | matches }` で `simctl pbpaste`
+2 番目のスライス（PR [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257)）では、**クリップボードの読み戻しアサーション** を出荷しました。
+`expect: - clipboard: { equals | matches }` で `simctl pbpaste`
 （注入可能な `RunFn` 経由の `Env.get_clipboard`）からペーストボードを読み出して比較し、`setClipboard` で
 仕込んだ値に対する「コピー」操作を検証できます。評価関数（`_eval_clipboard`）は純粋関数で、捏造した値に
 対してゲートで検証しています。ペーストボードの読み出し値は、実行ループがデバイスごとの `DeviceControl` から
