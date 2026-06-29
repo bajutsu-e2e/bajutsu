@@ -103,3 +103,77 @@ def test_foreach_rejects_extract_modifier() -> None:
                 "extract": {"v": {"sel": {"id": "z"}}},
             }
         )
+
+
+# --- web (WebView context) ---
+
+
+def test_web_step_parses() -> None:
+    step = Step.model_validate(
+        {
+            "web": {
+                "within": {"id": "checkout.webview"},
+                "steps": [
+                    {"tap": {"id": "place-order"}},
+                    {"assert": [{"exists": {"id": "order-confirmation"}}]},
+                ],
+            },
+        }
+    )
+    assert step.web is not None
+    assert step.web.within.id == "checkout.webview"
+    assert len(step.web.steps) == 2
+
+
+def test_web_step_requires_within() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate(
+            {
+                "web": {
+                    "steps": [{"tap": {"id": "ok"}}],
+                },
+            }
+        )
+
+
+def test_web_step_requires_steps() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate(
+            {
+                "web": {
+                    "within": {"id": "wv"},
+                },
+            }
+        )
+
+
+def test_web_step_in_step_actions() -> None:
+    from bajutsu.scenario import STEP_ACTIONS
+
+    assert "web" in STEP_ACTIONS
+
+
+def test_web_rejects_capture_modifier() -> None:
+    with pytest.raises(ValidationError, match="capture"):
+        Step.model_validate(
+            {
+                "web": {
+                    "within": {"id": "wv"},
+                    "steps": [{"tap": {"id": "ok"}}],
+                },
+                "capture": ["screenshot.after"],
+            }
+        )
+
+
+def test_web_rejects_extract_modifier() -> None:
+    with pytest.raises(ValidationError, match="extract"):
+        Step.model_validate(
+            {
+                "web": {
+                    "within": {"id": "wv"},
+                    "steps": [{"tap": {"id": "ok"}}],
+                },
+                "extract": {"v": {"sel": {"id": "z"}}},
+            }
+        )

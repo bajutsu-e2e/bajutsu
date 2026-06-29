@@ -45,6 +45,7 @@ class Capability:
     SCREENSHOT = "screenshot"
     ELEMENTS = "elements"
     MULTI_TOUCH = "multiTouch"  # two-finger gestures (pinch / rotate); idb is single-touch
+    WEBVIEW = "webView"  # DOM query/tap inside an embedded WKWebView (BE-0037)
 
 
 class Element(TypedDict):

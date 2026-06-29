@@ -26,83 +26,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
 from bajutsu import env, intervals
+from bajutsu.dom import (
+    QUERY_JS,
+    _norm_role,  # noqa: F401 — re-exported for test_playwright
+    _str_or_none,  # noqa: F401 — re-exported for test_playwright
+    parse_dom,
+)
 from bajutsu.drivers import base
 
 if TYPE_CHECKING:
     from bajutsu.scenario.models.mocks import Mock
     from bajutsu.web_network import WebNetworkCollector
-
-# One DOM walk: visible, interactive / a11y-relevant nodes → records the parser maps to Elements.
-QUERY_JS = """
-() => {
-  const out = [];
-  const sel = '[data-testid], button, a, input, select, textarea, [role]';
-  for (const el of document.querySelectorAll(sel)) {
-    const r = el.getBoundingClientRect();
-    const style = getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden') continue;
-    if (r.width === 0 && r.height === 0) continue;
-    const text = (el.innerText || el.textContent || '').trim();
-    out.push({
-      identifier: el.getAttribute('data-testid'),
-      role: el.getAttribute('role') || el.tagName.toLowerCase(),
-      label: el.getAttribute('aria-label') || (text ? text.slice(0, 200) : null),
-      value: ('value' in el) ? el.value : null,
-      disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
-      selected: el.getAttribute('aria-selected') === 'true'
-                || el.getAttribute('aria-checked') === 'true',
-      frame: [r.x, r.y, r.width, r.height],
-    });
-  }
-  return out;
-}
-"""
-
-# HTML tags / ARIA roles → the normalized trait tokens state assertions look for.
-_ROLE_MAP = {
-    "a": base.Trait.LINK,
-    "link": base.Trait.LINK,
-    "button": base.Trait.BUTTON,
-    "input": "textbox",
-    "textbox": "textbox",
-    "textarea": "textbox",
-}
-
-
-def _str_or_none(v: Any) -> str | None:
-    if v is None or v == "":
-        return None
-    return str(v)
-
-
-def _norm_role(role: str | None) -> str | None:
-    if not role:
-        return None
-    return _ROLE_MAP.get(role, role)
-
-
-def _to_element(rec: dict[str, Any]) -> base.Element:
-    traits: list[str] = []
-    role = _norm_role(_str_or_none(rec.get("role")))
-    if role:
-        traits.append(role)
-    if rec.get("disabled"):
-        traits.append(base.Trait.NOT_ENABLED)
-    if rec.get("selected"):
-        traits.append(base.Trait.SELECTED)
-    f = rec.get("frame") or [0, 0, 0, 0]
-    return {
-        "identifier": _str_or_none(rec.get("identifier")),
-        "label": _str_or_none(rec.get("label")),
-        "value": _str_or_none(rec.get("value")),
-        "traits": traits,
-        "frame": (float(f[0]), float(f[1]), float(f[2]), float(f[3])),
-    }
-
-
-def parse_dom(records: list[dict[str, Any]]) -> list[base.Element]:
-    """Map the QUERY_JS records to normalized Elements (the browser-free, unit-tested core)."""
-    return [_to_element(r) for r in records if isinstance(r, dict)]
 
 
 def _rotate_point(p: base.Point, center: base.Point, radians: float) -> base.Point:
