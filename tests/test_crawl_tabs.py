@@ -12,6 +12,7 @@ import struct
 from conftest import FakeAnthropic, FakeBlock, el
 
 from bajutsu import crawl_tabs
+from bajutsu.anthropic_client import AiConfig
 
 
 def _png(width: int, height: int) -> bytes:
@@ -82,3 +83,15 @@ def test_locator_returns_empty_when_no_tab_bar() -> None:
     assert tabs.locate(_png(10, 10)) == []
     # No tool call at all -> also empty (best-effort, never crashes the crawl).
     assert crawl_tabs.ClaudeTabLocator(client=FakeAnthropic()).locate(_png(10, 10)) == []
+
+
+# --- BE-0097: the tab locator honours the user's AI provider config ---
+
+
+def test_locator_threads_ai_config_to_model() -> None:
+    """BE-0097: a non-default AiConfig is threaded to resolve_model, so the tab locator talks to the
+    user's configured provider."""
+    ai = AiConfig(model="us.anthropic.claude-opus-4-8-v1")
+    client = FakeAnthropic(FakeBlock("find_tabs", {"tabs": []}))
+    crawl_tabs.ClaudeTabLocator(client=client, ai=ai).locate(_png(10, 10))
+    assert client.calls[0]["model"] == "us.anthropic.claude-opus-4-8-v1"

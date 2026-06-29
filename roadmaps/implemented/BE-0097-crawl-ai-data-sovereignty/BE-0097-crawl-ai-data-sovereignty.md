@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0097](BE-0097-crawl-ai-data-sovereignty.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Candidates from competitive research (Maestro) |
 <!-- /BE-METADATA -->
 

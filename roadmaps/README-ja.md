@@ -179,6 +179,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md) | 振る舞い／プロトコルアサーション | 実装済み | Maestro |
 | [BE-0049](implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md) | 決定性／フレーキネス監査 | 実装済み | Maestro |
 | [BE-0050](implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map-ja.md) | E2E カバレッジマップ | 実装済み | Maestro |
+| [BE-0097](implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md) | crawl ガイドと serve が起動する AI 経路の AI データ主権 | 実装済み |  |
 <!-- /GENERATED:implemented-competitive-maestro -->
 
 ### 統合と自動化（MCP）
@@ -475,9 +476,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 Maestro（mobile.dev）はオープンソースのクロスプラットフォーム UI E2E ツールで、その方向性は、幅、ホストされた端末クラウド、そして *既定では optional ／助言的* な AI 機能に傾いています。これらの項目は、Bajutsu の逆の立場（契約としての決定性、UI より下の層での検証、ユーザーの管理下に厳密に置かれた AI）を尖らせます。
 
 <!-- GENERATED:proposals-competitive-maestro -->
-| ID | 項目 | 状態 | 由来 |
-|---|---|---|---|
-| [BE-0097](proposals/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty-ja.md) | crawl ガイドと serve が起動する AI 経路の AI データ主権 | 提案 |  |
+
 <!-- /GENERATED:proposals-competitive-maestro -->
 
 ## 保留

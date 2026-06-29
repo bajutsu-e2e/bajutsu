@@ -10,10 +10,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from conftest import el
+from conftest import FakeAnthropic, FakeBlock, el
 
 from bajutsu import crawl, crawl_tabs
+from bajutsu.anthropic_client import AiConfig
 from bajutsu.crawl_guide import (
+    ClaudeActionProposer,
     ClaudeCodeActionProposer,
     Proposal,
     _actions_from,
@@ -22,6 +24,8 @@ from bajutsu.crawl_guide import (
     make_guide,
 )
 from bajutsu.drivers.fake import FakeDriver
+from bajutsu.redaction import Redactor
+from bajutsu.scenario import Redact
 
 
 class _ShotDriver(FakeDriver):
@@ -252,3 +256,66 @@ def test_claude_code_proposer_tolerates_a_bad_envelope() -> None:
     )
     err = json.dumps({"is_error": True, "structured_output": {"actions": []}})
     assert ClaudeCodeActionProposer(runner=lambda _c: err).propose([], None, [], ()).actions == []
+
+
+# --- BE-0097: the crawl guide's AI inputs are redacted and the provider config is threaded ---
+
+
+def _propose_client() -> FakeAnthropic:
+    """A fake client that returns a minimal propose_actions tool call."""
+    return FakeAnthropic(
+        FakeBlock("propose_actions", {"thought": "ok", "actions": [{"action": "tap", "id": "a"}]})
+    )
+
+
+def test_claude_proposer_threads_ai_config_to_client_and_model() -> None:
+    """BE-0097: a non-default AiConfig is threaded to make_client and resolve_model, so the crawl
+    guide talks to the user's configured provider, not a hardcoded default."""
+    ai = AiConfig(provider="bedrock", model="us.anthropic.claude-opus-4-8-v1")
+    client = _propose_client()
+    proposer = ClaudeActionProposer(client=client, ai=ai)
+    proposer.propose([el(identifier="a", traits=["button"])], None, [], ())
+    assert client.calls[0]["model"] == "us.anthropic.claude-opus-4-8-v1"
+
+
+def test_claude_proposer_redacts_elements_before_send() -> None:
+    """BE-0097: a secret in an element's value/label is masked before it reaches the model."""
+    client = _propose_client()
+    redactor = Redactor(Redact(labels=["カード番号"]), values=["sk-secret-token"])
+    elements = [
+        el(identifier="card", label="カード番号", value="4111-1111-1111-1111"),
+        el(identifier="tok", label="token: sk-secret-token", value="sk-secret-token"),
+    ]
+    ClaudeActionProposer(client=client, redactor=redactor).propose(elements, None, [], ())
+    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    assert "sk-secret-token" not in text
+    assert "[REDACTED]" in text
+
+
+def test_claude_proposer_no_redactor_leaves_text_unmasked() -> None:
+    client = _propose_client()
+    elements = [el(identifier="a", label="plain-label")]
+    ClaudeActionProposer(client=client).propose(elements, None, [], ())
+    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    assert "plain-label" in text
+
+
+def test_claude_code_proposer_redacts_elements_before_send() -> None:
+    """BE-0097: the Claude Code CLI path also redacts the element tree before sending."""
+    seen: list[str] = []
+
+    def runner(cmd: list[str]) -> str:
+        seen.append(cmd[-1])  # the prompt is the last arg
+        return json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "structured_output": {"thought": "ok", "actions": []},
+            }
+        )
+
+    redactor = Redactor(Redact(), values=["sk-secret-token"])
+    elements = [el(identifier="tok", label="token: sk-secret-token")]
+    ClaudeCodeActionProposer(runner=runner, redactor=redactor).propose(elements, None, [], ())
+    assert "sk-secret-token" not in seen[0]
+    assert "[REDACTED]" in seen[0]

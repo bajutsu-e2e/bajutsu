@@ -13,7 +13,6 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.cli._shared import _resolve_browser
-from bajutsu.cli.commands.crawl import _ai_credential_gap
 from bajutsu.config import Effective, load_config, resolve
 
 runner = CliRunner()
@@ -435,47 +434,10 @@ def test_crawl_agent_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     assert "unknown --agent 'bad'" in r.output
 
 
-# --- crawl AI-provider credential gate (BE-0053: crawl is a Tier-1 Bedrock path) ----------------
-# `--agent api` reaches Claude through the configured provider, so the credential it needs depends
-# on the provider: ANTHROPIC_API_KEY for Anthropic, a provider-prefixed BAJUTSU_BEDROCK_MODEL for
-# Bedrock (AWS credentials authenticate there, not an Anthropic key). `claude-code` brings its own.
-
-
-def test_ai_credential_gap_anthropic_needs_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert _ai_credential_gap("api") == "anthropic-key"
-
-
-def test_ai_credential_gap_anthropic_with_key_ok(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    assert _ai_credential_gap("api") is None
-
-
-def test_ai_credential_gap_bedrock_does_not_need_anthropic_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # The fix: on Bedrock, --agent api authenticates via AWS credentials + a Bedrock model id, so a
-    # missing ANTHROPIC_API_KEY must NOT block the crawl (it did before — record never gated on it).
-    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
-    monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert _ai_credential_gap("api") is None
-
-
-def test_ai_credential_gap_bedrock_needs_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
-    monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert _ai_credential_gap("api") == "bedrock-model"
-
-
-def test_ai_credential_gap_claude_code_brings_own_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    # claude-code uses its own subscription auth, so it never needs provider credentials.
-    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert _ai_credential_gap("claude-code") is None
+# --- crawl AI-provider credential gate (BE-0053 / BE-0097) ------------------------------------
+# The crawl-specific `_ai_credential_gap` was removed by BE-0097: crawl now uses the shared,
+# provider-aware `_require_ai_credential(eff)` from `_shared.py`, and `credential_gap(eff.ai)` is
+# tested exhaustively in `test_anthropic_client.py`.
 
 
 def _no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:

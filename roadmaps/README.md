@@ -187,6 +187,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 | [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented | Maestro |
 | [BE-0049](implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Implemented | Maestro |
 | [BE-0050](implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Implemented | Maestro |
+| [BE-0097](implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md) | AI data sovereignty for the crawl guide and serve-spawned AI paths | Implemented |  |
 <!-- /GENERATED:implemented-competitive-maestro -->
 
 ### Integration & automation (MCP)
@@ -483,9 +484,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 Maestro (mobile.dev) is an open-source, cross-platform UI E2E tool whose direction leans into breadth, a hosted device cloud, and AI features that are *optional / advisory by default*. These items sharpen Bajutsu's opposite stance — determinism as a contract, verification below the UI, and AI strictly under the user's control.
 
 <!-- GENERATED:proposals-competitive-maestro -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0097](proposals/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md) | AI data sovereignty for the crawl guide and serve-spawned AI paths | Proposal |  |
+
 <!-- /GENERATED:proposals-competitive-maestro -->
 
 ## Deferred
