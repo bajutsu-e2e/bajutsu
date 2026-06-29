@@ -298,17 +298,47 @@ def test_schemas_resolution_order() -> None:
     assert _resolve_schemas_dir("", eff_without, scenario_file) == Path("/scenarios/app/schemas")
 
 
+def test_goldens_parsed() -> None:
+    cfg = load_config("targets: { x: { bundleId: com.x, goldens: goldens/x } }")
+    assert resolve(cfg, "x").goldens == "goldens/x"
+
+
+def test_goldens_defaults_to_none() -> None:
+    cfg = load_config("targets: { x: { bundleId: com.x } }")
+    assert resolve(cfg, "x").goldens is None
+
+
+def test_goldens_resolution_order() -> None:
+    """_resolve_goldens_dir respects: --goldens flag > config > scenario-local default."""
+    from bajutsu.cli.commands.run import _resolve_goldens_dir
+
+    eff_with = resolve(load_config("targets: { x: { bundleId: com.x, goldens: cfg/gl } }"), "x")
+    eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
+    scenario_file = Path("/scenarios/app/smoke.yaml")
+
+    # flag wins over everything
+    assert _resolve_goldens_dir("flag/gl", eff_with, scenario_file) == Path("flag/gl")
+    assert _resolve_goldens_dir("flag/gl", eff_without, scenario_file) == Path("flag/gl")
+
+    # config used when no flag
+    assert _resolve_goldens_dir("", eff_with, scenario_file) == Path("cfg/gl")
+
+    # scenario-local default when neither flag nor config
+    assert _resolve_goldens_dir("", eff_without, scenario_file) == Path("/scenarios/app/goldens")
+
+
 def test_rebased_resolves_relative_paths_under_the_checkout_root() -> None:
     """Effective.rebased makes a Git config's relative path fields absolute under the checkout (BE-0063)."""
     eff = resolve(
         load_config(
-            "targets:\n  x:\n    bundleId: com.x\n    scenarios: e2e/scn\n    appPath: build/A.app\n"
+            "targets:\n  x:\n    bundleId: com.x\n    scenarios: e2e/scn\n    appPath: build/A.app\n    goldens: golden/data\n"
         ),
         "x",
     )
     rebased = eff.rebased(Path("/co"))
     assert rebased.scenarios == "/co/e2e/scn"
     assert rebased.app_path == "/co/build/A.app"
+    assert rebased.goldens == "/co/golden/data"
 
 
 def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:

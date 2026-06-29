@@ -166,6 +166,19 @@ def run_all(
                     run_dir=run_dir,
                 )
             sc = SchemaContext(schemas_dir=schemas_dir) if schemas_dir is not None else None
+            # Best-effort device screen bounds for golden frame sanity (BE-0006):
+            # a query() failure here must not block non-golden scenarios.
+            gc_with_screen = golden_context
+            if golden_context is not None and golden_context.screen is None:
+                try:
+                    from bajutsu.capture import screen_size_from_elements
+
+                    sw, sh = screen_size_from_elements(lz.driver.query())
+                    gc_with_screen = GoldenContext(
+                        goldens_dir=golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
+                    )
+                except Exception:  # noqa: S110 — best-effort; _eval_golden falls back
+                    pass
             result = run_scenario(
                 lz.driver,
                 s,
@@ -181,7 +194,7 @@ def run_all(
                 visual_context=vc,
                 schema_context=sc,
                 mailbox=mailbox,
-                golden_context=golden_context,
+                golden_context=gc_with_screen,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it
