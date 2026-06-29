@@ -394,3 +394,14 @@ header .cfgname{color:var(--mut);font-size:.82em;max-width:32vw;overflow:hidden;
 .edt-steplist li.active{background:var(--accent);color:#fff}
 .edt-steps-card{margin-top:.5em}
 .edt-screen-card{display:flex;flex-direction:column}
+/* Enrichment panel (BE-0014) */
+.enrich-panel{border-top:1px solid var(--border);margin-top:.5em;padding-top:.5em}
+.enrich-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4em}
+.enrich-head .ttl{font-weight:600;font-size:.85em}
+.enrich-actions{display:flex;gap:.3em}
+.enrich-accept{background:var(--ok)!important;color:#fff!important}
+.enrich-dismiss{background:var(--muted)!important;color:#fff!important}
+.enrich-note{font-size:.8em;color:var(--muted);margin-bottom:.4em;font-style:italic}
+.enrich-list{margin:0;padding:0 0 0 1.2em;font-size:.85em;font-family:var(--mono)}
+.enrich-list li{padding:2px 0}
+.enrich-list .enrich-check{color:var(--accent);font-weight:600;margin-right:.3em}
