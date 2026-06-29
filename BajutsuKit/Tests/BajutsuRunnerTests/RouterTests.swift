@@ -175,6 +175,170 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 500)
     }
 
+    // MARK: - Helpers
+
+    private func extractHandle(from router: Router) throws -> String {
+        let response = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let elements = try XCTUnwrap(parseJSON(response)?["elements"] as? [[String: Any]])
+        return try XCTUnwrap(elements.first?["handle"] as? String)
+    }
+
+    // MARK: - /gesture
+
+    func testGesturePinchSendsScaleToProvider() throws {
+        let provider = FakeElementProvider()
+        let backing = NSObject()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "photo", label: "Photo", value: nil,
+                traits: ["image"], frame: (0, 0, 200, 200), backingElement: backing
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        let body = try JSONSerialization.data(
+            withJSONObject: ["handle": handle, "kind": "pinch", "scale": 2.0]
+        )
+        let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.gestureCalls.count, 1)
+        XCTAssertTrue(provider.gestureCalls[0].backingElement === backing)
+        XCTAssertEqual(provider.gestureCalls[0].kind, "pinch")
+        XCTAssertEqual(provider.gestureCalls[0].scale, 2.0)
+    }
+
+    func testGestureRotateSendsRadiansToProvider() throws {
+        let provider = FakeElementProvider()
+        let backing = NSObject()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "map", label: "Map", value: nil,
+                traits: ["image"], frame: (0, 0, 300, 300), backingElement: backing
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        let body = try JSONSerialization.data(
+            withJSONObject: ["handle": handle, "kind": "rotate", "radians": 1.57]
+        )
+        let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.gestureCalls.count, 1)
+        XCTAssertEqual(provider.gestureCalls[0].kind, "rotate")
+        XCTAssertEqual(provider.gestureCalls[0].radians, 1.57)
+    }
+
+    func testGestureStaleHandleReturnsStale() throws {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "a", label: nil, value: nil,
+                traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "b", label: nil, value: nil,
+                traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        _ = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+
+        let body = try JSONSerialization.data(
+            withJSONObject: ["handle": handle, "kind": "pinch", "scale": 1.0]
+        )
+        let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "stale")
+        XCTAssertEqual(provider.gestureCalls.count, 0)
+    }
+
+    func testGestureMissingHandleReturns400() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["kind": "pinch", "scale": 1.0])
+        let response = makeRouter().handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
+    func testGestureMissingKindReturns400() throws {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "a", label: nil, value: nil,
+                traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        let body = try JSONSerialization.data(withJSONObject: ["handle": handle, "scale": 1.0])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
+    func testGestureUnknownKindReturns400() throws {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "a", label: nil, value: nil,
+                traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        let body = try JSONSerialization.data(
+            withJSONObject: ["handle": handle, "kind": "flick", "scale": 1.0]
+        )
+        let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
+    // MARK: - /swipe
+
+    func testSwipeSendsPointsToProvider() throws {
+        let provider = FakeElementProvider()
+        let router = makeRouter(provider)
+
+        let body = try JSONSerialization.data(
+            withJSONObject: ["from": [10.0, 20.0], "to": [100.0, 200.0]]
+        )
+        let response = router.handle(HTTPRequest(method: "POST", path: "/swipe", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.swipeCalls.count, 1)
+        XCTAssertEqual(provider.swipeCalls[0].fromX, 10.0)
+        XCTAssertEqual(provider.swipeCalls[0].fromY, 20.0)
+        XCTAssertEqual(provider.swipeCalls[0].toX, 100.0)
+        XCTAssertEqual(provider.swipeCalls[0].toY, 200.0)
+    }
+
+    func testSwipeMissingFieldsReturns400() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["from": [10.0, 20.0]])
+        let response = makeRouter().handle(HTTPRequest(method: "POST", path: "/swipe", body: body))
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
+    // MARK: - /type
+
+    func testTypeSendsTextToProvider() throws {
+        let provider = FakeElementProvider()
+        let router = makeRouter(provider)
+
+        let body = try JSONSerialization.data(withJSONObject: ["text": "hello"])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/type", body: body))
+        XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
+        XCTAssertEqual(provider.typeCalls, ["hello"])
+    }
+
+    func testTypeMissingTextReturns400() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["value": "oops"])
+        let response = makeRouter().handle(HTTPRequest(method: "POST", path: "/type", body: body))
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
     // MARK: - unknown route
 
     func testUnknownRouteReturns404() {

@@ -46,6 +46,15 @@ public protocol ElementProviding: AnyObject {
     /// Tap a raw screen coordinate.
     func tapPoint(x: Double, y: Double) -> TapResult
 
+    /// Perform a two-finger gesture (pinch or rotate) on the element.
+    func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult
+
+    /// Swipe between two screen coordinates.
+    func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult
+
+    /// Type text into the focused element.
+    func typeText(_ text: String) -> TapResult
+
     /// Capture a screenshot as PNG data.
     func screenshot() -> Data?
 }
