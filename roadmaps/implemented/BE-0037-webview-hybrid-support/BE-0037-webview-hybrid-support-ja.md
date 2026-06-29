@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0037](BE-0037-webview-hybrid-support-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | (pending) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
