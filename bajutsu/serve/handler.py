@@ -249,6 +249,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.save_scenario(state, body, actor=self._actor()))
                 case "/api/approve":
                     self._json(*ops.approve_baseline(state, body, actor=self._actor()))
+                case "/api/capture/start":
+                    self._json(*ops.start_capture(state, body, actor=self._actor()))
+                case "/api/capture/mark":
+                    self._json(*ops.mark_capture(state, body))
+                case "/api/capture/finish":
+                    self._json(*ops.finish_capture(state, body, actor=self._actor()))
                 case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     self._json(*ops.cancel_job(state, path[len("/api/jobs/") : -len("/cancel")]))
                 case _:

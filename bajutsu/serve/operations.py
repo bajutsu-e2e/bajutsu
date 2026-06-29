@@ -32,6 +32,8 @@ from bajutsu.anthropic_client import (
 )
 from bajutsu.config import load_config, resolve, targets_for_org
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
+from bajutsu.drivers import base as driver_base
+from bajutsu.redaction import Redactor
 from bajutsu.scenario import load_scenario_file
 from bajutsu.serve import jobs, oplog
 
@@ -873,3 +875,135 @@ def cancel_job(state: ServeState, job_id: str) -> tuple[Any, int]:
     if job is None:
         return {"error": "no such job"}, 404
     return {"cancelled": jobs.cancel_job(job)}, 200
+
+
+# --- Capture (BE-0012) ---
+
+
+def _default_driver_factory(target: str, backend: str, udid: str) -> driver_base.Driver:
+    from bajutsu import backends
+
+    actuator = backends.select_actuator([backend] if backend else ["fake"])
+    return backends.make_driver(actuator, udid)
+
+
+def start_capture(
+    state: ServeState,
+    body: dict[str, Any],
+    *,
+    actor: str | None = None,
+    driver_factory: Any | None = None,
+    redactor: Redactor | None = None,
+) -> tuple[Any, int]:
+    """Open a capture session: boot a live driver, take the initial screenshot + query."""
+    cfg = state.config
+    if cfg is None:
+        return {"error": "open a config first"}, 400
+    if not body.get("target"):
+        return {"error": "target is required"}, 400
+    if state.capture is not None:
+        return {"error": "capture session already active"}, 409
+
+    target = str(body["target"])
+    backend, udid, err = _device_args(body)
+    if err:
+        return err
+
+    factory = driver_factory or _default_driver_factory
+    driver = factory(target, backend, udid)
+    elements = driver.query()
+
+    from bajutsu.capture import screen_size_from_elements
+
+    screen_size = screen_size_from_elements(elements)
+
+    config = load_config(cfg.read_text(encoding="utf-8"))
+    target_cfg = config.targets.get(target)
+    namespaces: list[str] = list(target_cfg.id_namespaces) if target_cfg else []
+
+    state.capture = jobs.CaptureSession(
+        driver=driver,
+        target=target,
+        elements=elements,
+        screen_size=screen_size,
+        namespaces=namespaces,
+        redactor=redactor,
+    )
+    return {"ok": True, "screenSize": list(screen_size)}, 200
+
+
+def mark_capture(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+    """Resolve a point, proxy-actuate, and append the step."""
+    session = state.capture
+    if session is None:
+        return {"error": "no active capture session"}, 400
+
+    kind = str(body.get("kind", "tap"))
+    point = body.get("point", [0.5, 0.5])
+    if not isinstance(point, list) or len(point) != 2:
+        return {"error": "point must be [x, y] normalized"}, 400
+    nx, ny = float(point[0]), float(point[1])
+
+    from bajutsu.capture import resolve_capture, step_for_tap, step_for_type
+
+    sw, sh = session.screen_size
+    px, py = nx * sw, ny * sh
+    result = resolve_capture(session.elements, (px, py), session.namespaces)
+
+    if result.refused:
+        return {"refused": result.refused}, 200
+    if result.ambiguity:
+        return {
+            "ambiguity": [
+                {"identifier": e["identifier"], "label": e["label"]} for e in result.ambiguity
+            ],
+            "selector": result.selector.model_dump(exclude_none=True, by_alias=True),
+            "rung": result.rung,
+        }, 200
+
+    sel = result.selector
+    raw = sel.as_selector()
+
+    if kind == "tap":
+        session.driver.tap(raw)
+        step = step_for_tap(sel)
+    elif kind == "type":
+        text = str(body.get("text", ""))
+        session.driver.tap(raw)
+        session.driver.type_text(text)
+        step = step_for_type(sel, text, session.redactor)
+    else:
+        return {"error": f"unsupported capture kind: {kind}"}, 400
+
+    session.steps.append(step)
+    session.elements = session.driver.query()
+
+    return {
+        "selector": sel.model_dump(exclude_none=True, by_alias=True),
+        "rung": result.rung,
+    }, 200
+
+
+def finish_capture(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """Save the captured scenario and close the session."""
+    session = state.capture
+    if session is None:
+        return {"error": "no active capture session"}, 400
+
+    from bajutsu.scenario.models import Scenario
+    from bajutsu.scenario.serialize import dump_scenario_file
+
+    scenario = Scenario(name="captured", steps=list(session.steps))
+    yaml_text = dump_scenario_file([scenario])
+
+    org = state.org_of(actor)
+    scope = state.for_org(org).scenarios.scope(session.target)
+    saved: str | None = None
+    if scope is not None:
+        authored = scope.authored("captured")
+        saved = scope.save(authored.out, yaml_text)
+
+    state.capture = None
+    return {"ok": True, "path": saved, "yaml": yaml_text}, 200

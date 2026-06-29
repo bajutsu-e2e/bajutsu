@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 
 from bajutsu import env
 from bajutsu.config import DEFAULT_ORG
+from bajutsu.drivers import base as driver_base
+from bajutsu.redaction import Redactor
+from bajutsu.scenario.models import Step
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
@@ -118,6 +121,26 @@ class StoreBundle:
 
 
 @dataclass
+class CaptureSession:
+    """Live state for an active capture session (BE-0012).
+
+    Holds the in-process Driver across mark requests — the one architectural departure from
+    the stateless shell-out pattern. A single-session guard prevents two concurrent captures
+    on the same state.
+    """
+
+    driver: driver_base.Driver
+    target: str
+    elements: list[driver_base.Element]
+    screen_size: tuple[float, float]
+    namespaces: list[str]
+    redactor: Redactor | None
+    steps: list[Step] = field(default_factory=list)
+    screenshot_path: Path = field(default_factory=lambda: Path("/dev/null"))
+    prev_fingerprint: str = ""
+
+
+@dataclass
 class ServeState:
     runs_dir: Path
     config: Path | None = None  # None until a config is opened from the UI
@@ -200,6 +223,7 @@ class ServeState:
     # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
+    capture: CaptureSession | None = None
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
