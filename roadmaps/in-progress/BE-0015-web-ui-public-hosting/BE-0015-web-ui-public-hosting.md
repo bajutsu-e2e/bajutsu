@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0015](BE-0015-web-ui-public-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
+| Implementing PR | [#105](https://github.com/bajutsu-e2e/bajutsu/pull/105), [#106](https://github.com/bajutsu-e2e/bajutsu/pull/106), [#108](https://github.com/bajutsu-e2e/bajutsu/pull/108), [#112](https://github.com/bajutsu-e2e/bajutsu/pull/112), [#117](https://github.com/bajutsu-e2e/bajutsu/pull/117), [#118](https://github.com/bajutsu-e2e/bajutsu/pull/118), [#119](https://github.com/bajutsu-e2e/bajutsu/pull/119), [#120](https://github.com/bajutsu-e2e/bajutsu/pull/120), [#121](https://github.com/bajutsu-e2e/bajutsu/pull/121), [#122](https://github.com/bajutsu-e2e/bajutsu/pull/122), [#127](https://github.com/bajutsu-e2e/bajutsu/pull/127), [#129](https://github.com/bajutsu-e2e/bajutsu/pull/129), [#130](https://github.com/bajutsu-e2e/bajutsu/pull/130), [#131](https://github.com/bajutsu-e2e/bajutsu/pull/131), [#132](https://github.com/bajutsu-e2e/bajutsu/pull/132), [#133](https://github.com/bajutsu-e2e/bajutsu/pull/133), [#134](https://github.com/bajutsu-e2e/bajutsu/pull/134), [#139](https://github.com/bajutsu-e2e/bajutsu/pull/139), [#143](https://github.com/bajutsu-e2e/bajutsu/pull/143), [#149](https://github.com/bajutsu-e2e/bajutsu/pull/149), [#150](https://github.com/bajutsu-e2e/bajutsu/pull/150), [#151](https://github.com/bajutsu-e2e/bajutsu/pull/151), [#152](https://github.com/bajutsu-e2e/bajutsu/pull/152), [#153](https://github.com/bajutsu-e2e/bajutsu/pull/153), [#156](https://github.com/bajutsu-e2e/bajutsu/pull/156), [#157](https://github.com/bajutsu-e2e/bajutsu/pull/157), [#159](https://github.com/bajutsu-e2e/bajutsu/pull/159) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -26,7 +27,7 @@ hosting the **runner** — which leads to a shared public service built from a L
 and a macOS worker pool.
 
 Related: [architecture](../../../docs/architecture.md) · [ci](../../../docs/ci.md) · the self-hosting counterpart
-[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
+[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
 
 ## Motivation
 
@@ -320,6 +321,6 @@ counterpart:
 
 `bajutsu/serve/`, [ci](../../../docs/ci.md), [architecture](../../../docs/architecture.md),
 [reporting](../../../docs/reporting.md), [cli](../../../docs/cli.md#serve), the self-hosting counterpart
-[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), and
+[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), and
 [BE-0055](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) — which designs
 the operational logging that realizes the "structured JSON logs" observability row above.

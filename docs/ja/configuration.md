@@ -121,7 +121,7 @@ targets:
 
 ### org（`orgs:`、マルチテナントのサーバ backend）
 
-`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、その org が持つ targets を列挙します。
+`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、その org が持つ targets を列挙します。
 
 ```yaml
 orgs:

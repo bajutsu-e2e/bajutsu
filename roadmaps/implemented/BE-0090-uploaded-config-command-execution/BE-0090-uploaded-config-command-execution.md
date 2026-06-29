@@ -57,8 +57,8 @@ The gap matters at the deployment boundary, not on a laptop:
   is already trusted to bring and run their own suite, so bare-host execution has been tolerable here.
   But it is the same mechanism that is unacceptable when hosted, which is why this item routes every
   deployment, Tier-A included, through the sandbox rather than keeping a bare-host escape hatch.
-- **Hosted / multi-tenant `serve`** ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-  [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)). An
+- **Hosted / multi-tenant `serve`** ([BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
+  [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)). An
   authenticated-but-untrusted tenant uploading a bundle whose config sets `launchServer.cmd: rm -rf …`
   (or anything else) is **arbitrary command execution on the host** — a remote-code-execution vector.
   BE-0073 is explicitly scoped to single-Mac Tier-A and defers multi-tenant isolation to BE-0015 /
@@ -200,8 +200,8 @@ extend.
   replaces its host `Popen` with a container while keeping the probe.
 - [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   — token auth + path confinement this extends with a command-execution policy and sandbox.
-- [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-  [BE-0016 — Self-hosting of the web UI](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
+- [BE-0015 — Public hosting of the web UI](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
+  [BE-0016 — Self-hosting of the web UI](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   — the multi-tenant/hosted targets where `sandbox`-by-default matters and deeper (egress / VM-grade)
   per-job isolation lives.
 - [docs/self-hosting.md](../../../docs/self-hosting.md), [`deploy/self-host/`](../../../deploy/self-host/)

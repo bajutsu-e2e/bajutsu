@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0016](BE-0016-web-ui-self-hosting.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
+| Implementing PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -15,7 +16,7 @@
 
 This proposal describes how to **stand up and operate** the web UI on **your own Mac(s)**, as the
 self-hosted counterpart to the managed, multi-tenant public stack in
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md). It documents two tiers:
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md). It documents two tiers:
 
 - **Tier A — today-ready.** What runs *today* with the existing stdlib `bajutsu serve`
   (`bajutsu/serve/`), already shipped as [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
@@ -26,7 +27,7 @@ self-hosted counterpart to the managed, multi-tenant public stack in
   LaunchAgent plist for you. The step-by-step operator guide is
   [docs/self-hosting.md](../../../docs/self-hosting.md).
 - **Tier B — the server backend with a Mac worker pool.** A self-hosted version of
-  [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s server backend,
+  [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s server backend,
   with every managed service replaced by self-hosted open-source software (OSS). Its single-node form —
   **including multi-org isolation** — has shipped and is runnable today
   ([`deploy/self-host/`](../../../deploy/self-host/)); what remains is growing that node into a
@@ -116,7 +117,7 @@ section is in two parts: **what runs today** (the runnable stack and the multi-t
 already crosses the org boundary), and **what remains** to grow that single node into a fault-tolerant
 pool (cross-org fairness, capability routing, high availability, and observability). The genuinely
 future piece is the **fully managed public cloud** — a hosted Mac pool plus infrastructure-as-code —
-which is [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s,
+which is [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s,
 not this item's.
 
 #### What runs today
@@ -283,7 +284,7 @@ and isolation: the single-node control plane, including **multi-org isolation**,
 ([`deploy/self-host/`](../../../deploy/self-host/)). Take on the **remaining pool work**
 (cross-org fairness, capability routing, high availability, observability) only when the pool and the
 contention are real — and the **fully managed public cloud** offering remains
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s, not this
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s, not this
 item's.
 
 ## Alternatives considered
@@ -318,5 +319,5 @@ stack), [cli.md](../../../docs/cli.md#serve), [ci.md](../../../docs/ci.md),
 (the hardening that makes exposure safe),
 [BE-0055](../../implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) (the structured
 serve logs the observability work builds on),
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the cloud-hosting
+[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the cloud-hosting
 counterpart), [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)

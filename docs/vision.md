@@ -66,10 +66,10 @@ existing Linux gate) is in **[multi-platform](multi-platform.md)**. A second iOS
 cheap Linux control plane (auth, history, queue, report viewer) split from an
 expensive device-worker pool, so a team runs and reviews from a browser.
 
-- **[BE-0015 — public / cloud hosting](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)** — public / multi-tenant: control-plane ⇄ macOS worker pool
+- **[BE-0015 — public / cloud hosting](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)** — public / multi-tenant: control-plane ⇄ macOS worker pool
   split, the `subprocess.Popen` → job-queue refactor, and the security hardening that public
   exposure mandates.
-- **[BE-0016 — self-hosting](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)** — your own Mac(s): a today-ready single-Mac setup and a
+- **[BE-0016 — self-hosting](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)** — your own Mac(s): a today-ready single-Mac setup and a
   fully self-hosted multi-tenant topology.
 - **MCP (Model Context Protocol) integration** ([roadmap → Integration & automation](../roadmaps/README.md#integration--automation-mcp)) — expose `run`/`doctor`/`record`/
   `codegen` as MCP tools and evidence as MCP resources, so agents drive Bajutsu directly. This
@@ -128,7 +128,7 @@ later one at low cost, are:
    deterministic capability that competitors gate behind AI; it strengthens the
    directives rather than straining them.
 
-The hosting axis ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) is a larger,
+The hosting axis ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) is a larger,
 separable investment; pursue it when the demand is collaborative rather than individual.
 
 > **How this relates to [roadmap](../roadmaps/README.md):** this page covers the rationale and the overall

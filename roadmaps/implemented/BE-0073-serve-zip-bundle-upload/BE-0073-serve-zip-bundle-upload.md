@@ -42,8 +42,8 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
 
 1. **A browser user of a hosted serve has no file-system access to the host.** When serve runs on a
    remote worker or a shared Mac
-   ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-   [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), the config, scenarios,
+   ([BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
+   [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), the config, scenarios,
    and `runs/` all live on *that* machine. Today's UI config picker is a **file browser confined to
    `--root`** (`bajutsu/serve/operations.py` `_confined_config_path`), so it can only choose from
    what an operator has already hand-placed on the host. A browser user cannot bring their own suite.
@@ -61,7 +61,7 @@ serve** it leaves a gap that neither hand-placement nor a Git source fully close
    complementary: Git for the versioned text, an upload for the prebuilt binary.
 
 3. **Hand-placing files on the host is the only path today.** The self-hosting Tier-A guide
-   ([BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) has the operator copy
+   ([BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) has the operator copy
    the team's config, scenarios, and binary onto the Mac and keep them in sync by hand. An upload
    turns "ask the operator to scp a build over and edit `--root`" into "drag a zip onto the page and
    press run".
@@ -193,8 +193,8 @@ lands.
   `build:` on-demand build remains available for the *local* / Git case, where a toolchain is present.)
 - **Multi-tenant execution isolation.** Per-tenant Simulators, per-job egress controls, and
   org-scoped storage are the domain of
-  [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
-  [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md); this item targets the
+  [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
+  [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md); this item targets the
   single-Mac Tier-A serve.
 - **Retention / a library of uploaded bundles.** Uploads are ephemeral; persisting and versioning
   them is the Git source's job ([BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)),
@@ -238,8 +238,8 @@ lands.
 - [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   — token auth + path confinement this builds on; the `_confined_config_path` invariant extended to
   extraction.
-- [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-  [BE-0016 — Self-hosting of the web UI](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
+- [BE-0015 — Public hosting of the web UI](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
+  [BE-0016 — Self-hosting of the web UI](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   — why a browser user needs upload; where deeper multi-tenant isolation lives.
 - [BE-0059 — Bring up the target server for a run (`launchServer`)](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)
   — the web-backend analogue (serve a bundled static site) for a future slice.

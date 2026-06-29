@@ -4,7 +4,7 @@
 
 > bajutsu の Web UI（[cli](cli.md#serve)）を、自前のハードウェア上で、プライベートな Tailscale ネットワーク
 > 越しにチームから到達できるよう動かします（セルフホスティングロードマップ
-> [BE-0016](../../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。今日使える
+> [BE-0016](../../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。今日使える
 > 段階は 2 つあり、どちらも
 > [BE-0051](../../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
 > の認証と入力検証で公開を安全にしています。
@@ -17,7 +17,7 @@
 >   セルフホスティング」節を参照）。
 >
 > フルマネージドの公開クラウド提供（ホスト型の Mac ワーカープール＋IaC）は将来のままです
-> （[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
+> （[BE-0015](../../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
 
 ## macOS の制約
 

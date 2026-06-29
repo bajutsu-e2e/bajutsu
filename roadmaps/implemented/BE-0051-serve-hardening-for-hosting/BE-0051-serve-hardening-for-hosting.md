@@ -17,8 +17,8 @@
 The stdlib `bajutsu serve` (`bajutsu/serve/`) is safe today only because it is **localhost-only and
 single-user**: it has no authentication and, until slice 1 below (#92) confined it, `/api/run`
 accepted a client-supplied scenario path.
-Both hosting proposals — public/cloud [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
-and self-hosted [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — name a set of
+Both hosting proposals — public/cloud [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
+and self-hosted [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — name a set of
 **mandatory** security fixes before `serve` may be reached beyond loopback. This item collects those
 fixes as a single, incrementally-shippable hardening track on the **existing** stdlib server, so the
 deterministic core never changes and each slice is testable on the Linux gate without a Simulator.
@@ -38,8 +38,8 @@ unsafe on any network beyond loopback:
   `bajutsu run` argv with no check that it stayed within the app's scenarios dir, and `backend` /
   `udid` were free text — an arbitrary-path execution surface.
 
-These are not theoretical: they are the exact items [BE-0015 §Security hardening](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
-and [BE-0016 Tier A](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) flag as blockers. Closing
+These are not theoretical: they are the exact items [BE-0015 §Security hardening](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
+and [BE-0016 Tier A](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) flag as blockers. Closing
 them on the current server is cheap, independently useful (it makes a Tailscale/LaunchAgent single-Mac
 deployment safe today, per BE-0016 Tier A), and a clean foundation for the hosted system later.
 
@@ -94,6 +94,6 @@ safe to put behind a private network with a token."
 
 ## References
 
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (public/cloud hosting),
-[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting),
+[BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (public/cloud hosting),
+[BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting),
 `bajutsu/serve/`, [cli.md](../../../docs/cli.md#serve)

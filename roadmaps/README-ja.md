@@ -367,7 +367,10 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### Web UI のホスティング（クラウド / セルフホスト）
 
 <!-- GENERATED:in-progress-hosting -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開ホスティング | 実装中 |
+| [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) | Web UI のセルフホスティング | 実装中 |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### codegen 網羅性
@@ -424,13 +427,11 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 
 ### Web UI のホスティング（クラウド / セルフホスト）
 
-ローカルの `bajutsu serve` ランチャを共有サービスにします。ランナーは iOS Simulator を駆動するため Mac が必要で、コントロールプレーン（Linux）⇄ macOS ワーカーの分離を強います。[BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) はマネージドなマルチテナント公開スタックを選定し、[BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) は自前の Mac での運用を扱います。
+ローカルの `bajutsu serve` ランチャを共有サービスにします。ランナーは iOS Simulator を駆動するため Mac が必要で、コントロールプレーン（Linux）⇄ macOS ワーカーの分離を強います。[BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) はマネージドなマルチテナント公開スタックを選定し、[BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) は自前の Mac での運用を扱います。
 
 <!-- GENERATED:proposals-hosting -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開ホスティング | 提案 |
-| [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) | Web UI のセルフホスティング | 提案 |
 | [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split-ja.md) | 制御プレーンと worker をまたいだ実行中アーティファクトのライブ表示 | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
