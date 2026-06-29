@@ -127,6 +127,9 @@ _EDITOR_PATHS = frozenset(
         "/api/crawl",
         "/api/scenario",
         "/api/approve",
+        "/api/capture/start",
+        "/api/capture/mark",
+        "/api/capture/finish",
     }
 )
 

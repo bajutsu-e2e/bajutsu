@@ -905,9 +905,21 @@ def start_capture(
         return {"error": "capture session already active"}, 409
 
     target = str(body["target"])
+    _org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
+
+    config = load_config(cfg.read_text(encoding="utf-8"))
+    target_cfg = config.targets.get(target)
+    if target_cfg is None:
+        return {"error": f"unknown target: {target}"}, 400
+
     backend, udid, err = _device_args(body)
     if err:
         return err
+    if not backend:
+        backends_list = target_cfg.backend or config.defaults.backend
+        backend = backends_list[0] if backends_list else "fake"
 
     factory = driver_factory or _default_driver_factory
     driver = factory(target, backend, udid)
@@ -916,10 +928,7 @@ def start_capture(
     from bajutsu.capture import screen_size_from_elements
 
     screen_size = screen_size_from_elements(elements)
-
-    config = load_config(cfg.read_text(encoding="utf-8"))
-    target_cfg = config.targets.get(target)
-    namespaces: list[str] = list(target_cfg.id_namespaces) if target_cfg else []
+    namespaces: list[str] = list(target_cfg.id_namespaces)
 
     state.capture = jobs.CaptureSession(
         driver=driver,
@@ -942,7 +951,10 @@ def mark_capture(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
     point = body.get("point", [0.5, 0.5])
     if not isinstance(point, list) or len(point) != 2:
         return {"error": "point must be [x, y] normalized"}, 400
-    nx, ny = float(point[0]), float(point[1])
+    try:
+        nx, ny = float(point[0]), float(point[1])
+    except (TypeError, ValueError):
+        return {"error": "point values must be numeric"}, 400
 
     from bajutsu.capture import resolve_capture, step_for_tap, step_for_type
 
@@ -992,18 +1004,23 @@ def finish_capture(
     if session is None:
         return {"error": "no active capture session"}, 400
 
+    org, forbidden = _resolve_org_or_forbid(state, session.target, actor)
+    if forbidden:
+        state.capture = None
+        return forbidden
+
     from bajutsu.scenario.models import Scenario
     from bajutsu.scenario.serialize import dump_scenario_file
 
     scenario = Scenario(name="captured", steps=list(session.steps))
     yaml_text = dump_scenario_file([scenario])
 
-    org = state.org_of(actor)
     scope = state.for_org(org).scenarios.scope(session.target)
     saved: str | None = None
     if scope is not None:
         authored = scope.authored("captured")
-        saved = scope.save(authored.out, yaml_text)
+        ref = authored.save[1] if authored.save else authored.out
+        saved = scope.save(ref, yaml_text)
 
     state.capture = None
     return {"ok": True, "path": saved, "yaml": yaml_text}, 200
