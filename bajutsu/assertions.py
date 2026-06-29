@@ -98,10 +98,13 @@ class GoldenContext:
     """Paths a `golden` assertion needs (BE-0006).
 
     The golden JSON path (from the assertion's `path` field) is resolved against `goldens_dir`.
-    Screen bounds for frame sanity checks are derived from the live elements at evaluation time.
+    `screen`, when given, is the authoritative device screen bounds for frame sanity checks;
+    when absent, the bounds are derived from the live elements — a weaker fallback since
+    elements at the screen edge make the check tautological for overflow detection.
     """
 
     goldens_dir: Path
+    screen: base.Frame | None = None
 
 
 def _sel_str(sel: Selector) -> str:
@@ -596,12 +599,16 @@ def _eval_golden(
         )
     if not golden_file.is_file():
         return AssertionResult(False, "golden", detail, f"golden not found: {m.path}")
-    from bajutsu.capture import screen_size_from_elements
     from bajutsu.golden import compare_golden, load_golden
 
     golden = load_golden(golden_file)
-    sw, sh = screen_size_from_elements(elements)
-    screen: base.Frame = (0.0, 0.0, sw, sh)
+    if ctx.screen is not None:
+        screen = ctx.screen
+    else:
+        from bajutsu.capture import screen_size_from_elements
+
+        sw, sh = screen_size_from_elements(elements)
+        screen = (0.0, 0.0, sw, sh)
     result = compare_golden(golden, elements, screen)
     if result.ok:
         return AssertionResult(True, "golden", detail)
