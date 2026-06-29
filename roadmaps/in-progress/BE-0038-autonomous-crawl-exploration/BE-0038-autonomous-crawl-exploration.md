@@ -101,7 +101,7 @@ Everything lands under `runs/<runId>/` alongside the existing `manifest.json` ([
 ### Relationship to other items
 
 - **`record`** ([recording.md](../../../docs/recording.md)) — crawl is the breadth-first complement; discovered screens seed `record` goals. They share the loop, alert handling, and evidence plumbing.
-- **[BE-0012 action-capture record](../BE-0012-action-capture-record/BE-0012-action-capture-record.md) / [BE-0014 record demarcation](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md)** — those cover *human-driven* capture and how it is demarcated from AI `record`; crawl is a third, fully autonomous, authoring front end and should be demarcated alongside them.
+- **[BE-0012 action-capture record](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record.md) / [BE-0014 record demarcation](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md)** — those cover *human-driven* capture and how it is demarcated from AI `record`; crawl is a third, fully autonomous, authoring front end and should be demarcated alongside them.
 - **[BE-0024 doctor / onboarding](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)** — crawl supplies the whole-app coverage input doctor's §7.2 measurement needs.
 
 ### Implementation status
@@ -149,6 +149,6 @@ discovered flow.
 
 ## References
 
-[recording.md](../../../docs/recording.md), [drivers.md](../../../docs/drivers.md), [concepts.md](../../../docs/concepts.md), [DESIGN §2 / §3.1 / §5 / §7.2 / §9](../../../DESIGN.md), [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md), [BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)
+[recording.md](../../../docs/recording.md), [drivers.md](../../../docs/drivers.md), [concepts.md](../../../docs/concepts.md), [DESIGN §2 / §3.1 / §5 / §7.2 / §9](../../../DESIGN.md), [BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record.md), [BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md), [BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)
 </content>
 </invoke>

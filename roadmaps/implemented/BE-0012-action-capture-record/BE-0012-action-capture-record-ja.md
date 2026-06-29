@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0012](BE-0012-action-capture-record-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
+| 実装 PR | [#381](https://github.com/bajutsu-e2e/bajutsu/pull/381), [#382](https://github.com/bajutsu-e2e/bajutsu/pull/382) |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
 

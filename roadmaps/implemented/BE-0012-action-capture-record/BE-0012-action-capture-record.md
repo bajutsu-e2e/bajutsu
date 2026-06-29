@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0012](BE-0012-action-capture-record.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
+| Implementing PR | [#381](https://github.com/bajutsu-e2e/bajutsu/pull/381), [#382](https://github.com/bajutsu-e2e/bajutsu/pull/382) |
 | Topic | Authoring experience (record / GUI editor) |
 <!-- /BE-METADATA -->
 

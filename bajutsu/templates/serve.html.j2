@@ -14,6 +14,7 @@
       <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>
       <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
       <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
+      <button class="toptab" data-view="capture" data-testid="nav.capture">Capture</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
@@ -192,6 +193,53 @@
   <div class="card crawl-console-panel" data-pane="console">
     <div class="crawlsub">Console</div>
     <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
+  </div>
+</main>
+
+<!-- ===== Capture: record actions by clicking on a screenshot (BE-0012) ===== -->
+<main id="view-capture" data-testid="view.capture" data-pane="form" hidden>
+  <div class="viewswitch" role="tablist" data-testid="capture.switch">
+    <button class="vstab active" data-pane="form">Form</button>
+    <button class="vstab" data-pane="screen">Screen</button>
+    <button class="vstab" data-pane="steps">Steps</button>
+  </div>
+  <div class="left" data-pane="form">
+    <div class="card">
+      <div class="panel" id="panel-capture">
+        <label>Target</label><select id="cap-target" data-testid="capture.target"></select>
+        <label>Action mode</label>
+        <div class="checks">
+          <label><input type="radio" name="cap-mode" value="tap" checked> tap</label>
+          <label><input type="radio" name="cap-mode" value="type"> type</label>
+        </div>
+        <div id="cap-type-field" hidden>
+          <label>Text to type</label>
+          <input id="cap-text" type="text" placeholder="text to enter into the focused field">
+        </div>
+      </div>
+    </div>
+    <div class="card cap-steps-card" data-pane="steps">
+      <div class="yamlhead"><span class="ttl">Captured steps</span><span class="muted" id="cap-count">0 steps</span></div>
+      <ol id="cap-steplist" class="cap-steplist"></ol>
+    </div>
+  </div>
+  <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
+  <div class="rec-stack">
+    <div class="card cap-screen-card" data-pane="screen">
+      <div style="display:flex;gap:.5em;margin-bottom:.5em">
+        <button class="run" id="cap-start" data-testid="capture.start" data-idle="Start capture">Start capture</button>
+        <button class="run" id="cap-finish" data-testid="capture.finish" hidden>Finish &amp; save</button>
+      </div>
+      <div class="status" id="cap-status"></div>
+      <div class="cap-screen-wrap" id="cap-screen-wrap">
+        <div class="cap-placeholder" id="cap-placeholder">Select a target and press Start to begin capturing actions by clicking on the screenshot.</div>
+        <img id="cap-screenshot" class="cap-screenshot" hidden alt="device screenshot">
+        <div class="cap-feedback" id="cap-feedback" hidden>
+          <span class="cap-rung" id="cap-rung"></span>
+          <span class="cap-sel" id="cap-sel"></span>
+        </div>
+      </div>
+    </div>
   </div>
 </main>
 

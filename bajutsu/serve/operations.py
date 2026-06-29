@@ -920,6 +920,8 @@ def start_capture(
     if not backend:
         backends_list = target_cfg.backend or config.defaults.backend
         backend = backends_list[0] if backends_list else "fake"
+    if not udid:
+        udid = "booted"
 
     factory = driver_factory or _default_driver_factory
     driver = factory(target, backend, udid)
@@ -930,6 +932,11 @@ def start_capture(
     screen_size = screen_size_from_elements(elements)
     namespaces: list[str] = list(target_cfg.id_namespaces)
 
+    shot_dir = state.runs_dir / "_capture"
+    shot_dir.mkdir(parents=True, exist_ok=True)
+    shot_path = shot_dir / "screen.png"
+    driver.screenshot(str(shot_path))
+
     state.capture = jobs.CaptureSession(
         driver=driver,
         target=target,
@@ -937,15 +944,21 @@ def start_capture(
         screen_size=screen_size,
         namespaces=namespaces,
         redactor=redactor,
+        actor=actor,
+        screenshot_path=shot_path,
     )
     return {"ok": True, "screenSize": list(screen_size)}, 200
 
 
-def mark_capture(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+def mark_capture(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
     """Resolve a point, proxy-actuate, and append the step."""
     session = state.capture
     if session is None:
         return {"error": "no active capture session"}, 400
+    if session.actor is not None and actor != session.actor:
+        return {"error": "capture session belongs to another user"}, 403
 
     kind = str(body.get("kind", "tap"))
     point = body.get("point", [0.5, 0.5])
@@ -989,6 +1002,7 @@ def mark_capture(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
 
     session.steps.append(step)
     session.elements = session.driver.query()
+    session.driver.screenshot(str(session.screenshot_path))
 
     return {
         "selector": sel.model_dump(exclude_none=True, by_alias=True),
