@@ -24,6 +24,7 @@ import yaml
 
 from bajutsu.agents import AGENT_ENV
 from bajutsu.anthropic_client import (
+    ANTHROPIC_KEY_ENV,
     BEDROCK_MODEL_ENV,
     PROVIDER_ENV,
     PROVIDERS,
@@ -102,8 +103,45 @@ def run_file(store: ArtifactStore, rel: str) -> Artifact | None:
     return store.get(rel)
 
 
-# The one secret the WebUI lets you set; the AI paths (record, --dismiss-alerts) read it.
-_API_KEY_VAR = "ANTHROPIC_API_KEY"
+_UNSAFE_ENV_VARS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "LANG",
+        "TERM",
+        "PWD",
+        "OLDPWD",
+        "LOGNAME",
+        "TMPDIR",
+        "DISPLAY",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+    }
+)
+
+
+def _valid_key_env_name(name: str) -> bool:
+    """Whether *name* is a safe env-var name for an API key."""
+    return bool(name) and name.isidentifier() and name not in _UNSAFE_ENV_VARS
+
+
+def _active_key_env(state: jobs.ServeState) -> str:
+    """The env var name the bound config's ``ai.keyEnv`` resolves to (BE-0097).
+
+    Falls back to ``ANTHROPIC_API_KEY`` when no config is bound, the config has no ``keyEnv``,
+    or the name fails validation (not an identifier, or a known system variable).
+    """
+    if state.config is not None:
+        try:
+            cfg = load_config(state.config.read_text(encoding="utf-8"))
+            ai_settings = cfg.defaults.ai if cfg.defaults else None
+            if ai_settings and ai_settings.key_env and _valid_key_env_name(ai_settings.key_env):
+                return ai_settings.key_env
+        except Exception:
+            logging.getLogger(__name__).debug("cannot read ai.keyEnv from config", exc_info=True)
+    return ANTHROPIC_KEY_ENV
 
 
 def _boot_targets(udid: str) -> list[str]:
@@ -194,7 +232,7 @@ def api_key_info(state: ServeState, reveal: bool) -> tuple[Any, int]:
     """Whether a key is set in the serve process's environment, with a redacted preview.  ``reveal``
     adds the full value — only on explicit request, and gated by the auth check when a token is
     configured (the local backend additionally binds to localhost)."""
-    key = os.environ.get(_API_KEY_VAR) or None
+    key = os.environ.get(_active_key_env(state)) or None
     payload: dict[str, Any] = {"set": key is not None}
     if key is not None:
         payload["masked"] = mask_secret(key)
@@ -395,14 +433,16 @@ def bind_git_config(state: ServeState, spec_str: str) -> tuple[Any, int]:
 
 def set_api_key(state: ServeState, value: str) -> tuple[Any, int]:
     """Set the Claude API key in the serve process's environment for this session (empty clears
-    it).  Held in memory only — never written to disk — and inherited by spawned record/run jobs."""
+    it).  Held in memory only — never written to disk — and inherited by spawned record/run jobs.
+    Honours the bound config's ``ai.keyEnv`` (BE-0097)."""
+    var = _active_key_env(state)
     value = value.strip()
     if value and any(c.isspace() for c in value):
         return {"error": "the API key must not contain whitespace"}, 400
     if value:
-        os.environ[_API_KEY_VAR] = value
+        os.environ[var] = value
         return {"ok": True, "set": True, "masked": mask_secret(value)}, 200
-    os.environ.pop(_API_KEY_VAR, None)
+    os.environ.pop(var, None)
     return {"ok": True, "set": False}, 200
 
 

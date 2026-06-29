@@ -21,9 +21,10 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from bajutsu import crawl, crawl_tabs
-from bajutsu.anthropic_client import make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
 from bajutsu.drivers import base
 from bajutsu.record import _screenshot_bytes
+from bajutsu.redaction import Redactor
 
 MODEL = "claude-opus-4-8"
 
@@ -127,21 +128,28 @@ def _dedup(actions: list[crawl.Action]) -> list[crawl.Action]:
     return out
 
 
-def make_guide(report: Report | None = None, agent: str = "api") -> crawl.Guide:
+def make_guide(
+    report: Report | None = None,
+    agent: str = "api",
+    *,
+    ai: AiConfig | None = None,
+    redactor: Redactor | None = None,
+) -> crawl.Guide:
     """The AI crawl guide, narrating its reasoning through `report`.
 
     `agent` picks the backend: ``api`` (the Anthropic API, pay-per-token) or ``claude-code`` (the
     Claude Code CLI, drawing on a subscription — text-only). The vision tab locator stays on the API
     either way; it only runs for a tab bar the tree can't address.
 
-    (Crawl is AI-driven: the AI proposes *what to try* while the engine keeps screen identity,
-    transitions and crashes deterministic. The deterministic `candidate_actions` is still the
-    baseline the AI builds on and the engine's test default — it just isn't a standalone mode.)
+    `ai` and `redactor` thread the BE-0047 data-sovereignty guarantees (provider config +
+    textual-input redaction) into every AI call the guide makes (BE-0097).
     """
     proposer: ActionProposer = (
-        ClaudeCodeActionProposer() if agent == "claude-code" else ClaudeActionProposer()
+        ClaudeCodeActionProposer(redactor=redactor)
+        if agent == "claude-code"
+        else ClaudeActionProposer(ai=ai, redactor=redactor)
     )
-    return ai_guide(proposer, report=report, tab_locator=crawl_tabs.ClaudeTabLocator())
+    return ai_guide(proposer, report=report, tab_locator=crawl_tabs.ClaudeTabLocator(ai=ai))
 
 
 # --- Claude-backed proposer ---------------------------------------------------------------
@@ -330,15 +338,20 @@ class ClaudeActionProposer:
         model: str | None = None,
         max_tokens: int = 1024,
         max_actions: int = 8,
+        *,
+        ai: AiConfig | None = None,
+        redactor: Redactor | None = None,
     ) -> None:
         self._client = client
-        self._model = resolve_model(MODEL) if model is None else model
+        self._ai = ai
+        self._redactor = redactor
+        self._model = resolve_model(MODEL, ai) if model is None else model
         self._max_tokens = max_tokens
         self._max_actions = max_actions
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            self._client = make_client()
+            self._client = make_client(ai=self._ai)
         return self._client
 
     def propose(
@@ -348,15 +361,20 @@ class ClaudeActionProposer:
         candidates: list[crawl.Action],
         dismissed: tuple[str, ...],
     ) -> Proposal:
+        if self._redactor is not None:
+            elements = self._redactor.redact_elements(elements)
+        content = _content(elements, screenshot, candidates, dismissed)
+        if self._redactor is not None:
+            for part in content:
+                if part.get("type") == "text":
+                    part["text"] = self._redactor.redact_text(part["text"])
         message = self._ensure_client().messages.create(
             model=self._model,
             max_tokens=self._max_tokens,
             system=[{"type": "text", "text": _SYSTEM, "cache_control": {"type": "ephemeral"}}],
             tools=[_PROPOSE_TOOL],
             tool_choice={"type": "tool", "name": "propose_actions"},
-            messages=[
-                {"role": "user", "content": _content(elements, screenshot, candidates, dismissed)}
-            ],
+            messages=[{"role": "user", "content": content}],
         )
         block = next((b for b in message.content if b.type == "tool_use"), None)
         if block is None:
@@ -392,6 +410,8 @@ class ClaudeCodeActionProposer:
         runner: Callable[[list[str]], str] | None = None,
         binary: str = "claude",
         max_actions: int = 8,
+        *,
+        redactor: Redactor | None = None,
     ) -> None:
         # Default to MODEL (like ClaudeActionProposer), not the CLI's ambient default, so the crawl
         # pins the same model on both backends. Bare MODEL, not resolve_model: the CLI runs on the
@@ -400,6 +420,7 @@ class ClaudeCodeActionProposer:
         self._runner = runner
         self._binary = binary
         self._max_actions = max_actions
+        self._redactor = redactor
 
     def _ensure_runner(self) -> Callable[[list[str]], str]:
         if self._runner is None:
@@ -431,7 +452,12 @@ class ClaudeCodeActionProposer:
         candidates: list[crawl.Action],
         dismissed: tuple[str, ...],
     ) -> Proposal:
-        stdout = self._ensure_runner()(self._command(_text_block(elements, candidates, dismissed)))
+        if self._redactor is not None:
+            elements = self._redactor.redact_elements(elements)
+        text = _text_block(elements, candidates, dismissed)
+        if self._redactor is not None:
+            text = self._redactor.redact_text(text)
+        stdout = self._ensure_runner()(self._command(text))
         try:
             envelope = json.loads(stdout)
         except json.JSONDecodeError:

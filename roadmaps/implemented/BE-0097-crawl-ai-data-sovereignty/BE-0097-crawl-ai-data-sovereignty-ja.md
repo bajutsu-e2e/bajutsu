@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0097](BE-0097-crawl-ai-data-sovereignty-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | [#380](https://github.com/bajutsu-e2e/bajutsu/pull/380) |
 | トピック | 競合調査（Maestro）由来の候補 |
 <!-- /BE-METADATA -->
 

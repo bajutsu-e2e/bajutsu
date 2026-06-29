@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from bajutsu.alerts import _fraction, _png_size
-from bajutsu.anthropic_client import make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
 from bajutsu.drivers import base
 
 TAB_LOCATOR_MODEL = "claude-opus-4-8"
@@ -169,13 +169,20 @@ class ClaudeTabLocator:
     locator.
     """
 
-    def __init__(self, client: Any = None, model: str | None = None) -> None:
+    def __init__(
+        self,
+        client: Any = None,
+        model: str | None = None,
+        *,
+        ai: AiConfig | None = None,
+    ) -> None:
         self._client = client
-        self._model = resolve_model(TAB_LOCATOR_MODEL) if model is None else model
+        self._ai = ai
+        self._model = resolve_model(TAB_LOCATOR_MODEL, ai) if model is None else model
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            self._client = make_client()
+            self._client = make_client(ai=self._ai)
         return self._client
 
     def locate(self, screenshot_png: bytes) -> list[TabTarget]:
