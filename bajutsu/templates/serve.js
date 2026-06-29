@@ -1219,6 +1219,8 @@ if(!NARROW_MQ.matches)initTiling();
       else{edtIdx=-1;$('#edt-placeholder').hidden=false;$('#edt-placeholder').textContent=runId?'No steps in this run.':'No run selected — edit YAML directly.';$('#edt-screenshot').hidden=true;$('#edt-feedback').hidden=true;$('#edt-prev').disabled=true;$('#edt-next').disabled=true;$('#edt-step-label').textContent='No steps';}
       const msg=edtSteps.length?edtSteps.length+' step'+(edtSteps.length===1?'':'s')+' loaded':'YAML loaded (no run selected)';
       $('#edt-status').textContent=msg;$('#edt-status').className='status ok';
+      $('#edt-enrich').disabled=false;
+      $('#edt-enrich-panel').hidden=true;
     }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
   }
 
@@ -1344,6 +1346,184 @@ if(!NARROW_MQ.matches)initTiling();
       else{$('#edt-status').textContent='Saved ✓';$('#edt-status').className='status ok';}
     }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
     $('#edt-save').disabled=false;
+  });
+
+  // --- Enrichment (BE-0014) ---
+  let enrichResult=null; // last enrichment response {expect, settle, note}
+
+  function enrichAssertionLabel(a){
+    if(a.exists){
+      const sel=a.exists.sel||{};
+      const id=sel.id?'#'+sel.id:(sel.label||'?');
+      return (a.exists.negate?'notExists':'exists')+' '+id;
+    }
+    if(a.value){
+      const sel=a.value.sel||{};
+      const id=sel.id?'#'+sel.id:(sel.label||'?');
+      return 'value '+id+' equals "'+a.value.equals+'"';
+    }
+    if(a.label){
+      const sel=a.label.sel||{};
+      const id=sel.id?'#'+sel.id:(sel.label||'?');
+      return 'label '+id+' contains "'+(a.label.contains||'')+'"';
+    }
+    return JSON.stringify(a);
+  }
+
+  function enrichRender(data){
+    enrichResult=data;
+    const list=$('#edt-enrich-list');list.innerHTML='';
+    (data.expect||[]).forEach(a=>{
+      const li=document.createElement('li');
+      li.innerHTML='<span class="enrich-check">✓</span>'+esc(enrichAssertionLabel(a));
+      list.appendChild(li);
+    });
+    if(data.settle){
+      const li=document.createElement('li');
+      const w=data.settle.wait||{};
+      const sel=w['for']||{};
+      const id=sel.id?'#'+sel.id:(sel.label||'?');
+      li.innerHTML='<span class="enrich-check">⏳</span>settle wait for '+esc(id);
+      list.appendChild(li);
+    }
+    $('#edt-enrich-note').textContent=data.note||'';
+    $('#edt-enrich-panel').hidden=false;
+  }
+
+  function enrichAssertionYaml(a,indent){
+    const pfx=indent+'- ';
+    if(a.exists){
+      const sel=a.exists.sel||{};
+      const id=sel.id?'{ id: '+sel.id+' }':JSON.stringify(sel);
+      if(a.exists.negate)return pfx+'exists: { '+Object.entries(sel).map(([k,v])=>k+': '+JSON.stringify(v)).join(', ')+', negate: true }';
+      return pfx+'exists: '+id;
+    }
+    if(a.value){
+      const sel=a.value.sel||{};
+      return pfx+'value: { sel: '+JSON.stringify(sel)+', equals: '+JSON.stringify(a.value.equals)+' }';
+    }
+    if(a.label){
+      const sel=a.label.sel||{};
+      return pfx+'label: { sel: '+JSON.stringify(sel)+', contains: '+JSON.stringify(a.label.contains)+' }';
+    }
+    return pfx+JSON.stringify(a);
+  }
+
+  function _extractName(trimmed){
+    const m=trimmed.match(/^-\s*name:\s*(.+)/);
+    if(!m)return null;
+    let v=m[1].trim();
+    if((v.startsWith('"')&&v.endsWith('"'))||(v.startsWith("'")&&v.endsWith("'")))v=v.slice(1,-1);
+    return v;
+  }
+
+  function enrichApply(){
+    if(!enrichResult)return;
+    let yaml=$('#edt-yaml').value;
+    const combo=$('#edt-scenario').value;
+    if(!combo)return;
+    const scnName=combo.split('|')[1]||'';
+
+    const lines=yaml.split('\n');
+    let inScenario=false;
+    let stepsLine=-1;
+    let stepsEnd=-1;
+    let expectStart=-1;
+    let expectEnd=-1;
+    let scenarioIndent='';
+    let itemIndent='';
+
+    for(let i=0;i<lines.length;i++){
+      const trimmed=lines[i].trimStart();
+      if(trimmed.startsWith('- name:')&&_extractName(trimmed)===scnName){
+        inScenario=true;
+        scenarioIndent=lines[i].match(/^(\s*)/)[1]+'  ';
+        continue;
+      }
+      if(inScenario&&trimmed.startsWith('- name:')){break;}
+      if(inScenario){
+        if(trimmed.startsWith('steps:')){
+          stepsLine=i;
+          for(let j=i+1;j<lines.length;j++){
+            const st=lines[j].trimStart();
+            if(st.startsWith('- ')&&!st.startsWith('- name:')){
+              stepsEnd=j;
+              if(!itemIndent)itemIndent=lines[j].match(/^(\s*)/)[1];
+            }
+            else if(st&&!st.startsWith('- ')&&!st.startsWith('#')){break;}
+          }
+          if(stepsEnd<0)stepsEnd=stepsLine;
+        }
+        if(trimmed.startsWith('expect:')){
+          expectStart=i;
+          for(let j=i+1;j<lines.length;j++){
+            const st=lines[j].trimStart();
+            if(st.startsWith('- '))expectEnd=j;
+            else if(st&&!st.startsWith('- ')&&!st.startsWith('#')){break;}
+          }
+        }
+      }
+    }
+
+    if(!itemIndent)itemIndent=scenarioIndent+'  ';
+
+    const newLines=[];
+    if(enrichResult.settle){
+      const w=enrichResult.settle.wait||{};
+      const sel=w['for']||{};
+      const id=sel.id?'{ id: '+sel.id+' }':JSON.stringify(sel);
+      newLines.push(itemIndent+'- wait: { for: '+id+', timeout: '+(w.timeout||5)+' }');
+    }
+
+    const expectLines=(enrichResult.expect||[]).map(a=>enrichAssertionYaml(a,itemIndent));
+
+    if(newLines.length>0&&stepsEnd>=0){
+      lines.splice(stepsEnd+1,0,...newLines);
+      if(expectStart>=0)expectStart+=newLines.length;
+      if(expectEnd>=0)expectEnd+=newLines.length;
+    }
+
+    if(expectLines.length>0){
+      if(expectStart>=0){
+        const removeCount=expectEnd>=expectStart?expectEnd-expectStart:0;
+        lines.splice(expectStart+1,removeCount,...expectLines);
+      }else{
+        const insertAt=stepsEnd>=0?stepsEnd+1+newLines.length:lines.length;
+        lines.splice(insertAt,0,scenarioIndent+'expect:',...expectLines);
+      }
+    }
+
+    $('#edt-yaml').value=lines.join('\n');
+    $('#edt-save').disabled=false;
+    $('#edt-enrich-panel').hidden=true;
+    enrichResult=null;
+    $('#edt-status').textContent='Assertions applied — review and Save';$('#edt-status').className='status ok';
+  }
+
+  $('#edt-enrich').addEventListener('click',async()=>{
+    const combo=$('#edt-scenario').value;
+    if(!combo){$('#edt-status').textContent='Load a scenario first.';return;}
+    const [path,scnName]=combo.split('|');
+    const target=$('#edt-target').value;
+    $('#edt-enrich').disabled=true;
+    $('#edt-enrich-panel').hidden=true;
+    $('#edt-status').textContent='Enriching — replaying steps and proposing assertions…';$('#edt-status').className='status run';
+    try{
+      const r=await fetch('/api/enrich',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target:target,scenario:path,name:scnName})});
+      const d=await r.json();
+      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
+      const count=(d.expect||[]).length;
+      $('#edt-status').textContent=count+' assertion'+(count===1?'':'s')+' proposed';$('#edt-status').className='status ok';
+      enrichRender(d);
+    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+    finally{$('#edt-enrich').disabled=false;}
+  });
+
+  $('#edt-enrich-accept').addEventListener('click',enrichApply);
+  $('#edt-enrich-dismiss').addEventListener('click',()=>{
+    $('#edt-enrich-panel').hidden=true;enrichResult=null;
+    $('#edt-status').textContent='Enrichment dismissed';$('#edt-status').className='status';
   });
 
   // Nav buttons.

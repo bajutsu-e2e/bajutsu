@@ -268,9 +268,21 @@
     <div class="card yamlpanel" id="edt-yamlpanel" data-pane="yaml">
       <div class="yamlhead">
         <span class="ttl">Scenario YAML</span>
+        <button class="savebtn" id="edt-enrich" data-testid="editor.enrich" disabled>Enrich</button>
         <button class="savebtn" id="edt-save" data-testid="editor.save" disabled>Save</button>
       </div>
       <textarea id="edt-yaml" class="yaml" placeholder="Load a scenario to edit its YAML here."></textarea>
+      <div class="enrich-panel" id="edt-enrich-panel" hidden>
+        <div class="enrich-head">
+          <span class="ttl">Proposed assertions</span>
+          <span class="enrich-actions">
+            <button class="savebtn enrich-accept" id="edt-enrich-accept" data-testid="editor.enrich-accept">Accept</button>
+            <button class="savebtn enrich-dismiss" id="edt-enrich-dismiss" data-testid="editor.enrich-dismiss">Dismiss</button>
+          </span>
+        </div>
+        <div class="enrich-note" id="edt-enrich-note"></div>
+        <ul class="enrich-list" id="edt-enrich-list"></ul>
+      </div>
     </div>
   </div>
 
