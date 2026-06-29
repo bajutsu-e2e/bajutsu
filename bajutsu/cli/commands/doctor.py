@@ -91,7 +91,10 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
             # faulted browser does not mask the original navigate/query exception.
             with contextlib.suppress(*_playwright_error_types()):
                 driver.close()
-    return make_driver(actuator, _env.resolve_udid(udid)).query()
+    # xcuitest needs a running runner to query, but doctor only scores the current screen —
+    # idb can read the same accessibility tree without a runner (BE-0019).
+    query_actuator = "idb" if actuator == "xcuitest" else actuator
+    return make_driver(query_actuator, _env.resolve_udid(udid)).query()
 
 
 def register(app: typer.Typer) -> None:
