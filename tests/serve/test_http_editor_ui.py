@@ -78,3 +78,32 @@ def test_editor_js_wires_step_load(tmp_path: Path) -> None:
     assert "runId=" in text
     assert "scenario=" in text
     assert "edt-screenshot" in text
+
+
+# ---------------------------------------------------------------------------
+# Slice 3: structured editing + save
+# ---------------------------------------------------------------------------
+
+
+def test_editor_has_yaml_textarea(tmp_path: Path) -> None:
+    text = _index_text(tmp_path)
+    assert 'id="edt-yaml"' in text
+    assert "edt-yamlpanel" in text
+
+
+def test_editor_has_save_button(tmp_path: Path) -> None:
+    text = _index_text(tmp_path)
+    assert 'id="edt-save"' in text
+
+
+def test_editor_has_apply_button(tmp_path: Path) -> None:
+    """The Apply button writes a resolved selector into the YAML."""
+    text = _index_text(tmp_path)
+    assert 'id="edt-apply"' in text
+
+
+def test_editor_js_wires_save(tmp_path: Path) -> None:
+    """The JS posts to /api/scenario for save."""
+    text = _index_text(tmp_path)
+    assert "edt-save" in text
+    assert "edt-yaml" in text

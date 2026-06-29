@@ -265,6 +265,13 @@
       <div class="yamlhead"><span class="ttl">Steps</span><span class="muted" id="edt-step-count">0 steps</span></div>
       <ol id="edt-steplist" class="edt-steplist"></ol>
     </div>
+    <div class="card yamlpanel" id="edt-yamlpanel" data-pane="yaml">
+      <div class="yamlhead">
+        <span class="ttl">Scenario YAML</span>
+        <button class="savebtn" id="edt-save" data-testid="editor.save" disabled>Save</button>
+      </div>
+      <textarea id="edt-yaml" class="yaml" placeholder="Load a scenario to edit its YAML here."></textarea>
+    </div>
   </div>
 
   <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
@@ -283,6 +290,7 @@
         <div class="edt-feedback" id="edt-feedback" hidden>
           <span class="cap-rung" id="edt-rung"></span>
           <span class="cap-sel" id="edt-sel"></span>
+          <button class="savebtn" id="edt-apply" data-testid="editor.apply">Apply</button>
         </div>
       </div>
     </div>

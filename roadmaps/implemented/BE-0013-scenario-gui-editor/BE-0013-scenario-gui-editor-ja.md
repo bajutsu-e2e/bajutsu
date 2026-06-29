@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0013](BE-0013-scenario-gui-editor-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | [#385](https://github.com/bajutsu-e2e/bajutsu/pull/385), [#387](https://github.com/bajutsu-e2e/bajutsu/pull/387) |
 | トピック | オーサリング体験（record / GUI エディタ） |
 <!-- /BE-METADATA -->
 
@@ -108,4 +109,4 @@
 
 [scenarios.md](../../../docs/ja/scenarios.md)、[selectors.md](../../../docs/ja/selectors.md)。`bajutsu/drivers/base.py`（`_contains`、`resolve_unique`、`Selector` / `Element`）、`bajutsu/doctor.py`（`score`、`ACTIONABLE_TRAITS`）、`bajutsu/evidence.py`（`write_elements` → ステップごとの `elements.json`、`screenshot` 種別 → `after.png`）、`bajutsu/serve/scenarios.py`（`ScenarioScope.save`）、`bajutsu/scenario/load.py`（`load_scenario_file`）、`bajutsu/serve/`（`handler.py` のルーティング、`operations.py`）、`bajutsu/templates/serve.js` と crawl レポートのスクリーンショット・オーバーレイの先例。
 
-**依存・関連項目:** [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)（`serve` ホスト、`ScenarioScope`、本項目が拡張するスクリーンショットの仕組み）、[BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（**点 → 要素ピッカー + doctor スコアを共有。解決器は 1 つ、供給源が 2 つ**。エディタは取得済み成果物、キャプチャはライブな driver を読む）、[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（オーサリング面どうしの役割分担）。
+**依存・関連項目:** [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)（`serve` ホスト、`ScenarioScope`、本項目が拡張するスクリーンショットの仕組み）、[BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（**点 → 要素ピッカー + doctor スコアを共有。解決器は 1 つ、供給源が 2 つ**。エディタは取得済み成果物、キャプチャはライブな driver を読む）、[BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（オーサリング面どうしの役割分担）。

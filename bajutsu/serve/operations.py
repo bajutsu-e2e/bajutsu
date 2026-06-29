@@ -35,6 +35,7 @@ from bajutsu.config_source import materialize, parse_config_spec, source_provena
 from bajutsu.drivers import base as driver_base
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import load_scenario_file
+from bajutsu.scenario.models import STEP_ACTIONS, Step
 from bajutsu.serve import jobs, oplog
 
 # Identity / RBAC / audit live in `authz` now; re-exported here so the HTTP shells keep reaching
@@ -333,9 +334,12 @@ def _step_artifacts(
         step_dir = state.runs_dir / run_id / step_id
         elements_file = step_dir / "elements.json"
         screenshot_file = step_dir / "after.png"
+        action, fields = _step_action_fields(step)
         result.append(
             {
                 "stepId": step_id,
+                "action": action,
+                "fields": fields,
                 "elementsUrl": f"/runs/{run_id}/{step_id}/elements.json"
                 if elements_file.is_file()
                 else None,
@@ -345,6 +349,19 @@ def _step_artifacts(
             }
         )
     return result
+
+
+def _step_action_fields(step: Step) -> tuple[str, Any]:
+    """Extract the action kind and its fields from a parsed Step.
+
+    Fields may be a dict (tap, type, …) or a list (assert).
+    """
+    dumped = step.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
+    for field_name in STEP_ACTIONS:
+        alias = Step.model_fields[field_name].alias or field_name
+        if alias in dumped:
+            return alias, dumped[alias]
+    return "unknown", {}
 
 
 def _valid_step_id(step_id: str) -> bool:
