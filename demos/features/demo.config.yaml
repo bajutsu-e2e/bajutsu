@@ -9,7 +9,7 @@ targets:
     bundleId: com.bajutsu.sample
     deeplinkScheme: bajutsusample
     launchEnv: { SAMPLE_UITEST: "1" }
-    idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp]
+    idNamespaces: [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, lists]
     secrets: [PASSWORD]
     # Built .app to install on each device before launch (if missing) — so a freshly
     # picked/booted simulator just works without a manual `simctl install`. `bajutsu

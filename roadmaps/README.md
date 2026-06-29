@@ -385,6 +385,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 <!-- GENERATED:in-progress-on-device -->
 | ID | Item | Status |
 |---|---|---|
+| [BE-0006](in-progress/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | In progress |
 | [BE-0087](in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | In progress |
 <!-- /GENERATED:in-progress-on-device -->
 
@@ -403,9 +404,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 The deterministic core runs end-to-end on the FakeDriver, and the idb backend's subprocess execution (`describe-all` parsing, frame-center tap/text/swipe) and the simctl launch sequence are validated on a real device. What remains is only ongoing maintenance monitoring.
 
 <!-- GENERATED:proposals-on-device -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0006](proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Proposal |
+
 <!-- /GENERATED:proposals-on-device -->
 
 ### Platform expansion (Android / Web / Flutter)

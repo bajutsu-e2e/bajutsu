@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0006](BE-0006-idb-element-tree-normalization-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トピック | 実機検証（M1 クローズアウト） |
 <!-- /BE-METADATA -->
 
