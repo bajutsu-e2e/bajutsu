@@ -8,6 +8,7 @@
 | Proposal | [BE-0097](BE-0097-crawl-ai-data-sovereignty.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
+| Implementing PR | [#380](https://github.com/bajutsu-e2e/bajutsu/pull/380) |
 | Topic | Candidates from competitive research (Maestro) |
 <!-- /BE-METADATA -->
 
