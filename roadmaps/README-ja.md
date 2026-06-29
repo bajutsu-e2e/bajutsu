@@ -376,6 +376,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:in-progress-on-device -->
 | ID | 項目 | 状態 |
 |---|---|---|
+| [BE-0006](in-progress/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization-ja.md) | idb 要素ツリー正規化の精度 | 実装中 |
 | [BE-0087](in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle-ja.md) | idb アクションのタイミング堅牢化（操作前の settle） | 実装中 |
 <!-- /GENERATED:in-progress-on-device -->
 
@@ -396,9 +397,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 決定的コアは FakeDriver で end-to-end に通っており、**idb backend の subprocess 実行（`describe-all` パース、frame-center tap/text/swipe）と simctl 起動シーケンスは実機で検証済み**です。残るのは継続メンテ系の監視のみです。
 
 <!-- GENERATED:proposals-on-device -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0006](proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization-ja.md) | idb 要素ツリー正規化の精度 | 提案 |
+
 <!-- /GENERATED:proposals-on-device -->
 
 ### プラットフォーム拡張（Android / Web / Flutter）
