@@ -7,11 +7,11 @@ final class IntegrationTests: XCTestCase {
     private var provider: FakeElementProvider!
     private var port: UInt16!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         provider = FakeElementProvider()
         server = RunnerServer(provider: provider)
-        port = try! server.start()
+        port = try server.start()
     }
 
     override func tearDown() {

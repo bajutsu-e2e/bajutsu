@@ -31,6 +31,7 @@ typealias RequestHandler = (HTTPRequest) -> HTTPResponse
 final class HTTPServer {
     private let handler: RequestHandler
     private var listenFD: Int32 = -1
+    private let lock = NSLock()
     private let queue = DispatchQueue(label: "bajutsu.runner.http")
     private(set) var port: UInt16 = 0
 
@@ -82,21 +83,24 @@ final class HTTPServer {
     }
 
     func stop() {
-        // Close on the accept queue so acceptLoop sees the change atomically.
-        // accept() on the closed FD returns -1 and the loop exits.
-        let fd = listenFD
+        let fd = lock.withLock { () -> Int32 in
+            let fd = listenFD
+            listenFD = -1
+            return fd
+        }
         guard fd >= 0 else { return }
-        listenFD = -1
         close(fd)
     }
 
     private func acceptLoop() {
-        while listenFD >= 0 {
+        while true {
+            let fd = lock.withLock { listenFD }
+            guard fd >= 0 else { break }
             var clientAddr = sockaddr_in()
             var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
             let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
                 ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                    accept(listenFD, sockPtr, &addrLen)
+                    accept(fd, sockPtr, &addrLen)
                 }
             }
             guard clientFD >= 0 else { break }

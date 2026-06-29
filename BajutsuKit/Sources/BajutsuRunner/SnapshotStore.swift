@@ -29,9 +29,13 @@ final class SnapshotStore {
         if let snapshot = currentElements[handle] {
             return .found(snapshot)
         }
-        if handle.hasPrefix("h-") {
-            return .stale
+        let parts = handle.split(separator: "-")
+        guard parts.count == 3,
+              parts[0] == "h",
+              let handleGen = UInt64(parts[1]),
+              handleGen <= generation else {
+            return .notFound
         }
-        return .notFound
+        return .stale
     }
 }

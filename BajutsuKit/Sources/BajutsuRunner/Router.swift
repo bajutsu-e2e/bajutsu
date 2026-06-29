@@ -55,8 +55,10 @@ final class Router {
             return .error(400, "missing or invalid JSON body")
         }
 
-        if let point = json["point"] as? [Double], point.count == 2 {
-            let result = onMain { self.provider.tapPoint(x: point[0], y: point[1]) }
+        if let rawPoint = json["point"] as? [Any], rawPoint.count == 2,
+           let px = (rawPoint[0] as? NSNumber)?.doubleValue,
+           let py = (rawPoint[1] as? NSNumber)?.doubleValue {
+            let result = onMain { self.provider.tapPoint(x: px, y: py) }
             return tapResultResponse(result)
         }
 
@@ -64,8 +66,8 @@ final class Router {
             return .error(400, "missing handle or point")
         }
 
-        let taps = (json["taps"] as? Int) ?? 1
-        let duration = (json["duration"] as? Double) ?? 0
+        let taps = max((json["taps"] as? NSNumber)?.intValue ?? 1, 1)
+        let duration = max((json["duration"] as? NSNumber)?.doubleValue ?? 0, 0)
 
         switch store.lookup(handle: handle) {
         case .found(let snapshot):

@@ -20,7 +20,7 @@ final class SnapshotStoreTests: XCTestCase {
         XCTAssertTrue(resolved.backingElement === backing)
     }
 
-    func testOldHandlesBecomeStalAfterRefresh() {
+    func testOldHandlesBecomeStaleAfterRefresh() {
         let store = SnapshotStore()
         let entries = store.refreshSnapshot(elements: [
             ElementSnapshot(
