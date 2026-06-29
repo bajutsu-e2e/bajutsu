@@ -82,6 +82,17 @@ class ForEach(_Model):
     steps: list[Step] = Field(default_factory=list)
 
 
+class Web(_Model):
+    """Enter the web context: resolve a native WebView host, then run inner steps against its DOM.
+
+    The ``within`` selector resolves natively to exactly one ``WKWebView`` element; inner ``steps``
+    address the normalized DOM (``data-testid`` → ``Element.identifier``), not the native a11y tree.
+    """
+
+    within: Selector
+    steps: list[Step]
+
+
 class Step(_Model):
     """One action plus optional modifiers (capture / name / extract)."""
 
@@ -108,6 +119,7 @@ class Step(_Model):
     foreground: Foreground | None = None
     override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
     clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
+    web: Web | None = None
     if_: If | None = Field(default=None, alias="if")
     for_each: ForEach | None = Field(default=None, alias="forEach")
     capture: list[str] | None = None
@@ -141,6 +153,7 @@ class Step(_Model):
 
 If.model_rebuild()
 ForEach.model_rebuild()
+Web.model_rebuild()
 
 # The action field names, derived from the model so a new action is declared in exactly one
 # place — adding a `Step` field — instead of also appending to a parallel hand-maintained tuple
