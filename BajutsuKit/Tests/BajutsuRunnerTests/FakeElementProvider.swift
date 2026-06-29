@@ -8,6 +8,9 @@ final class FakeElementProvider: ElementProviding {
 
     var tapCalls: [(backingElement: AnyObject, taps: Int, duration: TimeInterval)] = []
     var tapPointCalls: [(x: Double, y: Double)] = []
+    var gestureCalls: [(backingElement: AnyObject, kind: String, scale: Double, radians: Double)] = []
+    var swipeCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
+    var typeCalls: [String] = []
 
     func queryElements() -> [ElementSnapshot] { elementsToReturn }
 
@@ -18,6 +21,21 @@ final class FakeElementProvider: ElementProviding {
 
     func tapPoint(x: Double, y: Double) -> TapResult {
         tapPointCalls.append((x, y))
+        return tapResult
+    }
+
+    func gesture(backingElement: AnyObject, kind: String, scale: Double, radians: Double) -> TapResult {
+        gestureCalls.append((backingElement, kind, scale, radians))
+        return tapResult
+    }
+
+    func swipe(fromX: Double, fromY: Double, toX: Double, toY: Double) -> TapResult {
+        swipeCalls.append((fromX, fromY, toX, toY))
+        return tapResult
+    }
+
+    func typeText(_ text: String) -> TapResult {
+        typeCalls.append(text)
         return tapResult
     }
 
