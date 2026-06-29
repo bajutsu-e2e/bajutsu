@@ -23,6 +23,7 @@ on:
       - 'bajutsu/orchestrator/**'
       - 'bajutsu/*.py'
       - 'bajutsu/cli/__init__.py'
+      - 'bajutsu/cli/_shared.py'
       - 'bajutsu/cli/commands/__init__.py'
       - 'bajutsu/cli/commands/run.py'
       - 'bajutsu/cli/commands/codegen.py'
