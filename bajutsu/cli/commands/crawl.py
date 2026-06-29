@@ -25,7 +25,7 @@ from bajutsu import crawl as crawl_engine
 from bajutsu import crawl_report, crawl_repro
 from bajutsu import env as _env
 from bajutsu.agents import AGENT_KINDS, resolve_kind
-from bajutsu.anthropic_client import credential_gap
+from bajutsu.anthropic_client import credential_gap, key_env
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -301,7 +301,8 @@ def crawl(
         guard_gap = credential_gap(eff.ai)
         if guard_gap == "anthropic-key":
             say(
-                "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard no-ops"
+                f"note: dismiss-alerts is on but ${key_env(eff.ai)} is unset — "
+                "the alert guard no-ops"
             )
         elif guard_gap == "bedrock-model":
             say(

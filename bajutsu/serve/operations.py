@@ -103,16 +103,41 @@ def run_file(store: ArtifactStore, rel: str) -> Artifact | None:
     return store.get(rel)
 
 
+_UNSAFE_ENV_VARS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "LANG",
+        "TERM",
+        "PWD",
+        "OLDPWD",
+        "LOGNAME",
+        "TMPDIR",
+        "DISPLAY",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+    }
+)
+
+
+def _valid_key_env_name(name: str) -> bool:
+    """Whether *name* is a safe env-var name for an API key."""
+    return bool(name) and name.isidentifier() and name not in _UNSAFE_ENV_VARS
+
+
 def _active_key_env(state: jobs.ServeState) -> str:
     """The env var name the bound config's ``ai.keyEnv`` resolves to (BE-0097).
 
-    Falls back to ``ANTHROPIC_API_KEY`` when no config is bound or the config has no ``keyEnv``.
+    Falls back to ``ANTHROPIC_API_KEY`` when no config is bound, the config has no ``keyEnv``,
+    or the name fails validation (not an identifier, or a known system variable).
     """
     if state.config is not None:
         try:
             cfg = load_config(state.config.read_text(encoding="utf-8"))
             ai_settings = cfg.defaults.ai if cfg.defaults else None
-            if ai_settings and ai_settings.key_env:
+            if ai_settings and ai_settings.key_env and _valid_key_env_name(ai_settings.key_env):
                 return ai_settings.key_env
         except Exception:
             logging.getLogger(__name__).debug("cannot read ai.keyEnv from config", exc_info=True)

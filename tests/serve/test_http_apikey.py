@@ -103,3 +103,40 @@ def test_http_api_key_honours_key_env_from_config(
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_http_api_key_rejects_unsafe_key_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0097: a keyEnv that names a system variable (e.g. PATH) is ignored — the serve UI falls
+    back to ANTHROPIC_API_KEY so it cannot overwrite critical env vars."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: a\n  steps:\n    - tap: { id: x }\n")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults:\n"
+        "  backend: [idb]\n"
+        "  ai:\n"
+        "    keyEnv: PATH\n"
+        "targets:\n"
+        "  demo: { bundleId: com.example.demo }\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    original_path = os.environ.get("PATH", "")
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        _post(port, "/api/apikey", {"value": "sk-test-12345"})
+        # PATH must NOT have been overwritten.
+        assert os.environ.get("PATH") == original_path
+        # Falls back to ANTHROPIC_API_KEY.
+        assert os.environ.get("ANTHROPIC_API_KEY") == "sk-test-12345"
+    finally:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        server.shutdown()
+        server.server_close()
