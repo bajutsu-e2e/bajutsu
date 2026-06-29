@@ -251,6 +251,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 |---|---|---|
 | [BE-0051](implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
 | [BE-0055](implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
+| [BE-0090](implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
 ### Configuration sourcing
@@ -361,9 +362,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 ### Hosting the web UI (cloud / self-hosted)
 
 <!-- GENERATED:in-progress-hosting -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0090](in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | In progress |
+
 <!-- /GENERATED:in-progress-hosting -->
 
 ### codegen coverage

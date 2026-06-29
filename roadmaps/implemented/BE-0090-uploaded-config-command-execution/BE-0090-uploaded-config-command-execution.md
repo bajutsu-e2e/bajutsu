@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0090](BE-0090-uploaded-config-command-execution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Implementing PR | [#335](https://github.com/bajutsu-e2e/bajutsu/pull/335), [#336](https://github.com/bajutsu-e2e/bajutsu/pull/336) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
