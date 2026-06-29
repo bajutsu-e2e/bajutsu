@@ -25,12 +25,28 @@ public final class RunnerServer {
     /// Start the server on the port from `BAJUTSU_RUNNER_PORT`, or an ephemeral port if unset.
     ///
     /// The Python `XcuitestEnvironment` allocates a port and passes it through this env var so
-    /// the driver can connect immediately after readiness.
+    /// the driver can connect immediately after readiness. A set-but-unparseable value throws
+    /// rather than silently falling back to an ephemeral port.
     @discardableResult
     public func startFromEnvironment() throws -> UInt16 {
-        let raw = ProcessInfo.processInfo.environment["BAJUTSU_RUNNER_PORT"] ?? "0"
-        let port = UInt16(raw) ?? 0
+        guard let raw = ProcessInfo.processInfo.environment["BAJUTSU_RUNNER_PORT"] else {
+            return try start(port: 0)
+        }
+        guard let port = UInt16(raw) else {
+            throw EnvironmentError.invalidPort(raw)
+        }
         return try start(port: port)
+    }
+
+    public enum EnvironmentError: Error, CustomStringConvertible {
+        case invalidPort(String)
+
+        public var description: String {
+            switch self {
+            case .invalidPort(let raw):
+                return "BAJUTSU_RUNNER_PORT is not a valid port number: \(raw)"
+            }
+        }
     }
 
     /// The app launch environment forwarded by the Python environment via `BAJUTSU_LAUNCH_ENV_*`.
