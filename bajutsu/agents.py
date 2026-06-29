@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-from bajutsu.agent import Agent
+from bajutsu.agent import Agent, EnrichmentAgent
 
 if TYPE_CHECKING:
     from bajutsu.anthropic_client import AiConfig
@@ -49,3 +49,14 @@ def make_agent(
 
         return ClaudeCodeAgent()
     raise ValueError(f"unknown agent {kind!r} (choose one of {', '.join(AGENT_KINDS)})")
+
+
+def make_enrichment_agent(
+    *,
+    ai: AiConfig | None = None,
+    redactor: Redactor | None = None,
+) -> EnrichmentAgent:
+    """Construct the enrichment agent (BE-0014)."""
+    from bajutsu.claude_enrich_agent import ClaudeEnrichmentAgent
+
+    return ClaudeEnrichmentAgent(ai=ai, redactor=redactor)

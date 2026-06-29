@@ -1217,3 +1217,94 @@ def resolve_scenario_pick(
         "selector": result.selector.model_dump(exclude_none=True),
         "rung": result.rung,
     }, 200
+
+
+# ---------------------------------------------------------------------------
+# Enrichment — propose assertions for an existing scenario (BE-0014)
+# ---------------------------------------------------------------------------
+
+
+def start_enrich(
+    state: ServeState,
+    body: dict[str, Any],
+    *,
+    actor: str | None = None,
+    driver_factory: Any | None = None,
+    agent_factory: Any | None = None,
+) -> tuple[Any, int]:
+    """Replay a scenario's steps and propose assertions via an enrichment agent."""
+    cfg = state.config
+    if cfg is None:
+        return {"error": "open a config first"}, 400
+    if not body.get("target"):
+        return {"error": "target is required"}, 400
+    if not body.get("scenario"):
+        return {"error": "scenario is required"}, 400
+
+    target = str(body["target"])
+    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
+
+    config = load_config(cfg.read_text(encoding="utf-8"))
+    target_cfg = config.targets.get(target)
+    if target_cfg is None:
+        return {"error": f"unknown target: {target}"}, 400
+
+    scope = state.for_org(org).scenarios.scope(target)
+    scenario_text = scope.read(str(body["scenario"])) if scope else None
+    if scenario_text is None:
+        return {"error": "scenario not found"}, 404
+
+    scenarios = load_scenario_file(scenario_text).scenarios
+    if not scenarios:
+        return {"error": "no scenarios in file"}, 400
+
+    name = str(body["name"]) if body.get("name") else None
+    matched = next((s for s in scenarios if s.name == name), None) if name else scenarios[0]
+    if matched is None:
+        return {"error": f"scenario '{name}' not found in file"}, 404
+
+    if agent_factory is None:
+        from bajutsu.agents import make_enrichment_agent
+        from bajutsu.anthropic_client import credential_gap
+
+        eff = resolve(config, target)
+        gap = credential_gap(eff.ai)
+        if gap:
+            return {"error": f"enrichment requires an AI credential ({gap})"}, 400
+        agent = make_enrichment_agent(ai=eff.ai)
+    else:
+        agent = agent_factory()
+
+    backend, udid, err = _device_args(body)
+    if err:
+        return err
+    if not backend:
+        backends_list = target_cfg.backend or config.defaults.backend
+        backend = backends_list[0] if backends_list else "fake"
+    if not udid:
+        udid = "booted"
+
+    factory = driver_factory or _default_driver_factory
+    driver = factory(target, backend, udid)
+
+    from bajutsu.enrich import enrich
+
+    try:
+        proposal = enrich(driver, matched, agent, with_screenshot=False)
+    finally:
+        close = getattr(driver, "close", None)
+        if callable(close):
+            close()
+
+    return {
+        "ok": True,
+        "expect": [a.model_dump(exclude_none=True, by_alias=True) for a in proposal.expect],
+        "settle": (
+            proposal.settle.model_dump(exclude_none=True, by_alias=True)
+            if proposal.settle
+            else None
+        ),
+        "note": proposal.note,
+    }, 200
