@@ -224,6 +224,9 @@ class TargetConfig(_Model):
     # Directory of JSON Schema files for `responseSchema` assertions. Relative to the run's
     # working directory. Overrides the default (schemas/ beside the scenario file).
     schemas: str | None = None
+    # Directory of golden JSON files for `golden` assertions (BE-0006). Relative to the run's
+    # working directory. Overrides the default (goldens/ beside the scenario file).
+    goldens: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
     # Per-target AI provider/model/endpoint/key (BE-0047), overriding defaults.ai field by field.
@@ -375,6 +378,9 @@ class Effective:
     # JSON Schema directory for `responseSchema` assertions. None = fall back to
     # schemas/ beside the scenario file (or --schemas CLI flag).
     schemas: str | None = None
+    # Golden JSON directory for `golden` assertions (BE-0006). None = fall back to
+    # goldens/ beside the scenario file (or --goldens CLI flag).
+    goldens: str | None = None
     # The resolved platform (ios / android / web): explicit, else from defaults, else derived from
     # the backend (BE-0009 Slice 4). The discriminator a platform-specific path keys off.
     platform: str = "ios"
@@ -399,7 +405,7 @@ class Effective:
     def rebased(self, root: Path) -> Effective:
         """A copy with the relative path fields resolved against `root` (a Git checkout, BE-0063).
 
-        The fields `run` / `doctor` read — `scenarios` / `baselines` / `schemas` / `app_path`; listed
+        The fields `run` / `doctor` read — `scenarios` / `baselines` / `schemas` / `goldens` / `app_path`; listed
         beside the type so a future path field is rebased by adding it here. `build` (a shell command)
         and `setup` (resolved relative to the scenario, not the cwd) are intentionally absent. Local
         configs keep their cwd-relative paths; only a Git source calls this, so the caller's working
@@ -424,6 +430,7 @@ class Effective:
             scenarios=at("scenarios", self.scenarios),
             baselines=at("baselines", self.baselines),
             schemas=at("schemas", self.schemas),
+            goldens=at("goldens", self.goldens),
             app_path=at("appPath", self.app_path),
         )
 
@@ -536,6 +543,7 @@ def resolve(config: Config, target: str) -> Effective:
         scenarios=a.scenarios,
         baselines=a.baselines,
         schemas=a.schemas,
+        goldens=a.goldens,
         idb_version=d.idb_version,
     )
 

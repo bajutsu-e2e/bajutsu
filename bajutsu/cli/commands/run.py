@@ -105,11 +105,14 @@ def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path
         return scenario_file.parent / "schemas"
 
 
-def _resolve_goldens_dir(flag: str, scenario_file: Path) -> Path:
-    """Resolve the golden JSON dir: --goldens flag > goldens/ beside the scenario."""
+def _resolve_goldens_dir(flag: str, eff: Effective, scenario_file: Path) -> Path:
+    """Resolve the golden JSON dir: --goldens flag > config goldens > goldens/ beside the scenario."""
     if flag:
         return Path(flag)
-    return scenario_file.parent / "goldens"
+    elif eff.goldens:
+        return Path(eff.goldens)
+    else:
+        return scenario_file.parent / "goldens"
 
 
 def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[list[Path], bool]:
@@ -443,8 +446,8 @@ def run(
     baselines_dir = _resolve_baselines_dir(baselines, eff, files[0])
     # responseSchema assertions resolve `schema: <path>` within this directory (same order).
     schemas_dir = _resolve_schemas_dir(schemas, eff, files[0])
-    # golden assertions resolve `path` within this directory (--goldens flag > goldens/ beside the scenario).
-    goldens_dir = _resolve_goldens_dir(goldens, files[0])
+    # golden assertions resolve `path` within this directory (--goldens flag > config goldens > goldens/ beside the scenario).
+    goldens_dir = _resolve_goldens_dir(goldens, eff, files[0])
     gc = GoldenContext(goldens_dir=goldens_dir) if goldens_dir.is_dir() else None
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run
