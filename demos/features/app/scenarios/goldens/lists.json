@@ -1,15 +1,15 @@
 {
   "lists.search": {
     "identifier": "lists.search",
-    "label": "Search",
-    "traits": ["searchField"],
-    "value": null,
+    "label": null,
+    "traits": ["textField"],
+    "value": "Search",
     "frame": [0.0, 0.0, 350.0, 36.0]
   },
   "lists.list": {
     "identifier": "lists.list",
     "label": null,
-    "traits": ["list"],
+    "traits": ["group"],
     "value": null,
     "frame": [0.0, 0.0, 390.0, 600.0]
   },

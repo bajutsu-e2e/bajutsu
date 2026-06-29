@@ -1,29 +1,22 @@
 {
   "ctrl.toggle": {
     "identifier": "ctrl.toggle",
-    "label": null,
-    "traits": ["switch"],
+    "label": "Toggle",
+    "traits": ["checkBox"],
     "value": "0",
     "frame": [0.0, 0.0, 51.0, 31.0]
   },
-  "ctrl.stepper": {
-    "identifier": "ctrl.stepper",
-    "label": "Stepper",
-    "traits": ["adjustable"],
-    "value": "5",
-    "frame": [0.0, 0.0, 100.0, 32.0]
-  },
   "ctrl.slider": {
     "identifier": "ctrl.slider",
-    "label": "Slider",
-    "traits": ["adjustable"],
-    "value": "50%",
+    "label": null,
+    "traits": ["slider"],
+    "value": "0",
     "frame": [0.0, 0.0, 200.0, 28.0]
   },
   "ctrl.segment.one": {
     "identifier": "ctrl.segment.one",
     "label": "One",
-    "traits": ["button", "selected"],
+    "traits": ["button"],
     "value": null,
     "frame": [0.0, 0.0, 60.0, 32.0]
   },
@@ -44,13 +37,13 @@
   "ctrl.menu": {
     "identifier": "ctrl.menu",
     "label": "Menu",
-    "traits": ["button"],
+    "traits": ["popUpButton"],
     "value": null,
     "frame": [0.0, 0.0, 80.0, 44.0]
   },
   "ctrl.button": {
     "identifier": "ctrl.button",
-    "label": "Tap me",
+    "label": "Tap",
     "traits": ["button"],
     "value": null,
     "frame": [0.0, 0.0, 80.0, 44.0]
