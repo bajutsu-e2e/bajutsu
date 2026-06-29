@@ -423,3 +423,37 @@ def test_read_scenario_with_run_no_matching_scenario(tmp_path: Path) -> None:
     )
     assert status == 200
     assert payload["steps"] == []
+
+
+# ---------------------------------------------------------------------------
+# step artifacts include action + fields (BE-0013, Slice 3)
+# ---------------------------------------------------------------------------
+
+
+def test_step_artifacts_include_action_and_fields(tmp_path: Path) -> None:
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "login.yaml").write_text(SCENARIO_YAML, encoding="utf-8")
+    _write_run_with_steps(
+        runs, "run1", "00-login", ["00-login/step0", "00-login/step1", "00-login/step2"]
+    )
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "login.yaml"),
+        run_id="run1",
+        scenario_name="login",
+    )
+    assert status == 200
+    steps = payload["steps"]
+    # step 0: tap with id selector
+    assert steps[0]["action"] == "tap"
+    assert steps[0]["fields"] == {"id": "auth.email"}
+    # step 1: type with selector + text
+    assert steps[1]["action"] == "type"
+    assert steps[1]["fields"]["into"] == {"id": "auth.password"}
+    assert steps[1]["fields"]["text"] == "secret"
+    # step 2: tap with id selector
+    assert steps[2]["action"] == "tap"
+    assert steps[2]["fields"] == {"id": "auth.submit"}

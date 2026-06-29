@@ -1142,9 +1142,11 @@ if(!NARROW_MQ.matches)initTiling();
 // Editor tab (BE-0013) — offline two-pane scenario editor with screenshot picker
 // ===========================================================================
 (function(){
-  let edtSteps=[];   // [{stepId, screenshotUrl, elementsUrl}]
+  let edtSteps=[];   // [{stepId, action, fields, screenshotUrl, elementsUrl}]
   let edtIdx=-1;     // currently displayed step index
   let edtInited=false;
+  let edtPath='';    // scenario file path for save
+  let edtResolvedSel=null; // last resolved selector from picker
 
   // Populate scenario dropdown when editor target changes.
   async function edtLoadScenarios(){
@@ -1169,6 +1171,30 @@ if(!NARROW_MQ.matches)initTiling();
     $('#edt-run').innerHTML=opts||'<option value="">—</option>';
   }
 
+  function edtSelectorYaml(sel){
+    if(sel.id)return '{ id: '+sel.id+' }';
+    if(sel.label&&sel.index!=null)return '{ label: '+sel.label+', index: '+sel.index+' }';
+    if(sel.label)return '{ label: '+sel.label+' }';
+    return JSON.stringify(sel);
+  }
+
+  function edtStepLabel(s){
+    const a=s.action||'?';
+    const f=s.fields||{};
+    if(a==='tap'||a==='doubleTap'||a==='longPress'){
+      const sel=f.id?('#'+f.id):(f.label||'?');
+      return a+' '+sel;
+    }
+    if(a==='type'){
+      const into=f.into||{};
+      const sel=into.id?('#'+into.id):(into.label||'?');
+      return 'type '+sel+' = "'+(f.text||'')+'"';
+    }
+    if(a==='wait')return 'wait';
+    if(a==='assert')return 'assert';
+    return a;
+  }
+
   // Load scenario + run artifacts.
   async function edtLoad(){
     const combo=$('#edt-scenario').value;
@@ -1176,20 +1202,23 @@ if(!NARROW_MQ.matches)initTiling();
     const [path,scnName]=combo.split('|');
     const target=$('#edt-target').value;
     const runId=$('#edt-run').value;
-    if(!runId){$('#edt-status').textContent='Select a run.';return;}
+    edtPath=path;
     $('#edt-status').textContent='Loading…';$('#edt-status').className='status run';
     try{
-      const url='/api/scenario?target='+encodeURIComponent(target)+'&path='+encodeURIComponent(path)
-        +'&runId='+encodeURIComponent(runId)+'&scenario='+encodeURIComponent(scnName);
+      let url='/api/scenario?target='+encodeURIComponent(target)+'&path='+encodeURIComponent(path);
+      if(runId)url+='&runId='+encodeURIComponent(runId)+'&scenario='+encodeURIComponent(scnName);
       const r=await fetch(url);
       const d=await r.json();
       if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
+      // Populate YAML textarea.
+      $('#edt-yaml').value=d.yaml||'';
+      $('#edt-save').disabled=false;
       edtSteps=d.steps||[];
       edtRenderStepList();
       if(edtSteps.length>0){edtShowStep(0);}
-      else{edtIdx=-1;$('#edt-placeholder').hidden=false;$('#edt-placeholder').textContent='No steps in this run.';$('#edt-screenshot').hidden=true;$('#edt-feedback').hidden=true;$('#edt-prev').disabled=true;$('#edt-next').disabled=true;$('#edt-step-label').textContent='No steps';}
-      $('#edt-status').textContent=edtSteps.length+' step'+(edtSteps.length===1?'':'s')+' loaded';
-      $('#edt-status').className='status ok';
+      else{edtIdx=-1;$('#edt-placeholder').hidden=false;$('#edt-placeholder').textContent=runId?'No steps in this run.':'No run selected — edit YAML directly.';$('#edt-screenshot').hidden=true;$('#edt-feedback').hidden=true;$('#edt-prev').disabled=true;$('#edt-next').disabled=true;$('#edt-step-label').textContent='No steps';}
+      const msg=edtSteps.length?edtSteps.length+' step'+(edtSteps.length===1?'':'s')+' loaded':'YAML loaded (no run selected)';
+      $('#edt-status').textContent=msg;$('#edt-status').className='status ok';
     }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
   }
 
@@ -1197,7 +1226,7 @@ if(!NARROW_MQ.matches)initTiling();
     const ol=$('#edt-steplist');ol.innerHTML='';
     edtSteps.forEach((s,i)=>{
       const li=document.createElement('li');
-      li.textContent='step '+i+(s.screenshotUrl?' ✓':' –');
+      li.textContent=(i+1)+'. '+edtStepLabel(s);
       li.addEventListener('click',()=>edtShowStep(i));
       ol.appendChild(li);
     });
@@ -1208,13 +1237,10 @@ if(!NARROW_MQ.matches)initTiling();
     if(idx<0||idx>=edtSteps.length)return;
     edtIdx=idx;
     const s=edtSteps[idx];
-    // Update step list highlight.
     document.querySelectorAll('#edt-steplist li').forEach((li,i)=>li.classList.toggle('active',i===idx));
-    // Update nav.
     $('#edt-prev').disabled=idx===0;
     $('#edt-next').disabled=idx===edtSteps.length-1;
     $('#edt-step-label').textContent='Step '+(idx+1)+' / '+edtSteps.length;
-    // Show screenshot.
     if(s.screenshotUrl){
       $('#edt-screenshot').src=s.screenshotUrl;
       $('#edt-screenshot').hidden=false;$('#edt-placeholder').hidden=true;
@@ -1223,6 +1249,7 @@ if(!NARROW_MQ.matches)initTiling();
       $('#edt-placeholder').textContent='No screenshot for this step.';
     }
     $('#edt-feedback').hidden=true;
+    edtResolvedSel=null;
   }
 
   // Screenshot click → resolve.
@@ -1240,19 +1267,82 @@ if(!NARROW_MQ.matches)initTiling();
         body:JSON.stringify({target:target,runId:runId,stepId:s.stepId,point:[nx,ny]})});
       const d=await r.json();
       if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';return;}
-      if(d.refused){$('#edt-status').textContent=d.refused;$('#edt-status').className='status ng';$('#edt-feedback').hidden=true;return;}
+      if(d.refused){$('#edt-status').textContent=d.refused;$('#edt-status').className='status ng';$('#edt-feedback').hidden=true;edtResolvedSel=null;return;}
       if(d.ambiguous){
         $('#edt-status').textContent='Ambiguous: '+d.candidates+' elements share this selector. Narrow with within/index.';
         $('#edt-status').className='status ng';
       }else{
-        $('#edt-status').textContent='Resolved';$('#edt-status').className='status ok';
+        $('#edt-status').textContent='Resolved — click Apply to update the YAML';$('#edt-status').className='status ok';
       }
-      const sel=d.selector;
-      const desc=sel.id?('#'+sel.id):(sel.label||'?');
+      edtResolvedSel=d.selector;
+      const desc=d.selector.id?('#'+d.selector.id):(d.selector.label||'?');
       $('#edt-feedback').hidden=false;
       $('#edt-rung').textContent=d.rung;$('#edt-rung').className='cap-rung rung-'+d.rung;
       $('#edt-sel').textContent=desc;
     }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+  });
+
+  // Apply: write resolved selector into YAML at the current step.
+  $('#edt-apply').addEventListener('click',()=>{
+    if(!edtResolvedSel||edtIdx<0)return;
+    const s=edtSteps[edtIdx];
+    const action=s.action||'tap';
+    const newSel=edtSelectorYaml(edtResolvedSel);
+    const yaml=$('#edt-yaml').value;
+    const oldFields=s.fields||{};
+    let oldPattern='';
+    if(action==='tap'||action==='doubleTap'||action==='longPress'){
+      oldPattern=action+':';
+    }else if(action==='type'){
+      oldPattern='type:';
+    }else{
+      oldPattern=action+':';
+    }
+    // Find the step's line in the YAML and replace the selector.
+    const lines=yaml.split('\n');
+    let stepCount=0;
+    for(let i=0;i<lines.length;i++){
+      const trimmed=lines[i].trimStart();
+      if(trimmed.startsWith('- '+oldPattern)||trimmed.startsWith('- '+action+':')){
+        if(stepCount===edtIdx){
+          if(action==='type'){
+            lines[i]='    - type: { into: '+newSel+', text: '+(oldFields.text||'""')+' }';
+          }else{
+            lines[i]='    - '+action+': '+newSel;
+          }
+          break;
+        }
+        stepCount++;
+      }
+    }
+    $('#edt-yaml').value=lines.join('\n');
+    // Update the in-memory step fields.
+    if(action==='type'){
+      s.fields={into:edtResolvedSel,text:oldFields.text||''};
+    }else{
+      s.fields=edtResolvedSel;
+    }
+    edtRenderStepList();
+    document.querySelectorAll('#edt-steplist li').forEach((li,j)=>li.classList.toggle('active',j===edtIdx));
+    $('#edt-status').textContent='Applied '+edtSelectorYaml(edtResolvedSel)+' to step '+(edtIdx+1);
+    $('#edt-status').className='status ok';
+  });
+
+  // Save.
+  $('#edt-save').addEventListener('click',async()=>{
+    if(!edtPath)return;
+    const target=$('#edt-target').value;
+    const yaml=$('#edt-yaml').value;
+    $('#edt-save').disabled=true;
+    $('#edt-status').textContent='Saving…';$('#edt-status').className='status run';
+    try{
+      const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target:target,path:edtPath,yaml:yaml})});
+      const d=await r.json();
+      if(d.error){$('#edt-status').textContent=d.error;$('#edt-status').className='status ng';}
+      else{$('#edt-status').textContent='Saved ✓';$('#edt-status').className='status ok';}
+    }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
+    $('#edt-save').disabled=false;
   });
 
   // Nav buttons.
@@ -1262,6 +1352,8 @@ if(!NARROW_MQ.matches)initTiling();
   $('#edt-load').addEventListener('click',edtLoad);
   // Target change reloads scenarios.
   $('#edt-target').addEventListener('change',edtLoadScenarios);
+  // YAML textarea edits enable save.
+  $('#edt-yaml').addEventListener('input',()=>{$('#edt-save').disabled=false;});
 
   // Called by showView('editor') — lazy init.
   window.editorInit=function(){

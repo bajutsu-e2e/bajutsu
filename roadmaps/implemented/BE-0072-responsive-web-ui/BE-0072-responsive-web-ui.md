@@ -96,7 +96,7 @@ A broader desktop redesign of the resizable/collapsible tiling (this item only h
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this respects: AI never judges, determinism first, app-agnostic. The change adds no LLM and never computes a verdict; it only rearranges a Tier-1 convenience.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) — the UI this reshapes, and its stdlib-only, single-self-contained-HTML, no-build-step constraints that bound the design.
-* [BE-0013 — Scenario GUI editor](../../proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) — the future structured-editing surface that will live in the same UI and must also behave on a small screen.
+* [BE-0013 — Scenario GUI editor](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) — the future structured-editing surface that will live in the same UI and must also behave on a small screen.
 * [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016 — Self-hosting of the web UI](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — the hosting direction that turns phone access into a realistic, desirable entry point.
 * [BE-0058 — Dogfood the serve Web UI](../../implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the Web-backend regression net that asserts the responsive layout deterministically at a phone viewport.
 * `bajutsu/templates/serve.css`, `bajutsu/templates/serve.html.j2`, `bajutsu/templates/serve.js` — the frontend this item changes; `bajutsu/templates/report.css` — the already-responsive embedded report this item leaves untouched.
