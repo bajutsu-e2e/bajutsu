@@ -79,5 +79,5 @@ mkdocs-material では、テーマのオーバーライド（`overrides/home.htm
 - [`mkdocs.yml`](../../../mkdocs.yml)：現在のサイト設定（API リファレンスのみ）。
 - [`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml)：眠っているビルド／デプロイ workflow。
 - [`docs/vision.md`](../../../docs/vision.md) · [`README`](../../../README.md)：ランディングページの素材。
-- [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) · [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)：`serve` という**アプリ**のホスティング（この静的サイトとは別物）。
+- [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) · [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)：`serve` という**アプリ**のホスティング（この静的サイトとは別物）。
 - [mkdocs-static-i18n](https://github.com/ultrabug/mkdocs-static-i18n)：ポータルのバイリンガル表示。

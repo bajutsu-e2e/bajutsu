@@ -160,7 +160,7 @@ for one that matches, and extracts the code — deterministic and LLM-free
 
 ### Orgs (`orgs:`, the multi-tenant server backend)
 
-`orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+`orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 Each org lists its members — explicit GitHub logins (`members`) and/or whole GitHub orgs
 (`githubOrgs`) — and the targets it owns:
 

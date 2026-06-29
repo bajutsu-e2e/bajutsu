@@ -375,7 +375,10 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 ### Hosting the web UI (cloud / self-hosted)
 
 <!-- GENERATED:in-progress-hosting -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
+| [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### codegen coverage
@@ -436,8 +439,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
-| [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
 | [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
