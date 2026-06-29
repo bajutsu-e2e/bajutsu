@@ -271,7 +271,13 @@ def runs_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, i
 
 
 def read_scenario(
-    state: ServeState, target: str | None, path: str | None, *, actor: str | None = None
+    state: ServeState,
+    target: str | None,
+    path: str | None,
+    *,
+    actor: str | None = None,
+    run_id: str | None = None,
+    scenario_name: str | None = None,
 ) -> tuple[Any, int]:
     # A scenario in another org's target reads as not-found (non-leaky) — BE-0015 multi-tenancy.
     org = state.org_of(actor)
@@ -281,7 +287,80 @@ def read_scenario(
     text = scope.read(path) if scope else None
     if text is None:
         return {"error": "not found"}, 404
-    return {"yaml": text}, 200
+    if not run_id:
+        return {"yaml": text}, 200
+    if not valid_run_id(run_id):
+        return {"yaml": text, "steps": []}, 200
+    return {"yaml": text, "steps": _step_artifacts(state, text, run_id, scenario_name)}, 200
+
+
+def _step_artifacts(
+    state: ServeState,
+    yaml_text: str,
+    run_id: str,
+    scenario_name: str | None,
+) -> list[dict[str, Any]]:
+    """Build per-step artifact handles for the editor (BE-0013)."""
+    try:
+        scenarios = load_scenario_file(yaml_text).scenarios
+    except (ValueError, Exception):
+        return []
+
+    manifest_path = state.runs_dir / run_id / "manifest.json"
+    if not manifest_path.is_file():
+        return []
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    matched = (
+        next((s for s in scenarios if s.name == scenario_name), None) if scenario_name else None
+    )
+    if matched is None and scenarios:
+        matched = scenarios[0]
+    if matched is None:
+        return []
+
+    effective_name = scenario_name or (matched.name if matched else None)
+    sid = _find_sid(manifest, effective_name)
+    if sid is None:
+        return []
+
+    result: list[dict[str, Any]] = []
+    for idx, step in enumerate(matched.steps):
+        step_id = f"{sid}/{step.name or f'step{idx}'}"
+        step_dir = state.runs_dir / run_id / step_id
+        elements_file = step_dir / "elements.json"
+        screenshot_file = step_dir / "after.png"
+        result.append(
+            {
+                "stepId": step_id,
+                "elementsUrl": f"/runs/{run_id}/{step_id}/elements.json"
+                if elements_file.is_file()
+                else None,
+                "screenshotUrl": f"/runs/{run_id}/{step_id}/after.png"
+                if screenshot_file.is_file()
+                else None,
+            }
+        )
+    return result
+
+
+def _valid_step_id(step_id: str) -> bool:
+    """Whether *step_id* is a safe relative path (no traversal, no absolute)."""
+    if not step_id or step_id.startswith("/"):
+        return False
+    parts = Path(step_id).parts
+    return ".." not in parts
+
+
+def _find_sid(manifest: dict[str, Any], scenario_name: str | None) -> str | None:
+    """Find the evidence-dir slug for *scenario_name* in the manifest."""
+    for scn in manifest.get("scenarios", []):
+        if scn.get("scenario") == scenario_name:
+            return scn.get("sid") or None
+    return None
 
 
 def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
@@ -1038,3 +1117,86 @@ def finish_capture(
 
     state.capture = None
     return {"ok": True, "path": saved, "yaml": yaml_text}, 200
+
+
+# ---------------------------------------------------------------------------
+# Scenario editor — offline resolve against stored artifacts (BE-0013)
+# ---------------------------------------------------------------------------
+
+
+def resolve_scenario_pick(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """Resolve a point against a step's stored elements.json — no live driver."""
+    cfg = state.config
+    if cfg is None:
+        return {"error": "open a config first"}, 400
+
+    target = str(body.get("target", ""))
+    run_id = str(body.get("runId", ""))
+    step_id = str(body.get("stepId", ""))
+    raw_point = body.get("point")
+
+    if not target:
+        return {"error": "target is required"}, 400
+    if not run_id or not valid_run_id(run_id):
+        return {"error": "invalid or missing runId"}, 400
+    if not step_id or not _valid_step_id(step_id):
+        return {"error": "invalid or missing stepId"}, 400
+    if not isinstance(raw_point, list) or len(raw_point) != 2:
+        return {"error": "point must be [x, y] normalized"}, 400
+    try:
+        nx, ny = float(raw_point[0]), float(raw_point[1])
+    except (TypeError, ValueError):
+        return {"error": "point must be [x, y] normalized"}, 400
+
+    _org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    if forbidden:
+        return forbidden
+
+    config = load_config(cfg.read_text(encoding="utf-8"))
+    target_cfg = config.targets.get(target)
+    if target_cfg is None:
+        return {"error": f"unknown target: {target}"}, 400
+    namespaces: list[str] = list(target_cfg.id_namespaces)
+
+    elements_path = state.runs_dir / run_id / step_id / "elements.json"
+    if not elements_path.is_file():
+        return {"error": "elements.json not found for this step"}, 404
+
+    try:
+        raw = json.loads(elements_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            return {"error": "elements.json is not a valid element list"}, 400
+        elements: list[driver_base.Element] = [
+            {
+                "identifier": el.get("identifier"),
+                "label": el.get("label"),
+                "traits": list(el.get("traits", [])),
+                "value": el.get("value"),
+                "frame": tuple(el.get("frame", (0, 0, 0, 0))),
+            }
+            for el in raw
+        ]
+    except (json.JSONDecodeError, OSError, AttributeError, TypeError):
+        return {"error": "elements.json is corrupt or unreadable"}, 400
+
+    from bajutsu.capture import resolve_capture, screen_size_from_elements
+
+    sw, sh = screen_size_from_elements(elements)
+    px, py = nx * sw, ny * sh
+    result = resolve_capture(elements, (px, py), namespaces)
+
+    if result.refused:
+        return {"refused": result.refused}, 200
+    if result.ambiguity:
+        return {
+            "ambiguous": True,
+            "selector": result.selector.model_dump(exclude_none=True),
+            "rung": result.rung,
+            "candidates": len(result.ambiguity),
+        }, 200
+    return {
+        "selector": result.selector.model_dump(exclude_none=True),
+        "rung": result.rung,
+    }, 200
