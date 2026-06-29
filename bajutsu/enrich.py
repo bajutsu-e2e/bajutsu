@@ -18,11 +18,17 @@ from bajutsu.scenario import Scenario, Step
 Reporter = Callable[[str], None]
 
 
+class _ReplayFailed(Exception):
+    """A step could not be replayed (wait timeout, selector miss, unsupported action, …)."""
+
+
 def _execute_step(driver: base.Driver, step: Step, clock: Clock) -> None:
     kind = _action_of(step)
     if kind == "wait":
         assert step.wait is not None
-        _wait(driver, step.wait, clock)
+        ok, reason = _wait(driver, step.wait, clock)
+        if not ok:
+            raise _ReplayFailed(reason)
     elif kind == "assert_":
         return
     else:
@@ -72,7 +78,13 @@ def enrich(
         say(f"[{i}/{len(scenario.steps)}] replaying step …")
         try:
             _execute_step(driver, step, clock)
-        except (base.SelectorError, AssertionError):
+        except (
+            base.SelectorError,
+            base.UnsupportedAction,
+            _ReplayFailed,
+            AssertionError,
+            NotImplementedError,
+        ):
             say(f"[{i}/{len(scenario.steps)}] step failed — stopping replay")
             break
 

@@ -1260,22 +1260,10 @@ def start_enrich(
     if not scenarios:
         return {"error": "no scenarios in file"}, 400
 
-    name = body.get("name")
+    name = str(body["name"]) if body.get("name") else None
     matched = next((s for s in scenarios if s.name == name), None) if name else scenarios[0]
     if matched is None:
         return {"error": f"scenario '{name}' not found in file"}, 404
-
-    backend, udid, err = _device_args(body)
-    if err:
-        return err
-    if not backend:
-        backends_list = target_cfg.backend or config.defaults.backend
-        backend = backends_list[0] if backends_list else "fake"
-    if not udid:
-        udid = "booted"
-
-    factory = driver_factory or _default_driver_factory
-    driver = factory(target, backend, udid)
 
     if agent_factory is None:
         from bajutsu.agents import make_enrichment_agent
@@ -1289,9 +1277,26 @@ def start_enrich(
     else:
         agent = agent_factory()
 
+    backend, udid, err = _device_args(body)
+    if err:
+        return err
+    if not backend:
+        backends_list = target_cfg.backend or config.defaults.backend
+        backend = backends_list[0] if backends_list else "fake"
+    if not udid:
+        udid = "booted"
+
+    factory = driver_factory or _default_driver_factory
+    driver = factory(target, backend, udid)
+
     from bajutsu.enrich import enrich
 
-    proposal = enrich(driver, matched, agent, with_screenshot=False)
+    try:
+        proposal = enrich(driver, matched, agent, with_screenshot=False)
+    finally:
+        close = getattr(driver, "close", None)
+        if callable(close):
+            close()
 
     return {
         "ok": True,
