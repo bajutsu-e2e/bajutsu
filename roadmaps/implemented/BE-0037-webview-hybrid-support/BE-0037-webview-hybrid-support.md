@@ -8,7 +8,7 @@
 | Proposal | [BE-0037](BE-0037-webview-hybrid-support.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Implementing PR | [#400](https://github.com/bajutsu-e2e/bajutsu/pull/400) |
+| Implementing PR | [#400](https://github.com/bajutsu-e2e/bajutsu/pull/400), [#401](https://github.com/bajutsu-e2e/bajutsu/pull/401) |
 | Topic | Candidates from competitive research (MagicPod / Autify) |
 | Origin | MagicPod |
 <!-- /BE-METADATA -->
