@@ -2,9 +2,14 @@
 # web app end to end. Unlike the iOS E2E (e2e.yml) it runs on Linux — no Mac, no Simulator — but
 # installing Chromium + running a browser is heavy enough to gate. It is not a required check, so a
 # path filter is enough: it simply doesn't run on a PR that can't affect the web path, and an
-# unrelated PR isn't blocked. The paths mirror the iOS E2E's relevance rule — the core run path,
-# the web backend, the web demo, and the dependency/build files — minus the serve / mcp / lint /
-# worker surfaces the web smoke never exercises (the Linux `check` gate already covers those).
+# unrelated PR isn't blocked.
+#
+# Positive-list filter: only paths the web E2E actually exercises. Subdirectories are listed
+# explicitly (runner, scenario, drivers, orchestrator); `bajutsu/*.py` covers the single-level
+# top-level modules (most are in the run path) while inherently excluding subpackages the web
+# smoke never touches (serve/, mcp/, templates/, report/). CLI commands are limited to the three
+# entry points the smoke invokes. A new subpackage or CLI command defaults to NOT triggering
+# this workflow — add it here when it becomes web-E2E-relevant.
 name: web e2e
 
 on:
@@ -12,15 +17,17 @@ on:
   push:
     branches: [main]
     paths: &web-paths
-      - 'bajutsu/**'
-      - '!bajutsu/serve/**'
-      - '!bajutsu/mcp/**'
-      - '!bajutsu/lint.py'
-      - '!bajutsu/cli/commands/serve.py'
-      - '!bajutsu/cli/commands/worker.py'
-      - '!bajutsu/cli/commands/mcp.py'
-      - '!bajutsu/cli/commands/lint.py'
-      - '!bajutsu/cli/commands/schema.py'
+      - 'bajutsu/runner/**'
+      - 'bajutsu/scenario/**'
+      - 'bajutsu/drivers/**'
+      - 'bajutsu/orchestrator/**'
+      - 'bajutsu/*.py'
+      - 'bajutsu/cli/__init__.py'
+      - 'bajutsu/cli/_shared.py'
+      - 'bajutsu/cli/commands/__init__.py'
+      - 'bajutsu/cli/commands/run.py'
+      - 'bajutsu/cli/commands/codegen.py'
+      - 'bajutsu/cli/commands/record.py'
       - 'demos/web/**'
       - 'pyproject.toml'
       - 'uv.lock'
