@@ -11,7 +11,7 @@ import subprocess
 from collections.abc import Callable, Mapping
 
 from bajutsu import assertions, interp, intervals
-from bajutsu.assertions import AssertionResult, SchemaContext, VisualContext
+from bajutsu.assertions import AssertionResult, GoldenContext, SchemaContext, VisualContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.mailbox import extract_value, select
@@ -110,6 +110,7 @@ def _run_step_body(
     bindings: dict[str, str] | None = None,
     control: DeviceControl | None = None,
     mailbox: MailboxReader | None = None,
+    golden_context: GoldenContext | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results).
 
@@ -127,7 +128,13 @@ def _run_step_body(
         if kind == "assert_":
             assert step.assert_ is not None
             clip = _clipboard_for(step.assert_, control)
-            results = assertions.evaluate(driver.query(), step.assert_, network(), clipboard=clip)
+            results = assertions.evaluate(
+                driver.query(),
+                step.assert_,
+                network(),
+                clipboard=clip,
+                golden_context=golden_context,
+            )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results
         _do_action(driver, step, relaunch, control, bindings)
@@ -151,6 +158,7 @@ def run_scenario(
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
     mailbox: MailboxReader | None = None,
+    golden_context: GoldenContext | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -194,6 +202,7 @@ def run_scenario(
             control,
             progress,
             mailbox,
+            golden_context,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
@@ -207,6 +216,7 @@ def run_scenario(
                 visual_context=visual_context,
                 schema_context=schema_context,
                 clipboard=clip,
+                golden_context=golden_context,
             )
             if not assertions.passed(expect_results) and on_blocked is not None:
                 event = on_blocked(driver)
@@ -224,6 +234,7 @@ def run_scenario(
                         visual_context=visual_context,
                         schema_context=schema_context,
                         clipboard=clip,
+                        golden_context=golden_context,
                     )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
@@ -303,6 +314,7 @@ def _run_steps(
     control: DeviceControl | None = None,
     progress: ProgressFn | None = None,
     mailbox: MailboxReader | None = None,
+    golden_context: GoldenContext | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
 
@@ -347,7 +359,16 @@ def _run_steps(
             interp_step = _interp_step(step, bindings)
             before = driver.query() if wants_screen_changed else None
             ok, reason, results = _run_step_body(
-                driver, interp_step, kind, clock, network, relaunch, bindings, control, mailbox
+                driver,
+                interp_step,
+                kind,
+                clock,
+                network,
+                relaunch,
+                bindings,
+                control,
+                mailbox,
+                golden_context,
             )
             if not ok and on_blocked is not None:
                 event = on_blocked(driver)
@@ -363,6 +384,7 @@ def _run_steps(
                         bindings,
                         control,
                         mailbox,
+                        golden_context,
                     )
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start

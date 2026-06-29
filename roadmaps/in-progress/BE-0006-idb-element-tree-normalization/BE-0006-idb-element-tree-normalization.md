@@ -8,6 +8,7 @@
 | Proposal | [BE-0006](BE-0006-idb-element-tree-normalization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
+| Implementing PR | [#384](https://github.com/bajutsu-e2e/bajutsu/pull/384), [#386](https://github.com/bajutsu-e2e/bajutsu/pull/386) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
