@@ -246,6 +246,7 @@ async function loadShared(){
   syncPlatform('#panel-capture','#cap-target');
   syncPlatform('#panel-editor','#edt-target');
   await loadScenarios();
+  if(!$('#view-editor').hidden)editorRefresh();
 }
 // Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
 async function loadScenarios(){
@@ -1186,7 +1187,7 @@ if(!NARROW_MQ.matches)initTiling();
       edtSteps=d.steps||[];
       edtRenderStepList();
       if(edtSteps.length>0){edtShowStep(0);}
-      else{$('#edt-placeholder').hidden=false;$('#edt-screenshot').hidden=true;$('#edt-feedback').hidden=true;}
+      else{edtIdx=-1;$('#edt-placeholder').hidden=false;$('#edt-placeholder').textContent='No steps in this run.';$('#edt-screenshot').hidden=true;$('#edt-feedback').hidden=true;$('#edt-prev').disabled=true;$('#edt-next').disabled=true;$('#edt-step-label').textContent='No steps';}
       $('#edt-status').textContent=edtSteps.length+' step'+(edtSteps.length===1?'':'s')+' loaded';
       $('#edt-status').className='status ok';
     }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
@@ -1266,6 +1267,10 @@ if(!NARROW_MQ.matches)initTiling();
   window.editorInit=function(){
     if(edtInited)return;
     edtInited=true;
+    edtLoadScenarios();
+  };
+  // Called by loadShared() after targets arrive — re-populate if Editor is already visible.
+  window.editorRefresh=function(){
     edtLoadScenarios();
   };
 })();

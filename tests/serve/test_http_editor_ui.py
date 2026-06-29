@@ -75,5 +75,6 @@ def test_editor_js_wires_resolve(tmp_path: Path) -> None:
 def test_editor_js_wires_step_load(tmp_path: Path) -> None:
     """The JS loads scenario steps with run artifacts via the extended API."""
     text = _index_text(tmp_path)
-    assert "runId=" in text or "runId=" in text
+    assert "runId=" in text
+    assert "scenario=" in text
     assert "edt-screenshot" in text
