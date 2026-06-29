@@ -8,7 +8,7 @@
 | 提案 | [BE-0037](BE-0037-webview-hybrid-support-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| 実装 PR | [#400](https://github.com/bajutsu-e2e/bajutsu/pull/400) |
+| 実装 PR | [#400](https://github.com/bajutsu-e2e/bajutsu/pull/400), [#401](https://github.com/bajutsu-e2e/bajutsu/pull/401) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |
 <!-- /BE-METADATA -->
@@ -82,6 +82,36 @@ DOM の操作には idb が持たない機能、すなわち `WKWebView.evaluate
 - **決定的。** ホストが曖昧または見つからない場合、あるいは DOM の一致が曖昧または空の場合は、ステップを失敗させます（`resolve_unique` をそのまま再利用します）。待機は timeout 必須の条件待機のままで、固定 sleep は持ち込みません。
 - **LLM なし。** ブリッジ、正規化、解決はすべて純粋な機械ロジックです。run／CI ゲートは AI 非依存のままで、ここに合否判定へ LLM を加える要素はありません。
 - **アプリ非依存。** アプリ固有の事実（どのアプリが WebView を使うか、安定したホストの id）は `apps.<name>` に置きます。ツール、ドライバ、正規化処理、ランナーは、アプリをまたいでも、また idb から後の XCUITest アクチュエータへ移っても変わりません。
+
+### 実装状況
+
+[#400](https://github.com/bajutsu-e2e/bajutsu/pull/400)（最初のスライス）と
+[#401](https://github.com/bajutsu-e2e/bajutsu/pull/401)（後続）で出荷しました。
+
+#### 出荷済みの内容
+
+- `web: { within, steps }` ステップ型 — コンテキスト境界、モデル、ランループのディスパッチ
+- DOM から Element への正規化を `bajutsu/dom.py` に抽出（Playwright と共有）
+- `WebViewBridge`（Python HTTP クライアント）と `WebContextDriver`（ドライバーラッパー）
+- `BajutsuWebView.swift` — ブリッジサーバー。`/webview/dom`・`/webview/tap`・`/webview/type`・
+  `/webview/scroll` エンドポイントを提供し、JS の文字列補間は `JSONSerialization` で安全に処理します
+- パイプライン配管：`Lease.webview_bridge`、`BAJUTSU_WEBVIEW_PORT` の環境変数注入、`pool` →
+  `pipeline` → `run_scenario` の配線
+- Web コンテキスト内の `type_text`（フォーカス中の要素へ `input` + `change` イベントを発火）
+- タップ前の `scrollIntoView`（画面外の要素をビューポートへ移動）
+- ドライバープロトコルへの `Capability.WEBVIEW` 追加
+
+#### 残論点（最初のスライスの対象外）
+
+- **DOM の条件待機（value / label）。** `wait_for` は存在チェックのみを行います。DOM 要素の
+  value や label の変化を待機する機能はまだありません。工数は小さいため、需要が出た時点で別の
+  BE として提案することを推奨します。
+- **ネスト WebView。** DOM がさらに別の `WKWebView` をホストするケースです。現時点ではホスト
+  セレクタはただ 1 つのネイティブな WebView へ解決する必要があります。工数は中程度で、需要は
+  不明です。
+- **a11y ブリッジの読み取り経路。** iOS が一部の WebView コンテンツに公開するネイティブ a11y
+  ツリーを、アサーション専用の読み取り経路として利用します（JavaScript 不要）。ARIA 属性がない
+  コンテンツでのアサーションカバレッジを補完します。
 
 ## 検討した代替案
 
