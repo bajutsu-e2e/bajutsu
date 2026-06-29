@@ -920,6 +920,8 @@ def start_capture(
     if not backend:
         backends_list = target_cfg.backend or config.defaults.backend
         backend = backends_list[0] if backends_list else "fake"
+    if not udid:
+        udid = "booted"
 
     factory = driver_factory or _default_driver_factory
     driver = factory(target, backend, udid)
@@ -942,16 +944,21 @@ def start_capture(
         screen_size=screen_size,
         namespaces=namespaces,
         redactor=redactor,
+        actor=actor,
         screenshot_path=shot_path,
     )
     return {"ok": True, "screenSize": list(screen_size)}, 200
 
 
-def mark_capture(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
+def mark_capture(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
     """Resolve a point, proxy-actuate, and append the step."""
     session = state.capture
     if session is None:
         return {"error": "no active capture session"}, 400
+    if session.actor is not None and actor != session.actor:
+        return {"error": "capture session belongs to another user"}, 403
 
     kind = str(body.get("kind", "tap"))
     point = body.get("point", [0.5, 0.5])

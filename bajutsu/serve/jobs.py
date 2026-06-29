@@ -135,6 +135,7 @@ class CaptureSession:
     screen_size: tuple[float, float]
     namespaces: list[str]
     redactor: Redactor | None
+    actor: str | None = None
     steps: list[Step] = field(default_factory=list)
     screenshot_path: Path = field(default_factory=lambda: Path(os.devnull))
     prev_fingerprint: str = ""

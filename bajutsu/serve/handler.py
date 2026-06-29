@@ -254,7 +254,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/capture/start":
                     self._json(*ops.start_capture(state, body, actor=self._actor()))
                 case "/api/capture/mark":
-                    self._json(*ops.mark_capture(state, body))
+                    self._json(*ops.mark_capture(state, body, actor=self._actor()))
                 case "/api/capture/finish":
                     self._json(*ops.finish_capture(state, body, actor=self._actor()))
                 case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
@@ -401,6 +401,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
             session = state.capture
             if session is None or not session.screenshot_path.exists():
                 self._json({"error": "no active capture session"}, 404)
+                return
+            if session.actor is not None and self._actor() != session.actor:
+                self._json({"error": "capture session belongs to another user"}, 403)
                 return
             data = session.screenshot_path.read_bytes()
             self.send_response(200)
