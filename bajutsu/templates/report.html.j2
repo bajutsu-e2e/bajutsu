@@ -97,7 +97,7 @@
 
 {%- macro env_panel(p) -%}
 {%- if p.sim %}<div class="envsec"><span class="deflbl">simulator</span><table class="pretbl"><tbody>{% for k, v in p.sim %}<tr><td class="pk">{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}</tbody></table></div>
-{%- else %}<div class="muted">no environment details captured</div>{% endif -%}
+{%- elif not p.skips %}<div class="muted">no environment details captured</div>{% endif -%}
 {%- if p.skips %}<div class="envsec skipcap"><span class="deflbl">skipped evidence</span><table class="pretbl"><tbody>{% for s in p.skips %}<tr><td class="pk">{{ s.kind }}</td><td class="muted">{{ s.reason }}</td></tr>{% endfor %}</tbody></table></div>{% endif -%}
 {%- endmacro -%}
 

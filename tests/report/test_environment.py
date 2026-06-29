@@ -110,6 +110,22 @@ def test_html_environment_omits_skipped_section_when_empty() -> None:
     assert "skipped evidence" not in out
 
 
+def test_html_environment_no_sim_with_skips_omits_muted_message() -> None:
+    # When sim details are absent but skipped captures exist, the panel must NOT
+    # show "no environment details captured" — that would contradict the skip rows.
+    r = _passing()
+    r.device = ""
+    r.device_name = ""
+    r.device_runtime = ""
+    r.backend = ""
+    r.skipped_captures = [
+        SkippedCapture(kind="network", reason="no same-platform backend provides network")
+    ]
+    out = html_report("run1", [r])
+    assert "no environment details captured" not in out
+    assert "skipped evidence" in out
+
+
 def test_html_shows_backend() -> None:
     # The actuator is shown both as a header chip and a per-scenario badge.
     out = html_report("run9", [_passing()])
