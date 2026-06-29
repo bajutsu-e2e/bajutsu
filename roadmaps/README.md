@@ -427,6 +427,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0095](proposals/BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph.md) | Interactive crawl graph (draggable nodes + realign) | Proposal |
+| [BE-0098](proposals/BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md) | Unified authoring surface in serve | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### Hosting the web UI (cloud / self-hosted)

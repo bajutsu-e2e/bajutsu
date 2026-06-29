@@ -1,11 +1,11 @@
-[English](BE-XXXX-unified-authoring-surface.md) · **日本語**
+[English](BE-0098-unified-authoring-surface.md) · **日本語**
 
-# BE-XXXX — serve の統合オーサリングサーフェス
+# BE-0098 — serve の統合オーサリングサーフェス
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-unified-authoring-surface-ja.md) |
+| 提案 | [BE-0098](BE-0098-unified-authoring-surface-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トピック | オーサリング体験（record / GUI エディタ） |
@@ -56,6 +56,6 @@ BE-0014 の設計書は、著者が 1 つのシナリオを開き、そのまま
 * **タブを維持し、タブ間の状態同期を追加する案。** 棄却しました。3 つの独立したタブ間でシナリオ選択と未保存の編集を同期させると、根本的な UX の問題（著者が最初にタブを選ぶ必要がある）を解消せずに複雑さだけが増します。
 * **モードスイッチャーなしで 3 つすべてを Editor タブにマージする案。** 棄却しました。1 つのタブにすべてのコントロールを詰め込むとインターフェースが煩雑になります。モードスイッチャーによって各モードのコントロールを集中させることができます。
 
-## 参照
+## 参考
 
-[BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（この統合を想定した棲み分け設計）、[BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（Capture）、[BE-0013](../../proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md)（Editor）。
+[BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（この統合を想定した棲み分け設計）、[BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（Capture）、[BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md)（Editor）。

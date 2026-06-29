@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-unified-authoring-surface-ja.md)
+**English** · [日本語](BE-0098-unified-authoring-surface-ja.md)
 
-# BE-XXXX — Unified authoring surface in serve
+# BE-0098 — Unified authoring surface in serve
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-unified-authoring-surface.md) |
+| Proposal | [BE-0098](BE-0098-unified-authoring-surface.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | Authoring experience (record / GUI editor) |
@@ -56,4 +56,4 @@ The existing Capture and Editor tabs remain functional during the transition. Th
 
 ## References
 
-[BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation.md) (the demarcation design that anticipated this unification), [BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record.md) (Capture), [BE-0013](../../proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) (Editor).
+[BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation.md) (the demarcation design that anticipated this unification), [BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record.md) (Capture), [BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) (Editor).
