@@ -90,3 +90,15 @@ jobs:
           config: demos/features/demo.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: idb-monitor-run
+
+      # Golden element-tree assertion (BE-0006): pins the normalized tree shape for standard
+      # SwiftUI controls. Running it on the weekly cadence catches upstream idb/iOS drift that
+      # reshapes `describe-all` output between PRs.
+      - name: Run golden scenarios (BE-0006)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/features/app/scenarios/golden.yaml
+          target: sample
+          config: demos/features/demo.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: idb-monitor-golden-run

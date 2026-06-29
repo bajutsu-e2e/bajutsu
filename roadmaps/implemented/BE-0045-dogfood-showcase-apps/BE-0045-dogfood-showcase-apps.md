@@ -59,7 +59,7 @@ value of accessibility work — a demo no single-variant fixture can give.
 
 **3. The toolkit axis catches element-tree differences early.** idb's element-tree
 normalization is a known risk area, especially for SwiftUI standard controls
-([DESIGN §11](../../../DESIGN.md); [BE-0006](../../in-progress/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
+([DESIGN §11](../../../DESIGN.md); [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
 A UIKit twin that exposes the *same* identifier contract as the SwiftUI twin lets us run the
 *same* scenario set across both and surface where the two toolkits' a11y trees diverge — a
 regression net for the driver, free, as a byproduct of the fixture existing.
@@ -132,7 +132,7 @@ The shape:
   actually means. A build-time condition produces an honestly identifier-free product.
 - **Skip UIKit, SwiftUI only.** Rejected: UIKit is still the larger installed base, and the
   toolkit axis is precisely where idb's element-tree normalization differences surface
-  ([BE-0006](../../in-progress/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
+  ([BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
 
 ## References
 
@@ -140,5 +140,5 @@ The shape:
 - [DESIGN §2 / §5 / §7.1 / §7.3 / §8 / §11](../../../DESIGN.md) — determinism, stability ladder, per-app onboarding, identifier naming, config, risks
 - [BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — autonomous crawl exploration (this fixture's forward-looking target)
 - [BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — doctor / onboarding (consumes this fixture's coverage)
-- [BE-0006](../../in-progress/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — idb element-tree normalization (the toolkit axis stresses this)
+- [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — idb element-tree normalization (the toolkit axis stresses this)
 - [`demos/features/app`](../../../demos/features/app) — the `sample` fixture this supersedes

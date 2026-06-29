@@ -393,3 +393,68 @@ def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPa
     xe.teardown(FakeDriver([]), _eff())
     assert len(terminated) == 1
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
+
+
+def test_xcuitest_environment_forwards_preconditions_to_runner_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+    import tempfile
+    from dataclasses import replace as dc_replace
+
+    from bajutsu.config import XcuitestConfig
+
+    monkeypatch.setattr("bajutsu.environment._allocate_port", lambda: 11111)
+
+    popen_calls: list[dict[str, object]] = []
+
+    class FakePopen:
+        def __init__(self, cmd: list[str], **kwargs: object) -> None:
+            popen_calls.append({"cmd": cmd, "kwargs": kwargs})
+
+        def terminate(self) -> None:
+            pass
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    monkeypatch.setattr("subprocess.Popen", FakePopen)
+
+    class FakeDriver:
+        name = "xcuitest"
+
+        def await_ready(self, **kw: object) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.environment.make_driver", lambda *a, **k: FakeDriver())
+
+    with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        eff = dc_replace(
+            _eff(),
+            xcuitest=XcuitestConfig(test_runner=f.name),
+            app_path=None,
+            launch_env={"APP_ENV": "test", "DEBUG": "1"},
+            launch_args=["-verbose"],
+            locale="ja_JP",
+        )
+        pre = Preconditions(
+            launch_env={"SCENARIO_KEY": "val"},
+            launch_args=["-reset"],
+            locale="fr_FR",
+            deeplink="myapp://home",
+        )
+        xe = XcuitestEnvironment("xcuitest", "U", env_run=lambda a, extra_env=None: "")
+        xe.start(eff, pre, extra_env={"BAJUTSU_COLLECTOR": "http://127.0.0.1:9999"})
+
+    popen_env: dict[str, str] = popen_calls[0]["kwargs"]["env"]  # type: ignore[assignment]
+    # launch_env merged (eff + pre + extra_env) under BAJUTSU_LAUNCH_ENV_ prefix
+    assert popen_env["BAJUTSU_LAUNCH_ENV_APP_ENV"] == "test"
+    assert popen_env["BAJUTSU_LAUNCH_ENV_DEBUG"] == "1"
+    assert popen_env["BAJUTSU_LAUNCH_ENV_SCENARIO_KEY"] == "val"
+    assert popen_env["BAJUTSU_LAUNCH_ENV_BAJUTSU_COLLECTOR"] == "http://127.0.0.1:9999"
+    # launch_args as JSON array (eff + pre + locale)
+    args = json.loads(popen_env["BAJUTSU_LAUNCH_ARGS"])
+    assert "-verbose" in args and "-reset" in args
+    assert "-AppleLocale" in args and "fr_FR" in args
+    # deeplink
+    assert popen_env["BAJUTSU_DEEPLINK"] == "myapp://home"
