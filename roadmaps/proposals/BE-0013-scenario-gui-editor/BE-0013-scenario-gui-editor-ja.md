@@ -25,7 +25,7 @@
 
 ### 要素ピッカーは 1 つの共有部品
 
-点 → 要素 → セレクタの解決器は、**[BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) が導入するものと同じ**です。その純粋コア `bajutsu/capture.py`（`_contains` の frame 包含による `hit_test(elements, point)`、および `resolve_capture(elements, point, namespaces) -> セレクタ + doctor のラング + 曖昧性`）と、共有の `serve.js` スクリーンショット・オーバーレイのピッカーから成ります。エディタとキャプチャは*同じ*解決器を呼び、違うのは**要素ツリーとスクリーンショットの供給源**だけです。
+点 → 要素 → セレクタの解決器は、**[BE-0012](../../in-progress/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) が導入するものと同じ**です。その純粋コア `bajutsu/capture.py`（`_contains` の frame 包含による `hit_test(elements, point)`、および `resolve_capture(elements, point, namespaces) -> セレクタ + doctor のラング + 曖昧性`）と、共有の `serve.js` スクリーンショット・オーバーレイのピッカーから成ります。エディタとキャプチャは*同じ*解決器を呼び、違うのは**要素ツリーとスクリーンショットの供給源**だけです。
 
 - **キャプチャ（BE-0012）**：mark 時のライブな `driver.query()` + `driver.screenshot()`。対話的で、booted なデバイスのセッションが要ります。
 - **エディタ（本項目）**：実行がすでに取得した成果物。ステップごとに `runs/<runId>/<stepId>/elements.json`（`evidence.write_elements`）と `after.png`（`screenshot` の取得種別）です。`stepId` は `<scenarioId>/<step 名または stepN>`（例: `00-s/step0`。`orchestrator/loop.py` が組み立て `manifest.json` に記録する鍵）です。**オフラインで、ライブなデバイスは不要、決定的**です。
@@ -108,4 +108,4 @@
 
 [scenarios.md](../../../docs/ja/scenarios.md)、[selectors.md](../../../docs/ja/selectors.md)。`bajutsu/drivers/base.py`（`_contains`、`resolve_unique`、`Selector` / `Element`）、`bajutsu/doctor.py`（`score`、`ACTIONABLE_TRAITS`）、`bajutsu/evidence.py`（`write_elements` → ステップごとの `elements.json`、`screenshot` 種別 → `after.png`）、`bajutsu/serve/scenarios.py`（`ScenarioScope.save`）、`bajutsu/scenario/load.py`（`load_scenario_file`）、`bajutsu/serve/`（`handler.py` のルーティング、`operations.py`）、`bajutsu/templates/serve.js` と crawl レポートのスクリーンショット・オーバーレイの先例。
 
-**依存・関連項目:** [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)（`serve` ホスト、`ScenarioScope`、本項目が拡張するスクリーンショットの仕組み）、[BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（**点 → 要素ピッカー + doctor スコアを共有。解決器は 1 つ、供給源が 2 つ**。エディタは取得済み成果物、キャプチャはライブな driver を読む）、[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（オーサリング面どうしの役割分担）。
+**依存・関連項目:** [BE-0011](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve-ja.md)（`serve` ホスト、`ScenarioScope`、本項目が拡張するスクリーンショットの仕組み）、[BE-0012](../../in-progress/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)（**点 → 要素ピッカー + doctor スコアを共有。解決器は 1 つ、供給源が 2 つ**。エディタは取得済み成果物、キャプチャはライブな driver を読む）、[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)（オーサリング面どうしの役割分担）。
