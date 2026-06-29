@@ -130,7 +130,7 @@ def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDrive
 - 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。
 - actuator は run 開始時に 1 つ確定し、run 中は固定です（2 ドライバが同一デバイスを操作しません）。
 
-> 設計（DESIGN §9）では actuator 以外を read-only な証跡フォールバックに使う構想がありますが、現状の実行系は **actuator 単一**で、証跡フォールバックの複数バックエンド利用は未配線です。
+操作は単一の actuator にとどまります。リスト内の非 actuator バックエンドは、**read-only な証跡フォールバック**として機能します（DESIGN §9、[BE-0020](../../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md)）。actuator が欠く能力（例: `Capability.NETWORK`）を `capabilities()` で表明する同一プラットフォームのバックエンドが、その種別の provider として解決されます。フォールバックには狭い `EvidenceProvider` Protocol 経由でのみアクセスし、tap/type/swipe は型レベルで不可能です。gap を埋めるバックエンドが無い場合は、理由を記録して skip します（`SkippedCapture`）。なだらかな劣化であり、run の失敗にはなりません。来歴の詳細は[証跡 — provider](evidence.md#アーティファクトの来歴provider)を参照してください。
 
 ## 環境管理（simctl）
 

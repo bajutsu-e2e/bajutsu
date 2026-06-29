@@ -123,6 +123,14 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
+### Backend expansion (iOS actuators)
+
+<!-- GENERATED:implemented-backend -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0020](implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Implemented |
+<!-- /GENERATED:implemented-backend -->
+
 ### Authoring experience (record / GUI editor)
 
 The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording.md)). These items make the record → edit → re-run cycle easier for humans; the local web UI launcher `bajutsu serve` is the first step.
@@ -345,7 +353,6 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | ID | Item | Status |
 |---|---|---|
 | [BE-0019](in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | In progress |
-| [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | In progress |
 <!-- /GENERATED:in-progress-backend -->
 
 ### Dogfood fixtures (demo apps)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from _report import _passing
 
-from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
+from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report import html_report, manifest_dict
 
 
@@ -90,6 +90,24 @@ def test_device_shown_in_manifest_and_report() -> None:
     one = _passing()
     one.device = "SIM-AAAA"
     assert "devices</span>" not in html_report("run1", [one])
+
+
+def test_html_environment_shows_skipped_captures() -> None:
+    r = _passing()
+    r.skipped_captures = [
+        SkippedCapture(kind="network", reason="no same-platform backend provides network")
+    ]
+    out = html_report("run1", [r])
+    assert "skipped evidence" in out
+    assert "network" in out
+    assert "no same-platform backend provides network" in out
+
+
+def test_html_environment_omits_skipped_section_when_empty() -> None:
+    r = _passing()
+    assert not r.skipped_captures
+    out = html_report("run1", [r])
+    assert "skipped evidence" not in out
 
 
 def test_html_shows_backend() -> None:
