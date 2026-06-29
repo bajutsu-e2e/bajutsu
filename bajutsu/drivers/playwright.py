@@ -26,12 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
 from bajutsu import env, intervals
-from bajutsu.dom import (
-    QUERY_JS,
-    _norm_role,  # noqa: F401 — re-exported for test_playwright
-    _str_or_none,  # noqa: F401 — re-exported for test_playwright
-    parse_dom,
-)
+from bajutsu.dom import QUERY_JS, parse_dom
 from bajutsu.drivers import base
 
 if TYPE_CHECKING:

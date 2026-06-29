@@ -12,13 +12,9 @@ from typing import Any
 
 import pytest
 
+from bajutsu.dom import _norm_role, _str_or_none, parse_dom
 from bajutsu.drivers import base
-from bajutsu.drivers.playwright import (
-    PlaywrightDriver,
-    _norm_role,
-    _str_or_none,
-    parse_dom,
-)
+from bajutsu.drivers.playwright import PlaywrightDriver
 
 
 def _rec(**kw: Any) -> dict[str, Any]:
