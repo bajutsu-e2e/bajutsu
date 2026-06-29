@@ -258,6 +258,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.approve_baseline(state, body, actor=self._actor()))
                 case "/api/scenario/resolve":
                     self._json(*ops.resolve_scenario_pick(state, body, actor=self._actor()))
+                case "/api/enrich":
+                    self._json(*ops.start_enrich(state, body, actor=self._actor()))
                 case "/api/capture/start":
                     self._json(*ops.start_capture(state, body, actor=self._actor()))
                 case "/api/capture/mark":
