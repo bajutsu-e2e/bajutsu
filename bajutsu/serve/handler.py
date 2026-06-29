@@ -170,7 +170,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/scenario":
                     self._json(
                         *ops.read_scenario(
-                            state, self._qs("target"), self._qs("path"), actor=self._actor()
+                            state,
+                            self._qs("target"),
+                            self._qs("path"),
+                            actor=self._actor(),
+                            run_id=self._qs("runId"),
+                            scenario_name=self._qs("scenario"),
                         )
                     )
                 case "/api/oauth/login":
@@ -251,6 +256,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.save_scenario(state, body, actor=self._actor()))
                 case "/api/approve":
                     self._json(*ops.approve_baseline(state, body, actor=self._actor()))
+                case "/api/scenario/resolve":
+                    self._json(*ops.resolve_scenario_pick(state, body, actor=self._actor()))
                 case "/api/capture/start":
                     self._json(*ops.start_capture(state, body, actor=self._actor()))
                 case "/api/capture/mark":
