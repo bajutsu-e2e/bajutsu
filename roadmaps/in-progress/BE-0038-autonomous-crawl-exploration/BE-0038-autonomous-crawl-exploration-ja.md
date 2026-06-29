@@ -101,7 +101,7 @@ bajutsu crawl --app <name>
 ### 他項目との関係
 
 - **`record`**（[recording.md](../../../docs/ja/recording.md)）：クロールは幅優先の補完であり、発見した画面が `record` のゴールのシードになります。ループ、アラート処理、証跡周りを共有します。
-- **[BE-0012 アクションキャプチャ record](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) / [BE-0014 record の切り分け](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)**：これらは *人間駆動* のキャプチャと、AI `record` からの切り分けを扱います。クロールは第 3 の、完全に自律的なオーサリング入口であり、それらと並べて切り分けるべきです。
+- **[BE-0012 アクションキャプチャ record](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) / [BE-0014 record の切り分け](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)**：これらは *人間駆動* のキャプチャと、AI `record` からの切り分けを扱います。クロールは第 3 の、完全に自律的なオーサリング入口であり、それらと並べて切り分けるべきです。
 - **[BE-0024 doctor / onboarding](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)**：クロールは doctor の §7.2 計測が必要とするアプリ全体カバレッジの入力を供給します。
 
 ### 実装状況
@@ -126,5 +126,5 @@ bajutsu crawl --app <name>
 
 ## 参考
 
-[recording.md](../../../docs/ja/recording.md)、[drivers.md](../../../docs/ja/drivers.md)、[concepts.md](../../../docs/ja/concepts.md)、[DESIGN §2 / §3.1 / §5 / §7.2 / §9](../../../DESIGN.md)、[BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)、[BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)、[BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
+[recording.md](../../../docs/ja/recording.md)、[drivers.md](../../../docs/ja/drivers.md)、[concepts.md](../../../docs/ja/concepts.md)、[DESIGN §2 / §3.1 / §5 / §7.2 / §9](../../../DESIGN.md)、[BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md)、[BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)、[BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
 </content>

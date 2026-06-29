@@ -139,6 +139,7 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | ID | Item | Status |
 |---|---|---|
 | [BE-0011](implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) | Local web UI (`bajutsu serve`) | Implemented |
+| [BE-0012](implemented/BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | Implemented |
 | [BE-0044](implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Implemented |
 | [BE-0060](implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Implemented |
 | [BE-0068](implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | Implemented |
@@ -390,9 +391,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 ### Authoring experience (record / GUI editor)
 
 <!-- GENERATED:in-progress-authoring -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0012](in-progress/BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | In progress |
+
 <!-- /GENERATED:in-progress-authoring -->
 
 ## Proposals

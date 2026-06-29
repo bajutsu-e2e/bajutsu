@@ -65,7 +65,7 @@ stays unchanged, exactly as in v1.
 Once the driver advertises the richer capabilities, authoring a web scenario by AI `record` is
 already possible (the driver implements `query`/`tap`/`type`). A web `record` demo is **not** a
 new item: it is tracked under the existing record-experience proposals
-([BE-0012](../../in-progress/BE-0012-action-capture-record/BE-0012-action-capture-record.md) action-capture record,
+([BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md) action-capture record,
 [BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md)),
 which apply to any backend.
 

@@ -94,7 +94,7 @@ document.querySelectorAll('.viewswitch').forEach(sw=>{
 // ---- top-level Record / Replay / Crawl views ----
 function showView(name){
   document.querySelectorAll('.toptab').forEach(t=>t.classList.toggle('active',t.dataset.view===name));
-  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';
+  $('#view-record').hidden=name!=='record';$('#view-replay').hidden=name!=='replay';$('#view-crawl').hidden=name!=='crawl';$('#view-capture').hidden=name!=='capture';
   if(name==='replay')loadHistory();
 }
 document.querySelectorAll('.toptab').forEach(t=>t.addEventListener('click',()=>showView(t.dataset.view)));
@@ -238,10 +238,11 @@ async function loadShared(){
   // each target carries its primary backend (data-backend) so picking a web target hides the iOS-only UI
   const opts=targets.map(a=>{const n=typeof a==='string'?a:a.name,b=typeof a==='string'?'':(a.backend||'');
     return `<option value="${esc(n)}" data-backend="${esc(b)}">${esc(n)}</option>`;}).join('');
-  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;
+  $('#target').innerHTML=opts;$('#rec-target').innerHTML=opts;$('#crawl-target').innerHTML=opts;$('#cap-target').innerHTML=opts;
   syncPlatform('#panel-run','#target');
   syncPlatform('#panel-record','#rec-target');
   syncPlatform('#panel-crawl','#crawl-target');
+  syncPlatform('#panel-capture','#cap-target');
   await loadScenarios();
 }
 // Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
@@ -881,6 +882,7 @@ function wirePlatform(panelSel,appSel){
 wirePlatform('#panel-run','#target');
 wirePlatform('#panel-record','#rec-target');
 wirePlatform('#panel-crawl','#crawl-target');
+wirePlatform('#panel-capture','#cap-target');
 
 // Resizable panels: each view has gutter bars between its grid columns. Dragging one resizes the
 // column to its left via a CSS var on the <main>'s grid-template; widths persist in localStorage.
@@ -1044,6 +1046,93 @@ function initTiling(){
 // Likewise the drag-to-split/swap tiling is a desktop power feature with no touch equivalent and no
 // room on a phone; skip it at the narrow tier so the markup stays in its single-column stack form.
 if(!NARROW_MQ.matches)initTiling();
+
+// ---- Capture (BE-0012): record actions by clicking on a screenshot ----
+(function(){
+  const modeRadios=document.querySelectorAll('input[name="cap-mode"]');
+  modeRadios.forEach(r=>r.addEventListener('change',()=>{
+    $('#cap-type-field').hidden=r.value!=='type'||!r.checked;
+  }));
+
+  function capMode(){
+    const checked=document.querySelector('input[name="cap-mode"]:checked');
+    return checked?checked.value:'tap';
+  }
+
+  let capActive=false;
+
+  $('#cap-start').addEventListener('click',async()=>{
+    const target=$('#cap-target').value;
+    if(!target){$('#cap-status').textContent='Select a target first.';return;}
+    $('#cap-status').textContent='Starting capture…';$('#cap-status').className='status run';
+    try{
+      const r=await fetch('/api/capture/start',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target})});
+      const d=await r.json();
+      if(!r.ok||d.error){$('#cap-status').textContent=d.error||'failed';$('#cap-status').className='status ng';return;}
+      capActive=true;
+      $('#cap-start').hidden=true;$('#cap-finish').hidden=false;
+      $('#cap-placeholder').hidden=true;$('#cap-screenshot').hidden=false;
+      $('#cap-screenshot').src='/api/capture/screenshot?t='+Date.now();
+      $('#cap-status').textContent='Click on the screenshot to capture actions.';$('#cap-status').className='status ok';
+      $('#cap-steplist').innerHTML='';$('#cap-count').textContent='0 steps';
+    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
+  });
+
+  $('#cap-screenshot').addEventListener('click',async(e)=>{
+    if(!capActive)return;
+    const rect=e.target.getBoundingClientRect();
+    const nx=(e.clientX-rect.left)/rect.width;
+    const ny=(e.clientY-rect.top)/rect.height;
+    const mode=capMode();
+    const body={kind:mode,point:[nx,ny]};
+    if(mode==='type')body.text=$('#cap-text').value||'';
+    $('#cap-status').textContent='Resolving…';$('#cap-status').className='status run';
+    try{
+      const r=await fetch('/api/capture/mark',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(body)});
+      const d=await r.json();
+      if(d.refused){
+        $('#cap-status').textContent='Refused: '+d.refused;$('#cap-status').className='status ng';
+        return;
+      }
+      if(d.ambiguity){
+        const ids=d.ambiguity.map(a=>a.identifier||a.label||'?').join(', ');
+        $('#cap-status').textContent='Ambiguous: '+ids;$('#cap-status').className='status ng';
+        return;
+      }
+      if(d.error){$('#cap-status').textContent=d.error;$('#cap-status').className='status ng';return;}
+      const sel=d.selector;
+      const desc=sel.id?('#'+sel.id):(sel.label||'?');
+      const li=document.createElement('li');
+      li.textContent=mode+' '+desc;
+      if(mode==='type')li.textContent+=' = "'+($('#cap-text').value||'')+'"';
+      $('#cap-steplist').appendChild(li);
+      const count=$('#cap-steplist').children.length;
+      $('#cap-count').textContent=count+' step'+(count===1?'':'s');
+      $('#cap-feedback').hidden=false;
+      $('#cap-rung').textContent=d.rung;$('#cap-rung').className='cap-rung rung-'+d.rung;
+      $('#cap-sel').textContent=desc;
+      $('#cap-screenshot').src='/api/capture/screenshot?t='+Date.now();
+      $('#cap-status').textContent='Captured: '+mode+' '+desc;$('#cap-status').className='status ok';
+    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
+  });
+
+  $('#cap-finish').addEventListener('click',async()=>{
+    if(!capActive)return;
+    $('#cap-status').textContent='Saving…';$('#cap-status').className='status run';
+    try{
+      const r=await fetch('/api/capture/finish',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({target:$('#cap-target').value})});
+      const d=await r.json();
+      capActive=false;
+      $('#cap-start').hidden=false;$('#cap-finish').hidden=true;
+      if(d.error){$('#cap-status').textContent=d.error;$('#cap-status').className='status ng';return;}
+      const path=d.path||'(unsaved)';
+      $('#cap-status').textContent='Saved to '+path;$('#cap-status').className='status ok';
+    }catch(e){$('#cap-status').textContent=String(e);$('#cap-status').className='status ng';}
+  });
+})();
 
 initTheme();
 loadConfig();

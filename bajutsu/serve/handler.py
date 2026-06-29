@@ -183,6 +183,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.job_view(state, path[len("/api/jobs/") :]))
                 case _ if path.startswith("/runs/") and path.endswith("/archive.zip"):
                     self._serve_run_archive(unquote(path[len("/runs/") : -len("/archive.zip")]))
+                case "/api/capture/screenshot":
+                    self._serve_capture_screenshot()
                 case _ if path.startswith("/runs/"):
                     self._serve_run_file(unquote(path[len("/runs/") :]))
                 case _:
@@ -394,6 +396,19 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         def _serve_run_file(self, rel: str) -> None:
             # report.html is rendered on view from the stored model (BE-0068); other files served as-is.
             self._serve_artifact(ops.run_file(self._artifacts(), rel))
+
+        def _serve_capture_screenshot(self) -> None:
+            session = state.capture
+            if session is None or not session.screenshot_path.exists():
+                self._json({"error": "no active capture session"}, 404)
+                return
+            data = session.screenshot_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(data)
 
         def _serve_run_archive(self, run_id: str) -> None:
             # A one-file download of the whole run (BE-0060), through the same org-scoped store, so

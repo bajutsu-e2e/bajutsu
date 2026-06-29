@@ -930,6 +930,11 @@ def start_capture(
     screen_size = screen_size_from_elements(elements)
     namespaces: list[str] = list(target_cfg.id_namespaces)
 
+    shot_dir = state.runs_dir / "_capture"
+    shot_dir.mkdir(parents=True, exist_ok=True)
+    shot_path = shot_dir / "screen.png"
+    driver.screenshot(str(shot_path))
+
     state.capture = jobs.CaptureSession(
         driver=driver,
         target=target,
@@ -937,6 +942,7 @@ def start_capture(
         screen_size=screen_size,
         namespaces=namespaces,
         redactor=redactor,
+        screenshot_path=shot_path,
     )
     return {"ok": True, "screenSize": list(screen_size)}, 200
 
@@ -989,6 +995,7 @@ def mark_capture(state: ServeState, body: dict[str, Any]) -> tuple[Any, int]:
 
     session.steps.append(step)
     session.elements = session.driver.query()
+    session.driver.screenshot(str(session.screenshot_path))
 
     return {
         "selector": sel.model_dump(exclude_none=True, by_alias=True),
