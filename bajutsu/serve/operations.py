@@ -1278,8 +1278,16 @@ def start_enrich(
     driver = factory(target, backend, udid)
 
     if agent_factory is None:
-        return {"error": "enrichment agent not yet available"}, 501
-    agent = agent_factory()
+        from bajutsu.agents import make_enrichment_agent
+        from bajutsu.anthropic_client import credential_gap
+
+        eff = resolve(config, target)
+        gap = credential_gap(eff.ai)
+        if gap:
+            return {"error": f"enrichment requires an AI credential ({gap})"}, 400
+        agent = make_enrichment_agent(ai=eff.ai)
+    else:
+        agent = agent_factory()
 
     from bajutsu.enrich import enrich
 
