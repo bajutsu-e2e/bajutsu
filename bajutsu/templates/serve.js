@@ -1305,10 +1305,11 @@ if(!NARROW_MQ.matches)initTiling();
       const trimmed=lines[i].trimStart();
       if(trimmed.startsWith('- '+oldPattern)||trimmed.startsWith('- '+action+':')){
         if(stepCount===edtIdx){
+          const indent=lines[i].match(/^(\s*)/)[1];
           if(action==='type'){
-            lines[i]='    - type: { into: '+newSel+', text: '+(oldFields.text||'""')+' }';
+            lines[i]=indent+'- type: { into: '+newSel+', text: '+(oldFields.text||'""')+' }';
           }else{
-            lines[i]='    - '+action+': '+newSel;
+            lines[i]=indent+'- '+action+': '+newSel;
           }
           break;
         }
