@@ -341,6 +341,19 @@ def test_rebased_resolves_relative_paths_under_the_checkout_root() -> None:
     assert rebased.goldens == "/co/golden/data"
 
 
+def test_rebased_resolves_xcuitest_test_runner() -> None:
+    eff = resolve(
+        load_config(
+            "targets:\n  x:\n    bundleId: com.x\n    xcuitest:\n"
+            "      testRunner: build/Runner.xctestrun\n"
+        ),
+        "x",
+    )
+    rebased = eff.rebased(Path("/co"))
+    assert rebased.xcuitest is not None
+    assert rebased.xcuitest.test_runner == "/co/build/Runner.xctestrun"
+
+
 def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
     """A config path that climbs out of the checkout (`..` or absolute) is refused — confinement (BE-0051)."""
     for bad in ("../../etc", "/etc/passwd"):

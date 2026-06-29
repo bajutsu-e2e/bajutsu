@@ -22,6 +22,47 @@ public final class RunnerServer {
         try httpServer.start(port: port)
     }
 
+    /// Start the server on the port from `BAJUTSU_RUNNER_PORT`, or an ephemeral port if unset.
+    ///
+    /// The Python `XcuitestEnvironment` allocates a port and passes it through this env var so
+    /// the driver can connect immediately after readiness.
+    @discardableResult
+    public func startFromEnvironment() throws -> UInt16 {
+        let raw = ProcessInfo.processInfo.environment["BAJUTSU_RUNNER_PORT"] ?? "0"
+        let port = UInt16(raw) ?? 0
+        return try start(port: port)
+    }
+
+    /// The app launch environment forwarded by the Python environment via `BAJUTSU_LAUNCH_ENV_*`.
+    ///
+    /// Each env var whose key starts with `BAJUTSU_LAUNCH_ENV_` is collected with the prefix
+    /// stripped; the caller sets these on `XCUIApplication.launchEnvironment` before `launch()`.
+    public static var forwardedLaunchEnvironment: [String: String] {
+        let prefix = "BAJUTSU_LAUNCH_ENV_"
+        var result: [String: String] = [:]
+        for (key, value) in ProcessInfo.processInfo.environment where key.hasPrefix(prefix) {
+            result[String(key.dropFirst(prefix.count))] = value
+        }
+        return result
+    }
+
+    /// The app launch arguments forwarded by the Python environment via `BAJUTSU_LAUNCH_ARGS`.
+    ///
+    /// The value is a JSON array of strings; an absent or malformed value yields `[]`.
+    public static var forwardedLaunchArguments: [String] {
+        guard let raw = ProcessInfo.processInfo.environment["BAJUTSU_LAUNCH_ARGS"],
+              let data = raw.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+            return []
+        }
+        return array
+    }
+
+    /// The deeplink URL forwarded by the Python environment via `BAJUTSU_DEEPLINK`, if any.
+    public static var forwardedDeeplink: String? {
+        ProcessInfo.processInfo.environment["BAJUTSU_DEEPLINK"]
+    }
+
     /// Stop the server and close the listening socket.
     public func stop() {
         httpServer.stop()
