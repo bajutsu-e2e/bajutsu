@@ -175,6 +175,14 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 500)
     }
 
+    // MARK: - Helpers
+
+    private func extractHandle(from router: Router) throws -> String {
+        let response = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
+        let elements = try XCTUnwrap(parseJSON(response)?["elements"] as? [[String: Any]])
+        return try XCTUnwrap(elements.first?["handle"] as? String)
+    }
+
     // MARK: - /gesture
 
     func testGesturePinchSendsScaleToProvider() throws {
@@ -187,13 +195,10 @@ final class RouterTests: XCTestCase {
             ),
         ]
         let router = makeRouter(provider)
-
-        let elemResponse = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
-        let handle = (parseJSON(elemResponse)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
-        XCTAssertNotNil(handle)
+        let handle = try extractHandle(from: router)
 
         let body = try JSONSerialization.data(
-            withJSONObject: ["handle": handle!, "kind": "pinch", "scale": 2.0]
+            withJSONObject: ["handle": handle, "kind": "pinch", "scale": 2.0]
         )
         let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
         XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
@@ -213,12 +218,10 @@ final class RouterTests: XCTestCase {
             ),
         ]
         let router = makeRouter(provider)
-
-        let elemResponse = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
-        let handle = (parseJSON(elemResponse)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        let handle = try extractHandle(from: router)
 
         let body = try JSONSerialization.data(
-            withJSONObject: ["handle": handle!, "kind": "rotate", "radians": 1.57]
+            withJSONObject: ["handle": handle, "kind": "rotate", "radians": 1.57]
         )
         let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
         XCTAssertEqual(parseJSON(response)?["status"] as? String, "ok")
@@ -236,9 +239,7 @@ final class RouterTests: XCTestCase {
             ),
         ]
         let router = makeRouter(provider)
-
-        let first = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
-        let handle = (parseJSON(first)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        let handle = try extractHandle(from: router)
 
         provider.elementsToReturn = [
             ElementSnapshot(
@@ -249,7 +250,7 @@ final class RouterTests: XCTestCase {
         _ = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
 
         let body = try JSONSerialization.data(
-            withJSONObject: ["handle": handle!, "kind": "pinch", "scale": 1.0]
+            withJSONObject: ["handle": handle, "kind": "pinch", "scale": 1.0]
         )
         let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
         XCTAssertEqual(parseJSON(response)?["status"] as? String, "stale")
@@ -271,11 +272,27 @@ final class RouterTests: XCTestCase {
             ),
         ]
         let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
 
-        let elemResponse = router.handle(HTTPRequest(method: "GET", path: "/elements", body: nil))
-        let handle = (parseJSON(elemResponse)?["elements"] as? [[String: Any]])?.first?["handle"] as? String
+        let body = try JSONSerialization.data(withJSONObject: ["handle": handle, "scale": 1.0])
+        let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
+        XCTAssertEqual(response.statusCode, 400)
+    }
 
-        let body = try JSONSerialization.data(withJSONObject: ["handle": handle!, "scale": 1.0])
+    func testGestureUnknownKindReturns400() throws {
+        let provider = FakeElementProvider()
+        provider.elementsToReturn = [
+            ElementSnapshot(
+                identifier: "a", label: nil, value: nil,
+                traits: [], frame: (0, 0, 1, 1), backingElement: NSObject()
+            ),
+        ]
+        let router = makeRouter(provider)
+        let handle = try extractHandle(from: router)
+
+        let body = try JSONSerialization.data(
+            withJSONObject: ["handle": handle, "kind": "flick", "scale": 1.0]
+        )
         let response = router.handle(HTTPRequest(method: "POST", path: "/gesture", body: body))
         XCTAssertEqual(response.statusCode, 400)
     }

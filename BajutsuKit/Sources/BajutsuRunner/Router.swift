@@ -88,6 +88,8 @@ final class Router {
         }
     }
 
+    private static let knownGestureKinds: Set<String> = ["pinch", "rotate"]
+
     private func handleGesture(_ request: HTTPRequest) -> HTTPResponse {
         guard let body = request.body,
               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
@@ -96,8 +98,8 @@ final class Router {
         guard let handle = json["handle"] as? String else {
             return .error(400, "missing handle")
         }
-        guard let kind = json["kind"] as? String else {
-            return .error(400, "missing kind")
+        guard let kind = json["kind"] as? String, Self.knownGestureKinds.contains(kind) else {
+            return .error(400, "missing or unknown gesture kind")
         }
         let scale = (json["scale"] as? NSNumber)?.doubleValue ?? 1.0
         let radians = (json["radians"] as? NSNumber)?.doubleValue ?? 0.0
