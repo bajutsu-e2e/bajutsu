@@ -480,7 +480,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   なりません（任意のホストパスや `..` トラバーサル不可）。`backend` / `udid` も既知のトークンに限定され、
   自由入力は拒否されます。これにより、リクエストが任意ファイルを実行したり想定外の argv を紛れ込ませたりするのを防ぎます。
   これは `serve` を loopback を越えてホスティングするための前提です
-  （[BE-0015 / BE-0016](../../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
+  （[BE-0015](../../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。

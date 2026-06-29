@@ -584,7 +584,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
   must be known tokens, not free text — so a request can't run an arbitrary file or smuggle
   surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
-  ([BE-0015 / BE-0016](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md));
+  ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
 - **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
   caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
