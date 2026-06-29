@@ -387,6 +387,14 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 | [BE-0087](in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | In progress |
 <!-- /GENERATED:in-progress-on-device -->
 
+### Authoring experience (record / GUI editor)
+
+<!-- GENERATED:in-progress-authoring -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0012](in-progress/BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | In progress |
+<!-- /GENERATED:in-progress-authoring -->
+
 ## Proposals
 
 Under consideration — not yet decided. Promote an item to *In progress* once work starts, or to *Implemented* when it ships.
@@ -417,7 +425,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-authoring -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0012](proposals/BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | Proposal |
 | [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Proposal |
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
 | [BE-0095](proposals/BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph.md) | Interactive crawl graph (draggable nodes + realign) | Proposal |

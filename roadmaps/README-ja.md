@@ -379,6 +379,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0087](in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle-ja.md) | idb アクションのタイミング堅牢化（操作前の settle） | 実装中 |
 <!-- /GENERATED:in-progress-on-device -->
 
+### オーサリング体験（record / GUI エディタ）
+
+<!-- GENERATED:in-progress-authoring -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0012](in-progress/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) | 操作キャプチャ record | 実装中 |
+<!-- /GENERATED:in-progress-authoring -->
+
 ## 提案
 
 検討中で、まだ決定していません。着手したら *実装中* に、出荷したら *実装済み* に昇格してください。
@@ -409,7 +417,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-authoring -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0012](proposals/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) | 操作キャプチャ record | 提案 |
 | [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor-ja.md) | シナリオ GUI エディタ | 提案 |
 | [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md) | 既存 AI record との棲み分け | 提案 |
 | [BE-0095](proposals/BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph-ja.md) | クロールグラフのインタラクティブ操作（ノードのドラッグと再整列） | 提案 |
