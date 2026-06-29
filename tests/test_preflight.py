@@ -138,10 +138,19 @@ def test_idb_version_check_fails_when_companion_unknown() -> None:
     assert "unknown" in check.detail
 
 
-def test_xcuitest_needs_xcrun_only() -> None:
-    checks = preflight.runnability("xcuitest", which=_which({"xcrun"}), booted_count=lambda: 1)
-    assert [c.name for c in checks] == ["xcrun", "Simulator booted"]
+def test_xcuitest_needs_xcrun_and_xcodebuild() -> None:
+    checks = preflight.runnability(
+        "xcuitest", which=_which({"xcrun", "xcodebuild"}), booted_count=lambda: 1
+    )
+    assert [c.name for c in checks] == ["xcrun", "xcodebuild", "Simulator booted"]
     assert preflight.passed(checks)
+
+
+def test_xcuitest_missing_xcodebuild_fails() -> None:
+    checks = preflight.runnability("xcuitest", which=_which({"xcrun"}), booted_count=lambda: 1)
+    assert not preflight.passed(checks)
+    xcodebuild = next(c for c in checks if c.name == "xcodebuild")
+    assert not xcodebuild.ok and "Xcode" in xcodebuild.detail
 
 
 def test_render_marks_pass_and_fail() -> None:

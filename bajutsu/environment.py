@@ -430,7 +430,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         runner_path = xcfg.test_runner
         if not Path(runner_path).exists():
             if xcfg.build:
-                subprocess.run(shlex.split(xcfg.build), check=True)
+                try:
+                    subprocess.run(shlex.split(xcfg.build), check=True)
+                except (subprocess.CalledProcessError, OSError) as exc:
+                    raise env.DeviceError(f"xcuitest build command failed: {xcfg.build}") from exc
             if not Path(runner_path).exists():
                 raise env.DeviceError(f"xcuitest testRunner not found: {runner_path}")
 
@@ -440,19 +443,22 @@ class XcuitestEnvironment(_DeviceEnvironment):
             "BAJUTSU_RUNNER_PORT": str(self._runner_port),
             **(extra_env or {}),
         }
-        self._runner_proc = subprocess.Popen(
-            [  # noqa: S607 — xcodebuild resolved on PATH; requires Xcode
-                "xcodebuild",
-                "test-without-building",
-                "-xctestrun",
-                runner_path,
-                "-destination",
-                f"platform=iOS Simulator,id={self._udid}",
-            ],
-            env=runner_env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            self._runner_proc = subprocess.Popen(
+                [  # noqa: S607 — xcodebuild resolved on PATH; requires Xcode
+                    "xcodebuild",
+                    "test-without-building",
+                    "-xctestrun",
+                    runner_path,
+                    "-destination",
+                    f"platform=iOS Simulator,id={self._udid}",
+                ],
+                env=runner_env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as exc:
+            raise env.DeviceError(f"failed to start xcodebuild: {exc}") from exc
 
         driver = make_driver(self._actuator, self._udid, runner_port=self._runner_port)
         driver.await_ready()  # type: ignore[attr-defined]  # xcuitest-only lifecycle
@@ -461,7 +467,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         if self._runner_proc is not None:
             self._runner_proc.terminate()
-            self._runner_proc.wait(timeout=5)
+            try:
+                self._runner_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._runner_proc.kill()
+                self._runner_proc.wait()
             self._runner_proc = None
         super().teardown(driver, eff)
 

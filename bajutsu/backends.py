@@ -187,6 +187,10 @@ def make_driver(
     if actuator == "fake":
         return FakeDriver([])
     if actuator == "xcuitest":
+        if runner_port <= 0:
+            raise ValueError(
+                "xcuitest backend requires a runner_port (the runner must be started first)"
+            )
         from bajutsu.drivers.xcuitest import XcuitestDriver
 
         return XcuitestDriver(host="127.0.0.1", port=runner_port)

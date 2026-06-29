@@ -257,6 +257,11 @@ def test_make_driver_xcuitest() -> None:
     assert base.Capability.MULTI_TOUCH in driver.capabilities()
 
 
+def test_make_driver_xcuitest_requires_runner_port() -> None:
+    with pytest.raises(ValueError, match="runner_port"):
+        make_driver("xcuitest", "UDID-1")
+
+
 def test_make_driver_planned_backend() -> None:
     # A recognized-but-unimplemented actuator raises NotImplementedError (distinct from an
     # outright-unknown token), so the message can point at the multi-platform design.
