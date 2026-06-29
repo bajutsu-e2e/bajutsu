@@ -27,6 +27,9 @@ _BACKEND_TOOLS: dict[str, list[tuple[str, str]]] = {
         ("idb", "the fb-idb client — `uv sync --extra idb`"),
         ("idb_companion", "`brew install facebook/fb/idb-companion`"),
     ],
+    "xcuitest": [
+        ("xcodebuild", "Xcode — `xcode-select --install`"),
+    ],
 }
 
 

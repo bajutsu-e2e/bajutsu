@@ -36,10 +36,14 @@ def test_evidence_backends_keeps_only_same_platform_available_siblings() -> None
     assert got == ["xcuitest"]
 
 
-def test_evidence_backends_is_empty_without_a_second_same_platform_actuator() -> None:
-    # The realistic default today: ios lists xcuitest first (BE-0019) but it has no driver, so under
-    # real availability it is never a usable sibling and the fallback resolves to nothing.
-    assert evidence_backends(["ios", "web"], "idb", available=default_available) == []
+def test_evidence_backends_includes_xcuitest_when_available() -> None:
+    # With xcuitest implemented (BE-0019), it is a same-platform evidence provider for idb.
+    assert evidence_backends(["ios", "web"], "idb", available=lambda b: True) == ["xcuitest"]
+
+
+def test_evidence_backends_empty_when_xcuitest_unavailable() -> None:
+    # Without Xcode, xcuitest is implemented but not available — no evidence provider on iOS.
+    assert evidence_backends(["ios", "web"], "idb", available=lambda b: b != "xcuitest") == []
 
 
 def test_resolve_picks_the_first_same_platform_provider_for_the_gap() -> None:
@@ -126,14 +130,19 @@ def test_ios_prefers_xcuitest_but_falls_back_to_idb() -> None:
     assert select_actuator(["ios"], available=lambda a: True) == "xcuitest"
 
 
-def test_xcuitest_is_known_but_not_yet_selectable() -> None:
-    # The ordering flip makes xcuitest a *known* actuator (derived from PLATFORMS), but its runner is
-    # not wired into selection yet: it stays out of IMPLEMENTED, so it is never available/selected.
-    # Its capabilities are nonetheless readable from the driver class (see the capabilities_for test).
-    from bajutsu.backends import IMPLEMENTED, KNOWN_ACTUATORS, default_available
+def test_xcuitest_is_implemented_and_selectable() -> None:
+    from bajutsu.backends import IMPLEMENTED, KNOWN_ACTUATORS
 
     assert "xcuitest" in KNOWN_ACTUATORS
-    assert "xcuitest" not in IMPLEMENTED
+    assert "xcuitest" in IMPLEMENTED
+
+
+def test_xcuitest_availability_gated_on_xcodebuild(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "shutil.which", lambda exe: "/usr/bin/xcodebuild" if exe == "xcodebuild" else None
+    )
+    assert default_available("xcuitest") is True
+    monkeypatch.setattr("shutil.which", lambda exe: None)
     assert default_available("xcuitest") is False
 
 
@@ -237,6 +246,20 @@ def test_make_driver_browser_defaults_to_chromium(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(pw_mod, "PlaywrightDriver", _Recorder)
     make_driver("playwright", "", base_url="http://app.test/")
     assert captured["browser"] == "chromium"
+
+
+def test_make_driver_xcuitest() -> None:
+    from bajutsu.drivers.xcuitest import XcuitestDriver
+
+    driver = make_driver("xcuitest", "UDID-1", runner_port=9999)
+    assert isinstance(driver, XcuitestDriver)
+    assert base.Capability.SEMANTIC_TAP in driver.capabilities()
+    assert base.Capability.MULTI_TOUCH in driver.capabilities()
+
+
+def test_make_driver_xcuitest_requires_runner_port() -> None:
+    with pytest.raises(ValueError, match="runner_port"):
+        make_driver("xcuitest", "UDID-1")
 
 
 def test_make_driver_planned_backend() -> None:
