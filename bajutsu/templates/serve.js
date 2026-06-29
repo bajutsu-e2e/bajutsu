@@ -1390,22 +1390,31 @@ if(!NARROW_MQ.matches)initTiling();
     $('#edt-enrich-panel').hidden=false;
   }
 
-  function enrichAssertionYaml(a){
+  function enrichAssertionYaml(a,indent){
+    const pfx=indent+'- ';
     if(a.exists){
       const sel=a.exists.sel||{};
       const id=sel.id?'{ id: '+sel.id+' }':JSON.stringify(sel);
-      if(a.exists.negate)return '    - exists: { '+Object.entries(sel).map(([k,v])=>k+': '+JSON.stringify(v)).join(', ')+', negate: true }';
-      return '    - exists: '+id;
+      if(a.exists.negate)return pfx+'exists: { '+Object.entries(sel).map(([k,v])=>k+': '+JSON.stringify(v)).join(', ')+', negate: true }';
+      return pfx+'exists: '+id;
     }
     if(a.value){
       const sel=a.value.sel||{};
-      return '    - value: { sel: '+JSON.stringify(sel)+', equals: '+JSON.stringify(a.value.equals)+' }';
+      return pfx+'value: { sel: '+JSON.stringify(sel)+', equals: '+JSON.stringify(a.value.equals)+' }';
     }
     if(a.label){
       const sel=a.label.sel||{};
-      return '    - label: { sel: '+JSON.stringify(sel)+', contains: '+JSON.stringify(a.label.contains)+' }';
+      return pfx+'label: { sel: '+JSON.stringify(sel)+', contains: '+JSON.stringify(a.label.contains)+' }';
     }
-    return '    - '+JSON.stringify(a);
+    return pfx+JSON.stringify(a);
+  }
+
+  function _extractName(trimmed){
+    const m=trimmed.match(/^-\s*name:\s*(.+)/);
+    if(!m)return null;
+    let v=m[1].trim();
+    if((v.startsWith('"')&&v.endsWith('"'))||(v.startsWith("'")&&v.endsWith("'")))v=v.slice(1,-1);
+    return v;
   }
 
   function enrichApply(){
@@ -1415,28 +1424,18 @@ if(!NARROW_MQ.matches)initTiling();
     if(!combo)return;
     const scnName=combo.split('|')[1]||'';
 
-    // Build the YAML lines to insert.
-    const newLines=[];
-    if(enrichResult.settle){
-      const w=enrichResult.settle.wait||{};
-      const sel=w['for']||{};
-      const id=sel.id?'{ id: '+sel.id+' }':JSON.stringify(sel);
-      newLines.push('    - wait: { for: '+id+', timeout: '+(w.timeout||5)+' }');
-    }
-
-    const expectLines=(enrichResult.expect||[]).map(enrichAssertionYaml);
-
-    // Find the scenario in the YAML and insert steps + expect.
     const lines=yaml.split('\n');
     let inScenario=false;
+    let stepsLine=-1;
     let stepsEnd=-1;
     let expectStart=-1;
     let expectEnd=-1;
     let scenarioIndent='';
+    let itemIndent='';
 
     for(let i=0;i<lines.length;i++){
       const trimmed=lines[i].trimStart();
-      if(trimmed.startsWith('- name:')&&trimmed.includes(scnName)){
+      if(trimmed.startsWith('- name:')&&_extractName(trimmed)===scnName){
         inScenario=true;
         scenarioIndent=lines[i].match(/^(\s*)/)[1]+'  ';
         continue;
@@ -1444,12 +1443,16 @@ if(!NARROW_MQ.matches)initTiling();
       if(inScenario&&trimmed.startsWith('- name:')){break;}
       if(inScenario){
         if(trimmed.startsWith('steps:')){
-          // Find end of steps list.
+          stepsLine=i;
           for(let j=i+1;j<lines.length;j++){
             const st=lines[j].trimStart();
-            if(st.startsWith('- ')&&!st.startsWith('- name:'))stepsEnd=j;
+            if(st.startsWith('- ')&&!st.startsWith('- name:')){
+              stepsEnd=j;
+              if(!itemIndent)itemIndent=lines[j].match(/^(\s*)/)[1];
+            }
             else if(st&&!st.startsWith('- ')&&!st.startsWith('#')){break;}
           }
+          if(stepsEnd<0)stepsEnd=stepsLine;
         }
         if(trimmed.startsWith('expect:')){
           expectStart=i;
@@ -1461,6 +1464,18 @@ if(!NARROW_MQ.matches)initTiling();
         }
       }
     }
+
+    if(!itemIndent)itemIndent=scenarioIndent+'  ';
+
+    const newLines=[];
+    if(enrichResult.settle){
+      const w=enrichResult.settle.wait||{};
+      const sel=w['for']||{};
+      const id=sel.id?'{ id: '+sel.id+' }':JSON.stringify(sel);
+      newLines.push(itemIndent+'- wait: { for: '+id+', timeout: '+(w.timeout||5)+' }');
+    }
+
+    const expectLines=(enrichResult.expect||[]).map(a=>enrichAssertionYaml(a,itemIndent));
 
     if(newLines.length>0&&stepsEnd>=0){
       lines.splice(stepsEnd+1,0,...newLines);
@@ -1502,7 +1517,7 @@ if(!NARROW_MQ.matches)initTiling();
       $('#edt-status').textContent=count+' assertion'+(count===1?'':'s')+' proposed';$('#edt-status').className='status ok';
       enrichRender(d);
     }catch(e){$('#edt-status').textContent=String(e);$('#edt-status').className='status ng';}
-    $('#edt-enrich').disabled=false;
+    finally{$('#edt-enrich').disabled=false;}
   });
 
   $('#edt-enrich-accept').addEventListener('click',enrichApply);
