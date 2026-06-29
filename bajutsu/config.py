@@ -405,7 +405,7 @@ class Effective:
     def rebased(self, root: Path) -> Effective:
         """A copy with the relative path fields resolved against `root` (a Git checkout, BE-0063).
 
-        The fields `run` / `doctor` read — `scenarios` / `baselines` / `schemas` / `goldens` / `app_path`; listed
+        The path fields — `scenarios` / `baselines` / `schemas` / `goldens` / `app_path` — are listed
         beside the type so a future path field is rebased by adding it here. `build` (a shell command)
         and `setup` (resolved relative to the scenario, not the cwd) are intentionally absent. Local
         configs keep their cwd-relative paths; only a Git source calls this, so the caller's working

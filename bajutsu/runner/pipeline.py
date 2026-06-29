@@ -166,17 +166,19 @@ def run_all(
                     run_dir=run_dir,
                 )
             sc = SchemaContext(schemas_dir=schemas_dir) if schemas_dir is not None else None
-            # Populate golden context with real device screen bounds (BE-0006): the
-            # CLI creates GoldenContext with just the dir; here we derive screen from
-            # the live driver so frame_is_sane checks against actual device geometry.
+            # Best-effort device screen bounds for golden frame sanity (BE-0006):
+            # a query() failure here must not block non-golden scenarios.
             gc_with_screen = golden_context
             if golden_context is not None and golden_context.screen is None:
-                from bajutsu.capture import screen_size_from_elements
+                try:
+                    from bajutsu.capture import screen_size_from_elements
 
-                sw, sh = screen_size_from_elements(lz.driver.query())
-                gc_with_screen = GoldenContext(
-                    goldens_dir=golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
-                )
+                    sw, sh = screen_size_from_elements(lz.driver.query())
+                    gc_with_screen = GoldenContext(
+                        goldens_dir=golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
+                    )
+                except Exception:  # noqa: S110 — best-effort; _eval_golden falls back
+                    pass
             result = run_scenario(
                 lz.driver,
                 s,
