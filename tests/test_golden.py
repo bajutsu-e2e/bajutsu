@@ -256,6 +256,46 @@ class TestLoadGolden:
         with pytest.raises(ValueError, match=r"missing.*field"):
             load_golden(golden_path)
 
+    def test_load_rejects_bad_frame_length(self, tmp_path: Path) -> None:
+        import pytest
+
+        from bajutsu.golden import load_golden
+
+        bad = {
+            "ctrl.toggle": {
+                "identifier": "ctrl.toggle",
+                "label": None,
+                "traits": [],
+                "value": None,
+                "frame": [0.0, 0.0],
+            }
+        }
+        golden_path = tmp_path / "bad_frame.json"
+        golden_path.write_text(json.dumps(bad))
+
+        with pytest.raises(ValueError, match=r"frame.*4-element"):
+            load_golden(golden_path)
+
+    def test_load_rejects_key_identifier_mismatch(self, tmp_path: Path) -> None:
+        import pytest
+
+        from bajutsu.golden import load_golden
+
+        bad = {
+            "ctrl.toggle": {
+                "identifier": "ctrl.other",
+                "label": None,
+                "traits": [],
+                "value": None,
+                "frame": [0.0, 0.0, 100.0, 50.0],
+            }
+        }
+        golden_path = tmp_path / "bad_id.json"
+        golden_path.write_text(json.dumps(bad))
+
+        with pytest.raises(ValueError, match=r"does not match"):
+            load_golden(golden_path)
+
     def test_saved_json_is_human_readable(self, tmp_path: Path) -> None:
         from bajutsu.golden import save_golden
 

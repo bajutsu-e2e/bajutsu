@@ -63,8 +63,8 @@ def compare_element(expected: Element, actual: Element) -> list[FieldMismatch]:
             FieldMismatch(
                 control_id,
                 "traits",
-                set(expected["traits"]),
-                set(actual["traits"]),
+                tuple(sorted(expected["traits"])),
+                tuple(sorted(actual["traits"])),
             )
         )
 
@@ -119,18 +119,28 @@ def _validate_element(data: dict[str, Any], control_id: str) -> Element:
         raise ValueError(
             f"golden entry '{control_id}' missing field(s): {', '.join(sorted(missing))}"
         )
+    frame = data["frame"]
+    if not isinstance(frame, list) or len(frame) != 4:
+        raise ValueError(
+            f"golden entry '{control_id}' frame must be a 4-element list, got {frame!r}"
+        )
+    embedded_id = data["identifier"]
+    if embedded_id != control_id:
+        raise ValueError(
+            f"golden key '{control_id}' does not match embedded identifier {embedded_id!r}"
+        )
     return Element(
-        identifier=data["identifier"],
+        identifier=embedded_id,
         label=data["label"],
         traits=data["traits"],
         value=data["value"],
-        frame=(data["frame"][0], data["frame"][1], data["frame"][2], data["frame"][3]),
+        frame=(frame[0], frame[1], frame[2], frame[3]),
     )
 
 
 def load_golden(path: Path) -> dict[str, Element]:
     """Load a golden JSON file (identifier-keyed Element dicts)."""
-    raw: dict[str, dict[str, Any]] = json.loads(path.read_text())
+    raw: dict[str, dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
     return {cid: _validate_element(el, cid) for cid, el in raw.items()}
 
 
@@ -145,7 +155,7 @@ def save_golden(elements: list[Element], ids: list[str], path: Path) -> None:
     by_id = {el["identifier"]: el for el in elements}
     golden: dict[str, Element] = {cid: by_id[cid] for cid in ids if cid in by_id}
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(golden, indent=2, ensure_ascii=False) + "\n")
+    path.write_text(json.dumps(golden, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
