@@ -84,14 +84,12 @@ public enum BajutsuWebView {
 
     /// JavaScript template to type text into the currently focused element.
     static func typeJS(text: String) -> String {
-        let escaped = text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
+        let json = _jsonEncode(text)
         return """
         (() => {
           const el = document.activeElement;
           if (!el || !('value' in el)) return 'no-focus';
-          el.value += '\(escaped)';
+          el.value += \(json);
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
           return 'ok';
@@ -101,17 +99,21 @@ public enum BajutsuWebView {
 
     /// JavaScript template to scroll an element with the given data-testid into view.
     static func scrollJS(elementId: String) -> String {
-        let escaped = elementId
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
+        let json = _jsonEncode(elementId)
         return """
         (() => {
-          const el = document.querySelector('[data-testid=\"\(escaped)\"]');
+          const el = document.querySelector('[data-testid=' + \(json) + ']');
           if (!el) return 'not-found';
           el.scrollIntoView({ behavior: 'instant', block: 'center' });
           return 'ok';
         })()
         """
+    }
+
+    private static func _jsonEncode(_ s: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: s),
+              let json = String(data: data, encoding: .utf8) else { return "\"\"" }
+        return json
     }
 
     // MARK: - View hierarchy
@@ -354,20 +356,22 @@ private final class _BridgeServer {
 
         #if canImport(WebKit)
         let semaphore = DispatchSemaphore(value: 0)
+        var scrollResult = "error"
 
         DispatchQueue.main.async {
             guard let wv = BajutsuWebView.findWebView(id: id) else {
                 semaphore.signal()
                 return
             }
-            wv.evaluateJavaScript(BajutsuWebView.scrollJS(elementId: elementId)) { _, _ in
+            wv.evaluateJavaScript(BajutsuWebView.scrollJS(elementId: elementId)) { result, _ in
+                if let r = result as? String { scrollResult = r }
                 semaphore.signal()
             }
         }
         semaphore.wait()
-        _writeJSON(fd, status: 200, object: ["status": "ok"])
+        _writeJSON(fd, status: 200, object: ["status": scrollResult == "ok" ? "ok" : scrollResult])
         #else
-        _writeJSON(fd, status: 200, object: ["status": "ok"])
+        _writeJSON(fd, status: 200, object: ["status": "error", "message": "WebKit not available"])
         #endif
     }
 

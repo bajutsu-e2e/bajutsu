@@ -86,9 +86,11 @@ class WebViewBridge:
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-                resp.read()
+                data = json.loads(resp.read())
         except urllib.error.URLError as e:
             raise ConnectionError(f"WebView bridge unreachable at {self._base_url}: {e}") from e
+        if data.get("status") not in ("ok", "not-found"):
+            raise RuntimeError(f"WebView scroll failed: {data}")
 
 
 class DomSource(Protocol):
