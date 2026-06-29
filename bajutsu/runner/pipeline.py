@@ -195,6 +195,7 @@ def run_all(
                 schema_context=sc,
                 mailbox=mailbox,
                 golden_context=gc_with_screen,
+                webview_bridge=lz.webview_bridge,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it

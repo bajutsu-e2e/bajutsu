@@ -27,8 +27,26 @@ from bajutsu.orchestrator.evidence_rules import requested_intervals
 from bajutsu.runner.launch import launch_driver
 from bajutsu.runner.types import Lease, LeaseFn
 from bajutsu.scenario import Scenario
+from bajutsu.webview import WebViewBridge
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
+
+
+def _alloc_webview_bridge(
+    lease_env: object,
+) -> tuple[WebViewBridge | None, int | None]:
+    """Allocate a WebView bridge for platforms that need one (iOS, not web).
+
+    Returns (bridge, port) or (None, None) when the platform doesn't use the bridge.
+    """
+    if getattr(lease_env, "observes_network_via_driver", lambda: False)():
+        return None, None
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    return WebViewBridge(port=port), port
 
 
 def device_pool(
@@ -146,11 +164,12 @@ def device_pool(
                     collector = collectors.get(udid)
             else:
                 collector = None  # resolved after launch from the live page
-            extra_env = (
-                {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
-                if isinstance(collector, NetworkCollector)
-                else None
-            )
+            extra_env: dict[str, str] = {}
+            if isinstance(collector, NetworkCollector):
+                extra_env["BAJUTSU_COLLECTOR"] = f"http://127.0.0.1:{collector.port}"
+            webview_bridge, webview_port = _alloc_webview_bridge(lease_env)
+            if webview_port is not None:
+                extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)
             driver = launch_driver(
                 udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
             )
@@ -195,6 +214,7 @@ def device_pool(
                 device_name=meta.get("name", ""),
                 device_runtime=meta.get("runtime", ""),
                 collector_provider=collector_provider,
+                webview_bridge=webview_bridge,
             )
         except BaseException:
             if release_collector is not None:
