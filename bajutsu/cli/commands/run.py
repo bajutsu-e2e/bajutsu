@@ -16,6 +16,7 @@ from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
 from bajutsu.anthropic_client import key_env as ac_key_env
+from bajutsu.assertions import GoldenContext
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -102,6 +103,13 @@ def _resolve_schemas_dir(flag: str, eff: Effective, scenario_file: Path) -> Path
         return Path(eff.schemas)
     else:
         return scenario_file.parent / "schemas"
+
+
+def _resolve_goldens_dir(flag: str, scenario_file: Path) -> Path:
+    """Resolve the golden JSON dir: --goldens flag > goldens/ beside the scenario."""
+    if flag:
+        return Path(flag)
+    return scenario_file.parent / "goldens"
 
 
 def _scenario_files(eff: Effective, scenario: str, target_name: str) -> tuple[list[Path], bool]:
@@ -233,6 +241,12 @@ def run(
         "--schemas",
         help="directory of JSON Schema files for `responseSchema` assertions "
         "(default: config schemas, then schemas/ beside the scenario)",
+    ),
+    goldens: str = typer.Option(
+        "",
+        "--goldens",
+        help="directory of golden JSON files for `golden` assertions (BE-0006) "
+        "(default: goldens/ beside the scenario)",
     ),
     headed: bool | None = typer.Option(
         None,
@@ -429,6 +443,9 @@ def run(
     baselines_dir = _resolve_baselines_dir(baselines, eff, files[0])
     # responseSchema assertions resolve `schema: <path>` within this directory (same order).
     schemas_dir = _resolve_schemas_dir(schemas, eff, files[0])
+    # golden assertions resolve `path` within this directory (--goldens flag > goldens/ beside the scenario).
+    goldens_dir = _resolve_goldens_dir(goldens, files[0])
+    gc = GoldenContext(goldens_dir=goldens_dir) if goldens_dir.is_dir() else None
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run
     # log); stdout stays the machine-readable final PASS/FAIL line.
@@ -475,6 +492,7 @@ def run(
                         baselines_dir=baselines_dir,
                         schemas_dir=schemas_dir,
                         actuator=actuator,
+                        golden_context=gc,
                     )
                 finally:
                     shutdown()
@@ -523,6 +541,7 @@ def run(
                     actuator=actuator,
                     config_source=config_source,
                     exec_provenance=exec_decision,
+                    golden_context=gc,
                 )
             finally:
                 shutdown()

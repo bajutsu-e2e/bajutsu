@@ -140,6 +140,15 @@ jobs:
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
 
+      - name: Run golden scenarios (BE-0006)
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: demos/features/app/scenarios/golden.yaml
+          target: sample
+          config: demos/features/demo.config.yaml
+          udid: ${{ steps.sim.outputs.udid }}
+          artifact-name: golden-run
+
   # The codegen output path: a scenario -> native XCUITest, compiled and run by xcodebuild
   # with no bajutsu / idb / AI at test time. This is the claim M3 makes about codegen, so CI
   # has to exercise the generated Swift natively (not just the idb runtime above).

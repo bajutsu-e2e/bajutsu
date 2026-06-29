@@ -41,6 +41,7 @@ _ASSERTION_KINDS = (
     "response_schema",
     "visual",
     "clipboard",
+    "golden",
 )
 
 

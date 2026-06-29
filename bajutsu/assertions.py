@@ -26,6 +26,7 @@ from bajutsu.scenario import (
     CountOp,
     EventMatch,
     Exists,
+    GoldenMatch,
     RequestMatch,
     ResponseSchemaMatch,
     Selector,
@@ -90,6 +91,17 @@ class SchemaContext:
     """
 
     schemas_dir: Path
+
+
+@dataclass(frozen=True)
+class GoldenContext:
+    """Paths a `golden` assertion needs (BE-0006).
+
+    The golden JSON path (from the assertion's `path` field) is resolved against `goldens_dir`.
+    Screen bounds for frame sanity checks are derived from the live elements at evaluation time.
+    """
+
+    goldens_dir: Path
 
 
 def _sel_str(sel: Selector) -> str:
@@ -570,6 +582,39 @@ def _eval_clipboard(clipboard: str | None, m: ClipboardMatch) -> AssertionResult
     return AssertionResult(ok, "clipboard", detail, reason)
 
 
+def _eval_golden(
+    elements: list[base.Element], m: GoldenMatch, ctx: GoldenContext | None
+) -> AssertionResult:
+    detail = f"golden ≈ {m.path}"
+    if ctx is None:
+        return AssertionResult(False, "golden", detail, "no golden context provided")
+    goldens_dir = ctx.goldens_dir.resolve()
+    golden_file = (goldens_dir / m.path).resolve()
+    if not golden_file.is_relative_to(goldens_dir):
+        return AssertionResult(
+            False, "golden", detail, f"golden path escapes the goldens dir: {m.path}"
+        )
+    if not golden_file.is_file():
+        return AssertionResult(False, "golden", detail, f"golden not found: {m.path}")
+    from bajutsu.capture import screen_size_from_elements
+    from bajutsu.golden import compare_golden, load_golden
+
+    golden = load_golden(golden_file)
+    sw, sh = screen_size_from_elements(elements)
+    screen: base.Frame = (0.0, 0.0, sw, sh)
+    result = compare_golden(golden, elements, screen)
+    if result.ok:
+        return AssertionResult(True, "golden", detail)
+    parts: list[str] = []
+    if result.mismatches:
+        parts.append("; ".join(str(mm) for mm in result.mismatches))
+    if result.missing:
+        parts.append(f"missing: {', '.join(result.missing)}")
+    if result.frame_failures:
+        parts.append(f"frame failures: {', '.join(result.frame_failures)}")
+    return AssertionResult(False, "golden", detail, "; ".join(parts))
+
+
 def _rel(run_dir: Path, p: Path) -> str:
     """A run-dir-relative POSIX path for the report; falls back to the name if unrelated."""
     try:
@@ -586,6 +631,7 @@ def evaluate_one(
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
     clipboard: str | None = None,
+    golden_context: GoldenContext | None = None,
 ) -> AssertionResult:
     """Evaluate one assertion against the screen and the observed network.
 
@@ -604,6 +650,8 @@ def evaluate_one(
             `responseSchema` assertion.
         clipboard: The device pasteboard text the `clipboard` kind checks; None when unread (no
             device-control channel), which fails the assertion cleanly.
+        golden_context: The goldens directory a `golden` assertion resolves against (BE-0006);
+            required only for a `golden` assertion.
 
     Returns:
         The single assertion's result.
@@ -637,6 +685,8 @@ def evaluate_one(
         return _eval_visual(visual_context, a.visual)
     if a.clipboard is not None:
         return _eval_clipboard(clipboard, a.clipboard)
+    if a.golden is not None:
+        return _eval_golden(elements, a.golden, golden_context)
     raise AssertionError("empty assertion (should be caught by scenario validation)")
 
 
@@ -648,6 +698,7 @@ def evaluate(
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
     clipboard: str | None = None,
+    golden_context: GoldenContext | None = None,
 ) -> list[AssertionResult]:
     """Evaluate every assertion in an expect/assert block (the caller AND-s them via `passed`).
 
@@ -662,6 +713,7 @@ def evaluate(
         visual_context: Forwarded to any `visual` assertion (see `evaluate_one`).
         schema_context: Forwarded to any `responseSchema` assertion (see `evaluate_one`).
         clipboard: Forwarded to any `clipboard` assertion (see `evaluate_one`).
+        golden_context: Forwarded to any `golden` assertion (see `evaluate_one`).
 
     Returns:
         One result per assertion, positionally aligned with `assertions`.
@@ -686,6 +738,7 @@ def evaluate(
             visual_context=visual_context,
             schema_context=schema_context,
             clipboard=clipboard,
+            golden_context=golden_context,
         )
         for i, a in enumerate(assertions)
     ]
