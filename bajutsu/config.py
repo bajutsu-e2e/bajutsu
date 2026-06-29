@@ -436,6 +436,15 @@ class Effective:
                 raise ValueError(f"config field {field!r} escapes the checkout root: {value!r}")
             return str(candidate)
 
+        rebased_xcuitest = self.xcuitest
+        if rebased_xcuitest is not None and rebased_xcuitest.test_runner is not None:
+            rebased_xcuitest = XcuitestConfig.model_validate(
+                {
+                    "testRunner": at("xcuitest.testRunner", rebased_xcuitest.test_runner),
+                    "build": rebased_xcuitest.build,
+                }
+            )
+
         return replace(
             self,
             scenarios=at("scenarios", self.scenarios),
@@ -443,6 +452,7 @@ class Effective:
             schemas=at("schemas", self.schemas),
             goldens=at("goldens", self.goldens),
             app_path=at("appPath", self.app_path),
+            xcuitest=rebased_xcuitest,
         )
 
 

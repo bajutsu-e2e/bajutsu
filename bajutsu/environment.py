@@ -12,6 +12,7 @@ future Android (`adb`) environment ([BE-0007]) slots in the same way.
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import socket
@@ -419,9 +420,17 @@ class XcuitestEnvironment(_DeviceEnvironment):
         except subprocess.CalledProcessError as exc:
             raise env.device_error(exc) from exc
 
-        # The runner launches the app itself (XCUIApplication.launch()), so launch_env,
-        # launch_args, locale, and deeplink from preconditions are not forwarded yet — they need
-        # a config channel to the runner (future slice).
+        # The runner launches the app via XCUIApplication.launch(). Preconditions are forwarded
+        # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
+        # launchEnvironment, BAJUTSU_LAUNCH_ARGS as launchArguments, and opens BAJUTSU_DEEPLINK.
+        launch_env: Mapping[str, str] = {
+            **eff.launch_env,
+            **pre.launch_env,
+            **(extra_env or {}),
+        }
+        locale = pre.locale or eff.locale
+        launch_args = [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)]
+
         xcfg = eff.xcuitest
         if xcfg is None or xcfg.test_runner is None:
             raise env.DeviceError(
@@ -441,8 +450,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         runner_env = {
             **os.environ,
             "BAJUTSU_RUNNER_PORT": str(self._runner_port),
-            **(extra_env or {}),
+            **{f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()},
+            "BAJUTSU_LAUNCH_ARGS": json.dumps(launch_args),
         }
+        if pre.deeplink is not None:
+            runner_env["BAJUTSU_DEEPLINK"] = pre.deeplink
         try:
             self._runner_proc = subprocess.Popen(
                 [  # noqa: S607 — xcodebuild resolved on PATH; requires Xcode
