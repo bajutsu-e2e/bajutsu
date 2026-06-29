@@ -58,12 +58,48 @@ class WebViewBridge:
         if data.get("status") != "ok":
             raise RuntimeError(f"WebView tap failed: {data}")
 
+    def type_text(self, webview_id: str, text: str) -> None:
+        """Type text into the currently focused element inside the WebView."""
+        payload = json.dumps({"id": webview_id, "text": text}).encode()
+        req = urllib.request.Request(  # noqa: S310
+            f"{self._base_url}/webview/type",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                data = json.loads(resp.read())
+        except urllib.error.URLError as e:
+            raise ConnectionError(f"WebView bridge unreachable at {self._base_url}: {e}") from e
+        if data.get("status") != "ok":
+            raise RuntimeError(f"WebView type failed: {data}")
+
+    def scroll_to(self, webview_id: str, element_id: str) -> None:
+        """Scroll the element with the given data-testid into view."""
+        payload = json.dumps({"id": webview_id, "elementId": element_id}).encode()
+        req = urllib.request.Request(  # noqa: S310
+            f"{self._base_url}/webview/scroll",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                data = json.loads(resp.read())
+        except urllib.error.URLError as e:
+            raise ConnectionError(f"WebView bridge unreachable at {self._base_url}: {e}") from e
+        if data.get("status") not in ("ok", "not-found"):
+            raise RuntimeError(f"WebView scroll failed: {data}")
+
 
 class DomSource(Protocol):
     """Minimal bridge interface — satisfied by WebViewBridge and test fakes."""
 
     def query_dom(self, webview_id: str) -> list[Element]: ...
     def tap_element(self, webview_id: str, point: Point) -> None: ...
+    def type_text(self, webview_id: str, text: str) -> None: ...
+    def scroll_to(self, webview_id: str, element_id: str) -> None: ...
 
 
 _POLL_INTERVAL = 0.05
@@ -91,8 +127,12 @@ class WebContextDriver:
         return (x + w / 2, y + h / 2)
 
     def tap(self, sel: Selector) -> None:
-        point = self._center(sel)
-        self._bridge.tap_element(self._webview_id, point)
+        el = resolve_unique(self.query(), sel)
+        eid = el.get("identifier")
+        if eid:
+            self._bridge.scroll_to(self._webview_id, eid)
+        x, y, w, h = el["frame"]
+        self._bridge.tap_element(self._webview_id, (x + w / 2, y + h / 2))
 
     def tap_point(self, p: Point) -> None:
         self._bridge.tap_element(self._webview_id, p)
@@ -114,7 +154,7 @@ class WebContextDriver:
         raise UnsupportedAction("rotate is not supported in web context (first slice)")
 
     def type_text(self, text: str) -> None:
-        raise UnsupportedAction("type_text is not supported in web context (first slice)")
+        self._bridge.type_text(self._webview_id, text)
 
     def wait_for(self, sel: Selector, timeout: float) -> bool:
         deadline = time.monotonic() + timeout

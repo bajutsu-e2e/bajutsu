@@ -23,6 +23,12 @@ class FakeBridge:
     def tap_element(self, webview_id: str, point: base.Point) -> None:
         self.tapped.append((webview_id, point))
 
+    def type_text(self, webview_id: str, text: str) -> None:
+        pass
+
+    def scroll_to(self, webview_id: str, element_id: str) -> None:
+        pass
+
 
 def test_web_step_taps_dom_element() -> None:
     native_screen = [el("checkout.webview", "WebView", frame=(0.0, 0.0, 400.0, 800.0))]

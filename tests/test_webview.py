@@ -41,6 +41,13 @@ def _fake_bridge_server(
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+            elif self.path in ("/webview/type", "/webview/scroll"):
+                body = json.dumps({"status": "ok"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -117,6 +124,26 @@ def test_tap_element_failure_raises() -> None:
         bridge = WebViewBridge(port=server.server_address[1])
         with pytest.raises(RuntimeError, match="tap"):
             bridge.tap_element("checkout.webview", (50.0, 30.0))
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_type_text_succeeds() -> None:
+    server = _fake_bridge_server([])
+    try:
+        bridge = WebViewBridge(port=server.server_address[1])
+        bridge.type_text("wv", "hello")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_scroll_to_succeeds() -> None:
+    server = _fake_bridge_server([])
+    try:
+        bridge = WebViewBridge(port=server.server_address[1])
+        bridge.scroll_to("wv", "some-element")
     finally:
         server.shutdown()
         server.server_close()
