@@ -134,8 +134,10 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   one per `Status` value (BE-0078): `roadmaps/implemented/` (`Implemented`),
   `roadmaps/in-progress/` (`In progress`), `roadmaps/proposals/` (`Proposal`),
   `roadmaps/deferred/` (`Proposal (deferred)`). When you add
-  one: allocate the next ID (`ls -d roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ |
-  sort | tail -1`, then +1; never reuse, skip, or guess) and create **both** language files in a new
+  one: name it with the `BE-XXXX` placeholder — the norm, since the number is allocated **on `main`
+  after the PR merges** (contiguous in merge order; BE-0089) — or allocate the next ID by hand (`ls -d
+  roadmaps/{implemented,in-progress,proposals,deferred}/BE-*/ | sort | tail -1`, then +1; never
+  reuse, skip, or guess) when you want it fixed up front. Create **both** language files in a new
   directory under `roadmaps/proposals/` for a proposal, or under `roadmaps/implemented/` with `Status:
   Implemented` when the **same PR ships the implementation** (a new item is a proposal first
   *unless* its code lands with it). Don't hand-edit the index
@@ -172,12 +174,14 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   / `Prime-directive compliance` / `Scope` / `Notes` as the change warrants — depth proportional to
   the diff. Full title-and-body template:
   [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
-- **Prefix the PR title with the roadmap ID** when the PR is tied to a roadmap item: start the
-  title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. PRs with no roadmap
-  item keep the plain scoped title. **CI enforces this** ([`pr-title.yml`](.github/workflows/pr-title.yml)
-  runs `scripts/lint_pr.py --title-only` on every PR): the title must be a scoped conventional
-  subject, and when the branch name encodes a roadmap id (`claude/be-0050-<slug>`) the title must
-  carry the matching `[BE-0050]` prefix — a missing or mismatched id fails the check.
+- **Prefix the PR title with the roadmap ID** when the PR *implements an already-numbered* item:
+  start the title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. A PR with no
+  roadmap item — and a **BE-creation PR**, whose id is allocated on `main` only after the merge
+  (BE-0089) — keeps the plain scoped title with no prefix. **CI enforces this**
+  ([`pr-title.yml`](.github/workflows/pr-title.yml) runs `scripts/lint_pr.py --title-only` on every
+  PR): the title must be a scoped conventional subject, and when the branch name encodes a roadmap id
+  (`claude/be-0050-<slug>`) the title must carry the matching `[BE-0050]` prefix — a missing or
+  mismatched id fails the check.
 - **Always link a PR and its BE item, both ways.** Any PR that advances a roadmap item must name
   that item, and any roadmap item that has been worked on must name the PRs behind it — the link is
   never one-directional. Concretely: (1) the PR carries the `[BE-NNNN]` title prefix (above) and

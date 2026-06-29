@@ -5,16 +5,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from _runner import _eff, _el, _fake_driver, _lease
+from _runner import _eff, _el, _failing_lease, _fake_driver, _lease
 
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
+from bajutsu.network import NetworkExchange
+from bajutsu.orchestrator import RunResult
 from bajutsu.runner import (
     Lease,
     run_all,
     run_and_report,
+    run_matrix_and_report,
 )
 from bajutsu.scenario import Scenario
 
@@ -169,6 +172,106 @@ def test_run_and_report(tmp_path: Path) -> None:
     assert "configSource" not in prov  # a local config records no Git source
 
 
+# --- cross-browser matrix run (BE-0076 Phase 2): run-per-engine -> assemble -> report-once ---
+
+
+def test_run_matrix_and_report_writes_one_report_with_a_matrix(tmp_path: Path) -> None:
+    # Two engines, one scenario: each engine pass writes its evidence under run_dir/<engine>, and
+    # the run assembles ONE manifest whose matrix aggregates the per-engine verdicts.
+    scenarios = [Scenario.model_validate({"name": "login", "steps": [{"tap": {"id": "ok"}}]})]
+    seen: list[tuple[str, Path]] = []
+
+    def run_pass(engine: str, run_dir: Path) -> list[RunResult]:
+        seen.append((engine, run_dir))
+        # webkit fails the scenario; chromium passes it — a machine-detected incompatibility.
+        return run_all(
+            _eff(), scenarios, _lease if engine == "chromium" else _failing_lease, run_dir=run_dir
+        )
+
+    results, manifest = run_matrix_and_report(
+        _eff(), scenarios, ["chromium", "webkit"], run_pass, tmp_path / "runs", "run1"
+    )
+    # Each engine pass was handed its own run_dir/<engine> subtree, in order.
+    assert seen == [
+        ("chromium", tmp_path / "runs" / "run1" / "chromium"),
+        ("webkit", tmp_path / "runs" / "run1" / "webkit"),
+    ]
+    # Results are concatenated and tagged with their engine.
+    assert [(r.scenario, r.engine, r.ok) for r in results] == [
+        ("login", "chromium", True),
+        ("login", "webkit", False),
+    ]
+    # ONE report at run_dir (no per-engine manifest); its matrix block aggregates both verdicts.
+    assert manifest == tmp_path / "runs" / "run1" / "manifest.json"
+    assert not (tmp_path / "runs" / "run1" / "chromium" / "manifest.json").exists()
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["ok"] is False  # all-must-pass: webkit's failure fails the whole run
+    matrix = data["matrix"]
+    assert matrix["engines"] == ["chromium", "webkit"]
+    assert matrix["cells"]["login"]["chromium"]["ok"] is True
+    assert matrix["cells"]["login"]["webkit"]["ok"] is False
+    # The matrix cell points at the engine-prefixed evidence dir the pass wrote under.
+    assert matrix["cells"]["login"]["chromium"]["sid"] == "chromium/00-login"
+
+
+def test_reroot_evidence_prefixes_paths_with_engine() -> None:
+    # Each engine pass writes evidence under <engine>/<sid>/, but artifact/visual paths are recorded
+    # relative to that pass's run_dir. The matrix assembles one report at the top run_dir, so the
+    # paths must be re-rooted under the engine subtree or the report's links resolve wrong (BE-0076).
+    from bajutsu.assertions import AssertionResult, VisualEvidence
+    from bajutsu.evidence import Artifact
+    from bajutsu.orchestrator import StepOutcome
+    from bajutsu.runner.pipeline import _reroot_evidence
+
+    r = RunResult(
+        scenario="login",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0,
+                action="tap",
+                ok=True,
+                artifacts=[Artifact("00-login/after.png", "screenshot", "driver")],
+            )
+        ],
+        artifacts=[Artifact("00-login/video.webm", "video", "collector")],
+        expect_results=[
+            AssertionResult(
+                ok=True,
+                kind="visual",
+                detail="",
+                visual=VisualEvidence(
+                    baseline_name="home.png",
+                    actual="00-login/visual-actual.png",
+                    baseline="00-login/visual-baseline.png",
+                    diff="00-login/visual-diff.png",
+                ),
+            )
+        ],
+    )
+    _reroot_evidence(r, "webkit")
+    assert r.artifacts[0].name == "webkit/00-login/video.webm"
+    assert r.steps[0].artifacts[0].name == "webkit/00-login/after.png"
+    v = r.expect_results[0].visual
+    assert v is not None
+    assert v.actual == "webkit/00-login/visual-actual.png"
+    assert v.baseline == "webkit/00-login/visual-baseline.png"
+    assert v.diff == "webkit/00-login/visual-diff.png"
+
+
+def test_run_matrix_and_report_green_only_when_every_engine_passes(tmp_path: Path) -> None:
+    scenarios = [Scenario.model_validate({"name": "login", "steps": [{"tap": {"id": "ok"}}]})]
+
+    def run_pass(engine: str, run_dir: Path) -> list[RunResult]:
+        return run_all(_eff(), scenarios, _lease, run_dir=run_dir)
+
+    _, manifest = run_matrix_and_report(
+        _eff(), scenarios, ["chromium", "firefox", "webkit"], run_pass, tmp_path / "runs", "run1"
+    )
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["ok"] is True  # every engine passed every scenario
+
+
 def test_run_and_report_records_git_config_source(tmp_path: Path) -> None:
     # A run from a Git config source stamps which repo@sha it executed into the manifest (BE-0063).
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
@@ -178,6 +281,29 @@ def test_run_and_report_records_git_config_source(tmp_path: Path) -> None:
     )
     data = json.loads(manifest.read_text(encoding="utf-8"))
     assert data["provenance"]["configSource"] == src
+
+
+def test_run_and_report_records_upload_exec_decision(tmp_path: Path) -> None:
+    # BE-0090: an upload-governed run stamps the launchServer policy decision into the manifest.
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    decision = {
+        "decision": "sandboxed",
+        "field": "launchServer",
+        "source": "dockerImage",
+        "image": "img",
+    }
+    _, manifest = run_and_report(
+        _eff(), scenarios, _lease, tmp_path / "runs", "run1", exec_provenance=decision
+    )
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["provenance"]["uploadExec"] == decision
+
+
+def test_run_and_report_omits_upload_exec_for_ungoverned_run(tmp_path: Path) -> None:
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    _, manifest = run_and_report(_eff(), scenarios, _lease, tmp_path / "runs", "run1")
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert "uploadExec" not in data["provenance"]  # None decision → no key
 
 
 def test_git_revision_maps_failure_and_blank_to_none(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -287,3 +413,63 @@ def test_run_and_report_scrubs_secret_values_from_artifacts(tmp_path: Path) -> N
     run_dir = tmp_path / "runs" / "run1"
     for name in ("manifest.json", "junit.xml", "scenario.yaml"):
         assert secret not in (run_dir / name).read_text(encoding="utf-8")
+
+
+def test_write_network_stamps_the_given_provider(tmp_path: Path) -> None:
+    from bajutsu.redaction import Redactor
+    from bajutsu.runner.pipeline import _write_network
+
+    ex = NetworkExchange(method="GET", path="/a", status=200)
+    art = _write_network(
+        [(ex, 1.0)], 0.0, tmp_path, "00-s", Redactor(None), provider="fake (fallback)"
+    )
+    assert art is not None and art.provider == "fake (fallback)"
+
+
+class _ConstantCollector:
+    """A Collector that always reports the same exchanges (clear is a no-op) — test scaffolding so
+    provenance/threading can be checked without live traffic during a fake run (BE-0020)."""
+
+    def __init__(self, exchanges: list[NetworkExchange]) -> None:
+        self._ex = list(exchanges)
+
+    def snapshot(self) -> list[NetworkExchange]:
+        return list(self._ex)
+
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
+        return [(e, 0.0) for e in self._ex]
+
+    def clear(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+
+def test_run_all_threads_collector_provider_and_discloses_skips(tmp_path: Path) -> None:
+    from bajutsu.evidence import FileSink
+    from bajutsu.orchestrator import SkippedCapture
+
+    ex = NetworkExchange(method="GET", path="/items", status=200)
+    scn = Scenario.model_validate(
+        {"name": "net", "steps": [{"assert": [{"request": {"method": "GET", "path": "/items"}}]}]}
+    )
+
+    def lease(eff: Effective, s: Scenario) -> Lease:
+        return Lease(
+            driver=FakeDriver([_el("ok", "OK")]),
+            sink=FileSink(tmp_path),
+            relaunch=None,
+            control=None,
+            collector=_ConstantCollector([ex]),
+            release=lambda: None,
+            collector_provider="fake (fallback)",
+            skipped_captures=[SkippedCapture("video", "no provider")],
+        )
+
+    r = run_all(_eff(), [scn], lease, run_dir=tmp_path)[0]
+    assert r.ok
+    assert [s.kind for s in r.skipped_captures] == ["video"]
+    net = [a for a in r.artifacts if a.kind == "network"]
+    assert net and net[0].provider == "fake (fallback)"
+    assert (tmp_path / net[0].name).exists()

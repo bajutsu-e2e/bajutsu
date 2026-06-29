@@ -8,7 +8,7 @@ final class FilterSheetController: UIViewController {
 
         let title = UILabel()
         title.text = "Filter"
-        title.font = .preferredFont(forTextStyle: .title2)
+        title.font = .preferredFont(forTextStyle: .title1)
         title.accessibilityID("log.sheet.title")
 
         let apply = UIButton(type: .system, primaryAction: UIAction(title: "Apply") { [weak self] _ in
@@ -43,24 +43,24 @@ final class GalleryCoverController: UIViewController {
 
         let title = UILabel()
         title.text = "Gallery"
-        title.font = .preferredFont(forTextStyle: .title2)
+        title.font = .preferredFont(forTextStyle: .title1)
         title.accessibilityID("log.cover.title")
 
+        // Plain Close (not filled) and top-anchored, matching the SwiftUI fullScreenCover.
         let close = UIButton(type: .system, primaryAction: UIAction(title: "Close") { [weak self] _ in
             self?.dismiss(animated: true)
         })
-        close.configuration = .borderedProminent()
         close.accessibilityID("log.cover.close")
 
         let stack = UIStackView(arrangedSubviews: [title, close])
         stack.axis = .vertical
-        stack.spacing = 24
+        stack.spacing = 16
         stack.alignment = .center
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 40),
         ])
     }
 }

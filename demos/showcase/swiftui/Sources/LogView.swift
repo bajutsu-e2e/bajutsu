@@ -12,6 +12,11 @@ struct LogView: View {
     @State private var status = "idle"
     @State private var rows: [Int] = []
 
+    // Dedicated gesture targets (SPEC §5.3): a long-press and a double-tap whose results
+    // mirror to a11y values, so a scenario can assert the gesture landed.
+    @State private var longPressed = false
+    @State private var doubleTaps = 0
+
     // Modal state
     @State private var showSheet = false
     @State private var showCover = false
@@ -34,8 +39,16 @@ struct LogView: View {
                         .accessibilityID("log.count.value")
                         .accessibilityStateValue(String(count))
 
-                    Toggle("Intense", isOn: $intense)
-                        .accessibilityID("log.intense")
+                    // A button-backed toggle (not a SwiftUI Toggle): on iOS 26 idb's tap does
+                    // not flip a Toggle's switch, but a Button toggles reliably — the same
+                    // pattern horse.favorite uses. `selected` trait reflects the state.
+                    Button {
+                        intense.toggle()
+                    } label: {
+                        Label("Intense", systemImage: intense ? "checkmark.square.fill" : "square")
+                    }
+                    .accessibilityAddTraits(intense ? .isSelected : [])
+                    .accessibilityID("log.intense")
                     Text(intense ? "Intense" : "Easy")
                         .foregroundStyle(.secondary)
                         .accessibilityID("log.intense.value")
@@ -62,6 +75,28 @@ struct LogView: View {
                         .accessibilityStateValue(dialogResult)
                 }
 
+                Section("Gestures") {
+                    Text("Long-press me")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onLongPressGesture(minimumDuration: 0.5) { longPressed = true }
+                        .accessibilityID("log.longpress")
+                    Text(longPressed ? "pressed" : "idle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityID("log.longpress.value")
+                        .accessibilityStateValue(longPressed ? "pressed" : "idle")
+
+                    Text("Double-tap me")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { doubleTaps += 1 }
+                        .accessibilityID("log.doubletap")
+                    Text("Double-taps: \(doubleTaps)")
+                        .foregroundStyle(.secondary)
+                        .accessibilityID("log.doubletap.value")
+                        .accessibilityStateValue(String(doubleTaps))
+                }
+
                 Section("Entries") {
                     ForEach(rows, id: \.self) { n in
                         Text("Entry \(n)")
@@ -71,7 +106,6 @@ struct LogView: View {
             }
             .navigationTitle("Log")
         }
-        .accessibilityID("log.title")
         .overlay(alignment: .top) {
             if showToast {
                 Text("Saved")
@@ -106,14 +140,30 @@ struct LogView: View {
             }
             .padding()
         }
-        // Action sheet (confirmationDialog); result mirrors to log.dialog.value.
-        .confirmationDialog("Delete entry", isPresented: $showDialog, titleVisibility: .visible) {
-            Button("Archive") { dialogResult = "archive" }
-                .accessibilityID("log.dialog.archive")
-            Button("Delete", role: .destructive) { dialogResult = "delete" }
-                .accessibilityID("log.dialog.delete")
-            Button("Cancel", role: .cancel) {}
-                .accessibilityID("log.dialog.cancel")
+        // Action sheet: a ZStack overlay of choices. Not a SwiftUI confirmationDialog (its
+        // buttons render as DUPLICATE accessibility elements on iOS 26, defeating idb's
+        // single-match tap) and not a second `.sheet` (one view honours only one `.sheet`, so
+        // it would silently not present alongside the filter sheet). Plain Buttons resolve
+        // uniquely; result mirrors to log.dialog.value.
+        .overlay {
+            if showDialog {
+                ZStack {
+                    Color.black.opacity(0.2).ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        Text("Delete entry")
+                            .font(.headline)
+                            .accessibilityID("log.dialog.title")
+                        Button("Archive") { dialogResult = "archive"; showDialog = false }
+                            .accessibilityID("log.dialog.archive")
+                        Button("Delete", role: .destructive) { dialogResult = "delete"; showDialog = false }
+                            .accessibilityID("log.dialog.delete")
+                        Button("Cancel", role: .cancel) { showDialog = false }
+                            .accessibilityID("log.dialog.cancel")
+                    }
+                    .padding(24)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                }
+            }
         }
     }
 

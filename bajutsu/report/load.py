@@ -21,7 +21,7 @@ import yaml
 
 from bajutsu.assertions import AssertionResult, VisualEvidence
 from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
+from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report.html import html_report, scenario_render_inputs, write_html_and_junit
 from bajutsu.scenario import load_scenario_file
 
@@ -64,6 +64,9 @@ def _result(d: dict[str, Any]) -> RunResult:
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "expect_alerts": [
                 AlertEvent(**_kw(AlertEvent, a)) for a in d.get("expect_alerts") or []
+            ],
+            "skipped_captures": [
+                SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
             ],
         }
     )

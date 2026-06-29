@@ -139,6 +139,11 @@ class ServeState:
     # file browser / Git / startup. Holds the extraction sandbox (removed when another config is
     # bound) and the run provenance. Only one bundle is bound at a time.
     upload: Upload | None = None
+    # Policy for an uploaded bundle's launchServer command (and the latent mockServer.cmd, once it is
+    # wired) (BE-0090): deny | reuse | sandbox. Default `sandbox` runs it in a throwaway container,
+    # never on the serve host; it applies only to upload-sourced configs (a local/Git config is
+    # operator-trusted and ungoverned). serve() sets it from --upload-exec / BAJUTSU_UPLOAD_EXEC.
+    upload_exec: str = "sandbox"
     popen: Popen = subprocess.Popen
     # How a created job gets executed. Defaults to in-process threads (LocalExecutor); a server
     # backend swaps in a queue-based executor without touching the handler or run_job (BE-0015).
@@ -172,6 +177,12 @@ class ServeState:
     # means unlimited (the default); a server backend sets it from BAJUTSU_MAX_CONCURRENT_PER_USER.
     # Applies only to jobs that carry an actor (an OAuth identity); token/anonymous jobs are exempt.
     max_concurrent_per_user: int = 0
+    # Per-org cap on concurrent jobs (BE-0016 Tier B pool fairness), so one tenant can't monopolize
+    # the scarce Mac pool even when its users each stay under the per-user cap. <= 0 = unlimited (the
+    # default), so a single-tenant deploy (every job in the default org) is unchanged; a server
+    # backend sets it from BAJUTSU_MAX_CONCURRENT_PER_ORG. Every job carries an org, so this needs no
+    # exemption — an operator opts in only when running multiple orgs.
+    max_concurrent_per_org: int = 0
     # Optional shared token (BE-0051). None = open (loopback-only legacy behavior); when set, every
     # request must authenticate. Login exchanges it for an opaque session id held by the `sessions`
     # seam below — the shared token itself never lives in the browser.
@@ -264,7 +275,8 @@ class ServeState:
     def try_register(self, job: Job) -> Job | None:
         """Register *job* only if under the concurrency caps, counting and inserting atomically under
         the lock so two concurrent dispatches can't both slip past a cap (BE-0051). Returns None at
-        the global cap, or — for an identified ``job.actor`` — at the per-user cap (BE-0015 7c-3)."""
+        the global cap, at the per-user cap for an identified ``job.actor`` (BE-0015 7c-3), or at the
+        per-org cap for ``job.org`` (BE-0016 Tier B pool fairness)."""
         with self._lock:
             running = [j for j in self.jobs.values() if j.status == "running"]
             if self.max_concurrent > 0 and len(running) >= self.max_concurrent:
@@ -272,6 +284,10 @@ class ServeState:
             if job.actor and self.max_concurrent_per_user > 0:
                 mine = sum(1 for j in running if j.actor == job.actor)
                 if mine >= self.max_concurrent_per_user:
+                    return None
+            if self.max_concurrent_per_org > 0:
+                same_org = sum(1 for j in running if j.org == job.org)
+                if same_org >= self.max_concurrent_per_org:
                     return None
             return self._register(job)
 
@@ -478,7 +494,12 @@ def _record_provenance(state: ServeState, job: Job) -> None:
     manifest = (state.base_cwd / state.runs_dir / job.run_id / "manifest.json").resolve()
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
-        data["provenance"] = job.provenance
+        # Merge, don't overwrite: the run subprocess already wrote a `provenance` block (scenario
+        # fingerprint, and BE-0090's `uploadExec` decision). serve adds the upload identity it alone
+        # knows; clobbering would drop both of the subprocess's records.
+        existing = data.get("provenance")
+        existing = existing if isinstance(existing, dict) else {}
+        data["provenance"] = {**existing, **job.provenance}
         # Write atomically (temp + replace): the report viewer / list_runs may read the manifest
         # concurrently, and a plain write_text truncates first — a reader could catch it empty.
         tmp = manifest.with_suffix(".json.tmp")

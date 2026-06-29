@@ -9,6 +9,7 @@ final class HorseDetailController: UIViewController {
 
     private let statusLabel = UILabel()
     private let favoriteButton = UIButton(type: .system)
+    private let favoriteValueLabel = UILabel()
     private var isFavorite = false
 
     init(horse: Horse, model: AppModel) {
@@ -22,10 +23,14 @@ final class HorseDetailController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
         title = horse.name
-        installBackButton()
-        navigationItem.titleView = makeTitleView(horse.name).accessibilityID("horse.title")
+        navigationItem.largeTitleDisplayMode = .never  // inline title, like the SwiftUI detail
+        // The horse's name shown in the body — the screen's identifying content leaf
+        // (horse.title), matching the SwiftUI twin (the nav title carries no id).
+        let titleLabel = UILabel()
+        titleLabel.text = horse.name
+        titleLabel.font = .preferredFont(forTextStyle: .title2)
+        titleLabel.accessibilityID("horse.title")
 
         let idLabel = UILabel()
         idLabel.text = "ID: \(horse.id)"
@@ -35,26 +40,25 @@ final class HorseDetailController: UIViewController {
         let fetch = UIButton(type: .system, primaryAction: UIAction(title: "Fetch detail") { [weak self] _ in
             self?.fetch()
         })
-        fetch.configuration = .bordered()
+        fetch.contentHorizontalAlignment = .leading
         fetch.accessibilityID("horse.fetch")
 
         statusLabel.accessibilityID("horse.status")
         setStatus(.idle)
 
-        updateFavoriteUI()
         favoriteButton.addAction(UIAction { [weak self] _ in self?.toggleFavorite() }, for: .primaryActionTriggered)
+        favoriteButton.contentHorizontalAlignment = .leading
         favoriteButton.accessibilityID("horse.favorite")
+        favoriteValueLabel.font = .preferredFont(forTextStyle: .footnote)
+        favoriteValueLabel.textColor = .secondaryLabel
+        favoriteValueLabel.accessibilityID("horse.favorite.value")  // separate mirror (matches SwiftUI)
+        updateFavoriteUI()
 
-        let stack = UIStackView(arrangedSubviews: [idLabel, fetch, statusLabel, favoriteButton])
-        stack.axis = .vertical
-        stack.spacing = 20
-        stack.alignment = .leading
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+        // A grouped form mirroring the SwiftUI Horse Detail sections.
+        installGroupedForm([
+            makeSectionCard([titleLabel, idLabel]),
+            makeSectionCard([fetch, statusLabel]),
+            makeSectionCard([favoriteButton, favoriteValueLabel]),
         ])
     }
 
@@ -75,13 +79,12 @@ final class HorseDetailController: UIViewController {
     }
 
     private func updateFavoriteUI() {
-        favoriteButton.setTitle(isFavorite ? "Favorited" : "Favorite", for: .normal)
-        // selected trait reflects state (SPEC §5.1).
-        if isFavorite {
-            favoriteButton.accessibilityTraits.insert(.selected)
-        } else {
-            favoriteButton.accessibilityTraits.remove(.selected)
-        }
-        favoriteButton.accessibilityStateValue(isFavorite ? "on" : "off")
+        favoriteButton.setTitle(isFavorite ? " Favorited" : " Favorite", for: .normal)
+        // A star icon, like the SwiftUI Label("Favorite", systemImage: "star").
+        favoriteButton.setImage(UIImage(systemName: isFavorite ? "star.fill" : "star"), for: .normal)
+        // selected trait reflects state (SPEC §5.1); the value mirrors to a separate label.
+        favoriteButton.accessibilityTraits = isFavorite ? [.button, .selected] : [.button]
+        favoriteValueLabel.text = isFavorite ? "Favorited" : "Not favorited"
+        favoriteValueLabel.accessibilityStateValue(isFavorite ? "on" : "off")
     }
 }

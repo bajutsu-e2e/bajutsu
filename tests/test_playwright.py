@@ -212,6 +212,91 @@ def _driver(records: list[dict[str, Any]]) -> tuple[PlaywrightDriver, _FakePage]
     return PlaywrightDriver("http://app.test/index.html", page=page), page
 
 
+# --- engine selection (BE-0076): the Starter built from `browser` picks getattr(pw, engine) ---
+
+
+class _FakeEngine:
+    """A Playwright engine handle (pw.chromium / pw.firefox / pw.webkit) recording its launch."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.launched: dict[str, Any] | None = None
+
+    def launch(self, **kwargs: Any) -> _FakeBrowser:
+        self.launched = kwargs
+        return _FakeBrowser([_FakePage([])])
+
+
+class _FakeSyncPw:
+    """A `sync_playwright()` stand-in exposing the three engines as attributes."""
+
+    def __init__(self) -> None:
+        self.chromium = _FakeEngine("chromium")
+        self.firefox = _FakeEngine("firefox")
+        self.webkit = _FakeEngine("webkit")
+        self.stopped = 0
+
+    def start(self) -> _FakeSyncPw:
+        return self
+
+    def stop(self) -> None:
+        self.stopped += 1
+
+
+def _patch_playwright(monkeypatch: pytest.MonkeyPatch, pw: _FakeSyncPw) -> None:
+    """Make the driver's lazy `from playwright.sync_api import sync_playwright` return `pw`."""
+    # Python imports the parent package before the submodule, so the `playwright` package must be in
+    # sys.modules too — otherwise `from playwright.sync_api import …` raises ModuleNotFoundError in
+    # the fast gate, where the web extra (and the real playwright package) isn't installed.
+    monkeypatch.setitem(sys.modules, "playwright", type(sys)("playwright"))
+    sync_api = type(sys)("playwright.sync_api")
+    sync_api.sync_playwright = lambda: pw  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+
+
+@pytest.mark.parametrize("engine", ["chromium", "firefox", "webkit"])
+def test_start_browser_launches_the_named_engine(
+    monkeypatch: pytest.MonkeyPatch, engine: str
+) -> None:
+    # _start_browser(engine) reaches the engine via getattr(pw, engine), so firefox/webkit launch
+    # the same way Chromium did — the one generalization Phase 1 needs.
+    from bajutsu.drivers.playwright import _start_browser
+
+    pw = _FakeSyncPw()
+    _patch_playwright(monkeypatch, pw)
+    _start_browser(engine)(True)
+    assert getattr(pw, engine).launched == {"headless": True, "slow_mo": 0}
+
+
+def test_driver_browser_arg_selects_the_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    # PlaywrightDriver(..., browser="firefox") builds its starter for that engine, so the real
+    # browser process is Firefox — proving make_driver's `browser=` reaches the launch.
+    pw = _FakeSyncPw()
+    _patch_playwright(monkeypatch, pw)
+    PlaywrightDriver("http://app.test/", browser="firefox")
+    assert pw.firefox.launched is not None
+    assert pw.chromium.launched is None and pw.webkit.launched is None
+
+
+def test_driver_browser_defaults_to_chromium(monkeypatch: pytest.MonkeyPatch) -> None:
+    pw = _FakeSyncPw()
+    _patch_playwright(monkeypatch, pw)
+    PlaywrightDriver("http://app.test/")
+    assert pw.chromium.launched is not None
+    assert pw.firefox.launched is None
+
+
+def test_relaunch_rebuilds_the_same_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    # relaunch() re-invokes the engine starter, so a wedged webkit lane comes back as webkit, not
+    # silently as chromium.
+    pw = _FakeSyncPw()
+    _patch_playwright(monkeypatch, pw)
+    drv = PlaywrightDriver("http://app.test/", browser="webkit")
+    pw.webkit.launched = None  # reset to observe only the relaunch
+    drv.relaunch()
+    assert pw.webkit.launched is not None
+
+
 def test_query_parses_page() -> None:
     drv, _ = _driver([_rec(identifier="home.title", role="heading")])
     els = drv.query()

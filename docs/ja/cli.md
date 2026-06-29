@@ -77,7 +77,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...]
 
 ## `audit`
 
-シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)・[BE-0049](../../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
+シナリオの **静的な決定性スコア**です。`doctor` の規約充足度スコアの、デバイスを使わない従兄弟にあたります（AI 非依存。[selectors](selectors.md)、[BE-0049](../../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。シナリオファイルを読み込み（`trace --explain` と同様に components / data を展開）、実行せずに、各シナリオがどれだけ再現可能かを報告します。
 
 ```bash
 bajutsu audit <scenario.yaml> [--json]
@@ -119,12 +119,12 @@ bajutsu coverage --target <name> [--config ...] [--runs <dir>] [--crawl <screenm
   指紋化するので、訪問した画面が発見した画面と突き合わせられます。到達した割合と、クロールは発見したのに
   どの run も触れなかった **unvisited** な画面を報告します。訪問の証跡には `--runs` が必要で、`--crawl` だけを
   渡した場合はこの次元を警告つきでスキップします。
-- **`--html <path>`** を渡すと、同じ数値を **自己完結した HTML レポート**にも書き出します（CSS は埋め込み、JavaScript も外部アセットも無し。ディスクから直接開けます）。次元ごとにカバレッジバーを描き、gap・off-namespace・unvisited の一覧を目立たせます。エンドポイント・観測 id・screens-visited のセクションは `--runs`（screens は加えて `--crawl`）を渡したときだけ描画します。テキスト（または `--json`）の出力は変わらず、書き出し先は標準エラー出力で知らせます。
+- **`--html <path>`** を渡すと、同じ数値を **自己完結した HTML レポート**にも書き出します（CSS は埋め込み、JavaScript も外部アセットも無し。ディスクから直接開けます）。次元ごとにカバレッジバーを描き、gap、off-namespace、unvisited の一覧を目立たせます。エンドポイント、観測 id、screens-visited のセクションは `--runs`（screens は加えて `--crawl`）を渡したときだけ描画します。テキスト（または `--json`）の出力は変わらず、書き出し先は標準エラー出力で知らせます。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。**gap があっても終了 0**（config / scenarios ディレクトリが無い、またはシナリオが読めないときだけ終了 2）です。gap は埋めるべき namespace であって判定ではありません。
 
 ## `export`
 
-完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`・`junit.xml`・実行した `scenario.yaml`・**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
+完了した run を1つの可搬な `.zip` にまとめます。`report.html` に加えて `manifest.json`、`junit.xml`、実行した `scenario.yaml`、**すべての**証跡（スクリーンショット、動画、`network.json` …）を含みます（[BE-0060](../../roadmaps/implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。`runs/<id>/` のツリー全体を単一の `<id>/` フォルダ直下に収めるので、`report.html` の**相対**リンクがオフラインで解決します。ダブルクリックで開け、サーバは要りません。
 
 ```bash
 bajutsu export <run-id | run-dir> [-o out.zip] [--force]
@@ -132,7 +132,7 @@ bajutsu export <run-id | run-dir> [-o out.zip] [--force]
 
 - `<run>` は run id（`--runs` 既定 `runs/` の下で解決）または run ディレクトリのパスです。
 - 出力は既定で run dir の隣の `<id>.zip`。`-o/--output` で上書き指定。`--force` なしでは既存ファイルを**上書きしません**（`record` が黙って上書きしないのと同じ）。
-- run が既に書いたものを詰めるだけで、デバイスも AI も使わず、判定にも影響しません。**run dir の中だけ**を固めます（`.env`・config・その上位には一切触れません）。run の secret スクラブをそのまま継承します。`bajutsu run --zip` は同じアーカイバを判定後にインラインで走らせ、`bajutsu serve` は埋め込みレポートの隣に **Download** ボタンとして提供します。
+- run が既に書いたものを詰めるだけで、デバイスも AI も使わず、判定にも影響しません。**run dir の中だけ**を固めます（`.env`、config、その上位には一切触れません）。run の secret スクラブをそのまま継承します。`bajutsu run --zip` は同じアーカイバを判定後にインラインで走らせ、`bajutsu serve` は埋め込みレポートの隣に **Download** ボタンとして提供します。
 
 ## `trace`
 
@@ -140,8 +140,7 @@ bajutsu export <run-id | run-dir> [-o out.zip] [--force]
 時系列で交互に並べ、続けて expectations、app-trace 区間、証跡サマリを出力します。読み取り専用
 （保存済みの `manifest.json` / `network.json` / `appTrace.json`、来歴のための `scenario.yaml` を読む）。
 
-- 各ステップには、それを記録した元の自然言語フレーズ — [`from:`](scenarios.md#from来歴) 来歴（BE-0044）
-  — を `← "<フレーズ>"` の形でインライン表示します。1 つのフレーズを共有する連続ステップはまとめて 1 回だけ
+- 各ステップには、それを記録した元の自然言語フレーズ（[`from:`](scenarios.md#from来歴) 来歴、BE-0044）を `← "<フレーズ>"` の形でインライン表示します。1 つのフレーズを共有する連続ステップはまとめて 1 回だけ
   ラベル表示します。手書きのシナリオや来歴のない古い run では、単に何も表示されません。
 
 ```bash
@@ -168,7 +167,7 @@ bajutsu report <run-id | run-dir>      # 1 つの run を再描画
 bajutsu report --all [--runs runs]     # runs/ 配下で manifest.json を持つ run dir をすべて再描画
 ```
 
-- レンダリングモデルは `manifest.json`（バージョン付き・無損失の render 入力。`schemaVersion`）と、実行した `scenario.yaml` です。レンダラは run dir だけを読みます。**古い** run もエラーにならず描画でき、新しいバージョンにしかないセクションは値を捏造せず「not captured」と表示します。
+- レンダリングモデルは `manifest.json`（バージョン付きで無損失の render 入力。`schemaVersion`）と、実行した `scenario.yaml` です。レンダラは run dir だけを読みます。**古い** run もエラーにならず描画でき、新しいバージョンにしかないセクションは値を捏造せず「not captured」と表示します。
 - 記録済みの outcome を再提示するだけで、assertion を再評価したり verdict を変えたりしません。決定性の契約の内側に収まります。`serve` も**同じレンダラを表示時に使い**、リクエストごとに各 run の保存済みモデルから `report.html` を都度描画します（モデルを読めない場合は baked ファイルにフォールバック）。これにより `serve` を上げれば再 bake 不要で全レポートが最新化されます。
 - run（`--all` の場合は runs ルート）に読める `manifest.json` が無ければ**終了 2**。
 
@@ -199,7 +198,7 @@ bajutsu triage [<run-dir>] --ai --apply <scenario-file> [--write] \
 
 ## `record`
 
-AI でゴールに向けて探索し、**記録したシナリオを書き出します**（Tier 1・[recording](recording.md)）。
+AI でゴールに向けて探索し、**記録したシナリオを書き出します**（Tier 1、[recording](recording.md)）。
 既定ではアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`）配下に自動命名の `*.yaml` を書きます。
 特定パスに書くには `--out` を渡してください。
 
@@ -231,7 +230,7 @@ bajutsu record --target <name> --goal "<自然言語ゴール>" [--out <file.yam
 ## `crawl`
 
 アプリを**幅優先**で探索し、到達できる画面と画面間の遷移の**画面マップ**を書き出します
-（Tier 1・[BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）。`record` は *目的指向* で、1 つの自然言語ゴールに
+（Tier 1、[BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）。`record` は *目的指向* で、1 つの自然言語ゴールに
 向かって AI が探索し、1 本のシナリオを書き出します。これに対し `crawl` は *体系的な発見* です。
 到達できる画面を巡り、見つけたものを報告します。探索エンジンは**決定的**で（画面の識別子と候補
 アクションを試す順序は、どちらも要素ツリーの純粋な関数です）、**AI は関与せず**、**合否ゲートには
@@ -288,10 +287,10 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   外部アセットも無し）で、ライブの **Crawl** タブのオフライン版にあたります。発見した画面を幅優先の深さ列に並べて
   スクリーンショットを添え、遷移を静的なインライン SVG で描き（OS アラートをタップして通過した遷移は 🛡️ マーク付きの
   アンバー色）、クラッシュと閉じたアラートの経路を下にまとめます。`screenmap.json` や `screens/` と同じ場所に置くので
-  run ディレクトリから直接開け、web UI なしで共有・保管できます。JSON と同じく read-only でモデルも使いません。
+  run ディレクトリから直接開け、web UI なしで共有や保管ができます。JSON と同じく read-only でモデルも使いません。
 - 完了時には、忠実に再現できるクラッシュごとに `<out>/crashes/crash-NNN.yaml` も 1 件書き出します。これは
   クラッシュの記録されたアクション経路から組み立てた**再現シナリオ**で、`run` がそのまま実行できます。発見した
-  クラッシュは人間のレビューを経て、コミットされた Tier 2 のリグレッションになります。この変換は純粋・決定的で
+  クラッシュは人間のレビューを経て、コミットされた Tier 2 のリグレッションになります。この変換は純粋かつ決定的で
   モデルを使いません（`tap`／`type`／`fill` はそれぞれ対応するステップに写像します）。正規化座標をタップする経路
   （vision で位置を特定したコントロール）は指定できるセレクタを持たないため、欠損のあるシナリオを出すのではなく、
   何も出力しません。
@@ -300,7 +299,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   全ワーカーが 1 つの画面マップとフロンティアを共有し、独立した枝が並行して進み、AI ガイドの往復もデバイス間で
   重なるので、実時間はおおよそ台数に反比例して減ります。並行になるのは**スケジューリングだけ**です。どのワーカーが
   画面に先に到達するかは時間依存なので、アプリ自体に非決定性があると記録されるパスや発見順は実行ごとに変わりえますが、
-  画面同一性・遷移・クラッシュ判定は要素ツリーの同じ決定的関数のままです（クロールは依然として合否を下しません）。
+  画面同一性、遷移、クラッシュ判定は要素ツリーの同じ決定的関数のままです（クロールは依然として合否を下しません）。
   固まったデバイスは自分の作業を手放し、残りのワーカーが続行します。既定の `--workers 1` は従来どおりのシングル
   ワーカーのクロールです。**web** でも同じ仕組みが働き、シミュレータの代わりに N 個の**ブラウザプロセス**を動かします
   （[BE-0077](../../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）。web に端末はない
@@ -340,7 +339,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 ### web backend（`--backend web`）
 
 クロールは Simulator に対するのと同じように web アプリにも走ります。探索エンジンはプラットフォーム非依存
-なので、`bajutsu crawl --target <web-app> --backend web` は同じ `screenmap.json`・スクリーンショット・クラッシュ
+なので、`bajutsu crawl --target <web-app> --backend web` は同じ `screenmap.json`、スクリーンショット、クラッシュ
 一覧を出力します。web アプリは `bundleId` ではなく `baseUrl` で指定し、ブラウザは Mac もエミュレータも要らない
 ので、web クロールは Linux の `make check` / CI ゲート内で走ります。iOS と違う点は次の 3 つで、いずれも決定的
 です（[BE-0066](../../roadmaps/implemented/BE-0066-web-crawl/BE-0066-web-crawl-ja.md)）。
@@ -350,7 +349,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   ライフサイクルの接合点です。
 - **クラッシュ検出。** iOS の信号（アクセシビリティツリーの崩壊）は web には存在しないため、ブラウザ自身の
   決定的な信号を使います。未捕捉の JS 例外（`pageerror`）、メインフレームの 4xx/5xx ナビゲーション、空の
-  ドキュメントの 3 つです。どれも機械的な事実（イベント・ステータス番号・空の要素集合）であり、ページが
+  ドキュメントの 3 つです。どれも機械的な事実（イベント、ステータス番号、空の要素集合）であり、ページが
   「壊れて見えるか」をモデルが判断することはありません。
 - **OS アラートではなくダイアログ。** web に OS プロンプトはなく、JS ダイアログ（`alert` / `confirm` /
   `beforeunload`）があります。これらは固定のモデル非依存ポリシー（dismiss）で自動処理し、`alerts` に記録します。
@@ -359,7 +358,7 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
 
 ## `codegen`
 
-シナリオから **ネイティブテスト** を生成します（AI 非依存・構造マッピング・[codegen](codegen.md)）。出力先は
+シナリオから **ネイティブテスト** を生成します（AI 非依存、構造マッピング、[codegen](codegen.md)）。出力先は
 **XCUITest**（Swift、iOS）または **Playwright**（TypeScript、web）です。
 
 ```bash
@@ -449,8 +448,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **バンドルのアップロード（[BE-0073](../../roadmaps/implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)）。**
   「Open config」ダイアログには 3 つめのソース **Upload a bundle** があり、ホストのファイルシステムに触れない
   ブラウザ利用者が、ホスト型の `serve` に**自分のスイートを持ち込め**ます。レイアウトが動くローカル checkout
-  そのものの `.zip`、つまり `bajutsu.config.yaml`・その `scenarios` ツリー・config の `appPath` が指すビルド済み
-  アプリバイナリ（`.app` ディレクトリ・zip 化した `.app`・`.ipa`）を投下します。`serve` はそれを封じ込めた
+  そのものの `.zip`、つまり `bajutsu.config.yaml`、その `scenarios` ツリー、config の `appPath` が指すビルド済み
+  アプリバイナリ（`.app` ディレクトリ、zip 化した `.app`、`.ipa`）を投下します。`serve` はそれを封じ込めた
   サンドボックス（`runs/` の兄弟で、`--root` ではない）へ展開し、ファイルブラウザや Git ソースとまったく同じく
   **アクティブな config としてバインド**します。以後 **Replay / Record / Crawl** タブはその展開先から動きます
   （config の相対パス `appPath` / `scenarios` / `baselines` はバンドルを基準に解決されます）。run は
@@ -460,8 +459,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   サンドボックスは削除されます。バンドルは**秘匿情報を運びません**。`${secrets.*}` は通常の run と同じく `serve`
   ホストの環境から解決し（[BE-0032](../../roadmaps/implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md)）、
   アップロードされた config の `build` コマンドはホスト上で**決して実行しません**（バンドルはビルド済みバイナリを
-  同梱します。DESIGN §1）。展開は zip-slip（絶対パス・`..`・symlink エントリは拒否）と zip-bomb（エントリ数・
-  展開後の総サイズ・エントリごとの圧縮率の上限）に対して堅牢で、各ターゲットのパス項目はバインド時にバンドル内へ
+  同梱します。DESIGN §1）。展開は zip-slip（絶対パス、`..`、symlink エントリは拒否）と zip-bomb（エントリ数、
+  展開後の総サイズ、エントリごとの圧縮率の上限）に対して堅牢で、各ターゲットのパス項目はバインド時にバンドル内へ
   封じ込められ、config のバインドは他のリクエストと同じトークン認証の裏にある admin ロールの操作です。任意の
   バイナリを持ち込むことは、認証済みの単一 Mac の `serve` でのみ公開されます。
 - オーサリング（Record と Crawl）の **AI バックエンド**は **Settings → AI プロバイダ** の一箇所で選びます。
@@ -556,10 +555,10 @@ bajutsu schema > bajutsu.schema.json
   起動ジョブに書き込みます。アラートガードはエージェントに関わらず常に SDK プロバイダを使います。
 
 ```bash
-# .env —— Anthropic（既定）
+# .env：Anthropic（既定）
 ANTHROPIC_API_KEY=sk-ant-...
 
-# .env —— 代わりに Amazon Bedrock（AWS 認証情報で認証）
+# .env：代わりに Amazon Bedrock（AWS 認証情報で認証）
 BAJUTSU_AI_PROVIDER=bedrock
 BAJUTSU_BEDROCK_MODEL=global.anthropic.claude-opus-4-6-v1
 AWS_REGION=us-east-1

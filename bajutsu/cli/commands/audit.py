@@ -159,7 +159,7 @@ def _repeat_audit(
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
     try:
-        ensure_web_runtime(backends)
+        ensure_web_runtime(backends, eff.browser)
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
@@ -176,7 +176,9 @@ def _repeat_audit(
     # web target with a server-backed baseUrl can be audited; reused if already serving, torn down
     # in the finally below.
     try:
-        stop_server = start_launch_server(eff)
+        # Audit is a CLI-only longitudinal tool; serve never spawns it for an uploaded bundle, so it
+        # stays ungoverned (upload_exec=None — today's bare-host path).
+        stop_server, _exec_decision = start_launch_server(eff)
     except RuntimeError as e:
         typer.echo(str(e))
         shutdown()

@@ -186,6 +186,18 @@ def test_run_command_parallel_pool() -> None:
     assert "--workers" not in srv.run_command("s.yaml", "demo", workers=1)  # single-device omits it
 
 
+def test_command_builders_pass_upload_exec_only_when_set() -> None:
+    # The flag is set by serve only for an upload-sourced config (BE-0090); empty omits it.
+    for build in (
+        lambda **k: srv.run_command("s.yaml", "demo", **k),
+        lambda **k: srv.record_command("o.yaml", "demo", "goal", **k),
+        lambda **k: srv.crawl_command("demo", out="o", **k),
+    ):
+        assert "--upload-exec" not in build()  # default empty: ungoverned
+        sandboxed = build(upload_exec="sandbox")
+        assert sandboxed[sandboxed.index("--upload-exec") + 1] == "sandbox"
+
+
 def test_run_command_includes_baselines() -> None:
     cmd = srv.run_command("s.yaml", "demo", baselines="/b/dir")
     assert cmd[cmd.index("--baselines") + 1] == "/b/dir"

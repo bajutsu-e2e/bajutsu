@@ -15,11 +15,19 @@ from bajutsu import env as _env
 from bajutsu import github
 from bajutsu import usage as _usage
 from bajutsu.anthropic_client import credential_gap
+from bajutsu.anthropic_client import key_env as ac_key_env
 from bajutsu.backends import ensure_web_runtime, select_actuator
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective_with_source
-from bajutsu.config import Effective
+from bajutsu.cli._shared import (
+    DEFAULT_CONFIG,
+    _ai_redactor,
+    _backends,
+    _load_effective_with_source,
+    _resolve_browser,
+)
+from bajutsu.config import WEB_ENGINES, Effective
+from bajutsu.orchestrator import RunResult
 from bajutsu.report.archive import archive_run_dir
-from bajutsu.runner import device_pool, run_and_report
+from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.runner.build import BuildError, build_if_missing
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import (
@@ -35,6 +43,25 @@ from bajutsu.scenario import (
     read_csv,
     select_scenarios,
 )
+
+
+def _parse_browsers(browsers: str) -> list[str]:
+    """Parse `--browsers` into an ordered, de-duplicated engine list, validated against WEB_ENGINES.
+
+    The cross-browser matrix axis (BE-0076): a comma list (`chromium,firefox,webkit`) trimmed of
+    blanks and de-duped while keeping order. Empty means no matrix (the run uses the single-engine
+    path); `--browsers chromium` is exactly `--browser chromium`. An unknown engine exits 2 — before
+    it reaches Playwright — exactly as `--browser` does.
+
+    Raises:
+        typer.Exit: an entry isn't one of the known engines (exit code 2).
+    """
+    engines = list(dict.fromkeys(b.strip() for b in browsers.split(",") if b.strip()))
+    for engine in engines:
+        if engine not in WEB_ENGINES:
+            typer.echo(f"unknown --browsers engine {engine!r}: use any of {', '.join(WEB_ENGINES)}")
+            raise typer.Exit(2)
+    return engines
 
 
 def _resolve_lanes(
@@ -213,6 +240,19 @@ def run(
         help="web backend: show the browser (headed, slow-motion) instead of headless; "
         "default leaves the target's `headless` config (headless)",
     ),
+    browser: str = typer.Option(
+        "",
+        "--browser",
+        help=f"web backend: rendering engine to drive — {' / '.join(WEB_ENGINES)}; "
+        "default leaves the target's `browser` config (chromium)",
+    ),
+    browsers: str = typer.Option(
+        "",
+        "--browsers",
+        help=f"web backend: run the cross-browser matrix — a comma list of engines "
+        f"({','.join(WEB_ENGINES)}); each scenario runs once per engine and the run is green only "
+        "if every engine passes (all-must-pass). A single engine equals --browser",
+    ),
     zip_run: bool = typer.Option(
         False,
         "--zip",
@@ -225,6 +265,13 @@ def run(
         help="directory to write the run tree into (default: ./runs). Lets a caller run from one "
         "working directory but persist the run elsewhere — e.g. serve running an uploaded bundle "
         "from its extracted dir while keeping the run in serve's store (BE-0073)",
+    ),
+    upload_exec: str = typer.Option(
+        "",
+        "--upload-exec",
+        hidden=True,
+        help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
+        "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
     ),
     config: str = typer.Option(DEFAULT_CONFIG),
     config_offline: bool = typer.Option(
@@ -259,6 +306,14 @@ def run(
     # --headed/--no-headed overrides the target's `headless` config (web backend only; iOS ignores it).
     if headed is not None:
         eff = replace(eff, headless=not headed)
+    # --browser overrides the target's `browser` config (web backend only; flag > config > chromium).
+    eff = _resolve_browser(eff, browser)
+    # --browsers is the multi-engine spelling of the same axis (BE-0076): a comma list fans the run
+    # out across engines into a cross-browser matrix. One engine collapses to the single-engine path
+    # (set as --browser would); >1 takes the matrix branch below. Validated up front (unknown → 2).
+    engines = _parse_browsers(browsers)
+    if len(engines) == 1:
+        eff = replace(eff, browser=engines[0])
     before = _usage.snapshot()
     # Resolve declared secrets from the environment. They reach the device as ${secrets.X}
     # is interpolated at action time, while their literal values are masked in evidence and
@@ -296,11 +351,20 @@ def run(
     # `run` path mirrors `doctor`: backend check first, then resolve the udid).
     backends = _backends(backend, eff.backend)
     try:
-        ensure_web_runtime(backends)  # auto-install Playwright if a web run needs it
+        # Auto-install Playwright and the requested engine(s) if a web run needs them — the matrix
+        # provisions every listed engine (each install is idempotent), else just `eff.browser`
+        # (with one engine, `eff.browser` already equals it; with none, it's the resolved default).
+        for engine in engines or [eff.browser]:
+            ensure_web_runtime(backends, engine)
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    # --browsers is a web-only axis: a multi-engine matrix on a non-web actuator is a user error,
+    # caught up front rather than after building an iOS pool that ignores the engine list.
+    if len(engines) > 1 and actuator != "playwright":
+        typer.echo(f"--browsers is web-only; backend '{actuator}' has a single engine")
+        raise typer.Exit(2)
     # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054), each
     # built on its own worker thread (Playwright's sync API is thread-affine). Network collection
     # is native there, so `--network` works per lane. For idb, `--udid` is a concrete comma list
@@ -321,23 +385,31 @@ def run(
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
         from bajutsu.orchestrator import BlockedHandler
 
-        # The vision guard reaches Claude through the configured AI provider (BE-0053), so the
-        # credential it needs is provider-specific: ANTHROPIC_API_KEY for Anthropic, a
-        # provider-prefixed BAJUTSU_BEDROCK_MODEL for Bedrock (AWS credentials authenticate there).
-        guard_gap = credential_gap()
+        # The vision guard reaches Claude through the configured AI provider (BE-0053/BE-0047), so the
+        # credential it needs is provider-specific: the key named by ai.keyEnv (default
+        # ANTHROPIC_API_KEY) for Anthropic, a provider-prefixed model for Bedrock (AWS credentials
+        # authenticate there). The deterministic gate must still run with no key, so a missing
+        # credential here is a no-op (the guard is best-effort) — never a client that would fall back
+        # to a hosted default: when the credential is absent we don't construct the locator at all.
+        guard_gap = credential_gap(eff.ai)
         if guard_gap == "anthropic-key":
             typer.echo(
-                "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard will no-op"
+                f"note: dismiss-alerts is on but ${ac_key_env(eff.ai)} is unset — "
+                "the alert guard will no-op"
             )
         elif guard_gap == "bedrock-model":
             typer.echo(
-                "note: dismiss-alerts is on but BAJUTSU_BEDROCK_MODEL is unset — "
-                "the alert guard will no-op"
+                "note: dismiss-alerts is on but no Bedrock model id is set "
+                "(ai.model / BAJUTSU_BEDROCK_MODEL) — the alert guard will no-op"
             )
-        locator = ClaudeAlertLocator()
+        # Mask the (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
+        redactor = _ai_redactor(eff)
+        locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor) if guard_gap is None else None
         default_instruction = alert_instruction or None
 
         def _guard_for(s: Scenario) -> BlockedHandler | None:
+            if locator is None:
+                return None  # no usable AI credential: the guard no-ops, never a hosted fallback
             cfg = s.dismiss_alerts or DismissAlerts()
             if not cfg.enabled:
                 return None
@@ -358,56 +430,106 @@ def run(
     # responseSchema assertions resolve `schema: <path>` within this directory (same order).
     schemas_dir = _resolve_schemas_dir(schemas, eff, files[0])
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-    # A pool of one-or-more devices. Each device carries its own network collector, evidence
-    # sink (interval recordings), and device control — so network collection / video / log /
-    # setLocation / push all work the same whether workers is 1 or N.
-    lease, shutdown = device_pool(
-        udids,
-        backends,
-        eff,
-        Path(runs_dir) / run_id,
-        network=network,
-        log_predicate=log_predicate or None,
-        log_subsystem=log_subsystem or eff.bundle_id,
-        secret_values=secret_values,
-    )
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run
     # log); stdout stays the machine-readable final PASS/FAIL line.
     progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None  # noqa: T201
     # Bring up the app's target server (the web baseUrl host) if it declares `launchServer`, waiting
     # on its readiness probe; reused if already serving, torn down in the finally below. The pool
-    # leases lazily (the web driver navigates at lease time, inside run_and_report), so the server
-    # only needs to be up before the run, not before the pool.
+    # leases lazily (the web driver navigates at lease time), so the server only needs to be up
+    # before the run, not before the pool — and one server serves every engine in a matrix run.
     try:
-        stop_server = start_launch_server(eff)
+        stop_server, exec_decision = start_launch_server(eff, upload_exec=upload_exec or None)
     except RuntimeError as e:
         typer.echo(str(e))
-        shutdown()
         raise typer.Exit(2) from None
     try:
-        results, manifest = run_and_report(
-            eff,
-            scenarios,
-            lease,
-            Path(runs_dir),
-            run_id,
-            on_blocked_for=on_blocked_for,
-            workers=workers,
-            bindings=secret_bindings,
-            secret_values=secret_values,
-            source_name=source_name,
-            description=description,
-            progress=progress_fn,
-            baselines_dir=baselines_dir,
-            schemas_dir=schemas_dir,
-            actuator=actuator,
-            config_source=config_source,
-        )
+        if len(engines) > 1:
+            # Cross-browser matrix (BE-0076): one pass per engine against its own pool, evidence
+            # under run_dir/<engine>/<sid>; the pipeline assembles ONE report whose matrix aggregates
+            # the per-engine verdicts (all-must-pass, machine-only). One launchServer serves all.
+            def run_pass(engine: str, engine_run_dir: Path) -> list[RunResult]:
+                if progress_fn is not None:
+                    progress_fn(f"━ engine {engine}")
+                eff_e = replace(eff, browser=engine)
+                lease, shutdown = device_pool(
+                    udids,
+                    backends,
+                    eff_e,
+                    engine_run_dir,
+                    network=network,
+                    log_predicate=log_predicate or None,
+                    log_subsystem=log_subsystem or eff_e.bundle_id,
+                    secret_values=secret_values,
+                )
+                try:
+                    return run_all(
+                        eff_e,
+                        scenarios,
+                        lease,
+                        on_blocked_for=on_blocked_for,
+                        workers=workers,
+                        run_dir=engine_run_dir,
+                        bindings=secret_bindings,
+                        secret_values=secret_values,
+                        progress=progress_fn,
+                        baselines_dir=baselines_dir,
+                        schemas_dir=schemas_dir,
+                        actuator=actuator,
+                    )
+                finally:
+                    shutdown()
+
+            results, manifest = run_matrix_and_report(
+                eff,
+                scenarios,
+                engines,
+                run_pass,
+                Path(runs_dir),
+                run_id,
+                source_name=source_name,
+                description=description,
+                secret_values=secret_values,
+                config_source=config_source,
+                exec_provenance=exec_decision,
+            )
+        else:
+            # Single-engine run — exactly today's path: one pool, one `run_and_report`, no matrix.
+            lease, shutdown = device_pool(
+                udids,
+                backends,
+                eff,
+                Path(runs_dir) / run_id,
+                network=network,
+                log_predicate=log_predicate or None,
+                log_subsystem=log_subsystem or eff.bundle_id,
+                secret_values=secret_values,
+            )
+            try:
+                results, manifest = run_and_report(
+                    eff,
+                    scenarios,
+                    lease,
+                    Path(runs_dir),
+                    run_id,
+                    on_blocked_for=on_blocked_for,
+                    workers=workers,
+                    bindings=secret_bindings,
+                    secret_values=secret_values,
+                    source_name=source_name,
+                    description=description,
+                    progress=progress_fn,
+                    baselines_dir=baselines_dir,
+                    schemas_dir=schemas_dir,
+                    actuator=actuator,
+                    config_source=config_source,
+                    exec_provenance=exec_decision,
+                )
+            finally:
+                shutdown()
     except _env.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     finally:
-        shutdown()
         stop_server()
     ok = all(r.ok for r in results)
     github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI

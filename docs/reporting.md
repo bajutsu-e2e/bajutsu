@@ -74,13 +74,22 @@ verbatim.
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It lets accumulated runs be grouped by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — like the `idb`
-  version block, it never enters `ok`. (`schemaVersion` is `3` once this block can appear.)
+  version block, it never enters `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `4` today.)
 - `idb` (top, optional): the `idb_companion` / client versions, when idb drove the run (BE-0005).
+- `matrix` (top, optional): the cross-browser engine × scenario grid, present only on a
+  `bajutsu run --browsers` run ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)).
+  `scenarios` stays the flat result list, each entry tagged with its `engine`; `matrix` is
+  `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` — a pure
+  aggregation of those per-engine verdicts (the report renders it as a grid). `ok` is all-must-pass
+  across every engine × scenario. Omitted for a single-engine / iOS run. (`schemaVersion` is `4`
+  once this block can appear.)
 
 ## junit.xml
 
 For CI integration. **1 scenario = 1 `<testcase>`.** A failing scenario gets a `<failure>`, whose
-`text` lists each step / expect's ok/FAIL and reason.
+`text` lists each step / expect's ok/FAIL and reason. On a `--browsers` matrix run the engine is
+keyed into the case (`classname="bajutsu.<engine>"`), so CI sees `chromium.login` and `webkit.login`
+as distinct cases (BE-0076); a single-engine run keeps `classname="bajutsu"`.
 
 ```xml
 <testsuite name="bajutsu" tests="2" failures="1">

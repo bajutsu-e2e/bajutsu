@@ -121,7 +121,11 @@ class NetworkCollector:
         server = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(self))
         self.port = server.server_address[1]
         self._server = server
-        self._thread = threading.Thread(target=server.serve_forever, daemon=True)
+        # Poll often (vs the 0.5s default) so `stop()`'s shutdown() returns promptly — it blocks
+        # until the loop's next poll tick. Speeds run teardown and the tests that start a collector.
+        self._thread = threading.Thread(
+            target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+        )
         self._thread.start()
         return self.port
 
@@ -131,6 +135,10 @@ class NetworkCollector:
             self._server.shutdown()
             self._server.server_close()
             self._server = None
+        if self._thread is not None:
+            self._thread.join()  # serve_forever has returned; join so no stale thread lingers
+            self._thread = None
+        self.port = 0
 
 
 def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:

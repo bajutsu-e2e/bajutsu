@@ -16,7 +16,8 @@ import base64
 from typing import Any
 
 from bajutsu import usage
-from bajutsu.anthropic_client import make_client, resolve_model
+from bajutsu.anthropic_client import AiConfig, make_client, resolve_model
+from bajutsu.redaction import Redactor
 from bajutsu.triage import FIX_KINDS, Fix, Triage, TriageContext, fix_summary
 
 MODEL = "claude-opus-4-8"
@@ -103,24 +104,36 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
-def _render(context: TriageContext) -> str:
-    """The user message: the failure context, laid out for the model to reason over."""
+def _render(context: TriageContext, redactor: Redactor | None = None) -> str:
+    """The user message: the failure context, laid out for the model to reason over.
+
+    Every textual field that could carry a secret — the failure message, the failed step's action
+    and reason, the failed expectations, the element tree, and the scenario YAML — is masked via
+    `redactor` before it reaches the model (BE-0047). The screenshot (sent in `_user_content`)
+    cannot be.
+    """
+    scrub = redactor.redact_text if redactor is not None else (lambda t: t)
     lines = [
         f"Scenario: {context.scenario}",
-        f"Failure: {context.failure or '(none reported)'}",
+        f"Failure: {scrub(context.failure) or '(none reported)'}",
     ]
     if context.failed_step is not None:
         fs = context.failed_step
-        lines.append(f"Failed step: [{fs.index}] {fs.action} — {fs.reason}")
+        # `action` comes from the manifest and can embed typed text (e.g. a password), so scrub it
+        # too — not just `reason` (BE-0047).
+        lines.append(f"Failed step: [{fs.index}] {scrub(fs.action)} — {scrub(fs.reason)}")
     if context.target_id:
         lines.append(f"Target id of the failed step: {context.target_id}")
     if context.failed_expectations:
         lines.append("Failed expectations:")
-        lines += [f"  - {e}" for e in context.failed_expectations]
+        lines += [f"  - {scrub(e)}" for e in context.failed_expectations]
 
     lines += ["", "Accessibility elements captured nearest the failure:"]
-    if context.elements:
-        for e in context.elements:
+    elements = (
+        redactor.redact_elements(context.elements) if redactor is not None else context.elements
+    )
+    if elements:
+        for e in elements:
             lines.append(
                 f"- id={e.get('identifier') or ''} label={e.get('label')!r} "
                 f"traits={e.get('traits')} value={e.get('value')!r}"
@@ -129,7 +142,7 @@ def _render(context: TriageContext) -> str:
         lines.append("(no element tree captured)")
 
     if context.scenario_yaml:
-        lines += ["", "Scenario definition (YAML):", context.scenario_yaml.rstrip()]
+        lines += ["", "Scenario definition (YAML):", scrub(context.scenario_yaml).rstrip()]
     if context.evidence:
         lines += ["", f"Evidence captured: {', '.join(context.evidence)}"]
     if context.screenshot is not None:
@@ -138,8 +151,8 @@ def _render(context: TriageContext) -> str:
     return "\n".join(lines)
 
 
-def _user_content(context: TriageContext) -> list[dict[str, Any]]:
-    """The user message: the failure screenshot (if any) followed by the text context."""
+def _user_content(context: TriageContext, redactor: Redactor | None = None) -> list[dict[str, Any]]:
+    """The user message: the failure screenshot (if any) followed by the redacted text context."""
     content: list[dict[str, Any]] = []
     if context.screenshot is not None:
         content.append(
@@ -152,7 +165,7 @@ def _user_content(context: TriageContext) -> list[dict[str, Any]]:
                 },
             }
         )
-    content.append({"type": "text", "text": _render(context)})
+    content.append({"type": "text", "text": _render(context, redactor)})
     return content
 
 
@@ -186,15 +199,23 @@ class ClaudeTriageAgent:
     """TriageAgent implementation that asks Claude for the diagnosis via forced tool use."""
 
     def __init__(
-        self, client: Any = None, model: str | None = None, max_tokens: int = 1024
+        self,
+        client: Any = None,
+        model: str | None = None,
+        max_tokens: int = 1024,
+        *,
+        ai: AiConfig | None = None,
+        redactor: Redactor | None = None,
     ) -> None:
         self._client = client
-        self._model = resolve_model(MODEL) if model is None else model
+        self._ai = ai
+        self._redactor = redactor
+        self._model = resolve_model(MODEL, ai) if model is None else model
         self._max_tokens = max_tokens
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            self._client = make_client()
+            self._client = make_client(ai=self._ai)
         return self._client
 
     def triage(self, context: TriageContext) -> Triage:
@@ -213,7 +234,7 @@ class ClaudeTriageAgent:
             tool_choice={
                 "type": "any"
             },  # force the one diagnose call; no thinking with forced choice
-            messages=[{"role": "user", "content": _user_content(context)}],
+            messages=[{"role": "user", "content": _user_content(context, self._redactor)}],
         )
         usage.record(getattr(message, "usage", None))
         return _to_triage(message)

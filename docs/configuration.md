@@ -17,12 +17,14 @@ one closer to the test wins).
 
 ```yaml
 defaults:                       # shared across all targets
+  platform: ios                 # team-wide default platform (ios/android/web); omit to derive it from each target's backend
   backend: [ios]                # ordered list of platforms (ios/android/web/fake) or actuators (idb); a single string is also OK
   device:  "iPhone 15"
   locale:  en_US
   capture: [screenshot.after, elements, actionLog]
   redact:  { headers: [Authorization, Cookie], fields: [token, password] }
   secrets: [LOGIN_PASSWORD]         # env var names usable as ${secrets.X} (values masked in evidence)
+  ai:      { provider: anthropic, keyEnv: ANTHROPIC_API_KEY }   # the AI paths' provider/model/endpoint/key (below)
   reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
 
 targets:
@@ -35,14 +37,19 @@ targets:
     # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 
   web:                          # a web target (Playwright backend) is identified by URL
+    platform:  web                                  # optional: usually derived from backend/baseUrl, but explicit is clearest
     baseUrl:   "http://127.0.0.1:8787/index.html"   # required for web (instead of bundleId)
     backend:   [web]
     headless:  true                                 # web only: false = a visible (headed) browser; --headed overrides per run
+    browser:   chromium                             # web only: rendering engine — chromium / firefox / webkit; --browser overrides per run
     scenarios: demos/web/scenarios
 ```
 
-A target entry needs **either** `bundleId` (iOS) **or** `baseUrl` (web) — a config with neither is
-rejected at load. See [drivers → Playwright](drivers.md#playwright-web) and `demos/web`.
+Each platform identifies its target by its own handle: **iOS** by `bundleId`, **web** by `baseUrl`,
+**Android** by `package`. A target's `platform` selects which handle is required; it is **optional** and
+defaults to the platform its `backend` implies (so a config written before this field is unchanged) —
+set it explicitly to be unambiguous. A target carrying the wrong handle for its platform (or none at
+all) is rejected at load. See [drivers → Playwright](drivers.md#playwright-web) and `demos/web`.
 
 ### Resolution (`resolve` → `Effective`)
 
@@ -51,14 +58,18 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 
 | `Effective` field | Source | Notes |
 |---|---|---|
-| `bundle_id` | app | iOS target; required unless `base_url` is set |
-| `base_url` | app | web target URL (Playwright backend); required for web instead of `bundle_id` |
+| `platform` | app < defaults < derived | the target's platform (`ios`/`android`/`web`): explicit `platform` wins, else the target's `backend` implies it, else the identifier present, else `ios`. Selects which identifier is required ([BE-0009](../roadmaps/implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)) |
+| `bundle_id` | app | iOS target identifier; required when the platform is `ios` |
+| `base_url` | app | web target URL (Playwright backend); required when the platform is `web` |
+| `package` | app | Android target identifier; required when the platform is `android` |
 | `headless` | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
-| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)) |
+| `browser` | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
+| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args) |
 | `launch_env` / `launch_args` | app | merged/appended by preconditions at run time |
+| `ready_when` | app | optional `readyWhen: { id: … }` — a selector the launch waits for before the run starts, instead of the default "the app rendered any 2+ elements". Use it for an app whose first interactive screen is a modal over always-present chrome (the element-count heuristic can return before the modal presents). A condition wait, never a fixed sleep. Set it only when **every** scenario for the target starts on that same screen; when first screens vary per scenario, lead each scenario with a `wait` step instead |
 | `id_namespaces` | app | referenced by doctor |
 | `reserved_namespaces` | defaults | informational (doctor scores against the app's `idNamespaces` only) |
 | `mock_server` | app | ⚠️ schema only · not wired |
@@ -67,6 +78,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `capture` | defaults | the default evidence ([the note in evidence](evidence.md#three-ways-to-request-evidence)) |
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
+| `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
 
 The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
 defaults / app).
@@ -85,6 +97,43 @@ At run time `bajutsu run` resolves each declared name from the environment, inte
 into the action (`${secrets.X}`), and **masks the literal value everywhere it would appear in
 evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
 token, never the value.
+
+### AI provider (`ai:`, BE-0047)
+
+The AI paths — `record`, `triage --ai`, and the `--dismiss-alerts` guard — reach the model through
+one provider configured by an optional `ai` block, declared in `defaults` and/or `targets.<name>`
+and merged **field by field** (the target's value wins per field). The block resolves into
+`Effective.ai`, so the CLI and `serve` agree on one source of truth. This is the enforcement behind
+"your AI, your key, your data": every AI path runs under the key and endpoint you configure, and the
+deterministic `run` gate still calls no model at all
+([BE-0047](../roadmaps/implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)).
+
+```yaml
+defaults:
+  ai:
+    provider: anthropic                      # anthropic (default) | bedrock
+    model:    claude-opus-4-8                 # optional: override the path's default model
+    baseUrl:  https://ai-gateway.internal/v1  # optional: a self-hosted gateway / enterprise proxy (anthropic provider)
+    keyEnv:   ANTHROPIC_API_KEY               # the NAME of the env var holding the key — never the key itself
+```
+
+- **Keys never live in config.** `keyEnv` names an environment variable; the value is read from the
+  environment at call time, so a secret never lands in the repo or an uploaded bundle. `baseUrl`
+  points the Anthropic SDK at a self-hosted gateway / proxy (`Anthropic(base_url=…,
+  api_key=os.environ[keyEnv])`), so your screenshots and element trees only ever reach the endpoint
+  you set, never a vendor default. Bedrock keeps the standard AWS credential chain (`AWS_REGION` +
+  env / shared profile / instance or task role) and needs a provider-prefixed `model`.
+- **Config first, environment fallback.** Any field you omit falls back to today's environment
+  variables — `BAJUTSU_AI_PROVIDER`, `ANTHROPIC_API_KEY`, `BAJUTSU_BEDROCK_MODEL` — so a config with
+  no `ai` block behaves exactly as before.
+- **Fail closed.** `record`, `triage --ai`, and an explicitly-requested `--dismiss-alerts` exit with
+  a clear, provider-specific error when the selected provider has no usable credential — they never
+  construct a client that quietly falls back to a hosted default.
+- **The textual inputs are redacted; screenshots cannot be.** The element trees, failure text, and
+  the (possibly user-supplied) alert instruction sent to the model are scrubbed by the same run-scoped
+  redaction as written evidence (the target's `redact` keys + resolved secret values). Screenshots
+  are images and `redaction` masks text, not pixels — so the second guarantee carries them: every
+  input, screenshots included, goes only to the provider/endpoint you configured.
 
 ### Mailbox (the `email` step)
 
@@ -134,6 +183,27 @@ single-tenant — the CLI and local `serve` ignore `orgs:` entirely.
 Every command in the CLI (command-line interface) selects one app with `--target <name>` and points at
 config with `--config` (default `bajutsu.config.yaml`). `--backend ios` (or a comma list of
 platforms/actuators) overrides the resolved order ([cli](cli.md)).
+
+### Cross-browser matrix (`--browsers`, BE-0076)
+
+`bajutsu run --browsers chromium,firefox,webkit` runs the selected scenarios once per engine and
+emits a single **engine × scenario pass/fail matrix** — the multi-engine spelling of the `--browser`
+axis (web backend only; `--browsers chromium` is exactly `--browser chromium`, and a single engine
+takes the ordinary single-engine path). The run is **green only if every requested engine passes
+every scenario** (all-must-pass); a scenario green on Chromium and Firefox but red on WebKit is a
+machine-detected rendering-engine incompatibility — the kind of "works in Chrome, broken in Safari"
+bug a single-engine test can never see. The verdict is purely the existing deterministic per-engine
+`run` outcomes aggregated; no AI enters it.
+
+Each engine is a full pass against its own browser pool, so its evidence lands under
+`runs/<id>/<engine>/<NN-scenario>/` (no collisions between engines). The run then assembles **one**
+`manifest.json`, `junit.xml`, and `report.html` at the run root: the manifest carries a `matrix`
+block aggregating the per-engine verdicts, the report renders the engine × scenario grid, and JUnit
+keys the engine into each case (`classname="bajutsu.<engine>"`) so CI sees `chromium.login` and
+`webkit.login` as distinct cases ([reporting](reporting.md#manifestjson)). An unknown engine in the
+list exits 2 before any browser launches, the same as `--browser`. All three engines run headless on
+Linux, so the matrix runs inside the ordinary gate with no Mac or device farm; the firefox/webkit
+binaries are installed on demand.
 
 ### Config from a Git repository (BE-0063)
 
@@ -237,7 +307,8 @@ searchField / textView / switch / slider / tab / cell).
 
 ### Grading
 
-- **Blocked**: any duplicate id **or** `idCoverage` < 0.7.
+- **Blocked**: no actionable elements on the screen (most likely blank, not yet loaded, or the
+  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < 0.7.
 - **Ready**: `idCoverage` ≥ 0.9 **and** `namespaceConformance` == 1.0.
 - **Partial**: otherwise (runnable, but a forecast of coordinate fallback / flakiness).
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -32,7 +33,7 @@ from bajutsu.anthropic_client import (
 from bajutsu.config import load_config, resolve, targets_for_org
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.scenario import load_scenario_file
-from bajutsu.serve import jobs
+from bajutsu.serve import jobs, oplog
 
 # Identity / RBAC / audit live in `authz` now; re-exported here so the HTTP shells keep reaching
 # them through the `operations` facade (`ops.login`, `ops.forbidden_for_role`, …) unchanged.
@@ -83,6 +84,8 @@ from bajutsu.serve.sso import AWS_PROFILE_ENV, SsoError
 from bajutsu.serve.uploads import BundleError, Upload, extract_bundle, find_bundle_config
 
 _REPORT_SUFFIX = "/report.html"
+
+_logger = logging.getLogger("bajutsu.serve.operations")
 
 
 def run_file(store: ArtifactStore, rel: str) -> Artifact | None:
@@ -521,8 +524,23 @@ def _register_and_dispatch(
     hit. The atomic count+create in `try_register` is what keeps concurrent dispatches under the cap."""
     registered = state.try_register(job)
     if registered is None:
+        oplog.log_event(
+            _logger,
+            "quota.rejected",
+            "concurrency cap hit; job rejected",
+            org=job.org,
+            actor=job.actor,
+        )
         return None, ({"error": "too many concurrent jobs; try again shortly"}, 429)
     state.executor.dispatch(state, registered)
+    oplog.log_event(
+        _logger,
+        "run.dispatched",
+        "job dispatched",
+        job_id=registered.id,
+        org=registered.org,
+        actor=registered.actor,
+    )
     return registered, None
 
 
@@ -591,6 +609,9 @@ def start_run(
         else ("baselines" if on_worker else str(state.baselines_dir)),
         headed=_bool_flag(body, "headed"),
         runs_dir=runs_dir,
+        # Govern the uploaded bundle's launchServer command (BE-0090); a local/Git config is
+        # operator-trusted and ungoverned, so it gets no flag.
+        upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, target)
     if state.upload is not None:
@@ -733,6 +754,7 @@ def start_record(
         dismiss_alerts=_bool_flag(body, "dismissAlerts"),
         headed=_bool_flag(body, "headed"),
         config=config_arg,
+        upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, body["target"])
     job, capped = _register_and_dispatch(
@@ -798,6 +820,7 @@ def start_crawl(
         config=str(cfg),
         resume_src=resume_src if resuming else "",
         resume_key=resume_key if resuming else "",
+        upload_exec=state.upload_exec if state.upload is not None else "",
     )
     app_path, build = target_build_info(cfg, target)
     # Cap concurrency like run/record: crawl is long and device-heavy (BE-0051 slice 5).

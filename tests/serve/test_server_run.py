@@ -264,6 +264,27 @@ def test_build_state_server_parses_the_per_user_quota(
     assert state.max_concurrent_per_user == 3
 
 
+def test_build_state_server_parses_the_per_org_quota(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_MAX_CONCURRENT_PER_ORG", "5")
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert state.max_concurrent_per_org == 5
+
+
 def test_build_state_server_has_no_oauth_without_the_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

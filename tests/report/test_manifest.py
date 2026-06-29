@@ -115,6 +115,88 @@ def test_manifest_omits_idb_block_when_both_versions_unknown() -> None:
     assert "idb" not in m
 
 
+# --- cross-browser matrix (BE-0076 Phase 2): pure aggregation of per-engine verdicts ---
+
+
+def _engine_result(scenario: str, engine: str, *, ok: bool) -> RunResult:
+    """A per-engine RunResult tagged with its rendering engine (what a `--browsers` pass produces)."""
+    return RunResult(
+        scenario=scenario,
+        ok=ok,
+        steps=[],
+        backend="playwright",
+        engine=engine,
+        failure=None if ok else f"failed on {engine}",
+    )
+
+
+def test_manifest_has_no_matrix_block_for_single_engine() -> None:
+    # A single-engine run (no `engine` tag) keeps exactly today's shape — no matrix machinery.
+    m = manifest_dict("r", [_passing()])
+    assert "matrix" not in m
+
+
+def test_manifest_matrix_aggregates_per_engine_verdicts() -> None:
+    # chromium passes "login", webkit fails it: the matrix is a pure aggregation of those verdicts.
+    results = [
+        _engine_result("login", "chromium", ok=True),
+        _engine_result("login", "webkit", ok=False),
+    ]
+    m = manifest_dict("r", results)
+    matrix = m["matrix"]
+    assert matrix["engines"] == ["chromium", "webkit"]
+    assert matrix["scenarios"] == ["login"]
+    cells = matrix["cells"]
+    assert cells["login"]["chromium"]["ok"] is True
+    assert cells["login"]["webkit"]["ok"] is False
+    assert cells["login"]["webkit"]["failure"] == "failed on webkit"
+
+
+def test_manifest_matrix_keeps_flat_engine_tagged_scenarios() -> None:
+    # The v1 shape is kept: `scenarios` stays the flat, engine-tagged result list.
+    results = [
+        _engine_result("login", "chromium", ok=True),
+        _engine_result("login", "webkit", ok=False),
+    ]
+    m = manifest_dict("r", results)
+    assert [(s["scenario"], s["engine"]) for s in m["scenarios"]] == [
+        ("login", "chromium"),
+        ("login", "webkit"),
+    ]
+
+
+def test_manifest_matrix_ok_is_all_must_pass() -> None:
+    # Green only if every engine passes every scenario; one engine failing fails the run.
+    all_pass = [
+        _engine_result("login", "chromium", ok=True),
+        _engine_result("login", "webkit", ok=True),
+    ]
+    assert manifest_dict("r", all_pass)["ok"] is True
+    one_fails = [
+        _engine_result("login", "chromium", ok=True),
+        _engine_result("login", "webkit", ok=False),
+    ]
+    assert manifest_dict("r", one_fails)["ok"] is False
+
+
+def test_junit_keys_engine_into_classname() -> None:
+    # CI sees chromium.login and webkit.login as distinct cases.
+    xml = junit_xml(
+        [
+            _engine_result("login", "chromium", ok=True),
+            _engine_result("login", "webkit", ok=False),
+        ]
+    )
+    assert 'classname="bajutsu.chromium"' in xml
+    assert 'classname="bajutsu.webkit"' in xml
+
+
+def test_junit_single_engine_classname_stays_bajutsu() -> None:
+    # No engine tag → today's classname, so a non-matrix run is unchanged.
+    assert 'classname="bajutsu"' in junit_xml([_passing()])
+    assert "bajutsu." not in junit_xml([_passing()])
+
+
 def test_junit_pass_and_fail() -> None:
     ok_xml = junit_xml([_passing()])
     assert 'tests="1"' in ok_xml

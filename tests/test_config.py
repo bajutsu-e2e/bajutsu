@@ -68,6 +68,53 @@ def test_redact_is_merged() -> None:
     assert eff.redact.fields == ["token", "password"]
 
 
+# BE-0047: the `ai` block resolves like any other setting (defaults overridden per target) into
+# an AiConfig the AI paths read; an absent block resolves to None (env-only, as before).
+
+
+def test_ai_block_resolves_from_defaults() -> None:
+    cfg = load_config(
+        "defaults:\n"
+        "  ai:\n"
+        "    provider: anthropic\n"
+        "    model: claude-opus-4-8\n"
+        "    baseUrl: https://gw.internal/v1\n"
+        "    keyEnv: MY_KEY\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    ai = resolve(cfg, "s").ai
+    assert ai is not None
+    assert ai.provider == "anthropic"
+    assert ai.model == "claude-opus-4-8"
+    assert ai.base_url == "https://gw.internal/v1"
+    assert ai.key_env == "MY_KEY"
+
+
+def test_ai_block_target_overrides_defaults() -> None:
+    cfg = load_config(
+        "defaults:\n  ai: { provider: anthropic, model: claude-opus-4-8, keyEnv: TEAM_KEY }\n"
+        "targets:\n  s:\n    bundleId: com.x\n    ai: { model: claude-sonnet-x, keyEnv: APP_KEY }\n"
+    )
+    ai = resolve(cfg, "s").ai
+    assert ai is not None
+    assert ai.provider == "anthropic"  # falls through from defaults
+    assert ai.model == "claude-sonnet-x"  # target override
+    assert ai.key_env == "APP_KEY"  # target override
+
+
+def test_ai_block_absent_resolves_to_none() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").ai is None
+
+
+def test_ai_block_keys_in_config_are_rejected() -> None:
+    # A literal key in config is a foot-gun the schema forbids: only keyEnv (a NAME) is allowed.
+    with pytest.raises(ValidationError):
+        load_config(
+            "defaults:\n  ai: { apiKey: sk-ant-secret }\ntargets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
 def test_backend_single_string_normalized() -> None:
     cfg = load_config("defaults: { backend: idb }\ntargets: { x: { bundleId: com.x } }")
     assert resolve(cfg, "x").backend == ["idb"]
@@ -109,6 +156,15 @@ def test_scenarios_parsed() -> None:
     assert resolve(cfg, "x").scenarios == "scn/dir"
 
 
+def test_ready_when_selector_parsed() -> None:
+    cfg = load_config("targets: { x: { bundleId: com.x, readyWhen: { id: onboarding.start } } }")
+    assert resolve(cfg, "x").ready_when == {"id": "onboarding.start"}
+
+
+def test_ready_when_defaults_to_none() -> None:
+    assert resolve(load_config("targets: { x: { bundleId: com.x } }"), "x").ready_when is None
+
+
 def test_web_app_baseurl_no_bundleid() -> None:
     # A web app identifies its target by baseUrl and needs no bundleId; bundle_id defaults to "".
     cfg = load_config(
@@ -128,6 +184,26 @@ def test_web_app_headless_override() -> None:
     # `bajutsu run --headed` flag and the Web UI's "show browser" toggle do the same per run.
     cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/', headless: false } }")
     assert resolve(cfg, "web").headless is False
+
+
+def test_web_app_browser_defaults_to_chromium() -> None:
+    # The browser engine defaults to chromium, preserving today's single-engine behaviour (BE-0076).
+    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/' } }")
+    assert resolve(cfg, "web").browser == "chromium"
+
+
+def test_web_app_browser_config_resolves() -> None:
+    # A target can pin its engine via `browser`; it resolves straight onto Effective (a per-target
+    # knob, like headless).
+    cfg = load_config("targets: { web: { baseUrl: 'http://127.0.0.1:8787/', browser: firefox } }")
+    assert resolve(cfg, "web").browser == "firefox"
+
+
+def test_web_app_unknown_browser_rejected_at_load() -> None:
+    # A typo'd engine fails loudly at config load (the field_validator), not as a mid-run
+    # AttributeError when the driver does getattr(pw, engine).
+    with pytest.raises(ValidationError, match="invalid browser"):
+        load_config("targets: { web: { baseUrl: 'http://x/', browser: safari } }")
 
 
 def test_web_app_launch_server_parsed() -> None:
@@ -243,3 +319,71 @@ def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
         )
         with pytest.raises(ValueError, match="escapes the checkout"):
             eff.rebased(Path("/co"))
+
+
+# --- Platform discriminator (BE-0009 Slice 4) --- #
+
+
+def test_platform_explicit_resolves_into_effective() -> None:
+    # An explicit `platform` on the target is authoritative and reaches Effective.
+    cfg = load_config(
+        "targets:\n  s:\n    platform: ios\n    bundleId: com.x\n    backend: [idb]\n"
+    )
+    assert resolve(cfg, "s").platform == "ios"
+
+
+def test_platform_defaults_apply_when_target_omits_it() -> None:
+    # A team-wide `defaults.platform` flows to a target that doesn't override it.
+    cfg = load_config(
+        "defaults:\n  platform: web\ntargets:\n  s:\n    baseUrl: https://app.test\n"
+        "    backend: [playwright]\n"
+    )
+    assert resolve(cfg, "s").platform == "web"
+
+
+def test_platform_derived_from_backend_when_unset() -> None:
+    # With no explicit platform anywhere, it's derived from the backend (today's implicit behavior),
+    # so existing configs are unchanged: playwright -> web, idb -> ios.
+    web = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
+    assert resolve(web, "s").platform == "web"
+    ios = load_config("targets:\n  s:\n    bundleId: com.x\n    backend: [idb]\n")
+    assert resolve(ios, "s").platform == "ios"
+
+
+def test_package_resolves_into_effective() -> None:
+    # The Android identifier (peer of bundleId / baseUrl) resolves onto Effective.
+    cfg = load_config(
+        "targets:\n  s:\n    platform: android\n    package: com.x.app\n    backend: [adb]\n"
+    )
+    eff = resolve(cfg, "s")
+    assert eff.platform == "android"
+    assert eff.package == "com.x.app"
+
+
+def test_unknown_platform_is_rejected_at_load() -> None:
+    with pytest.raises(ValidationError, match="platform"):
+        load_config("targets:\n  s:\n    platform: martian\n    bundleId: com.x\n")
+
+
+def test_ios_platform_requires_bundle_id() -> None:
+    # An iOS target carrying the wrong identifier (baseUrl, no bundleId) is rejected with a
+    # platform-aware message — distinct from the "no identifier at all" check.
+    with pytest.raises(ValidationError, match="bundleId"):
+        load_config("targets:\n  s:\n    platform: ios\n    baseUrl: https://app.test\n")
+
+
+def test_web_platform_requires_base_url() -> None:
+    with pytest.raises(ValidationError, match="baseUrl"):
+        load_config("targets:\n  s:\n    platform: web\n    bundleId: com.x\n")
+
+
+def test_android_platform_requires_package() -> None:
+    with pytest.raises(ValidationError, match="package"):
+        load_config("targets:\n  s:\n    platform: android\n    bundleId: com.x\n")
+
+
+def test_web_target_without_explicit_platform_still_loads() -> None:
+    # Backward compatibility: a web target declared the pre-Slice-4 way (baseUrl + playwright, no
+    # `platform`) loads fine — the platform is derived from the backend, baseUrl is its identifier.
+    cfg = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
+    assert resolve(cfg, "s").platform == "web"

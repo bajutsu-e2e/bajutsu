@@ -140,3 +140,76 @@ def test_bilingual_header_link_is_not_flagged(tmp_path: Path) -> None:
     header = "**English** · [日本語](BE-9001-source-ja.md)\n"
     _write_item(roadmap, "proposals", "BE-9001-source", body=header)
     assert lr.broken_links(roadmap) == []
+
+
+def _write_doc(repo: Path, rel: str, body: str) -> Path:
+    """Create a Markdown file at ``repo/rel`` (a docs page or a top-level README/CLAUDE)."""
+    path = repo / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_docs_link_to_moved_item_detected_and_fixed(tmp_path: Path) -> None:
+    # A docs page links an item by its *old* folder after the item was promoted (BE-0096): the
+    # link rots, but the docs side was never checked or repaired until this.
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    doc = _write_doc(
+        tmp_path,
+        "docs/guide.md",
+        "see [BE-9002](../roadmaps/implemented/BE-9002-target/BE-9002-target.md)\n",
+    )
+
+    broken = lr.docs_broken_links(roadmap)
+    assert len(broken) == 1
+    assert broken[0].suggestion == "../roadmaps/proposals/BE-9002-target/BE-9002-target.md"
+
+    assert lr.fix_links(roadmap) == 1
+    assert lr.docs_broken_links(roadmap) == []
+    assert "../roadmaps/proposals/BE-9002-target/BE-9002-target.md" in doc.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_docs_resolving_link_passes(tmp_path: Path) -> None:
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    _write_doc(
+        tmp_path,
+        "docs/guide.md",
+        "see [BE-9002](../roadmaps/proposals/BE-9002-target/BE-9002-target.md)\n",
+    )
+    assert lr.docs_broken_links(roadmap) == []
+
+
+def test_docs_dangling_link_reported_not_fixed(tmp_path: Path) -> None:
+    roadmap = tmp_path / "roadmaps"
+    _write_doc(
+        tmp_path,
+        "docs/guide.md",
+        "see [BE-9999](../roadmaps/proposals/BE-9999-ghost/BE-9999-ghost.md)\n",
+    )
+    broken = lr.docs_broken_links(roadmap)
+    assert len(broken) == 1 and broken[0].suggestion is None
+    assert lr.fix_links(roadmap) == 0
+
+
+def test_top_level_readme_and_claude_md_covered(tmp_path: Path) -> None:
+    # The repo-root README.md / README.ja.md / CLAUDE.md link to items too, with no leading ``../``.
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-9002-target")
+    for name in ("README.md", "README.ja.md", "CLAUDE.md"):
+        _write_doc(
+            tmp_path,
+            name,
+            f"link [BE-9002](roadmaps/implemented/BE-9002-target/BE-9002-target.md) in {name}\n",
+        )
+
+    broken = lr.docs_broken_links(roadmap)
+    assert {b.source.name for b in broken} == {"README.md", "README.ja.md", "CLAUDE.md"}
+    assert all(
+        b.suggestion == "roadmaps/proposals/BE-9002-target/BE-9002-target.md" for b in broken
+    )
+    assert lr.fix_links(roadmap) == 3
+    assert lr.docs_broken_links(roadmap) == []

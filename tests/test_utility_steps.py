@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 
@@ -60,6 +62,19 @@ def test_clear_clipboard_step_parses() -> None:
 # --- http runtime ---
 
 
+@contextmanager
+def _serving(handler: type[BaseHTTPRequestHandler]) -> Iterator[int]:
+    """Run *handler* on a loopback HTTP server, yielding its port. Polls often so teardown's
+    `shutdown()` returns promptly instead of blocking on the 0.5s default poll tick."""
+    server = HTTPServer(("127.0.0.1", 0), handler)
+    Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+    try:
+        yield server.server_address[1]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_step_succeeds_with_matching_status() -> None:
     handler_calls: list[str] = []
 
@@ -73,11 +88,7 @@ def test_http_step_succeeds_with_matching_status() -> None:
         def log_message(self, *args: object) -> None:
             pass
 
-    server = HTTPServer(("127.0.0.1", 0), Handler)
-    port = server.server_address[1]
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
+    with _serving(Handler) as port:
         result = run_scenario(
             FakeDriver([el("x", "X")]),
             _scenario(
@@ -90,9 +101,6 @@ def test_http_step_succeeds_with_matching_status() -> None:
         )
         assert result.ok, result.failure
         assert handler_calls == ["/test"]
-    finally:
-        server.shutdown()
-        server.server_close()
 
 
 def test_http_step_fails_on_status_mismatch() -> None:
@@ -104,11 +112,7 @@ def test_http_step_fails_on_status_mismatch() -> None:
         def log_message(self, *args: object) -> None:
             pass
 
-    server = HTTPServer(("127.0.0.1", 0), Handler)
-    port = server.server_address[1]
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
+    with _serving(Handler) as port:
         result = run_scenario(
             FakeDriver([el("x", "X")]),
             _scenario(
@@ -121,9 +125,6 @@ def test_http_step_fails_on_status_mismatch() -> None:
         )
         assert not result.ok
         assert "status" in (result.failure or "").lower()
-    finally:
-        server.shutdown()
-        server.server_close()
 
 
 def test_http_step_saves_body_to_vars() -> None:
@@ -136,11 +137,7 @@ def test_http_step_saves_body_to_vars() -> None:
         def log_message(self, *args: object) -> None:
             pass
 
-    server = HTTPServer(("127.0.0.1", 0), Handler)
-    port = server.server_address[1]
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
+    with _serving(Handler) as port:
         driver = FakeDriver([el("x", "X", value="response-data-123")])
         result = run_scenario(
             driver,
@@ -156,9 +153,6 @@ def test_http_step_saves_body_to_vars() -> None:
             clock=FakeClock(),
         )
         assert result.ok, result.failure
-    finally:
-        server.shutdown()
-        server.server_close()
 
 
 def test_http_step_rejects_non_http_scheme() -> None:

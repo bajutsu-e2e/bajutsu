@@ -26,7 +26,7 @@ from bajutsu.drivers.idb import IdbDriver
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
 # either a platform token (these keys) or a bare actuator name (the values below).
 PLATFORMS: dict[str, tuple[str, ...]] = {
-    "ios": ("idb",),  # later: ("xcuitest", "idb")
+    "ios": ("xcuitest", "idb"),  # XCUITest preferred, idb fallback (BE-0019)
     "android": ("adb",),
     "web": ("playwright",),
     "fake": ("fake",),
@@ -101,37 +101,42 @@ def select_actuator(
     raise RuntimeError(f"no available actuator among {actuators} (requested {backends})")
 
 
-def ensure_web_runtime(backends: list[str]) -> None:
-    """Provision the web backend on demand.
+def ensure_web_runtime(backends: list[str], browser: str = "chromium") -> None:
+    """Provision the web backend (and the requested engine) on demand.
 
     When a `web`/`playwright` backend is requested but the Playwright package is absent
     (e.g. the venv currently carries the idb extra, as after `make serve`), install it
-    *additively* — `uv pip install` so it doesn't evict idb — plus the Chromium browser,
-    then let the run proceed. Idempotent and a no-op unless web is requested and missing;
-    mirrors how `make serve` provisions idb on demand. The deterministic run/CI gate
-    drives the fake backend and never reaches this.
+    *additively* — `uv pip install` so it doesn't evict idb. Then, whether or not the package was
+    just added, install the engine this run needs (`playwright install <browser>`). `playwright
+    install` is idempotent — a present browser is a fast no-op and a missing one is fetched — so a
+    `firefox` / `webkit` run pulls its binary on first use without disturbing Chromium (BE-0076).
+
+    A no-op unless web is requested; mirrors how `make serve` provisions idb on demand. The
+    deterministic run/CI gate drives the fake backend and never reaches this.
     """
-    if "playwright" not in resolve_actuators(backends) or _playwright_available():
+    if "playwright" not in resolve_actuators(backends):
         return
     import importlib
     import subprocess
     import sys
 
-    sys.stderr.write(
-        "bajutsu: web backend requested but Playwright is not installed — installing it now "
-        "(uv pip install playwright + chromium). This runs once per environment.\n"
-    )
-    sys.stderr.flush()
+    pkg_missing = not _playwright_available()
     try:
-        subprocess.run(["uv", "pip", "install", "playwright"], check=True)
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        if pkg_missing:
+            sys.stderr.write(
+                "bajutsu: web backend requested but Playwright is not installed — installing it "
+                "now (uv pip install playwright). This runs once per environment.\n"
+            )
+            sys.stderr.flush()
+            subprocess.run(["uv", "pip", "install", "playwright"], check=True)
+            importlib.invalidate_caches()  # so find_spec() in select_actuator sees the new package
+        subprocess.run([sys.executable, "-m", "playwright", "install", browser], check=True)
     except (OSError, subprocess.CalledProcessError) as e:
         raise RuntimeError(
             "failed to auto-install the web backend (Playwright). Install it manually with "
-            "`uv pip install playwright && uv run playwright install chromium`, or `uv sync "
+            f"`uv pip install playwright && uv run playwright install {browser}`, or `uv sync "
             "--extra web`."
         ) from e
-    importlib.invalidate_caches()  # so the find_spec() in select_actuator sees the freshly-added package
 
 
 def capabilities_for(actuator: str) -> frozenset[str]:
@@ -151,6 +156,12 @@ def capabilities_for(actuator: str) -> frozenset[str]:
         from bajutsu.drivers.playwright import PlaywrightDriver
 
         return PlaywrightDriver.CAPABILITIES
+    if actuator == "xcuitest":
+        # The richer iOS actuator's capabilities are readable before its runner is wired into
+        # selection (BE-0019): reading the class constant constructs no driver and starts no runner.
+        from bajutsu.drivers.xcuitest import XcuitestDriver
+
+        return XcuitestDriver.CAPABILITIES
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
@@ -164,6 +175,7 @@ def make_driver(
     *,
     base_url: str | None = None,
     headless: bool = True,
+    browser: str = "chromium",
     record_video_dir: Path | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments."""
@@ -177,9 +189,84 @@ def make_driver(
 
         if not base_url:
             raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")
-        return PlaywrightDriver(base_url, headless=headless, record_video_dir=record_video_dir)
+        return PlaywrightDriver(
+            base_url, headless=headless, browser=browser, record_video_dir=record_video_dir
+        )
     if actuator in KNOWN_ACTUATORS:
         raise NotImplementedError(
             f"backend {actuator!r} is planned but not implemented yet (see docs/multi-platform.md)"
         )
     raise ValueError(f"unknown backend: {actuator!r}")
+
+
+# Evidence *kind* -> the capability that supplies it natively (BE-0020). Today only network; a
+# kind whose capability the actuator lacks is filled read-only by a same-platform provider below.
+KIND_CAPABILITY: dict[str, str] = {"network": base.Capability.NETWORK}
+
+
+def _platform_of(actuator: str, platforms: dict[str, tuple[str, ...]]) -> str | None:
+    """The platform whose actuator set contains *actuator* (reverse lookup)."""
+    return next((p for p, acts in platforms.items() if actuator in acts), None)
+
+
+def platform_of(actuator: str) -> str | None:
+    """The platform an actuator belongs to (`idb` -> `ios`, `playwright` -> `web`), or None if unknown.
+
+    Lets config derive a target's platform from its backend (BE-0009 Slice 4).
+    """
+    return _platform_of(actuator, PLATFORMS)
+
+
+def evidence_backends(
+    backends: list[str],
+    actuator: str,
+    available: Callable[[str], bool] = default_available,
+    platforms: dict[str, tuple[str, ...]] = PLATFORMS,
+) -> list[str]:
+    """The read-only evidence providers for *actuator* (BE-0020).
+
+    Returns the remaining available actuators on the actuator's own platform, in `backends` order
+    (deduped, the actuator excluded). Eligibility is *same system under test*: only a same-platform
+    backend observes the
+    same running app, so a cross-platform token (e.g. `web` for an `idb` run) is never a provider.
+    `platforms` is injectable so the resolver is unit-testable before a platform has two actuators.
+    """
+    platform = _platform_of(actuator, platforms)
+    if platform is None:
+        return []
+    siblings = set(platforms.get(platform, ()))
+    out: list[str] = []
+    for token in backends:
+        for a in platforms.get(token, (token,)):
+            if a != actuator and a in siblings and available(a) and a not in out:
+                out.append(a)
+    return out
+
+
+def resolve_evidence_providers(
+    backends: list[str],
+    actuator: str,
+    available: Callable[[str], bool] = default_available,
+    caps: Callable[[str], frozenset[str]] = capabilities_for,
+    platforms: dict[str, tuple[str, ...]] = PLATFORMS,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Resolve one read-only provider per evidence gap (BE-0020).
+
+    For each kind the actuator lacks natively (its `caps` miss the kind's capability), pick the
+    first eligible same-platform provider that advertises it. Returns ``(providers, skipped)``:
+    ``providers`` maps a gap kind to its provider actuator; ``skipped`` maps a gap kind with no
+    provider to a recorded reason (graceful degradation, never a run failure).
+    """
+    actuator_caps = caps(actuator)
+    providers = evidence_backends(backends, actuator, available, platforms)
+    chosen: dict[str, str] = {}
+    skipped: dict[str, str] = {}
+    for kind, capability in KIND_CAPABILITY.items():
+        if capability in actuator_caps:
+            continue  # the actuator supplies it natively — no fallback needed
+        provider = next((b for b in providers if capability in caps(b)), None)
+        if provider is not None:
+            chosen[kind] = provider
+        else:
+            skipped[kind] = f"no same-platform backend provides {kind} ({capability})"
+    return chosen, skipped

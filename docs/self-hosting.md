@@ -114,6 +114,32 @@ token auth on every request, `/api/run` and `/api/record` confined to the app's 
 validated `backend`/`udid`, a CSRF Origin check plus security headers, and a concurrency cap on run
 dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patched.
 
+## Uploaded-config command execution (BE-0090)
+
+An uploaded `.zip` bundle can carry a config whose `launchServer.cmd` (and, once wired,
+`mockServer.cmd`) names a shell command to bring up the app under test. That command is **untrusted
+input**, so `serve` never runs it on the bare host. The `--upload-exec` option (or the
+`BAJUTSU_UPLOAD_EXEC` environment variable, for the hosted backend) chooses what happens when an
+*uploaded* bundle's run needs that command — it applies only to upload-sourced configs; a local or
+Git-sourced config is operator-trusted and unaffected:
+
+- **`sandbox`** (the default) — run the command inside a throwaway **Docker** container, never on the
+  `serve` host. The bundle declares its runtime with **exactly one** of `dockerImage` (a published
+  base image, e.g. `node:20-slim`) or `dockerfile` (a bundle-relative path that `serve` builds with
+  `docker build`), plus a `port` (the in-container listen port). The container is hardened —
+  `--rm`, all capabilities dropped, no new privileges, a read-only root filesystem with a `tmpfs`
+  scratch, a non-root user, CPU/memory/pid caps, and only its one port published to a **loopback**
+  host port — and torn down after the run. Docker must be installed on the `serve` host.
+- **`reuse`** — never run the uploaded command; only probe an operator-provisioned server already
+  answering at `baseUrl`. If nothing answers, the run fails loud rather than starting anything.
+- **`deny`** — refuse the uploaded command outright; like `reuse`, an externally-answering server is
+  accepted, otherwise the run fails loud.
+
+No mode ever runs an uploaded command on the bare host, and none silently falls back to doing so — a
+blocked or misconfigured `launchServer` fails with a clear error, never a flaky-looking run. The
+decision (denied / reused / sandboxed, and the image when sandboxed) is recorded in the run's
+`manifest.json` provenance, so "what did this run execute, and what was suppressed?" stays answerable.
+
 ## Tier B — self-hosting the server backend
 
 Tier A is one process on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
@@ -220,4 +246,50 @@ artifact reads as not-found or returns 403, and each org's artifacts/scenarios/b
 its own object-store prefix. With no `orgs:` block the backend stays single-tenant (one default org),
 and the shared token plus the GitHub allowlist are the access boundary. The fully managed public
 cloud offering (a hosted Mac worker pool + IaC) is still future work in BE-0015.
+
+**Keeping the Mac pool fair across orgs.** Set `BAJUTSU_MAX_CONCURRENT_PER_ORG` to cap how many runs
+one org may have in flight at once, so a busy org can't monopolize the scarce devices even when its
+users each stay under their own `BAJUTSU_MAX_CONCURRENT_PER_USER`. Both default to unlimited (`0`),
+and both sit under the global `--max-concurrent-runs`; an over-cap request is rejected (HTTP 429)
+rather than queued. (Fair *scheduling* across orgs — holding the rejected work in a per-org queue and
+dispatching it round-robin — is still future work; today the cap rejects.)
+
+## Operational logging
+
+The hosted serve emits its own diagnostic trace — **structured JSON, written to stdout, with
+secrets redacted** — so you can follow one user action across the control plane and its workers.
+This is separate from the three log surfaces you already have: the test subject's **evidence**, the
+live **run output** stream, and the **audit log** of who-did-what. Aggregating these lines (shipping
+stdout to your log stack) is the deployment's job — the tool only produces them.
+
+Two environment variables select the format and verbosity (read once at startup):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BAJUTSU_LOG_FORMAT` | `json` | `json` for the structured serve channel, or `text` for a human-readable line. |
+| `BAJUTSU_LOG_LEVEL` | `INFO` | Standard level name (`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`). |
+
+The deterministic `run` / CI path is unaffected: it never configures this channel, so it stays
+quiet and stdlib-only.
+
+**Correlation.** Each JSON line carries the ids that let you trace one action end to end —
+`request_id` minted at the request boundary, and `job_id` / `org` / `actor` / `run_id` bound on the
+worker — so a control-plane request and the worker run it triggered share the same id *values*
+across processes. A line looks like:
+
+```json
+{"ts": "2026-06-28T12:00:00+00:00", "level": "INFO", "logger": "bajutsu.serve.operations",
+ "event": "run.dispatched", "msg": "job dispatched", "request_id": "…", "org": "acme",
+ "job_id": "…"}
+```
+
+The `event` field names a stable event (`run.dispatched`, `quota.rejected`, `worker.job.started`,
+`worker.job.finished`, `artifact.upload.failed`, …) so you can grep and alert on it.
+
+**Redaction is structural.** A single filter sits at the root logger, so *every* line — including
+ones from third-party libraries — is scrubbed before it is written; correctness does not depend on
+each call site remembering to mask. It masks known secret **values** (the operator token, the OAuth
+client secret, `ANTHROPIC_API_KEY`, and a run's resolved `${secrets.X}` while that run is in flight)
+and sensitive field **names** (`authorization`, `token`, `secret`, `password`, `cookie`, `api_key`),
+replacing them with `[REDACTED]`.
 

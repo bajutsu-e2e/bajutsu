@@ -22,7 +22,6 @@ struct NoticesView: View {
                 NoticeDetailView(id: id)
             }
         }
-        .accessibilityID("notice.title")
     }
 }
 
@@ -33,6 +32,7 @@ struct NoticeDetailView: View {
     private var notice: Notice? { model.notice(id: id) }
 
     var body: some View {
+        // The standard system back button pops back; idb drives it by its built-in id `BackButton`.
         Form {
             Text(notice?.title ?? "Notice \(id)")
                 .font(.title2)
@@ -43,17 +43,5 @@ struct NoticeDetailView: View {
         }
         .navigationTitle(notice?.title ?? "Notice \(id)")
         .navigationBarTitleDisplayMode(.inline)
-        // The system back button is given the reserved nav.back id explicitly (SPEC §5.1).
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    if !model.noticesPath.isEmpty { model.noticesPath.removeLast() }
-                } label: {
-                    Label("Back", systemImage: "chevron.backward")
-                }
-                .accessibilityID("nav.back")
-            }
-        }
-        .navigationBarBackButtonHidden()
     }
 }

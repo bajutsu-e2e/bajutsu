@@ -22,6 +22,38 @@ def test_html_report() -> None:
     assert "PASS" in out and "FAIL" in out
 
 
+def test_html_report_renders_cross_browser_matrix() -> None:
+    # A --browsers run renders the engine x scenario grid: a row green on chromium but red on webkit
+    # is the machine-detected incompatibility this view exists to surface (BE-0076).
+    results = [
+        RunResult(scenario="login", ok=True, steps=[], backend="playwright", engine="chromium"),
+        RunResult(scenario="login", ok=False, steps=[], backend="playwright", engine="webkit"),
+    ]
+    out = html_report("run9", results)
+    assert 'class="matrix"' in out  # the grid is rendered
+    assert "chromium" in out and "webkit" in out  # both engine columns
+    assert "login" in out  # the scenario row
+
+
+def test_html_report_aligns_definitions_per_engine() -> None:
+    # A matrix run's results are the per-engine passes concatenated, but definitions carry one entry
+    # per scenario. Each result's plan must cycle per engine, so every engine's panel shows the
+    # scenario's description — not just the first engine's (BE-0076).
+    results = [
+        RunResult(scenario="login", ok=True, steps=[], backend="playwright", engine="chromium"),
+        RunResult(scenario="login", ok=False, steps=[], backend="playwright", engine="webkit"),
+    ]
+    definition = {"name": "login", "description": "the login flow", "steps": []}
+    out = html_report("run9", results, definitions=[definition])
+    # The description appears once per engine result (both panels carry the plan), not just once.
+    assert out.count('class="sdesc">the login flow') == 2
+
+
+def test_html_report_omits_matrix_for_single_engine() -> None:
+    # A non-matrix run carries no engine tag, so the grid is absent — today's report unchanged.
+    assert 'class="matrix"' not in html_report("run9", [_passing(), _failing()])
+
+
 def test_html_report_shows_source_filename() -> None:
     out = html_report("run9", [_failing()], source_name="smoke.yaml")
     assert 'class="sfile">smoke.yaml' in out  # the scenario file name in the summary header

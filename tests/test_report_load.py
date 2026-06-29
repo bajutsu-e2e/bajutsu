@@ -14,7 +14,7 @@ import pytest
 
 from bajutsu.assertions import AssertionResult, VisualEvidence
 from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
+from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.report.load import load_run, results_from_manifest
 from bajutsu.report.manifest import manifest_dict
 
@@ -53,6 +53,7 @@ def _result() -> RunResult:
         device_runtime="iOS 26",
         duration_s=2.5,
         expect_alerts=[AlertEvent("Dismiss")],
+        skipped_captures=[SkippedCapture("video", "no eligible backend")],
     )
 
 
@@ -65,7 +66,9 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    assert data["schemaVersion"] == 3  # bumped for the optional run-provenance block (BE-0049)
+    assert (
+        data["schemaVersion"] == 4
+    )  # bumped for the optional cross-browser matrix block (BE-0076)
     assert data["sourceName"] == "smoke.yaml"
 
 

@@ -1,0 +1,61 @@
+{#-
+  Landing-page hero for the site root (BE-0093). Selected by `template: home.html` front matter on
+  docs/index.md. Extends Material's base so the header, search, and footer stay intact, and injects a
+  splash hero above the normal article content. Colors come from Material's theme variables so the
+  hero follows the light/dark palette automatically.
+-#}
+{% extends "main.html" %}
+
+{% block tabs %}
+  {{ super() }}
+  <style>
+    .bj-hero {
+      background:
+        linear-gradient(120deg, var(--md-primary-fg-color), var(--md-accent-fg-color, var(--md-primary-fg-color--dark)));
+      color: var(--md-primary-bg-color);
+      padding: 3.2rem 0 3.6rem;
+    }
+    .bj-hero__inner {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .bj-hero__logo { width: 180px; height: 180px; flex: 0 0 auto; }
+    .bj-hero__text { max-width: 34rem; }
+    .bj-hero__text h1 { color: inherit; font-weight: 700; margin: 0 0 .4rem; font-size: 2.4rem; }
+    .bj-hero__text p { font-size: .9rem; line-height: 1.6; opacity: .95; }
+    .bj-hero__cta { margin-top: 1.4rem; display: flex; gap: .8rem; flex-wrap: wrap; }
+    .bj-hero .md-button {
+      color: var(--md-primary-bg-color);
+      border-color: var(--md-primary-bg-color);
+    }
+    .bj-hero .md-button--primary {
+      background-color: var(--md-primary-bg-color);
+      color: var(--md-primary-fg-color);
+      border-color: var(--md-primary-bg-color);
+    }
+    @media screen and (max-width: 44.9375em) {
+      .bj-hero__inner { flex-direction: column; text-align: center; }
+      .bj-hero__cta { justify-content: center; }
+    }
+  </style>
+  <section class="bj-hero">
+    <div class="bj-hero__inner md-grid">
+      <img class="bj-hero__logo" src="{{ 'assets/logo.png' | url }}" alt="Bajutsu logo" width="180" height="180">
+      <div class="bj-hero__text">
+        <h1>Bajutsu</h1>
+        <p>
+          Natural-language-driven, determinism-first E2E testing on a backend-agnostic driver —
+          one scenario format and one deterministic runner, where a platform is just a backend.
+          AI authors and investigates; a machine decides pass or fail.
+        </p>
+        <div class="bj-hero__cta">
+          <a href="{{ 'getting-started.html' | url }}" class="md-button md-button--primary">Get started</a>
+          <a href="{{ config.repo_url }}" class="md-button">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock %}

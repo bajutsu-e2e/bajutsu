@@ -1,4 +1,4 @@
-**English** · 日本語 (todo)
+**English** · [日本語](ja/network.md)
 
 # Network observation (`request` assertions)
 

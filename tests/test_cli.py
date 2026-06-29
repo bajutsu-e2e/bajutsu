@@ -12,7 +12,9 @@ import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
+from bajutsu.cli._shared import _resolve_browser
 from bajutsu.cli.commands.crawl import _ai_credential_gap
+from bajutsu.config import Effective, load_config, resolve
 
 runner = CliRunner()
 
@@ -72,6 +74,94 @@ def test_unknown_app_exits_cleanly(tmp_path: Path, command: str) -> None:
     assert "unknown target" in r.output
 
 
+# BE-0047 fail-closed: an AI entry point with no usable credential exits 2 with a clear, provider-
+# specific message and never constructs an SDK client that would fall back to a hosted default.
+
+
+def test_record_fails_closed_without_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)  # no .env key leak-in
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # If a client were ever constructed it would fail loudly here, proving it never is.
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite missing credential"),
+    )
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--target",
+            "demo",
+            "--goal",
+            "x",
+            "--no-dismiss-alerts",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "no AI credential" in r.output and "ANTHROPIC_API_KEY" in r.output
+
+
+def test_record_fails_closed_uses_configured_key_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The message names the env var from ai.keyEnv, not the default — the user's configured source.
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("MY_GATEWAY_KEY", raising=False)
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults:\n  ai: { keyEnv: MY_GATEWAY_KEY }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--target",
+            "demo",
+            "--goal",
+            "x",
+            "--no-dismiss-alerts",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "MY_GATEWAY_KEY" in r.output
+
+
+def test_triage_ai_fails_closed_without_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite missing credential"),
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "manifest.json").write_text(
+        '{"scenarios": [{"scenario": "s", "ok": false, "failure": "boom", "steps": []}]}',
+        encoding="utf-8",
+    )
+    r = runner.invoke(app, ["triage", str(run_dir), "--ai"])
+    assert r.exit_code == 2
+    assert "no AI credential" in r.output
+
+
 def test_legacy_app_flag_is_rejected(tmp_path: Path) -> None:
     # Hard cutover (BE-0057): there is no `--app` alias — the old flag exits 2 (unknown option).
     cfg, scn = _write(tmp_path)
@@ -80,9 +170,14 @@ def test_legacy_app_flag_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("command", ["run", "record", "doctor"])
-def test_no_backend_available_exits_cleanly(tmp_path: Path, command: str) -> None:
+def test_no_backend_available_exits_cleanly(
+    tmp_path: Path, command: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # An unknown backend is never available -> clean exit 2, independent of PATH. (crawl has its own
     # test below: it additionally checks the run dir isn't created by the gate.)
+    # record/dismiss-alerts now fail closed first (BE-0047), so give it a credential to reach the
+    # backend gate this test exercises.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     cfg, scn = _write(tmp_path)
     r = runner.invoke(
         app, _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo", backend="nope")
@@ -143,6 +238,66 @@ def test_record_no_scenarios_dir(tmp_path: Path) -> None:
     r = runner.invoke(app, ["record", "--target", "bare", "--goal", "x", "--config", str(cfg)])
     assert r.exit_code == 2
     assert "no scenarios dir" in r.output
+
+
+def _web_eff(browser: str) -> Effective:
+    cfg = load_config(f"targets: {{ web: {{ baseUrl: 'http://x/', browser: {browser} }} }}")
+    return resolve(cfg, "web")
+
+
+def test_resolve_browser_flag_overrides_config() -> None:
+    # Precedence (BE-0076): an explicit --browser flag wins over the target's config.
+    eff = _web_eff("firefox")  # config says firefox
+    assert _resolve_browser(eff, "webkit").browser == "webkit"  # flag wins
+
+
+def test_resolve_browser_empty_flag_keeps_config() -> None:
+    # No flag: the resolved config value (here firefox) stands.
+    assert _resolve_browser(_web_eff("firefox"), "").browser == "firefox"
+
+
+def test_resolve_browser_default_is_chromium() -> None:
+    # No flag and no config: chromium, today's behaviour.
+    eff = resolve(load_config("targets: { web: { baseUrl: 'http://x/' } }"), "web")
+    assert _resolve_browser(eff, "").browser == "chromium"
+
+
+@pytest.mark.parametrize("command", ["run", "record"])
+def test_unknown_browser_engine_exits_cleanly(tmp_path: Path, command: str) -> None:
+    # An unknown --browser engine exits 2 before reaching Playwright (BE-0076), with a usable hint.
+    cfg, scn = _write(tmp_path)
+    argv = _argv(command, cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo")
+    r = runner.invoke(app, [*argv, "--browser", "safari"])
+    assert r.exit_code == 2
+    assert "unknown --browser" in r.output
+
+
+def test_parse_browsers_dedupes_and_validates() -> None:
+    # --browsers parses a comma list, trims/drops blanks, and de-dupes while keeping order (BE-0076).
+    from bajutsu.cli.commands.run import _parse_browsers
+
+    assert _parse_browsers("chromium, firefox ,webkit") == ["chromium", "firefox", "webkit"]
+    assert _parse_browsers("chromium,chromium") == ["chromium"]  # de-duped
+    assert _parse_browsers("") == []  # absent → no matrix
+
+
+def test_parse_browsers_rejects_unknown_engine() -> None:
+    import typer
+
+    from bajutsu.cli.commands.run import _parse_browsers
+
+    with pytest.raises(typer.Exit) as exc:
+        _parse_browsers("chromium,safari")
+    assert exc.value.exit_code == 2
+
+
+def test_browsers_unknown_engine_exits_cleanly(tmp_path: Path) -> None:
+    # The matrix flag validates the same way --browser does: an unknown engine exits 2 up front.
+    cfg, scn = _write(tmp_path)
+    argv = _argv("run", cfg=cfg, scn=scn, out=tmp_path / "rec.yaml", app="demo")
+    r = runner.invoke(app, [*argv, "--browsers", "chromium,safari"])
+    assert r.exit_code == 2
+    assert "safari" in r.output
 
 
 def test_doctor_web_target_requires_base_url() -> None:
@@ -210,6 +365,27 @@ def test_serve_config_from_git_binds_checkout(tmp_path: Path, monkeypatch) -> No
     assert r.exit_code == 0
     assert captured["config"] == cfg  # bound to the checkout's config
     assert captured["cwd"] == checkout  # served from the checkout root
+
+
+def test_serve_rejects_invalid_upload_exec() -> None:
+    # An unknown --upload-exec mode fails loud at the boundary (BE-0090), never silently defaults.
+    r = runner.invoke(app, ["serve", "--upload-exec", "bogus", "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 2
+    assert "upload-exec" in r.output
+
+
+def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # The flag wins; absent a flag the BAJUTSU_UPLOAD_EXEC env var is honoured (hosted backend).
+    import bajutsu.serve as srv
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
+    monkeypatch.setenv("BAJUTSU_UPLOAD_EXEC", "deny")
+    r = runner.invoke(app, ["serve", "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 0 and captured["upload_exec"] == "deny"  # env honoured when no flag
+    captured.clear()
+    r = runner.invoke(app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 0 and captured["upload_exec"] == "reuse"  # flag wins over env
 
 
 def test_serve_loopback_detection() -> None:
@@ -346,7 +522,7 @@ def test_crawl_bedrock_does_not_require_anthropic_key(
     _no_dotenv(monkeypatch)
     monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
     monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
-    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "booted")
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u, run=None: "booted")
 
     def _no_device(*_args: object, **_kwargs: object) -> object:
         raise _benv.DeviceError("device boundary reached (no Simulator in test)")
@@ -363,6 +539,36 @@ def test_crawl_bedrock_does_not_require_anthropic_key(
         "device boundary reached" in r.output
     )  # passed the credential gate, reached device launch
     assert "ANTHROPIC_API_KEY" not in r.output
+
+
+def test_crawl_empty_udid_pool_is_a_usage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An empty --udid resolves to no device, so the crawl fails loudly (exit 2) with a fixable message
+    # instead of crashing later on the first lane (BE-0009 Slice 3 review). Bedrock + model passes the
+    # credential gate, so the run reaches the lane-planning guard before any device work.
+    _no_dotenv(monkeypatch)
+    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
+    monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
+    cfg, _ = _write(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "crawl",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--udid",
+            "",
+            "--out",
+            str(tmp_path / "crawlrun"),
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "empty pool" in r.output
 
 
 def test_crawl_bedrock_needs_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -394,7 +600,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
     monkeypatch.setattr("bajutsu.cli.commands.crawl.ensure_web_runtime", lambda *a, **k: None)
     monkeypatch.setattr("bajutsu.cli.commands.crawl.select_actuator", lambda *a, **k: "playwright")
     monkeypatch.setattr(
-        "bajutsu.cli.commands.crawl.start_launch_server", lambda *a, **k: lambda: None
+        "bajutsu.cli.commands.crawl.start_launch_server", lambda *a, **k: ((lambda: None), None)
     )
 
     launched = {"n": 0}

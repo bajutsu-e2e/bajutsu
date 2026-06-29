@@ -16,7 +16,7 @@ from jinja2 import Environment, FileSystemLoader
 from bajutsu.idb_version import IdbVersions
 from bajutsu.orchestrator import RunResult
 from bajutsu.report.format import _fmt_duration
-from bajutsu.report.manifest import _run_backend, junit_xml, manifest_dict
+from bajutsu.report.manifest import _matrix, _run_backend, junit_xml, manifest_dict
 from bajutsu.report.panels import _scenario_data
 from bajutsu.scenario import Scenario, dump_scenarios, scenario_dict
 
@@ -33,6 +33,22 @@ def scenario_render_inputs(
 
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+
+
+def _matrix_view(results: list[RunResult]) -> dict[str, Any] | None:
+    """The engine x scenario grid for the report, or None for a single-engine run (BE-0076).
+
+    Reuses `_matrix` (the manifest's aggregation) and reshapes its `cells` into ordered rows of
+    booleans aligned with the engine columns, so the template renders a plain table with no JS.
+    """
+    matrix = _matrix(results)
+    if matrix is None:
+        return None
+    engines: list[str] = matrix["engines"]  # type: ignore[assignment]
+    scenarios: list[str] = matrix["scenarios"]  # type: ignore[assignment]
+    cells: dict[str, dict[str, dict[str, Any]]] = matrix["cells"]  # type: ignore[assignment]
+    rows = [{"scenario": s, "cells": [cells[s].get(e) for e in engines]} for s in scenarios]
+    return {"engines": engines, "rows": rows}
 
 
 # --- Jinja rendering ---
@@ -65,13 +81,16 @@ def html_report(
     drive the merged Result tab and its Rich/YAML toggle.
     """
     passed = sum(1 for r in results if r.ok)
+
+    # `definitions` / `sources` carry one entry per scenario, but a cross-browser matrix run's
+    # `results` is the per-engine passes concatenated (every engine runs the same scenarios in
+    # order), so a result's plan is at `i % len(definitions)` — positional for a single-engine run,
+    # cycling per engine for a matrix run (BE-0076).
+    def _plan(seq: list[Any] | None, i: int) -> Any | None:
+        return seq[i % len(seq)] if seq else None
+
     scenarios = [
-        _scenario_data(
-            r,
-            run_dir,
-            definitions[i] if definitions and i < len(definitions) else None,
-            sources[i] if sources and i < len(sources) else None,
-        )
+        _scenario_data(r, run_dir, _plan(definitions, i), _plan(sources, i))
         for i, r in enumerate(results)
     ]
     devices = dict.fromkeys(r.device for r in results if r.device)  # ordered-unique device count
@@ -90,6 +109,7 @@ def html_report(
             css=_asset("report.css"),
             js=_asset("report.js"),
             scenarios=scenarios,
+            matrix=_matrix_view(results),
             source_name=source_name,
             description=description,
         )

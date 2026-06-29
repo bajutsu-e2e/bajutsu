@@ -16,15 +16,13 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         title = "Permissions"
-        installBackButton()
-        navigationItem.titleView = makeTitleView("Permissions").accessibilityID("perm.title")
 
         locationManager.delegate = self
 
         let requestNotif = UIButton(type: .system, primaryAction: UIAction(title: "Request notifications") { [weak self] _ in
             self?.requestNotifications()
         })
-        requestNotif.configuration = .bordered()
+        requestNotif.contentHorizontalAlignment = .leading
         requestNotif.accessibilityID("perm.requestNotif")
 
         notifValueLabel.accessibilityID("perm.notif.value")
@@ -39,24 +37,17 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
         let requestLocation = UIButton(type: .system, primaryAction: UIAction(title: "Request location") { [weak self] _ in
             self?.requestLocation()
         })
-        requestLocation.configuration = .bordered()
+        requestLocation.contentHorizontalAlignment = .leading
         requestLocation.accessibilityID("perm.requestLocation")
 
         locationValueLabel.accessibilityID("perm.location.value")
 
-        let stack = UIStackView(arrangedSubviews: [
-            requestNotif, notifValueLabel, notifAuthorizedLabel,
-            requestLocation, locationValueLabel,
-        ])
-        stack.axis = .vertical
-        stack.spacing = 18
-        stack.alignment = .leading
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+        // A grouped form mirroring the SwiftUI twin: a Notifications section and a Location section.
+        installGroupedForm([
+            makeSectionHeader("Notifications"),
+            makeSectionCard([requestNotif, notifValueLabel, notifAuthorizedLabel]),
+            makeSectionHeader("Location"),
+            makeSectionCard([requestLocation, locationValueLabel]),
         ])
 
         refreshNotifStatus()

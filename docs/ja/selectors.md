@@ -29,7 +29,7 @@ class Element(TypedDict):
 
 | トークン | 意味 | 使うアサーション |
 |---|---|---|
-| `button` / `link` | 種別 | `traits` セレクタ・doctor の actionable 判定 |
+| `button` / `link` | 種別 | `traits` セレクタ、doctor の actionable 判定 |
 | `notEnabled` | 無効状態 | `enabled` / `disabled` |
 | `selected` | 選択 / トグル ON | `selected` |
 
@@ -48,7 +48,7 @@ class Element(TypedDict):
 | `traits` | トレイトで絞る（部分集合判定。例 `["button"]`） | 補助 |
 | `value` | accessibility value の完全一致 | 補助 |
 | `within` | コンテナでスコープ限定（幾何: 候補の frame が `within` の解決先の内側にあること。ネスト可） | 一意化 |
-| `index` | 複数マッチ時の n 番目（負数可） | 最終手段・フレーキー |
+| `index` | 複数マッチ時の n 番目（負数可） | 最終手段、フレーキー |
 
 > `id` / `idMatches` のマッチは `fnmatch.fnmatchcase`（大小区別あり glob）、`labelMatches` は `re.search`（正規表現 / 部分一致）、`traits` は「指定集合 ⊆ 要素のトレイト集合」です。
 

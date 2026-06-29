@@ -112,6 +112,30 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 に限定して `backend`/`udid` を検証すること、CSRF Origin チェックとセキュリティヘッダ、run dispatch の同時実行上限です。
 トークンは秘匿し、Mac は tailnet 上に置き、OS は更新し続けてください。
 
+## アップロードされた config のコマンド実行（BE-0090）
+
+アップロードされた `.zip` バンドルは、テスト対象アプリを起動するシェルコマンドを `launchServer.cmd`
+（および、配線され次第 `mockServer.cmd`）に持つ config を同梱できます。このコマンドは**信頼できない入力**なので、
+`serve` がホスト上で直接実行することはありません。**アップロードされた**バンドルの run がこのコマンドを必要とする
+ときの挙動は、`--upload-exec` オプション（ホスト型 backend では環境変数 `BAJUTSU_UPLOAD_EXEC`）で選びます。これが
+効くのはアップロード由来の config だけで、ローカルや Git 由来の config は運用者が信頼しているため影響を受けません。
+
+- **`sandbox`**（既定）：コマンドを使い捨ての **Docker** コンテナの中で実行し、`serve` ホストには決して触れさせません。
+  バンドルはランタイムを、`dockerImage`（公開済みのベースイメージ。例 `node:20-slim`）か `dockerfile`（バンドル相対の
+  パスで、`serve` が `docker build` でビルドします）のどちらか一方で宣言し、加えて `port`（コンテナ内の待ち受けポート）
+  を指定します。コンテナはハードニングされ（`--rm`、全ケーパビリティの剥奪、権限昇格の禁止、読み取り専用ルート
+  ファイルシステムと `tmpfs` のスクラッチ、非 root ユーザ、CPU・メモリ・pid の上限、そして単一のポートだけを
+  **ループバック**のホストポートへ publish）、run の後に破棄します。`serve` ホストには Docker が必要です。
+- **`reuse`**：アップロードされたコマンドは実行せず、`baseUrl` ですでに応答している運用者提供のサーバをプローブする
+  だけです。何も応答しなければ、何かを起動するのではなく run を fail loud させます。
+- **`deny`**：アップロードされたコマンドをきっぱり拒否します。`reuse` と同様、外部で応答するサーバがあれば受け入れ、
+  なければ run を fail loud させます。
+
+どのモードもアップロードされたコマンドをホスト上で実行することはなく、こっそりそこへフォールバックすることも
+ありません。ブロックされた、あるいは設定の誤った `launchServer` は、flaky に見える run ではなく明確なエラーで
+失敗します。その判断（denied / reused / sandboxed、sandbox のときは使ったイメージ）は run の `manifest.json` の
+provenance に記録されるので、「この run は何を実行し、何を抑止したのか」をあとから answerable に保てます。
+
 ## Tier B、サーバ backend のセルフホスティング
 
 Tier A は 1 台の Mac で動く 1 プロセスです。**Tier B** は BE-0015 の**サーバ backend**、すなわち FastAPI の
@@ -158,7 +182,7 @@ GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/ca
 `BAJUTSU_OAUTH_GITHUB_CLIENT_ID`／`_SECRET`／`_REDIRECT_URI` と、許可リスト `BAJUTSU_OAUTH_ALLOWED_USERS`
 （任意で `BAJUTSU_OAUTH_ADMINS`／`BAJUTSU_OAUTH_VIEWERS`）を設定します。許可リストのユーザは既定で **editor**
 （run 可）、admin はサーバ設定（config、API キー、provider）も変更でき、viewer は閲覧のみです。トークンは
-オペレータ・CI 用の認証（full access）のまま、OAuth がチームのユーザごとのログインです。
+オペレータと CI 向けの認証（full access）のまま、OAuth がチームのユーザごとのログインです。
 
 ログインは常に `read:org` scope を要求し、ユーザを GitHub org メンバーシップから org に対応づけられるようにします
 （config の `githubOrgs`）。そのため同意画面には常に organization へのアクセスが表示されます。シングルテナント構成
@@ -213,3 +237,46 @@ orgs:
 置かれます。`orgs:` ブロックが無ければ backend はシングルテナント（1 つの default org）のままで、共有トークンと
 GitHub 許可リストがアクセス境界です。フルマネージドの公開クラウド提供（ホスト型の Mac ワーカープール＋IaC）は
 BE-0015 で今後の作業です。
+
+**Mac プールを org 間で公平に保つ。** `BAJUTSU_MAX_CONCURRENT_PER_ORG` を設定すると、1 つの org が同時に
+持てる run 数の上限を決められます。各ユーザがそれぞれの `BAJUTSU_MAX_CONCURRENT_PER_USER` 以内にとどまって
+いても、忙しい org が希少なデバイスを独占することを防げます。どちらも既定は無制限（`0`）で、いずれもグローバルな
+`--max-concurrent-runs` の下に効きます。上限を超えたリクエストはキューに入れず拒否します（HTTP 429）。（org を
+またぐ公平な*スケジューリング*、つまり拒否した分を org 別キューで保留してラウンドロビンで投入する仕組みは、まだ
+今後の作業です。今日は上限で拒否します。）
+
+## 運用ログ
+
+ホスト型の serve は、自身の診断トレースを出力します。**構造化された JSON を標準出力に書き出し、秘密情報は
+マスクします**。これにより、1 つのユーザ操作を制御プレーンとワーカーをまたいで追跡できます。これは、すでに
+ある 3 つのログ面とは別物です。テスト対象の**証跡（evidence）**、ライブの**実行出力**ストリーム、そして
+誰が何をしたかの**監査ログ**のいずれでもありません。出力された行を集約する作業（標準出力をログ基盤へ送る作業）は
+デプロイ側の責務で、ツールは行を生成するだけです。
+
+形式と詳細度は、起動時に一度だけ読まれる 2 つの環境変数で選びます。
+
+| 変数 | 既定値 | 意味 |
+|---|---|---|
+| `BAJUTSU_LOG_FORMAT` | `json` | 構造化された serve チャネルなら `json`、人が読みやすい 1 行なら `text`。 |
+| `BAJUTSU_LOG_LEVEL` | `INFO` | 標準のレベル名（`DEBUG`／`INFO`／`WARNING`／`ERROR`／`CRITICAL`）。 |
+
+決定的な `run`／CI 経路はこのチャネルを設定しないので、影響を受けません。静かなまま、標準ライブラリだけで動きます。
+
+**相関付け。** 各 JSON 行は、1 つの操作を端から端まで追うための id を持ちます。リクエスト境界で発番される
+`request_id` と、ワーカーで束縛される `job_id`／`org`／`actor`／`run_id` です。制御プレーンのリクエストと、それが
+起動したワーカーの run が、プロセスをまたいで同じ id の**値**を共有します。行は次のような形です。
+
+```json
+{"ts": "2026-06-28T12:00:00+00:00", "level": "INFO", "logger": "bajutsu.serve.operations",
+ "event": "run.dispatched", "msg": "job dispatched", "request_id": "…", "org": "acme",
+ "job_id": "…"}
+```
+
+`event` フィールドは安定したイベント名（`run.dispatched`、`quota.rejected`、`worker.job.started`、
+`worker.job.finished`、`artifact.upload.failed` など）を示すので、これを対象に grep やアラートを設定できます。
+
+**マスクは構造的です。** 1 つのフィルタがルートロガーに置かれるので、書き出される前に**すべての**行が
+スキャンされます。サードパーティのライブラリが出した行も対象です。正しさは、各呼び出し箇所がマスクを
+忘れないことに依存しません。既知の秘密の**値**（オペレータトークン、OAuth クライアントシークレット、
+`ANTHROPIC_API_KEY`、および run の実行中はその run が解決した `${secrets.X}`）と、機微なフィールド**名**
+（`authorization`、`token`、`secret`、`password`、`cookie`、`api_key`）をマスクし、`[REDACTED]` に置き換えます。

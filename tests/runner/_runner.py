@@ -54,3 +54,16 @@ def _lease(eff: Effective, scenario: Scenario) -> Lease:
         collector=None,
         release=lambda: None,
     )
+
+
+# A lease whose screen lacks "ok", so a `tap {id: ok}` step fails — used to model an engine that
+# fails a scenario the others pass (the cross-browser incompatibility the matrix surfaces).
+def _failing_lease(eff: Effective, scenario: Scenario) -> Lease:
+    return Lease(
+        driver=FakeDriver([_el("other", "Other", ["button"])]),
+        sink=NullSink(),
+        relaunch=None,
+        control=None,
+        collector=None,
+        release=lambda: None,
+    )

@@ -5,6 +5,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search, SHOWCASE_SEED: "5" }
   steps:
     - wait: { for: { id: search.field }, timeout: 10 }
+      capture: [video]
     - type: { text: "Horse 3", into: { id: search.field } }
     - wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:
@@ -17,6 +18,7 @@
     launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search, SHOWCASE_SEED: "5" }
   steps:
     - wait: { for: { id: search.field }, timeout: 10 }
+      capture: [video]
     - type: { text: "zzz", into: { id: search.field } }
     - wait: { for: { id: search.results-empty }, timeout: 5 }
   expect:

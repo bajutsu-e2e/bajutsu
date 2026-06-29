@@ -10,6 +10,7 @@ the manifest shows where it came from.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,8 @@ from bajutsu import intervals
 from bajutsu.drivers import base
 from bajutsu.redaction import Redactor
 from bajutsu.scenario import Redact
+
+_logger = logging.getLogger(__name__)
 
 # scenario-dir file names for interval kinds — one source of truth for both the simctl (iOS)
 # and the Playwright (web) providers, so the two never drift.
@@ -266,9 +269,20 @@ class FileSink:
         out: list[Artifact] = []
         for interval in started:
             path = interval.stop()
-            self._redact_file(path)
+            # appTrace also has a raw stream beside it; both must be scrubbed before the artifact ships.
+            to_scrub = [path]
             if interval.kind == "appTrace":
-                self._redact_file(path.parent / "appTrace.raw")  # scrub the raw stream too
+                to_scrub.append(path.parent / "appTrace.raw")
+            unsafe = [p for p in to_scrub if not self._redact_file(p)]
+            if unsafe:
+                # Redaction is a security control: if we couldn't read a file to scrub it, don't ship
+                # the artifact (fail closed), and name the offending file loudly rather than leak it.
+                _logger.warning(
+                    "dropping %s evidence: could not read %s to redact secrets (failing closed)",
+                    interval.kind,
+                    ", ".join(str(p) for p in unsafe),
+                )
+                continue
             try:
                 name = str(path.relative_to(self.run_dir))
             except ValueError:
@@ -276,14 +290,20 @@ class FileSink:
             out.append(Artifact(name=name, kind=interval.kind, provider=interval.provider))
         return out
 
-    def _redact_file(self, path: Path) -> None:
-        """Scrub secrets from a text evidence file in place (images are skipped)."""
+    def _redact_file(self, path: Path) -> bool:
+        """Scrub secrets from a text evidence file in place; return whether it is safe to ship.
+
+        Safe (True) means there is nothing left to leak: the file was scrubbed, or there was nothing
+        to redact (no active redactor, a video, or a missing file). Unsafe (False) means an active
+        redactor could not read the file, so the caller must not emit it.
+        """
         if not self.redactor.active or path.suffix == ".mp4" or not path.exists():
-            return
+            return True
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            return
+            return False
         redacted = self.redactor.redact_text(text)
         if redacted != text:
             path.write_text(redacted, encoding="utf-8")
+        return True

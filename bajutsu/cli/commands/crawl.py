@@ -18,7 +18,6 @@ import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 
 import typer
 
@@ -36,8 +35,9 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
+from bajutsu.environment import environment_for
 from bajutsu.record import _clear_blocking
-from bajutsu.runner import _await_ready, launch_driver
+from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions
 
@@ -124,6 +124,13 @@ def crawl(
         help="web backend: crawl a visible (headed, slow-motion) browser instead of headless; "
         "default leaves the target's `headless` config",
     ),
+    upload_exec: str = typer.Option(
+        "",
+        "--upload-exec",
+        hidden=True,
+        help="internal: serve sets this for an uploaded bundle to govern its launchServer command "
+        "(deny | reuse | sandbox); empty = ungoverned local/Git run (BE-0090)",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Explore the app breadth-first and write a screen map (`screenmap.json`).
@@ -152,7 +159,8 @@ def crawl(
     crawl_guide = make_guide(report=say, agent=agent)
     backends = _backends(backend, eff.backend)
     try:
-        ensure_web_runtime(backends)  # auto-install Playwright if a web crawl needs it
+        # Auto-install Playwright (and the selected engine's browser) if a web crawl needs it.
+        ensure_web_runtime(backends, eff.browser)
         actuator = select_actuator(backends)
     except RuntimeError as e:
         typer.echo(str(e))
@@ -206,32 +214,32 @@ def crawl(
         _write_screenmap(screenmap_path, crawl_engine.ScreenMap())  # empty map the UI can poll now
     typer.echo(f"crawl → {screenmap_path}")  # tells the web UI where the map lands
 
-    # The worker pool, all sharing one screen map. iOS crawls across a `--udid` pool with
-    # `--workers N` capped to it (BE-0064). Web has no devices, so the worker count alone sizes the
-    # lane set: N browser-process lanes (BE-0077). `launch_driver` ignores the udid for playwright,
-    # so each "web" entry is just one more browser; resolving "booted" would shell out to simctl and
-    # crash off-macOS, so web skips udid resolution. A resumed crawl is a single-branch walk → 1 lane.
-    if actuator == "playwright":
-        workers = max(1, workers)
-        udids = ["web"] * workers
-    else:
-        udids = [_env.resolve_udid(u.strip()) for u in udid.split(",") if u.strip()]
-        workers = max(1, min(workers, len(udids)))
+    # The worker pool, all sharing one screen map. The platform's Environment sizes the lane set
+    # (BE-0009): iOS resolves the `--udid` pool and caps `--workers` to it (BE-0064); web has no
+    # device, so the worker count alone sizes N browser lanes (BE-0077). A resumed crawl is a
+    # single-branch walk, so it runs on one lane.
+    environment = environment_for(actuator, "")
+    udids = environment.plan_lanes(udid, workers)
+    if not udids:
+        # An empty `--udid` (e.g. `--udid ""` / `--udid ,`) resolves to no device — fail loudly with
+        # a fixable message rather than crashing later on the first lane.
+        typer.echo("no devices to crawl: --udid resolved to an empty pool")
+        raise typer.Exit(2)
     if base_map is not None:
-        workers = 1
-    udids = udids[:workers]
+        udids = udids[:1]
+    workers = len(udids)
 
     # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
     # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
     # command exits (atexit), since the crawl is a single linear flow with no run-style teardown.
     try:
-        stop_server = start_launch_server(eff)
+        stop_server, _exec_decision = start_launch_server(eff, upload_exec=upload_exec or None)
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
     atexit.register(stop_server)
 
-    if actuator == "playwright":
+    if not environment.has_devices():
         browsers = f"{workers} browsers" if workers > 1 else "the browser"
         say(f"⚙️  preparing {browsers} — navigating to {eff.base_url} …")
     elif workers > 1:
@@ -245,28 +253,11 @@ def crawl(
             "(this can take a moment) …"
         )
 
-    def reset_for(u: str) -> crawl_engine.Reset:
-        # Revisit a known screen the way `run` reaches any state — return to a clean start on this
-        # device and let the engine replay the shortest path. For web a fresh BrowserContext is the
-        # clean start (the `erase` equivalent): no cookies / storage carried across visits, so a
-        # path recorded in one worker's browser replays identically in another (BE-0077). For iOS a
-        # relaunch (not a full erase) keeps each frontier visit fast; the app returns to its entry.
-        def reset(d: base.Driver) -> None:
-            if actuator == "playwright":
-                d.reset_context()  # type: ignore[attr-defined]  # web-only lifecycle (fresh context)
-                _await_ready(d)
-                return
-            e = _env.Env(u)
-            e.terminate(eff.bundle_id)
-            e.launch(
-                eff.bundle_id, [*eff.launch_args, *_env.locale_args(eff.locale)], eff.launch_env
-            )
-            _await_ready(d)
-
-        return reset
-
     def build_lane(u: str) -> tuple[base.Driver, crawl_engine.Reset]:
-        return launch_driver(u, eff, actuator, Preconditions(erase=erase)), reset_for(u)
+        # The crawl `reset` (revisit a known screen from a clean start) is the platform's, behind the
+        # Environment seam (BE-0009): web opens a fresh context, iOS relaunches the app.
+        driver = launch_driver(u, eff, actuator, Preconditions(erase=erase))
+        return driver, environment_for(actuator, u).crawl_reset(eff)
 
     try:
         # The primary lane is built here (on the main thread): it drives bootstrap and the in-place
@@ -301,33 +292,22 @@ def crawl(
         except (OSError, subprocess.CalledProcessError, _env.DeviceError) as exc:
             say(f"⚠️  screenshot failed for {node.fingerprint[:7]}: {exc}")
 
-    # Crash detection and blocking-overlay clearing are platform-specific. iOS reads the
-    # accessibility tree (engine default) and clears OS prompts with the Claude vision guard; web
-    # reads deterministic signals (pageerror / HTTP status / blank DOM) and auto-handles JS
-    # dialogs with no model (BE-0066).
-    is_alive: crawl_engine.AliveCheck | None = None
-    clear_blocking: crawl_engine.ClearBlocking | None = None
-    recover: crawl_engine.Recover | None = None
-    if actuator == "playwright":
-        from bajutsu.drivers.playwright import PlaywrightDriver, web_is_alive
-
-        # Each web worker owns its own browser, so the health / dialog signals read the worker's own
-        # driver `d` — not the primary — which is essential once `--workers` > 1 (BE-0077).
-        def is_alive(d: base.Driver, elements: list[base.Element]) -> bool:
-            return web_is_alive(cast(PlaywrightDriver, d), elements)
-
-        def clear_blocking(d: base.Driver) -> list[str]:
-            # JS dialogs are auto-dismissed by the driver the moment they appear (they would
-            # otherwise block the page); here we just report what was handled, for the screen map.
-            return cast(PlaywrightDriver, d).pop_dialogs()
+    # Crash detection and blocking-overlay clearing are platform-specific, behind the Environment
+    # seam (BE-0009): web reads deterministic signals (pageerror / HTTP status / blank DOM), auto-
+    # handles JS dialogs with no model, and relaunches a wedged browser (BE-0066/BE-0077); iOS reads
+    # the accessibility tree (engine default) and, when asked, clears OS prompts with the alert guard.
+    is_alive: crawl_engine.AliveCheck | None = environment.crawl_aliveness()
+    clear_blocking: crawl_engine.ClearBlocking | None = environment.crawl_dialog_clearer()
+    recover: crawl_engine.Recover | None = environment.crawl_recover()
+    if recover is not None:
+        # The platform recovery is silent; the crawl reports the wedge before healing the lane.
+        heal = recover
 
         def recover(d: base.Driver) -> None:
-            # A wedged browser (renderer crash, hung page, navigation timeout) surfaces as a
-            # DeviceError; relaunch this worker's own browser process so its lane heals and keeps
-            # crawling rather than sinking the crawl (BE-0077). Loud, not silent.
             say("⚠️  a worker's browser wedged — relaunching it")
-            cast(PlaywrightDriver, d).relaunch()
-    elif dismiss_alerts:
+            heal(d)
+
+    if clear_blocking is None and dismiss_alerts:
         # The alert guard (Claude vision) dismisses unexpected OS prompts the crawl would otherwise
         # read as a crash. Best-effort: with no API key it no-ops, so the crawl still runs.
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard

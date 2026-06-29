@@ -14,6 +14,9 @@ struct SearchView: View {
                         .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        // ASCII keyboard so typed Latin text is not mangled by an active IME
+                        // (a Japanese keyboard turns "Horse 3" into romaji→kana).
+                        .keyboardType(.asciiCapable)
                         .accessibilityID("search.field")
                     Button("Clear") { query = "" }
                         .accessibilityID("search.clear")
@@ -42,6 +45,5 @@ struct SearchView: View {
             }
             .navigationTitle("Search")
         }
-        .accessibilityID("search.title")
     }
 }

@@ -105,6 +105,18 @@ class StepOutcome:
 
 
 @dataclass
+class SkippedCapture:
+    """An evidence kind that was requested but no backend could supply (BE-0020).
+
+    Recorded per scenario so a gap is disclosed in the manifest/report rather than left silently
+    empty — graceful degradation, never a run failure.
+    """
+
+    kind: str  # the evidence kind, e.g. "network"
+    reason: str  # why it was skipped, e.g. "no same-platform backend provides network"
+
+
+@dataclass
 class RunResult:
     scenario: str
     ok: bool
@@ -115,6 +127,14 @@ class RunResult:
     artifacts: list[Artifact] = field(default_factory=list)
     # Which backend (actuator) drove this scenario: "idb" / "fake".
     backend: str = ""
+    # The web rendering engine this result was produced on — "chromium" / "firefox" / "webkit"
+    # — set only on a `--browsers` cross-engine run (BE-0076). Empty for iOS and any single-engine
+    # run, so `backend` stays the actuator and `engine` carries the rendering-engine axis.
+    engine: str = ""
+    # The scenario's evidence-dir slug under the run dir (`NN-slug`), stamped by the runner that
+    # named the dir, so anything cross-linking to that evidence reads the authoritative value
+    # instead of re-deriving it (BE-0076). Empty when no evidence dir was written (e.g. tests).
+    sid: str = ""
     # The simulator udid this scenario ran on — shows how a parallel pool split the work.
     device: str = ""
     # The simulator's device model / OS runtime (e.g. "iPhone 15" / "iOS 17.2"), for the
@@ -125,6 +145,8 @@ class RunResult:
     duration_s: float = 0.0
     # System prompts the guard cleared before the scenario-level `expect` re-checked.
     expect_alerts: list[AlertEvent] = field(default_factory=list)
+    # Evidence kinds the run couldn't supply (no eligible backend) — disclosed, not silent (BE-0020).
+    skipped_captures: list[SkippedCapture] = field(default_factory=list)
 
 
 # on_blocked(driver) -> the AlertEvent it dismissed if it cleared a blocking condition

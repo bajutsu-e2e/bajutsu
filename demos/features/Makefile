@@ -40,8 +40,12 @@ ui-test:
 	cd $(ROOT) && uv run bajutsu codegen demos/features/app/scenarios/components.yaml --target sample \
 		--config $(CONFIG) -o demos/features/app/BajutsuSampleUITests/ComponentsUITests.swift
 	cd $(SAMPLE) && xcodegen generate
+	# -retry-tests-on-failure re-runs only a failed test (up to -test-iterations total, stopping
+	# on first pass) so a loaded CI Simulator's intermittent "Failed to terminate" between cases
+	# self-heals; a genuinely broken test still fails every attempt and trips the gate.
 	cd $(SAMPLE) && xcodebuild test -project BajutsuSample.xcodeproj -scheme UITests \
-		-destination 'platform=iOS Simulator,id=$(SIM)' -derivedDataPath build/dd
+		-destination 'platform=iOS Simulator,id=$(SIM)' -derivedDataPath build/dd \
+		-retry-tests-on-failure -test-iterations 3
 
 # Visual regression demo. Baselines live beside the scenario (gitignored, regenerate locally).
 BASELINES = $(SAMPLE)/scenarios/baselines

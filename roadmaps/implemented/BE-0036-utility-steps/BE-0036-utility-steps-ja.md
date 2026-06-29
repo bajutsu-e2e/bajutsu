@@ -64,7 +64,7 @@ prime directive の保持：
   しません。
 - **codegen。** `http` はアプリではなく bajutsu ランナーで動き、XCUITest 等価物がないため、codegen
   はラベル付き `// TODO` を出力します
-  （[BE-0026](../../in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) に
+  （[BE-0026](../BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax-ja.md) に
   従います）。
 
 ## 検討した代替案

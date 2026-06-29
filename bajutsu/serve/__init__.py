@@ -19,6 +19,7 @@ Split into three submodules:
 
 from __future__ import annotations
 
+import os
 import shutil
 from functools import partial
 from pathlib import Path
@@ -124,19 +125,18 @@ def _session_ttl_from_env(raw: str | None, default: int) -> int:
     return ttl
 
 
-def _max_per_user_from_env(raw: str | None) -> int:
-    """Parse ``BAJUTSU_MAX_CONCURRENT_PER_USER`` (unset/empty/0 = unlimited). A clear error beats a
-    bare ValueError for operator-facing config; negatives and non-integers are rejected (BE-0015 7c-3)."""
+def _max_concurrent_from_env(raw: str | None, *, var: str) -> int:
+    """Parse a non-negative concurrency cap from *var* (unset/empty/0 = unlimited). A clear error
+    beats a bare ValueError for operator-facing config; negatives and non-integers are rejected.
+    Shared by the per-user (BE-0015 7c-3) and per-org (BE-0016 Tier B fairness) caps."""
     if not raw:
         return 0
     try:
         n = int(raw)
     except ValueError:
-        raise ValueError(
-            f"BAJUTSU_MAX_CONCURRENT_PER_USER must be a whole number, got {raw!r}"
-        ) from None
+        raise ValueError(f"{var} must be a whole number, got {raw!r}") from None
     if n < 0:
-        raise ValueError(f"BAJUTSU_MAX_CONCURRENT_PER_USER must be >= 0, got {n}")
+        raise ValueError(f"{var} must be >= 0, got {n}")
     return n
 
 
@@ -156,6 +156,7 @@ def _build_state(
     baselines_dir: Path | None,
     max_concurrent: int,
     token: str | None,
+    upload_exec: str = "sandbox",
     backend: str = "local",
     cwd: Path | None = None,
 ) -> ServeState:
@@ -185,6 +186,7 @@ def _build_state(
                 baselines_dir=resolved_baselines,
                 max_concurrent=max_concurrent,
                 token=token,
+                upload_exec=upload_exec,
             )
         except ImportError as e:
             # Only a missing third-party extra earns the install hint. A failed `bajutsu.*` import is
@@ -206,6 +208,7 @@ def _build_state(
         uploads_dir=runs_dir.parent / "uploads",
         max_concurrent=max_concurrent,
         token=token,
+        upload_exec=upload_exec,
         cwd=cwd or Path.cwd(),
     )
 
@@ -219,6 +222,7 @@ def _build_server_state(
     baselines_dir: Path,
     max_concurrent: int,
     token: str | None,
+    upload_exec: str = "sandbox",
 ) -> ServeState:
     """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015).
 
@@ -283,10 +287,17 @@ def _build_server_state(
         baselines_dir=baselines_dir,
         max_concurrent=max_concurrent,
         # Per-user concurrency cap (0 = unlimited), so one OAuth user can't starve the pool (7c-3).
-        max_concurrent_per_user=_max_per_user_from_env(
-            os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER")
+        max_concurrent_per_user=_max_concurrent_from_env(
+            os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER"),
+            var="BAJUTSU_MAX_CONCURRENT_PER_USER",
+        ),
+        # Per-org cap (0 = unlimited), so one tenant can't monopolize the scarce pool (BE-0016).
+        max_concurrent_per_org=_max_concurrent_from_env(
+            os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_ORG"),
+            var="BAJUTSU_MAX_CONCURRENT_PER_ORG",
         ),
         token=token,
+        upload_exec=upload_exec,
         executor=QueueExecutor(queue),
         logbus=RedisLogBus(redis),
         # Sessions in Redis (the same client) so they survive a restart and span replicas, with a
@@ -333,6 +344,28 @@ def _build_server_state(
     return state
 
 
+def _configure_oplog(state: ServeState) -> None:
+    """Install the operational-logging channel for a serve process (BE-0055).
+
+    Serve defaults to structured JSON; the process-lifetime redactor is seeded with the secrets
+    that exist at startup (operator token, OAuth client secret, API key) so they can never reach a
+    log line. Per-run ``${secrets.X}`` values are masked separately, run-scoped, on the worker.
+    """
+    from bajutsu.serve import oplog
+
+    static = (
+        state.token,
+        os.environ.get("ANTHROPIC_API_KEY"),
+        os.environ.get("BAJUTSU_SERVE_TOKEN"),
+        os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_SECRET"),
+    )
+    oplog.configure(
+        fmt=os.environ.get("BAJUTSU_LOG_FORMAT") or "json",
+        level=os.environ.get("BAJUTSU_LOG_LEVEL") or "INFO",
+        secrets=tuple(v for v in static if v),
+    )
+
+
 def make_asgi_server(state: ServeState, host: str = "127.0.0.1", port: int = 8765) -> Any:
     """A uvicorn ``Server`` running the FastAPI control-plane app over *state*. uvicorn and the app
     (FastAPI) are imported lazily — only when the ASGI transport is selected — so the default path
@@ -364,6 +397,7 @@ def serve(
     max_concurrent: int = 4,
     token: str | None = None,
     *,
+    upload_exec: str = "sandbox",
     asgi: bool = False,
     backend: str = "local",
     cwd: Path | None = None,
@@ -376,6 +410,7 @@ def serve(
         baselines_dir=baselines_dir,
         max_concurrent=max_concurrent,
         token=token,
+        upload_exec=upload_exec,
         backend=backend,
         cwd=cwd,
     )
@@ -383,6 +418,7 @@ def serve(
     # ephemeral, and nothing is bound at startup, so this just stops them accumulating across
     # restarts (BE-0073; a bound bundle is removed when another config is bound while running).
     shutil.rmtree(state.uploads_dir, ignore_errors=True)
+    _configure_oplog(state)
     hint = str(config) if config else "open a config.yml in the UI"
     if asgi:
         # The FastAPI app over uvicorn — the transport the hosted backend will use; runnable now

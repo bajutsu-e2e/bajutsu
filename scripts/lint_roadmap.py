@@ -4,19 +4,21 @@ The *shape* of each item (bilingual pair, metadata block, the five sections) is 
 ``tests/test_roadmap_format.py`` (BE-0074). This is the companion that validates what a single
 item's shape cannot:
 
-- **Cross-link resolution.** Every markdown link from one item to another item's file must resolve
-  to a file that exists. These links rot silently: BE-0078 files each item under a status folder
-  (``implemented`` / ``in-progress`` / ``proposals`` / ``deferred``) and ``roadmap-promote`` *moves*
-  an item between them when its Status changes — but a sibling-relative ``../BE-NNNN-slug/`` link
-  written when both items shared a folder then points at the wrong folder (a GitHub 404). The index
-  links are regenerated on promote; the item *bodies* were not, until this.
+- **Cross-link resolution.** Every markdown link to an item's file must resolve to a file that
+  exists — both the links *between* items and the links *into* ``roadmaps/`` from ``docs/`` and the
+  top-level ``README*`` / ``CLAUDE.md`` (BE-0096). These links rot silently: BE-0078 files each item
+  under a status folder (``implemented`` / ``in-progress`` / ``proposals`` / ``deferred``) and
+  ``roadmap-promote`` *moves* an item between them when its Status changes — so a link written for
+  the old folder then points at the wrong folder (a GitHub 404). The index links are regenerated on
+  promote; the item *bodies* and the ``docs/`` links were not, until this.
 - **Author handle-link.** The ``Author`` (``提案者``) value must be ``[@handle](https://github.com/handle)``.
 
 ``--fix`` rewrites a broken item link to the target's *current* folder (located by its
-``BE-NNNN-slug`` directory name). A link whose target item does not exist anywhere is a genuine
-dangling reference: reported, never "fixed". Runnable mid-edit via ``make lint-roadmap`` (in
-``make check``); ``promote_roadmap_items`` calls :func:`fix_links` after moving an item so a
-folder move self-heals the links into and out of it.
+``BE-NNNN-slug`` directory name), across roadmap item bodies *and* ``docs/`` / the top-level files.
+A link whose target item does not exist anywhere is a genuine dangling reference: reported, never
+"fixed". Runnable mid-edit via ``make lint-roadmap`` (in ``make check``); ``promote_roadmap_items``
+calls :func:`fix_links` after moving an item so a folder move self-heals every link into and out of
+it, ``docs/`` included.
 """
 
 from __future__ import annotations
@@ -30,6 +32,9 @@ from pathlib import Path
 
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
 CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
+# Markdown outside roadmaps/ that links *into* it and so rots on promotion the same way item bodies
+# do (BE-0096): every page under docs/, plus the repo-root README/CLAUDE files.
+TOP_LEVEL_DOCS = ("README.md", "README.ja.md", "CLAUDE.md")
 
 # A markdown link target that names another item's file: a ``BE-NNNN-slug/BE-NNNN-slug[-ja].md``
 # path (always reached via ``../`` from a sibling item). The bilingual header link is a bare
@@ -78,6 +83,14 @@ def _item_files(roadmap: Path) -> list[Path]:
     return sorted(p for d in _item_dirs(roadmap).values() for p in d.glob("*.md"))
 
 
+def _docs_files(repo: Path) -> list[Path]:
+    """Markdown that may link into ``roadmaps/``: every page under ``docs/`` plus the top-level
+    ``README*`` / ``CLAUDE.md`` (BE-0096). These rot on promotion just like item bodies do."""
+    files = sorted((repo / "docs").rglob("*.md"))
+    files.extend(p for name in TOP_LEVEL_DOCS if (p := repo / name).is_file())
+    return files
+
+
 def _suggest(
     source: Path, target: str, item_dirs: dict[str, Path], dirs_by_id: dict[str, Path]
 ) -> str | None:
@@ -103,12 +116,12 @@ def _suggest(
     return Path(os.path.relpath(item_file, source.parent)).as_posix()
 
 
-def broken_links(roadmap: Path) -> list[BrokenLink]:
-    """Every item-to-item link that does not resolve to an existing file, across all items."""
-    item_dirs = _item_dirs(roadmap)
-    dirs_by_id = _dirs_by_id(item_dirs)
+def _broken_in(
+    sources: list[Path], item_dirs: dict[str, Path], dirs_by_id: dict[str, Path]
+) -> list[BrokenLink]:
+    """Every item link in ``sources`` that does not resolve to an existing file."""
     broken: list[BrokenLink] = []
-    for source in _item_files(roadmap):
+    for source in sources:
         for m in _ITEM_LINK_RE.finditer(source.read_text(encoding="utf-8")):
             target = m.group("target")  # the path, without any #fragment
             if (source.parent / target).is_file():
@@ -125,6 +138,19 @@ def broken_links(roadmap: Path) -> list[BrokenLink]:
                 )
             )
     return broken
+
+
+def broken_links(roadmap: Path) -> list[BrokenLink]:
+    """Every item-to-item link that does not resolve to an existing file, across all items."""
+    item_dirs = _item_dirs(roadmap)
+    return _broken_in(_item_files(roadmap), item_dirs, _dirs_by_id(item_dirs))
+
+
+def docs_broken_links(roadmap: Path, repo: Path | None = None) -> list[BrokenLink]:
+    """Every ``docs/`` (or top-level ``README*`` / ``CLAUDE.md``) link into ``roadmaps/`` that does
+    not resolve (BE-0096). ``repo`` defaults to the parent of ``roadmap``."""
+    item_dirs = _item_dirs(roadmap)
+    return _broken_in(_docs_files(repo or roadmap.parent), item_dirs, _dirs_by_id(item_dirs))
 
 
 def author_problems(roadmap: Path) -> list[str]:
@@ -148,7 +174,7 @@ def fix_links(roadmap: Path) -> int:
     # Per file, map each broken target to its fix. A dict dedupes a target that occurs N times, so
     # the rewrite + count happen once per distinct link (counting actual occurrences), not per match.
     by_source: dict[Path, dict[str, str]] = {}
-    for link in broken_links(roadmap):
+    for link in broken_links(roadmap) + docs_broken_links(roadmap):
         if link.suggestion is not None:
             by_source.setdefault(link.source, {})[link.target] = link.suggestion
     for source, repls in by_source.items():
@@ -164,7 +190,7 @@ def fix_links(roadmap: Path) -> int:
 
 def _problems(roadmap: Path) -> list[str]:
     problems: list[str] = []
-    for link in broken_links(roadmap):
+    for link in broken_links(roadmap) + docs_broken_links(roadmap):
         rel = link.source.relative_to(ROADMAP.parent)
         if link.suggestion is None:
             problems.append(f"{rel}: link to a non-existent item: {link.target!r}")

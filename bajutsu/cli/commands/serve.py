@@ -67,6 +67,13 @@ def serve(
         "--backend",
         help="which serve seams to assemble (only 'local' available; hosted backends land later)",
     ),
+    upload_exec: str = typer.Option(
+        "",
+        "--upload-exec",
+        help="policy for an uploaded bundle's launchServer command (BE-0090): "
+        "deny | reuse | sandbox (default sandbox; or set BAJUTSU_UPLOAD_EXEC). A local/Git config "
+        "is operator-trusted and unaffected.",
+    ),
 ) -> None:
     """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
 
@@ -93,6 +100,12 @@ def serve(
         typer.echo(f"unknown --backend {backend!r} (available: {', '.join(SERVE_BACKENDS)})")
         raise typer.Exit(2)
 
+    # The flag wins, then the env mirror (for the hosted backend), then the safe-yes default.
+    resolved_upload_exec = upload_exec or os.environ.get("BAJUTSU_UPLOAD_EXEC") or "sandbox"
+    if resolved_upload_exec not in ("deny", "reuse", "sandbox"):
+        typer.echo(f"unknown --upload-exec {resolved_upload_exec!r} (choose: deny, reuse, sandbox)")
+        raise typer.Exit(2)
+
     # `--asgi` needs the optional `server` extra (FastAPI + uvicorn); fail with an install hint
     # rather than a raw ImportError traceback, mirroring `bajutsu worker`.
     if asgi:
@@ -108,7 +121,11 @@ def serve(
     if emit_launchagent:
         typer.echo(
             launchagent_plist(
-                host=host, port=port, config=config or None, token=resolved_token or None
+                host=host,
+                port=port,
+                config=config or None,
+                token=resolved_token or None,
+                upload_exec=resolved_upload_exec,
             )
         )
         return
@@ -141,6 +158,7 @@ def serve(
             baselines_dir=Path(baselines) if baselines else None,
             max_concurrent=max_concurrent_runs,
             token=resolved_token or None,
+            upload_exec=resolved_upload_exec,
             asgi=asgi,
             backend=backend,
             cwd=cwd,

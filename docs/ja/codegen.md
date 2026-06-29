@@ -63,7 +63,7 @@ final class ComponentsUITests: XCTestCase {
 ### セレクタのマッピング（XCUITest）
 
 単一の `id` / `label` / `idMatches` は上記のヘルパをそのまま使います。**複合**セレクタ
-（`value`・`traits`・`index`、または複数フィールドの組み合わせ）は、`// TODO` に落とさず 1 つの
+（`value`、`traits`、`index`、または複数フィールドの組み合わせ）は、`// TODO` に落とさず 1 つの
 `NSPredicate` クエリに合成します（BE-0026）。
 
 | `Selector` フィールド | 生成される XCUITest |
@@ -79,12 +79,12 @@ final class ComponentsUITests: XCTestCase {
 設定された全フィールドを **AND** で結合します。*忠実な*構造写像が無いフィールドがあると、セレクタは
 `el("UNSUPPORTED_SELECTOR")` のまま残ります（誤った推測ではなく、正直なギャップ）。
 
-- **正規表現メタ文字を含む `labelMatches`** — これは Python の `re.search` パターンです。メタ文字を含ま
+- **正規表現メタ文字を含む `labelMatches`**：これは Python の `re.search` パターンです。メタ文字を含ま
   ないものだけが単純な部分文字列で（`CONTAINS`）、本物の正規表現（例 `^Item `）は忠実な NSPredicate 形が
   ありません（ICU の `MATCHES` は全体一致でアンカーの意味も異なる）。
-- **`within`** — *幾何的*なフレーム包含制約です（候補のフレームがコンテナのフレーム内に収まること。
+- **`within`**：*幾何的*なフレーム包含制約です（候補のフレームがコンテナのフレーム内に収まること。
   [selectors](selectors.md) 参照）。XCUITest のクエリはツリーベースで幾何的ではありません。
-- **未知の trait** — `button` / `link` / `notEnabled` / `selected` の語彙の外。
+- **未知の trait**：`button` / `link` / `notEnabled` / `selected` の語彙の外。
 
 ## マッピング表
 

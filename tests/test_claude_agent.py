@@ -11,7 +11,8 @@ from bajutsu.claude_agent import ClaudeAgent, proposal_from_call
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.record import record
-from bajutsu.scenario import dump_scenarios, load_scenarios
+from bajutsu.redaction import Redactor
+from bajutsu.scenario import Redact, dump_scenarios, load_scenarios
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:
@@ -164,6 +165,39 @@ def test_plan_is_rendered_into_the_turn_prompt() -> None:
     )
     text = _render(obs)
     assert "Planned steps" in text and "1. First do X" in text and "2. Then do Y" in text
+
+
+# --- BE-0047: the textual element tree is redacted before it reaches the model ---
+
+
+def test_secret_in_element_value_is_masked_before_send() -> None:
+    # A configured `redact` label and a literal secret value: both must be [REDACTED] in the text
+    # block the model receives — what the model sees matches what evidence masks.
+    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
+    redactor = Redactor(Redact(labels=["カード番号"]), values=["sk-secret-token"])
+    screen = [
+        _el("card", "カード番号"),  # value masked because its label is configured
+        {
+            "identifier": "tok",
+            "label": "token: sk-secret-token",  # literal secret embedded in a label
+            "traits": ["staticText"],
+            "value": "sk-secret-token",
+            "frame": (0.0, 0.0, 1.0, 1.0),
+        },
+    ]
+    obs = Observation(goal="g", screen=screen, history=[])
+    ClaudeAgent(client=client, redactor=redactor).next_action(obs)
+    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    assert "sk-secret-token" not in text
+    assert "[REDACTED]" in text
+
+
+def test_no_redactor_leaves_text_unmasked() -> None:
+    client = FakeAnthropic(FakeBlock("tap", {"id": "a"}))
+    screen = [_el("a", "plain-label")]
+    ClaudeAgent(client=client).next_action(Observation(goal="g", screen=screen, history=[]))
+    text = next(c["text"] for c in client.calls[0]["messages"][0]["content"] if c["type"] == "text")
+    assert "plain-label" in text
 
 
 # --- authoring against an app with no ids and no values (label / value / traits) ---

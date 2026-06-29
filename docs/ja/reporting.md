@@ -65,13 +65,14 @@ runs/<runId>/
 - `steps[].duration_s`: 各ステップの計時です（`actionLog` 相当の情報）。
 - `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
 - `failure`: 失敗時の要約です（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null です。
-- `provenance`（トップ・任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。`idb` 版ブロックと同じく純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` です。）
-- `idb`（トップ・任意）: idb が run を操作したときの `idb_companion` / client のバージョンです（BE-0005）。
+- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。`idb` 版ブロックと同じく純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `4` です。）
+- `idb`（トップ、任意）: idb が run を操作したときの `idb_companion` / client のバージョンです（BE-0005）。
+- `matrix`（トップ、任意）: クロスブラウザのエンジン × シナリオのグリッドで、`bajutsu run --browsers` の run のときだけ出ます（[BE-0076](../../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)）。`scenarios` はフラットな結果リストのままで、各エントリに `engine` が付きます。`matrix` は `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` で、エンジンごとの判定を集約しただけのものです（report はこれをグリッドとして描画します）。`ok` はエンジン × シナリオのすべてに対する all-must-pass です。単一エンジン／iOS の run では省かれます。（このブロックが出るようになった時点で `schemaVersion` は `4` です。）
 
 ## junit.xml
 
 CI 連携用です。**1 シナリオ = 1 `<testcase>`**。失敗シナリオには `<failure>` が付き、その `text` に
-各ステップ / expect の ok/FAIL と理由が並びます。
+各ステップ / expect の ok/FAIL と理由が並びます。`--browsers` のマトリクス run では、各ケースにエンジンが織り込まれ（`classname="bajutsu.<engine>"`）、CI からは `chromium.login` と `webkit.login` が別々のケースに見えます（BE-0076）。単一エンジンの run は `classname="bajutsu"` のままです。
 
 ```xml
 <testsuite name="bajutsu" tests="2" failures="1">

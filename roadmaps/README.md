@@ -272,6 +272,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 | ID | Item | Status |
 |---|---|---|
 | [BE-0025](implemented/BE-0025-coordinate-swipe-generation/BE-0025-coordinate-swipe-generation.md) | Coordinate swipe generation | Implemented |
+| [BE-0026](implemented/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | Implemented |
 | [BE-0062](implemented/BE-0062-playwright-codegen/BE-0062-playwright-codegen.md) | Playwright codegen target | Implemented |
 | [BE-0083](implemented/BE-0083-codegen-emitter-unification/BE-0083-codegen-emitter-unification.md) | Unify the codegen emitters behind a shared scenario walk | Implemented |
 | [BE-0085](implemented/BE-0085-shrink-web-codegen-syntax/BE-0085-shrink-web-codegen-syntax.md) | Shrink unsupported web (Playwright) codegen syntax | Implemented |
@@ -314,17 +315,13 @@ Accepted and actively being built — a PR is in flight or imminent.
 The Web (Playwright) backend and its completion (rich capabilities, parallel runs) — the rich end of the capability model, on the existing Linux gate.
 
 <!-- GENERATED:in-progress-platform-landed -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0041](in-progress/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) | Web (Playwright) backend | In progress |
+
 <!-- /GENERATED:in-progress-platform-landed -->
 
 ### Platform expansion (Android / Web / Flutter)
 
 <!-- GENERATED:in-progress-platform -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0009](in-progress/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md) | Cross-platform abstractions | In progress |
+
 <!-- /GENERATED:in-progress-platform -->
 
 ### Candidates from competitive research (MagicPod / Autify)
@@ -339,9 +336,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 ### Candidates from competitive research (Maestro)
 
 <!-- GENERATED:in-progress-competitive-maestro -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0050](in-progress/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | In progress | Maestro |
+
 <!-- /GENERATED:in-progress-competitive-maestro -->
 
 ### Backend expansion (iOS actuators)
@@ -374,9 +369,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 ### codegen coverage
 
 <!-- GENERATED:in-progress-codegen -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0026](in-progress/BE-0026-shrink-unsupported-syntax/BE-0026-shrink-unsupported-syntax.md) | Shrink unsupported syntax | In progress |
+
 <!-- /GENERATED:in-progress-codegen -->
 
 ### On-device validation (M1 close-out)
@@ -450,8 +443,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the items here propose naming a **Git repository at a ref** (`github:owner/repo@ref:path`) or uploading a bundle, so a hosted or self-hosted `serve`, or a CI runner, can pull a team's test repo directly.
 
 <!-- GENERATED:proposals-config-sourcing -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage
@@ -459,17 +451,13 @@ Where `bajutsu` reads its config and scenario tree from. Today that is a local p
 Turning a passing scenario into a native test in a destination framework's idiom. These items shrink the range of constructs an emitter drops to a `// TODO`.
 
 <!-- GENERATED:proposals-codegen -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0085](proposals/BE-0085-shrink-web-codegen-syntax/BE-0085-shrink-web-codegen-syntax.md) | Shrink unsupported web (Playwright) codegen syntax | Proposal |
+
 <!-- /GENERATED:proposals-codegen -->
 
 ### Backend expansion (iOS actuators)
 
 <!-- GENERATED:proposals-backend -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0019](proposals/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | Proposal |
+
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding
@@ -483,8 +471,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Candidates from competitive research (MagicPod / Autify)

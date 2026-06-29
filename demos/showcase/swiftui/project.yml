@@ -65,6 +65,20 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.swiftui.noax
+  # Native XCUITest host for the codegen output (SPEC §5.4): `bajutsu codegen` writes
+  # UITests/ComponentsUITests.swift, which runs against the a11y app via the `UITests`
+  # scheme below — no bajutsu runtime, idb, or AI at test time.
+  BajutsuShowcaseSwiftUIUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: BajutsuShowcaseSwiftUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.swiftui.uitests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   BajutsuShowcaseSwiftUI:
     build:
@@ -74,3 +88,12 @@ schemes:
     build:
       targets:
         BajutsuShowcaseSwiftUINoAx: all
+  UITests:
+    build:
+      targets:
+        BajutsuShowcaseSwiftUI: all
+        BajutsuShowcaseSwiftUIUITests: [test]
+    test:
+      targets:
+        - BajutsuShowcaseSwiftUIUITests
+      gatherCoverageData: false

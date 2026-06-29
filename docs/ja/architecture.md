@@ -166,7 +166,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 - M4 自己修復トリアージ（`triage.py` + `claude_triage.py`）: 失敗 run のコンテキスト組み立て + `TriageAgent` 診断（ルールベース `HeuristicTriageAgent`、または `--ai` の Claude で失敗スクショ込み）。エージェントは構造化 fix（`renameId` / `addIndex` / `raiseTimeout`）を提案でき、`--apply`/`--write` でシナリオ source に適用（diff プレビュー、opt-in）、`--rerun` で再実行検証
 - CLI: `run` / `doctor` / `record` / `crawl` / `codegen` / `trace` / `triage` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`。`record` と `crawl` が Tier 1 の AI オーサリング経路で、alert guard を伴う
 - AI **crawl**（`crawl.py`）: アプリを自律的に幅優先で探索し、スクリーンマップ（`screenmap.json`）を作る
-- `serve` ローカル Web UI（Tier 1）: ブラウザからシナリオをオーサリング（`record` / `crawl`）・編集・実行し、config + シナリオ + ビルド済みアプリバイナリの **`.zip` バンドルをアクティブな config として開いて**各タブをそこから動かし（BE-0073）、レポートと証跡を閲覧、ビジュアル baseline を承認、ジョブをライブ配信する（CI 用ではない）
+- `serve` ローカル Web UI（Tier 1）: ブラウザからシナリオをオーサリング（`record` / `crawl`）、編集、実行し、config + シナリオ + ビルド済みアプリバイナリの **`.zip` バンドルをアクティブな config として開いて**各タブをそこから動かし（BE-0073）、レポートと証跡を閲覧、ビジュアル baseline を承認、ジョブをライブ配信する（CI 用ではない）
 - **MCP サーバ**（`bajutsu mcp`）: `bajutsu_run` と `bajutsu_doctor` を MCP ツールとして、実行証跡をリソースとして公開する。Claude Desktop / Code との連携用（オプション依存 `fastmcp`）
 - **シナリオ linter**（`bajutsu lint` / `bajutsu schema`）: 実行せずにシナリオを検証する。エディタ連携用に JSON Schema も出力する
 - XCUITest コード生成
@@ -175,7 +175,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 
 - idb バックエンドの subprocess 実行（`describe-all` パース、フレーム中心の tap / text / swipe、`simctl` launch 手順）を、インストール済みの `idb` / `idb_companion` に対して確認しています。sample シナリオの実行、証跡の取得、triage 自己修復ループを実機で走らせて検証しました（`make -C demos/features e2e`。`e2e.yml` CI も idb smoke を実行します）。
 
-### ブラウザで検証済み（Linux・Mac 不要）
+### ブラウザで検証済み（Linux で動作、Mac 不要）
 
 - Playwright web バックエンドは `demos/web` のシナリオを、CI と同じ `make check` ゲートの中（`ci.yml` の `web-e2e` ジョブ）で決定的に実行します。決定的コアがプラットフォーム非依存であることの裏付けです。リッチ寄りの web 取得（ネットワーク / 動画 / マルチタッチ）は予定です（BE-0054）。N 個のブラウザプロセスにまたがる並列 web クロール（[BE-0077](../../roadmaps/implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）は、この同じゲートの上で動きます。
 

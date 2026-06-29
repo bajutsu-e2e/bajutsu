@@ -15,7 +15,13 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bajutsu import _yaml, idb_version
+from bajutsu.anthropic_client import AiConfig
+from bajutsu.drivers import base
 from bajutsu.scenario import Redact
+
+# Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
+# preserving today's single-engine behaviour; all three run headless on Linux.
+WEB_ENGINES = ("chromium", "firefox", "webkit")
 
 
 class _Model(BaseModel):
@@ -49,6 +55,22 @@ class LaunchServer(_Model):
     ready_timeout: float = Field(default=30.0, alias="readyTimeout")  # seconds before giving up
     cwd: str | None = None  # working directory (default: the run's cwd)
     env: dict[str, str] = Field(default_factory=dict)  # extra environment for the server
+    # Sandbox runtime for an uploaded bundle's `cmd` (BE-0090). `serve --upload-exec=sandbox` runs
+    # `cmd` inside a throwaway container instead of on the host; exactly one of these declares how
+    # the container is built (enforced at the sandbox decision point, not here — a non-sandbox
+    # config legitimately ships neither).
+    docker_image: str | None = Field(
+        default=None, alias="dockerImage"
+    )  # a Docker image reference: [registry/]repo[:tag|@digest]
+    dockerfile: str | None = None  # bundle-relative Dockerfile, built via `docker build`
+    port: int | None = None  # in-container listen port, published to a loopback host port
+
+    @field_validator("port")
+    @classmethod
+    def _port_in_range(cls, v: int | None) -> int | None:
+        if v is not None and not (1 <= v <= 65535):
+            raise ValueError("launchServer.port must be in 1..65535")
+        return v
 
 
 class Mailbox(_Model):
@@ -67,10 +89,50 @@ class Mailbox(_Model):
     fields: dict[str, str] = Field(default_factory=dict)
 
 
+class AiSettings(_Model):
+    """The `ai` block (BE-0047) — which provider/model/endpoint/key the AI paths use.
+
+    `defaults.ai` is overridable per `targets.<name>.ai`. Keys never live here: `keyEnv` is the NAME
+    of the env var holding the key, read at call time, so a secret never lands in the repo or an
+    uploaded bundle. Every field is optional; an unset field falls back to the environment in the
+    factory. `extra="forbid"` (from `_Model`) rejects a stray `apiKey:`-style field that would tempt
+    a literal key into config.
+    """
+
+    provider: str | None = None  # anthropic (default) | bedrock
+    model: str | None = None  # override the path's default model
+    base_url: str | None = Field(default=None, alias="baseUrl")  # self-hosted gateway / proxy
+    key_env: str | None = Field(default=None, alias="keyEnv")  # NAME of the env var (never the key)
+
+    @field_validator("provider")
+    @classmethod
+    def _known_provider(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("anthropic", "bedrock"):
+            raise ValueError(f"unknown ai.provider {v!r}: use 'anthropic' or 'bedrock'")
+        return v
+
+
+def _check_platform(v: str | None) -> str | None:
+    """Reject an unknown `platform` token at load time, so a typo fails loudly here.
+
+    `None` means "derive the platform from the backend", so it passes through (BE-0009 Slice 4).
+    """
+    if v is None:
+        return v
+    from bajutsu.backends import PLATFORMS
+
+    if v not in PLATFORMS:
+        raise ValueError(f"invalid platform {v!r}: use one of {', '.join(PLATFORMS)}")
+    return v
+
+
 class Defaults(_Model):
     """Team-wide defaults under `defaults:`, overlaid by each target (see `resolve`)."""
 
     backend: list[str] = Field(default_factory=lambda: ["idb"])
+    # Team-wide default platform (ios / android / web), overridable per target. None derives each
+    # target's platform from its backend (BE-0009 Slice 4), so an existing config is unchanged.
+    platform: str | None = None
     device: str = "iPhone 15"
     locale: str = "en_US"
     capture: list[str] = Field(
@@ -78,6 +140,8 @@ class Defaults(_Model):
     )
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
+    # Team-wide AI provider/model/endpoint/key (BE-0047), overridable per target. None = env-only.
+    ai: AiSettings | None = None
     reserved_namespaces: list[str] = Field(default_factory=list, alias="reservedNamespaces")
     # Expected idb version range (e.g. ">=1.1.8" or ">=1.1.0,<2.0.0"). Environment-level, not
     # per-app: the pin is the same whichever target a scenario drives. `doctor` reports the
@@ -88,6 +152,11 @@ class Defaults(_Model):
     @classmethod
     def _norm(cls, v: Any) -> Any:
         return _as_list(v)
+
+    @field_validator("platform")
+    @classmethod
+    def _valid_platform(cls, v: str | None) -> str | None:
+        return _check_platform(v)
 
     @field_validator("idb_version")
     @classmethod
@@ -104,16 +173,24 @@ class Defaults(_Model):
 class TargetConfig(_Model):
     """One app's config under `targets.<name>`, overriding `defaults` for that target."""
 
-    # iOS apps identify the target by bundleId; web apps by baseUrl instead. One of the two is
-    # required (the validator below) — defaulting bundleId to "" keeps every iOS `eff.bundle_id`
-    # call site a plain `str` while letting a web app omit it.
+    # The platform this target runs on (ios / android / web). None derives it from the backend
+    # (BE-0009 Slice 4), so a config written before this field is unchanged; an explicit value is
+    # authoritative and selects which identifier below is required.
+    platform: str | None = None
+    # Each platform identifies the target by its own handle: iOS by bundleId, web by baseUrl, Android
+    # by package. The required one is validated for the resolved platform (see Config below); defaulting
+    # the string ones to "" keeps every `eff.bundle_id` / `eff.package` call site a plain `str`.
     bundle_id: str = Field(default="", alias="bundleId")
     base_url: str | None = Field(
         default=None, alias="baseUrl"
     )  # web target (e.g. http://host/page)
+    package: str = Field(default="", alias="package")  # Android target (e.g. com.example.app)
     # Web backend only: run with a visible (headed) browser instead of headless. iOS ignores it.
     # The `bajutsu run --headed/--no-headed` flag (and the Web UI's "Show browser" toggle) override.
     headless: bool = True
+    # Web backend only: which Playwright engine to drive — chromium (default) / firefox / webkit.
+    # iOS ignores it. The `bajutsu run/record --browser <engine>` flag overrides per run (BE-0076).
+    browser: str = "chromium"
     # How to bring up baseUrl's host for a run (start → readiness probe → teardown). See LaunchServer.
     launch_server: LaunchServer | None = Field(default=None, alias="launchServer")
     deeplink_scheme: str | None = Field(default=None, alias="deeplinkScheme")
@@ -122,6 +199,11 @@ class TargetConfig(_Model):
     locale: str | None = None
     launch_env: dict[str, str] = Field(default_factory=dict, alias="launchEnv")
     launch_args: list[str] = Field(default_factory=list, alias="launchArgs")
+    # Selector the launch waits for before a run starts (e.g. `{ id: onboarding.start }`). For an app
+    # whose first interactive screen is a modal over always-present chrome, the default element-count
+    # readiness can return before the modal presents; `readyWhen` makes the gate wait for that screen
+    # (a condition wait, no fixed sleep). None keeps the element-count heuristic.
+    ready_when: base.Selector | None = Field(default=None, alias="readyWhen")
     id_namespaces: list[str] = Field(default_factory=list, alias="idNamespaces")
     mock_server: MockServer | None = Field(default=None, alias="mockServer")
     mailbox: Mailbox | None = None
@@ -144,18 +226,35 @@ class TargetConfig(_Model):
     schemas: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
+    # Per-target AI provider/model/endpoint/key (BE-0047), overriding defaults.ai field by field.
+    ai: AiSettings | None = None
 
     @field_validator("backend", mode="before")
     @classmethod
     def _norm(cls, v: Any) -> Any:
         return _as_list(v) if v is not None else v
 
+    @field_validator("platform")
+    @classmethod
+    def _valid_platform(cls, v: str | None) -> str | None:
+        return _check_platform(v)
+
+    @field_validator("browser")
+    @classmethod
+    def _valid_browser(cls, v: str) -> str:
+        # Reject a typo'd engine at load time (the loud, right place) rather than letting it surface
+        # as an AttributeError when the driver does `getattr(pw, engine)` mid-run (BE-0076).
+        if v not in WEB_ENGINES:
+            raise ValueError(f"invalid browser {v!r}: use one of {', '.join(WEB_ENGINES)}")
+        return v
+
     @model_validator(mode="after")
     def _need_target(self) -> TargetConfig:
-        # A malformed target entry (neither bundleId nor baseUrl) still fails fast, so dropping
-        # bundleId's required-ness for web doesn't silently accept a target-less iOS app.
-        if not self.bundle_id and not self.base_url:
-            raise ValueError("target needs bundleId (iOS) or baseUrl (web)")
+        # A malformed target entry (no identifier at all) still fails fast. The platform-aware check
+        # that the *right* identifier is present for the resolved platform lives on Config (it needs
+        # defaults to derive the platform).
+        if not self.bundle_id and not self.base_url and not self.package:
+            raise ValueError("target needs bundleId (iOS), baseUrl (web), or package (Android)")
         return self
 
 
@@ -178,6 +277,20 @@ class Config(_Model):
     defaults: Defaults = Field(default_factory=Defaults)
     targets: dict[str, TargetConfig] = Field(default_factory=dict)
     orgs: dict[str, OrgConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _targets_carry_their_platform_identifier(self) -> Config:
+        # Each target must carry the identifier its resolved platform needs (iOS bundleId / web
+        # baseUrl / Android package). Validated here, not on TargetConfig, because deriving the
+        # platform from the backend needs `defaults` (BE-0009 Slice 4). Backward compatible: a config
+        # with no `platform` derives it from the backend, so existing iOS/web targets already pass.
+        for name, t in self.targets.items():
+            backend = t.backend or self.defaults.backend
+            platform = _effective_platform(t, self.defaults, backend)
+            identifier = _PLATFORM_IDENTIFIER.get(platform)
+            if identifier is not None and not getattr(t, identifier[1]):
+                raise ValueError(f"target {name!r} (platform {platform}) needs {identifier[0]}")
+        return self
 
 
 # The single tenant every unassigned user and target falls into; keep in sync with serve's
@@ -243,6 +356,8 @@ class Effective:
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
+    # Resolved AI provider/model/endpoint/key (BE-0047), passed to the AI factory. None = env-only.
+    ai: AiConfig | None = None
     # Generic HTTP mailbox the `email` step polls (`targets.<name>.mailbox`, BE-0046). None = no
     # mailbox configured, so an `email` step fails cleanly.
     mailbox: Mailbox | None = None
@@ -260,12 +375,23 @@ class Effective:
     # JSON Schema directory for `responseSchema` assertions. None = fall back to
     # schemas/ beside the scenario file (or --schemas CLI flag).
     schemas: str | None = None
+    # The resolved platform (ios / android / web): explicit, else from defaults, else derived from
+    # the backend (BE-0009 Slice 4). The discriminator a platform-specific path keys off.
+    platform: str = "ios"
+    # Android target identifier (peer of bundle_id / base_url). "" for non-Android targets.
+    package: str = ""
     # Web (Playwright) target URL. None for iOS apps (which use bundle_id instead).
     base_url: str | None = None
     # Web (Playwright): run headless (default) or headed (visible browser). iOS ignores it.
     headless: bool = True
+    # Web (Playwright): the rendering engine to drive — chromium (default) / firefox / webkit.
+    # iOS ignores it (BE-0076).
+    browser: str = "chromium"
     # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
     launch_server: LaunchServer | None = None
+    # Selector the launch waits for before a run starts (BE: smoke flake). None = the default
+    # element-count readiness heuristic.
+    ready_when: base.Selector | None = None
     # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
     # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
     idb_version: str | None = None
@@ -313,20 +439,85 @@ def _merge_redact(base: Redact, over: Redact) -> Redact:
     )
 
 
+def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | None:
+    """Merge defaults.ai with the target's ai, field by field (target wins). None when neither set."""
+    if base is None and over is None:
+        return None
+    b = base or AiSettings()
+    o = over or AiSettings()
+    return AiConfig(
+        provider=o.provider or b.provider,
+        model=o.model or b.model,
+        base_url=o.base_url or b.base_url,
+        key_env=o.key_env or b.key_env,
+    )
+
+
+def _platform_for_backend(backend: list[str]) -> str | None:
+    """The platform a backend list implies, or None.
+
+    A token may be a platform alias (`web`) or a bare actuator (`playwright`), so it is expanded to
+    an actuator before the reverse lookup.
+    """
+    from bajutsu.backends import platform_of, resolve_actuators
+
+    actuators = resolve_actuators(backend)
+    return platform_of(actuators[0]) if actuators else None
+
+
+def _effective_platform(a: TargetConfig, d: Defaults, backend: list[str]) -> str:
+    """The target's platform (BE-0009 Slice 4), preserving the pre-`platform` behavior.
+
+    Precedence: an explicit `platform` (target then defaults) wins; else an explicit *target* backend
+    implies it; else the identifier the target carries (baseUrl -> web, package -> android, bundleId
+    -> ios), so a web target written as just `baseUrl` is web even though the default backend is idb;
+    else the (possibly defaulted) backend; else `ios`.
+    """
+    explicit = a.platform or d.platform
+    if explicit:
+        return explicit
+    if a.backend is not None:
+        from_backend = _platform_for_backend(a.backend)
+        if from_backend:
+            return from_backend
+    if a.base_url:
+        return "web"
+    if a.package:
+        return "android"
+    if a.bundle_id:
+        return "ios"
+    return _platform_for_backend(backend) or "ios"
+
+
+# The identifier each platform requires on its target, as (config field name, TargetConfig attr);
+# `fake` (and any platform absent here) needs none. Used by Config validation to reject a target
+# carrying the wrong handle for its platform.
+_PLATFORM_IDENTIFIER: dict[str, tuple[str, str]] = {
+    "ios": ("bundleId", "bundle_id"),
+    "web": ("baseUrl", "base_url"),
+    "android": ("package", "package"),
+}
+
+
 def resolve(config: Config, target: str) -> Effective:
     """Resolve the effective config for one target (the target entry overrides defaults)."""
     if target not in config.targets:
         raise KeyError(f"unknown target: {target!r} (define targets.{target} in config)")
     d = config.defaults
     a = config.targets[target]
+    backend = a.backend or d.backend
     return Effective(
         target=target,
+        platform=_effective_platform(a, d, backend),
+        package=a.package,
         bundle_id=a.bundle_id,
         base_url=a.base_url,
         headless=a.headless,
+        browser=a.browser,
         launch_server=a.launch_server,
+        ready_when=a.ready_when,
         deeplink_scheme=a.deeplink_scheme,
-        backend=a.backend or d.backend,
+        backend=backend,
         device=a.device or d.device,
         locale=a.locale or d.locale,
         launch_env=dict(a.launch_env),
@@ -339,6 +530,7 @@ def resolve(config: Config, target: str) -> Effective:
         capture=list(d.capture),
         redact=_merge_redact(d.redact, a.redact),
         secrets=list(dict.fromkeys([*d.secrets, *a.secrets])),
+        ai=_merge_ai(d.ai, a.ai),
         app_path=a.app_path,
         build=a.build,
         scenarios=a.scenarios,

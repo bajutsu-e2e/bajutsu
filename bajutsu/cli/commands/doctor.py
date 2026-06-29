@@ -28,9 +28,23 @@ def doctor(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    # Config gate first: a target missing the field its backend needs (iOS bundleId / web baseUrl)
+    # is a usage/config error — fixable without any tool or device — so it exits 2 (distinct from a
+    # genuine environment/tool failure, which exits 1) and is surfaced before any doomed probe
+    # (BE-0024). `_need_target` rejects a target with neither field at parse time; this catches the
+    # wrong field for the selected backend.
+    cfg_checks = preflight.config_checks(
+        actuator, target=target_name, bundle_id=eff.bundle_id, base_url=eff.base_url
+    )
+    if not preflight.passed(cfg_checks):
+        typer.echo("environment:")
+        typer.echo(preflight.render(cfg_checks))
+        raise typer.Exit(2)
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device.
-    env_checks = preflight.runnability(actuator, booted_count=lambda: len(_env.booted_udids()))
+    env_checks = preflight.runnability(
+        actuator, booted_count=lambda: len(_env.booted_udids()), web_engine=eff.browser
+    )
     # When a pin is declared (defaults.idbVersion), report the installed idb_companion against it
     # so a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
     # Only probe when a pin exists *and* idb_companion is actually present — runnability already
@@ -41,10 +55,11 @@ def doctor(
         version_check = preflight.idb_version_check(eff.idb_version, idb_version.probe())
         if version_check is not None:
             env_checks.append(version_check)
-    if env_checks:
+    checks = cfg_checks + env_checks
+    if checks:
         typer.echo("environment:")
-        typer.echo(preflight.render(env_checks))
-        if not preflight.passed(env_checks):
+        typer.echo(preflight.render(checks))
+        if not preflight.passed(checks):
             raise typer.Exit(1)
         typer.echo("")
     elements = _current_screen(actuator, udid, eff)
@@ -67,7 +82,7 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
         # Lazy import keeps Playwright (a heavy optional dep) off the default path.
         from bajutsu.drivers.playwright import PlaywrightDriver, _playwright_error_types
 
-        driver = PlaywrightDriver(eff.base_url, headless=eff.headless)
+        driver = PlaywrightDriver(eff.base_url, headless=eff.headless, browser=eff.browser)
         try:
             driver.navigate()
             return driver.query()

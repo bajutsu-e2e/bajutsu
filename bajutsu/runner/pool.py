@@ -1,27 +1,34 @@
 """The device pool.
 
-Lease a device per scenario (a single-device run is a pool of one), and the per-device relaunch /
-device-control bound to a leased udid.
+Lease a device per scenario (a single-device run is a pool of one). The per-platform lease shape —
+relaunch, device control, network observation, teardown — comes from the `Environment` seam, so the
+pool never branches on the actuator name (BE-0009 Phase 0).
 """
 
 from __future__ import annotations
 
 import queue
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 
 from bajutsu import env
-from bajutsu.backends import default_available, select_actuator
+from bajutsu.backends import default_available, resolve_evidence_providers, select_actuator
+from bajutsu.backends import make_driver as _make_driver
 from bajutsu.config import Effective
 from bajutsu.drivers import base
+
+# `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
+# `from bajutsu.runner import device_control, device_relauncher` keeps its import unchanged.
+from bajutsu.environment import device_control, device_relauncher, environment_for
 from bajutsu.evidence import FileSink
 from bajutsu.network import Collector, NetworkCollector
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.orchestrator.evidence_rules import requested_intervals
-from bajutsu.runner.launch import _await_ready, launch_driver
-from bajutsu.runner.types import Lease, LeaseFn, RelaunchFactory
-from bajutsu.scenario import Relaunch, Scenario
+from bajutsu.runner.launch import launch_driver
+from bajutsu.runner.types import Lease, LeaseFn
+from bajutsu.scenario import Scenario
+
+__all__ = ["device_control", "device_pool", "device_relauncher"]
 
 
 def device_pool(
@@ -36,6 +43,10 @@ def device_pool(
     secret_values: list[str] | None = None,
     available: Callable[[str], bool] = default_available,
     env_run: env.RunFn = env._real_run,
+    make_driver: Callable[..., base.Driver] = _make_driver,
+    evidence_providers: Callable[
+        [list[str], str, Callable[[str], bool]], tuple[dict[str, str], dict[str, str]]
+    ] = resolve_evidence_providers,
 ) -> tuple[LeaseFn, Callable[[], None]]:
     """A pool of N≥1 devices for (parallel) runs.
 
@@ -59,27 +70,40 @@ def device_pool(
         secret_values: Raw secret values to redact from evidence.
         available: Actuator-availability probe, injectable for tests.
         env_run: The subprocess runner for simctl, injectable for tests.
+        make_driver: Builds a backend's driver; injectable so a test can supply a read-only
+            evidence provider's driver (BE-0020).
+        evidence_providers: Resolves the read-only evidence provider per gap kind (BE-0020),
+            injectable for tests; defaults to the same-platform resolver.
 
     Returns:
         A `(lease, shutdown)` pair: `lease` leases a device for one scenario; `shutdown` stops every
         device's collector.
     """
     actuator = select_actuator(backends, available)
-    is_web = actuator == "playwright"
-    # Resolve the device model / OS once up front (static per device) so each result can name
-    # the simulator it ran on in the report; best-effort, so a missing catalog just omits it.
-    # Web has no simctl catalog.
-    catalog = {} if is_web else env.device_catalog(env_run)
+    # The platform's whole lease shape (catalog, network strategy, relaunch, control, teardown) comes
+    # from its Environment, so nothing below branches on the actuator name. Pool-level facts read off
+    # a representative environment; the device-scoped parts use one built per leased udid.
+    pool_env = environment_for(actuator, udids[0] if udids else "", env_run)
+    # A same-platform, read-only provider for an evidence kind the actuator can't supply (BE-0020).
+    # Today `network` is covered by web (native) and idb (its app-side `BAJUTSU_COLLECTOR`), so this
+    # resolves to nothing in production; it activates when a platform gains a second, network-native
+    # actuator (e.g. iOS + XCUITest, BE-0019), at which point its collector supplies the fallback.
+    providers, _skipped = evidence_providers(backends, actuator, available)
+    network_provider = providers.get("network") if network else None
+    # Resolve the device model / OS once up front (static per device) so each result can name the
+    # simulator it ran on in the report; best-effort, so a missing catalog just omits it. A
+    # driver-observed platform (web) has no device catalog.
+    catalog = pool_env.device_catalog()
     free: queue.Queue[str] = queue.Queue()
     for udid in udids:
         free.put(udid)
-    # One collector per device (its own ephemeral port), started up front and reused across
-    # leases (cleared per scenario by the run loop). If a start fails mid-setup, stop the
-    # ones already started so we don't leak listening sockets.
-    # iOS collectors are HTTP receivers started up front and reused; web has no up-front receiver
-    # (its collector hooks the page built per lease), so only the non-web path pre-starts them.
+    # One collector per device (its own ephemeral port), started up front and reused across leases
+    # (cleared per scenario by the run loop). If a start fails mid-setup, stop the ones already
+    # started so we don't leak listening sockets. Only the external-receiver path (the device
+    # backends) pre-starts these; a driver-observed platform (web) has no up-front receiver and hooks
+    # its collector to the page built per lease instead.
     collectors: dict[str, NetworkCollector] = {}
-    if network and not is_web:
+    if network and not pool_env.observes_network_via_driver():
         started: list[NetworkCollector] = []
         try:
             for udid in udids:
@@ -94,185 +118,92 @@ def device_pool(
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         udid = free.get()
-        # Web films the whole scenario only when its capture policy asks for video: Playwright
-        # records at context-creation time, so the recording dir must be set before the driver is
-        # built. iOS records on demand via simctl, so it needs no up-front dir.
-        record_video_dir: Path | None = None
-        if is_web and "video" in requested_intervals(scenario):
-            record_video_dir = run_dir / "_video_tmp"
-            record_video_dir.mkdir(parents=True, exist_ok=True)
-        # iOS points the app at its pre-started HTTP collector via launch env; web has no such
-        # env (Playwright observes natively), so its collector is built from the live page below.
-        collector: Collector | None = collectors.get(udid)
-        extra_env = (
-            {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
-            if isinstance(collector, NetworkCollector)
-            else None
-        )
-        driver = launch_driver(
-            udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
-        )
-        sink = FileSink(
-            run_dir,
-            udid=udid,
-            log_predicate=log_predicate,
-            log_subsystem=log_subsystem,
-            redact=eff.redact,
-            secrets=secret_values,
-            # On a web lane, interval evidence is Playwright-native (console / page errors), not
-            # simctl; idb has no such method, so this is None there and the simctl path is used.
-            web_interval=getattr(driver, "web_interval", None),
-        )
-        relaunch: RelaunchFn
-        control: DeviceControl | None
-        if is_web:
-            from bajutsu.drivers.playwright import PlaywrightDriver
-
-            # The web collector hooks the live page (and fulfills this scenario's mocks); a fresh
-            # context per lease scopes its traffic, mirroring iOS's per-scenario collector clear.
-            web_collector = (
-                cast(PlaywrightDriver, driver).network_collector(scenario.mocks)
-                if network
+        lease_env = environment_for(actuator, udid, env_run)
+        # The collector to stop on release (the web page hook, or a BE-0020 fallback) — not the
+        # pre-started HTTP receivers, which are reused and stopped in shutdown(). Released on a setup
+        # failure too, so one launch failure neither leaks a socket nor starves later leases.
+        release_collector: Collector | None = None
+        try:
+            # Web films the whole scenario only when its capture policy asks for video: Playwright
+            # records at context-creation time, so the recording dir must be set before the driver
+            # is built. A device backend records on demand, so it needs no up-front dir.
+            record_video_dir: Path | None = None
+            if lease_env.records_video_up_front() and "video" in requested_intervals(scenario):
+                record_video_dir = run_dir / "_video_tmp"
+                record_video_dir.mkdir(parents=True, exist_ok=True)
+            # A device backend points the app at its pre-started HTTP collector via launch env; a
+            # driver-observed platform has no such env (it observes natively) and hooks its collector
+            # from the live page after launch. A read-only fallback provider (BE-0020), when resolved,
+            # supplies the collector instead — its own driver observes the same app.
+            collector: Collector | None
+            collector_provider = "collector"
+            if not lease_env.observes_network_via_driver():
+                if network_provider is not None:
+                    fallback = make_driver(network_provider, udid).network_collector()  # type: ignore[attr-defined]
+                    collector = release_collector = fallback
+                    collector_provider = f"{network_provider} (fallback)"
+                else:
+                    collector = collectors.get(udid)
+            else:
+                collector = None  # resolved after launch from the live page
+            extra_env = (
+                {"BAJUTSU_COLLECTOR": f"http://127.0.0.1:{collector.port}"}
+                if isinstance(collector, NetworkCollector)
                 else None
             )
-            collector = web_collector
-            # No simctl device control / app terminate; the driver owns the browser, so a
-            # release tears it down (a re-lease then builds a fresh context = clean state).
-            relaunch = _web_relauncher(driver)
-            control = None
+            driver = launch_driver(
+                udid, eff, actuator, scenario.preconditions, env_run, extra_env, record_video_dir
+            )
+            sink = FileSink(
+                run_dir,
+                udid=udid,
+                log_predicate=log_predicate,
+                log_subsystem=log_subsystem,
+                redact=eff.redact,
+                secrets=secret_values,
+                # On a web lane, interval evidence is Playwright-native (console / page errors), not
+                # simctl; idb has no such method, so this is None there and the simctl path is used.
+                web_interval=getattr(driver, "web_interval", None),
+            )
+            # A driver-observed platform hooks its collector to the live page now (and fulfils this
+            # scenario's mocks); a fresh context per lease scopes its traffic, mirroring the device's
+            # per-scenario collector clear. It is stopped on release.
+            if lease_env.observes_network_via_driver() and network:
+                collector = release_collector = lease_env.hook_collector(driver, scenario)
+                # Native observation by the selected actuator, not the app-side receiver. Naming the
+                # actuator keeps provenance accurate if another driver-observed actuator is added;
+                # today this is "playwright".
+                collector_provider = actuator
+            relaunch: RelaunchFn = lease_env.relauncher(eff, scenario, driver, extra_env=extra_env)
+            control: DeviceControl | None = lease_env.controller(eff)
 
             def release() -> None:
-                if web_collector is not None:
-                    web_collector.stop()
-                driver.close()  # type: ignore[attr-defined]  # web-only lifecycle
-                free.put(udid)
-        else:
-            relaunch = device_relauncher(udid, env_run, extra_env)(eff, scenario, driver)
-            control = device_control(udid, eff.bundle_id, env_run)
-
-            def release() -> None:
-                env.Env(udid, run=env_run).terminate(eff.bundle_id)
+                if release_collector is not None:
+                    release_collector.stop()
+                lease_env.teardown(driver, eff)
                 free.put(udid)
 
-        meta = catalog.get(udid, {})
-        return Lease(
-            driver=driver,
-            sink=sink,
-            relaunch=relaunch,
-            control=control,
-            collector=collector,
-            release=release,
-            udid=udid,
-            device_name=meta.get("name", ""),
-            device_runtime=meta.get("runtime", ""),
-        )
+            meta = catalog.get(udid, {})
+            return Lease(
+                driver=driver,
+                sink=sink,
+                relaunch=relaunch,
+                control=control,
+                collector=collector,
+                release=release,
+                udid=udid,
+                device_name=meta.get("name", ""),
+                device_runtime=meta.get("runtime", ""),
+                collector_provider=collector_provider,
+            )
+        except BaseException:
+            if release_collector is not None:
+                release_collector.stop()
+            free.put(udid)
+            raise
 
     def shutdown() -> None:
         for collector in collectors.values():
             collector.stop()
 
     return lease, shutdown
-
-
-def device_control(udid: str, bundle_id: str, env_run: env.RunFn = env._real_run) -> DeviceControl:
-    """A `DeviceControl` bound to one device.
-
-    Backs the `setLocation` / `push` / `clearKeychain` / `clearClipboard` / `setClipboard` /
-    `background` / `foreground` / `overrideStatusBar` / `clearStatusBar` steps and the `clipboard`
-    assertion (read-back) via simctl.
-
-    Args:
-        udid: The target device.
-        bundle_id: The app the control acts on (e.g. for `push` / `foreground`).
-        env_run: The subprocess runner for simctl, injectable for tests.
-    """
-    e = env.Env(udid, run=env_run)
-
-    class _Control:
-        def set_location(self, lat: float, lon: float) -> None:
-            e.set_location(lat, lon)
-
-        def push(self, payload: dict[str, object]) -> None:
-            e.push(bundle_id, payload)
-
-        def clear_keychain(self) -> None:
-            e.clear_keychain()
-
-        def clear_clipboard(self) -> None:
-            e.clear_clipboard()
-
-        def set_clipboard(self, text: str) -> None:
-            e.set_clipboard(text)
-
-        def get_clipboard(self) -> str:
-            return e.get_clipboard()
-
-        def home(self) -> None:
-            e.home()
-
-        def foreground(self) -> None:
-            e.foreground(bundle_id)
-
-        def override_status_bar(self, **kwargs: str | int) -> None:
-            e.override_status_bar(**kwargs)
-
-        def clear_status_bar(self) -> None:
-            e.clear_status_bar()
-
-    return _Control()
-
-
-def _web_relauncher(driver: base.Driver) -> RelaunchFn:
-    """Web `relaunch`: re-navigate to the base URL and wait until ready (no device restart)."""
-
-    def relaunch(opts: Relaunch) -> None:
-        driver.navigate()  # type: ignore[attr-defined]  # web-only lifecycle
-        _await_ready(driver)
-
-    return relaunch
-
-
-def device_relauncher(
-    udid: str, env_run: env.RunFn = env._real_run, extra_env: Mapping[str, str] | None = None
-) -> RelaunchFactory:
-    """A relauncher factory for the `relaunch` step.
-
-    Restarts only the app process — terminate then launch again, re-applying the scenario's launch
-    env/args plus any per-relaunch overrides, then wait until ready. The device is not erased or
-    rebooted.
-
-    Args:
-        udid: The target device.
-        env_run: The subprocess runner for simctl, injectable for tests.
-        extra_env: Launch env re-applied across the relaunch (e.g. the device's collector url) so it
-            survives; an explicit per-relaunch `env` override still wins over it.
-
-    Returns:
-        A factory that, given a scenario + driver, yields that scenario's `relaunch` function.
-    """
-    e = env.Env(udid, run=env_run)
-
-    def for_scenario(eff: Effective, scenario: Scenario, driver: base.Driver) -> RelaunchFn:
-        pre = scenario.preconditions
-
-        def relaunch(opts: Relaunch) -> None:
-            e.terminate(eff.bundle_id)
-            launch_env = {
-                **eff.launch_env,
-                **pre.launch_env,
-                **(extra_env or {}),
-                **(opts.env or {}),
-            }
-            locale = pre.locale or eff.locale
-            launch_args = [
-                *eff.launch_args,
-                *pre.launch_args,
-                *(opts.args or []),
-                *env.locale_args(locale),
-            ]
-            e.launch(eff.bundle_id, launch_args, launch_env)
-            _await_ready(driver)
-
-        return relaunch
-
-    return for_scenario
