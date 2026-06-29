@@ -88,22 +88,24 @@ Prime directives preserved:
 
 ### Implementation status
 
-The first slice ships **`setClipboard`** (seed the pasteboard) and **`foreground`** (resume a
-backgrounded app), the two primitives with a reliable `simctl` backing the codebase already uses:
-`setClipboard` reuses `simctl pbcopy` (the same command `clearClipboard` already drives, with the
-seed text on stdin), and `foreground` is `simctl launch` without `--terminate-running-process` — the exact inverse
-of `background`'s `simctl ui home`, adding no settle sleep. Both follow the BE-0035 pattern end to
+The first slice (PR [#206](https://github.com/bajutsu-e2e/bajutsu/pull/206)) shipped
+**`setClipboard`** (seed the pasteboard) and **`foreground`** (resume a backgrounded app), the two
+primitives with a reliable `simctl` backing the codebase already uses: `setClipboard` reuses
+`simctl pbcopy` (the same command `clearClipboard` already drives, with the seed text on stdin),
+and `foreground` is `simctl launch` without `--terminate-running-process` — the exact inverse of
+`background`'s `simctl ui home`, adding no settle sleep. Both follow the BE-0035 pattern end to
 end (action model → `Step` field → `DeviceControl` handler → `Env` command → `_Control`), fail
 cleanly on the fake driver and in parallel runs, and emit a labeled `// TODO` from codegen.
 
-A follow-up slice ships the **clipboard read-back** the Motivation calls for: a `clipboard`
-assertion (`expect: - clipboard: { equals | matches }`) that reads the pasteboard with `simctl
-pbpaste` (`Env.get_clipboard` over the injectable `RunFn`) and compares it, so a "copy" action can
-be verified — the read half of `setClipboard`'s seed. It is a pure assertion (`_eval_clipboard`,
-gate-tested over fabricated values) whose pasteboard read is supplied by the run loop from the
-per-device `DeviceControl`; like the device-state steps it is unavailable on the fake driver / in
-parallel runs and fails cleanly there (mirroring how the `visual` assertion degrades without a
-context), and has no XCUITest equivalent so codegen emits a labeled `// TODO`.
+The second slice (PR [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257)) shipped the
+**clipboard read-back assertion**: `expect: - clipboard: { equals | matches }` reads the
+pasteboard with `simctl pbpaste` (`Env.get_clipboard` over the injectable `RunFn`) and compares
+it, so a "copy" action can be verified — the read half of `setClipboard`'s seed. The evaluator
+(`_eval_clipboard`) is a pure assertion gate-tested over fabricated values; the pasteboard read is
+supplied by the run loop from the per-device `DeviceControl`. Like the device-state steps it is
+unavailable on the fake driver / in parallel runs and fails cleanly there (mirroring how the
+`visual` assertion degrades without a context), and has no XCUITest equivalent so codegen emits a
+labeled `// TODO`.
 
 **`setTimezone` and `shake` are deferred** because neither has a reliable `simctl` actuation: there
 is no `simctl` subcommand that changes the device's timezone (`status_bar override --time` only sets

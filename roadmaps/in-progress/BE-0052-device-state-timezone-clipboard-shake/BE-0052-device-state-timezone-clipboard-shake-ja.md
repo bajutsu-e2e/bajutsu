@@ -88,21 +88,23 @@ prime directive の保持：
 
 ### 実装状況
 
-最初のスライスは **`setClipboard`**（ペーストボードへの投入）と **`foreground`**（バックグラウンドの
-アプリの前面復帰）を提供します。いずれも、コードベースが既に使う確実な `simctl` の裏付けがある 2 つです。
-`setClipboard` は `simctl pbcopy`（`clearClipboard` が既に使うのと同じコマンドで、投入テキストを stdin で
-渡す）を再利用し、`foreground` は `--terminate-running-process` なしの `simctl launch`、すなわち `background` の
-`simctl ui home` の正確な逆操作で、settle 用の sleep を入れません。どちらも BE-0035 のパターンを端から端まで
-踏襲し（アクションモデル → `Step` フィールド → `DeviceControl` ハンドラ → `Env` コマンド → `_Control`）、
-fake ドライバや並列実行ではクリーンに失敗し、codegen はラベル付きの `// TODO` を出力します。
+最初のスライス（PR [#206](https://github.com/bajutsu-e2e/bajutsu/pull/206)）では **`setClipboard`**
+（ペーストボードへの投入）と **`foreground`**（バックグラウンドのアプリの前面復帰）を出荷しました。
+いずれも、コードベースが既に使う確実な `simctl` の裏付けがある 2 つです。`setClipboard` は `simctl pbcopy`
+（`clearClipboard` が既に使うのと同じコマンドで、投入テキストを stdin で渡す）を再利用し、`foreground` は
+`--terminate-running-process` なしの `simctl launch`、すなわち `background` の `simctl ui home` の正確な
+逆操作で、settle 用の sleep を入れません。どちらも BE-0035 のパターンを端から端まで踏襲し（アクション
+モデル → `Step` フィールド → `DeviceControl` ハンドラ → `Env` コマンド → `_Control`）、fake ドライバや
+並列実行ではクリーンに失敗し、codegen はラベル付きの `// TODO` を出力します。
 
-続くスライスでは、Motivation が挙げる **クリップボードの読み戻し** を提供します。`clipboard` アサーション
-（`expect: - clipboard: { equals | matches }`）で、`simctl pbpaste`（注入可能な `RunFn` 経由の
-`Env.get_clipboard`）でペーストボードを読み出して比較し、`setClipboard` で仕込んだ値に対する「コピー」操作を
-検証できます。アサーション自体は純粋関数（`_eval_clipboard`。捏造した値に対してゲートで検証）で、ペーストボードの
-読み出し値は実行ループがデバイスごとの `DeviceControl` から供給します。デバイス状態ステップと同様、fake ドライバや
-並列実行では利用できずクリーンに失敗し（`visual` アサーションがコンテキスト無しで劣化するのと同じ）、XCUITest 等価物が
-ないため codegen はラベル付きの `// TODO` を出力します。
+2 番目のスライス（PR [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257)）では、**クリップボードの読み戻しアサーション** を出荷しました。
+`expect: - clipboard: { equals | matches }` で `simctl pbpaste`
+（注入可能な `RunFn` 経由の `Env.get_clipboard`）からペーストボードを読み出して比較し、`setClipboard` で
+仕込んだ値に対する「コピー」操作を検証できます。評価関数（`_eval_clipboard`）は純粋関数で、捏造した値に
+対してゲートで検証しています。ペーストボードの読み出し値は、実行ループがデバイスごとの `DeviceControl` から
+供給します。デバイス状態ステップと同様、fake ドライバや並列実行では利用できずクリーンに失敗し（`visual`
+アサーションがコンテキスト無しで劣化するのと同じ）、XCUITest 等価物がないため codegen はラベル付きの
+`// TODO` を出力します。
 
 **`setTimezone` と `shake` は見送りました**。どちらも確実な `simctl` の actuation が無いためです。デバイスの
 タイムゾーンを変える `simctl` サブコマンドは存在せず（`status_bar override --time` は表示上のクロック文字列を
