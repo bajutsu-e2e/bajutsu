@@ -27,34 +27,29 @@ class CaptureResult:
     refused: str | None = None
 
 
-_REFUSED_SENTINEL: base.Element = {
-    "identifier": None,
-    "label": None,
-    "traits": [],
-    "value": None,
-    "frame": (0, 0, 0, 0),
-}
-_REFUSED_SELECTOR = Selector(id="__refused__")
-_REFUSED_SCORE = doctor.Score(
-    actionable=0,
-    with_id=0,
-    id_coverage=0.0,
-    namespace_conformance=0.0,
-    duplicate_ids=0,
-    grade="Blocked",
-    no_actionable=True,
-    missing_id=[],
-    off_namespace=[],
-    duplicates=[],
-)
-
-
 def _refused(reason: str) -> CaptureResult:
     return CaptureResult(
-        element=_REFUSED_SENTINEL,
-        selector=_REFUSED_SELECTOR,
+        element={
+            "identifier": None,
+            "label": None,
+            "traits": [],
+            "value": None,
+            "frame": (0, 0, 0, 0),
+        },
+        selector=Selector(id="__refused__"),
         rung="none",
-        score=_REFUSED_SCORE,
+        score=doctor.Score(
+            actionable=0,
+            with_id=0,
+            id_coverage=0.0,
+            namespace_conformance=0.0,
+            duplicate_ids=0,
+            grade="Blocked",
+            no_actionable=True,
+            missing_id=[],
+            off_namespace=[],
+            duplicates=[],
+        ),
         refused=reason,
     )
 
@@ -66,7 +61,7 @@ def hit_test(elements: list[base.Element], point: tuple[float, float]) -> base.E
     best: base.Element | None = None
     best_area = float("inf")
     for el in elements:
-        if not doctor._is_actionable(el):
+        if not set(el["traits"]) & doctor.ACTIONABLE_TRAITS:
             continue
         if not base._contains(el["frame"], inner):
             continue
@@ -87,7 +82,9 @@ def selector_for_element(el: base.Element, elements: list[base.Element]) -> Sele
     if label:
         same_label = [e for e in elements if e["label"] == label]
         if len(same_label) > 1:
-            idx = next(i for i, e in enumerate(same_label) if e is el)
+            idx = next((i for i, e in enumerate(same_label) if e is el), None)
+            if idx is None:
+                return None
             return Selector(label=label, index=idx)
         return Selector(label=label)
     return None
