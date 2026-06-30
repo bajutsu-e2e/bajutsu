@@ -12,6 +12,7 @@ import json
 import logging
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -231,8 +232,18 @@ def _render_slack_start(
 # ---------------------------------------------------------------------------
 
 
+def _mask_url(url: str) -> str:
+    """Mask a webhook URL for safe logging (host only, path/query redacted)."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        return f"{parsed.scheme}://{parsed.hostname}/***"
+    except Exception:
+        return "***"
+
+
 def _deliver(url: str, payload: dict[str, Any]) -> bool:
     """POST JSON to *url* with bounded timeout and retry. Returns success."""
+    masked = _mask_url(url)
     body = json.dumps(payload).encode("utf-8")
     for attempt in range(_MAX_RETRIES + 1):
         try:
@@ -247,15 +258,17 @@ def _deliver(url: str, payload: dict[str, Any]) -> bool:
                     return True
                 logger.warning(
                     "webhook POST to %s returned status %d (attempt %d)",
-                    url,
+                    masked,
                     resp.status,
                     attempt + 1,
                 )
         except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
-            logger.warning("webhook POST to %s failed (attempt %d): %s", url, attempt + 1, exc)
+            logger.warning("webhook POST to %s failed (attempt %d): %s", masked, attempt + 1, exc)
         if attempt < _MAX_RETRIES:
             time.sleep(_RETRY_DELAY * (attempt + 1))
-    logger.warning("webhook POST to %s failed after %d attempts; giving up", url, _MAX_RETRIES + 1)
+    logger.warning(
+        "webhook POST to %s failed after %d attempts; giving up", masked, _MAX_RETRIES + 1
+    )
     return False
 
 
@@ -330,7 +343,11 @@ def emit(
             if _deliver(url, payload):
                 any_fired = True
         except Exception:
-            logger.warning("webhook notification failed for endpoint %s", ep.url, exc_info=True)
+            logger.warning(
+                "webhook notification failed for endpoint %s",
+                _mask_url(ep.url),
+                exc_info=True,
+            )
 
     return any_fired
 
@@ -378,6 +395,10 @@ def emit_start(
             if _deliver(url, payload):
                 any_fired = True
         except Exception:
-            logger.warning("webhook start notification failed for %s", ep.url, exc_info=True)
+            logger.warning(
+                "webhook start notification failed for %s",
+                _mask_url(ep.url),
+                exc_info=True,
+            )
 
     return any_fired
