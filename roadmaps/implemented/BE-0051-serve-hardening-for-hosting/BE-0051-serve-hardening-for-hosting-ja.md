@@ -81,6 +81,10 @@ HTTP ハーネスで Simulator 無しにテストできます。
   公開されうる無認証サーバは危険だからです。トークン無しの非 loopback bind を拒否すれば、安全側が既定になります。リバースプロキシ
   （BE-0016 の Caddy basic-auth）は上乗せの選択肢として残ります。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)（公開/クラウドホスティング）、

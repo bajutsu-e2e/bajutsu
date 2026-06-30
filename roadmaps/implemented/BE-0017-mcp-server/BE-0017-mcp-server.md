@@ -42,6 +42,10 @@ Install: `uv pip install bajutsu[mcp]`
 - In-process execution for `run` (rejected: device pool management is complex; subprocess is simpler and matches the `serve` pattern)
 - HTTP transport as default (rejected: stdio is the standard for Claude Desktop / Code integration)
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/mcp/`, [cli.md](../../../docs/cli.md)

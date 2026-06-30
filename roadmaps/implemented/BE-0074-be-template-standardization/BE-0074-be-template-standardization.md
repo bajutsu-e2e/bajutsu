@@ -10,6 +10,7 @@
 | Status | **Implemented** |
 | Implementing PR | [#197](https://github.com/bajutsu-e2e/bajutsu/pull/197) |
 | Topic | Development infrastructure (contributor workflow) |
+| Related | [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -245,6 +246,12 @@ Japanese mirror) is updated to describe the fenced block. The tree is green unde
   matches the index's own `<!-- GENERATED:* -->` convention. The divergence is small and documented
   here; the prose in `CLAUDE.md` / `README.md` is updated to the fenced block in the implementation
   phase.
+
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above. (The template was later extended from five sections
+  to six by [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md),
+  which added this `Progress` section and the `Related` / `Superseded by` fields.)
 
 ## References
 

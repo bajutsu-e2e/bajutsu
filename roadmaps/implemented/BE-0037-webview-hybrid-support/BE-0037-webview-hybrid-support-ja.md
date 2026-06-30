@@ -83,42 +83,17 @@ DOM の操作には idb が持たない機能、すなわち `WKWebView.evaluate
 - **LLM なし。** ブリッジ、正規化、解決はすべて純粋な機械ロジックです。run／CI ゲートは AI 非依存のままで、ここに合否判定へ LLM を加える要素はありません。
 - **アプリ非依存。** アプリ固有の事実（どのアプリが WebView を使うか、安定したホストの id）は `apps.<name>` に置きます。ツール、ドライバ、正規化処理、ランナーは、アプリをまたいでも、また idb から後の XCUITest アクチュエータへ移っても変わりません。
 
-### 実装状況
-
-[#400](https://github.com/bajutsu-e2e/bajutsu/pull/400)（最初のスライス）と
-[#401](https://github.com/bajutsu-e2e/bajutsu/pull/401)（後続）で出荷しました。
-
-#### 出荷済みの内容
-
-- `web: { within, steps }` ステップ型 — コンテキスト境界、モデル、ランループのディスパッチ
-- DOM から Element への正規化を `bajutsu/dom.py` に抽出（Playwright と共有）
-- `WebViewBridge`（Python HTTP クライアント）と `WebContextDriver`（ドライバーラッパー）
-- `BajutsuWebView.swift` — ブリッジサーバー。`/webview/dom`・`/webview/tap`・`/webview/type`・
-  `/webview/scroll` エンドポイントを提供し、JS の文字列補間は `JSONSerialization` で安全に処理します
-- パイプライン配管：`Lease.webview_bridge`、`BAJUTSU_WEBVIEW_PORT` の環境変数注入、`pool` →
-  `pipeline` → `run_scenario` の配線
-- Web コンテキスト内の `type_text`（フォーカス中の要素へ `input` + `change` イベントを発火）
-- タップ前の `scrollIntoView`（画面外の要素をビューポートへ移動）
-- ドライバープロトコルへの `Capability.WEBVIEW` 追加
-
-#### 残論点（最初のスライスの対象外）
-
-- **DOM の条件待機（value / label）。** `wait_for` は存在チェックのみを行います。DOM 要素の
-  value や label の変化を待機する機能はまだありません。工数は小さいため、需要が出た時点で別の
-  BE として提案することを推奨します。
-- **ネスト WebView。** DOM がさらに別の `WKWebView` をホストするケースです。現時点ではホスト
-  セレクタはただ 1 つのネイティブな WebView へ解決する必要があります。工数は中程度で、需要は
-  不明です。
-- **a11y ブリッジの読み取り経路。** iOS が一部の WebView コンテンツに公開するネイティブ a11y
-  ツリーを、アサーション専用の読み取り経路として利用します（JavaScript 不要）。ARIA 属性がない
-  コンテンツでのアサーションカバレッジを補完します。
-
 ## 検討した代替案
 
 - **WebView を画面座標だけで操作する。** WebView 内のピクセル位置をタップするなら DOM ブリッジは不要ですが、非決定的かつ非可搬です（レイアウト、フォント、スクロールのどれが変わっても壊れます）。これはまさに、座標形式が最終手段だと文書化されている所以です。主要な機構としては却下します。
 - **WebView 自身の a11y ブリッジ（iOS が一部の Web コンテンツについてすでに公開するネイティブツリー）に頼る。** 存在する場合は JavaScript が不要ですが、コンテンツによって網羅が部分的で一貫せず、安定した `id` ではなくアクセシブルネームを返すため、セレクタはしばしば曖昧になります。アサーションのための読み取り経路の候補としては維持しますが、アドレス指定のモデルとはしません。
 - **WebView 対応を、XCUITest backend（BE-0019）がネイティブに DOM へ到達することに依存させる。** XCUITest は一部の WebView コンテンツにネイティブツリー経由で到達できるので、Web コンテキストはそのアクチュエータを待つこともできます。主要な経路としては不採用です。WebView 対応のすべてが BE-0019 の出荷まで先送りになり、しかも（XCUITest のホストが扱いづらい）ヘッドレス CI では WebView をまったく操作できないまま残ります。BajutsuKit のブリッジは今日 idb と並んでプロセス内で動きます。XCUITest 経由の経路は前提条件ではなく、stability ladder が拾う後からの補完です。
 - **別個の Web 自動化バックエンド（例：Playwright アクチュエータ）を立ち上げ、Web 画面でそちらへ切り替える。** プラットフォームマップはすでに `web: (playwright,)` を予約していますが、ネイティブセッションと別個のブラウザセッションをフロー途中で受け渡すのは複雑で、WebView が生きたネイティブ画面に埋め込まれているハイブリッドアプリには合いません。ハイブリッドのケースについては、埋め込まれた DOM へその場で到達する方を優先して却下します。独立した Web バックエンドは別トラックのままとします。
+
+## 進捗
+
+- [x] WebView のハイブリッド対応。`web: { within, steps }` のコンテキスト、DOM から Element への正規化（`bajutsu/dom.py`）、`WebViewBridge` / `WebContextDriver`、`BajutsuWebView.swift` のエンドポイント、パイプラインの配線、コンテキスト内の `type_text` / `scrollIntoView`、`Capability.WEBVIEW` を、[#400](https://github.com/bajutsu-e2e/bajutsu/pull/400)（最初のスライス）と [#401](https://github.com/bajutsu-e2e/bajutsu/pull/401)（後続）で出荷しました。
+- 本項目の対象外（必要に応じて別の BE で扱います）。値・ラベルに対する DOM の条件待機、入れ子の WebView、a11y ブリッジによるアサーション読み取り経路。
 
 ## 参考
 

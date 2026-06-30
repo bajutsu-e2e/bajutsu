@@ -73,6 +73,10 @@ Prime directives preserved:
   app's *own* traffic; they do not help when the value must be fetched out of band by the test
   itself. Kept as complementary, not a replacement.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 The OTP/2FA and email side-channel steps (`totp`, `email`) are tracked separately in

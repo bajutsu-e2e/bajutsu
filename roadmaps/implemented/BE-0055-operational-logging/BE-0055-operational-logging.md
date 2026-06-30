@@ -179,6 +179,10 @@ isn't in either set.
   the web UI* for now. If an audit-log viewer and metrics items follow, a dedicated topic can be split
   out then.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [DESIGN.md](../../../DESIGN.md) §2 — determinism-first; secret masking.

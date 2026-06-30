@@ -142,6 +142,10 @@ All machine-checkable in the fast gate — no real API, since the SDK client is 
   abstraction makes pointing at a self-hosted endpoint possible, but shipping and supporting a
   bundled model is a separate, much larger commitment.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/anthropic_client.py` (the one provider factory — `provider` / `make_client` /

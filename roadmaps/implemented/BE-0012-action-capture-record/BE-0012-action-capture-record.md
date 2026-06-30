@@ -100,6 +100,10 @@ These four points were open during drafting; each is now settled, and the settle
 * **Wait for a real event-capture backend before shipping capture.** A true event stream (idb event capture, or events recorded by an XCUITest backend) would let the author operate the Simulator directly instead of marking points in the web UI. Rejected as a blocker: idb offers no such stream today and the XCUITest backend (BE-0019) is itself unbuilt, so gating capture on it would defer the whole feature. Proxy actuation ships the offline, no-API-key path now, and the resolver/emitter interface lets a real event source slot in later without a rewrite.
 * **Fold capture into the existing AI `record` loop as an input mode.** Plausible but deferred to BE-0014, which defines the division of roles and the conversion between the two forms; this proposal scopes only the capture mechanism itself.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [DESIGN §6.5](../../../DESIGN.md); `bajutsu/record.py` (the AI loop, `_settle_step`, screenshot plumbing), `bajutsu/drivers/base.py` (`_contains`, `resolve_unique`, `Selector` / `Element`), `bajutsu/crawl.py` (`Action.as_selector` / `Action.perform` / `_screen_size`, normalized `Node.targets`), `bajutsu/crawl_repro.py` (`_selector`, the "faithful or nothing" stance), `bajutsu/doctor.py` (`score`, `ACTIONABLE_TRAITS`), `bajutsu/scenario/models` (`Step` / `TypeText` / `Swipe`) + `bajutsu/scenario/serialize.py` (`dump_scenario_file`), `bajutsu/serve/` (`handler.py` routing, `operations.py`, `scenarios.py` `ScenarioScope`), `bajutsu/templates/serve.js` + `crawl.html.j2` (the screenshot + overlay precedent).

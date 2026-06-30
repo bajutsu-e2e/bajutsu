@@ -54,6 +54,14 @@ The existing Capture and Editor tabs remain functional during the transition. Th
 * **Keep the tabs and add cross-tab state sync.** Rejected: synchronizing scenario selection and unsaved edits across three independent tabs adds complexity without removing the fundamental UX problem (the author still picks a tab up front).
 * **Merge all three into the Editor tab without a mode switcher.** Rejected: overloading one tab with all controls at once would clutter the interface. A mode switcher keeps each mode's controls focused.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 [BE-0014](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation.md) (the demarcation design that anticipated this unification), [BE-0012](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record.md) (Capture), [BE-0013](../../implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) (Editor).

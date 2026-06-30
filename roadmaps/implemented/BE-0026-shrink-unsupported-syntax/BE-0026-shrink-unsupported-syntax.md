@@ -56,31 +56,6 @@ require inferring intent at generation time stays a `// TODO` — a reviewable, 
 better than a wrong translation. This keeps codegen's "purely structural, AI-independent"
 guarantee intact while steadily reducing the hand-porting a team must do.
 
-### Implementation status
-
-The **compound-selector** slice shipped (`bajutsu/codegen.py`): a single `id` / `label` / `idMatches`
-keeps its readable helper, while `value`, `traits`, `index` (alone or combined) now compose one
-`NSPredicate` query instead of dropping to `el("UNSUPPORTED_SELECTOR")`. Traits map faithfully over
-the small vocabulary (`button` / `link` → `elementType`, `notEnabled` → `enabled == NO`, `selected`
-→ `selected == YES`); a metacharacter-free `labelMatches` is a substring (`label CONTAINS`). An
-`index` becomes `element(boundBy:)`: a non-negative index is the literal, and a **negative index**
-(which counts from the end, like `candidates[i]` in `drivers/base.py`) maps faithfully to
-`element(boundBy: query.count - k)` — offsetting from the query's live `count`, since `boundBy:`
-takes no negative literal. The **device-control** steps (`setLocation` / `push`) now emit a labeled
-`// TODO` naming the `simctl` command, rather than a bare "unsupported step."
-
-The **network assertions / wait** are now labeled too: the `request` / `requestSequence` /
-`responseSchema` assertions and the `until: { request }` wait emit a `// TODO` naming the matched
-endpoint (`METHOD path`) and the reason — *XCUITest has no network interception; assert via a
-mock/proxy* — instead of a bare "unsupported assertion" or, for the wait, the misleading generic
-"settle wait" comment. They remain TODOs (no faithful XCUITest form exists), but reviewable, honest
-ones in the device-control style.
-
-Kept an honest `el("UNSUPPORTED_SELECTOR")` where no *faithful* structural form exists — the
-governing rule (a construct leaves the fallback set only when a deterministic, AI-free mapping
-exists): a `labelMatches` regex (it is `re.search`, unlike NSPredicate's full-match `MATCHES`),
-`within` (geometric frame containment, not a tree query), and an unknown trait.
-
 ## Alternatives considered
 
 - **Fail generation on an unsupported construct instead of emitting `// TODO`.** This would
@@ -95,6 +70,13 @@ exists): a `labelMatches` regex (it is `re.search`, unlike NSPredicate's full-ma
   common ones (compound selectors especially) appear often enough that leaving them unmapped
   meaningfully weakens codegen. Rejected for the high-value cases, kept for the genuinely
   unmappable ones.
+
+## Progress
+
+- [x] Compound-selector mapping — `value` / `traits` / `index` (including a negative index, via `element(boundBy: count - k)`) compose one `NSPredicate` query instead of dropping to `el("UNSUPPORTED_SELECTOR")`.
+- [x] Device-control steps (`setLocation` / `push`) emit a labeled `// TODO` naming the `simctl` command.
+- [x] Network assertions and the `until: { request }` wait emit a labeled `// TODO` naming the endpoint and the no-interception reason.
+- [x] Kept an honest `el("UNSUPPORTED_SELECTOR")` only where no faithful structural form exists (`labelMatches` regex, `within`, an unknown trait).
 
 ## References
 

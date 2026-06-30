@@ -279,6 +279,10 @@ a required check, so it adds the real cross-engine signal without slowing the fa
   without failing CI), but it adds verdict-policy surface; v1 keeps the simple all-must-pass rule and
   leaves per-engine blocking policy to a follow-up.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this

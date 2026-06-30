@@ -110,6 +110,10 @@ is small while the project is pre-1.0 and the config surface is a single key.
   the established term for the unit under test in E2E tooling, is the shortest platform-neutral
   fit, and is already the word in the codebase, so it minimizes churn and surprise.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [DESIGN §8](../../../DESIGN.md) (CLI & config: per-app / multi-app), [DESIGN §2](../../../DESIGN.md) (app-agnostic prime directive)

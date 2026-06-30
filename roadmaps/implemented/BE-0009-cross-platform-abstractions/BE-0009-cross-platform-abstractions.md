@@ -153,6 +153,10 @@ Phase 0 lands incrementally so each PR stays small and the gate stays green:
 - **One YAML run thrice as the portability model.** Rejected as dishonest about real apps: three apps for the same product rarely share screens. The chosen model is per-platform scenarios over one shared DSL/runner/toolchain, with cross-platform reuse opt-in through shared id namespaces.
 - **Defer the abstraction until a second platform is actually built.** Rejected because the first platform pays the abstraction cost regardless; doing it as a device-free Phase 0 surfaces leaked iOS-isms at the lowest cost and de-risks the second-platform work.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [DESIGN §5](../../../DESIGN.md) (backend-agnostic `Driver` interface), [DESIGN §7 / §7.3](../../../DESIGN.md) (stable-id convention)

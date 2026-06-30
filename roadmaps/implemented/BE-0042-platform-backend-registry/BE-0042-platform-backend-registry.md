@@ -70,6 +70,10 @@ apps:
 - **A single `backend` string that names only an actuator** (the pre-existing shape). Rejected because it cannot express "prefer XCUITest, fall back to idb" or "this is the Web platform" without leaking actuator choices into every config and scenario.
 - **Failing hard on any unrecognized token.** Rejected for forward-compatibility: a config authored for a future build should still run on an older one by falling through to a backend it understands.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [`bajutsu/backends.py`](../../../bajutsu/backends.py), [drivers.md](../../../docs/drivers.md#backend-selection-and-the-actuator), [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md), [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)

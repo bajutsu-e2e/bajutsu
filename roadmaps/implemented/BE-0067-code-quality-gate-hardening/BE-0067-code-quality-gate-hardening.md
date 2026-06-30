@@ -118,6 +118,10 @@ Dependabot **security updates** in repo settings is the recommended companion.
 - **A heavier stance** (mutation testing, typing `tests/`, per-file coverage floors) — out of scope;
   noted as future steps.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [CLAUDE.md](../../../CLAUDE.md) — the gate as the contract; `make check` mirrored by CI and the

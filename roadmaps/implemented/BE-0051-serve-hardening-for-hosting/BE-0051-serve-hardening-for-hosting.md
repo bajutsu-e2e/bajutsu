@@ -92,6 +92,10 @@ safe to put behind a private network with a token."
   bind without a token makes the safe path the default; a reverse proxy (Caddy basic-auth, per
   BE-0016) remains an option on top.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (public/cloud hosting),

@@ -150,29 +150,6 @@ apps:
 できます。モックする面はライブの HTTP 呼び出しだけで、これは許可された「外部 API 呼び出し」の例外で
 あり、`http` のテストのしかたと同じです。
 
-### 実装状況
-
-外部依存のない **`totp`** スライスを出荷します。`totp: { secret, into: { var } }` は、base32 の
-`secret`（通常は `${secrets.*}`。ステップ実行前に補間されます）と現在時刻から RFC 6238 のコードを
-計算し、後続の `type` / `assert` 用に `${vars.<var>}` へ書き込みます。アルゴリズムは純粋でゲート検証済みの
-関数（`bajutsu/totp.py`。RFC 6238 のテストベクタで検証）で、ステップはそれを実時刻で呼ぶ薄いハンドラです
-（`bajutsu/orchestrator/actions/handlers/totp.py`）。値を `vars.*` に入れる点で `http`/`saveBody` の前例に
-倣い、デバイスには触れず、codegen はラベル付き `// TODO` を出力します。
-
-**`email`** スライスを出荷し、本項目を完了します。`email: { match, extract, timeout }`
-（`bajutsu/scenario/models/actions.py`）は、設定した `targets.<name>.mailbox`（`bajutsu/config.py`）を、
-ステップ開始*後*に届いたメッセージが `match` を満たすまでポーリングし、その本文から `bodyMatches` で値を
-`${vars.<var>}` に取り出します。match／extract／レスポンス形の読み取り／開始後の選択は純粋でゲート検証済みの
-関数です（`bajutsu/mailbox.py`）。上限つきポーリングは run ループ（`_do_email`、`orchestrator/loop.py`）で、
-**注入された** `MailboxReader`（`orchestrator/types.py`）越しに動きます。これは config から `${secrets.*}` を
-解決して run ごとに 1 度だけ構築され（`runner/mailbox.py`）、ネットワークに触れるのはライブの HTTP GET だけで、
-ロジックはネットワークなしでテストできます。開始後の境界は**メッセージ id**（ステップ開始時点に存在した集合）で
-判定するのでクロックスキューに強く、プロバイダのタイムスタンプをローカルクロックと比較しません。`receivedAt` は
-新着の一致同士で最新を選ぶ順序付けにのみ使います。タイムアウト、本文に正規表現が当たらない一致メッセージ、
-到達不能 / 2xx 以外のメールボックスは、きれいなステップ失敗です。生成した値は実行時の `vars.*` にのみ存在し、
-記録されるシナリオは（`totp` / `http` と同様）`${vars.*}` トークンを保持するので、manifest／レポートには
-入りません。codegen はラベル付き `// TODO` を出力します。デバイスも LLM も使いません。
-
 ## 検討した代替案
 
 - **テストビルドで 2FA／OTP を無効化し、側方チャネルを丸ごと省く。** 最も単純で、スモークテストには
@@ -197,6 +174,11 @@ apps:
   ますが、IMAP クライアントと認証情報の扱いを抱え込み、本文を得るための MIME パースもそれ自体が一つの
   面になります。見送ります。HTTP メールボックスが、動機となる 2FA フローの使うテストプロバイダのケースを
   カバーします。IMAP ソースは、需要が出れば同じ `email` ステップの契約の背後に後から追加できます。
+
+## 進捗
+
+- [x] `totp` ステップ。base32 のシークレットから RFC 6238 のコードを計算して `${vars.*}` に書き込みます（`bajutsu/totp.py`）。デバイスにもネットワークにも触れません。
+- [x] `email` ステップ。`targets.<name>.mailbox` を上限付きでポーリングし、ステップ開始後に届いたメッセージを照合・抽出して `${vars.*}` に書き込みます（`bajutsu/mailbox.py`、注入された `MailboxReader` を介します）。
 
 ## 参考
 

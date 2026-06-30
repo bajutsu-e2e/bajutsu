@@ -41,25 +41,18 @@ XCUITest エミッタのフォールバック処理は磨かれました（BE-00
 
 作業は BE-0026 と同じく漸進的（1 構文 1 小 PR）で、各スライスは Linux ゲート上の golden codegen テストと共に出します（codegen は純粋で、生成テキストの検証にブラウザは不要です）。
 
-### 実装状況
-
-`bajutsu/codegen_playwright.py` で実装しました。ランナーはリクエストマッチャを、**それまでに収集した**交換（コレクタが完了した交換を記録します）に対して評価し、未来のトラフィックに対しては評価しません。`page.waitForResponse` は未来しか観測しないため、直前のステップ中に起きたリクエストを取りこぼし、ランタイムなら通る場面でハングしかねません。ランタイムに合わせるため、生成テストはナビゲーションの前に交換レコーダを設置し（ランタイムの web コレクタが使うのと同じ `requestfinished` イベントで `page.on('requestfinished', …)` が `{ method, url, status, body }` を `exchanges` 配列へ push します。`bajutsu/web_network.py` と同じく、レスポンスのないリクエストでは `status` は null になります）、各アサーションはそのリストを読みます。
-
-- **`request`** → 記録した交換に対する時点評価です。`count` が設定されていれば `expect(exchanges.filter(e => …).length).toBe(count)`（厳密一致、ランタイムと同じ）、なければ `expect(exchanges.some(e => …)).toBeTruthy()` を出します。
-- **`until: { request }`** → `await expect.poll(() => exchanges.filter(e => …).length, { timeout }).toBeGreaterThanOrEqual(count ?? 1)` を出します。すでに観測済みの交換は即座に充足し、未来のものは待機します（`until` 待機では `count` は下限です）。収集済みの交換を先に確認してからポーリングを続けるランタイムと一致します。
-- **`requestSequence`** → 記録した交換に対する順方向の走査です（交換を順に見ながらマッチャを進め、すべてのマッチャに到達したことを確認します）。`_eval_request_sequence` の順序判定と一致します。
-- **`responseSchema`** → エンドポイントとスキーマファイルを明記したラベル付き `// TODO` のままです。描画できないセレクタは、妨げているフィールド（`within` / `value` / `idMatches`）と理由を明記した `// TODO` を出します。
-
-述語は記録した交換 `e`（その `method` / `url` / `status` / `body`）に対して評価します。`path` / `pathMatches` はランナーと同じくパスのみ（`new URL(e.url).pathname`）と比較し、`urlMatches` / `pathMatches` / `bodyMatches` は `RegExp.test(...)` に（ランナーは `re.search` を使うため）、`status` は `e.status` を見ます。
-
-**`bodyMatches` はリクエストボディに対応づけ、ボディ欠落をガードします。** ランナーの `match_request` は `bodyMatches` を `ex.request_body` と照合し、それが `None` のときは失敗します（`bajutsu/assertions.py`）。そこで述語は `e.body` を読み、テストの前に `e.body !== null` をガードします。ガードがなければ `.*` のようなパターンがボディのないリクエストにマッチして誤って通ってしまいます。
-
 ## 検討した代替案
 
 - **web エミッタを XCUITest と同様に扱い、ネットワーク構文を *ラベル付け* するだけにする。** 却下。Playwright のネイティブなネットワーク傍受（まさに iOS にはできない本物のアサーション生成を可能にする能力）を捨ててしまいます。ラベル付けは本当にマッピング不能なもの（`responseSchema`、描画できないセレクタ）向けのフォールバックであり、`request` / `until` 向けではありません。
 - **未対応構文で `// TODO` を出す代わりに生成を失敗させる。** BE-0026 と同じ理由で却下。出力は常にコンパイルできるという codegen の約束を壊し、1 つの未マッピング構文がフローの残り全体の出力をブロックします。
 - **すべての欠落をベストエフォートの推測で埋める**（例: `within` を最も近い描画可能な locator で近似）。却下。決定性に反し、誤った理由で成功するテストを生みます。BE-0026 が記録する prime directive の懸念そのものです。
 - **BE-0026 に畳み込み、独立項目にしない。** BE-0026 の詳細設計は XCUITest 固有（NSPredicate / `simctl`）で、web のマッピングは本質的に異なります（Playwright が対応するネットワーク構文を *生成* します）。同じ `codegen 網羅性` トピックの兄弟項目にすれば、統制ルールを共有しつつ各エミッタの設計を読みやすく保てます。
+
+## 進捗
+
+- [x] ナビゲーション前のやり取り記録。`page.on('requestfinished', …)` が `{ method, url, status, body }` を `exchanges` 配列へ積み（ランタイムの web コレクターがフックするのと同じイベントです）、生成したアサーションがその配列を読みます。
+- [x] アサーションのマッピング。`request` は時点検査（`toBe(count)` または `some(...)`）、`until: { request }` は `expect.poll` の下限、`requestSequence` は順方向の走査、`responseSchema` はラベル付き `// TODO` です。
+- [x] 記録したやり取りに対する述語。`path` / `pathMatches` は `new URL(e.url).pathname`、正規表現は `RegExp.test`、`status` は `e.status` を見ます。`bodyMatches` は `e.body !== null` をガードします。
 
 ## 参考
 

@@ -96,6 +96,10 @@ All fast-gate, no live API (the SDK client is injectable, as BE-0047's tests rel
   best-effort masking, not a precondition; the right shape is "always redact what we can, always send
   only to your provider", identical to BE-0047, not a new gate.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0047 — AI data sovereignty](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)

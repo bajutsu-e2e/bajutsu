@@ -125,6 +125,14 @@ shared memory. Without an ID, the rationale for each onboarding improvement is l
 no single place to see what has been considered. A visible placeholder is the lightest way to keep
 that history.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 [architecture.md](../../../docs/architecture.md#implementation-status)

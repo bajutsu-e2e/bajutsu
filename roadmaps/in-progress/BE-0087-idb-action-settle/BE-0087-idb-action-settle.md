@@ -47,15 +47,6 @@ All changes live in `bajutsu/drivers/idb.py` (the idb backend). The web (Playwri
 
 This is deliberately **not** tree repair. [BE-0006](../../implemented/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) covers asserting the *steady-state* normalized shape of SwiftUI controls against a golden; this proposal only governs *when* the driver reads a settled tree. The two stay separate: BE-0006's golden is asserted after settle has done its job, and neither masks the other.
 
-### Implementation status
-
-Two of the three slices have shipped (PRs [#295](https://github.com/bajutsu-e2e/bajutsu/pull/295), [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296)), each covered by the fast unit gate with a fake `run` returning scripted trees:
-
-- **`wait_for` / `_resolve` hygiene.** `IdbDriver.wait_for(sel, timeout)` now polls `query()` until the selector resolves or the timeout elapses, instead of checking once and ignoring the deadline; `_resolve` takes a `timeout` so the actuation path's tolerance lives in one place. Covered by `test_wait_for_polls_until_the_element_appears` and `test_wait_for_times_out_when_absent`.
-- **Exponential backoff for the transient-empty retry.** `query()`'s flat retry is now `_empty_backoff` — a short exponential backoff (0.05 s doubling to a 0.2 s cap) that reaches no further than the previous fixed bound and keeps the `_max_seen` gate. Covered by `test_empty_backoff_grows_exponentially_then_caps`.
-
-**Settle before actuation remains deferred** (see the first design bullet): the naive full-tree-equality settle proved unworkable on-device, and a cheap, on-device-validated stability signal must exist before it lands. It is the only remaining slice, and it needs the heavier Simulator path rather than the fast gate — so the item stays *In progress*.
-
 ### Validation
 
 - **Unit tests (the gate).** Following the existing `IdbDriver` test style — inject a fake `run` returning a scripted sequence of trees, with the poll interval set to zero — assert that settle waits for stability then proceeds, that it gives up at the bound, that an actuation resolves against the settled tree, that the empty-retry backoff series and its bound hold, and that `wait_for` polls until timeout.
@@ -72,6 +63,14 @@ Small, focused PRs. Order revised after on-device validation: (1) `wait_for` / `
 - **A fixed sleep after navigation.** Simple but forbidden by the prime directive, and wrong: it is both too long for fast screens and too short for slow ones. A condition wait on stability is the determinism-preserving equivalent.
 - **Rely on the existing `wait: settled` step.** It already exists, but it is opt-in per scenario, so the default actuation path stays exposed and every author must remember to add it. Making actuation settle by default removes a whole class of "forgot to wait" flakes while leaving the explicit step available for finer control.
 - **Settle on every `query()`, including assertions.** Maximal stability but it would slow the read/assert path and risks turning a deliberately fast existence check into a multi-poll operation. Limiting settle to actuating methods targets the actual failure mode.
+
+## Progress
+
+- [x] `wait_for` / `_resolve` hygiene — `wait_for(sel, timeout)` polls `query()` until the selector resolves or the timeout elapses; `_resolve` takes the deadline.
+- [x] Exponential-backoff transient-empty retry — `query()`'s flat retry becomes `_empty_backoff` (0.05 s doubling to a 0.2 s cap), keeping the `_max_seen` gate.
+- [ ] Settle before actuation — deferred until a cheap, on-device-validated stability signal exists (the naive full-tree-equality settle proved unworkable on-device); it needs the heavier Simulator path, so the item stays In progress.
+
+[#295](https://github.com/bajutsu-e2e/bajutsu/pull/295) / [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296) shipped the two hygiene/backoff slices; settle-before-actuation is the only remaining slice.
 
 ## References
 

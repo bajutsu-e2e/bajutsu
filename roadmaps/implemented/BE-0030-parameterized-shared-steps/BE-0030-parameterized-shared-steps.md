@@ -33,6 +33,10 @@ Expansion is a pure compile-time macro, not a runtime action. Before the run, `e
 
 **Inline-only reuse (YAML anchors / a templating engine over the file).** Rejected: anchors duplicate text within one file but cannot cross files or take named arguments cleanly, and a general templating engine invites arbitrary logic into scenario files. A named component with an explicit `params` contract is narrower, validated (unknown/missing params fail), and self-documents its inputs.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/scenario/` (`use`/`expand_components`), [scenarios.md](../../../docs/scenarios.md)

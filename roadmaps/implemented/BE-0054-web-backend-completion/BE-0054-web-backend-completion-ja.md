@@ -77,6 +77,10 @@ backend に適用される既存の record 体験の提案
   「Web backend を capability モデルのリッチ端まで引き上げる」という一つのまとまった取り組みであり、同じ
   シーム（pool の Web 分岐、`FileSink` の interval）を共有します。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 [BE-0041 — Web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、

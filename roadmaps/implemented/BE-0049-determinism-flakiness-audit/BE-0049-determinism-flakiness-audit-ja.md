@@ -38,19 +38,19 @@ Bajutsu が競合に対して掲げる中心的な主張は、ゲートが吸収
 
 新しい `audit` コマンドとして実装するか、`doctor` ／ `run` のフラグとして実装するかは、採用時に先送りする実装上の選択です。静的な部分は `doctor` の近縁であり、単にそれを拡張する形でもよいでしょう。
 
-### 実装状況
-
-- **静的な安定度スコア**と**反復＆差分（動的）**は、どちらも `bajutsu audit` コマンドとして出荷済みです。`bajutsu audit <scenario>` はデバイス無しでセレクタ／wait の安定度を採点し、`bajutsu audit <scenario> --repeat K --target <app>` は K 回実行して、結果が変動したステップやアサーションを報告します。助言的かつ read-only で、CI ゲートにはなりません。
-- **run の来歴とバージョンスタンプ**を出荷しました。各 `manifest.json` に任意の `provenance` ブロック（`scenarioHash`＝実行した `scenario.yaml` の `sha256:` フィンガープリント、`toolVersion`、git 配下の run なら `gitRevision`）が載ります。蓄積した run を同一性でグルーピングするための、安価な前提部分です。純粋なメタデータで、判定には一切入りません。
-- **縦断ビュー**を出荷しました。`bajutsu audit --history <runs-dir>` がスタンプ済みの run 記録を採掘し、各シナリオの結果を `(scenarioHash, シナリオ名)` でキー付けして、シナリオごとの合格率と分類（`flaky` / `deterministic` / `unproven`）を報告します。フィンガープリントが一定のまま verdict がブレていれば真のフレーキネスで、編集されたシナリオはハッシュが変わって新しいグループになり、provenance 導入前の run は skip として報告します。1 つの run は自身の `scenarios` 全体に 1 つのフィンガープリントを刻むため、名前でもキーを引くことで、スイートの*どの*シナリオがブレたのかまで特定できます。read-only かつ助言的で、フレーキネスを検出しても終了 0、CI ゲートにもなりません。
-- **残り:** 同じ来歴を serve の DB run 記録に刻むこと（[BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) 7c-4）。これにより縦断ビューがローカルの `runs/` ツリーだけでなくサーバーがホストする履歴も採掘できるようになります。
-
 ## 検討した代替案
 
 * **フレーキーテストの隔離 + 自動リトライを採用する（業界の一般的な答え／Maestro の `retry`）。**
   ゲートに対しては不採用です。フレーキネスを隠すからで、それはまさに Bajutsu が対置して売る性質です。監査はそれを意図的に反転させ、フレークを暴いて修正させます。
 * **run が「フレーキーに見えるか」を LLM に判定させる。** 不採用。非決定的で不要です。同一の run をまたいだばらつきは、精密に機械検出できる事実です。
 * **何もしない（現状）。** 許容できますが、最も強い差別化が暗黙のままで、導入候補者に対して証明できません。証跡と並列実行の機構はすでに存在するので、実行可能な証明書を出す費用は小さく済みます。
+
+## 進捗
+
+- [x] 安定度スコア（静的）と反復差分（動的）。どちらも `bajutsu audit` の下にあり、助言的で読み取り専用です。CI をゲートしません。
+- [x] 実行の来歴とバージョンの刻印。各 `manifest.json` が `provenance` ブロック（`scenarioHash`・`toolVersion`・`gitRevision`）を持ちます。
+- [x] 経時的なビュー。`bajutsu audit --history` が各シナリオを `(scenarioHash, 名前)` で束ね、`flaky` / `deterministic` / `unproven` に分類します。
+- 後続。同じ来歴を serve の DB 実行記録にも刻印します（[BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) で追跡）。
 
 ## 参考
 

@@ -124,6 +124,10 @@ test.describe('Components', () => {
 - **v1 の言語を TypeScript ではなく Python（`pytest-playwright`）にする。** 却下ではなく保留：`@playwright/test`（TypeScript）が最も広く使われる形で、web-first アサーションを第一級で備えます。Python ターゲットは、同じ構造的な走査を再利用する `--emit` の 2 つめの値として後から追加できます。
 - **Playwright 自身の `codegen` レコーダを包む。** 却下：これは新しいブラウザセッションを記録する *別のオーサリング経路* で、真実の出どころを既存の成功シナリオから分岐させてしまいます（その識別子、アサーション、git でレビュー可能な履歴を失います）。bajutsu の `codegen` の契約はシナリオ → ネイティブテストであり、シナリオを真実に保ちます。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 [codegen.md](../../../docs/ja/codegen.md), [`bajutsu/codegen.py`](../../../bajutsu/codegen.py),

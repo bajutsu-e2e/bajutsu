@@ -310,6 +310,20 @@ item's.
   first-in, first-out (FIFO) lets one org monopolize the scarce Mac pool. Per-org pending queues with
   a quota-respecting round-robin dispatcher keep the pool fair under contention.
 
+## Progress
+
+- [x] Tier A — run `serve` as a LaunchAgent, keep the session alive, expose via Tailscale.
+- [x] Tier B, single node — the control-plane compose stack, GitHub OAuth + RBAC, multi-org isolation, Redis RQ job distribution with ephemeral Simulators, and global + per-user quotas (`deploy/self-host/`).
+- [x] Per-org concurrency cap (`max_concurrent_per_org`) ([#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)).
+- [ ] Weighted-fair dispatch — per-org pending queues round-robined across orgs.
+- [ ] Capability-routed queues (`q:ios18`, `q:ipad`).
+- [ ] Worker liveness and job re-queue (RQ liveness / ack-late).
+- [ ] Control-plane scale-out — N app replicas behind a load balancer.
+- [ ] High availability — Redis Sentinel, a Postgres primary + replica, a redundant load balancer.
+- [ ] Observability — a `/metrics` endpoint with Prometheus / Grafana.
+
+The single node is runnable now ([#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)); growing it into a highly-available pool is the remaining work.
+
 ## References
 
 `bajutsu/serve/`, [docs/self-hosting.md](../../../docs/self-hosting.md) (the Tier A and Tier B

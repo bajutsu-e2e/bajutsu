@@ -87,6 +87,10 @@ capability の集合を集め、`driver.capabilities()` との差を取ります
   ごとの config ではありません。config でモデル化すると、driver が実際に報告する内容と二重になり、ずれる
   risk があります。`driver.capabilities()` を唯一の真実の源として保ちます。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - `bajutsu/drivers/base.py`（`Capability`、`Driver.capabilities()`）：本項目が強制する

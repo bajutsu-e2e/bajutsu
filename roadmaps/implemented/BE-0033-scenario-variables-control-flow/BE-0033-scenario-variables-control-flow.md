@@ -37,6 +37,10 @@ The shared interpolation primitive is implemented: `${...}` tokens are resolved 
 
 **Allow an LLM to decide a branch at runtime.** Rejected outright: it would put a model in the Tier-2 run/CI gate, violating "AI is never the judge." All control-flow predicates must be machine-checkable.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/interp.py`, [scenarios.md](../../../docs/scenarios.md)

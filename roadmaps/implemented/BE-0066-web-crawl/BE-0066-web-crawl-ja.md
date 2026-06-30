@@ -156,6 +156,10 @@ seam は独立した設計面です。これは、web の `run` 経路が `run` 
 実行）は後の web クロールを豊かにしますが、本項目を妨げません。とくに web の並列クロールは、本項目と
 parallel-crawl の軸の交点で、両者が入った後に続けられます。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [BE-0038 — 自律クロール探索](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)：本項目が新しい backend へ広げる、プラットフォーム非依存のエンジン。

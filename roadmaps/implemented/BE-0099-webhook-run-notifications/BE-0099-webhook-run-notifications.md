@@ -169,6 +169,14 @@ before the first scenario.
   the completion summary is the unit teams actually want. Could return later as an opt-in for
   dashboard sinks.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 - [BE-0068 — Regenerable reports](../../implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) — `manifest.json` as the canonical run model the summary projects from.

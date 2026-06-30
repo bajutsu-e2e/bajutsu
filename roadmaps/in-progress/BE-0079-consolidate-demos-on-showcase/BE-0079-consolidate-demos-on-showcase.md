@@ -203,6 +203,14 @@ on-device path the local gate cannot run:
 - **Fold this into BE-0045.** Rejected: BE-0045 is shipped and explicitly scoped the migration out,
   and BE IDs are permanent — the migration is a distinct, trackable piece of work.
 
+## Progress
+
+- [x] codegen → XCUITest and visual-regression paths on the showcase — a `UITests` target (`demos/showcase/swiftui/UITests/`) and the VRT scenario/baselines ([#371](https://github.com/bajutsu-e2e/bajutsu/pull/371)).
+- [x] On-device CI on the showcase — `e2e.yml` runs showcase smoke + xcuitest jobs alongside the sample ([#371](https://github.com/bajutsu-e2e/bajutsu/pull/371)).
+- [ ] Remaining parity (E.1) — the missing interaction targets (gestures, device/system-state mirror, controls), the full evidence tour, and a focused first-look slice.
+- [ ] Switch (E.2) — re-point the demo menu (`demos/Makefile`, `demos/demo.config.yaml`) and the bilingual docs at the showcase.
+- [ ] Retire (E.3) — delete the legacy `demos/app/`, `demos/features/app/`, `demos/record/app/` and the orphaned configs/scripts, then the final docs cleanup.
+
 ## References
 
 - [BE-0045 — Dogfood showcase apps](../../implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) — the suite this completes (and whose deferred "Migration" note this item discharges)

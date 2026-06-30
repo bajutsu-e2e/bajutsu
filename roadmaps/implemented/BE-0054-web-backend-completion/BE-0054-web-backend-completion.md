@@ -78,6 +78,10 @@ which apply to any backend.
   over-proliferation: they are one coherent push — "raise the web backend to the rich end of the
   capability model" — and share the same seams (the pool's web branch, `FileSink` intervals).
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md),

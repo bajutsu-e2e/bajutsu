@@ -195,6 +195,10 @@ contributor-workflow refactor, in the same family as BE-0043 / BE-0061 / BE-0074
   cleaner end-state; this is the conservative fallback if the schema change is judged too large for
   one PR.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [`CLAUDE.md`](../../../CLAUDE.md) — the roadmap status/folder rules this item revises.

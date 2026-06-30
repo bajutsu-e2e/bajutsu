@@ -152,6 +152,10 @@ lifecycle seam, and the health signals — all present or small additions. BE-00
 video, parallel runs) enriches a later web crawl but does not block this one; parallel web crawl in particular is the
 intersection of this item with the parallel-crawl axis and can follow once both land.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the platform-neutral engine this reaches a new backend.

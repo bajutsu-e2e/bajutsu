@@ -108,6 +108,10 @@ crawl report's screenshot overlay), not the fast gate.
 * **A fully visual, code-free editor that hides the YAML.** Rejected: the YAML being the canonical, hand-editable, PR-reviewable artifact is a core principle. The editor augments the YAML; it must not replace or obscure it.
 * **A live, interactive Simulator embedded in the page (pick on the running app).** Rejected for the first cut: it needs a live device per editing session and a streaming pipeline. Picking against the screenshot and element tree the run already captured is offline, cheap, and deterministic; a live picker can come later.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [scenarios.md](../../../docs/scenarios.md), [selectors.md](../../../docs/selectors.md); `bajutsu/drivers/base.py` (`_contains`, `resolve_unique`, `Selector` / `Element`), `bajutsu/doctor.py` (`score`, `ACTIONABLE_TRAITS`), `bajutsu/evidence.py` (`write_elements` → per-step `elements.json`, the `screenshot` kind → `after.png`), `bajutsu/serve/scenarios.py` (`ScenarioScope.save`), `bajutsu/scenario/load.py` (`load_scenario_file`), `bajutsu/serve/` (`handler.py` routing, `operations.py`), `bajutsu/templates/serve.js` + the crawl report's screenshot-overlay precedent.

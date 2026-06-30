@@ -160,6 +160,10 @@ gate ([DESIGN §7.2](../../../DESIGN.md)). **TBD** whether to include it in this
   credentials stay the user's; their absence is a clear error, not a silent fallback to someone
   else's account.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/agents.py`, `bajutsu/claude_agent.py`, `bajutsu/alerts.py`, `bajutsu/claude_triage.py`,

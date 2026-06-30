@@ -39,6 +39,10 @@ Nothing here introduces fixed sleeps or non-deterministic selection: the monitor
 - **Rely on the per-PR e2e workflow alone.** The existing on-device e2e run already exercises idb, but it runs on whatever `idb_companion` the runner has and only when a PR touches that path. A drift caused purely by an upstream idb or runtime release would go unnoticed until someone happened to open such a PR. A scheduled monitoring job decouples the check from PR activity.
 - **Detect schema breakage at run time and adapt.** Tolerating multiple describe-all schemas in `parse_describe_all` would hide the problem rather than surface it, and adds branching to the determinism-critical normalization path. Catching the change in CI and updating the parser deliberately keeps that code single-purpose and reviewed.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [DESIGN §11](../../../DESIGN.md)

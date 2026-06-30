@@ -69,6 +69,10 @@ manifest path. Rejected because it assumes a shared filesystem and forces the ag
 protocol; the whole point of the MCP surface is that an agent need not know Bajutsu's on-disk
 layout.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [reporting.md](../../../docs/reporting.md)

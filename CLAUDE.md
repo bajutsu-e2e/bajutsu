@@ -145,12 +145,19 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   (`roadmaps/README.md` and `roadmaps/README-ja.md`) from each item's metadata;
   `make test` fails if the committed index drifts.
   Each file uses the **Swift-Evolution proposal format** (metadata block + Introduction /
-  Motivation / Detailed design / Alternatives considered / References), with the metadata as a
-  fenced `| Field | Value |` table — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening with
-  a `| Field | Value |` header row (`| 項目 | 値 |` on the Japanese side) and holding
-  `Proposal` / `Author` / `Status` / `Topic` (plus `Implementing PR` once shipped and
-  `Origin` last, when applicable); the Japanese mirror uses `提案` / `提案者` / `状態`
-  / `トピック`. The metadata block must name the author by GitHub handle — `| Author |
+  Motivation / Detailed design / Alternatives considered / Progress / References), with the metadata
+  as a fenced `| Field | Value |` table — `<!-- BE-METADATA -->` … `<!-- /BE-METADATA -->`, opening
+  with a `| Field | Value |` header row (`| 項目 | 値 |` on the Japanese side) and holding
+  `Proposal` / `Author` / `Status` / `Topic` (plus `Implementing PR` once shipped, the optional
+  cross-item links `Related` / `Superseded by`, and `Origin` last, when applicable); the Japanese
+  mirror uses `提案` / `提案者` / `状態` / `トピック` / `関連` / `無効化` / `由来`. **`Detailed
+  design` enumerates the work MECE** (mutually exclusive, collectively exhaustive), and **`Progress`
+  is a living section kept current as work proceeds** (BE-0100): a checklist mirroring that breakdown
+  (one `- [ ]` box per unit, ticked as it lands) plus a short chronological PR-linked log. Every PR
+  that advances an item ticks its boxes and adds a log entry in the same change, exactly as it fills
+  `Implementing PR`. `Related` / `Superseded by` are reciprocal: the superseding item lists the other
+  under `Related`, the superseded one names its successor under `Superseded by`. The metadata block
+  must name the author by GitHub handle — `| Author |
   [@handle](https://github.com/handle) |`, the account of whoever first authored the item (for an
   AI-assisted draft, the person who drove and committed it). `tests/test_roadmap_format.py` checks
   this shape (BE-0074). `Status` is the single source of truth for both an item's folder and its

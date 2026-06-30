@@ -92,6 +92,10 @@ A broader desktop redesign of the resizable/collapsible tiling (this item only h
 * **Make the panes user-collapsible/resizable on desktop too (a general layout overhaul).** Out of scope here. This item is specifically the small-screen reflow; a broader resizable/collapsible-pane redesign for desktop, if wanted, is a separate proposal and must not block the narrow-viewport fix.
 * **Convert the mouse drag handlers to pointer events to get touch "for free".** Tempting, but a uniform pointer model would also bring the drag-to-split tiling and gutter-resize to touch, where they are awkward and pointless on a small screen — and it is a larger, riskier change to a working desktop interaction. Hiding those affordances at the narrow tier and adding a focused touch path only for the graph (the one thing that genuinely needs to move under a finger) is the smaller, safer change.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this respects: AI never judges, determinism first, app-agnostic. The change adds no LLM and never computes a verdict; it only rearranges a Tier-1 convenience.

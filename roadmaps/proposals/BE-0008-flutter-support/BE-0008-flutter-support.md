@@ -67,6 +67,14 @@ until the two native trees are solid.
   is framework-specific and harder; attempting it before the two native trees prove the abstraction
   would conflate two risks. See the phasing note above.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,

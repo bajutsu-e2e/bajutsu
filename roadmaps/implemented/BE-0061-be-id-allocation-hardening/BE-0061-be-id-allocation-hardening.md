@@ -122,6 +122,10 @@ contributor's ids are reconciled when a maintainer brings the branch in-repo.
   implemented in the same change, so it is filed directly as Implemented under *Development
   infrastructure*, a sibling to BE-0043 — the born-implemented path the repo already uses.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0043 — Conflict-resistant file flow](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)

@@ -105,6 +105,10 @@
 * **YAML を隠す、完全にビジュアルでノーコードのエディタ。** 不採用です。YAML が正本で、手編集でき、PR でレビューできる成果物であることは中核原則です。エディタは YAML を補強するもので、置き換えたり覆い隠したりしてはなりません。
 * **ページ内に組み込んだ稼働中の Simulator（動作中アプリ上でピック）。** 初版では不採用です。編集セッションごとに実機 1 台とストリーミング基盤が必要になります。実行がすでに取得したスクリーンショットと要素ツリーに対してピックする方式は、オフラインで安価かつ決定的です。ライブのピッカーは後で導入できます。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 [scenarios.md](../../../docs/ja/scenarios.md)、[selectors.md](../../../docs/ja/selectors.md)。`bajutsu/drivers/base.py`（`_contains`、`resolve_unique`、`Selector` / `Element`）、`bajutsu/doctor.py`（`score`、`ACTIONABLE_TRAITS`）、`bajutsu/evidence.py`（`write_elements` → ステップごとの `elements.json`、`screenshot` 種別 → `after.png`）、`bajutsu/serve/scenarios.py`（`ScenarioScope.save`）、`bajutsu/scenario/load.py`（`load_scenario_file`）、`bajutsu/serve/`（`handler.py` のルーティング、`operations.py`）、`bajutsu/templates/serve.js` と crawl レポートのスクリーンショット・オーバーレイの先例。

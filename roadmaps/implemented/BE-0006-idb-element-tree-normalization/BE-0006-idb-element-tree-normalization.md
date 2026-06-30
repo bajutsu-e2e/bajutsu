@@ -161,6 +161,10 @@ exactly and the `frame` within bounds, and on any mismatch emit the field-level 
 - **Harden `query()` to repair odd trees.** We could add heuristics that rewrite an unexpected SwiftUI shape into the "expected" one inside the normalization path. That hides drift instead of reporting it and loads the determinism-critical path with app-specific guesses. Asserting against a golden and updating the normalizer deliberately keeps `query()` simple and the change reviewed.
 - **Snapshot every screen of a real app.** Maximal coverage, but brittle and app-specific: it couples the check to one app's evolving UI and re-introduces per-app concerns into a tool-level guarantee. A focused catalogue of standard controls is more stable and stays app-agnostic.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [DESIGN §11](../../../DESIGN.md)
