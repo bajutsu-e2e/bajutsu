@@ -476,7 +476,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 実行の結果を、チームがすでに使っているサービスへ送り出します。いずれも判定後の決定的な送信路であり、runner がすでに算出した判定を運ぶだけで、LLM の判定を運ぶことはありません。配信に失敗しても実行の結果は動きません。
 
 <!-- GENERATED:proposals-external-integration -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0099](proposals/BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md) | 実行結果の Webhook 通知 | 提案 |
 <!-- /GENERATED:proposals-external-integration -->
 
 ### 競合調査（MagicPod / Autify）由来の候補

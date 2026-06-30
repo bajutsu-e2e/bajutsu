@@ -1,11 +1,11 @@
-[English](BE-XXXX-webhook-run-notifications.md) · **日本語**
+[English](BE-0099-webhook-run-notifications.md) · **日本語**
 
-# BE-XXXX — 実行結果の Webhook 通知
+# BE-0099 — 実行結果の Webhook 通知
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-webhook-run-notifications-ja.md) |
+| 提案 | [BE-0099](BE-0099-webhook-run-notifications-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | 外部サービスとの連携 |
