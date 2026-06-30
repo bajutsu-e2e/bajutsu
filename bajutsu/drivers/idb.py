@@ -19,6 +19,8 @@ from bajutsu.drivers import base
 
 RunFn = Callable[[list[str]], str]
 
+_StableKey = tuple[tuple[str, base.Frame], ...]
+
 # A short dwell on every tap. A zero-duration `idb ui tap` presses and releases in
 # the same instant, which a UISwitch's gesture recognizer does not register — so a
 # coordinate tap on a real Toggle never flips it. A brief hold actuates the switch
@@ -163,11 +165,14 @@ class IdbDriver:
     _EMPTY_RETRIES = 5  # extra describe-all attempts on a degenerate tree
     _EMPTY_BACKOFF_S = 0.05  # base delay; doubles each attempt up to the cap
     _EMPTY_BACKOFF_MAX_S = 0.2  # cap on a single backoff (total added <= ~0.75s, bounded)
+    _SETTLE_MAX_POLLS = 3  # extra reads after initial comparison when frames are moving
+    _SETTLE_POLL_S = 0.05  # interval between settle reads; describe-all provides natural spacing
 
     def __init__(self, udid: str, run: RunFn = _real_run) -> None:
         self.udid = udid
         self._run = run
         self._max_seen = 0  # richest tree seen on this device; gates the empty retry
+        self._last_stable_key: _StableKey | None = None
 
     def query(self) -> list[base.Element]:
         """describe-all, parsed and normalized into Elements.
@@ -185,7 +190,35 @@ class IdbDriver:
             time.sleep(self._empty_backoff(i))
             els = self._describe()
         self._max_seen = max(self._max_seen, len(els))
+        self._last_stable_key = self._stable_key(els)
         return els
+
+    def _settle(self) -> list[base.Element]:
+        """Wait until the tree's identifier-frame projection is unchanged, or give up.
+
+        Compares (identifier, frame) only — ignoring volatile value, traits,
+        label — so data changes on a static screen do not trigger extra polls.
+        The first call (no cached key) returns immediately; a cached-match
+        also returns in one query.  Only a cache miss starts the bounded poll.
+        """
+        prev_key = self._last_stable_key
+        tree = self.query()
+        key = self._stable_key(tree)
+        if prev_key is None or key == prev_key:
+            return tree
+        for _ in range(self._SETTLE_MAX_POLLS):
+            time.sleep(self._SETTLE_POLL_S)
+            tree = self.query()
+            new_key = self._stable_key(tree)
+            if new_key == key:
+                return tree
+            key = new_key
+        return tree
+
+    @staticmethod
+    def _stable_key(els: list[base.Element]) -> _StableKey:
+        """Identifier-frame projection for settle: ignores volatile value/traits/label."""
+        return tuple(sorted((e["identifier"] or "", e["frame"]) for e in els))
 
     def _empty_backoff(self, attempt: int) -> float:
         """Exponential backoff for the transient-empty retry: base * 2**attempt, capped.
@@ -208,20 +241,30 @@ class IdbDriver:
         """
         return len(els) < self._READY_MIN and self._max_seen >= self._READY_MIN
 
-    def _resolve(self, sel: base.Selector, timeout: float = 3.0, poll: float = 0.2) -> base.Element:
+    def _resolve(
+        self,
+        sel: base.Selector,
+        timeout: float = 3.0,
+        poll: float = 0.2,
+        *,
+        initial_tree: list[base.Element] | None = None,
+    ) -> base.Element:
         # Real-device trees can be transiently empty during transitions; retry
         # not-found while keeping ambiguity fail-fast.
         deadline = time.monotonic() + timeout
+        tree = initial_tree if initial_tree is not None else self.query()
         while True:
             try:
-                return base.resolve_unique(self.query(), sel)
+                return base.resolve_unique(tree, sel)
             except base.ElementNotFound:
                 if time.monotonic() >= deadline:
                     raise
                 time.sleep(poll)
+                tree = self.query()
 
     def _center(self, sel: base.Selector) -> base.Point:
-        el = self._resolve(sel)
+        tree = self._settle()
+        el = self._resolve(sel, initial_tree=tree)
         x, y, w, h = el["frame"]
         return (x + w / 2, y + h / 2)
 

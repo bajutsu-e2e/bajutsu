@@ -311,6 +311,7 @@ Running the autonomous crawl across more than one device so a full screen map is
 |---|---|---|
 | [BE-0005](implemented/BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Implemented |
 | [BE-0006](implemented/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Implemented |
+| [BE-0087](implemented/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Implemented |
 | [BE-0088](implemented/BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) | Overlap the Simulator boot with the build | Implemented |
 <!-- /GENERATED:implemented-on-device -->
 
@@ -399,9 +400,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 ### On-device validation (M1 close-out)
 
 <!-- GENERATED:in-progress-on-device -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0087](in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | In progress |
+
 <!-- /GENERATED:in-progress-on-device -->
 
 ### Authoring experience (record / GUI editor)
