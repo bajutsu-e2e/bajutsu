@@ -450,6 +450,18 @@ def run(
     goldens_dir = _resolve_goldens_dir(goldens, eff, files[0])
     gc = GoldenContext(goldens_dir=goldens_dir) if goldens_dir.is_dir() else None
     run_id = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+    # Webhook: 'start' notification for endpoints that subscribe to it (BE-0099).
+    if eff.notify:
+        from bajutsu import notify
+
+        notify.emit_start(
+            run_id=run_id,
+            source_name=source_name,
+            target=target_name,
+            scenario_count=len(scenarios),
+            endpoints=eff.notify,
+            bindings=secret_bindings,
+        )
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run
     # log); stdout stays the machine-readable final PASS/FAIL line.
     progress_fn = (lambda msg: print(msg, file=sys.stderr, flush=True)) if progress else None  # noqa: T201
@@ -555,6 +567,19 @@ def run(
         stop_server()
     ok = all(r.ok for r in results)
     github.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
+    # Webhook: post-verdict notification (BE-0099).
+    if eff.notify:
+        from bajutsu import notify
+
+        notify.emit(
+            results,
+            run_id=run_id,
+            source_name=source_name,
+            backend=actuator,
+            endpoints=eff.notify,
+            bindings=secret_bindings,
+            runs_dir=Path(runs_dir),
+        )
     typer.echo(f"{'PASS' if ok else 'FAIL'}  {manifest}")
     # --zip packages the finished run into one artifact, strictly *after* the verdict above, so it
     # cannot influence pass/fail (BE-0060). A write failure (disk full, permissions) must not flip

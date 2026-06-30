@@ -494,3 +494,99 @@ def test_doctor_threshold_out_of_range_is_rejected() -> None:
         load_config(
             "defaults:\n  doctor:\n    idCoverageOk: 1.5\ntargets:\n  s:\n    bundleId: com.x\n"
         )
+
+
+# --- BE-0099: webhook notification config ---
+
+
+def test_notify_config_resolves() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.SLACK_WEBHOOK_URL}'\n"
+        "    on: [failure, change]\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    eff = resolve(cfg, "s")
+    assert len(eff.notify) == 1
+    assert eff.notify[0].format == "slack"
+    assert eff.notify[0].url == "${secrets.SLACK_WEBHOOK_URL}"
+    assert eff.notify[0].on == ["failure", "change"]
+    assert eff.notify[0].targets == []
+
+
+def test_notify_defaults_to_failure_event() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.URL}'\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    assert resolve(cfg, "s").notify[0].on == ["failure"]
+
+
+def test_notify_with_targets_filter() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.URL}'\n"
+        "    targets: [checkout, login]\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    assert resolve(cfg, "s").notify[0].targets == ["checkout", "login"]
+
+
+def test_notify_unknown_format_rejected() -> None:
+    with pytest.raises(ValidationError, match="unknown notify format"):
+        load_config(
+            "notify:\n"
+            "  - format: teams\n"
+            "    url: '${secrets.URL}'\n"
+            "targets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
+def test_notify_unknown_event_rejected() -> None:
+    with pytest.raises(ValidationError, match="unknown notify event"):
+        load_config(
+            "notify:\n"
+            "  - format: slack\n"
+            "    url: '${secrets.URL}'\n"
+            "    on: [bogus]\n"
+            "targets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
+def test_notify_target_override() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.A}'\n"
+        "targets:\n"
+        "  s:\n"
+        "    bundleId: com.x\n"
+        "    notify:\n"
+        "      - format: slack\n"
+        "        url: '${secrets.B}'\n"
+        "        on: [always]\n"
+    )
+    eff = resolve(cfg, "s")
+    assert len(eff.notify) == 1
+    assert eff.notify[0].url == "${secrets.B}"
+    assert eff.notify[0].on == ["always"]
+
+
+def test_notify_absent_resolves_to_empty() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").notify == []
+
+
+def test_notify_on_accepts_single_string() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.URL}'\n"
+        "    on: always\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    assert resolve(cfg, "s").notify[0].on == ["always"]
