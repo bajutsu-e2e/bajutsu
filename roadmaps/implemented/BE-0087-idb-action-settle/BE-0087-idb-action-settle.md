@@ -8,7 +8,7 @@
 | Proposal | [BE-0087](BE-0087-idb-action-settle.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
-| Implementing PR | [#295](https://github.com/bajutsu-e2e/bajutsu/pull/295), [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296) |
+| Implementing PR | [#295](https://github.com/bajutsu-e2e/bajutsu/pull/295), [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296), [#416](https://github.com/bajutsu-e2e/bajutsu/pull/416) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
