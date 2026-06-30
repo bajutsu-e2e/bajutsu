@@ -10,6 +10,10 @@ capability — gating either would reject scenarios that actually run.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from bajutsu import capability_preflight
 from bajutsu.drivers import base
 from bajutsu.scenario import Scenario
@@ -133,3 +137,203 @@ def test_aggregates_every_unsupported_construct() -> None:
     )
     assert any("multiTouch" in r for r in reasons)
     assert any("screenshot" in r for r in reasons)
+
+
+# --- Path hints in reason strings (BE-0024) ---
+
+
+def test_pinch_reason_includes_step_index() -> None:
+    # A pinch at step 3 (1-indexed) must surface the path in the reason.
+    sc = _sc(
+        steps=[
+            {"tap": {"id": "ok"}},
+            {"tap": {"id": "next"}},
+            {"pinch": {"sel": {"id": "map"}, "scale": 2.0}},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 3: ")
+    assert "multiTouch" in reasons[0]
+
+
+def test_rotate_reason_includes_step_index() -> None:
+    sc = _sc(steps=[{"rotate": {"sel": {"id": "dial"}, "radians": 1.57}}])
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert reasons[0].startswith("step 1: ")
+
+
+def test_visual_in_expect_reason_includes_expect_path() -> None:
+    sc = _sc(
+        steps=[{"tap": {"id": "ok"}}],
+        expect=[{"exists": {"id": "ok"}}, {"visual": {"baseline": "home"}}],
+    )
+    no_shot = _IDB - {base.Capability.SCREENSHOT}
+    reasons = capability_preflight.unsupported(sc, no_shot)
+    assert len(reasons) == 1
+    assert "expect[1]" in reasons[0]
+    assert "screenshot" in reasons[0]
+
+
+def test_visual_in_step_assert_reason_includes_path() -> None:
+    sc = _sc(steps=[{"tap": {"id": "ok"}}, {"assert": [{"visual": {"baseline": "home"}}]}])
+    no_shot = _IDB - {base.Capability.SCREENSHOT}
+    reasons = capability_preflight.unsupported(sc, no_shot)
+    assert len(reasons) == 1
+    assert "step 2" in reasons[0]
+    assert "screenshot" in reasons[0]
+
+
+def test_pinch_nested_in_if_then_path() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "if": {
+                    "condition": {"exists": {"id": "banner"}},
+                    "then": [{"pinch": {"sel": {"id": "map"}, "scale": 2.0}}],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert "step 1 > if > then[0]" in reasons[0]
+
+
+def test_pinch_nested_in_if_else_path() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "if": {
+                    "condition": {"exists": {"id": "banner"}},
+                    "then": [{"tap": {"id": "ok"}}],
+                    "else": [{"pinch": {"sel": {"id": "map"}, "scale": 2.0}}],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert "step 1 > if > else[0]" in reasons[0]
+
+
+def test_pinch_nested_in_for_each_path() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "forEach": {
+                    "sel": {"idMatches": "row.*"},
+                    "as": "row",
+                    "steps": [
+                        {"tap": {"id": "ok"}},
+                        {"pinch": {"sel": {"id": "map"}, "scale": 2.0}},
+                    ],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    assert len(reasons) == 1
+    assert "step 1 > forEach[1]" in reasons[0]
+
+
+def test_visual_in_if_condition_path() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "if": {
+                    "condition": {"visual": {"baseline": "home"}},
+                    "then": [{"tap": {"id": "ok"}}],
+                }
+            }
+        ]
+    )
+    no_shot = _IDB - {base.Capability.SCREENSHOT}
+    reasons = capability_preflight.unsupported(sc, no_shot)
+    assert len(reasons) == 1
+    assert "step 1 > if > condition" in reasons[0]
+
+
+def test_multiple_pinches_yield_multiple_reasons() -> None:
+    # Each occurrence generates its own reason with its own path.
+    sc = _sc(
+        steps=[
+            {"pinch": {"sel": {"id": "map"}, "scale": 2.0}},
+            {"tap": {"id": "ok"}},
+            {"pinch": {"sel": {"id": "map2"}, "scale": 3.0}},
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _IDB)
+    paths = [r.split(":")[0] for r in reasons]
+    assert "step 1" in paths
+    assert "step 3" in paths
+
+
+def test_baseline_reasons_have_no_path() -> None:
+    # The baseline capability reasons (query/elements) are backend-level, not step-specific.
+    sc = _sc(steps=[{"tap": {"id": "ok"}}])
+    reasons = capability_preflight.unsupported(sc, {base.Capability.ELEMENTS})
+    assert any("query" in r for r in reasons)
+    # Baseline reasons should NOT have a step prefix.
+    assert all(not r.startswith("step ") for r in reasons)
+
+
+# --- CLI doctor --scenario integration (BE-0024) ---
+
+
+def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) -> None:
+    # A scenario with pinch on an idb backend (no multiTouch) must surface the unsupported
+    # capability. Tests the check_scenarios helper used by the CLI.
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn_file = tmp_path / "pinch.yaml"
+    scn_file.write_text(
+        "- name: pinch test\n  steps:\n    - pinch: { sel: { id: map }, scale: 2.0 }\n",
+        encoding="utf-8",
+    )
+    reasons = check_scenarios(scn_file, "idb")
+    assert len(reasons) == 1
+    assert "multiTouch" in reasons[0]
+    assert "pinch test" in reasons[0]
+
+
+def test_doctor_scenario_check_no_issue_when_supported(tmp_path: Path) -> None:
+    # A plain tap scenario on idb — no unsupported capabilities.
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn_file = tmp_path / "tap.yaml"
+    scn_file.write_text(
+        "- name: tap test\n  steps:\n    - tap: { id: ok }\n",
+        encoding="utf-8",
+    )
+    reasons = check_scenarios(scn_file, "idb")
+    assert reasons == []
+
+
+def test_doctor_scenario_check_multiple_scenarios(tmp_path: Path) -> None:
+    # Multiple scenarios: only the one with pinch should produce a reason.
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn_file = tmp_path / "mixed.yaml"
+    scn_file.write_text(
+        "- name: ok scenario\n"
+        "  steps:\n"
+        "    - tap: { id: ok }\n"
+        "- name: pinch scenario\n"
+        "  steps:\n"
+        "    - pinch: { sel: { id: map }, scale: 2.0 }\n",
+        encoding="utf-8",
+    )
+    reasons = check_scenarios(scn_file, "idb")
+    assert len(reasons) == 1
+    assert "pinch scenario" in reasons[0]
+    assert "ok scenario" not in reasons[0]
+
+
+def test_doctor_scenario_check_missing_file(tmp_path: Path) -> None:
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    # A missing scenario file should raise (not silently skip).
+    with pytest.raises(FileNotFoundError):
+        check_scenarios(tmp_path / "missing.yaml", "idb")
