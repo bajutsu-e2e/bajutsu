@@ -6,9 +6,10 @@
 #     xcodebuild — no bajutsu / idb / AI at test time (the codegen output path).
 # The SwiftUI a11y product is the smoke / codegen subject; the UIKit twin shares the identifier
 # contract, so one toolkit suffices for the gate.
-# A third job, golden (idb), still runs the BE-0006 element-tree goldens against the legacy
-# `sample` fixture — its goldens are recorded from sample and have no showcase equivalent yet;
-# porting them is a follow-up tracked with the phase-3 retirement of `sample` (BE-0079).
+# The BE-0006 element-tree goldens are recorded from the legacy `sample` fixture and have no
+# showcase equivalent yet, so per-PR golden coverage retired with the sample smoke job; the
+# weekly idb-monitor still runs them. Porting goldens to the showcase is a follow-up tracked with
+# the phase-3 retirement of `sample` (BE-0079).
 # Runs on every relevant PR and on demand (the Actions tab / `gh workflow run e2e.yml`).
 name: E2E (Simulator)
 
@@ -64,7 +65,7 @@ jobs:
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           echo "Changed files:"
           echo "$changed"
-          if echo "$changed" | grep -qE '^(bajutsu/(runner|scenario|drivers|orchestrator)/|bajutsu/[^/]+\.py$|bajutsu/cli/__init__\.py$|bajutsu/cli/_shared\.py$|bajutsu/cli/commands/__init__\.py$|bajutsu/cli/commands/(run|codegen|record)\.py$|BajutsuKit/|demos/features/app/|demos/features/demo\.config\.yaml$|demos/showcase/swiftui/|demos/showcase/uikit/|demos/showcase/showcase\.config\.yaml$|demos/showcase/scenarios/|pyproject\.toml$|uv\.lock$|Makefile$|\.github/workflows/e2e\.yml$|\.github/actions/bajutsu-e2e/|\.github/actions/boot-simulator/)'; then
+          if echo "$changed" | grep -qE '^(bajutsu/(runner|scenario|drivers|orchestrator)/|bajutsu/[^/]+\.py$|bajutsu/cli/__init__\.py$|bajutsu/cli/_shared\.py$|bajutsu/cli/commands/__init__\.py$|bajutsu/cli/commands/(run|codegen|record)\.py$|BajutsuKit/|demos/showcase/swiftui/|demos/showcase/uikit/|demos/showcase/showcase\.config\.yaml$|demos/showcase/scenarios/|pyproject\.toml$|uv\.lock$|Makefile$|\.github/workflows/e2e\.yml$|\.github/actions/bajutsu-e2e/|\.github/actions/boot-simulator/)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -145,73 +146,6 @@ jobs:
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
-
-  # Golden element-tree assertions (BE-0006) still run against the `sample` fixture: the recorded
-  # goldens pin sample's normalized tree, so porting them to the showcase needs goldens re-recorded
-  # on-device — a follow-up tracked with the phase-3 retirement of `sample` (BE-0079). Until then
-  # this keeps the per-PR golden coverage while smoke / xcuitest run on the showcase.
-  golden:
-    name: golden (idb)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
-    runs-on: macos-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
-
-      # Build the sample app while the idb deps fetch concurrently (see the smoke job for the
-      # rationale); the trap stops the background fetches on a build failure.
-      - name: Build the sample app (fetch idb deps concurrently)
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: |
-          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
-          brew_pid=$!
-          uv sync --extra idb --no-dev &
-          sync_pid=$!
-          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
-          make -C demos/features sample-build
-          wait "$brew_pid"
-          wait "$sync_pid"
-          trap - EXIT
-
-      - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
-
-      - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
-
-      - name: Run golden scenarios (BE-0006)
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/features/app/scenarios/golden.yaml
-          target: sample
-          config: demos/features/demo.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: golden-run
 
   # The codegen output path: a scenario -> native XCUITest, compiled and run by xcodebuild
   # with no bajutsu / idb / AI at test time. This is the claim M3 makes about codegen, so CI
@@ -299,18 +233,17 @@ jobs:
   # path-gated macOS jobs.
   e2e:
     name: E2E
-    needs: [changes, smoke, golden, xcuitest]
+    needs: [changes, smoke, xcuitest]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check E2E results
         env:
           SMOKE: ${{ needs.smoke.result }}
-          GOLDEN: ${{ needs.golden.result }}
           XCUITEST: ${{ needs.xcuitest.result }}
         run: |
-          echo "smoke=$SMOKE golden=$GOLDEN xcuitest=$XCUITEST"
-          for result in "$SMOKE" "$GOLDEN" "$XCUITEST"; do
+          echo "smoke=$SMOKE xcuitest=$XCUITEST"
+          for result in "$SMOKE" "$XCUITEST"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E failed"
               exit 1
