@@ -83,6 +83,30 @@ def test_a_screen_with_actionable_elements_is_not_flagged_no_actionable() -> Non
     assert s.no_actionable is False
 
 
+def test_custom_thresholds_lower_ok() -> None:
+    # 4/5 = 0.8 coverage. Default OK is 0.9 so this would be Partial. With ok=0.8 → Ready.
+    screen = [_el(f"settings.b{i}", ["button"]) for i in range(4)] + [_el(None, ["button"])]
+    s = score(screen, ["settings"], ok_coverage=0.8, fail_coverage=0.7)
+    assert s.id_coverage == 0.8
+    assert s.grade == "Ready"
+
+
+def test_custom_thresholds_higher_fail() -> None:
+    # 4/5 = 0.8 coverage. Default fail is 0.7, so 0.8 is Partial. With fail=0.85 → Blocked.
+    screen = [_el(f"settings.b{i}", ["button"]) for i in range(4)] + [_el(None, ["button"])]
+    s = score(screen, ["settings"], ok_coverage=0.9, fail_coverage=0.85)
+    assert s.id_coverage == 0.8
+    assert s.grade == "Blocked"
+
+
+def test_default_thresholds_unchanged() -> None:
+    # Calling score() without threshold args behaves as before (regression guard).
+    screen = [_el(f"settings.b{i}", ["button"]) for i in range(4)] + [_el(None, ["button"])]
+    s = score(screen, ["settings"])
+    assert s.id_coverage == 0.8
+    assert s.grade == "Partial"
+
+
 def test_render_mentions_grade() -> None:
     s = score([_el("settings.open", ["button"])], ["settings"])
     assert "grade: Ready" in render(s)

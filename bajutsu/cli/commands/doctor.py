@@ -70,7 +70,12 @@ def doctor(
             raise typer.Exit(1)
         typer.echo("")
     elements = _current_screen(actuator, udid, eff)
-    result = score(elements, eff.id_namespaces)
+    result = score(
+        elements,
+        eff.id_namespaces,
+        ok_coverage=eff.doctor_ok_coverage,
+        fail_coverage=eff.doctor_fail_coverage,
+    )
     typer.echo(render(result))
     raise typer.Exit(0 if result.grade != "Blocked" else 1)
 
