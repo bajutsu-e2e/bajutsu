@@ -12,8 +12,6 @@ from bajutsu import serve as srv
 def test_doctor_returns_checks_for_target(tmp_path: Path) -> None:
     """POST /api/doctor with a valid target returns preflight checks."""
     _scn_dir, cfg, runs = project(tmp_path)
-    # Inject a which function that reports all tools as present so the runnability checks pass
-    # without real tool installs.
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
     server, port = _serve(state)
     try:
@@ -151,6 +149,7 @@ def test_doctor_web_target_with_base_url(tmp_path: Path) -> None:
         assert resp["backend"] == "playwright"
         # The config check for baseUrl passed
         config_checks = [c for c in resp["checks"] if "baseUrl" in c["name"]]
+        assert config_checks
         assert all(c["ok"] for c in config_checks)
     finally:
         server.shutdown()

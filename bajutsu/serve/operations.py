@@ -30,7 +30,7 @@ from bajutsu.anthropic_client import (
     PROVIDERS,
     provider,
 )
-from bajutsu.backends import KNOWN_ACTUATORS, resolve_actuators
+from bajutsu.backends import IMPLEMENTED, resolve_actuators
 from bajutsu.config import load_config, resolve, targets_for_org
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.drivers import base as driver_base
@@ -481,13 +481,15 @@ def doctor_check(
 
     # Resolve the *intended* actuator without requiring it to be installed — select_actuator
     # raises when the tool is absent, but doctor's purpose is to *report* what's missing, so we
-    # resolve the first known actuator from the backends list and let the runnability checks
-    # surface the absent tool.
+    # resolve the first implemented actuator from the backends list and let the runnability
+    # checks surface the absent tool.  Filtering against IMPLEMENTED (not KNOWN_ACTUATORS)
+    # avoids picking a planned-but-unimplemented backend (e.g. adb) whose preflight would
+    # fall through to generic checks.
     actuators = resolve_actuators(eff.backend)
-    known = [a for a in actuators if a in KNOWN_ACTUATORS]
-    if not known:
-        return {"error": f"no recognized backend among {eff.backend}"}, 400
-    actuator = known[0]
+    implemented = [a for a in actuators if a in IMPLEMENTED]
+    if not implemented:
+        return {"error": f"no implemented backend among {eff.backend}"}, 400
+    actuator = implemented[0]
 
     from bajutsu import preflight
 

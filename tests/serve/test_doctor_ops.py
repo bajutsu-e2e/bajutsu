@@ -98,6 +98,7 @@ def test_playwright_backend_with_base_url_passes_config_check(tmp_path: Path) ->
     assert status == 200
     assert payload["backend"] == "playwright"
     config_checks = [c for c in payload["checks"] if "baseUrl" in c["name"]]
+    assert config_checks
     assert all(c["ok"] for c in config_checks)
 
 
