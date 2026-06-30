@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-roadmap-progress-tracking-template-ja.md)
+**English** · [日本語](BE-0100-roadmap-progress-tracking-template-ja.md)
 
-# BE-XXXX — Progress tracking and cross-item relations in the BE template
+# BE-0100 — Progress tracking and cross-item relations in the BE template
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-progress-tracking-template.md) |
+| Proposal | [BE-0100](BE-0100-roadmap-progress-tracking-template.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

@@ -468,7 +468,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0100](proposals/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md) | BE テンプレートへの進捗管理と項目間の関連の追加 | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携

@@ -476,7 +476,9 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0100](proposals/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md) | Progress tracking and cross-item relations in the BE template | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services
