@@ -8,7 +8,7 @@
 | Proposal | [BE-0079](BE-0079-consolidate-demos-on-showcase.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371) |
+| Implementing PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371), [#418](https://github.com/bajutsu-e2e/bajutsu/pull/418) |
 | Topic | Dogfood fixtures (demo apps) |
 | Origin | Dogfooding |
 <!-- /BE-METADATA -->
