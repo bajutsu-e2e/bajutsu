@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0099](BE-0099-webhook-run-notifications-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トピック | 外部サービスとの連携 |
 | 由来 | 外部サービスとの連携 |
 <!-- /BE-METADATA -->

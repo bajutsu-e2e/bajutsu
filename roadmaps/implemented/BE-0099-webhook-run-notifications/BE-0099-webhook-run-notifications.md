@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0099](BE-0099-webhook-run-notifications.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Integration with external services |
 | Origin | Integration with external services |
 <!-- /BE-METADATA -->

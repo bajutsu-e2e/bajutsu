@@ -161,6 +161,40 @@ class DoctorConfig(_Model):
         return v
 
 
+_NOTIFY_EVENTS = frozenset({"failure", "change", "recovery", "always", "start"})
+
+
+class NotifyEndpoint(_Model):
+    """One webhook notification sink (`notify:` list entry, BE-0099)."""
+
+    format: str = "slack"
+    url: str
+    on: list[str] = Field(default_factory=lambda: ["failure"])
+    targets: list[str] = Field(default_factory=list)
+
+    @field_validator("format")
+    @classmethod
+    def _known_format(cls, v: str) -> str:
+        if v not in ("slack",):
+            raise ValueError(f"unknown notify format {v!r}: use 'slack'")
+        return v
+
+    @field_validator("on", mode="before")
+    @classmethod
+    def _norm_on(cls, v: Any) -> Any:
+        return _as_list(v)
+
+    @model_validator(mode="after")
+    def _known_events(self) -> NotifyEndpoint:
+        for event in self.on:
+            if event not in _NOTIFY_EVENTS:
+                raise ValueError(
+                    f"unknown notify event {event!r}: "
+                    f"use any of {', '.join(sorted(_NOTIFY_EVENTS))}"
+                )
+        return self
+
+
 class Defaults(_Model):
     """Team-wide defaults under `defaults:`, overlaid by each target (see `resolve`)."""
 
@@ -270,6 +304,8 @@ class TargetConfig(_Model):
     xcuitest: XcuitestConfig | None = None
     # Per-target AI provider/model/endpoint/key (BE-0047), overriding defaults.ai field by field.
     ai: AiSettings | None = None
+    # Per-target webhook notification override (BE-0099). None inherits the top-level `notify:`.
+    notify: list[NotifyEndpoint] | None = None
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -319,6 +355,7 @@ class Config(_Model):
     defaults: Defaults = Field(default_factory=Defaults)
     targets: dict[str, TargetConfig] = Field(default_factory=dict)
     orgs: dict[str, OrgConfig] = Field(default_factory=dict)
+    notify: list[NotifyEndpoint] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _targets_carry_their_platform_identifier(self) -> Config:
@@ -446,6 +483,8 @@ class Effective:
     # can tune thresholds (often lowering ok and/or fail for leniency) without changing the tool.
     doctor_ok_coverage: float = 0.9
     doctor_fail_coverage: float = 0.7
+    # Webhook notification sinks (BE-0099). Empty when no `notify:` is configured.
+    notify: list[NotifyEndpoint] = field(default_factory=list)
 
     def rebased(self, root: Path) -> Effective:
         """A copy with the relative path fields resolved against `root` (a Git checkout, BE-0063).
@@ -603,6 +642,7 @@ def resolve(config: Config, target: str) -> Effective:
         idb_version=d.idb_version,
         doctor_ok_coverage=d.doctor.id_coverage_ok,
         doctor_fail_coverage=d.doctor.id_coverage_fail,
+        notify=a.notify if a.notify is not None else list(config.notify),
     )
 
 
