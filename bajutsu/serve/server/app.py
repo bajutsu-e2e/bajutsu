@@ -293,6 +293,10 @@ def make_app(state: ServeState) -> FastAPI:
     async def approve(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.approve_baseline(state, body, actor=_actor(request)))
 
+    @app.post("/api/doctor")
+    async def doctor(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.doctor_check(state, body, actor=_actor(request)))
+
     @app.post("/api/jobs/{job_id}/cancel")
     async def cancel(job_id: str) -> JSONResponse:
         return _result(ops.cancel_job(state, job_id))
