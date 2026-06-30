@@ -143,3 +143,219 @@ def test_wait_for_polls_until_the_element_appears() -> None:
 def test_wait_for_times_out_when_absent() -> None:
     driver = IdbDriver("U", run=lambda a: "[]")
     assert driver.wait_for({"id": "nope"}, timeout=0, poll=0) is False
+
+
+# --- _stable_key projection ---
+
+
+def test_stable_key_ignores_volatile_fields() -> None:
+    # Two trees that differ only in volatile fields (value, traits, label)
+    # should produce the same stable key.
+    tree_a: list[base.Element] = [
+        {
+            "identifier": "btn",
+            "label": "Save",
+            "value": "0",
+            "traits": ["button"],
+            "frame": (10.0, 20.0, 100.0, 40.0),
+        },
+    ]
+    tree_b: list[base.Element] = [
+        {
+            "identifier": "btn",
+            "label": "Done",
+            "value": "1",
+            "traits": ["button", "notEnabled"],
+            "frame": (10.0, 20.0, 100.0, 40.0),
+        },
+    ]
+    assert IdbDriver._stable_key(tree_a) == IdbDriver._stable_key(tree_b)
+
+    # Different frames → different key.
+    tree_c: list[base.Element] = [
+        {
+            "identifier": "btn",
+            "label": "Save",
+            "value": "0",
+            "traits": ["button"],
+            "frame": (10.0, 25.0, 100.0, 40.0),
+        },
+    ]
+    assert IdbDriver._stable_key(tree_a) != IdbDriver._stable_key(tree_c)
+
+
+def test_query_updates_stable_key_cache() -> None:
+    driver = IdbDriver("U", run=lambda a: FIXTURE)
+    assert driver._last_stable_key is None
+    driver.query()
+    assert driver._last_stable_key is not None
+    assert driver._last_stable_key == IdbDriver._stable_key(parse_describe_all(FIXTURE))
+
+
+# A tree with different frames (mid-animation) from FIXTURE.
+ANIMATING = """
+[
+  {"AXUniqueId":"settings.open","AXLabel":"設定","type":"Button","enabled":true,
+   "frame":{"x":0,"y":5,"width":100,"height":40}},
+  {"AXUniqueId":"submit","AXLabel":"送信","type":"Button","enabled":false,
+   "frame":{"x":0,"y":55,"width":100,"height":40}},
+  {"AXLabel":"static","type":"StaticText","frame":{"x":0,"y":105,"width":100,"height":20}}
+]
+"""
+
+# Same frames as FIXTURE but different volatile fields (value, label, traits).
+VOLATILE_CHANGED = """
+[
+  {"AXUniqueId":"settings.open","AXLabel":"Settings","type":"Button","enabled":true,
+   "AXValue":"new","frame":{"x":0,"y":0,"width":100,"height":40}},
+  {"AXUniqueId":"submit","AXLabel":"Submit","type":"Button","enabled":true,
+   "frame":{"x":0,"y":50,"width":100,"height":40}},
+  {"AXLabel":"other","type":"StaticText","frame":{"x":0,"y":100,"width":100,"height":20}}
+]
+"""
+
+
+# --- _settle ---
+
+
+def test_settle_skips_on_first_call() -> None:
+    # No cached key yet; _settle returns after a single query without polling.
+    run, calls = _scripted([FIXTURE])
+    driver = IdbDriver("U", run=run)
+    driver._SETTLE_POLL_S = 0
+
+    tree = driver._settle()
+    assert len(tree) == 3
+    assert calls[0] == 1  # only one describe-all call
+
+
+def test_settle_returns_immediately_when_stable() -> None:
+    # Cache matches the current tree; _settle returns in one query.
+    run, calls = _scripted([FIXTURE])
+    driver = IdbDriver("U", run=run)
+    driver._SETTLE_POLL_S = 0
+
+    driver.query()  # populates the cache
+    calls[0] = 0
+    tree = driver._settle()
+    assert len(tree) == 3
+    assert calls[0] == 1  # one query, cache hit, no polling
+
+
+def test_settle_polls_until_frames_stabilize() -> None:
+    # Cache has the old tree, current tree is animating, then stabilizes.
+    # Sequence: query() for cache → _settle reads ANIMATING (mismatch) →
+    #   polls: ANIMATING again (different from FIXTURE but same as prev) → stable.
+    run, calls = _scripted([FIXTURE, ANIMATING, ANIMATING])
+    driver = IdbDriver("U", run=run)
+    driver._SETTLE_POLL_S = 0
+
+    driver.query()  # cache = FIXTURE key
+    calls[0] = 0
+    tree = driver._settle()
+    assert len(tree) == 3
+    # 1 (initial read: ANIMATING, mismatches cache) + 1 (poll: ANIMATING again, matches prev)
+    assert calls[0] == 2
+
+
+def test_settle_gives_up_after_max_polls() -> None:
+    # Frames change on every read; _settle gives up after the bound.
+    counter = [0]
+
+    def run(args: list[str]) -> str:
+        if "describe-all" in args:
+            counter[0] += 1
+            # Each call returns a tree with a unique y offset so the key never repeats.
+            y = float(counter[0])
+            return (
+                f'[{{"AXUniqueId":"a","AXLabel":"A","type":"Button",'
+                f'"frame":{{"x":0,"y":{y},"width":100,"height":40}}}}]'
+            )
+        return ""
+
+    driver = IdbDriver("U", run=run)
+    driver._SETTLE_POLL_S = 0
+
+    driver.query()  # cache (counter = 1, y = 1)
+    before = counter[0]
+    driver._settle()
+    # 1 initial (y=2, mismatches cache y=1) + _SETTLE_MAX_POLLS polls (y=3,4,5 — each differs)
+    assert counter[0] - before == 1 + IdbDriver._SETTLE_MAX_POLLS
+
+
+def test_settle_ignores_volatile_field_changes() -> None:
+    # Cache has FIXTURE; current tree has same frames but different labels/values/traits.
+    # _settle should treat this as stable (projection matches).
+    run, calls = _scripted([FIXTURE, VOLATILE_CHANGED])
+    driver = IdbDriver("U", run=run)
+    driver._SETTLE_POLL_S = 0
+
+    driver.query()  # cache = FIXTURE key
+    calls[0] = 0
+    tree = driver._settle()
+    assert len(tree) == 3
+    assert calls[0] == 1  # one query, projection matches cache, no polling
+
+
+def test_tap_settles_before_resolving() -> None:
+    # Settle must wait for frames to stop moving before resolving tap coordinates.
+    calls: list[list[str]] = []
+    seq_list = [FIXTURE, ANIMATING, ANIMATING]
+    describe_calls = [0]
+
+    def run(args: list[str]) -> str:
+        if "describe-all" in args:
+            describe_calls[0] += 1
+            return seq_list.pop(0) if len(seq_list) > 1 else seq_list[0]
+        calls.append(args)
+        return ""
+
+    driver = IdbDriver("U", run=run)
+    driver._SETTLE_POLL_S = 0
+
+    driver.query()  # populate cache with FIXTURE
+    describe_before = describe_calls[0]
+    calls.clear()
+    driver.tap({"id": "settings.open"})
+
+    # settle: 1 (ANIMATING, mismatch) + 1 (ANIMATING, stable) = 2 describe-all
+    # resolve: 0 (uses settled tree) → total = 2
+    assert describe_calls[0] - describe_before == 2
+    # Tap used the ANIMATING tree's frame center: (0,5,100,40) → (50, 25)
+    assert calls == [tap_cmd("U", 50, 25)]
+
+
+def test_resolve_uses_initial_tree_without_extra_query() -> None:
+    # When initial_tree is provided and the element is present, _resolve skips query().
+    run, calls = _scripted([FIXTURE])
+    driver = IdbDriver("U", run=run)
+
+    tree = parse_describe_all(FIXTURE)
+    el = driver._resolve({"id": "settings.open"}, initial_tree=tree)
+    assert el["identifier"] == "settings.open"
+    assert calls[0] == 0  # no describe-all call; used initial_tree
+
+
+def test_stable_key_handles_none_identifiers() -> None:
+    # None identifiers should not crash the sort (None vs str raises TypeError).
+    tree: list[base.Element] = [
+        {
+            "identifier": None,
+            "label": "X",
+            "value": None,
+            "traits": [],
+            "frame": (0.0, 0.0, 1.0, 1.0),
+        },
+        {
+            "identifier": "a",
+            "label": "A",
+            "value": None,
+            "traits": [],
+            "frame": (0.0, 0.0, 2.0, 2.0),
+        },
+    ]
+    key = IdbDriver._stable_key(tree)
+    assert len(key) == 2
+    # None → "" for sort safety; first element in sorted order is "" < "a".
+    assert key[0][0] == ""
+    assert key[1][0] == "a"

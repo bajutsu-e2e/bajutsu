@@ -7,8 +7,8 @@
 |---|---|
 | Proposal | [BE-0087](BE-0087-idb-action-settle.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **In progress** |
-| Implementing PR | [#295](https://github.com/bajutsu-e2e/bajutsu/pull/295), [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296) |
+| Status | **Implemented** |
+| Implementing PR | [#295](https://github.com/bajutsu-e2e/bajutsu/pull/295), [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296), [#416](https://github.com/bajutsu-e2e/bajutsu/pull/416) |
 | Topic | On-device validation (M1 close-out) |
 <!-- /BE-METADATA -->
 
@@ -33,7 +33,7 @@ The goal is to make the common actuation path ride over transitions deterministi
 
 All changes live in `bajutsu/drivers/idb.py` (the idb backend). The web (Playwright) backend has its own auto-wait and is untouched; the `Driver` interface and the deterministic runner are unchanged, so the tool stays app- and backend-agnostic.
 
-- **Settle before actuation (deferred — needs a viable on-device design).** The first attempt added `IdbDriver._settle()`: poll the tree until it is unchanged across two consecutive reads, called before each actuating method. A naive full-tree-equality settle proved unworkable on a real device (validated on the smoke E2E): `describe-all` costs ~2.5s on a loaded CI Simulator, and a live screen rarely yields two byte-identical consecutive trees (status bar, volatile values), so settle exhausted its poll budget on *every* action — adding ~50s per action and ballooning the smoke run past its step timeouts. A workable settle needs a **cheap, robust stability signal** — compare a projection that ignores volatile fields (e.g. identifiers + frames only), bound the polls tightly, and reuse the describe-all the subsequent resolve already pays for rather than adding fresh slow calls — and must be validated on-device before landing. This slice is therefore deferred until that design exists; the hygiene and backoff slices below are independent and ship first.
+- **Settle before actuation.** `IdbDriver._settle()` polls the tree until its identifier-frame projection is unchanged across two consecutive reads, called before each coordinate-based actuating method (via `_center()`). A naive full-tree-equality settle proved unworkable on-device (`describe-all` costs ~2.5 s on a loaded CI Simulator, and volatile fields prevent byte-identical consecutive trees), so the shipped design uses a **projection** of `(identifier, frame)` only — ignoring `value`, `traits`, and `label`. A cached `_last_stable_key` (updated by every `query()`) makes the steady-state cost zero: when the screen has not changed since the last action, `_settle` does one `query()` (the same one `_resolve` would have done anyway) and returns immediately. When the screen *has* changed, `_settle` polls up to `_SETTLE_MAX_POLLS` (3) extra reads at `_SETTLE_POLL_S` (50 ms) intervals, then returns the last tree — best-effort, never hanging. The settled tree is passed to `_resolve(initial_tree=...)` so the subsequent resolution reuses it without a redundant `describe-all`.
 
 - **No fixed sleep.** The settle is a condition wait on tree stability, consistent with the prime directive (condition waits only, never a blind `sleep`). The poll interval is the only delay and is bounded; tests inject a zero interval.
 
@@ -55,7 +55,7 @@ This is deliberately **not** tree repair. [BE-0006](../../implemented/BE-0006-id
 
 ### Delivery
 
-Small, focused PRs. Order revised after on-device validation: (1) `wait_for` / `_resolve` hygiene and (2) exponential backoff for the empty-retry have shipped (PRs #295, #296). Settle-before-actuation is deferred until a cheap, on-device-validated stability signal exists (see above).
+Small, focused PRs. (1) `wait_for` / `_resolve` hygiene (PR #295), (2) exponential backoff for the empty-retry (PR #296), and (3) settle-before-actuation with projection-based stability detection.
 
 ## Alternatives considered
 
@@ -68,9 +68,9 @@ Small, focused PRs. Order revised after on-device validation: (1) `wait_for` / `
 
 - [x] `wait_for` / `_resolve` hygiene — `wait_for(sel, timeout)` polls `query()` until the selector resolves or the timeout elapses; `_resolve` takes the deadline.
 - [x] Exponential-backoff transient-empty retry — `query()`'s flat retry becomes `_empty_backoff` (0.05 s doubling to a 0.2 s cap), keeping the `_max_seen` gate.
-- [ ] Settle before actuation — deferred until a cheap, on-device-validated stability signal exists (the naive full-tree-equality settle proved unworkable on-device); it needs the heavier Simulator path, so the item stays In progress.
+- [x] Settle before actuation — projection-based `_settle()` compares `(identifier, frame)` only, with a cached `_last_stable_key` for zero steady-state overhead. Integrated via `_center()` so all coordinate-based actions (tap, double_tap, long_press) settle automatically.
 
-[#295](https://github.com/bajutsu-e2e/bajutsu/pull/295) / [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296) shipped the two hygiene/backoff slices; settle-before-actuation is the only remaining slice.
+[#295](https://github.com/bajutsu-e2e/bajutsu/pull/295) / [#296](https://github.com/bajutsu-e2e/bajutsu/pull/296) shipped the hygiene/backoff slices; the settle slice completes the item.
 
 ## References
 
