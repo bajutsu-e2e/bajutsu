@@ -203,13 +203,13 @@ class IdbDriver:
         """
         prev_key = self._last_stable_key
         tree = self.query()
-        key = self._stable_key(tree)
+        key = self._last_stable_key
         if prev_key is None or key == prev_key:
             return tree
         for _ in range(self._SETTLE_MAX_POLLS):
             time.sleep(self._SETTLE_POLL_S)
             tree = self.query()
-            new_key = self._stable_key(tree)
+            new_key = self._last_stable_key
             if new_key == key:
                 return tree
             key = new_key
