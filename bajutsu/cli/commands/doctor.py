@@ -3,16 +3,43 @@
 from __future__ import annotations
 
 import contextlib
+from pathlib import Path
 
 import typer
 
+from bajutsu import capability_preflight, idb_version, preflight
 from bajutsu import env as _env
-from bajutsu import idb_version, preflight
-from bajutsu.backends import make_driver, select_actuator
+from bajutsu.backends import capabilities_for, make_driver, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
 from bajutsu.doctor import render, score
 from bajutsu.drivers import base
+from bajutsu.scenario import load_scenario_file
+
+
+def check_scenarios(scenario_path: Path, actuator: str) -> list[str]:
+    """Check every scenario in *scenario_path* against the backend's capabilities.
+
+    Returns one reason per unsupported construct, prefixed with the scenario name. Pure: no
+    device needed — the capability set is a static class constant.
+
+    Note:
+        This is a best-effort pre-check on the raw scenario tree. ``use`` components and
+        ``data`` row expansion are not applied — they require config context (the component
+        library, data sources, ``setup`` steps) that ``doctor --scenario`` does not have
+        access to. A capability introduced only through a ``use`` expansion (e.g. a component
+        that contains a ``pinch`` step) will not be detected here.
+
+    Raises:
+        FileNotFoundError: *scenario_path* does not exist.
+    """
+    text = scenario_path.read_text(encoding="utf-8")
+    scenarios = load_scenario_file(text).scenarios
+    caps = capabilities_for(actuator)
+    reasons: list[str] = []
+    for sc in scenarios:
+        reasons.extend(f"[{sc.name}] {r}" for r in capability_preflight.unsupported(sc, caps))
+    return reasons
 
 
 def doctor(
@@ -20,6 +47,7 @@ def doctor(
     udid: str = typer.Option("booted"),
     backend: str = typer.Option(""),
     config: str = typer.Option(DEFAULT_CONFIG),
+    scenario: str = typer.Option("", "--scenario"),
 ) -> None:
     """Check the environment is runnable, then score the app's current screen."""
     eff = _load_effective(config, target_name)
@@ -40,6 +68,22 @@ def doctor(
         typer.echo("environment:")
         typer.echo(preflight.render(cfg_checks))
         raise typer.Exit(2)
+
+    # Capability preflight: when a scenario file is provided, check whether it uses constructs
+    # the chosen backend can't perform — pure, no device needed (BE-0024).
+    cap_failed = False
+    if scenario:
+        scenario_path = Path(scenario)
+        if not scenario_path.is_file():
+            typer.echo(f"scenario not found: {scenario}")
+            raise typer.Exit(2)
+        cap_reasons = check_scenarios(scenario_path, actuator)
+        if cap_reasons:
+            cap_failed = True
+            typer.echo("capability preflight:")
+            for reason in cap_reasons:
+                typer.echo(f"  ✘ {reason}")
+            typer.echo("")
 
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device.
@@ -69,6 +113,9 @@ def doctor(
         if not preflight.passed(checks):
             raise typer.Exit(1)
         typer.echo("")
+    # Fail after environment is reported, so the user sees both environment and capability issues.
+    if cap_failed:
+        raise typer.Exit(1)
     elements = _current_screen(actuator, udid, eff)
     result = score(
         elements,
