@@ -471,6 +471,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 
 <!-- /GENERATED:proposals-dev-infra -->
 
+### 外部サービスとの連携
+
+実行の結果を、チームがすでに使っているサービスへ送り出します。いずれも判定後の決定的な送信路であり、runner がすでに算出した判定を運ぶだけで、LLM の判定を運ぶことはありません。配信に失敗しても実行の結果は動きません。
+
+<!-- GENERATED:proposals-external-integration -->
+
+<!-- /GENERATED:proposals-external-integration -->
+
 ### 競合調査（MagicPod / Autify）由来の候補
 
 <!-- GENERATED:proposals-competitive -->

@@ -479,6 +479,14 @@ Turning a passing scenario into a native test in a destination framework's idiom
 
 <!-- /GENERATED:proposals-dev-infra -->
 
+### Integration with external services
+
+Sending a run's result out to a service the team already lives in. These are post-verdict, deterministic transports — they carry the verdict the runner already computed, never an LLM's, and a delivery failure never moves the run's result.
+
+<!-- GENERATED:proposals-external-integration -->
+
+<!-- /GENERATED:proposals-external-integration -->
+
 ### Candidates from competitive research (MagicPod / Autify)
 
 <!-- GENERATED:proposals-competitive -->
