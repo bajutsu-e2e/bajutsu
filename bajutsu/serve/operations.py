@@ -30,6 +30,7 @@ from bajutsu.anthropic_client import (
     PROVIDERS,
     provider,
 )
+from bajutsu.backends import KNOWN_ACTUATORS, resolve_actuators
 from bajutsu.config import load_config, resolve, targets_for_org
 from bajutsu.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.drivers import base as driver_base
@@ -449,6 +450,60 @@ def _job_sse_frames(state: ServeState, job: Job, job_id: str, keepalive: float) 
     for line in state.logbus.stream(job_id, timeout=keepalive):
         yield ":keepalive\n\n" if line is None else format_sse("log", line)
     yield format_sse("done", _terminal_payload(state, job, job_id))
+
+
+# --- Doctor / preflight (BE-0024) ---
+
+
+def doctor_check(
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """Run preflight environment checks for a target: config validation + tool runnability.
+
+    Returns structured JSON so the web UI can show a health-check panel before a run —
+    the same checks the CLI ``bajutsu doctor`` runs, minus the live screen score (which
+    needs a device connection the web UI might not have yet). The ``ok`` top-level boolean
+    is true only when every individual check passed.
+    """
+    cfg = state.config
+    if cfg is None:
+        return {"error": "open a config first"}, 400
+    if not body.get("target"):
+        return {"error": "target is required"}, 400
+    target = str(body["target"])
+
+    config = load_config(cfg.read_text(encoding="utf-8"))
+    target_cfg = config.targets.get(target)
+    if target_cfg is None:
+        return {"error": f"unknown target: {target}"}, 400
+
+    eff = resolve(config, target)
+
+    # Resolve the *intended* actuator without requiring it to be installed — select_actuator
+    # raises when the tool is absent, but doctor's purpose is to *report* what's missing, so we
+    # resolve the first known actuator from the backends list and let the runnability checks
+    # surface the absent tool.
+    actuators = resolve_actuators(eff.backend)
+    known = [a for a in actuators if a in KNOWN_ACTUATORS]
+    if not known:
+        return {"error": f"no recognized backend among {eff.backend}"}, 400
+    actuator = known[0]
+
+    from bajutsu import preflight
+
+    cfg_checks = preflight.config_checks(
+        actuator, target=target, bundle_id=eff.bundle_id, base_url=eff.base_url
+    )
+    env_checks = preflight.runnability(actuator, web_engine=eff.browser)
+    all_checks = cfg_checks + env_checks
+
+    serialized = [{"name": c.name, "ok": c.ok, "detail": c.detail} for c in all_checks]
+    return {
+        "ok": preflight.passed(all_checks),
+        "checks": serialized,
+        "target": target,
+        "backend": actuator,
+    }, 200
 
 
 # --- POST (actions) ---
