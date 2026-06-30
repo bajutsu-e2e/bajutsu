@@ -73,7 +73,7 @@ targets:
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
 | `ai` | defaults < app（フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダai-be-0047)）。省略（`None`）なら環境だけで決まります |
-| `doctor_ok_coverage` / `doctor_fail_coverage` | defaults | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定defaultsdoctorbe-0024)）。既定は 0.9 / 0.7 です |
+| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定defaultsdoctorbe-0024)）。既定は 0.9 / 0.7 です |
 
 `backend` フィールドの検証で `_norm` が「単一文字列 → 1 要素リスト」に正規化します（defaults / app の両方に適用）。
 
@@ -219,7 +219,7 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 ### しきい値の設定（`defaults.doctor`、BE-0024）
 
-グレード判定に使う id カバレッジのしきい値は `defaults.doctor` で変更できます。テスト用 id を付ける必要のない装飾的要素が多いアプリでは、ok のしきい値を下げたり fail のしきい値を上げたりすることで、ツール本体を変更せずに調整できます。
+グレード判定に使う id カバレッジのしきい値は `defaults.doctor` で変更できます。テスト用 id を付ける必要のない装飾的要素が多いアプリでは、しきい値を下げる（`idCoverageOk` や `idCoverageFail` を低めに設定する）ことで、ツール本体を変更せずに判定を緩められます。
 
 ```yaml
 defaults:

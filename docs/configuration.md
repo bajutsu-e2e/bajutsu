@@ -79,7 +79,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
 | `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
-| `doctor_ok_coverage` / `doctor_fail_coverage` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
+| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
 
 The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
 defaults / app).
@@ -316,8 +316,8 @@ searchField / textView / switch / slider / tab / cell).
 ### Configurable thresholds (`defaults.doctor`, BE-0024)
 
 The id-coverage thresholds that determine the grade are configurable in `defaults.doctor`. Teams
-with many decorative elements that legitimately lack test IDs can lower the "ok" bar or raise the
-"fail" bar without changing the tool:
+with many decorative elements that legitimately lack test IDs can tune the thresholds for leniency
+(typically lowering `idCoverageOk` and/or `idCoverageFail`) without changing the tool:
 
 ```yaml
 defaults:

@@ -178,7 +178,7 @@ class Defaults(_Model):
     # Team-wide AI provider/model/endpoint/key (BE-0047), overridable per target. None = env-only.
     ai: AiSettings | None = None
     reserved_namespaces: list[str] = Field(default_factory=list, alias="reservedNamespaces")
-    # Configurable doctor thresholds (BE-0024). None uses hardcoded defaults (ok=0.9, fail=0.7).
+    # Configurable doctor thresholds (BE-0024). Always present; defaults to DoctorConfig() (0.9/0.7).
     doctor: DoctorConfig = Field(default_factory=DoctorConfig)
     # Expected idb version range (e.g. ">=1.1.8" or ">=1.1.0,<2.0.0"). Environment-level, not
     # per-app: the pin is the same whichever target a scenario drives. `doctor` reports the
@@ -443,7 +443,7 @@ class Effective:
     # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
     idb_version: str | None = None
     # Configurable doctor id-coverage thresholds (BE-0024). Teams with many decorative elements
-    # can lower ok / raise fail without changing the tool.
+    # can tune thresholds (often lowering ok and/or fail for leniency) without changing the tool.
     doctor_ok_coverage: float = 0.9
     doctor_fail_coverage: float = 0.7
 
