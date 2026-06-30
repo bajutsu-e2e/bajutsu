@@ -8,6 +8,7 @@
 | 提案 | [BE-0100](BE-0100-roadmap-progress-tracking-template-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| 実装 PR | [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) |
 | トピック | Development infrastructure (contributor workflow) |
 | 関連 | [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) |
 <!-- /BE-METADATA -->
@@ -143,6 +144,8 @@
 - [x] 規範。MECE な作業分解の規範と、生きた `進捗` の規範を、`CLAUDE.md`・`roadmaps/README.md`（と `-ja`）・`docs/ai-development.md` に明文化しました。
 - [x] ツール。スカフォルダー（`scripts/new_roadmap_item.py`）が `進捗` の雛形を初期化し、フォーマット検査がセクションを必須にして新しい欄を受け付けます。`tests/test_new_roadmap_item.py` で検証します。
 - [x] 遡及追記。既存のすべての項目に `## 進捗` セクションを加えました。実装済みの項目には全完了のチェックリストを、実装中の項目には既存の `### 実装状況` サブセクションを畳み込み、提案・保留の項目にはプレースホルダーのボックスを置きました。
+
+四つのピースは [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) で一緒に出荷しました。フォーマット検査がすべての項目に新セクションを要求するため、テンプレート・ゲートとスカフォルダー・規範のドキュメント・遡及追記は一つの PR で着地させる必要がありました。
 
 ## 参考
 

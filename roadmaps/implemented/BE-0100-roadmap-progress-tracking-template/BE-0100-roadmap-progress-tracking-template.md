@@ -8,6 +8,7 @@
 | Proposal | [BE-0100](BE-0100-roadmap-progress-tracking-template.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) |
 <!-- /BE-METADATA -->
@@ -152,6 +153,8 @@ The change is documentation plus a deterministic scaffolder and checker. No LLM 
 - [x] The norm — the MECE-work-breakdown rule and the living-`Progress` rule documented in `CLAUDE.md`, `roadmaps/README.md` (+ `-ja`), and `docs/ai-development.md`.
 - [x] Tooling — the scaffolder (`scripts/new_roadmap_item.py`) seeds the `Progress` skeleton; the format check requires the section and accepts the new fields. Covered by `tests/test_new_roadmap_item.py`.
 - [x] Retrofit — every existing item gained a `## Progress` section: all-done checklists for implemented items, the existing `### Implementation status` subsections folded in for in-progress items, and placeholder boxes for proposals / deferred.
+
+All four pieces shipped together in [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) — the template, the gate and scaffolder, the norm docs, and the retrofit had to land in one PR, since the format check requires the new section on every item.
 
 ## References
 
