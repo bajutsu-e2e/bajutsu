@@ -79,6 +79,34 @@ visible in one place.
   the selected backend's required field is present (web → `baseUrl`, iOS → `bundleId`) with a remedy
   naming the target, and `doctor` runs it first — failing fast with a fixable checklist instead of a
   doomed probe. The check stays deterministic and LLM-free.
+- **Web trait/role mapping expanded from 6 to 20 entries** ([#405](https://github.com/bajutsu-e2e/bajutsu/pull/405)).
+  The Playwright backend's `_ROLE_MAP` only covered `a`, `button`, `input`, and `textarea`, and
+  critically mapped text inputs to a `textbox` trait that was not in `ACTIONABLE_TRAITS` — so all
+  web text inputs were invisible to `doctor.score`. The map now covers checkbox, radio, switch,
+  select/combobox/listbox, option/menuitem, searchbox, spinbutton, and textarea (as `textView`),
+  and the existing text-input mapping was fixed to `textField` (which `ACTIONABLE_TRAITS` includes).
+  The scoring logic itself is unchanged.
+- **`doctor` id-coverage thresholds are configurable** ([#406](https://github.com/bajutsu-e2e/bajutsu/pull/406)).
+  `OK_COVERAGE` (0.9) and `FAIL_COVERAGE` (0.7) were hardcoded constants; teams with many
+  decorative elements that legitimately lack test IDs had no way to adjust grading. A new
+  `defaults.doctor` config section (`idCoverageOk` / `idCoverageFail`) threads through to
+  `score()`, validated at load time (both in [0, 1], ok >= fail). Existing configs are unchanged
+  (the hardcoded values remain the defaults). The check stays deterministic and LLM-free.
+- **`doctor --scenario` checks capability compatibility before a run** ([#407](https://github.com/bajutsu-e2e/bajutsu/pull/407)).
+  A user could pass all `doctor` checks and then fail mid-run because the scenario used a
+  capability the backend lacked (e.g. `pinch` on idb without `multiTouch`). A new `--scenario`
+  option on the CLI `doctor` command loads the scenario YAML and runs `capability_preflight` against
+  the backend's static capabilities, reporting each unsupported construct with a human-readable
+  scenario path (e.g. `step 3 > if > then[0]: pinch needs 'multiTouch'`). The check is pure — no
+  device needed. Note: `use` component expansion is not applied (it requires config context), so
+  capabilities introduced only through expansion are not detected.
+- **Web UI exposes preflight checks via `POST /api/doctor`** ([#408](https://github.com/bajutsu-e2e/bajutsu/pull/408)).
+  The web UI (`serve/`) had no onboarding surface — users could only diagnose setup problems via the
+  CLI or MCP tool. A new `POST /api/doctor` endpoint runs config validation and tool runnability
+  checks for a given target, returning structured JSON (`{ok, checks[], target, backend}`). It omits
+  the live screen score (which needs a device connection the web UI user may not have yet) — the
+  whole point is to diagnose setup issues before attempting a run. Wired in both transports (stdlib
+  handler + FastAPI).
 
 ## Alternatives considered
 
