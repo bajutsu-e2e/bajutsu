@@ -1,0 +1,7 @@
+# Reusable "navigate + seed" prelude: land on the Search tab and type a query. Callers supply
+# the query via `use: { with }`. The showcase has no auth gate, so this is the no-login analog
+# of the old demo app's shared login component.
+params: [query]
+steps:
+  - wait: { for: { id: search.field }, timeout: 10 }
+  - type: { into: { id: search.field }, text: "${params.query}" }

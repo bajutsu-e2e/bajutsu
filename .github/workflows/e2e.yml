@@ -1,8 +1,14 @@
-# On-device E2E (macOS) — two jobs the Linux `ci.yml` cannot run:
-#   - smoke (idb): build the sample, boot a Simulator, run a scenario through the idb backend
+# On-device E2E (macOS) — two jobs the Linux `ci.yml` cannot run, both against the showcase
+# suite (BE-0079, the single iOS fixture):
+#   - smoke (idb): build the showcase, boot a Simulator, run a scenario through the idb backend
 #     (driver + simctl + idb + real actuation).
 #   - xcuitest (codegen): generate a native XCUITest from a scenario and run it with
 #     xcodebuild — no bajutsu / idb / AI at test time (the codegen output path).
+# The SwiftUI a11y product is the smoke / codegen subject; the UIKit twin shares the identifier
+# contract, so one toolkit suffices for the gate.
+# A third job, golden (idb), still runs the BE-0006 element-tree goldens against the legacy
+# `sample` fixture — its goldens are recorded from sample and have no showcase equivalent yet;
+# porting them is a follow-up tracked with the phase-3 retirement of `sample` (BE-0079).
 # Runs on every relevant PR and on demand (the Actions tab / `gh workflow run e2e.yml`).
 name: E2E (Simulator)
 
@@ -108,7 +114,7 @@ jobs:
       # cost under the ~2.5min build instead of paying it serially before the run. The composite
       # action's idempotent `brew list || install` / `uv sync` then no-op. `wait` surfaces a
       # background failure, and a build failure exits first under `set -e` (run scenarios is skipped).
-      - name: Build the sample app (fetch idb deps concurrently)
+      - name: Build the showcase app (fetch idb deps concurrently)
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
@@ -120,7 +126,7 @@ jobs:
           # If the build fails, `set -e` exits the step before the waits; the trap stops the
           # background fetches so they don't keep burning metered minutes or trail confusing logs.
           trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
-          make -C demos/features sample-build
+          make -C demos/showcase swiftui-build
           wait "$brew_pid"
           wait "$sync_pid"
           trap - EXIT  # success: the fetches finished, so don't kill on the normal exit
@@ -129,16 +135,74 @@ jobs:
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       - name: Run smoke scenarios
         uses: ./.github/actions/bajutsu-e2e
         with:
-          scenarios: demos/features/app/scenarios/smoke.yaml
-          target: sample
-          config: demos/features/demo.config.yaml
+          scenarios: demos/showcase/scenarios/smoke.yaml
+          target: showcase-swiftui
+          config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.sim.outputs.udid }}
           artifact-name: smoke-run
+
+  # Golden element-tree assertions (BE-0006) still run against the `sample` fixture: the recorded
+  # goldens pin sample's normalized tree, so porting them to the showcase needs goldens re-recorded
+  # on-device — a follow-up tracked with the phase-3 retirement of `sample` (BE-0079). Until then
+  # this keeps the per-PR golden coverage while smoke / xcuitest run on the showcase.
+  golden:
+    name: golden (idb)
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install xcodegen
+
+      - name: Boot a Simulator
+        id: sim
+        uses: ./.github/actions/boot-simulator
+        with:
+          wait: "false"
+
+      # Build the sample app while the idb deps fetch concurrently (see the smoke job for the
+      # rationale); the trap stops the background fetches on a build failure.
+      - name: Build the sample app (fetch idb deps concurrently)
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
+          brew_pid=$!
+          uv sync --extra idb --no-dev &
+          sync_pid=$!
+          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
+          make -C demos/features sample-build
+          wait "$brew_pid"
+          wait "$sync_pid"
+          trap - EXIT
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/features/app/build/dd/Build/Products/Debug-iphonesimulator/BajutsuSample.app"
 
       - name: Run golden scenarios (BE-0006)
         uses: ./.github/actions/bajutsu-e2e
@@ -151,7 +215,8 @@ jobs:
 
   # The codegen output path: a scenario -> native XCUITest, compiled and run by xcodebuild
   # with no bajutsu / idb / AI at test time. This is the claim M3 makes about codegen, so CI
-  # has to exercise the generated Swift natively (not just the idb runtime above).
+  # has to exercise the generated Swift natively (not just the idb runtime above). It runs
+  # against the SwiftUI a11y app, whose identifiers the generated test queries by name.
   xcuitest:
     name: xcuitest (codegen)
     needs: changes
@@ -199,8 +264,8 @@ jobs:
       - name: Cache DerivedData
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
-          path: demos/features/app/build/dd
-          key: xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/features/app/**/*.swift', 'demos/features/app/**/project.yml') }}
+          path: demos/showcase/swiftui/build/dd
+          key: xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/swiftui/**/*.swift', 'demos/showcase/swiftui/**/project.yml') }}
           restore-keys: |
             xcode-dd-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
 
@@ -208,135 +273,6 @@ jobs:
       # `wait: 'false'` returns once the boot is initiated; no explicit wait is needed because
       # `xcodebuild test` blocks on the destination becoming ready when it reaches the test
       # phase, by which point the boot has finished.
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
-
-      # `make -C demos/features ui-test` re-generates ComponentsUITests.swift from the
-      # scenario, regenerates the project, then `xcodebuild test`s it. xcodebuild builds the
-      # app + UITests target itself, so no separate build/install step is needed.
-      - name: Codegen + run native XCUITest
-        run: make -C demos/features ui-test SIM=${{ steps.sim.outputs.udid }}
-
-      - name: Upload xcresult
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        with:
-          name: xcuitest-result
-          path: demos/features/app/build/dd/Logs/Test/*.xcresult
-          if-no-files-found: ignore
-
-  # The same two on-device paths against the showcase suite (BE-0079). They run *alongside*
-  # the sample jobs above during the migration: the showcase is becoming the single iOS
-  # fixture, so its idb-runtime and codegen->XCUITest paths must be green before the sample
-  # jobs are retired. The SwiftUI a11y product is the smoke / codegen subject (the UIKit twin
-  # shares the identifier contract; one toolkit suffices for the gate).
-  smoke-showcase:
-    name: smoke-showcase (idb)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
-    runs-on: macos-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      - name: Boot a Simulator
-        id: sim
-        uses: ./.github/actions/boot-simulator
-        with:
-          wait: "false"
-
-      # Fetch the idb backend's deps concurrently with the app build (see the sample smoke job
-      # for the rationale): idb_companion (brew) and the idb Python extra are independent of the
-      # build, so backgrounding them hides their cost under it. The trap stops them on a build
-      # failure so they don't keep burning metered minutes.
-      - name: Build the showcase app (fetch idb deps concurrently)
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: |
-          brew list facebook/fb/idb-companion >/dev/null 2>&1 || brew install facebook/fb/idb-companion &
-          brew_pid=$!
-          uv sync --extra idb --no-dev &
-          sync_pid=$!
-          trap 'kill "$brew_pid" "$sync_pid" 2>/dev/null || true' EXIT
-          make -C demos/showcase swiftui-build
-          wait "$brew_pid"
-          wait "$sync_pid"
-          trap - EXIT
-
-      - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
-
-      - name: Install the app
-        run: xcrun simctl install "${{ steps.sim.outputs.udid }}" "demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
-
-      - name: Run smoke scenarios
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: demos/showcase/scenarios/smoke.yaml
-          target: showcase-swiftui
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.sim.outputs.udid }}
-          artifact-name: smoke-showcase-run
-
-  xcuitest-showcase:
-    name: xcuitest-showcase (codegen)
-    needs: changes
-    if: needs.changes.outputs.relevant == 'true'
-    runs-on: macos-latest
-    timeout-minutes: 25
-    env:
-      UV_NO_DEV: "1"
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
-        with:
-          enable-cache: true
-
-      - name: Install xcodegen
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-        run: brew install xcodegen
-
-      - name: Resolve Xcode version (for the cache key)
-        id: xcode
-        run: echo "ver=$(xcodebuild -version | tr '\n ' '--')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache DerivedData
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        with:
-          path: demos/showcase/swiftui/build/dd
-          key: xcode-dd-showcase-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-${{ hashFiles('BajutsuKit/**/*.swift', 'demos/showcase/swiftui/**/*.swift', 'demos/showcase/swiftui/**/project.yml') }}
-          restore-keys: |
-            xcode-dd-showcase-${{ runner.os }}-${{ steps.xcode.outputs.ver }}-
-
       - name: Boot a Simulator
         id: sim
         uses: ./.github/actions/boot-simulator
@@ -353,7 +289,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: xcuitest-showcase-result
+          name: xcuitest-result
           path: demos/showcase/swiftui/build/dd/Logs/Test/*.xcresult
           if-no-files-found: ignore
 
@@ -363,19 +299,18 @@ jobs:
   # path-gated macOS jobs.
   e2e:
     name: E2E
-    needs: [changes, smoke, xcuitest, smoke-showcase, xcuitest-showcase]
+    needs: [changes, smoke, golden, xcuitest]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check E2E results
         env:
           SMOKE: ${{ needs.smoke.result }}
+          GOLDEN: ${{ needs.golden.result }}
           XCUITEST: ${{ needs.xcuitest.result }}
-          SMOKE_SHOWCASE: ${{ needs.smoke-showcase.result }}
-          XCUITEST_SHOWCASE: ${{ needs.xcuitest-showcase.result }}
         run: |
-          echo "smoke=$SMOKE xcuitest=$XCUITEST smoke-showcase=$SMOKE_SHOWCASE xcuitest-showcase=$XCUITEST_SHOWCASE"
-          for result in "$SMOKE" "$XCUITEST" "$SMOKE_SHOWCASE" "$XCUITEST_SHOWCASE"; do
+          echo "smoke=$SMOKE golden=$GOLDEN xcuitest=$XCUITEST"
+          for result in "$SMOKE" "$GOLDEN" "$XCUITEST"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               echo "E2E failed"
               exit 1

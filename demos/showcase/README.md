@@ -73,6 +73,7 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | Path | What |
 |---|---|
 | [`SPEC.md`](SPEC.md) | the screen-by-screen contract (the spec) |
+| [`WEBUI.md`](WEBUI.md) | the Web UI tour — drive a Simulator from the browser, collect every evidence type |
 | [`swiftui/`](swiftui), [`uikit/`](uikit) | the two codebases (xcodegen `project.yml`, two targets each) |
 | [`showcase.config.yaml`](showcase.config.yaml) | the four `targets.<name>` entries |
 | [`scenarios/`](scenarios) | shared id-based `run` scenarios (drive both a11y apps) |
