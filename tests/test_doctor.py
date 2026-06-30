@@ -86,3 +86,81 @@ def test_a_screen_with_actionable_elements_is_not_flagged_no_actionable() -> Non
 def test_render_mentions_grade() -> None:
     s = score([_el("settings.open", ["button"])], ["settings"])
     assert "grade: Ready" in render(s)
+
+
+def test_web_traits_are_actionable() -> None:
+    """Web-mapped traits (textField, textView, switch, slider, tab, cell) must all be
+    recognized as actionable by doctor so it scores web pages correctly (BE-0024)."""
+    from bajutsu.dom import parse_dom
+
+    web_elements = [
+        {
+            "identifier": "f.input",
+            "role": "input",
+            "label": "Name",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.area",
+            "role": "textarea",
+            "label": "Bio",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.agree",
+            "role": "checkbox",
+            "label": "Agree",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.slider",
+            "role": "slider",
+            "label": "Volume",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.tab",
+            "role": "tab",
+            "label": "Home",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.item",
+            "role": "option",
+            "label": "Option 1",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+        {
+            "identifier": "f.select",
+            "role": "select",
+            "label": "Country",
+            "value": None,
+            "disabled": False,
+            "selected": False,
+            "frame": [0, 0, 10, 10],
+        },
+    ]
+    elements = parse_dom(web_elements)
+    s = score(elements, ["f"])
+    # All 7 elements should be actionable (they all have traits in ACTIONABLE_TRAITS)
+    assert s.actionable == 7
+    assert s.with_id == 7
+    assert s.grade == "Ready"

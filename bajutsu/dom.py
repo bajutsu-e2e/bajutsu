@@ -35,13 +35,34 @@ QUERY_JS = """
 }
 """
 
-_ROLE_MAP = {
+# Map HTML tags and ARIA roles to the platform-neutral trait names that doctor's
+# ACTIONABLE_TRAITS recognises.  Unmapped roles pass through as-is (so a developer-set
+# ARIA role like "slider" still lands in traits even without an explicit entry here).
+_ROLE_MAP: dict[str, str] = {
+    # links
     "a": base.Trait.LINK,
     "link": base.Trait.LINK,
+    # buttons / tappable openers
     "button": base.Trait.BUTTON,
-    "input": "textbox",
-    "textbox": "textbox",
-    "textarea": "textbox",
+    "select": base.Trait.BUTTON,
+    "combobox": base.Trait.BUTTON,
+    "listbox": base.Trait.BUTTON,
+    # text inputs
+    "input": "textField",
+    "textbox": "textField",
+    "spinbutton": "textField",
+    "searchbox": "searchField",
+    "textarea": "textView",
+    # toggles
+    "checkbox": "switch",
+    "radio": "switch",
+    "switch": "switch",
+    # selectable items
+    "option": "cell",
+    "menuitem": "cell",
+    "menuitemcheckbox": "cell",
+    "menuitemradio": "cell",
+    # slider and tab pass through as-is (they already match ACTIONABLE_TRAITS)
 }
 
 
