@@ -262,7 +262,7 @@ def _deliver(url: str, payload: dict[str, Any]) -> bool:
                     resp.status,
                     attempt + 1,
                 )
-        except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError) as exc:
             logger.warning("webhook POST to %s failed (attempt %d): %s", masked, attempt + 1, exc)
         if attempt < _MAX_RETRIES:
             time.sleep(_RETRY_DELAY * (attempt + 1))
