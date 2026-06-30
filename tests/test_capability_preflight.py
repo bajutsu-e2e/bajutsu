@@ -337,3 +337,31 @@ def test_doctor_scenario_check_missing_file(tmp_path: Path) -> None:
     # A missing scenario file should raise (not silently skip).
     with pytest.raises(FileNotFoundError):
         check_scenarios(tmp_path / "missing.yaml", "idb")
+
+
+def test_doctor_scenario_flag_rejects_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--scenario pointing at a directory must exit 2 with a clean message, not crash."""
+    from typer.testing import CliRunner
+
+    from bajutsu.cli import app
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [idb] }\n"
+        "targets:\n"
+        "  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    # The sandbox has no idb, so skip the actuator-availability gate to reach the scenario check.
+    monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _: "idb")
+    # tmp_path itself is a directory — use it as the --scenario argument.
+    scenario_dir = tmp_path / "subdir"
+    scenario_dir.mkdir()
+    r = CliRunner().invoke(
+        app,
+        ["doctor", "--target", "demo", "--config", str(cfg), "--scenario", str(scenario_dir)],
+    )
+    assert r.exit_code == 2
+    assert "scenario not found" in r.output

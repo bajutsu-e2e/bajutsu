@@ -23,6 +23,13 @@ def check_scenarios(scenario_path: Path, actuator: str) -> list[str]:
     Returns one reason per unsupported construct, prefixed with the scenario name. Pure: no
     device needed — the capability set is a static class constant.
 
+    Note:
+        This is a best-effort pre-check on the raw scenario tree. ``use`` components and
+        ``data`` row expansion are not applied — they require config context (the component
+        library, data sources, ``setup`` steps) that ``doctor --scenario`` does not have
+        access to. A capability introduced only through a ``use`` expansion (e.g. a component
+        that contains a ``pinch`` step) will not be detected here.
+
     Raises:
         FileNotFoundError: *scenario_path* does not exist.
     """
@@ -67,7 +74,7 @@ def doctor(
     cap_failed = False
     if scenario:
         scenario_path = Path(scenario)
-        if not scenario_path.exists():
+        if not scenario_path.is_file():
             typer.echo(f"scenario not found: {scenario}")
             raise typer.Exit(2)
         cap_reasons = check_scenarios(scenario_path, actuator)
