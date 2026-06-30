@@ -111,20 +111,20 @@ FakeDriver(screen=[...], react=react)
 
 ```python
 PLATFORMS = {                              # プラットフォームトークンは actuator 列へ展開
-    "ios":     ("xcuitest", "idb"),        #   XCUITest 優先・idb フォールバック（BE-0019）。xcuitest は未実装
+    "ios":     ("xcuitest", "idb"),        #   XCUITest 優先・idb フォールバック（BE-0019）
     "android": ("adb",),                   #   計画中
     "web":     ("playwright",),            #   実装済み（BE-0041）
     "fake":    ("fake",),                  #   メモリ上のテスト/デモ用ドライバ
 }
-IMPLEMENTED = {"idb", "fake", "playwright"}  # 今日ドライバがある actuator
+IMPLEMENTED = {"idb", "fake", "playwright", "xcuitest"}  # 今日ドライバがある actuator
 
 def default_available(actuator) -> bool:   # 実装済みかつ裏のツールがあるか（playwright はパッケージ import、fake は常に可）
 def resolve_actuators(backends) -> list:   # 各トークン（プラットフォーム/actuator）を actuator 列へ展開
 def select_actuator(backends, available) -> str:  # 順に見て最初の「実装済み かつ 利用可能」
-def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
+def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
-- **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `idb`）のどちらかです。`ios` は `xcuitest` を `idb` より先に並べるようになりました（BE-0019）が、XCUITest にはまだドライバがないため、`--backend ios`（または `backend: [ios]`）は今日も `idb` に解決されます。XCUITest が入れば自動でそちらを拾い、シナリオも config も変わりません。
+- **バックエンドトークン**は、**プラットフォーム**（`ios` / `android` / `web` / `fake`）か、具体的な **actuator**（例: `idb`）のどちらかです。`ios` は `xcuitest` を `idb` より先に並べます（BE-0019）。`--backend ios`（または `backend: [ios]`）は XCUITest が利用可能なら優先し、利用できない環境（XCUITest ホストのないヘッドレス CI など）では `idb` にフォールバックします。シナリオも config も変わりません。
 - `backend` は **安定度順のリスト**です（先頭ほど安定。[concepts](concepts.md#5-安定度順ラダーstability-ladder)）。各トークンは順に actuator 列へ展開され、**actuator = 最初の「実装済み かつ 利用可能」**なものです。利用可能なものが無ければ `RuntimeError`（CLI は終了コード 2）。
 - `web` は `playwright` に解決され、**実装済み**です（[multi-platform](multi-platform.md)）。`android`（→ `adb`）は**宣言済みだが未実装**で、要求すると汎用の失敗ではなく明確な「未実装」エラーになります。本当に未知のトークンはスキップされます（前方互換: 古いビルドでも、将来のバックエンドを列挙した config を実行できます）。
 - 可用性判定 `available` は注入可能です（テストで差し替え可）。既定は `shutil.which`（`fake` は実行ファイル不要で常に利用可能）。
