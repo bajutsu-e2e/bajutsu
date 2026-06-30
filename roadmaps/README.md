@@ -485,8 +485,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
+
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services

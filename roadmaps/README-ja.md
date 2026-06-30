@@ -477,8 +477,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-dev-infra -->
-| ID | 項目 | 状態 |
-|---|---|---|
+
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携
