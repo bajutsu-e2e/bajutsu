@@ -124,6 +124,7 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     ("Candidates from competitive research (MagicPod / Autify)", "competitive", True),
     ("Candidates from competitive research (Maestro)", "competitive-maestro", True),
     ("Integration & automation (MCP)", "mcp", False),
+    ("Integration with external services", "external-integration", False),
     ("Backend expansion (iOS actuators)", "backend", False),
     ("doctor / onboarding", "doctor", False),
     ("Development infrastructure (contributor workflow)", "dev-infra", False),
