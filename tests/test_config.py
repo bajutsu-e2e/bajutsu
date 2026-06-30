@@ -453,3 +453,44 @@ def test_xcuitest_config_resolves() -> None:
 def test_xcuitest_config_defaults_to_none() -> None:
     cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
     assert resolve(cfg, "s").xcuitest is None
+
+
+# --- BE-0024: configurable doctor thresholds ---
+
+
+def test_doctor_thresholds_resolve_from_defaults() -> None:
+    cfg = load_config(
+        "defaults:\n"
+        "  doctor:\n"
+        "    idCoverageOk: 0.85\n"
+        "    idCoverageFail: 0.6\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    eff = resolve(cfg, "s")
+    assert eff.doctor_ok_coverage == 0.85
+    assert eff.doctor_fail_coverage == 0.6
+
+
+def test_doctor_thresholds_default_to_hardcoded_values() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    eff = resolve(cfg, "s")
+    assert eff.doctor_ok_coverage == 0.9
+    assert eff.doctor_fail_coverage == 0.7
+
+
+def test_doctor_ok_below_fail_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        load_config(
+            "defaults:\n"
+            "  doctor:\n"
+            "    idCoverageOk: 0.5\n"
+            "    idCoverageFail: 0.8\n"
+            "targets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
+def test_doctor_threshold_out_of_range_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        load_config(
+            "defaults:\n  doctor:\n    idCoverageOk: 1.5\ntargets:\n  s:\n    bundleId: com.x\n"
+        )

@@ -70,7 +70,12 @@ def register_tools(mcp: FastMCP, config_path: Path) -> None:
         actuator = select_actuator(backends)
         driver = make_driver(actuator, udid)
         elements = driver.query()
-        s = score(elements, eff.id_namespaces)
+        s = score(
+            elements,
+            eff.id_namespaces,
+            ok_coverage=eff.doctor_ok_coverage,
+            fail_coverage=eff.doctor_fail_coverage,
+        )
         return render(s)
 
     @mcp.tool()

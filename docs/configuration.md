@@ -79,6 +79,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
 | `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
+| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
 
 The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
 defaults / app).
@@ -299,7 +300,7 @@ Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It an
 Measured over actionable elements (trait ∈ `ACTIONABLE_TRAITS` = button / link / textField /
 searchField / textView / switch / slider / tab / cell).
 
-| Metric | Definition | Threshold |
+| Metric | Definition | Threshold (default) |
 |---|---|---|
 | `idCoverage` | fraction of actionable elements with an id | ✓ ≥ 0.9 / warn 0.7–0.9 / fail < 0.7 |
 | `namespaceConformance` | fraction of ids whose first segment is in `idNamespaces` | off-convention ids listed in `off_namespace` |
@@ -308,9 +309,26 @@ searchField / textView / switch / slider / tab / cell).
 ### Grading
 
 - **Blocked**: no actionable elements on the screen (most likely blank, not yet loaded, or the
-  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < 0.7.
-- **Ready**: `idCoverage` ≥ 0.9 **and** `namespaceConformance` == 1.0.
+  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < `idCoverageFail` (default 0.7).
+- **Ready**: `idCoverage` ≥ `idCoverageOk` (default 0.9) **and** `namespaceConformance` == 1.0.
 - **Partial**: otherwise (runnable, but a forecast of coordinate fallback / flakiness).
+
+### Configurable thresholds (`defaults.doctor`, BE-0024)
+
+The id-coverage thresholds that determine the grade are configurable in `defaults.doctor`. Teams
+with many decorative elements that legitimately lack test IDs can tune the thresholds for leniency
+(typically lowering `idCoverageOk` and/or `idCoverageFail`) without changing the tool:
+
+```yaml
+defaults:
+  doctor:
+    idCoverageOk:   0.85   # default 0.9 — coverage >= this is eligible for "Ready"
+    idCoverageFail: 0.6    # default 0.7 — coverage < this drops to "Blocked"
+```
+
+Both values must be in [0, 1] and `idCoverageOk` must be >= `idCoverageFail`; an invalid value is
+rejected at config load. When omitted, the hardcoded defaults (0.9 / 0.7) apply — existing configs
+are unchanged.
 
 ### Output
 

@@ -73,6 +73,7 @@ targets:
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
 | `ai` | defaults < app（フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダai-be-0047)）。省略（`None`）なら環境だけで決まります |
+| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定defaultsdoctorbe-0024)）。既定は 0.9 / 0.7 です |
 
 `backend` フィールドの検証で `_norm` が「単一文字列 → 1 要素リスト」に正規化します（defaults / app の両方に適用）。
 
@@ -204,7 +205,7 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 操作可能要素（trait ∈ `ACTIONABLE_TRAITS` = button / link / textField / searchField / textView / switch / slider / tab / cell）を母数として測定します。
 
-| 指標 | 定義 | しきい値 |
+| 指標 | 定義 | しきい値（既定） |
 |---|---|---|
 | `idCoverage` | id を持つ操作可能要素の割合 | ✓ ≥ 0.9 / warn 0.7–0.9 / fail < 0.7 |
 | `namespaceConformance` | id の先頭が `idNamespaces` に一致する割合 | 規約外を `off_namespace` に列挙 |
@@ -212,9 +213,22 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 ### グレード判定
 
-- **Blocked**: 画面に actionable な要素が 1 つも無い（多くは空画面、まだ読み込まれていない、または想定外の画面で、`render` がその旨を示します）、id 重複あり、**または** `idCoverage` < 0.7。
-- **Ready**: `idCoverage` ≥ 0.9 **かつ** `namespaceConformance` == 1.0。
+- **Blocked**: 画面に actionable な要素が 1 つも無い（多くは空画面、まだ読み込まれていない、または想定外の画面で、`render` がその旨を示します）、id 重複あり、**または** `idCoverage` < `idCoverageFail`（既定 0.7）。
+- **Ready**: `idCoverage` ≥ `idCoverageOk`（既定 0.9）**かつ** `namespaceConformance` == 1.0。
 - **Partial**: それ以外（実行はできるが、座標フォールバックやフレーキーの予告）。
+
+### しきい値の設定（`defaults.doctor`、BE-0024）
+
+グレード判定に使う id カバレッジのしきい値は `defaults.doctor` で変更できます。テスト用 id を付ける必要のない装飾的要素が多いアプリでは、しきい値を下げる（`idCoverageOk` や `idCoverageFail` を低めに設定する）ことで、ツール本体を変更せずに判定を緩められます。
+
+```yaml
+defaults:
+  doctor:
+    idCoverageOk:   0.85   # 既定 0.9。カバレッジがこの値以上で "Ready" の候補になります
+    idCoverageFail: 0.6    # 既定 0.7。カバレッジがこの値未満で "Blocked" になります
+```
+
+両方とも [0, 1] の範囲で指定し、`idCoverageOk` は `idCoverageFail` 以上でなければなりません。範囲外の値は config 読み込み時に拒否されます。省略すると既定値（0.9 / 0.7）が適用されるため、既存の config はそのまま動きます。
 
 ### 出力
 

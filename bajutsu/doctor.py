@@ -54,8 +54,23 @@ def namespace_of(identifier: str) -> str:
     return identifier.split(".", 1)[0]
 
 
-def score(elements: list[base.Element], id_namespaces: list[str]) -> Score:
-    """Compute the convention score for one screen."""
+def score(
+    elements: list[base.Element],
+    id_namespaces: list[str],
+    *,
+    ok_coverage: float = OK_COVERAGE,
+    fail_coverage: float = FAIL_COVERAGE,
+) -> Score:
+    """Compute the convention score for one screen.
+
+    Args:
+        elements: the screen's element tree from ``driver.query()``.
+        id_namespaces: declared namespaces for namespace-conformance scoring.
+        ok_coverage: id coverage >= this is eligible for "Ready" (configurable via
+            ``defaults.doctor.idCoverageOk``, BE-0024).
+        fail_coverage: id coverage < this drops to "Blocked" (configurable via
+            ``defaults.doctor.idCoverageFail``, BE-0024).
+    """
     actionable = [e for e in elements if _is_actionable(e)]
     with_id = sum(1 for e in actionable if e["identifier"])
     id_coverage = with_id / len(actionable) if actionable else 1.0
@@ -85,9 +100,9 @@ def score(elements: list[base.Element], id_namespaces: list[str]) -> Score:
     # No actionable elements means nothing is addressable, so the screen can't be "Ready" — the
     # 1.0 coverage default would otherwise grade a blank / not-yet-loaded / wrong screen as Ready.
     no_actionable = not actionable
-    if no_actionable or duplicates or id_coverage < FAIL_COVERAGE:
+    if no_actionable or duplicates or id_coverage < fail_coverage:
         grade = "Blocked"
-    elif id_coverage >= OK_COVERAGE and namespace_conformance >= 1.0:
+    elif id_coverage >= ok_coverage and namespace_conformance >= 1.0:
         grade = "Ready"
     else:
         grade = "Partial"
