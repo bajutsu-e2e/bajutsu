@@ -85,6 +85,10 @@ this adds no new exposure there.
 * **Leave it to the `Makefile`** — rejected: that is the status quo this item removes; every new web
   harness otherwise re-implements start/poll/teardown.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [BE-0058 — Dogfood the serve Web UI](../BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the

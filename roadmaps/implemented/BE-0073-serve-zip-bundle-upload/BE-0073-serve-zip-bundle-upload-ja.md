@@ -95,6 +95,10 @@ my-suite.zip
 - **zip ではなく tarball。** 対称性と到達範囲のため却下します。`.ipa` や zip 化した `.app` は既に zip であり、stdlib の `zipfile` は [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) がエクスポートに使うのと同じ土台で、zip はどの OS でもダブルクリックで開けます。
 - **アップロードを再利用ライブラリとして永続化する。** 先送りします。それはバージョン管理されたストレージであり、Git（[BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）が既にそれです。アップロードはエフェメラルのままにします。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [CLAUDE.md](../../../CLAUDE.md)、[DESIGN §1](../../../DESIGN.md)（Bajutsu はビルド済みアプリを受け取り、ビルドはしない）、[DESIGN §2](../../../DESIGN.md)（AI は判定者にならない、決定性優先、テストごとにクリーン環境）。

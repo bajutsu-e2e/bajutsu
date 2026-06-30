@@ -222,6 +222,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0093](implemented/BE-0093-public-docs-site/BE-0093-public-docs-site.md) | Public project website & documentation portal (GitHub Pages) | Implemented |
 | [BE-0094](implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) | Generated roadmap status dashboard on GitHub Pages | Implemented |
 | [BE-0096](implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md) | Keep docs links to roadmap items from rotting on promotion | Implemented |
+| [BE-0100](implemented/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md) | Progress tracking and cross-item relations in the BE template | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
@@ -484,9 +485,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0100](proposals/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md) | Progress tracking and cross-item relations in the BE template | Proposal |
+
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services

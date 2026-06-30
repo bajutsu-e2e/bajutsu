@@ -42,6 +42,10 @@ MCP サーバは `bajutsu/mcp/` に実装（optional dependency `fastmcp>=2.0.0`
 - `run` の in-process 実行（却下: デバイスプール管理が複雑。subprocess の方がシンプルで `serve` と同じパターン）
 - HTTP transport をデフォルトに（却下: stdio が Claude Desktop / Code 統合の標準）
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 `bajutsu/mcp/`、[cli.md](../../../docs/ja/cli.md)

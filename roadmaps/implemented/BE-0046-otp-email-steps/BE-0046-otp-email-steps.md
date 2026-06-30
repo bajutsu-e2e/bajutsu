@@ -151,31 +151,6 @@ newest-wins tie-break, and the timeout are all unit-tested over fabricated mailb
 network. The live HTTP call is the only mocked surface — the permitted "external API call" exception
 — exactly as `http` is tested.
 
-### Implementation status
-
-The **`totp`** slice ships — the half with no external dependency. `totp: { secret, into: { var } }`
-computes an RFC 6238 code from the base32 `secret` (commonly `${secrets.*}`, interpolated before the
-step runs) and the current time, writing it to `${vars.<var>}` for a later `type` / `assert`. The
-algorithm is a pure, gate-tested function (`bajutsu/totp.py`, checked against the RFC 6238 vectors);
-the step is a thin handler that calls it at wall-clock time (`bajutsu/orchestrator/actions/handlers/totp.py`).
-It follows the `http`/`saveBody` precedent for producing a value into `vars.*`, touches no device,
-and emits a labeled `// TODO` from codegen.
-
-The **`email`** slice ships, completing the item. `email: { match, extract, timeout }`
-(`bajutsu/scenario/models/actions.py`) polls the configured `targets.<name>.mailbox`
-(`bajutsu/config.py`) until a message arriving *after* the step started satisfies `match`, then
-extracts the value by `bodyMatches` into `${vars.<var>}`. The match / extraction / response-shape
-reading / after-start selection are pure, gate-tested functions (`bajutsu/mailbox.py`); the bounded
-poll runs in the run loop (`_do_email`, `orchestrator/loop.py`) over an **injected** `MailboxReader`
-(`orchestrator/types.py`), built once per run from config with `${secrets.*}` resolved
-(`runner/mailbox.py`) — so only the live HTTP GET touches the network and the logic is tested with no
-network. The after-start boundary keys on **message id** (the set present at the step start), which
-is skew-free — it never compares the provider's timestamp to the local clock; `receivedAt` only
-orders newest-first among new matches. A timeout, a matched message whose body the regex can't hit,
-or an unreachable / non-2xx mailbox is a clean step failure. The produced value lives only in runtime
-`vars.*`; the recorded scenario keeps the `${vars.*}` token (like `totp` / `http`), so it never
-enters the manifest/report. Codegen emits a labeled `// TODO`. No device, no LLM.
-
 ## Alternatives considered
 
 - **Disable 2FA / OTP in test builds and skip the side channel entirely.** Simplest, and fine for
@@ -200,6 +175,11 @@ enters the manifest/report. Codegen emits a labeled `// TODO`. No device, no LLM
   an IMAP client and credential handling, and parsing MIME for the body is its own surface. Deferred:
   the HTTP mailbox covers the test-provider case the motivating 2FA flows use; an IMAP source can be
   added later behind the same `email` step contract if demand appears.
+
+## Progress
+
+- [x] `totp` step — computes an RFC 6238 code from a base32 secret into `${vars.*}` (`bajutsu/totp.py`); touches no device and no network.
+- [x] `email` step — a bounded poll of `targets.<name>.mailbox` for a message arriving after the step started, matched and extracted into `${vars.*}` (`bajutsu/mailbox.py`, over an injected `MailboxReader`).
 
 ## References
 

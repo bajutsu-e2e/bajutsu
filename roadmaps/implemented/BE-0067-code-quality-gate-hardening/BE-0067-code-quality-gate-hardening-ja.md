@@ -114,6 +114,10 @@ Dependabot の security updates を有効にするのが、合わせ技として
 - **より重い構え**（mutation testing、`tests/` の型付け、ファイル単位のカバレッジ床）：範囲外。今後の手
   として記録します。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [CLAUDE.md](../../../CLAUDE.md) — 契約としてのゲート。`make check` を CI と pre-push フックが反映します。

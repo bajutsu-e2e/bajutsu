@@ -85,6 +85,10 @@ Tiering is clean along the key boundary: the **AI parts need a key** (the `recor
 * **Three separate tools in `serve` instead of modes over one scenario.** Rejected: separate tools would duplicate the picker / doctor-score component and the save plumbing, and force the author to pick a tool before they know which input they have. Modes over one open scenario share the component and let the author switch as the work demands.
 * **Leave the division undocumented and let usage settle organically.** Rejected: with three authoring surfaces landing close together, the absence of a stated boundary is exactly what produces duplicate code and user confusion — the cost this proposal exists to pre-empt.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [recording.md](../../../docs/recording.md), [scenarios.md](../../../docs/scenarios.md); `bajutsu/record.py` (the AI loop: `record()`, `_plan_goal`, `_settle_step`, screenshot plumbing — the intent → steps + assertions path that also hosts the enrichment mode), `bajutsu/serve/scenarios.py` (`ScenarioScope.save()` / `.authored()` — the one author-owned save path all three surfaces write through).

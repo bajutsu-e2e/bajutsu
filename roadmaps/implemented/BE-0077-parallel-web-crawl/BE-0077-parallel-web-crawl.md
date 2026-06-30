@@ -74,6 +74,10 @@ The web branch of [`runner/pool.py`](../../../bajutsu/runner/pool.py) that BE-00
 * **Async on a single browser** (overlap AI calls without more browsers). Helps AI latency but not browser / page work, gives no fault isolation, and one page can't act on two screens at once; the browser pool is the real lever. Worth combining later, not a substitute.
 * **Fold this into BE-0064.** Rejected: BE-0064 is framed around iOS simulators (simctl reset / replay, a booted-device pool); web uses browser-process lanes, context reset, and BE-0066's web crash / dialog semantics — a distinct design surface. This is the same "same axis, different platform → new item" relationship BE-0066 has with BE-0038, and BE-0066 explicitly named parallel web crawl as the intersection to follow.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [BE-0064 — Parallel crawl across multiple simulators](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) — the concurrency model this mirrors on web.

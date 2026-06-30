@@ -113,6 +113,10 @@ then confirms the lean/coordinate path on an already-generalized core.
   (and KVM on CI), whereas Web needs neither a Mac nor an emulator and so fits the current Linux gate
   at the lowest cost. See [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend.md).
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,

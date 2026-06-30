@@ -191,6 +191,10 @@ than in the emitter.
   passing scenario (losing its ids, assertions, and git-reviewable history). bajutsu's `codegen`
   contract is scenario → native test, keeping the scenario authoritative.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [codegen.md](../../../docs/codegen.md), [`bajutsu/codegen.py`](../../../bajutsu/codegen.py),

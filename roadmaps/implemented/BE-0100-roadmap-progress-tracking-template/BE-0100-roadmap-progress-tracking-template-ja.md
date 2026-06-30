@@ -7,8 +7,10 @@
 |---|---|
 | 提案 | [BE-0100](BE-0100-roadmap-progress-tracking-template-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) |
 | トピック | Development infrastructure (contributor workflow) |
+| 関連 | [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -136,9 +138,18 @@
 - **出荷済み項目の完全な時系列の復元。** 正直さの観点から棄却しました。実装済み項目に遡及的な日ごとの履歴を
   でっち上げると記録を捏造することになります。代わりに `実装 PR` を指す正直な一行を持たせます。
 
+## 進捗
+
+- [x] テンプレートの面。`## 進捗` を `検討した代替案` と `参考` のあいだに追加し、任意のメタデータ欄 `関連` / `無効化` をフォーマット検査（`tests/test_roadmap_format.py`）に加えました。
+- [x] 規範。MECE な作業分解の規範と、生きた `進捗` の規範を、`CLAUDE.md`・`roadmaps/README.md`（と `-ja`）・`docs/ai-development.md` に明文化しました。
+- [x] ツール。スカフォルダー（`scripts/new_roadmap_item.py`）が `進捗` の雛形を初期化し、フォーマット検査がセクションを必須にして新しい欄を受け付けます。`tests/test_new_roadmap_item.py` で検証します。
+- [x] 遡及追記。既存のすべての項目に `## 進捗` セクションを加えました。実装済みの項目には全完了のチェックリストを、実装中の項目には既存の `### 実装状況` サブセクションを畳み込み、提案・保留の項目にはプレースホルダーのボックスを置きました。
+
+四つのピースは [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) で一緒に出荷しました。フォーマット検査がすべての項目に新セクションを要求するため、テンプレート・ゲートとスカフォルダー・規範のドキュメント・遡及追記は一つの PR で着地させる必要がありました。
+
 ## 参考
 
-- [BE-0074 — BE 項目テンプレートの標準化（EN / JA）](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md)：本項目が五セクションから六セクションへ拡張する、テンプレートを固定した項目。本項目の出荷後、BE-0074 に逆方向の `関連` リンクを張ります。
+- [BE-0074 — BE 項目テンプレートの標準化（EN / JA）](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization-ja.md)：本項目が五セクションから六セクションへ拡張する、テンプレートを固定した項目。BE-0074 には逆方向の `関連` リンクを張っています。
 - [BE-0043 — 競合に強いファイルフロー](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)：「不変条件を機械で検査する」という先例。
 - [BE-0078 — 状態駆動のロードマップフォルダ](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)：ライフサイクルの真実の源としての `状態`。`進捗` はより細かい状態でこれを補完します。
 - [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py) · [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py)：実装 PR が拡張するスカフォルダーとゲート。

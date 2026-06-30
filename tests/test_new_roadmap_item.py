@@ -59,6 +59,15 @@ def test_english_file_has_canonical_shape(tmp_path: Path) -> None:
         "References",
     ):
         assert f"## {section}\n\nTBD" in text
+    # Progress (BE-0100) is seeded with its living-checklist skeleton, between Alternatives and
+    # References, not a bare TBD.
+    assert "## Progress\n\n> Keep this current as work proceeds." in text
+    assert "- [ ] TBD — enumerate the work breakdown (MECE) here once scoped." in text
+    assert (
+        text.index("## Alternatives considered")
+        < text.index("## Progress")
+        < text.index("## References")
+    )
 
 
 def test_japanese_file_has_canonical_shape(tmp_path: Path) -> None:
@@ -68,6 +77,8 @@ def test_japanese_file_has_canonical_shape(tmp_path: Path) -> None:
     assert "| 状態 | **提案** |" in text  # Proposal -> 提案
     for section in ("はじめに", "動機", "詳細設計", "検討した代替案", "参考"):
         assert f"## {section}\n\nTBD" in text
+    assert "## 進捗\n\n> 開発の進行に合わせて常に最新の状態に保ってください。" in text
+    assert "- [ ] TBD — スコープが固まり次第、作業分解（MECE）をここに列挙します。" in text
 
 
 def test_status_maps_to_japanese(tmp_path: Path) -> None:

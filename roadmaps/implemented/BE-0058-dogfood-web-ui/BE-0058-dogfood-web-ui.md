@@ -138,6 +138,10 @@ Bedrock) stay out of this net.
   selectors fail by design ([DESIGN §2](../../../DESIGN.md)). Stable ids are the honest fix and the
   practice the tool rewards.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0041 — Web (Playwright) backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) — the enabler

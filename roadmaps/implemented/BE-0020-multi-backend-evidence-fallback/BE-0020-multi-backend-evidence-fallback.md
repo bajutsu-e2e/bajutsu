@@ -80,6 +80,10 @@ The four open questions are resolved as follows; each is folded into the design 
 - **Let a fallback backend actuate when it is "better" for a step.** This would route some actions to a second driver. That breaks the single-actuator rule and reintroduces the non-determinism of two drivers contending for one device. Actuation must stay with the one fixed actuator; capability gaps in *actuation* are addressed by the actuator ladder (BE-0019), and only *evidence* gaps are filled here, read-only.
 - **Merge each backend's captures opportunistically (capture from all that can).** Capturing the same evidence from multiple backends at once adds cost and ambiguity about which copy is authoritative, and risks the observer effect §9 warns about. Resolving one provider per capability, in list order, keeps a single clear source and bounded cost.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [drivers.md](../../../docs/drivers.md) (the "not yet wired up" note), [evidence.md](../../../docs/evidence.md), [DESIGN §9](../../../DESIGN.md); `bajutsu/backends.py` (`select_actuator`, `resolve_actuators`, `capabilities_for`), `bajutsu/drivers/base.py` (`Capability`, `Driver`, `resolve_unique`), `bajutsu/capability_preflight.py` (the idb-`network` note), `bajutsu/evidence.py` (`Artifact`, `FileSink`), `bajutsu/network.py` (`Collector`, `NetworkCollector`), `bajutsu/runner/pool.py` (`device_pool` — the seam), `bajutsu/runner/pipeline.py` (`_write_network`, `run_all`), `bajutsu/report/manifest.py` (`SCHEMA_VERSION`), `bajutsu/drivers/playwright.py` (native `network`, `network_collector`), `bajutsu/drivers/fake.py` (`CAPABILITIES`).

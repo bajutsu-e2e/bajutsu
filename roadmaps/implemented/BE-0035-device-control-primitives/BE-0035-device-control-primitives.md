@@ -81,6 +81,10 @@ Prime directives preserved:
   for SpringBoard prompts idb can't see, but it is an AI fallback and must never enter the
   deterministic run gate. Rejected — it would put an LLM on the run path.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 The remaining device-state primitives (timezone, clipboard seeding, shake, and app resume) are

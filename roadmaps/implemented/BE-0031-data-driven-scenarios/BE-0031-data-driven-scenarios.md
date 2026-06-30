@@ -33,6 +33,10 @@ Each derived scenario is renamed `"<name> [row N: col=val, …]"` so reports and
 
 **An external test-matrix harness (parameterize from outside the tool).** Rejected: it pushes the input table out of the scenario file and into wrapper scripting, breaking the "scenario YAML is the shared hub" premise and the ability to review inputs alongside steps. Keeping `data`/`dataFile` in the scenario keeps the cases versioned and reviewable with the flow they exercise.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/scenario/` (`expand_data`), [scenarios.md](../../../docs/scenarios.md)

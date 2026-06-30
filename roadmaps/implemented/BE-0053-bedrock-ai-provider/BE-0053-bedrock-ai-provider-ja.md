@@ -162,6 +162,10 @@ Anthropic プロバイダなら `ANTHROPIC_API_KEY` の有無）と、モデル 
   はユーザーのものに留め、その不在は明確なエラーであって、誰かのアカウントへの静かなフォールバック
   ではありません。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 `bajutsu/agents.py`、`bajutsu/claude_agent.py`、`bajutsu/alerts.py`、`bajutsu/claude_triage.py`、

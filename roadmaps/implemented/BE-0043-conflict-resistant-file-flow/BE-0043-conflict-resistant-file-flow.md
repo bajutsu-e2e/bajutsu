@@ -87,6 +87,10 @@ Mechanisms 1 and 3 alone cover most of the measured top conflict sources (roadma
 - **Do nothing / rely on manual rebasing.** The status quo; the history shows it does not scale to
   the number of concurrent sessions.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [ai-development.md](../../../docs/ai-development.md) — parallel-work guide (worktrees, rebase, lanes)

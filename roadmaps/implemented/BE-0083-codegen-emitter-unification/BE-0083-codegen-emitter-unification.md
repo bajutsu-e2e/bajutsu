@@ -81,6 +81,10 @@ Scope is the two codegen modules plus their tests; no runner, scenario model, or
   device-free now (it needs no Simulator) de-risks the Android codegen work and keeps the two existing
   emitters from drifting in the meantime.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - `bajutsu/codegen.py` (XCUITest), `bajutsu/codegen_playwright.py` (Playwright) — the two emitters

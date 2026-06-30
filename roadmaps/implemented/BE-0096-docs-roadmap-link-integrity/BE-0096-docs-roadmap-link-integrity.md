@@ -99,6 +99,10 @@ runner, nor the determinism guarantees.
 - **Leave it manual (status quo).** Rejected: the sweep that motivated this item already had to
   repair seven items' links by hand, and the cost grows with every promotion.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `scripts/promote_roadmap_items.py` (the promote step that repairs cross-links within `roadmaps/`),

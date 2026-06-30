@@ -134,6 +134,10 @@ The shape:
   toolkit axis is precisely where idb's element-tree normalization differences surface
   ([BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md)).
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md) ([ja](../../../demos/showcase/SPEC.ja.md)) — the screen-by-screen contract

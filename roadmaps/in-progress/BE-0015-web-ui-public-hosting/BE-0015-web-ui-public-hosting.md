@@ -317,6 +317,15 @@ counterpart:
 - **IaC + CI/CD**: Pulumi and manual provisioning (don't) — rejected in favor of Terraform +
   GitHub Actions, since the repo already lives in Actions.
 
+## Progress
+
+- [x] 7a — the persistence layer (`Repository`, `bajutsu/serve/server/db.py`) ([#144](https://github.com/bajutsu-e2e/bajutsu/pull/144), [#145](https://github.com/bajutsu-e2e/bajutsu/pull/145)).
+- [x] 7b — GitHub OAuth (Authlib) and durable sessions ([#148](https://github.com/bajutsu-e2e/bajutsu/pull/148), [#149](https://github.com/bajutsu-e2e/bajutsu/pull/149)).
+- [x] 7c — identity, RBAC, audit, and quotas for the single-tenant backend ([#150](https://github.com/bajutsu-e2e/bajutsu/pull/150)–[#152](https://github.com/bajutsu-e2e/bajutsu/pull/152)).
+- [ ] 8 — multi-tenancy: the org model, request resolution, enforcement, and per-org storage.
+
+The single-tenant groundwork has landed (across #105–#159); the multi-tenant public service is not deployed yet.
+
 ## References
 
 `bajutsu/serve/`, [ci](../../../docs/ci.md), [architecture](../../../docs/architecture.md),

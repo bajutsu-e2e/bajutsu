@@ -39,6 +39,10 @@ Determinism is preserved because pass/fail is never decided here: the UI only sh
 * **A native desktop or in-process GUI.** Rejected: the browser is already universal, needs no extra toolkit, and renders the self-contained `report.html` the runner already produces — reusing it rather than reimplementing a report view.
 * **Driving the device in-process instead of spawning the CLI.** Rejected: shelling out to the same `run` / `record` commands keeps the CLI the single contract, so the UI can never diverge from CI behavior, and it gives cancellation and isolation for free.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/serve/`, [cli.md](../../../docs/cli.md)

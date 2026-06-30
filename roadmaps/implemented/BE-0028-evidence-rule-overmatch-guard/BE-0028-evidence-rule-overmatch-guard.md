@@ -30,22 +30,16 @@ Two complementary guards, neither of which touches pass/fail.
 - **A lighter default policy.** The implicit default capture stays the lightweight trio — `screenshot` + `elements` + `actionLog` — plus the `result: error` safety net that captures the maximum only when a step actually fails. Interval-heavy kinds (`video`, `deviceLog`, `network`) remain strictly opt-in, attached deliberately via an inline `capture:` or a narrowly-scoped rule. So the costly captures only ever run where an author asked for them, and the common case is cheap by construction.
 - **Determinism and app-agnosticism preserved.** Neither guard changes what a run asserts: `--explain` is advisory output, and the default-policy choice only affects which evidence is gathered, never pass/fail. There are no fixed sleeps and selector strictness is unchanged. Any per-app capture preferences live under `apps.<name>` alongside other per-app settings, so the tool and runner stay app-agnostic, and the Tier-2 gate stays LLM-free.
 
-### Implementation status
-
-Both guards shipped. The **`--explain` dry run** is `bajutsu trace --explain <scenario>`
-(`bajutsu/trace.py`, [#90](https://github.com/bajutsu-e2e/bajutsu/pull/90)): it statically walks the
-scenario against its `capturePolicy`, counts how many times each rule would fire and on which steps,
-and flags a heavy capture (`video` / `deviceLog` / `appTrace` / `network`) on a broadly-matching rule
-with a ⚠ — read-only, deterministic, no LLM. The **lighter default policy** is the implicit capture
-trio `screenshot` + `elements` + `actionLog` with the interval-heavy kinds strictly opt-in
-([#91](https://github.com/bajutsu-e2e/bajutsu/pull/91)), so a costly capture only runs where an author
-asked for it. Neither touches pass/fail.
-
 ## Alternatives considered
 
 - **A hard cap on artifact size or count.** Aborting or truncating once a run exceeds a byte/file budget bounds the damage but discards evidence non-deterministically (the same scenario could capture different artifacts depending on timing), which conflicts with determinism-first. Previewing the firing count and defaulting to cheap captures prevents the bloat instead of reacting to it.
 - **Warn at run time when a rule fires "too often."** A run-time heuristic is reactive — the artifacts are already written by the time the threshold trips — and a magic "too often" number is arbitrary across scenarios. A pre-run dry run gives the author the exact count before any cost is paid, which is both earlier and more precise.
 - **Make all captures opt-in (no default evidence).** Maximally cheap, but it removes the minimum safety net DESIGN §10 requires — a failure must always leave a screenshot and element dump. Keeping the lightweight trio plus the `result: error` net as the default preserves that guarantee while keeping the heavy kinds opt-in.
+
+## Progress
+
+- [x] `--explain` dry run (`bajutsu trace --explain`) — a static, deterministic preview of capture cost that flags a heavy capture on a broadly-matching rule ([#90](https://github.com/bajutsu-e2e/bajutsu/pull/90)).
+- [x] Lighter default capture policy — the implicit `screenshot` + `elements` + `actionLog` trio, with interval-heavy kinds strictly opt-in ([#91](https://github.com/bajutsu-e2e/bajutsu/pull/91)).
 
 ## References
 

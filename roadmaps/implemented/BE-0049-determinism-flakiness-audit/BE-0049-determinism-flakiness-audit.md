@@ -90,27 +90,6 @@ Whether this lands as a new `audit` command or as flags on `doctor` / `run` is a
 implementation choice deferred to adoption; the static half is a close cousin of `doctor` and
 may simply extend it.
 
-### Implementation status
-
-- **Stability score (static)** and **repeat-and-diff (dynamic)** both shipped as the `bajutsu audit`
-  command: `bajutsu audit <scenario>` grades selector/wait stability without a device, and
-  `bajutsu audit <scenario> --repeat K --target <app>` runs it K times and reports any step or
-  assertion whose outcome varied. Advisory and read-only — it never gates CI.
-- **Run provenance & version stamping** shipped: each `manifest.json` now carries an optional
-  `provenance` block — `scenarioHash` (a `sha256:` fingerprint of the executed `scenario.yaml`),
-  `toolVersion`, and `gitRevision` (when the run is under git). This is the cheap prerequisite that
-  lets accumulated runs be grouped by identity. Pure metadata; never part of a verdict.
-- **Longitudinal view** shipped: `bajutsu audit --history <runs-dir>` mines the accumulated,
-  now-stamped run records — keying each scenario's outcomes by `(scenarioHash, scenario name)` and
-  reporting its pass rate and classification (`flaky` / `deterministic` / `unproven`). A verdict that
-  flipped at a constant fingerprint is true flakiness; an edited scenario starts a fresh group
-  (different hash), and pre-provenance runs are reported as skipped. Keying on the name as well as the
-  fingerprint pins which scenario in a suite flaked (a run stamps one fingerprint over its whole
-  `scenarios` list). Read-only and advisory — it exits 0 even when it finds flakiness, never gates CI.
-- **Still to come:** stamping the same provenance onto the serve DB run record
-  ([BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) 7c-4), so
-  the longitudinal view can mine server-hosted history as well as the local `runs/` tree.
-
 ## Alternatives considered
 
 * **Adopt flaky-test quarantine + automatic retry (the common industry answer / Maestro `retry`).**
@@ -121,6 +100,13 @@ may simply extend it.
 * **Do nothing (status quo).** Acceptable, but the strongest differentiator stays implicit and
   unprovable to a prospective adopter; a runnable certificate is cheap given the evidence and
   parallel-run machinery already exist.
+
+## Progress
+
+- [x] Stability score (static) and repeat-and-diff (dynamic) — both under `bajutsu audit`; advisory and read-only, never gating CI.
+- [x] Run provenance & version stamping — each `manifest.json` carries a `provenance` block (`scenarioHash`, `toolVersion`, `gitRevision`).
+- [x] Longitudinal view — `bajutsu audit --history` classifies each scenario (`flaky` / `deterministic` / `unproven`) by `(scenarioHash, name)`.
+- Follow-up: stamp the same provenance onto the serve DB run record (tracked under [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 
 ## References
 

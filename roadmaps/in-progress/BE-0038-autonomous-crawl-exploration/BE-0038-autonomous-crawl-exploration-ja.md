@@ -104,16 +104,6 @@ bajutsu crawl --app <name>
 - **[BE-0012 アクションキャプチャ record](../../implemented/BE-0012-action-capture-record/BE-0012-action-capture-record-ja.md) / [BE-0014 record の切り分け](../../implemented/BE-0014-record-demarcation/BE-0014-record-demarcation-ja.md)**：これらは *人間駆動* のキャプチャと、AI `record` からの切り分けを扱います。クロールは第 3 の、完全に自律的なオーサリング入口であり、それらと並べて切り分けるべきです。
 - **[BE-0024 doctor / onboarding](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)**：クロールは doctor の §7.2 計測が必要とするアプリ全体カバレッジの入力を供給します。
 
-### 実装状況
-
-クロールの**エンジン**（`bajutsu/crawl.py`）と CLI（`bajutsu crawl`）は出荷済みです。決定的リプレイによる幅優先巡回、状態グラフ（`ScreenMap`：ノード／エッジ／クラッシュ／アラート／フロンティアの plan／停止理由）、クラッシュと行き詰まり状態の検出、任意の `--guide ai` レイヤ、並列プール（[BE-0064](../../implemented/BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md) / [BE-0077](../../implemented/BE-0077-parallel-web-crawl/BE-0077-parallel-web-crawl-ja.md)）を備えます。クロールは `screenmap.json` と画面ごとの `screens/<fingerprint>.png` を書き出し、`serve` の **Crawl** タブがマップをリアルタイムに描きます。
-
-最新のスライスは、*出力*の節が掲げる **描画済みの画面マップグラフ**を、オフライン／CLI 用に提供します。`bajutsu crawl` は JSON と並べて自己完結した `screenmap.html`（`bajutsu/crawl_report.py`、`crawl.html.j2`）も書き出すようになりました。画面を幅優先の深さ列に並べ（web UI の実証済みレイアウトを移植）、遷移を**静的なインライン SVG** で描き（OS アラートをタップして通過した遷移はアンバー色＋🛡️）、各画面をスクリーンショットへリンクし、クラッシュと閉じたアラートの経路を一覧にします。CSS は埋め込み、JavaScript も外部アセットも無しなので、run ディレクトリから直接開けます。この描画は `ScreenMap` の純粋で決定的、かつモデル非依存な関数で、決定的な探索にも判定にも一切触れません。
-
-さらに次のスライスは、*出力*の節が掲げる**クラッシュ再現シナリオの自動生成**を提供します。`bajutsu crawl` は、忠実に再現できるクラッシュごとに `crashes/crash-NNN.yaml` を 1 件書き出すようになりました（`bajutsu/crawl_repro.py`）。各クラッシュは到達までの正確なアクション経路をすでに記録しており、`crash_scenario` がその経路を実行可能な `Scenario` に戻します（tap／type／fill はそれぞれ対応するステップに写像します）。生成物は `dump_scenario_file` で YAML として書き出され、`run` がそのまま再生できます。つまり、発見したクラッシュは人間のレビューを経て、コミットされた Tier 2 のリグレッションになります。この変換は `ScreenMap` の純粋で決定的、かつモデル非依存な関数です。正規化座標をタップする経路（`tap_point`）は指定できるセレクタを持たないため、欠損のあるシナリオを出すのではなく、何も出力しません（忠実に再現できないなら出さない）。構造化された経路を運ぶため、`Crash` は人間可読の `path` に加えて再生可能な `actions` を保持するようになりました（`screenmap.json` に直列化し、それを欠く古いマップも読み込めます）。
-
-この先に残るもの：フォーム中心のフローに対する AI ガイドのテキスト入力供給と、発見したフローごとの候補シナリオ提案です。
-
 ## 検討した代替案
 
 **純粋なランダム「モンキー」テスト**（Android Monkey / UIAutomation のファジングのようなランダムタップ）。作るのは容易でクラッシュのあぶり出しは得意ですが、きれいな画面マップを生まず、id の安定性を尊重せず、経路が再現不能です。そのため `record` や `doctor` に供給できず、決定的な再現も書き出せません。体系的な id 駆動の幅優先巡回を優先します。ランダムなファズモードは、識別子がほぼ無い座標専用アプリ向けのフォールバックとしてのみ残す価値があります。
@@ -123,6 +113,18 @@ bajutsu crawl --app <name>
 **クロール自体を CI / Tier 2 ゲートにする**（「クロールがクラッシュを見つけたらビルドを落とす」）。クラッシュ検出は決定的なので魅力的ですが、クロールの *経路* は非決定的です。フレーキーで変化するクロールを必須ゲートにするのは determinism-first に反します（[DESIGN §2](../../../DESIGN.md)）。解決策は次のとおりです。クロールは Tier 1 の発見にとどめ、書き出した再現シナリオが人間レビューを経て Tier 2 ゲートになる、通常の `record → run` 昇格です。クラッシュはクロールとしてではなくコミット済みシナリオとして CI に届きます。
 
 **アプリのバイナリ/ソースの静的解析** で、実行せずに画面マップを作ります。スコープ外です。Bajutsu はアプリ非依存でビルド成果物のみを受け取りますし（[DESIGN §1](../../../DESIGN.md)）、価値の半分であるランタイムクラッシュを見つけられません。
+
+## 進捗
+
+- [x] クロールエンジンと CLI。決定的なリプレイによる幅優先探索、`ScreenMap` の状態グラフ、クラッシュ・行き詰まりの検出、任意の `--guide ai` 層、並列プール。
+- [x] 画面マップの出力。`screenmap.json` と画面ごとの `screens/<fingerprint>.png`。
+- [x] serve のライブ **Crawl** タブ。
+- [x] 描画した画面マップグラフ。自己完結の `screenmap.html`（[#307](https://github.com/bajutsu-e2e/bajutsu/pull/307)）。
+- [x] クラッシュ再現シナリオの自動生成。忠実に再現できるクラッシュごとに `crashes/crash-NNN.yaml` を一つ書き出します（[#319](https://github.com/bajutsu-e2e/bajutsu/pull/319)）。
+- [ ] フォーム中心のフローへの、AI 補助のテキスト入力供給。
+- [ ] 発見したフローごとの候補シナリオの提案。
+
+[#80](https://github.com/bajutsu-e2e/bajutsu/pull/80) / [#307](https://github.com/bajutsu-e2e/bajutsu/pull/307) / [#319](https://github.com/bajutsu-e2e/bajutsu/pull/319) で出荷しました。AI 補助の二つの著者支援スライスが残ります。
 
 ## 参考
 

@@ -81,31 +81,6 @@ expect:
   visual-regression assertion — both check things the accessibility tree cannot express, without
   an LLM.
 
-### Implementation status
-
-The **`event`** assertion shipped first (`bajutsu/scenario/models/assertions.py` `EventMatch` +
-`CountOp`; `bajutsu/assertions.py` `_eval_event`): it filters the captured timeline by the event's
-endpoint — reusing the existing `RequestMatch` matcher — then by structured JSON request-body fields,
-and checks the surviving count against an `equals` / `atLeast` / `atMost` operator (default: at least
-one). `${vars.*}` / `${secrets.*}` tokens interpolate into body values through the existing assertion
-substitution path, so no per-field wiring was needed.
-
-The **`requestSequence`** assertion then shipped (`Assertion.request_sequence`;
-`bajutsu/assertions.py` `_eval_request_sequence`): a non-empty list of `RequestMatch`es matched as an
-ordered subsequence over the timeline (each matcher matches a distinct exchange strictly after the
-previous; unrelated traffic may interleave). It reuses `match_request`, adds no new dependency, and is
-pure — order is its job, so a matcher's own `count` is ignored.
-
-The **`responseSchema`** assertion completed the item (`ResponseSchemaMatch`;
-`bajutsu/assertions.py` `_eval_response_schema` + `SchemaContext`): it validates the first matching
-exchange's response body against a stored JSON Schema, resolved within the app's schemas dir
-(`--schemas` flag, config `apps.<name>.schemas`, or `schemas/` beside the scenario — threaded through
-the runner exactly like `visual`'s baselines). Validation uses `jsonschema`, an opt-in `schema`
-extra imported lazily, so the base install stays lean and a missing extra fails cleanly.
-
-All three are AI-free and on the Tier-2 run/CI gate like every other assertion — no model in the
-verdict.
-
 ## Alternatives considered
 
 * **Let an LLM read the payloads and judge "did the right thing happen?"** Rejected: an LLM in
@@ -117,6 +92,13 @@ verdict.
 * **Keep only the status-code-level `request` assertion (status quo).** Acceptable for smoke
   coverage but leaves the deepest differentiation on the table; the network data is already
   captured, so the marginal cost of asserting over it is low.
+
+## Progress
+
+- [x] `event` assertion — filters the captured timeline by endpoint and JSON body fields, checking the surviving count against `equals` / `atLeast` / `atMost`.
+- [x] `requestSequence` assertion — an ordered subsequence over the timeline (unrelated traffic may interleave).
+- [x] `responseSchema` assertion — validates the first matching response against a stored JSON Schema, via a lazily imported `jsonschema` extra.
+- All three are AI-free and on the Tier-2 run/CI gate, like every other assertion.
 
 ## References
 

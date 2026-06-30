@@ -3,9 +3,10 @@ check in ``tests/test_roadmap_index.py`` (BE-0074).
 
 Every item is a pair of files, ``BE-NNNN-<slug>.md`` and ``BE-NNNN-<slug>-ja.md``, that share one
 fixed shape: a bilingual header link, a ``# BE-NNNN — …`` title, a fenced metadata block, and the
-five Swift-Evolution sections. This test pins that shape so it can't drift unnoticed — it walks the
-real tree, collects every deviation, and fails with the full list (a gate, not a formatter: it
-reports, it does not rewrite). The metadata parser the index relies on lives in
+six Swift-Evolution sections (``Progress`` added in BE-0100). This test pins that shape so it can't
+drift unnoticed — it walks the real tree, collects every deviation, and fails with the full list (a
+gate, not a formatter: it reports, it does not rewrite). The metadata parser the index relies on
+lives in
 ``scripts/build_roadmap_index.py``; here we check structure (which fields, in what order, with what
 headings), not the rendered index.
 """
@@ -20,10 +21,20 @@ CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
 
 # Canonical metadata field order, per language. Required fields are always present; the optional
-# ones (Implementing PR, Origin) may be absent but, when present, keep their slot. Track was retired
-# in BE-0078 — the index bucket is now derived from Status, the lone hand-set lifecycle field.
-ORDER_EN = ["Proposal", "Author", "Status", "Implementing PR", "Topic", "Origin"]
-ORDER_JA = ["提案", "提案者", "状態", "実装 PR", "トピック", "由来"]
+# ones (Implementing PR, Related, Superseded by, Origin) may be absent but, when present, keep their
+# slot. Related / Superseded by record cross-item links (BE-0100); Track was retired in BE-0078 —
+# the index bucket is now derived from Status, the lone hand-set lifecycle field.
+ORDER_EN = [
+    "Proposal",
+    "Author",
+    "Status",
+    "Implementing PR",
+    "Topic",
+    "Related",
+    "Superseded by",
+    "Origin",
+]
+ORDER_JA = ["提案", "提案者", "状態", "実装 PR", "トピック", "関連", "無効化", "由来"]
 REQUIRED_EN = {"Proposal", "Author", "Status", "Topic"}
 REQUIRED_JA = {"提案", "提案者", "状態", "トピック"}
 
@@ -47,9 +58,10 @@ HEADINGS_EN = [
     "Motivation",
     "Detailed design",
     "Alternatives considered",
+    "Progress",
     "References",
 ]
-HEADINGS_JA = ["はじめに", "動機", "詳細設計", "検討した代替案", "参考"]
+HEADINGS_JA = ["はじめに", "動機", "詳細設計", "検討した代替案", "進捗", "参考"]
 
 TITLE_RE = re.compile(r"^# BE-\d{4} — .+$")
 META_BLOCK_RE = re.compile(r"<!-- BE-METADATA -->\n(.*?)\n<!-- /BE-METADATA -->", re.DOTALL)

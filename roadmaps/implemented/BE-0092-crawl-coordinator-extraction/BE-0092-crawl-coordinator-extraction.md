@@ -154,6 +154,10 @@ it lands as **one focused PR** announced up front, not folded into unrelated wor
   relies on (the cheapest-entry backtrack order, the exact stop reasons). Out of scope: this proposal
   preserves the existing algorithm exactly and only relocates its state.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [`bajutsu/crawl.py`](../../../bajutsu/crawl.py) — `crawl()` and its nested closures.

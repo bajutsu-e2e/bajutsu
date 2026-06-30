@@ -208,6 +208,10 @@ style* rule already uses.
   topic — since it is about how contributors and agents understand the code, following the precedent
   of not splitting a topic for a single item.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [CLAUDE.md](../../../CLAUDE.md) — Conventions (comments explain *why*; bilingual docs; code

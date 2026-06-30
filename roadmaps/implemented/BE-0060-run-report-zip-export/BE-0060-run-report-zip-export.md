@@ -164,6 +164,10 @@ retention / cleanup of old runs.
   siblings appear (cloud upload, share-links, alternative export formats), a dedicated topic can be
   carved out then.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — AI never judges; determinism

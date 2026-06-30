@@ -191,6 +191,10 @@ extend.
   Tier-A Mac (Docker Desktop) and the Tier-B Linux node, so it is the pragmatic first sandbox.
   Stronger, VM-grade isolation stays a BE-0015 / BE-0016 option layered on the same policy gate.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0073 — Upload a config + scenarios + app-binary bundle and bind it as the active config](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)

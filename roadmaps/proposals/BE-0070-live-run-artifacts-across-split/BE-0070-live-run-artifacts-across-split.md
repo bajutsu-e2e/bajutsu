@@ -134,6 +134,14 @@ element tree. The mechanism is app-agnostic (it moves a file, regardless of the 
 - **Upload on every event (no throttle)** — **rejected**: unbounded PUTs for a chatty crawl, with no
   UX benefit over coalescing at the poll cadence.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 - [DESIGN.md](../../../DESIGN.md) §2 — determinism-first; AI stays out of the `run` / CI gate. This

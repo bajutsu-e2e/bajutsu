@@ -170,35 +170,6 @@ The concrete touch-points the change adds, each small and named:
   `apps.<name>`; the tool, drivers, normalizer, and runner are unchanged across apps and across
   the idb / later XCUITest actuators.
 
-### Implementation status
-
-Shipped in [#400](https://github.com/bajutsu-e2e/bajutsu/pull/400) (first slice) and
-[#401](https://github.com/bajutsu-e2e/bajutsu/pull/401) (follow-up).
-
-#### What shipped
-
-- `web: { within, steps }` step type — context boundary, model, run-loop dispatch
-- DOM → Element normalization extracted to `bajutsu/dom.py` (shared with Playwright)
-- `WebViewBridge` (Python HTTP client) and `WebContextDriver` (driver wrapper)
-- `BajutsuWebView.swift` — bridge server with `/webview/dom`, `/webview/tap`, `/webview/type`,
-  `/webview/scroll` endpoints; JS string interpolation via `JSONSerialization`
-- Pipeline wiring: `Lease.webview_bridge`, `BAJUTSU_WEBVIEW_PORT` env injection, `pool` →
-  `pipeline` → `run_scenario` plumbing
-- `type_text` inside web context (dispatches `input` + `change` events on the focused element)
-- `scrollIntoView` before tap (brings off-screen elements into view)
-- `Capability.WEBVIEW` on the driver protocol
-
-#### Remaining (out of scope for the first slice)
-
-- **DOM condition wait (value / label).** `wait_for` checks existence only; waiting for a DOM
-  element's value or label to change is not yet supported. Low effort; a separate BE is
-  recommended when the need arises.
-- **Nested WebViews.** A DOM that itself hosts another `WKWebView` — the host selector must
-  resolve to a single native WebView today. Medium effort; demand unclear.
-- **a11y bridge read path.** Use the native a11y tree iOS exposes for some WebView content as an
-  assertion-only read path (no JavaScript required). Complements the JS bridge for assertion
-  coverage where ARIA attributes are absent.
-
 ## Alternatives considered
 
 - **Drive the WebView purely by screen coordinates.** Tapping pixel positions inside the
@@ -221,6 +192,11 @@ Shipped in [#400](https://github.com/bajutsu-e2e/bajutsu/pull/400) (first slice)
   app, where the WebView is embedded in a live native screen. Rejected for the hybrid case in
   favor of reaching the embedded DOM in place; a standalone web backend remains a separate
   track.
+
+## Progress
+
+- [x] WebView hybrid support — the `web: { within, steps }` context, DOM→Element normalization (`bajutsu/dom.py`), `WebViewBridge` / `WebContextDriver`, the `BajutsuWebView.swift` endpoints, the pipeline wiring, in-context `type_text` / `scrollIntoView`, and `Capability.WEBVIEW` — shipped in [#400](https://github.com/bajutsu-e2e/bajutsu/pull/400) (first slice) and [#401](https://github.com/bajutsu-e2e/bajutsu/pull/401) (follow-up).
+- Out of scope for this item (separate BEs as the need arises): a DOM condition wait on value/label, nested WebViews, and an a11y-bridge assertion read path.
 
 ## References
 

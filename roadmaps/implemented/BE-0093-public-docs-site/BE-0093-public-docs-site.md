@@ -130,6 +130,10 @@ publishes. No LLM, no Simulator, Linux-only — consistent with the existing doc
   control-plane ⇄ macOS-worker service), which is unrelated to a static project website. Distinct
   concern; no overlap.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0065 — Docstring standard & generated API reference](../../implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) — the existing mkdocs-material site this extends.

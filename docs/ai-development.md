@@ -361,10 +361,21 @@ commit past `main`'s branch protection:
 The workflow mints a short-lived (≈1 h) installation token from those secrets for checkout, push, and
 `gh`; commits the App makes are signed and attributed to it, so every bypass push is auditable.
 
-Each file follows the **Swift-Evolution proposal format** — a metadata block (`* Proposal`,
-`* Author`, `* Status`, `* Topic`, optional `* Origin`) followed by `## Introduction` /
-`## Motivation` / `## Detailed design` / `## Alternatives considered` / `## References`. Fill what
-you can and mark unknowns `TBD`. **Name the author by GitHub handle** —
+Each file follows the **Swift-Evolution proposal format** — a metadata block (`Proposal`,
+`Author`, `Status`, `Topic`, plus the optional `Implementing PR`, the cross-item links `Related` /
+`Superseded by`, and `Origin`) followed by `## Introduction` / `## Motivation` /
+`## Detailed design` / `## Alternatives considered` / `## Progress` / `## References`. Fill what
+you can and mark unknowns `TBD`. **`Detailed design` enumerates the work MECE** (mutually exclusive,
+collectively exhaustive), and **`Progress` is a living section** (BE-0100) — a checklist mirroring
+that breakdown (one `- [ ]` box per unit of work, ticked `- [x]` as it lands) plus a short
+chronological PR-linked log — **kept current as work proceeds**: every PR that advances an item ticks
+its boxes and adds a log entry in the same change, exactly as it fills `Implementing PR`. A
+not-yet-started `Proposal` carries a single placeholder box; an `Implemented` item carries the
+all-done checklist. `Related` / `Superseded by` are reciprocal — the superseding item lists the other
+under `Related`, the superseded one names its successor under `Superseded by`. These two rules are
+review-enforced, not machine-enforced: the gate confirms the `## Progress` section exists and the
+fields keep their canonical order, but not that a breakdown is genuinely exhaustive or a box honest.
+**Name the author by GitHub handle** —
 `* Author: [@handle](https://github.com/handle)`, the account of whoever first authored the item
 (for an AI-assisted draft, the person who drove and committed it). The **Status** field is the single
 source of truth for both the folder an item lives in and the index bucket it appears under — a

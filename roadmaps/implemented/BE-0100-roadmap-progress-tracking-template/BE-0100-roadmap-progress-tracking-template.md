@@ -7,8 +7,10 @@
 |---|---|
 | Proposal | [BE-0100](BE-0100-roadmap-progress-tracking-template.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) |
 | Topic | Development infrastructure (contributor workflow) |
+| Related | [BE-0074](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -145,9 +147,18 @@ The change is documentation plus a deterministic scaffolder and checker. No LLM 
   retrospective day-by-day history for the implemented items would fabricate a record. They get a
   truthful one-liner pointing at the `Implementing PR` instead.
 
+## Progress
+
+- [x] Template surface — `## Progress` added between `Alternatives considered` and `References`, plus the optional `Related` / `Superseded by` metadata fields, in the format gate (`tests/test_roadmap_format.py`).
+- [x] The norm — the MECE-work-breakdown rule and the living-`Progress` rule documented in `CLAUDE.md`, `roadmaps/README.md` (+ `-ja`), and `docs/ai-development.md`.
+- [x] Tooling — the scaffolder (`scripts/new_roadmap_item.py`) seeds the `Progress` skeleton; the format check requires the section and accepts the new fields. Covered by `tests/test_new_roadmap_item.py`.
+- [x] Retrofit — every existing item gained a `## Progress` section: all-done checklists for implemented items, the existing `### Implementation status` subsections folded in for in-progress items, and placeholder boxes for proposals / deferred.
+
+All four pieces shipped together in [#415](https://github.com/bajutsu-e2e/bajutsu/pull/415) — the template, the gate and scaffolder, the norm docs, and the retrofit had to land in one PR, since the format check requires the new section on every item.
+
 ## References
 
-- [BE-0074 — Standardize the BE item template (EN / JA)](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) — the template-pinning item this one extends from five sections to six; once this ships, BE-0074 gains the reciprocal `Related` back-link.
+- [BE-0074 — Standardize the BE item template (EN / JA)](../../implemented/BE-0074-be-template-standardization/BE-0074-be-template-standardization.md) — the template-pinning item this one extends from five sections to six; BE-0074 carries the reciprocal `Related` back-link.
 - [BE-0043 — Conflict-resistant file flow](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) — the "make the invariant machine-checked" precedent.
 - [BE-0078 — Status-driven roadmap folders](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md) — `Status` as the lifecycle source of truth, which `Progress` complements with finer-grained state.
 - [`scripts/new_roadmap_item.py`](../../../scripts/new_roadmap_item.py) · [`tests/test_roadmap_format.py`](../../../tests/test_roadmap_format.py) — the scaffolder and the gate the implementing PR extends.

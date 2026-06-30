@@ -169,6 +169,10 @@ before the first scenario.
   the completion summary is the unit teams actually want. Could return later as an opt-in for
   dashboard sinks.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0068 — Regenerable reports](../../implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) — `manifest.json` as the canonical run model the summary projects from.

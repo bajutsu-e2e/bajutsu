@@ -28,6 +28,10 @@ Diagnosis runs through one of two agents behind the same `TriageAgent` protocol:
 
 Competitors auto-correct during a run; Bajutsu deliberately rejects implicit in-run correction to avoid "making tests laxer" ([DESIGN §11](../../../DESIGN.md)).
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [DESIGN §3.1 / §12](../../../DESIGN.md), [reporting.md](../../../docs/reporting.md), `bajutsu/triage.py`, [Self-healing triage (M4)](../../README.md#self-healing-triage-m4)

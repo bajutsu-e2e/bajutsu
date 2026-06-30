@@ -225,6 +225,10 @@ lands.
   ([BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md)) already is. Uploads stay
   ephemeral.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [CLAUDE.md](../../../CLAUDE.md), [DESIGN §1](../../../DESIGN.md) (Bajutsu receives a prebuilt app,

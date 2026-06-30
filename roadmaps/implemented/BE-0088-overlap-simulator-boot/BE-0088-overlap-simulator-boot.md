@@ -62,6 +62,10 @@ territory, not boot.
 - **Skip the boot wait and let actuation retry.** Rejected — it breaks determinism (acting on a
   not-yet-ready device), which the prime directives forbid.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0087](../../in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) — idb action

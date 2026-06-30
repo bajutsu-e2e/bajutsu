@@ -80,6 +80,10 @@
 - **あるステップで「より良い」フォールバック backend に操作させる。** これは一部のアクションを 2 つ目のドライバへ流します。単一 actuator の規則を破り、1 つのデバイスを取り合う 2 ドライバの非決定性を再導入します。操作は固定された 1 つの actuator にとどまらねばなりません。*操作*の能力差は actuator ラダー（BE-0019）で扱い、ここで埋めるのは*証跡*の差だけで、read-only です。
 - **各 backend の取得を機会的に統合する（取れる backend すべてから取る）。** 同じ証跡を複数 backend から同時に取得することはコストを増やし、どのコピーが正本かを曖昧にし、§9 が警告する観測者効果のリスクを招きます。能力ごとに、リスト順で 1 つの provider に解決する方が、単一の明確な出所と有界なコストを保てます。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 [drivers.md](../../../docs/ja/drivers.md)（「まだ配線されていない」の記述）、[evidence.md](../../../docs/ja/evidence.md)、[DESIGN §9](../../../DESIGN.md)。`bajutsu/backends.py`（`select_actuator`、`resolve_actuators`、`capabilities_for`）、`bajutsu/drivers/base.py`（`Capability`、`Driver`、`resolve_unique`）、`bajutsu/capability_preflight.py`（idb の `network` の注記）、`bajutsu/evidence.py`（`Artifact`、`FileSink`）、`bajutsu/network.py`（`Collector`、`NetworkCollector`）、`bajutsu/runner/pool.py`（継ぎ目となる `device_pool`）、`bajutsu/runner/pipeline.py`（`_write_network`、`run_all`）、`bajutsu/report/manifest.py`（`SCHEMA_VERSION`）、`bajutsu/drivers/playwright.py`（ネイティブ `network`、`network_collector`）、`bajutsu/drivers/fake.py`（`CAPABILITIES`）。

@@ -28,6 +28,10 @@ codegen maps a scenario to an equivalent XCUITest (Swift) structurally (no AI at
 
 The external `mockServer` command was superseded by declarative in-protocol `mocks` and remains unwired (tracked as a deferred proposal).
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [codegen.md](../../../docs/codegen.md), [ci.md](../../../docs/ci.md), `bajutsu/codegen.py`

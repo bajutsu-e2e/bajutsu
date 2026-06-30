@@ -66,6 +66,10 @@ directives rather than straining them.
 
 A Python-level pixel loop was rejected in favor of `ImageChops.difference` for C-level speed.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [PR #30](https://github.com/bajutsu-e2e/bajutsu/pull/30), `bajutsu/visual.py`,

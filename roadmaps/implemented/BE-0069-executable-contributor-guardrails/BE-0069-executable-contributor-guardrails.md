@@ -185,17 +185,6 @@ commits, or in CI against the PR title. It deliberately never blocks on the un-m
 
 Each phase is a small, independent PR (the parallel-work model, BE-0043).
 
-### Implementation status
-
-All four mechanisms shipped: **A** `make new-roadmap-item` (the `ideation` skill invokes it), **B**
-`make lint-roadmap` (folded into `make check`), **C** `make worktree` / `make preflight` (the doc
-recipes repointed at the commands), and **D** `make lint-pr` plus the `pr-title.yml` CI title gate.
-The prose in `CLAUDE.md`, `docs/ai-development.md` (+ `docs/ja/`), and the `ideation` / `implement-be`
-skills points at the commands rather than narrating the steps. Phase 5's optional tail also landed: a
-tracked **`.githooks/commit-msg`** hook (wired by `core.hooksPath`, like the pre-push gate) blocks a
-non-scoped commit subject at commit time via `lint_pr.py --commit-msg`, skipping merge / revert /
-fixup / squash and no-opping without `uv` — mechanical only, never a judgement call.
-
 ## Alternatives considered
 
 - **Keep the procedures as prose (status quo).** Rejected: prose drifts (the BE-0067 finding), and a
@@ -220,6 +209,14 @@ fixup / squash and no-opping without `uv` — mechanical only, never a judgement
   workflow)* — the BE-0043 topic — following the precedent
   ([BE-0065](../../implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md))
   of not splitting a topic for a single item.
+
+## Progress
+
+- [x] A — `make new-roadmap-item` (the `ideation` skill invokes it).
+- [x] B — `make lint-roadmap`, folded into `make check`.
+- [x] C — `make worktree` / `make preflight`, with the doc recipes repointed at the commands.
+- [x] D — `make lint-pr` plus the `pr-title.yml` CI title gate.
+- [x] Phase 5 tail — a tracked `.githooks/commit-msg` hook (wired by `core.hooksPath`) blocks a non-scoped commit subject via `lint_pr.py --commit-msg`.
 
 ## References
 

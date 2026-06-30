@@ -161,6 +161,10 @@ CLI の実行経路で manifest を書いたあとの一点（`bajutsu/cli/comma
   重なるので、見送ります。チームが実際に欲しい単位は完了の要約です。ダッシュボード向けの送信先用に、任意機能と
   して後で戻ってくる余地はあります。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [BE-0068 — 再生成可能なレポート](../../implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports-ja.md): 要約が射影する正準な実行モデルとしての `manifest.json`。
