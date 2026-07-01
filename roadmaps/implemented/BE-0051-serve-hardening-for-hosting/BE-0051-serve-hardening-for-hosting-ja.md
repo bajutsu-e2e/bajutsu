@@ -17,8 +17,8 @@
 stdlib の `bajutsu serve`（`bajutsu/serve/`）が今安全なのは、**localhost 限定、単一ユーザー**だからです。
 認証は無く、`/api/run` は（下記スライス 1（#92）が封じ込めるまで）クライアント指定の scenario パスを
 受け付けていました。ホスティングの 2 提案、すなわち
-公開/クラウドの [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) と
-セルフホストの [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) は、いずれも、
+公開/クラウドの [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) と
+セルフホストの [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) は、いずれも、
 `serve` を loopback の外へ到達させる前に**必須**となる一連のセキュリティ修正を挙げています。本項目は、それらを
 **既存の** stdlib サーバ上の単一のハードニングのトラックとしてまとめます。決定的コアは一切変えず、各スライスは
 Simulator 無しで Linux ゲートでテストできます。
@@ -37,8 +37,8 @@ macOS ワーカープール、OAuth、オブジェクトストレージ）を記
 - **クライアントが実行面を制御できる。** `/api/run` は `body["scenario"]` を、アプリの scenarios dir 内かの
   チェック無しに `bajutsu run` の argv へ渡し、`backend` / `udid` も自由入力でした。これは任意パス実行の面です。
 
-これらは机上の話ではなく、[BE-0015 §セキュリティハードニング](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)
-と [BE-0016 Tier A](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) がブロッカーとして名指しする
+これらは机上の話ではなく、[BE-0015 §セキュリティハードニング](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)
+と [BE-0016 Tier A](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) がブロッカーとして名指しする
 項目そのものです。現行サーバでこれらを塞ぐのは安価で、単独でも有用（BE-0016 Tier A の Tailscale/LaunchAgent
 単一 Mac 構成を今日から安全にする）であり、後のホスティングシステムの綺麗な土台になります。
 
@@ -81,8 +81,12 @@ HTTP ハーネスで Simulator 無しにテストできます。
   公開されうる無認証サーバは危険だからです。トークン無しの非 loopback bind を拒否すれば、安全側が既定になります。リバースプロキシ
   （BE-0016 の Caddy basic-auth）は上乗せの選択肢として残ります。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)（公開/クラウドホスティング）、
-[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)（セルフホスティング）、
+[BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)（公開/クラウドホスティング）、
+[BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)（セルフホスティング）、
 `bajutsu/serve/`、[cli.md](../../../docs/cli.md#serve)

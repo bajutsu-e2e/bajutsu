@@ -65,8 +65,8 @@ stays unchanged, exactly as in v1.
 Once the driver advertises the richer capabilities, authoring a web scenario by AI `record` is
 already possible (the driver implements `query`/`tap`/`type`). A web `record` demo is **not** a
 new item: it is tracked under the existing record-experience proposals
-([BE-0012](../../proposals/BE-0012-action-capture-record/BE-0012-action-capture-record.md) action-capture record,
-[BE-0014](../../proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md)),
+([BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md) action-capture record,
+[BE-0014](../BE-0014-record-demarcation/BE-0014-record-demarcation.md)),
 which apply to any backend.
 
 ## Alternatives considered
@@ -77,6 +77,10 @@ which apply to any backend.
 - **A separate item per capability (network / video / multi-touch / parallel).** Rejected as
   over-proliferation: they are one coherent push — "raise the web backend to the rich end of the
   capability model" — and share the same seams (the pool's web branch, `FileSink` intervals).
+
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
 
 ## References
 

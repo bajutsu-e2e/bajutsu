@@ -115,6 +115,14 @@ lands; it can ship in the same change if low-cost, or as an immediate follow-up.
   global realign. A right-click "send this node back to its slot" is a possible later
   refinement; it would just delete one key from `nodeOverrides` and redraw.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 - [`bajutsu/templates/serve.js`](../../../bajutsu/templates/serve.js) — the crawl graph

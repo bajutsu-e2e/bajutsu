@@ -111,6 +111,10 @@ map gates only true hard requirements and does not reject scenarios that would a
   implementation, not per-app config; modeling them in config would duplicate and risk drifting from
   what the driver actually reports. `driver.capabilities()` stays the single source of truth.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - `bajutsu/drivers/base.py` (`Capability`, `Driver.capabilities()`) — the capability contract this

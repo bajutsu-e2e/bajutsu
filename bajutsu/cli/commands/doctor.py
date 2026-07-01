@@ -3,16 +3,43 @@
 from __future__ import annotations
 
 import contextlib
+from pathlib import Path
 
 import typer
 
+from bajutsu import capability_preflight, idb_version, preflight
 from bajutsu import env as _env
-from bajutsu import idb_version, preflight
-from bajutsu.backends import make_driver, select_actuator
+from bajutsu.backends import capabilities_for, make_driver, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.config import Effective
 from bajutsu.doctor import render, score
 from bajutsu.drivers import base
+from bajutsu.scenario import load_scenario_file
+
+
+def check_scenarios(scenario_path: Path, actuator: str) -> list[str]:
+    """Check every scenario in *scenario_path* against the backend's capabilities.
+
+    Returns one reason per unsupported construct, prefixed with the scenario name. Pure: no
+    device needed — the capability set is a static class constant.
+
+    Note:
+        This is a best-effort pre-check on the raw scenario tree. ``use`` components and
+        ``data`` row expansion are not applied — they require config context (the component
+        library, data sources, ``setup`` steps) that ``doctor --scenario`` does not have
+        access to. A capability introduced only through a ``use`` expansion (e.g. a component
+        that contains a ``pinch`` step) will not be detected here.
+
+    Raises:
+        FileNotFoundError: *scenario_path* does not exist.
+    """
+    text = scenario_path.read_text(encoding="utf-8")
+    scenarios = load_scenario_file(text).scenarios
+    caps = capabilities_for(actuator)
+    reasons: list[str] = []
+    for sc in scenarios:
+        reasons.extend(f"[{sc.name}] {r}" for r in capability_preflight.unsupported(sc, caps))
+    return reasons
 
 
 def doctor(
@@ -20,6 +47,7 @@ def doctor(
     udid: str = typer.Option("booted"),
     backend: str = typer.Option(""),
     config: str = typer.Option(DEFAULT_CONFIG),
+    scenario: str = typer.Option("", "--scenario"),
 ) -> None:
     """Check the environment is runnable, then score the app's current screen."""
     eff = _load_effective(config, target_name)
@@ -40,11 +68,34 @@ def doctor(
         typer.echo("environment:")
         typer.echo(preflight.render(cfg_checks))
         raise typer.Exit(2)
+
+    # Capability preflight: when a scenario file is provided, check whether it uses constructs
+    # the chosen backend can't perform — pure, no device needed (BE-0024).
+    cap_failed = False
+    if scenario:
+        scenario_path = Path(scenario)
+        if not scenario_path.is_file():
+            typer.echo(f"scenario not found: {scenario}")
+            raise typer.Exit(2)
+        cap_reasons = check_scenarios(scenario_path, actuator)
+        if cap_reasons:
+            cap_failed = True
+            typer.echo("capability preflight:")
+            for reason in cap_reasons:
+                typer.echo(f"  ✘ {reason}")
+            typer.echo("")
+
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device.
-    env_checks = preflight.runnability(
-        actuator, booted_count=lambda: len(_env.booted_udids()), web_engine=eff.browser
-    )
+    # xcuitest falls back to idb for the screen query, so both tool sets must be present.
+    def booted_count() -> int:
+        return len(_env.booted_udids())
+
+    env_checks = preflight.runnability(actuator, booted_count=booted_count, web_engine=eff.browser)
+    if actuator == "xcuitest":
+        idb_checks = preflight.runnability("idb", booted_count=booted_count)
+        seen = {c.name for c in env_checks}
+        env_checks.extend(c for c in idb_checks if c.name not in seen)
     # When a pin is declared (defaults.idbVersion), report the installed idb_companion against it
     # so a compatibility break surfaces here, not as a confusing downstream failure (BE-0005).
     # Only probe when a pin exists *and* idb_companion is actually present — runnability already
@@ -62,8 +113,16 @@ def doctor(
         if not preflight.passed(checks):
             raise typer.Exit(1)
         typer.echo("")
+    # Fail after environment is reported, so the user sees both environment and capability issues.
+    if cap_failed:
+        raise typer.Exit(1)
     elements = _current_screen(actuator, udid, eff)
-    result = score(elements, eff.id_namespaces)
+    result = score(
+        elements,
+        eff.id_namespaces,
+        ok_coverage=eff.doctor_ok_coverage,
+        fail_coverage=eff.doctor_fail_coverage,
+    )
     typer.echo(render(result))
     raise typer.Exit(0 if result.grade != "Blocked" else 1)
 
@@ -91,7 +150,10 @@ def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Eleme
             # faulted browser does not mask the original navigate/query exception.
             with contextlib.suppress(*_playwright_error_types()):
                 driver.close()
-    return make_driver(actuator, _env.resolve_udid(udid)).query()
+    # xcuitest needs a running runner to query, but doctor only scores the current screen —
+    # idb can read the same accessibility tree without a runner (BE-0019).
+    query_actuator = "idb" if actuator == "xcuitest" else actuator
+    return make_driver(query_actuator, _env.resolve_udid(udid)).query()
 
 
 def register(app: typer.Typer) -> None:

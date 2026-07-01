@@ -6,16 +6,16 @@
 #   make webui      on-device — the Web UI tour (every evidence type)
 #   make record     on-device — AI authoring with real Claude, then modify + triage
 #
-# "tour"/"features"/"offline" run the dedicated demo app (demos/app/) on a booted Simulator
-# via idb. They use no LLM and no API key — `run` and `triage` are fully deterministic — but
-# they do need a Mac + Simulator. The zero-setup version that needs neither is the fake-driver
-# script `uv run python demos/tour/tour.py` (see demos/tour/README.md).
+# Every demo drives the single iOS fixture, the showcase suite (demos/showcase/) — the SwiftUI
+# accessibility product — on a booted Simulator via idb. "tour"/"features"/"offline" use no LLM
+# and no API key (`run` and `triage` are fully deterministic) but need a Mac + Simulator; the
+# zero-setup version that needs neither is the fake-driver script `uv run python demos/tour/tour.py`
+# (see demos/tour/README.md).
 #
 # ROOT is the repo root so `uv` runs in the project and paths match demos/demo.config.yaml.
-.PHONY: help tour features offline webui record app-gen app-build
+.PHONY: help tour features offline webui record app-build
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/..)
-APP := $(ROOT)/demos/app
 CONFIG := $(ROOT)/demos/demo.config.yaml
 
 help:
@@ -32,33 +32,36 @@ help:
 	@echo ""
 	@echo "  No Mac? The whole story on a fake device: uv run python demos/tour/tour.py"
 
-# Build the dedicated demo app (xcodegen -> xcodebuild for the iOS Simulator). `bajutsu run`
-# / `serve` also build it on demand via the config's `build` command, so this is rarely
-# needed directly.
-app-gen:
-	cd $(APP) && xcodegen generate
-
-app-build: app-gen
-	cd $(APP) && xcodebuild -project BajutsuDemo.xcodeproj -scheme BajutsuDemo \
-		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd build
+# Build the showcase SwiftUI app (xcodegen -> xcodebuild for the iOS Simulator). `bajutsu run`
+# / `serve` also build it on demand via the config's `build` command, so this is rarely needed
+# directly.
+app-build:
+	$(MAKE) -C $(ROOT)/demos/showcase swiftui-build
 
 # --- On-device, deterministic (no AI / API key) ------------------------------
 tour:
 	cd $(ROOT) && ./demos/tour/demo.sh
 
-# Run the smoke-tagged feature scenarios (excluding the `slow` one). PASSWORD seeds the
-# secret variable in features.yaml — any non-empty value works for the demo login.
+# Run the smoke-tagged feature scenarios (excluding the `slow` one). PASSWORD seeds the secret
+# variable in features.yaml — any non-empty value works for the demo; its literal is masked in
+# every run artifact. The menu's tour/features scenarios live in the non-globbed scenarios/menu/
+# subdir, so they never run as part of a whole-directory `bajutsu run --target showcase-swiftui`.
 features: app-build
 	cd $(ROOT) && PASSWORD="$${PASSWORD:-s3cr3t}" uv run bajutsu run \
-		--scenario demos/app/scenarios/features.yaml --target demo --config $(CONFIG) \
-		--backend ios --no-network --tag smoke --exclude slow
+		--scenario demos/showcase/scenarios/menu/features.yaml --target showcase-swiftui --config $(CONFIG) \
+		--backend idb --no-network --tag smoke --exclude slow
 
 offline: tour features
 
 # --- On-device, AI-assisted --------------------------------------------------
-# Delegate to each demo's own launcher (its prereq checks and config live there).
+# Launch the Web UI bound to the showcase config — the guided tour in demos/showcase/WEBUI.md.
+# Wraps the repo-root `make serve` (installs the idb backend's deps on demand). The Web UI builds
+# + installs the app itself when its binary is missing. Override the port via PORT=8766.
+PORT ?= 8765
 webui:
-	$(MAKE) -C $(ROOT)/demos/features serve
+	cd $(ROOT) && $(MAKE) serve ARGS="--config demos/showcase/showcase.config.yaml --port $(PORT)"
 
+# `record` already targets the showcase (the no-a11y app, the stability-ladder A/B); delegate to
+# its own launcher, where the goal and prereq checks live.
 record:
-	cd $(ROOT) && ./demos/record/demo.sh
+	$(MAKE) -C $(ROOT)/demos/showcase record

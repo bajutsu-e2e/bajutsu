@@ -1,0 +1,28 @@
+# Golden element-tree assertions (BE-0006): pin the normalized representation of
+# standard SwiftUI controls so a drift in idb / iOS surfaces as a failing check,
+# not a silent field regression.
+
+- name: golden controls
+  tags: [golden, controls]
+  description: >-
+    Assert the normalized element tree for the ControlsView catalogue screen
+    matches the recorded golden (identity, state, traits exact; frame sane).
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "controls" }
+  steps:
+    - wait: { for: { id: ctrl.toggle }, timeout: 10 }
+  expect:
+    - golden: { path: controls.json }
+
+- name: golden lists
+  tags: [golden, lists]
+  description: >-
+    Assert the normalized element tree for the ListsNavView catalogue screen
+    matches the recorded golden — the containers (.searchable, List,
+    NavigationStack) that the Motivation flagged as accuracy risks.
+  preconditions:
+    launchEnv: { SAMPLE_UITEST: "1", SAMPLE_LOGGED_IN: "1", SAMPLE_TAB: "lists" }
+  steps:
+    - wait: { for: { id: lists.list }, timeout: 10 }
+  expect:
+    - golden: { path: lists.json }

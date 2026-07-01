@@ -63,6 +63,10 @@ expect:
 
 Python レベルのピクセルループは、C レベルで高速な `ImageChops.difference` を採るために見送りました。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 [PR #30](https://github.com/bajutsu-e2e/bajutsu/pull/30)、`bajutsu/visual.py`、

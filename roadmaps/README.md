@@ -123,6 +123,22 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
+### Backend expansion (iOS actuators)
+
+<!-- GENERATED:implemented-backend -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0020](implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Implemented |
+<!-- /GENERATED:implemented-backend -->
+
+### doctor / onboarding
+
+<!-- GENERATED:implemented-doctor -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0024](implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Implemented |
+<!-- /GENERATED:implemented-doctor -->
+
 ### Authoring experience (record / GUI editor)
 
 The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording.md)). These items make the record → edit → re-run cycle easier for humans; the local web UI launcher `bajutsu serve` is the first step.
@@ -131,6 +147,9 @@ The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording
 | ID | Item | Status |
 |---|---|---|
 | [BE-0011](implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) | Local web UI (`bajutsu serve`) | Implemented |
+| [BE-0012](implemented/BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | Implemented |
+| [BE-0013](implemented/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Implemented |
+| [BE-0014](implemented/BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Implemented |
 | [BE-0044](implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) | Scenario provenance (`from:` — step ↔ natural-language origin) | Implemented |
 | [BE-0060](implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) | Download / export a run report as a zip | Implemented |
 | [BE-0068](implemented/BE-0068-regenerable-reports/BE-0068-regenerable-reports.md) | Regenerable reports (render from stored run data) | Implemented |
@@ -164,6 +183,7 @@ MagicPod and Autify are built around **AI self-healing + no-code + cloud device 
 | [BE-0034](implemented/BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md) | Tags / labels + selective runs | Implemented | MagicPod |
 | [BE-0035](implemented/BE-0035-device-control-primitives/BE-0035-device-control-primitives.md) | Device-control steps (background, status-bar override) | Implemented | MagicPod |
 | [BE-0036](implemented/BE-0036-utility-steps/BE-0036-utility-steps.md) | HTTP utility step | Implemented | MagicPod |
+| [BE-0037](implemented/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Implemented | MagicPod |
 | [BE-0039](implemented/BE-0039-self-healing-propose-optin/BE-0039-self-healing-propose-optin.md) | Self-healing limited to "propose + opt-in apply" | Implemented | Both |
 | [BE-0046](implemented/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) | OTP & email side-channel steps | Implemented | MagicPod |
 <!-- /GENERATED:implemented-competitive -->
@@ -179,6 +199,7 @@ Sharpening Bajutsu's determinism-as-contract stance against Maestro's flakiness-
 | [BE-0048](implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md) | Behavioral / protocol assertions | Implemented | Maestro |
 | [BE-0049](implemented/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) | Determinism / flakiness audit | Implemented | Maestro |
 | [BE-0050](implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) | E2E coverage map | Implemented | Maestro |
+| [BE-0097](implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md) | AI data sovereignty for the crawl guide and serve-spawned AI paths | Implemented |  |
 <!-- /GENERATED:implemented-competitive-maestro -->
 
 ### Integration & automation (MCP)
@@ -209,6 +230,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0093](implemented/BE-0093-public-docs-site/BE-0093-public-docs-site.md) | Public project website & documentation portal (GitHub Pages) | Implemented |
 | [BE-0094](implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) | Generated roadmap status dashboard on GitHub Pages | Implemented |
 | [BE-0096](implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md) | Keep docs links to roadmap items from rotting on promotion | Implemented |
+| [BE-0100](implemented/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md) | Progress tracking and cross-item relations in the BE template | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
@@ -251,6 +273,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 |---|---|---|
 | [BE-0051](implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
 | [BE-0055](implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
+| [BE-0090](implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
 ### Configuration sourcing
@@ -295,8 +318,18 @@ Running the autonomous crawl across more than one device so a full screen map is
 | ID | Item | Status |
 |---|---|---|
 | [BE-0005](implemented/BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) | idb_companion version monitoring | Implemented |
+| [BE-0006](implemented/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Implemented |
+| [BE-0087](implemented/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | Implemented |
 | [BE-0088](implemented/BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) | Overlap the Simulator boot with the build | Implemented |
 <!-- /GENERATED:implemented-on-device -->
+
+### Integration with external services
+
+<!-- GENERATED:implemented-external-integration -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0099](implemented/BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md) | Webhook notifications for run results | Implemented |
+<!-- /GENERATED:implemented-external-integration -->
 
 ### Miscellaneous / on hold
 
@@ -345,7 +378,6 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | ID | Item | Status |
 |---|---|---|
 | [BE-0019](in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | In progress |
-| [BE-0020](in-progress/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | In progress |
 <!-- /GENERATED:in-progress-backend -->
 
 ### Dogfood fixtures (demo apps)
@@ -363,7 +395,8 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 <!-- GENERATED:in-progress-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0090](in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | In progress |
+| [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
+| [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### codegen coverage
@@ -375,10 +408,14 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 ### On-device validation (M1 close-out)
 
 <!-- GENERATED:in-progress-on-device -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0087](in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) | idb action timing robustness (settle before actuation) | In progress |
+
 <!-- /GENERATED:in-progress-on-device -->
+
+### Authoring experience (record / GUI editor)
+
+<!-- GENERATED:in-progress-authoring -->
+
+<!-- /GENERATED:in-progress-authoring -->
 
 ## Proposals
 
@@ -389,9 +426,7 @@ Under consideration — not yet decided. Promote an item to *In progress* once w
 The deterministic core runs end-to-end on the FakeDriver, and the idb backend's subprocess execution (`describe-all` parsing, frame-center tap/text/swipe) and the simctl launch sequence are validated on a real device. What remains is only ongoing maintenance monitoring.
 
 <!-- GENERATED:proposals-on-device -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0006](proposals/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) | idb element-tree normalization accuracy | Proposal |
+
 <!-- /GENERATED:proposals-on-device -->
 
 ### Platform expansion (Android / Web / Flutter)
@@ -410,31 +445,27 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-authoring -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0012](proposals/BE-0012-action-capture-record/BE-0012-action-capture-record.md) | Action-capture record | Proposal |
-| [BE-0013](proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) | Scenario GUI editor | Proposal |
-| [BE-0014](proposals/BE-0014-record-demarcation/BE-0014-record-demarcation.md) | Demarcation from the existing AI record | Proposal |
 | [BE-0095](proposals/BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph.md) | Interactive crawl graph (draggable nodes + realign) | Proposal |
+| [BE-0098](proposals/BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md) | Unified authoring surface in serve | Proposal |
+| [BE-0102](proposals/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) | Aggregate run-stats dashboard | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
 ### AI provider configuration
-
-Extending the pluggable AI provider beyond what has shipped — e.g. acquiring AWS credentials for Bedrock from the web UI itself rather than the shell that launched `serve`.
 
 <!-- GENERATED:proposals-ai-provider -->
 | ID | Item | Status |
 |---|---|---|
 | [BE-0056](proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login.md) | AWS SSO sign-in from the web UI for Bedrock | Proposal |
+| [BE-0101](proposals/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) | Legible Claude-using / Claude-free split with a zero-config non-AI path | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
 
-Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
+Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
 
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0015](proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | Proposal |
-| [BE-0016](proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | Proposal |
 | [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
@@ -463,9 +494,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### doctor / onboarding
 
 <!-- GENERATED:proposals-doctor -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0024](proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Proposal |
+
 <!-- /GENERATED:proposals-doctor -->
 
 ### Development infrastructure (contributor workflow)
@@ -474,12 +503,18 @@ Turning a passing scenario into a native test in a destination framework's idiom
 
 <!-- /GENERATED:proposals-dev-infra -->
 
+### Integration with external services
+
+Sending a run's result out to a service the team already lives in. These are post-verdict, deterministic transports — they carry the verdict the runner already computed, never an LLM's, and a delivery failure never moves the run's result.
+
+<!-- GENERATED:proposals-external-integration -->
+
+<!-- /GENERATED:proposals-external-integration -->
+
 ### Candidates from competitive research (MagicPod / Autify)
 
 <!-- GENERATED:proposals-competitive -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0037](proposals/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) | WebView / hybrid support | Proposal | MagicPod |
+
 <!-- /GENERATED:proposals-competitive -->
 
 ### Candidates from competitive research (Maestro)
@@ -487,9 +522,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 Maestro (mobile.dev) is an open-source, cross-platform UI E2E tool whose direction leans into breadth, a hosted device cloud, and AI features that are *optional / advisory by default*. These items sharpen Bajutsu's opposite stance — determinism as a contract, verification below the UI, and AI strictly under the user's control.
 
 <!-- GENERATED:proposals-competitive-maestro -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0097](proposals/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md) | AI data sovereignty for the crawl guide and serve-spawned AI paths | Proposal |  |
+
 <!-- /GENERATED:proposals-competitive-maestro -->
 
 ## Deferred

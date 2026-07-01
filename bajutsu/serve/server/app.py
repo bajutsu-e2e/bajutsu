@@ -165,9 +165,22 @@ def make_app(state: ServeState) -> FastAPI:
 
     @app.get("/api/scenario")
     async def read_scenario(
-        request: Request, target: str | None = None, path: str | None = None
+        request: Request,
+        target: str | None = None,
+        path: str | None = None,
+        runId: str | None = None,  # noqa: N803
+        scenario: str | None = None,
     ) -> JSONResponse:
-        return _result(ops.read_scenario(state, target, path, actor=_actor(request)))
+        return _result(
+            ops.read_scenario(
+                state,
+                target,
+                path,
+                actor=_actor(request),
+                run_id=runId,
+                scenario_name=scenario,
+            )
+        )
 
     @app.get("/api/jobs/{job_id}")
     async def job(job_id: str) -> JSONResponse:
@@ -288,9 +301,17 @@ def make_app(state: ServeState) -> FastAPI:
     async def save_scenario(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.save_scenario(state, body, actor=_actor(request)))
 
+    @app.post("/api/scenario/resolve")
+    async def resolve_scenario_pick(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.resolve_scenario_pick(state, body, actor=_actor(request)))
+
     @app.post("/api/approve")
     async def approve(body: dict[str, Any], request: Request) -> JSONResponse:
         return _result(ops.approve_baseline(state, body, actor=_actor(request)))
+
+    @app.post("/api/doctor")
+    async def doctor(body: dict[str, Any], request: Request) -> JSONResponse:
+        return _result(ops.doctor_check(state, body, actor=_actor(request)))
 
     @app.post("/api/jobs/{job_id}/cancel")
     async def cancel(job_id: str) -> JSONResponse:

@@ -28,6 +28,10 @@
 
 AI を実行ループに入れる方式ではなく決定性を優先した背景は、[`DESIGN.md`](../../../DESIGN.md) を参照してください。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 [DESIGN §2 / §3](../../../DESIGN.md)、[architecture.md](../../../docs/ja/architecture.md)、`bajutsu/orchestrator.py`、`bajutsu/drivers/base.py`

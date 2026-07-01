@@ -95,6 +95,14 @@ Linux CI で動き、`capabilities()` の **小さい端**を行使します。
 - **Web より先に Android を作る。** 展開順の理由で却下: Android が構造的に近い双子であっても、Web は macOS も
   エミュレータも不要で、現行 Linux ゲートに最低コストで収まります。[BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) を参照。
 
+## 進捗
+
+> 開発の進行に合わせて常に最新の状態に保ってください。チェックリストは *詳細設計* の MECE な
+> 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
+> ともに記録します。
+
+- [ ] TBD — スコープが固まり次第、作業分解（MECE）をここに列挙します。
+
 ## 参考
 
 [DESIGN](../../../DESIGN.md)、`bajutsu/drivers/`、`bajutsu/backends.py`、

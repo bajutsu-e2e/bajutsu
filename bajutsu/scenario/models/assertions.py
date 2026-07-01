@@ -229,6 +229,17 @@ class ClipboardMatch(_Model):
         return self
 
 
+class GoldenMatch(_Model):
+    """`golden`: compare the live element tree against a recorded golden file (BE-0006).
+
+    The `path` is resolved against the golden context's base directory. The comparison is
+    field-level per BE-0006 rules: exact on identity/state, set-equal on traits, tolerant
+    (sanity only) on frame geometry.
+    """
+
+    path: str = Field(min_length=1)
+
+
 class Assertion(_Model):
     """One machine check. Exactly one kind may be set."""
 
@@ -247,6 +258,7 @@ class Assertion(_Model):
     response_schema: ResponseSchemaMatch | None = Field(default=None, alias="responseSchema")
     visual: VisualMatch | None = None
     clipboard: ClipboardMatch | None = None
+    golden: GoldenMatch | None = None
     # Provenance (BE-0044): the natural-language phrase this check was normalized from. Not one of
     # the assertion kinds (`_ASSERTION_KINDS`), so it doesn't disturb the one-kind rule; `run`
     # ignores it.

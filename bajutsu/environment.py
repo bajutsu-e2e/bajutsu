@@ -12,6 +12,10 @@ future Android (`adb`) environment ([BE-0007]) slots in the same way.
 
 from __future__ import annotations
 
+import json
+import os
+import shlex
+import socket
 import subprocess
 import time
 from collections.abc import Callable, Mapping
@@ -364,12 +368,134 @@ class FakeEnvironment(_DeviceEnvironment):
         return make_driver(self._actuator, self._udid)
 
 
+def _allocate_port() -> int:
+    """Bind an ephemeral port on localhost and return it.
+
+    The socket is closed immediately so the runner can bind it; the window for another process to
+    grab the port is negligible on localhost.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port: int = s.getsockname()[1]
+        return port
+
+
+class XcuitestEnvironment(_DeviceEnvironment):
+    """The XCUITest lifecycle: simctl device prep then a resident runner on the Simulator (BE-0019).
+
+    The simctl sequence (erase / boot / install) is the same as idb. The difference is how the app is
+    driven: instead of launching the app via simctl and actuating via idb CLI, we start an
+    `xcodebuild test-without-building` subprocess that runs the BajutsuRunner XCTest target — the
+    runner launches the app, starts an HTTP server on localhost, and Python drives it through the
+    `XcuitestDriver` channel.
+    """
+
+    def __init__(self, actuator: str, udid: str, env_run: env.RunFn = env._real_run) -> None:
+        super().__init__(actuator, udid, env_run)
+        self._runner_proc: subprocess.Popen[bytes] | None = None
+        self._runner_port: int = 0
+
+    def start(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+        record_video_dir: Path | None = None,
+    ) -> base.Driver:
+        e = env.Env(self._udid, run=self._run)
+        try:
+            if pre.erase:
+                e.shutdown()
+                e.erase()
+            e.boot()
+            if eff.app_path:
+                if not Path(eff.app_path).exists():
+                    raise env.DeviceError(
+                        f"appPath not found: {eff.app_path} (build the app first)"
+                    )
+                if pre.reinstall == "clean" and not pre.erase:
+                    e.uninstall(eff.bundle_id)
+                e.install(eff.app_path)
+        except subprocess.CalledProcessError as exc:
+            raise env.device_error(exc) from exc
+
+        # The runner launches the app via XCUIApplication.launch(). Preconditions are forwarded
+        # through env vars: the runner reads BAJUTSU_LAUNCH_ENV_* and sets them on
+        # launchEnvironment, BAJUTSU_LAUNCH_ARGS as launchArguments, and opens BAJUTSU_DEEPLINK.
+        launch_env: Mapping[str, str] = {
+            **eff.launch_env,
+            **pre.launch_env,
+            **(extra_env or {}),
+        }
+        locale = pre.locale or eff.locale
+        launch_args = [*eff.launch_args, *pre.launch_args, *env.locale_args(locale)]
+
+        xcfg = eff.xcuitest
+        if xcfg is None or xcfg.test_runner is None:
+            raise env.DeviceError(
+                "xcuitest backend requires xcuitest.testRunner in the target config"
+            )
+        runner_path = xcfg.test_runner
+        if not Path(runner_path).exists():
+            if xcfg.build:
+                try:
+                    subprocess.run(shlex.split(xcfg.build), check=True)
+                except (subprocess.CalledProcessError, OSError) as exc:
+                    raise env.DeviceError(f"xcuitest build command failed: {xcfg.build}") from exc
+            if not Path(runner_path).exists():
+                raise env.DeviceError(f"xcuitest testRunner not found: {runner_path}")
+
+        self._runner_port = _allocate_port()
+        runner_env = {
+            **os.environ,
+            "BAJUTSU_RUNNER_PORT": str(self._runner_port),
+            **{f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()},
+            "BAJUTSU_LAUNCH_ARGS": json.dumps(launch_args),
+        }
+        if pre.deeplink is not None:
+            runner_env["BAJUTSU_DEEPLINK"] = pre.deeplink
+        try:
+            self._runner_proc = subprocess.Popen(
+                [  # noqa: S607 — xcodebuild resolved on PATH; requires Xcode
+                    "xcodebuild",
+                    "test-without-building",
+                    "-xctestrun",
+                    runner_path,
+                    "-destination",
+                    f"platform=iOS Simulator,id={self._udid}",
+                ],
+                env=runner_env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as exc:
+            raise env.DeviceError(f"failed to start xcodebuild: {exc}") from exc
+
+        driver = make_driver(self._actuator, self._udid, runner_port=self._runner_port)
+        driver.await_ready()  # type: ignore[attr-defined]  # xcuitest-only lifecycle
+        return driver
+
+    def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        if self._runner_proc is not None:
+            self._runner_proc.terminate()
+            try:
+                self._runner_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._runner_proc.kill()
+                self._runner_proc.wait()
+            self._runner_proc = None
+        super().teardown(driver, eff)
+
+
 def environment_for(actuator: str, udid: str, env_run: env.RunFn = env._real_run) -> Environment:
     """The `Environment` for *actuator* — the seam that ends per-actuator branching in the runner."""
     if actuator == "playwright":
         return WebEnvironment(actuator)
     if actuator == "fake":
         return FakeEnvironment(actuator, udid, env_run)
+    if actuator == "xcuitest":
+        return XcuitestEnvironment(actuator, udid, env_run)
     return IosEnvironment(actuator, udid, env_run)
 
 

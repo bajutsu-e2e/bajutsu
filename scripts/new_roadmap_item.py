@@ -10,7 +10,8 @@ into one command both a human and an AI invoke identically::
     make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
 
 It writes ``roadmaps/proposals/BE-XXXX-<slug>/`` with ``BE-XXXX-<slug>.md`` and its ``-ja.md`` mirror,
-each pre-filled with the header link, the metadata block, and the five sections seeded with ``TBD``.
+each pre-filled with the header link, the metadata block, and the six sections seeded with ``TBD`` —
+``Progress`` (BE-0100) seeded with its living-checklist skeleton rather than a bare ``TBD``.
 It deliberately does **not** add an index row: the index generator skips ``BE-XXXX`` items, so the
 committed tables stay row-free for the placeholder and ``make check`` is green locally; the
 ``roadmap-id`` workflow allocates the number and regenerates the index on the PR.
@@ -62,9 +63,33 @@ _SECTIONS_EN = [
     "Motivation",
     "Detailed design",
     "Alternatives considered",
+    "Progress",
     "References",
 ]
-_SECTIONS_JA = ["はじめに", "動機", "詳細設計", "検討した代替案", "参考"]
+_SECTIONS_JA = ["はじめに", "動機", "詳細設計", "検討した代替案", "進捗", "参考"]
+
+# The Progress section (BE-0100) is the lone section seeded with content rather than ``TBD``: a
+# living-checklist skeleton — author guidance, then one placeholder box to enumerate the MECE work
+# breakdown once the item is scoped.
+_PROGRESS_BODY_EN = (
+    "> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in\n"
+    "> *Detailed design* (one box per unit of work); the log records what changed and when\n"
+    "> (oldest first), linking the PRs.\n\n"
+    "- [ ] TBD — enumerate the work breakdown (MECE) here once scoped."
+)
+_PROGRESS_BODY_JA = (
+    "> 開発の進行に合わせて常に最新の状態に保ってください。チェックリストは *詳細設計* の MECE な\n"
+    "> 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと\n"
+    "> ともに記録します。\n\n"
+    "- [ ] TBD — スコープが固まり次第、作業分解（MECE）をここに列挙します。"
+)
+
+
+def _render_sections(names: list[str], *, progress: str, progress_body: str) -> str:
+    """Join the H2 sections, seeding ``Progress`` with its skeleton and the rest with ``TBD``."""
+    return "\n\n".join(
+        f"## {name}\n\n{progress_body if name == progress else 'TBD'}" for name in names
+    )
 
 
 def _resolve_handle(explicit: str | None) -> str:
@@ -100,7 +125,7 @@ def _en_body(slug: str, title: str, status: str, topic: str, handle: str) -> str
             "<!-- /BE-METADATA -->",
         ]
     )
-    sections = "\n\n".join(f"## {s}\n\nTBD" for s in _SECTIONS_EN)
+    sections = _render_sections(_SECTIONS_EN, progress="Progress", progress_body=_PROGRESS_BODY_EN)
     return (
         f"**English** · [日本語]({PLACEHOLDER}-{slug}-ja.md)\n\n"
         f"# {PLACEHOLDER} — {title}\n\n{meta}\n\n{sections}\n"
@@ -120,7 +145,7 @@ def _ja_body(slug: str, title: str, status: str, topic: str, handle: str) -> str
             "<!-- /BE-METADATA -->",
         ]
     )
-    sections = "\n\n".join(f"## {s}\n\nTBD" for s in _SECTIONS_JA)
+    sections = _render_sections(_SECTIONS_JA, progress="進捗", progress_body=_PROGRESS_BODY_JA)
     return (
         f"[English]({PLACEHOLDER}-{slug}.md) · **日本語**\n\n"
         f"# {PLACEHOLDER} — {title}\n\n{meta}\n\n{sections}\n"

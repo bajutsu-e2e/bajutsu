@@ -391,3 +391,26 @@ def test_job_sse_emits_keepalive_then_log_and_done(tmp_path: Path) -> None:
     assert ":keepalive\n\n" in out
     assert "event: log\ndata: hi\n\n" in out
     assert out[-1].startswith("event: done") and '"ok": true' in out[-1]
+
+
+def test_doctor_endpoint_returns_checks(tmp_path: Path) -> None:
+    """POST /api/doctor via FastAPI returns the same shape as the stdlib handler (BE-0024)."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\ntargets:\n"
+        f"  demo: {{ bundleId: com.example.demo, scenarios: {scn_dir} }}\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    state = srv.ServeState(config=cfg, runs_dir=runs, root=tmp_path, cwd=tmp_path)
+    client = _client(state)
+    resp = client.post("/api/doctor", json={"target": "demo"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["target"] == "demo"
+    assert body["backend"] == "fake"
+    assert isinstance(body["checks"], list)

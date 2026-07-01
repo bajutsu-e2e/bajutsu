@@ -186,23 +186,23 @@ Implementation: `bajutsu/backends.py`.
 
 ```python
 PLATFORMS = {                              # a platform token expands to its actuators
-    "ios":     ("xcuitest", "idb"),        #   XCUITest preferred, idb fallback (BE-0019); xcuitest not built yet
+    "ios":     ("xcuitest", "idb"),        #   XCUITest preferred, idb fallback (BE-0019)
     "android": ("adb",),                   #   planned
     "web":     ("playwright",),            #   implemented (BE-0041)
     "fake":    ("fake",),                  #   the in-memory test/demo driver
 }
-IMPLEMENTED = {"idb", "fake", "playwright"}  # actuators with a driver today
+IMPLEMENTED = {"idb", "fake", "playwright", "xcuitest"}  # actuators with a driver today
 
 def default_available(actuator) -> bool:   # implemented + backing tool present (playwright: package import; fake: always)
 def resolve_actuators(backends) -> list:   # expand each token (platform or actuator) to actuators
 def select_actuator(backends, available) -> str:  # first implemented + available, in order
-def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
+def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  # "xcuitest"→XcuitestDriver, "idb"→IdbDriver, "playwright"→PlaywrightDriver, "fake"→FakeDriver
 ```
 
 - A **backend token** is either a **platform** (`ios` / `android` / `web` / `fake`) or a concrete
-  **actuator** (e.g. `idb`). `ios` now lists `xcuitest` ahead of `idb` (BE-0019), but XCUITest has no
-  driver yet, so `--backend ios` (or `backend: [ios]`) still resolves to `idb` today and picks up the
-  richer XCUITest actuator automatically once it lands — the scenario and config never change.
+  **actuator** (e.g. `idb`). `ios` lists `xcuitest` ahead of `idb` (BE-0019): `--backend ios` (or
+  `backend: [ios]`) prefers XCUITest when available and falls back to `idb` when it is not (e.g.
+  headless CI without the XCUITest host) — the scenario and config never change.
 - `backend` is an **ordered list** (most-stable-first; [concepts](concepts.md#5-the-stability-ladder)).
   Each token is expanded to its actuators, in order; the **actuator = the first implemented and
   available** one. If none is available, `RuntimeError` (the CLI exits with code 2).
@@ -216,9 +216,14 @@ def make_driver(actuator, udid, *, base_url=None) -> Driver:  # "idb"→IdbDrive
 - The actuator is fixed once at the start of a run and held for the whole run (so two drivers never
   operate one device).
 
-> The design (DESIGN §9) envisions using non-actuator backends as read-only evidence fallbacks, but
-> the current execution path uses a **single actuator**; multi-backend evidence fallback is not yet
-> wired up.
+Actuation stays with the single actuator. Non-actuator backends in the list can serve as **read-only
+evidence fallbacks** (DESIGN §9, [BE-0020](../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)):
+a same-platform backend whose `capabilities()` advertises a kind the actuator lacks (e.g.
+`Capability.NETWORK`) is resolved as the provider for that kind, accessed only through the narrow
+`EvidenceProvider` Protocol (no tap/type/swipe — a type-level guarantee). When no backend can fill a
+gap, the kind is skipped with a recorded reason (`SkippedCapture`) — graceful degradation, never a
+run failure. See [evidence — provider](evidence.md#artifact-provenance-provider) for provenance
+details.
 
 ## Environment management (simctl)
 

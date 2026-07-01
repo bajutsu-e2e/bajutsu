@@ -296,6 +296,10 @@ and [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-s
 - **Leave BE-0061's decision untouched (do nothing).** Rejected: the spent-id and non-contiguous
   concern is real, if minor, and is removable without reopening any of BE-0061's race guarantees.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)

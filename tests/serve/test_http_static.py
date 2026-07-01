@@ -68,7 +68,7 @@ def test_http_index_carries_responsive_layout(tmp_path: Path) -> None:
         # The phone breakpoint — the load-bearing decision the desktop CSS never had.
         assert "@media (max-width:640px)" in text
         # The per-view switcher: markup (one container per view) + the active-pane CSS class.
-        assert text.count('class="viewswitch"') == 3
+        assert text.count('class="viewswitch"') == 5
         for label in ("Form", "Log", "Report", "Progress", "Output", "Graph", "Plan", "Console"):
             assert f">{label}</button>" in text
         assert ".viewswitch" in text  # the switcher's own styling ships

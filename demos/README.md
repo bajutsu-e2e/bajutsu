@@ -17,12 +17,14 @@ make -C demos webui      # the Web UI tour — every evidence type
 make -C demos record     # AI authoring with real Claude, then modify + triage
 ```
 
+Every iOS demo drives the same fixture: the **showcase** suite ([`showcase/`](showcase/README.md)).
+
 | Demo | Command | What it proves | What it needs |
 |---|---|---|---|
 | **[tour](tour/README.md)** | `make -C demos tour` | The whole lifecycle — run → modify → diagnose (`triage`) — on a real Simulator, fully deterministic | macOS + Simulator (idb auto-installs). **No API key** |
 | **[features](features/README.md)** | `make -C demos features` | The scenario-authoring features (tags, parameterized shared steps, secrets) on a real Simulator | macOS + Simulator. **No API key** |
-| **[webui](features/WEBUI.md)** | `make -C demos webui` | The **Web UI** driving a Simulator and collecting every evidence type: screenshots, video, logs, network (observed + mocked), visual regression, system-alert handling | macOS + Simulator; an API key for the system-alert part only |
-| **[record](record/README.md)** | `make -C demos record` | AI authoring with **real Claude** against a booted app, then the modify-and-self-heal loop | macOS + Simulator + Claude (CLI or API key) |
+| **[webui](showcase/WEBUI.md)** | `make -C demos webui` | The **Web UI** driving a Simulator and collecting every evidence type: screenshots, video, logs, network (observed + mocked), visual regression, system-alert handling | macOS + Simulator; an API key for the system-alert part only |
+| **[record](showcase/README.md)** | `make -C demos record` | AI authoring with **real Claude** against a booted app, then the modify-and-self-heal loop | macOS + Simulator + Claude (CLI or API key) |
 
 > **No Mac / Simulator?** The whole `tour` story also runs against an in-memory fake device —
 > no Simulator, idb, or API key, on Linux/CI in seconds: `uv run python demos/tour/tour.py`
@@ -37,13 +39,13 @@ make -C demos record     # AI authoring with real Claude, then modify + triage
 
 ## Which one should I run?
 
-- **First look, on a real device?** → [`tour`](tour/README.md). One command runs the
-  onboarding → login → counter flow on a Simulator, then breaks it two ways to show the
+- **First look, on a real device?** → [`tour`](tour/README.md). One command opens a horse from
+  the showcase catalog and favorites it on a Simulator, then breaks it two ways to show the
   deterministic check and `triage` self-heal — no API key needed.
-- **Want the full evidence set in a browser?** → [`webui`](features/WEBUI.md). The Web UI tour
+- **Want the full evidence set in a browser?** → [`webui`](showcase/WEBUI.md). The Web UI tour
   boots a device and shows screenshots, video, network, visual regression, and system-alert
   handling. The headline demo for iOS developers.
-- **Want AI authoring on the command line?** → [`record`](record/README.md).
+- **Want AI authoring on the command line?** → [`record`](showcase/README.md).
 
 ## The two tiers, made concrete
 
@@ -61,19 +63,16 @@ an in-memory driver so you can see the seam with nothing installed.
 
 ## The apps
 
-- **`demo`** ([`app/`](app/README.md)) — a focused onboarding → login → counter app, the
-  smallest one that tells the whole story. The `tour` and `features` demos run against it.
-- **`sample`** ([`features/app/`](features/app/README.md)) — a SwiftUI fixture built to exercise
-  *every* supported interaction and evidence type. The `webui` tour and the on-device CI
-  workflows run against it.
-- **`sample2`** ([`record/app/`](record/README.md)) — a minimal onboarding → login → counter
-  app used by the `record` AI-authoring demo.
-- **`showcase`** ([`showcase/`](showcase/README.md)) — the next-generation dogfood suite: the
-  *same* app in UIKit and SwiftUI, each in an accessibility-on / -off variant (four products,
-  two codebases), built to exercise `record`, `crawl`, and `run` together. Supersedes `sample`
-  (kept until the showcase covers its CI / Web UI tours).
+- **`showcase`** ([`showcase/`](showcase/README.md)) — the single iOS fixture: the *same* app in
+  UIKit and SwiftUI, each in an accessibility-on / -off variant (four products, two codebases),
+  built to exercise `record`, `crawl`, and `run` together. Every iOS demo above — `tour`,
+  `features`, `webui`, `record` — and the on-device CI workflows drive it.
 - **`web`** ([`web/`](web/README.md)) — a tiny static web app driven by the **Playwright** backend
   on Linux (no Mac / Simulator); the cross-platform demo that proves the core is backend-neutral.
+
+> The older single-variant fixtures — `demo` ([`app/`](app/)), `sample` ([`features/app/`](features/app/)),
+> and `sample2` ([`record/app/`](record/app/)) — have been superseded by the showcase and are
+> slated for removal (BE-0079); nothing in the demo menu or CI drives them any more.
 
 Generated scenarios, working copies (`*/generated.yaml`, `tour/scenario.yaml`), Xcode projects,
 and run artifacts (`runs/`) are gitignored — the demos regenerate them.

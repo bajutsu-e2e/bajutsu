@@ -36,6 +36,14 @@ If lowering is not possible for a given expectation — the screen genuinely can
 * **A live AI assertion gated behind a flag, excluded from CI.** Still rejected. Even if kept out of the CI gate, a "pass/fail" that sometimes comes from a model blurs the one line the project keeps sharp; a result that is sometimes deterministic and sometimes not is worse than a clear split between author-side proposal and deterministic check.
 * **Do nothing.** Acceptable today — this item is deferred precisely because the deterministic DSL covers the cases that can be pinned down. The lowering approach is recorded so that if AI-assisted authoring of assertions is taken up, it is built as a proposal aid, not a runtime judge.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 [DESIGN §2 / §3.1](../../../DESIGN.md)

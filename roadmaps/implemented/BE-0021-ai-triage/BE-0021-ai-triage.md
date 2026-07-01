@@ -36,6 +36,10 @@ The deterministic `trace` command is the layer beneath triage: it lays out the e
 * **Only the rule-based agent, no AI option.** The heuristic catches the common shapes (renamed id, ambiguous selector, timed-out wait) deterministically, but it cannot read a screenshot or reason about an unfamiliar failure. Keeping both behind one protocol lets the rule-based agent stay the zero-cost, offline default while `--ai` is available when the failure needs richer reading.
 * **Free-form LLM prose instead of a forced structured tool call.** Forcing the single `diagnose` tool keeps the output mapped cleanly onto the `Triage` dataclass and onto the structured fixes BE-0022 applies, rather than asking a parser to recover structure from prose.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [DESIGN §3.1 / §12](../../../DESIGN.md), `bajutsu/triage.py` · `bajutsu/claude_triage.py`

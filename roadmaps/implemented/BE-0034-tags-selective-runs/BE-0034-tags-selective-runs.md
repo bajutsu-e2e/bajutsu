@@ -33,6 +33,10 @@ Each scenario carries an optional `tags` list (`Scenario` in `bajutsu/scenario/`
 
 **A query/expression language over tags (boolean combinations).** Rejected as over-engineered for the need: comma-separated include/exclude lists with a clear precedence rule cover the staged-CI use cases without the parsing surface and ambiguity of a full expression grammar. A richer grammar can be layered on later if a concrete need appears.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/scenario/` (`select_scenarios`), [cli.md](../../../docs/cli.md)

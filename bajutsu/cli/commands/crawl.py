@@ -25,13 +25,15 @@ from bajutsu import crawl as crawl_engine
 from bajutsu import crawl_report, crawl_repro
 from bajutsu import env as _env
 from bajutsu.agents import AGENT_KINDS, resolve_kind
-from bajutsu.anthropic_client import credential_gap
+from bajutsu.anthropic_client import credential_gap, key_env
 from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
+    _ai_redactor,
     _backends,
     _load_effective_with_source,
     _refuse_out_in_checkout,
+    _require_ai_credential,
 )
 from bajutsu.crawl_guide import make_guide
 from bajutsu.drivers import base
@@ -40,15 +42,6 @@ from bajutsu.record import _clear_blocking
 from bajutsu.runner import launch_driver
 from bajutsu.runner.launch_server import start_launch_server
 from bajutsu.scenario import Preconditions
-
-
-def _ai_credential_gap(agent: str) -> str | None:
-    """The crawl guide's credential gap for `--agent` (BE-0053: crawl is a Tier-1 Bedrock path).
-
-    `claude-code` brings its own auth (always None), while `api` uses the Anthropic SDK and so needs
-    the configured provider's credentials — see `credential_gap`.
-    """
-    return None if agent != "api" else credential_gap()
 
 
 def _write_screenmap(path: Path, screen_map: crawl_engine.ScreenMap) -> None:
@@ -154,9 +147,6 @@ def crawl(
     if agent not in AGENT_KINDS:
         typer.echo(f"unknown --agent {agent!r} (use {' or '.join(AGENT_KINDS)})")
         raise typer.Exit(2)
-    # Crawl is AI-driven: the AI proposes what to try (the engine keeps identity/transitions/crashes
-    # deterministic). The default backend needs an API key; --agent claude-code uses its own auth.
-    crawl_guide = make_guide(report=say, agent=agent)
     backends = _backends(backend, eff.backend)
     try:
         # Auto-install Playwright (and the selected engine's browser) if a web crawl needs it.
@@ -165,20 +155,13 @@ def crawl(
     except RuntimeError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
-    # `--agent api` reaches Claude through the configured AI provider (BE-0053): ANTHROPIC_API_KEY
-    # for Anthropic, or AWS credentials + a provider-prefixed BAJUTSU_BEDROCK_MODEL for Bedrock.
-    # Fail fast with provider-specific guidance before any device work (claude-code brings its own).
-    gap = _ai_credential_gap(agent)
-    if gap == "anthropic-key":
-        typer.echo("note: crawl --agent api needs ANTHROPIC_API_KEY for the Anthropic provider —")
-        typer.echo("      set it, use --agent claude-code (the Claude Code CLI), or select Amazon")
-        typer.echo("      Bedrock (BAJUTSU_AI_PROVIDER=bedrock, authenticated by AWS credentials)")
-        raise typer.Exit(2)
-    if gap == "bedrock-model":
-        typer.echo("note: crawl --agent api on Bedrock (BAJUTSU_AI_PROVIDER=bedrock) needs")
-        typer.echo("      BAJUTSU_BEDROCK_MODEL set to a provider-prefixed model id")
-        typer.echo("      (e.g. global.anthropic.claude-opus-4-6-v1)")
-        raise typer.Exit(2)
+    # Fail closed (BE-0097 / BE-0047): the API guide and the alert guard both reach the model via
+    # the SDK provider, so a missing credential is an actionable error, not a quiet fallback.
+    # Placed after backend selection so a config/backend error surfaces first.
+    if agent == "api":
+        _require_ai_credential(eff)
+    redactor = _ai_redactor(eff)
+    crawl_guide = make_guide(report=say, agent=agent, ai=eff.ai, redactor=redactor)
 
     out_dir = Path(out) if out else Path("runs") / datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
     # A Git source is read-only input: the screen map / screenshots go to a local run dir, never into
@@ -313,19 +296,21 @@ def crawl(
         from bajutsu.alerts import ClaudeAlertLocator, SystemAlertGuard
         from bajutsu.orchestrator import RealClock
 
-        # The alert guard always uses the Anthropic SDK (vision), so it needs the configured
-        # provider's credentials regardless of --agent. Warn (best-effort) if they're missing.
-        guard_gap = credential_gap()
+        # Provider-aware credential check (BE-0097): the alert guard always uses the SDK, so it
+        # needs the configured provider's credentials regardless of --agent.
+        guard_gap = credential_gap(eff.ai)
         if guard_gap == "anthropic-key":
             say(
-                "note: dismiss-alerts is on but ANTHROPIC_API_KEY is unset — the alert guard no-ops"
+                f"note: dismiss-alerts is on but ${key_env(eff.ai)} is unset — "
+                "the alert guard no-ops"
             )
         elif guard_gap == "bedrock-model":
             say(
                 "note: dismiss-alerts is on but BAJUTSU_BEDROCK_MODEL is unset — "
                 "the alert guard no-ops"
             )
-        guard = SystemAlertGuard(ClaudeAlertLocator(), alert_instruction or None).dismiss
+        locator = ClaudeAlertLocator(ai=eff.ai, redactor=redactor)
+        guard = SystemAlertGuard(locator, alert_instruction or None).dismiss
         clock = RealClock()
 
         def clear_blocking(d: base.Driver) -> list[str]:

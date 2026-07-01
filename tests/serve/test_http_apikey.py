@@ -59,3 +59,84 @@ def test_http_api_key_rejects_whitespace(tmp_path: Path, monkeypatch: pytest.Mon
     finally:
         server.shutdown()
         server.server_close()
+
+
+# --- BE-0097: set_api_key honours the config's ai.keyEnv ---
+
+
+def test_http_api_key_honours_key_env_from_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0097: when the bound config declares `ai.keyEnv`, set_api_key writes the key under that
+    env var — not the hardcoded ANTHROPIC_API_KEY — so a spawned job inherits the right name."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: a\n  steps:\n    - tap: { id: x }\n")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults:\n"
+        "  backend: [idb]\n"
+        "  ai:\n"
+        "    keyEnv: MY_CUSTOM_KEY\n"
+        "targets:\n"
+        "  demo: { bundleId: com.example.demo }\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("MY_CUSTOM_KEY", raising=False)
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        code, body = _post(port, "/api/apikey", {"value": "sk-custom-12345"})
+        assert code == 200 and body["set"] is True
+        assert os.environ.get("MY_CUSTOM_KEY") == "sk-custom-12345"
+        # The default ANTHROPIC_API_KEY should NOT be set — the config named a different var.
+        assert "ANTHROPIC_API_KEY" not in os.environ
+        # GET should read the custom var too.
+        assert _get_json(port, "/api/apikey")["set"] is True
+        # Clear: removes the custom var.
+        _post(port, "/api/apikey", {"value": ""})
+        assert "MY_CUSTOM_KEY" not in os.environ
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_http_api_key_rejects_unsafe_key_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BE-0097: a keyEnv that names a system variable (e.g. PATH) is ignored — the serve UI falls
+    back to ANTHROPIC_API_KEY so it cannot overwrite critical env vars."""
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: a\n  steps:\n    - tap: { id: x }\n")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults:\n"
+        "  backend: [idb]\n"
+        "  ai:\n"
+        "    keyEnv: PATH\n"
+        "targets:\n"
+        "  demo: { bundleId: com.example.demo }\n",
+        encoding="utf-8",
+    )
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    original_path = os.environ.get("PATH", "")
+    server, port = _serve(
+        srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    )
+    try:
+        _post(port, "/api/apikey", {"value": "sk-test-12345"})
+        # PATH must NOT have been overwritten.
+        assert os.environ.get("PATH") == original_path
+        # Falls back to ANTHROPIC_API_KEY.
+        assert os.environ.get("ANTHROPIC_API_KEY") == "sk-test-12345"
+    finally:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        server.shutdown()
+        server.server_close()

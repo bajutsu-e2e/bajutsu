@@ -10,6 +10,7 @@
 | 状態 | **実装済み** |
 | 実装 PR | [#197](https://github.com/bajutsu-e2e/bajutsu/pull/197) |
 | トピック | 開発基盤（コントリビュータ体験） |
+| 関連 | [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -215,6 +216,12 @@ H1 のタイトル行は両ファイルとも `# BE-NNNN — <タイトル>` と
   は境界がないため、それに限定したパーサは本文の箇条書きへ逸れうるし、箇条書きは行ごとの形より自由に
   ばらつきます。囲みブロックはこの両方をふさぎ、索引自身の `<!-- GENERATED:* -->` の慣習にも合います。この逸脱は
   小さく、ここに文書化します。`CLAUDE.md` / `README.md` の散文は実装フェーズで囲みブロックへ更新します。
+
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。（テンプレートはのちに
+  [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md)
+  が五セクションから六セクションへ拡張し、この `進捗` セクションと `関連` / `無効化` の欄を加えました。）
 
 ## 参考
 

@@ -64,7 +64,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `package` | app | Android target identifier; required when the platform is `android` |
 | `headless` | app | web backend only: `true` (default) runs headless; `false` shows a visible (headed) browser, in slow-motion. `bajutsu run --headed / --no-headed` and the Web UI's "show browser" toggle override per run; iOS ignores it |
 | `browser` | app | web backend only: the Playwright rendering engine to drive — `chromium` (default), `firefox`, or `webkit`. All three run headless on Linux. `bajutsu run/record --browser <engine>` overrides per run (flag > config > default), and `bajutsu run --browsers <list>` runs the cross-browser matrix (below); a missing engine binary is installed on demand. An unknown value is rejected at config load. iOS ignores it ([BE-0076](../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)) |
-| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
+| `launch_server` | app | optional `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}` — bring up `baseUrl`'s host for the run, then tear it down: probe `readyUrl` (default `baseUrl`), reuse it if already serving, else run `cmd` and wait until ready (a condition wait, never a fixed sleep). The web analogue of `build` ([BE-0059](../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server.md)). For an **uploaded** bundle in `serve`, the host never runs `cmd` directly — `serve --upload-exec` governs it (see [self-hosting](self-hosting.md#uploaded-config-command-execution-be-0090)); a `sandbox` run needs the extra fields `dockerImage` (a Docker image reference, e.g. `node:20-slim`) **or** `dockerfile` (a bundle-relative path built with `docker build`) — exactly one — plus `port` (the in-container listen port, published to a loopback host port) ([BE-0090](../roadmaps/implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md)) |
 | `deeplink_scheme` | app | the scheme used by the preconditions' deeplink |
 | `backend` | app ?? defaults | stability-ordered list of platforms (`ios`/`android`/`web`/`fake`) or actuators (`idb`); a single string is listified ([drivers](drivers.md#backend-selection-and-the-actuator)) |
 | `device` / `locale` | app ?? defaults | `locale` is applied at launch (`simctl` launch args) |
@@ -79,6 +79,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2).
 | `redact` | defaults ∪ app | merged (below) |
 | `secrets` | defaults ∪ app | env var names declaring `${secrets.X}`; values are masked in evidence ([evidence](evidence.md#masking-redact)) |
 | `ai` | defaults < app (field by field) | the AI paths' provider/model/endpoint/key ([below](#ai-provider-ai-be-0047)); `None` (omitted) = the environment alone decides |
+| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | id-coverage thresholds for doctor grading ([below](#configurable-thresholds-defaultsdoctor-be-0024)); default 0.9 / 0.7 |
 
 The `backend` field validator `_norm` normalizes "a single string → a 1-element list" (on both
 defaults / app).
@@ -160,7 +161,7 @@ for one that matches, and extracts the code — deterministic and LLM-free
 
 ### Orgs (`orgs:`, the multi-tenant server backend)
 
-`orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+`orgs:` declares tenants for the hosted server backend ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 Each org lists its members — explicit GitHub logins (`members`) and/or whole GitHub orgs
 (`githubOrgs`) — and the targets it owns:
 
@@ -299,7 +300,7 @@ Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It an
 Measured over actionable elements (trait ∈ `ACTIONABLE_TRAITS` = button / link / textField /
 searchField / textView / switch / slider / tab / cell).
 
-| Metric | Definition | Threshold |
+| Metric | Definition | Threshold (default) |
 |---|---|---|
 | `idCoverage` | fraction of actionable elements with an id | ✓ ≥ 0.9 / warn 0.7–0.9 / fail < 0.7 |
 | `namespaceConformance` | fraction of ids whose first segment is in `idNamespaces` | off-convention ids listed in `off_namespace` |
@@ -308,9 +309,26 @@ searchField / textView / switch / slider / tab / cell).
 ### Grading
 
 - **Blocked**: no actionable elements on the screen (most likely blank, not yet loaded, or the
-  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < 0.7.
-- **Ready**: `idCoverage` ≥ 0.9 **and** `namespaceConformance` == 1.0.
+  wrong screen — `render` says so), any duplicate id, **or** `idCoverage` < `idCoverageFail` (default 0.7).
+- **Ready**: `idCoverage` ≥ `idCoverageOk` (default 0.9) **and** `namespaceConformance` == 1.0.
 - **Partial**: otherwise (runnable, but a forecast of coordinate fallback / flakiness).
+
+### Configurable thresholds (`defaults.doctor`, BE-0024)
+
+The id-coverage thresholds that determine the grade are configurable in `defaults.doctor`. Teams
+with many decorative elements that legitimately lack test IDs can tune the thresholds for leniency
+(typically lowering `idCoverageOk` and/or `idCoverageFail`) without changing the tool:
+
+```yaml
+defaults:
+  doctor:
+    idCoverageOk:   0.85   # default 0.9 — coverage >= this is eligible for "Ready"
+    idCoverageFail: 0.6    # default 0.7 — coverage < this drops to "Blocked"
+```
+
+Both values must be in [0, 1] and `idCoverageOk` must be >= `idCoverageFail`; an invalid value is
+rejected at config load. When omitted, the hardcoded defaults (0.9 / 0.7) apply — existing configs
+are unchanged.
 
 ### Output
 

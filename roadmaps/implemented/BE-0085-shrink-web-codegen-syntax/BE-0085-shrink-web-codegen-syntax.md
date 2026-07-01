@@ -77,39 +77,6 @@ backends.
 The work is incremental — one construct per small PR, like BE-0026 — and each slice ships with golden
 codegen tests on the Linux gate (codegen is pure; no browser needed to test the emitted text).
 
-### Implementation status
-
-Shipped in `bajutsu/codegen_playwright.py`. The runner evaluates a request matcher over the exchanges
-it has collected *so far* (its collector records each finished exchange), not over future traffic. A
-`page.waitForResponse` only observes the future, so it would miss requests made during the preceding
-steps and could hang where the runtime passes. To match the runtime, the generated test installs an
-exchange recorder before navigation — `page.on('requestfinished', …)` (the same event the runtime web
-collector hooks, `bajutsu/web_network.py`) pushing `{ method, url, status, body }` into an `exchanges`
-array, with `status` null when a request has no response — and the assertions read that list:
-
-- **`request`** → a point-in-time check over the recorded exchanges:
-  `expect(exchanges.filter(e => …).length).toBe(count)` when `count` is set (exact, mirroring the
-  runtime), otherwise `expect(exchanges.some(e => …)).toBeTruthy()`.
-- **`until: { request }`** →
-  `await expect.poll(() => exchanges.filter(e => …).length, { timeout }).toBeGreaterThanOrEqual(count ?? 1)`,
-  so an already-observed exchange passes at once and a future one is awaited (`count` is a lower bound
-  for the wait), matching the runtime which checks the collected exchanges before continuing to poll.
-- **`requestSequence`** → an in-order forward scan over the recorded exchanges (advance through the
-  matchers as exchanges are seen in order, then assert every matcher was reached), mirroring
-  `_eval_request_sequence`'s order check.
-- **`responseSchema`** → a labeled `// TODO` naming the endpoint and the schema file. An unrenderable
-  selector → a labeled `// TODO` naming the blocking field (`within` / `value` / `idMatches`) and why.
-
-The predicate is over a recorded exchange `e` (its `method` / `url` / `status` / `body`):
-`path` / `pathMatches` compare `new URL(e.url).pathname` (path-only, like the runner),
-`urlMatches` / `pathMatches` / `bodyMatches` become `RegExp.test(...)` (the runner uses `re.search`),
-and `status` checks `e.status`.
-
-**`bodyMatches` maps to the request body and guards against a missing body.** The runner's
-`match_request` tests `bodyMatches` against `ex.request_body` and fails when it is `None`
-(`bajutsu/assertions.py`), so the predicate reads `e.body` and guards `e.body !== null` before
-testing — without the guard a pattern like `.*` would match a body-less request and pass incorrectly.
-
 ## Alternatives considered
 
 - **Treat the web emitter like XCUITest and only *label* the network constructs.** Rejected: it
@@ -126,6 +93,12 @@ testing — without the guard a pattern like `.*` would match a body-less reques
   specific (NSPredicate / `simctl`); the web mapping is genuinely different (it *generates* the
   network constructs Playwright supports). A sibling item under the same `codegen coverage` topic
   keeps each emitter's design legible while sharing the governing rule.
+
+## Progress
+
+- [x] Exchange recorder before navigation — `page.on('requestfinished', …)` pushes `{ method, url, status, body }` into an `exchanges` array (the same event the runtime web collector hooks), and the generated assertions read that list.
+- [x] Assertion mappings — `request` → a point-in-time check (`toBe(count)` or `some(...)`); `until: { request }` → an `expect.poll` lower bound; `requestSequence` → an in-order forward scan; `responseSchema` → a labeled `// TODO`.
+- [x] Recorded-exchange predicate — `path` / `pathMatches` over `new URL(e.url).pathname`, regex via `RegExp.test`, `status` over `e.status`, with `bodyMatches` guarding `e.body !== null`.
 
 ## References
 

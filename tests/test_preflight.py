@@ -138,6 +138,40 @@ def test_idb_version_check_fails_when_companion_unknown() -> None:
     assert "unknown" in check.detail
 
 
+def test_xcuitest_needs_xcrun_and_xcodebuild() -> None:
+    checks = preflight.runnability(
+        "xcuitest", which=_which({"xcrun", "xcodebuild"}), booted_count=lambda: 1
+    )
+    assert [c.name for c in checks] == ["xcrun", "xcodebuild", "Simulator booted"]
+    assert preflight.passed(checks)
+
+
+def test_xcuitest_doctor_includes_idb_tools() -> None:
+    # doctor falls back to idb for the screen query, so both xcuitest and idb tools must be checked.
+    # Simulate the merge that doctor() does.
+    xcuitest_checks = preflight.runnability(
+        "xcuitest", which=_which({"xcrun", "xcodebuild"}), booted_count=lambda: 1
+    )
+    idb_checks = preflight.runnability(
+        "idb", which=_which({"xcrun", "idb", "idb_companion"}), booted_count=lambda: 1
+    )
+    seen = {c.name for c in xcuitest_checks}
+    merged = xcuitest_checks + [c for c in idb_checks if c.name not in seen]
+    names = [c.name for c in merged]
+    assert "xcodebuild" in names
+    assert "idb" in names
+    assert "idb_companion" in names
+    assert names.count("xcrun") == 1  # deduped
+    assert names.count("Simulator booted") == 1  # deduped
+
+
+def test_xcuitest_missing_xcodebuild_fails() -> None:
+    checks = preflight.runnability("xcuitest", which=_which({"xcrun"}), booted_count=lambda: 1)
+    assert not preflight.passed(checks)
+    xcodebuild = next(c for c in checks if c.name == "xcodebuild")
+    assert not xcodebuild.ok and "Xcode" in xcodebuild.detail
+
+
 def test_render_marks_pass_and_fail() -> None:
     out = preflight.render(
         preflight.runnability("idb", which=_which({"xcrun"}), booted_count=lambda: 0)

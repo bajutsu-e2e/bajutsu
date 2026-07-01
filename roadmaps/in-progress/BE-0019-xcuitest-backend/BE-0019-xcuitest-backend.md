@@ -8,7 +8,7 @@
 | Proposal | [BE-0019](BE-0019-xcuitest-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#366](https://github.com/bajutsu-e2e/bajutsu/pull/366), [#368](https://github.com/bajutsu-e2e/bajutsu/pull/368) |
+| Implementing PR | [#366](https://github.com/bajutsu-e2e/bajutsu/pull/366), [#368](https://github.com/bajutsu-e2e/bajutsu/pull/368), [#374](https://github.com/bajutsu-e2e/bajutsu/pull/374), [#376](https://github.com/bajutsu-e2e/bajutsu/pull/376), [#391](https://github.com/bajutsu-e2e/bajutsu/pull/391), [#394](https://github.com/bajutsu-e2e/bajutsu/pull/394), [#397](https://github.com/bajutsu-e2e/bajutsu/pull/397) |
 | Topic | Backend expansion (iOS actuators) |
 <!-- /BE-METADATA -->
 
@@ -99,6 +99,17 @@ Split by what the fast gate can prove without a Simulator vs. what needs one:
 - **Bolt the missing gestures onto idb.** We could try to synthesize pinch/rotate from idb's single-touch primitives. idb fundamentally exposes single-touch, so this would be an unreliable approximation of a multi-touch gesture — exactly the kind of fragile, non-deterministic behaviour the project avoids. A real multi-touch backend is the honest fix.
 - **Adopt WebDriverAgent as the runner channel.** WebDriverAgent is a proven HTTP+XCTest server and would supply the Python↔runner channel off the shelf. Rejected for the first cut: it is a large dependency to vendor and maintain, and it pulls the project away from its thin-dependency stance (DESIGN §4), where backends are driven by shelling out to a focused tool. A minimal runner-side server in `BajutsuKit`, reusing the loopback pattern already in `network.py` / `BajutsuNet`, keeps the surface small and under the project's control; WebDriverAgent stays a fallback if the minimal server proves insufficient.
 - **Route only specific gestures to XCUITest while idb stays the actuator.** Letting two drivers operate one device reintroduces the non-determinism the single-actuator rule (DESIGN §3.3 / §5) exists to prevent. The actuator is fixed once per run; capability gaps in *evidence* are handled separately by the read-only fallback design (BE-0020), but *actuation* stays with one backend.
+
+## Progress
+
+- [x] Backend registration — `PLATFORMS["ios"] = ("xcuitest", "idb")` and `xcuitest` in `IMPLEMENTED`, with idb the fallback (`bajutsu/backends.py`).
+- [x] Runner-side server — a generic XCTest target in `BajutsuKit` (`Sources/BajutsuRunner/RunnerServer.swift`) exposing loopback `/elements` / `/tap` / `/gesture` / `/swipe` / `/type` endpoints ([#374](https://github.com/bajutsu-e2e/bajutsu/pull/374), [#376](https://github.com/bajutsu-e2e/bajutsu/pull/376)).
+- [x] Python↔runner channel and `XcuitestDriver` — `bajutsu/drivers/xcuitest.py`, acting on a stable per-snapshot element handle ([#366](https://github.com/bajutsu-e2e/bajutsu/pull/366), [#368](https://github.com/bajutsu-e2e/bajutsu/pull/368)).
+- [x] Run-lifecycle wiring and preconditions — per-lease runner start/teardown, forwarded preconditions ([#391](https://github.com/bajutsu-e2e/bajutsu/pull/391), [#394](https://github.com/bajutsu-e2e/bajutsu/pull/394)).
+- [x] Capabilities, doctor, and disclosure — `doctor --target` merges idb's checks and falls back to idb when xcuitest is selected ([#397](https://github.com/bajutsu-e2e/bajutsu/pull/397)).
+- [ ] Close-out — full on-device validation across the parallel device pool before the item flips to Implemented.
+
+Built in slices: #366 / #368 (driver + channel), #374 / #376 (runner server + endpoints), #391 / #394 (run-lifecycle wiring, preconditions), #397 (doctor fallback).
 
 ## References
 

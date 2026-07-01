@@ -58,7 +58,7 @@ targets:
 | `package` | app | Android のターゲット識別子。プラットフォームが `android` のとき必須 |
 | `headless` | app | web backend のみ: `true`（既定）はヘッドレス、`false` はブラウザを画面に表示し低速再生する。`bajutsu run --headed / --no-headed` と Web UI の「show browser」トグルが実行ごとに上書きする。iOS は無視する |
 | `browser` | app | web backend のみ: 駆動する Playwright の描画エンジン。`chromium`（既定）、`firefox`、`webkit` から選びます。いずれも Linux 上でヘッドレス実行できます。`bajutsu run/record --browser <engine>` が実行ごとに上書きし（フラグ > config > 既定）、`bajutsu run --browsers <list>` はクロスブラウザマトリクスを実行します（後述）。エンジンのブラウザバイナリが無ければ実行時に取得します。未知の値は config 読み込み時に拒否されます。iOS は無視します（[BE-0076](../../roadmaps/implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)） |
-| `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/in-progress/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
+| `launch_server` | app | 任意の `launchServer: {cmd, readyUrl, readyTimeout, cwd, env}`。run のために `baseUrl` のホストを起動し、終わったら停止します。`readyUrl`（既定は `baseUrl`）をプローブし、すでに応答すれば再利用、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。iOS の `build` の web 版です（[BE-0059](../../roadmaps/implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`serve` 上の**アップロードされた**バンドルでは、ホストが `cmd` を直接実行することはなく、`serve --upload-exec` が統制します（[セルフホスティング](self-hosting.md#アップロードされた-config-のコマンド実行be-0090)を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
 | `deeplink_scheme` | app | preconditions の deeplink で使う scheme |
 | `backend` | app ?? defaults | プラットフォーム(`ios`/`android`/`web`/`fake`)か actuator(`idb`)の安定度順リスト（単一文字列はリスト化）（[drivers](drivers.md#バックエンド選択と-actuator)） |
 | `device` / `locale` | app ?? defaults | `locale` は launch 時に適用される（`simctl` の launch 引数） |
@@ -73,6 +73,7 @@ targets:
 | `redact` | defaults ∪ app | マージ（下記） |
 | `secrets` | defaults ∪ app | `${secrets.X}` を宣言する環境変数名。実値は証跡でマスク（[evidence](evidence.md#マスキングredact)） |
 | `ai` | defaults < app（フィールドごと） | AI 経路のプロバイダ / モデル / エンドポイント / キー（[下記](#ai-プロバイダai-be-0047)）。省略（`None`）なら環境だけで決まります |
+| `defaults.doctor.idCoverageOk` / `defaults.doctor.idCoverageFail` | defaults | doctor のグレード判定に使う id カバレッジのしきい値（[下記](#しきい値の設定defaultsdoctorbe-0024)）。既定は 0.9 / 0.7 です |
 
 `backend` フィールドの検証で `_norm` が「単一文字列 → 1 要素リスト」に正規化します（defaults / app の両方に適用）。
 
@@ -121,7 +122,7 @@ targets:
 
 ### org（`orgs:`、マルチテナントのサーバ backend）
 
-`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、その org が持つ targets を列挙します。
+`orgs:` は、ホスト型サーバ backend のテナントを宣言します（[BE-0015](../../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。各 org は、所属メンバー（明示の GitHub login＝`members`、および／または GitHub org 全体＝`githubOrgs`）と、その org が持つ targets を列挙します。
 
 ```yaml
 orgs:
@@ -204,7 +205,7 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 操作可能要素（trait ∈ `ACTIONABLE_TRAITS` = button / link / textField / searchField / textView / switch / slider / tab / cell）を母数として測定します。
 
-| 指標 | 定義 | しきい値 |
+| 指標 | 定義 | しきい値（既定） |
 |---|---|---|
 | `idCoverage` | id を持つ操作可能要素の割合 | ✓ ≥ 0.9 / warn 0.7–0.9 / fail < 0.7 |
 | `namespaceConformance` | id の先頭が `idNamespaces` に一致する割合 | 規約外を `off_namespace` に列挙 |
@@ -212,9 +213,22 @@ list.row.<id>               # 動的行: 末尾は「データ由来の安定キ
 
 ### グレード判定
 
-- **Blocked**: 画面に actionable な要素が 1 つも無い（多くは空画面、まだ読み込まれていない、または想定外の画面で、`render` がその旨を示します）、id 重複あり、**または** `idCoverage` < 0.7。
-- **Ready**: `idCoverage` ≥ 0.9 **かつ** `namespaceConformance` == 1.0。
+- **Blocked**: 画面に actionable な要素が 1 つも無い（多くは空画面、まだ読み込まれていない、または想定外の画面で、`render` がその旨を示します）、id 重複あり、**または** `idCoverage` < `idCoverageFail`（既定 0.7）。
+- **Ready**: `idCoverage` ≥ `idCoverageOk`（既定 0.9）**かつ** `namespaceConformance` == 1.0。
 - **Partial**: それ以外（実行はできるが、座標フォールバックやフレーキーの予告）。
+
+### しきい値の設定（`defaults.doctor`、BE-0024）
+
+グレード判定に使う id カバレッジのしきい値は `defaults.doctor` で変更できます。テスト用 id を付ける必要のない装飾的要素が多いアプリでは、しきい値を下げる（`idCoverageOk` や `idCoverageFail` を低めに設定する）ことで、ツール本体を変更せずに判定を緩められます。
+
+```yaml
+defaults:
+  doctor:
+    idCoverageOk:   0.85   # 既定 0.9。カバレッジがこの値以上で "Ready" の候補になります
+    idCoverageFail: 0.6    # 既定 0.7。カバレッジがこの値未満で "Blocked" になります
+```
+
+両方とも [0, 1] の範囲で指定し、`idCoverageOk` は `idCoverageFail` 以上でなければなりません。範囲外の値は config 読み込み時に拒否されます。省略すると既定値（0.9 / 0.7）が適用されるため、既存の config はそのまま動きます。
 
 ### 出力
 

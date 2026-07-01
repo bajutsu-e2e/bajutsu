@@ -298,17 +298,60 @@ def test_schemas_resolution_order() -> None:
     assert _resolve_schemas_dir("", eff_without, scenario_file) == Path("/scenarios/app/schemas")
 
 
+def test_goldens_parsed() -> None:
+    cfg = load_config("targets: { x: { bundleId: com.x, goldens: goldens/x } }")
+    assert resolve(cfg, "x").goldens == "goldens/x"
+
+
+def test_goldens_defaults_to_none() -> None:
+    cfg = load_config("targets: { x: { bundleId: com.x } }")
+    assert resolve(cfg, "x").goldens is None
+
+
+def test_goldens_resolution_order() -> None:
+    """_resolve_goldens_dir respects: --goldens flag > config > scenario-local default."""
+    from bajutsu.cli.commands.run import _resolve_goldens_dir
+
+    eff_with = resolve(load_config("targets: { x: { bundleId: com.x, goldens: cfg/gl } }"), "x")
+    eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
+    scenario_file = Path("/scenarios/app/smoke.yaml")
+
+    # flag wins over everything
+    assert _resolve_goldens_dir("flag/gl", eff_with, scenario_file) == Path("flag/gl")
+    assert _resolve_goldens_dir("flag/gl", eff_without, scenario_file) == Path("flag/gl")
+
+    # config used when no flag
+    assert _resolve_goldens_dir("", eff_with, scenario_file) == Path("cfg/gl")
+
+    # scenario-local default when neither flag nor config
+    assert _resolve_goldens_dir("", eff_without, scenario_file) == Path("/scenarios/app/goldens")
+
+
 def test_rebased_resolves_relative_paths_under_the_checkout_root() -> None:
     """Effective.rebased makes a Git config's relative path fields absolute under the checkout (BE-0063)."""
     eff = resolve(
         load_config(
-            "targets:\n  x:\n    bundleId: com.x\n    scenarios: e2e/scn\n    appPath: build/A.app\n"
+            "targets:\n  x:\n    bundleId: com.x\n    scenarios: e2e/scn\n    appPath: build/A.app\n    goldens: golden/data\n"
         ),
         "x",
     )
     rebased = eff.rebased(Path("/co"))
     assert rebased.scenarios == "/co/e2e/scn"
     assert rebased.app_path == "/co/build/A.app"
+    assert rebased.goldens == "/co/golden/data"
+
+
+def test_rebased_resolves_xcuitest_test_runner() -> None:
+    eff = resolve(
+        load_config(
+            "targets:\n  x:\n    bundleId: com.x\n    xcuitest:\n"
+            "      testRunner: build/Runner.xctestrun\n"
+        ),
+        "x",
+    )
+    rebased = eff.rebased(Path("/co"))
+    assert rebased.xcuitest is not None
+    assert rebased.xcuitest.test_runner == "/co/build/Runner.xctestrun"
 
 
 def test_rebased_refuses_a_path_field_escaping_the_checkout() -> None:
@@ -387,3 +430,163 @@ def test_web_target_without_explicit_platform_still_loads() -> None:
     # `platform`) loads fine — the platform is derived from the backend, baseUrl is its identifier.
     cfg = load_config("targets:\n  s:\n    baseUrl: https://app.test\n    backend: [playwright]\n")
     assert resolve(cfg, "s").platform == "web"
+
+
+# --- BE-0019: xcuitest config fields ---
+
+
+def test_xcuitest_config_resolves() -> None:
+    cfg = load_config(
+        "targets:\n"
+        "  s:\n"
+        "    bundleId: com.x\n"
+        "    xcuitest:\n"
+        "      testRunner: build/Runner.xctestrun\n"
+        "      build: xcodebuild build-for-testing\n"
+    )
+    eff = resolve(cfg, "s")
+    assert eff.xcuitest is not None
+    assert eff.xcuitest.test_runner == "build/Runner.xctestrun"
+    assert eff.xcuitest.build == "xcodebuild build-for-testing"
+
+
+def test_xcuitest_config_defaults_to_none() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").xcuitest is None
+
+
+# --- BE-0024: configurable doctor thresholds ---
+
+
+def test_doctor_thresholds_resolve_from_defaults() -> None:
+    cfg = load_config(
+        "defaults:\n"
+        "  doctor:\n"
+        "    idCoverageOk: 0.85\n"
+        "    idCoverageFail: 0.6\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    eff = resolve(cfg, "s")
+    assert eff.doctor_ok_coverage == 0.85
+    assert eff.doctor_fail_coverage == 0.6
+
+
+def test_doctor_thresholds_default_to_hardcoded_values() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    eff = resolve(cfg, "s")
+    assert eff.doctor_ok_coverage == 0.9
+    assert eff.doctor_fail_coverage == 0.7
+
+
+def test_doctor_ok_below_fail_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        load_config(
+            "defaults:\n"
+            "  doctor:\n"
+            "    idCoverageOk: 0.5\n"
+            "    idCoverageFail: 0.8\n"
+            "targets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
+def test_doctor_threshold_out_of_range_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        load_config(
+            "defaults:\n  doctor:\n    idCoverageOk: 1.5\ntargets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
+# --- BE-0099: webhook notification config ---
+
+
+def test_notify_config_resolves() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.SLACK_WEBHOOK_URL}'\n"
+        "    on: [failure, change]\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    eff = resolve(cfg, "s")
+    assert len(eff.notify) == 1
+    assert eff.notify[0].format == "slack"
+    assert eff.notify[0].url == "${secrets.SLACK_WEBHOOK_URL}"
+    assert eff.notify[0].on == ["failure", "change"]
+    assert eff.notify[0].targets == []
+
+
+def test_notify_defaults_to_failure_event() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.URL}'\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    assert resolve(cfg, "s").notify[0].on == ["failure"]
+
+
+def test_notify_with_targets_filter() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.URL}'\n"
+        "    targets: [checkout, login]\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    assert resolve(cfg, "s").notify[0].targets == ["checkout", "login"]
+
+
+def test_notify_unknown_format_rejected() -> None:
+    with pytest.raises(ValidationError, match="unknown notify format"):
+        load_config(
+            "notify:\n"
+            "  - format: teams\n"
+            "    url: '${secrets.URL}'\n"
+            "targets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
+def test_notify_unknown_event_rejected() -> None:
+    with pytest.raises(ValidationError, match="unknown notify event"):
+        load_config(
+            "notify:\n"
+            "  - format: slack\n"
+            "    url: '${secrets.URL}'\n"
+            "    on: [bogus]\n"
+            "targets:\n  s:\n    bundleId: com.x\n"
+        )
+
+
+def test_notify_target_override() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.A}'\n"
+        "targets:\n"
+        "  s:\n"
+        "    bundleId: com.x\n"
+        "    notify:\n"
+        "      - format: slack\n"
+        "        url: '${secrets.B}'\n"
+        "        on: [always]\n"
+    )
+    eff = resolve(cfg, "s")
+    assert len(eff.notify) == 1
+    assert eff.notify[0].url == "${secrets.B}"
+    assert eff.notify[0].on == ["always"]
+
+
+def test_notify_absent_resolves_to_empty() -> None:
+    cfg = load_config("targets:\n  s:\n    bundleId: com.x\n")
+    assert resolve(cfg, "s").notify == []
+
+
+def test_notify_on_accepts_single_string() -> None:
+    cfg = load_config(
+        "notify:\n"
+        "  - format: slack\n"
+        "    url: '${secrets.URL}'\n"
+        "    on: always\n"
+        "targets:\n  s:\n    bundleId: com.x\n"
+    )
+    assert resolve(cfg, "s").notify[0].on == ["always"]

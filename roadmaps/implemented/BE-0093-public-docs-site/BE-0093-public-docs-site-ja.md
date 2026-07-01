@@ -73,11 +73,15 @@ mkdocs-material では、テーマのオーバーライド（`overrides/home.htm
 - **サイトを docs の正規の置き場にする（`docs/` をサイト専用の構造へ移す）。** より大きな再構成で、GitHub で読めるソースの構成とバイリンガルのミラー規約を壊します。採用した方針は、リポジトリ内のソースを読める形に保ったまま `docs/` を**公開**します。
 - **BE-0015／BE-0016 のホスティングの成果を流用する。** これらの項目は `serve` という**アプリケーション**（コントロールプレーンと macOS ワーカーに分かれたサービス）をホストするもので、静的な公式サイトとは無関係です。別の関心事であり、重なりはありません。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [BE-0065 — Docstring 標準と生成 API リファレンス](../../implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference-ja.md)：拡張の対象である既存の mkdocs-material サイト。
 - [`mkdocs.yml`](../../../mkdocs.yml)：現在のサイト設定（API リファレンスのみ）。
 - [`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml)：眠っているビルド／デプロイ workflow。
 - [`docs/vision.md`](../../../docs/vision.md) · [`README`](../../../README.md)：ランディングページの素材。
-- [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) · [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)：`serve` という**アプリ**のホスティング（この静的サイトとは別物）。
+- [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) · [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)：`serve` という**アプリ**のホスティング（この静的サイトとは別物）。
 - [mkdocs-static-i18n](https://github.com/ultrabug/mkdocs-static-i18n)：ポータルのバイリンガル表示。

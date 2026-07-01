@@ -75,6 +75,10 @@ This proposal only removes coordinate swipes from that set.
   most likely to need preserved (custom canvases, map pans). Rejected: the cost of the mapping
   is low and the gap is user-visible.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [codegen.md](../../../docs/codegen.md)

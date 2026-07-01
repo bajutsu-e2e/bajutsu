@@ -182,6 +182,10 @@ captures.
   BE-0060 are the first two report-subsystem proposals; if more arrive, a "Reporting" topic can be
   carved out then.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — AI never judges; determinism

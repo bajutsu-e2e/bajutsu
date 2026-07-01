@@ -1,0 +1,58 @@
+{
+  "ctrl.toggle": {
+    "identifier": "ctrl.toggle",
+    "label": "Toggle",
+    "traits": ["checkBox"],
+    "value": "0",
+    "frame": [0.0, 0.0, 51.0, 31.0]
+  },
+  "ctrl.slider": {
+    "identifier": "ctrl.slider",
+    "label": null,
+    "traits": ["slider"],
+    "value": "0",
+    "frame": [0.0, 0.0, 200.0, 28.0]
+  },
+  "ctrl.segment.one": {
+    "identifier": "ctrl.segment.one",
+    "label": "One",
+    "traits": ["button"],
+    "value": null,
+    "frame": [0.0, 0.0, 60.0, 32.0]
+  },
+  "ctrl.segment.two": {
+    "identifier": "ctrl.segment.two",
+    "label": "Two",
+    "traits": ["button"],
+    "value": null,
+    "frame": [0.0, 0.0, 60.0, 32.0]
+  },
+  "ctrl.segment.three": {
+    "identifier": "ctrl.segment.three",
+    "label": "Three",
+    "traits": ["button"],
+    "value": null,
+    "frame": [0.0, 0.0, 60.0, 32.0]
+  },
+  "ctrl.menu": {
+    "identifier": "ctrl.menu",
+    "label": "Menu",
+    "traits": ["popUpButton"],
+    "value": null,
+    "frame": [0.0, 0.0, 80.0, 44.0]
+  },
+  "ctrl.button": {
+    "identifier": "ctrl.button",
+    "label": "Tap",
+    "traits": ["button"],
+    "value": null,
+    "frame": [0.0, 0.0, 80.0, 44.0]
+  },
+  "ctrl.buttonDisabled": {
+    "identifier": "ctrl.buttonDisabled",
+    "label": "Disabled",
+    "traits": ["button", "notEnabled"],
+    "value": null,
+    "frame": [0.0, 0.0, 80.0, 44.0]
+  }
+}

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Step
+from bajutsu.scenario import Assertion, Scenario, Step
 
 
 @dataclass
@@ -49,3 +49,36 @@ class Agent(Protocol):
         the loop treats a missing `plan` (or one that returns []) as "no up-front plan".
         """
         ...
+
+
+# ---------------------------------------------------------------------------
+# Enrichment (BE-0014)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class StepContext:
+    """What the enrichment agent sees for one replayed step: the step and the screen after it."""
+
+    step: Step
+    screen: list[base.Element]
+    screenshot: bytes | None = None
+
+
+@dataclass
+class EnrichmentProposal:
+    """The agent's proposed assertions for an existing scenario."""
+
+    expect: list[Assertion] = field(default_factory=list)
+    settle: Step | None = None
+    note: str = ""
+
+
+class EnrichmentAgent(Protocol):
+    """Proposes assertions for a scenario whose steps have already been replayed."""
+
+    def propose_assertions(
+        self,
+        scenario: Scenario,
+        step_contexts: list[StepContext],
+    ) -> EnrichmentProposal: ...

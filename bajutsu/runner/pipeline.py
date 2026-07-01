@@ -12,7 +12,13 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu import capability_preflight, idb_version
-from bajutsu.assertions import AssertionResult, SchemaContext, VisualContext, VisualEvidence
+from bajutsu.assertions import (
+    AssertionResult,
+    GoldenContext,
+    SchemaContext,
+    VisualContext,
+    VisualEvidence,
+)
 from bajutsu.backends import capabilities_for
 from bajutsu.config import Effective
 from bajutsu.evidence import Artifact
@@ -77,6 +83,7 @@ def run_all(
     baselines_dir: Path | None = None,
     schemas_dir: Path | None = None,
     actuator: str | None = None,
+    golden_context: GoldenContext | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -110,6 +117,7 @@ def run_all(
             preflighted against its static capability set and failed up front if it needs a
             capability the actuator lacks (BE-0082). None skips the preflight (a lease driven
             directly in tests).
+        golden_context: Goldens directory for `golden` assertions (BE-0006). None disables them.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -158,6 +166,19 @@ def run_all(
                     run_dir=run_dir,
                 )
             sc = SchemaContext(schemas_dir=schemas_dir) if schemas_dir is not None else None
+            # Best-effort device screen bounds for golden frame sanity (BE-0006):
+            # a query() failure here must not block non-golden scenarios.
+            gc_with_screen = golden_context
+            if golden_context is not None and golden_context.screen is None:
+                try:
+                    from bajutsu.capture import screen_size_from_elements
+
+                    sw, sh = screen_size_from_elements(lz.driver.query())
+                    gc_with_screen = GoldenContext(
+                        goldens_dir=golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
+                    )
+                except Exception:  # noqa: S110 — best-effort; _eval_golden falls back
+                    pass
             result = run_scenario(
                 lz.driver,
                 s,
@@ -173,6 +194,8 @@ def run_all(
                 visual_context=vc,
                 schema_context=sc,
                 mailbox=mailbox,
+                golden_context=gc_with_screen,
+                webview_bridge=lz.webview_bridge,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it
@@ -223,6 +246,7 @@ def run_and_report(
     actuator: str | None = None,
     config_source: dict[str, str] | None = None,
     exec_provenance: dict[str, str | None] | None = None,
+    golden_context: GoldenContext | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -254,6 +278,7 @@ def run_and_report(
         baselines_dir=baselines_dir,
         schemas_dir=schemas_dir,
         actuator=actuator,
+        golden_context=golden_context,
     )
     manifest = _assemble_report(
         scenarios,

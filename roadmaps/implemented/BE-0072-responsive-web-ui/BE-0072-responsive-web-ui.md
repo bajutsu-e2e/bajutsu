@@ -26,7 +26,7 @@ The `serve` UI already declares `<meta name="viewport" content="width=device-wid
 
 3. **A shrunk desktop is not a usable phone UI.** Because the wide layout is the only layout, a phone gets the desktop squeezed into its viewport: side-by-side panes with no room to coexist, tap targets sized for a cursor, and content reachable only by zoom-and-pan. The features are all present; they are just not laid out so a thumb can reach them.
 
-4. **Hosting makes phone access a real entry point.** As the hosting work turns `serve` into a shared, URL-addressable service — [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (public hosting) and [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting) — opening it from a phone stops being a corner case. A reviewer who gets a "run failed" ping wants to open that run's report on the device in their hand, glance at the result, and perhaps kick off a re-run; today that is a horizontally-scrolling struggle. Notably the embedded report is *already* part-way there — `bajutsu/templates/report.css` carries its own `@media` rules — so the report content reflows while the `serve` chrome around it does not. The shell is the piece left behind.
+4. **Hosting makes phone access a real entry point.** As the hosting work turns `serve` into a shared, URL-addressable service — [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (public hosting) and [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting) — opening it from a phone stops being a corner case. A reviewer who gets a "run failed" ping wants to open that run's report on the device in their hand, glance at the result, and perhaps kick off a re-run; today that is a horizontally-scrolling struggle. Notably the embedded report is *already* part-way there — `bajutsu/templates/report.css` carries its own `@media` rules — so the report content reflows while the `serve` chrome around it does not. The shell is the piece left behind.
 
 The goal is deliberately modest and bounded: the **same UI and the same features**, laid out so a narrow viewport gets a readable, tappable, single-column experience instead of a miniature desktop.
 
@@ -92,11 +92,15 @@ A broader desktop redesign of the resizable/collapsible tiling (this item only h
 * **Make the panes user-collapsible/resizable on desktop too (a general layout overhaul).** Out of scope here. This item is specifically the small-screen reflow; a broader resizable/collapsible-pane redesign for desktop, if wanted, is a separate proposal and must not block the narrow-viewport fix.
 * **Convert the mouse drag handlers to pointer events to get touch "for free".** Tempting, but a uniform pointer model would also bring the drag-to-split tiling and gutter-resize to touch, where they are awkward and pointless on a small screen — and it is a larger, riskier change to a working desktop interaction. Hiding those affordances at the narrow tier and adding a focused touch path only for the graph (the one thing that genuinely needs to move under a finger) is the smaller, safer change.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN.md](../../../DESIGN.md) — the prime directives this respects: AI never judges, determinism first, app-agnostic. The change adds no LLM and never computes a verdict; it only rearranges a Tier-1 convenience.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md) — the UI this reshapes, and its stdlib-only, single-self-contained-HTML, no-build-step constraints that bound the design.
-* [BE-0013 — Scenario GUI editor](../../proposals/BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) — the future structured-editing surface that will live in the same UI and must also behave on a small screen.
-* [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016 — Self-hosting of the web UI](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — the hosting direction that turns phone access into a realistic, desirable entry point.
+* [BE-0013 — Scenario GUI editor](../BE-0013-scenario-gui-editor/BE-0013-scenario-gui-editor.md) — the future structured-editing surface that will live in the same UI and must also behave on a small screen.
+* [BE-0015 — Public hosting of the web UI](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016 — Self-hosting of the web UI](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — the hosting direction that turns phone access into a realistic, desirable entry point.
 * [BE-0058 — Dogfood the serve Web UI](../../implemented/BE-0058-dogfood-web-ui/BE-0058-dogfood-web-ui.md) — the Web-backend regression net that asserts the responsive layout deterministically at a phone viewport.
 * `bajutsu/templates/serve.css`, `bajutsu/templates/serve.html.j2`, `bajutsu/templates/serve.js` — the frontend this item changes; `bajutsu/templates/report.css` — the already-responsive embedded report this item leaves untouched.

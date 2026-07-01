@@ -38,6 +38,10 @@ Nothing here touches pass/fail. The fix is an edit to the scenario source that a
 * **Auto-apply the fix during the run.** This is what some competitors do (see BE-0039) and it is rejected: silently editing the scenario mid-run can relax constraints without anyone seeing it. Here every fix is a dry-run diff first and is written only on explicit `--write` (the guards are BE-0023).
 * **Free-form text patches from the model.** Allowing arbitrary edits would let the model rewrite anything. Constraining fixes to three exact `find`/`replace` kinds, where `find` must be a substring of the source, makes a fix either apply cleanly or be a visible no-op — never a silent, broad rewrite.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [DESIGN §6.5](../../../DESIGN.md), `bajutsu triage --apply`

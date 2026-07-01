@@ -65,6 +65,14 @@ design alternative and costs nothing while unwired; deleting it would discard th
 a future taker to rediscover the shape. Keeping it deferred — with `architecture.md` flagging it
 as "schema only, not wired" — is the honest middle ground.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 [architecture.md](../../../docs/architecture.md#implementation-status), `config.py` `MockServer`

@@ -51,6 +51,7 @@ from bajutsu.scenario.models.assertions import (
     EventMatch,
     ExcludeRegion,
     Exists,
+    GoldenMatch,
     Gone,
     RequestMatch,
     ResponseSchemaMatch,
@@ -76,7 +77,7 @@ from bajutsu.scenario.models.scenario import (
 )
 from bajutsu.scenario.models.selector import Selector
 from bajutsu.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
-from bajutsu.scenario.models.steps import Extract, ForEach, If, Step, Use
+from bajutsu.scenario.models.steps import Extract, ForEach, If, Step, Use, Web
 
 __all__ = [
     "STEP_ACTIONS",
@@ -100,6 +101,7 @@ __all__ = [
     "Extract",
     "ForEach",
     "Foreground",
+    "GoldenMatch",
     "Gone",
     "HttpRequest",
     "If",
@@ -134,4 +136,5 @@ __all__ = [
     "VisualMatch",
     "Wait",
     "WaitRequest",
+    "Web",
 ]

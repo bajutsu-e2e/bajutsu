@@ -130,11 +130,15 @@ publishes. No LLM, no Simulator, Linux-only — consistent with the existing doc
   control-plane ⇄ macOS-worker service), which is unrelated to a static project website. Distinct
   concern; no overlap.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [BE-0065 — Docstring standard & generated API reference](../../implemented/BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md) — the existing mkdocs-material site this extends.
 - [`mkdocs.yml`](../../../mkdocs.yml) — current site config (API reference only).
 - [`.github/workflows/docs.yml`](../../../.github/workflows/docs.yml) — the dormant build/deploy workflow.
 - [`docs/vision.md`](../../../docs/vision.md) · [`README`](../../../README.md) — source material for the landing page.
-- [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) · [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — hosting the `serve` *app* (distinct from this static site).
+- [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) · [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) — hosting the `serve` *app* (distinct from this static site).
 - [mkdocs-static-i18n](https://github.com/ultrabug/mkdocs-static-i18n) — bilingual rendering for the portal.

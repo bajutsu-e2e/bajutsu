@@ -136,6 +136,10 @@ the natural-language intent behind that action:
   utterance, and exists for hand-authored scenarios too. Overloading it would conflate
   human-authored naming with AI provenance and lose the scenario/assertion/rule levels.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 - [DESIGN §6.5](../../../DESIGN.md) — normalization & round-trip; the `# from:` / provenance requirement

@@ -130,6 +130,10 @@ driver の意味的な `selectOption` capability が要り、これは
   selector は設計上失敗します（[DESIGN §2](../../../DESIGN.md)）。安定した id が誠実な解であり、ツールが報いる
   規律でもあります。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [BE-0041 Web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)：enabler

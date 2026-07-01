@@ -279,6 +279,10 @@ BE-0061、
 - **BE-0061 の判断に手を付けない（何もしない）。** 却下。費やされた ID と非連番という懸念は、小さくとも
   実在し、BE-0061 のレース保証を一切再び開くことなく取り除ける。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)：

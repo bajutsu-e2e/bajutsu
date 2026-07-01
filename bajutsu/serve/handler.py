@@ -172,7 +172,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                 case "/api/scenario":
                     self._json(
                         *ops.read_scenario(
-                            state, self._qs("target"), self._qs("path"), actor=self._actor()
+                            state,
+                            self._qs("target"),
+                            self._qs("path"),
+                            actor=self._actor(),
+                            run_id=self._qs("runId"),
+                            scenario_name=self._qs("scenario"),
                         )
                     )
                 case "/api/oauth/login":
@@ -187,6 +192,8 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.sso_login_poll(state, path[len("/api/sso/login/") :]))
                 case _ if path.startswith("/runs/") and path.endswith("/archive.zip"):
                     self._serve_run_archive(unquote(path[len("/runs/") : -len("/archive.zip")]))
+                case "/api/capture/screenshot":
+                    self._serve_capture_screenshot()
                 case _ if path.startswith("/runs/"):
                     self._serve_run_file(unquote(path[len("/runs/") :]))
                 case _:
@@ -257,6 +264,18 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.save_scenario(state, body, actor=self._actor()))
                 case "/api/approve":
                     self._json(*ops.approve_baseline(state, body, actor=self._actor()))
+                case "/api/scenario/resolve":
+                    self._json(*ops.resolve_scenario_pick(state, body, actor=self._actor()))
+                case "/api/enrich":
+                    self._json(*ops.start_enrich(state, body, actor=self._actor()))
+                case "/api/doctor":
+                    self._json(*ops.doctor_check(state, body, actor=self._actor()))
+                case "/api/capture/start":
+                    self._json(*ops.start_capture(state, body, actor=self._actor()))
+                case "/api/capture/mark":
+                    self._json(*ops.mark_capture(state, body, actor=self._actor()))
+                case "/api/capture/finish":
+                    self._json(*ops.finish_capture(state, body, actor=self._actor()))
                 case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     self._json(*ops.cancel_job(state, path[len("/api/jobs/") : -len("/cancel")]))
                 case _:
@@ -396,6 +415,22 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
         def _serve_run_file(self, rel: str) -> None:
             # report.html is rendered on view from the stored model (BE-0068); other files served as-is.
             self._serve_artifact(ops.run_file(self._artifacts(), rel))
+
+        def _serve_capture_screenshot(self) -> None:
+            session = state.capture
+            if session is None or not session.screenshot_path.exists():
+                self._json({"error": "no active capture session"}, 404)
+                return
+            if session.actor is not None and self._actor() != session.actor:
+                self._json({"error": "capture session belongs to another user"}, 403)
+                return
+            data = session.screenshot_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(data)
 
         def _serve_run_archive(self, run_id: str) -> None:
             # A one-file download of the whole run (BE-0060), through the same org-scoped store, so

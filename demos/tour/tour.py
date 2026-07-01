@@ -58,10 +58,10 @@ def note(title: str) -> None:
 
 
 def _eff() -> Effective:
-    """A minimal effective config for the FakeDriver-backed sample flow."""
+    """A minimal effective config for the FakeDriver-backed showcase flow."""
     return Effective(
-        target="sample",
-        bundle_id="com.bajutsu.sample",
+        target="showcase-swiftui",
+        bundle_id="com.bajutsu.showcase.swiftui",
         deeplink_scheme=None,
         backend=["fake"],
         device="FakeDriver",

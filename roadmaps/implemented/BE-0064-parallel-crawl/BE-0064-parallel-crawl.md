@@ -64,6 +64,10 @@ This is acceptable precisely because crawl is **Tier 1 and emits a discovery art
 * **Process-level parallelism** (N `bajutsu crawl` processes writing one map). Rejected: cross-process shared state + file locking is more fragile than one coordinator with worker tasks, the model `run` already uses.
 * **Async on a single device** (overlap AI calls without more simulators). Helps AI latency but not device work, and one simulator can't act on two screens at once; the simulator pool is the real lever. Worth combining later, not a substitute.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [BE-0038 — Autonomous crawl exploration](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — the engine this extends.

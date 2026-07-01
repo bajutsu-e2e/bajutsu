@@ -147,9 +147,20 @@ Every piece of evidence is recorded as an `Artifact(name, kind, provider)`, leav
 @dataclass
 class Artifact:
     name: str       # filename (e.g. "after.png")
-    kind: str       # "screenshot" / "elements" / "video" / "deviceLog"
-    provider: str   # "driver" (instant) / "simctl" (interval)
+    kind: str       # "screenshot" / "elements" / "video" / "deviceLog" / "network"
+    provider: str   # who supplied this artifact (see table below)
 ```
+
+| `provider` value | Meaning |
+|---|---|
+| `"driver"` | The actuator captured it directly (screenshots, element trees). |
+| `"simctl"` | Interval evidence from `simctl` (video, device log, app trace). |
+| `"collector"` | The idb app-side network collector (`BAJUTSU_COLLECTOR`). |
+| `"playwright"` | Native Playwright network observation (web backend). |
+| `"<backend> (fallback)"` | A read-only evidence fallback supplied the artifact ([BE-0020](../roadmaps/implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md)). |
+
+When an evidence kind cannot be supplied by any backend in the list, a `SkippedCapture(kind,
+reason)` is recorded per scenario and disclosed in the manifest — the gap is never silently empty.
 
 ## Masking (redact)
 

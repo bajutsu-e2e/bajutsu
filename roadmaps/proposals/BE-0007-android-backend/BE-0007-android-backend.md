@@ -105,6 +105,14 @@ the **lean** end of `capabilities()`.
   architectural twin, Web needs no macOS and no emulator and so fits the current Linux gate at the
   lowest cost. See [BE-0041](../../implemented/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md).
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+
 ## References
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,

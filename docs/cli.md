@@ -519,7 +519,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   session cookie — the token is never put in a URL. **Binding a non-loopback `--host` (e.g. `0.0.0.0`)
   requires a token**, so the server is never exposed unauthenticated (it exits otherwise). With no
   token the server is open, as before — only safe on loopback. Full multi-user auth (OAuth/RBAC) is
-  out of scope here ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+  out of scope here ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 - **CSRF + security headers (BE-0051).** When a token is set, a state-changing POST whose `Origin`
   doesn't match the `Host` is rejected (defense-in-depth atop the `SameSite=Strict` session cookie);
   non-browser clients (no `Origin`) are unaffected. Every response carries `X-Content-Type-Options:
@@ -532,7 +532,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   has a **From a Git repository** field for the same spec: serve materializes the repo subtree at the
   ref into its cache, binds that config, and serves from the checkout root — so the config's relative
   `scenarios` / `appPath` / `build` resolve against the fetched tree. This is the self-hosted payoff
-  ([BE-0016](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
+  ([BE-0016](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A):
   point serve at the team's test repository instead of hand-syncing files, and switch branches in the
   UI rather than redeploying. The file browser stays confined to `--root`; the checkout is a managed
   content-addressed cache, and a Git-sourced run confines the config's path fields to the checkout
@@ -593,7 +593,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   selected app's scenarios dir** (no arbitrary host paths or `..` traversal), and `backend` / `udid`
   must be known tokens, not free text — so a request can't run an arbitrary file or smuggle
   surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
-  ([BE-0015 / BE-0016](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md));
+  ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
 - **`--max-concurrent-runs` (default 4)** caps how many run/record jobs may run at once so one
   caller can't monopolize the scarce device (BE-0051); dispatch over the cap returns **429**. Set
@@ -625,7 +625,7 @@ bajutsu mcp [--config bajutsu.config.yaml] [--runs runs] [--transport stdio]
 ## `worker`
 
 Leases queued runs from Redis and executes them — the execution half of the hosted server backend
-([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md);
+([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md);
 [self-hosting](self-hosting.md)). Needs the optional `bajutsu[worker]` extra (`redis` / `rq`); not
 needed for local use.
 

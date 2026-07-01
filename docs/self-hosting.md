@@ -4,7 +4,7 @@
 
 > Run the bajutsu web UI ([cli](cli.md#serve)) on hardware you own, reachable by your team over a
 > private Tailscale network, from the self-hosting roadmap
-> ([BE-0016](../roadmaps/proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
+> ([BE-0016](../roadmaps/in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
 > Two tiers are available today, both made safe to expose by
 > [BE-0051](../roadmaps/implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
 > auth + input validation:
@@ -17,7 +17,7 @@
 >   *[Tier B — self-hosting the server backend](#tier-b--self-hosting-the-server-backend)*).
 >
 > The fully managed public cloud offering (a hosted MacStadium worker pool + IaC) remains future
-> ([BE-0015](../roadmaps/proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+> ([BE-0015](../roadmaps/in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 
 ## The macOS constraint
 

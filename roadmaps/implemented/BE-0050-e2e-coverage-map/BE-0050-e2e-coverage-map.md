@@ -54,58 +54,6 @@ Proposal altitude.
 - **Determinism.** Every figure is a deterministic aggregation over captured artifacts; there is
   no model and no judgement call. This keeps the feature firmly on the Tier-1 / reporting side.
 
-### Implementation status
-
-The first slice ships the **id-namespace dimension** statically — the highest-value figure, whose
-denominator (declared `idNamespaces`) is already fully defined. `bajutsu coverage --app <name>`
-(`bajutsu/coverage.py`, `bajutsu/cli/commands/coverage.py`) walks every scenario in the app's
-configured `scenarios` dir, groups the stable ids each references (via `bajutsu.audit.referenced_ids`,
-reusing the audit selector walk) by namespace, and reports per-namespace coverage, the gap list, and
-off-namespace ids — read-only, AI-free, exits 0 even with gaps. It is the suite-level cousin of
-`doctor`'s per-screen convention score.
-
-The second slice adds the **endpoints-observed-vs-declared** dimension, now that the
-behavioral-assertions sibling ([BE-0048](../../implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions.md))
-ships the "declared" half. `bajutsu coverage --runs <dir>` reads the union of every `network.json`
-under the run set (the first run evidence the map folds in) and measures how many **observed**
-endpoints (`METHOD path`) the suite's network assertions — `request` / `event` / `requestSequence`,
-collected by `coverage.referenced_requests` and tested with `assertions.match_request` — cover,
-reporting the asserted fraction, the **unasserted** observed endpoints (untested traffic), and
-matchers declared but observed in no run. (`responseSchema`'s `request` joins the declared set once
-[#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) lands.)
-
-The third slice folds **observed ids** into the id-namespace map alongside the static analysis,
-under the same `--runs` flag. `coverage.observed_id_coverage` collects the stable ids the runs
-actually *rendered* — each element's `identifier` from every per-step `elements.json` under the run
-set (null ids dropped) — and groups them by the declared `idNamespaces`, mirroring the static
-`coverage()`: per-namespace observed ids, namespaces *observed in no run*, and off-namespace
-observed ids. It complements the static "referenced" figure (which ids the scenarios *write*) with
-the run-evidence "observed" figure (which ids the runs *showed*), exposing namespaces a run set
-never actually exercised. Still read-only, AI-free, and exits 0 even with gaps.
-
-The fourth slice ships the **HTML report** the proposal's *Output* names, alongside the existing
-text / JSON output: `bajutsu coverage --html <path>` writes a self-contained page (inline CSS, no
-JavaScript, no external asset — it opens straight from disk) via `coverage.render_html` and the
-`coverage.html.j2` template, with a coverage bar per dimension and the gap / off-namespace lists
-called out. It visualizes whichever dimensions are present — the static id-namespace map always, the
-endpoint and observed-id maps when `--runs` supplies them — and stays read-only and AI-free: the
-flag only writes a file, it never changes the verdict or the text/JSON output.
-
-The fifth slice ships the **screens-visited** dimension the *Motivation* names — the last one, now
-that autonomous crawl ([BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md))
-supplies its crawl-discovered denominator. `bajutsu coverage --crawl <screenmap> --runs <dir>`
-measures how many of a crawl's discovered screens the run set reached: the denominator is the
-`screenmap.json` nodes; the numerator is each per-step `elements.json` fingerprinted with the *same*
-`crawl.fingerprint`, so a visited screen matches a discovered one. `coverage.screen_coverage` reports
-the fraction reached and the **unvisited** screens (discovered, no run touched), and feeds the text /
-JSON / HTML outputs like the other dimensions. A run fingerprint the crawl never found cannot inflate
-the figure — only the discovered set is the denominator. Still read-only, AI-free, and exits 0 even
-with gaps; the `crawl.fingerprint` reuse keeps the visited and discovered identities comparable
-without a second algorithm.
-
-With the static, endpoint, observed-id, and screens-visited dimensions all shipped, every dimension
-the proposal named is implemented.
-
 ## Alternatives considered
 
 * **Source-level code coverage instrumentation.** A different layer (it measures app code paths,
@@ -116,6 +64,14 @@ the proposal named is implemented.
   unnecessary — coverage against declared namespaces and captured evidence is an exact count.
 * **Do nothing (status quo).** Acceptable, but "what's covered?" stays unanswered and gaps stay
   invisible; the evidence and namespace declarations needed to answer it already exist.
+
+## Progress
+
+- [x] id-namespace dimension (static) — `bajutsu coverage --app`.
+- [x] endpoints observed-vs-declared — `bajutsu coverage --runs`.
+- [x] observed ids folded into the id-namespace map (`--runs`).
+- [x] HTML report — `bajutsu coverage --html` (self-contained, no JavaScript).
+- [x] screens-visited dimension — `bajutsu coverage --crawl <screenmap> --runs`, reusing `crawl.fingerprint` so visited and discovered screens stay comparable.
 
 ## References
 

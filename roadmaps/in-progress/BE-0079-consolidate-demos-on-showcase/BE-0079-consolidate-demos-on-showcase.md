@@ -8,7 +8,7 @@
 | Proposal | [BE-0079](BE-0079-consolidate-demos-on-showcase.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371) |
+| Implementing PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371), [#418](https://github.com/bajutsu-e2e/bajutsu/pull/418) |
 | Topic | Dogfood fixtures (demo apps) |
 | Origin | Dogfooding |
 <!-- /BE-METADATA -->
@@ -202,6 +202,14 @@ on-device path the local gate cannot run:
   trimming would quietly weaken the on-device regression net.
 - **Fold this into BE-0045.** Rejected: BE-0045 is shipped and explicitly scoped the migration out,
   and BE IDs are permanent — the migration is a distinct, trackable piece of work.
+
+## Progress
+
+- [x] codegen → XCUITest and visual-regression paths on the showcase — a `UITests` target (`demos/showcase/swiftui/UITests/`) and the VRT scenario/baselines ([#371](https://github.com/bajutsu-e2e/bajutsu/pull/371)).
+- [x] On-device CI on the showcase — `e2e.yml` runs showcase smoke + xcuitest jobs alongside the sample ([#371](https://github.com/bajutsu-e2e/bajutsu/pull/371)).
+- [ ] Remaining parity (E.1) — the missing interaction targets (gestures, device/system-state mirror, controls), the full evidence tour, and a focused first-look slice.
+- [ ] Switch (E.2) — re-point the demo menu (`demos/Makefile`, `demos/demo.config.yaml`) and the bilingual docs at the showcase.
+- [ ] Retire (E.3) — delete the legacy `demos/app/`, `demos/features/app/`, `demos/record/app/` and the orphaned configs/scripts, then the final docs cleanup.
 
 ## References
 

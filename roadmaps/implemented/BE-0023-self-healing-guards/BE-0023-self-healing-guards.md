@@ -37,6 +37,10 @@ Together these mean the worst a fix can do is be reviewed and rejected. It canno
 * **Allow assertion-weakening fixes behind a stronger warning.** Rejected. Loosening an expectation is the most direct way to make a test laxer, so no fix kind produces one; assertion failures get suggestions for a human, never an applicable fix.
 * **Trust review alone, drop the no-op safety.** Without the fragment-mismatch no-op, a stale fix could partially apply or corrupt the file in surprising ways. Making mismatch a visible no-op keeps even a rejected or outdated fix from doing damage.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [DESIGN §11](../../../DESIGN.md)

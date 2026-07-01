@@ -37,6 +37,10 @@ Masking reuses and extends the existing `redact` machinery (`bajutsu/redaction.p
 
 **An encrypted secret store / vault integration.** Rejected as out of scope: the environment is the conventional, CI-native channel for credentials and needs no extra dependency or daemon. A vault could plug in later by populating the same environment variables, with no change to the scenario surface.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 `bajutsu/interp.py` · `bajutsu/redaction.py`, [evidence.md](../../../docs/evidence.md),

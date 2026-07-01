@@ -37,6 +37,7 @@ from bajutsu.scenario.models import (
     Extract,
     ForEach,
     Foreground,
+    GoldenMatch,
     Gone,
     HttpRequest,
     If,
@@ -71,6 +72,7 @@ from bajutsu.scenario.models import (
     VisualMatch,
     Wait,
     WaitRequest,
+    Web,
 )
 from bajutsu.scenario.select import select_scenarios
 from bajutsu.scenario.serialize import (
@@ -102,6 +104,7 @@ __all__ = [
     "Extract",
     "ForEach",
     "Foreground",
+    "GoldenMatch",
     "Gone",
     "HttpRequest",
     "If",
@@ -136,6 +139,7 @@ __all__ = [
     "VisualMatch",
     "Wait",
     "WaitRequest",
+    "Web",
     "apply_setups",
     "dump_mocks",
     "dump_scenario_file",

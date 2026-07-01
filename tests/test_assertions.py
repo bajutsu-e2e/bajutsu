@@ -5,6 +5,8 @@ Verify that scenario -> resolve -> assert closes as pure logic.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from conftest import el
 
@@ -215,3 +217,155 @@ def test_visual_assertion_no_context():
     result = evaluate_one(SCREEN, _a({"visual": {"baseline": "x.png"}}))
     assert not result.ok
     assert "no visual context" in result.reason
+
+
+# --- golden element-tree assertion (BE-0006) ---
+
+
+def test_golden_model_accepts_valid_path() -> None:
+    a = _a({"golden": {"path": "goldens/controls.json"}})
+    assert a.golden is not None
+    assert a.golden.path == "goldens/controls.json"
+
+
+def test_golden_model_rejects_empty_path() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="string_too_short"):
+        _a({"golden": {"path": ""}})
+
+
+def test_golden_assertion_pass(tmp_path: Path) -> None:
+    import json
+
+    from bajutsu.assertions import GoldenContext
+
+    golden_dir = tmp_path / "goldens"
+    golden_dir.mkdir()
+    golden_data = {
+        "ctrl.toggle": {
+            "identifier": "ctrl.toggle",
+            "label": "Toggle",
+            "traits": ["switch"],
+            "value": "1",
+            "frame": [10.0, 20.0, 50.0, 30.0],
+        }
+    }
+    (golden_dir / "controls.json").write_text(json.dumps(golden_data), encoding="utf-8")
+
+    elements: list[base.Element] = [
+        el("ctrl.toggle", "Toggle", ["switch"], value="1", frame=(10.0, 20.0, 50.0, 30.0)),
+    ]
+    ctx = GoldenContext(goldens_dir=golden_dir)
+    result = evaluate_one(elements, _a({"golden": {"path": "controls.json"}}), golden_context=ctx)
+    assert result.ok
+    assert result.kind == "golden"
+
+
+def test_golden_assertion_mismatch_fails(tmp_path: Path) -> None:
+    import json
+
+    from bajutsu.assertions import GoldenContext
+
+    golden_dir = tmp_path / "goldens"
+    golden_dir.mkdir()
+    golden_data = {
+        "ctrl.toggle": {
+            "identifier": "ctrl.toggle",
+            "label": "Toggle",
+            "traits": ["switch"],
+            "value": "1",
+            "frame": [10.0, 20.0, 50.0, 30.0],
+        }
+    }
+    (golden_dir / "controls.json").write_text(json.dumps(golden_data), encoding="utf-8")
+
+    elements: list[base.Element] = [
+        el("ctrl.toggle", "Switch", ["button"], value="0", frame=(10.0, 20.0, 50.0, 30.0)),
+    ]
+    ctx = GoldenContext(goldens_dir=golden_dir)
+    result = evaluate_one(elements, _a({"golden": {"path": "controls.json"}}), golden_context=ctx)
+    assert not result.ok
+    assert "ctrl.toggle" in result.reason
+
+
+def test_golden_assertion_missing_element_fails(tmp_path: Path) -> None:
+    import json
+
+    from bajutsu.assertions import GoldenContext
+
+    golden_dir = tmp_path / "goldens"
+    golden_dir.mkdir()
+    golden_data = {
+        "ctrl.toggle": {
+            "identifier": "ctrl.toggle",
+            "label": "Toggle",
+            "traits": ["switch"],
+            "value": "1",
+            "frame": [10.0, 20.0, 50.0, 30.0],
+        }
+    }
+    (golden_dir / "controls.json").write_text(json.dumps(golden_data), encoding="utf-8")
+
+    ctx = GoldenContext(goldens_dir=golden_dir)
+    result = evaluate_one([], _a({"golden": {"path": "controls.json"}}), golden_context=ctx)
+    assert not result.ok
+    assert "missing" in result.reason.lower()
+
+
+def test_golden_assertion_no_context_fails() -> None:
+    result = evaluate_one(SCREEN, _a({"golden": {"path": "controls.json"}}))
+    assert not result.ok
+    assert "no golden context" in result.reason
+
+
+def test_golden_assertion_file_not_found_fails(tmp_path: Path) -> None:
+    from bajutsu.assertions import GoldenContext
+
+    ctx = GoldenContext(goldens_dir=tmp_path)
+    result = evaluate_one(SCREEN, _a({"golden": {"path": "nonexistent.json"}}), golden_context=ctx)
+    assert not result.ok
+
+
+def test_golden_path_traversal_rejected(tmp_path: Path) -> None:
+    from bajutsu.assertions import GoldenContext
+
+    ctx = GoldenContext(goldens_dir=tmp_path)
+    result = evaluate_one(SCREEN, _a({"golden": {"path": "../../etc/passwd"}}), golden_context=ctx)
+    assert not result.ok
+    assert "escapes" in result.reason
+
+
+def test_golden_via_evaluate(tmp_path: Path) -> None:
+    """Golden assertions work through the batch evaluate() path too."""
+    import json
+
+    from bajutsu.assertions import GoldenContext
+
+    golden_dir = tmp_path / "goldens"
+    golden_dir.mkdir()
+    golden_data = {
+        "ctrl.toggle": {
+            "identifier": "ctrl.toggle",
+            "label": "Toggle",
+            "traits": ["switch"],
+            "value": "1",
+            "frame": [10.0, 20.0, 50.0, 30.0],
+        }
+    }
+    (golden_dir / "controls.json").write_text(json.dumps(golden_data), encoding="utf-8")
+
+    elements: list[base.Element] = [
+        el("ctrl.toggle", "Toggle", ["switch"], value="1", frame=(10.0, 20.0, 50.0, 30.0)),
+    ]
+    ctx = GoldenContext(goldens_dir=golden_dir)
+    results = evaluate(
+        elements,
+        [
+            _a({"exists": {"id": "ctrl.toggle"}}),
+            _a({"golden": {"path": "controls.json"}}),
+        ],
+        golden_context=ctx,
+    )
+    assert passed(results)
+    assert results[1].kind == "golden"

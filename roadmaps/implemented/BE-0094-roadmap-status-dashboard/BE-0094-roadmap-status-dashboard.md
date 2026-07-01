@@ -121,6 +121,10 @@ API reference — to be served. That one-time repository setting is outside this
   progress that *is* shown is the opposite: a straight count of `Implemented` items over the
   category total, derived entirely from the `Status` field.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [`roadmaps/README.md`](../../README.md), `scripts/build_roadmap_dashboard.py`,

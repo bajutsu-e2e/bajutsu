@@ -43,8 +43,8 @@ out. The gap bites in four concrete ways:
    the wrong root and the relative links break) and unavailable to anyone not sitting at that
    shell.
 3. **A hosted or remote `serve` gives the browser no file-system access.** When `serve` runs on a
-   remote worker or a shared host ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-   [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), the
+   remote worker or a shared host ([BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
+   [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), the
    `runs/` directory lives on that machine, not the user's. A browser user has *no* way to retrieve
    a complete run — they can view the embedded report but cannot take it with them. A download
    endpoint is the only mechanism that closes this.
@@ -135,8 +135,8 @@ secret value appears in any zipped byte; (e) the `serve` endpoint sets `applicat
 ### Out of scope
 
 Multi-run bundles; a lean "report + referenced assets only" subset (see *Alternatives*); cloud
-upload or share-links (a hosting concern, [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
-/ [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)); and
+upload or share-links (a hosting concern, [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)
+/ [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)); and
 retention / cleanup of old runs.
 
 ## Alternatives considered
@@ -164,6 +164,10 @@ retention / cleanup of old runs.
   siblings appear (cloud upload, share-links, alternative export formats), a dedicated topic can be
   carved out then.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 * [CLAUDE.md](../../../CLAUDE.md), [DESIGN §2](../../../DESIGN.md) — AI never judges; determinism
@@ -171,8 +175,8 @@ retention / cleanup of old runs.
 * [BE-0011 — Local web UI (`bajutsu serve`)](../../implemented/BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)
   — the embedded report and the relative-link evidence serving this extends; where the Download
   button lives.
-* [BE-0015 — Public hosting of the web UI](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-  [BE-0016 — Self-hosting of the web UI](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
+* [BE-0015 — Public hosting of the web UI](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
+  [BE-0016 — Self-hosting of the web UI](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   — why a download endpoint matters when the browser has no access to the worker's file system.
 * [BE-0032 — Secret variables](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md)
   — the existing artifact scrub the zip inherits.

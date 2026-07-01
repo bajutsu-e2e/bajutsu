@@ -22,11 +22,11 @@
 
 チームの config とシナリオはリポジトリに置かれており、`bajutsu run` は*ローカルの*ツリーと*ビルド済みの*アプリ成果物を消費します（[DESIGN §1](../../../DESIGN.md)：「Bajutsu はアプリをビルドしない。既存の `xcodebuild` 成果物を受け取る」）。ローカルの Mac ならこれで十分ですが、**ホスト型でリモートの serve** では、手作業での配置でも Git source でも埋めきれない隙間が残ります。
 
-1. **ホスト型 serve のブラウザ利用者はホストのファイルシステムに触れない。** serve がリモートのワーカーや共有 Mac で動くとき（[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、config、シナリオ、`runs/` はすべて*その*マシンにあります。現在の UI の config 選択は **`--root` に封じ込められたファイルブラウザ**（`bajutsu/serve/operations.py` の `_confined_config_path`）なので、運用者が事前にホストへ手で置いたものからしか選べません。ブラウザ利用者は自分のスイートを持ち込めないのです。これは [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) のモチベーション 3（run を*取り出す*ためのファイルシステムアクセスが無い）のちょうど鏡像で、ここで欠けている方向は**スイートを*入れる***ことです。
+1. **ホスト型 serve のブラウザ利用者はホストのファイルシステムに触れない。** serve がリモートのワーカーや共有 Mac で動くとき（[BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）、config、シナリオ、`runs/` はすべて*その*マシンにあります。現在の UI の config 選択は **`--root` に封じ込められたファイルブラウザ**（`bajutsu/serve/operations.py` の `_confined_config_path`）なので、運用者が事前にホストへ手で置いたものからしか選べません。ブラウザ利用者は自分のスイートを持ち込めないのです。これは [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) のモチベーション 3（run を*取り出す*ためのファイルシステムアクセスが無い）のちょうど鏡像で、ここで欠けている方向は**スイートを*入れる***ことです。
 
 2. **Git source はビルド済みバイナリを運べない。** [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) は ref で指定したリポジトリの部分木を materialize します。これは*テキスト*（config + YAML シナリオ）には理想的ですが、**コンパイル済みアプリ**には向きません。チームは `.app` / `.ipa` 成果物を Git にコミットしませんし、BE-0063 自身も config の `build:` コマンドでホスト上でバイナリを（再）生成する設計に寄っています。これにはそのホストに完全なツールチェーンが要ります。zip は、**ビルド済み**成果物を config やシナリオと一緒に束ねられる唯一の転送手段であり、これはまさに [DESIGN §1](../../../DESIGN.md) が「Bajutsu が消費する」と述べているものです。2 つの取得経路は補完的です。バージョン管理されたテキストには Git、ビルド済みバイナリにはアップロードです。
 
-3. **今日はホストへ手で配置するしか道がない。** セルフホストの Tier A ガイド（[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）では、運用者がチームの config、シナリオ、バイナリを Mac へコピーし、手で同期し続けます。アップロードは「運用者に build を scp してもらい `--root` を編集する」を「ページに zip をドラッグして実行を押す」に変えます。
+3. **今日はホストへ手で配置するしか道がない。** セルフホストの Tier A ガイド（[BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）では、運用者がチームの config、シナリオ、バイナリを Mac へコピーし、手で同期し続けます。アップロードは「運用者に build を scp してもらい `--root` を編集する」を「ページに zip をドラッグして実行を押す」に変えます。
 
 アーカイブの*インポート*はコードベースにまだ存在しません。[BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) が**エクスポート**側（stdlib の `zipfile`、1 つの archiver）を提案しており、本提案は同じ stdlib の土台の上に**インポート**側を提案します。両者が揃うと、run の束は双方向に持ち運べる単位になります。
 
@@ -83,7 +83,7 @@ my-suite.zip
 ### スコープ外
 
 - **ソースからのアプリビルド。** [DESIGN §1](../../../DESIGN.md) は Bajutsu がビルド済み成果物を受け取ると明言しています。束はビルド成果物を運ぶのであって、ビルドはしません。（config の `build:` によるオンデマンドビルドは、ツールチェーンのある*ローカル* / Git の場合のために残ります。）
-- **マルチテナントの実行アイソレーション。** テナントごとの Simulator、ジョブごとの egress 制御、org 単位のストレージは [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) の領域です。本項目は単一 Mac の Tier A serve を対象にします。
+- **マルチテナントの実行アイソレーション。** テナントごとの Simulator、ジョブごとの egress 制御、org 単位のストレージは [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) の領域です。本項目は単一 Mac の Tier A serve を対象にします。
 - **保持／アップロード束のライブラリ化。** アップロードはエフェメラルです。それを永続化しバージョン管理するのは Git source（[BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）の仕事であり、本項目の仕事ではありません。
 
 ## 検討した代替案
@@ -95,13 +95,17 @@ my-suite.zip
 - **zip ではなく tarball。** 対称性と到達範囲のため却下します。`.ipa` や zip 化した `.app` は既に zip であり、stdlib の `zipfile` は [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) がエクスポートに使うのと同じ土台で、zip はどの OS でもダブルクリックで開けます。
 - **アップロードを再利用ライブラリとして永続化する。** 先送りします。それはバージョン管理されたストレージであり、Git（[BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）が既にそれです。アップロードはエフェメラルのままにします。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [CLAUDE.md](../../../CLAUDE.md)、[DESIGN §1](../../../DESIGN.md)（Bajutsu はビルド済みアプリを受け取り、ビルドはしない）、[DESIGN §2](../../../DESIGN.md)（AI は判定者にならない、決定性優先、テストごとにクリーン環境）。
 - [BE-0060 — run レポートを zip でダウンロード／エクスポート](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md) — **エクスポート**側の鏡像。共有する stdlib `zipfile` の土台であり、往復の相手。
 - [BE-0063 — config（とそのシナリオ木）を Git リポジトリ + ref から読む](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md) — **プル**側の兄弟。本提案が再利用する `ConfigSource` シームと「ツリーを materialize し展開ルートを基準に config を解決する」機構。
 - [BE-0051 — ホスティングのための serve hardening](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md) — 本提案が乗る token 認証 + パス封じ込め。`_confined_config_path` の不変条件を展開へ拡張。
-- [BE-0015 — Web UI の公開ホスティング](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016 — Web UI のセルフホスティング](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) — なぜブラウザ利用者にアップロードが要るか。より深いマルチテナント隔離の置き場所。
+- [BE-0015 — Web UI の公開ホスティング](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0016 — Web UI のセルフホスティング](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) — なぜブラウザ利用者にアップロードが要るか。より深いマルチテナント隔離の置き場所。
 - [BE-0059 — run のために対象サーバを起動する（`launchServer`）](../../implemented/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md) — 後続スライス向けの web backend の対応物（束ねた静的サイトを配信）。
 - [BE-0032 — 秘匿変数](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables-ja.md) — 秘匿情報は束ではなくホスト環境から来る。
 - `bajutsu/config.py`（`AppConfig.appPath` / `build` / `bundleId` / `baseUrl`）、`bajutsu/serve/handler.py`（生の zip アップロード経路を得る `do_POST` のボディ処理）、`bajutsu/serve/operations.py`（`bind_config` / `bind_git_config` / `bind_upload_config`、config バインド経路）、`bajutsu/serve/jobs.py`（run ジョブ機構と `ServeState.bind_upload`）、`bajutsu/serve/artifacts.py`（封じ込められた成果物ストア） — 本提案が触れる表面。

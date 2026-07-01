@@ -33,7 +33,7 @@ untouched ([DESIGN §2 / §3.1](../../../DESIGN.md)); nothing here can put an LL
 is that teams standardized on AWS authenticate "via the IAM roles / SSO they already run" rather than
 a provisioned `ANTHROPIC_API_KEY`. The provider seam delivers that for the CLI, but the web UI — the
 front door for many users, and the only entry point for a remote, self-hosted `serve`
-([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A) — leaves SSO entirely
+([BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A) — leaves SSO entirely
 out of band. Three concrete frictions follow:
 
 - **The shell prerequisite isn't visible from the UI.** A user must know to run `aws sso login` and
@@ -44,7 +44,7 @@ out of band. Three concrete frictions follow:
   "session status + re-authenticate" control is the real UX win, not just the initial sign-in.
 - **Remote `serve` can't use `aws sso login` at all.** That command opens a browser **on the serve
   host**. When the host isn't the user's machine (a Mac mini reached over Tailscale, per
-  [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), the browser is in the
+  [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)), the browser is in the
   wrong place. The SSO **device-authorization** flow solves this: surface the `verificationUriComplete`
   and user code in the web UI so the user approves in *their* browser.
 
@@ -66,12 +66,12 @@ that environment (`bajutsu/serve/jobs.py` — `_spawn_env`).
   selects a profile by name, starts sign-in, and sets `AWS_PROFILE`. Entering the SSO config (start
   URL, account, role) from the UI is a noted future extension, not v1.
 - **Local *and* remote `serve`.** The verification URL/code are shown in the browser, so a
-  Tailscale-reached host ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
+  Tailscale-reached host ([BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   Tier A) works as well as a local one.
 - **Single operator.** The serve process holds one SSO session for everyone who reaches it. Per-user
   identity on a shared, multi-tenant server is explicitly **out of scope** and belongs to
-  [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
-  [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (OAuth/IdP, per-org scoped
+  [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
+  [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (OAuth/IdP, per-org scoped
   secrets).
 
 ### How credentials reach a job (reuse the existing seam)
@@ -153,8 +153,8 @@ unexpired — the same spirit as BE-0053's optional provider-credential check. *
 ### Out of scope
 
 - Per-user SSO identity on a shared server (multi-tenant) →
-  [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
-  [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
+  [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) /
+  [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md).
 - Pasting static AWS keys or managing `AWS_BEARER_TOKEN_BEDROCK` from the UI — the existing env / `.env`
   path already covers those; this item is specifically the SSO experience.
 - Bedrock for the `claude-code` agent — a separate mechanism, out of scope in BE-0053 too.
@@ -175,6 +175,17 @@ unexpired — the same spirit as BE-0053's optional provider-credential check. *
 - **Enter the full SSO config (start URL / account / role) from the UI.** Deferred past v1, which
   assumes an existing `aws configure sso` profile; noted as a future extension.
 
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the work breakdown in *Detailed design*.
+
+- [x] Backend seam — `SsoEngine` protocol + `NativeSsoEngine` (boto3 `sso-oidc` device flow, botocore token cache), injected into `ServeState`.
+- [x] Serve operations + routes on both backends — `/api/sso`, `/api/sso/login[/<handle>]`, `/api/sso/logout` (admin-gated per BE-0051).
+- [x] Settings-panel UI (Bedrock only): profile + sign-in, verification URL/code, poll to completion, session status + sign-out.
+- [x] Tests via an injected fake engine (gate-green without AWS); docs (`cli.md` + ja mirror).
+- [ ] Validate `NativeSsoEngine` against a real IAM Identity Center (its AWS calls can't run on the Linux gate).
+- [ ] CLI-delegation engine (`aws sso login --no-browser`) behind the same `SsoEngine` interface.
+
 ## References
 
 `bajutsu/anthropic_client.py` (the provider client factory), `bajutsu/serve/operations.py`
@@ -184,6 +195,6 @@ unexpired — the same spirit as BE-0053's optional provider-credential check. *
 [DESIGN §2 / §3.1](../../../DESIGN.md),
 [BE-0053 — Amazon Bedrock as a pluggable AI provider](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md),
 [BE-0051 — Serve hardening for hosting](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md),
-[BE-0016 — Self-hosting of the web UI](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md),
+[BE-0016 — Self-hosting of the web UI](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md),
 [BE-0047 — AI data sovereignty](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md),
 AWS docs — IAM Identity Center device authorization flow; botocore SSO credential provider.

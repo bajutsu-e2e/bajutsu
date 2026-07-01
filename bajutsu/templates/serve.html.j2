@@ -14,6 +14,8 @@
       <button class="toptab active" data-view="record" data-testid="nav.record">Record</button>
       <button class="toptab" data-view="replay" data-testid="nav.replay">Replay</button>
       <button class="toptab" data-view="crawl" data-testid="nav.crawl">Crawl</button>
+      <button class="toptab" data-view="capture" data-testid="nav.capture">Capture</button>
+      <button class="toptab" data-view="editor" data-testid="nav.editor">Editor</button>
       <button class="cfgbtn" id="opencfg" data-testid="nav.open-config">Open config</button>
       <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
       <button class="cfgbtn" id="opensettings" data-testid="nav.settings">Settings</button>
@@ -192,6 +194,118 @@
   <div class="card crawl-console-panel" data-pane="console">
     <div class="crawlsub">Console</div>
     <pre class="out crawllog" id="crawl-out" data-empty="Crawl progress appears here."></pre>
+  </div>
+</main>
+
+<!-- ===== Capture: record actions by clicking on a screenshot (BE-0012) ===== -->
+<main id="view-capture" data-testid="view.capture" data-pane="form" hidden>
+  <div class="viewswitch" role="tablist" data-testid="capture.switch">
+    <button class="vstab active" data-pane="form">Form</button>
+    <button class="vstab" data-pane="screen">Screen</button>
+    <button class="vstab" data-pane="steps">Steps</button>
+  </div>
+  <div class="left" data-pane="form">
+    <div class="card">
+      <div class="panel" id="panel-capture">
+        <label>Target</label><select id="cap-target" data-testid="capture.target"></select>
+        <label>Action mode</label>
+        <div class="checks">
+          <label><input type="radio" name="cap-mode" value="tap" checked> tap</label>
+          <label><input type="radio" name="cap-mode" value="type"> type</label>
+        </div>
+        <div id="cap-type-field" hidden>
+          <label>Text to type</label>
+          <input id="cap-text" type="text" placeholder="text to enter into the focused field">
+        </div>
+      </div>
+    </div>
+    <div class="card cap-steps-card" data-pane="steps">
+      <div class="yamlhead"><span class="ttl">Captured steps</span><span class="muted" id="cap-count">0 steps</span></div>
+      <ol id="cap-steplist" class="cap-steplist"></ol>
+    </div>
+  </div>
+  <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
+  <div class="rec-stack">
+    <div class="card cap-screen-card" data-pane="screen">
+      <div style="display:flex;gap:.5em;margin-bottom:.5em">
+        <button class="run" id="cap-start" data-testid="capture.start" data-idle="Start capture">Start capture</button>
+        <button class="run" id="cap-finish" data-testid="capture.finish" hidden>Finish &amp; save</button>
+      </div>
+      <div class="status" id="cap-status"></div>
+      <div class="cap-screen-wrap" id="cap-screen-wrap">
+        <div class="cap-placeholder" id="cap-placeholder">Select a target and press Start to begin capturing actions by clicking on the screenshot.</div>
+        <img id="cap-screenshot" class="cap-screenshot" hidden alt="device screenshot">
+        <div class="cap-feedback" id="cap-feedback" hidden>
+          <span class="cap-rung" id="cap-rung"></span>
+          <span class="cap-sel" id="cap-sel"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ===== Editor (BE-0013): two-pane scenario editor with offline screenshot picker ===== -->
+<main id="view-editor" data-testid="view.editor" data-pane="form" hidden>
+  <div class="viewswitch" role="tablist" data-testid="editor.switch">
+    <button class="vstab active" data-pane="form">Form</button>
+    <button class="vstab" data-pane="screen">Screen</button>
+    <button class="vstab" data-pane="steps">Steps</button>
+  </div>
+
+  <div class="left" data-pane="form">
+    <div class="card">
+      <div class="panel" id="panel-editor">
+        <label>Target</label><select id="edt-target" data-testid="editor.target"></select>
+        <label>Scenario</label><select id="edt-scenario" data-testid="editor.scenario"></select>
+        <label>Run</label><select id="edt-run" data-testid="editor.run"></select>
+        <button class="run" id="edt-load" data-testid="editor.load" data-idle="Load">Load</button>
+      </div>
+    </div>
+    <div class="card edt-steps-card" data-pane="steps">
+      <div class="yamlhead"><span class="ttl">Steps</span><span class="muted" id="edt-step-count">0 steps</span></div>
+      <ol id="edt-steplist" class="edt-steplist"></ol>
+    </div>
+    <div class="card yamlpanel" id="edt-yamlpanel" data-pane="yaml">
+      <div class="yamlhead">
+        <span class="ttl">Scenario YAML</span>
+        <button class="savebtn" id="edt-enrich" data-testid="editor.enrich" disabled>Enrich</button>
+        <button class="savebtn" id="edt-save" data-testid="editor.save" disabled>Save</button>
+      </div>
+      <textarea id="edt-yaml" class="yaml" placeholder="Load a scenario to edit its YAML here."></textarea>
+      <div class="enrich-panel" id="edt-enrich-panel" hidden>
+        <div class="enrich-head">
+          <span class="ttl">Proposed assertions</span>
+          <span class="enrich-actions">
+            <button class="savebtn enrich-accept" id="edt-enrich-accept" data-testid="editor.enrich-accept">Accept</button>
+            <button class="savebtn enrich-dismiss" id="edt-enrich-dismiss" data-testid="editor.enrich-dismiss">Dismiss</button>
+          </span>
+        </div>
+        <div class="enrich-note" id="edt-enrich-note"></div>
+        <ul class="enrich-list" id="edt-enrich-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="gutter" data-var="--rec-left" data-min="260" data-max="640"></div>
+
+  <div class="rec-stack">
+    <div class="card edt-screen-card" data-pane="screen">
+      <div class="edt-step-nav">
+        <button class="run edt-nav-btn" id="edt-prev" data-testid="editor.prev" disabled>&larr; Prev</button>
+        <span class="edt-step-label" id="edt-step-label">No step loaded</span>
+        <button class="run edt-nav-btn" id="edt-next" data-testid="editor.next" disabled>Next &rarr;</button>
+      </div>
+      <div class="status" id="edt-status"></div>
+      <div class="edt-screen-wrap" id="edt-screen-wrap">
+        <div class="edt-placeholder" id="edt-placeholder">Select a target, scenario, and run, then press Load.</div>
+        <img id="edt-screenshot" class="edt-screenshot" hidden alt="step screenshot">
+        <div class="edt-feedback" id="edt-feedback" hidden>
+          <span class="cap-rung" id="edt-rung"></span>
+          <span class="cap-sel" id="edt-sel"></span>
+          <button class="savebtn" id="edt-apply" data-testid="editor.apply">Apply</button>
+        </div>
+      </div>
+    </div>
   </div>
 </main>
 

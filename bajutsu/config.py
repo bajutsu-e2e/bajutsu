@@ -89,6 +89,13 @@ class Mailbox(_Model):
     fields: dict[str, str] = Field(default_factory=dict)
 
 
+class XcuitestConfig(_Model):
+    """Per-target XCUITest runner config (`targets.<name>.xcuitest`, BE-0019)."""
+
+    test_runner: str | None = Field(default=None, alias="testRunner")
+    build: str | None = None
+
+
 class AiSettings(_Model):
     """The `ai` block (BE-0047) — which provider/model/endpoint/key the AI paths use.
 
@@ -126,6 +133,68 @@ def _check_platform(v: str | None) -> str | None:
     return v
 
 
+class DoctorConfig(_Model):
+    """Configurable thresholds for ``bajutsu doctor``'s id-coverage grading (BE-0024).
+
+    ``idCoverageOk`` is the minimum coverage to be eligible for "Ready"; ``idCoverageFail``
+    is the ceiling below which the grade drops to "Blocked". Both must be in [0, 1] with
+    ok >= fail.
+    """
+
+    id_coverage_ok: float = Field(default=0.9, alias="idCoverageOk")
+    id_coverage_fail: float = Field(default=0.7, alias="idCoverageFail")
+
+    @model_validator(mode="after")
+    def _ok_above_fail(self) -> DoctorConfig:
+        if self.id_coverage_ok < self.id_coverage_fail:
+            raise ValueError(
+                f"doctor.idCoverageOk ({self.id_coverage_ok}) must be >= "
+                f"doctor.idCoverageFail ({self.id_coverage_fail})"
+            )
+        return self
+
+    @field_validator("id_coverage_ok", "id_coverage_fail")
+    @classmethod
+    def _in_unit_range(cls, v: float) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError(f"doctor threshold must be in [0, 1], got {v}")
+        return v
+
+
+_NOTIFY_EVENTS = frozenset({"failure", "change", "recovery", "always", "start"})
+
+
+class NotifyEndpoint(_Model):
+    """One webhook notification sink (`notify:` list entry, BE-0099)."""
+
+    format: str = "slack"
+    url: str
+    on: list[str] = Field(default_factory=lambda: ["failure"])
+    targets: list[str] = Field(default_factory=list)
+
+    @field_validator("format")
+    @classmethod
+    def _known_format(cls, v: str) -> str:
+        if v not in ("slack",):
+            raise ValueError(f"unknown notify format {v!r}: use 'slack'")
+        return v
+
+    @field_validator("on", mode="before")
+    @classmethod
+    def _norm_on(cls, v: Any) -> Any:
+        return _as_list(v)
+
+    @model_validator(mode="after")
+    def _known_events(self) -> NotifyEndpoint:
+        for event in self.on:
+            if event not in _NOTIFY_EVENTS:
+                raise ValueError(
+                    f"unknown notify event {event!r}: "
+                    f"use any of {', '.join(sorted(_NOTIFY_EVENTS))}"
+                )
+        return self
+
+
 class Defaults(_Model):
     """Team-wide defaults under `defaults:`, overlaid by each target (see `resolve`)."""
 
@@ -143,6 +212,8 @@ class Defaults(_Model):
     # Team-wide AI provider/model/endpoint/key (BE-0047), overridable per target. None = env-only.
     ai: AiSettings | None = None
     reserved_namespaces: list[str] = Field(default_factory=list, alias="reservedNamespaces")
+    # Configurable doctor thresholds (BE-0024). Always present; defaults to DoctorConfig() (0.9/0.7).
+    doctor: DoctorConfig = Field(default_factory=DoctorConfig)
     # Expected idb version range (e.g. ">=1.1.8" or ">=1.1.0,<2.0.0"). Environment-level, not
     # per-app: the pin is the same whichever target a scenario drives. `doctor` reports the
     # installed companion against it; None = no pin declared (BE-0005).
@@ -224,10 +295,17 @@ class TargetConfig(_Model):
     # Directory of JSON Schema files for `responseSchema` assertions. Relative to the run's
     # working directory. Overrides the default (schemas/ beside the scenario file).
     schemas: str | None = None
+    # Directory of golden JSON files for `golden` assertions (BE-0006). Relative to the run's
+    # working directory. Overrides the default (goldens/ beside the scenario file).
+    goldens: str | None = None
     redact: Redact = Field(default_factory=Redact)
     secrets: list[str] = Field(default_factory=list)
+    # XCUITest runner config (BE-0019): prebuilt test runner path and/or build command.
+    xcuitest: XcuitestConfig | None = None
     # Per-target AI provider/model/endpoint/key (BE-0047), overriding defaults.ai field by field.
     ai: AiSettings | None = None
+    # Per-target webhook notification override (BE-0099). None inherits the top-level `notify:`.
+    notify: list[NotifyEndpoint] | None = None
 
     @field_validator("backend", mode="before")
     @classmethod
@@ -277,6 +355,7 @@ class Config(_Model):
     defaults: Defaults = Field(default_factory=Defaults)
     targets: dict[str, TargetConfig] = Field(default_factory=dict)
     orgs: dict[str, OrgConfig] = Field(default_factory=dict)
+    notify: list[NotifyEndpoint] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _targets_carry_their_platform_identifier(self) -> Config:
@@ -375,6 +454,9 @@ class Effective:
     # JSON Schema directory for `responseSchema` assertions. None = fall back to
     # schemas/ beside the scenario file (or --schemas CLI flag).
     schemas: str | None = None
+    # Golden JSON directory for `golden` assertions (BE-0006). None = fall back to
+    # goldens/ beside the scenario file (or --goldens CLI flag).
+    goldens: str | None = None
     # The resolved platform (ios / android / web): explicit, else from defaults, else derived from
     # the backend (BE-0009 Slice 4). The discriminator a platform-specific path keys off.
     platform: str = "ios"
@@ -392,14 +474,22 @@ class Effective:
     # Selector the launch waits for before a run starts (BE: smoke flake). None = the default
     # element-count readiness heuristic.
     ready_when: base.Selector | None = None
+    # XCUITest runner config (BE-0019): prebuilt test runner path and/or build command.
+    xcuitest: XcuitestConfig | None = None
     # Expected idb version range (e.g. ">=1.1.8"); `doctor` checks the installed companion against
     # it. None = no pin declared. Environment-level, so resolved straight from defaults (BE-0005).
     idb_version: str | None = None
+    # Configurable doctor id-coverage thresholds (BE-0024). Teams with many decorative elements
+    # can tune thresholds (often lowering ok and/or fail for leniency) without changing the tool.
+    doctor_ok_coverage: float = 0.9
+    doctor_fail_coverage: float = 0.7
+    # Webhook notification sinks (BE-0099). Empty when no `notify:` is configured.
+    notify: list[NotifyEndpoint] = field(default_factory=list)
 
     def rebased(self, root: Path) -> Effective:
         """A copy with the relative path fields resolved against `root` (a Git checkout, BE-0063).
 
-        The fields `run` / `doctor` read — `scenarios` / `baselines` / `schemas` / `app_path`; listed
+        The path fields — `scenarios` / `baselines` / `schemas` / `goldens` / `app_path` — are listed
         beside the type so a future path field is rebased by adding it here. `build` (a shell command)
         and `setup` (resolved relative to the scenario, not the cwd) are intentionally absent. Local
         configs keep their cwd-relative paths; only a Git source calls this, so the caller's working
@@ -419,12 +509,23 @@ class Effective:
                 raise ValueError(f"config field {field!r} escapes the checkout root: {value!r}")
             return str(candidate)
 
+        rebased_xcuitest = self.xcuitest
+        if rebased_xcuitest is not None and rebased_xcuitest.test_runner is not None:
+            rebased_xcuitest = XcuitestConfig.model_validate(
+                {
+                    "testRunner": at("xcuitest.testRunner", rebased_xcuitest.test_runner),
+                    "build": rebased_xcuitest.build,
+                }
+            )
+
         return replace(
             self,
             scenarios=at("scenarios", self.scenarios),
             baselines=at("baselines", self.baselines),
             schemas=at("schemas", self.schemas),
+            goldens=at("goldens", self.goldens),
             app_path=at("appPath", self.app_path),
+            xcuitest=rebased_xcuitest,
         )
 
 
@@ -533,10 +634,15 @@ def resolve(config: Config, target: str) -> Effective:
         ai=_merge_ai(d.ai, a.ai),
         app_path=a.app_path,
         build=a.build,
+        xcuitest=a.xcuitest,
         scenarios=a.scenarios,
         baselines=a.baselines,
         schemas=a.schemas,
+        goldens=a.goldens,
         idb_version=d.idb_version,
+        doctor_ok_coverage=d.doctor.id_coverage_ok,
+        doctor_fail_coverage=d.doctor.id_coverage_fail,
+        notify=a.notify if a.notify is not None else list(config.notify),
     )
 
 

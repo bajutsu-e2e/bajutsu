@@ -37,6 +37,10 @@ The contrast with MagicPod/Autify is the whole point: they optimize for never sh
 * **Auto-apply the proposed fix after the run.** Less dangerous than in-run correction but still writes to the committed scenario without a reviewer, so a wrong or laxer fix could land unnoticed. The opt-in `--write` keeps the human as the gate.
 * **No self-healing at all.** Safe, but it throws away the genuine value of the competitors' feature — a concrete minimal fix for cosmetic breakage. Propose + opt-in apply keeps that value while refusing the silent-drift cost.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [Self-healing triage (M4)](../../README.md#self-healing-triage-m4)

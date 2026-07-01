@@ -31,6 +31,7 @@ public enum BajutsuNet {
         guard collectorURL != nil || !BajutsuMocks.shared.rules.isEmpty else { return }
         URLProtocol.registerClass(BajutsuURLProtocol.self)
         BajutsuURLProtocol.installIntoDefaultConfigurations()
+        BajutsuWebView.startIfEnabled(environment: environment)
     }
 
     static func report(

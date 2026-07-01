@@ -28,6 +28,10 @@ Built around the `Agent` abstraction (a Claude implementation + a system-alert g
 
 Idempotent normalization / provenance comments remain light — a follow-up rather than an alternative.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
 [recording.md](../../../docs/recording.md), [evidence.md](../../../docs/evidence.md), [reporting.md](../../../docs/reporting.md), `bajutsu/record.py`

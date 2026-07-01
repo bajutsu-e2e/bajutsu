@@ -11,7 +11,7 @@ import subprocess
 from collections.abc import Callable, Mapping
 
 from bajutsu import assertions, interp, intervals
-from bajutsu.assertions import AssertionResult, SchemaContext, VisualContext
+from bajutsu.assertions import AssertionResult, GoldenContext, SchemaContext, VisualContext
 from bajutsu.drivers import base
 from bajutsu.evidence import Artifact, EvidenceSink, NullSink
 from bajutsu.mailbox import extract_value, select
@@ -40,6 +40,7 @@ from bajutsu.orchestrator.types import (
 )
 from bajutsu.orchestrator.waits import _wait
 from bajutsu.scenario import Assertion, Email, ForEach, If, Scenario, Selector, Step
+from bajutsu.webview import DomSource, WebContextDriver
 
 # How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick is a remote HTTP
 # request to a (often rate-limited / metered) provider, so it polls about once a second.
@@ -110,6 +111,7 @@ def _run_step_body(
     bindings: dict[str, str] | None = None,
     control: DeviceControl | None = None,
     mailbox: MailboxReader | None = None,
+    golden_context: GoldenContext | None = None,
 ) -> tuple[bool, str, list[AssertionResult]]:
     """Execute one step's effect, returning (ok, reason, assertion_results).
 
@@ -127,7 +129,13 @@ def _run_step_body(
         if kind == "assert_":
             assert step.assert_ is not None
             clip = _clipboard_for(step.assert_, control)
-            results = assertions.evaluate(driver.query(), step.assert_, network(), clipboard=clip)
+            results = assertions.evaluate(
+                driver.query(),
+                step.assert_,
+                network(),
+                clipboard=clip,
+                golden_context=golden_context,
+            )
             ok = assertions.passed(results)
             return ok, "" if ok else _fail_reason(results), results
         _do_action(driver, step, relaunch, control, bindings)
@@ -151,6 +159,8 @@ def run_scenario(
     visual_context: VisualContext | None = None,
     schema_context: SchemaContext | None = None,
     mailbox: MailboxReader | None = None,
+    golden_context: GoldenContext | None = None,
+    webview_bridge: DomSource | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -194,6 +204,8 @@ def run_scenario(
             control,
             progress,
             mailbox,
+            golden_context,
+            webview_bridge,
         )
         if failure is None and scenario.expect:
             expect = _interp_asserts(scenario.expect, live_bindings)
@@ -207,6 +219,7 @@ def run_scenario(
                 visual_context=visual_context,
                 schema_context=schema_context,
                 clipboard=clip,
+                golden_context=golden_context,
             )
             if not assertions.passed(expect_results) and on_blocked is not None:
                 event = on_blocked(driver)
@@ -224,6 +237,7 @@ def run_scenario(
                         visual_context=visual_context,
                         schema_context=schema_context,
                         clipboard=clip,
+                        golden_context=golden_context,
                     )  # retry once
             if not assertions.passed(expect_results):
                 failure = "expect: " + _fail_reason(expect_results)
@@ -303,6 +317,8 @@ def _run_steps(
     control: DeviceControl | None = None,
     progress: ProgressFn | None = None,
     mailbox: MailboxReader | None = None,
+    golden_context: GoldenContext | None = None,
+    webview_bridge: DomSource | None = None,
 ) -> str | None:
     """Run the step loop, appending outcomes; return the failure string or None.
 
@@ -312,7 +328,10 @@ def _run_steps(
     assert bindings is not None
     step_counter = [0]  # mutable counter shared across recursive exec_steps calls
 
+    _active_driver: list[base.Driver] = [driver]
+
     def exec_steps(steps: list[Step]) -> str | None:
+        active_driver = _active_driver[0]
         for step in steps:
             kind = _action_of(step)
             idx = step_counter[0]
@@ -326,7 +345,7 @@ def _run_steps(
 
             if kind == "if_":
                 assert step.if_ is not None
-                ok, reason = _run_if(driver, step.if_, clock, network, bindings, exec_steps)
+                ok, reason = _run_if(active_driver, step.if_, clock, network, bindings, exec_steps)
                 outcome.ok, outcome.reason = ok, reason
                 outcome.duration_s = clock.now() - start
                 outcomes.append(outcome)
@@ -336,7 +355,43 @@ def _run_steps(
 
             if kind == "for_each":
                 assert step.for_each is not None
-                ok, reason = _run_for_each(driver, step.for_each, bindings, exec_steps)
+                ok, reason = _run_for_each(active_driver, step.for_each, bindings, exec_steps)
+                outcome.ok, outcome.reason = ok, reason
+                outcome.duration_s = clock.now() - start
+                outcomes.append(outcome)
+                if not ok:
+                    return f"step {idx} ({kind}): {reason}"
+                continue
+
+            if kind == "web":
+                assert step.web is not None
+                try:
+                    if webview_bridge is None:
+                        ok, reason = (
+                            False,
+                            "web: no WebView bridge configured (BAJUTSU_WEBVIEW_PORT not set)",
+                        )
+                    else:
+                        sel = interp.interpolate(
+                            step.web.within.model_dump(by_alias=True), bindings
+                        )
+                        host_sel = Selector.model_validate(sel).as_selector()
+                        base.resolve_unique(active_driver.query(), host_sel)
+                        host_id = step.web.within.id
+                        if host_id is None:
+                            ok, reason = False, "web: within selector must specify an id"
+                        else:
+                            web_driver = WebContextDriver(bridge=webview_bridge, webview_id=host_id)
+                            prev_driver = _active_driver[0]
+                            _active_driver[0] = web_driver
+                            try:
+                                failure = exec_steps(step.web.steps)
+                            finally:
+                                _active_driver[0] = prev_driver
+                            ok = failure is None
+                            reason = failure or ""
+                except base.SelectorError as e:
+                    ok, reason = False, str(e)
                 outcome.ok, outcome.reason = ok, reason
                 outcome.duration_s = clock.now() - start
                 outcomes.append(outcome)
@@ -345,16 +400,25 @@ def _run_steps(
                 continue
 
             interp_step = _interp_step(step, bindings)
-            before = driver.query() if wants_screen_changed else None
+            before = active_driver.query() if wants_screen_changed else None
             ok, reason, results = _run_step_body(
-                driver, interp_step, kind, clock, network, relaunch, bindings, control, mailbox
+                active_driver,
+                interp_step,
+                kind,
+                clock,
+                network,
+                relaunch,
+                bindings,
+                control,
+                mailbox,
+                golden_context,
             )
             if not ok and on_blocked is not None:
-                event = on_blocked(driver)
+                event = on_blocked(active_driver)
                 if event is not None:
                     outcome.alerts.append(event)
                     ok, reason, results = _run_step_body(
-                        driver,
+                        active_driver,
                         interp_step,
                         kind,
                         clock,
@@ -363,11 +427,12 @@ def _run_steps(
                         bindings,
                         control,
                         mailbox,
+                        golden_context,
                     )
             outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
             outcome.duration_s = clock.now() - start
 
-            after = driver.query()
+            after = active_driver.query()
             screen_changed = before is not None and after != before
 
             if outcome.ok and interp_step.extract:

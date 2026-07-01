@@ -48,7 +48,7 @@ device.
 Net effect on the E2E gate (its wall-clock is the longer job, smoke): ~36s off smoke's critical
 path. The xcuitest job sheds up to ~85s on its own, improving that job's feedback time even though
 smoke remains the gate's long pole. The dominant smoke cost (Run scenarios, ~218s of idb
-actuation) is unaffected — that is [BE-0087](../../in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md)'s
+actuation) is unaffected — that is [BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle.md)'s
 territory, not boot.
 
 ## Alternatives considered
@@ -62,9 +62,13 @@ territory, not boot.
 - **Skip the boot wait and let actuation retry.** Rejected — it breaks determinism (acting on a
   not-yet-ready device), which the prime directives forbid.
 
+## Progress
+
+- [x] Shipped — see the *Implementing PR* above.
+
 ## References
 
-- [BE-0087](../../in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) — idb action
+- [BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle.md) — idb action
   timing robustness (the Run-scenarios cost, separate from boot).
 - [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) —
   determinism / flakiness audit.

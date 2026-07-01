@@ -74,6 +74,10 @@ Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つの
 - **設定キーだけ改名し、`--app` は残す。** 却下しました。`targets:` と書く config を `--app` と言う CLI で駆動するのは一貫しません。セレクタのフラグは、選ぶ対象のキーと一致させるべきです。
 - **別の語（`subjects` / `systems` / `suts` / `applications`）。** 却下しました。「target」は E2E ツールでテスト対象を指す確立した語で、プラットフォーム非依存の語として最短で、しかも既にコードベースで使われている語なので、無用な差分と戸惑いを最小にします。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 - [DESIGN §8](../../../DESIGN.md)（CLI と設定: per-app / マルチアプリ）、[DESIGN §2](../../../DESIGN.md)（app-agnostic の prime directive）

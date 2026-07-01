@@ -25,8 +25,8 @@ the config from it, and resolves the config's relative paths against the checked
 the deterministic gate stay exactly as they are.
 
 Related: the hosting counterparts
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the `ScenarioStore`
-seam) and [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting),
+[BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the `ScenarioStore`
+seam) and [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting),
 plus [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 (serve hardening).
 
@@ -39,12 +39,12 @@ inside it. For continuous integration (CI) and for a hosted or self-hosted `serv
 checkout is friction or is impossible:
 
 - **Self-hosted serve.** The web UI is a thin launcher. Today the operator of a self-hosted serve
-  ([BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A) has to hand-place
+  ([BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier A) has to hand-place
   the team's config and scenarios onto the Mac and keep them in sync by hand. Pointing serve at
   `github:acme/mobile-tests@main` makes the UI pull the team's test repository directly, and
   switching branches becomes a field in the UI rather than a redeploy.
 - **Hosted control plane.** For the multi-tenant service
-  ([BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)), a Git-backed source
+  ([BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)), a Git-backed source
   is a today-runnable implementation of the `ScenarioStore` seam's question — "where does a project's
   config and scenarios come from?" — alongside the object-store path.
 - **CI without a checkout.** `bajutsu run --config github:acme/mobile-tests@<sha>:e2e/bajutsu.config.yaml --app sample`
@@ -116,7 +116,7 @@ command and serve gain the capability from one place** rather than each command 
 
 The resolver is a small, testable seam: a `ConfigSource` Protocol with a `LocalSource` (today's
 behavior) and a `GitHubSource` implementation, an env-driven token, and a lazy import — the same
-seam pattern [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) established
+seam pattern [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) established
 for serve. Its tests run on the Linux gate against a fake transport, with no network and no
 Simulator.
 
@@ -161,7 +161,7 @@ added to redaction's defaults so it cannot leak into evidence. Where they fit, t
 The config schema (`bajutsu/config.py`), `resolve()`, the runner, the drivers, the assertion
 evaluator, and the deterministic gate are untouched. A Git source is purely a new way to **acquire**
 the same config and tree — exactly
-[BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s "only its invocation
+[BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)'s "only its invocation
 and plumbing move" and [DESIGN §6.5](../../../DESIGN.md)'s "git holds the history." Per-app
 differences stay in the config; the tool does not branch per repository.
 
@@ -198,63 +198,11 @@ fields for repository, ref, and path, or a single `github:…` string. On open, 
 materializes as above into its cache, then drives the existing run and record paths against the
 checkout. `serve --config github:…` binds a Git source at startup the same way `--config <path>`
 binds a local one. This is the
-[BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier-A payoff: the operator
+[BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) Tier-A payoff: the operator
 points the Mac's serve at the team repository instead of hand-syncing files, and the path-confinement
 hardening from
 [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
 applies to the checkout root just as it does to `--root` today.
-
-### Implementation status
-
-The **CLI acquisition core** shipped (`bajutsu/config_source.py`): `parse_config_spec` (the
-`github:` shorthand and the `git+https://…` form; a non-spec value stays a local path) and
-`materialize` (resolve the ref to a SHA, fetch the GitHub tarball, extract it — wrapper dir
-stripped, tar-path-traversal refused — into the content-addressed cache, atomically by temp+rename,
-with a SHA-keyed cache hit skipping the re-download). It is wired behind `_load_effective`, so
-`run` / `doctor` accept a Git `--config` and the config's `scenarios` / `baselines` / `schemas` /
-`appPath` rebase against the checkout root. The GitHub transport is an injectable seam tested
-offline against a fake; the token comes from `GITHUB_TOKEN` / `GH_TOKEN` / `gh auth token`.
-
-A `run` from a Git source also **records the resolved commit** as run provenance — `manifest.json`'s
-`provenance.configSource` carries `{ host, owner, repo, ref, sha }`, so a branch-based run states the
-exact commit it executed (extending the BE-0049 provenance block; pure metadata, never a verdict).
-
-The **`--config-offline` and `--require-pinned-config`** gate switches shipped on `bajutsu run`:
-`--config-offline` materializes from the cache without touching the network (so it needs a pinned
-`@<sha>`), and `--require-pinned-config` fails unless the Git config pins a full commit SHA — a
-strengthening of the proposal's "tag or SHA", since a tag can be force-moved and only a SHA is an
-immutable, offline-provable pin.
-
-A Git config's path fields are also **confined to the checkout root** (`Effective.rebased`): an
-absolute or `../` value that would escape the fetched tree is rejected with a clean exit-2 rather than
-reaching outside it — mirroring the serve-hardening path confinement
-([BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)).
-
-A Git-sourced `run` also **builds the app on demand** from the checkout root: a content-addressed
-checkout holds no built binary, and there is no local "first" in which to build one, so when `appPath`
-is set but missing, `run` executes the config's `build` command with the **checkout root** as the
-working directory (where `build`'s relative parts, e.g. `make -C demos/features sample-build`, are
-rooted) before the run loop. A failed build exits cleanly. A local-path `run` is unchanged — it never
-builds, and a missing binary still errors at launch.
-
-The **serve "from Git" picker** shipped: `serve --config github:…` binds a Git source at startup the
-same way `--config <path>` binds a local one, and the "Open config" dialog gains a "From a Git
-repository" field for the same spec. Either way serve materializes the checkout (`bind_git_config`)
-and repoints its working directory to the checkout root, so the config's relative `scenarios` /
-`appPath` / `build` resolve against the fetched tree — the [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
-Tier-A payoff (point serve at the team repository instead of hand-syncing files). The file browser
-stays confined to `--root`; the checkout is a managed content-addressed cache, and a Git-sourced run
-confines the config's path fields to the checkout root (`Effective.rebased`).
-
-`record` and `crawl` treat a Git source as **read-only input**: they read the config (and existing
-scenarios) from the checkout, but their output goes to a **local path**, never into the SHA-keyed
-cache. `crawl`'s screen map already lands under a local `runs/` dir; `record` now auto-names the
-authored scenario under the **current directory** (rather than the configured `scenarios` dir, which
-is inside the checkout) when no `--out` is given, and an explicit `--out` inside the checkout is
-refused — so an authored artifact is always a reviewable local file the human commits through git
-([DESIGN §6.5](../../../DESIGN.md)).
-
-With these, every follow-up in this item has shipped.
 
 ## Alternatives considered
 
@@ -284,6 +232,16 @@ With these, every follow-up in this item has shipped.
   through git — the same review-then-commit flow as today, consistent with treating a Git source as
   read-only input.
 
+## Progress
+
+- [x] CLI acquisition core (`bajutsu/config_source.py`) — `parse_config_spec` (`github:` / `git+https://…`) and `materialize` (ref→SHA, GitHub tarball into a content-addressed cache, traversal-safe, atomic), wired behind `_load_effective` so `run` / `doctor` accept a Git `--config`.
+- [x] Resolved-commit run provenance — `manifest.json`'s `provenance.configSource` records `{ host, owner, repo, ref, sha }`.
+- [x] `--config-offline` and `--require-pinned-config` gate switches on `bajutsu run`.
+- [x] Checkout-root path confinement (`Effective.rebased`) — an escaping `..` or absolute path exits 2.
+- [x] Build-on-demand from the checkout root when `appPath` is set but missing.
+- [x] serve "from Git" picker — `serve --config github:…` and the "From a Git repository" dialog field.
+- [x] `record` / `crawl` treat a Git source as read-only input, writing output to a local path.
+
 ## References
 
 - [DESIGN §6.5](../../../DESIGN.md) (scenarios are git-tracked files; no store of its own),
@@ -292,8 +250,8 @@ With these, every follow-up in this item has shipped.
   `bajutsu/cli/commands/serve.py` (the config picker), `bajutsu/github.py`.
 - [`demos/features/demo.config.yaml`](../../../demos/features/demo.config.yaml) — a config whose
   `scenarios` / `appPath` / `build` are relative to the working directory (the crux).
-- [BE-0015](../../proposals/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the `ScenarioStore`
-  seam a Git source implements), [BE-0016](../../proposals/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
+- [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (the `ScenarioStore`
+  seam a Git source implements), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)
   (self-hosting; serve-from-repo is the Tier-A win),
   [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)
   (serve hardening — token auth and path confinement the Git source honors).

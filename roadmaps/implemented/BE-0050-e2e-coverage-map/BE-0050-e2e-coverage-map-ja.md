@@ -55,55 +55,6 @@ LLM は使わず、pass/fail には影響しません。
 - **決定性。** どの数値も、捕捉済み成果物に対する決定的な集計です。モデルも判断の介在もありません。
   これにより本機能は Tier-1 ／レポート側にしっかり留まります。
 
-### 実装状況
-
-最初のスライスは **id 名前空間の次元**を静的に提供します。分母（宣言済みの `idNamespaces`）がすでに
-完全に定まっており、最も価値の高い数値だからです。`bajutsu coverage --app <name>`
-（`bajutsu/coverage.py`、`bajutsu/cli/commands/coverage.py`）は、アプリの設定済み `scenarios`
-ディレクトリのシナリオをすべて走査し、各シナリオが参照する安定 id を（audit のセレクタ走査を再利用する
-`bajutsu.audit.referenced_ids` 経由で）名前空間ごとにまとめ、名前空間ごとのカバレッジ、gap 一覧、
-off-namespace な id を報告します。読み取り専用かつ AI 非依存で、gap があっても終了 0 です。`doctor` の
-1画面ごとの規約スコアの、スイート単位の従兄弟にあたります。
-
-第二のスライスは **観測 vs 宣言エンドポイント**の次元を追加します。「宣言」側を担う兄弟項目
-（[BE-0048](../../implemented/BE-0048-behavioral-protocol-assertions/BE-0048-behavioral-protocol-assertions-ja.md)）が
-出荷されたためです。`bajutsu coverage --runs <dir>` は run セット配下のすべての `network.json` の和集合
-（マップが取り込む最初の run 証跡）を読み、**観測した**エンドポイント（`METHOD path`）のうち、スイートの
-ネットワークアサーション（`request` / `event` / `requestSequence`。`coverage.referenced_requests` で収集し
-`assertions.match_request` で照合）がカバーする割合、**未アサートの**観測エンドポイント（未テストの
-トラフィック）、どの run でも観測されなかった宣言マッチャを報告します。（`responseSchema` の `request` は
-[#212](https://github.com/bajutsu-e2e/bajutsu/pull/212) マージ後に宣言集合へ加わります。）
-
-第三のスライスは、同じ `--runs` フラグの下で **観測 id** を id-namespace マップへ静的解析と並べて
-織り込みます。`coverage.observed_id_coverage` は、run が実際に*描画した*安定 id
-（run セット配下のステップごとの `elements.json` から各要素の `identifier` を集めたもの。null の id は除く）を集め、
-宣言済みの `idNamespaces` ごとにまとめます。静的な `coverage()` を踏襲し、namespace ごとの観測 id、
-*どの run でも描画されなかった* namespace、off-namespace な観測 id を報告します。これにより、
-シナリオが*書く* id を表す静的な「参照」値に、run が*見せた* id を表す run 証跡側の「観測」値が加わり、
-run セットが一度も行使しなかった namespace が見えるようになります。引き続き read-only かつ AI 非依存で、
-gap があっても終了 0 です。
-
-第四のスライスは、提案の*出力*が掲げる **HTML レポート**を、既存のテキスト／JSON 出力と並べて提供します。
-`bajutsu coverage --html <path>` は `coverage.render_html` と `coverage.html.j2` テンプレートを通じて、
-自己完結したページ（CSS は埋め込み、JavaScript も外部アセットも無し。ディスクから直接開けます）を書き出します。
-次元ごとにカバレッジバーを描き、gap と off-namespace の一覧を目立たせます。揃っている次元だけを描画し
-（静的な id 名前空間マップは常に、エンドポイントと観測 id のマップは `--runs` が供給したときに）、
-read-only かつ AI 非依存のままです。このフラグはファイルを書き出すだけで、判定もテキスト／JSON 出力も変えません。
-
-第五のスライスは、*動機*が掲げる **訪問済み画面**の次元を提供します。最後の 1 つで、自律クロール
-（[BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）が
-クロール発見の分母を供給できるようになったことで実現しました。`bajutsu coverage --crawl <screenmap> --runs <dir>` は、
-クロールが発見した画面のうち run セットが到達した割合を測ります。分母は `screenmap.json` のノード、分子は
-ステップごとの `elements.json` を*同じ* `crawl.fingerprint` で指紋化したものです。これにより訪問した画面が
-発見した画面と突き合わせられます。`coverage.screen_coverage` は到達した割合と、**訪問されなかった**画面
-（発見済みだがどの run も触れていない）を報告し、他の次元と同様にテキスト／JSON／HTML 出力へ渡します。
-クロールが一度も見つけていない run の指紋は数値を水増しできません。分母は発見した集合だけです。引き続き
-read-only かつ AI 非依存で、gap があっても終了 0 です。`crawl.fingerprint` を再利用することで、訪問と発見の
-同一性を二つ目のアルゴリズムなしに比較できます。
-
-静的、エンドポイント、観測 id、訪問済み画面のすべての次元が出荷され、提案が掲げた次元はすべて実装済みに
-なりました。
-
 ## 検討した代替案
 
 * **ソースレベルのコードカバレッジ計装。** これは別の層です（アプリのコード経路を測り、言語／ビルド
@@ -114,6 +65,14 @@ read-only かつ AI 非依存で、gap があっても終了 0 です。`crawl.f
   済み証跡に対するカバレッジは、正確な計数です。
 * **何もしない（現状）。** 許容できますが、「何がカバーされているか」は未回答のままで、ギャップは不可視
   のままです。答えるのに必要な証跡と名前空間の宣言はすでに存在します。
+
+## 進捗
+
+- [x] id 名前空間の次元（静的）。`bajutsu coverage --app`。
+- [x] 観測エンドポイントと宣言エンドポイントの対比。`bajutsu coverage --runs`。
+- [x] 観測した id を id 名前空間マップへ統合（`--runs`）。
+- [x] HTML レポート。`bajutsu coverage --html`（自己完結、JavaScript なし）。
+- [x] 到達画面の次元。`bajutsu coverage --crawl <screenmap> --runs`。`crawl.fingerprint` を再利用し、到達した画面と発見した画面を比較可能に保ちます。
 
 ## 参考
 

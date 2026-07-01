@@ -1,0 +1,172 @@
+import Foundation
+
+final class Router {
+    private let provider: ElementProviding
+    private let store = SnapshotStore()
+
+    init(provider: ElementProviding) {
+        self.provider = provider
+    }
+
+    func handle(_ request: HTTPRequest) -> HTTPResponse {
+        switch (request.method, request.path) {
+        case ("GET", "/health"):
+            return handleHealth()
+        case ("GET", "/elements"):
+            return handleElements()
+        case ("POST", "/tap"):
+            return handleTap(request)
+        case ("POST", "/gesture"):
+            return handleGesture(request)
+        case ("POST", "/swipe"):
+            return handleSwipe(request)
+        case ("POST", "/type"):
+            return handleType(request)
+        case ("GET", "/screenshot"):
+            return handleScreenshot()
+        default:
+            return .error(404, "unknown endpoint")
+        }
+    }
+
+    private func handleHealth() -> HTTPResponse {
+        .json(200, ["status": "ready"])
+    }
+
+    private func handleElements() -> HTTPResponse {
+        let elements = onMain { self.provider.queryElements() }
+        let entries = store.refreshSnapshot(elements: elements)
+        let jsonElements: [[String: Any]] = entries.map { entry in
+            var dict: [String: Any] = [
+                "traits": entry.snapshot.traits,
+                "frame": [
+                    entry.snapshot.frame.x,
+                    entry.snapshot.frame.y,
+                    entry.snapshot.frame.width,
+                    entry.snapshot.frame.height,
+                ],
+                "handle": entry.handle,
+            ]
+            dict["identifier"] = entry.snapshot.identifier
+            dict["label"] = entry.snapshot.label
+            dict["value"] = entry.snapshot.value
+            return dict
+        }
+        return .json(200, ["status": "ok", "elements": jsonElements])
+    }
+
+    private func handleTap(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+
+        if let rawPoint = json["point"] as? [Any], rawPoint.count == 2,
+           let px = (rawPoint[0] as? NSNumber)?.doubleValue,
+           let py = (rawPoint[1] as? NSNumber)?.doubleValue {
+            let result = onMain { self.provider.tapPoint(x: px, y: py) }
+            return tapResultResponse(result)
+        }
+
+        guard let handle = json["handle"] as? String else {
+            return .error(400, "missing handle or point")
+        }
+
+        let taps = max((json["taps"] as? NSNumber)?.intValue ?? 1, 1)
+        let duration = max((json["duration"] as? NSNumber)?.doubleValue ?? 0, 0)
+
+        switch store.lookup(handle: handle) {
+        case .found(let snapshot):
+            let result = onMain {
+                self.provider.tap(backingElement: snapshot.backingElement, taps: taps, duration: duration)
+            }
+            return tapResultResponse(result)
+        case .stale:
+            return .json(200, ["status": "stale"])
+        case .notFound:
+            return .json(200, ["status": "not-found"])
+        }
+    }
+
+    private static let knownGestureKinds: Set<String> = ["pinch", "rotate"]
+
+    private func handleGesture(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let handle = json["handle"] as? String else {
+            return .error(400, "missing handle")
+        }
+        guard let kind = json["kind"] as? String, Self.knownGestureKinds.contains(kind) else {
+            return .error(400, "missing or unknown gesture kind")
+        }
+        let scale = (json["scale"] as? NSNumber)?.doubleValue ?? 1.0
+        let radians = (json["radians"] as? NSNumber)?.doubleValue ?? 0.0
+
+        switch store.lookup(handle: handle) {
+        case .found(let snapshot):
+            let result = onMain {
+                self.provider.gesture(
+                    backingElement: snapshot.backingElement, kind: kind, scale: scale, radians: radians
+                )
+            }
+            return tapResultResponse(result)
+        case .stale:
+            return .json(200, ["status": "stale"])
+        case .notFound:
+            return .json(200, ["status": "not-found"])
+        }
+    }
+
+    private func handleSwipe(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let rawFrom = json["from"] as? [Any], rawFrom.count == 2,
+              let fx = (rawFrom[0] as? NSNumber)?.doubleValue,
+              let fy = (rawFrom[1] as? NSNumber)?.doubleValue,
+              let rawTo = json["to"] as? [Any], rawTo.count == 2,
+              let tx = (rawTo[0] as? NSNumber)?.doubleValue,
+              let ty = (rawTo[1] as? NSNumber)?.doubleValue else {
+            return .error(400, "missing or invalid from/to coordinates")
+        }
+        let result = onMain { self.provider.swipe(fromX: fx, fromY: fy, toX: tx, toY: ty) }
+        return tapResultResponse(result)
+    }
+
+    private func handleType(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .error(400, "missing or invalid JSON body")
+        }
+        guard let text = json["text"] as? String else {
+            return .error(400, "missing text")
+        }
+        let result = onMain { self.provider.typeText(text) }
+        return tapResultResponse(result)
+    }
+
+    private func handleScreenshot() -> HTTPResponse {
+        guard let png = onMain(self.provider.screenshot) else {
+            return .error(500, "screenshot failed")
+        }
+        return .png(png)
+    }
+
+    private func tapResultResponse(_ result: TapResult) -> HTTPResponse {
+        switch result {
+        case .ok: return .json(200, ["status": "ok"])
+        case .stale: return .json(200, ["status": "stale"])
+        case .notFound: return .json(200, ["status": "not-found"])
+        }
+    }
+
+    private func onMain<T>(_ work: @escaping () -> T) -> T {
+        if Thread.isMainThread { return work() }
+        var result: T!
+        DispatchQueue.main.sync { result = work() }
+        return result
+    }
+}

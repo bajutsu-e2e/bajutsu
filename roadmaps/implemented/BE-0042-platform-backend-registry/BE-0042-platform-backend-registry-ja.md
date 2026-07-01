@@ -70,6 +70,10 @@ apps:
 - **actuator だけを指す単一の `backend` 文字列**（従来の形）。「XCUITest を優先し idb にフォールバック」や「これは Web プラットフォーム」を、actuator の選択をすべての config やシナリオへ漏らさずに表現できないため却下。
 - **未知トークンを即座に失敗させる。** 前方互換のため却下。将来のビルド向けに書かれた config も、理解できる backend へフォールスルーして古いビルドで動くべきです。
 
+## 進捗
+
+- [x] 出荷済み。上記の *実装 PR* を参照してください。
+
 ## 参考
 
 [`bajutsu/backends.py`](../../../bajutsu/backends.py)、[drivers.md](../../../docs/ja/drivers.md#バックエンド選択と-actuator)、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)、[BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)
