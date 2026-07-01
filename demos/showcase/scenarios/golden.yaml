@@ -1,0 +1,34 @@
+# Golden element-tree assertions (BE-0006): pin the normalized representation of the
+# showcase's standard controls and list rows so a drift in idb / iOS surfaces as a failing
+# check, not a silent field regression. Recorded from showcase-swiftui; the weekly
+# idb-monitor runs these against the latest idb_companion (BE-0079 discharged sample's role).
+#
+# Comparison is per-field, not whole-dict: exact for identifier / label / value, set-equal
+# for traits, and a tolerant sanity check on frame (see bajutsu/golden.py). Re-record with the
+# scratch flow in the BE-0079 item when a deliberate normalizer / control change moves a field.
+
+- name: golden controls
+  tags: [golden, controls]
+  description: >-
+    Assert the normalized element tree for the Log tab's Entry controls matches the
+    recorded golden — a text field, a value-mirrored stepper/toggle, and buttons
+    (identity, state, traits exact; frame sane).
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.note }, timeout: 10 }
+  expect:
+    - golden: { path: controls.json }
+
+- name: golden lists
+  tags: [golden, lists]
+  description: >-
+    Assert the normalized element tree for the Stable catalog matches the recorded golden —
+    the List rows (NavigationLink), the toolbar button, and the mirrored status the
+    Motivation flagged as accuracy risks.
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
+  steps:
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+  expect:
+    - golden: { path: lists.json }
