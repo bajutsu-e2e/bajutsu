@@ -72,6 +72,7 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 | パス | 内容 |
 |---|---|
 | [`SPEC.md`](SPEC.md) | 画面ごとの契約（仕様書） |
+| [`WEBUI.ja.md`](WEBUI.ja.md) | Web UI ツアー。ブラウザから Simulator を操作し、あらゆる証跡を収集する |
 | [`swiftui/`](swiftui)、[`uikit/`](uikit) | 2 つのコードベース（xcodegen `project.yml`、各 2 ターゲット） |
 | [`showcase.config.yaml`](showcase.config.yaml) | 4 つの `targets.<name>` エントリ |
 | [`scenarios/`](scenarios) | 共有の id ベース `run` シナリオ（両 a11y アプリを駆動） |

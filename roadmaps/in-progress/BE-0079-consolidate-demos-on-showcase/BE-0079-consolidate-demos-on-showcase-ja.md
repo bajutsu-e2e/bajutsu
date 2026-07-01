@@ -8,7 +8,7 @@
 | 提案 | [BE-0079](BE-0079-consolidate-demos-on-showcase-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| 実装 PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371) |
+| 実装 PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371), [#418](https://github.com/bajutsu-e2e/bajutsu/pull/418) |
 | トピック | Dogfood フィクスチャ（デモアプリ） |
 | 由来 | Dogfooding |
 <!-- /BE-METADATA -->
