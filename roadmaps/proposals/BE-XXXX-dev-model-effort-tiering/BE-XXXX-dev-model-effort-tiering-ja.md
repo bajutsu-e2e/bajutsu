@@ -8,7 +8,7 @@
 | 提案 | [BE-XXXX](BE-XXXX-dev-model-effort-tiering-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トピック | Development infrastructure (contributor workflow) |
+| トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md), [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) |
 <!-- /BE-METADATA -->
 
