@@ -441,6 +441,14 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0098](proposals/BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface.md) | Unified authoring surface in serve | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
+### AI provider configuration
+
+<!-- GENERATED:proposals-ai-provider -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0101](proposals/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) | Legible Claude-using / Claude-free split with a zero-config non-AI path | Proposal |
+<!-- /GENERATED:proposals-ai-provider -->
+
 ### Hosting the web UI (cloud / self-hosted)
 
 Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).

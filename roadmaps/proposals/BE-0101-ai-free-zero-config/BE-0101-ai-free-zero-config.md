@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-ai-free-zero-config-ja.md)
+**English** · [日本語](BE-0101-ai-free-zero-config-ja.md)
 
-# BE-XXXX — Legible Claude-using / Claude-free split with a zero-config non-AI path
+# BE-0101 — Legible Claude-using / Claude-free split with a zero-config non-AI path
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ai-free-zero-config.md) |
+| Proposal | [BE-0101](BE-0101-ai-free-zero-config.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | AI provider configuration |
