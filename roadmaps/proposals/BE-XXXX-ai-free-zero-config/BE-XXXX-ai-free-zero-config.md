@@ -19,7 +19,7 @@ legible property of the tool**, and guarantee that everything on the Claude-free
 zero configuration** — no credential, no `.env`, no setup of any kind. A new user should be able to
 clone the repo and run `run` / `doctor` / `codegen` / `trace` / `lint` / `schema` (and the
 deterministic parts of `serve`) immediately, while the Claude paths (`record` / `crawl` /
-`triage --ai` / `--dismiss-alerts`) are clearly marked as the ones that reach a model.
+`triage --ai` / `run --dismiss-alerts`) are clearly marked as the ones that reach a model.
 
 The axis is **whether Claude is invoked at all**, not whether a particular credential is present.
 Claude can be reached by more than one provider and more than one agent backend — the Anthropic API
