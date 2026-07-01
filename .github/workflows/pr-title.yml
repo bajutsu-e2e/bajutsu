@@ -3,6 +3,12 @@
 # the diff, is the authoritative roadmap-id signal, so this catches a missing or mismatched id and a
 # malformed title. Re-runs on `edited` so a later title change can't slip past. Title-only and
 # stdlib-only (scripts/lint_pr.py --title-only) — no checkout history or uv needed.
+#
+# Dependabot is exempt: its PR titles are auto-generated ("Bump …" / grouped-update summaries), not
+# scoped conventional subjects, and it owns no roadmap item — a bot can't act on a red title check, so
+# gating it only wedges dependency PRs. The exemption is a *step*-level guard, not a job `if:`, so the
+# job still completes green — keeping the required-check contract satisfied even when the check is
+# skipped for the bot's PRs.
 name: pr-title
 
 on:
@@ -21,7 +27,7 @@ jobs:
     name: validate PR title
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           # Fork PRs run the linter from the trusted base SHA so a PR can't edit scripts/lint_pr.py
           # to bypass the gate; same-repo PRs check out the PR head so linter/workflow changes are
@@ -30,6 +36,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
 
       - name: Check the PR title (form + roadmap-id prefix from the branch)
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}

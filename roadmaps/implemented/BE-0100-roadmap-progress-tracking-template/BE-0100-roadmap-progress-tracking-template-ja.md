@@ -18,7 +18,7 @@
 ロードマップ項目は「何を」「なぜ」作るかを記録しますが、その作業が「どこまで進んだか」は記録しません。
 項目の状態、つまりどのスライスが出荷済みで、何が残り、何がいつ変わったかは、ファイルの外にあります。
 `実装 PR` 行や、コミット履歴や、貢献者の頭のなかです。実際に二つの項目
-（[BE-0087](../../in-progress/BE-0087-idb-action-settle/BE-0087-idb-action-settle-ja.md)、
+（[BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle-ja.md)、
 [BE-0052](../../in-progress/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）
 は、この空白を埋めるために即席の `### Implementation status` サブセクションを育てましたが、その形は
 それぞれ独自のもので、最新の状態に保つ仕組みもありませんでした。

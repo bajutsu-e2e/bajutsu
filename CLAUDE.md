@@ -179,7 +179,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   should look at closely). This expectation holds for humans and AI alike. Concretely: lead with
   `## Summary`, close with the `make check` verification (the green numbers), and add `What changed`
   / `Prime-directive compliance` / `Scope` / `Notes` as the change warrants — depth proportional to
-  the diff. Full title-and-body template:
+  the diff. **When you (AI) draft a PR, follow the tracked body template
+  [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)** — fill the sections that
+  apply and delete the rest; the recurring `Prime-directive compliance` and `Verification` blocks it
+  ships pre-filled are the canonical wording, so trim them rather than re-inventing the phrasing.
+  Full title-and-body rule:
   [`docs/ai-development.md`](docs/ai-development.md#pull-requests-title-and-body).
 - **Prefix the PR title with the roadmap ID** when the PR *implements an already-numbered* item:
   start the title with the ID in brackets, e.g. `[BE-0017] feat(mcp): add MCP server`. A PR with no
