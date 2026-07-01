@@ -372,12 +372,22 @@ def render_index(items: list[Item], lang_code: str) -> dict[str, str]:
 
 
 def _marker_keys(text: str) -> set[str]:
-    """Return the set of section keys that have ``<!-- GENERATED:<key> -->`` markers in *text*.
+    """Return the set of section keys that have an opening ``<!-- GENERATED:<key> -->`` marker.
 
     Only matches keys made of word-chars and hyphens (the format ``<bucket>-<topic>``), so
     wildcard references like ``GENERATED:*`` in prose are ignored.
     """
     return set(re.findall(r"<!-- GENERATED:([\w-]+) -->", text))
+
+
+def _paired_marker_keys(text: str) -> set[str]:
+    """Return the keys that have **both** an opening and a closing ``GENERATED`` marker.
+
+    A lone opening marker is not a usable section: ``replace_region`` needs the closing marker too
+    and would crash on it. So the guard counts a section as present only when the pair is intact.
+    """
+    closing = set(re.findall(r"<!-- /GENERATED:([\w-]+) -->", text))
+    return _marker_keys(text) & closing
 
 
 def build_index_text(items: list[Item], current: str, lang_code: str) -> str:
@@ -443,7 +453,9 @@ def missing_section_markers(roadmap: Path) -> list[str]:
     """
     required = required_section_keys(roadmap)
     marker_sets = {
-        lang.index_file: _marker_keys((roadmap / lang.index_file).read_text(encoding="utf-8"))
+        lang.index_file: _paired_marker_keys(
+            (roadmap / lang.index_file).read_text(encoding="utf-8")
+        )
         for lang in LANGS
     }
     return [

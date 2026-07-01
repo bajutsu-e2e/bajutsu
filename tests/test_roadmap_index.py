@@ -296,3 +296,23 @@ def test_missing_section_markers_passes_when_section_present(tmp_path: Path) -> 
     _write_index_pages(roadmap, with_section=True)
 
     assert bri.missing_section_markers(roadmap) == []
+
+
+def test_missing_section_markers_flags_unpaired_opening_marker(tmp_path: Path) -> None:
+    """An opening marker without its closing partner is not a usable section — still reported.
+
+    A lone ``<!-- GENERATED:key -->`` would fool an opening-only scan but crash ``replace_region``.
+    """
+    roadmap = tmp_path / "roadmaps"
+    item = roadmap / "proposals" / "BE-XXXX-foo"
+    item.mkdir(parents=True)
+    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
+    for index_file in ("README.md", "README-ja.md"):
+        (roadmap / index_file).write_text(
+            "## Proposals\n\n### codegen coverage\n\n<!-- GENERATED:proposals-codegen -->\n",
+            encoding="utf-8",
+        )
+
+    missing = bri.missing_section_markers(roadmap)
+    assert len(missing) == 2
+    assert all("proposals-codegen" in report for report in missing)
