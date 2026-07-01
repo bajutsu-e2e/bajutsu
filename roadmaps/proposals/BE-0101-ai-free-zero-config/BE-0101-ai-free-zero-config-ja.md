@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | AI provider configuration |
-| 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) |
+| 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -142,7 +142,7 @@ fail-closed で停止し（`anthropic_client.credential_gap()`）、[BE-0053](..
 - **`doctor`** は、**Claude の準備状況を独立した、明らかに任意の節として**報告します。すでに採点して
   いる端末や規約の準備状況とは切り離します。AI の準備が無い利用者には、決定論的な経路について環境が
   `Ready` と採点されたうえで、Claude は別立ての「未設定（任意）」の行として示され、阻害要因と混同
-  されることはありません。これは [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
+  されることはありません。これは [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
   のオンボーディング表示面を拡張するもので、決定論的で LLM を使いません（`ai_availability` を見るだけ
   です）。
 
@@ -200,5 +200,5 @@ fail-closed で停止し（`anthropic_client.credential_gap()`）、[BE-0053](..
 [CLAUDE.md](../../../CLAUDE.md)（本項目が見えるようにする境界の散文での記述）、
 [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)
 （AI 側の強制の相方）、[BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)
-（差し替え可能なプロバイダ）、[BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
+（差し替え可能なプロバイダ）、[BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md)
 （Claude 準備状況の節が拡張する doctor / オンボーディングの表示面）。
