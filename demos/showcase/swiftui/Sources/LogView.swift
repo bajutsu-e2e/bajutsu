@@ -9,8 +9,12 @@ struct LogView: View {
     @State private var note = ""
     @State private var count = 1
     @State private var intense = false
+    @State private var segment = "one"
     @State private var status = "idle"
     @State private var rows: [Int] = []
+
+    // The segmented control's choices, in display order.
+    private let segments = ["one", "two", "three"]
 
     // Dedicated gesture targets (SPEC §5.3): a long-press and a double-tap whose results
     // mirror to a11y values, so a scenario can assert the gesture landed.
@@ -95,6 +99,27 @@ struct LogView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityID("log.doubletap.value")
                         .accessibilityStateValue(String(doubleTaps))
+                }
+
+                // A button-backed segmented control (not a SwiftUI Picker(.segmented): idb's
+                // tap does not switch a native segmented control on iOS 26). Each choice is a
+                // Button whose `selected` trait reflects the current pick, the same idiom as the
+                // Intense toggle; the selection mirrors to log.segment.value. Kept below the
+                // modals/gestures so those sections' scroll positions are unchanged.
+                Section("Controls") {
+                    ForEach(segments, id: \.self) { choice in
+                        Button {
+                            segment = choice
+                        } label: {
+                            Label(choice.capitalized, systemImage: segment == choice ? "largecircle.fill.circle" : "circle")
+                        }
+                        .accessibilityAddTraits(segment == choice ? .isSelected : [])
+                        .accessibilityID("log.segment.\(choice)")
+                    }
+                    Text("Segment: \(segment)")
+                        .foregroundStyle(.secondary)
+                        .accessibilityID("log.segment.value")
+                        .accessibilityStateValue(segment)
                 }
 
                 Section("Entries") {

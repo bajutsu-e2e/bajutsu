@@ -94,7 +94,7 @@ screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions rea
 | 7 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
 | 8 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
 | 9 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice` | §5.5 |
-| 10 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** | `perm` | §5.4 |
+| 10 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** + pasteboard round-trip | `perm`, `sys` | §5.4 |
 
 Tabs, left to right: **Stable · Search · Log · Notices · Permissions**.
 
@@ -138,6 +138,7 @@ A training-log composer exercising every input control and every modal style.
 - `log.note` — multiline text field
 - `log.count` — stepper for a numeric count; `log.count.value` mirrors the number
 - `log.intense` — a button-backed toggle "Intense" (a plain Toggle/UISwitch does not flip under idb on iOS 26); `log.intense.value` = `on`/`off`
+- `log.segment.<one|two|three>` — a button-backed segmented control (a native `Picker(.segmented)` / `UISegmentedControl` does not switch under idb on iOS 26); the selected button carries the `selected` trait and the choice mirrors to `log.segment.value` (`one`/`two`/`three`, default `one`)
 - `log.submit` — button: POST to `SHOWCASE_HTTP_BASE` + `/post` with the note/count as JSON; on success shows `log.toast` (auto-dismiss ~1.2 s → exercises `wait until gone`) and appends a row
 - `log.status` — value `idle`/`loading`/`done`/`error`
 - `log.row.<n>` — submitted entries
@@ -154,17 +155,24 @@ Modals reachable from Log (the four presentation styles):
 - `log.openDelete` → **action sheet** (a custom overlay of plain buttons, not a confirmationDialog / UIAlertController, whose actions idb cannot drive on iOS 26): choices `log.dialog.archive`, `log.dialog.delete` (destructive), `log.dialog.cancel`; result mirrored to `log.dialog.value` (`none`/`archive`/`delete`)
 - `log.toast` — the transient toast described above
 
-### 5.4 Tab: Permissions — `perm` namespace (**the OS-alert screen**)
+### 5.4 Tab: Permissions — `perm`, `sys` namespaces (**the OS-integration screen**)
 
 A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). **The one screen that
 intentionally raises OS-level alerts** (§7) — promoted to a top-level tab so the alert-guard
-flow is reached directly.
+flow is reached directly — plus a System section with an in-app pasteboard round-trip.
 
 - `perm.requestNotif` — button → `UNUserNotificationCenter.requestAuthorization`. Raises the **SpringBoard notification prompt** (out-of-process; idb cannot see it — cleared by the run's vision alert guard, or tapped "Allow" via `dismissAlerts`).
 - `perm.notif.value` — `notDetermined`/`authorized`/`denied`
 - `perm.notif.authorized` — element shown only once granted (gives the run a positive condition to wait for)
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
+
+**System** — an in-app pasteboard round-trip, mirroring state idb's app-scoped query cannot
+otherwise observe. It stays in-app because reading a pasteboard seeded by another process trips
+iOS's paste-permission prompt; a value this app itself wrote reads back silently:
+- `sys.copy` — button that writes a known string (`bajutsu-clip`) to the pasteboard
+- `sys.paste` — button that reads the pasteboard back into `sys.paste.value`
+- `sys.paste.value` — the pasted text; a scenario taps `sys.copy` then `sys.paste` and asserts it
 
 ### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)
 
@@ -271,7 +279,7 @@ reserved (shared cross-screen) namespaces; the back control is the OS-provided s
 (id `BackButton`), outside the app's namespaces.
 
 ```
-stable, horse, search, log, notice, perm, net
+stable, horse, search, log, notice, perm, sys, net
 ```
 
 The `-noax` apps declare an **empty** `idNamespaces: []` — an honest declaration that the build

@@ -18,7 +18,7 @@ targets:
     bundleId: com.bajutsu.showcase.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [stable, horse, search, log, notice, perm, net]
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     appPath: demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make -C demos/showcase swiftui-build
     scenarios: demos/showcase/scenarios
@@ -37,7 +37,7 @@ targets:
     bundleId: com.bajutsu.showcase.uikit
     deeplinkScheme: showcaseuikit
     launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [stable, horse, search, log, notice, perm, net]
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
     appPath: demos/showcase/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app
     build: make -C demos/showcase uikit-build
     scenarios: demos/showcase/scenarios
