@@ -171,6 +171,13 @@ would write as the lead commit:
 
 ### Body
 
+The tracked [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md) is the canonical
+form of this shape — GitHub pre-fills it into every new PR, and **when you (AI) draft a PR you follow
+it**: fill the sections that apply and delete the rest. The recurring `## Prime-directive compliance`
+and `## Verification` blocks it ships pre-filled are the canonical wording — trim them to what the
+change bears on rather than re-inventing the phrasing. The rest of this section is the reference the
+template's inline comments point back to.
+
 Two parts are mandatory — `## Summary` and a verification statement — and the rest appear as the
 change warrants, in the order below. Match the depth to the diff: a one-file fix is a short Summary
 and the green numbers; a cross-cutting feature earns the full set. Write the prose the way these
