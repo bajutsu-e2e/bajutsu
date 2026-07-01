@@ -313,3 +313,7 @@ bajutsu/
 （[`docs/ja/multi-platform.md`](docs/ja/multi-platform.md)）。
 
 今後の優先順位付きバックログ（次に作りたいもの）は [`roadmaps/`](roadmaps/README-ja.md) にあります。
+
+## ライセンス
+
+このプロジェクトは [Apache License, Version 2.0](LICENSE) の下で提供されています。帰属表示については [`NOTICE`](NOTICE) を参照してください。

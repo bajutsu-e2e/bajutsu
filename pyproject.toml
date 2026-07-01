@@ -4,6 +4,8 @@ version = "0.0.0"
 description = "自然言語駆動の E2E テストツール"
 readme = "DESIGN.md"
 requires-python = ">=3.13"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 dependencies = [
     "anthropic>=0.50",
     "jinja2>=3.1",
