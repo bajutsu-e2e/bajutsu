@@ -316,3 +316,7 @@ Simulator (see [Status](#status) above for the implemented surface). Beyond iOS,
 
 The forward-looking, prioritized backlog (what we want to build next) lives in
 [`roadmaps/`](roadmaps/README.md).
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). See [`NOTICE`](NOTICE) for attribution.
