@@ -433,6 +433,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0098](proposals/BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface-ja.md) | serve の統合オーサリングサーフェス | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
+### AI プロバイダ設定
+
+<!-- GENERATED:proposals-ai-provider -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0101](proposals/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md) | Claude を使う機能と使わない機能の分離と、AIを使わない経路のゼロ設定実行 | 提案 |
+<!-- /GENERATED:proposals-ai-provider -->
+
 ### Web UI のホスティング（クラウド / セルフホスト）
 
 ローカルの `bajutsu serve` ランチャを共有サービスにします。ランナーは iOS Simulator を駆動するため Mac が必要で、コントロールプレーン（Linux）⇄ macOS ワーカーの分離を強います。[BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) はマネージドなマルチテナント公開スタックを選定し、[BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) は自前の Mac での運用を扱います。

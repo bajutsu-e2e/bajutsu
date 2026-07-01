@@ -1,11 +1,11 @@
-[English](BE-XXXX-ai-free-zero-config.md) · **日本語**
+[English](BE-0101-ai-free-zero-config.md) · **日本語**
 
-# BE-XXXX — Claude を使う機能と使わない機能の分離と、AIを使わない経路のゼロ設定実行
+# BE-0101 — Claude を使う機能と使わない機能の分離と、AIを使わない経路のゼロ設定実行
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ai-free-zero-config-ja.md) |
+| 提案 | [BE-0101](BE-0101-ai-free-zero-config-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | AI provider configuration |
