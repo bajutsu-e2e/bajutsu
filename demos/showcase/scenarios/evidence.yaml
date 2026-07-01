@@ -1,0 +1,13 @@
+# Evidence tour: capture the heavier evidence types (screen video, device log, app trace)
+# around a short Log interaction, so one `run` produces a report exercising each. The
+# assertions are ordinary UI checks — the point is the captured evidence, not new behaviour.
+- name: capture video, device log, and app trace around a log interaction
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.note }, timeout: 10 }
+      capture: [video, deviceLog, appTrace]
+    - type: { text: "morning ride", into: { id: log.note } }
+    - tap: { id: log.intense }
+  expect:
+    - value: { sel: { id: log.intense.value }, equals: "on" }

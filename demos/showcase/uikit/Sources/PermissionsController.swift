@@ -2,13 +2,17 @@ import CoreLocation
 import UIKit
 import UserNotifications
 
-/// Permissions (SPEC §5.4 / §7) — the ONE screen that intentionally raises OS-level
-/// alerts. Both prompts fire only on explicit taps here, never at launch: the canonical
-/// fixture for the run's vision alert guard / dismissAlerts.
+/// Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
+/// OS-level alerts (both fire only on explicit taps here, never at launch: the canonical
+/// fixture for the run's vision alert guard / dismissAlerts), plus a System section: an in-app
+/// Copy → Paste pasteboard round-trip idb can drive and assert. (Reading a pasteboard seeded by
+/// another process trips iOS's paste-permission prompt; a value this app wrote reads back
+/// silently, so the round-trip stays deterministic.)
 final class PermissionsController: UIViewController, CLLocationManagerDelegate {
     private let notifValueLabel = UILabel()
     private let notifAuthorizedLabel = UILabel()
     private let locationValueLabel = UILabel()
+    private let pastedValueLabel = UILabel()
 
     private let locationManager = CLLocationManager()
 
@@ -42,12 +46,32 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
 
         locationValueLabel.accessibilityID("perm.location.value")
 
-        // A grouped form mirroring the SwiftUI twin: a Notifications section and a Location section.
+        // Pasteboard round-trip (SPEC §5.4): Copy writes a known string, Paste reads it back
+        // into sys.paste.value — pasteboard state idb's app-scoped query cannot see.
+        let copy = UIButton(type: .system, primaryAction: UIAction(title: "Copy") { _ in
+            UIPasteboard.general.string = "bajutsu-clip"
+        })
+        copy.contentHorizontalAlignment = .leading
+        copy.accessibilityID("sys.copy")
+
+        let paste = UIButton(type: .system, primaryAction: UIAction(title: "Paste") { [weak self] _ in
+            self?.paste()
+        })
+        paste.contentHorizontalAlignment = .leading
+        paste.accessibilityID("sys.paste")
+
+        pastedValueLabel.text = "Pasted: "
+        pastedValueLabel.accessibilityID("sys.paste.value")
+        pastedValueLabel.accessibilityStateValue("")
+
+        // A grouped form mirroring the SwiftUI twin: Notifications, Location, and System sections.
         installGroupedForm([
             makeSectionHeader("Notifications"),
             makeSectionCard([requestNotif, notifValueLabel, notifAuthorizedLabel]),
             makeSectionHeader("Location"),
             makeSectionCard([requestLocation, locationValueLabel]),
+            makeSectionHeader("System"),
+            makeSectionCard([copy, paste, pastedValueLabel]),
         ])
 
         refreshNotifStatus()
@@ -101,5 +125,13 @@ final class PermissionsController: UIViewController, CLLocationManagerDelegate {
         }
         locationValueLabel.text = "Location: \(text)"
         locationValueLabel.accessibilityStateValue(text)
+    }
+
+    // MARK: - System (device-state mirror)
+
+    private func paste() {
+        let text = UIPasteboard.general.string ?? ""
+        pastedValueLabel.text = "Pasted: \(text)"
+        pastedValueLabel.accessibilityStateValue(text)
     }
 }
