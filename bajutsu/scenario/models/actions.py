@@ -196,7 +196,11 @@ class SetClipboard(_Model):
 
 
 class Background(_Model):
-    """Send the app to the background by pressing the Home button (simctl ui home)."""
+    """Send the app to the background, as pressing the Home button does.
+
+    Backgrounds without terminating (SpringBoard is brought to the front), so the app's state
+    survives for a later `foreground`.
+    """
 
 
 class Foreground(_Model):

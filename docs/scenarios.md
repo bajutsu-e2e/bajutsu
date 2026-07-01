@@ -310,7 +310,7 @@ newest wins. Deterministic and LLM-free; the endpoint and credentials live in co
 ### Device & system control (iOS)
 
 ```yaml
-- background: {}                                                        # Home button (simctl ui home)
+- background: {}                                                        # Home button (backgrounds via SpringBoard, no terminate)
 - foreground: {}                                                        # resume the backgrounded app (simctl launch)
 - clearKeychain: {}                                                     # reset saved passwords / certificates
 - clearClipboard: {}                                                    # clear the pasteboard
