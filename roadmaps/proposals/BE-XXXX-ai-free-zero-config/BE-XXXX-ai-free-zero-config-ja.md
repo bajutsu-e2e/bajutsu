@@ -18,7 +18,7 @@
 Claude を使わない側のすべてが**設定ゼロで動く**ことを保証します。資格情報も `.env` も、いかなる
 事前準備も不要です。利用者はリポジトリをクローンした直後から `run` / `doctor` / `codegen` / `trace`
 / `lint` / `schema`（および `serve` の決定論的な部分）をそのまま実行でき、Claude を使う経路
-（`record` / `crawl` / `triage --ai` / `--dismiss-alerts`）は「モデルに到達するもの」として明示
+（`record` / `crawl` / `triage --ai` / `run --dismiss-alerts`）は「モデルに到達するもの」として明示
 されます。
 
 軸は、特定の資格情報があるかどうかではなく、**そもそも Claude を呼ぶかどうか**です。Claude へは
