@@ -10,7 +10,7 @@
 # manifest flags the degradation. Against the a11y build the same goal records as clean
 # id-based selectors. The diff is the value of accessibility work, made concrete.
 
-メールアドレス rider@example.com、パスワード hunter2 でログインします。Stable タブで一覧が表示されるまで待機し、3 番目の馬の行をタップして詳細画面を開き、「Favorite」をオンにして、お気に入りの状態がオンになっていることを確認してください。
+Stable タブで一覧が表示されるまで待機し、3 番目の馬の行をタップして詳細画面を開き、「Favorite」をオンにして、お気に入りの状態がオンになっていることを確認してください。
 
 # A second goal (run with GOAL="$(sed -n 2p ...)" or just paste it):
 # Log タブを開き、メモ欄に「morning ride」と入力してから「Submit」をタップし、「Logged」のトーストが表示されることを確認してください。

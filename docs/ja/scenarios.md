@@ -273,7 +273,7 @@ CLI の `--dismiss-alerts` / `--no-dismiss-alerts` フラグは**全シナリオ
 ### デバイス / システム制御（iOS）
 
 ```yaml
-- background: {}                                                        # Home ボタン（simctl ui home）
+- background: {}                                                        # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
 - foreground: {}                                                        # バックグラウンドのアプリを前面へ復帰（simctl launch）
 - clearKeychain: {}                                                     # 保存済みパスワード / 証明書をリセット
 - clearClipboard: {}                                                    # ペーストボードをクリア

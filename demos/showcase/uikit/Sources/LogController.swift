@@ -11,6 +11,7 @@ final class LogController: UIViewController {
     private let countLabel = UILabel()
     private let intenseButton = UIButton(type: .system)
     private let intenseValueLabel = UILabel()
+    private let segmentValueLabel = UILabel()
     private let statusLabel = UILabel()
     private let dialogResultLabel = UILabel()
     private let longPressTarget = UILabel()
@@ -21,9 +22,14 @@ final class LogController: UIViewController {
 
     private var count = 0
     private var intense = false
+    private var segment = "one"
     private var entryCount = 0
     private var doubleTaps = 0
     private var dialogOverlay: UIView?
+
+    // The segmented control's choices, in display order.
+    private let segments = ["one", "two", "three"]
+    private var segmentButtons: [String: UIButton] = [:]
 
     init(model: AppModel) {
         self.model = model
@@ -66,6 +72,12 @@ final class LogController: UIViewController {
         intenseValueLabel.accessibilityID("log.intense.value")
         updateIntenseMirror()
 
+        let segmentRow = makeSegmentedControl()
+        segmentValueLabel.font = .preferredFont(forTextStyle: .footnote)
+        segmentValueLabel.textColor = .secondaryLabel
+        segmentValueLabel.accessibilityID("log.segment.value")
+        updateSegmentMirror()
+
         let submit = UIButton(type: .system, primaryAction: UIAction(title: "Submit") { [weak self] _ in
             self?.submit()
         })
@@ -98,6 +110,8 @@ final class LogController: UIViewController {
             makeSectionCard([filter, gallery, delete, dialogResultLabel]),
             makeSectionHeader("Gestures"),
             makeSectionCard([longPressTarget, longPressValueLabel, doubleTapTarget, doubleTapValueLabel]),
+            makeSectionHeader("Controls"),
+            makeSectionCard([segmentRow, segmentValueLabel]),
             makeSectionHeader("Entries"),
             makeSectionCard([entriesStack]),
         ])
@@ -187,6 +201,38 @@ final class LogController: UIViewController {
         intenseButton.accessibilityTraits = intense ? [.button, .selected] : [.button]
         intenseValueLabel.text = intense ? "Intense" : "Easy"
         intenseValueLabel.accessibilityStateValue(intense ? "on" : "off")
+    }
+
+    // A button-backed segmented control (not a UISegmentedControl — idb's tap does not switch a
+    // native one on iOS 26). Each choice is a checkable button whose `selected` trait reflects the
+    // current pick, the same idiom as the Intense toggle; the selection mirrors to log.segment.value.
+    private func makeSegmentedControl() -> UIStackView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = 12
+        row.distribution = .fillEqually
+        for choice in segments {
+            let button = UIButton(type: .system, primaryAction: UIAction(title: choice.capitalized) { [weak self] _ in
+                self?.selectSegment(choice)
+            })
+            button.accessibilityID("log.segment.\(choice)")
+            segmentButtons[choice] = button
+            row.addArrangedSubview(button)
+        }
+        return row
+    }
+
+    private func selectSegment(_ choice: String) {
+        segment = choice
+        updateSegmentMirror()
+    }
+
+    private func updateSegmentMirror() {
+        for (choice, button) in segmentButtons {
+            button.accessibilityTraits = choice == segment ? [.button, .selected] : [.button]
+        }
+        segmentValueLabel.text = "Segment: \(segment)"
+        segmentValueLabel.accessibilityStateValue(segment)
     }
 
     private func setStatus(_ status: ShowcaseNet.Status) {

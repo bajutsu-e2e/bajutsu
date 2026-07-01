@@ -1,13 +1,18 @@
 import CoreLocation
 import SwiftUI
+import UIKit
 import UserNotifications
 
-// Tab: Permissions (SPEC §5.4 / §7) — the one screen that intentionally raises OS-level
-// alerts: the notification and location prompts, both SpringBoard (out-of-process).
+// Tab: Permissions (SPEC §5.4 / §7) — the OS-integration screen. It owns the two deliberate
+// OS-level alerts (notification + location prompts, both SpringBoard/out-of-process), and a
+// System section: an in-app Copy → Paste pasteboard round-trip that idb can drive and assert.
+// (Reading a pasteboard seeded by another process trips iOS's paste-permission prompt; a value
+// this app itself wrote reads back silently, so the round-trip stays deterministic.)
 // Nothing here runs at launch; the prompts fire only on explicit taps.
 struct PermissionsView: View {
     @StateObject private var location = LocationAuth()
     @State private var notifStatus = "notDetermined"
+    @State private var pasted = ""
 
     var body: some View {
         NavigationStack {
@@ -33,6 +38,19 @@ struct PermissionsView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityID("perm.location.value")
                         .accessibilityStateValue(location.status)
+                }
+
+                // Pasteboard round-trip (SPEC §5.4): Copy writes a known string, Paste reads it
+                // back into sys.paste.value — pasteboard state idb's app-scoped query cannot see.
+                Section("System") {
+                    Button("Copy") { UIPasteboard.general.string = "bajutsu-clip" }
+                        .accessibilityID("sys.copy")
+                    Button("Paste") { pasted = UIPasteboard.general.string ?? "" }
+                        .accessibilityID("sys.paste")
+                    Text("Pasted: \(pasted)")
+                        .foregroundStyle(.secondary)
+                        .accessibilityID("sys.paste.value")
+                        .accessibilityStateValue(pasted)
                 }
             }
             .navigationTitle("Permissions")

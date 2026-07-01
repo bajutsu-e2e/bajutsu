@@ -18,7 +18,7 @@ SHOWCASE_CONFIG = ROOT / "demos" / "showcase" / "showcase.config.yaml"
 DEMO_CONFIG = ROOT / "demos" / "demo.config.yaml"
 
 # The showcase a11y target's namespaces (SPEC §9); the menu scenarios stay within them.
-NAMESPACES = {"stable", "horse", "search", "log", "notice", "perm", "net"}
+NAMESPACES = {"stable", "horse", "search", "log", "notice", "perm", "sys", "net"}
 
 
 def test_showcase_scenarios_parse() -> None:

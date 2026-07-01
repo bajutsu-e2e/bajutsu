@@ -207,7 +207,7 @@ on-device path the local gate cannot run:
 
 - [x] codegen → XCUITest and visual-regression paths on the showcase — a `UITests` target (`demos/showcase/swiftui/UITests/`) and the VRT scenario/baselines ([#371](https://github.com/bajutsu-e2e/bajutsu/pull/371)).
 - [x] On-device CI on the showcase — `e2e.yml` runs showcase smoke + xcuitest jobs alongside the sample ([#371](https://github.com/bajutsu-e2e/bajutsu/pull/371)).
-- [ ] Remaining parity (E.1) — the missing interaction targets (gestures, device/system-state mirror, controls), the full evidence tour, and a focused first-look slice.
+- [x] Remaining parity (E.1) — added a button-backed segmented control (`log.segment.*`) and an in-app pasteboard round-trip (`sys.*`) to both toolkits, plus the evidence-tour and first-look scenarios (`controls` / `system` / `network_live` / `evidence` / `relaunch` / `firstlook`); all pass on `run` against `showcase-swiftui` **and** `showcase-uikit`. Gestures already shipped in [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371); the external-clipboard and background-counter mirrors were dropped as non-deterministic without AI (iOS's paste-permission prompt; `simctl ui home` is not a valid step on the CI toolchain).
 - [ ] Switch (E.2) — re-point the demo menu (`demos/Makefile`, `demos/demo.config.yaml`) and the bilingual docs at the showcase.
 - [ ] Retire (E.3) — delete the legacy `demos/app/`, `demos/features/app/`, `demos/record/app/` and the orphaned configs/scripts, then the final docs cleanup.
 

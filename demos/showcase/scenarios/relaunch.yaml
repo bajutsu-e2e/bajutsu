@@ -1,0 +1,18 @@
+# Relaunch: in-app state is in-memory, so relaunching the process resets it. Flip a control,
+# relaunch, and assert it is back to its default — the fixture for the `relaunch` step and its
+# fresh-state evidence. `relaunch` reuses the scenario's launch env, so it lands back on Log.
+- name: relaunch resets in-app state
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: log }
+  steps:
+    - wait: { for: { id: log.intense }, timeout: 10 }
+      capture: [video]
+    - assert:
+        - value: { sel: { id: log.intense.value }, equals: "off" }
+    - tap: { id: log.intense }
+    - assert:
+        - value: { sel: { id: log.intense.value }, equals: "on" }
+    - relaunch: {}
+    - wait: { for: { id: log.intense }, timeout: 10 }
+  expect:
+    - value: { sel: { id: log.intense.value }, equals: "off" }
