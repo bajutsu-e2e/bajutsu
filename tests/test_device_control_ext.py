@@ -86,7 +86,8 @@ def test_clear_status_bar_requires_device_control() -> None:
 def test_home_cmd() -> None:
     from bajutsu.env import home_cmd
 
-    assert home_cmd("U") == ["xcrun", "simctl", "ui", "U", "home"]
+    # simctl has no Home-button command; launching SpringBoard backgrounds the app instead.
+    assert home_cmd("U") == ["xcrun", "simctl", "launch", "U", "com.apple.springboard"]
 
 
 def test_status_bar_override_cmd() -> None:

@@ -135,7 +135,7 @@ Action    ::=
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method default GET; saveBody → vars.<name>
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var> (secret is base32)
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
-  | { background:       {} }                               # Home button (simctl ui home)
+  | { background:       {} }                               # Home button (backgrounds via SpringBoard, no terminate)
   | { clearKeychain:    {} }                               # reset saved passwords / certificates
   | { clearClipboard:   {} }                               # clear the pasteboard
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }

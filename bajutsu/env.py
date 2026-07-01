@@ -108,8 +108,14 @@ def pbpaste_cmd(udid: str) -> list[str]:
 
 
 def home_cmd(udid: str) -> list[str]:
-    """Press the Home button (sends the foreground app to the background)."""
-    return ["xcrun", "simctl", "ui", udid, "home"]
+    """Send the foreground app to the background, as pressing the Home button does.
+
+    simctl has no Home-button command (`simctl ui` only sets appearance/contrast/content-size),
+    so bring SpringBoard — the home screen — to the front instead. It backgrounds the app
+    *without* terminating it, so the app's state survives and `foreground` can resume the same
+    process.
+    """
+    return ["xcrun", "simctl", "launch", udid, "com.apple.springboard"]
 
 
 def foreground_cmd(udid: str, bundle_id: str) -> list[str]:

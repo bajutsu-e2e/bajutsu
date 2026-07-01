@@ -133,7 +133,7 @@ Action    ::=
   | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string } }  # method 既定 GET; saveBody → vars.<name>
   | { totp:        { secret: string, into: { var: string } } }  # RFC 6238 OTP → vars.<var>（secret は base32）
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
-  | { background:       {} }                               # Home ボタン（simctl ui home）
+  | { background:       {} }                               # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
   | { clearClipboard:   {} }                               # ペーストボードをクリア
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
