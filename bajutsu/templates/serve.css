@@ -104,7 +104,8 @@ body.reordering-active iframe{pointer-events:none}
 .graphsvg .edgealert{text-anchor:middle;dominant-baseline:middle;font-size:13px}
 /* A unit card: a large screenshot on top, the label+info below. Grouped screens add a prominent
    full-width expand/collapse button so the merged state is obvious. */
-.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column}
+.gnode{position:absolute;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--acc);border-radius:8px;overflow:hidden;cursor:grab;display:flex;flex-direction:column}
+.gnode:active{cursor:grabbing}
 .gnode.structural{border-style:dashed;border-color:var(--mut)}
 .gnode.member{border-color:var(--mut);border-left:3px solid var(--acc)}
 .gnode.ggroup{border-style:double;border-width:3px}
