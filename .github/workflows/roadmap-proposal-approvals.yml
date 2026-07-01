@@ -10,11 +10,15 @@
 # It re-runs on `pull_request_review` so a second approval flips it green, and — like pr-title — it
 # stays a step-level guard: a PR that touches no `roadmaps/proposals/` file completes the job green
 # (a no-op), keeping the required-check contract satisfied for every PR, not just proposals.
+#
+# Escape hatch: a `Single-Approver Proposal` label on the PR waives the second approval (some proposals
+# are trivial enough for one reviewer). It re-runs on `labeled`/`unlabeled` so applying the label flips
+# the check green — and removing it re-imposes the bar.
 name: roadmap-proposal-approvals
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed, edited]
 
@@ -35,20 +39,28 @@ jobs:
       REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
       REQUIRED: 2
+      WAIVER_LABEL: Single-Approver Proposal
     steps:
       - name: Detect whether the PR touches a BE proposal
         id: scope
         run: |
           files="$(gh api --paginate "repos/${REPO}/pulls/${PR}/files" -q '.[].filename')"
-          if printf '%s\n' "$files" | grep -q '^roadmaps/proposals/'; then
-            echo "proposal=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "proposal=false" >> "$GITHUB_OUTPUT"
+          if ! printf '%s\n' "$files" | grep -q '^roadmaps/proposals/'; then
+            echo "gated=false" >> "$GITHUB_OUTPUT"
             echo "::notice::PR #${PR} touches no roadmaps/proposals/ file — the two-approval rule does not apply. No-op."
+            exit 0
+          fi
+          # A maintainer-applied waiver label drops the bar to the repo-wide single approval.
+          if gh api --paginate "repos/${REPO}/issues/${PR}/labels" -q '.[].name' \
+            | grep -qxF "$WAIVER_LABEL"; then
+            echo "gated=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PR #${PR} carries the '${WAIVER_LABEL}' label — the two-approval rule is waived. No-op."
+          else
+            echo "gated=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Require at least two approving reviews
-        if: steps.scope.outputs.proposal == 'true'
+        if: steps.scope.outputs.gated == 'true'
         run: |
           # Count distinct reviewers whose *latest* review is APPROVED — a later CHANGES_REQUESTED or
           # a dismissal supersedes an earlier approval. group_by needs the ISO-8601 submitted_at, which
