@@ -431,6 +431,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0095](proposals/BE-0095-interactive-crawl-graph/BE-0095-interactive-crawl-graph-ja.md) | クロールグラフのインタラクティブ操作（ノードのドラッグと再整列） | 提案 |
 | [BE-0098](proposals/BE-0098-unified-authoring-surface/BE-0098-unified-authoring-surface-ja.md) | serve の統合オーサリングサーフェス | 提案 |
+| [BE-0102](proposals/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md) | 実行結果の集計ダッシュボード | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
 ### AI プロバイダ設定

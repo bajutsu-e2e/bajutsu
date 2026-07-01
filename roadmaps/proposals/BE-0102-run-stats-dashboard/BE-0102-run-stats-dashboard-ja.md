@@ -1,11 +1,11 @@
-[English](BE-XXXX-run-stats-dashboard.md) · **日本語**
+[English](BE-0102-run-stats-dashboard.md) · **日本語**
 
-# BE-XXXX — 実行結果の集計ダッシュボード
+# BE-0102 — 実行結果の集計ダッシュボード
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-run-stats-dashboard-ja.md) |
+| 提案 | [BE-0102](BE-0102-run-stats-dashboard-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | オーサリング体験（record / GUI エディタ） |

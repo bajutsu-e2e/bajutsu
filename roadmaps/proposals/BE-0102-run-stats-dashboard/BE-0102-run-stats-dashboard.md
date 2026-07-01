@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-run-stats-dashboard-ja.md)
+**English** · [日本語](BE-0102-run-stats-dashboard-ja.md)
 
-# BE-XXXX — Aggregate run-stats dashboard
+# BE-0102 — Aggregate run-stats dashboard
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-run-stats-dashboard.md) |
+| Proposal | [BE-0102](BE-0102-run-stats-dashboard.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Authoring experience (record / GUI editor) |
