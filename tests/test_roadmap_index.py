@@ -232,3 +232,67 @@ def test_no_duplicate_be_ids() -> None:
     """The gate: no two roadmap items share a BE id (IDs are unique and permanent)."""
     roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
     assert bri.duplicate_ids(roadmap) == {}, "duplicate BE IDs found in roadmaps/"
+
+
+def test_every_item_topic_has_a_marked_section() -> None:
+    """The gate: every item — placeholders included — has its (bucket, topic) marker pair.
+
+    Guards the failure mode where a ``BE-XXXX`` placeholder introduces a topic into a bucket with no
+    marked section: the render skips the placeholder, so nothing complains until the roadmap-id
+    automation numbers it on main and the reindex hits the absent region. This catches it at PR time.
+    """
+    roadmap = Path(__file__).resolve().parent.parent / "roadmaps"
+    missing = bri.missing_section_markers(roadmap)
+    assert missing == [], "\n".join(missing)
+
+
+_PLACEHOLDER_ITEM = """\
+**English** · [日本語](BE-XXXX-foo-ja.md)
+
+# BE-XXXX — Foo
+
+<!-- BE-METADATA -->
+| Field | Value |
+|---|---|
+| Proposal | [BE-XXXX](BE-XXXX-foo.md) |
+| Status | **Proposal** |
+| Topic | codegen coverage |
+<!-- /BE-METADATA -->
+
+## Introduction
+"""
+
+
+def _write_index_pages(roadmap: Path, *, with_section: bool) -> None:
+    section = (
+        "\n### codegen coverage\n\n"
+        "<!-- GENERATED:proposals-codegen -->\n\n<!-- /GENERATED:proposals-codegen -->\n"
+        if with_section
+        else ""
+    )
+    for index_file in ("README.md", "README-ja.md"):
+        (roadmap / index_file).write_text(f"## Proposals\n{section}", encoding="utf-8")
+
+
+def test_missing_section_markers_flags_placeholder_without_section(tmp_path: Path) -> None:
+    """A placeholder whose topic has no marked section in a bucket is reported for both pages."""
+    roadmap = tmp_path / "roadmaps"
+    item = roadmap / "proposals" / "BE-XXXX-foo"
+    item.mkdir(parents=True)
+    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
+    _write_index_pages(roadmap, with_section=False)
+
+    missing = bri.missing_section_markers(roadmap)
+    assert len(missing) == 2  # one per index page
+    assert all("proposals-codegen" in report and "BE-XXXX-foo" in report for report in missing)
+
+
+def test_missing_section_markers_passes_when_section_present(tmp_path: Path) -> None:
+    """With the marker pair present in both pages the placeholder's section is satisfied."""
+    roadmap = tmp_path / "roadmaps"
+    item = roadmap / "proposals" / "BE-XXXX-foo"
+    item.mkdir(parents=True)
+    (item / "BE-XXXX-foo.md").write_text(_PLACEHOLDER_ITEM, encoding="utf-8")
+    _write_index_pages(roadmap, with_section=True)
+
+    assert bri.missing_section_markers(roadmap) == []
