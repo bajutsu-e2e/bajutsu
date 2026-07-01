@@ -7,13 +7,14 @@
 |---|---|
 | Proposal | [BE-0024](BE-0024-doctor-onboarding.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#236](https://github.com/bajutsu-e2e/bajutsu/pull/236), [#337](https://github.com/bajutsu-e2e/bajutsu/pull/337), [#361](https://github.com/bajutsu-e2e/bajutsu/pull/361), [#405](https://github.com/bajutsu-e2e/bajutsu/pull/405), [#406](https://github.com/bajutsu-e2e/bajutsu/pull/406), [#407](https://github.com/bajutsu-e2e/bajutsu/pull/407), [#408](https://github.com/bajutsu-e2e/bajutsu/pull/408) |
 | Topic | doctor / onboarding |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-The doctor feasibility gate (the CLI (command-line interface) suite + a check for a booted Simulator) is implemented ([architecture.md](../../../docs/architecture.md#implementation-status)). This topic is a placeholder — add new onboarding candidates here as they come up.
+The doctor feasibility gate (the CLI (command-line interface) suite + a check for a booted Simulator) is implemented ([architecture.md](../../../docs/architecture.md#implementation-status)). This item originally ran as a placeholder that absorbed small doctor / onboarding improvements as they came up. That practice has ended: new onboarding improvements, of any size, are now proposed as their own BE items instead of being added here. The Progress section below records the candidates that shipped while this item served as that catch-all.
 
 ## Motivation
 
@@ -49,9 +50,10 @@ principle for this item is how *new* candidates get added, not a feature to buil
   LLM-free (`doctor.score` is "AI is not involved" by construction), and per-app specifics (id
   namespaces, backend) come from config, keeping the checks app-agnostic.
 
-When a candidate grows large enough to deserve its own design discussion, it graduates to a
-dedicated BE item and is removed from here. Until then, this item keeps the onboarding backlog
-visible in one place.
+When a candidate grew large enough to deserve its own design discussion, it graduated to a
+dedicated BE item and was removed from here — that was the standing rule while this item served as
+the catch-all. The catch-all itself is now retired: every future onboarding improvement, large or
+small, gets its own BE item from the start.
 
 ### Shipped candidates
 
@@ -127,11 +129,17 @@ that history.
 
 ## Progress
 
-> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
-> *Detailed design* (one box per unit of work); the log records what changed and when
-> (oldest first), linking the PRs.
+> This item ran as a catch-all receptacle for small doctor / onboarding improvements; that practice
+> has ended. The list below is the completed record of candidates shipped while it served that
+> role; see "Shipped candidates" under *Detailed design* for the full rationale behind each one.
 
-- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+- [x] `doctor` covers the web (Playwright) backend ([#236](https://github.com/bajutsu-e2e/bajutsu/pull/236))
+- [x] A screen with no actionable elements is graded `Blocked`, not `Ready` ([#337](https://github.com/bajutsu-e2e/bajutsu/pull/337))
+- [x] `doctor` checks the target's backend config before probing tools or a device ([#361](https://github.com/bajutsu-e2e/bajutsu/pull/361))
+- [x] Web trait/role mapping expanded from 6 to 20 entries ([#405](https://github.com/bajutsu-e2e/bajutsu/pull/405))
+- [x] `doctor` id-coverage thresholds are configurable ([#406](https://github.com/bajutsu-e2e/bajutsu/pull/406))
+- [x] `doctor --scenario` checks capability compatibility before a run ([#407](https://github.com/bajutsu-e2e/bajutsu/pull/407))
+- [x] Web UI exposes preflight checks via `POST /api/doctor` ([#408](https://github.com/bajutsu-e2e/bajutsu/pull/408))
 
 ## References
 

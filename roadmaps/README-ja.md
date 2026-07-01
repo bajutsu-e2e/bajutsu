@@ -123,6 +123,14 @@
 | [BE-0020](implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback-ja.md) | マルチ backend 証跡フォールバック | 実装済み |
 <!-- /GENERATED:implemented-backend -->
 
+### doctor / オンボーディング
+
+<!-- GENERATED:implemented-doctor -->
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0024](implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) | doctor / オンボーディング | 実装済み |
+<!-- /GENERATED:implemented-doctor -->
+
 ### オーサリング体験（record / GUI エディタ）
 
 AI 駆動の `record`（Tier 1）は実装済みです（[recording.md](../docs/ja/recording.md)）。これらの項目は記録 → 編集 → 再実行のサイクルを人が扱いやすくします。ローカル Web UI ランチャ `bajutsu serve` はその最初のステップです。
@@ -477,9 +485,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### doctor / オンボーディング
 
 <!-- GENERATED:proposals-doctor -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0024](proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) | doctor / オンボーディング | 提案 |
+
 <!-- /GENERATED:proposals-doctor -->
 
 ### 開発基盤（コントリビュータ体験）

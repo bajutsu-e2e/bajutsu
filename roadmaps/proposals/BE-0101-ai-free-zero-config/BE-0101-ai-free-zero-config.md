@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | AI provider configuration |
-| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) |
+| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -144,7 +144,7 @@ Make the boundary visible at the three points a user meets it:
   the device / convention readiness it already grades. A user with no AI setup sees their
   environment graded `Ready` for the deterministic path, with Claude shown as a distinct
   "not configured (optional)" line — never conflated with a blocking problem. This extends the
-  [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) onboarding surface and stays
+  [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) onboarding surface and stays
   deterministic and LLM-free (it only inspects `ai_availability`).
 
 ### Prime-directive compliance
@@ -198,5 +198,5 @@ registry), `bajutsu/claude_code_agent.py` (the subscription-login CLI backend), 
 onboarding surface), [DESIGN §2 / §3.1](../../../DESIGN.md), [CLAUDE.md](../../../CLAUDE.md) (the
 prose statement of the boundary this item makes legible), [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md)
 (the enforcement counterpart on the AI side), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
-(pluggable provider), [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) (the
+(pluggable provider), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) (the
 doctor / onboarding surface the Claude-readiness section extends).

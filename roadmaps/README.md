@@ -131,6 +131,14 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0020](implemented/BE-0020-multi-backend-evidence-fallback/BE-0020-multi-backend-evidence-fallback.md) | Multi-backend evidence fallback | Implemented |
 <!-- /GENERATED:implemented-backend -->
 
+### doctor / onboarding
+
+<!-- GENERATED:implemented-doctor -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0024](implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Implemented |
+<!-- /GENERATED:implemented-doctor -->
+
 ### Authoring experience (record / GUI editor)
 
 The AI-driven `record` (Tier 1) is implemented ([recording.md](../docs/recording.md)). These items make the record → edit → re-run cycle easier for humans; the local web UI launcher `bajutsu serve` is the first step.
@@ -485,9 +493,7 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### doctor / onboarding
 
 <!-- GENERATED:proposals-doctor -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0024](proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) | doctor / onboarding | Proposal |
+
 <!-- /GENERATED:proposals-doctor -->
 
 ### Development infrastructure (contributor workflow)

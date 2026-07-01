@@ -69,7 +69,7 @@ in config ([DESIGN §8](../../../DESIGN.md)), the showcase is the natural target
 capabilities against without inventing a throwaway app each time: visual-regression baselines
 ([BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md)),
 data-driven runs, secret redaction, the crawl screen-map, and `doctor`'s whole-app coverage
-([BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)) all have a ready,
+([BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)) all have a ready,
 representative subject.
 
 This respects every prime directive ([CLAUDE.md](../../../CLAUDE.md)): it is purely a test
@@ -143,6 +143,6 @@ The shape:
 - [`demos/showcase/SPEC.md`](../../../demos/showcase/SPEC.md) ([ja](../../../demos/showcase/SPEC.ja.md)) — the screen-by-screen contract
 - [DESIGN §2 / §5 / §7.1 / §7.3 / §8 / §11](../../../DESIGN.md) — determinism, stability ladder, per-app onboarding, identifier naming, config, risks
 - [BE-0038](../../in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) — autonomous crawl exploration (this fixture's forward-looking target)
-- [BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — doctor / onboarding (consumes this fixture's coverage)
+- [BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) — doctor / onboarding (consumes this fixture's coverage)
 - [BE-0006](../BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) — idb element-tree normalization (the toolkit axis stresses this)
 - [`demos/features/app`](../../../demos/features/app) — the `sample` fixture this supersedes

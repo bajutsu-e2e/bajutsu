@@ -36,7 +36,7 @@ can run: execute a scenario K times and surface any step or assertion whose outc
 varied; statically grade each selector against the stability ladder (a uniquely resolving `id`
 beats `label` / `traits`, which beat `index` / raw coordinates) and flag waits with no timeout or
 an over-loose condition. It is the natural extension of the `doctor` convention score
-([BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)) from "are ids
+([BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md)) from "are ids
 well-named" to "is this suite reproducible".
 
 Repeat-and-diff proves determinism *at a point in time*. A second, longitudinal signal becomes
@@ -111,7 +111,7 @@ may simply extend it.
 ## References
 
 `bajutsu/doctor.py`, [selectors.md](../../../docs/selectors.md),
-[BE-0024](../../proposals/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md),
+[BE-0024](../BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md),
 [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — the
 DB-backed run records the longitudinal view mines (run provenance is stamped onto them);
 [BE-0044](../../implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) — a *different*
