@@ -50,8 +50,10 @@ jobs:
             echo "::notice::PR #${PR} touches no roadmaps/proposals/ file — the two-approval rule does not apply. No-op."
             exit 0
           fi
-          # A maintainer-applied waiver label drops the bar to the repo-wide single approval.
-          if gh api --paginate "repos/${REPO}/issues/${PR}/labels" -q '.[].name' \
+          # A maintainer-applied waiver label drops the bar to the repo-wide single approval. Read
+          # labels off the pulls endpoint (.labels) so the job needs only pull-requests: read — the
+          # issues/labels endpoint would require a separate issues: read scope.
+          if gh api "repos/${REPO}/pulls/${PR}" -q '.labels[].name' \
             | grep -qxF "$WAIVER_LABEL"; then
             echo "gated=false" >> "$GITHUB_OUTPUT"
             echo "::notice::PR #${PR} carries the '${WAIVER_LABEL}' label — the two-approval rule is waived. No-op."
@@ -63,11 +65,12 @@ jobs:
         if: steps.scope.outputs.gated == 'true'
         run: |
           # Count distinct reviewers whose *latest* review is APPROVED — a later CHANGES_REQUESTED or
-          # a dismissal supersedes an earlier approval. group_by needs the ISO-8601 submitted_at, which
-          # sorts lexicographically, so max_by picks each reviewer's most recent state. The PR author
-          # can't approve their own PR, so no self-approval filter is needed.
+          # a dismissal supersedes an earlier approval. sort_by(.user.login) before group_by guarantees
+          # one group per reviewer regardless of API order; max_by(.submitted_at) then picks each
+          # reviewer's most recent state (ISO-8601, so it sorts lexicographically). The PR author can't
+          # approve their own PR, so no self-approval filter is needed.
           approvals="$(gh api --paginate "repos/${REPO}/pulls/${PR}/reviews" \
-            -q 'group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state == "APPROVED")) | length')"
+            -q 'sort_by(.user.login) | group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state == "APPROVED")) | length')"
           echo "Approving reviews: ${approvals:-0} (need ${REQUIRED})."
           if [ "${approvals:-0}" -lt "${REQUIRED}" ]; then
             echo "::error::BE proposal PRs require ${REQUIRED} approvals; found ${approvals:-0}."
