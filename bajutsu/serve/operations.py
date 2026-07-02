@@ -1384,7 +1384,9 @@ def start_enrich(
 def worker_lease(state: ServeState, worker_id: str) -> tuple[dict[str, Any], int]:
     """Lease the oldest queued job for *worker_id*, or return 204 when the queue is empty."""
     if state.repository is None:
-        return {}, 204
+        return {"error": "server backend has no database configured"}, 503
+    if not worker_id:
+        return {"error": "worker_id is required"}, 400
     leased = state.repository.lease_job(worker_id)
     if leased is None:
         return {}, 204
@@ -1393,13 +1395,20 @@ def worker_lease(state: ServeState, worker_id: str) -> tuple[dict[str, Any], int
 
 def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """Record a finished job's result (called by the worker after a run completes)."""
+    if state.repository is None:
+        return {"error": "server backend has no database configured"}, 503
     job_id = body.get("job_id", "")
-    result = body.get("result", {})
-    if not job_id or state.repository is None:
+    result = body.get("result")
+    if not job_id:
         return {"error": "job_id is required"}, 400
+    if not isinstance(result, dict):
+        return {"error": "result must be a JSON object"}, 400
     info = state.repository.get_job(job_id)
     if info is None:
         return {"error": f"job {job_id} not found"}, 404
-    state.repository.complete_job(job_id, result=result)
+    if result.get("ok") is False or "error" in result:
+        state.repository.fail_job(job_id, error=result.get("error", "unknown"))
+    else:
+        state.repository.complete_job(job_id, result=result)
     state.logbus.close(job_id, json.dumps(result))
     return {"ok": True}, 200

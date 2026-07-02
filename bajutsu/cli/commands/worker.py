@@ -35,9 +35,11 @@ def _post_json(url: str, body: dict[str, Any], *, token: str | None = None) -> t
     req = Request(url, data=data, headers=headers)  # noqa: S310
     try:
         with urlopen(req) as r:  # noqa: S310
-            return r.status, json.loads(r.read())
+            raw = r.read()
+            return r.status, json.loads(raw) if raw else {}
     except HTTPError as e:
-        return e.code, json.loads(e.read()) if e.fp else {}
+        raw = e.read() if e.fp else b""
+        return e.code, json.loads(raw) if raw else {}
 
 
 def worker(
@@ -100,7 +102,9 @@ def worker(
             _logger.exception("job %s failed", job_id)
             result = {"ok": False, "error": str(e)}
 
-        _write_console_log(work, job_id, bus)
+        run_id = result.get("runId")
+        if run_id:
+            _write_console_log(work, run_id, bus, job_id)
 
         try:
             _post_json(
@@ -123,19 +127,18 @@ def _object_store() -> Any:
         return None
 
 
-def _write_console_log(work: Path, job_id: str, bus: InMemoryLogBus) -> None:
+def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str) -> None:
     """Write the job's buffered log to runs/<run_id>/console.log for upload."""
+    run_dir = work / "runs" / run_id
+    if not run_dir.is_dir():
+        return
     lines = list(bus.stream(job_id, timeout=0.0))
     if not lines:
         return
-    for run_dir in sorted((work / "runs").iterdir()) if (work / "runs").is_dir() else []:
-        if run_dir.is_dir():
-            log_path = run_dir / "console.log"
-            log_path.write_text(
-                "".join(line for line in lines if line is not None),
-                encoding="utf-8",
-            )
-            break
+    (run_dir / "console.log").write_text(
+        "".join(line for line in lines if line is not None),
+        encoding="utf-8",
+    )
 
 
 def register(app: typer.Typer) -> None:

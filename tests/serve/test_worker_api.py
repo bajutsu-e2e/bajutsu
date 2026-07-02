@@ -47,6 +47,18 @@ def test_worker_lease_returns_204_when_empty(tmp_path: Path) -> None:
     assert payload == {}
 
 
+def test_worker_lease_rejects_empty_worker_id(tmp_path: Path) -> None:
+    state, _repo = _state_with_db(tmp_path)
+    _payload, code = ops.worker_lease(state, "")
+    assert code == 400
+
+
+def test_worker_lease_returns_503_without_repository(tmp_path: Path) -> None:
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    _payload, code = ops.worker_lease(state, "w1")
+    assert code == 503
+
+
 def test_worker_result_marks_job_done(tmp_path: Path) -> None:
     state, repo = _state_with_db(tmp_path)
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
@@ -64,6 +76,31 @@ def test_worker_result_rejects_missing_job(tmp_path: Path) -> None:
     state, _repo = _state_with_db(tmp_path)
     _payload, code = ops.worker_result(state, {"job_id": "nope", "result": {}})
     assert code == 404
+
+
+def test_worker_result_returns_503_without_repository(tmp_path: Path) -> None:
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    _payload, code = ops.worker_result(state, {"job_id": "j1", "result": {}})
+    assert code == 503
+
+
+def test_worker_result_rejects_non_dict_result(tmp_path: Path) -> None:
+    state, _repo = _state_with_db(tmp_path)
+    _payload, code = ops.worker_result(state, {"job_id": "j1", "result": "not a dict"})
+    assert code == 400
+
+
+def test_worker_result_marks_error_as_failed(tmp_path: Path) -> None:
+    state, repo = _state_with_db(tmp_path)
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    repo.lease_job("w1")
+    _payload, code = ops.worker_result(
+        state, {"job_id": "j1", "result": {"ok": False, "error": "crash"}}
+    )
+    assert code == 200
+    info = repo.get_job("j1")
+    assert info is not None
+    assert info["status"] == "failed"
 
 
 def test_worker_lease_then_result_round_trip(tmp_path: Path) -> None:
