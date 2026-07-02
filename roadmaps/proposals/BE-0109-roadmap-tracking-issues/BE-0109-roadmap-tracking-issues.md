@@ -42,6 +42,8 @@ the roadmap needs: assigned issues show who is on what, and the `no:assignee` fi
 backlog of unclaimed work. There's no need to invent a bespoke "owner" field or a status
 dashboard; the actual gap is that nothing links a BE item to an issue.
 
+## Detailed design
+
 The design keeps **GitHub itself as the source of truth** for both facts it tracks: who owns an
 item (the issue's Assignees) *and* whether a tracking issue already exists (a labelled issue whose
 title carries the item's BE ID). Nothing is written back into the repo, so the sync needs neither
