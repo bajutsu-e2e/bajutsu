@@ -1,6 +1,6 @@
 [English](BE-XXXX-dedupe-claude-client-init.md) · **日本語**
 
-# BE-XXXX — claude クライアント初期化の重複をなくす
+# BE-XXXX — Claude クライアント初期化の重複をなくす
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
