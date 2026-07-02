@@ -10,6 +10,7 @@
 | Status | **Implemented** |
 | Implementing PR | [#216](https://github.com/bajutsu-e2e/bajutsu/pull/216) |
 | Topic | Configuration sourcing |
+| Related | [BE-0108](../../proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
