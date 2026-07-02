@@ -57,23 +57,18 @@ summary header and each scenario card) and in the `bajutsu serve` UI.
 | `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb can't see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
 
 ```yaml
-- name: onboard, log in, and increment the counter
+- name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
   steps:
-    - tap: { id: onboarding.start }
-    - type: { text: "a@b.com", into: { id: auth.email } }
-    - type: { text: "pw", into: { id: auth.password } }
-    - tap: { id: auth.submit }
-    - wait: { for: { id: home.title }, timeout: 5 }
-    - tap: { id: counter.increment }
-    - tap: { id: counter.increment }
+    - type: { text: "Horse 3", into: { id: search.field } }
+    - wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:
-    - exists: { id: home.title }
-    - value: { sel: { id: counter.value }, equals: "2" }
+    - count: { sel: { idMatches: "search.row.*" }, equals: 1 }
+    - value: { sel: { id: search.count }, equals: "1" }
 ```
 
-(real file: [`demos/showcase/scenarios/smoke.yaml`](../demos/showcase/scenarios/smoke.yaml))
+(real file: [`demos/showcase/scenarios/search.yaml`](../demos/showcase/scenarios/search.yaml))
 
 ## preconditions (environment setup)
 

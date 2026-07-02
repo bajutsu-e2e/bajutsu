@@ -54,23 +54,18 @@ scenarios:
 | `dismissAlerts` | bool / object | なし（ON） | 視覚ベースの **アラートガード**。idb から見えない OS プロンプトを片付ける。既定は ON。`false` で無効化し、`{ instruction: "tap Allow" }` なら ON のまま指定したボタンを押す。CLI の `--dismiss-alerts`/`--no-dismiss-alerts` が上書きする（[下記](#dismissalertsシステムアラートガード)） |
 
 ```yaml
-- name: onboard, log in, and increment the counter
+- name: filter narrows the catalog
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
   steps:
-    - tap: { id: onboarding.start }
-    - type: { text: "a@b.com", into: { id: auth.email } }
-    - type: { text: "pw", into: { id: auth.password } }
-    - tap: { id: auth.submit }
-    - wait: { for: { id: home.title }, timeout: 5 }
-    - tap: { id: counter.increment }
-    - tap: { id: counter.increment }
+    - type: { text: "Horse 3", into: { id: search.field } }
+    - wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:
-    - exists: { id: home.title }
-    - value: { sel: { id: counter.value }, equals: "2" }
+    - count: { sel: { idMatches: "search.row.*" }, equals: 1 }
+    - value: { sel: { id: search.count }, equals: "1" }
 ```
 
-（[`demos/showcase/scenarios/smoke.yaml`](../../demos/showcase/scenarios/smoke.yaml) 実物）
+（[`demos/showcase/scenarios/search.yaml`](../../demos/showcase/scenarios/search.yaml) 実物）
 
 ## preconditions（環境準備）
 
