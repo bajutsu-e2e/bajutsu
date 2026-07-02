@@ -49,10 +49,9 @@ and *gap-free*.
 Allocation at PR-open means every opened roadmap PR consumes a `BE-NNNN`, whether or not it is ever
 accepted. The existing machinery softens this but does not remove it:
 
-- **Rejected PRs free their claim.** When a roadmap PR closes — merged or not —
-  [`roadmap-claims-gc`](../../../.github/workflows/roadmap-claims-gc.yml) releases the
-  `refs/be-claims/*` it introduced, and the branch rename never reached `main`, so a rejection alone
-  leaves no row on `main`.
+- **Rejected PRs free their claim.** When a roadmap PR closed — merged or not — the (since-retired)
+  `roadmap-claims-gc` workflow released the `refs/be-claims/*` it introduced, and the branch rename
+  never reached `main`, so a rejection alone leaves no row on `main`.
 - **But the number sequence can still gap.** Allocation is **monotonic** — `max(used) + 1`, never the
   smallest free number. So when allocation order and merge order diverge and a *lower*-numbered PR is
   rejected, its number becomes a permanent hole. Concretely: PR-A allocates `BE-0080`, PR-B allocates
@@ -251,11 +250,13 @@ structurally small rather than trusting the secret alone:
 
 Allocating on `main` **serializes** allocation on a single branch, which makes the same-window race
 BE-0061 closed largely moot: at most one allocate run touches `main` at a time, and it always reads
-the latest `main`. The atomic `refs/be-claims/*` ledger,
-[`roadmap-id-repair`](../../../.github/workflows/roadmap-id-repair.yml), and `roadmap-claims-gc` are
-therefore mostly redundant under this model. To keep the scope of *this* item tight, the recommended
-plan is to **leave them in place** as defense in depth (they do no harm) and treat **retiring the
-claims/repair/gc complexity** as an optional follow-up once merge-time allocation has proven out.
+the latest `main`. The atomic `refs/be-claims/*` ledger, `roadmap-id-repair`, and `roadmap-claims-gc`
+are therefore redundant under this model. They were initially kept in place as defense in depth; once
+merge-time allocation had proven out they were **retired** — the ledger, both workflows, their
+supporting scripts, and the allocator's `--repair` path were removed, leaving only the pure allocator
+and the merge-time `roadmap-id` workflow (see
+[BE-0061](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)'s
+*Progress*).
 
 ### Prime-directive compliance
 
@@ -304,12 +305,11 @@ and [BE-0078](../../implemented/BE-0078-roadmap-status-folders/BE-0078-roadmap-s
 
 - [BE-0061 — Collision-proof BE-ID allocation](../../implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
   — the item this extends; its *Alternatives considered* records the "assign id at merge time" option
-  this realizes, and its hardening (atomic claims, repair, claims-gc) is reused or, optionally, later
-  retired.
+  this realizes, and its hardening (atomic claims, repair, claims-gc) was later retired once this
+  model proved out (see its *Progress*).
 - [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml) (the trigger this
-  moves from `pull_request` to `push: main`),
-  [`roadmap-id-repair.yml`](../../../.github/workflows/roadmap-id-repair.yml),
-  [`roadmap-claims-gc.yml`](../../../.github/workflows/roadmap-claims-gc.yml) — the workflows in scope.
+  moves from `pull_request` to `push: main`). The `roadmap-id-repair` and `roadmap-claims-gc`
+  workflows were in scope too and have since been removed.
 - [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) (reused unchanged),
   [`scripts/build_roadmap_index.py`](../../../scripts/build_roadmap_index.py),
   [`scripts/promote_roadmap_items.py`](../../../scripts/promote_roadmap_items.py) — the three tools
