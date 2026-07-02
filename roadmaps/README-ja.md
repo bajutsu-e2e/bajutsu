@@ -492,6 +492,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0115](proposals/BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth-ja.md) | iOS 用インプロセスネットワークコレクタを認証する | 提案 |
+| [BE-0116](proposals/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation-ja.md) | UDID の検証を引数インジェクションに対して厳格化する | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元

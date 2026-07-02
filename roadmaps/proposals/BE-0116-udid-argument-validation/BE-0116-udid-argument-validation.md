@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-udid-argument-validation-ja.md)
+**English** · [日本語](BE-0116-udid-argument-validation-ja.md)
 
-# BE-XXXX — Tighten UDID validation against argument injection
+# BE-0116 — Tighten UDID validation against argument injection
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-udid-argument-validation.md) |
+| Proposal | [BE-0116](BE-0116-udid-argument-validation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |

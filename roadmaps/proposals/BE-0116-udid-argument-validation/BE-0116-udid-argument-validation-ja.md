@@ -1,11 +1,11 @@
-[English](BE-XXXX-udid-argument-validation.md) · **日本語**
+[English](BE-0116-udid-argument-validation.md) · **日本語**
 
-# BE-XXXX — UDID の検証を引数インジェクションに対して厳格化する
+# BE-0116 — UDID の検証を引数インジェクションに対して厳格化する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-udid-argument-validation-ja.md) |
+| 提案 | [BE-0116](BE-0116-udid-argument-validation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |
