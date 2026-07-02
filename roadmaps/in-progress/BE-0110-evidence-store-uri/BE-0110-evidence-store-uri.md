@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0110](BE-0110-evidence-store-uri.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
@@ -275,20 +275,35 @@ old runs) without conflicting with this design.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] URI scheme parsing and `StoreURI` dataclass
-- [ ] Promote `ObjectStore` protocol to top-level module
-- [ ] `S3ObjectStore` implementation (reuse existing code, add `presigned_put_url`)
-- [ ] `GCSObjectStore` implementation (including V4 signed PUT URLs)
+- [x] URI scheme parsing and `StoreURI` dataclass
+- [x] Promote `ObjectStore` protocol to top-level module
+- [x] `S3ObjectStore` implementation (reuse existing code, add `presigned_put_url` + `content_type`)
+- [x] `GCSObjectStore` implementation (including V4 signed PUT URLs)
 - [ ] Presigned URL upload endpoint (`POST /api/runs/<run_id>/upload-urls`)
 - [ ] Worker-side HTTP PUT uploader (presigned URL mode, httpx-based)
-- [ ] Direct SDK upload fallback (standalone `bajutsu run` mode)
-- [ ] Post-run upload step in `runner/pipeline.py` (mode selection)
+- [x] Direct SDK upload fallback (standalone `bajutsu run` mode)
+- [ ] Post-run upload step in `runner/pipeline.py` (mode selection) — standalone is wired at the CLI
+      layer (`run.py`, after the verdict, mirroring `--zip`); the pipeline/mode-selection integration
+      lands with the presigned serve path
 - [ ] `serve` `--evidence-store` flag and `BAJUTSU_EVIDENCE_STORE` env
-- [ ] `bajutsu run` `--evidence-store` CLI flag
+- [x] `bajutsu run` `--evidence-store` CLI flag (with `BAJUTSU_EVIDENCE_STORE` env)
 - [ ] `evidence_prefix` parameter on the `/api/runs` endpoint
-- [ ] Optional dependency declarations (`s3` / `gcs` / `cloud` extras)
-- [ ] Tests (URI parsing, presigned URL generation, HTTP PUT upload, serve integration)
-- [ ] Documentation (English + Japanese)
+- [x] Optional dependency declarations (`s3` / `gcs` / `cloud` extras)
+- [ ] Tests — done for the standalone slice (URI parsing, S3/GCS stores incl. `content_type` +
+      presigned GET/PUT generation, `upload_tree`); HTTP PUT upload + serve integration pending
+- [ ] Documentation — `run --evidence-store` documented (English + Japanese `docs/cli.md`); the serve
+      topology docs land with the presigned path
+
+Log:
+
+- **Slice 1 — foundation + standalone direct-SDK upload** (in progress): promoted the `ObjectStore`
+  protocol and `S3ObjectStore` to the top-level `bajutsu/object_store.py` (`serve/server/object_store.py`
+  now re-exports them), added `StoreURI` + `parse_store_uri`, a `GCSObjectStore`, `content_type` on
+  the write methods, `presigned_put_url` (S3 + GCS V4), the `object_store_from_uri` factory, and an
+  `upload_tree` helper. Wired `bajutsu run --evidence-store` to upload the finished run tree after the
+  verdict (a failure only warns, never flips pass/fail). Added the `s3` / `gcs` / `cloud` extras. The
+  presigned-URL serve path (endpoint, worker HTTP PUT uploader, `serve --evidence-store`,
+  `evidence_prefix`) is a follow-up slice.
 
 ## References
 
