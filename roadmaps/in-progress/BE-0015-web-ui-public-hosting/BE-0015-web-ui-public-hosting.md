@@ -69,8 +69,8 @@ workers.**
 | **Reverse proxy + TLS** (Transport Layer Security) | **Caddy** | Automatic HTTPS (Let's Encrypt) with near-zero config; clean reverse proxy + headers | nginx + certbot (more knobs, more setup), Traefik |
 | **AuthN/Z** (authentication / authorization) | **OAuth2 — GitHub provider** via **Authlib**, signed-cookie sessions; per-org RBAC (role-based access control) | Audience is developers (they have GitHub); no passwords to store; org model maps to GitHub orgs | oauth2-proxy at the edge, Auth0/Clerk/WorkOS (managed, paid), Google OAuth |
 | **System of record** | **PostgreSQL 16** + **SQLAlchemy 2.0** + **Alembic** | Relational core (orgs/users/projects/runs) with **JSONB** for manifest summaries; managed everywhere (RDS, Cloud SQL, Neon, Supabase) | SQLite (no concurrency for multi-user), MySQL |
-| **Queue / cache / pub-sub** | **Redis 7** | One component does three jobs: **job broker**, cache, and **pub/sub fan-out** for live logs (worker → Redis → SSE). **⚠ Under revision by [BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)** — the post-completion worker model eliminates the need for Redis entirely | RabbitMQ/NATS (broker only), SQS (broker only, no pub/sub) |
-| **Task framework** | **RQ** (Redis Queue) to start | Tiny, Redis-native, easy to read; matches "enqueue a `bajutsu run`, a worker consumes it". **⚠ Under revision by [BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)** | Celery (more features: routing/retries/beat — adopt when needed), Dramatiq |
+| **Queue / job dispatch** | **Postgres `jobs` table** (leased over HTTP) | Workers poll `POST /api/worker/lease`; the control plane leases with `SELECT … FOR UPDATE SKIP LOCKED`. No separate broker process. Replaced Redis 7 / RQ ([BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)) | Redis/RQ (removed), RabbitMQ/NATS, SQS |
+| **Sessions** | **Postgres `sessions` table** | Sessions survive restarts and span replicas, using the same database the system of record already uses. Replaced Redis session store ([BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)) | Redis (removed), signed cookies |
 | **Artifact storage** | **Cloudflare R2** (S3-compatible) | Run trees (`report.html`, screenshots, **video**, `network.json`) are large binaries — keep them **out of Postgres**; R2 has **no egress fees** | AWS S3 (egress costs), MinIO (self-host), GCS |
 | **macOS workers** | **MacStadium Orka** | Purpose-built macOS-VM orchestration ("k8s for Mac") — the only option that gives a **scalable, schedulable pool** of clean Macs | AWS EC2 Mac (24h min allocation, pricey), Scaleway Apple silicon, self-hosted Mac minis |
 | **Secrets** | Cloud secret manager (**Doppler** or platform-native: Fly/AWS Secrets Manager) | Centralized rotation; per-org **BYO (bring-your-own) `ANTHROPIC_API_KEY`** (bounds cost/abuse for `--dismiss-alerts` and `record`) | Vault (heavier), env files (don't, for public) |
@@ -90,15 +90,14 @@ The evolution of today's `serve`. Endpoints (auth'd):
 - `GET /runs/<id>/…` → serve report assets via **short-lived signed R2 URLs** (or proxy them),
   replacing today's local-filesystem `_serve_run_file`.
 
-#### Job queue (control plane ↔ workers)
+#### Job dispatch (control plane ↔ workers)
 
-> **⚠ Under revision.** [BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)
-> proposes replacing the Redis broker and live-log pub/sub with a post-completion model where
-> workers collect results after the run finishes and return them to the control plane over HTTP.
-
-Redis is the broker. A run becomes a serialized job `{run_id, project, scenario_ref, app, options,
-byo_key_ref}`. Workers `BRPOP`/lease it. The worker also `PUBLISH`es log lines and status to a
-per-run Redis channel that the control plane's SSE endpoint subscribes to.
+Job dispatch uses a Postgres `jobs` table leased over HTTP
+([BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)).
+A run becomes a `queued` row; workers poll `POST /api/worker/lease` to lease it. After the run
+completes, the worker uploads the run tree (including `console.log`) to object storage and posts
+the result to `POST /api/worker/result`. The control plane records the finished run — the worker
+needs no database access. No Redis or RQ.
 
 #### macOS worker (stateless, isolated, ephemeral)
 A small Python agent (launchd service) on each Orka-provisioned Mac:

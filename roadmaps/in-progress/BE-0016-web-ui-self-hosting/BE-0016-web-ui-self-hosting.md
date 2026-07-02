@@ -141,13 +141,12 @@ are in [`deploy/self-host/`](../../../deploy/self-host/) and
   artifact read returns not-found or 403. Each org's artifacts, scenarios, and baselines live under
   their own object-store prefix (`org_prefix`). With no `orgs:` block the backend stays single-tenant
   (one default org).
-- **Job distribution.** The control plane **enqueues** a job onto Redis (RQ — Redis Queue) via the
-  server-side `QueueExecutor`; a `bajutsu worker` leases and runs it, streams logs back over the
-  Redis log bus, and uploads the `runs/<id>/` tree to MinIO. Each run gets an **ephemeral Simulator**
-  (`--erase`) so no state, keychain, or screenshots bleed between runs on a shared Mac.
-  **⚠ Under revision by [BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)**
-  — the post-completion worker model replaces the Redis broker and live-log bus with HTTP-based job
-  dispatch and post-completion result collection, eliminating the `redis` container from this stack.
+- **Job distribution.** The control plane inserts a `queued` row into the Postgres `jobs` table via
+  `DbQueueExecutor`; a `bajutsu worker` polls `POST /api/worker/lease` over HTTP to lease it, runs
+  the job on an **ephemeral Simulator** (`--erase`), uploads the `runs/<id>/` tree (including
+  `console.log`) to MinIO, and posts the result back to `POST /api/worker/result`. No Redis or
+  RQ — the worker needs only HTTP and (optionally) the object-store client
+  ([BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)).
 - **Quotas.** A **global** concurrency cap (`--max-concurrent-runs`, default 4) and a **per-user** cap
   (`max_concurrent_per_user`) keep one caller from monopolizing the scarce devices — enforced
   atomically under a lock in `try_register` (`bajutsu/serve/jobs.py`).

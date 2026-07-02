@@ -11,7 +11,7 @@
 >
 > - **Tier A — a single Mac.** One `bajutsu serve` process, token-authenticated, on one Mac. The
 >   rest of this page up to *Tier B* covers it.
-> - **Tier B — a self-hosted server backend.** BE-0015's control plane (FastAPI + Postgres + Redis +
+> - **Tier B — a self-hosted server backend.** BE-0015's control plane (FastAPI + Postgres +
 >   S3-compatible storage + GitHub OAuth + RBAC + quotas) on a Linux node, with Mac workers. It runs
 >   single-tenant by default and supports **multiple orgs** when you declare them in config (see
 >   *[Tier B — self-hosting the server backend](#tier-b--self-hosting-the-server-backend)*).
@@ -143,8 +143,8 @@ decision (denied / reused / sandboxed, and the image when sandboxed) is recorded
 ## Tier B — self-hosting the server backend
 
 Tier A is one process on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
-plane with Postgres, Redis, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota
-— on a Linux node, with one or more Macs as workers. It runs **single-tenant** by default (every
+plane with Postgres, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota — on a
+Linux node, with one or more Macs as workers. It runs **single-tenant** by default (every
 user in one default org) and supports **multiple orgs** once you declare them in config — see
 *[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
 [`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile + `.env.example`).
@@ -155,8 +155,8 @@ user in one default org) and supports **multiple orgs** once you declare them in
            ▼
    ┌───────────────────────────────────────┐  jobs  ┌──────────────────────────┐
    │  Linux node — docker compose          │ ─────▶ │  Mac worker × N          │
-   │  bajutsu serve --asgi --backend=server│  Redis │  bajutsu worker          │
-   │  postgres · redis · minio             │ ◀───── │  bajutsu run · Simulator │
+   │  bajutsu serve --asgi --backend=server│  HTTP  │  bajutsu worker          │
+   │  postgres · minio                     │ ◀───── │  bajutsu run · Simulator │
    └───────────────────────────────────────┘ result └──────────────────────────┘
                        └──────────── Tailscale tailnet ──────┘
 ```
@@ -170,15 +170,15 @@ part. The worker is **not** containerized — it needs the Aqua GUI session, exa
 cd deploy/self-host
 cp .env.example .env            # set BAJUTSU_SERVE_TOKEN, POSTGRES_PASSWORD, AWS_* (MinIO), bucket
 mkdir -p config && cp /path/to/bajutsu.config.yaml config/   # the app/project list to expose
-docker compose up -d            # postgres + redis + minio + migrate (alembic upgrade head) + bajutsu
+docker compose up -d            # postgres + minio + migrate (alembic upgrade head) + bajutsu
 ```
 
 `migrate` runs the Alembic migrations to head before `bajutsu` starts, and `minio-init` creates the
 bucket. The control plane then listens on `:8765`.
 
-Published ports bind to `BIND_ADDR` (default `127.0.0.1`). For a Mac worker to reach Redis and
-MinIO from another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `0.0.0.0`
-on a host with a public interface, since that would expose Redis and the artifacts bucket.
+Published ports bind to `BIND_ADDR` (default `127.0.0.1`). For a Mac worker to reach MinIO from
+another host, set `BIND_ADDR` in `.env` to the node's **tailnet IP** — never `0.0.0.0` on a host
+with a public interface, since that would expose the artifacts bucket.
 
 ### 2. Add GitHub OAuth (optional)
 
@@ -197,10 +197,11 @@ single-tenant deploy (no `orgs:` block) just ignores the org info.
 ### 3. Run a Mac worker
 
 On each Mac (the same Aqua-session setup as Tier A — auto-login, `caffeinate`/`pmset`), install
-`bajutsu[worker,idb]` and point it at the Linux node over the tailnet:
+`bajutsu[idb]` and point it at the control plane over the tailnet:
 
 ```bash
-export BAJUTSU_REDIS_URL=redis://<linux-node>.<tailnet>.ts.net:6379
+export BAJUTSU_SERVER_URL=http://<linux-node>.<tailnet>.ts.net:8765
+export BAJUTSU_TOKEN=…         # the same operator token the control plane uses
 export BAJUTSU_S3_BUCKET=bajutsu
 export BAJUTSU_S3_ENDPOINT=http://<linux-node>.<tailnet>.ts.net:9000
 export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
@@ -208,21 +209,18 @@ export ANTHROPIC_API_KEY=…     # only if scenarios use the AI paths (record / 
 bajutsu worker
 ```
 
-Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. Each job runs on a fresh Simulator
-and uploads its `runs/<id>/` tree to MinIO, which the control plane serves back.
-
-> **Run history in the database.** A run executes on the worker, so the worker is what records it
-> into Postgres for the run-history list. To enable that, install `bajutsu[worker,idb,db]` and give
-> the worker `BAJUTSU_DATABASE_URL` (the Postgres node over the tailnet) — the same URL the control
-> plane uses. Without it the run still works and its artifacts are served, but it won't appear in the
-> durable history list.
+Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. The worker polls the control
+plane's `/api/worker/lease` endpoint over HTTP (no Redis needed), runs each job on a fresh
+Simulator, uploads the `runs/<id>/` tree (including `console.log`) to MinIO, and posts the result
+back to `/api/worker/result`. The control plane records the finished run into Postgres — the worker
+needs no database access.
 
 ### 4. Expose it
 
 Front the control plane like Tier A: `tailscale serve --bg 8765` (tailnet-only, recommended), or
 Caddy for a real hostname (`docker compose --profile caddy up -d`, with `BAJUTSU_PUBLIC_HOST` set).
-The worker reaches Redis (`:6379`) and MinIO (`:9000`) over the tailnet, so keep the node on the
-private tailnet.
+The worker reaches the control plane (`:8765`) and MinIO (`:9000`) over the tailnet, so keep the
+node on the private tailnet.
 
 ### Multiple orgs
 
