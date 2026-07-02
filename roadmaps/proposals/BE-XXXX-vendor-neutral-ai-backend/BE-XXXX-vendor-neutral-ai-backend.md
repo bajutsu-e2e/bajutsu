@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | AI provider configuration |
-| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0097](../../implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) |
+| Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0097](../../implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -158,7 +158,7 @@ piece 5).
 The seam is used **only** on the Tier-1 authoring / investigation paths that already call a model;
 it names and re-homes those calls, it never adds one. `run` and the CI gate stay model-free —
 deterministic, machine-only pass/fail — and the neutral interface is never imported on that path
-(consistent with [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md)'s
+(consistent with [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md)'s
 zero-config Claude-free guarantee). Provider choice remains config (`targets.<name>.ai`), so the
 tool / drivers / runner stay app-agnostic. Determinism is untouched — no path gains a `sleep` or an
 ambiguous selector.
@@ -216,5 +216,5 @@ the AI side), [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai
 (Bedrock as the first pluggable provider — subsumed by the Anthropic adapter here),
 [BE-0097](../../implemented/BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md)
 (redaction extended to crawl / serve AI paths),
-[BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) (the legible Claude-using /
+[BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) (the legible Claude-using /
 Claude-free split, whose zero-config guarantee this item must not disturb).
