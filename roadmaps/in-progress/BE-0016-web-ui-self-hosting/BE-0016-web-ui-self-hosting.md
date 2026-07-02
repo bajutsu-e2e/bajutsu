@@ -127,7 +127,7 @@ The single-node server backend is runnable now — the compose stack, walkthroug
 are in [`deploy/self-host/`](../../../deploy/self-host/) and
 [docs/self-hosting.md](../../../docs/self-hosting.md#tier-b--self-hosting-the-server-backend). It ships:
 
-- **The control-plane stack.** A `docker-compose.yml` wires `postgres`, `redis`, `minio`
+- **The control-plane stack.** A `docker-compose.yml` wires `postgres`, `minio`
   (S3-compatible storage), a one-shot `migrate` (Alembic to head), the `bajutsu` app
   (`serve --asgi --backend=server`), and an optional `caddy` profile for a public hostname — each
   stateful service on a named volume. The Mac worker is **not** containerized: it needs the Aqua
@@ -158,7 +158,6 @@ what `deploy/self-host/` already uses, versus what is still a suggested choice f
 |---|---|---|
 | Fly.io / Render (control plane) | Your own **Linux node** + **Docker Compose** | ✅ |
 | Fly Postgres | **postgres** container | ✅ |
-| Upstash Redis | **redis** container | ✅ |
 | Cloudflare R2 (artifacts) | **MinIO** (S3-compatible, self-hosted) | ✅ |
 | GitHub OAuth (Authlib) | GitHub OAuth in the app, or a self-hosted identity provider (Authelia / Keycloak / oauth2-proxy) | ✅ (in-app GitHub OAuth) |
 | Caddy / TLS | **Caddy** (Let's Encrypt or an internal CA) | ✅ (optional `caddy` profile) |
@@ -170,12 +169,13 @@ what `deploy/self-host/` already uses, versus what is still a suggested choice f
         team laptops
            │  HTTPS (Tailscale tailnet, or Caddy at a hostname)
            ▼
-   ┌───────────────────────────────────────┐  jobs  ┌──────────────────────────┐
-   │  Linux node — docker compose          │ Redis  │  Mac worker × N          │
-   │  bajutsu serve --asgi --backend=server│ ─────▶ │  bajutsu worker          │
-   │  postgres · redis · minio (· caddy)   │ ◀───── │  bajutsu run --erase     │
-   └───────────────────────────────────────┘ result │  Simulator (GUI session) │
-                       └──────────── Tailscale tailnet ──────┴─────────────────┘
+   ┌────────────────────────────────────────┐  lease  ┌──────────────────────────┐
+   │  Linux node — docker compose           │ ◀────── │  Mac worker × N          │
+   │  bajutsu serve --asgi --backend=server │   HTTP  │  bajutsu worker (polls    │
+   │  postgres (jobs = queue) · minio       │ ──────▶ │   lease/heartbeat/result) │
+   │  (· caddy)                             │  result │  bajutsu run --erase      │
+   └────────────────────────────────────────┘         │  Simulator (GUI session) │
+                       └──────────── Tailscale tailnet ───────┴──────────────────┘
 ```
 
 **Sizing.** Video evidence is heavy — budget a few hundred GB for MinIO. The Linux node is modest
@@ -217,31 +217,46 @@ enqueues onto the queue matching the target's device, and each worker subscribes
 it can serve. Verified by hand on a multi-device pool. (No change to the deterministic `run`; routing
 is purely about *which* idle worker picks the job up.)
 
-**3. Worker liveness and job re-queue.** A Mac that dies mid-run must not silently drop the job. Use
-RQ's liveness / ack-late so a lease whose worker stops heart-beating **re-enqueues** rather than
-vanishing — the Mac pool is scarce, so a lost job is worse than a retried one. Verified by killing a
-worker mid-run on a test deployment and confirming the job re-runs.
+**3. Worker liveness and job re-queue — shipped.** A Mac that dies mid-run must not silently drop
+the job. Under the post-completion HTTP worker model
+([BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md))
+every lease carries a timer: `bajutsu worker` sends a periodic **heartbeat**
+(`POST /api/worker/heartbeat`) that renews the lease while a run is in flight, and the control plane
+**reclaims** any lease with no heartbeat past a timeout — returning the job to `queued` for another
+worker (`reclaim_expired_leases` in `bajutsu/serve/server/db.py`, swept on each `lease_job`, so no
+separate reaper process is needed). A poison job that keeps killing its worker is **failed** once it
+hits an attempt cap rather than re-queued forever. The Mac pool is scarce, so a lost job is worse
+than a retried one; the trade-off is **at-least-once** execution — a worker whose lease is reclaimed
+mid-run drops its result, and the re-run is the source of truth. The timeout and cap are operator
+knobs (`BAJUTSU_LEASE_TIMEOUT_SECONDS`, `BAJUTSU_LEASE_MAX_ATTEMPTS`); the worker's heartbeat
+interval stays well under the timeout so a legitimately long run is never reclaimed. The re-queue,
+renew, and attempt-cap invariants have unit tests against SQLite (no Mac); the worker-side heartbeat
+loop is verified by hand by killing a worker mid-run and confirming the job re-runs.
 
 **4. Control-plane scale-out.** The control plane is cheap HTTP and scales out, but the compose runs
 **one** app container today. To run **N replicas** behind a load balancer (Caddy or HAProxy):
-**least-conn** over round-robin (server-sent events (SSE) connections are long-lived); **no sticky
-sessions** (auth is a signed cookie and sessions live in Redis, so any replica serves any request);
-and the load balancer must **not buffer** SSE, since live logs come from Redis pub/sub and any replica
-can stream any run. Verified by hand: bring up two app replicas, confirm a login on one and a live log
-stream on the other.
+**least-conn** over round-robin (server-sent events (SSE) connections are long-lived) and **no sticky
+sessions** — auth is a signed cookie and sessions live in **Postgres**
+([BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)
+folded the session store into the database), so any replica serves any request. Because the worker
+model is **post-completion**, there is no mid-run log stream to fan out across replicas: a worker
+polls `/api/worker/lease` from any replica and posts the whole result to `/api/worker/result`, and
+the browser reads finished runs from the shared database and object store. Verified by hand: bring up
+two app replicas and confirm a login on one and a run history read on the other.
 
-**5. High availability — the single points of failure (SPOF).** A single node makes **Redis and
-Postgres** SPOFs (Redis holds the queue, the pub/sub, *and* — once item 1 lands — the quota state).
-The hardened topology: **Redis with Sentinel**, **Postgres primary + replica** (Patroni) or at minimum
-a tested backup, and a redundant load balancer (keepalived / Virtual Router Redundancy Protocol, VRRP,
-or DNS). A single node is acceptable for a self-host **if** it is explicitly flagged as a SPOF.
-Verified by hand on the deployment; no gate coverage.
+**5. High availability — the single points of failure (SPOF).** With Redis gone
+([BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)),
+a single node makes **Postgres** the one stateful SPOF: it holds the job queue (the `jobs` table),
+the sessions, the quota state, *and* the run metadata. The hardened topology: **Postgres primary +
+replica** (Patroni) or at minimum a tested backup, **MinIO** with redundancy or a backed-up bucket,
+and a redundant load balancer (keepalived / Virtual Router Redundancy Protocol, VRRP, or DNS). A
+single node is acceptable for a self-host **if** it is explicitly flagged as a SPOF. Verified by hand
+on the deployment; no gate coverage.
 
 ```
-[DNS] → [HAProxy ×2 (VRRP)] → [FastAPI ×N] ─┬─ Postgres (primary+replica)
-                                            ├─ Redis (Sentinel)   ← queue / pub-sub / quotas
+[DNS] → [HAProxy ×2 (VRRP)] → [FastAPI ×N] ─┬─ Postgres (primary+replica)  ← queue / sessions / quotas
                                             └─ MinIO (tenant prefix)
-                                                   │ pull queue (per-device + per-org fairness)
+                                                   │ HTTP lease (per-device + per-org fairness)
                               Mac mini pool ×M (K slots each · erase per run · dedicated/isolated)
 ```
 
@@ -316,16 +331,18 @@ item's.
 ## Progress
 
 - [x] Tier A — run `serve` as a LaunchAgent, keep the session alive, expose via Tailscale.
-- [x] Tier B, single node — the control-plane compose stack, GitHub OAuth + RBAC, multi-org isolation, Redis RQ job distribution with ephemeral Simulators, and global + per-user quotas (`deploy/self-host/`).
+- [x] Tier B, single node — the control-plane compose stack, GitHub OAuth + RBAC, multi-org isolation, HTTP-leased job distribution over the Postgres `jobs` table with ephemeral Simulators, and global + per-user quotas (`deploy/self-host/`).
 - [x] Per-org concurrency cap (`max_concurrent_per_org`) ([#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)).
 - [ ] Weighted-fair dispatch — per-org pending queues round-robined across orgs.
 - [ ] Capability-routed queues (`q:ios18`, `q:ipad`).
-- [ ] Worker liveness and job re-queue (RQ liveness / ack-late).
+- [x] Worker liveness and job re-queue — lease heartbeat + timeout-based reclaim over the `jobs` table, with a re-queue attempt cap.
 - [ ] Control-plane scale-out — N app replicas behind a load balancer.
-- [ ] High availability — Redis Sentinel, a Postgres primary + replica, a redundant load balancer.
+- [ ] High availability — a Postgres primary + replica, a redundant load balancer, and a backed-up object store.
 - [ ] Observability — a `/metrics` endpoint with Prometheus / Grafana.
 
 The single node is runnable now ([#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367)); growing it into a highly-available pool is the remaining work.
+
+- Worker liveness & job re-queue — heartbeat (`POST /api/worker/heartbeat`) that renews a lease, `reclaim_expired_leases` (swept on `lease_job`) that re-queues a dead worker's lease and fails a job past its attempt cap, and a worker-side heartbeat loop; also re-grounded this item's Tier B stack, diagrams, and remaining-work items on BE-0106's Redis-free HTTP worker model ([#TODO — fill on PR open]).
 
 ## References
 

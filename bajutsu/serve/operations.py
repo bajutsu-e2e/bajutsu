@@ -1393,6 +1393,19 @@ def worker_lease(state: ServeState, worker_id: str) -> tuple[dict[str, Any], int
     return {"job_id": leased.id, "org_id": leased.org_id, "spec": leased.spec}, 200
 
 
+def worker_heartbeat(state: ServeState, worker_id: str, job_id: str) -> tuple[dict[str, Any], int]:
+    """Renew a worker's lease mid-run; 409 tells the worker its lease was reclaimed and to stop."""
+    if state.repository is None:
+        return {"error": "server backend has no database configured"}, 503
+    if not worker_id:
+        return {"error": "worker_id is required"}, 400
+    if not job_id:
+        return {"error": "job_id is required"}, 400
+    if state.repository.heartbeat_job(job_id, worker_id):
+        return {"ok": True}, 200
+    return {"error": "lease lost or not held by this worker"}, 409
+
+
 def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """Record a finished job's result (called by the worker after a run completes)."""
     if state.repository is None:

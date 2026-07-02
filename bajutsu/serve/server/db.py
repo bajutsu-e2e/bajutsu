@@ -11,13 +11,19 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from bajutsu.serve.server.models import Run
+
+# A lease with no heartbeat for this long is treated as a dead worker and reclaimed; a job that is
+# reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
+# worker's heartbeat interval must stay well under the timeout so a live long run is never reclaimed.
+DEFAULT_LEASE_TIMEOUT_SECONDS = 120.0
+DEFAULT_LEASE_MAX_ATTEMPTS = 3
 
 
 @dataclass
@@ -82,6 +88,24 @@ class Repository(Protocol):
     def lease_job(self, worker_id: str) -> LeasedJob | None:
         """Atomically lease the oldest queued job to *worker_id*, or return None."""
 
+    def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
+        """Renew a lease's timer, returning False when *worker_id* no longer owns the live lease.
+
+        The worker calls this on an interval during a run so a legitimately long run is not
+        reclaimed; a False answer tells the worker its lease was reclaimed (or the job finished) and
+        it should stop.
+        """
+
+    def reclaim_expired_leases(
+        self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
+    ) -> list[str]:
+        """Re-queue leases with no heartbeat within *timeout*; fail the ones past *max_attempts*.
+
+        Returns the ids re-queued (available again). A worker that dies mid-run stops heart-beating,
+        so its lease ages past the timeout and returns to ``queued`` for another worker — but a
+        poison job that keeps killing its worker is failed once it hits the attempt cap.
+        """
+
     def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
         """Mark a leased job as ``done`` and store its *result*."""
 
@@ -109,8 +133,16 @@ class SqlRepository:
     """A SQLAlchemy-backed `Repository`. Works against any engine SQLAlchemy supports — SQLite on
     the gate, Postgres in production — since the models pick JSONB only on Postgres."""
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        lease_timeout: timedelta | None = None,
+        max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS,
+    ) -> None:
         self._engine = engine
+        self._lease_timeout = lease_timeout or timedelta(seconds=DEFAULT_LEASE_TIMEOUT_SECONDS)
+        self._max_attempts = max_attempts
 
     def record_run(self, run: RunRecord) -> None:
         from sqlalchemy.orm import Session
@@ -260,6 +292,9 @@ class SqlRepository:
 
         from bajutsu.serve.server.models import JobRecord
 
+        # Sweep dead workers' leases back into the queue before serving, so a stuck job is picked up
+        # on the next poll without a separate reaper process.
+        self.reclaim_expired_leases(self._lease_timeout, max_attempts=self._max_attempts)
         with Session(self._engine) as session:
             stmt = (
                 select(JobRecord)
@@ -277,6 +312,46 @@ class SqlRepository:
             row.leased_by = worker_id
             session.commit()
             return LeasedJob(id=row.id, org_id=row.org_id, spec=dict(row.spec))
+
+    def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            row = session.get(JobRecord, job_id)
+            if row is None or row.status != "leased" or row.leased_by != worker_id:
+                return False
+            row.leased_at = datetime.now(UTC)
+            session.commit()
+            return True
+
+    def reclaim_expired_leases(
+        self, timeout: timedelta, *, max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS
+    ) -> list[str]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        cutoff = datetime.now(UTC) - timeout
+        requeued: list[str] = []
+        with Session(self._engine) as session:
+            stmt = select(JobRecord).where(
+                JobRecord.status == "leased", JobRecord.leased_at < cutoff
+            )
+            for row in session.scalars(stmt):
+                row.attempts += 1
+                row.leased_by = None
+                row.leased_at = None
+                if row.attempts >= max_attempts:
+                    row.status = "failed"
+                    row.result = {"error": f"lease expired after {row.attempts} attempts"}
+                else:
+                    row.status = "queued"
+                    requeued.append(row.id)
+            session.commit()
+        return requeued
 
     def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
         from sqlalchemy.orm import Session
@@ -329,4 +404,9 @@ def repository_from_env() -> SqlRepository | None:
     url = os.environ.get("BAJUTSU_DATABASE_URL")
     if not url:
         return None
-    return SqlRepository(engine_from_url(url))
+    kwargs: dict[str, Any] = {}
+    if timeout := os.environ.get("BAJUTSU_LEASE_TIMEOUT_SECONDS"):
+        kwargs["lease_timeout"] = timedelta(seconds=float(timeout))
+    if attempts := os.environ.get("BAJUTSU_LEASE_MAX_ATTEMPTS"):
+        kwargs["max_attempts"] = int(attempts)
+    return SqlRepository(engine_from_url(url), **kwargs)

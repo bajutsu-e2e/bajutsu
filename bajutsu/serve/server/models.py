@@ -82,6 +82,9 @@ class JobRecord(Base):
     status: Mapped[str] = mapped_column(default="queued")  # queued | leased | done | failed
     leased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     leased_by: Mapped[str | None] = mapped_column(default=None)
+    # How many times this job has been leased and lost (lease expiry) — a poison job that keeps
+    # killing its worker is failed once it hits the attempt cap rather than re-queued forever.
+    attempts: Mapped[int] = mapped_column(default=0, server_default="0")
     result: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
     created_at: Mapped[datetime] = _created_at()
 
