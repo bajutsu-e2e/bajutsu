@@ -89,7 +89,7 @@ class Repository(Protocol):
         """Mark a leased job as ``failed`` with an error message."""
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
-        """Return the job's status and result, or None if it does not exist."""
+        """Return the job's status, result, and org_id, or None if it does not exist."""
 
 
 def _to_record(row: Run) -> RunRecord:
@@ -311,7 +311,7 @@ class SqlRepository:
             row = session.get(JobRecord, job_id)
             if row is None:
                 return None
-            return {"status": row.status, "result": dict(row.result)}
+            return {"status": row.status, "result": dict(row.result), "org_id": row.org_id}
 
 
 def engine_from_url(url: str) -> Engine:

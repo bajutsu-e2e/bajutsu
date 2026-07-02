@@ -225,14 +225,12 @@ def _build_server_state(
     token: str | None,
     upload_exec: str = "sandbox",
 ) -> ServeState:
-    """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015).
+    """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015/BE-0106).
 
-    Redis (``BAJUTSU_REDIS_URL`` / ``BAJUTSU_QUEUE``) backs the run queue + log bus; one
-    S3-compatible bucket (``BAJUTSU_S3_BUCKET`` / ``BAJUTSU_S3_ENDPOINT`` / ``BAJUTSU_S3_REGION``,
-    optional ``BAJUTSU_S3_PREFIX`` tenant prefix) holds artifacts (``<prefix>artifacts/``) and
-    scenarios (``<prefix>scenarios/<app>/``). Projects come from the bound config's targets — no
-    Postgres registry in this path. Redis/RQ/boto3 are imported lazily, only here, so the default
-    path and the import guard stay SDK-free."""
+    Postgres (``BAJUTSU_DATABASE_URL``) backs the job queue, sessions, and the system of record
+    (BE-0106); one S3-compatible bucket (``BAJUTSU_S3_BUCKET`` / ``BAJUTSU_S3_ENDPOINT`` /
+    ``BAJUTSU_S3_REGION``, optional ``BAJUTSU_S3_PREFIX``) holds artifacts and scenarios. Server
+    extras (SQLAlchemy, boto3) are imported lazily so the default path stays SDK-free."""
     import os
 
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
@@ -294,7 +292,16 @@ def _build_server_state(
         token=token,
         upload_exec=upload_exec,
         executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
-        logbus=PostCompletionLogBus(repo) if repo is not None else InMemoryLogBus(),
+        logbus=(
+            PostCompletionLogBus(
+                repo,
+                artifacts_fn=lambda org: ObjectStorageArtifactStore(
+                    store, prefix=artifact_prefix(org_prefix(prefix, org))
+                ),
+            )
+            if repo is not None
+            else InMemoryLogBus()
+        ),
         sessions=(
             SqlSessionStore(
                 _db_engine,

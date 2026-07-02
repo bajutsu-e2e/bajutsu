@@ -262,7 +262,7 @@ class _FakeArtifactStore:
     def __init__(self, files: dict[str, bytes] | None = None) -> None:
         self._files = files or {}
 
-    def get(self, path: str) -> bytes | None:
+    def open_bytes(self, path: str) -> bytes | None:
         return self._files.get(path)
 
 
@@ -272,7 +272,7 @@ def test_post_completion_logbus_yields_log_after_done() -> None:
     repo.lease_job("w1")
     repo.complete_job("j1", result={"ok": True})
     artifacts = _FakeArtifactStore({"j1/console.log": b"line 1\nline 2\n"})
-    bus = PostCompletionLogBus(repo, artifacts, poll_interval=0.01)
+    bus = PostCompletionLogBus(repo, lambda _org: artifacts, poll_interval=0.01)
     lines = list(bus.stream("j1"))
     assert "line 1\n" in lines
     assert "line 2\n" in lines
@@ -282,9 +282,9 @@ def test_post_completion_logbus_heartbeats_while_queued() -> None:
     repo = _repo()
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     bus = PostCompletionLogBus(repo, poll_interval=0.01)
-    it = bus.stream("j1")
+    it = bus.stream("j1", timeout=1.0)
     hb = next(it)
-    assert hb is None  # heartbeat while still queued
+    assert hb is None  # heartbeat while still queued (timeout set → heartbeats emitted)
 
 
 def test_post_completion_logbus_final_returns_result() -> None:

@@ -17,6 +17,8 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from bajutsu.serve.artifacts import ArtifactStore
     from bajutsu.serve.server.db import Repository
 
@@ -26,17 +28,20 @@ class PostCompletionLogBus:
 
     The worker uploads the run's full stdout as ``runs/<id>/console.log``; this bus serves it
     to the ``/events`` SSE endpoint after the job completes.  While the job is in flight, the
-    stream yields periodic heartbeats so the connection stays alive."""
+    stream yields periodic heartbeats so the connection stays alive.
+
+    ``artifacts_fn`` is a callable that returns an `ArtifactStore` for a given org id, so the
+    bus reads from the correct org-scoped prefix."""
 
     def __init__(
         self,
         repository: Repository,
-        artifacts: ArtifactStore | None = None,
+        artifacts_fn: Callable[[str], ArtifactStore | None] | None = None,
         *,
         poll_interval: float = 2.0,
     ) -> None:
         self._repo = repository
-        self._artifacts = artifacts
+        self._artifacts_fn = artifacts_fn
         self._poll = poll_interval
         self._finals: dict[str, str] = {}
 
@@ -66,17 +71,19 @@ class PostCompletionLogBus:
         while True:
             info = self._repo.get_job(job_id)
             if info is not None and info["status"] in ("done", "failed"):
-                log_lines = self._read_console_log(job_id)
-                yield from log_lines
+                yield from self._read_console_log(info.get("org_id", ""), job_id)
                 return
             time.sleep(self._poll)
-            yield None  # heartbeat
+            if timeout is not None:
+                yield None  # heartbeat only when timeout is set (LogBus contract)
 
-    def _read_console_log(self, job_id: str) -> list[str]:
-        if self._artifacts is None:
+    def _read_console_log(self, org_id: str, job_id: str) -> list[str]:
+        if self._artifacts_fn is None:
             return []
-        content = self._artifacts.get(f"{job_id}/console.log")
+        store = self._artifacts_fn(org_id)
+        if store is None:
+            return []
+        content = store.open_bytes(f"{job_id}/console.log")
         if content is None:
             return []
-        text = content.decode("utf-8") if isinstance(content, bytes) else str(content)
-        return text.splitlines(keepends=True)
+        return content.decode("utf-8").splitlines(keepends=True)
