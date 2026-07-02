@@ -37,7 +37,7 @@ visible claim on it at all.
 
 GitHub already ships a first-class ownership primitive for exactly this — Issue **Assignees**,
 filterable by `assignee:` and `no:assignee`, surfaced in the Issues list, notifications, and `gh
-issue list --assignee`. With an issue behind every open item, the Issues list becomes the board
+issue list --assignee <user>`. With an issue behind every open item, the Issues list becomes the board
 the roadmap needs: assigned issues show who is on what, and the `no:assignee` filter is the
 backlog of unclaimed work. There's no need to invent a bespoke "owner" field or a status
 dashboard; the actual gap is that nothing links a BE item to an issue.
@@ -50,8 +50,8 @@ write` on the default token.
 
 1. **Issue existence is keyed off GitHub, not a repo field.** A tracking issue for `BE-NNNN` is
    identified as an open issue carrying the `roadmap-tracking` label with `BE-NNNN` in its title.
-   The sync asks GitHub whether that issue exists (`gh issue list --label roadmap-tracking --search
-   "BE-NNNN in:title --state …"`) rather than reading a row out of the BE file. This is what lets
+   The sync asks GitHub whether that issue exists (`gh issue list --label roadmap-tracking --state
+   open --search "BE-NNNN in:title"`) rather than reading a row out of the BE file. This is what lets
    the design avoid writing anything back to the repo — and it means the assignee, the one piece of
    state that changes most often, lives only where GitHub already manages it.
 2. **Lifecycle rule — a pure function of an item's current `Status`.** For every numbered item:
