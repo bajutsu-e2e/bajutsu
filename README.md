@@ -167,7 +167,7 @@ Validated on a real Simulator (iPhone 17 Pro, recent iOS):
 
 - The idb backend's subprocess execution — `describe-all` parsing, frame-center
   tap / text / swipe, and the simctl launch sequencing — confirmed against the installed
-  `idb` / `idb_companion` by running the `sample` scenarios, evidence capture, and the
+  `idb` / `idb_companion` by running the `showcase` scenarios, evidence capture, and the
   triage self-heal loop on-device.
 
 Validated in a browser (Linux, no Mac):
@@ -218,7 +218,7 @@ for the hosted backend) round out the set — see the [CLI reference](docs/cli.m
 > `no available actuator among ['idb']`. Pass flags via `make serve ARGS="--port 8766"`.
 
 Per-app (and per-platform) settings live in a config file you pass with `--config`; the demos
-ship ready-to-run ones (e.g. [`demos/features/demo.config.yaml`](demos/features/demo.config.yaml),
+ship ready-to-run ones (e.g. [`demos/showcase/showcase.config.yaml`](demos/showcase/showcase.config.yaml),
 [`demos/web/demo.config.yaml`](demos/web/demo.config.yaml)). An app targets iOS by `bundleId` or
 the web by `baseUrl`:
 
@@ -229,12 +229,12 @@ defaults:
   locale: en_US
 
 targets:
-  sample:                   # iOS app — driven on the Simulator via idb
-    bundleId: com.bajutsu.sample
-    deeplinkScheme: bajutsusample
-    launchEnv: { SAMPLE_UITEST: "1" }
-    idNamespaces: [home, list, counter, settings, onboarding, auth, nav]
-    scenarios: demos/features/app/scenarios
+  showcase-swiftui:         # iOS app — driven on the Simulator via idb
+    bundleId: com.bajutsu.showcase.swiftui
+    deeplinkScheme: showcaseswiftui
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    scenarios: demos/showcase/scenarios
 
   web:                      # web app — driven in a browser via Playwright
     baseUrl: "http://127.0.0.1:8787/index.html"
@@ -249,12 +249,12 @@ Runnable demos, all through one entry point — `make -C demos <target>` ([`demo
 - **[tour](demos/tour/README.md)** — `make -C demos tour`. The whole lifecycle (run → modify →
   diagnose) on a real Simulator, fully deterministic, **no API key**. (It also runs against an
   in-memory fake device with **zero setup**: `uv run python demos/tour/tour.py`.)
-- **[features](demos/features/README.md)** — `make -C demos features`. The scenario-authoring
+- **[features](demos/showcase/README.md)** — `make -C demos features`. The scenario-authoring
   features (tags, parameterized shared steps, secrets) on a real Simulator.
-- **[webui](demos/features/WEBUI.md)** — `make -C demos webui`. The **Web UI** driving a Simulator
+- **[webui](demos/showcase/WEBUI.md)** — `make -C demos webui`. The **Web UI** driving a Simulator
   and collecting every evidence type: screenshots, video, logs, network (observed + mocked),
   visual regression, system-alert handling. The headline demo for iOS developers.
-- **[record](demos/record/README.md)** — `make -C demos record`. AI authoring with real Claude on
+- **[record](demos/showcase/README.md)** — `make -C demos record`. AI authoring with real Claude on
   a booted app, then the modify-and-self-heal (`triage`) loop.
 - **[web](demos/web/README.md)** — `make -C demos/web e2e`. The **Playwright backend** running
   scenarios against a static web app — no Mac or Simulator, runs on Linux.

@@ -9,7 +9,7 @@
 >
 > 実装: `bajutsu/codegen.py`（XCUITest）、`bajutsu/codegen_playwright.py`（Playwright）。
 
-関連: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [drivers](drivers.md) · [sample-app の UI テストターゲット](sample-app.md#ui-テストターゲットと-make-ターゲット)
+関連: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [drivers](drivers.md) · [showcase の UI テストターゲット](showcase.md)
 
 ---
 
@@ -41,16 +41,16 @@ final class ComponentsUITests: XCTestCase {
   private func byLabel(_ label: String) -> XCUIElement { ... }
   private func matchingId(_ glob: String) -> XCUIElementQuery { ... }
 
-  func test_long_press_reveals_a_label() {
-    app.launchEnvironment["SAMPLE_UITEST"] = "1"
-    app.launchEnvironment["SAMPLE_LOGGED_IN"] = "1"
+  func test_open_filter_shows_the_sheet() {
+    app.launchEnvironment["SHOWCASE_UITEST"] = "1"
+    app.launchEnvironment["SHOWCASE_TAB"] = "log"
     app.launch()
 
-    XCTAssertFalse(el("comp.secret").exists)
-    el("comp.longpress").press(forDuration: 0.6)
+    XCTAssertFalse(el("log.sheet.title").exists)
+    el("log.openFilter").tap()
 
     // expect
-    XCTAssertTrue(el("comp.secret").exists)
+    XCTAssertTrue(el("log.sheet.title").exists)
   }
 }
 ```
@@ -211,4 +211,4 @@ test.describe('Components', () => {
 - クラス名は `class_name_for(stem)` で、stem を Title ケースにして `UITests` を付加します。CLI はこれを、出力ファイル名
   （`-o` の stem）から、なければシナリオファイル名から決めます。
 
-サンプルでの実走（`make -C demos/features ui-test`）は [sample-app](sample-app.md#ui-テストターゲットと-make-ターゲット) にあります。
+showcase での実走（`make -C demos/showcase ui-test`）は [showcase](showcase.md) にあります。

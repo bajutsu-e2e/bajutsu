@@ -4,7 +4,7 @@
 
 The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding a target means adding one `targets.<name>` entry.
 
-Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/features/demo.config.yaml`](../demos/features/demo.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
+Implementation: `bajutsu/config.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
 
 Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-into-config) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -28,12 +28,12 @@ defaults:                       # shared across all targets
   reservedNamespaces: [auth, nav]   # the id contract for shared flows / components (informational)
 
 targets:
-  sample:                       # ← selected by --target sample
-    bundleId:       com.bajutsu.sample     # iOS target (required unless baseUrl is set for web)
-    deeplinkScheme: bajutsusample
-    idNamespaces:   [home, list, counter, settings, onboarding, auth, nav, comp, ctrl, text, lists]
-    launchEnv:      { SAMPLE_UITEST: "1" }
-    scenarios:      demos/features/app/scenarios   # this target's scenarios dir (run reads it; record writes here)
+  showcase-swiftui:             # ← selected by --target showcase-swiftui
+    bundleId:       com.bajutsu.showcase.swiftui     # iOS target (required unless baseUrl is set for web)
+    deeplinkScheme: showcaseswiftui
+    idNamespaces:   [stable, horse, search, log, notice, perm, sys, net]
+    launchEnv:      { SHOWCASE_UITEST: "1" }
+    scenarios:      demos/showcase/scenarios   # this target's scenarios dir (run reads it; record writes here)
     # optional: backend / device / locale / launchArgs / setup / redact / secrets / mockServer / appPath / build
 
   web:                          # a web target (Playwright backend) is identified by URL
@@ -233,7 +233,7 @@ git+https://<host>/<owner>/<repo>.git[@<ref>][#<path>]          # general form (
 - A fresh checkout holds **no built binary**, and there is no local "first" in which to build one, so a
   Git-sourced `run` **builds the app on demand**: when `appPath` is set but missing, it runs the
   config's `build` command from the **checkout root** (where `build`'s relative parts, e.g.
-  `make -C demos/features sample-build`, are rooted), then proceeds. A failed build exits cleanly.
+  `make -C demos/showcase swiftui-build`, are rooted), then proceeds. A failed build exits cleanly.
   A local-path `run` is unchanged (it never builds; a missing binary still errors).
 - A **pinned commit SHA** (`@<sha>`) is reproducible and runs offline after the first fetch; a branch
   (or tag) is resolved fresh each load. Private repos use a token from `GITHUB_TOKEN` / `GH_TOKEN`, else
@@ -280,7 +280,7 @@ Three invariants:
 2. **Non-localized, data-derived** — don't use display text in an id (it breaks under translation).
 3. **Namespace-prefixed** — every id starts with a declared namespace.
 
-The sample app's id catalog is in [sample-app](sample-app.md#accessibilityidentifier-catalog).
+The showcase's id catalog is in [showcase](showcase.md) (and, in full, `demos/showcase/SPEC.md`).
 
 ## doctor (the convention score)
 
