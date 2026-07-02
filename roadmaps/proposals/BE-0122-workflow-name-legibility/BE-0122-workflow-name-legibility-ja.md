@@ -1,11 +1,11 @@
-[English](BE-XXXX-workflow-name-legibility.md) · **日本語**
+[English](BE-0122-workflow-name-legibility.md) · **日本語**
 
-# BE-XXXX — Legible GitHub Actions workflow and job names
+# BE-0122 — Legible GitHub Actions workflow and job names
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-workflow-name-legibility-ja.md) |
+| 提案 | [BE-0122](BE-0122-workflow-name-legibility-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | 開発基盤（コントリビュータ体験） |
