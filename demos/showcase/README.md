@@ -84,16 +84,16 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 
 Deeplink schemes are per-product (so two installed apps never collide): `showcaseswiftui`,
 `showcaseuikit`, plus the `…noax` variants. Because `bajutsu` opens the URL literally, the
-shared scenarios use `launchEnv` + taps (scheme-agnostic) rather than deeplinks. To exercise a
-deeplink directly:
+shared scenarios use `launchEnv` + taps (scheme-agnostic) rather than deeplinks. A deeplink
+selects a tab (it no longer pushes a detail screen — BE-0079); to exercise one directly:
 
 ```bash
-xcrun simctl openurl booted showcaseswiftui://horse/2
+xcrun simctl openurl booted showcaseswiftui://log
 xcrun simctl openurl booted showcaseuikit://permissions
 ```
 
-## Relationship to `sample`
+## The single iOS fixture
 
-The showcase supersedes the older single-app [`sample` fixture](../features/app/README.md);
-`sample` stays until the showcase also covers its on-device CI and Web UI tours. See the BE
-item for the migration note.
+The showcase is Bajutsu's only iOS fixture. BE-0079 retired the older single-variant apps
+(`demo`, `sample`, `sample2`) after bringing the showcase to parity and re-pointing every demo
+and on-device CI job at it.

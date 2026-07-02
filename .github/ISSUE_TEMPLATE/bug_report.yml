@@ -50,9 +50,9 @@ body:
       description: The exact command(s) you ran.
       render: shell
       placeholder: |
-        make serve ARGS="--config demos/features/demo.config.yaml --port 8766"
+        make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"
         # or
-        make -C demos/features e2e
+        make -C demos/showcase run-swiftui
     validations:
       required: true
 

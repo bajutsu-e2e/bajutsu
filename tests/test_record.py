@@ -146,7 +146,7 @@ def _vel(label: str | None, traits: list[str]) -> base.Element:
 
 
 def test_shows_app_ui_recognizes_label_only_screen() -> None:
-    # An app without accessibility identifiers (sample2): label-only elements are still app UI.
+    # An app without accessibility identifiers (a -noax variant): label-only elements are still app UI.
     app = _vel("BajutsuSample", ["application"])
     assert shows_app_ui([app, _vel("Get Started", ["button"])]) is True
     assert shows_app_ui([_el("onboarding.start", "Get Started")]) is True  # id-only also counts

@@ -63,8 +63,8 @@ to run. Pass `--scenario <file>` to run a single file instead.
   machine-readable result line. A run that used no AI prints nothing.
 
 ```bash
-bajutsu run --target sample --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
-bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --target sample --no-erase   # one file
+bajutsu run --target showcase-swiftui --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
+bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
 ```
 
 ## `doctor`
@@ -574,8 +574,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   no per-tab agent picker. Under Claude Code, an API key (if set) still powers only the alert guard.
 - If the app's built binary (config `appPath`) is missing, the app's `build` command runs first
   (its output streams into the job log); a build failure aborts the run before it spawns. Set
-  `targets.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/features
-  sample-build`) to build on demand from the UI without a manual build first.
+  `targets.<name>.build` to the shell command that produces `appPath` (e.g. `make -C demos/showcase
+  swiftui-build`) to build on demand from the UI without a manual build first.
 - A **History** list under the controls shows past runs (newest first, with a pass/fail dot and
   scenario summary); click one to reopen its report. `GET /api/runs` backs it.
 - The run subprocess inherits the launch environment (the venv `bin` is prepended to `PATH` so

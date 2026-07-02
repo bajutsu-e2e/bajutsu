@@ -56,7 +56,7 @@ preflight:
 	@./scripts/preflight.sh
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh .claude/hooks/session-start.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -161,6 +161,5 @@ docs: roadmap-dashboard
 docs-serve: roadmap-dashboard
 	uv run --extra docs mkdocs serve
 
-# Sample-app build / E2E targets live with their demos:
-#   make -C demos/features sample-gen|sample-build|e2e|ui-test   (demos/features/app)
-#   make -C demos/record   sample2-gen|sample2-build             (demos/record/app)
+# Showcase build / on-device targets live with the fixture (demos/showcase/, the single iOS app):
+#   make -C demos/showcase swiftui-build|uikit-build|run-swiftui|doctor|record|ui-test|vrt

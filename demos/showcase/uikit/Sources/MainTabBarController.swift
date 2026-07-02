@@ -1,8 +1,9 @@
 import UIKit
 
 /// The five-tab main UI (SPEC §5): Stable, Search, Log, Notices, Permissions, each in its
-/// own navigation controller. Also exposes the routing helpers the scene delegate uses
-/// for deeplinks (push detail, pop to roots, dismiss modals).
+/// own navigation controller. Also exposes the routing helpers the scene delegate uses for
+/// deeplinks (pop to roots, dismiss modals) — a deeplink selects a tab but no longer pushes
+/// a detail screen (BE-0079); detail is reached only by tapping a catalog row.
 final class MainTabBarController: UITabBarController {
     private let model: AppModel
 
@@ -39,7 +40,7 @@ final class MainTabBarController: UITabBarController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    // MARK: - Routing (used by the scene delegate's deeplink handling)
+    // MARK: - Routing (used by the scene delegate's deeplink tab selection)
 
     private var navs: [UINavigationController] { [stableNav, searchNav, logNav, noticesNav, permissionsNav] }
 
@@ -51,16 +52,5 @@ final class MainTabBarController: UITabBarController {
     func dismissPresented(animated: Bool) {
         dismiss(animated: animated)
         for nav in navs { nav.dismiss(animated: animated) }
-    }
-
-    func pushHorseDetail(id: Int, model: AppModel) {
-        guard let horse = model.horse(id: id) else { return }
-        let detail = HorseDetailController(horse: horse, model: model)
-        stableNav.pushViewController(detail, animated: false)
-    }
-
-    func pushNoticeDetail(id: Int, model: AppModel) {
-        guard let notice = model.notice(id: id) else { return }
-        noticesNav.pushViewController(NoticeDetailController(notice: notice), animated: false)
     }
 }

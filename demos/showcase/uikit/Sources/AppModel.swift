@@ -32,8 +32,9 @@ final class AppModel {
     let apiBase: String
     let httpBase: String
 
-    /// The offline catalog, seeded from SHOWCASE_SEED. Network rows would extend this.
-    private(set) var horses: [Horse]
+    /// The offline catalog. Fixed at launch — no launch-env seed knob (BE-0079): a scenario
+    /// cannot inject a data state, only observe the app's own. Network rows would extend this.
+    private(set) var horses: [Horse] = (1 ... 5).map { Horse(id: $0, name: "Horse \($0)") }
 
     /// The seeded notices (Notices tab list → detail).
     let notices = showcaseNotices
@@ -42,9 +43,6 @@ final class AppModel {
         animationsDisabled = env["SHOWCASE_UITEST"] != nil
         apiBase = env["SHOWCASE_API_URL"] ?? "https://example.com"
         httpBase = env["SHOWCASE_HTTP_BASE"] ?? "https://httpbin.org"
-
-        let seed = max(0, Int(env["SHOWCASE_SEED"] ?? "5") ?? 5)
-        horses = seed > 0 ? (1 ... seed).map { Horse(id: $0, name: "Horse \($0)") } : []
 
         initialTab = Self.tab(env["SHOWCASE_TAB"]) ?? .stable
     }
@@ -58,13 +56,5 @@ final class AppModel {
         case "permissions": return .permissions
         default: return nil
         }
-    }
-
-    func horse(id: Int) -> Horse? {
-        horses.first { $0.id == id }
-    }
-
-    func notice(id: Int) -> Notice? {
-        notices.first { $0.id == id }
     }
 }

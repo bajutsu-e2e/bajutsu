@@ -10,7 +10,7 @@
 >
 > Implementation: `bajutsu/codegen.py` (XCUITest), `bajutsu/codegen_playwright.py` (Playwright).
 
-Related: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [drivers](drivers.md) · [the UI-test target in sample-app](sample-app.md#the-ui-test-target-and-make-targets)
+Related: [scenarios](scenarios.md) · [cli](cli.md#codegen) · [drivers](drivers.md) · [the showcase UI-test target](showcase.md)
 
 ---
 
@@ -42,16 +42,16 @@ final class ComponentsUITests: XCTestCase {
   private func byLabel(_ label: String) -> XCUIElement { ... }
   private func matchingId(_ glob: String) -> XCUIElementQuery { ... }
 
-  func test_long_press_reveals_a_label() {
-    app.launchEnvironment["SAMPLE_UITEST"] = "1"
-    app.launchEnvironment["SAMPLE_LOGGED_IN"] = "1"
+  func test_open_filter_shows_the_sheet() {
+    app.launchEnvironment["SHOWCASE_UITEST"] = "1"
+    app.launchEnvironment["SHOWCASE_TAB"] = "log"
     app.launch()
 
-    XCTAssertFalse(el("comp.secret").exists)
-    el("comp.longpress").press(forDuration: 0.6)
+    XCTAssertFalse(el("log.sheet.title").exists)
+    el("log.openFilter").tap()
 
     // expect
-    XCTAssertTrue(el("comp.secret").exists)
+    XCTAssertTrue(el("log.sheet.title").exists)
   }
 }
 ```
@@ -216,5 +216,5 @@ identifier sanitizing is needed).
 - Class name `class_name_for(stem)` = the stem title-cased with a `UITests` suffix. The CLI derives
   it from the output filename (the `-o` stem) or, absent that, the scenario filename.
 
-The live run on the sample (`make -C demos/features ui-test`) is in
-[sample-app](sample-app.md#the-ui-test-target-and-make-targets).
+The live run on the showcase (`make -C demos/showcase ui-test`) is in
+[showcase](showcase.md).

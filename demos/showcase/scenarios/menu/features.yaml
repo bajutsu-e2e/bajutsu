@@ -4,7 +4,7 @@
 - name: filter via the shared component
   tags: [smoke]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search, SHOWCASE_SEED: "5" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
   steps:
     - use: { component: _components/search_for.yaml, with: { query: "Horse 3" } }
     - wait: { for: { id: search.row.3 }, timeout: 5 }
@@ -14,7 +14,7 @@
 - name: type a masked secret into the field
   tags: [smoke, secret]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search, SHOWCASE_SEED: "5" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
   steps:
     # ${secrets.PASSWORD} resolves from the environment; the literal value is masked in every run
     # artifact, while the scenario file keeps only the token. It matches no horse name, so the
@@ -28,7 +28,7 @@
 - name: nightly deep check
   tags: [slow]
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
   steps:
     - wait: { for: { id: stable.row.3 }, timeout: 10 }
     - tap: { id: stable.row.3 }

@@ -39,7 +39,7 @@ you change behavior, change a test with it — the suite is the regression net t
 other contributor's work.
 
 On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** part of this gate:
-`make -C demos/features e2e` (after `make deps`). Don't block core work on it.
+`make -C demos/showcase run-swiftui` (after `make deps`). Don't block core work on it.
 
 ## Branches, commits, and pull requests
 

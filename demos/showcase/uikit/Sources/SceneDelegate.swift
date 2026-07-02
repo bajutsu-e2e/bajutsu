@@ -1,7 +1,8 @@
 import UIKit
 
-/// Owns the window and deeplink routing (SPEC §4). The app launches directly into the
-/// tab UI; a deeplink dismisses any modal, pops to tab roots, then routes into a tab.
+/// Owns the window and deeplink routing (SPEC §4). The app launches into the tab UI; a deeplink
+/// dismisses any modal, pops to tab roots, then selects a tab. A deeplink no longer pushes a
+/// detail screen (BE-0079): a detail is reached only by tapping its catalog row.
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -46,18 +47,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         case "log": tabController.selectedIndex = AppModel.Tab.log.rawValue
         case "notices": tabController.selectedIndex = AppModel.Tab.notices.rawValue
         case "permissions": tabController.selectedIndex = AppModel.Tab.permissions.rawValue
-        case "horse":
-            // …://horse/<id> — Stable tab, push Horse Detail for <id>.
-            tabController.selectedIndex = AppModel.Tab.stable.rawValue
-            if let id = Int(url.lastPathComponent) {
-                tabController.pushHorseDetail(id: id, model: model)
-            }
-        case "notice":
-            // …://notice/<id> — Notices tab, push Notice Detail for <id>.
-            tabController.selectedIndex = AppModel.Tab.notices.rawValue
-            if let id = Int(url.lastPathComponent) {
-                tabController.pushNoticeDetail(id: id, model: model)
-            }
         default:
             break
         }

@@ -9,13 +9,13 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Dogfood fixtures (demo apps) |
-| Related | [BE-0079](../../in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
+| Related | [BE-0079](../../implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 | Origin | Dogfooding |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-[BE-0079](../../in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md)
+[BE-0079](../../implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md)
 began removing the showcase's launch-time shortcuts to a screen or state: it dropped the
 `SHOWCASE_SEED` data-injection knob (the catalog is fixed) and the deeplink *detail push* (a horse
 or notice is reached only by tapping its row). It **kept** one shortcut — `SHOWCASE_TAB`, which
@@ -83,6 +83,6 @@ would make the showcase's on-device path flaky, which the determinism directive 
 
 ## References
 
-- [BE-0079 — Consolidate the demo & dogfood apps onto the showcase suite](../../in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) — removed the seed / deeplink-push shortcuts; deferred the tab shortcut to this item
+- [BE-0079 — Consolidate the demo & dogfood apps onto the showcase suite](../../implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) — removed the seed / deeplink-push shortcuts; deferred the tab shortcut to this item
 - [BE-0019 — XCUITest backend](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) — the backend that reaches a native tab bar; its perf/stability is this item's prerequisite
 - [BE-0006 — idb element-tree normalization](../../implemented/BE-0006-idb-element-tree-normalization/BE-0006-idb-element-tree-normalization.md) · [BE-0005 — idb version monitoring](../../implemented/BE-0005-idb-companion-version-monitoring/BE-0005-idb-companion-version-monitoring.md) — the idb-compatibility signal the split must preserve

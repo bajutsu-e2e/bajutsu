@@ -94,7 +94,7 @@ Headless, coordinate-based. For CI (continuous integration). With no semantic ta
   as a pan by SwiftUI).
 
 > The describe-all JSON key names follow fb-idb's output and are **validated on-device** against
-> fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/features e2e` + the `e2e.yml` CI workflow; re-check them only
+> fb-idb (iPhone 17 Pro, recent iOS) via `make -C demos/showcase run-swiftui` + the `e2e.yml` CI workflow; re-check them only
 > if the installed idb version changes the schema (the note atop `idb.py`). The idb client is
 > `uv sync --extra idb`; `idb_companion` is `brew install facebook/fb/idb-companion`.
 
@@ -241,8 +241,8 @@ through an injectable `RunFn`.
 
 > **Injecting launch env**: an env var to pass to the app is set on the parent process as
 > `SIMCTL_CHILD_<NAME>`, which reaches the child (the app) as `<NAME>`. `child_env()` does this
-> conversion. The sample app's launch hooks like `SAMPLE_UITEST` use this mechanism
-> ([sample-app](sample-app.md#launch-env-hooks)).
+> conversion. The showcase's launch hooks like `SHOWCASE_UITEST` use this mechanism
+> ([showcase](showcase.md#launch-environment-hooks)).
 
 The `video` / `deviceLog` interval captures also use `simctl io recordVideo` / `simctl spawn log
 stream`, but those live in the evidence subsystem (`intervals.py`)

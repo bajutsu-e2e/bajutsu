@@ -6,10 +6,9 @@
 #     xcodebuild — no bajutsu / idb / AI at test time (the codegen output path).
 # The SwiftUI a11y product is the smoke / codegen subject; the UIKit twin shares the identifier
 # contract, so one toolkit suffices for the gate.
-# The BE-0006 element-tree goldens are recorded from the legacy `sample` fixture and have no
-# showcase equivalent yet, so per-PR golden coverage retired with the sample smoke job; the
-# weekly idb-monitor still runs them. Porting goldens to the showcase is a follow-up tracked with
-# the phase-3 retirement of `sample` (BE-0079).
+# The BE-0006 element-tree goldens now live on the showcase
+# (demos/showcase/scenarios/golden.yaml, ported in BE-0079's retirement); the weekly idb-monitor
+# runs them against the latest idb_companion, so per-PR golden coverage stays off this fast gate.
 # Runs on every relevant PR and on demand (the Actions tab / `gh workflow run e2e.yml`).
 name: E2E (Simulator)
 

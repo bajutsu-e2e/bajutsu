@@ -24,7 +24,7 @@ iOS のデモはどれも同じフィクスチャ、showcase 群（[`showcase/`]
 
 > **Mac / Simulator が無い場合は？** `tour` の物語全体は、メモリ上の仮想デバイスに対しても動きます。
 > Simulator も idb も APIキーも要らず、Linux/CI で数秒です: `uv run python demos/tour/tour.py`（機能
-> ショーケースは `uv run python demos/features/run_demo.py`）。[`tour/README.ja.md`](tour/README.ja.md)
+> ショーケースは `uv run python demos/showcase/run_demo.py`）。[`tour/README.ja.md`](tour/README.ja.md)
 > を参照してください。これらは素早い最初の一歩で、上記の `make` ターゲットが実機での本番です。
 
 > **web（Playwright）バックエンド。** 別のデモが小さな静的 web アプリをブラウザで操作します。Mac も
@@ -64,9 +64,8 @@ iOS のデモはどれも同じフィクスチャ、showcase 群（[`showcase/`]
 - **`web`**（[`web/`](web/README.md)）。**Playwright** バックエンドが Linux 上で操作する小さな静的 web
   アプリです（Mac / Simulator 不要）。コアが backend 非依存であることを示すクロスプラットフォームのデモです。
 
-> 旧来の単一変種のフィクスチャ（`demo`（[`app/`](app/)）、`sample`（[`features/app/`](features/app/)）、
-> `sample2`（[`record/app/`](record/app/)））は showcase に置き換えられ、削除を予定しています（BE-0079）。
-> デモのメニューも CI も、これらを対象にしなくなりました。
+> 旧来の単一変種のフィクスチャ（`demo`・`sample`・`sample2`）は showcase に置き換えられ、退役・削除
+> されました（BE-0079）。デモのメニューも CI も、これらを対象にしていません。
 
 生成シナリオと作業コピー（`*/generated.yaml`、`tour/scenario.yaml`）、Xcode プロジェクト、実行成果物
 （`runs/`）は gitignore されています。デモが再生成します。

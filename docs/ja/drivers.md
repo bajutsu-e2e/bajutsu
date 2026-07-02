@@ -65,7 +65,7 @@ class Driver(Protocol):
 - `screenshot`: idb 自身のフレームキャプチャが不安定なため **`simctl io screenshot` を使います**。
 - `swipe`: `--duration 0.2` を付けて実ドラッグ化します（瞬間スワイプは SwiftUI に pan として認識されません）。
 
-> describe-all の JSON キー名は fb-idb の出力に従い、`make -C demos/features e2e` ＋ `e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。インストール済み idb がスキーマを変えたときだけ再確認すれば十分です（`idb.py` 冒頭の注記参照）。idb クライアントは `uv sync --extra idb`、`idb_companion` は `brew install facebook/fb/idb-companion` でインストールします。
+> describe-all の JSON キー名は fb-idb の出力に従い、`make -C demos/showcase run-swiftui` ＋ `e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。インストール済み idb がスキーマを変えたときだけ再確認すれば十分です（`idb.py` 冒頭の注記参照）。idb クライアントは `uv sync --extra idb`、`idb_companion` は `brew install facebook/fb/idb-companion` でインストールします。
 
 ### idb のバージョン追跡（BE-0005）
 
@@ -145,6 +145,6 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 | `openurl(url)` | `simctl openurl <udid> <url>` | deeplink |
 | `screenshot(path)` | `simctl io <udid> screenshot <path>` | — |
 
-> **launch env の注入**: アプリへ渡す env 変数は、親プロセスに `SIMCTL_CHILD_<NAME>` として設定すると子（アプリ）に `<NAME>` で渡ります。`child_env()` がこの変換を行います。サンプルアプリの `SAMPLE_UITEST` 等の launch hook はこの仕組みを使います（[sample-app](sample-app.md#launch-env-フック)）。
+> **launch env の注入**: アプリへ渡す env 変数は、親プロセスに `SIMCTL_CHILD_<NAME>` として設定すると子（アプリ）に `<NAME>` で渡ります。`child_env()` がこの変換を行います。showcase アプリの `SHOWCASE_UITEST` 等の launch hook はこの仕組みを使います（[showcase](showcase.md#起動環境フック)）。
 
 `video` / `deviceLog` の区間録りも `simctl io recordVideo` / `simctl spawn log stream` を使いますが、これらは証跡サブシステム側（`intervals.py`）に置かれています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。

@@ -242,6 +242,7 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
+| [BE-0079](implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Implemented | Dogfooding |
 <!-- /GENERATED:implemented-dogfood -->
 
 ### Dogfood fixtures (web UI)
@@ -387,9 +388,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 Consolidating the demo and dogfood apps onto the showcase suite: bringing it to parity with the legacy `sample` / `demo` / `sample2` fixtures (codegen → XCUITest, visual regression, gesture targets, the evidence tour), re-pointing the demos and on-device CI at it, and retiring the three legacy apps — so the showcase becomes the single iOS fixture.
 
 <!-- GENERATED:in-progress-dogfood -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0079](in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | In progress | Dogfooding |
+
 <!-- /GENERATED:in-progress-dogfood -->
 
 ### Hosting the web UI (cloud / self-hosted)

@@ -107,8 +107,9 @@ def shows_app_ui(elements: list[base.Element]) -> bool:
 
     A SpringBoard alert collapses the app's tree to a bare window; a live app screen
     has actionable content. "Actionable" = any non-application element carrying an `id` OR a
-    `label`, so apps WITHOUT accessibility identifiers (label/coordinate-driven, e.g. sample2)
-    are not mistaken for a blocked screen — the bug that made the guard fire every turn.
+    `label`, so apps WITHOUT accessibility identifiers (label/coordinate-driven, e.g. the
+    showcase `-noax` variants) are not mistaken for a blocked screen — the bug that made the
+    guard fire every turn.
     """
     return any(
         (el.get("identifier") or el.get("label")) and "application" not in (el.get("traits") or [])
