@@ -242,6 +242,7 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
+| [BE-0079](implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Implemented | Dogfooding |
 <!-- /GENERATED:implemented-dogfood -->
 
 ### Dogfood fixtures (web UI)
@@ -389,7 +390,6 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 <!-- GENERATED:in-progress-dogfood -->
 | ID | Item | Status | Origin |
 |---|---|---|---|
-| [BE-0079](in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | In progress | Dogfooding |
 <!-- /GENERATED:in-progress-dogfood -->
 
 ### Hosting the web UI (cloud / self-hosted)
