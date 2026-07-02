@@ -8,8 +8,8 @@
 | 提案 | [BE-XXXX](BE-XXXX-hosted-config-source-restriction-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| 関連 | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)、[BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)、[BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
+| 関連 | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md), [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source-ja.md), [BE-0073](../../implemented/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
