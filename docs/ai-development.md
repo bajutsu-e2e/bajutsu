@@ -486,10 +486,10 @@ apply equally when reporting on or summarizing work.
 - **No omissions; be self-contained.** A reader must be able to understand the document on its own.
   Spell out an abbreviation the first time it appears, give a term the context it needs, and do not
   assume the reader has already read another page.
-- **Acronyms are always spelled out on first use.** Write the full term first, with the acronym in
-  parentheses right after — e.g. role-based access control (RBAC) — and use the acronym alone for
-  the rest of the document. This applies everywhere the term appears, including roadmap items, not
-  only `docs/`.
+- **Spell out an acronym the first time it appears.** Write the full term first, with the acronym
+  in parentheses right after — e.g. role-based access control (RBAC) — then the acronym alone is
+  fine for the rest of the document. This applies everywhere the term appears, including roadmap
+  items, not only `docs/`.
 - **Japanese prose follows the `japanese-tech-writing` skill.** Whether you write the Japanese side
   fresh or translate the English mirror into `docs/ja/` (or a roadmap `*-ja.md`), apply
   [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/): it is the authoritative style
