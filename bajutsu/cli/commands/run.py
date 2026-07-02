@@ -283,6 +283,15 @@ def run(
         "working directory but persist the run elsewhere — e.g. serve running an uploaded bundle "
         "from its extracted dir while keeping the run in serve's store (BE-0073)",
     ),
+    evidence_store: str = typer.Option(
+        "",
+        "--evidence-store",
+        envvar="BAJUTSU_EVIDENCE_STORE",
+        help="after the run, upload the run tree to object storage at this URI "
+        "(s3://bucket/prefix or gs://bucket/prefix); the upload path picks the cloud lifecycle "
+        "policy. Runs after the verdict, so an upload failure can't affect pass/fail (BE-0110). "
+        "Needs the s3 or gcs extra",
+    ),
     upload_exec: str = typer.Option(
         "",
         "--upload-exec",
@@ -593,6 +602,29 @@ def run(
             typer.echo(f"wrote {zip_path}", err=True)
         except OSError as e:
             typer.echo(f"warning: --zip failed ({e}); the run verdict stands", err=True)
+    # --evidence-store uploads the finished run tree to object storage, strictly *after* the verdict
+    # above (like --zip), so it cannot influence pass/fail (BE-0110). object_store is imported lazily
+    # so the default path never loads the cloud SDKs (the import guard). A parse/connection/upload
+    # failure is reported as a warning and never flips the exit code — the verdict already stands.
+    if evidence_store:
+        from bajutsu.object_store import object_store_from_uri, parse_store_uri, upload_tree
+
+        run_dir = manifest.parent
+        try:
+            uri = parse_store_uri(evidence_store)
+            summary = upload_tree(object_store_from_uri(uri), run_dir, uri.prefix)
+        except Exception as e:  # a bad URI, a missing SDK, or missing/denied credentials — any of
+            # these must warn, never flip the already-final verdict (BE-0110). Client construction
+            # (e.g. GCS ADC) can raise SDK-specific errors, not just ValueError/ImportError.
+            typer.echo(f"warning: --evidence-store failed ({e}); the run verdict stands", err=True)
+        else:
+            typer.echo(
+                f"uploaded {summary.uploaded} file(s) to {evidence_store}"
+                + (f"; {len(summary.failures)} failed" if summary.failures else ""),
+                err=True,
+            )
+            for key, reason in summary.failures:
+                typer.echo(f"  warning: upload failed for {key}: {reason}", err=True)
     # The only AI in `run` is the alert guard (when it actually fired). Report its token use on
     # stderr so stdout stays the machine-readable PASS/FAIL line; silent when nothing fired.
     spent = _usage.snapshot() - before

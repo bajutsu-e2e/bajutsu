@@ -402,6 +402,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開ホスティング | 実装中 |
 | [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) | Web UI のセルフホスティング | 実装中 |
+| [BE-0110](in-progress/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md) | URI 指定によるオブジェクトストレージへの証跡アップロード | 実装中 |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### codegen 網羅性
@@ -483,7 +484,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) | ホスティング時は config の取得元をアップロードと Git だけに絞る | 提案 |
-| [BE-0110](proposals/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md) | URI 指定によるオブジェクトストレージへの証跡アップロード | 提案 |
 | [BE-0127](proposals/BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module-ja.md) | serve operations の巨大モジュールを分割する | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
