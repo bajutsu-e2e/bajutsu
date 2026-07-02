@@ -8,7 +8,7 @@
 | Proposal | [BE-0019](BE-0019-xcuitest-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Implementing PR | [#366](https://github.com/bajutsu-e2e/bajutsu/pull/366), [#368](https://github.com/bajutsu-e2e/bajutsu/pull/368), [#374](https://github.com/bajutsu-e2e/bajutsu/pull/374), [#376](https://github.com/bajutsu-e2e/bajutsu/pull/376), [#391](https://github.com/bajutsu-e2e/bajutsu/pull/391), [#394](https://github.com/bajutsu-e2e/bajutsu/pull/394), [#397](https://github.com/bajutsu-e2e/bajutsu/pull/397) |
+| Implementing PR | [#366](https://github.com/bajutsu-e2e/bajutsu/pull/366), [#368](https://github.com/bajutsu-e2e/bajutsu/pull/368), [#374](https://github.com/bajutsu-e2e/bajutsu/pull/374), [#376](https://github.com/bajutsu-e2e/bajutsu/pull/376), [#391](https://github.com/bajutsu-e2e/bajutsu/pull/391), [#394](https://github.com/bajutsu-e2e/bajutsu/pull/394), [#397](https://github.com/bajutsu-e2e/bajutsu/pull/397), [#433](https://github.com/bajutsu-e2e/bajutsu/pull/433) |
 | Topic | Backend expansion (iOS actuators) |
 <!-- /BE-METADATA -->
 
