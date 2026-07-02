@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
-| Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
+| Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -297,5 +297,5 @@ old runs) without conflicting with this design.
 - `bajutsu/serve/artifacts.py` — `ArtifactStore` protocol (read-back side)
 - `bajutsu/report/archive.py` — ZIP archiving of a run directory
 - [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) — Public hosting (the server topology that motivates remote storage)
-- [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) — Post-completion worker model (the async job pipeline where upload fits)
+- [BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) — Post-completion worker model (the async job pipeline where upload fits)
 - [BE-0060](../../implemented/BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) — Run report zip export (related: portable artifact packaging)
