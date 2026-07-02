@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |
-| 関連 | [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)、[BE-0057](../../implemented/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets-ja.md)、[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) |
+| 関連 | [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md), [BE-0042](../../implemented/BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md), [BE-0057](../../implemented/BE-0057-rename-apps-to-targets/BE-0057-rename-apps-to-targets-ja.md), [BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
