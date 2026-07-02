@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-inprocess-collector-auth-ja.md)
+**English** · [日本語](BE-0115-inprocess-collector-auth-ja.md)
 
-# BE-XXXX — Authenticate the in-process iOS network collector
+# BE-0115 — Authenticate the in-process iOS network collector
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-inprocess-collector-auth.md) |
+| Proposal | [BE-0115](BE-0115-inprocess-collector-auth.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
