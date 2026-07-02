@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from bajutsu import capabilities
@@ -103,13 +104,29 @@ def _fake_config(tmp_path: Path) -> tuple[Path, Path]:
 
 
 @pytest.mark.usefixtures("_no_ai_setup")
-def test_run_executes_deterministically_without_any_ai_setup(tmp_path: Path) -> None:
-    """`run` (the flagship Claude-free path) executes end-to-end with no AI setup.
+def test_run_alert_guard_degrades_to_a_no_op_without_a_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`run`'s alert guard (its `--dismiss-alerts` Claude path, on by default) **degrades to a
+    no-op** with no credential — it never fails closed on "no AI credential" and never constructs a
+    client (the fixture fails if the SDK or an agent is built).
 
-    The alert guard is on by default, so this also pins that it *degrades* to a no-op rather than
-    failing closed when there is no credential — never the exit-2 "no AI credential" gate, and never
-    a constructed client (the fixture fails if either the SDK or an agent is built).
+    This is a Claude-free claim, not a device-free one: the CLI's device wiring (simulator-udid
+    resolution + the device-pool lease) shells to `xcrun simctl`, absent on the Linux gate, so it is
+    stubbed out — the deterministic execution itself is covered device-free by the runner suite. A
+    sentinel `Exit` from the (stubbed) execution seam proves the run reached execution *after* doing
+    all its setup Claude-free.
     """
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda _udid: "FAKE-UDID")
+    monkeypatch.setattr(
+        "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
+    )
+
+    def _reached_execution(*_a: object, **_k: object) -> object:
+        raise typer.Exit(7)
+
+    monkeypatch.setattr("bajutsu.cli.commands.run.run_and_report", _reached_execution)
+
     cfg, scn = _fake_config(tmp_path)
     result = runner.invoke(
         app,
@@ -127,9 +144,6 @@ def test_run_executes_deterministically_without_any_ai_setup(tmp_path: Path) -> 
             str(tmp_path / "runs"),
         ],
     )
-    # A missing credential must never be a run-blocking error: the deterministic run proceeds and
-    # the guard no-ops. (Exit 1 here is the scenario's own assertion against the empty fake screen,
-    # which is exactly the point — the failure is deterministic, not an AI-setup failure.)
-    assert result.exit_code != 2
+    assert result.exit_code == 7  # reached execution, i.e. never bailed on a missing credential
     assert "no AI credential" not in result.output
     assert "the alert guard will no-op" in result.output
