@@ -21,7 +21,7 @@ Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つの
 `apps` は実態に合わない名前になっており、コード自身が既にそれを回避しています。
 
 - エントリのモデル `AppConfig` は、その分岐を自身のコメントで「iOS アプリは bundleId で、web アプリは baseUrl でテスト対象を特定する」と説明し、バリデータは不正なエントリを `app needs bundleId (iOS) or baseUrl (web)` で弾きます。キーは `apps` のままなのに、概念を表す語としてコードは **target** を使っています。
-- Android が予定され（[BE-0007](../../proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md)）、スコープ文自体もマルチプラットフォームへ動かす予定がある（[BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)）なか、web サイトや Android パッケージを「アプリ」と呼ぶ無理は増す一方です。
+- Android が予定され（[BE-0007](../../in-progress/BE-0007-android-backend/BE-0007-android-backend-ja.md)）、スコープ文自体もマルチプラットフォームへ動かす予定がある（[BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)）なか、web サイトや Android パッケージを「アプリ」と呼ぶ無理は増す一方です。
 - app-agnostic は prime directive です（[DESIGN §2](../../../DESIGN.md)）。テスト対象ごとの差分は config に置き、ツール本体は対象が変わっても不変に保ちます。`targets.<name>` はこの約束をプラットフォーム非依存の語で述べますが、`apps.<name>` は暗黙に iOS を前提にしています。
 
 「target」はテストツールでテスト対象（system under test）を指す慣用語で、プラットフォームに依存せず、しかも上記のとおりコードとドキュメントが既に使っている語です（"the target app"）。config の表面がまだ 1 キーで、プロジェクトが 1.0 に達していないいま改名するほうが、用語が 3 プラットフォーム分のドキュメントとシナリオに広がった後よりはるかに安く済みます。

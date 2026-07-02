@@ -450,7 +450,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 <!-- GENERATED:proposals-platform -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0007](proposals/BE-0007-android-backend/BE-0007-android-backend.md) | Android backend | Proposal |
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0114](proposals/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) | Driver conformance suite for backend-agnostic behavior | Proposal |
 | [BE-0118](proposals/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) | Unify the wait_for polling contract across drivers | Proposal |
