@@ -262,6 +262,7 @@ The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Cl
 | ID | Item | Status |
 |---|---|---|
 | [BE-0053](implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) | Amazon Bedrock as a pluggable AI provider | Implemented |
+| [BE-0101](implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) | Legible Claude-using / Claude-free split with a zero-config non-AI path | Implemented |
 <!-- /GENERATED:implemented-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -453,9 +454,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0101](proposals/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) | Legible Claude-using / Claude-free split with a zero-config non-AI path | Proposal |
+
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
