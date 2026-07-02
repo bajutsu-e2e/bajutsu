@@ -44,7 +44,7 @@ binary CI installs and `make` skips with a notice when it's absent. CI
 keeping the local bar identical is what makes "green locally" predict "green in CI".
 
 On-device E2E (macOS + Simulator) is a separate, heavier path and is **not** part of this
-gate: `make -C demos/features e2e` (requires `make deps` first). Don't block core work on it.
+gate: `make -C demos/showcase run-swiftui` (requires `make deps` first). Don't block core work on it.
 
 ## Environment
 
@@ -59,8 +59,8 @@ gate: `make -C demos/features e2e` (requires `make deps` first). Don't block cor
   serve` directly. `make serve` ([`scripts/serve.sh`](scripts/serve.sh)) installs the idb
   backend's deps on demand (the idb client + `idb_companion`), which a bare `serve` skips —
   leaving runs to fail with `no available actuator`. Pass flags through `ARGS`, e.g.
-  `make serve ARGS="--config demos/features/demo.config.yaml --port 8766"` (the demo config is
-  needed for the sample app, since the repo has no root `bajutsu.config.yaml`).
+  `make serve ARGS="--config demos/showcase/showcase.config.yaml --port 8766"` (the showcase config
+  is needed for the showcase app, since the repo has no root `bajutsu.config.yaml`).
 
 ## Working in parallel without breaking each other
 
@@ -125,7 +125,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   translation:** use the conventional translation; if rendering a term would read unnaturally, keep
   the original (usually English) term (e.g. `selector`, `actuator`, `backend`). **No omissions:**
   each document must be self-contained — spell out abbreviations on first use and give the context
-  a reader needs, without assuming they read another page first.
+  a reader needs, without assuming they read another page first. **The first time an acronym
+  appears, spell it out in full with the acronym in parentheses right after** (e.g. role-based
+  access control (RBAC)) — after that, the acronym alone is fine.
   **When generating the Japanese side — writing it fresh, or translating the English `docs/` into
   `docs/ja/` (and roadmap `*-ja.md`) — follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/)
   skill: it is the authoritative style for Japanese prose here, and a translation must read as

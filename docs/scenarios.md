@@ -57,23 +57,18 @@ summary header and each scenario card) and in the `bajutsu serve` UI.
 | `dismissAlerts` | bool / object | none (on) | The vision **alert guard** — clears OS prompts idb can't see. On by default; `false` disables it, `{ instruction: "tap Allow" }` keeps it on but taps a named button. CLI `--dismiss-alerts`/`--no-dismiss-alerts` overrides ([below](#dismissalerts-the-system-alert-guard)) |
 
 ```yaml
-- name: onboard, log in, and increment the counter
+- name: filter narrows the catalog
   preconditions:
-    launchEnv: { SAMPLE_UITEST: "1" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
   steps:
-    - tap: { id: onboarding.start }
-    - type: { text: "a@b.com", into: { id: auth.email } }
-    - type: { text: "pw", into: { id: auth.password } }
-    - tap: { id: auth.submit }
-    - wait: { for: { id: home.title }, timeout: 5 }
-    - tap: { id: counter.increment }
-    - tap: { id: counter.increment }
+    - type: { text: "Horse 3", into: { id: search.field } }
+    - wait: { for: { id: search.row.3 }, timeout: 5 }
   expect:
-    - exists: { id: home.title }
-    - value: { sel: { id: counter.value }, equals: "2" }
+    - count: { sel: { idMatches: "search.row.*" }, equals: 1 }
+    - value: { sel: { id: search.count }, equals: "1" }
 ```
 
-(real file: [`demos/features/app/scenarios/smoke.yaml`](../demos/features/app/scenarios/smoke.yaml))
+(real file: [`demos/showcase/scenarios/search.yaml`](../demos/showcase/scenarios/search.yaml))
 
 ## preconditions (environment setup)
 
@@ -117,7 +112,7 @@ It is **on by default** and fires **only when a step (or `expect`) is blocked**,
 The CLI `--dismiss-alerts` / `--no-dismiss-alerts` flag **overrides every scenario** (otherwise the
 per-scenario default applies); `--alert-instruction` sets a default button instruction that a
 scenario's own `instruction` overrides. (real file:
-[`demos/features/app/scenarios/permission.yaml`](../demos/features/app/scenarios/permission.yaml))
+[`demos/showcase/scenarios/permission.yaml`](../demos/showcase/scenarios/permission.yaml))
 
 ## Selectors (addressing an element)
 
@@ -215,7 +210,7 @@ is a validation error).
 - rotate: { sel: { id: gest.rotate }, radians: 1.57 }  # >0 clockwise (radians)
 ```
 
-`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch: on the idb backend they fail with a "needs multiTouch" reason. Their primary target is the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`). `doubleTap` runs on idb (two taps). (real file: [`demos/features/app/scenarios/gestures.yaml`](../demos/features/app/scenarios/gestures.yaml))
+`scale` must be **> 0** (a validation error otherwise). `pinch` / `rotate` require multi-touch: on the idb backend they fail with a "needs multiTouch" reason. Their primary target is the generated XCUITest (`pinch(withScale:)` / `rotate(_:)`). `doubleTap` runs on idb (two taps). (real file: [`demos/showcase/scenarios/gestures.yaml`](../demos/showcase/scenarios/gestures.yaml))
 
 ### `wait` (condition wait)
 
@@ -387,7 +382,7 @@ wait and `mocks` (below). At least one match field is required; the listed field
 
 > `count` is **not** a match field — at least one of `method` / `url` / `urlMatches` / `path` /
 > `pathMatches` / `status` / `bodyMatches` must be present. (real file:
-> [`demos/features/app/scenarios/network_mock.yaml`](../demos/features/app/scenarios/network_mock.yaml))
+> [`demos/showcase/scenarios/network_mock.yaml`](../demos/showcase/scenarios/network_mock.yaml))
 
 ### `event` (analytics event assertion)
 
@@ -561,7 +556,7 @@ when it carries at least one `--tag` (or none was given) **and** none of the `--
 ```
 
 ```bash
-uv run bajutsu run --target sample --tag smoke --exclude wip   # run @smoke, skip anything @wip (across the app's scenarios dir)
+uv run bajutsu run --target showcase-swiftui --tag smoke --exclude wip   # run @smoke, skip anything @wip (across the app's scenarios dir)
 ```
 
 ### Secrets (`${secrets.X}`)

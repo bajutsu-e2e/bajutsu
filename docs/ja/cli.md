@@ -59,8 +59,8 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
   かった run では何も出力しません。
 
 ```bash
-bajutsu run --target sample --udid <UDID> --backend idb --no-erase            # アプリのシナリオディレクトリ全体
-bajutsu run --scenario demos/features/app/scenarios/smoke.yaml --target sample --no-erase   # 単一ファイル
+bajutsu run --target showcase-swiftui --udid <UDID> --backend idb --no-erase            # アプリのシナリオディレクトリ全体
+bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # 単一ファイル
 ```
 
 ## `doctor`
@@ -470,7 +470,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   ありません。Claude Code のときは、API キー（設定済みなら）はアラートガードにのみ使われます。
 - アプリのビルド済みバイナリ（config `appPath`）が無い場合は、先にそのアプリの `build` コマンドを
   実行します（出力は job ログにストリーム）。ビルド失敗時は run を開始せず中止します。`targets.<name>.build`
-  に `appPath` を生成するシェルコマンド（例: `make -C demos/features sample-build`）を設定すると、
+  に `appPath` を生成するシェルコマンド（例: `make -C demos/showcase swiftui-build`）を設定すると、
   手動ビルド無しに UI からオンデマンドでビルドできます。
 - 操作 UI の下の **History** リストに過去の run（新しい順、pass/fail ドット、シナリオ要約）が並び、
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。

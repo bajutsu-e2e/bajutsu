@@ -26,9 +26,9 @@ visual = ["pillow>=10.0"]
 mcp = ["fastmcp>=2.0.0"]
 # Amazon Bedrock provider for the AI paths (BAJUTSU_AI_PROVIDER=bedrock); pulls in boto3 for SigV4.
 bedrock = ["anthropic[bedrock]>=0.50"]
-# The hosted-backend worker (`bajutsu worker`): leases queued runs from Redis via RQ (BE-0015).
-# Imported lazily, only when a server backend is selected — never on the default path.
-worker = ["redis>=5", "rq>=1.16"]
+# The hosted-backend worker (`bajutsu worker`): polls the control plane over HTTP (BE-0106).
+# No extra dependencies needed (stdlib urllib); kept as an empty extra for backwards compatibility.
+worker = []
 # The hosted-backend control plane (`serve --backend=server`): the FastAPI app that serves the
 # same SPA + API over the swap-in seams. Imported only when the server backend is selected, never
 # on the default path (the import guard in tests/serve/test_import_guard.py locks this).
@@ -62,8 +62,8 @@ dev = [
     # The optional extras the gate imports and tests — referenced by name so each one's version is
     # declared once, in [project.optional-dependencies], and never duplicated here. The gate runs
     # with all of them installed: bedrock (boto3 for the AI path), server (FastAPI/uvicorn/boto3),
-    # worker (Redis/RQ), db (SQLAlchemy/Alembic/psycopg), oauth (Authlib), mcp, visual (Pillow), and
-    # schema (jsonschema).
+    # worker (empty since BE-0106), db (SQLAlchemy/Alembic/psycopg), oauth (Authlib), mcp,
+    # visual (Pillow), and schema (jsonschema).
     "bajutsu[bedrock,server,worker,db,oauth,mcp,visual,schema]",
     # Test/lint tooling — not part of any runtime extra, so declared directly here.
     "httpx>=0.27",  # FastAPI TestClient + real-uvicorn checks
@@ -158,14 +158,10 @@ branch = true
 python_version = "3.13"
 strict = true
 
-# The server/worker SDKs (RQ/Redis, boto3) are lazy imports behind the optional extras and ship no
-# type stubs, so resolve their imports loosely — the seam adapters around them are typed and tested.
+# The server SDKs (boto3) are lazy imports behind the optional extras and ship no type stubs, so
+# resolve their imports loosely — the seam adapters around them are typed and tested.
 [[tool.mypy.overrides]]
 module = [
-    "redis",
-    "redis.*",
-    "rq",
-    "rq.*",
     "boto3",
     "boto3.*",
     "botocore",

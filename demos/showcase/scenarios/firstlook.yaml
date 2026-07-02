@@ -5,7 +5,7 @@
 # is the clean "modify it and watch the assertion break" demonstration.
 - name: open a horse and favorite it
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable, SHOWCASE_SEED: "5" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
   steps:
     - wait: { for: { id: stable.row.1 }, timeout: 10 }
       capture: [video]

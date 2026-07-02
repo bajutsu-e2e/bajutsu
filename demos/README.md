@@ -22,14 +22,13 @@ Every iOS demo drives the same fixture: the **showcase** suite ([`showcase/`](sh
 | Demo | Command | What it proves | What it needs |
 |---|---|---|---|
 | **[tour](tour/README.md)** | `make -C demos tour` | The whole lifecycle — run → modify → diagnose (`triage`) — on a real Simulator, fully deterministic | macOS + Simulator (idb auto-installs). **No API key** |
-| **[features](features/README.md)** | `make -C demos features` | The scenario-authoring features (tags, parameterized shared steps, secrets) on a real Simulator | macOS + Simulator. **No API key** |
+| **[features](showcase/README.md)** | `make -C demos features` | The scenario-authoring features (tags, parameterized shared steps, secrets) on a real Simulator | macOS + Simulator. **No API key** |
 | **[webui](showcase/WEBUI.md)** | `make -C demos webui` | The **Web UI** driving a Simulator and collecting every evidence type: screenshots, video, logs, network (observed + mocked), visual regression, system-alert handling | macOS + Simulator; an API key for the system-alert part only |
 | **[record](showcase/README.md)** | `make -C demos record` | AI authoring with **real Claude** against a booted app, then the modify-and-self-heal loop | macOS + Simulator + Claude (CLI or API key) |
 
 > **No Mac / Simulator?** The whole `tour` story also runs against an in-memory fake device —
-> no Simulator, idb, or API key, on Linux/CI in seconds: `uv run python demos/tour/tour.py`
-> (and the feature showcase: `uv run python demos/features/run_demo.py`). See
-> [`tour/README.md`](tour/README.md). These are the fast first look; the `make` targets above
+> no Simulator, idb, or API key, on Linux/CI in seconds: `uv run python demos/tour/tour.py`. See
+> [`tour/README.md`](tour/README.md). This is the fast first look; the `make` targets above
 > are the real thing on a device.
 
 > **Web (Playwright) backend.** A separate demo drives a tiny static web app in a browser — no Mac
@@ -70,9 +69,8 @@ an in-memory driver so you can see the seam with nothing installed.
 - **`web`** ([`web/`](web/README.md)) — a tiny static web app driven by the **Playwright** backend
   on Linux (no Mac / Simulator); the cross-platform demo that proves the core is backend-neutral.
 
-> The older single-variant fixtures — `demo` ([`app/`](app/)), `sample` ([`features/app/`](features/app/)),
-> and `sample2` ([`record/app/`](record/app/)) — have been superseded by the showcase and are
-> slated for removal (BE-0079); nothing in the demo menu or CI drives them any more.
+> The older single-variant fixtures — `demo`, `sample`, and `sample2` — have been retired and
+> removed (BE-0079), superseded by the showcase; nothing in the demo menu or CI drives them any more.
 
 Generated scenarios, working copies (`*/generated.yaml`, `tour/scenario.yaml`), Xcode projects,
 and run artifacts (`runs/`) are gitignored — the demos regenerate them.

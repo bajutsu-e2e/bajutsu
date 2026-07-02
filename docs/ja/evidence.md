@@ -57,7 +57,7 @@ capturePolicy:
     capture: [screenshot, video, deviceLog, elements, actionLog]
 ```
 
-（[`demos/features/app/scenarios/settings.yaml`](../../demos/features/app/scenarios/settings.yaml) に実例）
+（[`demos/showcase/scenarios/settings.yaml`](../../demos/showcase/scenarios/settings.yaml) に実例）
 
 トリガー `on` は **`action` / `event` / `result` のいずれか 1 つ**です。
 
@@ -83,7 +83,7 @@ capturePolicy:
   capture: [video, deviceLog]     # この wait の区間を録る
 ```
 
-（[`demos/features/app/scenarios/evidence.yaml`](../../demos/features/app/scenarios/evidence.yaml) に実例）
+（[`demos/showcase/scenarios/evidence.yaml`](../../demos/showcase/scenarios/evidence.yaml) に実例）
 
 ## 区間証跡（video / deviceLog / appTrace）
 

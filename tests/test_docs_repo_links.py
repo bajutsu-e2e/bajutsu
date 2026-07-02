@@ -49,7 +49,7 @@ def repo_root(tmp_path: Path) -> Path:
         f = tmp_path / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.touch()
-    (tmp_path / "demos/features/app/scenarios").mkdir(parents=True)
+    (tmp_path / "demos/showcase/scenarios").mkdir(parents=True)
     return tmp_path
 
 
@@ -70,9 +70,9 @@ _CASES = [
     ("[d](<../DESIGN.md>)", "concepts.md", f"[d]({_BLOB}/DESIGN.md)"),
     # A directory target points at the tree view, not blob.
     (
-        "[s](../demos/features/app/scenarios/)",
+        "[s](../demos/showcase/scenarios/)",
         "concepts.md",
-        f"[s]({_TREE}/demos/features/app/scenarios)",
+        f"[s]({_TREE}/demos/showcase/scenarios)",
     ),
     # Images escape the same way.
     ("![logo](../assets/icons/logo.png)", "concepts.md", f"![logo]({_BLOB}/assets/icons/logo.png)"),

@@ -37,8 +37,9 @@ final class AppModel: ObservableObject {
     // The seeded notices (Notices tab list → detail).
     let notices = showcaseNotices
 
-    // Shared catalog (Stable + Search both filter this)
-    @Published var horses: [Horse]
+    // Shared catalog (Stable + Search both filter this). Fixed at launch — no launch-env seed
+    // knob (BE-0079): a scenario cannot inject a data state, only observe the app's own.
+    @Published var horses: [Horse] = (1 ... 5).map { Horse(id: $0, name: "Horse \($0)") }
 
     let animationsDisabled: Bool
 
@@ -47,9 +48,6 @@ final class AppModel: ObservableObject {
     init(env: [String: String]) {
         self.env = env
         animationsDisabled = env["SHOWCASE_UITEST"] != nil
-
-        let seed = max(0, Int(env["SHOWCASE_SEED"] ?? "5") ?? 5)
-        horses = seed > 0 ? (1 ... seed).map { Horse(id: $0, name: "Horse \($0)") } : []
 
         selectedTab = Self.tab(env["SHOWCASE_TAB"])
     }
@@ -77,7 +75,9 @@ final class AppModel: ObservableObject {
 
     func notice(id: Int) -> Notice? { notices.first { $0.id == id } }
 
-    // Deeplinks (SPEC §4): also dismiss modals and pop nav to the tab root.
+    // Deeplinks (SPEC §4): select a tab (and pop it to root). A deeplink no longer pushes a
+    // detail screen (BE-0079): a detail is reached only by tapping its catalog row, so the app
+    // has no launch-env shortcut straight onto a pushed screen.
     func handleDeepLink(_ url: URL) {
         stablePath = []
         noticesPath = []
@@ -88,18 +88,6 @@ final class AppModel: ObservableObject {
         case "log": selectedTab = .log
         case "notices": selectedTab = .notices
         case "permissions": selectedTab = .permissions
-        case "horse":
-            // …://horse/<id> — Stable tab, push Horse Detail for <id>.
-            selectedTab = .stable
-            if let id = Int(url.lastPathComponent) {
-                stablePath = [id]
-            }
-        case "notice":
-            // …://notice/<id> — Notices tab, push Notice Detail for <id>.
-            selectedTab = .notices
-            if let id = Int(url.lastPathComponent) {
-                noticesPath = [id]
-            }
         default: break
         }
     }

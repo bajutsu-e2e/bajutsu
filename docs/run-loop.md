@@ -136,7 +136,7 @@ erase (if pre.erase: shutdown → erase) → boot → terminate(bundle) (for a c
 > `_await_ready` polls until "the app has rendered a UI (more than the root element)." `locale` **is**
 > applied at launch (the scenario's `preconditions.locale` overrides the config default, passed as
 > launch args via `env.locale_args`). The simctl launch sequencing is validated on a real device
-> (iPhone 17 Pro) via `make -C demos/features e2e` + the `e2e.yml` CI workflow.
+> (iPhone 17 Pro) via `make -C demos/showcase run-swiftui` + the `e2e.yml` CI workflow.
 
 ### `device_factory` / `run_all` / `run_and_report`
 

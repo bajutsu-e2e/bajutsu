@@ -242,6 +242,7 @@ Purpose-built test subjects that exercise the commands end-to-end. The showcase 
 | ID | Item | Status | Origin |
 |---|---|---|---|
 | [BE-0045](implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) | Dogfood showcase apps (UIKit × SwiftUI, accessibility-paired) | Implemented | Dogfooding |
+| [BE-0079](implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | Implemented | Dogfooding |
 <!-- /GENERATED:implemented-dogfood -->
 
 ### Dogfood fixtures (web UI)
@@ -276,6 +277,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0051](implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
 | [BE-0055](implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
 | [BE-0090](implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
+| [BE-0106](implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
 ### Configuration sourcing
@@ -387,9 +389,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 Consolidating the demo and dogfood apps onto the showcase suite: bringing it to parity with the legacy `sample` / `demo` / `sample2` fixtures (codegen → XCUITest, visual regression, gesture targets, the evidence tour), re-pointing the demos and on-device CI at it, and retiring the three legacy apps — so the showcase becomes the single iOS fixture.
 
 <!-- GENERATED:in-progress-dogfood -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
-| [BE-0079](in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md) | Consolidate the demo & dogfood apps onto the showcase suite | In progress | Dogfooding |
+
 <!-- /GENERATED:in-progress-dogfood -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -475,9 +475,17 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0106](proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Proposal |
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
+| [BE-0110](proposals/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | Proposal |
 <!-- /GENERATED:proposals-hosting -->
+
+### Security hardening
+
+Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
+
+<!-- GENERATED:proposals-security -->
+
+<!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
 
@@ -494,6 +502,14 @@ Turning a passing scenario into a native test in a destination framework's idiom
 <!-- GENERATED:proposals-codegen -->
 
 <!-- /GENERATED:proposals-codegen -->
+
+### Crawl performance / scale-out
+
+Keeping the autonomous crawl fast and its code lean as it grows.
+
+<!-- GENERATED:proposals-crawl -->
+
+<!-- /GENERATED:proposals-crawl -->
 
 ### Backend expansion (iOS actuators)
 

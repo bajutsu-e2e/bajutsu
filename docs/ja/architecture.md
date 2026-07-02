@@ -136,7 +136,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 
 ## テスト構成
 
-`tests/` に **ユニットテスト一式**（`uv run pytest -q`）があります。すべて実機 Simulator を必要としません。コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`、`Spawn`、`Clock`）で検証します。サンプルアプリに対する実機 E2E は `make -C demos/features e2e` / `make -C demos/features ui-test` です（[sample-app](sample-app.md)）。
+`tests/` に **ユニットテスト一式**（`uv run pytest -q`）があります。すべて実機 Simulator を必要としません。コマンドビルダは純関数として、実行系は `FakeDriver` / 注入ランナー（`RunFn`、`Spawn`、`Clock`）で検証します。showcase アプリに対する実機 E2E は `make -C demos/showcase run-swiftui` / `make -C demos/showcase ui-test` です（[showcase](showcase.md)）。
 
 ---
 
@@ -173,7 +173,7 @@ assertions.py  evidence.py ── intervals.py · network.py · visual.py · red
 
 ### 実機 Simulator で検証済み（iPhone 17 Pro、近年の iOS）
 
-- idb バックエンドの subprocess 実行（`describe-all` パース、フレーム中心の tap / text / swipe、`simctl` launch 手順）を、インストール済みの `idb` / `idb_companion` に対して確認しています。sample シナリオの実行、証跡の取得、triage 自己修復ループを実機で走らせて検証しました（`make -C demos/features e2e`。`e2e.yml` CI も idb smoke を実行します）。
+- idb バックエンドの subprocess 実行（`describe-all` パース、フレーム中心の tap / text / swipe、`simctl` launch 手順）を、インストール済みの `idb` / `idb_companion` に対して確認しています。showcase シナリオの実行、証跡の取得、triage 自己修復ループを実機で走らせて検証しました（`make -C demos/showcase run-swiftui`。`e2e.yml` CI も idb smoke を実行します）。
 
 ### ブラウザで検証済み（Linux で動作、Mac 不要）
 

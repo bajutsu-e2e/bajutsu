@@ -1,0 +1,13 @@
+# Device-environment steps (simctl-backed): set the Simulator's GPS location, then deliver a
+# push notification to the app. Both drive the device, not the app UI, so the assertion is that
+# the app is still on its settled screen afterwards (the seeded Stable catalog).
+#   bajutsu run --scenario device.yaml --target showcase-swiftui ...
+- name: set location then receive a push
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: stable }
+  steps:
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+    - setLocation: { lat: 35.681, lon: 139.767 }
+    - push: { payload: { aps: { alert: "You have a new message" } } }
+  expect:
+    - exists: { id: stable.row.1 }

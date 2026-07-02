@@ -1,52 +1,144 @@
-"""`bajutsu worker` — lease queued runs from Redis and execute them (BE-0015 server phase).
+"""`bajutsu worker` — lease queued runs from the control plane and execute them (BE-0106).
 
-The hosted control plane (`serve --backend=server`) enqueues a job per run; this command consumes
-them on a host that has a Simulator and runs the unchanged `run_job`. RQ/Redis are imported lazily
-**inside the command** (they live in the ``worker`` optional-dependency group), so importing the
-CLI never pulls them in — the default path stays server-free (`tests/serve/test_import_guard.py`).
+The hosted control plane (`serve --backend=server`) inserts a job row per run; this command polls
+the `/api/worker/lease` endpoint over HTTP, executes the unchanged `run_job`, uploads the run tree
+(including `console.log`), and posts the result back to `/api/worker/result`. No Redis or RQ —
+the worker needs only an HTTP client and (optionally) an object-store client.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import os
+import subprocess
+import time
+from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import typer
 
+from bajutsu import env
+from bajutsu.serve import InMemoryLogBus
+from bajutsu.serve.server.worker_job import execute_job_spec
+
+_logger = logging.getLogger("bajutsu.worker")
+
+
+def _post_json(url: str, body: dict[str, Any], *, token: str | None = None) -> tuple[int, Any]:
+    data = json.dumps(body).encode()
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = Request(url, data=data, headers=headers)  # noqa: S310
+    try:
+        with urlopen(req) as r:  # noqa: S310
+            raw = r.read()
+            return r.status, json.loads(raw) if raw else {}
+    except HTTPError as e:
+        raw = e.read() if e.fp else b""
+        return e.code, json.loads(raw) if raw else {}
+
 
 def worker(
-    redis_url: str = typer.Option(
-        "", "--redis-url", help="Redis URL (default: $BAJUTSU_REDIS_URL / $REDIS_URL / localhost)"
+    server_url: str = typer.Option(
+        "",
+        "--server-url",
+        help="Control-plane URL (default: $BAJUTSU_SERVER_URL / http://localhost:8765)",
     ),
-    queue: str = typer.Option("bajutsu", "--queue", help="queue name to consume"),
+    token: str = typer.Option("", "--token", help="Operator token for auth"),
+    poll_interval: float = typer.Option(
+        2.0, "--poll-interval", help="Seconds between lease attempts when idle"
+    ),
+    worker_id: str = typer.Option("", "--worker-id", help="Worker identifier"),
 ) -> None:
-    """Run a worker that leases queued `bajutsu run` jobs from Redis and executes them.
+    """Run a worker that leases queued `bajutsu run` jobs from the control plane over HTTP.
 
-    Requires the `worker` extra (`pip install 'bajutsu[worker]'`): RQ + Redis. The enqueued spec
-    carries only the job's argv/devices/build (see `bajutsu.serve.server.worker_job`); this process
-    supplies the real subprocess and Simulator.
+    Polls POST /api/worker/lease; on a job, runs execute_job_spec, uploads the run tree, and
+    posts the result to POST /api/worker/result.
     """
-    url = (
-        redis_url
-        or os.environ.get("BAJUTSU_REDIS_URL")
-        or os.environ.get("REDIS_URL")
-        or "redis://localhost:6379"
-    )
-    # Record the resolved URL in-process so the queued `execute_job_spec` (which RQ calls with only
-    # the spec) builds its RedisLogBus over the same broker — without exporting a credential-bearing
-    # URL to the environment, which the spawned `bajutsu run` subprocesses would inherit.
-    from bajutsu.serve.server.worker_job import set_broker_url
+    url = server_url or os.environ.get("BAJUTSU_SERVER_URL") or "http://localhost:8765"
+    auth_token = token or os.environ.get("BAJUTSU_TOKEN") or None
+    wid = worker_id or f"worker-{os.getpid()}"
+    work = Path.cwd()
 
-    set_broker_url(url)
+    typer.echo(f"bajutsu worker → polling {url}  (Ctrl-C to stop)")
+    while True:
+        try:
+            code, body = _post_json(
+                f"{url}/api/worker/lease",
+                {"worker_id": wid},
+                token=auth_token,
+            )
+        except (URLError, OSError) as e:
+            _logger.warning("lease request failed: %s", e)
+            time.sleep(poll_interval)
+            continue
+
+        if code == 204 or not body.get("spec"):
+            time.sleep(poll_interval)
+            continue
+
+        job_id = body["job_id"]
+        spec = body["spec"]
+        typer.echo(f"  leased job {job_id}")
+
+        store = _object_store()
+        bus = InMemoryLogBus()
+        try:
+            job = execute_job_spec(
+                spec,
+                popen=subprocess.Popen,
+                simctl=env._real_run,
+                cwd=work,
+                bus=bus,
+                store=store,
+            )
+            result = job.view()
+            result.pop("lines", None)
+        except Exception as e:
+            _logger.exception("job %s failed", job_id)
+            result = {"ok": False, "error": str(e)}
+
+        run_id = result.get("runId")
+        if run_id:
+            _write_console_log(work, run_id, bus, job_id)
+
+        try:
+            _post_json(
+                f"{url}/api/worker/result",
+                {"job_id": job_id, "result": result},
+                token=auth_token,
+            )
+        except (URLError, OSError) as e:
+            _logger.error("result post failed for job %s: %s", job_id, e)
+
+        typer.echo(f"  completed job {job_id}")
+
+
+def _object_store() -> Any:
     try:
-        from redis import Redis
-        from rq import Queue, Worker
-    except ImportError:
-        typer.echo("the `worker` extra is required — install with: pip install 'bajutsu[worker]'")
-        raise typer.Exit(2) from None
+        from bajutsu.serve.server.object_store import object_store_from_env
 
-    connection = Redis.from_url(url)
-    typer.echo(f"bajutsu worker → consuming '{queue}' from {url}  (Ctrl-C to stop)")
-    Worker([Queue(queue, connection=connection)], connection=connection).work()
+        return object_store_from_env()
+    except ImportError:
+        return None
+
+
+def _write_console_log(work: Path, run_id: str, bus: InMemoryLogBus, job_id: str) -> None:
+    """Write the job's buffered log to runs/<run_id>/console.log for upload."""
+    run_dir = work / "runs" / run_id
+    if not run_dir.is_dir():
+        return
+    lines = list(bus.stream(job_id, timeout=0.0))
+    if not lines:
+        return
+    (run_dir / "console.log").write_text(
+        "".join(line for line in lines if line is not None),
+        encoding="utf-8",
+    )
 
 
 def register(app: typer.Typer) -> None:
