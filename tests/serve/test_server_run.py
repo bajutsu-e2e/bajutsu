@@ -161,15 +161,15 @@ def test_build_state_local_uses_in_memory_sessions(tmp_path: Path) -> None:
     assert isinstance(_state(tmp_path).sessions, InMemorySessionStore)
 
 
-def test_build_state_server_uses_redis_sessions(
+def test_build_state_server_uses_sql_sessions_when_db_is_configured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The server backend keeps sessions in Redis so they survive a restart and span replicas.
-    from bajutsu.serve.server.sessions import RedisSessionStore
+    from bajutsu.serve.server.sessions import SqlSessionStore
 
     monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
     monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -181,7 +181,30 @@ def test_build_state_server_uses_redis_sessions(
         token=None,
         backend="server",
     )
-    assert isinstance(state.sessions, RedisSessionStore)
+    assert isinstance(state.sessions, SqlSessionStore)
+
+
+def test_build_state_server_falls_back_to_in_memory_sessions_without_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve.sessions import InMemorySessionStore
+
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.delenv("BAJUTSU_DATABASE_URL", raising=False)
+    _scn, cfg, runs = project(tmp_path)
+    state = srv._build_state(
+        runs_dir=runs,
+        config=cfg,
+        scenarios_dir=None,
+        root=tmp_path,
+        baselines_dir=None,
+        max_concurrent=4,
+        token=None,
+        backend="server",
+    )
+    assert isinstance(state.sessions, InMemorySessionStore)
 
 
 def test_build_state_local_has_no_oauth(tmp_path: Path) -> None:

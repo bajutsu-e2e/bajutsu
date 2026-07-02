@@ -73,6 +73,14 @@ class Run(Base):
     summary: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
 
 
+class SessionRecord(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    identity: Mapped[str | None] = mapped_column(default=None)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

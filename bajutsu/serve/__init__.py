@@ -59,6 +59,7 @@ from bajutsu.serve.scenarios import (
     ScenarioScope,
     ScenarioStore,
 )
+from bajutsu.serve.sessions import InMemorySessionStore
 
 __all__ = [
     "SERVE_BACKENDS",
@@ -239,7 +240,7 @@ def _build_server_state(
 
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
-    from bajutsu.serve.server.db import repository_from_env
+    from bajutsu.serve.server.db import engine_from_url, repository_from_env
     from bajutsu.serve.server.executor import QueueExecutor
     from bajutsu.serve.server.logbus import RedisLogBus
     from bajutsu.serve.server.oauth import GitHubOAuthClient
@@ -250,13 +251,15 @@ def _build_server_state(
         s3_prefix,
     )
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
-    from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore
+    from bajutsu.serve.server.sessions import _DEFAULT_TTL, SqlSessionStore
     from bajutsu.serve.server.worker_job import redis_url
 
     store = object_store_from_env()
     if store is None:
         raise ValueError("BAJUTSU_S3_BUCKET is required for --backend=server")
     prefix = s3_prefix()
+    db_url = os.environ.get("BAJUTSU_DATABASE_URL")
+    _db_engine = engine_from_url(db_url) if db_url else None
     # GitHub OAuth login is optional: wired only when all three OAuth vars are set, else None (token
     # auth only). The allowlist is the GitHub logins permitted to log in (BE-0015 7b-2).
     cid = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_ID")
@@ -300,10 +303,13 @@ def _build_server_state(
         upload_exec=upload_exec,
         executor=QueueExecutor(queue),
         logbus=RedisLogBus(redis),
-        # Sessions in Redis (the same client) so they survive a restart and span replicas, with a
-        # TTL from BAJUTSU_SESSION_TTL (default 7 days) — vs the in-memory default (BE-0015 7b).
-        sessions=RedisSessionStore(
-            redis, ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL)
+        sessions=(
+            SqlSessionStore(
+                _db_engine,
+                ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL),
+            )
+            if _db_engine is not None
+            else InMemorySessionStore()
         ),
         # The system of record, when a database is configured (BAJUTSU_DATABASE_URL); None otherwise
         # so the server backend runs without one until 7b/7c need it (BE-0015 7a).

@@ -1,15 +1,19 @@
-"""Tests for the SessionStore seam (BE-0015 7b-1).
+"""Tests for the SessionStore seam (BE-0015 7b-1, BE-0106).
 
 `InMemorySessionStore` is the local default — sessions live in one process, so a restart drops them.
-`RedisSessionStore` is the server implementation: opaque session ids kept in Redis with a TTL, so
-they survive a restart and are visible to every control-plane replica. The redis client is injected,
-so a small in-memory fake drives the contract — no real Redis on the gate."""
+`RedisSessionStore` is the legacy server implementation (kept for reference); `SqlSessionStore` is its
+replacement (BE-0106): sessions in the same Postgres the system of record already uses, so no Redis
+is needed. Both server stores survive a restart and span replicas. The redis client / SQL engine are
+injected, so in-memory fakes (a dict for Redis, SQLite for SQL) drive the contract — no live
+Redis or Postgres on the gate."""
 
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import create_engine
 
-from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore
+from bajutsu.serve.server.models import Base
+from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore, SqlSessionStore
 from bajutsu.serve.sessions import InMemorySessionStore
 
 
@@ -102,3 +106,45 @@ def test_session_ttl_from_env_parses_and_validates() -> None:
     for nonpos in ("0", "-5"):
         with pytest.raises(ValueError, match="positive"):
             _session_ttl_from_env(nonpos, 99)
+
+
+# ---------------------------------------------------------------------------
+# SqlSessionStore (BE-0106) — sessions in Postgres (SQLite on the gate)
+# ---------------------------------------------------------------------------
+
+
+def _sql_store(ttl: int = 3600) -> SqlSessionStore:
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    return SqlSessionStore(engine, ttl=ttl)
+
+
+def test_sql_issue_then_valid() -> None:
+    store = _sql_store()
+    sid = store.issue()
+    assert store.valid(sid)
+
+
+def test_sql_unknown_is_invalid() -> None:
+    assert not _sql_store().valid("nope")
+
+
+def test_sql_binds_and_reads_identity() -> None:
+    store = _sql_store()
+    assert store.identity(store.issue("carol")) == "carol"
+    assert store.identity(store.issue()) is None
+    assert store.identity("nope") is None
+
+
+def test_sql_ids_are_unique_and_opaque() -> None:
+    store = _sql_store()
+    a, b = store.issue(), store.issue()
+    assert a != b
+    assert len(a) > 20
+
+
+def test_sql_expired_session_is_invalid() -> None:
+    store = _sql_store(ttl=-1)
+    sid = store.issue()
+    assert not store.valid(sid)
+    assert store.identity(sid) is None
