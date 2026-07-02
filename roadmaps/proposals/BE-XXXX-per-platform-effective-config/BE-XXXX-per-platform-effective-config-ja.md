@@ -26,9 +26,8 @@
 `Effective` は iOS、続いて web が追加されるにつれてフィールドが増え、現在 35 個に達しており
 （`config.py:420-487`）、すべてを 1 つの型に union しています。具体的には次のとおりです。
 
-- `browser`（`config.py:471`）と `headless`（`config.py:468`）は Playwright（web）用の項目で、
-  デフォルトは `chromium` です。ですが、これらは iOS target の `Effective` インスタンス上にも
-  読み書き可能な状態で存在します。
+- `browser`（`config.py:471`、デフォルトは `chromium`）と `headless`（`config.py:468`、デフォルトは `True`）は Playwright（web）用の項目ですが、
+  これらは iOS target の `Effective` インスタンス上にも読み書き可能な状態で存在します。
 - `xcuitest`（`config.py:478`）と `idb_version`（`config.py:481`）は iOS 専用ですが、web target の
   `Effective` にも同様に存在します。
 - `package`（`config.py:464`）は未実装の Android backend（[BE-0007]）向けに予約されており、
