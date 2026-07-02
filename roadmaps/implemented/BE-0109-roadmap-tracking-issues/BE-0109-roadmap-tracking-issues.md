@@ -145,7 +145,7 @@ write` on the default token.
   lifecycle, `BE-XXXX`-placeholder skip, and `--check`.
 - [x] 2. `roadmap-tracking` label (created on demand by the sync), and the issue title/body shape.
 - [x] 3. New workflow `roadmap-tracking-issues.yml` on `push: main` (`issues: write`).
-- [ ] 4. One-time backfill of the existing open backlog (runs on the first `push: main`, or a manual
+- [x] 4. One-time backfill of the existing open backlog (runs on the first `push: main`, or a manual
   `gh workflow run roadmap-tracking-issues.yml`, once the workflow is on `main`).
 - [x] 5. Document the lifecycle rule and the assignee filters in `docs/ai-development.md`
   (+ Japanese mirror).
@@ -155,6 +155,7 @@ Log:
 - Implemented the sync script, the `push: main` workflow, its tests, and the docs (both languages);
   filed the item under `implemented/`. The one-time backfill (box 4) happens automatically on the
   first `roadmaps/**` push to `main` after this merges, since the lifecycle rule is idempotent.
+- Confirmed the one-time backfill ran: tracking issues now exist for the open backlog.
 
 ## References
 
