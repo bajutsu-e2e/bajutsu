@@ -223,6 +223,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0094](implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md) | GitHub Pages で公開するロードマップ状況ダッシュボード | 実装済み |
 | [BE-0096](implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity-ja.md) | 項目昇格で docs のロードマップリンクが腐るのを防ぐ | 実装済み |
 | [BE-0100](implemented/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md) | BE テンプレートへの進捗管理と項目間の関連の追加 | 実装済み |
+| [BE-0103](implemented/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md) | 開発タスクごとにモデルと推論エフォートを適正化する | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）
@@ -494,9 +495,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-dev-infra -->
-| ID | 項目 | 状態 |
-|---|---|---|
-| [BE-0103](proposals/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md) | 開発タスクごとにモデルと推論エフォートを適正化する | 提案 |
+
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携

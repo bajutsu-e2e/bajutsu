@@ -91,6 +91,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   (BE-0069) does it — fetches `origin/main` first (so the worktree never branches off a stale ref),
   creates `../bajutsu-<topic>` on `claude/<topic>` (override with `PREFIX=<user>`), and runs
   `make setup` in it. Generated/scratch output (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way.
+- **Right-size the model and reasoning effort (BE-0103).** Match a session's model/effort to the
+  task: heavy work (implementing, refactors, design) runs on a capable model at high effort; light
+  chores (index regen, link fixes, mechanical renames) downshift. The in-repo skills carry a default
+  `model:` in their frontmatter, so the economical choice is automatic and still overridable. The
+  task→capability matrix and the phase/subagent guidance live in
+  [`docs/ai-development.md`](docs/ai-development.md#right-sizing-the-model-and-reasoning-effort-be-0103).
 - **Don't create PRs unless asked.** Push to your branch; let the human open the PR.
 
 ## Conventions

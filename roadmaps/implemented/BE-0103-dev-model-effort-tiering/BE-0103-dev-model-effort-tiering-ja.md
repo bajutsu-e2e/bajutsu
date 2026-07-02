@@ -7,7 +7,8 @@
 |---|---|
 | 提案 | [BE-0103](BE-0103-dev-model-effort-tiering-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
+| 実装 PR | [#441](https://github.com/bajutsu-e2e/bajutsu/pull/441) |
 | トピック | 開発基盤（コントリビュータ体験） |
 | 関連 | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md), [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md) |
 <!-- /BE-METADATA -->
@@ -126,10 +127,14 @@ frontmatter に**既定の `model:` を埋め込む**ことです。こうすれ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] タスク → 能力の対応表：段階、タスクごとの割り当て、段階 → モデル id の対応
-- [ ] リポジトリ内スキル（`ideation`、`implement-be`、`japanese-tech-writing`）への既定 `model:` frontmatter
-- [ ] `docs/ai-development.md`（および `docs/ja/` 版）へのフェーズとサブエージェントのモデル/エフォート指針、`CLAUDE.md` からのリンク
-- [ ] 各スキルの `model:` が既知の妥当なモデル id であることの軽い検証
+- [x] タスク → 能力の対応表：段階、タスクごとの割り当て、段階 → モデル id の対応。`docs/ai-development.md`（および `docs/ja/` 版）に単一の出典として文書化しました。
+- [x] リポジトリ内スキルへの既定 `model:` frontmatter：`implement-be` は `opus`、`ideation` は `sonnet`、`japanese-tech-writing` は `sonnet`。
+- [x] `docs/ai-development.md`（および `docs/ja/` 版）へのフェーズとサブエージェントのモデル/エフォート指針、`CLAUDE.md` からのリンク。
+- [x] 各スキルの `model:` が既知の妥当なモデル id であることの軽い検証：`tests/test_skill_models.py`。
+
+4 つのピースは 1 つの変更でまとめて出荷しました。対応表とフェーズ/サブエージェントの指針を
+`docs/ai-development.md`（と `docs/ja/` 版）へ、既定の `model:` frontmatter を 3 つのリポジトリ内スキルへ、
+`CLAUDE.md` からの発見用リンク、そして `tests/test_skill_models.py` の検証です。
 
 ## 参考
 

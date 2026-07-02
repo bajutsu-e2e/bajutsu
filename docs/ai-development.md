@@ -135,6 +135,65 @@ conflict in behavior — the merge is where they meet, which is exactly why the 
 suite (not an LLM, not a human eyeball) is the arbiter. Keep the suite meaningful and your branch
 rebased, and parallel work composes.
 
+## Right-sizing the model and reasoning effort (BE-0103)
+
+This repository is agent-driven, so a session's **model** and **reasoning effort** are a real,
+recurring token cost. Match them to the task's cognitive load: pay for a capable model at high
+effort where the work needs it, and downshift for mechanical chores. This is **advisory** — a human
+can always upshift for a hard instance — and it never touches the deterministic `run` / CI gate,
+which calls no model regardless of what a *development* session runs at.
+
+The failure mode is asymmetric: over-provisioning wastes tokens invisibly (the output still looks
+fine), while under-provisioning shows up loudly as a bad result. So the natural drift is toward
+*always-max*, which is exactly the waste this convention removes — without downshifting so far that
+quality suffers on the hard tasks.
+
+### The task → capability matrix
+
+This table is the single source of truth; the skill frontmatter (below) and the subagent guidance
+reflect it. Tasks map to one of three tiers along two axes — model and reasoning effort:
+
+| Tier | Model | Effort | Tasks |
+|---|---|---|---|
+| **Heavy** | `opus` | high | Implementing a BE item (`implement-be`), non-trivial refactors, architecture / design decisions, debugging a failing gate |
+| **Medium** | `sonnet` | moderate | Roadmap ideation / authoring (`ideation`), Japanese technical writing and translation review (`japanese-tech-writing`), PR review |
+| **Light** | `haiku` | low or none | Roadmap index regeneration / promote, doc formatting and link fixes, mechanical renames, lockfile / format chores, drafting a first-pass translation before the medium-tier review |
+
+The tier → model-id mapping lives only here, so re-pointing a tier at a new Claude model is a
+one-line change in one place. The model ids above are Claude Code aliases (`opus` / `sonnet` /
+`haiku`), which stay stable as the underlying model versions advance.
+
+### Where the default applies itself: skill frontmatter
+
+Each in-repo skill declares its tier as a `model:` field in its `SKILL.md` frontmatter, so the
+harness picks the right model when the skill runs — nothing to remember, still overridable:
+
+- [`implement-be`](../.claude/skills/implement-be/SKILL.md) → `opus` (Heavy)
+- [`ideation`](../.claude/skills/ideation/SKILL.md) → `sonnet` (Medium)
+- [`japanese-tech-writing`](../.claude/skills/japanese-tech-writing/SKILL.md) → `sonnet` (Medium)
+
+A light-tier chore isn't a skill, so no skill pins `haiku`; that tier is reached interactively or by
+subagent delegation, below. `tests/test_skill_models.py` checks that each skill's `model:` is a
+known, valid id, so a typo fails the gate locally instead of silently falling back.
+
+### Phases and subagent delegation
+
+The frontmatter can't reach interactive and delegated work, so choose there by hand:
+
+- **Phases within a session** — downshift (or `/fast`) for exploration, research, and mechanical
+  chores; upshift for implementation and design. The `/model` and `/fast` controls switch model and
+  effort mid-session.
+- **Subagent delegation** — when spawning a subagent via the Agent tool, pass the `model` that
+  matches the *delegated* task, not the driver's: a broad `Explore` fan-out or an index
+  regeneration can run cheaper than the session driving it. This is also the only lever for the
+  out-of-repo review plugins (`pr-review-toolkit`), whose frontmatter we don't own — set their model
+  at spawn time.
+
+Deliberately **not gate-enforced**: which model a session used isn't recoverable from the diff, and
+hard-pinning would remove the human's judgment to upshift when a "light" task turns out hard. This
+follows the same "procedures as commands, advisory not policy" precedent as the rest of the
+contributor workflow ([BE-0069](../roadmaps/implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)).
+
 ## Pull requests: title and body
 
 Don't open the PR yourself unless the human asks (see [One topic per branch](#one-topic-per-branch));

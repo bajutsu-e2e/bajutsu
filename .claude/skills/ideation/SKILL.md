@@ -1,5 +1,6 @@
 ---
 name: ideation
+model: sonnet
 description: >-
   Sounding board for Bajutsu feature ideation. Use when the user wants to
   brainstorm potential features, explore what Bajutsu could do next, or turn a rough
