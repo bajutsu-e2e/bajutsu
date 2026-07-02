@@ -24,7 +24,10 @@ def upgrade() -> None:
         "jobs",
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
     )
+    # Keep the per-poll lease/reclaim filters (status, and leased_at for reclaim) off a full scan.
+    op.create_index("ix_jobs_status_leased_at", "jobs", ["status", "leased_at"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_jobs_status_leased_at", table_name="jobs")
     op.drop_column("jobs", "attempts")

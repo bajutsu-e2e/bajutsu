@@ -428,6 +428,18 @@ def engine_from_url(url: str) -> Engine:
     return create_engine(url)
 
 
+def _positive_env(name: str, raw: str, *, cast: Any) -> Any:
+    """Parse an operator-facing positive-number env var defensively — a clear, variable-named error
+    rather than a bare ValueError/TypeError. Non-numeric or non-positive values are rejected."""
+    try:
+        value = cast(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a positive number, got {raw!r}") from None
+    if value <= 0:
+        raise ValueError(f"{name} must be positive, got {value}")
+    return value
+
+
 def repository_from_env() -> SqlRepository | None:
     """A `SqlRepository` from ``BAJUTSU_DATABASE_URL``, or ``None`` when it is unset — so the
     server backend runs without a database until one is configured, and local never has one. The
@@ -437,7 +449,9 @@ def repository_from_env() -> SqlRepository | None:
         return None
     kwargs: dict[str, Any] = {}
     if timeout := os.environ.get("BAJUTSU_LEASE_TIMEOUT_SECONDS"):
-        kwargs["lease_timeout"] = timedelta(seconds=float(timeout))
+        kwargs["lease_timeout"] = timedelta(
+            seconds=_positive_env("BAJUTSU_LEASE_TIMEOUT_SECONDS", timeout, cast=float)
+        )
     if attempts := os.environ.get("BAJUTSU_LEASE_MAX_ATTEMPTS"):
-        kwargs["max_attempts"] = int(attempts)
+        kwargs["max_attempts"] = _positive_env("BAJUTSU_LEASE_MAX_ATTEMPTS", attempts, cast=int)
     return SqlRepository(engine_from_url(url), **kwargs)
