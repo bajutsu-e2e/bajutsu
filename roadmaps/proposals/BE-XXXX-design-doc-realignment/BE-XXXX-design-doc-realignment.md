@@ -82,8 +82,8 @@ fix or annotate them in the same change — without expanding into a full rewrit
 
 Add a line to [`CLAUDE.md`](../../../CLAUDE.md)'s Conventions — alongside the existing rule to
 update both `docs/` and `docs/ja/` when a documented behavior changes — stating that a PR
-changing behavior `DESIGN.md` or `docs/architecture.md` describes must update the affected
-document in the same change. This cannot be a CI gate: judging whether a diff changes behavior a
+that changes behavior described by `DESIGN.md` or `docs/architecture.md` must update the
+affected document in the same change.
 given paragraph of prose describes needs semantic understanding of prose against code, which
 would put an LLM on the `run`/CI verdict path (prime directive 1). It stays a review-time norm,
 the same way the existing conventions it sits alongside are.
