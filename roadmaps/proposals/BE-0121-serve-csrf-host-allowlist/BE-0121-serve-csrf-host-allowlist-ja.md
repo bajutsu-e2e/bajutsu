@@ -1,11 +1,11 @@
-[English](BE-XXXX-serve-csrf-host-allowlist.md) · **日本語**
+[English](BE-0121-serve-csrf-host-allowlist.md) · **日本語**
 
-# BE-XXXX — serve の CSRF・Host allowlist 防御を無条件化する
+# BE-0121 — serve の CSRF・Host allowlist 防御を無条件化する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-csrf-host-allowlist-ja.md) |
+| 提案 | [BE-0121](BE-0121-serve-csrf-host-allowlist-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-csrf-host-allowlist-ja.md)
+**English** · [日本語](BE-0121-serve-csrf-host-allowlist-ja.md)
 
-# BE-XXXX — Unconditional CSRF and Host-allowlist defenses for serve
+# BE-0121 — Unconditional CSRF and Host-allowlist defenses for serve
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-csrf-host-allowlist.md) |
+| Proposal | [BE-0121](BE-0121-serve-csrf-host-allowlist.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
