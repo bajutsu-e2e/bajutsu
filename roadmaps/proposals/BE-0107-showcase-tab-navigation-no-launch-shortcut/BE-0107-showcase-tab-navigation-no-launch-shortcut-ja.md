@@ -1,11 +1,11 @@
-[English](BE-XXXX-showcase-tab-navigation-no-launch-shortcut.md) · **日本語**
+[English](BE-0107-showcase-tab-navigation-no-launch-shortcut.md) · **日本語**
 
-# BE-XXXX — showcase の各タブへ、起動時の近道ではなくナビゲーションで到達する
+# BE-0107 — showcase の各タブへ、起動時の近道ではなくナビゲーションで到達する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-showcase-tab-navigation-no-launch-shortcut-ja.md) |
+| 提案 | [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | Dogfood フィクスチャ（デモアプリ） |

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-showcase-tab-navigation-no-launch-shortcut-ja.md)
+**English** · [日本語](BE-0107-showcase-tab-navigation-no-launch-shortcut-ja.md)
 
-# BE-XXXX — Reach every showcase tab by navigation, not a launch-env shortcut
+# BE-0107 — Reach every showcase tab by navigation, not a launch-env shortcut
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-showcase-tab-navigation-no-launch-shortcut.md) |
+| Proposal | [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Dogfood fixtures (demo apps) |

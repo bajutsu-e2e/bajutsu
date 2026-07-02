@@ -447,7 +447,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### Dogfood フィクスチャ（デモアプリ）
 
 <!-- GENERATED:proposals-dogfood -->
-
+| ID | 項目 | 状態 | 由来 |
+|---|---|---|---|
+| [BE-0107](proposals/BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut-ja.md) | showcase の各タブへ、起動時の近道ではなくナビゲーションで到達する | 提案 | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
 
 ### AI プロバイダ設定
