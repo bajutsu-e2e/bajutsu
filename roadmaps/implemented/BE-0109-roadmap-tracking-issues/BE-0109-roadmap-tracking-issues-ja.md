@@ -8,6 +8,7 @@
 | 提案 | [BE-0109](BE-0109-roadmap-tracking-issues-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| 実装 PR | [#490](https://github.com/bajutsu-e2e/bajutsu/pull/490) |
 | トピック | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 

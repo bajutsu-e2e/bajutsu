@@ -8,6 +8,7 @@
 | Proposal | [BE-0109](BE-0109-roadmap-tracking-issues.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#490](https://github.com/bajutsu-e2e/bajutsu/pull/490) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
