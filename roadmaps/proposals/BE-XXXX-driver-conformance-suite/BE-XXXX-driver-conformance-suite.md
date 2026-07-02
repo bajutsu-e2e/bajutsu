@@ -57,8 +57,9 @@ suite depends on the `Driver` interface, never on a backend's internals.
 
 ### 3. Run the Linux-capable backends in the fast gate
 
-Wire FakeDriver and the Playwright backend into `make check`, so the conformance suite runs on
-every PR on Linux with no Simulator. This is where most drift is caught cheaply and early.
+Wire FakeDriver into `make check`, so the conformance suite runs on every PR on Linux with no
+Simulator. Run the Playwright backend in a separate web CI job (installing `bajutsu[web]` + browser
+binaries), rather than in the fast gate.
 
 ### 4. Run the on-device backends in the E2E path
 
