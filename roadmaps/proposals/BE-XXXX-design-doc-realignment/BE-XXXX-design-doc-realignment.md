@@ -48,8 +48,9 @@ norm against recurrence, not just the one-time correction.
 
 ## Detailed design
 
-The work is MECE along the six pieces below. `DESIGN.md` is written in Japanese, so all edits
-follow the [`japanese-tech-writing`](../../../.claude/skills/japanese-tech-writing/SKILL.md) skill.
+The work is MECE along the six work items below. The "Machine-checkable outcome" and
+"Prime-directive compliance" subsections record acceptance criteria, not additional work items.
+`DESIGN.md` is written in Japanese, so all edits follow the [`japanese-tech-writing`](../../../.claude/skills/japanese-tech-writing/SKILL.md) skill.
 
 ### 1. Reposition the opening
 
