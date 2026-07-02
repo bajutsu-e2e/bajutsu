@@ -10,6 +10,7 @@
 | 状態 | **実装中** |
 | 実装 PR | [#105](https://github.com/bajutsu-e2e/bajutsu/pull/105), [#106](https://github.com/bajutsu-e2e/bajutsu/pull/106), [#108](https://github.com/bajutsu-e2e/bajutsu/pull/108), [#112](https://github.com/bajutsu-e2e/bajutsu/pull/112), [#117](https://github.com/bajutsu-e2e/bajutsu/pull/117), [#118](https://github.com/bajutsu-e2e/bajutsu/pull/118), [#119](https://github.com/bajutsu-e2e/bajutsu/pull/119), [#120](https://github.com/bajutsu-e2e/bajutsu/pull/120), [#121](https://github.com/bajutsu-e2e/bajutsu/pull/121), [#122](https://github.com/bajutsu-e2e/bajutsu/pull/122), [#127](https://github.com/bajutsu-e2e/bajutsu/pull/127), [#129](https://github.com/bajutsu-e2e/bajutsu/pull/129), [#130](https://github.com/bajutsu-e2e/bajutsu/pull/130), [#131](https://github.com/bajutsu-e2e/bajutsu/pull/131), [#132](https://github.com/bajutsu-e2e/bajutsu/pull/132), [#133](https://github.com/bajutsu-e2e/bajutsu/pull/133), [#134](https://github.com/bajutsu-e2e/bajutsu/pull/134), [#139](https://github.com/bajutsu-e2e/bajutsu/pull/139), [#143](https://github.com/bajutsu-e2e/bajutsu/pull/143), [#149](https://github.com/bajutsu-e2e/bajutsu/pull/149), [#150](https://github.com/bajutsu-e2e/bajutsu/pull/150), [#151](https://github.com/bajutsu-e2e/bajutsu/pull/151), [#152](https://github.com/bajutsu-e2e/bajutsu/pull/152), [#153](https://github.com/bajutsu-e2e/bajutsu/pull/153), [#156](https://github.com/bajutsu-e2e/bajutsu/pull/156), [#157](https://github.com/bajutsu-e2e/bajutsu/pull/157), [#159](https://github.com/bajutsu-e2e/bajutsu/pull/159) |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
+| 関連 | [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -68,8 +69,8 @@ macOS 限定の部分は、ジョブを受け取り、クリーンな Simulator 
 | **リバースプロキシ + TLS** | **Caddy** | Let's Encrypt 自動 HTTPS をほぼ無設定で実現。プロキシとヘッダ設定も簡潔 | nginx + certbot（設定が多い）、Traefik |
 | **認証 / 認可** | **OAuth2（GitHub プロバイダ）**（**Authlib**）、署名 Cookie セッション、org 単位 RBAC（ロールベースアクセス制御） | 対象は開発者（GitHub を持つ）。パスワードを保持しない。org モデルが GitHub org に対応 | oauth2-proxy（エッジ）、Auth0/Clerk/WorkOS（マネージド有償）、Google OAuth |
 | **system of record** | **PostgreSQL 16** + **SQLAlchemy 2.0** + **Alembic** | リレーショナルな核（org/user/project/run）と manifest 要約用の **JSONB**。マネージドが豊富（RDS/Cloud SQL/Neon/Supabase） | SQLite（多人数の並行に不可）、MySQL |
-| **キュー / キャッシュ / pub-sub** | **Redis 7** | 1 つで 3 役。**ジョブブローカー**、キャッシュ、ライブログの **pub/sub 配信**（worker → Redis → SSE） | RabbitMQ/NATS（ブローカーのみ）、SQS（ブローカーのみで pub/sub なし） |
-| **タスク基盤** | まず **RQ**（Redis Queue） | 小さく Redis ネイティブで読みやすい。「`bajutsu run` を積んで worker が消費」に合致 | Celery（routing/retry/beat が要るときに採用）、Dramatiq |
+| **キュー / キャッシュ / pub-sub** | **Redis 7** | 1 つで 3 役。**ジョブブローカー**、キャッシュ、ライブログの **pub/sub 配信**（worker → Redis → SSE）。**⚠ [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model-ja.md) で見直し中** — 完了後連携 worker モデルにより Redis 自体が不要になります | RabbitMQ/NATS（ブローカーのみ）、SQS（ブローカーのみで pub/sub なし） |
+| **タスク基盤** | まず **RQ**（Redis Queue） | 小さく Redis ネイティブで読みやすい。「`bajutsu run` を積んで worker が消費」に合致。**⚠ [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model-ja.md) で見直し中** | Celery（routing/retry/beat が要るときに採用）、Dramatiq |
 | **成果物ストレージ** | **Cloudflare R2**（S3 互換） | run ツリー（`report.html`、スクショ、**動画**、`network.json`）は大きなバイナリです。**Postgres に入れません**。R2 は**下り無料** | AWS S3（egress 課金）、MinIO（自前）、GCS |
 | **macOS ワーカー** | **MacStadium Orka** | macOS VM オーケストレーション専用（「Mac 版 k8s」）。クリーンな Mac の**スケール可能でスケジュール可能なプール**を得られる唯一の選択肢 | AWS EC2 Mac（24h 最小割当で高価）、Scaleway Apple silicon、自前 Mac mini |
 | **シークレット** | クラウドのシークレット管理（**Doppler** / プラットフォーム純正: Fly/AWS Secrets Manager） | 集中ローテーション。org ごとに **`ANTHROPIC_API_KEY` を各自持ち込み（BYO: Bring Your Own）**（`--dismiss-alerts`、`record` のコスト/悪用を org 単位で限定） | Vault（重い）、env ファイル（公開では不可） |
@@ -90,6 +91,11 @@ macOS 限定の部分は、ジョブを受け取り、クリーンな Simulator 
   `_serve_run_file` を置換）。
 
 #### ジョブキュー（コントロールプレーン ↔ ワーカー）
+
+> **⚠ 見直し中。** [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model-ja.md)
+> は、Redis ブローカーとライブログの pub/sub を、worker が run 完了後に結果を制御プレーンへ HTTP で
+> 返す完了後連携モデルに置き換えることを提案しています。
+
 Redis をブローカーとして使います。run は `{run_id, project, scenario_ref, app, options, byo_key_ref}` の
 ジョブになります。worker が `BRPOP`/lease します。worker はログ行と状態を run 単位の Redis チャネルに
 `PUBLISH` し、コントロールプレーンの SSE がそれを購読します。

@@ -164,10 +164,8 @@ before the first scenario.
   the manifest. (AI-assisted *investigation* of a failure stays in the `triage` path, never in the
   notification.)
 - **Per-scenario streaming notifications (a ping as each scenario finishes).** Deferred as too noisy
-  for a chat channel and overlapping with live-artifact streaming
-  ([BE-0070](../../proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md));
-  the completion summary is the unit teams actually want. Could return later as an opt-in for
-  dashboard sinks.
+  for a chat channel; the completion summary is the unit teams actually want. Could return later as
+  an opt-in for dashboard sinks.
 
 ## Progress
 

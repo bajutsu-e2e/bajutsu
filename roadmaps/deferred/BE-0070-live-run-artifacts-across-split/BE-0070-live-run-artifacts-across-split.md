@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0070](BE-0070-live-run-artifacts-across-split.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Proposal (deferred)** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -140,7 +140,13 @@ element tree. The mechanism is app-agnostic (it moves a file, regardless of the 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+**Deferred (2026-07-02).** The premise that `crawl` runs on a remote worker — making the live
+graph invisible to the control plane — no longer holds: crawl is not distributed. Only test
+execution is distributed, and the design for distributed test execution collects results
+**after** the run completes on the worker, then sends them back to the orchestrator. There is
+no mid-run live artifact to carry across the split, so the problem this proposal solves does
+not exist. If a future design introduces a genuinely live artifact during distributed
+execution, this proposal can be revisited.
 
 ## References
 
