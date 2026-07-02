@@ -44,8 +44,9 @@
 
 ## 詳細設計
 
-作業は次の 6 つに MECE に分解できます。`DESIGN.md` は日本語で書かれているため、すべての編集は
-[`japanese-tech-writing`](../../../.claude/skills/japanese-tech-writing/SKILL.md) スキルに従います。
+作業は次の 6 つの作業項目に MECE に分解できます。後半の「機械的に検査できる成果」と
+「プライムディレクティブとの整合」は成果条件の整理であり、追加の作業項目ではありません。
+`DESIGN.md` は日本語で書かれているため、すべての編集は [`japanese-tech-writing`](../../../.claude/skills/japanese-tech-writing/SKILL.md) スキルに従います。
 
 ### 1. 冒頭の位置づけを改める
 
