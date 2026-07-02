@@ -164,8 +164,8 @@ push, and `gh`:
     - uses: actions/create-github-app-token@<sha>   # pin to a full commit SHA
       id: app-token
       with:
-        app-id: ${{ secrets.ROADMAP_BOT_APP_ID }}
-        private-key: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
+        app-id: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+        private-key: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
     - uses: actions/checkout@<sha>
       with:
         token: ${{ steps.app-token.outputs.token }}

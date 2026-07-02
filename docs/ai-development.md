@@ -336,7 +336,7 @@ merges, so it never spends a number.
 
 Landing that commit on protected `main` needs a bypass identity: a dedicated GitHub App on `main`'s
 ruleset bypass list, granted `contents: write` and `pull-requests: write` on this repository only,
-whose id and private key are stored as the `ROADMAP_BOT_APP_ID` / `ROADMAP_BOT_PRIVATE_KEY` Actions
+whose id and private key are stored as the `AUTOMATION_BOT_APP_ID` / `AUTOMATION_BOT_PRIVATE_KEY` Actions
 secrets. A maintainer sets this up once — see *Setting up the merge-time allocation App* below. Until
 those secrets exist the workflow is a green no-op, so `main` stays green while the App is being
 provisioned. The job only ever runs reviewed code post-merge (it checks out `main`), pins every
@@ -362,8 +362,8 @@ commit past `main`'s branch protection:
 2. **Install it on this repository only**, so its reach is a single repo.
 3. **Add the App to `main`'s ruleset bypass list** — it should be the only entry — so its
    installation token can push the renumber commit past branch protection.
-4. **Generate a private key** and store it, with the App id, as the `ROADMAP_BOT_PRIVATE_KEY` and
-   `ROADMAP_BOT_APP_ID` Actions secrets (scope them via an Environment tied to the `main` ref so no
+4. **Generate a private key** and store it, with the App id, as the `AUTOMATION_BOT_PRIVATE_KEY` and
+   `AUTOMATION_BOT_APP_ID` Actions secrets (scope them via an Environment tied to the `main` ref so no
    PR-triggered job can read them).
 
 The workflow mints a short-lived (≈1 h) installation token from those secrets for checkout, push, and
