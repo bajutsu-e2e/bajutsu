@@ -480,7 +480,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### バックエンド拡張（iOS actuator）
 
 <!-- GENERATED:proposals-backend -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0105](proposals/BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md) | XCUITest の要素取得を単一スナップショット化する | 提案 |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / オンボーディング

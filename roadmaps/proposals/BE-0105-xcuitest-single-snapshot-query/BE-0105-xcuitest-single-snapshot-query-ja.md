@@ -1,11 +1,11 @@
-[English](BE-XXXX-xcuitest-single-snapshot-query.md) · **日本語**
+[English](BE-0105-xcuitest-single-snapshot-query.md) · **日本語**
 
-# BE-XXXX — XCUITest の要素取得を単一スナップショット化する
+# BE-0105 — XCUITest の要素取得を単一スナップショット化する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-xcuitest-single-snapshot-query-ja.md) |
+| 提案 | [BE-0105](BE-0105-xcuitest-single-snapshot-query-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | バックエンド拡張（iOS actuator） |

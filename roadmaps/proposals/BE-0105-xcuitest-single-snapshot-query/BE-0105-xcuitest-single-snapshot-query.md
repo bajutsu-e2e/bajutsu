@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-xcuitest-single-snapshot-query-ja.md)
+**English** · [日本語](BE-0105-xcuitest-single-snapshot-query-ja.md)
 
-# BE-XXXX — Single-snapshot element query for XCUITest
+# BE-0105 — Single-snapshot element query for XCUITest
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-xcuitest-single-snapshot-query.md) |
+| Proposal | [BE-0105](BE-0105-xcuitest-single-snapshot-query.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Backend expansion (iOS actuators) |

@@ -488,7 +488,9 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### Backend expansion (iOS actuators)
 
 <!-- GENERATED:proposals-backend -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0105](proposals/BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md) | Single-snapshot element query for XCUITest | Proposal |
 <!-- /GENERATED:proposals-backend -->
 
 ### doctor / onboarding
