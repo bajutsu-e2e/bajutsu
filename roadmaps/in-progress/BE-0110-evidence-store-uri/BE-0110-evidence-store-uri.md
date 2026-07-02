@@ -8,6 +8,7 @@
 | Proposal | [BE-0110](BE-0110-evidence-store-uri.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **In progress** |
+| Implementing PR | [#531](https://github.com/bajutsu-e2e/bajutsu/pull/531) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
