@@ -10,7 +10,6 @@
 | Status | **Implemented** |
 | Implementing PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371), [#418](https://github.com/bajutsu-e2e/bajutsu/pull/418), [#438](https://github.com/bajutsu-e2e/bajutsu/pull/438) |
 | Topic | Dogfood fixtures (demo apps) |
-| Related | [BE-XXXX — reach showcase tabs by navigation](../../proposals/BE-XXXX-showcase-tab-navigation-no-launch-shortcut/BE-XXXX-showcase-tab-navigation-no-launch-shortcut.md) |
 | Origin | Dogfooding |
 <!-- /BE-METADATA -->
 
@@ -211,7 +210,7 @@ on-device path the local gate cannot run:
 - [x] Remaining parity (E.1) — added a button-backed segmented control (`log.segment.*`) and an in-app pasteboard round-trip (`sys.*`) to both toolkits, plus the evidence-tour and first-look scenarios (`controls` / `system` / `network_live` / `evidence` / `relaunch` / `firstlook`); all pass on `run` against `showcase-swiftui` **and** `showcase-uikit`. Gestures already shipped in [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371); the external-clipboard and background-counter mirrors were dropped as non-deterministic without AI (iOS's paste-permission prompt; `simctl ui home` is not a valid step on the CI toolchain).
 - [x] Switch (E.2) — the demo menu (`demos/Makefile`, `demos/demo.config.yaml`) and on-device CI already pointed at the showcase; ported the BE-0006 goldens to the showcase (`scenarios/golden.yaml` + recorded `goldens/`) and re-pointed `idb-monitor.yml`, and ported the scenario-engine feature demos with no showcase equivalent (`data_driven.yaml`, `device.yaml`, the FakeDriver `run_demo.py` / `run_tree_report.py`, and the offline-record `generate_from_nl.py`).
 - [x] Retire (E.3) — deleted the legacy `demos/app/`, `demos/features/app/`, `demos/record/app/` and the orphaned configs / harnesses / redundant scenarios (`demos/features/`, `demos/record/` top-level), replaced `tests/test_sample_fixtures.py` with the showcase equivalent, and swept the retirement through the bilingual docs (DESIGN, docs/*, README, CONTRIBUTING, CLAUDE, demos/README) — the sample-app page became `docs/showcase.md`.
-- [x] Partial "no launch-time shortcut to a screen/state" — dropped `SHOWCASE_SEED` (the catalog is fixed) and the deeplink detail-push (a detail is reached only by tapping its row), both toolkits. Kept `SHOWCASE_TAB`: idb cannot tap a native tab bar, so switching tabs by tapping needs the XCUITest backend — deferred to [BE-XXXX](../../proposals/BE-XXXX-showcase-tab-navigation-no-launch-shortcut/BE-XXXX-showcase-tab-navigation-no-launch-shortcut.md), which depends on BE-0019 maturing.
+- [x] Partial "no launch-time shortcut to a screen/state" — dropped `SHOWCASE_SEED` (the catalog is fixed) and the deeplink detail-push (a detail is reached only by tapping its row), both toolkits. Kept `SHOWCASE_TAB`: idb cannot tap a native tab bar, so switching tabs by tapping needs the XCUITest backend — deferred to a follow-up proposal (reach showcase tabs by navigation, retiring `SHOWCASE_TAB`), which depends on BE-0019 maturing.
 
 ## References
 
