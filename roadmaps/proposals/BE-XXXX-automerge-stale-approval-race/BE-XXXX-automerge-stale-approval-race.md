@@ -41,7 +41,7 @@ with dismissed approvals is the actual first step.
 ## Detailed design
 
 1. **Confirm the `main` ruleset's live configuration** — via `gh api
-   repos/<owner>/<repo>/rulesets` (or the Settings → Rules UI) — for the `pull_request` rule's
+   repos/{owner}/{repo}/rulesets` (or the Settings → Rules UI) — for the `pull_request` rule's
    `dismiss_stale_reviews_on_push` and `require_last_push_approval` fields, on the ruleset that
    actually governs the branch protection enforced on `main` merges.
 2. **If both are already enabled and cover every merge path** (including BE-0061's automated
@@ -52,8 +52,8 @@ with dismissed approvals is the actual first step.
    re-triggers merge without re-evaluating the ruleset), enable/enforce
    `dismiss_stale_reviews_on_push` and `require_last_push_approval` on the ruleset covering
    `main`, and re-verify BE-0061's automation still functions under that constraint (its
-   claim-ref push flow re-pushes to the PR branch, which is exactly the kind of push a stale-
-   approval dismissal policy would apply to).
+   claim-ref push flow re-pushes to the PR branch, which is exactly the kind of push a
+   stale-approval dismissal policy would apply to).
 
 ## Alternatives considered
 

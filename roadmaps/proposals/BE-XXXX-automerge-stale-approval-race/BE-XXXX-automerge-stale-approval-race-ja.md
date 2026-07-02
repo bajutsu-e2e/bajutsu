@@ -42,7 +42,7 @@ dismiss された承認とどう相互作用するかを確認することです
 
 ## 詳細設計
 
-1. **`main` の ruleset の稼働中の設定を確認する。** `gh api repos/<owner>/<repo>/rulesets`
+1. **`main` の ruleset の稼働中の設定を確認する。** `gh api repos/{owner}/{repo}/rulesets`
    （あるいは Settings → Rules の UI）経由で、`main` へのマージに実際に適用されているブランチ
    保護の ruleset について、`pull_request` ルールの `dismiss_stale_reviews_on_push` と
    `require_last_push_approval` の両フィールドを確認します。
