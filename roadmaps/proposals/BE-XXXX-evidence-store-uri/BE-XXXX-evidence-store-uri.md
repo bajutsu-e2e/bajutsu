@@ -36,9 +36,9 @@ control the upload path, Bajutsu delegates retention policy entirely to the clou
 no TTL logic, no garbage collection, no deletion code in Bajutsu itself.
 
 The current `serve` architecture (BE-0015, BE-0106) already has an `ObjectStore` protocol
-for S3 in `serve/server/object_store.py`, but it is used only for the server's internal
-artifact reads. This proposal extends that seam to cover post-run evidence upload, adds GCS
-support, and unifies the configuration under a single URI flag on `serve`.
+for S3 in `serve/server/object_store.py`, used for artifact reads, scenario storage, and
+visual-baseline writes. This proposal extends that seam to cover post-run evidence upload,
+adds GCS support, and unifies the configuration under a single URI flag on `serve`.
 
 ## Detailed design
 
@@ -107,8 +107,8 @@ that the **worker never needs cloud credentials** when running through `serve`.
 
 | Mode | Who holds credentials | Worker dependency | When |
 |---|---|---|---|
-| **Presigned URL** (serve) | Server (control plane) | `httpx` (already a dep) | `serve` runs |
-| **Direct SDK** (standalone) | The runner itself | `boto3` / `gcs` (optional) | `bajutsu run --evidence-store` |
+| **Presigned URL** (serve) | Server (control plane) | `httpx` (promoted to runtime dep for the worker extra) | `serve` runs |
+| **Direct SDK** (standalone) | The runner itself | `boto3` / `google-cloud-storage` (optional) | `bajutsu run --evidence-store` |
 
 #### 3a. Presigned URL mode (serve — recommended)
 
@@ -119,7 +119,8 @@ uploads via plain HTTP PUT — no SDK, no credentials.
 1. Run completes on worker → evidence at runs/<run_id>/ locally
 2. Worker → Server:  POST /api/runs/<run_id>/upload-urls
                      { "files": ["00-login/step-1/after.png", ...] }
-3. Server generates a presigned PUT URL per file
+3. Server validates each relative path (rejects empty, leading "/", ".." traversal)
+   and generates a presigned PUT URL per file
    (bucket + prefix + evidence_prefix + run_id + relative_path)
 4. Server → Worker:  { "urls": { "00-login/step-1/after.png": "https://...", ... } }
 5. Worker uploads each file via HTTP PUT to the presigned URL
@@ -186,7 +187,9 @@ run ID is always part of the path, so runs never collide.
 
 CI controls the prefix by passing it as a job parameter when kicking the run (the
 `/api/runs` endpoint accepts an optional `evidence_prefix` override that is appended to the
-server's base URI). For example:
+server's base URI). The server validates `evidence_prefix` as a safe relative path segment
+(no leading `/`, no `..` traversal) before appending it to the base URI to prevent
+key-escape. For example:
 
 ```bash
 # CI kicks a run on serve, requesting a specific prefix
@@ -208,7 +211,7 @@ mode** — never on the worker:
 [project.optional-dependencies]
 s3 = ["boto3"]
 gcs = ["google-cloud-storage"]
-cloud = ["bajutsu[s3]", "bajutsu[gcs]"]
+cloud = ["boto3", "google-cloud-storage"]
 ```
 
 `uv sync --extra s3` or `uv sync --extra cloud` installs what is needed. If
