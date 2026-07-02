@@ -224,6 +224,7 @@ Bajutsu の「契約としての決定性」という立場を、Maestro の fla
 | [BE-0096](implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity-ja.md) | 項目昇格で docs のロードマップリンクが腐るのを防ぐ | 実装済み |
 | [BE-0100](implemented/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md) | BE テンプレートへの進捗管理と項目間の関連の追加 | 実装済み |
 | [BE-0103](implemented/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md) | 開発タスクごとにモデルと推論エフォートを適正化する | 実装済み |
+| [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md) | GitHub Issues as the ownership tracker for open roadmap items | 実装済み |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Dogfood フィクスチャ（デモアプリ）
@@ -458,6 +459,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0104](proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) | ベンダー中立な AI バックエンドインターフェース | 提案 |
+| [BE-0111](proposals/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency-ja.md) | AI SDK を extra へ降ろし、決定的ゲートを AI 非依存でインストールできるようにする | 提案 |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Web UI のホスティング（クラウド / セルフホスト）
@@ -522,7 +524,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-dev-infra -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0109](proposals/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md) | GitHub Issues as the ownership tracker for open roadmap items | 提案 |
+| [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md) | コア・契約・周辺のレイヤ境界をゲートで検査する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携
