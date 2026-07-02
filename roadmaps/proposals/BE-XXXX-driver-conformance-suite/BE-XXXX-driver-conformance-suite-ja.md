@@ -56,8 +56,8 @@ pytest スイートを実装します。同じテスト本体がすべての bac
 
 ### 3. Linux で動く backend を高速ゲートで走らせる
 
-FakeDriver と Playwright backend を `make check` に組み込み、conformance suite を Simulator なしに
-Linux 上で PR ごとに走らせます。ここで、大半の差を安く早く捕まえます。
+FakeDriver を `make check` に組み込み、conformance suite を Simulator なしに Linux 上で PR ごとに
+走らせます。Playwright backend は `bajutsu[web]` とブラウザバイナリを入れた web E2E の CI 経路で走らせます。
 
 ### 4. オンデバイスの backend を E2E 経路で走らせる
 
