@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0103](BE-0103-dev-model-effort-tiering.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Development infrastructure (contributor workflow) |
 | Related | [BE-0069](../../implemented/BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md), [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) |
 <!-- /BE-METADATA -->
@@ -140,10 +140,15 @@ of what a *development* session runs at, so this never brings an LLM near the ju
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Task → capability classification (the matrix): tiers, per-task assignment, tier → model-id mapping
-- [ ] Default `model:` frontmatter on the in-repo skills (`ideation`, `implement-be`, `japanese-tech-writing`)
-- [ ] Phase & subagent model/effort guidance in `docs/ai-development.md` (+ `docs/ja/` mirror), linked from `CLAUDE.md`
-- [ ] Light validation that each skill's `model:` is a known, valid model id
+- [x] Task → capability classification (the matrix): tiers, per-task assignment, tier → model-id mapping — documented once in `docs/ai-development.md` (+ `docs/ja/` mirror) as the single source of truth.
+- [x] Default `model:` frontmatter on the in-repo skills — `implement-be` → `opus`, `ideation` → `sonnet`, `japanese-tech-writing` → `sonnet`.
+- [x] Phase & subagent model/effort guidance in `docs/ai-development.md` (+ `docs/ja/` mirror), linked from `CLAUDE.md`.
+- [x] Light validation that each skill's `model:` is a known, valid model id — `tests/test_skill_models.py`.
+
+All four pieces shipped together in one change: the matrix and phase/subagent guidance in
+`docs/ai-development.md` (+ its `docs/ja/` mirror), the `model:` frontmatter defaults on the three
+in-repo skills, the discoverability link from `CLAUDE.md`, and the `tests/test_skill_models.py`
+validation.
 
 ## References
 

@@ -1,5 +1,6 @@
 ---
 name: implement-be
+model: opus
 description: >-
   Implement a Bajutsu roadmap (BE) item end to end, starting from its ID. Use when the
   user names a roadmap item to build — "/implement-be BE-0066", "implement BE-0041",
