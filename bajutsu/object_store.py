@@ -271,12 +271,14 @@ def upload_tree(store: ObjectStore, root: Path, prefix: str) -> UploadSummary:
     ``runs/<id>/00-login/after.png`` becomes ``<prefix><id>/00-login/after.png``). Symlinks and
     non-files are skipped (a symlink can't exfiltrate a path outside the tree), and each resolved
     path is confirmed inside *root* before upload. A per-file failure is collected into the returned
-    `UploadSummary`, never raised — the run verdict is already final.
+    `UploadSummary`, never raised — the run verdict is already final. Upload order is unspecified
+    (the walk streams the generator rather than materializing/sorting it, so memory stays bounded on
+    a large evidence tree) — order is irrelevant for a post-verdict side effect.
     """
     root = root.resolve()
     uploaded = 0
     failures: list[tuple[str, str]] = []
-    for path in sorted(root.rglob("*")):
+    for path in root.rglob("*"):
         if path.is_symlink() or not path.is_file():
             continue
         resolved = path.resolve()

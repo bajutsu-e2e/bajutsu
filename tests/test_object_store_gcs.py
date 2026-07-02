@@ -2,7 +2,8 @@
 
 `GCSObjectStore` wraps a ``google.cloud.storage.Bucket``; the bucket is injected (like
 `S3ObjectStore`'s client), so a small in-memory fake drives the contract here — no real bucket,
-credentials, or the ``gcs`` extra on the gate.
+credentials, or network, and the fake stands in for the SDK, so these never touch
+``google.cloud.storage`` itself.
 """
 
 from __future__ import annotations
