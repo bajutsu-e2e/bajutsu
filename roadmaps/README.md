@@ -478,6 +478,14 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
+### Security hardening
+
+Closing the edges the deterministic core does not touch — `serve`'s HTTP surface, how secrets flow through capture / record / artifacts, driver argument hygiene, and the CI supply chain. These items keep the tool safe to run on a shared machine and safe to hand a scenario from an untrusted source, without weakening the prime directives.
+
+<!-- GENERATED:proposals-security -->
+
+<!-- /GENERATED:proposals-security -->
+
 ### Configuration sourcing
 
 Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the items here propose naming a **Git repository at a ref** (`github:owner/repo@ref:path`) or uploading a bundle, so a hosted or self-hosted `serve`, or a CI runner, can pull a team's test repo directly.
@@ -493,6 +501,14 @@ Turning a passing scenario into a native test in a destination framework's idiom
 <!-- GENERATED:proposals-codegen -->
 
 <!-- /GENERATED:proposals-codegen -->
+
+### Crawl performance / scale-out
+
+Keeping the autonomous crawl fast and its code lean as it grows.
+
+<!-- GENERATED:proposals-crawl -->
+
+<!-- /GENERATED:proposals-crawl -->
 
 ### Backend expansion (iOS actuators)
 

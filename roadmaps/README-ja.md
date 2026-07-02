@@ -470,6 +470,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) | ホスティング時は config の取得元をアップロードと Git だけに絞る | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
+### セキュリティ強化
+
+決定論コアが触れない縁（edge）を塞ぐ取り組みです。`serve` の HTTP 面、秘密情報がキャプチャ・record・成果物をどう流れるか、ドライバの引数の扱い、CI のサプライチェーンが対象です。ここで扱う項目は、共有マシン上で動かしても安全に保ち、信頼できない取得元から渡されたシナリオを扱っても安全に保つことを、prime directive を弱めずに実現します。
+
+<!-- GENERATED:proposals-security -->
+
+<!-- /GENERATED:proposals-security -->
+
 ### config の取得元
 
 `bajutsu` が config とシナリオ一式をどこから読むか。現在はローカルパスだが、ここで扱う項目は **ある ref を指す Git リポジトリ**（`github:owner/repo@ref:path`）の指定や zip でのアップロードを可能にし、ホスト型やセルフホストの `serve`、あるいは CI のランナーが、チームのテストリポジトリを直接取得できるようにする。
@@ -485,6 +493,14 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-codegen -->
 
 <!-- /GENERATED:proposals-codegen -->
+
+### クロール性能 / スケールアウト
+
+自律クロールを高速に保ち、成長に合わせてコードを簡潔に保つ取り組みです。
+
+<!-- GENERATED:proposals-crawl -->
+
+<!-- /GENERATED:proposals-crawl -->
 
 ### バックエンド拡張（iOS actuator）
 

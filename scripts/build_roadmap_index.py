@@ -135,6 +135,7 @@ TOPICS: tuple[tuple[str, str, bool], ...] = (
     ("Dogfood fixtures (web UI)", "dogfood-web-ui", True),
     ("AI provider configuration", "ai-provider", False),
     ("Hosting the web UI (cloud / self-hosted)", "hosting", False),
+    ("Security hardening", "security", False),
     ("Configuration sourcing", "config-sourcing", False),
     ("codegen coverage", "codegen", False),
     ("Crawl performance / scale-out", "crawl", False),
