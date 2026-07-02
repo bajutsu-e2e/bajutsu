@@ -17,10 +17,11 @@
 `DESIGN.md` opens by calling itself the finalized design ("設計確定版"), but several of its
 statements have fallen behind the implementation. Reposition its opening as a *record of design
 decisions and their rationale* — pointing a reader to `docs/architecture.md` for current
-implementation status — and correct or annotate the three concrete divergences below. This is a
-documentation change; it warrants a tracked item because `DESIGN.md` is a foundational document
-(and, via `readme = "DESIGN.md"` in `pyproject.toml`, the package's published long description),
-so its accuracy has reach beyond the repo.
+implementation status — correct or annotate the three concrete divergences below, and add a
+working norm so the same kind of drift does not silently recur. This is a documentation change;
+it warrants a tracked item because `DESIGN.md` is a foundational document (and, via
+`readme = "DESIGN.md"` in `pyproject.toml`, the package's published long description), so its
+accuracy has reach beyond the repo.
 
 ## Motivation
 
@@ -40,11 +41,14 @@ reader cannot tell from the document which to trust. Three divergences are confi
    [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) is In progress.
 
 None of these is a design error; they are staleness. The fix is to make DESIGN.md honest about its
-own role and to reconcile the three points, not to redesign anything.
+own role and to reconcile the three points, not to redesign anything. But nothing currently
+prompts a contributor changing behavior to also touch DESIGN.md or `docs/architecture.md`, so the
+same three kinds of drift are likely to recur once this pass is done — the fix should include a
+norm against recurrence, not just the one-time correction.
 
 ## Detailed design
 
-The work is MECE along the five pieces below. `DESIGN.md` is written in Japanese, so all edits
+The work is MECE along the six pieces below. `DESIGN.md` is written in Japanese, so all edits
 follow the [`japanese-tech-writing`](../../../.claude/skills/japanese-tech-writing/SKILL.md) skill.
 
 ### 1. Reposition the opening
@@ -73,6 +77,16 @@ Update the XCUITest backend label from "(将来)" to reflect that BE-0019 is In 
 While making the above edits, do a bounded pass for other statements that have fallen behind, and
 fix or annotate them in the same change — without expanding into a full rewrite.
 
+### 6. Add a norm against recurrence
+
+Add a line to [`CLAUDE.md`](../../../CLAUDE.md)'s Conventions — alongside the existing rule to
+update both `docs/` and `docs/ja/` when a documented behavior changes — stating that a PR
+changing behavior `DESIGN.md` or `docs/architecture.md` describes must update the affected
+document in the same change. This cannot be a CI gate: judging whether a diff changes behavior a
+given paragraph of prose describes needs semantic understanding of prose against code, which
+would put an LLM on the `run`/CI verdict path (prime directive 1). It stays a review-time norm,
+the same way the existing conventions it sits alongside are.
+
 ### Machine-checkable outcome
 
 This item is documentation, so it has no behavioral assertion. Its gate is the docs / roadmap
@@ -98,6 +112,13 @@ could mislead a reader about how determinism and evidence actually work today.
 - **Full rewrite of DESIGN.md.** Rejected as over-scope: a targeted repositioning plus the three
   reconciliations suffices, and a rewrite risks discarding the decision history that is the
   document's actual worth.
+- **Automate staleness detection in CI instead of a norm.** Rejected: verifying that DESIGN.md's
+  prose still matches the implementation requires semantic judgment an assertion cannot express,
+  which would put an LLM on the `run`/CI verdict path — the exact thing prime directive 1
+  forbids. A review-time norm is the achievable version of this safeguard.
+- **Fix the three divergences without adding a norm.** Rejected: without something prompting a
+  future contributor to update DESIGN.md/architecture.md alongside a behavior change, the same
+  kind of drift reappears — this PR would then be one of a recurring series of one-time fixes.
 
 ## Progress
 
@@ -110,6 +131,7 @@ could mislead a reader about how determinism and evidence actually work today.
 - [ ] Reconcile the module layout (§4) with the current package structure (or note architecture.md is authoritative)
 - [ ] Reconcile the backend status (§3) — XCUITest is In progress (BE-0019)
 - [ ] Bounded sweep for further divergences; fix / annotate in the same change
+- [ ] Add a CLAUDE.md norm requiring DESIGN.md/architecture.md updates alongside behavior changes
 
 ## References
 
@@ -117,6 +139,8 @@ could mislead a reader about how determinism and evidence actually work today.
 description via `readme = "DESIGN.md"` in `pyproject.toml`),
 [docs/architecture.md](../../../docs/architecture.md) (the implementation-status source of truth
 DESIGN.md should defer to),
+[CLAUDE.md](../../../CLAUDE.md) (where the recurrence-prevention norm is added, alongside the
+existing bilingual-docs convention),
 [BE-0027](../../deferred/BE-0027-mock-server-external/BE-0027-mock-server-external.md) (why the
 external mock server was deferred, replaced by in-scenario `mocks`),
 [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) (the XCUITest
