@@ -194,6 +194,13 @@ def test_repository_from_env_rejects_a_non_positive_attempt_cap(monkeypatch) -> 
         repository_from_env()
 
 
+def test_repository_from_env_rejects_a_non_finite_lease_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("BAJUTSU_LEASE_TIMEOUT_SECONDS", "inf")  # slips past a bare `<= 0` check
+    with pytest.raises(ValueError, match="finite"):
+        repository_from_env()
+
+
 # ---------------------------------------------------------------------------
 # Job queue methods (BE-0106)
 # ---------------------------------------------------------------------------

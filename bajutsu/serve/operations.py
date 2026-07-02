@@ -1411,10 +1411,14 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
     if state.repository is None:
         return {"error": "server backend has no database configured"}, 503
     job_id = body.get("job_id", "")
-    worker_id = body.get("worker_id") or None
+    worker_id = body.get("worker_id", "")
     result = body.get("result")
     if not job_id:
         return {"error": "job_id is required"}, 400
+    if not worker_id:
+        # Required so the leaseholder check below always applies: without it a stale worker whose
+        # lease was reclaimed and re-leased could overwrite the winning run.
+        return {"error": "worker_id is required"}, 400
     if not isinstance(result, dict):
         return {"error": "result must be a JSON object"}, 400
     info = state.repository.get_job(job_id)

@@ -8,6 +8,7 @@ past the seam."""
 
 from __future__ import annotations
 
+import math
 import os
 import uuid
 from dataclasses import dataclass, field
@@ -435,6 +436,10 @@ def _positive_env(name: str, raw: str, *, cast: Any) -> Any:
         value = cast(raw)
     except ValueError:
         raise ValueError(f"{name} must be a positive number, got {raw!r}") from None
+    # NaN/inf slip past `<= 0` (NaN compares False, inf is "positive"), so reject them explicitly —
+    # a timedelta(seconds=nan) or an infinite cap is not a well-defined operator setting.
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number, got {raw!r}")
     if value <= 0:
         raise ValueError(f"{name} must be positive, got {value}")
     return value
