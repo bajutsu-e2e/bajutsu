@@ -50,9 +50,12 @@ build is rarely needed first.
 ## Launch-environment hooks
 
 Driven via `launchEnv` and passed as `SIMCTL_CHILD_<NAME>` ([drivers](drivers.md#environment-management-simctl)).
-There is deliberately **no** launch-env shortcut to a *screen* or a *data state* (BE-0079): the app
-always launches on the Stable tab with a fixed catalog, so a scenario reaches every other screen by
-driving the UI, and observes the app's own data rather than injecting one.
+BE-0079 removed the launch-env shortcuts to a *data state* and to a *pushed screen*: the catalog is
+fixed (no seed knob), and a deeplink no longer jumps onto a detail — a detail is reached only by
+tapping its row. `SHOWCASE_TAB` still selects the initial **tab**, a temporary exception: idb cannot
+tap a native tab bar, so retiring it is a follow-up on the XCUITest backend (a separate proposal).
+Every screen beyond the initial tab is reached by driving the UI, and a scenario observes the app's
+own data rather than injecting one.
 
 | Variable | Effect |
 |---|---|
