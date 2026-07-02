@@ -476,6 +476,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | ID | Item | Status |
 |---|---|---|
 | [BE-0106](proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Proposal |
+| [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing

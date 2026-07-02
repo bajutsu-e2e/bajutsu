@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-hosted-config-source-restriction-ja.md)
+**English** · [日本語](BE-0108-hosted-config-source-restriction-ja.md)
 
-# BE-XXXX — Restrict config sources to upload and Git when hosted
+# BE-0108 — Restrict config sources to upload and Git when hosted
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-hosted-config-source-restriction.md) |
+| Proposal | [BE-0108](BE-0108-hosted-config-source-restriction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
