@@ -26,9 +26,7 @@ from bajutsu.scenario import (
 SCENARIOS = Path(__file__).parent / "scenarios"
 
 
-def _el(
-    identifier: str, traits: list[str] | None = None, value: str | None = None
-) -> base.Element:
+def _el(identifier: str, traits: list[str] | None = None, value: str | None = None) -> base.Element:
     return {
         "identifier": identifier,
         "label": identifier,
