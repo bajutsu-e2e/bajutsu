@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-authoring-agent-tool-restriction-ja.md)
+**English** · [日本語](BE-0125-authoring-agent-tool-restriction-ja.md)
 
-# BE-XXXX — Restrict the claude-code authoring agent tools
+# BE-0125 — Restrict the claude-code authoring agent tools
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-authoring-agent-tool-restriction.md) |
+| Proposal | [BE-0125](BE-0125-authoring-agent-tool-restriction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |

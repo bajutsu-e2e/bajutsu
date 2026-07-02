@@ -1,11 +1,11 @@
-[English](BE-XXXX-authoring-agent-tool-restriction.md) · **日本語**
+[English](BE-0125-authoring-agent-tool-restriction.md) · **日本語**
 
-# BE-XXXX — claude-code オーサリングエージェントのツールを制限する
+# BE-0125 — claude-code オーサリングエージェントのツールを制限する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-authoring-agent-tool-restriction-ja.md) |
+| 提案 | [BE-0125](BE-0125-authoring-agent-tool-restriction-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |

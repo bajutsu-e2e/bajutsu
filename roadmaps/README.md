@@ -505,6 +505,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0121](proposals/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) | Unconditional CSRF and Host-allowlist defenses for serve | Proposal |
 | [BE-0123](proposals/BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection.md) | Route composite-action inputs through env indirection | Proposal |
 | [BE-0124](proposals/BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation.md) | Tighten config-source owner and repo validation | Proposal |
+| [BE-0125](proposals/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
