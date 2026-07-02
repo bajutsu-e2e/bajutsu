@@ -8,7 +8,7 @@
 | Proposal | [BE-0079](BE-0079-consolidate-demos-on-showcase.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Implementing PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371), [#418](https://github.com/bajutsu-e2e/bajutsu/pull/418) |
+| Implementing PR | [#371](https://github.com/bajutsu-e2e/bajutsu/pull/371), [#418](https://github.com/bajutsu-e2e/bajutsu/pull/418), [#438](https://github.com/bajutsu-e2e/bajutsu/pull/438) |
 | Topic | Dogfood fixtures (demo apps) |
 | Related | [BE-XXXX — reach showcase tabs by navigation](../../proposals/BE-XXXX-showcase-tab-navigation-no-launch-shortcut/BE-XXXX-showcase-tab-navigation-no-launch-shortcut.md) |
 | Origin | Dogfooding |
