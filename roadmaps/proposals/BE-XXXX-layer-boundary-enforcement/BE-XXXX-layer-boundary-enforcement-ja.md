@@ -126,7 +126,7 @@ verdict 経路に何も置きません。ディレクティブを構造で守り
 と AI 経路）、`tests/serve/test_import_guard.py`（本項目が静的な契約で補う、サブシステムごとの実行時
 import guard）、`Makefile` と [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)（この検査
 が加わるゲート）、[DESIGN.md](../../../DESIGN.md) と
-[docs/architecture.md](../../../docs/architecture.md)（本項目が符号化するコア / 契約 / 周辺のモデル）、
+[architecture.md](../../../docs/ja/architecture.md)（本項目が符号化するコア / 契約 / 周辺のモデル）、
 [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening-ja.md)
 （本項目が拡張する、これまでのゲート強化）、
 [BE-0051](../../implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)、
