@@ -464,9 +464,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
 
 <!-- GENERATED:proposals-hosting -->
-| ID | Item | Status |
-|---|---|---|
-| [BE-0070](proposals/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Proposal |
+
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing
@@ -538,6 +536,14 @@ Parked proposals — considered, then shelved for now. Kept here (not deleted) s
 |---|---|---|---|
 | [BE-0040](deferred/BE-0040-ai-assertions/BE-0040-ai-assertions.md) | AI assertions | Deferred | MagicPod |
 <!-- /GENERATED:deferred-competitive -->
+
+### Hosting the web UI (cloud / self-hosted)
+
+<!-- GENERATED:deferred-hosting -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0070](deferred/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) | Live in-progress run artifacts across the worker split | Deferred |
+<!-- /GENERATED:deferred-hosting -->
 
 ### Miscellaneous / on hold
 

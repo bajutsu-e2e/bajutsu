@@ -10,6 +10,7 @@
 | Status | **In progress** |
 | Implementing PR | [#105](https://github.com/bajutsu-e2e/bajutsu/pull/105), [#106](https://github.com/bajutsu-e2e/bajutsu/pull/106), [#108](https://github.com/bajutsu-e2e/bajutsu/pull/108), [#112](https://github.com/bajutsu-e2e/bajutsu/pull/112), [#117](https://github.com/bajutsu-e2e/bajutsu/pull/117), [#118](https://github.com/bajutsu-e2e/bajutsu/pull/118), [#119](https://github.com/bajutsu-e2e/bajutsu/pull/119), [#120](https://github.com/bajutsu-e2e/bajutsu/pull/120), [#121](https://github.com/bajutsu-e2e/bajutsu/pull/121), [#122](https://github.com/bajutsu-e2e/bajutsu/pull/122), [#127](https://github.com/bajutsu-e2e/bajutsu/pull/127), [#129](https://github.com/bajutsu-e2e/bajutsu/pull/129), [#130](https://github.com/bajutsu-e2e/bajutsu/pull/130), [#131](https://github.com/bajutsu-e2e/bajutsu/pull/131), [#132](https://github.com/bajutsu-e2e/bajutsu/pull/132), [#133](https://github.com/bajutsu-e2e/bajutsu/pull/133), [#134](https://github.com/bajutsu-e2e/bajutsu/pull/134), [#139](https://github.com/bajutsu-e2e/bajutsu/pull/139), [#143](https://github.com/bajutsu-e2e/bajutsu/pull/143), [#149](https://github.com/bajutsu-e2e/bajutsu/pull/149), [#150](https://github.com/bajutsu-e2e/bajutsu/pull/150), [#151](https://github.com/bajutsu-e2e/bajutsu/pull/151), [#152](https://github.com/bajutsu-e2e/bajutsu/pull/152), [#153](https://github.com/bajutsu-e2e/bajutsu/pull/153), [#156](https://github.com/bajutsu-e2e/bajutsu/pull/156), [#157](https://github.com/bajutsu-e2e/bajutsu/pull/157), [#159](https://github.com/bajutsu-e2e/bajutsu/pull/159) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
+| Related | [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -68,8 +69,8 @@ workers.**
 | **Reverse proxy + TLS** (Transport Layer Security) | **Caddy** | Automatic HTTPS (Let's Encrypt) with near-zero config; clean reverse proxy + headers | nginx + certbot (more knobs, more setup), Traefik |
 | **AuthN/Z** (authentication / authorization) | **OAuth2 — GitHub provider** via **Authlib**, signed-cookie sessions; per-org RBAC (role-based access control) | Audience is developers (they have GitHub); no passwords to store; org model maps to GitHub orgs | oauth2-proxy at the edge, Auth0/Clerk/WorkOS (managed, paid), Google OAuth |
 | **System of record** | **PostgreSQL 16** + **SQLAlchemy 2.0** + **Alembic** | Relational core (orgs/users/projects/runs) with **JSONB** for manifest summaries; managed everywhere (RDS, Cloud SQL, Neon, Supabase) | SQLite (no concurrency for multi-user), MySQL |
-| **Queue / cache / pub-sub** | **Redis 7** | One component does three jobs: **job broker**, cache, and **pub/sub fan-out** for live logs (worker → Redis → SSE) | RabbitMQ/NATS (broker only), SQS (broker only, no pub/sub) |
-| **Task framework** | **RQ** (Redis Queue) to start | Tiny, Redis-native, easy to read; matches "enqueue a `bajutsu run`, a worker consumes it" | Celery (more features: routing/retries/beat — adopt when needed), Dramatiq |
+| **Queue / cache / pub-sub** | **Redis 7** | One component does three jobs: **job broker**, cache, and **pub/sub fan-out** for live logs (worker → Redis → SSE). **⚠ Under revision by [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model.md)** — the post-completion worker model eliminates the need for Redis entirely | RabbitMQ/NATS (broker only), SQS (broker only, no pub/sub) |
+| **Task framework** | **RQ** (Redis Queue) to start | Tiny, Redis-native, easy to read; matches "enqueue a `bajutsu run`, a worker consumes it". **⚠ Under revision by [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model.md)** | Celery (more features: routing/retries/beat — adopt when needed), Dramatiq |
 | **Artifact storage** | **Cloudflare R2** (S3-compatible) | Run trees (`report.html`, screenshots, **video**, `network.json`) are large binaries — keep them **out of Postgres**; R2 has **no egress fees** | AWS S3 (egress costs), MinIO (self-host), GCS |
 | **macOS workers** | **MacStadium Orka** | Purpose-built macOS-VM orchestration ("k8s for Mac") — the only option that gives a **scalable, schedulable pool** of clean Macs | AWS EC2 Mac (24h min allocation, pricey), Scaleway Apple silicon, self-hosted Mac minis |
 | **Secrets** | Cloud secret manager (**Doppler** or platform-native: Fly/AWS Secrets Manager) | Centralized rotation; per-org **BYO (bring-your-own) `ANTHROPIC_API_KEY`** (bounds cost/abuse for `--dismiss-alerts` and `record`) | Vault (heavier), env files (don't, for public) |
@@ -90,6 +91,11 @@ The evolution of today's `serve`. Endpoints (auth'd):
   replacing today's local-filesystem `_serve_run_file`.
 
 #### Job queue (control plane ↔ workers)
+
+> **⚠ Under revision.** [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model.md)
+> proposes replacing the Redis broker and live-log pub/sub with a post-completion model where
+> workers collect results after the run finishes and return them to the control plane over HTTP.
+
 Redis is the broker. A run becomes a serialized job `{run_id, project, scenario_ref, app, options,
 byo_key_ref}`. Workers `BRPOP`/lease it. The worker also `PUBLISH`es log lines and status to a
 per-run Redis channel that the control plane's SSE endpoint subscribes to.
