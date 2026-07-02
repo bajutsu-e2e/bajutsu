@@ -88,6 +88,16 @@ def test_scan_skips_placeholder_and_statusless(tmp_path: Path) -> None:
     assert [i.be_id for i in sync.scan_items(roadmap)] == ["BE-9001"]
 
 
+def test_scan_sorts_by_id_across_categories(tmp_path: Path) -> None:
+    # Items are written to different category folders in an order that would NOT sort by id if
+    # the scan merely concatenated per-category results in CATEGORIES order.
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "deferred", "BE-9001-earliest", "Proposal (deferred)")
+    _write_item(roadmap, "implemented", "BE-9003-latest", "Implemented")
+    _write_item(roadmap, "proposals", "BE-9002-middle", "Proposal")
+    assert [i.be_id for i in sync.scan_items(roadmap)] == ["BE-9001", "BE-9002", "BE-9003"]
+
+
 def test_parse_english_missing_file_is_empty(tmp_path: Path) -> None:
     assert sync._parse_english(tmp_path / "proposals" / "BE-9999-gone") == ("", "")
 
@@ -155,7 +165,7 @@ def test_issue_body_links_back_and_quotes_intro() -> None:
 # --- gh seams (parsing / error handling, no network) -----------------------------
 
 
-def test_existing_open_issues_parses_ids_and_ignores_untitled(
+def test_existing_open_issues_parses_ids_and_ignores_issues_without_a_be_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = json.dumps(

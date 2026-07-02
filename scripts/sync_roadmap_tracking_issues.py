@@ -115,7 +115,7 @@ def scan_items(roadmap: Path) -> list[Item]:
                     intro=intro,
                 )
             )
-    return items
+    return sorted(items, key=lambda item: item.be_id)
 
 
 @dataclass(frozen=True)

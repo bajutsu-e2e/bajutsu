@@ -440,9 +440,9 @@ filters turn the Issues list into the board:
   with no one on them).
 - `label:roadmap-tracking assignee:<user>` — one person's plate.
 
-**Before you start an item, check its tracking issue** (search `label:roadmap-tracking BE-NNNN
-in:title`); if it's unassigned, **self-assign it** when you pick the work up — exactly as on any other
-GitHub issue. Don't close a tracking issue by hand: the sync does it.
+**Before you start an item, check its tracking issue** (search
+`label:roadmap-tracking BE-NNNN in:title`); if it's unassigned, **self-assign it** when you pick the
+work up — exactly as on any other GitHub issue. Don't close a tracking issue by hand: the sync does it.
 
 The issues are created and closed automatically by the `roadmap-tracking-issues` workflow
 (`scripts/sync_roadmap_tracking_issues.py`), which runs on `push: main` (paths `roadmaps/**`). The
