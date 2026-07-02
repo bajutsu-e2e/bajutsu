@@ -433,6 +433,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0007](proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 提案 |
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
+| [BE-0114](proposals/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) | backend 非依存の挙動を検査する driver conformance suite | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### オーサリング体験（record / GUI エディタ）

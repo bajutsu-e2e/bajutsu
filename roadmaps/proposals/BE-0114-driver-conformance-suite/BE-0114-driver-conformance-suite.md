@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-driver-conformance-suite-ja.md)
+**English** · [日本語](BE-0114-driver-conformance-suite-ja.md)
 
-# BE-XXXX — Driver conformance suite for backend-agnostic behavior
+# BE-0114 — Driver conformance suite for backend-agnostic behavior
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-driver-conformance-suite.md) |
+| Proposal | [BE-0114](BE-0114-driver-conformance-suite.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Platform expansion (Android / Web / Flutter) |
