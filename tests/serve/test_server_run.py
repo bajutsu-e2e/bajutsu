@@ -69,17 +69,15 @@ def test_build_state_rejects_unknown_backend(tmp_path: Path) -> None:
 def test_build_state_server_wires_the_hosted_seams(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The server backend assembles the hosted seams from the environment. The Redis/RQ/boto3
-    # clients construct without connecting, so this checks the wiring (the seam types) on the gate.
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
-    from bajutsu.serve.server.executor import QueueExecutor
-    from bajutsu.serve.server.logbus import RedisLogBus
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
+    from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.scenarios import StorageScenarioStore
 
     monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
     monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
-    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     _scn, cfg, runs = project(tmp_path)
     state = srv._build_state(
         runs_dir=runs,
@@ -91,14 +89,13 @@ def test_build_state_server_wires_the_hosted_seams(
         token=None,
         backend="server",
     )
-    assert isinstance(state.executor, QueueExecutor)
-    assert isinstance(state.logbus, RedisLogBus)
+    assert isinstance(state.executor, DbQueueExecutor)
+    assert isinstance(state.logbus, PostCompletionLogBus)
     assert isinstance(state.artifacts, ObjectStorageArtifactStore)
     assert isinstance(state.scenarios, StorageScenarioStore)
     assert isinstance(state.baselines, ObjectBaselineStore)
-    # The scenario store reads the live config's apps (project registry comes from config here).
     scope = state.scenarios.scope("demo")
-    assert scope is not None  # demo is an app in the bound config
+    assert scope is not None
 
 
 def test_build_state_local_has_no_repository(tmp_path: Path) -> None:
@@ -350,11 +347,14 @@ def test_build_state_server_requires_a_bucket(
 def test_build_state_server_without_extras_raises_a_clear_install_hint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # With an extra missing (redis stood in here), the server assembly surfaces one install hint
-    # naming the extras — not a raw ImportError for whichever module loaded first.
+    # With an extra missing, the server assembly surfaces one install hint naming the extras — not
+    # a raw ImportError for whichever module loaded first. We block a sub-import the server path
+    # needs (the object-store client) so ImportError fires before any env check.
     import sys
 
-    monkeypatch.setitem(sys.modules, "redis", None)
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setitem(sys.modules, "boto3", None)
     _scn, cfg, runs = project(tmp_path)
     with pytest.raises(srv.MissingServerExtra, match="extra"):
         srv._build_state(

@@ -235,14 +235,10 @@ def _build_server_state(
     path and the import guard stay SDK-free."""
     import os
 
-    from redis import Redis
-    from rq import Queue
-
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
     from bajutsu.serve.server.db import engine_from_url, repository_from_env
-    from bajutsu.serve.server.executor import QueueExecutor
-    from bajutsu.serve.server.logbus import RedisLogBus
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
     from bajutsu.serve.server.oauth import GitHubOAuthClient
     from bajutsu.serve.server.object_store import (
         artifact_prefix,
@@ -250,9 +246,9 @@ def _build_server_state(
         org_prefix,
         s3_prefix,
     )
+    from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
     from bajutsu.serve.server.sessions import _DEFAULT_TTL, SqlSessionStore
-    from bajutsu.serve.server.worker_job import redis_url
 
     store = object_store_from_env()
     if store is None:
@@ -277,10 +273,8 @@ def _build_server_state(
     allowed_users = _logins("BAJUTSU_OAUTH_ALLOWED_USERS")
     oauth_admins = _logins("BAJUTSU_OAUTH_ADMINS")
     oauth_viewers = _logins("BAJUTSU_OAUTH_VIEWERS")
-    # The real clients are wider than our minimal seam protocols (RedisLike / Queue), so hand them
-    # over as Any — the seam adapters use only the slice they declare.
-    redis: Any = Redis.from_url(redis_url())
-    queue: Any = Queue(os.environ.get("BAJUTSU_QUEUE", "bajutsu"), connection=redis)
+
+    repo = repository_from_env()
 
     state = ServeState(
         runs_dir=runs_dir,
@@ -289,20 +283,18 @@ def _build_server_state(
         root=root,
         baselines_dir=baselines_dir,
         max_concurrent=max_concurrent,
-        # Per-user concurrency cap (0 = unlimited), so one OAuth user can't starve the pool (7c-3).
         max_concurrent_per_user=_max_concurrent_from_env(
             os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER"),
             var="BAJUTSU_MAX_CONCURRENT_PER_USER",
         ),
-        # Per-org cap (0 = unlimited), so one tenant can't monopolize the scarce pool (BE-0016).
         max_concurrent_per_org=_max_concurrent_from_env(
             os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_ORG"),
             var="BAJUTSU_MAX_CONCURRENT_PER_ORG",
         ),
         token=token,
         upload_exec=upload_exec,
-        executor=QueueExecutor(queue),
-        logbus=RedisLogBus(redis),
+        executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
+        logbus=PostCompletionLogBus(repo) if repo is not None else InMemoryLogBus(),
         sessions=(
             SqlSessionStore(
                 _db_engine,
@@ -311,9 +303,7 @@ def _build_server_state(
             if _db_engine is not None
             else InMemorySessionStore()
         ),
-        # The system of record, when a database is configured (BAJUTSU_DATABASE_URL); None otherwise
-        # so the server backend runs without one until 7b/7c need it (BE-0015 7a).
-        repository=repository_from_env(),
+        repository=repo,
         oauth=oauth,
         oauth_allowed_users=allowed_users,
         oauth_admins=oauth_admins,

@@ -5,12 +5,21 @@ the `runs` methods exist in 7a; orgs/users/projects/audit_log arrive with 7b/7c.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from bajutsu.serve.server.db import RunRecord, SqlRepository, engine_from_url, repository_from_env
+from bajutsu import serve as srv
+from bajutsu.serve.server.db import (
+    RunRecord,
+    SqlRepository,
+    engine_from_url,
+    repository_from_env,
+)
+from bajutsu.serve.server.db_executor import DbQueueExecutor
 from bajutsu.serve.server.models import AuditLog, Base, Org, User
+from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
 
 
 def _repo() -> SqlRepository:
@@ -168,3 +177,126 @@ def test_repository_from_env_is_none_without_a_url(monkeypatch) -> None:
 def test_repository_from_env_builds_a_sql_repository(monkeypatch) -> None:
     monkeypatch.setenv("BAJUTSU_DATABASE_URL", "sqlite://")
     assert isinstance(repository_from_env(), SqlRepository)
+
+
+# ---------------------------------------------------------------------------
+# Job queue methods (BE-0106)
+# ---------------------------------------------------------------------------
+
+
+def test_enqueue_then_lease_returns_the_spec() -> None:
+    repo = _repo()
+    spec = {"cmd": ["bajutsu", "run"], "job_id": "j1"}
+    repo.enqueue_job("j1", org_id="o1", spec=spec)
+    leased = repo.lease_job("worker-1")
+    assert leased is not None
+    assert leased.id == "j1"
+    assert leased.spec == spec
+
+
+def test_lease_returns_none_when_queue_is_empty() -> None:
+    assert _repo().lease_job("worker-1") is None
+
+
+def test_lease_takes_oldest_first() -> None:
+    repo = _repo()
+    repo.enqueue_job("j1", org_id="o1", spec={"n": 1})
+    repo.enqueue_job("j2", org_id="o1", spec={"n": 2})
+    first = repo.lease_job("w1")
+    assert first is not None and first.id == "j1"
+    second = repo.lease_job("w2")
+    assert second is not None and second.id == "j2"
+    assert repo.lease_job("w3") is None
+
+
+def test_complete_job_stores_result() -> None:
+    repo = _repo()
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    repo.lease_job("w1")
+    result = {"ok": True, "run_id": "r1", "summary": {"passed": 3}}
+    repo.complete_job("j1", result=result)
+    got = repo.get_job("j1")
+    assert got is not None
+    assert got["status"] == "done"
+    assert got["result"] == result
+
+
+def test_fail_job_stores_error() -> None:
+    repo = _repo()
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    repo.lease_job("w1")
+    repo.fail_job("j1", error="crash")
+    got = repo.get_job("j1")
+    assert got is not None
+    assert got["status"] == "failed"
+    assert got["result"]["error"] == "crash"
+
+
+def test_get_job_returns_none_for_missing() -> None:
+    assert _repo().get_job("nope") is None
+
+
+# ---------------------------------------------------------------------------
+# DbQueueExecutor (BE-0106)
+# ---------------------------------------------------------------------------
+
+
+def test_db_executor_inserts_a_queued_job() -> None:
+    repo = _repo()
+    state = srv.ServeState(runs_dir=Path("/tmp/runs"))
+    job = state.register(srv.Job(cmd=["bajutsu", "run"], udids=["U1"]))
+    DbQueueExecutor(repo).dispatch(state, job)
+    info = repo.get_job(job.id)
+    assert info is not None
+    assert info["status"] == "queued"
+    leased = repo.lease_job("w1")
+    assert leased is not None and leased.id == job.id
+
+
+# ---------------------------------------------------------------------------
+# PostCompletionLogBus (BE-0106)
+# ---------------------------------------------------------------------------
+
+
+class _FakeArtifactStore:
+    def __init__(self, files: dict[str, bytes] | None = None) -> None:
+        self._files = files or {}
+
+    def get(self, path: str) -> bytes | None:
+        return self._files.get(path)
+
+
+def test_post_completion_logbus_yields_log_after_done() -> None:
+    repo = _repo()
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    repo.lease_job("w1")
+    repo.complete_job("j1", result={"ok": True})
+    artifacts = _FakeArtifactStore({"j1/console.log": b"line 1\nline 2\n"})
+    bus = PostCompletionLogBus(repo, artifacts, poll_interval=0.01)
+    lines = list(bus.stream("j1"))
+    assert "line 1\n" in lines
+    assert "line 2\n" in lines
+
+
+def test_post_completion_logbus_heartbeats_while_queued() -> None:
+    repo = _repo()
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    bus = PostCompletionLogBus(repo, poll_interval=0.01)
+    it = bus.stream("j1")
+    hb = next(it)
+    assert hb is None  # heartbeat while still queued
+
+
+def test_post_completion_logbus_final_returns_result() -> None:
+    repo = _repo()
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    bus = PostCompletionLogBus(repo, poll_interval=0.01)
+    assert bus.final("j1") is None
+
+    repo.lease_job("w1")
+    repo.complete_job("j1", result={"ok": True, "runId": "r1"})
+    final = bus.final("j1")
+    assert final is not None
+    import json
+
+    assert json.loads(final)["ok"] is True

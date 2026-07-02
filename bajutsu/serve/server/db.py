@@ -11,13 +11,22 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
     from bajutsu.serve.server.models import Run
+
+
+@dataclass
+class LeasedJob:
+    """A job that has been leased by a worker — the boundary type the seam hands out."""
+
+    id: str
+    org_id: str
+    spec: dict[str, Any]
 
 
 @dataclass
@@ -66,6 +75,21 @@ class Repository(Protocol):
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]
     ) -> None:
         """Append an audit-log entry — who did what to which target, and when (server clock)."""
+
+    def enqueue_job(self, job_id: str, org_id: str, spec: dict[str, Any]) -> None:
+        """Insert a job with status ``queued``."""
+
+    def lease_job(self, worker_id: str) -> LeasedJob | None:
+        """Atomically lease the oldest queued job to *worker_id*, or return None."""
+
+    def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
+        """Mark a leased job as ``done`` and store its *result*."""
+
+    def fail_job(self, job_id: str, error: str) -> None:
+        """Mark a leased job as ``failed`` with an error message."""
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        """Return the job's status and result, or None if it does not exist."""
 
 
 def _to_record(row: Run) -> RunRecord:
@@ -220,6 +244,74 @@ class SqlRepository:
                 )
             )
             session.commit()
+
+    def enqueue_job(self, job_id: str, org_id: str, spec: dict[str, Any]) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            session.add(JobRecord(id=job_id, org_id=org_id, spec=spec))
+            session.commit()
+
+    def lease_job(self, worker_id: str) -> LeasedJob | None:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            stmt = (
+                select(JobRecord)
+                .where(JobRecord.status == "queued")
+                .order_by(JobRecord.created_at)
+                .limit(1)
+            )
+            if self._engine.dialect.name != "sqlite":
+                stmt = stmt.with_for_update(skip_locked=True)
+            row = session.scalars(stmt).first()
+            if row is None:
+                return None
+            row.status = "leased"
+            row.leased_at = datetime.now(UTC)
+            row.leased_by = worker_id
+            session.commit()
+            return LeasedJob(id=row.id, org_id=row.org_id, spec=dict(row.spec))
+
+    def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            row = session.get(JobRecord, job_id)
+            if row is not None:
+                row.status = "done"
+                row.result = result
+                session.commit()
+
+    def fail_job(self, job_id: str, error: str) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            row = session.get(JobRecord, job_id)
+            if row is not None:
+                row.status = "failed"
+                row.result = {"error": error}
+                session.commit()
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        with Session(self._engine) as session:
+            row = session.get(JobRecord, job_id)
+            if row is None:
+                return None
+            return {"status": row.status, "result": dict(row.result)}
 
 
 def engine_from_url(url: str) -> Engine:
