@@ -276,6 +276,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0051](implemented/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md) | Serve hardening for hosting (auth, input validation) | Implemented |
 | [BE-0055](implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
 | [BE-0090](implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
+| [BE-0106](implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
 ### Configuration sourcing
@@ -475,7 +476,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 <!-- GENERATED:proposals-hosting -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0106](proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Proposal |
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 

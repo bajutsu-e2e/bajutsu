@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0106](BE-0106-post-completion-worker-model.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 | Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0070](../../deferred/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split.md) |
 <!-- /BE-METADATA -->
@@ -175,18 +175,20 @@ deterministic run is unchanged (#2), and nothing here is app-specific (#3).
 > Kept current as work proceeds. The checklist mirrors the MECE work breakdown in
 > *Detailed design*; the log records what changed and when (oldest first), linking the PRs.
 
-- [ ] 1 — Session store → Postgres (`sessions` table + migration, `SqlSessionStore`, wiring).
-- [ ] 2 — Job dispatch + result collection + post-completion log (`jobs` table + migration,
+- [x] 1 — Session store → Postgres (`sessions` table + migration, `SqlSessionStore`, wiring).
+- [x] 2 — Job dispatch + result collection + post-completion log (`jobs` table + migration,
   `Repository` lease methods, `DbQueueExecutor`, `/api/worker/lease` + `/api/worker/result`, the
   `bajutsu worker` HTTP loop, the `console.log` upload, `PostCompletionLogBus`).
-- [ ] 3 — Deployment & docs cleanup (drop `redis` from `deploy/self-host` and the `worker` extra,
-  require `BAJUTSU_DATABASE_URL`, update `docs/self-hosting.md` + `docs/ja/`, rewrite the
-  BE-0015/BE-0016 Redis sections).
+- [x] 3 — Deployment & docs cleanup (drop `redis` from `deploy/self-host` and the `worker` extra,
+  update `docs/self-hosting.md` + `docs/ja/`, rewrite the BE-0015/BE-0016 Redis sections).
 
 Log:
 
 - 2026-07-02 — design fleshed out from the accepted premise (post-completion collection, no live
   streaming in server mode); Detailed design and this breakdown scoped.
+- 2026-07-02 — slices 1+2 shipped: `SqlSessionStore`, `DbQueueExecutor`, `PostCompletionLogBus`,
+  worker HTTP endpoints, `bajutsu worker` HTTP loop (#445).
+- 2026-07-02 — slice 3 shipped: Redis removed from deploy, deps, docs, roadmap.
 
 ## References
 

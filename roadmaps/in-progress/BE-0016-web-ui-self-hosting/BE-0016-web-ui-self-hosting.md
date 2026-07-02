@@ -10,7 +10,7 @@
 | Status | **In progress** |
 | Implementing PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
-| Related | [BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
+| Related | [BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -146,7 +146,7 @@ are in [`deploy/self-host/`](../../../deploy/self-host/) and
   the job on an **ephemeral Simulator** (`--erase`), uploads the `runs/<id>/` tree (including
   `console.log`) to MinIO, and posts the result back to `POST /api/worker/result`. No Redis or
   RQ — the worker needs only HTTP and (optionally) the object-store client
-  ([BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)).
+  ([BE-0106](../../implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)).
 - **Quotas.** A **global** concurrency cap (`--max-concurrent-runs`, default 4) and a **per-user** cap
   (`max_concurrent_per_user`) keep one caller from monopolizing the scarce devices — enforced
   atomically under a lock in `try_register` (`bajutsu/serve/jobs.py`).
