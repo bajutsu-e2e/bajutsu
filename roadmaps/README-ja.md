@@ -504,7 +504,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0109](proposals/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md) | GitHub Issues as the ownership tracker for open roadmap items | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携

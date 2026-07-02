@@ -512,7 +512,9 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0109](proposals/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) | GitHub Issues as the ownership tracker for open roadmap items | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-roadmap-tracking-issues-ja.md)
+**English** · [日本語](BE-0109-roadmap-tracking-issues-ja.md)
 
-# BE-XXXX — GitHub Issues as the ownership tracker for open roadmap items
+# BE-0109 — GitHub Issues as the ownership tracker for open roadmap items
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-tracking-issues.md) |
+| Proposal | [BE-0109](BE-0109-roadmap-tracking-issues.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |
@@ -64,10 +64,10 @@ write` on the default token.
    self-healing and idempotent, matching the rest of the roadmap tooling (BE-0043, BE-0061):
    running it twice, or against an already-consistent set, is a no-op, and a merge race can't leave
    two tracking issues for one item, because the second run sees the first run's issue.
-3. **Runs on `main`, after IDs are final — skips `BE-XXXX`.** A new proposal carries the literal
-   `BE-XXXX` placeholder through its PR; its real `BE-NNNN` is allocated by `roadmap-id` on `main`
+3. **Runs on `main`, after IDs are final — skips `BE-0109`.** A new proposal carries the literal
+   `BE-0109` placeholder through its PR; its real `BE-NNNN` is allocated by `roadmap-id` on `main`
    after the merge (BE-0089). An issue titled with a real number therefore can't be created on the
-   PR. So the sync runs on `push: main` (paths `roadmaps/**`) and simply **skips any `BE-XXXX`
+   PR. So the sync runs on `push: main` (paths `roadmaps/**`) and simply **skips any `BE-0109`
    item**: the allocation commit that renames the placeholder is itself a `roadmaps/**` change on
    `main`, which re-triggers this workflow, and the now-numbered item is picked up on that second
    pass. No ordering dependency on `roadmap-id`, no placeholder issues to rename.
@@ -128,8 +128,8 @@ write` on the default token.
   board isn't precluded later — it could layer on top of the same Issues without changing this
   design.
 - **Run the sync on the PR (`roadmap-promote`) rather than on `main`.** Rejected because a new
-  proposal still carries the `BE-XXXX` placeholder on its PR, so no real-numbered issue can be
-  created there. Running on `main` after allocation, and skipping `BE-XXXX`, is what keeps every
+  proposal still carries the `BE-0109` placeholder on its PR, so no real-numbered issue can be
+  created there. Running on `main` after allocation, and skipping `BE-0109`, is what keeps every
   issue titled with a permanent ID.
 
 ## Progress
@@ -139,7 +139,7 @@ write` on the default token.
 > (oldest first), linking the PRs.
 
 - [ ] 1. `scripts/sync_roadmap_tracking_issues.py` — GitHub-keyed existence check, create/close
-  lifecycle, `BE-XXXX` skip, and `--check`.
+  lifecycle, `BE-0109` skip, and `--check`.
 - [ ] 2. `roadmap-tracking` label, and the issue title/body shape.
 - [ ] 3. New workflow `roadmap-tracking-issues.yml` on `push: main` (`issues: write`).
 - [ ] 4. One-time backfill of the existing open backlog.
@@ -153,9 +153,9 @@ write` on the default token.
   pure-function-of-current-state pattern this item's sync script follows.
 - [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml) — the
   `push: main` roadmap workflow this new one sits beside; allocation runs here, so the sync's
-  `BE-XXXX` skip depends on it.
+  `BE-0109` skip depends on it.
 - [BE-0089](../../implemented/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) —
-  merge-time ID allocation on `main`, which is why the sync runs on `main` and skips `BE-XXXX`.
+  merge-time ID allocation on `main`, which is why the sync runs on `main` and skips `BE-0109`.
 - [BE-0094](../../implemented/BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) —
   the generated dashboard that could render item → tracking-issue links.
 - [BE-0043](../../implemented/BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) —
