@@ -270,8 +270,8 @@ def test_post_completion_logbus_yields_log_after_done() -> None:
     repo = _repo()
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
-    repo.complete_job("j1", result={"ok": True})
-    artifacts = _FakeArtifactStore({"j1/console.log": b"line 1\nline 2\n"})
+    repo.complete_job("j1", result={"ok": True, "runId": "20260702-1"})
+    artifacts = _FakeArtifactStore({"20260702-1/console.log": b"line 1\nline 2\n"})
     bus = PostCompletionLogBus(repo, lambda _org: artifacts, poll_interval=0.01)
     lines = list(bus.stream("j1"))
     assert "line 1\n" in lines

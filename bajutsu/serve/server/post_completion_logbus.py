@@ -68,22 +68,27 @@ class PostCompletionLogBus:
         return None
 
     def stream(self, job_id: str, *, timeout: float | None = None) -> Iterator[str | None]:
+        idle = 0.0
         while True:
             info = self._repo.get_job(job_id)
             if info is not None and info["status"] in ("done", "failed"):
-                yield from self._read_console_log(info.get("org_id", ""), job_id)
+                run_id = info.get("result", {}).get("runId")
+                yield from self._read_console_log(info.get("org_id", ""), run_id or job_id)
                 return
             time.sleep(self._poll)
             if timeout is not None:
-                yield None  # heartbeat only when timeout is set (LogBus contract)
+                idle += self._poll
+                if idle >= timeout:
+                    idle = 0.0
+                    yield None
 
-    def _read_console_log(self, org_id: str, job_id: str) -> list[str]:
+    def _read_console_log(self, org_id: str, run_id: str) -> list[str]:
         if self._artifacts_fn is None:
             return []
         store = self._artifacts_fn(org_id)
         if store is None:
             return []
-        content = store.open_bytes(f"{job_id}/console.log")
+        content = store.open_bytes(f"{run_id}/console.log")
         if content is None:
             return []
         return content.decode("utf-8").splitlines(keepends=True)
