@@ -8,6 +8,7 @@ single-fork refactor folded behind the Protocol.
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from _runner import _eff
@@ -352,9 +353,12 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
 
     monkeypatch.setattr("bajutsu.environment.make_driver", mock_make_driver)
 
+    import plistlib
     import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
+        f.flush()
         eff = dc_replace(_eff(), xcuitest=XcuitestConfig(test_runner=f.name), app_path=None)
         xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
         driver = xe.start(eff, Preconditions())
@@ -428,7 +432,18 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
 
     monkeypatch.setattr("bajutsu.environment.make_driver", lambda *a, **k: FakeDriver())
 
+    import plistlib
+
     with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
+        # A minimal valid .xctestrun: one test target the env is injected into.
+        plistlib.dump(
+            {
+                "__xctestrun_metadata__": {"FormatVersion": 1},
+                "RunnerUITests": {"TestingEnvironmentVariables": {"EXISTING": "1"}},
+            },
+            f,
+        )
+        f.flush()
         eff = dc_replace(
             _eff(),
             xcuitest=XcuitestConfig(test_runner=f.name),
@@ -446,15 +461,25 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
         xe = XcuitestEnvironment("xcuitest", "U", env_run=lambda a, extra_env=None: "")
         xe.start(eff, pre, extra_env={"BAJUTSU_COLLECTOR": "http://127.0.0.1:9999"})
 
-    popen_env: dict[str, str] = popen_calls[0]["kwargs"]["env"]  # type: ignore[assignment]
+    # xcodebuild does not forward its env into the Simulator, so the forwarded vars are read
+    # from the patched .xctestrun's per-target TestingEnvironmentVariables.
+    cmd: list[str] = popen_calls[0]["cmd"]  # type: ignore[assignment]
+    patched = Path(cmd[cmd.index("-xctestrun") + 1])
+    with patched.open("rb") as pf:
+        target_env = plistlib.load(pf)["RunnerUITests"]["TestingEnvironmentVariables"]
+    patched.unlink(missing_ok=True)
+
+    assert target_env["EXISTING"] == "1"  # existing entries preserved
     # launch_env merged (eff + pre + extra_env) under BAJUTSU_LAUNCH_ENV_ prefix
-    assert popen_env["BAJUTSU_LAUNCH_ENV_APP_ENV"] == "test"
-    assert popen_env["BAJUTSU_LAUNCH_ENV_DEBUG"] == "1"
-    assert popen_env["BAJUTSU_LAUNCH_ENV_SCENARIO_KEY"] == "val"
-    assert popen_env["BAJUTSU_LAUNCH_ENV_BAJUTSU_COLLECTOR"] == "http://127.0.0.1:9999"
+    assert target_env["BAJUTSU_LAUNCH_ENV_APP_ENV"] == "test"
+    assert target_env["BAJUTSU_LAUNCH_ENV_DEBUG"] == "1"
+    assert target_env["BAJUTSU_LAUNCH_ENV_SCENARIO_KEY"] == "val"
+    assert target_env["BAJUTSU_LAUNCH_ENV_BAJUTSU_COLLECTOR"] == "http://127.0.0.1:9999"
     # launch_args as JSON array (eff + pre + locale)
-    args = json.loads(popen_env["BAJUTSU_LAUNCH_ARGS"])
+    args = json.loads(target_env["BAJUTSU_LAUNCH_ARGS"])
     assert "-verbose" in args and "-reset" in args
     assert "-AppleLocale" in args and "fr_FR" in args
     # deeplink
-    assert popen_env["BAJUTSU_DEEPLINK"] == "myapp://home"
+    assert target_env["BAJUTSU_DEEPLINK"] == "myapp://home"
+    # bundle id of the app under test (so one generic runner drives any app)
+    assert target_env["BAJUTSU_BUNDLE_ID"] == "com.example.demo"

@@ -101,7 +101,9 @@ def _http_transport(host: str, port: int) -> TransportFn:
     """The real transport: one short HTTP request to the runner's loopback server per call."""
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
-        conn = http.client.HTTPConnection(host, port, timeout=10)
+        # A full-tree `/elements` walk on a busy screen can take ~10s+ on the runner, so the
+        # socket timeout is generous; a genuinely wedged runner still fails, just not prematurely.
+        conn = http.client.HTTPConnection(host, port, timeout=30)
         try:  # pragma: no cover - exercised on-device against the real runner, not on the gate
             payload = json.dumps(body).encode() if body is not None else None
             headers = {"Content-Type": "application/json"} if payload is not None else {}
