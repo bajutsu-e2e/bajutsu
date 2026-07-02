@@ -284,7 +284,7 @@ class TargetConfig(_Model):
     app_path: str | None = Field(default=None, alias="appPath")
     # Shell command that builds `app_path`. When set, `bajutsu serve` runs it before the
     # scenario if the binary is missing (so the Web UI builds on demand). Run from the run's
-    # working directory; e.g. "make -C demos/features sample-build".
+    # working directory; e.g. "make -C demos/showcase swiftui-build".
     build: str | None = None
     # Directory of this target's scenario *.yaml files. `run` reads them all; `record` writes new
     # ones here. Relative to the run's working directory (like app_path/build).

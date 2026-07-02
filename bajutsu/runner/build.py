@@ -3,7 +3,7 @@
 A Git-sourced config (`bajutsu run --config github:…`) is materialized into a content-addressed
 checkout that holds no built binary, and there is no "first" in which to build it by hand. So `run`
 builds it here when it is missing — executing the config's `build` command with the **checkout root**
-as the working directory, since the command's relative parts (`make -C demos/features …`) are rooted
+as the working directory, since the command's relative parts (`make -C demos/showcase …`) are rooted
 there, not at the caller's current directory.
 
 It stays inside the prime directives: a build is deterministic infrastructure (a shell command, no
