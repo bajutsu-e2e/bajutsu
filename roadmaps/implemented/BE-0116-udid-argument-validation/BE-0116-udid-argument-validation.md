@@ -8,6 +8,7 @@
 | Proposal | [BE-0116](BE-0116-udid-argument-validation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#550](https://github.com/bajutsu-e2e/bajutsu/pull/550) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -67,7 +68,8 @@ argument confusion in the downstream tool, not arbitrary command execution.
 - [x] Add a unit test covering leading-hyphen rejection and legitimate UDID/`booted` acceptance.
 
 - 2026-07-02: Tightened `_UDID_RE` to require an alphanumeric first character and extended
-  `test_valid_udid` with leading-hyphen rejection cases.
+  `test_valid_udid` with leading-hyphen rejection cases
+  ([#550](https://github.com/bajutsu-e2e/bajutsu/pull/550)).
 
 ## References
 

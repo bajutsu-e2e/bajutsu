@@ -8,6 +8,7 @@
 | 提案 | [BE-0116](BE-0116-udid-argument-validation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| 実装 PR | [#550](https://github.com/bajutsu-e2e/bajutsu/pull/550) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -65,7 +66,7 @@
 - [x] 先頭ハイフンの拒否と、正当な UDID・`booted` の受理をカバーする単体テストを追加する。
 
 - 2026-07-02: `_UDID_RE` の先頭文字を英数字に限定し、`test_valid_udid` に先頭ハイフンを拒否する
-  ケースを追加しました。
+  ケースを追加しました（[#550](https://github.com/bajutsu-e2e/bajutsu/pull/550)）。
 
 ## 参考
 
