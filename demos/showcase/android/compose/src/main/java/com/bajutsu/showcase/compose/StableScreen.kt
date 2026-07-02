@@ -15,11 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -41,7 +37,6 @@ fun StableScreen(model: AppModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StableList(model: AppModel) {
-    var status by remember { mutableStateOf("idle") }
     val scope = rememberCoroutineScope()
 
     Column(Modifier.fillMaxSize()) {
@@ -51,8 +46,8 @@ private fun StableList(model: AppModel) {
             actions = {
                 TextButton(
                     onClick = {
-                        status = "loading"
-                        scope.launch { status = Net.get(model.apiURL + "/horses") }
+                        model.stableStatus = "loading"
+                        scope.launch { model.stableStatus = Net.get(model.apiURL + "/horses") }
                     },
                     modifier = Modifier.aid("stable.refresh"),
                 ) { Text("Refresh") }
@@ -73,7 +68,7 @@ private fun StableList(model: AppModel) {
                         horse.name,
                         Modifier
                             .fillMaxWidth()
-                            .clickable { model.stablePath.add(horse.id) }
+                            .clickable { model.pushHorse(horse.id) }
                             .padding(16.dp)
                             .aid("stable.row.${horse.id}"),
                     )
@@ -83,8 +78,8 @@ private fun StableList(model: AppModel) {
         }
         // Status mirrors to stable.status so a scenario can wait on the response before asserting.
         Text(
-            "Status: $status",
-            Modifier.padding(8.dp).aid("stable.status").stateValue(status),
+            "Status: ${model.stableStatus}",
+            Modifier.padding(8.dp).aid("stable.status").stateValue(model.stableStatus),
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -94,8 +89,6 @@ private fun StableList(model: AppModel) {
 @Composable
 private fun HorseDetailScreen(model: AppModel, id: Int) {
     val horse = model.horse(id)
-    var status by remember { mutableStateOf("idle") }
-    var favorite by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     Column(Modifier.fillMaxSize()) {
@@ -108,21 +101,21 @@ private fun HorseDetailScreen(model: AppModel, id: Int) {
 
             TextButton(
                 onClick = {
-                    status = "loading"
-                    scope.launch { status = Net.get(model.apiURL + "/horses/$id") }
+                    model.horseStatus = "loading"
+                    scope.launch { model.horseStatus = Net.get(model.apiURL + "/horses/$id") }
                 },
                 modifier = Modifier.aid("horse.fetch"),
             ) { Text("Fetch detail") }
-            Text("Status: $status", Modifier.aid("horse.status").stateValue(status))
+            Text("Status: ${model.horseStatus}", Modifier.aid("horse.status").stateValue(model.horseStatus))
 
             // A button-backed toggle; `selected` reflects the state, value mirrors on/off.
             TextButton(
-                onClick = { favorite = !favorite },
-                modifier = Modifier.aid("horse.favorite").selectedState(favorite),
-            ) { Text(if (favorite) "★ Favorite" else "☆ Favorite") }
+                onClick = { model.horseFavorite = !model.horseFavorite },
+                modifier = Modifier.aid("horse.favorite").selectedState(model.horseFavorite),
+            ) { Text(if (model.horseFavorite) "★ Favorite" else "☆ Favorite") }
             Text(
-                if (favorite) "Favorited" else "Not favorited",
-                Modifier.aid("horse.favorite.value").stateValue(if (favorite) "on" else "off"),
+                if (model.horseFavorite) "Favorited" else "Not favorited",
+                Modifier.aid("horse.favorite.value").stateValue(if (model.horseFavorite) "on" else "off"),
             )
         }
     }

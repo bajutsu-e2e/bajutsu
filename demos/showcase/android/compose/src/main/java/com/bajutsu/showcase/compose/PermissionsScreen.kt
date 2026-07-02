@@ -16,10 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -32,15 +28,12 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun PermissionsScreen(model: AppModel) {
     val context = LocalContext.current
-    var notifStatus by remember { mutableStateOf("notDetermined") }
-    var locationStatus by remember { mutableStateOf("notDetermined") }
-    var pasted by remember { mutableStateOf("") }
 
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        notifStatus = if (granted) "authorized" else "denied"
+        model.notifStatus = if (granted) "authorized" else "denied"
     }
     val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        locationStatus = if (granted) "authorizedWhenInUse" else "denied"
+        model.locationStatus = if (granted) "authorizedWhenInUse" else "denied"
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -51,8 +44,8 @@ fun PermissionsScreen(model: AppModel) {
             TextButton(onClick = { notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }, modifier = Modifier.aid("perm.requestNotif")) {
                 Text("Request Notifications")
             }
-            Text("Notifications: $notifStatus", Modifier.aid("perm.notif.value").stateValue(notifStatus))
-            if (notifStatus == "authorized") {
+            Text("Notifications: ${model.notifStatus}", Modifier.aid("perm.notif.value").stateValue(model.notifStatus))
+            if (model.notifStatus == "authorized") {
                 // A positive condition the run can wait for once granted.
                 Text("Granted", Modifier.aid("perm.notif.authorized"))
             }
@@ -61,7 +54,7 @@ fun PermissionsScreen(model: AppModel) {
             TextButton(onClick = { locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }, modifier = Modifier.aid("perm.requestLocation")) {
                 Text("Request Location")
             }
-            Text("Location: $locationStatus", Modifier.aid("perm.location.value").stateValue(locationStatus))
+            Text("Location: ${model.locationStatus}", Modifier.aid("perm.location.value").stateValue(model.locationStatus))
 
             // Clipboard round-trip (SPEC §5.4): Copy writes a known string, Paste reads it back into
             // sys.paste.value — pasteboard state the driver's app-scoped query cannot otherwise see.
@@ -69,10 +62,10 @@ fun PermissionsScreen(model: AppModel) {
             TextButton(onClick = { clipboard(context).setPrimaryClip(ClipData.newPlainText("bajutsu", "bajutsu-clip")) }, modifier = Modifier.aid("sys.copy")) {
                 Text("Copy")
             }
-            TextButton(onClick = { pasted = clipboard(context).primaryClip?.getItemAt(0)?.text?.toString() ?: "" }, modifier = Modifier.aid("sys.paste")) {
+            TextButton(onClick = { model.pasted = clipboard(context).primaryClip?.getItemAt(0)?.text?.toString() ?: "" }, modifier = Modifier.aid("sys.paste")) {
                 Text("Paste")
             }
-            Text("Pasted: $pasted", Modifier.aid("sys.paste.value").stateValue(pasted))
+            Text("Pasted: ${model.pasted}", Modifier.aid("sys.paste.value").stateValue(model.pasted))
         }
     }
 }

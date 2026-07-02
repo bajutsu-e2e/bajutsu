@@ -33,6 +33,13 @@ class LogTab(
     private var segment = "one"
     private var nextRow = 1
 
+    // Live modal references, so a deeplink can dismiss them (SPEC §4). The sheet/cover are separate
+    // windows and the scrim/toast live in the shared overlay; none is closed by a plain tab switch.
+    private var currentSheet: BottomSheetDialog? = null
+    private var currentCover: Dialog? = null
+    private var scrimView: View? = null
+    private var toastView: View? = null
+
     init {
         val note = EditText(activity).apply {
             hint = "Note"
@@ -161,6 +168,16 @@ class LogTab(
         return if (selected) "● $name" else name
     }
 
+    // Dismiss any open modal — invoked by the deeplink path (SPEC §4: a deeplink dismisses modals).
+    fun dismissModals() {
+        currentSheet?.dismiss()
+        currentCover?.dismiss()
+        scrimView?.let { overlay.removeView(it) }
+        scrimView = null
+        toastView?.let { overlay.removeView(it) }
+        toastView = null
+    }
+
     // Sheet (SPEC §5.3): a Material bottom sheet, the Views analog of the detented iOS sheet.
     private fun showSheet() {
         val sheet = BottomSheetDialog(activity)
@@ -170,6 +187,8 @@ class LogTab(
             activity.textButton("Close") { sheet.dismiss() }.aid("log_sheet_close"),
         ).apply { setPadding(activity.dp(24), activity.dp(24), activity.dp(24), activity.dp(24)) }
         sheet.setContentView(content)
+        sheet.setOnDismissListener { if (currentSheet === sheet) currentSheet = null }
+        currentSheet = sheet
         sheet.show()
     }
 
@@ -182,15 +201,24 @@ class LogTab(
                 activity.textButton("Close") { cover.dismiss() }.aid("log_cover_close"),
             ).apply { setPadding(activity.dp(24), activity.dp(24), activity.dp(24), activity.dp(24)) },
         )
+        cover.setOnDismissListener { if (currentCover === cover) currentCover = null }
+        currentCover = cover
         cover.show()
     }
 
     // Action sheet: a custom overlay of plain buttons (iOS parity — SPEC §5.3 keeps this out of the
-    // native dialog machinery). Result mirrors to log.dialog.value.
+    // native dialog machinery). The scrim is clickable so it consumes touches — otherwise taps outside
+    // the card fall through to the form controls beneath while the "modal" is up. Result mirrors to
+    // log.dialog.value.
     private fun showActionSheet(dialogValue: android.widget.TextView) {
-        val scrim = FrameLayout(activity).apply { setBackgroundColor(Color.argb(51, 0, 0, 0)) }
+        val scrim = FrameLayout(activity).apply {
+            setBackgroundColor(Color.argb(51, 0, 0, 0))
+            isClickable = true
+            isFocusable = true
+        }
         fun choose(result: String?) {
             overlay.removeView(scrim)
+            if (scrimView === scrim) scrimView = null
             if (result != null) {
                 dialogValue.text = "Dialog: $result"
                 dialogValue.stateValue(result)
@@ -209,18 +237,28 @@ class LogTab(
             card,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER),
         )
+        scrimView = scrim
         overlay.addView(scrim, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     }
 
-    // The transient toast (~1.2 s auto-dismiss → exercises `wait until gone`).
+    // The transient toast (~1.2 s auto-dismiss → exercises `wait until gone`). Only one toast is ever
+    // present: a rapid second submit removes the previous one before adding a new one, so log_toast
+    // never resolves to two nodes (an ambiguous selector the runner would fail fast on).
     private fun showToast() {
+        toastView?.let { overlay.removeView(it) }
         val toast = activity.label("Saved").aid("log_toast").apply { setBackgroundColor(Color.LTGRAY) }
+        toastView = toast
         overlay.addView(
             toast,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
                 topMargin = activity.dp(24)
             },
         )
-        toast.postDelayed({ overlay.removeView(toast) }, 1200)
+        toast.postDelayed({
+            if (toastView === toast) {
+                overlay.removeView(toast)
+                toastView = null
+            }
+        }, 1200)
     }
 }

@@ -32,18 +32,12 @@ class AppModel(env: Map<String, String>) {
     // Shared catalog (Stable + Search both filter this). Fixed at launch.
     val horses: List<Horse> = (1..5).map { Horse(it, "Horse $it") }
 
-    val animationsDisabled = env["SHOWCASE_UITEST"] != null
-
     // Networking config (SPEC §3, §6).
     val apiURL = env["SHOWCASE_API_URL"] ?: "https://example.com"
     val httpBase = env["SHOWCASE_HTTP_BASE"] ?: "https://httpbin.org"
 
     fun horses(matching: String): List<Horse> =
         if (matching.isEmpty()) horses else horses.filter { it.name.contains(matching, ignoreCase = true) }
-
-    fun horse(id: Int): Horse? = horses.firstOrNull { it.id == id }
-
-    fun notice(id: Int): Notice? = notices.firstOrNull { it.id == id }
 
     /**
      * Deeplinks (SPEC §4): select a tab. Popping to root happens structurally — MainActivity is

@@ -7,27 +7,27 @@
 	compose-build compose-noax-build views-build views-noax-build clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-
-# The wrapper jar is a binary and not committed (.gitignore); materialize it once from an
-# installed Gradle (brew install gradle), then every build goes through ./gradlew.
 GRADLEW := $(HERE)/gradlew
-wrapper:
-	cd $(HERE) && gradle wrapper
 
-$(HERE)/gradle/wrapper/gradle-wrapper.jar:
-	$(MAKE) -C $(HERE) wrapper
+# The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
+# extra step. Only run this to bump the pinned Gradle version — never as part of a build, since
+# `gradle wrapper` rewrites the tracked gradlew/properties from the *installed* Gradle's templates
+# and would dirty the tree differently on every machine.
+GRADLE_VERSION := 8.9
+wrapper:
+	cd $(HERE) && gradle wrapper --gradle-version $(GRADLE_VERSION)
 
 build-all: compose-build compose-noax-build views-build views-noax-build
 
 # Each build lands at <module>/build/outputs/apk/<flavor>/debug/<module>-<flavor>-debug.apk,
 # exactly where showcase.config.yaml's android targets point their appPath.
-compose-build: $(HERE)/gradle/wrapper/gradle-wrapper.jar
+compose-build:
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug
-compose-noax-build: $(HERE)/gradle/wrapper/gradle-wrapper.jar
+compose-noax-build:
 	cd $(HERE) && $(GRADLEW) :compose:assembleNoaxDebug
-views-build: $(HERE)/gradle/wrapper/gradle-wrapper.jar
+views-build:
 	cd $(HERE) && $(GRADLEW) :views:assembleA11yDebug
-views-noax-build: $(HERE)/gradle/wrapper/gradle-wrapper.jar
+views-noax-build:
 	cd $(HERE) && $(GRADLEW) :views:assembleNoaxDebug
 
 clean:

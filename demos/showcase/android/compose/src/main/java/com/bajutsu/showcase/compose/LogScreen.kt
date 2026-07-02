@@ -12,24 +12,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,25 +39,11 @@ import kotlinx.coroutines.launch
 // Tab: Log (SPEC §5.3) — a training-log composer exercising every input control, dedicated gesture
 // targets, and all four modal styles (bottom sheet, full-screen cover, custom action-sheet overlay,
 // auto-dismissing toast). Each control mirrors its result to an a11y value so a scenario can assert it.
+// All mutable state lives on AppModel (not screen-local `remember`) so it survives a tab switch — see
+// the AppModel class doc.
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LogScreen(model: AppModel) {
-    var note by remember { mutableStateOf("") }
-    var count by remember { mutableIntStateOf(1) }
-    var intense by remember { mutableStateOf(false) }
-    var segment by remember { mutableStateOf("one") }
-    var status by remember { mutableStateOf("idle") }
-    val rows = remember { mutableStateListOf<Int>() }
-
-    var longPressed by remember { mutableStateOf(false) }
-    var doubleTaps by remember { mutableIntStateOf(0) }
-
-    var showSheet by remember { mutableStateOf(false) }
-    var showCover by remember { mutableStateOf(false) }
-    var showDialog by remember { mutableStateOf(false) }
-    var dialogResult by remember { mutableStateOf("none") }
-    var showToast by remember { mutableStateOf(false) }
-
     val scope = rememberCoroutineScope()
     val segments = listOf("one", "two", "three")
 
@@ -73,8 +55,8 @@ fun LogScreen(model: AppModel) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
+                    value = model.logNote,
+                    onValueChange = { model.logNote = it },
                     label = { Text("Note") },
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth().aid("log.note"),
@@ -83,130 +65,139 @@ fun LogScreen(model: AppModel) {
                 // Stepper: the increment button carries log.count (tap to increment, capped 0..99);
                 // the value mirrors to log.count.value.
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { if (count > 0) count-- }) { Text("−") }
-                    TextButton(onClick = { if (count < 99) count++ }, modifier = Modifier.aid("log.count")) { Text("Count +") }
+                    TextButton(onClick = { if (model.logCount > 0) model.logCount-- }) { Text("−") }
+                    TextButton(onClick = { if (model.logCount < 99) model.logCount++ }, modifier = Modifier.aid("log.count")) { Text("Count +") }
                 }
-                Text("Count: $count", Modifier.aid("log.count.value").stateValue(count.toString()))
+                Text("Count: ${model.logCount}", Modifier.aid("log.count.value").stateValue(model.logCount.toString()))
 
                 // A button-backed toggle (parity with iOS: a native switch does not flip under idb on
                 // iOS 26). `selected` reflects state; value mirrors on/off.
                 TextButton(
-                    onClick = { intense = !intense },
-                    modifier = Modifier.aid("log.intense").selectedState(intense),
-                ) { Text(if (intense) "☑ Intense" else "☐ Intense") }
-                Text(if (intense) "Intense" else "Easy", Modifier.aid("log.intense.value").stateValue(if (intense) "on" else "off"))
+                    onClick = { model.logIntense = !model.logIntense },
+                    modifier = Modifier.aid("log.intense").selectedState(model.logIntense),
+                ) { Text(if (model.logIntense) "☑ Intense" else "☐ Intense") }
+                Text(if (model.logIntense) "Intense" else "Easy", Modifier.aid("log.intense.value").stateValue(if (model.logIntense) "on" else "off"))
 
                 TextButton(
                     onClick = {
-                        status = "loading"
+                        model.logStatus = "loading"
                         scope.launch {
-                            status = Net.postLog(model.httpBase, note, count, intense)
-                            if (status == "done") {
-                                rows.add((rows.lastOrNull() ?: 0) + 1)
-                                showToast = true
+                            model.logStatus = Net.postLog(model.httpBase, model.logNote, model.logCount, model.logIntense)
+                            if (model.logStatus == "done") {
+                                model.logRows.add((model.logRows.lastOrNull() ?: 0) + 1)
+                                model.logShowToast = true
                             }
                         }
                     },
                     modifier = Modifier.aid("log.submit"),
                 ) { Text("Submit") }
-                Text("Status: $status", Modifier.aid("log.status").stateValue(status))
+                Text("Status: ${model.logStatus}", Modifier.aid("log.status").stateValue(model.logStatus))
 
                 // Modals — the four presentation styles.
-                TextButton(onClick = { showSheet = true }, modifier = Modifier.aid("log.openFilter")) { Text("Open Filter") }
-                TextButton(onClick = { showCover = true }, modifier = Modifier.aid("log.openGallery")) { Text("Open Gallery") }
-                TextButton(onClick = { showDialog = true }, modifier = Modifier.aid("log.openDelete")) { Text("Open Delete") }
-                Text("Dialog: $dialogResult", Modifier.aid("log.dialog.value").stateValue(dialogResult))
+                TextButton(onClick = { model.logShowSheet = true }, modifier = Modifier.aid("log.openFilter")) { Text("Open Filter") }
+                TextButton(onClick = { model.logShowCover = true }, modifier = Modifier.aid("log.openGallery")) { Text("Open Gallery") }
+                TextButton(onClick = { model.logShowDialog = true }, modifier = Modifier.aid("log.openDelete")) { Text("Open Delete") }
+                Text("Dialog: ${model.logDialogResult}", Modifier.aid("log.dialog.value").stateValue(model.logDialogResult))
 
                 // Gesture targets: a long-press and a double-tap, each mirroring its result.
                 Text(
                     "Long-press me",
                     Modifier
                         .fillMaxWidth()
-                        .combinedClickable(onClick = {}, onLongClick = { longPressed = true })
+                        .combinedClickable(onClick = {}, onLongClick = { model.logLongPressed = true })
                         .padding(vertical = 8.dp)
                         .aid("log.longpress"),
                 )
                 Text(
-                    if (longPressed) "pressed" else "idle",
-                    Modifier.aid("log.longpress.value").stateValue(if (longPressed) "pressed" else "idle"),
+                    if (model.logLongPressed) "pressed" else "idle",
+                    Modifier.aid("log.longpress.value").stateValue(if (model.logLongPressed) "pressed" else "idle"),
                 )
                 Text(
                     "Double-tap me",
                     Modifier
                         .fillMaxWidth()
-                        .pointerInput(Unit) { detectTapGestures(onDoubleTap = { doubleTaps++ }) }
+                        .pointerInput(Unit) { detectTapGestures(onDoubleTap = { model.logDoubleTaps++ }) }
                         .padding(vertical = 8.dp)
                         .aid("log.doubletap"),
                 )
-                Text("Double-taps: $doubleTaps", Modifier.aid("log.doubletap.value").stateValue(doubleTaps.toString()))
+                Text("Double-taps: ${model.logDoubleTaps}", Modifier.aid("log.doubletap.value").stateValue(model.logDoubleTaps.toString()))
 
                 // A button-backed segmented control; the selected button carries `selected`, choice
                 // mirrors to log.segment.value.
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     segments.forEach { choice ->
                         TextButton(
-                            onClick = { segment = choice },
-                            modifier = Modifier.aid("log.segment.$choice").selectedState(segment == choice),
-                        ) { Text(if (segment == choice) "● ${choice.replaceFirstChar { it.uppercase() }}" else choice.replaceFirstChar { it.uppercase() }) }
+                            onClick = { model.logSegment = choice },
+                            modifier = Modifier.aid("log.segment.$choice").selectedState(model.logSegment == choice),
+                        ) { Text(if (model.logSegment == choice) "● ${choice.replaceFirstChar { it.uppercase() }}" else choice.replaceFirstChar { it.uppercase() }) }
                     }
                 }
-                Text("Segment: $segment", Modifier.aid("log.segment.value").stateValue(segment))
+                Text("Segment: ${model.logSegment}", Modifier.aid("log.segment.value").stateValue(model.logSegment))
 
                 // Submitted entries.
-                rows.forEach { n -> Text("Entry $n", Modifier.aid("log.row.$n")) }
+                model.logRows.forEach { n -> Text("Entry $n", Modifier.aid("log.row.$n")) }
             }
         }
 
         // The transient toast (~1.2 s auto-dismiss → exercises `wait until gone`).
-        if (showToast) {
-            LaunchedEffect(rows.size) {
+        if (model.logShowToast) {
+            LaunchedEffect(model.logRows.size) {
                 delay(1200)
-                showToast = false
+                model.logShowToast = false
             }
             Surface(
                 Modifier.align(Alignment.TopCenter).padding(16.dp).aid("log.toast"),
-                shape = androidx.compose.foundation.shape.CircleShape,
+                shape = CircleShape,
                 tonalElevation = 3.dp,
             ) { Text("Saved", Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) }
         }
     }
 
-    // Sheet with detents (SPEC §5.3).
-    if (showSheet) {
-        ModalBottomSheet(onDismissRequest = { showSheet = false }, sheetState = rememberModalBottomSheetState()) {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    // Sheet with detents (SPEC §5.3). A ModalBottomSheet is its own window, so it must re-enable
+    // testTagsAsResourceId for its testTags to surface as resource-ids (the root flag doesn't reach it).
+    if (model.logShowSheet) {
+        ModalBottomSheet(onDismissRequest = { model.logShowSheet = false }, sheetState = rememberModalBottomSheetState()) {
+            Column(
+                Modifier.enableTestTagsAsResourceId().padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
                 Text("Filter", Modifier.aid("log.sheet.title"))
-                TextButton(onClick = { showSheet = false }, modifier = Modifier.aid("log.sheet.apply")) { Text("Apply") }
-                TextButton(onClick = { showSheet = false }, modifier = Modifier.aid("log.sheet.close")) { Text("Close") }
+                TextButton(onClick = { model.logShowSheet = false }, modifier = Modifier.aid("log.sheet.apply")) { Text("Apply") }
+                TextButton(onClick = { model.logShowSheet = false }, modifier = Modifier.aid("log.sheet.close")) { Text("Close") }
             }
         }
     }
 
-    // Full-screen cover.
-    if (showCover) {
-        Dialog(onDismissRequest = { showCover = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(Modifier.fillMaxSize()) {
+    // Full-screen cover. Also its own window — re-enable testTagsAsResourceId on its root.
+    if (model.logShowCover) {
+        Dialog(onDismissRequest = { model.logShowCover = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize().enableTestTagsAsResourceId()) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text("Gallery", Modifier.aid("log.cover.title"))
-                    TextButton(onClick = { showCover = false }, modifier = Modifier.aid("log.cover.close")) { Text("Close") }
+                    TextButton(onClick = { model.logShowCover = false }, modifier = Modifier.aid("log.cover.close")) { Text("Close") }
                 }
             }
         }
     }
 
     // Action sheet: a custom overlay of plain buttons (parity with iOS — a confirmationDialog's actions
-    // render as duplicate elements under idb on iOS 26). Result mirrors to log.dialog.value.
-    if (showDialog) {
+    // render as duplicate elements under idb on iOS 26). It renders inside the main composition, so the
+    // root testTagsAsResourceId already reaches it. The scrim consumes taps (empty detectTapGestures) so
+    // controls beneath the "modal" are not actuable while it is shown. Result mirrors to log.dialog.value.
+    if (model.logShowDialog) {
         Box(
-            Modifier.fillMaxSize().background(Color(0x33000000)),
+            Modifier
+                .fillMaxSize()
+                .background(Color(0x33000000))
+                .pointerInput(Unit) { detectTapGestures {} },
             contentAlignment = Alignment.Center,
         ) {
-            Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), tonalElevation = 6.dp) {
+            Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 6.dp) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Delete entry", Modifier.aid("log.dialog.title"))
-                    TextButton(onClick = { dialogResult = "archive"; showDialog = false }, modifier = Modifier.aid("log.dialog.archive")) { Text("Archive") }
-                    TextButton(onClick = { dialogResult = "delete"; showDialog = false }, modifier = Modifier.aid("log.dialog.delete")) { Text("Delete") }
-                    TextButton(onClick = { showDialog = false }, modifier = Modifier.aid("log.dialog.cancel")) { Text("Cancel") }
+                    TextButton(onClick = { model.logDialogResult = "archive"; model.logShowDialog = false }, modifier = Modifier.aid("log.dialog.archive")) { Text("Archive") }
+                    TextButton(onClick = { model.logDialogResult = "delete"; model.logShowDialog = false }, modifier = Modifier.aid("log.dialog.delete")) { Text("Delete") }
+                    TextButton(onClick = { model.logShowDialog = false }, modifier = Modifier.aid("log.dialog.cancel")) { Text("Cancel") }
                 }
             }
         }

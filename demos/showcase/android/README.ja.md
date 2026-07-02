@@ -56,15 +56,18 @@ launcher Activity は `singleTask` なので、ディープリンクは起動中
 OS アラートのフィクスチャ（SPEC §7）は、Android では**実行時パーミッションのダイアログ**に
 対応します。Permissions タブの 2 つのボタンが `POST_NOTIFICATIONS` と `ACCESS_FINE_LOCATION` の
 プロンプトを出します。どちらもプロセス外のシステム UI であり、iOS の SpringBoard プロンプトと
-同じくアラートガードのフィクスチャになります。
+同じくアラートガードのフィクスチャになります。動かすときは **API 33 以上のエミュレータ**を使って
+ください。`POST_NOTIFICATIONS` は Android 13 以降でのみ実行時パーミッションになるため、それより
+古いイメージでは通知プロンプトが出ません（SPEC §2.1）。`SHOWCASE_UITEST` によるアニメーション
+無効化は、Android ではアプリ側ではなくドライバーがデバイス全体で行います（SPEC §2.1）。
 
 ## ビルド
 
-JDK（17 以上）と Android SDK、それに wrapper jar の取得（コミットしていないため一度だけ必要）に
-[Gradle](https://gradle.org)（`brew install gradle`）が必要です。
+JDK（17 以上）と Android SDK が必要です。Gradle wrapper はコミット済みなので、別途 Gradle を
+インストールする必要はありません。`./gradlew`（Makefile 経由）が初回に固定バージョンの Gradle を
+ダウンロードします。
 
 ```bash
-make -C demos/showcase/android wrapper     # 一度だけ：gradle-wrapper.jar を取得
 make -C demos/showcase/android build-all   # 4 つの APK すべて
 make -C demos/showcase/android compose-build      # Compose の a11y プロダクトのみ
 make -C demos/showcase/android views-noax-build   # Views の no-a11y プロダクトのみ

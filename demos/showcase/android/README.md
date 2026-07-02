@@ -57,15 +57,16 @@ with the shared host grammar (`…://stable` … `…://permissions`); the launc
 The OS-alert fixture (SPEC §7) maps to Android's **runtime-permission dialogs**: the
 Permissions tab's two buttons raise the `POST_NOTIFICATIONS` and `ACCESS_FINE_LOCATION`
 prompts — out-of-process system UI, exactly the alert-guard fixture the iOS SpringBoard
-prompts provide.
+prompts provide. Run on an **API 33+ emulator**: `POST_NOTIFICATIONS` is a runtime permission
+only on Android 13+, so the notification prompt does not appear on older images (SPEC §2.1).
+`SHOWCASE_UITEST` disables animations device-wide via the driver on Android, not in-app (SPEC §2.1).
 
 ## Build
 
-Requires a JDK (17+), the Android SDK, and — once, to materialize the wrapper jar, which is
-not committed — [Gradle](https://gradle.org) (`brew install gradle`).
+Requires a JDK (17+) and the Android SDK. The Gradle wrapper is committed, so no separate Gradle
+install is needed — `./gradlew` (via the Makefile) downloads the pinned Gradle on first use.
 
 ```bash
-make -C demos/showcase/android wrapper     # once: fetch gradle-wrapper.jar
 make -C demos/showcase/android build-all   # all four APKs
 make -C demos/showcase/android compose-build      # just the Compose a11y product
 make -C demos/showcase/android views-noax-build   # just the Views no-a11y product

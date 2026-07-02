@@ -18,6 +18,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var overlay: FrameLayout
     private lateinit var content: FrameLayout
     private lateinit var tabRoots: Map<Tab, View>
+    private lateinit var logTab: LogTab
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,18 +41,20 @@ class MainActivity : AppCompatActivity() {
             addView(tabBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         // The overlay layer hosts the Log tab's custom action sheet and its transient toast.
+        // (Built outside an .apply block: inside one, `overlay` would resolve to the
+        // FrameLayout's own View.overlay property, not this field.)
         overlay = FrameLayout(this)
-        val root = FrameLayout(this).apply {
-            addView(column)
-            addView(overlay)
-        }
+        val root = FrameLayout(this)
+        root.addView(column)
+        root.addView(overlay)
         setContentView(root)
 
         // All five tabs are built once and toggled, so tab state survives switching (iOS parity).
+        logTab = LogTab(this, model, overlay)
         tabRoots = mapOf(
             Tab.STABLE to StableTab(this, model).root,
             Tab.SEARCH to SearchTab(this, model).root,
-            Tab.LOG to LogTab(this, model, overlay).root,
+            Tab.LOG to logTab.root,
             Tab.NOTICES to NoticesTab(this, model).root,
             Tab.PERMISSIONS to PermissionsTab(this).root,
         )
@@ -60,11 +63,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     // A deeplink to the running app lands here (singleTask); any pushed detail Activity above has
-    // already been finished by the task re-parenting — the "pop to root" of SPEC §4.
+    // already been finished by the task re-parenting — the "pop to root" of SPEC §4. Dismiss any open
+    // Log modal too (SPEC §4: a deeplink dismisses modals), which a plain tab switch would not close.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.data?.let { select(model.deepLinkTab(it)) }
+        intent.data?.let {
+            logTab.dismissModals()
+            select(model.deepLinkTab(it))
+        }
     }
 
     private fun select(tab: Tab) {

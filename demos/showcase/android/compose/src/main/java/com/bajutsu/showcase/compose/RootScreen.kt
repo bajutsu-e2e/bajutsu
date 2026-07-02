@@ -16,11 +16,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTagsAsResourceId
 
 // The five-tab main UI (SPEC §5). A bottom NavigationBar is the Android analog of the iOS TabView;
 // the tabs that push a detail (Stable, Notices) own their own navigation stack (see the screens).
@@ -30,7 +27,7 @@ fun RootScreen(model: AppModel) {
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            .testTagsAsResourceIdRoot(),
+            .enableTestTagsAsResourceId(),
         bottomBar = {
             NavigationBar {
                 tab(model, Tab.STABLE, "Stable", Icons.Filled.Home)
@@ -62,9 +59,3 @@ private fun RowScope.tab(model: AppModel, tab: Tab, label: String, icon: ImageVe
         label = { Text(label) },
     )
 }
-
-// Enable testTagsAsResourceId at the content root so every Modifier.aid(...) testTag surfaces as a UI
-// Automator `resource-id` (BE-0007's Compose id convention). a11y flavor only.
-@OptIn(ExperimentalComposeUiApi::class)
-private fun Modifier.testTagsAsResourceIdRoot(): Modifier =
-    if (BuildConfig.ACCESSIBLE) this.semantics { testTagsAsResourceId = true } else this

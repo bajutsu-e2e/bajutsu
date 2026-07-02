@@ -13,11 +13,19 @@ import java.net.URL
  * response before asserting. Any HTTP response counts as `done`; only a transport failure is `error`.
  */
 object Net {
-    /** GET a URL, returning `done` on any response, `error` on a transport failure. */
+    // Finite timeouts (ms): without them HttpURLConnection defaults to 0 = infinite, so a hung endpoint
+    // would park the IO thread forever and leave the mirrored status stuck on `loading` instead of
+    // resolving to `error` (the iOS twin's URLSession times out the same way).
+    private const val CONNECT_TIMEOUT = 15_000
+    private const val READ_TIMEOUT = 15_000
+
+    /** GET a URL, returning `done` on any response, `error` on a transport failure or timeout. */
     suspend fun get(urlString: String): String = withContext(Dispatchers.IO) {
         try {
             val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = READ_TIMEOUT
                 setRequestProperty("Authorization", "Bearer demo-secret-abc123")
             }
             conn.responseCode
@@ -39,6 +47,8 @@ object Net {
                 val conn = (URL("$base/post").openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     doOutput = true
+                    connectTimeout = CONNECT_TIMEOUT
+                    readTimeout = READ_TIMEOUT
                     setRequestProperty("Content-Type", "application/json")
                     setRequestProperty("Authorization", "Bearer demo-secret-abc123")
                 }

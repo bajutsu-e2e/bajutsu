@@ -16,10 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -28,22 +24,21 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(model: AppModel) {
-    var query by remember { mutableStateOf("") }
-    val matches = model.horses(matching = query)
+    val matches = model.horses(matching = model.searchQuery)
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Search") })
         Row(Modifier.padding(16.dp)) {
             OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
+                value = model.searchQuery,
+                onValueChange = { model.searchQuery = it },
                 label = { Text("Search horses") },
                 singleLine = true,
                 // ASCII keyboard so typed Latin text is not mangled by an active IME (parity with iOS).
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                 modifier = Modifier.weight(1f).aid("search.field"),
             )
-            TextButton(onClick = { query = "" }, modifier = Modifier.aid("search.clear")) { Text("Clear") }
+            TextButton(onClick = { model.searchQuery = "" }, modifier = Modifier.aid("search.clear")) { Text("Clear") }
         }
         Text(
             "Matches: ${matches.size}",
