@@ -8,7 +8,7 @@
 | Proposal | [BE-0061](BE-0061-be-id-allocation-hardening.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Implementing PR | [#175](https://github.com/bajutsu-e2e/bajutsu/pull/175) |
+| Implementing PR | [#175](https://github.com/bajutsu-e2e/bajutsu/pull/175), [#436](https://github.com/bajutsu-e2e/bajutsu/pull/436) (retirement) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
