@@ -496,6 +496,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0116](proposals/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation-ja.md) | UDID の検証を引数インジェクションに対して厳格化する | 提案 |
 | [BE-0120](proposals/BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization-ja.md) | 記録された scenario の YAML でシークレットをトークン化する | 提案 |
 | [BE-0121](proposals/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md) | serve の CSRF・Host allowlist 防御を無条件化する | 提案 |
+| [BE-0123](proposals/BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection-ja.md) | composite action の入力を env 経由の間接参照にする | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元

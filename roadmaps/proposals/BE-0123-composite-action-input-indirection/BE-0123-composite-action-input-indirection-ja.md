@@ -1,11 +1,11 @@
-[English](BE-XXXX-composite-action-input-indirection.md) · **日本語**
+[English](BE-0123-composite-action-input-indirection.md) · **日本語**
 
-# BE-XXXX — composite action の入力を env 経由の間接参照にする
+# BE-0123 — composite action の入力を env 経由の間接参照にする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-composite-action-input-indirection-ja.md) |
+| 提案 | [BE-0123](BE-0123-composite-action-input-indirection-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |

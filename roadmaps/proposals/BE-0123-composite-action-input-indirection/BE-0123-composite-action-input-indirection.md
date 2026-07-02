@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-composite-action-input-indirection-ja.md)
+**English** · [日本語](BE-0123-composite-action-input-indirection-ja.md)
 
-# BE-XXXX — Route composite-action inputs through env indirection
+# BE-0123 — Route composite-action inputs through env indirection
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-composite-action-input-indirection.md) |
+| Proposal | [BE-0123](BE-0123-composite-action-input-indirection.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |

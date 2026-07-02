@@ -503,6 +503,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0116](proposals/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Proposal |
 | [BE-0120](proposals/BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) | Tokenize secrets in recorded scenario YAML | Proposal |
 | [BE-0121](proposals/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) | Unconditional CSRF and Host-allowlist defenses for serve | Proposal |
+| [BE-0123](proposals/BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection.md) | Route composite-action inputs through env indirection | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
