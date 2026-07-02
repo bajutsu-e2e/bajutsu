@@ -147,6 +147,14 @@ def make_app(state: ServeState) -> FastAPI:
     async def get_provider() -> JSONResponse:
         return _result(ops.provider_info(state))
 
+    @app.get("/api/sso")
+    async def get_sso() -> JSONResponse:
+        return _result(ops.sso_info(state))
+
+    @app.get("/api/sso/login/{handle}")
+    async def poll_sso(handle: str) -> JSONResponse:
+        return _result(ops.sso_login_poll(state, handle))
+
     @app.get("/api/simulators")
     async def simulators() -> JSONResponse:
         return _result(ops.simulators_payload(state))
@@ -268,6 +276,14 @@ def make_app(state: ServeState) -> FastAPI:
     @app.post("/api/provider")
     async def set_provider(body: dict[str, Any]) -> JSONResponse:
         return _result(ops.set_provider(state, body))
+
+    @app.post("/api/sso/login")
+    async def sso_login(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.sso_login_start(state, body))
+
+    @app.post("/api/sso/logout")
+    async def sso_logout(body: dict[str, Any]) -> JSONResponse:
+        return _result(ops.sso_logout(state, body))
 
     @app.post("/api/run")
     async def run(body: dict[str, Any], request: Request) -> JSONResponse:

@@ -118,8 +118,18 @@ def _record_audit(
 
 _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
 # Server-wide settings — including binding the active config, from the file browser, Git, or an
-# uploaded bundle (BE-0073): each repoints which config the whole server serves.
-_ADMIN_PATHS = frozenset({"/api/config", "/api/upload", "/api/apikey", "/api/provider"})
+# uploaded bundle (BE-0073): each repoints which config the whole server serves. AWS SSO sign-in
+# (BE-0056) also sets AWS_PROFILE server-wide, so its login/logout are admin too.
+_ADMIN_PATHS = frozenset(
+    {
+        "/api/config",
+        "/api/upload",
+        "/api/apikey",
+        "/api/provider",
+        "/api/sso/login",
+        "/api/sso/logout",
+    }
+)
 _EDITOR_PATHS = frozenset(
     {
         "/api/run",

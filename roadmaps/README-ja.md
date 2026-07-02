@@ -448,6 +448,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-ai-provider -->
 | ID | 項目 | 状態 |
 |---|---|---|
+| [BE-0056](proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login-ja.md) | Web UI からの AWS SSO サインイン（Bedrock 認証情報の取得） | 提案 |
 | [BE-0104](proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) | ベンダー中立な AI バックエンドインターフェース | 提案 |
 <!-- /GENERATED:proposals-ai-provider -->
 

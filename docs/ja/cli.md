@@ -476,6 +476,14 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   クリックでそのレポートを再表示します。`GET /api/runs` が裏側です。
 - run サブプロセスは起動環境を継承します（venv の `bin` を `PATH` 先頭に付与し `idb` クライアントを解決）。
   `bajutsu.config.yaml` が解決するようプロジェクトルートから実行してください。
+- **Settings** パネルで AI provider（Anthropic API か Amazon Bedrock）を選び、Anthropic 経路では
+  Claude API キーを保持します。Bedrock では **AWS SSO サインイン**も行えます
+  （[BE-0056](../../roadmaps/proposals/BE-0056-web-ui-aws-sso-login/BE-0056-web-ui-aws-sso-login-ja.md)）。
+  profile を入力して **Sign in** を押し、ブラウザで検証リンクを承認すると、`serve` が `AWS_PROFILE` を
+  設定し（メモリ上のみ、ディスクには書かない）、起動される `record` / `crawl` ジョブがその SSO セッション
+  経由で Bedrock の認証情報を解決します。再サインインに `serve` の再起動は要りません（各ジョブは認証情報
+  チェーンを解決し直す新しいサブプロセスです）。検証リンクは*自分の*ブラウザで開くので、リモートの `serve`
+  でも使えます。既存の `aws configure sso` プロファイルと Bedrock extra（`uv sync --extra bedrock`）が必要です。
 - **`/api/run` の入力検証。** scenario は**選択中アプリの scenarios dir 内**に実在する `*.yaml` でなければ
   なりません（任意のホストパスや `..` トラバーサル不可）。`backend` / `udid` も既知のトークンに限定され、
   自由入力は拒否されます。これにより、リクエストが任意ファイルを実行したり想定外の argv を紛れ込ませたりするのを防ぎます。
