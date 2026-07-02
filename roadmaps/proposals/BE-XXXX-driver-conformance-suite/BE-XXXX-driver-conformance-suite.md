@@ -55,11 +55,11 @@ Implement a single pytest suite that takes a driver instance (via fixture / para
 runs the contract's assertions against it, so the same test body executes for every backend. The
 suite depends on the `Driver` interface, never on a backend's internals.
 
-### 3. Run the Linux-capable backends in the fast gate
+### 3. Run the Linux-capable backends without a Simulator
 
 Wire FakeDriver into `make check`, so the conformance suite runs on every PR on Linux with no
 Simulator. Run the Playwright backend in a separate web CI job (installing `bajutsu[web]` + browser
-binaries), rather than in the fast gate.
+binaries), rather than in the fast gate — matching how `web-e2e.yml` already runs Playwright today.
 
 ### 4. Run the on-device backends in the E2E path
 
@@ -108,7 +108,7 @@ backend.
 
 - [ ] Enumerate the backend-agnostic contract (ambiguous / zero-match / `capabilities()` / wait / evidence invariants)
 - [ ] Build the parametrized conformance suite against the `Driver` interface
-- [ ] Run FakeDriver + Playwright in the fast Linux gate (`make check`)
+- [ ] Run FakeDriver in the fast Linux gate (`make check`); run Playwright in the separate web CI job
 - [ ] Run idb + XCUITest under the on-device E2E path (same suite)
 - [ ] `capabilities()` conformance check + document the contract as the "done" definition for a new backend
 
