@@ -72,8 +72,12 @@ The existing `serve/server/object_store.py` `ObjectStore` protocol is promoted t
 top-level module (`bajutsu/object_store.py`) so both `run` and `serve` can use it.
 
 The protocol retains the current surface (`exists`, `get_bytes`, `put_bytes`, `put_file`,
-`presigned_url`, `list_keys`) and extends it with a `content_type` keyword argument on
-`put_bytes` so the upload step can set the correct MIME type per artifact:
+`presigned_url`, `list_keys`) and extends it with:
+
+- A `content_type` keyword argument on `put_bytes` and `put_file` so the upload step can
+  set the correct MIME type per artifact.
+- A `presigned_put_url` method for generating signed PUT URLs (the existing `presigned_url`
+  is for GET).
 
 ```python
 class ObjectStore(Protocol):
@@ -82,6 +86,7 @@ class ObjectStore(Protocol):
     def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None: ...
     def put_file(self, key: str, path: Path, *, content_type: str = "") -> None: ...
     def presigned_url(self, key: str) -> str: ...
+    def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 3600) -> str: ...
     def list_keys(self, prefix: str) -> list[str]: ...
 ```
 
@@ -95,11 +100,53 @@ Two implementations, constructed from a `StoreURI`:
 A factory function (`object_store_from_uri(uri: StoreURI) -> ObjectStore`) selects the
 implementation and raises a clear error if the required library is not installed.
 
-### 3. Post-run upload step
+### 3. Two-tier upload architecture
 
-The upload runs **after** the run pipeline completes and the verdict is final. It walks
-the local `runs/<run_id>/` directory tree and uploads each file, preserving the relative
-path structure under the configured prefix:
+Evidence upload uses two modes depending on the deployment topology. The key design goal is
+that the **worker never needs cloud credentials** when running through `serve`.
+
+| Mode | Who holds credentials | Worker dependency | When |
+|---|---|---|---|
+| **Presigned URL** (serve) | Server (control plane) | `httpx` (already a dep) | `serve` runs |
+| **Direct SDK** (standalone) | The runner itself | `boto3` / `gcs` (optional) | `bajutsu run --evidence-store` |
+
+#### 3a. Presigned URL mode (serve — recommended)
+
+The server holds the `ObjectStore` credentials and issues presigned PUT URLs. The worker
+uploads via plain HTTP PUT — no SDK, no credentials.
+
+```
+1. Run completes on worker → evidence at runs/<run_id>/ locally
+2. Worker → Server:  POST /api/runs/<run_id>/upload-urls
+                     { "files": ["00-login/step-1/after.png", ...] }
+3. Server generates a presigned PUT URL per file
+   (bucket + prefix + evidence_prefix + run_id + relative_path)
+4. Server → Worker:  { "urls": { "00-login/step-1/after.png": "https://...", ... } }
+5. Worker uploads each file via HTTP PUT to the presigned URL
+6. Worker → Server:  upload complete
+```
+
+Presigned PUT URLs are supported by both S3 (`generate_presigned_url("put_object", ...)`)
+and GCS (V4 signed URLs). The TTL defaults to 1 hour, which is sufficient for uploading a
+typical run's artifacts in a single batch.
+
+#### 3b. Direct SDK mode (standalone `bajutsu run`)
+
+For local or standalone CI usage (no `serve`), the runner uploads directly via the SDK:
+
+```bash
+bajutsu run --evidence-store gs://bucket/feature/pr-42/ scenarios/
+```
+
+This path requires `boto3` or `google-cloud-storage` and the corresponding credentials in
+the environment. It is the same sequential upload as described below, just without the
+presigned URL indirection.
+
+### 4. Post-run upload step
+
+In both modes, the upload runs **after** the run pipeline completes and the verdict is
+final. It walks the local `runs/<run_id>/` directory tree and uploads each file, preserving
+the relative path structure under the configured prefix:
 
 ```
 Local:  runs/20260702-143000/00-login/step-1/after.png
@@ -118,7 +165,7 @@ Key behaviors:
 
 The upload is wired into `runner/pipeline.py` as the last step, after report generation.
 
-### 4. `serve` configuration (unified)
+### 5. `serve` configuration
 
 When running through `serve`, the evidence store is a server-level setting — not per-job.
 The `serve` command accepts:
@@ -133,7 +180,8 @@ or equivalently via environment variable:
 BAJUTSU_EVIDENCE_STORE=s3://bucket/evidence/ bajutsu serve ...
 ```
 
-Every job that completes on this `serve` instance uploads its evidence to this store. The
+The server holds the SDK credentials and the `ObjectStore` instance. Every job that
+completes on this `serve` instance gets presigned PUT URLs for uploading evidence. The
 run ID is always part of the path, so runs never collide.
 
 CI controls the prefix by passing it as a job parameter when kicking the run (the
@@ -147,22 +195,14 @@ curl -X POST https://serve.example.com/api/runs \
 ```
 
 This way the `serve` instance owns the bucket/credentials configuration, and CI only
-controls the path — a clean separation of concerns.
-
-### 5. Standalone `bajutsu run` support
-
-For local / standalone CI usage (no `serve`), the same flag works on `bajutsu run`:
-
-```bash
-bajutsu run --evidence-store gs://bucket/feature/pr-42/ scenarios/
-```
-
-This is the same mechanism, just wired at the CLI level instead of the server level.
+controls the path — a clean separation of concerns. The worker never touches cloud
+credentials.
 
 ### 6. Optional dependencies
 
 Neither `boto3` nor `google-cloud-storage` becomes a required dependency. They are declared
-as optional extras:
+as optional extras and are needed **only on the server (control plane) or in standalone
+mode** — never on the worker:
 
 ```toml
 [project.optional-dependencies]
@@ -183,8 +223,9 @@ Bajutsu does **not** manage credentials. It delegates to the standard credential
 - **GCS**: `google-cloud-storage`'s ADC (env vars, `GOOGLE_APPLICATION_CREDENTIALS`,
   Workload Identity Federation, metadata server)
 
-This keeps secrets out of Bajutsu's config and lets CI platforms use their native
-credential mechanisms (GitHub Actions OIDC, etc.).
+In the `serve` topology, only the **server** needs these credentials — the worker uploads
+via presigned URLs and requires no cloud SDK or credentials at all. This keeps the worker
+lightweight and avoids distributing secrets to ephemeral containers.
 
 ## Alternatives considered
 
@@ -233,14 +274,17 @@ old runs) without conflicting with this design.
 
 - [ ] URI scheme parsing and `StoreURI` dataclass
 - [ ] Promote `ObjectStore` protocol to top-level module
-- [ ] `S3ObjectStore` implementation (reuse existing code)
-- [ ] `GCSObjectStore` implementation
-- [ ] Post-run upload step in `runner/pipeline.py`
+- [ ] `S3ObjectStore` implementation (reuse existing code, add `presigned_put_url`)
+- [ ] `GCSObjectStore` implementation (including V4 signed PUT URLs)
+- [ ] Presigned URL upload endpoint (`POST /api/runs/<run_id>/upload-urls`)
+- [ ] Worker-side HTTP PUT uploader (presigned URL mode, httpx-based)
+- [ ] Direct SDK upload fallback (standalone `bajutsu run` mode)
+- [ ] Post-run upload step in `runner/pipeline.py` (mode selection)
 - [ ] `serve` `--evidence-store` flag and `BAJUTSU_EVIDENCE_STORE` env
 - [ ] `bajutsu run` `--evidence-store` CLI flag
 - [ ] `evidence_prefix` parameter on the `/api/runs` endpoint
 - [ ] Optional dependency declarations (`s3` / `gcs` / `cloud` extras)
-- [ ] Tests (URI parsing, upload logic with mocked store, serve integration)
+- [ ] Tests (URI parsing, presigned URL generation, HTTP PUT upload, serve integration)
 - [ ] Documentation (English + Japanese)
 
 ## References
