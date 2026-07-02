@@ -1,11 +1,11 @@
-[English](BE-XXXX-vendor-neutral-ai-backend.md) · **日本語**
+[English](BE-0104-vendor-neutral-ai-backend.md) · **日本語**
 
-# BE-XXXX — ベンダー中立な AI バックエンドインターフェース
+# BE-0104 — ベンダー中立な AI バックエンドインターフェース
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-vendor-neutral-ai-backend-ja.md) |
+| 提案 | [BE-0104](BE-0104-vendor-neutral-ai-backend-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | AI provider configuration |
