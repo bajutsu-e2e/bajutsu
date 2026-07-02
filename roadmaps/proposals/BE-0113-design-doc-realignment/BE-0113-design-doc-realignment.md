@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-design-doc-realignment-ja.md)
+**English** · [日本語](BE-0113-design-doc-realignment-ja.md)
 
-# BE-XXXX — Realign DESIGN.md with the current implementation
+# BE-0113 — Realign DESIGN.md with the current implementation
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-design-doc-realignment.md) |
+| Proposal | [BE-0113](BE-0113-design-doc-realignment.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

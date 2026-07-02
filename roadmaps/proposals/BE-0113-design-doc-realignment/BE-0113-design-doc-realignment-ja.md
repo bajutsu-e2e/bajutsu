@@ -1,11 +1,11 @@
-[English](BE-XXXX-design-doc-realignment.md) · **日本語**
+[English](BE-0113-design-doc-realignment.md) · **日本語**
 
-# BE-XXXX — DESIGN.md を現状の実装に合わせる
+# BE-0113 — DESIGN.md を現状の実装に合わせる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-design-doc-realignment-ja.md) |
+| 提案 | [BE-0113](BE-0113-design-doc-realignment-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | 開発基盤（コントリビュータ体験） |
