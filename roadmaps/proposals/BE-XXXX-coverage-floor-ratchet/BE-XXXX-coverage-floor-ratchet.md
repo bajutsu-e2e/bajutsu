@@ -32,11 +32,13 @@ is a size-S change: one number in the `Makefile`, verified against a fresh cover
 
 ## Detailed design
 
-The work is a single unit, sequenced after the "cover the CLI command layer" item lands:
+The work is a single unit, sequenced after the CLI command-layer coverage gap is closed (a
+separate roadmap proposal, `roadmaps/proposals/` under the slug `cli-command-coverage`, adds unit
+tests for `doctor.py`, `record.py`, and `run.py`):
 
-- **Wait for "cover the CLI command layer" to merge.** That item adds unit tests for `doctor`,
-  `record`, and `run`, which will raise measured coverage further. Ratcheting now and again right
-  after would just mean touching the same line twice; doing it once after that item lands captures
+- **Wait for the CLI command-layer coverage work to merge.** Once `doctor.py` / `record.py` /
+  `run.py` gain unit tests, measured branch coverage rises further. Ratcheting now and again right
+  after would just mean touching the same line twice; doing it once after that work lands captures
   the full gain in one step.
 - **Raise `--cov-fail-under` in the `Makefile`.** Run `make test` (or `make check`) after that item
   merges, read the actual branch-coverage percentage from the pytest-cov summary, and set the new
@@ -48,9 +50,9 @@ The work is a single unit, sequenced after the "cover the CLI command layer" ite
 
 ## Alternatives considered
 
-- **Ratchet immediately, before the CLI-command-layer item lands.** Rejected: that item is already
-  in flight and will move coverage again almost immediately, so ratcheting first would mean doing
-  the same one-line change twice for no benefit. Sequencing after it captures both gains in a
+- **Ratchet immediately, before the CLI command-layer coverage work lands.** Rejected: that work is
+  already in flight and will move coverage again almost immediately, so ratcheting first would mean
+  doing the same one-line change twice for no benefit. Sequencing after it captures both gains in a
   single step.
 - **Set the floor exactly to the measured percentage.** Rejected: pytest-cov's branch-coverage
   percentage can shift by a fraction of a point between otherwise-identical runs (e.g. platform
@@ -69,7 +71,8 @@ The work is a single unit, sequenced after the "cover the CLI command layer" ite
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Wait for "cover the CLI command layer" to merge and re-measure coverage.
+- [ ] Wait for the CLI command-layer coverage work (`doctor.py` / `record.py` / `run.py` unit
+      tests) to merge and re-measure coverage.
 - [ ] Raise `--cov-fail-under` in the `Makefile` to the new measured floor.
 - [ ] Confirm `make check` passes cleanly at the new floor.
 
