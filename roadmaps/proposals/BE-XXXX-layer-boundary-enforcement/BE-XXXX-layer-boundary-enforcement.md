@@ -107,6 +107,15 @@ serve stacks.
 - **Split `serve/` into a separate distribution now (`bajutsu-serve`).** Rejected as premature: the
   rule should come first. Once the dependency direction is enforced, in-repo separation already
   gives the design benefit, and the distribution split can wait until hosting demand is confirmed.
+  A physical package split is a strictly stronger guarantee than a lint check — the periphery
+  becomes literally unimportable from the core's environment rather than merely disallowed by a
+  rule someone has to keep green — but it trades that for real packaging cost (a second
+  `pyproject.toml`, independent versioning, a release process, cross-package dependency
+  management) that is hard to reverse once taken. Revisit the split, as a follow-up item, once one
+  of BE-0015 / BE-0016 produces a concrete forcing function — e.g. `serve/` needing a release
+  cadence independent of the CLI/core, or a hosting deployment that wants to ship the periphery
+  without the core's test/driver surface — rather than splitting speculatively ahead of that
+  demand.
 - **A hand-rolled grep / AST check.** Rejected: import-linter already expresses layered and
   forbidden contracts declaratively and resolves transitive imports; a bespoke grep is brittle and
   would re-implement, worse, what an established tool does.
