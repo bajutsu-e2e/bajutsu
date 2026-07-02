@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-evidence-store-uri-ja.md)
+**English** · [日本語](BE-0110-evidence-store-uri-ja.md)
 
-# BE-XXXX — Evidence upload to object storage via URI
+# BE-0110 — Evidence upload to object storage via URI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-evidence-store-uri.md) |
+| Proposal | [BE-0110](BE-0110-evidence-store-uri.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
