@@ -25,8 +25,8 @@ core plus a per-platform sub-config, so a target only ever exposes the knobs its
 `Effective` has grown to 35 fields (`config.py:420-487`) as iOS, then web, were added, and it unions
 all of them onto one type. Concretely:
 
-- `browser` (`config.py:471`) and `headless` (`config.py:468`) are Playwright (web) knobs, defaulting
-  to `chromium` — but they exist, readable and settable, on an `Effective` instance for an iOS
+- `browser` (`config.py:471`, default `chromium`) and `headless` (`config.py:468`, default `True`) are Playwright (web) knobs —
+  but they exist, readable and settable, on an `Effective` instance for an iOS
   target.
 - `xcuitest` (`config.py:478`) and `idb_version` (`config.py:481`) are iOS-only, yet are equally
   present on a web target's `Effective`.
