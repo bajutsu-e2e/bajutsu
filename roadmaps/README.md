@@ -501,6 +501,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 |---|---|---|
 | [BE-0115](proposals/BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md) | Authenticate the in-process iOS network collector | Proposal |
 | [BE-0116](proposals/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Proposal |
+| [BE-0120](proposals/BE-0120-recorded-scenario-secret-tokenization/BE-0120-recorded-scenario-secret-tokenization.md) | Tokenize secrets in recorded scenario YAML | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing

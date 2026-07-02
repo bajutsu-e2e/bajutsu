@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-recorded-scenario-secret-tokenization-ja.md)
+**English** · [日本語](BE-0120-recorded-scenario-secret-tokenization-ja.md)
 
-# BE-XXXX — Tokenize secrets in recorded scenario YAML
+# BE-0120 — Tokenize secrets in recorded scenario YAML
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-recorded-scenario-secret-tokenization.md) |
+| Proposal | [BE-0120](BE-0120-recorded-scenario-secret-tokenization.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
