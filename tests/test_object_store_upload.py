@@ -55,6 +55,14 @@ def test_uploads_every_file_keyed_under_prefix_and_run_id(tmp_path: Path) -> Non
     }
 
 
+def test_a_prefix_without_trailing_slash_is_normalized_not_fused(tmp_path: Path) -> None:
+    # A non-normalized prefix must still nest under it, never fuse into `evidence/main<runId>/…`.
+    run = _run_tree(tmp_path)
+    store = _MemStore()
+    upload_tree(store, run, "evidence/main")
+    assert all(k.startswith("evidence/main/20260702-143000/") for k in store.objects)
+
+
 def test_infers_content_type_from_extension(tmp_path: Path) -> None:
     run = _run_tree(tmp_path)
     store = _MemStore()

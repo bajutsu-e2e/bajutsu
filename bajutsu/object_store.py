@@ -274,7 +274,13 @@ def upload_tree(store: ObjectStore, root: Path, prefix: str) -> UploadSummary:
     `UploadSummary`, never raised — the run verdict is already final. Upload order is unspecified
     (the walk streams the generator rather than materializing/sorting it, so memory stays bounded on
     a large evidence tree) — order is irrelevant for a post-verdict side effect.
+
+    *prefix* is normalized to a trailing ``/`` (empty stays empty) so keys nest under it rather than
+    fusing (``evidence/main`` + ``<id>`` never yields ``evidence/main<id>``), even if a caller passes
+    a non-normalized value — `StoreURI.prefix` already ends with ``/``, but the helper is public.
     """
+    if prefix and not prefix.endswith("/"):
+        prefix += "/"
     root = root.resolve()
     uploaded = 0
     failures: list[tuple[str, str]] = []
