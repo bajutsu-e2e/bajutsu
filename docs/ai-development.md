@@ -344,11 +344,12 @@ action to a full commit SHA, and runs `scripts/check_renumber_diff.py`, which fa
 bypass commit touches anything outside `roadmaps/` — capping the token's blast radius to that tree.
 
 You may still allocate a number by hand (the highest existing `BE-NNNN` + 1) when you want it fixed
-up front; that path is unchanged. BE-0061's hardening
-([BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md):
-atomic `refs/be-claims/*` claims, the `roadmap-id-repair` and `roadmap-claims-gc` workflows) stays in
-place as defense in depth. Under merge-time allocation it is largely redundant — at most one allocate
-run touches `main` at a time, reading the latest `main` — and retiring it is a possible follow-up.
+up front; that path is unchanged. BE-0061's collision hardening — the atomic `refs/be-claims/*`
+reservations and the `roadmap-id-repair` / `roadmap-claims-gc` workflows — has since been **retired**:
+merge-time allocation runs at most one allocate at a time against the latest `main`, so the sequence
+is contiguous by construction and two branches can no longer contend for the same number, making the
+reservation ledger and its repair backstop redundant. See
+[BE-0061](../roadmaps/implemented/BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md).
 
 #### Setting up the merge-time allocation App
 

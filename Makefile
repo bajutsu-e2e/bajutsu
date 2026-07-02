@@ -1,5 +1,5 @@
 .PHONY: setup hooks deps deps-check serve worktree preflight test lint lint-docstrings format format-check typecheck \
-        lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index roadmap-promote roadmap-id-repair \
+        lock-check lint-sh lint-actions lint-roadmap lint-pr check new-roadmap-item roadmap-index roadmap-promote \
         roadmap-dashboard docs docs-serve
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
@@ -56,7 +56,7 @@ preflight:
 	@./scripts/preflight.sh
 
 # Shell scripts the gate lints. pre-push has no .sh suffix, so they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh scripts/open_pr_be_ids.sh scripts/open_pr_be_map.sh scripts/be_claims.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg scripts/serve.sh scripts/worktree.sh scripts/preflight.sh scripts/merge-uv-lock.sh scripts/merge-roadmap-index.sh .claude/hooks/session-start.sh demos/record/demo.sh demos/tour/demo.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -140,15 +140,6 @@ roadmap-index:
 # tests/test_promote_roadmap_items.py (part of `make test`), so the gate fails on a mismatch.
 roadmap-promote:
 	uv run python scripts/promote_roadmap_items.py
-
-# Renumber any item on this branch whose BE id a more authoritative holder already owns — origin/main
-# (a merged item wins), or, when nothing is merged, a lower-numbered open PR — picking the next free
-# ID. The backstop for the rare collision the refs/be-claims/* reservation does not prevent. The
-# roadmap-id-repair workflow runs this across open PRs on a push to main and on a schedule; run it
-# locally to fix your own branch before pushing (needs `git fetch origin` first; the open-PR
-# tiebreaker only applies in CI, which passes ROADMAP_LOWER_PR_IDS).
-roadmap-id-repair:
-	uv run python scripts/allocate_roadmap_ids.py --repair
 
 # The full gate. CI (.github/workflows/ci.yml) mirrors these steps so "green locally"
 # predicts "green in CI". The uv-native checks run identically everywhere; actionlint is

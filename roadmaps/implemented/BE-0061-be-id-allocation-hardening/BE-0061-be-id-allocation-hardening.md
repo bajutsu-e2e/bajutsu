@@ -8,7 +8,7 @@
 | Proposal | [BE-0061](BE-0061-be-id-allocation-hardening.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Implementing PR | [#175](https://github.com/bajutsu-e2e/bajutsu/pull/175) |
+| Implementing PR | [#175](https://github.com/bajutsu-e2e/bajutsu/pull/175), [#436](https://github.com/bajutsu-e2e/bajutsu/pull/436) (retirement) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -35,6 +35,13 @@ tool behavior, runtime, or scenario semantics change, and the deterministic gate
 a direct sibling of [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md),
 which made the *roadmap files* conflict-resistant; this makes their *ids* collision-proof.
 
+**Update:** the reservation ledger and the auto-repair backstop described below were later retired,
+once [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) moved
+allocation to merge time on `main`. Serialized merge-order allocation reads the latest `main` and
+hands out one number at a time, so two branches can no longer contend for a number — the ledger and
+its repair became redundant. Only the pure allocator (`allocate_roadmap_ids.py`, allocate-only now)
+and the merge-time `roadmap-id` workflow remain.
+
 ## Motivation
 
 - **The same-window allocation race was still open.** `ROADMAP_RESERVED_IDS` is built from other open
@@ -56,8 +63,7 @@ which made the *roadmap files* conflict-resistant; this makes their *ids* collis
 A claim is a git ref named `refs/be-claims/<NNNN>`. GitHub's create-ref API
 (`POST /repos/{owner}/{repo}/git/refs`) returns `422` if the ref already exists, which makes it a
 compare-and-set: the first PR to claim a number wins, a second gets `422` and re-picks. The helper
-[`scripts/be_claims.sh`](../../../scripts/be_claims.sh) wraps `list` / `claim` / `release` over this
-API and `git ls-remote`.
+`scripts/be_claims.sh` wrapped `list` / `claim` / `release` over this API and `git ls-remote`.
 
 The `roadmap-id` workflow folds the claims ledger into the reserved set, allocates, then claims each
 allocated id atomically. If a claim is lost (another PR raced ahead), it releases any ids it did win,
@@ -70,7 +76,7 @@ retry loop live in the workflow, exactly as the existing reservation does.
 ### Claim lifecycle
 
 A claim earns its keep only while an *open* PR holds the id and it is *not yet on* `main`. Two
-triggers in [`roadmap-claims-gc.yml`](../../../.github/workflows/roadmap-claims-gc.yml) enforce that:
+triggers in `roadmap-claims-gc.yml` enforced that:
 
 - **Release on close** — when a roadmap PR closes (merged or not), the claims it introduced are
   dropped: a merged id now lives on `main` (the claim is redundant), an abandoned id is freed.
@@ -85,7 +91,7 @@ from "`main` only" to:
 
 1. `origin/main` if a *different* item already holds the number there (a merged item always wins);
 2. otherwise the **lowest open-PR number** holding it, passed in via `ROADMAP_LOWER_PR_IDS` (computed
-   by the workflow from [`scripts/open_pr_be_map.sh`](../../../scripts/open_pr_be_map.sh)).
+   by the workflow from `scripts/open_pr_be_map.sh`).
 
 The branch renumbers only when it is *not* the authority. An item whose slug is already on `main` is
 one the branch inherited — a rebase resolves that, never a renumber. The `roadmap-id-repair` workflow
@@ -116,8 +122,8 @@ contributor's ids are reconciled when a maintainer brings the branch in-repo.
   roadmap is built on permanent, human-citable, monotonic `BE-NNNN` ids in the Swift-Evolution
   tradition; changing the scheme is large, irreversible churn for no reader benefit.
 - **Detect collisions with a failing check and fix only by hand.** A loud red check is a weaker
-  backstop that adds manual toil on every slip; auto-repair fixes it without intervention. The local
-  `make roadmap-id-repair` remains for deliberate, hands-on fixes.
+  backstop that adds manual toil on every slip; auto-repair fixes it without intervention. A local
+  `make roadmap-id-repair` target was also provided for deliberate, hands-on fixes.
 - **Author this as a Proposal first (a `BE-XXXX` placeholder).** Unnecessary here: the work is
   implemented in the same change, so it is filed directly as Implemented under *Development
   infrastructure*, a sibling to BE-0043 — the born-implemented path the repo already uses.
@@ -125,6 +131,9 @@ contributor's ids are reconciled when a maintainer brings the branch in-repo.
 ## Progress
 
 - [x] Shipped — see the *Implementing PR* above.
+- [x] Reservation ledger + auto-repair retired as redundant under merge-time allocation (BE-0089):
+  removed `scripts/be_claims.sh`, `scripts/open_pr_be_map.sh`, `scripts/open_pr_be_ids.sh`, the
+  `roadmap-id-repair` / `roadmap-claims-gc` workflows, and the allocator's `--repair` path.
 
 ## References
 
@@ -132,10 +141,10 @@ contributor's ids are reconciled when a maintainer brings the branch in-repo.
   — the sibling this extends from files to ids (self-healing hooks, generated indexes, merge drivers).
 - [CLAUDE.md](../../../CLAUDE.md) · [docs/ai-development.md](../../../docs/ai-development.md) — the
   roadmap ID rules and the allocation/repair flow this hardens.
-- [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) (allocate + repair),
-  [`scripts/be_claims.sh`](../../../scripts/be_claims.sh) (the claims ledger),
-  [`scripts/open_pr_be_map.sh`](../../../scripts/open_pr_be_map.sh) (the open-PR tiebreaker input),
-  [`tests/test_allocate_roadmap_ids.py`](../../../tests/test_allocate_roadmap_ids.py).
-- [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml),
-  [`roadmap-id-repair.yml`](../../../.github/workflows/roadmap-id-repair.yml),
-  [`roadmap-claims-gc.yml`](../../../.github/workflows/roadmap-claims-gc.yml).
+- [`scripts/allocate_roadmap_ids.py`](../../../scripts/allocate_roadmap_ids.py) (allocation),
+  [`tests/test_allocate_roadmap_ids.py`](../../../tests/test_allocate_roadmap_ids.py). The claims
+  ledger (`scripts/be_claims.sh`) and the open-PR tiebreaker input (`scripts/open_pr_be_map.sh`) were
+  removed when the reservation layer was retired (see *Progress*).
+- [`.github/workflows/roadmap-id.yml`](../../../.github/workflows/roadmap-id.yml) — the merge-time
+  allocator. The `roadmap-id-repair` and `roadmap-claims-gc` workflows were removed with the
+  reservation layer.
