@@ -10,6 +10,7 @@
 | 状態 | **実装済み** |
 | 実装 PR | [#277](https://github.com/bajutsu-e2e/bajutsu/pull/277)（BE-0063 の複数 PR の最後） |
 | トピック | config の取得元 |
+| 関連 | [BE-0108](../../proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
