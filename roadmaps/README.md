@@ -455,7 +455,9 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 ### Dogfood fixtures (demo apps)
 
 <!-- GENERATED:proposals-dogfood -->
-
+| ID | Item | Status | Origin |
+|---|---|---|---|
+| [BE-0107](proposals/BE-0107-showcase-tab-navigation-no-launch-shortcut/BE-0107-showcase-tab-navigation-no-launch-shortcut.md) | Reach every showcase tab by navigation, not a launch-env shortcut | Proposal | Dogfooding |
 <!-- /GENERATED:proposals-dogfood -->
 
 ### AI provider configuration
