@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0109](BE-0109-roadmap-tracking-issues.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -140,13 +140,20 @@ write` on the default token.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. `scripts/sync_roadmap_tracking_issues.py` — GitHub-keyed existence check, create/close
-  lifecycle, `BE-0109` skip, and `--check`.
-- [ ] 2. `roadmap-tracking` label, and the issue title/body shape.
-- [ ] 3. New workflow `roadmap-tracking-issues.yml` on `push: main` (`issues: write`).
-- [ ] 4. One-time backfill of the existing open backlog.
-- [ ] 5. Document the lifecycle rule and the assignee filters in `docs/ai-development.md`
+- [x] 1. `scripts/sync_roadmap_tracking_issues.py` — GitHub-keyed existence check, create/close
+  lifecycle, `BE-XXXX`-placeholder skip, and `--check`.
+- [x] 2. `roadmap-tracking` label (created on demand by the sync), and the issue title/body shape.
+- [x] 3. New workflow `roadmap-tracking-issues.yml` on `push: main` (`issues: write`).
+- [ ] 4. One-time backfill of the existing open backlog (runs on the first `push: main`, or a manual
+  `gh workflow run roadmap-tracking-issues.yml`, once the workflow is on `main`).
+- [x] 5. Document the lifecycle rule and the assignee filters in `docs/ai-development.md`
   (+ Japanese mirror).
+
+Log:
+
+- Implemented the sync script, the `push: main` workflow, its tests, and the docs (both languages);
+  filed the item under `implemented/`. The one-time backfill (box 4) happens automatically on the
+  first `roadmaps/**` push to `main` after this merges, since the lifecycle rule is idempotent.
 
 ## References
 

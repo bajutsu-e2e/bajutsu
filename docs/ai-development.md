@@ -428,6 +428,36 @@ commit past `main`'s branch protection:
 The workflow mints a short-lived (≈1 h) installation token from those secrets for checkout, push, and
 `gh`; commits the App makes are signed and attributed to it, so every bypass push is auditable.
 
+#### Tracking issues: who owns an open item (BE-0109)
+
+Every **open** roadmap item — one whose `Status` is `Proposal` or `In progress` — has a GitHub
+issue, and that issue's native **Assignees** are the single source of truth for who (if anyone) is
+working on it. Because an item gets its issue the moment it exists as a proposal, an issue with **no**
+assignee is exactly the "nobody has picked this up yet" signal the roadmap otherwise lacks. Two saved
+filters turn the Issues list into the board:
+
+- `label:roadmap-tracking no:assignee` — the **unclaimed backlog** (proposals and in-progress items
+  with no one on them).
+- `label:roadmap-tracking assignee:<user>` — one person's plate.
+
+**Before you start an item, check its tracking issue** (search `label:roadmap-tracking BE-NNNN
+in:title`); if it's unassigned, **self-assign it** when you pick the work up — exactly as on any other
+GitHub issue. Don't close a tracking issue by hand: the sync does it.
+
+The issues are created and closed automatically by the `roadmap-tracking-issues` workflow
+(`scripts/sync_roadmap_tracking_issues.py`), which runs on `push: main` (paths `roadmaps/**`). The
+lifecycle is a pure function of each item's current `Status` — an open item with no matching open
+issue gets one; an issue whose item has since shipped (`Implemented`) or been shelved (`Proposal
+(deferred)`) is closed — so the sync is idempotent and self-healing (BE-0043 / BE-0061), never
+creating a second issue for an item on a re-run. GitHub is the source of truth for both facts —
+ownership (Assignees) and whether an issue already exists (an open `roadmap-tracking` issue with the
+item's `BE-NNNN` in its title) — so nothing is written back to the repo: the job needs only `issues:
+write`, no commit to `main` and no bypass App. It runs on `main` (not the PR) and skips the `BE-XXXX`
+placeholder, because a real-numbered issue can only be titled after `roadmap-id` allocates the number
+on `main` (BE-0089); that allocation commit is itself a `roadmaps/**` push, which re-triggers the
+sync and picks up the now-numbered item. The script calls the network (`gh`), so it never runs inside
+`make check`; its read-only `--check` mode reports drift for a maintainer without mutating anything.
+
 Each file follows the **Swift-Evolution proposal format** — a metadata block (`Proposal`,
 `Author`, `Status`, `Topic`, plus the optional `Implementing PR`, the cross-item links `Related` /
 `Superseded by`, and `Origin`) followed by `## Introduction` / `## Motivation` /

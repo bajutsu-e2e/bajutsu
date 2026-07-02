@@ -232,6 +232,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0096](implemented/BE-0096-docs-roadmap-link-integrity/BE-0096-docs-roadmap-link-integrity.md) | Keep docs links to roadmap items from rotting on promotion | Implemented |
 | [BE-0100](implemented/BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md) | Progress tracking and cross-item relations in the BE template | Implemented |
 | [BE-0103](implemented/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md) | Right-size the model and reasoning effort per development task | Implemented |
+| [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) | GitHub Issues as the ownership tracker for open roadmap items | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
 
 ### Dogfood fixtures (demo apps)
@@ -531,7 +532,6 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 <!-- GENERATED:proposals-dev-infra -->
 | ID | Item | Status |
 |---|---|---|
-| [BE-0109](proposals/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) | GitHub Issues as the ownership tracker for open roadmap items | Proposal |
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md) | Enforce core / contract / periphery layer boundaries in the gate | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
