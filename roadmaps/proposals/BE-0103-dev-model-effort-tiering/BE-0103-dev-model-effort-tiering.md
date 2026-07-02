@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-dev-model-effort-tiering-ja.md)
+**English** · [日本語](BE-0103-dev-model-effort-tiering-ja.md)
 
-# BE-XXXX — Right-size the model and reasoning effort per development task
+# BE-0103 — Right-size the model and reasoning effort per development task
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-dev-model-effort-tiering.md) |
+| Proposal | [BE-0103](BE-0103-dev-model-effort-tiering.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

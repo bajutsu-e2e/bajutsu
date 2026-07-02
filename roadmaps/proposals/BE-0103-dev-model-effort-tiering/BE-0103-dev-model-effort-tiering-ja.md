@@ -1,11 +1,11 @@
-[English](BE-XXXX-dev-model-effort-tiering.md) · **日本語**
+[English](BE-0103-dev-model-effort-tiering.md) · **日本語**
 
-# BE-XXXX — 開発タスクごとにモデルと推論エフォートを適正化する
+# BE-0103 — 開発タスクごとにモデルと推論エフォートを適正化する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-dev-model-effort-tiering-ja.md) |
+| 提案 | [BE-0103](BE-0103-dev-model-effort-tiering-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | 開発基盤（コントリビュータ体験） |

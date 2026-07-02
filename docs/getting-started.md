@@ -22,6 +22,11 @@ Related: [cli](cli.md) · [scenarios](scenarios.md) · [sample-app](sample-app.m
 
 You can do **Steps 1–3 on any machine** (no Simulator). Steps 4–6 need a Mac with Xcode.
 
+> **No Claude needed to start.** Only the AI authoring paths reach a model; `run`, `doctor`,
+> `lint`, `codegen`, `trace`, and friends run with **zero configuration** — no key, no `.env`, no
+> login. Which commands use Claude and which don't is spelled out in
+> [What uses Claude](ai-boundary.md).
+
 > **Status note.** Bajutsu is pre-alpha. The deterministic core, the AI authoring loop, the
 > evidence subsystem, and codegen are all implemented and unit-tested; on-device execution via
 > the idb backend works through the `make` targets but is still being hardened. If a device step

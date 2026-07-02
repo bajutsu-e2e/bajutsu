@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0101](BE-0101-ai-free-zero-config.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
+| Implementing PR | [#432](https://github.com/bajutsu-e2e/bajutsu/pull/432) |
 | Topic | AI provider configuration |
 | Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) |
 <!-- /BE-METADATA -->
@@ -183,10 +184,19 @@ stays app-agnostic.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Single capability classification — machine-readable `uses_claude` data + bilingual docs page
-- [ ] Unified `ai_availability` check across providers (Anthropic / Bedrock) and backends (SDK / Claude Code CLI)
-- [ ] Tested zero-config guarantee — no-AI-setup regression test + import-time guard
-- [ ] Surfacing — `serve` disabled-tab degradation, grouped CLI help, separate optional `doctor` Claude-readiness section
+- [x] Single capability classification — machine-readable `uses_claude` data + bilingual docs page
+- [x] Unified `ai_availability` check across providers (Anthropic / Bedrock) and backends (SDK / Claude Code CLI)
+- [x] Tested zero-config guarantee — no-AI-setup regression test + import-time guard
+- [x] Surfacing — `serve` disabled-tab degradation, grouped CLI help, separate optional `doctor` Claude-readiness section
+
+**Log**
+
+- Shipped all four pieces in one change: `bajutsu/capabilities.py` (the single classification,
+  consumed by `--help`, the docs page, `doctor`, and the zero-config test), `bajutsu/ai_availability.py`
+  (unified reachability across the SDK and Claude Code CLI backends), `tests/test_zero_config.py`
+  (import-time guard + no-AI-setup regression over the Claude-free set), and the surfacing — grouped
+  `bajutsu --help`, the optional `doctor` "Claude (optional)" section, and `serve`'s disabled
+  record / crawl tabs with an inline explanation. Docs: `docs/ai-boundary.md` (+ ja mirror).
 
 ## References
 

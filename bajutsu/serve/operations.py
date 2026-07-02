@@ -23,12 +23,14 @@ from typing import Any
 
 import yaml
 
+from bajutsu import ai_availability
 from bajutsu.agents import AGENT_ENV
 from bajutsu.anthropic_client import (
     ANTHROPIC_KEY_ENV,
     BEDROCK_MODEL_ENV,
     PROVIDER_ENV,
     PROVIDERS,
+    AiConfig,
     provider,
 )
 from bajutsu.backends import IMPLEMENTED, resolve_actuators
@@ -253,10 +255,17 @@ def provider_info(state: ServeState) -> tuple[Any, int]:
     authoring agent (BAJUTSU_AGENT) reported as a third "provider" so the Settings selector is a
     single choice; the SDK `provider()` underneath still backs the alert guard / triage."""
     mode = "claude-code" if os.environ.get(AGENT_ENV) == "claude-code" else provider()
+    # Claude reachability for the resolved backend/provider (BE-0101), so the front end disables the
+    # Claude tabs (record/crawl) on data rather than only surfacing the failure on click. Honors the
+    # bound config's `ai.keyEnv` (BE-0097) so the SDK-path check reads the right env var.
+    gap = ai_availability.from_env(os.environ, ai=AiConfig(key_env=_active_key_env(state)))
     return {
         "provider": mode,
         "region": os.environ.get("AWS_REGION", ""),
         "model": os.environ.get(BEDROCK_MODEL_ENV, ""),
+        "claudeAvailable": gap is None,
+        "claudeGap": gap,
+        "claudeHint": ai_availability.message(gap) if gap is not None else "",
     }, 200
 
 

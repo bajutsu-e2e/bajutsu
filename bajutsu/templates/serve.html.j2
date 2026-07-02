@@ -38,6 +38,11 @@
     <button class="vstab" data-pane="yaml">Output</button>
   </div>
   <div class="left" data-pane="form">
+    <!-- Claude-reachability gate (BE-0101): shown disabled with an inline explanation when Claude is
+         unreachable, so `record` degrades gracefully instead of failing only on click. Lives inside
+         the controls pane so the desktop tile layout (which replaces the view's direct children)
+         keeps it. -->
+    <div class="ai-gate" id="rec-aigate" data-testid="record.ai-gate" hidden></div>
     <div class="card">
       <div class="panel" id="panel-record">
         <label>Goal (natural language)</label>
@@ -142,6 +147,8 @@
     <button class="vstab" data-pane="console">Console</button>
   </div>
   <div class="left" data-pane="form">
+    <!-- Claude-reachability gate (BE-0101); see the record view above. -->
+    <div class="ai-gate" id="crawl-aigate" data-testid="crawl.ai-gate" hidden></div>
     <div class="card">
       <div class="panel" id="panel-crawl">
         <label>Target</label><select id="crawl-target" data-testid="crawl.target"></select>

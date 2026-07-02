@@ -7,7 +7,7 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import capability_preflight, idb_version, preflight
+from bajutsu import agents, ai_availability, capability_preflight, idb_version, preflight
 from bajutsu import env as _env
 from bajutsu.backends import capabilities_for, make_driver, select_actuator
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
@@ -110,6 +110,11 @@ def doctor(
     if checks:
         typer.echo("environment:")
         typer.echo(preflight.render(checks))
+        # Claude readiness is a distinct, optional section (BE-0101): the deterministic path is
+        # graded above and never blocked on it, so it is reported before the environment
+        # pass/fail exit and its state never changes the exit code.
+        typer.echo("")
+        typer.echo(_claude_readiness(eff))
         if not preflight.passed(checks):
             raise typer.Exit(1)
         typer.echo("")
@@ -125,6 +130,21 @@ def doctor(
     )
     typer.echo(render(result))
     raise typer.Exit(0 if result.grade != "Blocked" else 1)
+
+
+def _claude_readiness(eff: Effective) -> str:
+    """The optional Claude-readiness section (BE-0101) — deterministic, LLM-free, never blocking.
+
+    Reads only `ai_availability` against the resolved agent backend / provider. A gap is shown as a
+    neutral "not configured (optional)" line, never the ✗ an environment failure uses, so a user
+    with no AI setup is never told the deterministic path is broken.
+    """
+    gap = ai_availability.availability(agent_kind=agents.resolve_kind(), ai=eff.ai)
+    if gap is None:
+        detail = "reachable"
+    else:
+        detail = f"not configured (optional) — {ai_availability.message(gap, eff.ai)}"
+    return f"Claude (optional):\n  {'✓' if gap is None else '–'} {detail}"
 
 
 def _current_screen(actuator: str, udid: str, eff: Effective) -> list[base.Element]:

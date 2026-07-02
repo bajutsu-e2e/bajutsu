@@ -170,6 +170,7 @@ nav:
       - Reporting: reporting.md
   - Operating:
       - CLI: cli.md
+      - What uses Claude: ai-boundary.md
       - Configuration: configuration.md
       - CI: ci.md
       - Self-hosting: self-hosting.md

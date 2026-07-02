@@ -10,6 +10,13 @@ header .brand{font-weight:700}
 .toptab{background:var(--bg2);border:1px solid var(--line);color:var(--mut);padding:.25rem .9rem;font:inherit;font-weight:600;font-size:.9em;border-radius:8px;cursor:pointer}
 .toptab:hover{color:var(--fg)}
 .toptab.active{color:var(--on-acc);background:var(--acc);border-color:var(--acc)}
+/* BE-0101: a Claude tab reads disabled when Claude is unreachable (still clickable, so the view's
+   inline explanation is reachable). */
+.toptab.disabled{opacity:.5}
+.toptab.disabled:not(.active){cursor:not-allowed}
+/* BE-0101: the record/crawl gate banner — an inline "this needs Claude" affordance. */
+.ai-gate{background:var(--bg2);border:1px solid var(--run);color:var(--fg);border-radius:8px;padding:.6rem .8rem;margin-bottom:.7rem;font-size:.88em;line-height:1.4}
+.ai-gate .link{background:none;border:none;color:var(--acc);font:inherit;font-weight:600;padding:0;cursor:pointer;text-decoration:underline}
 /* dark / light toggle — small switch flanked by moon (dark) and sun (light) icons;
    checked == light (daylight). The icon for the active mode is highlighted. */
 .themeswitch{display:inline-flex;align-items:center;gap:.4rem;margin-left:auto;cursor:pointer}
