@@ -59,6 +59,7 @@ from bajutsu.serve.scenarios import (
     ScenarioScope,
     ScenarioStore,
 )
+from bajutsu.serve.sessions import InMemorySessionStore
 
 __all__ = [
     "SERVE_BACKENDS",
@@ -224,24 +225,18 @@ def _build_server_state(
     token: str | None,
     upload_exec: str = "sandbox",
 ) -> ServeState:
-    """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015).
+    """Wire the hosted seams from the environment (the single-tenant server backend, BE-0015/BE-0106).
 
-    Redis (``BAJUTSU_REDIS_URL`` / ``BAJUTSU_QUEUE``) backs the run queue + log bus; one
-    S3-compatible bucket (``BAJUTSU_S3_BUCKET`` / ``BAJUTSU_S3_ENDPOINT`` / ``BAJUTSU_S3_REGION``,
-    optional ``BAJUTSU_S3_PREFIX`` tenant prefix) holds artifacts (``<prefix>artifacts/``) and
-    scenarios (``<prefix>scenarios/<app>/``). Projects come from the bound config's targets — no
-    Postgres registry in this path. Redis/RQ/boto3 are imported lazily, only here, so the default
-    path and the import guard stay SDK-free."""
+    Postgres (``BAJUTSU_DATABASE_URL``) backs the job queue, sessions, and the system of record
+    (BE-0106); one S3-compatible bucket (``BAJUTSU_S3_BUCKET`` / ``BAJUTSU_S3_ENDPOINT`` /
+    ``BAJUTSU_S3_REGION``, optional ``BAJUTSU_S3_PREFIX``) holds artifacts and scenarios. Server
+    extras (SQLAlchemy, boto3) are imported lazily so the default path stays SDK-free."""
     import os
-
-    from redis import Redis
-    from rq import Queue
 
     from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
     from bajutsu.serve.server.baselines import ObjectBaselineStore
-    from bajutsu.serve.server.db import repository_from_env
-    from bajutsu.serve.server.executor import QueueExecutor
-    from bajutsu.serve.server.logbus import RedisLogBus
+    from bajutsu.serve.server.db import engine_from_url, repository_from_env
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
     from bajutsu.serve.server.oauth import GitHubOAuthClient
     from bajutsu.serve.server.object_store import (
         artifact_prefix,
@@ -249,14 +244,16 @@ def _build_server_state(
         org_prefix,
         s3_prefix,
     )
+    from bajutsu.serve.server.post_completion_logbus import PostCompletionLogBus
     from bajutsu.serve.server.scenarios import ObjectScenarioStorage, StorageScenarioStore
-    from bajutsu.serve.server.sessions import _DEFAULT_TTL, RedisSessionStore
-    from bajutsu.serve.server.worker_job import redis_url
+    from bajutsu.serve.server.sessions import _DEFAULT_TTL, SqlSessionStore
 
     store = object_store_from_env()
     if store is None:
         raise ValueError("BAJUTSU_S3_BUCKET is required for --backend=server")
     prefix = s3_prefix()
+    db_url = os.environ.get("BAJUTSU_DATABASE_URL")
+    _db_engine = engine_from_url(db_url) if db_url else None
     # GitHub OAuth login is optional: wired only when all three OAuth vars are set, else None (token
     # auth only). The allowlist is the GitHub logins permitted to log in (BE-0015 7b-2).
     cid = os.environ.get("BAJUTSU_OAUTH_GITHUB_CLIENT_ID")
@@ -274,10 +271,8 @@ def _build_server_state(
     allowed_users = _logins("BAJUTSU_OAUTH_ALLOWED_USERS")
     oauth_admins = _logins("BAJUTSU_OAUTH_ADMINS")
     oauth_viewers = _logins("BAJUTSU_OAUTH_VIEWERS")
-    # The real clients are wider than our minimal seam protocols (RedisLike / Queue), so hand them
-    # over as Any — the seam adapters use only the slice they declare.
-    redis: Any = Redis.from_url(redis_url())
-    queue: Any = Queue(os.environ.get("BAJUTSU_QUEUE", "bajutsu"), connection=redis)
+
+    repo = repository_from_env()
 
     state = ServeState(
         runs_dir=runs_dir,
@@ -286,28 +281,36 @@ def _build_server_state(
         root=root,
         baselines_dir=baselines_dir,
         max_concurrent=max_concurrent,
-        # Per-user concurrency cap (0 = unlimited), so one OAuth user can't starve the pool (7c-3).
         max_concurrent_per_user=_max_concurrent_from_env(
             os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_USER"),
             var="BAJUTSU_MAX_CONCURRENT_PER_USER",
         ),
-        # Per-org cap (0 = unlimited), so one tenant can't monopolize the scarce pool (BE-0016).
         max_concurrent_per_org=_max_concurrent_from_env(
             os.environ.get("BAJUTSU_MAX_CONCURRENT_PER_ORG"),
             var="BAJUTSU_MAX_CONCURRENT_PER_ORG",
         ),
         token=token,
         upload_exec=upload_exec,
-        executor=QueueExecutor(queue),
-        logbus=RedisLogBus(redis),
-        # Sessions in Redis (the same client) so they survive a restart and span replicas, with a
-        # TTL from BAJUTSU_SESSION_TTL (default 7 days) — vs the in-memory default (BE-0015 7b).
-        sessions=RedisSessionStore(
-            redis, ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL)
+        executor=DbQueueExecutor(repo) if repo is not None else LocalExecutor(),
+        logbus=(
+            PostCompletionLogBus(
+                repo,
+                artifacts_fn=lambda org: ObjectStorageArtifactStore(
+                    store, prefix=artifact_prefix(org_prefix(prefix, org))
+                ),
+            )
+            if repo is not None
+            else InMemoryLogBus()
         ),
-        # The system of record, when a database is configured (BAJUTSU_DATABASE_URL); None otherwise
-        # so the server backend runs without one until 7b/7c need it (BE-0015 7a).
-        repository=repository_from_env(),
+        sessions=(
+            SqlSessionStore(
+                _db_engine,
+                ttl=_session_ttl_from_env(os.environ.get("BAJUTSU_SESSION_TTL"), _DEFAULT_TTL),
+            )
+            if _db_engine is not None
+            else InMemorySessionStore()
+        ),
+        repository=repo,
         oauth=oauth,
         oauth_allowed_users=allowed_users,
         oauth_admins=oauth_admins,

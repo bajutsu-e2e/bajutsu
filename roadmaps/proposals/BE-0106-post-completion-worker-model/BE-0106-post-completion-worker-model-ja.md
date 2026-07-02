@@ -55,25 +55,109 @@ Sentinel）そのものが運用チェックリストから消えます。
 
 ## 詳細設計
 
-TBD。設計で扱う必要がある論点は以下のとおりです。
+ローカルとサーバのホスティングを分岐させる 4 つの差し替え可能なシームは、すでにあります
+（`RunExecutor`、`LogBus`、`SessionStore`、そして system of record の `Repository`）。本設計は、
+**Redis に手を伸ばしている 3 つのサーバ側シーム実装を**、Postgres と HTTP を土台にしたものへ
+**置き換えます**。**ローカル実装はそのまま**にします。ノート PC の `bajutsu serve` が使うのは
+`LocalExecutor`、`InMemoryLogBus`、`InMemorySessionStore` であり、本変更がこれらの読み込みを
+変えることはありません。すでにデプロイに含まれ、すでに `Repository` シームの土台でもある Postgres が、
+サーババックエンドの必要とする唯一のステートフルな依存になります。
 
-1. **ブローカなしのジョブ分配。** Redis/RQ なしで制御プレーンが worker にジョブを配る方法です。候補
-   として、HTTP ベースのポーリング（worker が Postgres をバックにした `/api/jobs/lease` エンドポイント
-   からプルする）と、HTTP ベースのプッシュ（制御プレーンが worker の API を直接呼ぶ。ただし現在のプル
-   モデルを反転させ、worker がアドレス可能であることを求めます）があります。
-2. **結果の収集。** run 完了後に worker が完全な結果（終了コード、manifest の要約、ログ、アーティ
-   ファクト参照）を制御プレーンに返す方法です。worker がアーティファクトをオブジェクトストレージ
-   （MinIO/R2）にアップロードしてから結果メタデータを制御プレーンへ POST する方式か、すべてを単一の
-   ペイロードで返す方式が考えられます。
-3. **セッションの移行。** `RedisSessionStore` から Postgres バックのセッションストアへの移行です。
-   サーバ側の状態を持たない署名つき Cookie 方式も候補になります。
-4. **run 中のブラウザ UX。** ライブログのストリーミングがなくなると、ブラウザは「実行中」状態を見た
-   後に最終結果を受け取ります。完了のポーリングか待機かの UX 上のトレードオフ、および軽量な進捗
-   シグナル（ハートビートやフェーズ表示など、完全なログストリーミングなし）が複雑さに見合うかどうかを
-   検討します。
-5. **移行パス。** 既存の `QueueExecutor`、`RedisLogBus`、`RedisSessionStore` の各シームを新しい
-   実装へ切り替える方法です。ローカルバックエンド（インメモリ／インプロセス実装を使用し、本変更の
-   影響を受けません）を壊さないようにします。
+### 1. ジョブ分配：HTTP で lease する Postgres の jobs テーブル
+
+現在、`QueueExecutor.dispatch` は `execute_job_spec(job_spec)` を RQ の `Queue` に enqueue し、
+`bajutsu worker` は `BRPOP` で lease する RQ の `Worker` を動かします。どちらも置き換えます。
+
+- **`jobs` テーブル**（既存スキーマへの新しい Alembic マイグレーション）：`id`、`org_id`、`spec`
+  （JSONB。worker がすでに再構築に使う `job_spec` のペイロード）、`status`
+  （`queued` → `leased` → `done`/`failed`）、`leased_at`、`leased_by`、`result`（JSONB、完了時に
+  書き込み）、`created_at`。`Repository` シームに `enqueue_job`、`lease_job`、`complete_job` を
+  加えます。
+- **`DbQueueExecutor`**（新しいサーバ `RunExecutor`）は、Redis に enqueue する代わりに `queued`
+  の行を挿入します。
+- **制御プレーンの 2 つの worker 向け HTTP エンドポイント**（operator トークン認証、BE-0051）。
+  `POST /api/worker/lease` は最古の `queued` ジョブを原子的に lease し（Postgres の
+  `SELECT … FOR UPDATE SKIP LOCKED` により 2 つの worker が同じジョブを取ることはありません）、その
+  spec を返すか、キューが空なら `204 No Content` を返します。`POST /api/worker/result` は完了した
+  結果を受け取り、ジョブを `done` にします。
+- **`bajutsu worker` は HTTP のポーリングループになります**。lease → （ジョブがあれば）
+  `execute_job_spec` を実行 → run ツリーをアップロード → 結果を post。（なければ）短い間隔だけ待って
+  また lease します。この待機は制御プレーン側のインフラのポーリングであって、run の中の固定 `sleep`
+  では**ありません**。worker が spawn する決定的な `bajutsu run` は 1 バイトも変わらないので、
+  prime directive #2（run/ゲートに `sleep` を置かない）には触れません。これは `RedisLogBus` が
+  すでに使っているポーリングと同じ形です。
+
+worker は**プル型のままで、アドレス可能である必要はありません**。`BRPOP` が与えていたのと同じ性質を
+保つので、家庭用 NAT や tailnet の背後にいる worker でも動きます。lease が古くなった行（run の途中で
+落ちた worker）は、`leased_at` がタイムアウトを過ぎた `leased` の行です。これを再キュー（`queued` に
+戻す）するのは、BE-0016 の「worker の生存確認とジョブ再キュー」項目の Postgres での自然な形であり、
+Redis の ack-late に委ねず本項目に取り込みます。
+
+### 2. 結果の収集：アーティファクトはオブジェクトストレージへ、メタデータは制御プレーンへ
+
+すでにある分担を保ちます。**大きなアーティファクトはオブジェクトストレージへ直接**、**小さな
+メタデータだけが制御プレーンへ**渡ります。run 後、worker は `runs/<id>/` ツリーを今と同じく
+オブジェクトストレージへアップロードし（動画が制御プレーンを経由することはありません）、続いて
+`/api/worker/result` へ終端メタデータ（`run_id`、終了ステータス、`ok`、manifest の要約）を `POST`
+します。**制御プレーン**がその POST から完了 run を system of record に記録します。したがって今と
+異なり、**worker はもはや `BAJUTSU_DATABASE_URL` も `db` extra も必要としません**。記録は、すでに
+データベースを所有する唯一のプロセスへ移ります。worker の依存は HTTP クライアントとオブジェクト
+ストレージだけに縮みます。
+
+### 3. ライブログ：ライブストリームではなく完了後のコンソールログ
+
+サーバモードは行単位のライブストリーミングをやめます（スコープ確定済み）。run 中、ブラウザは
+**実行中**の状態を見せ、ジョブが完了すると**全ログ**を見せます。
+
+- worker は run の stdout を `runs/<id>/console.log` に書き、run ツリーの残りと一緒にアップロード
+  します。アーティファクトが 1 つ増えるだけで、新しい伝送路はありません。
+- **`PostCompletionLogBus`**（新しいサーバ `LogBus`）は、既存の `/events` の契約を保ちます。後から
+  購読を開いてもよく、ジョブ完了で終わるストリームです。ただしその供給元を jobs テーブルとオブジェクト
+  ストレージにします。ジョブが `queued`/`leased` の間は定期的なハートビートを流し（接続と「実行中」
+  状態を保ちます）、ジョブが `done` になったらアップロード済みの `console.log` を流して閉じます。
+  ブラウザと `/events` ルートは変わりません。変わるのは*行の出所だけ*なので、SSE クライアントは
+  そのまま動きます。
+- **ローカルモードは変わりません**。`InMemoryLogBus` は同じ `/events` エンドポイント越しに、今も
+  プロセス内でライブに流します。2 つのモードは 1 つのブラウザコード経路を保ちます。
+
+### 4. セッション：Postgres バックのストア
+
+`RedisSessionStore` を **`SqlSessionStore`** に置き換え、既存のエンジンの上に載せます。同じ
+マイグレーションで `sessions` テーブル（`id`、`identity`、`expires_at`）を加えます。`issue` は
+`expires_at = now + ttl` の行を挿入します。`valid` は行が無いか期限切れなら無効とみなします。
+`identity` は束ねられた GitHub ログイン（共有トークンログインなら None）を返します。期限は読み取り時に
+強制し、衛生のため期限切れ行を定期的に削除します。セッションは Redis ストアと同じく再起動をまたぎ、
+レプリカ間で共有され、2 つ目のステートフルなサービスを要しません。
+
+### 5. 配線と移行パス
+
+`_build_server_state` は `redis`/`rq` の import をやめます。`executor` は `DbQueueExecutor`、
+`logbus` は `PostCompletionLogBus`、`sessions` は `SqlSessionStore` になり、いずれも `Repository`
+のエンジンの上に載ります。ジョブとセッションが Postgres に置かれるため、
+**`--backend=server` に `BAJUTSU_DATABASE_URL` が必須になります**（以前は任意でした）。Postgres は
+すでに推奨スタックに含まれていたので、これは実運用がすでに動かしていた形を明文化するものです。
+`worker` extra からは RQ と Redis を落とします。`deploy/self-host` は `redis` コンテナを失い
+（5 サービス → 4）、セルフホスティングのドキュメントと BE-0015/BE-0016 のアーキテクチャ節を Redis
+なしのトポロジへ更新します。
+
+上のすべては、**Linux ゲート上で SQLite とフェイクを使って**検証します。jobs テーブルの lease、
+HTTP の lease/result ハンドラ、`PostCompletionLogBus`、`SqlSessionStore` はいずれも、Redis も
+Postgres も Mac も要らない機械チェック可能なユニットテストを持ちます。どの経路にも LLM は入らず
+（prime directive #1）、決定的な run は変わらず（#2）、ここに app 固有のものはありません（#3）。
+
+### 作業分解（MECE）
+
+1. **セッションストア → Postgres。** `sessions` テーブルとマイグレーション、`SqlSessionStore`、配線。
+   分配の変更から独立しているので、最初に入れ、それ単独で Redis の 1 役割を消します。
+2. **ジョブ分配＋結果収集＋完了後ログ。** 結合した中核です。`jobs` テーブルとマイグレーション、
+   `Repository.enqueue_job`/`lease_job`/`complete_job`、`DbQueueExecutor`、`/api/worker/lease` と
+   `/api/worker/result` エンドポイント、`bajutsu worker` の HTTP ループ、worker の `console.log`
+   アップロード、`PostCompletionLogBus`。worker と制御プレーンの経路から Redis を完全に外せるように
+   するスライスです。
+3. **デプロイとドキュメントの片付け。** `deploy/self-host` と `worker` extra から `redis` を落とし、
+   サーババックエンドに `BAJUTSU_DATABASE_URL` を必須化し、`docs/self-hosting.md`（＋ `docs/ja/`）を
+   更新し、BE-0015/BE-0016 の Redis 節（「見直し中」の注記を外して）を Redis なしのアーキテクチャへ
+   書き換えます。
 
 ## 検討した代替案
 
@@ -89,7 +173,21 @@ TBD。設計で扱う必要がある論点は以下のとおりです。
 
 ## 進捗
 
-- [ ] TBD — 設計のスコープが固まり次第、作業分解（MECE）をここに列挙します。
+> 開発の進行に合わせて常に最新に保ちます。チェックリストは *詳細設計* の MECE な作業分解に対応し、
+> ログには変更内容と時期（古い順）を PR へのリンクとともに記録します。
+
+- [ ] 1 — セッションストア → Postgres（`sessions` テーブルとマイグレーション、`SqlSessionStore`、配線）。
+- [ ] 2 — ジョブ分配＋結果収集＋完了後ログ（`jobs` テーブルとマイグレーション、`Repository` の lease
+  メソッド群、`DbQueueExecutor`、`/api/worker/lease` と `/api/worker/result`、`bajutsu worker` の
+  HTTP ループ、`console.log` アップロード、`PostCompletionLogBus`）。
+- [ ] 3 — デプロイとドキュメントの片付け（`deploy/self-host` と `worker` extra から `redis` を落とし、
+  `BAJUTSU_DATABASE_URL` を必須化し、`docs/self-hosting.md` ＋ `docs/ja/` を更新し、BE-0015/BE-0016 の
+  Redis 節を書き換え）。
+
+ログ：
+
+- 2026-07-02 — 確定した前提（完了後の結果収集、サーバモードでのライブストリーミングなし）から設計を
+  具体化。詳細設計と本作業分解のスコープを確定。
 
 ## 参考
 

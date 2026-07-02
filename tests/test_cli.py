@@ -730,11 +730,13 @@ def test_approve_no_run_found(tmp_path: Path) -> None:
 
 
 def test_serve_server_backend_without_extras_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
-    # `serve --backend=server` needs the optional extras; with one missing (redis stood in here) it
-    # must print an install hint and exit 2 — never a raw ImportError traceback.
+    # `serve --backend=server` needs the optional extras; with one missing, it must print an
+    # install hint and exit 2 — never a raw ImportError traceback.
     import sys
 
-    monkeypatch.setitem(sys.modules, "redis", None)
+    monkeypatch.setenv("BAJUTSU_S3_BUCKET", "bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setitem(sys.modules, "boto3", None)
     r = runner.invoke(app, ["serve", "--backend", "server"])
     assert r.exit_code == 2
     assert "extra" in r.output.lower()

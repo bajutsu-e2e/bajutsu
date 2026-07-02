@@ -73,6 +73,27 @@ class Run(Base):
     summary: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
 
 
+class JobRecord(Base):
+    __tablename__ = "jobs"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    org_id: Mapped[str] = mapped_column(default="")
+    spec: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
+    status: Mapped[str] = mapped_column(default="queued")  # queued | leased | done | failed
+    leased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    leased_by: Mapped[str | None] = mapped_column(default=None)
+    result: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class SessionRecord(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    identity: Mapped[str | None] = mapped_column(default=None)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 
