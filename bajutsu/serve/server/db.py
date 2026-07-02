@@ -106,11 +106,18 @@ class Repository(Protocol):
         poison job that keeps killing its worker is failed once it hits the attempt cap.
         """
 
-    def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
-        """Mark a leased job as ``done`` and store its *result*."""
+    def complete_job(
+        self, job_id: str, result: dict[str, Any], *, worker_id: str | None = None
+    ) -> bool:
+        """Mark a still-leased job ``done`` with its *result*; False if it is no longer leasable.
 
-    def fail_job(self, job_id: str, error: str) -> None:
-        """Mark a leased job as ``failed`` with an error message."""
+        A reclaimed, re-leased, or already-finished job rejects the write (when *worker_id* is
+        given, only that leaseholder may complete it), so a stale worker never overwrites the winner.
+        """
+
+    def fail_job(self, job_id: str, error: str, *, worker_id: str | None = None) -> bool:
+        """Mark a still-leased job ``failed`` with *error*; False if it is no longer leasable (see
+        `complete_job`)."""
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Return the job's status, result, and org_id, or None if it does not exist."""
@@ -364,29 +371,42 @@ class SqlRepository:
             session.commit()
         return requeued
 
-    def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
+    def complete_job(
+        self, job_id: str, result: dict[str, Any], *, worker_id: str | None = None
+    ) -> bool:
+        return self._finish_job(job_id, status="done", payload=result, worker_id=worker_id)
+
+    def fail_job(self, job_id: str, error: str, *, worker_id: str | None = None) -> bool:
+        return self._finish_job(
+            job_id, status="failed", payload={"error": error}, worker_id=worker_id
+        )
+
+    def _finish_job(
+        self, job_id: str, *, status: str, payload: dict[str, Any], worker_id: str | None
+    ) -> bool:
+        """Transition a still-leased job to a terminal *status*, returning False when it may not.
+
+        Only a job still ``leased`` (by *worker_id*, when given) accepts its result; a reclaimed,
+        re-leased, or already-finished job rejects the stale write so the winning run is never
+        overwritten. Locks the row on non-SQLite so the check-and-write is atomic against reclaim."""
+        from sqlalchemy import select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            row = session.get(JobRecord, job_id)
-            if row is not None:
-                row.status = "done"
-                row.result = result
-                session.commit()
-
-    def fail_job(self, job_id: str, error: str) -> None:
-        from sqlalchemy.orm import Session
-
-        from bajutsu.serve.server.models import JobRecord
-
-        with Session(self._engine) as session:
-            row = session.get(JobRecord, job_id)
-            if row is not None:
-                row.status = "failed"
-                row.result = {"error": error}
-                session.commit()
+            stmt = select(JobRecord).where(JobRecord.id == job_id)
+            if self._engine.dialect.name != "sqlite":
+                stmt = stmt.with_for_update()
+            row = session.scalars(stmt).first()
+            if row is None or row.status != "leased":
+                return False
+            if worker_id is not None and row.leased_by != worker_id:
+                return False
+            row.status = status
+            row.result = payload
+            session.commit()
+            return True
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         from sqlalchemy.orm import Session

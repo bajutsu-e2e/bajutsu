@@ -155,3 +155,45 @@ def test_worker_heartbeat_endpoint_503_without_repository(tmp_path: Path) -> Non
     state = srv.ServeState(runs_dir=tmp_path / "runs")
     _payload, code = ops.worker_heartbeat(state, "w1", "j1")
     assert code == 503
+
+
+def test_stale_worker_result_does_not_overwrite_the_winner(tmp_path: Path) -> None:
+    repo = _repo()
+    state = _state(repo, tmp_path)
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    repo.lease_job("w1")
+    _backdate_lease(repo, "j1", seconds=300)
+    repo.reclaim_expired_leases(timeout=timedelta(seconds=120))  # j1 back to queued
+    repo.lease_job("w2")  # the re-run's winner now holds the lease
+
+    # w1 finally finishes and posts; it no longer owns the lease, so its result is dropped.
+    _payload, code = ops.worker_result(
+        state, {"job_id": "j1", "worker_id": "w1", "result": {"ok": True, "runId": "stale"}}
+    )
+    assert code == 409
+    info = repo.get_job("j1")
+    assert info is not None and info["status"] == "leased"
+
+    # w2 (the leaseholder) completes normally, and its result stands.
+    _payload, code = ops.worker_result(
+        state, {"job_id": "j1", "worker_id": "w2", "result": {"ok": True, "runId": "winner"}}
+    )
+    assert code == 200
+    info = repo.get_job("j1")
+    assert info is not None and info["status"] == "done" and info["result"]["runId"] == "winner"
+
+
+def test_worker_result_rejected_for_an_already_finished_job(tmp_path: Path) -> None:
+    repo = _repo()
+    state = _state(repo, tmp_path)
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
+    repo.lease_job("w1")
+    ops.worker_result(state, {"job_id": "j1", "worker_id": "w1", "result": {"ok": True}})
+
+    # A duplicate delivery of the same result must not re-open or overwrite a finished job.
+    _payload, code = ops.worker_result(
+        state, {"job_id": "j1", "worker_id": "w1", "result": {"ok": False, "error": "late"}}
+    )
+    assert code == 409
+    info = repo.get_job("j1")
+    assert info is not None and info["status"] == "done"

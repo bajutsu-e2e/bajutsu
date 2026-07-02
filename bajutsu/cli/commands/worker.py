@@ -69,6 +69,12 @@ def worker(
     Polls POST /api/worker/lease; on a job, runs execute_job_spec, uploads the run tree, and
     posts the result to POST /api/worker/result.
     """
+    # Both drive sleeps/timeouts; a non-positive value would spin the poll or heartbeat loop hot.
+    if poll_interval <= 0:
+        raise typer.BadParameter("--poll-interval must be positive")
+    if heartbeat_interval <= 0:
+        raise typer.BadParameter("--heartbeat-interval must be positive")
+
     url = server_url or os.environ.get("BAJUTSU_SERVER_URL") or "http://localhost:8765"
     auth_token = token or os.environ.get("BAJUTSU_TOKEN") or None
     wid = worker_id or f"worker-{os.getpid()}"
@@ -119,7 +125,7 @@ def worker(
         try:
             _post_json(
                 f"{url}/api/worker/result",
-                {"job_id": job_id, "result": result},
+                {"job_id": job_id, "result": result, "worker_id": wid},
                 token=auth_token,
             )
         except (URLError, OSError) as e:

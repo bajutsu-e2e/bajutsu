@@ -1411,6 +1411,7 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
     if state.repository is None:
         return {"error": "server backend has no database configured"}, 503
     job_id = body.get("job_id", "")
+    worker_id = body.get("worker_id") or None
     result = body.get("result")
     if not job_id:
         return {"error": "job_id is required"}, 400
@@ -1420,8 +1421,14 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
     if info is None:
         return {"error": f"job {job_id} not found"}, 404
     if result.get("ok") is False or "error" in result:
-        state.repository.fail_job(job_id, error=result.get("error", "unknown"))
+        applied = state.repository.fail_job(
+            job_id, error=result.get("error", "unknown"), worker_id=worker_id
+        )
     else:
-        state.repository.complete_job(job_id, result=result)
+        applied = state.repository.complete_job(job_id, result=result, worker_id=worker_id)
+    if not applied:
+        # The lease was reclaimed (and maybe re-leased) or the job already finished — this is a stale
+        # worker's result, so drop it rather than clobber the winning run, and leave its log stream be.
+        return {"error": "job is no longer leased by this worker; result ignored"}, 409
     state.logbus.close(job_id, json.dumps(result))
     return {"ok": True}, 200
