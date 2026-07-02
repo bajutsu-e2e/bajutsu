@@ -5,8 +5,9 @@ struct StableView: View {
     @State private var status = "idle"
 
     var body: some View {
-        // Path bound to the model so a tab switch pops detail to root. Detail is pushed only by
-        // tapping a row (BE-0079): there is no deeplink that jumps straight to a horse.
+        // Path bound to the model (a deeplink to this tab pops it to root via `handleDeepLink`).
+        // Detail is pushed only by tapping a row (BE-0079): there is no deeplink that jumps
+        // straight to a horse.
         NavigationStack(path: $model.stablePath) {
             List {
                 if model.horses.isEmpty {
