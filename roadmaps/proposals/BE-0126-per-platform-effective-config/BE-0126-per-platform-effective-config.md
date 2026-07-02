@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-per-platform-effective-config-ja.md)
+**English** · [日本語](BE-0126-per-platform-effective-config-ja.md)
 
-# BE-XXXX — Split Effective into per-platform configs
+# BE-0126 — Split Effective into per-platform configs
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-per-platform-effective-config.md) |
+| Proposal | [BE-0126](BE-0126-per-platform-effective-config.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Platform expansion (Android / Web / Flutter) |
