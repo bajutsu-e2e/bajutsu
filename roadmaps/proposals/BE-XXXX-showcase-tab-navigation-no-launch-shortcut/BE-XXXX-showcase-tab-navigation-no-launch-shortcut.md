@@ -39,7 +39,7 @@ that *can* reach the tabs.
 
 **[BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) is that
 backend.** Its XCUITest runner enumerates each native tab as a label-addressable button, so
-`tap: {label: "Log", traits: [button]}` switches tabs on the native bar (its `scenarios-xcuitest/tabs.yaml`
+`tap: {label: "Log", traits: [button]}` switches tabs on the native bar (its `demos/showcase/scenarios-xcuitest/tabs.yaml`
 already demonstrates this on the `-noax` products). This item depends on BE-0019 being reliable
 enough to run the showcase's functional scenarios: at the time BE-0079 landed, the runner's
 `/elements` query was slow and, on some environments, timed out or dropped the connection — the

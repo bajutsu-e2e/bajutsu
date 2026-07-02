@@ -443,6 +443,12 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0102](proposals/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md) | 実行結果の集計ダッシュボード | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
+### Dogfood フィクスチャ（デモアプリ）
+
+<!-- GENERATED:proposals-dogfood -->
+
+<!-- /GENERATED:proposals-dogfood -->
+
 ### AI プロバイダ設定
 
 <!-- GENERATED:proposals-ai-provider -->
@@ -450,12 +456,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0104](proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) | ベンダー中立な AI バックエンドインターフェース | 提案 |
 <!-- /GENERATED:proposals-ai-provider -->
-
-### Dogfood フィクスチャ（デモアプリ）
-
-<!-- GENERATED:proposals-dogfood -->
-
-<!-- /GENERATED:proposals-dogfood -->
 
 ### Web UI のホスティング（クラウド / セルフホスト）
 

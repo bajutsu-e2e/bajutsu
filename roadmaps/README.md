@@ -451,6 +451,12 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0102](proposals/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) | Aggregate run-stats dashboard | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
+### Dogfood fixtures (demo apps)
+
+<!-- GENERATED:proposals-dogfood -->
+
+<!-- /GENERATED:proposals-dogfood -->
+
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
@@ -458,12 +464,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0104](proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) | Vendor-neutral AI backend interface | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
-
-### Dogfood fixtures (demo apps)
-
-<!-- GENERATED:proposals-dogfood -->
-
-<!-- /GENERATED:proposals-dogfood -->
 
 ### Hosting the web UI (cloud / self-hosted)
 
