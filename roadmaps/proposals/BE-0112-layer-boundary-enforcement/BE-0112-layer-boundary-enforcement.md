@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-layer-boundary-enforcement-ja.md)
+**English** · [日本語](BE-0112-layer-boundary-enforcement-ja.md)
 
-# BE-XXXX — Enforce core / contract / periphery layer boundaries in the gate
+# BE-0112 — Enforce core / contract / periphery layer boundaries in the gate
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-layer-boundary-enforcement.md) |
+| Proposal | [BE-0112](BE-0112-layer-boundary-enforcement.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

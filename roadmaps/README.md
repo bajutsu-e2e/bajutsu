@@ -532,6 +532,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0109](proposals/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) | GitHub Issues as the ownership tracker for open roadmap items | Proposal |
+| [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md) | Enforce core / contract / periphery layer boundaries in the gate | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services
