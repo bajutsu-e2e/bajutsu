@@ -163,6 +163,15 @@ Linux CI で動き、`capabilities()` の **小さい端**を行使します。
 - [ ] codegen 変換先：Espresso / UI Automator ジェネレータ（後続スライス）。
 - [ ] 検証：dump フィクスチャに対する高速ゲートの driver/レジストリテスト、KVM 経由の実機エミュレータ e2e。
 
+ログ：
+
+- 2026-07-03：ドライバーに先行する準備として、showcase の Android 版フィクスチャ
+  （[`demos/showcase/android/`](../../../demos/showcase/android/)）が landing。Compose（testTag →
+  `resource-id`）と Views（`android:id`）の 2 コードベース × a11y/noax の 2 flavor で、上記の
+  id 規約とセレクタ対応をアプリ側から検証できます。`showcase.config.yaml` の 4 ターゲット
+  （`showcase-compose*` / `showcase-views*`、`backend: [android]`）も配線済みです。本体の作業
+  分解（上記チェックリスト）は未着手のままです。
+
 ## 参考
 
 [DESIGN](../../../DESIGN.md)、`bajutsu/drivers/`、`bajutsu/backends.py`、

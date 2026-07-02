@@ -1,0 +1,9 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+# The wrapper jar is fetched by `make wrapper` (gradle wrapper) — see the Makefile.
+gradle/wrapper/gradle-wrapper.jar
+captures/
+.cxx/
