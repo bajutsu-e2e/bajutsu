@@ -103,7 +103,7 @@ def test_heartbeat_reports_a_lost_lease() -> None:
     repo.enqueue_job("j1", org_id="o1", spec={"cmd": []})
     repo.lease_job("w1")
 
-    # A different worker (its lease was reclaimed and re-leased) must learn it no longer owns the job.
+    # A worker that does not hold the lease (here w2, not the leaseholder w1) must be told so.
     assert repo.heartbeat_job("j1", "w2") is False
     # A finished job is no longer leasable either.
     repo.complete_job("j1", result={"ok": True})

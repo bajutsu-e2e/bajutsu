@@ -314,12 +314,19 @@ class SqlRepository:
             return LeasedJob(id=row.id, org_id=row.org_id, spec=dict(row.spec))
 
     def heartbeat_job(self, job_id: str, worker_id: str) -> bool:
+        from sqlalchemy import select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         with Session(self._engine) as session:
-            row = session.get(JobRecord, job_id)
+            # Lock the row so a heartbeat and a concurrent reclaim serialize instead of racing: the
+            # loser re-reads fresh state under the lock, so a heartbeat that lands after a reclaim
+            # sees `queued` and returns False rather than resurrecting `leased_at` on a re-queued job.
+            stmt = select(JobRecord).where(JobRecord.id == job_id)
+            if self._engine.dialect.name != "sqlite":
+                stmt = stmt.with_for_update()
+            row = session.scalars(stmt).first()
             if row is None or row.status != "leased" or row.leased_by != worker_id:
                 return False
             row.leased_at = datetime.now(UTC)
@@ -340,6 +347,10 @@ class SqlRepository:
             stmt = select(JobRecord).where(
                 JobRecord.status == "leased", JobRecord.leased_at < cutoff
             )
+            # Skip rows a concurrent heartbeat is holding: that worker is alive and just renewed its
+            # lease, so leave it be rather than reclaiming a job out from under it (lost update).
+            if self._engine.dialect.name != "sqlite":
+                stmt = stmt.with_for_update(skip_locked=True)
             for row in session.scalars(stmt):
                 row.attempts += 1
                 row.leased_by = None
