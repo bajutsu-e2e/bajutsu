@@ -1,11 +1,11 @@
-[English](BE-XXXX-post-completion-worker-model.md) · **日本語**
+[English](BE-0106-post-completion-worker-model.md) · **日本語**
 
-# BE-XXXX — 完了後連携 worker モデル（Redis 依存の排除）
+# BE-0106 — 完了後連携 worker モデル（Redis 依存の排除）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-post-completion-worker-model-ja.md) |
+| 提案 | [BE-0106](BE-0106-post-completion-worker-model-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **提案** |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |

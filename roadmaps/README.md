@@ -465,7 +465,9 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 Turn the local `bajutsu serve` launcher into a shared service. The runner drives an iOS Simulator and so needs a Mac, which forces a control-plane (Linux) ⇄ macOS-worker split. [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) selects a managed, multi-tenant public stack; [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers running it on your own Mac(s).
 
 <!-- GENERATED:proposals-hosting -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0106](proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Configuration sourcing

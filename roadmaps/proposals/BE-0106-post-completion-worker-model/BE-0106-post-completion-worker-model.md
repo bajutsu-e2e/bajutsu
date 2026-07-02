@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-post-completion-worker-model-ja.md)
+**English** · [日本語](BE-0106-post-completion-worker-model-ja.md)
 
-# BE-XXXX — Post-completion worker model (eliminate Redis dependency)
+# BE-0106 — Post-completion worker model (eliminate Redis dependency)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-post-completion-worker-model.md) |
+| Proposal | [BE-0106](BE-0106-post-completion-worker-model.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
 | Topic | Hosting the web UI (cloud / self-hosted) |
