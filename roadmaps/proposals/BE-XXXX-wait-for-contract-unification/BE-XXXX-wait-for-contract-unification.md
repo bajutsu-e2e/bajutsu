@@ -13,10 +13,10 @@
 
 ## Introduction
 
-`Driver.wait_for` is documented as a deadline poll, but the Playwright backend implements it as a
-single, immediate check that silently ignores its `timeout` argument. This is a real determinism
-bug — a caller that asks to wait raises a false `TimeoutError` on Web the instant the element isn't
-present yet. This proposal unifies the contract so every backend behaves the same way.
+`Driver.wait_for` is intended to poll until `timeout` elapses (as idb does today), but the
+Playwright backend implements it as a single, immediate check that silently ignores `timeout`.
+This is a determinism bug — a caller that asks to wait raises a false `TimeoutError` on Web the
+instant the element isn't present yet. This proposal unifies the contract so every backend behaves the same way.
 
 ## Motivation
 
