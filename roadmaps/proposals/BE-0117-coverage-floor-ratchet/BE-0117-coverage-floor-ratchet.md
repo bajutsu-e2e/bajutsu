@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-coverage-floor-ratchet-ja.md)
+**English** · [日本語](BE-0117-coverage-floor-ratchet-ja.md)
 
-# BE-XXXX — Cover the rest of the CLI command layer, then ratchet the coverage floor
+# BE-0117 — Cover the rest of the CLI command layer, then ratchet the coverage floor
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-coverage-floor-ratchet.md) |
+| Proposal | [BE-0117](BE-0117-coverage-floor-ratchet.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |

@@ -547,6 +547,7 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 |---|---|---|
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md) | Enforce core / contract / periphery layer boundaries in the gate | Proposal |
 | [BE-0113](proposals/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md) | Realign DESIGN.md with the current implementation | Proposal |
+| [BE-0117](proposals/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services
