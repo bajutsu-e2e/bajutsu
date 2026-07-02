@@ -19,10 +19,16 @@ import yaml
 
 SKILLS = Path(__file__).resolve().parent.parent / ".claude" / "skills"
 
-# Accepted ``model:`` values. Claude Code reads either a stable alias (the tier → id mapping in
-# docs/ai-development.md pins these) or a fully-qualified model id; ``inherit`` keeps the session's
-# current model. Re-point a tier at a new model by changing the alias in a skill, not this set.
+# The syntactic allow-list of recognized ``model:`` ids — not the tier → model assignment. Which
+# tier a task uses (heavy → opus, and so on) is guidance documented in docs/ai-development.md, and a
+# skill's own frontmatter is what actually selects its model; re-pointing a tier means editing that
+# doc table and the skill, not this set. This set exists only so a typo'd id fails loudly here.
+# Aliases are Claude Code's stable names; ``inherit`` keeps the session's current model; a
+# fully-qualified ``claude-…`` id is also accepted (see ``_is_known_model``).
 KNOWN_ALIASES = frozenset({"opus", "sonnet", "haiku", "fable", "opusplan", "default", "inherit"})
+
+# Sentinel: the frontmatter has no ``model:`` key at all (as opposed to a present-but-empty one).
+_ABSENT = object()
 
 
 def _is_known_model(value: str) -> bool:
@@ -45,25 +51,42 @@ def _frontmatter(skill_md: Path) -> dict[str, object]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _declared_model(fm: dict[str, object]) -> object:
+    """The frontmatter's declared model, or ``_ABSENT`` when there is no ``model:`` key.
+
+    A present-but-empty ``model:`` (YAML parses a bare key or ``""`` to ``None`` / empty string) is
+    returned as ``""`` so it reads as a declared-but-invalid id and fails loudly, rather than being
+    mistaken for "no default declared".
+    """
+    if "model" not in fm:
+        return _ABSENT
+    value = fm["model"]
+    return "" if value is None else str(value)
+
+
 def _skill_files() -> list[Path]:
     return sorted(SKILLS.glob("*/SKILL.md"))
 
 
 def test_every_declared_model_is_known() -> None:
-    """No skill may pin a ``model:`` the harness won't recognize — a typo fails loudly, not silently."""
+    """A declared ``model:`` the harness won't recognize (typo, or an empty value) fails loudly."""
     bad = {
-        md.parent.name: fm["model"]
+        md.parent.name: model
         for md in _skill_files()
-        if (fm := _frontmatter(md)).get("model") is not None
-        and not _is_known_model(str(fm["model"]))
+        if (model := _declared_model(_frontmatter(md))) is not _ABSENT
+        and not _is_known_model(str(model))
     }
     assert not bad, f"unknown model id in skill frontmatter: {bad}"
 
 
 def test_tiered_skills_declare_a_model() -> None:
-    """The skills BE-0103 tiered still declare a ``model:``, so dropping the default is a visible
-    regression rather than a silent drift back to running everything at always-max."""
+    """The skills BE-0103 tiered still declare a non-empty ``model:``, so dropping the default is a
+    visible regression rather than a silent drift back to running everything at always-max."""
     tiered = {"implement-be", "ideation", "japanese-tech-writing"}
-    present = {md.parent.name for md in _skill_files() if _frontmatter(md).get("model") is not None}
-    missing = tiered - present
-    assert not missing, f"tiered skills missing a model: default (BE-0103): {sorted(missing)}"
+    declared = {
+        md.parent.name
+        for md in _skill_files()
+        if (model := _declared_model(_frontmatter(md))) is not _ABSENT and model
+    }
+    missing = tiered - declared
+    assert not missing, f"tiered skills must declare a model: (BE-0103): {sorted(missing)}"
