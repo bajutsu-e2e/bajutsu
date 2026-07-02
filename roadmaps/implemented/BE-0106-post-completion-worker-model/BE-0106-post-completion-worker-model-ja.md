@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0106](BE-0106-post-completion-worker-model-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |
 | 関連 | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0070](../../deferred/BE-0070-live-run-artifacts-across-split/BE-0070-live-run-artifacts-across-split-ja.md) |
 <!-- /BE-METADATA -->
@@ -176,18 +176,20 @@ Postgres も Mac も要らない機械チェック可能なユニットテスト
 > 開発の進行に合わせて常に最新に保ちます。チェックリストは *詳細設計* の MECE な作業分解に対応し、
 > ログには変更内容と時期（古い順）を PR へのリンクとともに記録します。
 
-- [ ] 1 — セッションストア → Postgres（`sessions` テーブルとマイグレーション、`SqlSessionStore`、配線）。
-- [ ] 2 — ジョブ分配＋結果収集＋完了後ログ（`jobs` テーブルとマイグレーション、`Repository` の lease
+- [x] 1 — セッションストア → Postgres（`sessions` テーブルとマイグレーション、`SqlSessionStore`、配線）。
+- [x] 2 — ジョブ分配＋結果収集＋完了後ログ（`jobs` テーブルとマイグレーション、`Repository` の lease
   メソッド群、`DbQueueExecutor`、`/api/worker/lease` と `/api/worker/result`、`bajutsu worker` の
   HTTP ループ、`console.log` アップロード、`PostCompletionLogBus`）。
-- [ ] 3 — デプロイとドキュメントの片付け（`deploy/self-host` と `worker` extra から `redis` を落とし、
-  `BAJUTSU_DATABASE_URL` を必須化し、`docs/self-hosting.md` ＋ `docs/ja/` を更新し、BE-0015/BE-0016 の
-  Redis 節を書き換え）。
+- [x] 3 — デプロイとドキュメントの片付け（`deploy/self-host` と `worker` extra から `redis` を落とし、
+  `docs/self-hosting.md` ＋ `docs/ja/` を更新し、BE-0015/BE-0016 の Redis 節を書き換え）。
 
 ログ：
 
 - 2026-07-02 — 確定した前提（完了後の結果収集、サーバモードでのライブストリーミングなし）から設計を
   具体化。詳細設計と本作業分解のスコープを確定。
+- 2026-07-02 — スライス 1+2 出荷：`SqlSessionStore`、`DbQueueExecutor`、`PostCompletionLogBus`、
+  worker HTTP エンドポイント、`bajutsu worker` HTTP ループ（#445）。
+- 2026-07-02 — スライス 3 出荷：Redis をデプロイ、依存、ドキュメント、ロードマップから削除。
 
 ## 参考
 

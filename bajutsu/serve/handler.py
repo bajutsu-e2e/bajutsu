@@ -268,6 +268,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:
                     self._json(*ops.mark_capture(state, body, actor=self._actor()))
                 case "/api/capture/finish":
                     self._json(*ops.finish_capture(state, body, actor=self._actor()))
+                case "/api/worker/lease":
+                    self._json(*ops.worker_lease(state, body.get("worker_id", "")))
+                case "/api/worker/result":
+                    self._json(*ops.worker_result(state, body))
                 case _ if path.startswith("/api/jobs/") and path.endswith("/cancel"):
                     self._json(*ops.cancel_job(state, path[len("/api/jobs/") : -len("/cancel")]))
                 case _:

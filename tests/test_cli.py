@@ -742,15 +742,9 @@ def test_serve_server_backend_without_extras_exits_cleanly(monkeypatch: pytest.M
     assert "extra" in r.output.lower()
 
 
-def test_worker_without_extra_exits_cleanly() -> None:
-    # On the gate the `worker` extra (redis/rq) isn't installed, so `bajutsu worker` must fail with
-    # a clear "install the extra" message and exit 2 — never a raw ImportError traceback.
-    import importlib.util
-
-    # Skip only when the whole extra is present — `worker` imports both redis and rq, so with
-    # either missing it still hits the intended "install the extra" path (exit 2).
-    if importlib.util.find_spec("rq") is not None and importlib.util.find_spec("redis") is not None:
-        pytest.skip("the worker extra is installed; the Redis-connect path isn't gate-testable")
-    r = runner.invoke(app, ["worker"])
-    assert r.exit_code == 2
-    assert "worker" in r.output.lower() and "extra" in r.output.lower()
+def test_worker_help_exits_cleanly() -> None:
+    # The worker CLI uses stdlib only (no Redis/RQ since BE-0106), so --help must work without
+    # any optional extras installed.
+    r = runner.invoke(app, ["worker", "--help"])
+    assert r.exit_code == 0
+    assert "lease" in r.output.lower() or "poll" in r.output.lower()
