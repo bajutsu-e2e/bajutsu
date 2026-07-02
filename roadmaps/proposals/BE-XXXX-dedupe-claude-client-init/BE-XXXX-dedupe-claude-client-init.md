@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-dedupe-claude-client-init-ja.md)
 
-# BE-XXXX — Deduplicate claude client initialization
+# BE-XXXX — Deduplicate Claude client initialization
 
 <!-- BE-METADATA -->
 | Field | Value |
