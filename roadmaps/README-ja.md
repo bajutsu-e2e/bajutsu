@@ -456,6 +456,12 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0102](proposals/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md) | 実行結果の集計ダッシュボード | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
+### serve Web UI への CLI 機能の取り込み
+
+<!-- GENERATED:proposals-serve-cli-features -->
+
+<!-- /GENERATED:proposals-serve-cli-features -->
+
 ### Dogfood フィクスチャ（デモアプリ）
 
 <!-- GENERATED:proposals-dogfood -->
