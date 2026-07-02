@@ -64,7 +64,7 @@ to run. Pass `--scenario <file>` to run a single file instead.
 
 ```bash
 bajutsu run --target showcase-swiftui --udid <UDID> --backend idb --no-erase            # the app's whole scenarios dir
-bajutsu run --scenario demos/showcase/scenarios/stable.yaml --target showcase-swiftui --no-erase   # one file
+bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
 ```
 
 ## `doctor`

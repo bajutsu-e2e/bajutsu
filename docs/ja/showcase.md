@@ -21,10 +21,11 @@
 
 showcase は、Bajutsu の設計が依って立つ 2 つの軸を可視化します。
 
-- **トールキット軸**（UIKit と SwiftUI）：2 つの `-a11y` プロダクトは*同一*の識別子契約を露出するので、
-  共有の [`demos/showcase/scenarios/`](../../demos/showcase/scenarios) がどちらに対しても変更なしで動きます。
+- **トールキット軸**（UIKit と SwiftUI）：アクセシビリティ ON の 2 プロダクト（`showcase-swiftui` /
+  `showcase-uikit`）は*同一*の識別子契約を露出するので、共有の
+  [`demos/showcase/scenarios/`](../../demos/showcase/scenarios) がどちらに対しても変更なしで動きます。
   異なるのは backend が見る要素ツリーで、まさにこれこそクロストールキットのドライバが吸収すべきものです。
-- **アクセシビリティ軸**（`-a11y` ↔ `-noax`）：`-noax` ビルドは識別子を**一切**持ちません
+- **アクセシビリティ軸**（サフィックス無し ↔ `-noax`）：`-noax` ビルドは識別子を**一切**持ちません
   （`idNamespaces: []`）。これはセレクタ安定性の対照実験です（DESIGN §5）。同じゴールを両方に対して記録すると、
   アクセシビリティ作業の価値が具体的な差分として現れます。また `record` / `doctor` の「アクセシビリティ欠如」の
   題材でもあります。

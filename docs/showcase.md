@@ -21,11 +21,11 @@ Related: [scenarios](scenarios.md) · [configuration](configuration.md) · [code
 
 The showcase makes two axes Bajutsu's design rests on visible:
 
-- **Toolkit axis** (UIKit vs SwiftUI) — the two `-a11y` products expose an *identical* identifier
-  contract, so the shared [`demos/showcase/scenarios/`](../demos/showcase/scenarios) runs unchanged
-  against either. What differs is the element tree the backend sees, which is exactly what a
-  cross-toolkit driver must absorb.
-- **Accessibility axis** (`-a11y` ↔ `-noax`) — the `-noax` builds carry **no** identifiers
+- **Toolkit axis** (UIKit vs SwiftUI) — the two accessibility-on products (`showcase-swiftui` /
+  `showcase-uikit`) expose an *identical* identifier contract, so the shared
+  [`demos/showcase/scenarios/`](../demos/showcase/scenarios) runs unchanged against either. What
+  differs is the element tree the backend sees, which is exactly what a cross-toolkit driver must absorb.
+- **Accessibility axis** (no suffix ↔ `-noax`) — the `-noax` builds carry **no** identifiers
   (`idNamespaces: []`). They are the controlled experiment for selector stability (DESIGN §5): the
   same goal recorded against both shows the value of accessibility work as a concrete diff, and they
   are the `record` / `doctor` "missing accessibility" subjects.
