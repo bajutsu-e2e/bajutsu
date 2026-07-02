@@ -3,7 +3,7 @@
 # Invoke from anywhere with `make -C demos/showcase <target>`.
 .PHONY: build-all \
 	swiftui-gen swiftui-build swiftui-noax-build \
-	uikit-gen uikit-build uikit-noax-build \
+	uikit-gen uikit-build uikit-noax-build runner-build \
 	run-swiftui run-uikit doctor record ui-test \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve clean
 
@@ -12,6 +12,7 @@ HERE   := $(ROOT)/demos/showcase
 CONFIG := $(HERE)/showcase.config.yaml
 SWIFTUI := $(HERE)/swiftui
 UIKIT   := $(HERE)/uikit
+RUNNER  := $(ROOT)/BajutsuKit/Runner
 
 # A built scheme lands at build/dd/Build/Products/Debug-iphonesimulator/<Scheme>.app,
 # which is exactly the appPath each targets.<name> entry in showcase.config.yaml points to.
@@ -36,6 +37,17 @@ uikit-build:
 	$(call build_scheme,$(UIKIT),BajutsuShowcaseUIKit,BajutsuShowcaseUIKit)
 uikit-noax-build:
 	$(call build_scheme,$(UIKIT),BajutsuShowcaseUIKit,BajutsuShowcaseUIKitNoAx)
+
+# The generic XCUITest runner (BE-0019). One app-agnostic .xctestrun drives any installed app
+# by the forwarded BAJUTSU_BUNDLE_ID, so this serves every target's `xcuitest.testRunner`. The
+# built name carries the SDK version, so copy it to a stable name in the same dir (its __TESTROOT__
+# must stay beside the built products). This is the `xcuitest.build` fallback in showcase.config.yaml.
+RUNNER_PRODUCTS := $(RUNNER)/build/dd/Build/Products
+runner-build:
+	cd $(RUNNER) && xcodegen generate
+	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
+		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd
+	cp $(RUNNER_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_PRODUCTS)/BajutsuRunner.xctestrun
 
 # Run the shared id-based scenarios against the a11y apps on a booted Simulator (idb).
 # Prereqs: a booted simulator, `brew install facebook/fb/idb-companion`, `uv sync --extra idb`.

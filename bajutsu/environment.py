@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import shlex
 import socket
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -394,6 +396,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         super().__init__(actuator, udid, env_run)
         self._runner_proc: subprocess.Popen[bytes] | None = None
         self._runner_port: int = 0
+        self._patched_runner: Path | None = None
 
     def start(
         self,
@@ -447,25 +450,32 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 raise env.DeviceError(f"xcuitest testRunner not found: {runner_path}")
 
         self._runner_port = _allocate_port()
-        runner_env = {
-            **os.environ,
+        forwarded = {
             "BAJUTSU_RUNNER_PORT": str(self._runner_port),
+            # One generic runner drives whatever app the run targets, so it launches this
+            # bundle id via XCUIApplication(bundleIdentifier:) rather than its own target app.
+            "BAJUTSU_BUNDLE_ID": eff.bundle_id,
             **{f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()},
             "BAJUTSU_LAUNCH_ARGS": json.dumps(launch_args),
         }
         if pre.deeplink is not None:
-            runner_env["BAJUTSU_DEEPLINK"] = pre.deeplink
+            forwarded["BAJUTSU_DEEPLINK"] = pre.deeplink
+
+        # `xcodebuild` does not pass its own environment through to the test-runner process
+        # inside the Simulator, so the runner reads these from the .xctestrun's per-target
+        # TestingEnvironmentVariables instead. Patch a private copy and run that.
+        self._patched_runner = _patch_xctestrun_env(Path(runner_path), forwarded)
         try:
             self._runner_proc = subprocess.Popen(
                 [  # noqa: S607 — xcodebuild resolved on PATH; requires Xcode
                     "xcodebuild",
                     "test-without-building",
                     "-xctestrun",
-                    runner_path,
+                    str(self._patched_runner),
                     "-destination",
                     f"platform=iOS Simulator,id={self._udid}",
                 ],
-                env=runner_env,
+                env={**os.environ, **forwarded},
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -485,7 +495,33 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 self._runner_proc.kill()
                 self._runner_proc.wait()
             self._runner_proc = None
+        if self._patched_runner is not None:
+            self._patched_runner.unlink(missing_ok=True)
+            self._patched_runner = None
         super().teardown(driver, eff)
+
+
+def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:
+    """Write a copy of the .xctestrun with *forwarded* merged into each target's env.
+
+    `xcodebuild` does not propagate its own environment into the Simulator test-runner
+    process, so the runner reads `BAJUTSU_*` from `TestingEnvironmentVariables` (the runner
+    process's env) instead. Returns the temp copy's path; the caller unlinks it on teardown.
+    """
+    with runner_path.open("rb") as f:
+        plist = plistlib.load(f)
+    for key, target in plist.items():
+        if key == "__xctestrun_metadata__" or not isinstance(target, dict):
+            continue
+        env_vars = dict(target.get("TestingEnvironmentVariables") or {})
+        env_vars.update(forwarded)
+        target["TestingEnvironmentVariables"] = env_vars
+    # `__TESTROOT__` in the plist resolves relative to the .xctestrun's own directory, so the
+    # patched copy must sit beside the original (next to the built products) to still find them.
+    fd, path = tempfile.mkstemp(suffix=".xctestrun", dir=str(runner_path.parent))
+    with os.fdopen(fd, "wb") as f:
+        plistlib.dump(plist, f)
+    return Path(path)
 
 
 def environment_for(actuator: str, udid: str, env_run: env.RunFn = env._real_run) -> Environment:

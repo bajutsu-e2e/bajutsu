@@ -31,6 +31,13 @@ targets:
     idNamespaces: []   # honest: this build exposes no identifiers
     appPath: demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUINoAx.app
     build: make -C demos/showcase swiftui-noax-build
+    backend: [ios]   # prefer xcuitest (reaches the tabs); idb stays the fallback
+    scenarios: demos/showcase/scenarios-xcuitest
+    # XCUITest backend (BE-0019): the generic runner reaches elements idb's tree can't (e.g. a
+    # TabView's tabs), so `--backend ios` drives this -noax app by label where idb would need vision.
+    xcuitest:
+      testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      build: make -C demos/showcase runner-build
 
   # ---- UIKit, accessibility ON (same identifier contract as showcase-swiftui) ----
   showcase-uikit:
@@ -50,3 +57,10 @@ targets:
     idNamespaces: []
     appPath: demos/showcase/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKitNoAx.app
     build: make -C demos/showcase uikit-noax-build
+    backend: [ios]   # prefer xcuitest (reaches the tabs); idb stays the fallback
+    scenarios: demos/showcase/scenarios-xcuitest
+    # XCUITest backend (BE-0019): one generic runner serves every target; here it lets `--backend ios`
+    # drive the -noax UITabBar tabs by label, which idb's describe-all collapses into an opaque group.
+    xcuitest:
+      testRunner: BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      build: make -C demos/showcase runner-build

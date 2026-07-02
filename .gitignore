@@ -48,6 +48,8 @@ demos/app/*.xcodeproj/
 demos/app/build/
 demos/showcase/*/*.xcodeproj/
 demos/showcase/*/build/
+BajutsuKit/Runner/*.xcodeproj/
+.claude/launch.json
 DerivedData/
 *.xcuserstate
 
