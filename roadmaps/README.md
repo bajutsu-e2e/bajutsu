@@ -388,8 +388,7 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 Consolidating the demo and dogfood apps onto the showcase suite: bringing it to parity with the legacy `sample` / `demo` / `sample2` fixtures (codegen → XCUITest, visual regression, gesture targets, the evidence tour), re-pointing the demos and on-device CI at it, and retiring the three legacy apps — so the showcase becomes the single iOS fixture.
 
 <!-- GENERATED:in-progress-dogfood -->
-| ID | Item | Status | Origin |
-|---|---|---|---|
+
 <!-- /GENERATED:in-progress-dogfood -->
 
 ### Hosting the web UI (cloud / self-hosted)

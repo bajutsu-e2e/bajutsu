@@ -380,8 +380,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 デモ／dogfood 用アプリを showcase 群へ統合します。旧 `sample` / `demo` / `sample2` フィクスチャと同等まで showcase を引き上げ（codegen → XCUITest、ビジュアルリグレッション、ジェスチャ標的、証跡ツアー）、デモと実機 CI を showcase に張り替え、旧 3 アプリを退役させて、showcase を唯一の iOS フィクスチャにします。
 
 <!-- GENERATED:in-progress-dogfood -->
-| ID | 項目 | 状態 | 由来 |
-|---|---|---|---|
+
 <!-- /GENERATED:in-progress-dogfood -->
 
 ### Web UI のホスティング（クラウド / セルフホスト）
