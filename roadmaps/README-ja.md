@@ -444,6 +444,12 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0102](proposals/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard-ja.md) | 実行結果の集計ダッシュボード | 提案 |
 <!-- /GENERATED:proposals-authoring -->
 
+### Dogfood フィクスチャ（デモアプリ）
+
+<!-- GENERATED:proposals-dogfood -->
+
+<!-- /GENERATED:proposals-dogfood -->
+
 ### AI プロバイダ設定
 
 <!-- GENERATED:proposals-ai-provider -->

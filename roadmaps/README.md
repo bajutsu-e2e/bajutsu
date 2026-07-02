@@ -452,6 +452,12 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0102](proposals/BE-0102-run-stats-dashboard/BE-0102-run-stats-dashboard.md) | Aggregate run-stats dashboard | Proposal |
 <!-- /GENERATED:proposals-authoring -->
 
+### Dogfood fixtures (demo apps)
+
+<!-- GENERATED:proposals-dogfood -->
+
+<!-- /GENERATED:proposals-dogfood -->
+
 ### AI provider configuration
 
 <!-- GENERATED:proposals-ai-provider -->
