@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-config-source-owner-repo-validation-ja.md)
+**English** · [日本語](BE-0124-config-source-owner-repo-validation-ja.md)
 
-# BE-XXXX — Tighten config-source owner and repo validation
+# BE-0124 — Tighten config-source owner and repo validation
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-config-source-owner-repo-validation.md) |
+| Proposal | [BE-0124](BE-0124-config-source-owner-repo-validation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
