@@ -48,6 +48,49 @@ not a new OS-level actuator. The selector model (`resolve_unique`), machine asse
 orchestrator loop, and the reporter all stay unchanged — only the source the backend reads to
 build the normalized `Element` tree changes.
 
+### The cheapest path: native identifier surfacing
+
+Since Flutter 3.19, `SemanticsProperties.identifier` maps straight into the OS accessibility tree —
+`resource-id` on Android (via `AccessibilityNodeInfo.setViewIdResourceName`) and
+`accessibilityIdentifier` on iOS. So a Flutter app whose widgets set `identifier` is **already
+resolvable through the existing idb / adb backends**, with no bridge and no new actuator: the `id`
+selector the rest of the system uses lands on the surfaced `resource-id` / `accessibilityIdentifier`.
+This is the recommended primary path and the cheapest slice — it needs an example app and an id
+convention in the docs, not a new backend — and it is why the semantics bridge below is a *fallback*
+for the apps that cannot surface an identifier, not the first thing built.
+
+### The fallback: a Dart VM Service semantics bridge
+
+For apps that do not (or cannot) surface `identifier`, or that need richer widget querying, read the
+framework's own tree over the **Dart VM Service** — the WebSocket the `integration_test` / Flutter
+Driver extension exposes (the observatory URL) — and normalize its semantics/widget nodes into the
+common `Element` tree the rest of the system already consumes. The design decision here mirrors
+BE-0019's runner-channel choice: build a thin in-repo VM Service client over that WebSocket rather
+than vendoring `appium-flutter-integration-driver`, keeping the thin-dependency stance (DESIGN §4).
+Resolution stays Python-side (`resolve_unique`), so the bridge is a read source only — it changes
+*where the `Element` tree comes from*, never how a selector resolves.
+
+### Work breakdown (MECE)
+
+1. **Native identifier path** — a Flutter example/showcase target whose widgets set
+   `SemanticsProperties.identifier`, plus the id-convention docs, proving a Flutter app is driven by the
+   existing idb / adb backends unchanged. Any normalization tweak needed so a surfaced Flutter tree maps
+   cleanly onto `Element` lands here.
+2. **VM Service semantics bridge** — a thin in-repo Dart VM Service client (`bajutsu/flutter.py`, mirroring
+   `bajutsu/webview.py`) that connects to the observatory WebSocket, reads the semantics/widget tree, and
+   normalizes it into `Element`s; wired as a read source behind the selected native actuator, not a new
+   actuator.
+3. **WebView / embedded-web hybrid bridge** — reuse the existing WebView→DOM bridge (`bajutsu/webview.py`
+   + the BajutsuKit bridge server, [BE-0037](../../implemented/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md))
+   so DOM nodes inside a WebView become resolvable, extended to the Android WebView case; designed together
+   with BE-0037 so the bridge story is shared, not duplicated.
+4. **Capabilities and disclosure** — the bridge advertises no new actuator capability; the selector model,
+   machine assertions, orchestrator loop, and reporter stay unchanged, and the run manifest records which
+   source (native tree / VM Service / WebView) supplied the elements.
+5. **Validation** — fast gate (no device): normalize captured semantics-tree and DOM fixtures into `Element`s
+   and assert resolve/ambiguity behavior over them. On-device (e2e): a Flutter demo driven both through native
+   `identifier` (slice 1) and through the VM Service bridge (slice 2), plus a WebView-hybrid scenario.
+
 ### Phasing — Phase 3, after the two native trees
 
 Treat cross-rendered support as the **third phase**, taken up only after the two native trees
@@ -73,7 +116,11 @@ until the two native trees are solid.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] TBD — enumerate the work breakdown (MECE) here once scoped.
+- [ ] Native identifier path — Flutter example target using `SemanticsProperties.identifier`, driven through the existing idb / adb backends; id-convention docs.
+- [ ] VM Service semantics bridge — thin in-repo Dart VM Service client normalizing the semantics tree into `Element`s (`bajutsu/flutter.py`).
+- [ ] WebView / hybrid bridge — reuse the BE-0037 WebView→DOM bridge, extended to Android; designed with BE-0037, not duplicated.
+- [ ] Capabilities and disclosure — bridge as a read source only; manifest records the element source.
+- [ ] Validation — fast-gate normalization/resolve tests over fixtures; on-device Flutter (native id + VM Service) and WebView-hybrid e2e.
 
 ## References
 
