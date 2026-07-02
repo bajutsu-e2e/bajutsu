@@ -10,7 +10,7 @@
 | Status | **In progress** |
 | Implementing PR | [#103](https://github.com/bajutsu-e2e/bajutsu/pull/103), [#154](https://github.com/bajutsu-e2e/bajutsu/pull/154), [#365](https://github.com/bajutsu-e2e/bajutsu/pull/365), [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
-| Related | [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model.md) |
+| Related | [BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -145,7 +145,7 @@ are in [`deploy/self-host/`](../../../deploy/self-host/) and
   server-side `QueueExecutor`; a `bajutsu worker` leases and runs it, streams logs back over the
   Redis log bus, and uploads the `runs/<id>/` tree to MinIO. Each run gets an **ephemeral Simulator**
   (`--erase`) so no state, keychain, or screenshots bleed between runs on a shared Mac.
-  **⚠ Under revision by [BE-XXXX](../../proposals/BE-XXXX-post-completion-worker-model/BE-XXXX-post-completion-worker-model.md)**
+  **⚠ Under revision by [BE-0106](../../proposals/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md)**
   — the post-completion worker model replaces the Redis broker and live-log bus with HTTP-based job
   dispatch and post-completion result collection, eliminating the `redis` container from this stack.
 - **Quotas.** A **global** concurrency cap (`--max-concurrent-runs`, default 4) and a **per-user** cap

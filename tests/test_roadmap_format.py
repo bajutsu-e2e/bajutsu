@@ -63,6 +63,17 @@ HEADINGS_EN = [
 ]
 HEADINGS_JA = ["はじめに", "動機", "詳細設計", "検討した代替案", "進捗", "参考"]
 
+# A ``BE-XXXX`` reference that should have been resolved to a real ``BE-NNNN`` id. CI allocates the
+# number on ``main`` after merge (BE-0089) by renaming the placeholder directory and rewriting the
+# item's *own* files — it does not touch cross-references living in *other* files. Two shapes are
+# stale leftovers: ``BE-XXXX`` inside a markdown link target ``](…BE-XXXX…)`` (a dangling link, since
+# no file keeps that name post-allocation) and ``BE-XXXX-<concrete-slug>`` used as a path/dir
+# reference. The naming *pattern* ``BE-XXXX-<slug>`` (literal ``<slug>``), bare ``BE-XXXX`` prose, and
+# the ``[BE-XXXX]`` title-prefix example are all legitimate and stay. An unallocated placeholder
+# item lives in a ``BE-XXXX-<slug>/`` directory and its own files self-reference ``BE-XXXX`` (header
+# link, ``Proposal`` metadata) — expected until CI numbers it, so those files are exempted below.
+DANGLING_BE_XXXX_RE = re.compile(r"\]\([^)]*BE-XXXX|BE-XXXX-(?!<)")
+
 TITLE_RE = re.compile(r"^# BE-\d{4} — .+$")
 META_BLOCK_RE = re.compile(r"<!-- BE-METADATA -->\n(.*?)\n<!-- /BE-METADATA -->", re.DOTALL)
 META_ROW_RE = re.compile(r"^\| (.+?) \| (.+?) \|\s*$", re.MULTILINE)
@@ -162,6 +173,30 @@ def _headings_outside_code(text: str) -> list[str]:
         if not in_code and line.startswith("## "):
             headings.append(line[3:].strip())
     return headings
+
+
+def test_no_unresolved_be_xxxx_references() -> None:
+    """No roadmap markdown may carry an unresolved ``BE-XXXX`` link or path reference.
+
+    Guards the cross-reference gap in the merge-time allocator (BE-0089): when a placeholder item is
+    numbered, links to it from *other* items keep pointing at the old ``BE-XXXX-<slug>`` path. This
+    walks every ``.md`` under ``roadmaps/`` (the index pages included) and fails with the full list of
+    offending ``path:line`` locations, so a dangling reference can't slip onto ``main``.
+    """
+    problems: list[str] = []
+    for path in sorted(ROADMAP.rglob("*.md")):
+        # A placeholder item's own files legitimately self-reference BE-XXXX until CI numbers it.
+        if any(part.startswith("BE-XXXX-") for part in path.parts):
+            continue
+        for lineno, line in enumerate(path.read_text("utf-8").splitlines(), start=1):
+            if DANGLING_BE_XXXX_RE.search(line):
+                rel = path.relative_to(ROADMAP.parent)
+                problems.append(f"{rel}:{lineno}: {line.strip()}")
+
+    assert not problems, (
+        "unresolved BE-XXXX reference(s) — replace with the allocated BE-NNNN id:\n"
+        + "\n".join(problems)
+    )
 
 
 def test_every_be_item_matches_the_canonical_format() -> None:
