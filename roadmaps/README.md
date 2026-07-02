@@ -409,6 +409,7 @@ Consolidating the demo and dogfood apps onto the showcase suite: bringing it to 
 |---|---|---|
 | [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) | Public hosting of the web UI | In progress |
 | [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) | Self-hosting of the web UI | In progress |
+| [BE-0110](in-progress/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | In progress |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### codegen coverage
@@ -488,7 +489,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | ID | Item | Status |
 |---|---|---|
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
-| [BE-0110](proposals/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) | Evidence upload to object storage via URI | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Security hardening
