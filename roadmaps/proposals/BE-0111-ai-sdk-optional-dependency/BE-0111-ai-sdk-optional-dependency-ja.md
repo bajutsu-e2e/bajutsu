@@ -1,11 +1,11 @@
-[English](BE-XXXX-ai-sdk-optional-dependency.md) · **日本語**
+[English](BE-0111-ai-sdk-optional-dependency.md) · **日本語**
 
-# BE-XXXX — AI SDK を extra へ降ろし、決定的ゲートを AI 非依存でインストールできるようにする
+# BE-0111 — AI SDK を extra へ降ろし、決定的ゲートを AI 非依存でインストールできるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ai-sdk-optional-dependency-ja.md) |
+| 提案 | [BE-0111](BE-0111-ai-sdk-optional-dependency-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | AI provider configuration |

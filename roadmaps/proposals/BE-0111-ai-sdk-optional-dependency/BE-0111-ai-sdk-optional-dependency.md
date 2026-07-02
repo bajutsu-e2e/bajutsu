@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-ai-sdk-optional-dependency-ja.md)
+**English** · [日本語](BE-0111-ai-sdk-optional-dependency-ja.md)
 
-# BE-XXXX — Make the AI SDK an optional extra so the deterministic gate installs AI-free
+# BE-0111 — Make the AI SDK an optional extra so the deterministic gate installs AI-free
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ai-sdk-optional-dependency.md) |
+| Proposal | [BE-0111](BE-0111-ai-sdk-optional-dependency.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | AI provider configuration |

@@ -458,6 +458,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0104](proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) | ベンダー中立な AI バックエンドインターフェース | 提案 |
+| [BE-0111](proposals/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency-ja.md) | AI SDK を extra へ降ろし、決定的ゲートを AI 非依存でインストールできるようにする | 提案 |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Web UI のホスティング（クラウド / セルフホスト）
