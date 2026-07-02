@@ -125,7 +125,9 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   translation:** use the conventional translation; if rendering a term would read unnaturally, keep
   the original (usually English) term (e.g. `selector`, `actuator`, `backend`). **No omissions:**
   each document must be self-contained — spell out abbreviations on first use and give the context
-  a reader needs, without assuming they read another page first.
+  a reader needs, without assuming they read another page first. **Acronyms are always spelled
+  out on first use, with the acronym in parentheses right after** (e.g. role-based access control
+  (RBAC)) — only the acronym alone thereafter.
   **When generating the Japanese side — writing it fresh, or translating the English `docs/` into
   `docs/ja/` (and roadmap `*-ja.md`) — follow the [`japanese-tech-writing`](.claude/skills/japanese-tech-writing/)
   skill: it is the authoritative style for Japanese prose here, and a translation must read as
