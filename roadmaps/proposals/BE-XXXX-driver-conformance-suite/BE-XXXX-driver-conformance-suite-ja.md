@@ -114,7 +114,7 @@ preflight と結び付けます）、conformance の契約を、新しい backen
 
 `Driver` Protocol と `drivers/base` の共通実装（スイートが列挙する契約と、backend が迂回する層）、
 既存の backend ごとのドライバテスト（fake / idb / Playwright。本項目が 1 つの仕様に統合するもの）、
-[DESIGN.md](../../../DESIGN.md) と [docs/architecture.md](../../../docs/architecture.md)（backend
+[DESIGN.md](../../../DESIGN.md) と [architecture.md](../../../docs/ja/architecture.md)（backend
 非依存の思想と、実装状態の source of truth）、
 [BE-0009](../../implemented/BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)
 （本項目が検査するクロスプラットフォームの抽象）、
