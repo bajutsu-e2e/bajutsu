@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-showcase-tab-navigation-no-launch-shortcut-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **Proposal** |
+| 状態 | **提案** |
 | トピック | Dogfood フィクスチャ（デモアプリ） |
 | 関連 | [BE-0079](../../in-progress/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase-ja.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) |
 | 由来 | Dogfooding |
