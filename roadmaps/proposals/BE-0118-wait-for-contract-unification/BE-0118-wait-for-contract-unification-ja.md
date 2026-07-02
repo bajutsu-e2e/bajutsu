@@ -1,11 +1,11 @@
-[English](BE-XXXX-wait-for-contract-unification.md) · **日本語**
+[English](BE-0118-wait-for-contract-unification.md) · **日本語**
 
-# BE-XXXX — ドライバ間で wait_for のポーリング契約を統一する
+# BE-0118 — ドライバ間で wait_for のポーリング契約を統一する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-wait-for-contract-unification-ja.md) |
+| 提案 | [BE-0118](BE-0118-wait-for-contract-unification-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |

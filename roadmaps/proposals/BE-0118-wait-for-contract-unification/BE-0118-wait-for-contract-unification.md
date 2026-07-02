@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-wait-for-contract-unification-ja.md)
+**English** · [日本語](BE-0118-wait-for-contract-unification-ja.md)
 
-# BE-XXXX — Unify the wait_for polling contract across drivers
+# BE-0118 — Unify the wait_for polling contract across drivers
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-wait-for-contract-unification.md) |
+| Proposal | [BE-0118](BE-0118-wait-for-contract-unification.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Platform expansion (Android / Web / Flutter) |
