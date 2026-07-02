@@ -219,7 +219,7 @@ def issue_body(item: Item) -> str:
         f"Tracking issue for roadmap item **[{item.be_id}]({href})**.",
         "",
         "Self-assign this issue when you pick the item up; leave it unassigned if it's up for grabs. "
-        "Opened and closed automatically from the item's `Status` (BE-0109) — don't close it by hand.",
+        + "Opened and closed automatically from the item's `Status` (BE-0109) — don't close it by hand.",
     ]
     if item.intro:
         lines += ["", *(f"> {line}" if line else ">" for line in item.intro.splitlines())]
