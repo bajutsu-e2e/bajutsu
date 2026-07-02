@@ -27,7 +27,7 @@ accuracy has reach beyond the repo.
 
 `docs/architecture.md` is the source of truth for implementation status; that division of labor is
 the intended one. But `DESIGN.md` does not itself say so. It presents as the finalized design
-without directing the reader to architecture.md for the current state, so when the two disagree a
+without directing the reader to `docs/architecture.md` for the current state, so when the two disagree a
 reader cannot tell from the document which to trust. Three divergences are confirmed against `main`:
 
 1. **Network evidence source (§3.2, §9).** DESIGN.md describes a single external **mock server** as
