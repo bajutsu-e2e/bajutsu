@@ -26,8 +26,8 @@ jobs:
       - name: Decide which identity enables auto-merge
         id: gate
         env:
-          APP_ID: ${{ secrets.ROADMAP_BOT_APP_ID }}
-          APP_KEY: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
+          APP_ID: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          APP_KEY: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
         run: |
           # Prefer the App only when BOTH halves are present (minting needs both); a half-configured
           # App must not be selected. Mirrors the gate in roadmap-id.yml so the two stay in lockstep.
@@ -35,7 +35,7 @@ jobs:
             echo "use_app=true" >> "$GITHUB_OUTPUT"
           else
             echo "use_app=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::ROADMAP_BOT App not configured — enabling auto-merge with GITHUB_TOKEN. Push-triggered workflows (roadmap-id) will not fire on the auto-merge, but they are dormant without the App anyway (BE-0089)."
+            echo "::notice::AUTOMATION_BOT App not configured — enabling auto-merge with GITHUB_TOKEN. Push-triggered workflows (roadmap-id) will not fire on the auto-merge, but they are dormant without the App anyway (BE-0089)."
           fi
 
       - name: Mint a short-lived installation token for the bypass App
@@ -43,8 +43,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
-          app-id: ${{ secrets.ROADMAP_BOT_APP_ID }}
-          private-key: ${{ secrets.ROADMAP_BOT_PRIVATE_KEY }}
+          app-id: ${{ secrets.AUTOMATION_BOT_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_BOT_PRIVATE_KEY }}
 
       - name: Enable auto-merge
         env:
