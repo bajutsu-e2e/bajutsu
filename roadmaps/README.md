@@ -499,7 +499,9 @@ Turning a passing scenario into a native test in a destination framework's idiom
 ### Development infrastructure (contributor workflow)
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0103](proposals/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering.md) | Right-size the model and reasoning effort per development task | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### Integration with external services

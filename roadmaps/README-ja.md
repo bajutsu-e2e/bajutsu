@@ -491,7 +491,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### 開発基盤（コントリビュータ体験）
 
 <!-- GENERATED:proposals-dev-infra -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0103](proposals/BE-0103-dev-model-effort-tiering/BE-0103-dev-model-effort-tiering-ja.md) | 開発タスクごとにモデルと推論エフォートを適正化する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携
