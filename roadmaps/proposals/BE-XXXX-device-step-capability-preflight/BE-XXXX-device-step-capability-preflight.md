@@ -35,7 +35,7 @@ This is precisely the failure mode BE-0082 (the capability preflight check) was 
 for gestures and visual assertions: "a scenario whose last step needed an unsupported capability ran
 every earlier step on a device first, then failed late" (`bajutsu/capability_preflight.py:1-9`).
 BE-0082's `unsupported()` gates `pinch`/`rotate` on `MULTI_TOUCH` and a `visual` assertion on
-`SCREENSHOT`, both declared on `Driver.CAPABILITIES`, but device-control steps have no capability
+`SCREENSHOT`, both declared on each driver class’s `CAPABILITIES`, but device-control steps have no capability
 token at all — they are gated by whether `DeviceControl` happens to be wired up at runtime, which
 the preflight (a pure function of `scenario` and the driver's `capabilities()`,
 `bajutsu/capability_preflight.py:109-122`) cannot see.
