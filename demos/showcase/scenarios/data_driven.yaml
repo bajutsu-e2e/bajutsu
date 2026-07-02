@@ -9,7 +9,7 @@
     - { q: "Horse 3", n: "3" }
     - { q: "Horse 5", n: "5" }
   preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search, SHOWCASE_SEED: "5" }
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_TAB: search }
   steps:
     - wait: { for: { id: search.field }, timeout: 10 }
     - type: { into: { id: search.field }, text: "${row.q}" }

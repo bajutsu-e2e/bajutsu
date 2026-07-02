@@ -83,15 +83,16 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 
 deeplink scheme はプロダクトごとに分けています（2 つのインストール済みアプリが衝突しないようにするため）：`showcaseswiftui`、
 `showcaseuikit`、および `…noax` 変種です。`bajutsu` は URL をリテラルに開くので、共有シナリオは deeplink では
-なく `launchEnv` ＋ タップ（scheme 非依存）を使います。deeplink を直接行使するには次のようにします:
+なく `launchEnv` ＋ タップ（scheme 非依存）を使います。deeplink はタブを選択するだけで、詳細画面を push する
+ことはありません（BE-0079）。deeplink を直接行使するには次のようにします:
 
 ```bash
-xcrun simctl openurl booted showcaseswiftui://horse/2
+xcrun simctl openurl booted showcaseswiftui://log
 xcrun simctl openurl booted showcaseuikit://permissions
 ```
 
-## `sample` との関係
+## 唯一の iOS フィクスチャ
 
-showcase は旧来の単一アプリ [`sample` フィクスチャ](../features/app/README.ja.md)を置き換えます。
-`sample` は、showcase がその実機 CI と Web UI ツアーもカバーするまで残します。移行の注記は BE 項目を
-参照してください。
+showcase は Bajutsu で唯一の iOS フィクスチャです。BE-0079 で showcase を同等機能まで引き上げ、すべての
+デモと実機 CI ジョブの向き先を showcase に変えたうえで、旧来の単一変種アプリ（`demo`、`sample`、`sample2`）を
+退役させました。

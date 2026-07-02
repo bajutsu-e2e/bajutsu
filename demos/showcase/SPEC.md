@@ -16,10 +16,10 @@ app has — tabbed + navigation + modal screen transitions, text entry, gestures
 loading, networking (live + mockable), and a screen that intentionally raises OS-level
 alerts — into the smallest coherent app that still tells that whole story.
 
-It supersedes the older `sample` fixture ([`demos/features/app`](../features/app)). Where
-`sample` is one SwiftUI app, the showcase ships **the same app written twice** (UIKit and
-SwiftUI) and **each in two accessibility variants**, to make a teaching point Bajutsu's whole
-design rests on visible:
+It is the **single iOS fixture** (BE-0079 retired the older `demo`/`sample`/`sample2` apps).
+Where a single-variant app is one codebase, the showcase ships **the same app written twice**
+(UIKit and SwiftUI) and **each in two accessibility variants**, to make a teaching point
+Bajutsu's whole design rests on visible:
 
 | Variant | Accessibility identifiers | Demonstrates |
 |---|---|---|
@@ -56,23 +56,24 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 |---|---|---|
 | `SHOWCASE_UITEST` | disable animations (tight condition waits) | unset |
 | `SHOWCASE_TAB` | initial tab: `stable`/`search`/`log`/`notices`/`permissions` | `stable` |
-| `SHOWCASE_SEED` | number of seeded catalog rows (offline) | `5` |
 | `SHOWCASE_API_URL` | base URL for the catalog GET (`/horses`) | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | base for the echo POST/DELETE endpoints | `https://httpbin.org` |
 
-> There is **no auth gate**: the app launches straight into the tab UI, so a scenario lands
-> on its tab via `SHOWCASE_TAB` (the same clean-state injection the `sample` fixture uses).
+> There is **no auth gate**: the app launches straight into the tab UI, on the Stable tab
+> (`SHOWCASE_TAB` may pick another). The catalog is **fixed** at five horses — there is no
+> launch-env seed knob (BE-0079): a scenario observes the app's own data, it cannot inject a
+> data state. Likewise there is no launch-env shortcut onto a *pushed* screen (see §4).
 
 ## 4. Deeplinks
 
-Scheme is per-variant (§2); the host grammar is shared. Opening any deeplink also dismisses
-modals and pops navigation to the tab root.
+Scheme is per-variant (§2); the host grammar is shared. A deeplink **selects a tab** (and
+dismisses modals / pops that tab to root); it does **not** push a detail screen (BE-0079). A
+detail is reached only by tapping its catalog row, so there is no shortcut straight onto a
+pushed screen.
 
 | Deeplink (host) | Effect |
 |---|---|
 | `…://stable` / `search` / `log` / `notices` / `permissions` | select that tab |
-| `…://horse/<id>` | select Stable tab, push Horse Detail for `<id>` |
-| `…://notice/<id>` | select Notices tab, push Notice Detail for `<id>` |
 
 ## 5. Screen-by-screen specification
 
@@ -86,14 +87,14 @@ screen. State is mirrored to `accessibilityValue` (in `-a11y`) so assertions rea
 | # | Screen | Reached via | Kind | Namespace(s) | Spec |
 |---|---|---|---|---|---|
 | 1 | Stable (catalog list) | `stable` tab | tab · list | `stable` | §5.1 |
-| 2 | Horse Detail | Stable row / `…://horse/<id>` | push | `horse` | §5.1 |
+| 2 | Horse Detail | Stable row | push | `horse` | §5.1 |
 | 3 | Search | `search` tab | tab · filter list | `search` | §5.2 |
 | 4 | Log | `log` tab | tab · form + modals | `log` | §5.3 |
 | 5 | — Filter sheet | `log.openFilter` | sheet (detents) | `log` | §5.3 |
 | 6 | — Gallery cover | `log.openGallery` | full-screen cover | `log` | §5.3 |
 | 7 | — Delete dialog | `log.openDelete` | action sheet | `log` | §5.3 |
 | 8 | Notices (list) | `notices` tab | tab · long list (scroll) | `notice` | §5.5 |
-| 9 | Notice Detail | Notices row / `…://notice/<id>` | push | `notice` | §5.5 |
+| 9 | Notice Detail | Notices row | push | `notice` | §5.5 |
 | 10 | Permissions | `permissions` tab / `…://permissions` | tab · **OS alerts** + pasteboard round-trip | `perm`, `sys` | §5.4 |
 
 Tabs, left to right: **Stable · Search · Log · Notices · Permissions**.
@@ -113,9 +114,9 @@ A `NavigationStack` (SwiftUI) / `UINavigationController` (UIKit). Catalog list w
 - `stable.refresh` — toolbar/button that re-fetches the catalog (GET `SHOWCASE_API_URL` + `/horses`); sets `stable.status` value to `loading` → `done`/`error`
 - `stable.status` — text; `accessibilityValue` = `idle`/`loading`/`done`/`error`
 - `stable.row.<horseId>` — one per catalog row, `<horseId>` data-derived (e.g. `stable.row.3`). Tapping pushes Horse Detail. Use `idMatches: "stable.row.*"` + `count` for set assertions.
-- `stable.empty` — shown only when the catalog is empty (`SHOWCASE_SEED=0` and no network rows)
+- `stable.empty` — shown only when the catalog is empty; the catalog is fixed non-empty (BE-0079), so this is defensive markup, not a reachable state in the showcase
 
-**Horse Detail** (pushed; also reachable via `…://horse/<id>`):
+**Horse Detail** (pushed by tapping a Stable row):
 - `horse.title` — the horse's name
 - `horse.id.value` — id, mirrored to value
 - `horse.fetch` — button: GET detail (`/horses/<id>`); `horse.status` value `loading`→`done`/`error`
@@ -187,14 +188,14 @@ navigation, scroll, and crawl scenarios.
 
 - `notice.row.<id>` — one per *visible* notice (`notice.row.1` … the off-screen tail appears only after scrolling), `<id>` data-derived. Tapping pushes Notice Detail. (Don't assert a fixed `count` over `notice.row.*` — only the on-screen rows are in the tree, which is device-dependent.)
 
-**Notice Detail** (pushed; also reachable via `…://notice/<id>`):
+**Notice Detail** (pushed by tapping a Notices row):
 - `notice.detail.title` — the notice's title (the screen's identifying element; the nav title carries no id)
 - `notice.detail.body` — the notice's body text
 - **Back** — the standard system back button; idb drives it by its OS-provided id `BackButton` (see §5.1).
 
 ## 6. Networking
 
-Mirrors the `sample` fixture's BajutsuKit integration:
+Uses the standard BajutsuKit integration:
 
 - The app links **BajutsuKit** and calls `BajutsuNet.startIfEnabled()` at launch (a no-op unless
   `BAJUTSU_COLLECTOR` is injected). All requests then flow through the interceptor, so `network`
