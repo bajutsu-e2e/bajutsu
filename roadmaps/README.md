@@ -508,7 +508,9 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 Where `bajutsu` reads its config and scenario tree from. Today that is a local path; the items here propose naming a **Git repository at a ref** (`github:owner/repo@ref:path`) or uploading a bundle, so a hosted or self-hosted `serve`, or a CI runner, can pull a team's test repo directly.
 
 <!-- GENERATED:proposals-config-sourcing -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0119](proposals/BE-0119-scenario-schema-versioning/BE-0119-scenario-schema-versioning.md) | Version the scenario schema for cross-version reads | Proposal |
 <!-- /GENERATED:proposals-config-sourcing -->
 
 ### codegen coverage

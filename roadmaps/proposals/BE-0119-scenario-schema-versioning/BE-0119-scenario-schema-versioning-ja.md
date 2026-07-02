@@ -1,11 +1,11 @@
-[English](BE-XXXX-scenario-schema-versioning.md) · **日本語**
+[English](BE-0119-scenario-schema-versioning.md) · **日本語**
 
-# BE-XXXX — バージョン間の読み込みに備えてシナリオスキーマにバージョンを持たせる
+# BE-0119 — バージョン間の読み込みに備えてシナリオスキーマにバージョンを持たせる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-schema-versioning-ja.md) |
+| 提案 | [BE-0119](BE-0119-scenario-schema-versioning-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | config の取得元 |

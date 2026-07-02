@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-scenario-schema-versioning-ja.md)
+**English** · [日本語](BE-0119-scenario-schema-versioning-ja.md)
 
-# BE-XXXX — Version the scenario schema for cross-version reads
+# BE-0119 — Version the scenario schema for cross-version reads
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-schema-versioning.md) |
+| Proposal | [BE-0119](BE-0119-scenario-schema-versioning.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Configuration sourcing |
