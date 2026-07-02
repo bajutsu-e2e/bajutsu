@@ -174,15 +174,6 @@ the **lean** end of `capabilities()`.
 - [ ] codegen target — Espresso / UI Automator generator (follow-up slice).
 - [ ] Validation — fast-gate driver/registry tests over dump fixtures; on-device emulator e2e via KVM.
 
-Log:
-
-- 2026-07-03 — The Android showcase fixture
-  ([`demos/showcase/android/`](../../../demos/showcase/android/)) landed as preparation ahead of
-  the driver work: two codebases (Compose — testTag → `resource-id` — and Views — `android:id`)
-  × the a11y/noax flavor pair, exercising the id conventions and selector mapping above from the
-  app side, with the four `showcase.config.yaml` targets (`showcase-compose*` / `showcase-views*`,
-  `backend: [android]`) wired. The work breakdown itself (checklist above) remains unstarted.
-
 ## References
 
 [DESIGN](../../../DESIGN.md), `bajutsu/drivers/`, `bajutsu/backends.py`,
