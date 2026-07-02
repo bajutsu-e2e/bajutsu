@@ -23,7 +23,13 @@ _BEDROCK_MODEL = "global.anthropic.claude-opus-4-6-v1"
 def _clean_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Start from a known provider state; monkeypatch restores the originals at teardown even
     though the handler writes os.environ directly."""
-    for var in (ac.PROVIDER_ENV, ac.BEDROCK_MODEL_ENV, "AWS_REGION", AGENT_ENV):
+    for var in (
+        ac.PROVIDER_ENV,
+        ac.BEDROCK_MODEL_ENV,
+        ac.ANTHROPIC_KEY_ENV,
+        "AWS_REGION",
+        AGENT_ENV,
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
