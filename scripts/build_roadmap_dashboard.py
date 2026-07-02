@@ -268,6 +268,15 @@ _SCRIPT = """
 
 _INTRO = (
     "# Roadmap status\n\n"
+    '!!! warning "Ownership tracking lives in GitHub Issues, not on this page"\n'
+    "    Every open item (status `Proposal` or `In progress`) has a matching GitHub issue, and "
+    "that issue's **Assignees — not this dashboard or any file in the repo — are the single "
+    "source of truth** for who, if anyone, is working on it. Browse issues labeled "
+    "[`roadmap-tracking`]"
+    "(https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking): "
+    "`no:assignee` for the unclaimed backlog, `assignee:<user>` for one person's plate. See "
+    "[BE-0109](https://github.com/bajutsu-e2e/bajutsu/blob/main/roadmaps/implemented/"
+    "BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for how the sync works.\n\n"
     "Live view of every roadmap (BE) item, grouped by category — each category showing the share of "
     "its items already implemented, and each card its own status. Regenerated from item metadata on "
     "every docs build, so it always reflects the committed roadmap. Fully-implemented categories are "

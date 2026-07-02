@@ -2,6 +2,16 @@
 
 # Bajutsu roadmap / backlog
 
+> [!IMPORTANT]
+> **オープンな項目の担当者管理は、このファイルではなく GitHub Issues で行っています。** `状態` が
+> `提案` または `実装中` の項目には、それぞれ対応する GitHub Issue があり、その Issue の
+> **Assignee（担当者）** が、誰が担当しているかについての真実です（このリポジトリのどの欄も担当者を
+> 追跡していません）。[`roadmap-tracking` ラベルの付いた Issue 一覧](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking)
+> から確認できます。`no:assignee` で未着手のバックログを、`assignee:<user>` で担当者ごとの分担を
+> 絞り込めます。詳しくは
+> [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md)
+> を参照してください。
+
 > 今後実装したい機能を管理するドキュメントです。各項目は 1 ファイル（1 項目 = 1 BE ID）。
 > まとまっていない思いつきはまず [未整理アイデア](#未整理アイデア) に追加し、内容が固まったら
 > 採番済みの項目へ昇格させます。

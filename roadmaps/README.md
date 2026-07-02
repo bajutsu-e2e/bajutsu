@@ -2,6 +2,15 @@
 
 # Bajutsu roadmap / backlog
 
+> [!IMPORTANT]
+> **Ownership of open items lives in GitHub Issues, not in this file.** Every open item (`Status`
+> `Proposal` or `In progress`) has a matching GitHub issue, and that issue's **Assignees** are the
+> single source of truth for who, if anyone, is working on it — no field in this repo tracks that.
+> Browse [issues labeled `roadmap-tracking`](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking):
+> `no:assignee` for the unclaimed backlog, `assignee:<user>` for one person's plate. See
+> [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) for
+> details.
+
 > This document tracks features planned for future implementation. Each item has its own file
 > (one BE ID per item). Add unformed thoughts to [Unsorted ideas](#unsorted-ideas) first, then
 > promote them to a numbered item once the scope is clear.
