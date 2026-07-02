@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0101](BE-0101-ai-free-zero-config-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トピック | AI provider configuration |
 | 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) |
 <!-- /BE-METADATA -->
@@ -184,10 +184,20 @@ fail-closed で停止し（`anthropic_client.credential_gap()`）、[BE-0053](..
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単一の機能分類 — 機械可読な `uses_claude` データと二言語のドキュメントページ
-- [ ] 統一された `ai_availability` 判定 — プロバイダ（Anthropic / Bedrock）とバックエンド（SDK / Claude Code CLI）を横断
-- [ ] テストされたゼロ設定の保証 — AI 準備無しの回帰テストと import 時のガード
-- [ ] 可視化 — `serve` の無効化タブによる縮退、分類した CLI ヘルプ、独立した任意の `doctor` Claude 準備状況の節
+- [x] 単一の機能分類 — 機械可読な `uses_claude` データと二言語のドキュメントページ
+- [x] 統一された `ai_availability` 判定 — プロバイダ（Anthropic / Bedrock）とバックエンド（SDK / Claude Code CLI）を横断
+- [x] テストされたゼロ設定の保証 — AI 準備無しの回帰テストと import 時のガード
+- [x] 可視化 — `serve` の無効化タブによる縮退、分類した CLI ヘルプ、独立した任意の `doctor` Claude 準備状況の節
+
+**ログ**
+
+- 4 つの部品を 1 つの変更でまとめて実装しました。`bajutsu/capabilities.py`（唯一の分類。`--help`、
+  ドキュメントページ、`doctor`、ゼロ設定テストが参照します）、`bajutsu/ai_availability.py`（SDK と
+  Claude Code CLI のバックエンドを横断した到達可否の統一判定）、`tests/test_zero_config.py`（import
+  時のガードと、Claude を使わない集合に対する AI 準備無しの回帰テスト）、そして可視化として、
+  グループ化した `bajutsu --help`、`doctor` の任意の「Claude (optional)」節、`serve` の無効化した
+  record / crawl タブとインラインの説明を追加しました。ドキュメントは `docs/ai-boundary.md`（および
+  日本語版）です。
 
 ## 参考
 

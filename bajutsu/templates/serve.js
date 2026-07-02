@@ -183,6 +183,23 @@ async function loadProv(){
   $('#bedrock-model').value=d.model||'';
   renderProv();
 }
+// ---- Claude reachability (BE-0101): the record/crawl surfaces degrade gracefully when Claude
+// can't be reached — the tabs read disabled and each view shows an inline explanation naming what
+// is missing with a pointer to Settings, instead of only failing on click. Flips live as soon as a
+// key is saved / a provider is picked (saveSettings re-runs this). Availability is data from
+// /api/provider (claudeAvailable / claudeHint), so the three surfaces never disagree.
+async function refreshAiAvailability(){
+  let d;try{d=await (await fetch('/api/provider')).json()}catch(e){d={}}
+  const ok=d.claudeAvailable!==false, hint=d.claudeHint||'set an API key, configure Bedrock, or sign in to the Claude Code CLI.';
+  document.querySelectorAll('.toptab[data-view="record"],.toptab[data-view="crawl"]').forEach(t=>t.classList.toggle('disabled',!ok));
+  [['#rec-aigate','#rec-go'],['#crawl-aigate','#crawl-go']].forEach(([gate,btn])=>{
+    const g=$(gate);
+    if(g){g.hidden=ok;if(!ok)g.innerHTML='<b>This needs Claude.</b> '+esc(hint)+' <button class="link" type="button" data-open-settings>Open Settings</button>';}
+    const b=$(btn);if(b)b.disabled=!ok;
+  });
+}
+// One delegated listener: the gate banner's "Open Settings" button is re-created on every refresh.
+document.addEventListener('click',e=>{if(e.target.closest('[data-open-settings]'))openSettings();});
 // ---- Settings: one Save persists the provider; the API key saves on every path but Bedrock ----
 async function saveSettings(){
   const provider=$('#provider').value,body={provider};
@@ -204,6 +221,7 @@ async function saveSettings(){
     }
   }
   setSettingsStatus('saved','ok');
+  refreshAiAvailability();  // a just-saved key / provider can flip the record/crawl gate live
 }
 // ---- Settings modal: one panel for the provider + API-key controls ----
 function openSettings(){$('#settingsmodal').hidden=false;$('#apikey').value='';setSettingsStatus('','');loadKey();loadProv()}
@@ -247,6 +265,7 @@ async function loadShared(){
   syncPlatform('#panel-editor','#edt-target');
   await loadScenarios();
   if(!$('#view-editor').hidden)editorRefresh();
+  refreshAiAvailability();  // a newly-bound config's ai.keyEnv can change reachability
 }
 // Scenarios come from the selected target's configured dir, so reload when the Replay target changes.
 async function loadScenarios(){
@@ -1550,6 +1569,7 @@ if(!NARROW_MQ.matches)initTiling();
 
 initTheme();
 loadConfig();
+refreshAiAvailability();
 loadSims();
 loadHistory();
 setInterval(loadHistory,4000);

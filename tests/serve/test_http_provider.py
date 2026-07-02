@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from _shared import _get_json, _post, _serve, project
 
+from bajutsu import ai_availability
 from bajutsu import anthropic_client as ac
 from bajutsu import serve as srv
 from bajutsu.agents import AGENT_ENV
@@ -37,10 +38,15 @@ def test_http_provider_select_bedrock_and_back(
         srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
     )
     try:
+        # No key set, so the record/crawl tabs would read disabled (BE-0101): the payload carries the
+        # reachability the front end gates on, with an actionable hint.
         assert _get_json(port, "/api/provider") == {
             "provider": "anthropic",
             "region": "",
             "model": "",
+            "claudeAvailable": False,
+            "claudeGap": "anthropic-key",
+            "claudeHint": ai_availability.message("anthropic-key"),
         }
         code, body = _post(
             port,
@@ -53,10 +59,15 @@ def test_http_provider_select_bedrock_and_back(
         assert os.environ["AWS_REGION"] == "us-east-1"
         assert os.environ[ac.BEDROCK_MODEL_ENV] == _BEDROCK_MODEL
         assert not (tmp_path / ".env").exists()  # nothing persisted to disk
+        # Bedrock with a provider-prefixed model id is reachable (AWS creds authenticate it), so the
+        # gate reports available and the front end re-enables the Claude tabs.
         assert _get_json(port, "/api/provider") == {
             "provider": "bedrock",
             "region": "us-east-1",
             "model": _BEDROCK_MODEL,
+            "claudeAvailable": True,
+            "claudeGap": None,
+            "claudeHint": "",
         }
         # Switch back to the Anthropic API.
         code, body = _post(port, "/api/provider", {"provider": "anthropic"})
