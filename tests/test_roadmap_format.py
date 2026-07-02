@@ -72,7 +72,7 @@ HEADINGS_JA = ["はじめに", "動機", "詳細設計", "検討した代替案"
 # the ``[BE-XXXX]`` title-prefix example are all legitimate and stay. An unallocated placeholder
 # item lives in a ``BE-XXXX-<slug>/`` directory and its own files self-reference ``BE-XXXX`` (header
 # link, ``Proposal`` metadata) — expected until CI numbers it, so those files are exempted below.
-DANGLING_BE_XXXX_RE = re.compile(r"\]\([^)]*BE-XXXX|BE-XXXX-(?!<)")
+DANGLING_BE_XXXX_RE = re.compile(r"\]\([^)]*BE-XXXX(?!-<)|BE-XXXX-(?!<)")
 
 TITLE_RE = re.compile(r"^# BE-\d{4} — .+$")
 META_BLOCK_RE = re.compile(r"<!-- BE-METADATA -->\n(.*?)\n<!-- /BE-METADATA -->", re.DOTALL)
@@ -186,7 +186,9 @@ def test_no_unresolved_be_xxxx_references() -> None:
     problems: list[str] = []
     for path in sorted(ROADMAP.rglob("*.md")):
         # A placeholder item's own files legitimately self-reference BE-XXXX until CI numbers it.
-        if any(part.startswith("BE-XXXX-") for part in path.parts):
+        # Match the containing directory chain only (not the filename), so a stray BE-XXXX-*.md
+        # file living outside a placeholder directory is still checked.
+        if any(part.startswith("BE-XXXX-") for part in path.parent.parts):
             continue
         for lineno, line in enumerate(path.read_text("utf-8").splitlines(), start=1):
             if DANGLING_BE_XXXX_RE.search(line):
