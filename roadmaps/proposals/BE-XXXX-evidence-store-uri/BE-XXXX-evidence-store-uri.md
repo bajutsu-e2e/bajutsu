@@ -51,8 +51,10 @@ s3://my-bucket/evidence/main/
 gs://my-bucket/evidence/feature/pr-123/
 ```
 
-The scheme (`s3` or `gs`) selects the backend. The first path segment is the bucket name;
-the remainder is the key prefix. A trailing slash is normalized (always present internally).
+The scheme (`s3` or `gs`) selects the backend (`gs://` maps to the `gcs` backend
+internally — the scheme follows the `gsutil` / `gcloud` convention while the backend name
+matches the library). The first path segment is the bucket name; the remainder is the key
+prefix. A trailing slash is normalized (always present internally).
 
 A thin parser (`bajutsu/object_store.py`) produces a `StoreURI` dataclass:
 
@@ -69,14 +71,17 @@ class StoreURI:
 The existing `serve/server/object_store.py` `ObjectStore` protocol is promoted to a
 top-level module (`bajutsu/object_store.py`) so both `run` and `serve` can use it.
 
-The protocol keeps its current surface:
+The protocol retains the current surface (`exists`, `get_bytes`, `put_bytes`, `put_file`,
+`presigned_url`, `list_keys`) and extends it with a `content_type` keyword argument on
+`put_bytes` so the upload step can set the correct MIME type per artifact:
 
 ```python
 class ObjectStore(Protocol):
     def exists(self, key: str) -> bool: ...
     def get_bytes(self, key: str) -> bytes | None: ...
     def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None: ...
-    def put_file(self, key: str, path: Path) -> None: ...
+    def put_file(self, key: str, path: Path, *, content_type: str = "") -> None: ...
+    def presigned_url(self, key: str) -> str: ...
     def list_keys(self, prefix: str) -> list[str]: ...
 ```
 
@@ -195,8 +200,9 @@ evidenceStore:
 
 Rejected: splitting bucket/region/prefix across config fields is less intuitive than a
 single URI. The URI is self-contained, greppable, and familiar from tools like `aws s3 cp`.
-Region and endpoint can be set via the standard SDK environment variables
-(`AWS_DEFAULT_REGION`, `BAJUTSU_S3_ENDPOINT`).
+Region and endpoint can be set via the environment variables the existing
+`s3_client_from_env()` already consumes (`BAJUTSU_S3_REGION` / `AWS_REGION`,
+`BAJUTSU_S3_ENDPOINT`).
 
 ### B. Direct-write `ObjectStoreSink` (skip local filesystem)
 

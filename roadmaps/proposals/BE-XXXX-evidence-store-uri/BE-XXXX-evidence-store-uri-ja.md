@@ -40,7 +40,7 @@ s3://my-bucket/evidence/main/
 gs://my-bucket/evidence/feature/pr-123/
 ```
 
-スキーム（`s3` または `gs`）がバックエンドを選択します。最初のパスセグメントがバケット名、残りがキープレフィックスです。末尾のスラッシュは内部で正規化されます（常に付与）。
+スキーム（`s3` または `gs`）がバックエンドを選択します。`gs://` は内部的に `gcs` バックエンドにマップされます。スキームは `gsutil` / `gcloud` の慣例に合わせ、バックエンド名はライブラリ名に合わせています。最初のパスセグメントがバケット名、残りがキープレフィックスです。末尾のスラッシュは内部で正規化されます（常に付与）。
 
 パーサー（`bajutsu/object_store.py`）が `StoreURI` データクラスを生成します。
 
@@ -56,14 +56,15 @@ class StoreURI:
 
 既存の `serve/server/object_store.py` にある `ObjectStore` プロトコルを、トップレベルモジュール（`bajutsu/object_store.py`）に昇格させます。`run` と `serve` の両方から利用できるようにするためです。
 
-プロトコルの表面は現行を維持します。
+現行のプロトコル表面（`exists`、`get_bytes`、`put_bytes`、`put_file`、`presigned_url`、`list_keys`）を維持したまま、`put_bytes` と `put_file` に `content_type` キーワード引数を追加します。アップロード時にアーティファクトごとの MIME タイプを設定するためです。
 
 ```python
 class ObjectStore(Protocol):
     def exists(self, key: str) -> bool: ...
     def get_bytes(self, key: str) -> bytes | None: ...
     def put_bytes(self, key: str, data: bytes, *, content_type: str = "") -> None: ...
-    def put_file(self, key: str, path: Path) -> None: ...
+    def put_file(self, key: str, path: Path, *, content_type: str = "") -> None: ...
+    def presigned_url(self, key: str) -> str: ...
     def list_keys(self, prefix: str) -> list[str]: ...
 ```
 
@@ -163,7 +164,7 @@ evidenceStore:
   prefix: evidence/
 ```
 
-バケット、リージョン、プレフィックスを設定フィールドに分離する方式です。URI 一本のほうが直感的で、`aws s3 cp` などのツールと同じ形式で統一感があるため、採用しませんでした。リージョンやエンドポイントは SDK の標準環境変数（`AWS_DEFAULT_REGION`、`BAJUTSU_S3_ENDPOINT`）で設定できます。
+バケット、リージョン、プレフィックスを設定フィールドに分離する方式です。URI 一本のほうが直感的で、`aws s3 cp` などのツールと同じ形式で統一感があるため、採用しませんでした。リージョンやエンドポイントは、既存の `s3_client_from_env()` が参照する環境変数（`BAJUTSU_S3_REGION` / `AWS_REGION`、`BAJUTSU_S3_ENDPOINT`）で設定できます。
 
 ### B. ダイレクト書き込み `ObjectStoreSink`（ローカル FS を経由しない）
 
