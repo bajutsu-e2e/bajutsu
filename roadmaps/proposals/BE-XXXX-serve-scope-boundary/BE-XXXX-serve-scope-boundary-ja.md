@@ -17,7 +17,7 @@
 
 ## 動機
 
-`bajutsu/serve/`（`server/` サブパッケージを含む）は約 30 モジュールにわたり 6,920 行の Python で構成され、これに加えてビルドもテストハーネスも持たないバニラ JavaScript である `bajutsu/templates/serve.js` が 1,575 行あります。両者を合わせると、リポジトリ全体（`bajutsu/` は Python だけで約 30,000 行）のおよそ 5 分の 1 を占めます。`bajutsu/serve/operations.py` だけでも 1,376 行あり（これは姉妹提案の `split-serve-operations-module` で別途扱います）。このサブシステムは SQLAlchemy のモデル、Alembic のマイグレーション、OAuth、RBAC、オブジェクトストア、Redis ベースのワーカーを抱えており、ローカル CLI ツールのコアが本来知る必要のないインフラです。
+`bajutsu/serve/`（`server/` サブパッケージを含む）は約 30 モジュールにわたり 6,920 行の Python で構成され、これに加えてビルドもテストハーネスも持たないバニラ JavaScript である `bajutsu/templates/serve.js` が 1,575 行あります。両者を合わせると、リポジトリ全体（`bajutsu/` は Python だけで約 30,000 行）のおよそ 5 分の 1 を占めます。`bajutsu/serve/operations.py` だけでも 1,376 行あり、これは姉妹提案の `split-serve-operations-module` で別途扱います。このサブシステムは SQLAlchemy のモデル、Alembic のマイグレーション、OAuth、RBAC、オブジェクトストア、Redis ベースのワーカーを抱えており、ローカル CLI ツールのコアが本来知る必要のないインフラです。
 
 この肥大化は `bajutsu/serve/` の内部にとどまりません。`bajutsu/config.py:340` は「`orgs.<name>` 配下の 1 テナント（BE-0015 のマルチテナンシー）」を表すモデル `OrgConfig` を定義しており、`Config` 自体も `orgs: dict[str, OrgConfig]` フィールド（`config.py:357`）と、それを解決するヘルパー群（`org_for_user`、`org_for_target`、`org_for_identity`、`targets_for_org`、`config.py:380-415`）を抱えています。これらはローカルの Simulator に対して `bajutsu run` を実行する個人開発者にとって何の意味も持ちません。存在理由は `serve` のホスト型マルチテナントデプロイ（BE-0015）を支えるためだけです。`Config` はあらゆるエントリポイントがパースするスキーマなので、ホスティングの関心事が共有 config の表面に恒久的な負荷として居座ってしまっています。これは、`Effective`/`Config` が本来体現すべき「app-agnostic」かつ「決定的なコアを不変に保つ」という前提に真っ向から反します。
 
@@ -25,20 +25,24 @@
 
 ## 詳細設計
 
-ここでは唯一の機械的な分割案を一つに定めるのではなく、`serve` とコアの境界を明示するという方向性を示します。作業は独立した 3 つの軸に分かれます。
+境界は、サイズの上限やパッケージ分割ではなく、一つの具体的な移設と機械的に検査できる規則で引きます。現在のコードから得た事実を根拠に、次の手順を定めます。
 
-1. **境界を名指しして文書化する。** `docs/` に短いアーキテクチャノートを追加し、規則を明記します。`bajutsu/config.py`、`bajutsu/drivers/`、`bajutsu/runner/`、`bajutsu/scenario/`、その他の Tier-1・Tier-2 モジュールはホストに依存しないままとし、組織・ロール・テナンシー・課金といった概念を一切持ち込みません。ホスティングの関心事を持つのは `bajutsu/serve/` だけです。これにより、レビュアーは PR ごとの暗黙の判断ではなく、引用可能な規則を根拠にできます。
-2. **ホスト向けの config を `config.py` から追い出す。** `OrgConfig`、`orgs` フィールド、`org_for_*`/`targets_for_org` ヘルパー（`config.py:340-415`）を `serve` 側が所有するモジュール（例えば `bajutsu/serve/orgs.py`）へ移し、共有モデルの内部ではなく `serve` の境界でコアの `Config` の上に組織データを重ねる形にします。ローカルの `bajutsu run` が `OrgConfig` を構築したり参照したりすることは、二度とあってはなりません。
-3. **`serve` の成長に上限を設けるか切り出すかを決める。** `serve` を引き続き `bajutsu` パッケージ内に置いてサイズ・複雑度の上限を強制するのか、コアパッケージに依存する別の配布物（例えば `bajutsu-serve`）として切り出すのかを検討し、決定を記録します。どちらを選ぶにせよ、`make check` が担う決定的なコアのゲートは `serve` の依存関係（SQLAlchemy、Alembic、Redis クライアント、OAuth ライブラリ）を意識しないままに保つ必要があります。これらは CLI コアのインストール要件になってはならず、あくまでオプションの extra であり続けます。
-4. **`serve.js` にその規模に見合ったテストハーネスを与える。** 1,575 行のテストなしバニラ JavaScript は、それ自体がスコープ肥大の一症状です。最低限のテスト・ビルド体制を整えるか、あるいはフレームワークなしのまま軽量なガードレール（lint とスモークテストなど）にとどめると明示的に決定するか、いずれかを `operations.py` のファサード分割とは別に、この境界画定の一部として扱います。
+1. **規則を文書化する。** `docs/`（および対になる `docs/ja/`）に短いアーキテクチャノートを追加し、規則を明記します。`bajutsu/config.py`、`bajutsu/drivers/`、`bajutsu/runner/`、`bajutsu/scenario/` はホストに依存しないままとし、組織・ロール・テナンシー・課金といった概念も、`db`（SQLAlchemy、Alembic、psycopg）や `oauth`（Authlib）の extra も一切持ち込みません。ホスティングの関心事を持つのは `bajutsu/serve/` だけです。このノートは次の検査を指し示すだけにとどめ、規則をレビュアーの記憶に頼らせません。
+2. **サイズの上限ではなく、ゲートの検査で強制する。** この境界は現時点ですでに成り立っています。コアの各モジュールを調べたところ、`bajutsu.serve` や `db`・`oauth` extra への import は一件もありませんでした。さらに `bajutsu/serve/server/logbus.py` と `sessions.py` は Redis クライアントを直接 import せず、注入された `RedisLike` プロトコル越しに扱っています。つまり `serve` 自体、Redis を必須の依存として抱えてすらいません。`tests/test_serve_boundary.py` を追加し、`bajutsu/config.py`、`bajutsu/drivers/`、`bajutsu/runner/`、`bajutsu/scenario/` の抽象構文木を辿って、これらが `bajutsu.serve` または `db`・`oauth` extra のパッケージを import していないかを検査し、していれば失敗させます。これを `make check` に組み込めば、「`serve` が境界内にとどまっている」という性質は判断ではなくゲートが捕まえる退行になります。分離はすでに依存関係のレベルで実現しているので、`bajutsu-serve` のような別配布物に切り出す必要はなく、この検査はその状態を固定するだけです。
+3. **`OrgConfig` と組織用ヘルパーを `bajutsu/serve/orgs.py` へ移す。** `OrgConfig`、`DEFAULT_ORG`、`org_for_user`、`org_for_target`、`org_for_identity`、`targets_for_org` を呼んでいる箇所は、`serve/__init__.py`、`authz.py`、`jobs.py`、`operations.py`、`server/worker_job.py` の5箇所で、いずれもすでに `bajutsu/serve/` の内部です。コアからの呼び出しは一件もないため、この移設は探索の要る設計判断ではなく機械的な作業です。
+   - `OrgConfig`（`config.py:339-348`）、`DEFAULT_ORG`（`config.py:376-378`）、`org_for_user`・`org_for_target`・`org_for_identity`・`targets_for_org`（`config.py:380-415`）を、そのまま新設の `bajutsu/serve/orgs.py` へ移します。この4つの関数はいずれも `config.orgs` しか読んでいないので、引数を `config: Config` から `orgs: dict[str, OrgConfig]` へ絞り込みます。
+   - `Config` から `orgs` フィールド（`config.py:357`）を削除します。`_Model` は typo 対策として意図的に `extra="forbid"`（`config.py:27`）を設定しているため、フィールドを削除すると、トップレベルに `orgs:` を持つ YAML はすべて `Config.model_validate` で弾かれるようになります。`serve` は生の設定文書をそのまま `Config` に渡せなくなります。
+   - `load_config`（`config.py:649-652`）を、検証だけを行う `parse_config_dict(data: dict) -> Config` と、`_yaml.safe_load` の後に `parse_config_dict` を呼ぶ `load_config(text: str) -> Config` に分割します。YAML のパース処理を重複させずに、`serve` 用のフックを用意できます。
+   - `bajutsu/serve/orgs.py` に `load_serve_config(text: str) -> tuple[Config, dict[str, OrgConfig]]` を追加します。生の YAML を一度パースし、`orgs` キーを取り除いてから残りを `parse_config_dict` に渡し、取り除いた側は `serve` 内で `OrgConfig` として検証します。`serve/__init__.py`、`authz.py`、`jobs.py`、`operations.py` は、`org_for_*` と `load_config` の import 元を `bajutsu.config` から `bajutsu.serve.orgs` に切り替えます。ローカルの `bajutsu run` / `bajutsu record` はそのまま `load_config` を呼び続け、`OrgConfig` を構築することも目にすることもありません。
+4. **`serve.js` には lint と構文検査を与え、本格的なテストフレームワークはまだ導入しません。** 1,575 行のテストなしバニラ JavaScript はそれ自体がスコープ肥大の一症状ですが、まず見合った一歩は軽いガードレールです。`bajutsu/templates/serve.js` を対象にした最小限の ESLint のフラット設定を追加し、`node --check` と `npx eslint` を `make lint` に組み込みます。Node が入っていない環境では、`actionlint` と同じように通知つきでスキップします。Jest や Vitest のようなコンポーネント・ユニットテストの基盤は、`serve.js` が導入するに値するだけの分岐ロジックを抱えるようになるまで明示的に先送りします。その判断条件をここに記録しておくことで、先送りが見落としではなく決定として残ります。
 
-これはスコープを画定する作業であり、振る舞いの変更ではありません。`serve` が何をするかではなく、そのコードと config の関心事がどこに存在するかだけを変えるものです。したがって `run`/CI のランタイム挙動には一切触れず、3 つのプライムディレクティブすべてに構造的に準拠します。
+これはスコープを画定し、ゲートを整える作業であり、振る舞いの変更ではありません。`serve` がユーザーに対して行うことは変わらず、そのコードと config と依存関係がどこに存在してよいかだけが変わります。したがって3つのプライムディレクティブすべてに構造的に準拠します。新設する2つのゲート検査は `make check` の側で走るのであり、`run` の内部では動きません。
 
 ## 検討した代替案
 
 - **何もせず、現状のまま `serve` を成長させ続ける。** 短期的には最も安上がりですが、config の漏れは複利的に悪化します。将来のホスティング機能（SSO、課金、監査ログの保持）が新たに追加されるたびに `config.py` へ紛れ込む前例となり、CLI のスキーマが SaaS の関心事に恒久的に結合されてしまいます。
-- **`serve` を完全に別リポジトリへ分割する。** 分離の度合いは最大化されますが、`serve` は今後も core の `Config`/`Driver` の変更に密接に追随する必要があるため、バージョニング・CI・リリースといったリポジトリ間調整の実コストが生じます。同じモノレポから作る別配布物（上記の案 3）であれば、そのオーバーヘッドなしに分離の利点の大部分を得られます。
-- **分割が終わるまで `serve` の機能開発を凍結する。** 却下します。`serve` のハードニングとホスティング（BE-0015、BE-0016、BE-0051）はいずれも価値のある進行中のトラックであり、境界画定はそれらをブロックするのではなく、並行して段階的に進めるべきです。
+- **`serve` を別の配布物（例えば `bajutsu-serve`）や別リポジトリへ分割する。** いまは却下します。分割が得る分離は依存関係のレベルではすでに実現しています。`db`・`oauth` の extra と、注入された `RedisLike` プロトコルが、`serve` の重い依存関係をコアのインストールから締め出しているためです。そのため、パッケージやリポジトリを分割しても、上記のゲート検査がすでに解決している問題に追加コストをかけて対処するだけになります。`bajutsu/serve/` が CLI コアとは独立したリリース周期を必要とするようになったときに、改めて検討する価値があります。
+- **境界画定が終わるまで `serve` の機能開発を凍結する。** 却下します。`serve` のハードニングとホスティング（BE-0015、BE-0016、BE-0051）はいずれも価値のある進行中のトラックであり、境界画定はそれらをブロックするのではなく、並行して段階的に進めるべきです。
 
 ## 進捗
 
@@ -47,18 +51,23 @@
 > ともに記録します。
 
 - [ ] `serve`/コア境界の規則を文書化する（ホスティングの関心事は `bajutsu/serve/` に限定）
-- [ ] `OrgConfig` / `orgs` / `org_for_*` ヘルパーを `bajutsu/config.py` から `serve` 側のモジュールへ移す
-- [ ] `serve` に成長上限を設けるか、別配布物として切り出すかを決定し記録する
-- [ ] `bajutsu/templates/serve.js` に最低限のテスト・ビルドハーネスを追加する（または軽量ガードレール方針を記録する）
+- [ ] `tests/test_serve_boundary.py` を追加し、抽象構文木ベースの import 検査を `make check` に組み込む
+- [ ] `OrgConfig` / `DEFAULT_ORG` / `org_for_*` ヘルパーを `bajutsu/serve/orgs.py` へ移し、`load_config` を `parse_config_dict` と `load_config` に分割する
+- [ ] `bajutsu/templates/serve.js` 向けに `node --check` と最小限の ESLint 設定を `make lint` に組み込む
 
 まだ着手した PR はありません。
 
 ## 参考
 
-- `bajutsu/config.py:340` — `OrgConfig`、ホスト向けマルチテナンシー config
-- `bajutsu/config.py:357` — `Config.orgs` フィールド
-- `bajutsu/config.py:380-415` — `org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org`
-- `bajutsu/serve/`（Python 6,920 行）と `bajutsu/templates/serve.js`（1,575 行、テストなし） — このサブシステムの現在の規模
-- `bajutsu/serve/operations.py`（1,376 行） — 姉妹提案 `split-serve-operations-module` で別途扱う
+- `bajutsu/config.py:27`：`_Model` の `extra="forbid"`。`orgs` を `Config` から削除すると、これがまだ `orgs:` を宣言している YAML を破壊的に弾くようになる typo 対策
+- `bajutsu/config.py:340`：`OrgConfig`、ホスト向けマルチテナンシー config
+- `bajutsu/config.py:357`：`Config.orgs` フィールド
+- `bajutsu/config.py:376-415`：`DEFAULT_ORG`、`org_for_user` / `org_for_target` / `org_for_identity` / `targets_for_org`
+- `bajutsu/config.py:649-652`：`load_config`。`parse_config_dict` と `load_config` に分割するフック
+- `bajutsu/serve/__init__.py`、`authz.py`、`jobs.py`、`operations.py`、`server/worker_job.py`：組織用ヘルパーの現在の呼び出し元。すべてすでに `bajutsu/serve/` の内部
+- `bajutsu/serve/server/logbus.py`、`sessions.py`：既存の `RedisLike` プロトコル注入。`redis` を必須の依存にしていないパターン
+- `pyproject.toml:39-42`：`db`（SQLAlchemy、Alembic、psycopg）と `oauth`（Authlib）の optional extra。すでにこれらの依存関係をコアのインストールから締め出している
+- `bajutsu/serve/`（Python 6,920 行）と `bajutsu/templates/serve.js`（1,575 行、テストなし）：このサブシステムの現在の規模
+- `bajutsu/serve/operations.py`（1,376 行）：姉妹提案 `split-serve-operations-module` で別途扱う
 - 関連: BE-0011（ローカル Web UI serve）、BE-0051（ホスティング向け serve ハードニング）、BE-0015（Web UI 公開ホスティング）、BE-0016（Web UI セルフホスティング）
 - 2026-07-02 のコードベース分析レポート（設計）に由来します。
