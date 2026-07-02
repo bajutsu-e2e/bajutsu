@@ -8,6 +8,7 @@
 | Proposal | [BE-0101](BE-0101-ai-free-zero-config.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Implementing PR | [#432](https://github.com/bajutsu-e2e/bajutsu/pull/432) |
 | Topic | AI provider configuration |
 | Related | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding.md) |
 <!-- /BE-METADATA -->

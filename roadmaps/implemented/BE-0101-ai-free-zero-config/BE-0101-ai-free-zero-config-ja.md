@@ -8,6 +8,7 @@
 | 提案 | [BE-0101](BE-0101-ai-free-zero-config-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| 実装 PR | [#432](https://github.com/bajutsu-e2e/bajutsu/pull/432) |
 | トピック | AI provider configuration |
 | 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0024](../../implemented/BE-0024-doctor-onboarding/BE-0024-doctor-onboarding-ja.md) |
 <!-- /BE-METADATA -->
