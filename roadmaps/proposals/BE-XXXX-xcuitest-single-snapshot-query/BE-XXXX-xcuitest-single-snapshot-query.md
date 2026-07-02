@@ -92,7 +92,7 @@ immediately, and stale handles failing explicitly.
 - **Private snapshot API (WebDriverAgent-style).** The fastest option: XCTest's internal, non-public
   symbols beneath `app.snapshot()` (historically `_XCTElementSnapshot` / `snapshotWithError:` and the
   `XCAXClient_iOS` accessibility client WebDriverAgent uses) fetch the whole attribute tree in one
-  accessibility query, often a further order faster than the public call. Rejected as the primary path:
+  accessibility query, often another order of magnitude faster than the public call. Rejected as the primary path:
   private symbols are fragile across Xcode versions and pull against the thin-dependency stance
   (DESIGN §4) — the same reason BE-0019 deferred vendoring WebDriverAgent. It stays a deferred fallback,
   reconsidered only if the public `app.snapshot()` walk misses the target.
