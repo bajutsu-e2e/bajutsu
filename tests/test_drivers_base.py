@@ -7,6 +7,8 @@ wait uniformly, so a `timeout` means the same real seconds regardless of which b
 
 from __future__ import annotations
 
+import pytest
+
 from bajutsu.drivers import base
 
 
@@ -43,3 +45,10 @@ def test_wait_until_returns_true_when_already_present() -> None:
 def test_wait_until_times_out_when_never_present() -> None:
     driver = LateDriver(appear_after=10_000)
     assert base.wait_until(driver, {"id": "nope"}, timeout=0, poll=0) is False
+
+
+def test_wait_until_rejects_a_negative_poll() -> None:
+    # A negative poll is caller misuse; fail loudly with a clear message rather than let
+    # time.sleep raise its opaque ValueError deep in the loop.
+    with pytest.raises(ValueError, match="poll must be non-negative"):
+        base.wait_until(LateDriver(appear_after=0), {"id": "x"}, timeout=1, poll=-1)

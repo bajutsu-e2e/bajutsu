@@ -260,7 +260,13 @@ def wait_until(driver: Driver, sel: Selector, timeout: float, poll: float = 0.2)
 
     Returns:
         True once the selector matches; False if `timeout` elapses first.
+
+    Raises:
+        ValueError: `poll` is negative (a caller error surfaced loudly rather than left to
+            `time.sleep`'s opaque exception).
     """
+    if poll < 0:
+        raise ValueError(f"poll must be non-negative, got {poll}")
     deadline = time.monotonic() + timeout
     while True:
         if driver.wait_for(sel):
