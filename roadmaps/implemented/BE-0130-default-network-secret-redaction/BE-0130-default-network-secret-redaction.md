@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0130") |
-| Implementing PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| Implementing PR | [#626](https://github.com/bajutsu-e2e/bajutsu/pull/626) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -99,7 +99,7 @@ the evidence-writing path.
       opt-out
 - [x] Docs updated (both languages)
 
-- 2026-07-04: [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) — added the built-in
+- 2026-07-04: [#626](https://github.com/bajutsu-e2e/bajutsu/pull/626) — added the built-in
   default sensitive-header set, the `unmaskHeaders` escape hatch, and `cookie`/`set-cookie`
   linkage in `Redactor`; masked default headers unconditionally in `redact_exchange`; updated
   the redaction docs (both languages).

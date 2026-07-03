@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0130") |
-| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
+| 実装 PR | [#626](https://github.com/bajutsu-e2e/bajutsu/pull/626) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -103,7 +103,7 @@ redact.headers}` という集合）は、指定された名前そのものにし
       抜け道によるオプトアウト
 - [x] ドキュメント更新（日英両方）
 
-- 2026-07-04: [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) — `Redactor` に組み込みの
+- 2026-07-04: [#626](https://github.com/bajutsu-e2e/bajutsu/pull/626) — `Redactor` に組み込みの
   機密ヘッダー既定集合、`unmaskHeaders` の抜け道、`cookie`/`set-cookie` の連動を追加しました。
   `redact_exchange` で既定ヘッダーを無条件にマスクし、redaction のドキュメントを日英両方で
   更新しました。
