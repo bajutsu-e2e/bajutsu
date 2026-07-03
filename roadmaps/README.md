@@ -511,6 +511,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0124](proposals/BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation.md) | Tighten config-source owner and repo validation | Proposal |
 | [BE-0125](proposals/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Proposal |
 | [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md) | Redact sensitive network headers and cookies by default | Proposal |
+| [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing

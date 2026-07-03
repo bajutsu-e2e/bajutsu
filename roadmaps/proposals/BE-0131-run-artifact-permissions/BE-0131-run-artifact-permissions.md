@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-run-artifact-permissions-ja.md)
+**English** · [日本語](BE-0131-run-artifact-permissions-ja.md)
 
-# BE-XXXX — Restrict run-artifact file permissions
+# BE-0131 — Restrict run-artifact file permissions
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-run-artifact-permissions.md) |
+| Proposal | [BE-0131](BE-0131-run-artifact-permissions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |

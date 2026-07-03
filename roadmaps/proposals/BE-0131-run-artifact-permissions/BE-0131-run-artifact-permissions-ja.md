@@ -1,11 +1,11 @@
-[English](BE-XXXX-run-artifact-permissions.md) · **日本語**
+[English](BE-0131-run-artifact-permissions.md) · **日本語**
 
-# BE-XXXX — 実行証跡ファイルのパーミッションを制限する
+# BE-0131 — 実行証跡ファイルのパーミッションを制限する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-run-artifact-permissions-ja.md) |
+| 提案 | [BE-0131](BE-0131-run-artifact-permissions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |
