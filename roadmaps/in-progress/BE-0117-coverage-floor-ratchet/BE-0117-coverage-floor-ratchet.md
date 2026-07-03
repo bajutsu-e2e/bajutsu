@@ -126,14 +126,13 @@ Work breaks down by module, then a final floor-raise once all test additions lan
 - [x] Raise `--cov-fail-under` in the `Makefile` to the new measured floor and confirm `make check`
       passes cleanly
 
-- The CLI test additions took `lint.py` 17.6% → 100%, `worker.py` 23.3% → 97%, `mcp.py` 40% →
-  100%, `trace.py` 66.7% → 100%, `schema.py` 71.4% → 100%, and `audit.py` 71.9% → 81% (its
-  remaining gap is the device-only `--repeat` execution path); `crawl.py`'s device-free
-  option-validation branches are covered (the rest of the command needs a live actuator). Total
-  branch coverage rose to 89.34%, so the `Makefile` floor was raised `--cov-fail-under=87` → `89`
-  (the `docs/ci.md` mirror, which had drifted to `85`, and the PR-template example were realigned).
-
-No PR has landed yet.
+- [#562](https://github.com/bajutsu-e2e/bajutsu/pull/562) — the CLI test additions took `lint.py`
+  17.6% → 100%, `worker.py` 23.3% → 97%, `mcp.py` 40% → 100%, `trace.py` 66.7% → 100%, `schema.py`
+  71.4% → 100%, and `audit.py` 71.9% → 81% (its remaining gap is the device-only `--repeat`
+  execution path); `crawl.py`'s device-free option-validation branches are covered (the rest of the
+  command needs a live actuator). Total branch coverage rose to 89.34%, so the `Makefile` floor was
+  raised `--cov-fail-under=87` → `89` (the `docs/ci.md` mirror, which had drifted to `85`, and the
+  PR-template example were realigned).
 
 ## References
 
@@ -145,7 +144,7 @@ No PR has landed yet.
 - `bajutsu/cli/commands/crawl.py:58-...` (`crawl`), 67.4% coverage
 - `bajutsu/cli/commands/schema.py:8-12` (`schema`), 71.4% coverage
 - `bajutsu/cli/commands/audit.py:38-...` (`audit`, `_history_audit`), 71.9% coverage
-- [`Makefile:69`](../../../Makefile) — the `--cov-fail-under=87` line this item raises.
+- [`Makefile:69`](../../../Makefile) — the `--cov-fail-under` line this item raised from 87 to 89.
 - [`pyproject.toml`](../../../pyproject.toml) — `[tool.coverage.run] branch = true`, the branch-
   coverage mode the floor is measured against.
 - [BE-0067 — Code-quality gate hardening](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)

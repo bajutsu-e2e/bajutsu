@@ -303,6 +303,9 @@ def _run_hb(tmp_path: Path) -> tuple[dict[str, Any], bool]:
 def test_run_with_heartbeat_normal_completion(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # Stub _post_json so that if the fast job somehow outlives the short join timeout, the stray
+    # heartbeat stays in-process rather than reaching out to http://cp/… — keeps the test hermetic.
+    monkeypatch.setattr(worker_mod, "_post_json", lambda *a, **k: (200, {}))
     monkeypatch.setattr(worker_mod, "execute_job_spec", lambda *a, **k: _FakeJob())
     result, abandoned = _run_hb(tmp_path)
     assert abandoned is False
@@ -310,6 +313,8 @@ def test_run_with_heartbeat_normal_completion(
 
 
 def test_run_with_heartbeat_job_exception(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(worker_mod, "_post_json", lambda *a, **k: (200, {}))  # keep hermetic
+
     def boom(*a: Any, **k: Any) -> Any:
         raise RuntimeError("job blew up")
 

@@ -395,6 +395,16 @@ The Web (Playwright) backend and its completion (rich capabilities, parallel run
 | [BE-0019](in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) | XCUITest backend | In progress |
 <!-- /GENERATED:in-progress-backend -->
 
+### Development infrastructure (contributor workflow)
+
+Reduce friction for the many parallel sessions working this repo — treat merge conflicts as a design smell and reshape the file flow so independent changes touch disjoint files.
+
+<!-- GENERATED:in-progress-dev-infra -->
+| ID | Item | Status |
+|---|---|---|
+| [BE-0117](in-progress/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | In progress |
+<!-- /GENERATED:in-progress-dev-infra -->
+
 ### Dogfood fixtures (demo apps)
 
 Consolidating the demo and dogfood apps onto the showcase suite: bringing it to parity with the legacy `sample` / `demo` / `sample2` fixtures (codegen → XCUITest, visual regression, gesture targets, the evidence tour), re-pointing the demos and on-device CI at it, and retiring the three legacy apps — so the showcase becomes the single iOS fixture.
