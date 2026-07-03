@@ -19,13 +19,16 @@ cannot influence the code that runs with that permission.
 
 ## Motivation
 
-`.github/workflows/roadmap-promote.yml` triggers on `pull_request` with `permissions:
-contents: write`, checks out `ref: ${{ github.head_ref }}` (the PR branch itself), and then runs
+`.github/workflows/roadmap-promote.yml` triggers on `pull_request` with:
+
+    permissions:
+      contents: write
+
+It checks out `ref: ${{ github.head_ref }}` (the PR branch itself), and then runs
 `python3 scripts/promote_roadmap_items.py` from that checkout before committing and pushing back
 to the same branch. Because the script that executes comes from the PR head, a PR that edits
 `scripts/promote_roadmap_items.py` controls the code the workflow runs with write access to the
-repository. The workflow does have a fork guard (`if:
-github.event.pull_request.head.repo.full_name == github.repository`), which keeps external fork
+repository. The workflow does have a fork guard (`if: github.event.pull_request.head.repo.full_name == github.repository`), which keeps external fork
 PRs from reaching this step at all — so today the risk is scoped to a same-repository branch (an
 internal contributor or an already-compromised account), not an arbitrary external contributor.
 
