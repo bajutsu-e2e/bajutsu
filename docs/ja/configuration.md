@@ -28,7 +28,7 @@ defaults:                       # 全ターゲット共通の既定
 
 targets:
   showcase-swiftui:             # ← --target showcase-swiftui で選択
-    bundleId:       com.bajutsu.showcase.swiftui     # iOS のターゲット（web で baseUrl を設定する場合を除き必須）
+    bundleId:       com.bajutsu.showcase.ios.swiftui     # iOS のターゲット（web で baseUrl を設定する場合を除き必須）
     deeplinkScheme: showcaseswiftui
     idNamespaces:   [stable, horse, search, log, notice, perm, sys, net]
     launchEnv:      { SHOWCASE_UITEST: "1" }

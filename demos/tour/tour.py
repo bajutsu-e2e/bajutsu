@@ -61,7 +61,7 @@ def _eff() -> Effective:
     """A minimal effective config for the FakeDriver-backed showcase flow."""
     return Effective(
         target="showcase-swiftui",
-        bundle_id="com.bajutsu.showcase.swiftui",
+        bundle_id="com.bajutsu.showcase.ios.swiftui",
         deeplink_scheme=None,
         backend=["fake"],
         device="FakeDriver",

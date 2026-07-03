@@ -33,7 +33,7 @@ The showcase makes two axes Bajutsu's design rests on visible:
 ## Build and run
 
 Registered as four `targets.<name>` in [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml)
-(bundle ids `com.bajutsu.showcase.{swiftui,uikit}[.noax]`, deeplink schemes `showcase{swiftui,uikit}[noax]`).
+(bundle ids `com.bajutsu.showcase.ios.{swiftui,uikit}[.noax]`, deeplink schemes `showcase{swiftui,uikit}[noax]`).
 Built with XcodeGen + xcodebuild (`project.yml` is the source of truth; `.xcodeproj` / `build/` are
 gitignored).
 

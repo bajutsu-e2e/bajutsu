@@ -18,10 +18,10 @@ the `a11y` flavor.
 
 | Gradle task | Toolkit | `ACCESSIBLE` | Application id | Display name | Deeplink scheme |
 |---|---|---|---|---|---|
-| `:compose:assembleA11yDebug` | Compose | true | `com.bajutsu.showcase.compose` | Showcase Compose | `showcasecompose` |
-| `:compose:assembleNoaxDebug` | Compose | false | `com.bajutsu.showcase.compose.noax` | Showcase Compose (no a11y) | `showcasecomposenoax` |
-| `:views:assembleA11yDebug` | Views | true | `com.bajutsu.showcase.views` | Showcase Views | `showcaseviews` |
-| `:views:assembleNoaxDebug` | Views | false | `com.bajutsu.showcase.views.noax` | Showcase Views (no a11y) | `showcaseviewsnoax` |
+| `:compose:assembleA11yDebug` | Compose | true | `com.bajutsu.showcase.android.compose` | Showcase Compose | `showcasecompose` |
+| `:compose:assembleNoaxDebug` | Compose | false | `com.bajutsu.showcase.android.compose.noax` | Showcase Compose (no a11y) | `showcasecomposenoax` |
+| `:views:assembleA11yDebug` | Views | true | `com.bajutsu.showcase.android.views` | Showcase Views | `showcaseviews` |
+| `:views:assembleNoaxDebug` | Views | false | `com.bajutsu.showcase.android.views.noax` | Showcase Views (no a11y) | `showcaseviewsnoax` |
 
 The `a11y` builds expose the SPEC §5 element inventory as UI Automator `resource-id`s; the
 `noax` builds compile to a tree with none — the cost of skipping accessibility, made concrete

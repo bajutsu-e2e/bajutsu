@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.bajutsu.showcase.views"
+    namespace = "com.bajutsu.showcase.android.views"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.bajutsu.showcase.views"
+        applicationId = "com.bajutsu.showcase.android.views"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

@@ -1,6 +1,6 @@
 name: BajutsuShowcaseUIKit
 options:
-  bundleIdPrefix: com.bajutsu.showcase.uikit
+  bundleIdPrefix: com.bajutsu.showcase.ios.uikit
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -34,7 +34,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
-          - CFBundleURLName: com.bajutsu.showcase.uikit
+          - CFBundleURLName: com.bajutsu.showcase.ios.uikit
             CFBundleURLSchemes: [showcaseuikit]
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -44,7 +44,7 @@ targets:
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.uikit
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.uikit
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCESSIBLE
   # no-a11y twin: same Sources/, ACCESSIBLE undefined → aid(...) is a no-op and the
@@ -66,7 +66,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CFBundleURLTypes:
-          - CFBundleURLName: com.bajutsu.showcase.uikit.noax
+          - CFBundleURLName: com.bajutsu.showcase.ios.uikit.noax
             CFBundleURLSchemes: [showcaseuikitnoax]
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -76,7 +76,7 @@ targets:
                 UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.uikit.noax
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.uikit.noax
         TARGETED_DEVICE_FAMILY: "1,2"
 schemes:
   BajutsuShowcaseUIKit:

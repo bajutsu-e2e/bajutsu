@@ -32,7 +32,7 @@ def test_showcase_scenarios_parse() -> None:
 def test_showcase_config_resolves() -> None:
     cfg = load_config(SHOWCASE_CONFIG.read_text(encoding="utf-8"))
     eff = resolve(cfg, "showcase-swiftui")
-    assert eff.bundle_id == "com.bajutsu.showcase.swiftui"
+    assert eff.bundle_id == "com.bajutsu.showcase.ios.swiftui"
     assert eff.deeplink_scheme == "showcaseswiftui"
     assert set(eff.id_namespaces) == NAMESPACES
 
@@ -42,7 +42,7 @@ def test_demo_menu_config_declares_the_features_secret() -> None:
     # so the literal is masked in run artifacts.
     cfg = load_config(DEMO_CONFIG.read_text(encoding="utf-8"))
     eff = resolve(cfg, "showcase-swiftui")
-    assert eff.bundle_id == "com.bajutsu.showcase.swiftui"
+    assert eff.bundle_id == "com.bajutsu.showcase.ios.swiftui"
     assert eff.secrets == ["PASSWORD"]
 
 

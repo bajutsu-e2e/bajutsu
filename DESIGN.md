@@ -24,7 +24,7 @@
 
 ### 1.1 dogfood 対象（最初のテスト対象）
 
-Bajutsu の **dogfood 対象**は、リポジトリ同梱のショーケースアプリ `demos/showcase/`（`showcase-swiftui` なら `com.bajutsu.showcase.swiftui`）です。あらゆるプリミティブを試せるよう計装してあります。§6 の例（タブを開く env フック、再取得、通信のアサーション）は、このショーケースに実在する UI / フックに対応します。BE-0079 で旧来の `demo` / `sample` / `sample2` を退役させ、これを唯一の iOS フィクスチャにしました。詳細は [`demos/showcase/SPEC.md`](demos/showcase/SPEC.md) を参照してください。
+Bajutsu の **dogfood 対象**は、リポジトリ同梱のショーケースアプリ `demos/showcase/`（`showcase-swiftui` なら `com.bajutsu.showcase.ios.swiftui`）です。あらゆるプリミティブを試せるよう計装してあります。§6 の例（タブを開く env フック、再取得、通信のアサーション）は、このショーケースに実在する UI / フックに対応します。BE-0079 で旧来の `demo` / `sample` / `sample2` を退役させ、これを唯一の iOS フィクスチャにしました。詳細は [`demos/showcase/SPEC.md`](demos/showcase/SPEC.md) を参照してください。
 
 - **位置づけ**：同梱ショーケースは「現実的なテスト対象」であって Bajutsu のコア依存ではなく、汎用の E2E ツールとして他アプリにも使えます（iOS では idb、web では Playwright を backend にします）
 - **含意**：§7 の実装規約はまず同梱ショーケースに適用して検証します
@@ -397,7 +397,7 @@ defaults:                       # 全アプリ共通の既定
 
 targets:
   showcase-swiftui:             # ← --target showcase-swiftui で選択
-    bundleId:       com.bajutsu.showcase.swiftui
+    bundleId:       com.bajutsu.showcase.ios.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv:      { SHOWCASE_UITEST: "1" }             # このアプリ既定のフック（§7）
     idNamespaces:   [stable, horse, search, log]       # 識別子の名前空間（§7 命名規約）

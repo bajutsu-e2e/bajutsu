@@ -18,8 +18,8 @@ the `mirror(value:)` helper mirrors state to `accessibilityValue`, only when the
 
 | Target | `ACCESSIBLE` | Bundle id | Display name | Deeplink scheme |
 |---|---|---|---|---|
-| `BajutsuShowcaseUIKit` | defined | `com.bajutsu.showcase.uikit` | Showcase UIKit | `showcaseuikit` |
-| `BajutsuShowcaseUIKitNoAx` | — | `com.bajutsu.showcase.uikit.noax` | Showcase UIKit (no a11y) | `showcaseuikitnoax` |
+| `BajutsuShowcaseUIKit` | defined | `com.bajutsu.showcase.ios.uikit` | Showcase UIKit | `showcaseuikit` |
+| `BajutsuShowcaseUIKitNoAx` | — | `com.bajutsu.showcase.ios.uikit.noax` | Showcase UIKit (no a11y) | `showcaseuikitnoax` |
 
 The `-a11y` build exposes every identifier in SPEC §5 (`doctor --target` grades it **Ready**);
 the no-a11y build compiles to a tree with none (graded **Blocked**) — the cost of skipping
@@ -31,7 +31,7 @@ Requires Xcode and [XcodeGen](https://github.com/yonyz/XcodeGen) (`brew install 
 Both targets share the same `Sources/` directory.
 
 ```bash
-cd demos/showcase/uikit
+cd demos/showcase/ios/uikit
 xcodegen generate          # -> BajutsuShowcaseUIKit.xcodeproj
 xcodebuild -scheme BajutsuShowcaseUIKit \
   -destination 'generic/platform=iOS Simulator' build        # the a11y build

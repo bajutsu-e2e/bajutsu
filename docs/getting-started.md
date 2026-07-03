@@ -121,7 +121,7 @@ accessibility product for the Simulator:
 make -C demos/showcase swiftui-build         # xcodegen generate -> xcodebuild for the iOS Simulator
 ```
 
-This produces `BajutsuShowcaseSwiftUI.app` under `demos/showcase/swiftui/build/…`. (The `.xcodeproj`
+This produces `BajutsuShowcaseSwiftUI.app` under `demos/showcase/ios/swiftui/build/…`. (The `.xcodeproj`
 and `build/` are gitignored — `project.yml` is the source of truth.) See [showcase](showcase.md) for
 the launch-env hooks and the identifier catalog.
 

@@ -119,7 +119,7 @@ make check                # または: ruff（lint）+ mypy（strict 型）+ pyt
 make -C demos/showcase swiftui-build         # xcodegen generate -> iOS Simulator 向けに xcodebuild
 ```
 
-`demos/showcase/swiftui/build/…` の下に `BajutsuShowcaseSwiftUI.app` ができます（`.xcodeproj` と `build/` は
+`demos/showcase/ios/swiftui/build/…` の下に `BajutsuShowcaseSwiftUI.app` ができます（`.xcodeproj` と `build/` は
 gitignore 済みで、`project.yml` が正です）。launch-env フックと識別子カタログは [showcase](showcase.md) を
 参照してください。
 

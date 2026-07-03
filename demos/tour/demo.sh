@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # A guided, fully deterministic lifecycle demo — no AI, no API key — against the showcase
-# SwiftUI app (demos/showcase/swiftui/) on a booted Simulator via idb:
+# SwiftUI app (demos/showcase/ios/swiftui/) on a booted Simulator via idb:
 #   1. RUN      the committed scenario on the Simulator — a real PASS
 #   2. MODIFY   break the expected value, re-run — watch the check FAIL, then fix it
 #   3. DIAGNOSE break a selector, re-run -> FAIL, let `triage` diagnose it (advisory)
@@ -23,7 +23,7 @@ cd "$(dirname "$0")/../.."          # repo root (the run's working directory)
 CONFIG="demos/demo.config.yaml"
 SOURCE="demos/showcase/scenarios/menu/tour.yaml"
 SCENARIO="demos/tour/scenario.yaml"   # gitignored working copy — we edit this, not the tracked source
-APP_PATH="demos/showcase/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+APP_PATH="demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
 note() { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 

@@ -14,8 +14,9 @@ smallest app that still exercises `record`, `crawl`, and `run` together.
 - **The contract:** [`SPEC.md`](SPEC.md) ([ja](SPEC.ja.md)) — every screen, identifier,
   launch-env hook, deeplink, and the OS-alert placement. The two `-a11y` apps expose an
   identical identifier contract, so the one [`scenarios/`](scenarios) set drives both.
-- **The roadmap item:** the `dogfood-showcase-apps` BE item under
-  [`roadmaps`](../../roadmaps/README.md) records the rationale.
+- **The roadmap items:** [BE-0045](../../roadmaps/implemented/BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md)
+  records the rationale for the showcase suite; [BE-0079](../../roadmaps/implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md)
+  completed the consolidation onto it (see [`roadmaps`](../../roadmaps/README.md) for the full index).
 
 ## The four products
 
@@ -38,7 +39,7 @@ UIKit, each in the same a11y/noax flavor pair (four more products,
 
 ## Build
 
-Needs [XcodeGen](https://github.com/yonsm/XcodeGen) (`brew install xcodegen`) and Xcode.
+Needs [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) and Xcode.
 
 ```bash
 make -C demos/showcase build-all          # all four products
@@ -80,11 +81,13 @@ bajutsu run --target showcase-swiftui --scenario demos/showcase/scenarios/modals
 |---|---|
 | [`SPEC.md`](SPEC.md) | the screen-by-screen contract (the spec) |
 | [`WEBUI.md`](WEBUI.md) | the Web UI tour — drive a Simulator from the browser, collect every evidence type |
-| [`swiftui/`](swiftui), [`uikit/`](uikit) | the two codebases (xcodegen `project.yml`, two targets each) |
-| [`showcase.config.yaml`](showcase.config.yaml) | the four `targets.<name>` entries |
-| [`scenarios/`](scenarios) | shared id-based `run` scenarios (drive both a11y apps) |
+| [`ios/swiftui/`](ios/swiftui), [`ios/uikit/`](ios/uikit) | the two iOS codebases (xcodegen `project.yml`, two targets each) |
+| [`ios/scenarios-xcuitest/`](ios/scenarios-xcuitest) | XCUITest scenarios (`--backend ios`) driving the `-noax` targets, which idb's a11y tree can't reach |
+| [`android/`](android/) | the four Android twins (Compose × Views, BE-0007 preparation) |
+| [`showcase.config.yaml`](showcase.config.yaml) | the eight iOS + Android `targets.<name>` entries |
+| [`scenarios/`](scenarios) | shared id-based `run` scenarios (drive every a11y app, iOS and Android alike) |
 | [`record/goals.txt`](record/goals.txt) | natural-language goals for the `record` A/B demo |
-| [`crawl/`](crawl/expected-screen-map.md) | the screen map a future `crawl` should produce (test data) |
+| [`crawl/`](crawl/expected-screen-map.md) | the screen map `crawl` ([BE-0038](../../roadmaps/in-progress/BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md), in progress) should produce — validation test data |
 
 ## Deeplinks
 
