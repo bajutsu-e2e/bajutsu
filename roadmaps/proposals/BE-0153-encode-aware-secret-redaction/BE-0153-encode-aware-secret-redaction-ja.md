@@ -1,11 +1,11 @@
-[English](BE-XXXX-encode-aware-secret-redaction.md) · **日本語**
+[English](BE-0153-encode-aware-secret-redaction.md) · **日本語**
 
-# BE-XXXX — エンコードを考慮した秘密情報の redaction
+# BE-0153 — エンコードを考慮した秘密情報の redaction
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-encode-aware-secret-redaction-ja.md) |
+| 提案 | [BE-0153](BE-0153-encode-aware-secret-redaction-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |

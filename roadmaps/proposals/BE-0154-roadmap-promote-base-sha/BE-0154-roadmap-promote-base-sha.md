@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-roadmap-promote-base-sha-ja.md)
+**English** · [日本語](BE-0154-roadmap-promote-base-sha-ja.md)
 
-# BE-XXXX — Run roadmap-promote from the base SHA
+# BE-0154 — Run roadmap-promote from the base SHA
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-promote-base-sha.md) |
+| Proposal | [BE-0154](BE-0154-roadmap-promote-base-sha.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |

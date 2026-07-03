@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-encode-aware-secret-redaction-ja.md)
+**English** · [日本語](BE-0153-encode-aware-secret-redaction-ja.md)
 
-# BE-XXXX — Encode-aware secret redaction
+# BE-0153 — Encode-aware secret redaction
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-encode-aware-secret-redaction.md) |
+| Proposal | [BE-0153](BE-0153-encode-aware-secret-redaction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
