@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-roadmap-dashboard-issue-links-ja.md)
+**English** · [日本語](BE-0139-roadmap-dashboard-issue-links-ja.md)
 
-# BE-XXXX — Link the roadmap dashboard and item files to their tracking issue
+# BE-0139 — Link the roadmap dashboard and item files to their tracking issue
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-dashboard-issue-links.md) |
+| Proposal | [BE-0139](BE-0139-roadmap-dashboard-issue-links.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Development infrastructure (contributor workflow) |
@@ -69,14 +69,14 @@ next to the proposal link it already shows.
    `tests/test_roadmap_format.py` (`ORDER_EN` / `ORDER_JA`) pins, placed right after `Status` (before
    `Implementing PR`), and becomes a required field alongside `Proposal` / `Author` / `Status` /
    `Topic`. `scripts/new_roadmap_item.py`'s scaffold gains it for every newly created item — computed
-   at scaffold time from the literal `BE-XXXX` placeholder, so it reads `…in:title+"BE-XXXX"…` until
+   at scaffold time from the literal `BE-0139` placeholder, so it reads `…in:title+"BE-0139"…` until
    allocation, exactly like the header link and the `Proposal` row already do. A one-time mechanical
    backfill script adds the row to every existing numbered item (both language files), computing each
    value from the file's own already-known id — no author judgment needed there either, so it is a
    single script run, not ~120 hand edits. CLAUDE.md's canonical-field-order sentence is updated to
    name the new field.
-5. **`BE-XXXX` placeholders resolve for free.** Because the row's value is literal text containing
-   `BE-XXXX` until allocation, `scripts/allocate_roadmap_ids.py`'s existing whole-file
+5. **`BE-0139` placeholders resolve for free.** Because the row's value is literal text containing
+   `BE-0139` until allocation, `scripts/allocate_roadmap_ids.py`'s existing whole-file
    `text.replace(old_token, new_token)` (BE-0089) already rewrites it to the real `BE-NNNN` in the
    same pass that fixes the header link and the title — no new allocator logic needed.
 6. **Validation.** Beyond the existing field-order and required-field checks,
