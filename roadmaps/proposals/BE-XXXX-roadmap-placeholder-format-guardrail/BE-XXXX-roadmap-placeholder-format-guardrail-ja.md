@@ -81,7 +81,7 @@ BE-0137（[PR #530](https://github.com/bajutsu-e2e/bajutsu/pull/530)）とBE-013
 - [ ] テンプレートに関わるコミットが`main`に着地したときに起動し、open な roadmap PR を現在の`main`に照らして読み取り専用で再検査し、ドリフトがあれば stale なブランチに対して修正PRを開くワークフローを追加する（上記に依存）
 - [ ] `roadmap-id.yml`における`scripts/check_renumber_diff.py`の呼び出しを拡張し、`git push`の前に共通の検査も実行する
 
-まだ着手したPRはありません。
+まだ着手した PR はありません。
 
 ## 参考
 
