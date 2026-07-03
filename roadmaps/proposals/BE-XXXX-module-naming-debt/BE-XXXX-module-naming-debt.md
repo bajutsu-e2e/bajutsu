@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-module-naming-debt-ja.md)
 
-# BE-XXXX — Resolve environment and config module naming debt
+# BE-XXXX — Resolve top-level module naming debt
 
 <!-- BE-METADATA -->
 | Field | Value |
