@@ -17,7 +17,7 @@
 
 ## 動機
 
-`bajutsu/orchestrator/types.py:45-59` は、simctl に裏打ちされた操作（`set_location`、`push`、`clear_keychain`、`clear_clipboard`、`set_clipboard`、`home`、`foreground`、`override_status_bar`、`clear_status_bar`）をまとめた Protocol である `DeviceControl` を定義しています。実行を支える実デバイス環境がある場合はランナーがこれを注入し、ない場合（フェイクドライバや、単一デバイスに固定しない並列実行）は `None` のままにします。`bajutsu/orchestrator/actions/handlers/device.py` にあるデバイス制御ステップの各ハンドラ（`_do_set_location`、`_do_push`、`_do_clear_keychain` など）は、いずれも `_need_control(control, "<name>")`（`bajutsu/orchestrator/actions/_registry.py:72-78`）を呼び出し、これが `base.UnsupportedAction` を送出します。しかし、それが起きるのはそのステップが実際に実行される瞬間だけです。
+`bajutsu/orchestrator/types.py:45-59` は、simctl に裏打ちされた操作（`set_location`、`push`、`clear_keychain`、`clear_clipboard`、`set_clipboard`、`get_clipboard`、`home`、`foreground`、`override_status_bar`、`clear_status_bar`）をまとめた Protocol である `DeviceControl` を定義しています。実行を支える実デバイス環境がある場合はランナーがこれを注入し、ない場合（フェイクドライバや、単一デバイスに固定しない並列実行）は `None` のままにします。`bajutsu/orchestrator/actions/handlers/device.py` にあるデバイス制御ステップの各ハンドラ（`_do_set_location`、`_do_push`、`_do_clear_keychain` など）は、いずれも `_need_control(control, "<name>")`（`bajutsu/orchestrator/actions/_registry.py:72-78`）を呼び出し、これが `base.UnsupportedAction` を送出します。しかし、それが起きるのはそのステップが実際に実行される瞬間だけです。
 
 これはまさに、BE-0082（ケイパビリティ preflight チェック）がジェスチャーと visual アサーションについて排除しようとした失敗モードそのものです。「対応していないケイパビリティを最後のステップで必要とするシナリオは、まずデバイス上ですべての先行ステップを実行してから、後になって失敗していた」（`bajutsu/capability_preflight.py:1-9`）。BE-0082 の `unsupported()` は `pinch`/`rotate` を `MULTI_TOUCH` で、`visual` アサーションを `SCREENSHOT` でゲートしており、どちらも各ドライバクラスの `CAPABILITIES` 上で宣言されています。しかしデバイス制御ステップにはケイパビリティトークンが一切なく、実行時に `DeviceControl` がたまたま配線されているかどうかでゲートされています。これは、`scenario` とドライバの `capabilities()` だけの純粋関数である preflight（`bajutsu/capability_preflight.py:109-122`）からは見えません。
 
