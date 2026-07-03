@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-coverage-ja.md)
+**English** · [日本語](BE-0146-serve-coverage-ja.md)
 
-# BE-XXXX — E2E coverage map in the serve Web UI
+# BE-0146 — E2E coverage map in the serve Web UI
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-coverage.md) |
+| Proposal | [BE-0146](BE-0146-serve-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Surfacing CLI features in the serve Web UI |

@@ -470,6 +470,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0137](proposals/BE-0137-serve-codegen/BE-0137-serve-codegen-ja.md) | serve Web UI からネイティブテストコードを生成する | 提案 |
 | [BE-0138](proposals/BE-0138-serve-lint/BE-0138-serve-lint-ja.md) | serve エディタでのシナリオ検証（lint / schema） | 提案 |
 | [BE-0145](proposals/BE-0145-serve-audit/BE-0145-serve-audit-ja.md) | serve Web UI で決定性監査を見る | 提案 |
+| [BE-0146](proposals/BE-0146-serve-coverage/BE-0146-serve-coverage-ja.md) | serve Web UI で E2E カバレッジマップを見る | 提案 |
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Dogfood フィクスチャ（デモアプリ）
