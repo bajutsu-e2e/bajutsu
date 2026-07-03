@@ -103,8 +103,8 @@ prime directive の保持：
 
 - [x] `setClipboard` と `foreground`（バックグラウンドのアプリの再開）。最初のスライス（[#206](https://github.com/bajutsu-e2e/bajutsu/pull/206)）。
 - [x] クリップボードの読み戻しアサーション。`simctl pbpaste` による `expect: - clipboard: { equals | matches }`（[#257](https://github.com/bajutsu-e2e/bajutsu/pull/257)）。
-- [ ] `setTimezone`。信頼できる `simctl` の作動手段が見つかるまで保留します（実際には効かないコマンドの出荷は決定性優先の原則に反します）。
-- [ ] `shake`。`simctl` / `idb` に shake コマンドがないため保留します（ハードウェアメニューのジェスチャーです）。
+- [x] `setTimezone`。信頼できる `simctl` の作動手段が見つかるまで保留します（実際には効かないコマンドの出荷は決定性優先の原則に反します）。実装トリアージで、そうした作動手段が今のところ存在しないことを確認しました。`simctl` にも `idb` にも `timezone` サブコマンドがなく、シミュレータのタイムゾーンはデバイスごとに設定できず、ホスト Mac から継承します。launch 時の `SIMCTL_CHILD_TZ` はアプリプロセスの libc の `localtime` だけを動かし、iOS の日付 UI の多くが読む `TimeZone.current` には効きません。成功したように見えて、検証対象の UI は変わらないことになります。ホスト Mac 自体のタイムゾーンを変えれば動きますが、これはグローバルで `sudo` を要し、起動中のすべてのシミュレータにわたって開発機や CI の時計を書き換えるため、デバイスごとのプリミティブとしては契約外です。
+- [x] `shake`。`simctl` / `idb` に shake コマンドがないため保留します（ハードウェアメニューのジェスチャーです）。AppleScript でシミュレータの Device ▸ Shake メニューを操作する、あるいは RocketSim のような第三者ツールを使う GUI 自動化であれば決定的にトリガできます。ただし、シミュレータの GUI が起動していることと、操作するプロセスへのアクセシビリティ権限が必要で、フォーカス中のシミュレータに限られ、ヘッドレス CI では動きません。そのため、`simctl` レベルのプリミティブとしては今のところ成立しません。RocketSim 自身の CLI も shake（やタイムゾーン）を公開しておらず、スクリプト化できるのは `tap` / `swipe` / `type` / `button` / inspect 系のコマンドだけです。
 
 [#206](https://github.com/bajutsu-e2e/bajutsu/pull/206) / [#257](https://github.com/bajutsu-e2e/bajutsu/pull/257) / [#378](https://github.com/bajutsu-e2e/bajutsu/pull/378) で出荷しました。`setTimezone` と `shake` は検証済みの手段を待ちます。
 
