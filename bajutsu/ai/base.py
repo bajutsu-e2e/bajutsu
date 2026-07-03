@@ -134,6 +134,4 @@ class AiBackend(Protocol):
     single forced-tool turn.
     """
 
-    def create_message(self, request: MessageRequest) -> MessageResponse:
-        """Run one turn against the provider and return the normalized response."""
-        ...
+    def create_message(self, request: MessageRequest) -> MessageResponse: ...
