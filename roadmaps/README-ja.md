@@ -567,7 +567,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement-ja.md) | コア・契約・周辺のレイヤ境界をゲートで検査する | 提案 |
-| [BE-0117](proposals/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) | CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする | 提案 |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 提案 |
 | [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 提案 |
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 提案 |

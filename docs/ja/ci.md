@@ -9,7 +9,7 @@
 
 | Workflow | ランナー | タイミング | 内容 |
 |---|---|---|---|
-| [`ci.yml`](../../.github/workflows/ci.yml)（`check` ジョブ） | Linux | `main` への push、全 PR（プルリクエスト） | Python 3.13 上で `make check` ゲート一式を実行します。ロックの鮮度（`uv lock --check`）、整形（`ruff format --check`）、lint（`ruff`）、シェル lint（`shellcheck`）、ワークフロー lint（`actionlint`）、型（`mypy bajutsu demos`）、カバレッジ下限つきの `pytest`（`--cov-fail-under=85`）です。ロジック層はシミュレータ不要なので速く安価です |
+| [`ci.yml`](../../.github/workflows/ci.yml)（`check` ジョブ） | Linux | `main` への push、全 PR（プルリクエスト） | Python 3.13 上で `make check` ゲート一式を実行します。ロックの鮮度（`uv lock --check`）、整形（`ruff format --check`）、lint（`ruff`）、シェル lint（`shellcheck`）、ワークフロー lint（`actionlint`）、型（`mypy bajutsu demos`）、カバレッジ下限つきの `pytest`（`--cov-fail-under=89`）です。ロジック層はシミュレータ不要なので速く安価です |
 | [`web-e2e.yml`](../../.github/workflows/web-e2e.yml) | Linux | 手動 + コアの実行経路、web バックエンド、web デモ、依存を触る `main` への push / PR | **web（Playwright）バックエンド**の smoke。`playwright install chromium` の後、`make -C demos/web e2e` が `demos/web` のシナリオをブラウザに対して決定的に実行します。**Mac / Simulator 不要**で、コアがプラットフォーム非依存であることを示します。Chromium の導入とブラウザ実行は重いので、全 PR では走らせず、`e2e.yml` と同じ判断基準でパスフィルタを掛けています |
 | [`dependency-audit.yml`](../../.github/workflows/dependency-audit.yml) | Linux | 手動 + 週次 + `pyproject.toml` / `uv.lock` を触る `main` への push / PR | ロックした依存グラフ（`uv export` → `pip-audit --no-deps`）を脆弱性 DB に照合します。結果はロックファイルと DB だけで決まるので、依存の変更時と、変わらない pin に対して新たに公表された脆弱性を拾う週次スケジュールで実行します |
 | [`swift.yml`](../../.github/workflows/swift.yml) | macOS | `main` への push + `BajutsuKit/**` を触る PR | [BajutsuKit](../../BajutsuKit) の `swift build` + `swift test` を実行します。純 Foundation のロジック（リクエスト照合 / モック解析）をシミュレータ無しで単体テストします。実機でのインターセプトそのものは `e2e.yml` がカバーします |

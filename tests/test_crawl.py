@@ -1106,3 +1106,80 @@ def test_action_targets_empty_without_dimensions() -> None:
     """A zero-sized frame gives no derivable screen size, so there are no targets."""
     elements = [el(identifier="a", traits=["button"], frame=(0.0, 0.0, 0.0, 0.0))]
     assert crawl._action_targets(elements, [crawl.Action(kind="tap", target="a")]) == ()
+
+
+# --- `bajutsu crawl` CLI option validation (BE-0117) ---
+#
+# These drive the option-validation and dispatch branches that fail before any device work — they
+# need no live actuator. iOS backend selection fails cleanly in the sandbox (no idb on PATH), which
+# is how the "unavailable backend" branch is reached.
+
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+from typer.testing import CliRunner  # noqa: E402
+
+from bajutsu.cli import app  # noqa: E402
+
+_cli = CliRunner()
+
+
+def _crawl_config(tmp_path: Path) -> Path:
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_cli_crawl_unknown_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
+    cfg = _crawl_config(tmp_path)
+    r = _cli.invoke(
+        app, ["crawl", "--target", "demo", "--agent", "carrier-pigeon", "--config", str(cfg)]
+    )
+    assert r.exit_code == 2
+    assert "unknown --agent" in r.output
+    assert "api" in r.output and "claude-code" in r.output
+
+
+def test_cli_crawl_unavailable_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A valid agent that needs no credential, so selection is the first thing that fails: the iOS
+    # backend has no available actuator in the sandbox.
+    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
+    cfg = _crawl_config(tmp_path)
+    r = _cli.invoke(
+        app,
+        [
+            "crawl",
+            "--target",
+            "demo",
+            "--agent",
+            "claude-code",
+            "--backend",
+            "idb",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+
+
+def test_cli_crawl_fails_closed_without_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)  # no .env key leak-in
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite missing credential"),
+    )
+    cfg = _crawl_config(tmp_path)
+    # fake backend selects fine, so the api guide's missing credential is what fails.
+    r = _cli.invoke(app, ["crawl", "--target", "demo", "--agent", "api", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "no AI credential" in r.output and "ANTHROPIC_API_KEY" in r.output
