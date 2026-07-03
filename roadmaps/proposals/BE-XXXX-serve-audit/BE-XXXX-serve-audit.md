@@ -8,7 +8,6 @@
 | Proposal | [BE-XXXX](BE-XXXX-serve-audit.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -61,6 +60,20 @@ Tier-1, read-only; the UI only shells out to the existing audit.
   textarea today, so it stands as its own item and complements BE-0013.
 * **Surface the dynamic repeat-and-diff audit first.** Rejected for the first cut: it needs a device
   and `K` runs; the static score is instant and on-disk, so it is the right first slice.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Add the `POST /api/audit` endpoint (`{target, path}`) that runs the static audit and returns
+      the per-scenario score
+- [ ] Add the "Audit" panel / badge in the editor and Replay view showing per-selector grades and
+      findings
+- [ ] Ship the static score first; the dynamic repeat-and-diff half stays a later, device-bound slice
+
+No PR has landed yet.
 
 ## References
 
