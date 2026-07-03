@@ -35,9 +35,9 @@ either as a second `Protocol` or by making the environment generic over the driv
 - `driver.await_ready()` — `environment.py:486`, `# type: ignore[attr-defined]  # xcuitest-only
   lifecycle`.
 
-These four sites are exactly the ones implementing `navigate`/`close`/`reset_context` on
-`PlaywrightDriver` (`drivers/playwright.py:383,388,434`) and `await_ready` on `XcuitestDriver`
-(`drivers/xcuitest.py:259`). The repository has 16 `type: ignore` comments in `bajutsu/` source
+These five call sites are exactly the ones implementing `navigate`/`close`/`reset_context` on
+`PlaywrightDriver` (`bajutsu/drivers/playwright.py:383,388,434`) and `await_ready` on `XcuitestDriver`
+(`bajutsu/drivers/xcuitest.py:259`). The repository has 16 `type: ignore` comments in `bajutsu/` source
 (excluding tests); **5 of them — nearly a third — are these four lifecycle calls concentrated in
 one file**, which the codebase-analysis report separately flagged as tech-debt finding #5. That
 concentration is itself the signal: it is not scattered incidental type-checking noise, it is one
