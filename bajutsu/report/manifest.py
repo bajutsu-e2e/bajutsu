@@ -67,10 +67,12 @@ def run_provenance(
     flakiness — not an edited scenario (BE-0049). Pure metadata: it never enters a verdict.
 
     Args:
-        scenario_yaml: The executed scenario's serialized form. Its content is what the hash
-            fingerprints — the logical scenario, so two runs of the same scenario share a hash and
-            group together (the fingerprint is taken before any evidence redaction, which keeps the
-            identity stable regardless of which secrets a run resolved).
+        scenario_yaml: The executed scenario's serialized form (the evidence snapshot). Its content
+            is what the hash fingerprints — the logical scenario, so two runs of the same scenario
+            share a hash and group together. The snapshot masks a literal `totp.secret` seed
+            (BE-0152) and keeps `${secrets.*}` references, so identity stays stable regardless of
+            which secrets a run resolved; the run-level secret-value scrub runs afterward and does
+            not affect the fingerprint.
         git_revision: The current git revision (the working tree's HEAD), or None when the run isn't
             under git (the key is then omitted rather than recorded as null).
         config_source: When the config came from a Git source (BE-0063), the repo + resolved commit

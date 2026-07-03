@@ -10,7 +10,11 @@ from bajutsu.scenario import (
     dump_scenarios,
     load_scenario_file,
     load_scenarios,
+    redact_totp_secrets,
 )
+
+# A valid base32 TOTP seed used across the redaction tests below.
+_TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
 # Top-level example.
 SCENARIO_YAML = """
@@ -189,3 +193,51 @@ def test_apply_setups_default_is_shared_and_resolved_once() -> None:
     assert scns[0].steps[0].tap and scns[0].steps[0].tap.id == "prelude"
     assert scns[1].steps[0].tap and scns[1].steps[0].tap.id == "prelude"
     assert count == 1  # the shared default is resolved once and cached
+
+
+def test_redact_totp_secrets_masks_a_literal_seed() -> None:
+    # A literal base32 seed written straight into the scenario must not survive into an
+    # evidence snapshot: it is masked with the fixed placeholder (BE-0152).
+    scn = Scenario.model_validate(
+        {"name": "a", "steps": [{"totp": {"secret": _TOTP_SEED, "into": {"var": "code"}}}]}
+    )
+    redacted = redact_totp_secrets(scn)
+    assert redacted.steps[0].totp is not None
+    assert redacted.steps[0].totp.secret == "<redacted>"
+    assert (
+        scn.steps[0].totp is not None and scn.steps[0].totp.secret == _TOTP_SEED
+    )  # original intact
+
+
+def test_redact_totp_secrets_keeps_a_secret_reference() -> None:
+    # A `${secrets.*}` reference is not the seed — the resolved value is scrubbed by the run-level
+    # secret pass (BE-0032) — so the reference is kept as-is, reviewable in the snapshot.
+    scn = Scenario.model_validate(
+        {"name": "a", "steps": [{"totp": {"secret": "${secrets.SEED}", "into": {"var": "code"}}}]}
+    )
+    redacted = redact_totp_secrets(scn)
+    assert redacted.steps[0].totp is not None
+    assert redacted.steps[0].totp.secret == "${secrets.SEED}"
+
+
+def test_redact_totp_secrets_reaches_nested_steps() -> None:
+    # totp can sit inside a control-flow block (forEach / if / web); the mask must reach it there.
+    scn = Scenario.model_validate(
+        {
+            "name": "a",
+            "steps": [
+                {
+                    "forEach": {
+                        "sel": {"id": "rows"},
+                        "as": "row",
+                        "steps": [{"totp": {"secret": _TOTP_SEED, "into": {"var": "code"}}}],
+                    }
+                }
+            ],
+        }
+    )
+    redacted = redact_totp_secrets(scn)
+    for_each = redacted.steps[0].for_each
+    assert for_each is not None and for_each.steps[0].totp is not None
+    assert for_each.steps[0].totp.secret == "<redacted>"
+    assert _TOTP_SEED not in dump_scenarios([redacted])

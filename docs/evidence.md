@@ -185,3 +185,10 @@ redact:
 > [configuration](configuration.md#secrets-secrets)) are masked wherever they would appear in
 > evidence — not just the configured `labels` / `headers` / `fields`. Longest values are masked
 > first so a value that is a substring of another never leaves a partial leak.
+>
+> The executed scenario is also snapshotted into the run directory (`scenario.yaml`, and the raw
+> YAML view in the report). A `totp` step's `secret` is a durable base32 seed, not a one-time code,
+> so a **literal** seed written straight into the scenario is masked to `<redacted>` in that
+> snapshot — a `${secrets.X}` reference is kept as-is (it is not the seed, and its resolved value
+> is masked by the secret-value rule above). Prefer `${secrets.X}` for a `totp` seed so it never
+> sits in the scenario file to begin with.

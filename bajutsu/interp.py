@@ -18,6 +18,16 @@ from typing import Any
 _TOKEN = re.compile(r"\$\{([^}]+)\}")
 
 
+def is_reference(s: str) -> bool:
+    """Whether `s` is exactly one `${...}` token — a pure reference, not a literal or a splice.
+
+    Mirrors the whole-token check `_interp_str` uses to preserve a bound value's type: a caller
+    that must keep references but mask literals (e.g. evidence redaction) treats anything else as
+    literal content.
+    """
+    return _TOKEN.fullmatch(s) is not None
+
+
 def find_tokens(value: Any) -> set[str]:
     """Every token key referenced anywhere in a (possibly nested) value."""
     found: set[str] = set()
