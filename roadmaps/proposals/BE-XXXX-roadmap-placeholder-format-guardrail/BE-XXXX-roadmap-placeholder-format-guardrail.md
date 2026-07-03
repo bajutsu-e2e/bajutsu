@@ -100,7 +100,7 @@ alike. With this in place, a placeholder that drifts out of shape fails `make ch
 runs on it — the same review-time signal a numbered item already gets today — and `promote_roadmap_items.py`
 gains the same placeholder awareness for free through the shared predicate.
 
-### 2. Periodically re-check open roadmap PRs against the moving `main`
+### 2. Periodically re-check open roadmap PRs against the moving `main`, and open a fix PR
 
 Item 1 alone does not help a PR that receives no further pushes, which is exactly what happened here:
 BE-0078 and BE-0100 both landed while BE-0137/BE-0138 sat idle in review, and nothing re-triggered
@@ -108,24 +108,38 @@ their CI to notice. Add a workflow, triggered by a `push: main` that touches the
 predicate or the BE template checks (plus `workflow_dispatch` for an on-demand run — not an
 unconditional daily cron, since the triggering hazard is a template change, not the calendar), that:
 
-- Lists open PRs touching `roadmaps/**`.
+- Lists open PRs touching `roadmaps/**` whose head branch lives in this repository, not a fork — the
+  same constraint `roadmap-promote.yml` already applies, since a fork branch can't be pushed to or
+  targeted by a same-repo PR.
 - For each, computes the PR head merged with the current `main` tip **without pushing anything to the
   branch** — a read-only, local merge simulation — and runs the (now placeholder-aware, per item 1)
   format and index checks against that merged tree.
-- On failure, posts or updates a single marker comment on the PR naming the drift, so the author sees
-  it while it is still cheap to fix.
+- On failure, runs a mechanical fixer over the same mechanical shape PR #568 applied by hand — drop
+  banned metadata fields, insert any missing required `## ` section with the template's skeleton
+  (`TBD` prose, an empty checklist) — and opens a small pull request whose base is the stale branch,
+  carrying that fix. Posts or updates a single marker comment on the original PR linking to the fix
+  PR, so the author sees the drift and a one-click remedy while it is still cheap to fix.
 
 This item depends on item 1: re-checking a still-unallocated PR's merged tree only catches
 placeholder-shape drift once the placeholder-aware format check exists, so item 2 should ship after or
-together with item 1, not before it. The no-push constraint is load-bearing: BE-0089 established that a
-commit pushed to a PR branch after approval trips branch protection's "dismiss stale approvals" and
-stalls auto-merge, which is why allocation itself was moved off the approval-time path. A read-only
-merge simulation reports drift without ever touching the branch, so it cannot dismiss a review.
+together with item 1, not before it. The no-push constraint on the *detection* step is load-bearing:
+BE-0089 established that a commit pushed to a PR branch after approval trips branch protection's
+"dismiss stale approvals" and stalls auto-merge, which is why allocation itself was moved off the
+approval-time path. A read-only merge simulation reports drift without ever touching the branch, so it
+cannot dismiss a review.
 
-Item 2's contribution is feedback latency, not the core safety property: items 1 and 3 together already
-guarantee that no non-conformant item reaches `main`, since item 3 validates unconditionally at the one
-truly gate-free moment regardless of how stale the source branch was. Item 2 only shortens the days a
-stale PR can sit undetected before that final check catches it.
+The fix itself is different: it only lands when the PR author explicitly merges the fix PR, not through
+an automated push. Unlike the merge-time allocator's contentless rename (which BE-0089 deliberately
+keeps invisible to review, since there is nothing in it for a reviewer to re-approve), the fix here
+changes the proposal's actual template content, so it is correct — not merely tolerable — for merging
+it to re-trigger the branch's normal review requirements: the original approval covered a version that,
+unknown to the reviewer, had already drifted out of shape.
+
+Item 2's contribution is feedback latency and remediation cost, not the core safety property: items 1
+and 3 together already guarantee that no non-conformant item reaches `main`, since item 3 validates
+unconditionally at the one truly gate-free moment regardless of how stale the source branch was. Item 2
+only shortens the days a stale PR can sit undetected, and turns fixing it from "re-derive the diff by
+hand" (as PR #568 did) into "review and merge one generated PR."
 
 ### 3. Make the merge-time allocator self-validate before landing on `main`
 
@@ -168,6 +182,11 @@ a bypass identity with no PR and no required check, so it must carry its own gat
   the discovery window without preventing the broken commit from landing in the first place, and does
   nothing for drift that surfaces before merge. Worth pursuing separately; not a substitute for items
   1–3 above.
+- **Push item 2's mechanical fix directly to the stale PR's branch instead of opening a fix PR against
+  it.** Rejected: an unreviewed bot commit landing on someone else's branch is a bigger surprise than a
+  fix PR the author chooses when to merge, and — the same problem BE-0089 designed around for the
+  allocator — it dismisses stale approvals without giving the author a chance to look at the fix first.
+  A fix PR keeps the same remedy but makes merging it, and any resulting re-review, an explicit choice.
 
 ## Progress
 
@@ -179,7 +198,8 @@ a bypass identity with no PR and no required check, so it must carry its own gat
       `tests/test_roadmap_format.py`, `scripts/build_roadmap_index.py`, `scripts/allocate_roadmap_ids.py`,
       and `scripts/promote_roadmap_items.py`
 - [ ] Add a workflow, triggered when a template-affecting commit lands on `main`, that re-checks open
-      roadmap PRs against current `main` read-only (depends on the item above)
+      roadmap PRs against current `main` read-only, and opens a fix PR against a stale branch on drift
+      (depends on the item above)
 - [ ] Extend `scripts/check_renumber_diff.py`'s invocation in `roadmap-id.yml` to also run the shared
       check before `git push`
 
