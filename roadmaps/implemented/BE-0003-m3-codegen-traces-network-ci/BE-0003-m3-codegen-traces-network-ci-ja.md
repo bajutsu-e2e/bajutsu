@@ -8,6 +8,7 @@
 | 提案 | [BE-0003](BE-0003-m3-codegen-traces-network-ci-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0003") |
 | 実装 PR | PR 単位の履歴より前（初期インポートにスカッシュ済みで、単一 PR なし） |
 | トピック | マイルストーン（M1–M4） |
 <!-- /BE-METADATA -->

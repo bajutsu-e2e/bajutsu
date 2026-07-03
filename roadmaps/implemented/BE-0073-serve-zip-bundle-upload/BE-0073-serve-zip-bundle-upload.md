@@ -8,6 +8,7 @@
 | Proposal | [BE-0073](BE-0073-serve-zip-bundle-upload.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0073") |
 | Implementing PR | [#216](https://github.com/bajutsu-e2e/bajutsu/pull/216) |
 | Topic | Configuration sourcing |
 | Related | [BE-0108](../../proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) |

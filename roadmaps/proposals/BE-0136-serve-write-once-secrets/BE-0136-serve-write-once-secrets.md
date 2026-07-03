@@ -8,6 +8,7 @@
 | Proposal | [BE-0136](BE-0136-serve-write-once-secrets.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0136") |
 | Topic | Security hardening |
 | Related | [BE-0015](../../in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../../in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0032](../../implemented/BE-0032-secret-variables/BE-0032-secret-variables.md) |
 <!-- /BE-METADATA -->

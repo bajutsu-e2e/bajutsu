@@ -8,6 +8,7 @@
 | 提案 | [BE-0046](BE-0046-otp-email-steps-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0046") |
 | 実装 PR | [#260](https://github.com/bajutsu-e2e/bajutsu/pull/260) (totp), [#308](https://github.com/bajutsu-e2e/bajutsu/pull/308) (email design), [#311](https://github.com/bajutsu-e2e/bajutsu/pull/311) (email) |
 | トピック | 競合調査（MagicPod / Autify）由来の候補 |
 | 由来 | MagicPod |

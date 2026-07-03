@@ -8,6 +8,7 @@
 | 提案 | [BE-0041](BE-0041-web-playwright-backend-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0041") |
 | 実装 PR | [#158](https://github.com/bajutsu-e2e/bajutsu/pull/158) |
 | トピック | プラットフォーム拡張（着手済みスライス） |
 <!-- /BE-METADATA -->

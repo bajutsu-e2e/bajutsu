@@ -8,6 +8,7 @@
 | Proposal | [BE-0107](BE-0107-showcase-tab-navigation-no-launch-shortcut.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0107") |
 | Topic | Dogfood fixtures (demo apps) |
 | Related | [BE-0079](../../implemented/BE-0079-consolidate-demos-on-showcase/BE-0079-consolidate-demos-on-showcase.md), [BE-0019](../../in-progress/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) |
 | Origin | Dogfooding |

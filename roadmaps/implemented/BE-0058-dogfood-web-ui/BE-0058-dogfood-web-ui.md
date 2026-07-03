@@ -8,6 +8,7 @@
 | Proposal | [BE-0058](BE-0058-dogfood-web-ui.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0058") |
 | Implementing PR | [#169](https://github.com/bajutsu-e2e/bajutsu/pull/169) |
 | Topic | Dogfood fixtures (web UI) |
 | Origin | Dogfooding |

@@ -8,6 +8,7 @@
 | 提案 | [BE-0045](BE-0045-dogfood-showcase-apps-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0045") |
 | 実装 PR | [#85](https://github.com/bajutsu-e2e/bajutsu/pull/85) |
 | トピック | Dogfood フィクスチャ（デモアプリ） |
 | 由来 | Dogfooding |

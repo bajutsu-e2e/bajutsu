@@ -8,6 +8,7 @@
 | 提案 | [BE-0138](BE-0138-serve-lint-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0138") |
 | トピック | serve Web UI への CLI 機能の取り込み |
 <!-- /BE-METADATA -->
 

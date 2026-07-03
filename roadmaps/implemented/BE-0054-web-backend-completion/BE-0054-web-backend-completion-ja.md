@@ -8,6 +8,7 @@
 | 提案 | [BE-0054](BE-0054-web-backend-completion-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0054") |
 | 実装 PR | [#187](https://github.com/bajutsu-e2e/bajutsu/pull/187)（native network スライス）、[#297](https://github.com/bajutsu-e2e/bajutsu/pull/297)（並列レーン）、[#298](https://github.com/bajutsu-e2e/bajutsu/pull/298)（console / page-error 証跡）、[#299](https://github.com/bajutsu-e2e/bajutsu/pull/299)（動画証跡）、[#300](https://github.com/bajutsu-e2e/bajutsu/pull/300)（擬似 multiTouch） |
 | トピック | プラットフォーム拡張（着手済みスライス） |
 <!-- /BE-METADATA -->

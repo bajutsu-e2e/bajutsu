@@ -8,6 +8,7 @@
 | Proposal | [BE-0096](BE-0096-docs-roadmap-link-integrity.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0096") |
 | Implementing PR | [#332](https://github.com/bajutsu-e2e/bajutsu/pull/332) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
