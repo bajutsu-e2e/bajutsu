@@ -196,9 +196,10 @@ def _resolve_config_and_engines(
     """Resolve the effective config (building a Git-sourced app on demand) and the engine list.
 
     Applies `--headed` and `--browser`, then parses `--browsers` into the cross-browser matrix axis
-    (BE-0076); a single `--browsers` engine collapses onto `eff.browser` (the single-engine path).
-    Returns the resolved config, its Git source provenance (None for a local config), and the engine
-    list (empty when no matrix).
+    (BE-0076). Returns the resolved config, its Git source provenance (None for a local config), and
+    the requested engines exactly as `--browsers` gave them: empty when `--browsers` is absent, a
+    single entry — already collapsed onto `eff.browser`, the single-engine path — for one engine, or
+    every listed engine for several. Only `len(...) > 1` takes the matrix path downstream.
     """
     eff, config_source, checkout_root = _load_effective_with_source(
         config, target_name, offline=offline, require_pinned=require_pinned
