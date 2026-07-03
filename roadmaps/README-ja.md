@@ -449,6 +449,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0118](proposals/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification-ja.md) | ドライバ間で wait_for のポーリング契約を統一する | 提案 |
 | [BE-0126](proposals/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md) | Effective をプラットフォームごとの設定に分割する | 提案 |
 | [BE-0128](proposals/BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md) | デバイス制御ステップをケイパビリティで preflight ゲートする | 提案 |
+| [BE-0141](proposals/BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol-ja.md) | backend のライフサイクルを型システムに載せる | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### オーサリング体験（record / GUI エディタ）
@@ -468,6 +469,10 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0137](proposals/BE-0137-serve-codegen/BE-0137-serve-codegen-ja.md) | serve Web UI からネイティブテストコードを生成する | 提案 |
 | [BE-0138](proposals/BE-0138-serve-lint/BE-0138-serve-lint-ja.md) | serve エディタでのシナリオ検証（lint / schema） | 提案 |
+| [BE-0145](proposals/BE-0145-serve-audit/BE-0145-serve-audit-ja.md) | serve Web UI で決定性監査を見る | 提案 |
+| [BE-0146](proposals/BE-0146-serve-coverage/BE-0146-serve-coverage-ja.md) | serve Web UI で E2E カバレッジマップを見る | 提案 |
+| [BE-0147](proposals/BE-0147-serve-triage/BE-0147-serve-triage-ja.md) | serve Web UI で失敗 run をトリアージする | 提案 |
+| [BE-0148](proposals/BE-0148-serve-doctor/BE-0148-serve-doctor-ja.md) | serve Web UI の doctor 準備状況パネル | 提案 |
 <!-- /GENERATED:proposals-serve-cli-features -->
 
 ### Dogfood フィクスチャ（デモアプリ）
@@ -517,6 +522,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md) | 実行証跡ファイルのパーミッションを制限する | 提案 |
 | [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer-ja.md) | actionlint インストーラを SHA で固定する | 提案 |
 | [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md) | serve の秘密情報ストアを書き込み専用にする | 提案 |
+| [BE-0144](proposals/BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race-ja.md) | auto-merge の stale-approval レースを解消する | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元
@@ -571,6 +577,10 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 提案 |
 | [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 提案 |
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt-ja.md) | トップレベルモジュールの命名の負債を解消する | 提案 |
+| [BE-0139](proposals/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) | ロードマップのダッシュボードと項目ファイルからトラッキング Issue へリンクする | 提案 |
+| [BE-0140](proposals/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init-ja.md) | Claude クライアント初期化の重複をなくす | 提案 |
+| [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage-ja.md) | CLI コマンド層にテストを追加する | 提案 |
+| [BE-0143](proposals/BE-0143-run-command-decomposition/BE-0143-run-command-decomposition-ja.md) | run コマンドの巨大関数を分解する | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携
