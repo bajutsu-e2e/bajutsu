@@ -94,6 +94,6 @@ No PR has landed yet.
 - `bajutsu/cli/commands/doctor.py:20`, `:135`, `:150` (helpers), 42.7% coverage
 - `bajutsu/cli/commands/record.py:31` (`_record_out_path`), 56.4% coverage
 - `bajutsu/cli/commands/run.py:49`, `:68`, `:87`, `:98`, `:108`, `:118` (helpers), 66.1% coverage
-- Related: BE-0067 (code quality gate hardening), BE-0050 (E2E coverage map)
-- Sequenced before the coverage-floor-ratchet item, which should follow once this work lands
+- Related: [BE-0067](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) (code quality gate hardening), [BE-0050](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) (E2E coverage map)
+- Sequenced before a follow-up coverage-floor-ratchet item (TBD), which should follow once this work lands
 - Originates from the 2026-07-02 codebase-analysis report (technical debt).
