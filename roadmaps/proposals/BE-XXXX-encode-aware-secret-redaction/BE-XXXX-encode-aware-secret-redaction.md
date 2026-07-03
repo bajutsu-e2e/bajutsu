@@ -28,10 +28,10 @@ secret slip through:
 1. **Percent-encoding.** A secret passed as a URL query parameter or form-encoded body
    (`token=p%40ssw0rd`) does not contain the literal value `p@ssw0rd`; the encoded form is a
    different string and is never matched.
-2. **`Basic base64(user:pass)`.** HTTP Basic auth sends `Authorization: Basic
-   <base64(username:password)>`. The literal password never appears in the header text — only its
-   base64-encoded, colon-joined form does — so the exact-match pass never touches it, and a
-   captured `network.json` exchange can carry a trivially-decodable credential in full.
+2. **`Basic base64(user:pass)`.** HTTP Basic auth sends
+   `Authorization: Basic <base64(username:password)>`. The literal password never appears in the
+   header text — only its base64-encoded, colon-joined form does — so the exact-match pass never
+   touches it, and a captured `network.json` exchange can carry a trivially-decodable credential in full.
 3. **HTML/JSON escaping.** A secret embedded in an HTML-escaped attribute (`&quot;`, `&amp;`) or a
    JSON-escaped string (`\"`, `\/`, `\uXXXX`) is not byte-identical to the raw value, so it is not
    matched either.
