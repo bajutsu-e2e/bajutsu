@@ -106,11 +106,11 @@ def test_command_passes_schema_and_headless_flags() -> None:
 
 
 def _assert_tool_restricted(cmd: list[str]) -> None:
-    # A denylist covering shell + file read/write, plus a fail-closed permission mode so an
-    # unanticipated tool cannot silently proceed in print mode (BE-0125).
-    denied = cmd[cmd.index("--disallowedTools") + 1]
-    for tool in ("Bash", "Read", "Write", "Edit", "NotebookEdit"):
-        assert tool in denied
+    # The denylist covers shell (Bash) + every file read/write tool; pin the exact set so
+    # dropping one silently (e.g. Glob/Grep) fails here. Plus a fail-closed permission mode so
+    # an unanticipated tool cannot silently proceed in print mode (BE-0125).
+    denied = set(cmd[cmd.index("--disallowedTools") + 1].split(","))
+    assert denied == {"Bash", "Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep"}
     assert cmd[cmd.index("--permission-mode") + 1] == "default"
 
 
