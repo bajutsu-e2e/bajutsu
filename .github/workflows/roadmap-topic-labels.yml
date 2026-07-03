@@ -60,13 +60,22 @@ jobs:
 
           # The changed files, trimmed to the fields the script needs. `--paginate` streams one
           # array per page; `-q '.[]'` flattens to a stream of objects; `jq -sc` reslurps to a
-          # single JSON array for stdin.
-          files="$(gh api --paginate "repos/${REPO}/pulls/${PR}/files" \
-            -q '.[] | {status, filename, previous_filename}' | jq -sc '.')"
+          # single JSON array for stdin. Best-effort like the base fetch: GitHub's default bash runs
+          # `-o pipefail`, so a failed `gh api` fails the pipeline — catch it and skip green rather
+          # than reconcile against a truncated (or empty) file list, which could strip live labels.
+          if ! files="$(gh api --paginate "repos/${REPO}/pulls/${PR}/files" \
+            -q '.[] | {status, filename, previous_filename}' | jq -sc '.')"; then
+            echo "::warning::could not list changed files for PR #${PR}; skipping topic-label sync this run."
+            exit 0
+          fi
 
           # The PR's current topic labels, so the script reconciles toward the desired set (add the
-          # missing, remove the stale) instead of replaying a non-convergent base→head delta.
-          current="$(gh pr view "$PR" --json labels -q '[.labels[].name] | join(",")')"
+          # missing, remove the stale) instead of replaying a non-convergent base→head delta. Also
+          # best-effort: reconciling without the true current set could add or drop the wrong label.
+          if ! current="$(gh pr view "$PR" --json labels -q '[.labels[].name] | join(",")')"; then
+            echo "::warning::could not read current labels for PR #${PR}; skipping topic-label sync this run."
+            exit 0
+          fi
 
           actions="$(printf '%s' "$files" \
             | CURRENT_TOPIC_LABELS="$current" python3 scripts/sync_roadmap_topic_labels.py)"
