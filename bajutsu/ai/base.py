@@ -79,8 +79,9 @@ class MessageRequest:
     """A single normalized turn to send to a backend.
 
     ``system`` is a plain string; the adapter applies whatever prompt-caching the provider offers
-    (all paths cache the static system prompt today). ``tool_choice`` forces a tool call, so the
-    response is guaranteed to carry one tool-use block.
+    (all paths cache the static system prompt today). ``tool_choice`` forces a tool call, so a
+    compliant response carries a tool-use block — callers still check
+    ``MessageResponse.first_tool_use()`` for the rare case a model doesn't comply.
     """
 
     system: str

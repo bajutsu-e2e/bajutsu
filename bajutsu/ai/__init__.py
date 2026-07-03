@@ -7,8 +7,12 @@ only through the `AiBackend` protocol and the normalized request / response type
 `base`, so a Claude-using feature can be re-pointed at a different model family without touching its
 call site. `anthropic` is the reference adapter; `registry` is the name → adapter extension point.
 
-Nothing here is imported on the deterministic `run` / CI gate (DESIGN §2 / §3.1) — the seam lives
-entirely on the AI paths.
+The seam's model call (`AiBackend.create_message`) never runs on the deterministic `run` / CI gate
+(DESIGN §2 / §3.1) — it is reached only from Tier-1 authoring / investigation paths. Two cheap,
+model-free lookups *are* imported more broadly: `bajutsu.config` validates `ai.provider` against
+`known_providers()` for every command, and `run --dismiss-alerts`'s alert guard (itself a Tier-1
+path within `run`) calls `credential_gap` to decide whether to construct the vision locator at all.
+Neither calls a model or bears on pass/fail.
 """
 
 from __future__ import annotations

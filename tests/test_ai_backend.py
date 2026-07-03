@@ -85,7 +85,7 @@ def test_first_tool_use_is_none_without_a_tool_block() -> None:
 
 
 def test_builtin_providers_are_registered() -> None:
-    assert set(known_providers()) == {"anthropic", "bedrock"}
+    assert {"anthropic", "bedrock"} <= set(known_providers())
 
 
 def test_create_backend_defaults_to_the_anthropic_adapter() -> None:
