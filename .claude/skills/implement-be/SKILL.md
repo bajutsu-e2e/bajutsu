@@ -50,7 +50,15 @@ ls -d roadmaps/{proposals,implemented}/BE-*<id-or-slug>*/
 ```
 
 Read **both** language files; the **English** `BE-NNNN-<slug>.md` is the authoritative
-spec, the `-ja.md` mirror is supporting context. Then branch on where it sits:
+spec, the `-ja.md` mirror is supporting context.
+
+**Before doing anything else, explain the item to the user.** Post a short overview —
+the ID and title, its `Status`/`Topic`, a plain-language summary of what it proposes and
+why (Introduction/Motivation in your own words, not copy-pasted), and its current state
+(proposal / already implemented / deferred). This orients the user before any branching,
+planning, or code — every run of this skill starts with it, not just the first time.
+
+Then branch on where it sits:
 
 - **Under `proposals/` with `Status: Proposal`** — the normal case. Note that implementing
   it *accepts* it: this PR flips it to `Implemented`. Say so.
