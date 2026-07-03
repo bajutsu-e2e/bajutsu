@@ -278,12 +278,13 @@ def run_command(
     """The ``python -m bajutsu run ...`` argv for a launch request.  ``udid`` may be a comma
     list and ``workers > 1`` runs those devices as a parallel pool (capped to the pool size by
     the CLI).  ``erase`` / ``dismiss_alerts`` / ``headed`` / ``network`` are overrides: True/False
-    force the flag on/off, None leaves the target's own config (each scenario's preconditions.erase /
-    dismissAlerts, or the target's headless / network default) to decide.  ``runs_dir`` (when set)
-    points the run's output tree elsewhere via ``--runs-dir`` — an uploaded bundle runs from its own
-    extracted dir (the working directory) but must still write its run into serve's runs store
-    (BE-0073).  Every flag is rendered from ``run``'s own option metadata (BE-0134), so this argv
-    can't drift from the CLI."""
+    force the flag on/off, None omits it so the CLI's own default applies — for ``erase`` /
+    ``dismiss_alerts`` that means each scenario's preconditions.erase / dismissAlerts, for
+    ``headed`` the target's ``headless`` config, and for ``network`` the ``--network`` default (on).
+    ``runs_dir`` (when set) points the run's output tree elsewhere via ``--runs-dir`` — an uploaded
+    bundle runs from its own extracted dir (the working directory) but must still write its run into
+    serve's runs store (BE-0073).  Every flag is rendered from ``run``'s own option metadata
+    (BE-0134), so this argv can't drift from the CLI."""
     cmd = [
         sys.executable,
         "-m",
