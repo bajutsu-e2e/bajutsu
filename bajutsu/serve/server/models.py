@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, UniqueConstraint, func
+from sqlalchemy import ForeignKey, Index, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON, DateTime
@@ -75,6 +75,9 @@ class Run(Base):
 
 class JobRecord(Base):
     __tablename__ = "jobs"
+    # The lease/reclaim hot paths filter on status (and leased_at for reclaim), swept on every poll,
+    # so this composite index keeps them off a full-table scan as the jobs table grows.
+    __table_args__ = (Index("ix_jobs_status_leased_at", "status", "leased_at"),)
 
     id: Mapped[str] = mapped_column(primary_key=True)
     org_id: Mapped[str] = mapped_column(default="")
@@ -82,6 +85,9 @@ class JobRecord(Base):
     status: Mapped[str] = mapped_column(default="queued")  # queued | leased | done | failed
     leased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     leased_by: Mapped[str | None] = mapped_column(default=None)
+    # How many times this job has been leased and lost (lease expiry) — a poison job that keeps
+    # killing its worker is failed once it hits the attempt cap rather than re-queued forever.
+    attempts: Mapped[int] = mapped_column(default=0, server_default="0")
     result: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
     created_at: Mapped[datetime] = _created_at()
 

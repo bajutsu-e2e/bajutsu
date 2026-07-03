@@ -412,6 +412,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0015](in-progress/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) | Web UI の公開ホスティング | 実装中 |
 | [BE-0016](in-progress/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) | Web UI のセルフホスティング | 実装中 |
+| [BE-0110](in-progress/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md) | URI 指定によるオブジェクトストレージへの証跡アップロード | 実装中 |
 <!-- /GENERATED:in-progress-hosting -->
 
 ### codegen 網羅性
@@ -456,6 +457,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0114](proposals/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) | backend 非依存の挙動を検査する driver conformance suite | 提案 |
 | [BE-0118](proposals/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification-ja.md) | ドライバ間で wait_for のポーリング契約を統一する | 提案 |
 | [BE-0126](proposals/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md) | Effective をプラットフォームごとの設定に分割する | 提案 |
+| [BE-0128](proposals/BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md) | デバイス制御ステップをケイパビリティで preflight ゲートする | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### オーサリング体験（record / GUI エディタ）
@@ -493,7 +495,8 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | ID | 項目 | 状態 |
 |---|---|---|
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) | ホスティング時は config の取得元をアップロードと Git だけに絞る | 提案 |
-| [BE-0110](proposals/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md) | URI 指定によるオブジェクトストレージへの証跡アップロード | 提案 |
+| [BE-0127](proposals/BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module-ja.md) | serve operations の巨大モジュールを分割する | 提案 |
+| [BE-0129](proposals/BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary-ja.md) | serve のスコープを画定し、ホスト固有の関心事を共有 config から締め出す | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
 ### セキュリティ強化
@@ -509,6 +512,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0123](proposals/BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection-ja.md) | composite action の入力を env 経由の間接参照にする | 提案 |
 | [BE-0124](proposals/BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation-ja.md) | config-source の owner・repo 検証を厳格化する | 提案 |
 | [BE-0125](proposals/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction-ja.md) | claude-code オーサリングエージェントのツールを制限する | 提案 |
+| [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md) | ネットワークの機密ヘッダーと Cookie を既定で redact する | 提案 |
+| [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md) | 実行証跡ファイルのパーミッションを制限する | 提案 |
+| [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer-ja.md) | actionlint インストーラを SHA で固定する | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元
@@ -534,7 +540,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 自律クロールを高速に保ち、成長に合わせてコードを簡潔に保つ取り組みです。
 
 <!-- GENERATED:proposals-crawl -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers-ja.md) | クロールのスクリーンショットヘルパーを重複排除する | 提案 |
 <!-- /GENERATED:proposals-crawl -->
 
 ### バックエンド拡張（iOS actuator）
@@ -560,6 +568,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0113](proposals/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md) | DESIGN.md を現状の実装に合わせる | 提案 |
 | [BE-0117](proposals/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet-ja.md) | CLI コマンド層の残りをテストしてから、カバレッジフロアをラチェットする | 提案 |
 | [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility-ja.md) | Legible GitHub Actions workflow and job names | 提案 |
+| [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift-ja.md) | serve と CLI のフラグ二重管理による drift をなくす | 提案 |
 <!-- /GENERATED:proposals-dev-infra -->
 
 ### 外部サービスとの連携
