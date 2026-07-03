@@ -26,7 +26,7 @@ concerns out of the config schema the rest of the tool shares.
 |---|---|---|
 | `bajutsu/serve/` (incl. `server/`) | 6,920 lines / ~30 modules | SQLAlchemy, Alembic, OAuth, RBAC, an object store, a Redis-backed worker |
 | `bajutsu/templates/serve.js` | 1,575 lines | vanilla JS, no build step, no tests |
-| `bajutsu/serve/operations.py` | 1,376 lines | tracked separately by the sibling `split-serve-operations-module` proposal |
+| `bajutsu/serve/operations.py` | 1,376 lines | tracked separately by a planned follow-up proposal to split this module (TBD) |
 | `bajutsu/` (whole core, Python) | ~30,000 lines | `serve` + `serve.js` together are roughly a fifth of this |
 
 None of that infrastructure is something a local CLI tool's core has a reason to know about.
