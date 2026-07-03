@@ -543,7 +543,9 @@ class PlaywrightDriver:
         self._page.keyboard.type(text)
 
     @_wedge_guard
-    def wait_for(self, sel: base.Selector, timeout: float) -> bool:
+    def wait_for(self, sel: base.Selector) -> bool:
+        # Single-shot by contract (BE-0118): the deadline poll lives in base.wait_until,
+        # so the timeout is honoured on Web exactly as on idb (this method ignored it before).
         return len(base.find_all(self.query(), sel)) >= 1
 
     @_wedge_guard

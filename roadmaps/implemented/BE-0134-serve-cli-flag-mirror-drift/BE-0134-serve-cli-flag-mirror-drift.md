@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0134](BE-0134-serve-cli-flag-mirror-drift.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0134") |
+| Implementing PR | [#621](https://github.com/bajutsu-e2e/bajutsu/pull/621) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -89,18 +90,27 @@ currently cannot pass through. The design has two parts:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Derive `run_command`'s argv from `run`'s `typer` option metadata instead of a hand-maintained
+- [x] Derive `run_command`'s argv from `run`'s `typer` option metadata instead of a hand-maintained
       list
-- [ ] Derive `record_command`'s argv from `record`'s `typer` option metadata instead of a
-      hand-maintained list
-- [ ] Add a check (test or import-time assertion) that a flag known to `run_command`/
+- [x] Derive `record_command`'s argv from `record`'s `typer` option metadata instead of a
+      hand-maintained list (and `crawl_command` too, for consistency — it shared the same pattern)
+- [x] Add a check (test or import-time assertion) that a flag known to `run_command`/
       `record_command` still exists on the corresponding CLI command
-- [ ] Backfill the currently-missing `run` flags (`--browser`, `--browsers`, `--tag`, `--exclude`,
+- [x] Backfill the currently-missing `run` flags (`--browser`, `--browsers`, `--tag`, `--exclude`,
       `--schemas`, `--goldens`, `--network`, `--log-predicate`, `--log-subsystem`,
       `--alert-instruction`, `--zip`, `--config-offline`, `--require-pinned-config`) through
       `run_command` and the `serve` request body that feeds it
 
-No PR has landed yet.
+- The flag surface now derives from a single source of truth: `bajutsu/serve/_cli_flags.py`
+  introspects each command's `typer`/`click` options and `flag_args` renders every flag from them,
+  so `run_command` / `record_command` / `crawl_command` in `bajutsu/serve/helpers.py` no longer
+  hand-list spellings or on/off forms. `flag_args` raises on a name that isn't an option on the
+  command, and a completeness test (`tests/serve/test_cli_flag_mirror.py`) requires every CLI flag
+  to be classified — so a renamed/removed flag, or a newly-added one left unreachable, fails the
+  gate. The `run` flags above are backfilled; `start_run` (`bajutsu/serve/operations/dispatch.py`)
+  wires the client-safe ones from the request body, deliberately leaving `--schemas` / `--goldens`
+  (host directory paths) and `--config-offline` / `--require-pinned-config` config-driven so a serve
+  client can't supply an arbitrary host path (BE-0051).
 
 ## References
 

@@ -128,22 +128,21 @@ def test_empty_backoff_grows_exponentially_then_caps() -> None:
     assert sum(seq) <= 1.0  # no further than the previous fixed-0.2 * 5 bound
 
 
-def test_wait_for_returns_true_when_already_present() -> None:
-    driver = IdbDriver("U", run=lambda a: FIXTURE)
-    assert driver.wait_for({"id": "settings.open"}, timeout=1, poll=0) is True
+def test_wait_for_is_single_shot() -> None:
+    # BE-0118: wait_for checks the current screen once; the deadline poll lives in wait_until.
+    present = IdbDriver("U", run=lambda a: FIXTURE)
+    assert present.wait_for({"id": "settings.open"}) is True
+    absent = IdbDriver("U", run=lambda a: "[]")
+    assert absent.wait_for({"id": "nope"}) is False
 
 
-def test_wait_for_polls_until_the_element_appears() -> None:
-    # Absent on the first reads, then it shows up: wait_for must keep polling, not check once.
+def test_wait_until_polls_idb_until_the_element_appears() -> None:
+    # Absent on the first reads, then it shows up: wait_until must keep polling idb's
+    # single-shot wait_for, not give up after one check.
     run, calls = _scripted([EMPTY, EMPTY, FIXTURE])
     driver = IdbDriver("U", run=run)
-    assert driver.wait_for({"id": "settings.open"}, timeout=5, poll=0) is True
+    assert base.wait_until(driver, {"id": "settings.open"}, timeout=5, poll=0) is True
     assert calls[0] >= 3  # polled past the empty trees until the element appeared
-
-
-def test_wait_for_times_out_when_absent() -> None:
-    driver = IdbDriver("U", run=lambda a: "[]")
-    assert driver.wait_for({"id": "nope"}, timeout=0, poll=0) is False
 
 
 # --- _stable_key projection ---

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0125](BE-0125-authoring-agent-tool-restriction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0125") |
+| Implementing PR | [#620](https://github.com/bajutsu-e2e/bajutsu/pull/620) |
 | Topic | Security hardening |
 <!-- /BE-METADATA -->
 
@@ -92,12 +93,14 @@ protocol, the JSON-schema action contract, or the deterministic run/CI path chan
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `--disallowedTools`/`--allowedTools` to `ClaudeCodeAgent._command` covering
+- [x] Add `--disallowedTools`/`--allowedTools` to `ClaudeCodeAgent._command` covering
       shell and file read/write.
-- [ ] Add `--permission-mode` set to a deny-by-default, non-interactive mode.
-- [ ] Add a test asserting the built command always carries the restriction flags.
+- [x] Add `--permission-mode` set to a deny-by-default, non-interactive mode.
+- [x] Add a test asserting the built command always carries the restriction flags.
 
-No PR has landed yet.
+- [#620](https://github.com/bajutsu-e2e/bajutsu/pull/620) — Add `--disallowedTools` (`Bash,Read,Write,Edit,NotebookEdit,Glob,Grep`) and
+  `--permission-mode default` to `ClaudeCodeAgent._command`; both `next_action` and `plan`
+  are covered through the shared helper, with tests asserting the flags are always present.
 
 ## References
 

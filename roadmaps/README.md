@@ -130,6 +130,7 @@ The first slices of the multi-platform direction that have shipped: a **platform
 | [BE-0010](implemented/BE-0010-update-scope-statement/BE-0010-update-scope-statement.md) | Update the scope statement | Implemented |
 | [BE-0076](implemented/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md) | Selectable browser engines & cross-browser compatibility matrix (web backend) | Implemented |
 | [BE-0082](implemented/BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) | Preflight capability check before a run | Implemented |
+| [BE-0118](implemented/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) | Unify the wait_for polling contract across drivers | Implemented |
 <!-- /GENERATED:implemented-platform -->
 
 ### Backend expansion (iOS actuators)
@@ -244,6 +245,7 @@ Reduce friction for the many parallel sessions working this repo — treat merge
 | [BE-0109](implemented/BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) | GitHub Issues as the ownership tracker for open roadmap items | Implemented |
 | [BE-0113](implemented/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md) | Realign DESIGN.md with the current implementation | Implemented |
 | [BE-0117](implemented/BE-0117-coverage-floor-ratchet/BE-0117-coverage-floor-ratchet.md) | Cover the rest of the CLI command layer, then ratchet the coverage floor | Implemented |
+| [BE-0122](implemented/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) | Legible GitHub Actions workflow and job names | Implemented |
 | [BE-0139](implemented/BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) | Link the roadmap dashboard and item files to their tracking issue | Implemented |
 | [BE-0156](implemented/BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) | Keep roadmap-item PR labels in sync with Topic | Implemented |
 <!-- /GENERATED:implemented-dev-infra -->
@@ -256,7 +258,9 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | ID | Item | Status |
 |---|---|---|
 | [BE-0092](implemented/BE-0092-crawl-coordinator-extraction/BE-0092-crawl-coordinator-extraction.md) | Extract the crawl coordinator into a class | Implemented |
+| [BE-0134](implemented/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift.md) | Eliminate serve-to-CLI flag-mirror drift | Implemented |
 | [BE-0140](implemented/BE-0140-dedupe-claude-client-init/BE-0140-dedupe-claude-client-init.md) | Deduplicate Claude client initialization | Implemented |
+| [BE-0142](implemented/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage.md) | Cover the CLI command layer | Implemented |
 | [BE-0150](implemented/BE-0150-scenario-load-yaml-error-handling/BE-0150-scenario-load-yaml-error-handling.md) | Fail cleanly on a malformed scenario in `trace --explain` and `audit` | Implemented |
 <!-- /GENERATED:implemented-quality-debt -->
 
@@ -291,6 +295,7 @@ The Tier-1 AI paths (`record` / `triage` / `--dismiss-alerts` / `crawl`) call Cl
 |---|---|---|
 | [BE-0053](implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) | Amazon Bedrock as a pluggable AI provider | Implemented |
 | [BE-0101](implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md) | Legible Claude-using / Claude-free split with a zero-config non-AI path | Implemented |
+| [BE-0111](implemented/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md) | Make the AI SDK an optional extra so the deterministic gate installs AI-free | Implemented |
 <!-- /GENERATED:implemented-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -304,6 +309,7 @@ Standing up `bajutsu serve` beyond loopback. The hardening that makes the existi
 | [BE-0055](implemented/BE-0055-operational-logging/BE-0055-operational-logging.md) | Operational logging for the hosted serve | Implemented |
 | [BE-0090](implemented/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md) | Govern and sandbox command execution from uploaded bundle configs | Implemented |
 | [BE-0106](implemented/BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) | Post-completion worker model (eliminate Redis dependency) | Implemented |
+| [BE-0127](implemented/BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Implemented |
 <!-- /GENERATED:implemented-hosting -->
 
 ### Security hardening
@@ -314,6 +320,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | ID | Item | Status |
 |---|---|---|
 | [BE-0116](implemented/BE-0116-udid-argument-validation/BE-0116-udid-argument-validation.md) | Tighten UDID validation against argument injection | Implemented |
+| [BE-0125](implemented/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Implemented |
 | [BE-0133](implemented/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Implemented |
 | [BE-0152](implemented/BE-0152-totp-seed-artifact-leak/BE-0152-totp-seed-artifact-leak.md) | Keep literal TOTP seeds out of run artifacts | Implemented |
 | [BE-0155](implemented/BE-0155-idb-input-text-via-stdin/BE-0155-idb-input-text-via-stdin.md) | Pass idb input text via stdin to keep secrets out of argv | Implemented |
@@ -491,7 +498,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 |---|---|---|
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support.md) | Flutter support | Proposal |
 | [BE-0114](proposals/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) | Driver conformance suite for backend-agnostic behavior | Proposal |
-| [BE-0118](proposals/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) | Unify the wait_for polling contract across drivers | Proposal |
 | [BE-0126](proposals/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md) | Split Effective into per-platform configs | Proposal |
 | [BE-0128](proposals/BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Proposal |
 | [BE-0141](proposals/BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol.md) | Bring backend lifecycle into the type system | Proposal |
@@ -534,7 +540,6 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0104](proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) | Vendor-neutral AI backend interface | Proposal |
-| [BE-0111](proposals/BE-0111-ai-sdk-optional-dependency/BE-0111-ai-sdk-optional-dependency.md) | Make the AI SDK an optional extra so the deterministic gate installs AI-free | Proposal |
 <!-- /GENERATED:proposals-ai-provider -->
 
 ### Hosting the web UI (cloud / self-hosted)
@@ -545,7 +550,6 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 | ID | Item | Status |
 |---|---|---|
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
-| [BE-0127](proposals/BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Proposal |
 | [BE-0129](proposals/BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) | Bound serve scope and keep host concerns out of shared config | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
@@ -561,7 +565,6 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0121](proposals/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md) | Unconditional CSRF and Host-allowlist defenses for serve | Proposal |
 | [BE-0123](proposals/BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection.md) | Route composite-action inputs through env indirection | Proposal |
 | [BE-0124](proposals/BE-0124-config-source-owner-repo-validation/BE-0124-config-source-owner-repo-validation.md) | Tighten config-source owner and repo validation | Proposal |
-| [BE-0125](proposals/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Proposal |
 | [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md) | Redact sensitive network headers and cookies by default | Proposal |
 | [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Proposal |
 | [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets.md) | Write-once secrets store for serve | Proposal |
@@ -617,7 +620,6 @@ Keeping the autonomous crawl fast and its code lean as it grows.
 | ID | Item | Status |
 |---|---|---|
 | [BE-0112](proposals/BE-0112-layer-boundary-enforcement/BE-0112-layer-boundary-enforcement.md) | Enforce core / contract / periphery layer boundaries in the gate | Proposal |
-| [BE-0122](proposals/BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md) | Legible GitHub Actions workflow and job names | Proposal |
 | [BE-0159](proposals/BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md) | Flatten roadmap items into one directory (retire status-driven folders) | Proposal |
 <!-- /GENERATED:proposals-dev-infra -->
 
@@ -629,9 +631,7 @@ Behavior-preserving cleanup inside `bajutsu/` itself — deduplication, decompos
 | ID | Item | Status |
 |---|---|---|
 | [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers.md) | Deduplicate crawl screenshot helpers | Proposal |
-| [BE-0134](proposals/BE-0134-serve-cli-flag-mirror-drift/BE-0134-serve-cli-flag-mirror-drift.md) | Eliminate serve-to-CLI flag-mirror drift | Proposal |
 | [BE-0135](proposals/BE-0135-module-naming-debt/BE-0135-module-naming-debt.md) | Resolve top-level module naming debt | Proposal |
-| [BE-0142](proposals/BE-0142-cli-command-coverage/BE-0142-cli-command-coverage.md) | Cover the CLI command layer | Proposal |
 | [BE-0143](proposals/BE-0143-run-command-decomposition/BE-0143-run-command-decomposition.md) | Decompose the run command god-function | Proposal |
 <!-- /GENERATED:proposals-quality-debt -->
 

@@ -44,6 +44,11 @@ uv sync --group dev                        # creates .venv (Python 3.13) + deps 
 `uv` reads `pyproject.toml` / `uv.lock` and builds an isolated `.venv`. Prefix project commands
 with `uv run` (e.g. `uv run bajutsu …`) so they use that environment.
 
+> **Installing from PyPI?** The base package is AI-free: `pip install bajutsu` gets the
+> deterministic authoring / running paths with no AI SDK, and `pip install bajutsu[ai]` (or
+> `bajutsu[bedrock]`) adds the SDK for the Claude paths. The split is detailed in
+> [What uses Claude](ai-boundary.md#installing-the-claude-paths).
+
 Confirm the CLI (command-line interface) is wired up:
 
 ```bash

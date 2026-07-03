@@ -230,19 +230,13 @@ class XcuitestDriver:
         if reply.status != _OK:
             raise XcuitestChannelError(f"type failed ({reply.status})")
 
-    def wait_for(self, sel: base.Selector, timeout: float, poll: float = 0.2) -> bool:
-        """Poll `query()` until at least one element matches, or `timeout` elapses.
+    def wait_for(self, sel: base.Selector) -> bool:
+        """Single-shot: whether `sel` matches the current screen (BE-0118).
 
-        A condition wait with no fixed sleep — mirroring the orchestrator's discipline and idb's
-        `wait_for`.
+        The deadline poll lives in the shared `base.wait_until`, so the timeout is honoured
+        identically on every backend.
         """
-        deadline = time.monotonic() + timeout
-        while True:
-            if len(base.find_all(self.query(), sel)) >= 1:
-                return True
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(poll)
+        return len(base.find_all(self.query(), sel)) >= 1
 
     def screenshot(self, path: str) -> None:
         reply = self._transport("GET", "/screenshot", None)

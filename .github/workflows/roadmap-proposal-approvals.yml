@@ -14,7 +14,7 @@
 # Escape hatch: a `Single-Approver Proposal` label on the PR waives the second approval (some proposals
 # are trivial enough for one reviewer). It re-runs on `labeled`/`unlabeled` so applying the label flips
 # the check green — and removing it re-imposes the bar.
-name: roadmap-proposal-approvals
+name: "Roadmap: require two approvals (proposals)"
 
 on:
   pull_request:

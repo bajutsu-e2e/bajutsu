@@ -27,15 +27,17 @@ class Driver(Protocol):
     def long_press(self, sel: Selector, duration: float) -> None: ...
     def swipe(self, frm: Point, to: Point) -> None: ...
     def type_text(self, text: str) -> None: ...
-    def wait_for(self, sel: Selector, timeout: float) -> bool: ...
+    def wait_for(self, sel: Selector) -> bool: ...   # single-shot: matches the current screen?
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...          # provided capabilities (for actuator / fallback resolution)
 ```
 
-> **About `wait_for`**: it exists on the Protocol, but the run loop's condition waits are done by
-> the orchestrator itself polling `query()` (`_wait`, [run-loop](run-loop.md#waits-condition-waits-only)),
-> so the current execution path does not call the driver's `wait_for` directly. It remains part
-> of the interface.
+> **About `wait_for`**: it is **single-shot by contract** (BE-0118) — it checks the current screen
+> once and returns, never looping. The deadline poll lives in one shared helper, `base.wait_until`,
+> so a caller's `timeout` means the same real seconds on every backend instead of each driver
+> reimplementing its own loop. The run loop's own condition waits are done by the orchestrator
+> polling `query()` directly (`_wait`, [run-loop](run-loop.md#waits-condition-waits-only)); so
+> `wait_until` is used only by callers outside that loop (e.g. `golden_assert`).
 
 ### Capabilities (`Capability`)
 
@@ -135,7 +137,8 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
   coordinate (`page.mouse.click`). It deliberately does **not** use Playwright's own
   `get_by_test_id().click()`, so selector semantics stay byte-identical to every other backend.
 - `type_text` types via `page.keyboard` (the orchestrator taps `into` first, focusing the field);
-  `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (same as idb).
+  `screenshot` is `page.screenshot`; `wait_for` is single-shot via `find_all` (like every backend —
+  the shared `base.wait_until` supplies the deadline poll).
 - Lifecycle is owned by the driver: a fresh `BrowserContext` is the `erase` equivalent, `navigate()`
   (`page.goto(baseUrl)`) is the `launch`, and `close()` tears the browser down. There is no simctl
   device, so the run uses a dummy lease and no device control.

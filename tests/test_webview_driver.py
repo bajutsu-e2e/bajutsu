@@ -100,17 +100,29 @@ def test_double_tap_dispatches() -> None:
     assert len(bridge.tapped) == 1
 
 
-def test_wait_for_polls_bridge() -> None:
-    elements = [_el("loaded")]
-    bridge = FakeBridge(elements)
-    driver = WebContextDriver(bridge=bridge, webview_id="wv")
-    assert driver.wait_for({"id": "loaded"}, timeout=1.0)
+def test_wait_for_is_single_shot() -> None:
+    # BE-0118: single-shot check of the current DOM; the deadline poll lives in base.wait_until.
+    present = WebContextDriver(bridge=FakeBridge([_el("loaded")]), webview_id="wv")
+    assert present.wait_for({"id": "loaded"})
+    absent = WebContextDriver(bridge=FakeBridge([]), webview_id="wv")
+    assert not absent.wait_for({"id": "missing"})
 
 
-def test_wait_for_not_found() -> None:
-    bridge = FakeBridge([])
-    driver = WebContextDriver(bridge=bridge, webview_id="wv")
-    assert not driver.wait_for({"id": "missing"}, timeout=0.1)
+def test_wait_until_polls_webview_until_the_element_appears() -> None:
+    # The DOM is empty on the first read, then the element renders: wait_until must keep
+    # polling the WebView's single-shot wait_for.
+    class LateBridge(FakeBridge):
+        def __init__(self, appear_after: int) -> None:
+            super().__init__([_el("loaded")])
+            self._appear_after = appear_after
+            self._reads = 0
+
+        def query_dom(self, webview_id: str) -> list[base.Element]:
+            self._reads += 1
+            return self._elements if self._reads > self._appear_after else []
+
+    driver = WebContextDriver(bridge=LateBridge(appear_after=2), webview_id="wv")
+    assert base.wait_until(driver, {"id": "loaded"}, timeout=1.0, poll=0) is True
 
 
 def test_type_text_dispatches() -> None:
