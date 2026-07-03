@@ -103,3 +103,24 @@ def test_command_passes_schema_and_headless_flags() -> None:
     assert cmd[cmd.index("--model") + 1] == "claude-opus-4-8"
     # the rendered observation (goal + elements) is the final positional prompt
     assert "Get Started" in cmd[-1]
+
+
+def _assert_tool_restricted(cmd: list[str]) -> None:
+    # A denylist covering shell + file read/write, plus a fail-closed permission mode so an
+    # unanticipated tool cannot silently proceed in print mode (BE-0125).
+    denied = cmd[cmd.index("--disallowedTools") + 1]
+    for tool in ("Bash", "Read", "Write", "Edit", "NotebookEdit"):
+        assert tool in denied
+    assert cmd[cmd.index("--permission-mode") + 1] == "default"
+
+
+def test_next_action_command_is_tool_restricted() -> None:
+    runner = _runner_returning({"tool": "tap", "label": "Get Started"})
+    ClaudeCodeAgent(runner=runner).next_action(_obs())
+    _assert_tool_restricted(runner.seen[0])  # type: ignore[attr-defined]
+
+
+def test_plan_command_is_tool_restricted() -> None:
+    runner = _runner_returning({"steps": ["Tap Get Started"]})
+    ClaudeCodeAgent(runner=runner).plan("sign in")
+    _assert_tool_restricted(runner.seen[0])  # type: ignore[attr-defined]

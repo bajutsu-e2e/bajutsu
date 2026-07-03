@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0125](BE-0125-authoring-agent-tool-restriction-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0125") |
+| 実装 PR | [#TBD](https://github.com/bajutsu-e2e/bajutsu/pull/TBD) |
 | トピック | セキュリティ強化 |
 <!-- /BE-METADATA -->
 
@@ -58,12 +59,15 @@ def _command(self, prompt: str, schema: dict[str, Any], system: str) -> list[str
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `ClaudeCodeAgent._command` にシェルとファイル読み書きを対象とする
+- [x] `ClaudeCodeAgent._command` にシェルとファイル読み書きを対象とする
       `--disallowedTools`／`--allowedTools` を追加する。
-- [ ] デフォルト拒否・非対話の `--permission-mode` を追加する。
-- [ ] 構築されたコマンドに常にこれらの制限フラグが含まれることを検証するテストを追加する。
+- [x] デフォルト拒否・非対話の `--permission-mode` を追加する。
+- [x] 構築されたコマンドに常にこれらの制限フラグが含まれることを検証するテストを追加する。
 
-まだ着手した PR はありません。
+- #TBD — `ClaudeCodeAgent._command` に `--disallowedTools`
+  （`Bash,Read,Write,Edit,NotebookEdit,Glob,Grep`）と `--permission-mode default` を追加しました。
+  `next_action` と `plan` はどちらも共通ヘルパー経由のため同時にカバーされ、これらのフラグが常に
+  含まれることを検証するテストを添えています。
 
 ## 参考
 
