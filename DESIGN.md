@@ -1,6 +1,6 @@
 # Bajutsu：自然言語駆動 E2E テストツールの設計指針
 
-> この文書は Bajutsu の設計判断とその根拠を記録します。個々の機能が現時点でどこまで実装されているかは [`docs/architecture.md`](docs/architecture.md)（実装状況）を正とし、本文の記述と実装が食い違うときはそちらを優先してください。
+> この文書は Bajutsu の設計判断とその根拠を記録します。個々の機能が現時点でどこまで実装されているかは [`docs/ja/architecture.md`](docs/ja/architecture.md)（実装状況）を正とし、本文の記述と実装が食い違うときはそちらを優先してください。
 > ツール名 `Bajutsu` は仮称。
 
 ---
@@ -94,12 +94,12 @@ Reporter (manifest.json + JUnit/HTML + スクショ/録画)
 
 ### 3.2 ネットワーク制御（in-scenario の mocks）
 
-決定的なネットワーク（§2「ネットワークをモックへ」）と、idb バックエンドの `network` 証跡源を、シナリオ内に宣言する **`mocks`（in-protocol の決定的スタブ）** で兼ねます。当初はアプリと外部ネットワークの間に立つ単一の外部モックサーバでこれを担う設計でしたが、外部サーバは [BE-0027](roadmaps/deferred/BE-0027-mock-server-external/BE-0027-mock-server-external.md) で見送り、実装を in-protocol のスタブへ移しました。
+決定的なネットワーク（§2「ネットワークをモックへ」）と、idb バックエンドの `network` 証跡源を、シナリオ内に宣言する **`mocks`（in-protocol の決定的スタブ）** で兼ねます。当初はアプリと外部ネットワークの間に立つ単一の外部モックサーバでこれを担う設計でしたが、外部サーバは [BE-0027](roadmaps/deferred/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md) で見送り、実装を in-protocol のスタブへ移しました。
 
 - **居場所**：外部プロセスではなくプロトコル層のスタブです。アプリの発する各リクエストを、シナリオの `mocks` に宣言した `match` で照合し、一致すれば `respond` の定型応答をアプリ内で返します（§6.1）。ライブサーバに触れないため、テストはオフラインで安定します
 - **2 つの役割**：(a) **決定性** = 一致したリクエストへ事前定義のスタブ応答を返します。(b) **証跡** = 発受信したリクエストを in-protocol の network collector が記録し、`network` アーティファクト（`network.json`）の取得元になります（§9）
 - **証跡源**：idb はネイティブのネットワーク監視を持たないため、`network` は **in-protocol の collector から取得**します。取得できないときは `manifest` に skip 理由を明示します
-- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `mockServer`（起動コマンド / ポート）は当初の外部サーバ向けスキーマが残るのみで実装されておらず、`mocks` に置き換わっています（[BE-0027](roadmaps/deferred/BE-0027-mock-server-external/BE-0027-mock-server-external.md)）
+- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `mockServer`（起動コマンド / ポート）は当初の外部サーバ向けスキーマが残るのみで実装されておらず、`mocks` に置き換わっています（[BE-0027](roadmaps/deferred/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）
 
 ### 3.3 並列実行とアイソレーション
 
@@ -114,7 +114,7 @@ Reporter (manifest.json + JUnit/HTML + スクショ/録画)
 
 ## 4. 実装言語 = Python に伴う構成
 
-Bajutsu は Python パッケージとして実装します。現行のパッケージ構造（`serve/`、`crawl`、`mcp/`、`drivers`、`orchestrator`、`runner` ほか、約 3 万行）の正となる一覧は [`docs/architecture.md`](docs/architecture.md) にあります。ここで構造の全体像を凍結すると実装とすぐに乖離するため、本文では設計上の中核の継ぎ目だけを述べます。その継ぎ目とは `drivers/base.py` の Driver 抽象で、バックエンド差はここで吸収し、idb / Playwright / XCUITest といった実体をこのインターフェースの背後に収めます（§5）。
+Bajutsu は Python パッケージとして実装します。現行のパッケージ構造（`serve/`、`crawl`、`mcp/`、`drivers`、`orchestrator`、`runner` ほか、約 3 万行）の正となる一覧は [`docs/ja/architecture.md`](docs/ja/architecture.md) にあります。ここで構造の全体像を凍結すると実装とすぐに乖離するため、本文では設計上の中核の継ぎ目だけを述べます。その継ぎ目とは `drivers/base.py` の Driver 抽象で、バックエンド差はここで吸収し、idb / Playwright / XCUITest といった実体をこのインターフェースの背後に収めます（§5）。
 
 **技術選定**
 - CLI：`Typer`（or Click）／設定とシナリオの検証：`pydantic`
