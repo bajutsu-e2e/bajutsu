@@ -22,7 +22,7 @@ by capability, so an unsupported step fails before any device work starts.
 ## Motivation
 
 `bajutsu/orchestrator/types.py:45-59` defines `DeviceControl`, a Protocol of simctl-backed
-operations (`set_location`, `push`, `clear_keychain`, `clear_clipboard`, `set_clipboard`,
+operations (`set_location`, `push`, `clear_keychain`, `clear_clipboard`, `set_clipboard`, `get_clipboard`,
 `home`, `foreground`, `override_status_bar`, `clear_status_bar`) that the runner injects when a
 real device environment backs the run, and leaves `None` when it doesn't (the fake driver, or
 parallel runs that don't pin a single device). Every device-control step handler in
