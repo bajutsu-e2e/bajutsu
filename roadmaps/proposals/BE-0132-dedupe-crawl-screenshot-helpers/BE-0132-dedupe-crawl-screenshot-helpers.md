@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-dedupe-crawl-screenshot-helpers-ja.md)
+**English** · [日本語](BE-0132-dedupe-crawl-screenshot-helpers-ja.md)
 
-# BE-XXXX — Deduplicate crawl screenshot helpers
+# BE-0132 — Deduplicate crawl screenshot helpers
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-dedupe-crawl-screenshot-helpers.md) |
+| Proposal | [BE-0132](BE-0132-dedupe-crawl-screenshot-helpers.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Crawl performance / scale-out |

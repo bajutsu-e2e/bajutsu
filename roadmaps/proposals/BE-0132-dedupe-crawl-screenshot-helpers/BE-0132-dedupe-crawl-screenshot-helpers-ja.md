@@ -1,11 +1,11 @@
-[English](BE-XXXX-dedupe-crawl-screenshot-helpers.md) · **日本語**
+[English](BE-0132-dedupe-crawl-screenshot-helpers.md) · **日本語**
 
-# BE-XXXX — クロールのスクリーンショットヘルパーを重複排除する
+# BE-0132 — クロールのスクリーンショットヘルパーを重複排除する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-dedupe-crawl-screenshot-helpers-ja.md) |
+| 提案 | [BE-0132](BE-0132-dedupe-crawl-screenshot-helpers-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | クロール性能 / スケールアウト |

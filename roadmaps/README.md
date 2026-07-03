@@ -512,6 +512,7 @@ Closing the edges the deterministic core does not touch — `serve`'s HTTP surfa
 | [BE-0125](proposals/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction.md) | Restrict the claude-code authoring agent tools | Proposal |
 | [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction.md) | Redact sensitive network headers and cookies by default | Proposal |
 | [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions.md) | Restrict run-artifact file permissions | Proposal |
+| [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer.md) | Pin the actionlint installer by SHA | Proposal |
 <!-- /GENERATED:proposals-security -->
 
 ### Configuration sourcing
@@ -537,7 +538,9 @@ Turning a passing scenario into a native test in a destination framework's idiom
 Keeping the autonomous crawl fast and its code lean as it grows.
 
 <!-- GENERATED:proposals-crawl -->
-
+| ID | Item | Status |
+|---|---|---|
+| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers.md) | Deduplicate crawl screenshot helpers | Proposal |
 <!-- /GENERATED:proposals-crawl -->
 
 ### Backend expansion (iOS actuators)

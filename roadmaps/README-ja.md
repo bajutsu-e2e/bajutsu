@@ -505,6 +505,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0125](proposals/BE-0125-authoring-agent-tool-restriction/BE-0125-authoring-agent-tool-restriction-ja.md) | claude-code オーサリングエージェントのツールを制限する | 提案 |
 | [BE-0130](proposals/BE-0130-default-network-secret-redaction/BE-0130-default-network-secret-redaction-ja.md) | ネットワークの機密ヘッダーと Cookie を既定で redact する | 提案 |
 | [BE-0131](proposals/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md) | 実行証跡ファイルのパーミッションを制限する | 提案 |
+| [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer-ja.md) | actionlint インストーラを SHA で固定する | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元
@@ -530,7 +531,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 自律クロールを高速に保ち、成長に合わせてコードを簡潔に保つ取り組みです。
 
 <!-- GENERATED:proposals-crawl -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0132](proposals/BE-0132-dedupe-crawl-screenshot-helpers/BE-0132-dedupe-crawl-screenshot-helpers-ja.md) | クロールのスクリーンショットヘルパーを重複排除する | 提案 |
 <!-- /GENERATED:proposals-crawl -->
 
 ### バックエンド拡張（iOS actuator）

@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-pin-actionlint-installer-ja.md)
+**English** · [日本語](BE-0133-pin-actionlint-installer-ja.md)
 
-# BE-XXXX — Pin the actionlint installer by SHA
+# BE-0133 — Pin the actionlint installer by SHA
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-pin-actionlint-installer.md) |
+| Proposal | [BE-0133](BE-0133-pin-actionlint-installer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |
