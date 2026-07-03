@@ -131,6 +131,23 @@ def start_run(
         # Govern the uploaded bundle's launchServer command (BE-0090); a local/Git config is
         # operator-trusted and ungoverned, so it gets no flag.
         upload_exec=state.upload_exec if state.upload is not None else "",
+        # The rest of `run`'s flag surface, now reachable from the request body (BE-0134). These are
+        # safe to take from the client: tag selectors, the web engine axis (the CLI validates the
+        # engine names), the network toggle, the post-verdict --zip, and the alert/log knobs.
+        tag=str(body.get("tag") or ""),
+        exclude=str(body.get("exclude") or ""),
+        browser=str(body.get("browser") or ""),
+        browsers=str(body.get("browsers") or ""),
+        network=_bool_flag(body, "network"),
+        zip_run=_bool_flag(body, "zip"),
+        alert_instruction=str(body.get("alertInstruction") or ""),
+        log_predicate=str(body.get("logPredicate") or ""),
+        log_subsystem=str(body.get("logSubsystem") or ""),
+        # Deliberately NOT sourced from the client body: --schemas / --goldens are host directory
+        # paths, and taking them from a serve request is the arbitrary-path hole BE-0051 closes
+        # (baselines is serve-computed above for the same reason); --config-offline /
+        # --require-pinned-config govern how the operator-opened Git config is fetched. run_command
+        # can emit all four (the flag surface stays complete), but they stay config-driven here.
     )
     app_path, build = target_build_info(cfg, target)
     if state.upload is not None:
