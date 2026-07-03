@@ -43,8 +43,8 @@ The two modules deliberately exercise BE-0007's two Android id paths:
   `.` ↔ `_` when matching, or the Views targets get their own scenario variant, is a BE-0007
   design decision — the fixture exposes the honest native convention rather than papering over it.
 
-State mirroring differs the same way: Compose mirrors to `stateDescription`, Views to
-`content-desc` — each the platform-native channel a UI Automator dump exposes.
+State mirroring is the same in both toolkits: each mirrors the value to `content-desc`, the channel
+a `uiautomator dump` exposes (Compose's `stateDescription` is not in the dump). See SPEC §2.1.
 
 ## Launch-env hooks and deeplinks
 

@@ -10,12 +10,12 @@ HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
 
 # The wrapper jar IS committed (like any standard Android repo), so a fresh clone builds with no
-# extra step. Only run this to bump the pinned Gradle version — never as part of a build, since
-# `gradle wrapper` rewrites the tracked gradlew/properties from the *installed* Gradle's templates
-# and would dirty the tree differently on every machine.
+# extra step. Only run this to bump the pinned Gradle version — never as part of a build, since it
+# rewrites the tracked gradlew/properties and would dirty the tree. It goes through the committed
+# `./gradlew` (not a system-installed gradle), so no extra tool is needed.
 GRADLE_VERSION := 8.9
 wrapper:
-	cd $(HERE) && gradle wrapper --gradle-version $(GRADLE_VERSION)
+	cd $(HERE) && $(GRADLEW) wrapper --gradle-version $(GRADLE_VERSION)
 
 build-all: compose-build compose-noax-build views-build views-noax-build
 

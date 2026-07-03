@@ -41,8 +41,9 @@ identifier の無いツリーになります。アクセシビリティ対応を
   `.` と `_` を同一視するか、Views 用のシナリオ variant を用意するかは BE-0007 側の設計判断です。
   このフィクスチャは、差異を取り繕わずプラットフォーム本来の規約を正直に公開します。
 
-状態の反映も同じ対応です。Compose は `stateDescription` に、Views は `content-desc` に反映します。
-いずれも UI Automator のダンプが公開する、そのプラットフォーム本来のチャネルです。
+状態の反映は両ツールキットで同じです。どちらも値を `content-desc` に反映します。これは
+`uiautomator dump` が公開するチャネルです（Compose の `stateDescription` はダンプに現れません）。
+SPEC §2.1 を参照してください。
 
 ## 起動時の環境変数フックとディープリンク
 
