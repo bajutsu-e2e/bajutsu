@@ -7,7 +7,8 @@
 |---|---|
 | Proposal | [BE-0117](BE-0117-coverage-floor-ratchet.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
+| Implementing PR | [#562](https://github.com/bajutsu-e2e/bajutsu/pull/562) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -110,22 +111,28 @@ Work breaks down by module, then a final floor-raise once all test additions lan
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit-test `lint.py`'s command branches (not found / unreadable / lint errors / clean with and
+- [x] Unit-test `lint.py`'s command branches (not found / unreadable / lint errors / clean with and
       without a provenance advisory)
-- [ ] Unit-test `worker.py`'s `_post_json`, `_object_store`, `_write_console_log`, and one iteration
+- [x] Unit-test `worker.py`'s `_post_json`, `_object_store`, `_write_console_log`, and one iteration
       of the `worker()` polling loop
-- [ ] Unit-test `mcp.py`'s transport validation, the `fastmcp` import guard, and the `stdio`/`sse`
+- [x] Unit-test `mcp.py`'s transport validation, the `fastmcp` import guard, and the `stdio`/`sse`
       success paths
-- [ ] Unit-test `trace.py`'s "no run found" and `_explain` error branches
-- [ ] Unit-test `crawl.py`'s option-validation and dispatch branches (unknown agent, unavailable
+- [x] Unit-test `trace.py`'s "no run found" and `_explain` error branches
+- [x] Unit-test `crawl.py`'s option-validation and dispatch branches (unknown agent, unavailable
       backend, missing AI credential)
-- [ ] Add a `CliRunner` test for `schema.py`'s command body
-- [ ] Unit-test `audit.py`'s usage-error branches and `_history_audit`'s grouping/classification
+- [x] Add a `CliRunner` test for `schema.py`'s command body
+- [x] Unit-test `audit.py`'s usage-error branches and `_history_audit`'s grouping/classification
       logic
-- [ ] Raise `--cov-fail-under` in the `Makefile` to the new measured floor and confirm `make check`
+- [x] Raise `--cov-fail-under` in the `Makefile` to the new measured floor and confirm `make check`
       passes cleanly
 
-No PR has landed yet.
+- [#562](https://github.com/bajutsu-e2e/bajutsu/pull/562) — the CLI test additions took `lint.py`
+  17.6% → 100%, `worker.py` 23.3% → 97%, `mcp.py` 40% → 100%, `trace.py` 66.7% → 100%, `schema.py`
+  71.4% → 100%, and `audit.py` 71.9% → 81% (its remaining gap is the device-only `--repeat`
+  execution path); `crawl.py`'s device-free option-validation branches are covered (the rest of the
+  command needs a live actuator). Total branch coverage rose to 89.34%, so the `Makefile` floor was
+  raised `--cov-fail-under=87` → `89` (the `docs/ci.md` mirror, which had drifted to `85`, and the
+  PR-template example were realigned).
 
 ## References
 
@@ -137,7 +144,7 @@ No PR has landed yet.
 - `bajutsu/cli/commands/crawl.py:58-...` (`crawl`), 67.4% coverage
 - `bajutsu/cli/commands/schema.py:8-12` (`schema`), 71.4% coverage
 - `bajutsu/cli/commands/audit.py:38-...` (`audit`, `_history_audit`), 71.9% coverage
-- [`Makefile:69`](../../../Makefile) — the `--cov-fail-under=87` line this item raises.
+- [`Makefile:69`](../../../Makefile) — the `--cov-fail-under` line this item raised from 87 to 89.
 - [`pyproject.toml`](../../../pyproject.toml) — `[tool.coverage.run] branch = true`, the branch-
   coverage mode the floor is measured against.
 - [BE-0067 — Code-quality gate hardening](../../implemented/BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)

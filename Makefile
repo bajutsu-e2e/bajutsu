@@ -66,7 +66,7 @@ DOCSTRING_PATHS := bajutsu/drivers bajutsu/assertions.py bajutsu/network.py baju
 # Run the suite with a coverage floor — a regression that quietly drops coverage fails the gate.
 # The JSON report is a gitignored side artifact CI renders into its job summary (scripts/coverage_summary.py).
 test:
-	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=87
+	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json --cov-fail-under=89
 
 lint:
 	uv run ruff check .
