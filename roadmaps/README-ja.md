@@ -362,7 +362,9 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 ### プラットフォーム拡張（Android / Web / Flutter）
 
 <!-- GENERATED:in-progress-platform -->
-
+| ID | 項目 | 状態 |
+|---|---|---|
+| [BE-0007](in-progress/BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 実装中 |
 <!-- /GENERATED:in-progress-platform -->
 
 ### 競合調査（MagicPod / Autify）由来の候補
@@ -443,7 +445,6 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 <!-- GENERATED:proposals-platform -->
 | ID | 項目 | 状態 |
 |---|---|---|
-| [BE-0007](proposals/BE-0007-android-backend/BE-0007-android-backend-ja.md) | Android backend | 提案 |
 | [BE-0008](proposals/BE-0008-flutter-support/BE-0008-flutter-support-ja.md) | Flutter 対応 | 提案 |
 | [BE-0114](proposals/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) | backend 非依存の挙動を検査する driver conformance suite | 提案 |
 | [BE-0118](proposals/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification-ja.md) | ドライバ間で wait_for のポーリング契約を統一する | 提案 |

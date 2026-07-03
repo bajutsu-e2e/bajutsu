@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0007](BE-0007-android-backend.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Topic | Platform expansion (Android / Web / Flutter) |
 <!-- /BE-METADATA -->
 
@@ -173,6 +173,15 @@ the **lean** end of `capabilities()`.
 - [ ] doctor and disclosure — `doctor --target` availability beside idb; manifest records `backend: "adb"`.
 - [ ] codegen target — Espresso / UI Automator generator (follow-up slice).
 - [ ] Validation — fast-gate driver/registry tests over dump fixtures; on-device emulator e2e via KVM.
+
+Log:
+
+- 2026-07-03 — Started. The Android showcase fixture the driver will drive landed first
+  ([#552](https://github.com/bajutsu-e2e/bajutsu/pull/552)): the Compose + Views twins of
+  `demos/showcase` (a11y/noax flavors), exercising the `testTag`/`android:id` → `resource-id`
+  conventions and the selector mapping above from the app side, with four `backend: [android]`
+  targets wired into `showcase.config.yaml`. This is preparation — it ticks no work-breakdown box
+  above; the driver slices (registry wiring onward) are next.
 
 ## References
 
