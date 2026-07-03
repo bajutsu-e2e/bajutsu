@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0127](BE-0127-split-serve-operations-module.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0127") |
+| Implementing PR | [#619](https://github.com/bajutsu-e2e/bajutsu/pull/619) |
 | Topic | Hosting the web UI (cloud / self-hosted) |
 <!-- /BE-METADATA -->
 
@@ -107,18 +108,30 @@ once.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Extract the config/provider/API-key module
-- [ ] Extract the doctor/preflight module
-- [ ] Extract the run/record/crawl dispatch module
-- [ ] Extract the live-log SSE module
-- [ ] Extract the config-bundle upload module
-- [ ] Extract the capture-session module
-- [ ] Extract the scenario/run-artifact reads module
-- [ ] Extract the enrichment module
-- [ ] Add a re-export shim so existing callers (both HTTP shells) migrate without a single
-      atomic rename, then remove it once callers are updated
+- [x] Extract the config/provider/API-key module (`operations/config.py`)
+- [x] Extract the doctor/preflight module (`operations/doctor.py`)
+- [x] Extract the run/record/crawl dispatch module (`operations/dispatch.py`)
+- [x] Extract the live-log SSE module (`operations/sse.py`)
+- [x] Extract the config-bundle upload module (`operations/upload.py`)
+- [x] Extract the capture-session module (`operations/capture.py`)
+- [x] Extract the scenario/run-artifact reads module (`operations/reads.py`)
+- [x] Extract the enrichment module (`operations/enrich.py`)
+- [x] Extract the worker HTTP API module (`operations/worker.py`) — added since the proposal was
+      written (BE-0106 grew the file); split out on the same resource axis as the eight above
+- [x] Add a re-export shim so existing callers (both HTTP shells) migrate without a single
+      atomic rename — the package `operations/__init__.py` re-exports the full public surface, so
+      every `ops.<name>` caller keeps working unchanged. This is kept as the permanent
+      framework-agnostic facade rather than removed: it is the very seam that gives local/self-hosted
+      and cloud-hosted `serve` one shared implementation, and removing it would scatter the facade
+      across submodule-direct imports.
 
-No PR has landed yet.
+- 2026-07-03: split `operations.py` (1,438 lines) into the `operations/` package — nine resource
+  submodules plus a shared `_common.py` (the three cross-cutting private helpers `_device_args`,
+  `_resolve_org_or_forbid`, `_default_driver_factory`) and the re-export facade `__init__.py`.
+  Behavior-preserving: every function's signature and body are unchanged, so both HTTP shells and
+  all tests reach the surface through `ops.<name>` as before. Tightened `_primary_backend`'s
+  `config: Any` to `config: Config` as the reads module was extracted. Added
+  `tests/serve/test_operations_package.py` pinning the facade contract. ([#619](https://github.com/bajutsu-e2e/bajutsu/pull/619))
 
 ## References
 
