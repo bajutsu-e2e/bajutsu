@@ -1,11 +1,11 @@
-[English](BE-XXXX-backend-lifecycle-protocol.md) · **日本語**
+[English](BE-0141-backend-lifecycle-protocol.md) · **日本語**
 
-# BE-XXXX — backend のライフサイクルを型システムに載せる
+# BE-0141 — backend のライフサイクルを型システムに載せる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-backend-lifecycle-protocol-ja.md) |
+| 提案 | [BE-0141](BE-0141-backend-lifecycle-protocol-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |

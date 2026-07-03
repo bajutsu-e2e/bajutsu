@@ -449,6 +449,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0118](proposals/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification-ja.md) | ドライバ間で wait_for のポーリング契約を統一する | 提案 |
 | [BE-0126](proposals/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md) | Effective をプラットフォームごとの設定に分割する | 提案 |
 | [BE-0128](proposals/BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md) | デバイス制御ステップをケイパビリティで preflight ゲートする | 提案 |
+| [BE-0141](proposals/BE-0141-backend-lifecycle-protocol/BE-0141-backend-lifecycle-protocol-ja.md) | backend のライフサイクルを型システムに載せる | 提案 |
 <!-- /GENERATED:proposals-platform -->
 
 ### オーサリング体験（record / GUI エディタ）

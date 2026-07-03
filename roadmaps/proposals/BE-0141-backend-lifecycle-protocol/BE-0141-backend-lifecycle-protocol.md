@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-backend-lifecycle-protocol-ja.md)
+**English** · [日本語](BE-0141-backend-lifecycle-protocol-ja.md)
 
-# BE-XXXX — Bring backend lifecycle into the type system
+# BE-0141 — Bring backend lifecycle into the type system
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-backend-lifecycle-protocol.md) |
+| Proposal | [BE-0141](BE-0141-backend-lifecycle-protocol.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Platform expansion (Android / Web / Flutter) |
