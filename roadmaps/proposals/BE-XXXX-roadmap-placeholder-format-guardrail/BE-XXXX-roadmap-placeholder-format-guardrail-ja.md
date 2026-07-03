@@ -1,6 +1,6 @@
 [English](BE-XXXX-roadmap-placeholder-format-guardrail.md) · **日本語**
 
-# BE-XXXX — Close the roadmap-placeholder format-guardrail gap
+# BE-XXXX — ロードマッププレースホルダーを見逃すフォーマットガードレールの穴を塞ぐ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -39,7 +39,7 @@ BE-0137（[PR #530](https://github.com/bajutsu-e2e/bajutsu/pull/530)）とBE-013
 
 ### 1. レビュー中にプレースホルダーの構造を検査する
 
-`tests/test_roadmap_format.py`の`_items()`を拡張し、番号付きディレクトリと並べて`BE-XXXX-<slug>`も収集します。既存の`_check_file`による見出し・メタデータ検査は、実質的な内容を変えずにそのまま適用します。調整が必要なのは、4桁の番号を前提にしているいくつかの正規表現（`TITLE_RE`、二言語ヘッダーリンク、`Proposal`／`提案`メタデータの値）だけです。`BE-XXXX`ディレクトリにとって`BE-XXXX`自体が正当な自己参照である点は、`test_no_unresolved_be_xxxx_references`がすでに同じ扱いをしています。そこでこれらの検査は、`BE-XXXX-<slug>`ディレクトリに置かれている項目に限って、`BE-\d{4}`の代わりに`BE-XXXX`を許容します。見出しの集合と順序、`Track`の禁止、`Progress`セクションの必須化は、プレースホルダーにも番号付き項目にも同じ基準を適用します。これにより、形が崩れたプレースホルダーは、次にCIが走った時点で`make check`に失敗するようになります。番号付き項目が今日すでに得ているのと同じレビュー時点のシグナルです。
+`tests/test_roadmap_format.py`の`_items()`を拡張し、番号付きディレクトリと並べて`BE-XXXX-<slug>`も収集します。既存の`_check_file`による見出しとメタデータの検査は、実質的な内容を変えずにそのまま適用します。調整が必要なのは、4桁の番号を前提にしているいくつかの正規表現（`TITLE_RE`、二言語ヘッダーリンク、`Proposal`／`提案`メタデータの値）だけです。`BE-XXXX`ディレクトリにとって`BE-XXXX`自体が正当な自己参照である点は、`test_no_unresolved_be_xxxx_references`がすでに同じ扱いをしています。そこでこれらの検査は、`BE-XXXX-<slug>`ディレクトリに置かれている項目に限って、`BE-\d{4}`の代わりに`BE-XXXX`を許容します。見出しの集合と順序、`Track`の禁止、`Progress`セクションの必須化は、プレースホルダーにも番号付き項目にも同じ基準を適用します。これにより、形が崩れたプレースホルダーは、次にCIが走った時点で`make check`に失敗するようになります。番号付き項目が今日すでに得ているのと同じレビュー時点のシグナルです。
 
 ### 2. open な roadmap PR を定期的に、最新の main に照らして再検査する
 
