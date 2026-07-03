@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-screenshot-secret-capture-warning-ja.md)
+**English** · [日本語](BE-0151-screenshot-secret-capture-warning-ja.md)
 
-# BE-XXXX — Warn when screenshots and video may capture on-screen secrets
+# BE-0151 — Warn when screenshots and video may capture on-screen secrets
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-screenshot-secret-capture-warning.md) |
+| Proposal | [BE-0151](BE-0151-screenshot-secret-capture-warning.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Security hardening |

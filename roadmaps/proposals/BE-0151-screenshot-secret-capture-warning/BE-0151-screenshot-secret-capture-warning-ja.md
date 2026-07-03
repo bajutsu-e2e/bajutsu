@@ -1,11 +1,11 @@
-[English](BE-XXXX-screenshot-secret-capture-warning.md) · **日本語**
+[English](BE-0151-screenshot-secret-capture-warning.md) · **日本語**
 
-# BE-XXXX — スクリーンショットと動画が画面上の秘密情報を捉えうることを警告する
+# BE-0151 — スクリーンショットと動画が画面上の秘密情報を捉えうることを警告する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-screenshot-secret-capture-warning-ja.md) |
+| 提案 | [BE-0151](BE-0151-screenshot-secret-capture-warning-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | セキュリティ強化 |

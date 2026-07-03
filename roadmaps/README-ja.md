@@ -533,6 +533,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 | [BE-0133](proposals/BE-0133-pin-actionlint-installer/BE-0133-pin-actionlint-installer-ja.md) | actionlint インストーラを SHA で固定する | 提案 |
 | [BE-0136](proposals/BE-0136-serve-write-once-secrets/BE-0136-serve-write-once-secrets-ja.md) | serve の秘密情報ストアを書き込み専用にする | 提案 |
 | [BE-0144](proposals/BE-0144-automerge-stale-approval-race/BE-0144-automerge-stale-approval-race-ja.md) | auto-merge の stale-approval レースを解消する | 提案 |
+| [BE-0151](proposals/BE-0151-screenshot-secret-capture-warning/BE-0151-screenshot-secret-capture-warning-ja.md) | スクリーンショットと動画が画面上の秘密情報を捉えうることを警告する | 提案 |
 <!-- /GENERATED:proposals-security -->
 
 ### config の取得元
