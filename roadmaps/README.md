@@ -454,6 +454,7 @@ The scope is currently **limited to the iOS Simulator** ([DESIGN §1](../DESIGN.
 | [BE-0114](proposals/BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) | Driver conformance suite for backend-agnostic behavior | Proposal |
 | [BE-0118](proposals/BE-0118-wait-for-contract-unification/BE-0118-wait-for-contract-unification.md) | Unify the wait_for polling contract across drivers | Proposal |
 | [BE-0126](proposals/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md) | Split Effective into per-platform configs | Proposal |
+| [BE-0128](proposals/BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md) | Preflight-gate device-control steps by capability | Proposal |
 <!-- /GENERATED:proposals-platform -->
 
 ### Authoring experience (record / GUI editor)

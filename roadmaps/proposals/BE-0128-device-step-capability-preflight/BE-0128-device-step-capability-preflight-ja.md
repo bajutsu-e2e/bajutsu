@@ -1,11 +1,11 @@
-[English](BE-XXXX-device-step-capability-preflight.md) · **日本語**
+[English](BE-0128-device-step-capability-preflight.md) · **日本語**
 
-# BE-XXXX — デバイス制御ステップをケイパビリティで preflight ゲートする
+# BE-0128 — デバイス制御ステップをケイパビリティで preflight ゲートする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-device-step-capability-preflight-ja.md) |
+| 提案 | [BE-0128](BE-0128-device-step-capability-preflight-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | プラットフォーム拡張（Android / Web / Flutter） |

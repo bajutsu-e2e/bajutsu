@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-device-step-capability-preflight-ja.md)
+**English** · [日本語](BE-0128-device-step-capability-preflight-ja.md)
 
-# BE-XXXX — Preflight-gate device-control steps by capability
+# BE-0128 — Preflight-gate device-control steps by capability
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-device-step-capability-preflight.md) |
+| Proposal | [BE-0128](BE-0128-device-step-capability-preflight.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Platform expansion (Android / Web / Flutter) |
