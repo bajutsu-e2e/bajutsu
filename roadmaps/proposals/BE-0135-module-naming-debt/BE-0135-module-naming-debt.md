@@ -8,7 +8,7 @@
 | Proposal | [BE-0135](BE-0135-module-naming-debt.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Codebase quality & technical debt |
 | Related | [BE-0063](../../implemented/BE-0063-git-config-source/BE-0063-git-config-source.md), [BE-0044](../../implemented/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md) |
 <!-- /BE-METADATA -->
 

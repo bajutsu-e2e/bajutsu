@@ -8,7 +8,7 @@
 | Proposal | [BE-0134](BE-0134-serve-cli-flag-mirror-drift.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Topic | Development infrastructure (contributor workflow) |
+| Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
 ## Introduction
