@@ -36,6 +36,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+# Import the shared id-shape predicate whether this file is run as ``python3 scripts/…`` (scripts/
+# already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
+# resolves either way.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from roadmap_ids import is_item_dir
+
 ROADMAP = Path("roadmaps")
 IMPLEMENTED = "implemented"
 IN_PROGRESS = "in-progress"
@@ -50,7 +56,6 @@ STATUS_TO_CATEGORY = {
     "Proposal": PROPOSALS,
     "Proposal (deferred)": DEFERRED,
 }
-NUMBERED_DIR_RE = re.compile(r"^BE-\d{4}-")
 # Status lives in the fenced metadata block (``build_roadmap_index`` defines the same fence). Read
 # the ``| Status | … |`` row there; fall back to the legacy ``* Status: …`` bullet for unmigrated
 # items. Scoping to the fence keeps a body table that happens to mention "Status" out of reach.
@@ -98,7 +103,8 @@ def misfiled_items(roadmap: Path) -> list[Misfiled]:
 
     Pure and side-effect free: the gate test and ``--check`` both call this, and ``promote`` uses
     it to decide what to move. Items without a readable Status are skipped — there is nothing to
-    reconcile against.
+    reconcile against. Placeholders (``BE-XXXX``) are checked too (BE-0149), so an unallocated item
+    whose ``Status`` drifts is caught as folder-drift rather than sitting in the wrong bucket.
     """
     found: list[Misfiled] = []
     for category in CATEGORIES:
@@ -106,7 +112,7 @@ def misfiled_items(roadmap: Path) -> list[Misfiled]:
         if not category_dir.is_dir():
             continue
         for d in sorted(category_dir.iterdir()):
-            if not (d.is_dir() and NUMBERED_DIR_RE.match(d.name)):
+            if not (d.is_dir() and is_item_dir(d.name)):
                 continue
             status = read_status(d)
             if status is None:

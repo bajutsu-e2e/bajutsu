@@ -31,13 +31,15 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+# Import the shared id-shape predicate whether this file is run as ``python3 scripts/…`` (scripts/
+# already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
+# resolves either way.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from roadmap_ids import is_item_dir, numbered_match
+
 ROADMAP = Path("roadmaps")
 # Each item lives under exactly one, by its Status (BE-0078); the folder prefixes its index links.
 CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
-NUMBERED_DIR_RE = re.compile(r"^BE-(\d{4})-(.+)$")
-# A placeholder (``BE-XXXX``) or numbered item directory. The index renders only numbered items,
-# but a placeholder's future section must already exist (see ``missing_section_markers``).
-ITEM_DIR_RE = re.compile(r"^BE-(?:\d{4}|XXXX)-.+$")
 TITLE_RE = re.compile(r"^# BE-\d{4} — (.+)$", re.MULTILINE)
 # Canonical metadata: a ``| Field | Value |`` table fenced by these markers, mirroring the index's
 # ``<!-- GENERATED:* -->`` regions. Fencing keeps the parser off same-shaped tables in the body.
@@ -316,7 +318,7 @@ def duplicate_ids(roadmap: Path) -> dict[str, list[str]]:
         if not category_dir.is_dir():
             continue
         for d in sorted(category_dir.iterdir()):
-            if d.is_dir() and (match := NUMBERED_DIR_RE.match(d.name)):
+            if d.is_dir() and (match := numbered_match(d.name)):
                 by_id.setdefault(f"BE-{match.group(1)}", []).append(f"{category}/{d.name}")
     return {be_id: paths for be_id, paths in by_id.items() if len(paths) > 1}
 
@@ -339,7 +341,7 @@ def load_items(roadmap: Path) -> list[Item]:
         for d in sorted(category_dir.iterdir()):
             if not d.is_dir():
                 continue
-            match = NUMBERED_DIR_RE.match(d.name)
+            match = numbered_match(d.name)
             if not match:
                 continue
             item_id, slug = f"BE-{match.group(1)}", match.group(2)
@@ -449,7 +451,7 @@ def required_section_keys(roadmap: Path) -> dict[str, str]:
         if not category_dir.is_dir():
             continue
         for d in sorted(category_dir.iterdir()):
-            if not (d.is_dir() and ITEM_DIR_RE.match(d.name)):
+            if not (d.is_dir() and is_item_dir(d.name)):
                 continue
             fields = metadata_fields((d / f"{d.name}.md").read_text(encoding="utf-8"))
             topic = fields["Topic"]

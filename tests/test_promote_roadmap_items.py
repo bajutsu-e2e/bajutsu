@@ -122,6 +122,21 @@ def test_misfiled_flags_in_progress_and_deferred_homes(tmp_path: Path) -> None:
     ]
 
 
+def test_misfiled_flags_a_placeholder_too(tmp_path: Path) -> None:
+    # An unallocated BE-XXXX placeholder is checked the same way a numbered item is (BE-0149): if
+    # its Status is edited while it still sits in proposals/, that's folder-drift too.
+    roadmap = tmp_path / "roadmaps"
+    _write_item(roadmap, "proposals", "BE-XXXX-not-yet-numbered", "In progress")
+    assert pri.misfiled_items(roadmap) == [
+        pri.Misfiled(
+            name="BE-XXXX-not-yet-numbered",
+            status="In progress",
+            current="proposals",
+            expected="in-progress",
+        )
+    ]
+
+
 def test_misfiled_skips_items_without_status(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
     item = roadmap / "proposals" / "BE-9005-nostatus"

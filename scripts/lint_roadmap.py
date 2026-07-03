@@ -30,6 +30,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+# Import the shared id-shape predicate whether this file is run as ``python3 scripts/…`` (scripts/
+# already on the path) or loaded under its bare name by a test — add scripts/ so the sibling import
+# resolves either way.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from roadmap_ids import is_numbered_dir
+
 ROADMAP = Path(__file__).resolve().parent.parent / "roadmaps"
 CATEGORIES = ("implemented", "in-progress", "proposals", "deferred")
 # Markdown outside roadmaps/ that links *into* it and so rots on promotion the same way item bodies
@@ -45,7 +51,6 @@ _ITEM_LINK_RE = re.compile(
 _DIR_RE = re.compile(r"(BE-\d{4}-[^/)]+)/(BE-\d{4}-[^/)]+\.md)$")
 _AUTHOR_RE = re.compile(r"^\|\s*(?:Author|提案者)\s*\|\s*(?P<val>.+?)\s*\|\s*$", re.MULTILINE)
 _HANDLE_RE = re.compile(r"^\[@[^\]]+\]\(https://github\.com/[^)]+\)$")
-_NUMBERED_DIR_RE = re.compile(r"^BE-\d{4}-.+$")
 
 
 @dataclass(frozen=True)
@@ -65,7 +70,7 @@ def _item_dirs(roadmap: Path) -> dict[str, Path]:
         if not category_dir.is_dir():
             continue
         for d in sorted(category_dir.iterdir()):
-            if d.is_dir() and _NUMBERED_DIR_RE.match(d.name):
+            if d.is_dir() and is_numbered_dir(d.name):
                 dirs[d.name] = d
     return dirs
 

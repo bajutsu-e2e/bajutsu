@@ -110,6 +110,45 @@ def test_allocate_rewrites_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "BE-0004-demo-feature" in index and "BE-XXXX" not in index
 
 
+def test_allocate_finds_a_placeholder_relocated_out_of_proposals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # promote_roadmap_items can move a BE-XXXX placeholder out of proposals/ before allocation, if
+    # its Status was set to something else while still unallocated (BE-0149). The allocator must
+    # still find and number it there, or it would be stranded as BE-XXXX forever.
+    roadmap = tmp_path / "roadmaps"
+    _make_item(roadmap, "in-progress", "BE-XXXX-relocated-feature")
+    _make_item(roadmap, "proposals", "BE-0003-existing")  # floor from the working tree
+    (roadmap / "README.md").write_text("no rows here\n", encoding="utf-8")
+    (roadmap / "README-ja.md").write_text("no rows here\n", encoding="utf-8")
+    _git_init(tmp_path, monkeypatch)
+
+    assert ari.main() == 0
+
+    allocated = (
+        roadmap / "in-progress" / "BE-0004-relocated-feature" / "BE-0004-relocated-feature.md"
+    )
+    assert allocated.is_file()
+    assert not (roadmap / "in-progress" / "BE-XXXX-relocated-feature").exists()
+
+
+def test_placeholder_dirs_orders_by_slug_not_by_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Placeholders can live in any status folder (BE-0149). Sorting the Path objects directly would
+    # order by folder name first (e.g. "deferred" before "proposals"), so a placeholder relocated to
+    # an earlier-sorting folder would jump the allocation queue for no reason tied to its own name.
+    # Allocation order must depend only on the slug.
+    roadmap = tmp_path / "roadmaps"
+    monkeypatch.setattr(ari, "ROADMAP", roadmap)
+    _make_item(roadmap, "deferred", "BE-XXXX-zzz-last-by-slug")
+    _make_item(roadmap, "proposals", "BE-XXXX-aaa-first-by-slug")
+
+    names = [d.name for d in ari.placeholder_dirs()]
+
+    assert names == ["BE-XXXX-aaa-first-by-slug", "BE-XXXX-zzz-last-by-slug"]
+
+
 def test_allocate_noop_without_placeholders(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -135,7 +174,7 @@ def test_committed_tree_has_no_duplicate_be_ids() -> None:
         if not category_dir.is_dir():
             continue
         for d in sorted(category_dir.iterdir()):
-            if not (d.is_dir() and (m := ari.NUMBERED_DIR_RE.match(d.name))):
+            if not (d.is_dir() and (m := ari.numbered_match(d.name))):
                 continue
             be_id = int(m.group(1))
             if be_id in seen:

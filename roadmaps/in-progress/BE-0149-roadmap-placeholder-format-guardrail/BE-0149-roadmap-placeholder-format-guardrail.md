@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0149](BE-0149-roadmap-placeholder-format-guardrail.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0149") |
+| Implementing PR | [#600](https://github.com/bajutsu-e2e/bajutsu/pull/600) |
 | Topic | Development infrastructure (contributor workflow) |
 <!-- /BE-METADATA -->
 
@@ -195,16 +196,21 @@ a bypass identity with no PR and no required check, so it must carry its own gat
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Extract a shared, stdlib-only id-shape predicate and adopt it (placeholder-aware) in
+- [x] Extract a shared, stdlib-only id-shape predicate and adopt it (placeholder-aware) in
       `tests/test_roadmap_format.py`, `scripts/build_roadmap_index.py`, `scripts/allocate_roadmap_ids.py`,
       and `scripts/promote_roadmap_items.py`
 - [ ] Add a workflow, triggered when a template-affecting commit lands on `main`, that re-checks open
       roadmap PRs against current `main` read-only, and opens a fix PR against a stale branch on drift
       (depends on the item above)
-- [ ] Extend `scripts/check_renumber_diff.py`'s invocation in `roadmap-id.yml` to also run the shared
+- [x] Extend `scripts/check_renumber_diff.py`'s invocation in `roadmap-id.yml` to also run the shared
       check before `git push`
 
-No PR has landed yet.
+Items 1 and 3 — the two that together guarantee no non-conformant item reaches `main` — have landed:
+the shared id-shape predicate lives in `scripts/roadmap_ids.py`, the format check moved to the
+stdlib-only `scripts/check_roadmap_format.py` (now placeholder-aware), and the merge-time allocator
+self-validates via `scripts/check_renumber_diff.py` before pushing. Item 2 (the periodic re-check of
+open roadmap PRs plus the automated fix PR) is a separable feedback-latency improvement and is
+deferred to a follow-up PR, so the item stays `In progress` until it lands.
 
 ## References
 

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0149](BE-0149-roadmap-placeholder-format-guardrail-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0149") |
+| 実装 PR | [#600](https://github.com/bajutsu-e2e/bajutsu/pull/600) |
 | トピック | 開発基盤（コントリビュータ体験） |
 <!-- /BE-METADATA -->
 
@@ -78,11 +79,11 @@ BE-0137（[PR #530](https://github.com/bajutsu-e2e/bajutsu/pull/530)）とBE-013
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] stdlib のみで動く共通の id 形状の述語を切り出し、`tests/test_roadmap_format.py`・`scripts/build_roadmap_index.py`・`scripts/allocate_roadmap_ids.py`・`scripts/promote_roadmap_items.py`に（プレースホルダー対応の形で）採用する
+- [x] stdlib のみで動く共通の id 形状の述語を切り出し、`tests/test_roadmap_format.py`・`scripts/build_roadmap_index.py`・`scripts/allocate_roadmap_ids.py`・`scripts/promote_roadmap_items.py`に（プレースホルダー対応の形で）採用する
 - [ ] テンプレートに関わるコミットが`main`に着地したときに起動し、open な roadmap PR を現在の`main`に照らして読み取り専用で再検査し、ドリフトがあれば stale なブランチに対して修正PRを開くワークフローを追加する（上記に依存）
-- [ ] `roadmap-id.yml`における`scripts/check_renumber_diff.py`の呼び出しを拡張し、`git push`の前に共通の検査も実行する
+- [x] `roadmap-id.yml`における`scripts/check_renumber_diff.py`の呼び出しを拡張し、`git push`の前に共通の検査も実行する
 
-まだ着手した PR はありません。
+対策1と対策3、すなわち不適合な項目が`main`に到達しないことを合わせて保証する2つが着地しました。共通の id 形状の述語は`scripts/roadmap_ids.py`に置き、フォーマット検査は stdlib のみで動く`scripts/check_roadmap_format.py`へ移して（プレースホルダー対応済み）、採番ワークフローは push の前に`scripts/check_renumber_diff.py`で自己検証します。対策2（open な roadmap PR の定期的な再検査と修正PRの自動化）は、フィードバックの速さを改善する分離可能な項目であり、後続のPRに先送りします。そのため本項目は、対策2が着地するまで`実装中`のままです。
 
 ## 参考
 
