@@ -239,6 +239,335 @@ def test_record_no_scenarios_dir(tmp_path: Path) -> None:
     assert "no scenarios dir" in r.output
 
 
+def _fake_run(tmp_path: Path, *, tags: str = "") -> tuple[Path, Path]:
+    """A fake-backend config + a one-step scenario, for driving `run` through to its verdict
+    device-free. The tap targets an element absent from the fake's (empty) screen, so the run
+    reaches a deterministic FAIL — enough to exercise the whole command body up to the verdict."""
+    scn = tmp_path / "s.yaml"
+    tag_line = f"  tags: [{tags}]\n" if tags else ""
+    scn.write_text(
+        f"- name: demo\n{tag_line}  steps:\n    - tap: {{ id: home.title }}\n", encoding="utf-8"
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    return cfg, scn
+
+
+def test_record_writes_the_authored_scenario(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The record command's option handling and output-path selection, device- and AI-free: the
+    # authoring loop, driver launch, and launchServer are the external boundaries, stubbed here so
+    # the surrounding command body (target/browser/out resolution, then the file write) is covered.
+    # --agent claude-code + --no-dismiss-alerts keeps the credential gate off this deterministic path.
+    import bajutsu.cli.commands.record as rec
+    from bajutsu.scenario import load_scenarios
+
+    authored = load_scenarios("- name: authored\n  steps:\n    - tap: { id: home.title }\n")[0]
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
+    monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: object())
+    monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
+    monkeypatch.setattr(rec, "record_loop", lambda *a, **k: authored)
+
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "rec.yaml"
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--goal",
+            "do x",
+            "--out",
+            str(out),
+            "--agent",
+            "claude-code",
+            "--no-dismiss-alerts",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 0
+    assert "recorded 1 steps" in r.output
+    assert out.is_file() and "name: authored" in out.read_text(encoding="utf-8")
+
+
+def _fake_record_config(tmp_path: Path) -> Path:
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+def test_record_unbuildable_agent_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A misconfigured authoring agent is an actionable error surfaced before any device work
+    # (exit 2), not a crash: make_agent's ValueError is caught and echoed.
+    import bajutsu.cli.commands.record as rec
+
+    def bad_agent(*_a: object, **_k: object) -> object:
+        raise ValueError("bad agent config")
+
+    monkeypatch.setattr(rec, "make_agent", bad_agent)
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--goal",
+            "do x",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--agent",
+            "claude-code",
+            "--no-dismiss-alerts",
+            "--config",
+            str(_fake_record_config(tmp_path)),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "bad agent config" in r.output
+
+
+def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A device failure while bringing the app up is reported and exits 2, not an uncaught traceback.
+    import bajutsu.cli.commands.record as rec
+    from bajutsu import env as _env
+
+    def no_device(*_a: object, **_k: object) -> object:
+        raise _env.DeviceError("no booted simulator")
+
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
+    monkeypatch.setattr(rec, "start_launch_server", lambda *a, **k: (lambda: None, None))
+    monkeypatch.setattr(rec, "launch_driver", no_device)
+    r = runner.invoke(
+        app,
+        [
+            "record",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--goal",
+            "do x",
+            "--out",
+            str(tmp_path / "rec.yaml"),
+            "--agent",
+            "claude-code",
+            "--no-dismiss-alerts",
+            "--config",
+            str(_fake_record_config(tmp_path)),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "no booted simulator" in r.output
+
+
+def _stub_execution(
+    monkeypatch: pytest.MonkeyPatch, *, results: list[object], manifest: Path
+) -> None:
+    """Stub the runner boundary so the `run` command body runs device-free and deterministically.
+
+    The command's dispatch, verdict, and post-verdict logic is what these tests cover; the pool and
+    the pipeline it hands off to are exercised in `tests/runner/`. Stubbing them here also keeps the
+    test off `simctl` (udid resolution) and off the GitHub-Actions summary side effect, so it passes
+    identically on the Linux gate and locally.
+    """
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "FAKE-UDID")
+    monkeypatch.delenv(
+        "GITHUB_ACTIONS", raising=False
+    )  # keep github.emit a no-op (no summary write)
+    monkeypatch.setattr(
+        "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
+    )
+    monkeypatch.setattr(
+        "bajutsu.cli.commands.run.run_and_report", lambda *a, **k: (results, manifest)
+    )
+
+
+def _manifest_at(tmp_path: Path) -> Path:
+    manifest = tmp_path / "runs" / "20260101-000000" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("{}", encoding="utf-8")
+    return manifest
+
+
+def _run_argv(cfg: Path, scn: Path, tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "run",
+        "--scenario",
+        str(scn),
+        "--target",
+        "demo",
+        "--backend",
+        "fake",
+        *extra,
+        "--config",
+        str(cfg),
+        "--runs-dir",
+        str(tmp_path / "runs"),
+    ]
+
+
+def test_run_reports_pass_and_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The command body dispatches to the runner, then prints the machine-only verdict: all results
+    # ok -> PASS on stdout and exit 0.
+    from bajutsu.orchestrator import RunResult
+
+    manifest = _manifest_at(tmp_path)
+    _stub_execution(monkeypatch, results=[RunResult("demo", True, [])], manifest=manifest)
+    cfg, scn = _fake_run(tmp_path)
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-dismiss-alerts"))
+    assert r.exit_code == 0
+    assert r.output.startswith(f"PASS  {manifest}")
+
+
+def test_run_reports_fail_and_exits_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A single failing result flips the verdict: FAIL on stdout and exit 1 (no LLM on this path).
+    from bajutsu.orchestrator import RunResult
+
+    manifest = _manifest_at(tmp_path)
+    _stub_execution(
+        monkeypatch, results=[RunResult("demo", False, [], failure="boom")], manifest=manifest
+    )
+    cfg, scn = _fake_run(tmp_path)
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--erase", "--no-dismiss-alerts"))
+    assert r.exit_code == 1
+    assert r.output.startswith("FAIL")
+
+
+def test_run_zip_writes_artifact_after_the_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # --zip packages the finished run into runs/<id>.zip strictly after the verdict, so it can't
+    # affect pass/fail (BE-0060). The archive is a plain walk of the run dir, so a populated dir is
+    # all it needs.
+    from bajutsu.orchestrator import RunResult
+
+    manifest = _manifest_at(tmp_path)
+    (manifest.parent / "report.html").write_text("<html></html>", encoding="utf-8")
+    _stub_execution(monkeypatch, results=[RunResult("demo", True, [])], manifest=manifest)
+    cfg, scn = _fake_run(tmp_path)
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--zip", "--no-dismiss-alerts"))
+    assert r.exit_code == 0  # the verdict stands, unaffected by the post-run zip
+    assert (manifest.parent.parent / f"{manifest.parent.name}.zip").is_file()
+
+
+def test_run_dismiss_alerts_notes_no_op_without_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The alert guard is on by default, but with no AI credential it degrades to a no-op and never
+    # constructs a client (a Claude-free deterministic run). The note surfaces; the run still runs.
+    from bajutsu.orchestrator import RunResult
+
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda *a, **k: pytest.fail("client constructed despite missing credential"),
+    )
+    _stub_execution(
+        monkeypatch, results=[RunResult("demo", True, [])], manifest=_manifest_at(tmp_path)
+    )
+    cfg, scn = _fake_run(tmp_path)
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path))
+    assert r.exit_code == 0
+    assert "the alert guard will no-op" in r.output
+
+
+def test_run_dismiss_alerts_bedrock_note_without_a_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The Bedrock provider authenticates the alert guard with AWS credentials but still needs a
+    # model id; with none set the guard no-ops and says so — a distinct note from the Anthropic-key
+    # gap, and still no client is constructed on this deterministic run.
+    from bajutsu.orchestrator import RunResult
+
+    monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
+    monkeypatch.delenv("BAJUTSU_BEDROCK_MODEL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _stub_execution(
+        monkeypatch, results=[RunResult("demo", True, [])], manifest=_manifest_at(tmp_path)
+    )
+    cfg, scn = _fake_run(tmp_path)
+    r = runner.invoke(app, _run_argv(cfg, scn, tmp_path))
+    assert r.exit_code == 0
+    assert "no Bedrock model id is set" in r.output
+
+
+def test_run_tag_no_match_exits_2(tmp_path: Path) -> None:
+    # --tag selects across the fully-expanded set; when nothing matches it's a usage error (exit 2),
+    # surfaced before any device work.
+    cfg, scn = _fake_run(tmp_path, tags="smoke")
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--tag",
+            "nightly",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "no scenarios match" in r.output
+
+
+def test_run_browsers_matrix_is_web_only(tmp_path: Path) -> None:
+    # --browsers is a web-only axis: a multi-engine matrix on a non-web backend is caught up front
+    # (exit 2), not after building a pool that would ignore the engine list (BE-0076).
+    cfg, scn = _fake_run(tmp_path)
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--browsers",
+            "chromium,firefox",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "web-only" in r.output
+
+
 def _web_eff(browser: str) -> Effective:
     cfg = load_config(f"targets: {{ web: {{ baseUrl: 'http://x/', browser: {browser} }} }}")
     return resolve(cfg, "web")
@@ -378,6 +707,118 @@ def test_doctor_xcuitest_falls_back_to_idb_for_screen_query(
     elements = _current_screen("xcuitest", "booted", eff)
     assert elements == [el]
     assert made == [("idb", "FAKE-UDID")]
+
+
+def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    # For a non-xcuitest actuator, `doctor` scores whatever the driver's query() returns. The fake
+    # backend needs no device, so resolving the udid is the only thing to stub away.
+    from bajutsu.cli.commands.doctor import _current_screen
+
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "FAKE-UDID")
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    assert _current_screen("fake", "booted", eff) == []  # the fake's screen starts empty
+
+
+def test_check_scenarios_flags_an_unsupported_construct(tmp_path: Path) -> None:
+    # A pinch needs multiTouch, which idb (single-touch) lacks — check_scenarios reports it, purely,
+    # with no device: the capability set is a static class constant.
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn = tmp_path / "pinch.yaml"
+    scn.write_text(
+        "- name: zoom\n  steps:\n    - pinch: { sel: { id: map }, scale: 2.0 }\n", encoding="utf-8"
+    )
+    reasons = check_scenarios(scn, "idb")
+    assert len(reasons) == 1
+    assert "[zoom]" in reasons[0] and "multiTouch" in reasons[0]
+
+
+def test_check_scenarios_passes_a_supported_scenario(tmp_path: Path) -> None:
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    scn = tmp_path / "ok.yaml"
+    scn.write_text("- name: t\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
+    assert check_scenarios(scn, "fake") == []  # the fake backend can perform every gated construct
+
+
+def test_check_scenarios_missing_file_raises(tmp_path: Path) -> None:
+    from bajutsu.cli.commands.doctor import check_scenarios
+
+    with pytest.raises(FileNotFoundError):
+        check_scenarios(tmp_path / "nope.yaml", "fake")
+
+
+def test_claude_readiness_reachable_with_a_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    # With a resolvable credential the optional Claude section reports "reachable" — a ✓, never the
+    # ✗ an environment failure uses (BE-0101). No client is built; availability only reads env.
+    from bajutsu.cli.commands.doctor import _claude_readiness
+
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    line = _claude_readiness(eff)
+    assert "reachable" in line and "✓" in line
+
+
+def test_claude_readiness_not_configured_without_a_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No credential: a neutral "not configured (optional)" line with the en-dash marker, so a user
+    # with no AI setup is never told the deterministic path is broken (BE-0101).
+    from bajutsu.cli.commands.doctor import _claude_readiness
+
+    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
+    monkeypatch.delenv("BAJUTSU_AGENT", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    line = _claude_readiness(eff)
+    assert "not configured (optional)" in line and "–" in line
+
+
+def test_doctor_fake_backend_scores_the_current_screen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The full doctor path on the fake backend: environment gates pass with no tools, then it scores
+    # the (empty) fake screen — Blocked, exit 1 — device-free.
+    monkeypatch.setattr("bajutsu.env.resolve_udid", lambda u: "FAKE-UDID")
+    cfg, _ = _write(tmp_path)
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app, ["doctor", "--target", "demo", "--backend", "fake", "--config", str(cfg)]
+    )
+    assert r.exit_code == 1
+    assert "grade: Blocked" in r.output
+
+
+def test_doctor_scenario_not_found_exits_2(tmp_path: Path) -> None:
+    # A --scenario path that doesn't exist is a usage error surfaced before any capability work.
+    cfg, _ = _write(tmp_path)
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "doctor",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--scenario",
+            str(tmp_path / "missing.yaml"),
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "scenario not found" in r.output
 
 
 def test_serve_refuses_non_loopback_without_token() -> None:

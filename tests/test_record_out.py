@@ -17,6 +17,15 @@ def _eff(scenarios: str):  # type: ignore[no-untyped-def]
     return resolve(cfg, "x")
 
 
+def test_record_no_out_and_no_scenarios_dir_exits_2() -> None:
+    # With neither --out nor a configured scenarios dir there is nowhere to auto-name: a usage
+    # error (exit 2), not a guess.
+    eff = resolve(load_config("targets:\n  x:\n    bundleId: com.x\n"), "x")
+    with pytest.raises(typer.Exit) as exc:
+        _record_out_path(eff, "", "name", "goal", "x", checkout_root=None)
+    assert exc.value.exit_code == 2
+
+
 def test_record_out_explicit_path_is_used_as_is(tmp_path: Path) -> None:
     out = tmp_path / "scn.yaml"
     assert _record_out_path(_eff("e2e"), str(out), "name", "goal", "x", checkout_root=None) == out
