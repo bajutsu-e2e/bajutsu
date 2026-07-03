@@ -7,10 +7,11 @@
 |---|---|
 | 提案 | [BE-0111](BE-0111-ai-sdk-optional-dependency-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0111") |
+| 実装 PR | [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN) |
 | トピック | AI provider configuration |
-| 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md), [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) |
+| 関連 | [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md), [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md), [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md), [BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -128,11 +129,16 @@ AI extra を引き続きインストールします（`bajutsu[bedrock,server,wo
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `ai` extra を導入し、基本依存から `anthropic` を外す
-- [ ] `bedrock` extra を `ai` の上に再構成する（バージョン宣言元を 1 か所に）
-- [ ] import guard で「既定の経路で `anthropic` を import しない」を固定する
-- [ ] AI 経路のテスト網を `dev` グループで維持し、基本インストールが AI 非依存で決定的サブセットを走らせられることを検査する
-- [ ] `pip install bajutsu` と `bajutsu[ai]` の分岐を文書化する（両言語）
+- [x] `ai` extra を導入し、基本依存から `anthropic` を外す
+- [x] `bedrock` extra を `ai` の上に再構成する（バージョン宣言元を 1 か所に）
+- [x] import guard で「既定の経路で `anthropic` を import しない」を固定する
+- [x] AI 経路のテスト網を `dev` グループで維持し、基本インストールが AI 非依存で決定的サブセットを走らせられることを検査する
+- [x] `pip install bajutsu` と `bajutsu[ai]` の分岐を文書化する（両言語）
+
+- [#NNN](https://github.com/bajutsu-e2e/bajutsu/pull/NNN)：`anthropic` を `ai` extra へ移し（基本
+  インストールを AI-free に）、`bedrock` をその上に再構成し、`dev` グループに `ai` を追加。import
+  guard に「既定の経路で `anthropic` を import しない」検査と、基本インストール（`anthropic` 不在）を
+  模したシミュレーションを追加し、`bajutsu` / `bajutsu[ai]` のインストール分岐を両言語で文書化しました。
 
 ## 参考
 
@@ -144,7 +150,7 @@ AI extra を引き続きインストールします（`bajutsu[bedrock,server,wo
 `bajutsu/crawl_guide.py`、`bajutsu/crawl_tabs.py`。`ai` extra を要するコード）、
 [BE-0101](../../implemented/BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config-ja.md)（本項目が
 パッケージング層で仕上げる、実行時の Claude 利用と非利用の分離）、
-[BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)（本項目が
+[BE-0104](../../proposals/BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend-ja.md)（本項目が
 組み合わさる中立な界面）、
 [BE-0047](../../implemented/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md) と
 [BE-0053](../../implemented/BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider-ja.md)（本項目が
