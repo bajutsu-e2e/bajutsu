@@ -384,8 +384,9 @@ class CliSsoEngine:
         try:
             verification_uri, user_code = _read_cli_prompt(process)
         except SsoError:
-            with contextlib.suppress(OSError):
+            with contextlib.suppress(OSError, subprocess.SubprocessError):
                 process.kill()
+                process.wait(timeout=5)  # reap it — a killed-but-unwaited Popen leaks a zombie
             raise
         handle = secrets.token_urlsafe(16)
         with self._lock:

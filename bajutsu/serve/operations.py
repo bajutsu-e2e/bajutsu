@@ -731,6 +731,12 @@ def sso_login_poll(state: ServeState, handle: str) -> tuple[Any, int]:
     session = progress.session
     if progress.status != "complete" or session is None or session.profile is None:
         return {"status": "pending"}, 200
+    if not session.signed_in:
+        # The CLI engine reports "complete" once `aws sso login` exits 0, but that doesn't by
+        # itself prove the standard token cache now holds a usable session (e.g. a profile whose
+        # sso_session block botocore can't read) — re-check via the same cache lookup `status`
+        # uses, rather than trusting the exit code alone.
+        return {"error": "aws sso login exited, but no signed-in session was found"}, 400
     os.environ[AWS_PROFILE_ENV] = session.profile
     return {"status": "complete", "profile": session.profile, "expiresAt": session.expires_at}, 200
 

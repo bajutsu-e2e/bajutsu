@@ -26,6 +26,10 @@ def test_required_role_maps_endpoints() -> None:
     assert ops.required_role("POST", "/api/jobs/abc/cancel") == "editor"
     assert ops.required_role("POST", "/api/apikey") == "admin"
     assert ops.required_role("POST", "/api/login") is None  # auth endpoints aren't role-gated
+    # AWS SSO sign-in/out are server-wide settings (BE-0056), same tier as /api/apikey.
+    assert ops.required_role("POST", "/api/sso/login") == "admin"
+    assert ops.required_role("POST", "/api/sso/logout") == "admin"
+    assert ops.required_role("GET", "/api/sso") is None  # status read needs no role
 
 
 def test_role_allows_ranks_viewer_editor_admin() -> None:

@@ -154,3 +154,22 @@ def test_http_sso_engine_errors_surface(tmp_path: Path, monkeypatch: pytest.Monk
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_http_sso_poll_complete_without_signed_in_session_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A "complete" poll whose session isn't actually signed in (the CLI-delegation engine can
+    report this — `aws sso login` exits 0 but the standard token cache still doesn't resolve, e.g.
+    a profile without a readable sso_session) must not set AWS_PROFILE or report success."""
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    engine = _FakeSso()
+    engine.poll = lambda _handle: LoginProgress("complete", SsoSession("dev", False))  # type: ignore[assignment]
+    server, port = _serve(_state(tmp_path, engine))
+    try:
+        code, body = _get_result(port, "/api/sso/login/h-1")
+        assert code == 400 and "error" in body
+        assert "AWS_PROFILE" not in os.environ
+    finally:
+        server.shutdown()
+        server.server_close()
