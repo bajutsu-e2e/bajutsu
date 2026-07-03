@@ -9,6 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0150") |
+| Implementing PR | [#603](https://github.com/bajutsu-e2e/bajutsu/pull/603) |
 | Topic | Codebase quality & technical debt |
 | Origin | Found while scoping BE-0117 (CLI command-layer coverage) |
 <!-- /BE-METADATA -->
