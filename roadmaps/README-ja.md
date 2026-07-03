@@ -486,6 +486,7 @@ Web（Playwright）backend とその完成（リッチな capability、並列実
 |---|---|---|
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction-ja.md) | ホスティング時は config の取得元をアップロードと Git だけに絞る | 提案 |
 | [BE-0127](proposals/BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module-ja.md) | serve operations の巨大モジュールを分割する | 提案 |
+| [BE-0129](proposals/BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary-ja.md) | serve のスコープを画定し、ホスト固有の関心事を共有 config から締め出す | 提案 |
 <!-- /GENERATED:proposals-hosting -->
 
 ### セキュリティ強化

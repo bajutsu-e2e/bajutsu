@@ -1,11 +1,11 @@
-[English](BE-XXXX-serve-scope-boundary.md) · **日本語**
+[English](BE-0129-serve-scope-boundary.md) · **日本語**
 
-# BE-XXXX — serve のスコープを画定し、ホスト固有の関心事を共有 config から締め出す
+# BE-0129 — serve のスコープを画定し、ホスト固有の関心事を共有 config から締め出す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-scope-boundary-ja.md) |
+| 提案 | [BE-0129](BE-0129-serve-scope-boundary-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
 | トピック | Web UI のホスティング（クラウド / セルフホスト） |

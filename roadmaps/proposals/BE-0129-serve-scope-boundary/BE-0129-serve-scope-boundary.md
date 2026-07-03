@@ -1,11 +1,11 @@
-**English** · [日本語](BE-XXXX-serve-scope-boundary-ja.md)
+**English** · [日本語](BE-0129-serve-scope-boundary-ja.md)
 
-# BE-XXXX — Bound serve scope and keep host concerns out of shared config
+# BE-0129 — Bound serve scope and keep host concerns out of shared config
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-scope-boundary.md) |
+| Proposal | [BE-0129](BE-0129-serve-scope-boundary.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
 | Topic | Hosting the web UI (cloud / self-hosted) |

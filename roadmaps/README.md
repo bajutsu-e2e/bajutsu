@@ -493,6 +493,7 @@ Turn the local `bajutsu serve` launcher into a shared service. The runner drives
 |---|---|---|
 | [BE-0108](proposals/BE-0108-hosted-config-source-restriction/BE-0108-hosted-config-source-restriction.md) | Restrict config sources to upload and Git when hosted | Proposal |
 | [BE-0127](proposals/BE-0127-split-serve-operations-module/BE-0127-split-serve-operations-module.md) | Split the serve operations god-module | Proposal |
+| [BE-0129](proposals/BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary.md) | Bound serve scope and keep host concerns out of shared config | Proposal |
 <!-- /GENERATED:proposals-hosting -->
 
 ### Security hardening
