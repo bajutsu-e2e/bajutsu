@@ -34,8 +34,8 @@ that types `${secrets.password}` or an OTP captured mid-run hands that value to
 to any local user via `ps aux`, `/proc/<pid>/cmdline`, or equivalent — including other
 jobs on a shared CI runner. Severity is medium: exploitation requires local access to
 the same host while the `idb` process is alive, but CI runners are exactly the kind of
-multi-tenant-ish environment where "shared host, different job" is a realistic
-adjacency, and secrets are the asset Bajutsu already goes out of its way to protect
+multi-tenant environment where "shared host, different job" is a realistic adjacency,
+and secrets are the asset Bajutsu already goes out of its way to protect
 (BE-0032 masks them in logs and evidence — this is the one path that still leaks the
 raw value).
 
