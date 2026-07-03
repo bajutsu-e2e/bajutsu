@@ -30,9 +30,9 @@ Four modules all claim some piece of "environment" or "config", with non-interse
   surface.
 - `bajutsu/environment.py` (686 lines) — "Per-platform app lifecycle behind one Protocol" (BE-0009
   Phase 0): the `Environment` Protocol that brings an app to a fresh, launched state per platform
-  (`environment.py:1-11`). This is the module the sibling proposal "Bring backend lifecycle into
-  the type system" also touches, since it is where the `type: ignore` lifecycle escapes
-  concentrate.
+  (`environment.py:1-11`). This module is also a likely touchpoint for a planned follow-up item to
+  bring backend lifecycle into the type system (TBD), since it is where the `type: ignore` lifecycle
+  escape hatches concentrate.
 - `bajutsu/dotenv.py` (55 lines) — "Minimal .env loader: read KEY=VALUE lines into the environment"
   (`dotenv.py:1`): loading a `.env` file's secrets into `os.environ`.
 - `bajutsu/config_source.py` (243 lines) — "Acquire a config (and its scenario tree) from a Git
