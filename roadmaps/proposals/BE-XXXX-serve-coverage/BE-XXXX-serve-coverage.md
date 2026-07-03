@@ -8,7 +8,6 @@
 | Proposal | [BE-XXXX](BE-XXXX-serve-coverage.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Track | [Proposals](../../README.md#proposals) |
 | Topic | Surfacing CLI features in the serve Web UI |
 <!-- /BE-METADATA -->
 
@@ -21,9 +20,9 @@ set) endpoints observed vs asserted. Read-only, AI-free, never a gate.
 
 ## Motivation
 
-[BE-0050](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) ships `bajutsu
-coverage`: a read-only, deterministic aggregation that answers "what do our E2E tests actually
-cover?" — per-namespace id coverage measured against the app's declared `idNamespaces`, the gap
+[BE-0050](../../implemented/BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md) ships
+`bajutsu coverage`: a read-only, deterministic aggregation that answers "what do our E2E tests
+actually cover?" — per-namespace id coverage measured against the app's declared `idNamespaces`, the gap
 list (declared namespaces no scenario touches), off-namespace ids, and, with `--runs`, endpoints
 observed vs asserted (`bajutsu/coverage.py`). It is a question teams routinely ask and UI-only
 competitors cannot answer. But it lives on the CLI, while the place a team looks at its suite and
@@ -60,6 +59,19 @@ Tier-1, read-only; the UI only shells out to the existing aggregation.
   the exact count.
 * **Gate CI on a coverage threshold from the UI.** Out of scope and against the grain — coverage is
   informational; a team may track it in CI themselves, but the UI never turns it into a verdict.
+
+## Progress
+
+> Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
+> *Detailed design* (one box per unit of work); the log records what changed and when
+> (oldest first), linking the PRs.
+
+- [ ] Add the `POST /api/coverage` endpoint (`{target, runs?}`) that runs the aggregation and
+      returns per-namespace coverage, the gap list, and off-namespace ids
+- [ ] Add the "Coverage" view surfacing those results in the browser
+- [ ] Fold in the endpoints-observed-vs-asserted dimension when a run set is selected
+
+No PR has landed yet.
 
 ## References
 
