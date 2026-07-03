@@ -78,10 +78,10 @@ combined PR; each rename is a pure `git mv` + import-path update with no behavio
 2. **`bajutsu/environment.py` → `bajutsu/lifecycle.py`** (or `platform_lifecycle.py` if
    `lifecycle.py` reads as too generic once the module list is seen together). Names the module for
    its actual job, the per-platform `Environment` Protocol and its implementations. This name
-   choice must be coordinated with the sibling proposal "Bring backend lifecycle into the type
-   system": if that item introduces a `Lifecycle` Protocol inside this module, the module
-   name and the Protocol name collide (`bajutsu.lifecycle.Lifecycle` reads oddly) — whichever of the
-   two items lands first picks a name that leaves room for the other (e.g. the Protocol becomes
+   choice must be coordinated with a planned follow-up item to bring backend lifecycle into the type
+   system (TBD): if that item introduces a `Lifecycle` Protocol inside this module, the module name
+   and the Protocol name collide (`bajutsu.lifecycle.Lifecycle` reads oddly) — whichever of the two
+   items lands first should pick a name that leaves room for the other (e.g. the Protocol becomes
    `BackendLifecycle` if the module claims `lifecycle.py`, or the module becomes
    `platform_lifecycle.py` if the Protocol claims `Lifecycle`).
 3. **`bajutsu/dotenv.py`** — keep as is. "dotenv" is an established, specific term (the `.env` file
